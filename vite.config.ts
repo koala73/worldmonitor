@@ -919,7 +919,7 @@ function webMcpDevSecurityHeadersPlugin(): Plugin {
         const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
         const isEmbedDocument = pathname === '/embed' || pathname === '/embed.html';
         if (pathname === '/wm-widget-sandbox.html') {
-          res.setHeader('Content-Security-Policy', 'sandbox allow-scripts');
+          res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox allow-scripts; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net;");
         }
         res.setHeader('Origin-Agent-Cluster', '?1');
         res.setHeader('Permissions-Policy', isEmbedDocument ? 'tools=()' : 'tools=(self)');

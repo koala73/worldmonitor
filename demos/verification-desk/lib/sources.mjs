@@ -159,7 +159,14 @@ function fetchPinned(url, { headers, signal, lookup: pinnedLookup }) {
   return new Promise((resolve, reject) => {
     const transport = new URL(url).protocol === 'https:' ? https : http;
     const req = transport.request(url, { headers, signal, lookup: pinnedLookup, agent: false }, res => {
-      resolve(new Response(Readable.toWeb(res), { status: res.statusCode, headers: res.headers }));
+      try {
+        const empty = [204, 205, 304].includes(res.statusCode);
+        if (empty) res.resume();
+        resolve(new Response(empty ? null : Readable.toWeb(res), { status: res.statusCode, headers: res.headers }));
+      } catch (error) {
+        res.destroy();
+        reject(error);
+      }
     });
     req.on('error', reject);
     req.end();

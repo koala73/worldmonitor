@@ -52,9 +52,10 @@ export const LOGIN_PAGE = (failed) => `<!doctype html>
   ${failed ? '<p>Wrong password.</p>' : ''}
 </form></body></html>`;
 export function hasRequestIntent(req) {
-  if (req.headers['sec-fetch-site'] === 'same-origin') return true;
+  if (!req.headers.origin) return req.headers['sec-fetch-site'] === 'same-origin';
   try {
     const origin = new URL(req.headers.origin);
-    return /^https?:$/.test(origin.protocol) && origin.host === req.headers.host;
+    const protocol = req.headers['x-forwarded-proto'] === 'https' || req.socket?.encrypted ? 'https:' : 'http:';
+    return origin.protocol === protocol && origin.host === req.headers.host;
   } catch { return false; }
 }

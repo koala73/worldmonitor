@@ -23,7 +23,8 @@ test('hosted grading accepts same-origin request intent and denies cross-site na
   assert.equal(hasRequestIntent({ headers: { host: 'desk.example', 'sec-fetch-site': 'cross-site', cookie: 'valid' } }), false);
   assert.equal(hasRequestIntent({ headers: { host: 'desk.example' } }), false);
   assert.equal(hasRequestIntent({ headers: { host: 'desk.example', origin: 'https://evil.example' } }), false);
-  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', origin: 'https://desk.example' } }), true);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', origin: 'https://desk.example', 'x-forwarded-proto': 'https' } }), true);
+  assert.equal(hasRequestIntent({ headers: { host: 'desk.example', origin: 'http://desk.example', 'x-forwarded-proto': 'https' } }), false);
   assert.equal(hasRequestIntent({ headers: { host: 'desk.example', 'sec-fetch-site': 'same-origin' } }), true);
 });
 
@@ -52,6 +53,23 @@ test('article sockets use the validated DNS answer without resolving the hostnam
   assert.ok(await fetchArticleText('https://rebind.example/article', { lookupImpl }));
   assert.equal(lookups, 1);
   assert.equal(connections, 1);
+});
+
+test('a pinned article response without a body does not crash the server', async t => {
+  const { fetchArticleText } = await import('../lib/sources.mjs');
+  t.mock.method(https, 'request', (_url, _options, callback) => {
+    const request = new EventEmitter();
+    request.end = () => {
+      const response = Readable.from([]);
+      response.statusCode = 204;
+      response.headers = {};
+      callback(response);
+    };
+    return request;
+  });
+  assert.equal(await fetchArticleText('https://news.example/empty', {
+    lookupImpl: async () => [{ address: '93.184.215.14', family: 4 }],
+  }), null);
 });
 const snapshotDesk = () => ({
   source: new CombinedSource(null, new ArchiveSource([new URL('../snapshots', import.meta.url).pathname], { days: 100000 })),

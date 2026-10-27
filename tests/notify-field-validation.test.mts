@@ -128,10 +128,10 @@ describe('/api/notify field validation (pentest PoC)', () => {
     console.log = (...args) => { logs.push(args.join(' ')); };
     globalThis.fetch = (async () => Response.json([])) as typeof fetch;
     try {
-      await relayProcessEvent({ eventType: 'custom\nFORGED\u001b[2J', severity: 'high', payload: {} });
+      await relayProcessEvent({ eventType: 'custom\nFORGED\u001b[2J\u2028', severity: 'high', payload: {} });
       const line = logs.find(line => line.startsWith('[relay] Processing event:'));
       assert.ok(line);
-      assert.ok(!/[\n\r\u001b]/.test(line));
+      assert.ok(!/[\n\r\u001b\u2028]/.test(line));
       assert.match(line, /\\nFORGED\\u001b/);
     } finally { console.log = savedLog; }
   });

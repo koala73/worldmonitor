@@ -291,8 +291,8 @@ function extractPromptPairLimit(src, cacheKeySrc) {
   // unbounded `paired` list afterwards.
   assert.match(
     src,
-    /const selectedPairs = selectUniqueHeadlinePairs\(paired\);/,
-    'prompt window must be assigned from selectUniqueHeadlinePairs(paired)',
+    /const selectedPairs = mode === 'translate' \? paired\.slice\(0, 1\) : selectUniqueHeadlinePairs\(paired\);/,
+    'translation must use its keyed first headline; summaries use their bounded unique window',
   );
   assert.match(
     src,

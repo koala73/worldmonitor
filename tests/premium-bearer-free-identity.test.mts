@@ -168,6 +168,30 @@ describe('the bearer arm of resolvePremiumCallerIdentity (#5619 follow-up)', () 
       __setWidgetAgentSpendDepsForTests(null);
     }
   });
+  it('forwards an entitled widget request when its policy permits Anthropic', async () => {
+    const { __setWidgetAgentSpendDepsForTests } = await import('../api/widget-agent.ts');
+    __setWidgetAgentSpendDepsForTests({ checkRateLimit: async () => null, runRedisPipeline: async () => [{ result: 1 }, { result: 1 }] });
+    const original = globalThis.fetch;
+    let forwarded = false;
+    globalThis.fetch = (async (input, init) => {
+      if (String(input).endsWith('/widget-agent')) {
+        forwarded = true;
+        return new Response('data: {"type":"done"}\n\n', { headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      return original(input, init);
+    }) as typeof fetch;
+    try {
+      const token = await signToken({ sub: 'user_widget_allowed', plan: 'pro' });
+      const response = await widgetHandler(new Request('https://www.worldmonitor.app/api/widget-agent', {
+        method: 'POST', headers: { Origin: 'https://www.worldmonitor.app', Authorization: `Bearer ${token}` }, body: '{"prompt":"weather","mode":"create"}',
+      }));
+      assert.equal(response.status, 200, await response.text());
+      assert.equal(forwarded, true);
+    } finally {
+      globalThis.fetch = original;
+      __setWidgetAgentSpendDepsForTests(null);
+    }
+  });
   it('does not replace a retained secondary key scope with a premium bearer', async () => {
     const token = await signToken({ sub: 'user_pro_bearer', plan: 'pro' });
     const request = new Request('https://api.worldmonitor.app/api/v2/shipping/webhooks/own/rotate-secret', {
