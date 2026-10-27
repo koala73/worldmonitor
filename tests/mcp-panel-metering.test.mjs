@@ -1207,6 +1207,20 @@ describe('paid prediction panel through the MCP handler', () => {
       assert.equal((await invoke(deps, { ...args, panel_request: token })).body.error.code, -32602);
     }
   });
+  it('accepts min_liquidity on paid openings and receipt reads', async () => {
+    bootstrapOverride = { ...payload(), geopolitical: [
+      { title: 'deep', source: 'polymarket', yesPrice: 50, liquidity: 250000 },
+      { title: 'thin', source: 'polymarket', yesPrice: 30, liquidity: 900 },
+      { title: 'unreported', source: 'kalshi', yesPrice: 60 },
+    ] };
+    const { deps } = makeProDeps();
+    const opened = await invoke(deps, { min_liquidity: 5000 });
+    assert.deepEqual(data(opened).geopolitical.map(m => m.title), ['deep']);
+    const token = opened.body.result.structuredContent.panelRequest.token;
+    const unfiltered = await invoke(deps, { panel_request: token, min_liquidity: 0 });
+    assert.deepEqual(data(unfiltered).geopolitical.map(m => m.title), ['deep', 'thin', 'unreported']);
+    assert.equal((await invoke(deps, { panel_request: token, min_liquidity: -1 })).body.error.code, -32602);
+  });
   it('opens once, narrows exact contracts and replays normalized filters with two fixed reads per uncached filter', async () => {
     const { deps, pipe } = makeProDeps();
     const first = await invoke(deps);

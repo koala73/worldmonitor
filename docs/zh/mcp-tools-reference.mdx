@@ -899,12 +899,14 @@ curl -s https://worldmonitor.app/mcp \
 | `query` | string | 仅保留标题包含此文本的市场（不区分大小写）。 |
 | `source` | string: kalshi / polymarket | 筛选为一个预测市场来源。Kalshi 目前不提供分类器标签，因此与 `category=tech` 组合不会返回记录。 |
 | `sort` | string: rank / move_24h / move_7d | 默认 `rank` 保留种子排序。`move_24h` 和 `move_7d` 在每个类别内按变化绝对值降序排列，然后应用 limit；缺失值排在最后。 |
+| `min_liquidity` | number | 仅保留流动性（以美元计的挂单深度）不低于此值的市场，在 limit 之前应用。大于 0 时，没有流动性数据的市场（例如订单簿获取失败的 Kalshi 市场）会被排除。 |
 | `limit` | number | 限制每个类别的记录数，默认 30。零或负数表示不限。正小数使用整数部分。 |
 | `refresh` | boolean | 仅限付费面板。默认 false 复用预测分配。true 必须附带 UUID request_id，并开始一次新分配。刷新时省略 panel_request。 |
 | `request_id` | string | 付费刷新 UUID。同一 UUID 的重试复用分配及原始到期时间，字母大小写不改变身份。 |
 | `panel_request` | string | 服务器签发的预测凭据，用于到期前的授权精选读取。API 和免费账户调用不接受该凭据。 |
 
 - **概率变化：** 可选 `change24h` 和 `change7d` 为 `yesPrice` 0–100 标度的百分点变化。上游缺失时不返回该字段，零表示没有变化。Kalshi 仅提供 24 小时变化。REST 的 `yesPriceChange24h` 和 `yesPriceChange7d` 使用 0–1 概率标度。
+- **流动性：** 可选 `liquidity` 为按交易场所计算的美元挂单深度。Polymarket 记录使用 Gamma 的 CLOB 流动性（`liquidity`，等于 `liquidityClob`）：类别桶记录为事件级，国家记录为合约级。Kalshi 记录对合约订单簿中全部 yes 与 no 买单的价格乘以数量求和。两个场所的计算方式不同，阈值宜在同一来源内比较。场所未报告或订单簿获取失败时不返回该字段。REST 以 `min_liquidity` 接受同一筛选。
 - **API 端点：** `GET /api/prediction/v1/list-prediction-markets`
 - **访问：** `free-account`，任意已登录账户均可调用。免费账户消耗每日免费额度，API 套餐仍按工具权重计费。接受通用 `summary` 参数。
 - **付费面板计量：** Pro 与 Pro Business 打开面板扣一次额度。规范化筛选与重复打开在五分钟内复用预测分配。返回的 `panelRequest.token` 在到期前授权精选预测读取。本地类别展开只读取已加载数据，不发起新的工具调用。每份分配最多允许 64 次未缓存工具执行，未缓存执行与已确认缓存回放分别限制为每分钟 64 次。工具执行次数不等于单条 Redis 命令数。
@@ -2390,6 +2392,7 @@ curl -s https://worldmonitor.app/mcp \
 - **类型：** 缓存支撑的 RPC。付费打开消耗一个世界简报面板额度；有效期内的健康重复读取和 JMESPath 视图复用已接受的原始快照。有效且不足三小时的最近可用内容仍可返回，并显示过期提示，但过期内容允许重试，不会作为新鲜快照缓存。缺失、损坏或超过期限的内容不可用。不在请求时调用 LLM。API 保持普通逐工具计费，免费账户保持订阅拒绝行为。
 - **来源：** 按生产者顺序返回种子 payload 发布的有界 `worldBriefSources` 数组。URL 从显式来源记录复制，而不是在 MCP 执行时生成；保留空 URL 回退项，避免引用编号错位。
 - **交叉印证：** `headlines` 中的每一项在 `topStories` 中都有一个按下标对齐的条目（`topStories[i]` 描述 `headlines[i]`），包含 `sourceCount`、`uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`，以及 `sources` 中参与报道的媒体名称（上限 12 个）。这些全部由洞察种子程序发布，因此不在请求时计算。注意这里每个故事的 `sources` 是媒体名称列表，与该工具顶层的 `sources`（承载引用记录）不同。`memberTitles` 在此处刻意不返回 —— 它可在输出预算更大的 `get_news_intelligence` 上获取。
+- **来源溯源：** 每个 `topStories[i]` 还带有 `sourceProvenance`，与其 `sources` 按下标对齐（`sourceProvenance[j]` 描述 `sources[j]`）。每一项给出该媒体声明的 `tier`（1–4，未登记时为 `null`）、`risk`、`type`，以及它们是否已声明和已审核（`riskDeclared`、`typeDeclared`、`riskReviewed`、`typeReviewed`）；登记了关联方时给出 `stateAffiliated`，另有 `knownBiases`（人工整理的立场标签；空数组表示尚未记录标签，并不代表该媒体中立）和可选的 `note`。这与 `get_news_clusters` 返回的逐媒体记录相同，只是没有 `summary`；它能显示同一故事同时引用一级通讯社和高风险或国家关联媒体的情况，而仅看 `sourceTier` 看不出这一点。没有媒体列表的故事不带溯源。若响应会超出输出预算，先删除所有 `note`，仍不够时才删除所有 `sourceProvenance` 列表；此时 `transportCoverage` 会标明被裁剪的字段，`omission_reason` 为 `"output_budget"`。媒体名称和 `sourceTier` 始终返回。
 
 <CodeGroup>
 
