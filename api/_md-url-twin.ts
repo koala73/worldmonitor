@@ -144,7 +144,7 @@ export function isPageTwinSibling(pathname: string): boolean {
     let resolved: string;
     let decoded: string;
     try {
-      resolved = new URL(layer, 'https://sibling.invalid').pathname.toLowerCase();
+      resolved = new URL(layer, 'https://worldmonitor.invalid').pathname.toLowerCase();
       decoded = decodeURIComponent(layer);
     } catch {
       return false;
