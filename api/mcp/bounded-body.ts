@@ -71,7 +71,8 @@ async function readBoundedBody(
         await cancel();
         throw createTooLargeError(maxBytes);
       }
-      chunks.push(value);
+      // Copy: a source may reuse one buffer across reads.
+      chunks.push(value.slice());
       total += value.byteLength;
     }
   } catch (error) {

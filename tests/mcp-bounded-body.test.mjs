@@ -243,6 +243,25 @@ describe('readBoundedResponseBody', () => {
     assert.equal(body.buffer.byteLength, payload.byteLength);
   });
 
+  it('keeps each chunk as received when the stream reuses its buffer', async () => {
+    // A source may refill one Uint8Array between reads; retaining the view
+    // instead of its bytes would return the last fill repeated.
+    const shared = new Uint8Array(4);
+    let fill = 0;
+    const stream = new ReadableStream({
+      pull(controller) {
+        if (fill === 3) return controller.close();
+        fill += 1;
+        shared.fill(fill);
+        controller.enqueue(shared);
+      },
+    });
+
+    const body = await readBoundedResponseBody(new Response(stream), 64);
+
+    assert.deepEqual(body, Uint8Array.from([1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]));
+  });
+
   it('assembles a response split into one-byte fragments', async () => {
     const expected = new Uint8Array(4096);
     for (let index = 0; index < expected.length; index += 1) expected[index] = index % 251;
