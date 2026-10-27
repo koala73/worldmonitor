@@ -13,6 +13,8 @@
  */
 import { query, closePool } from '../db/client.js';
 import { loadAllBasketConfigs } from '../config/loader.js';
+import { classifyMatchAdmission } from './scrape-coverage.js';
+import type { ValidatorResult } from '../adapters/validator.js';
 
 const logger = {
   info: (msg: string, ...args: unknown[]) => console.log(`[validate] ${msg}`, ...args),
@@ -54,13 +56,12 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
     currency_code: string | null;
     reviewed_by: string | null;
     observation_id: string;
-    admitted: boolean;
+    validator: ValidatorResult | null;
   }>(
     `SELECT pm.id AS match_id, pm.basket_item_id, pm.match_status,
             r.slug AS retailer_slug, cp.canonical_name, po.price, r.currency_code,
             pm.reviewed_by, po.id AS observation_id,
-            (po.raw_payload_json->'validator'->>'ok' = 'true'
-              AND (po.raw_payload_json->'validator'->>'score')::numeric >= 0.75) AS admitted
+            po.raw_payload_json->'validator' AS validator
      FROM product_matches pm
      JOIN retailer_products rp ON rp.id = pm.retailer_product_id AND rp.active = true
      JOIN retailers r ON r.id = rp.retailer_id AND r.market_code = $2 AND r.active = true
@@ -87,7 +88,7 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
     currencyCode: typeof r.currency_code === 'string' ? r.currency_code : undefined,
     reviewedBy: r.reviewed_by,
     observationId: r.observation_id,
-    admitted: r.admitted === true,
+    admitted: classifyMatchAdmission(r.validator ?? undefined).status === 'auto',
   }));
 
   // Group by basket item
@@ -103,7 +104,7 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
   for (const [, itemRows] of byItem) {
     // Need >= 2 retailers to compute a meaningful cross-retailer median.
     // Single-retailer items cannot be sanity-checked — skip.
-    if (itemRows.length < 2) continue;
+    if (new Set(itemRows.map(row => row.retailerSlug)).size < 2) continue;
 
     const med = median(itemRows.map((r) => r.price));
     if (med === 0) continue;
@@ -167,7 +168,7 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
     }
   }
 
-  const singleRetailerItems = [...byItem.values()].filter((r) => r.length < 2).length;
+  const singleRetailerItems = [...byItem.values()].filter(rows => new Set(rows.map(row => row.retailerSlug)).size < 2).length;
   logger.info(`${basketSlug}:${marketCode} — flagged=${flagged} restored=${restored} single-retailer-skipped=${singleRetailerItems}`);
 }
 

@@ -38,6 +38,22 @@ afterEach(async () => {
 });
 
 describe('withTransaction', () => {
+  it.each(['sslmode=disable', 'sslmode=no-verify', 'ssl=0', 'ssl=false', 'sslmode=verify-full&sslmode=no-verify', 'uselibpqcompat=true&sslmode=prefer'])(
+    'rejects a remote URL that weakens TLS: %s', options => {
+      vi.stubEnv('DATABASE_URL', `postgres://user@database.example/prices?${options}`);
+      expect(() => getPool()).toThrow(/verified TLS/);
+    });
+  it.each(['', '?sslmode=verify-full', '?ssl=true&sslmode=verify-full&uselibpqcompat=true'])(
+    'keeps certificate and hostname verification in the actual pg configuration: %s', async suffix => {
+      vi.stubEnv('DATABASE_URL', `postgres://user@database.example/prices${suffix}`);
+      getPool();
+      const actual = await vi.importActual<typeof import('pg')>('pg');
+      const client = new actual.default.Client(mocks.poolOptions.mock.lastCall![0]);
+      const { ssl } = (client as unknown as { connectionParameters: { ssl: false | { rejectUnauthorized?: boolean; checkServerIdentity?: unknown } } }).connectionParameters;
+      expect(ssl).not.toBe(false);
+      expect(ssl && ssl.rejectUnauthorized).not.toBe(false);
+      expect(ssl && ssl.checkServerIdentity).toBeUndefined();
+    });
   it('verifies remote database certificates even with localhost in the password', () => {
     vi.stubEnv('DATABASE_URL', 'postgres://user:localhost@database.example/prices');
     getPool();

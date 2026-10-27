@@ -13,14 +13,19 @@ export function getPool(): pg.Pool {
   if (!_pool) {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) throw new Error('DATABASE_URL is not set');
+    const url = new URL(databaseUrl);
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (!local && (
+      url.searchParams.getAll('ssl').some(value => !['true', '1'].includes(value)) ||
+      url.searchParams.getAll('sslmode').some(value => value !== 'verify-full')
+    )) throw new Error('Remote DATABASE_URL requires verified TLS; use sslmode=verify-full');
 
     _pool = new Pool({
       connectionString: databaseUrl,
       max: 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
-      ssl: ['localhost', '127.0.0.1', '[::1]'].includes(new URL(databaseUrl).hostname)
-        ? false : { rejectUnauthorized: true },
+      ssl: local ? false : { rejectUnauthorized: true },
     });
 
     _pool.on('error', (err) => {

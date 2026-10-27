@@ -88,7 +88,11 @@ it('Vite validates RSS redirect destinations before sending requests', async () 
 });
 
 it('Vite applies response sandbox isolation to widget documents', async () => {
-  const response = await originalFetch(`${base}/wm-widget-sandbox.html`);
-  assert.match(response.headers.get('content-security-policy') ?? '', /sandbox allow-scripts;/);
-  assert.match(response.headers.get('content-security-policy') ?? '', /default-src 'none';/);
+  for (const path of ['/wm-widget-sandbox.html', '/%77m-widget-sandbox.html', '/wm-widget%2dsandbox.html']) {
+    const response = await originalFetch(`${base}${path}`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-security-policy') ?? '', /sandbox allow-scripts;/, path);
+    assert.match(response.headers.get('content-security-policy') ?? '', /default-src 'none';/, path);
+    await response.body?.cancel();
+  }
 });

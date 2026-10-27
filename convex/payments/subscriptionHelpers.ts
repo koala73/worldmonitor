@@ -2362,8 +2362,9 @@ export async function handleDisputeEvent(
       data.customer?.customer_id ?? "",
       data.metadata,
     );
-  const deletion = await billingDeletionForEvent(ctx, data)
-    ?? await billingDeletionForUser(ctx, resolvedUserId);
+  const deletion = existingSubscription
+    ? await billingDeletionForUser(ctx, resolvedUserId)
+    : await billingDeletionForEvent(ctx, data) ?? await billingDeletionForUser(ctx, resolvedUserId);
   const userId = deletion ? tombstoneUserId(deletion.userIdHash) : resolvedUserId;
 
   const disputeStatusMap: Record<string, "dispute_opened" | "dispute_won" | "dispute_lost" | "dispute_closed"> = {

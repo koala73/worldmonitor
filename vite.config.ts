@@ -916,7 +916,8 @@ function webMcpDevSecurityHeadersPlugin(): Plugin {
     apply: 'serve',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+        let pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+        try { pathname = decodeURI(pathname); } catch { /* Vite handles malformed paths. */ }
         const isEmbedDocument = pathname === '/embed' || pathname === '/embed.html';
         if (pathname === '/wm-widget-sandbox.html') {
           res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox allow-scripts; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net;");

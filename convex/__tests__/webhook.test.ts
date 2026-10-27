@@ -2587,19 +2587,29 @@ describe("webhook processWebhookEvent", () => {
     expect(rows.entitlement?.planKey).toBe("pro_monthly");
   });
 
-  test.each([true, false])("dispute.lost resolves the disputed subscription (inline subscription id: %s)", async (inlineSubscriptionId) => {
+  test.each([
+    { inlineSubscriptionId: true, reusedCustomer: false },
+    { inlineSubscriptionId: false, reusedCustomer: false },
+    { inlineSubscriptionId: false, reusedCustomer: true },
+  ])("dispute.lost resolves the disputed subscription ($inlineSubscriptionId, reused customer: $reusedCustomer)", async ({ inlineSubscriptionId, reusedCustomer }) => {
     const t = convexTest(schema, modules);
     const userId = "user_dispute_multi";
 
     await t.run(async (ctx) => {
       await ctx.db.insert("customers", {
-        userId,
+        userId: reusedCustomer ? 'deleted:old-customer-owner' : userId,
         dodoCustomerId: "cust_dispute_multi",
         email: "multi@example.com",
         normalizedEmail: "multi@example.com",
         createdAt: BASE_TIMESTAMP - 1000,
         updatedAt: BASE_TIMESTAMP - 1000,
       });
+      if (reusedCustomer) {
+        await ctx.db.insert('accountDeletions', {
+          userId: 'old-customer-owner', userIdHash: 'old-customer-owner', source: 'self',
+          status: 'complete', step: 'complete', startedAt: BASE_TIMESTAMP - 2000, updatedAt: BASE_TIMESTAMP - 1000,
+        });
+      }
       await ctx.db.insert("subscriptions", {
         userId,
         dodoSubscriptionId: "sub_disputed_multi",
@@ -2660,11 +2670,13 @@ describe("webhook processWebhookEvent", () => {
       return { disputed, cover, entitlement, paymentEvent };
     });
     expect(rows.disputed?.status).toBe("expired");
+    expect(rows.disputed?.userId).toBe(userId);
     expect(rows.cover?.status).toBe("active");
     expect(rows.entitlement?.planKey).toBe("api_starter");
     expect(rows.entitlement?.validUntil).toBe(BASE_TIMESTAMP + 45 * 86400000);
     expect(rows.entitlement?.features.tier).toBe(getFeaturesForPlan("api_starter").tier);
     expect(rows.paymentEvent?.status).toBe("dispute_lost");
+    expect(rows.paymentEvent?.userId).toBe(userId);
   });
 
   test("dispute.lost preserves a future complimentary entitlement floor", async () => {

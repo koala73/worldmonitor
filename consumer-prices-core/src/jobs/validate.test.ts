@@ -4,16 +4,27 @@ vi.mock('../db/client.js', () => ({ query, closePool: vi.fn() }));
 vi.mock('../config/loader.js', () => ({ loadAllBasketConfigs: () => [{ slug: 'test', marketCode: 'AE' }] }));
 const { validateAll } = await import('./validate.js');
 const { aggregateBasket } = await import('./aggregate.js');
-function row(id: string, price: number, status = 'auto', owner: string | null = null, admitted = true) {
+function row(id: string, price: number, status = 'auto', owner: string | null = null, admitted: boolean | null = true) {
   return { match_id: id, basket_item_id: 'item', match_status: status, retailer_slug: id,
     canonical_name: 'Milk', price: String(price), currency_code: 'AED', reviewed_by: owner,
-    observation_id: `observation-${id}`, admitted };
+    observation_id: `observation-${id}`, admitted,
+    validator: admitted === null ? null : { ok: admitted, score: admitted ? 0.9 : 0.7, reasons: [], signals: {} } };
 }
 beforeEach(() => query.mockReset().mockResolvedValue({ rows: [], rowCount: 1 }));
 it('holds both sides of a two-retailer disagreement', async () => {
   query.mockResolvedValueOnce({ rows: [row('honest', 10), row('attacker', 100)] });
   await validateAll();
   expect(query.mock.calls.slice(1).map(([, args]) => args[0])).toEqual(['honest', 'attacker']);
+});
+it('does not treat two SKUs from one retailer as two independent peers', async () => {
+  query.mockResolvedValueOnce({ rows: [row('a', 10), { ...row('b', 100), retailer_slug: 'a' }] });
+  await validateAll();
+  expect(query).toHaveBeenCalledTimes(1);
+});
+it('restores its own legacy hold when no validator was required', async () => {
+  query.mockResolvedValueOnce({ rows: [row('held', 10, 'review', 'validate-job', null), row('peer', 10)] });
+  await validateAll();
+  expect(query).toHaveBeenCalledTimes(2);
 });
 it('keeps an ordinary pair and a three-retailer consensus', async () => {
   query.mockResolvedValueOnce({ rows: [row('a', 10), row('b', 11)] });

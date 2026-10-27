@@ -300,6 +300,13 @@ describe('validateSearchHit — quantity window', () => {
 // 0.85 and published as `auto`. Split the neutral bucket so "could not verify"
 // no longer clears AUTO_MATCH_THRESHOLD on overlap alone.
 describe('validateSearchHit — absent vs unverified size (#6868)', () => {
+  it.each([['Plain Yogurt 2x250g', true], ['Plain Yogurt 2x25g', false]] as const)(
+    'uses the complete fetched multipack quantity from %s', (productName, accepted) => {
+      const result = validateSearchHit({ canonicalName: 'Plain Yogurt 500g', productName,
+        sizeText: undefined, item: item({ baseUnit: 'g', minBaseQty: 450, maxBaseQty: 550 }) });
+      expect(result.ok && result.score >= AUTO_MATCH_THRESHOLD).toBe(accepted);
+      expect(result.signals.extractedBaseQty).toBe(accepted ? 500 : 50);
+    });
   it('uses the fetched title instead of the requested quantity when sizeText is missing', () => {
     for (const productName of ['Plain Yogurt 500g', 'Plain Yogurt 50g']) {
       const result = validateSearchHit({ canonicalName: 'Plain Yogurt 500g', productName,

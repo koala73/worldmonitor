@@ -59,6 +59,14 @@ describe('basket quantity window in extraction', () => {
     expect(schema.prompt).toContain(`You are looking for "${product.rawPayload.canonicalName}"`);
   });
 
+  it('uses a fetched multipack title when strict extraction omits sizeText', async () => {
+    const fixture = { slug: 'pao_de_acucar_br', basket: 'essentials_br', itemId: 'yogurt_500g',
+      name: 'Iogurte Natural Integral 2x250g', size: '2x250g', price: 9.99, qty: 500, unit: 'g' };
+    const { products } = await acquire(fixture, undefined);
+    expect(classifyMatchAdmission(products[0].rawPayload.validator as ValidatorResult).status).toBe('auto');
+    expect((products[0].rawPayload.validator as ValidatorResult).signals.extractedBaseQty).toBe(500);
+  });
+
   it.each(fixtures)('requires a separate price beside the supported $size quantity', async fixture => {
     const pricedFixture = { ...fixture, price: fixture.unit === 'ct' ? 12 : 2 };
     for (const gap of quantityGaps) {
