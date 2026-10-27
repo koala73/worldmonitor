@@ -5402,6 +5402,20 @@
       ]
     },
     {
+      "host": "identity.dataspace.copernicus.eu",
+      "provider": "identity.dataspace.copernicus.eu",
+      "kind": "structured",
+      "observed": true,
+      "license": "Copernicus Sentinel data policy: free, full and open access, including commercial use and redistribution, with the Copernicus credit",
+      "attribution": "Contains modified Copernicus Sentinel data [year]",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-no2-activity.mjs"
+        }
+      ]
+    },
+    {
       "host": "iea.org",
       "provider": "iea.org",
       "kind": "feed",
@@ -9007,6 +9021,20 @@
       "references": [
         {
           "path": "scripts/_weather-alert-select.mjs"
+        }
+      ]
+    },
+    {
+      "host": "sh.dataspace.copernicus.eu",
+      "provider": "sh.dataspace.copernicus.eu",
+      "kind": "structured",
+      "observed": true,
+      "license": "Copernicus Sentinel data policy: free, full and open access, including commercial use and redistribution, with the Copernicus credit",
+      "attribution": "Contains modified Copernicus Sentinel data [year]",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-no2-activity.mjs"
         }
       ]
     },
@@ -15313,6 +15341,9 @@
         },
         {
           "path": "scripts/notification-relay.cjs"
+        },
+        {
+          "path": "scripts/seed-no2-activity.mjs"
         },
         {
           "path": "scripts/seo-indexnow-submit.mjs"

@@ -1989,6 +1989,40 @@
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
   {
+    "entry": "scripts/seed-no2-activity.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-no2-activity",
+    "startCommand": "node seed-no2-activity.mjs",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "CDSE_CLIENT_ID",
+      "CDSE_CLIENT_SECRET"
+    ],
+    "watchPatterns": [
+      "scripts/_env-file.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-payload-codec.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/generate-no2-regions.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/main-module.mjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/railpack.json",
+      "scripts/seed-no2-activity.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/no2-activity.mjs",
+      "scripts/shared/no2-region-geometries.generated.json",
+      "scripts/shared/no2-regions.generated.mjs"
+    ],
+    "cronSchedule": "20 6 * * *",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
     "entry": "scripts/seed-market-breadth.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-market-breadth",

@@ -6,6 +6,7 @@ export const CHINA_ACTIVITY_PROXY_FAMILIES = [
   'commodity',
   'corridor',
   'market',
+  'atmosphere',
 ] as const;
 
 export type ChinaActivityProxyFamily = (typeof CHINA_ACTIVITY_PROXY_FAMILIES)[number];
@@ -263,6 +264,36 @@ export const CHINA_ACTIVITY_PROXY_REGISTRY: readonly Readonly<ChinaActivityProxy
         publisherName: 'Yahoo Finance',
         url: 'https://finance.yahoo.com/quote/000001.SS/',
         provenance: 'Consumed from the Railway-owned China country-index snapshot and its explicit fetchedAt timestamp.',
+      },
+    }),
+    proxyDefinition({
+      id: 's5p_no2_industrial_activity_change',
+      label: 'Sentinel-5P tropospheric NO2 change',
+      family: 'atmosphere',
+      decisionRationale: 'Tropospheric NO2 over four industrial clusters is a satellite-observed combustion proxy that no domestic publisher controls, while the output keeps the cloud, holiday, and processor-version limits of a column retrieval visible.',
+      unit: '% change',
+      frequency: 'daily',
+      transformation: {
+        kind: 'signed_value',
+        direction: 'same',
+        description: 'Use the seeded median year-over-year change of the 56-day regional NO2 window means against the same calendar window in the three prior years; moves inside the 10% dead band read as unchanged.',
+      },
+      lagRule: {
+        days: 0,
+        description: 'Align to the end of the observed window; the offline-product latency is already inside the window end.',
+      },
+      alignment: {
+        window: 'latest_point_in_window',
+        forwardFill: false,
+        interpolate: false,
+        description: 'Use only the latest seeded window; cloud-starved days and holiday days are dropped, never filled.',
+      },
+      freshnessBudgetMinutes: 7 * 24 * 60,
+      source: {
+        publisherId: 'publisher:copernicus-sentinel-5p',
+        publisherName: 'Copernicus Sentinel-5P TROPOMI (Copernicus Data Space Ecosystem)',
+        url: 'https://dataspace.copernicus.eu/',
+        provenance: 'Consumed from the Railway-owned Sentinel Hub Statistical API aggregate (OFFL timeliness, qa_value >= 75, 0.05 degree grid) only when the payload carries the reviewed method verbatim. Contains modified Copernicus Sentinel data.',
       },
     }),
   ]);

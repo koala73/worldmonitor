@@ -76,6 +76,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'intermediate: rolling per-country GKG article index consumed by the search-gdelt-documents route\'s `country:<ISO2>` form for the weekly crawlable freeze (#7748); its rows reach agents through the prerendered country pages and their dataset downloads. Exposing the country form as an MCP tool input (and grounding get_country_brief on it) is the agent-native follow-up recorded on PR #7786, at which point this exclusion moves to that tool\'s _cacheKeys.'],
   ['military:cross-strait-activity:v1:source:japan-mod',
     'operational: Japan Joint Staff transport status, errors, and last-success time consumed by api/health.js; #5580 owns final MCP composition for the separately attributed reviewed activity records.'],
+  ['economic:no2-activity:v1',
+    'intermediate: global Sentinel-5P NO2 activity dataset keyed by region (countries and industrial clusters), consumed by the get-china-activity-nowcast RPC for its atmosphere family (#9722); a by-country MCP tool is the recorded follow-up on PR #9728.'],
   ['market:china:stock-connect:v1',
     'seeded and health-monitored only: #6155 delivers the SSE/SZSE Stock Connect turnover and margin data layer with no dashboard or MCP consumer yet. Exposing it now would advertise a slice whose framing still needs product review -- the series is GROSS northbound turnover, never the net flow the name suggests, because both exchanges stopped publishing the buy/sell split on 2024-08-16.'],
   ['transit:viarail:live',
