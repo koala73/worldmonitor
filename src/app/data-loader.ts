@@ -1753,7 +1753,12 @@ export class DataLoaderManager implements AppModule {
             checkBatchForBreakingAlerts(digestItems);
           }
           this.flashMapForNews(digestItems);
-          const directFeeds = reachableFeeds.filter(f => f.browserOnly);
+          // A source is digest-served only if this language's digest carries
+          // it: a server-side language restriction (`digestLang`) can exclude
+          // a source the browser still reaches.
+          const digestLanguage = getCurrentLanguage();
+          const directFeeds = reachableFeeds.filter(f =>
+            f.browserOnly || (f.digestLang !== undefined && f.digestLang !== digestLanguage));
           if (directFeeds.length === 0) {
             // Every reachable source is digest-served, so there is no partial
             // source coverage to disclose on the badge.

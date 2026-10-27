@@ -31,7 +31,7 @@ interface NewsItemLike { source: string; title: string }
 interface CrossEditionInternals {
   loadNewsCategory(
     category: string,
-    feeds: Array<{ name: string; url: string; browserOnly?: true }>,
+    feeds: Array<{ name: string; url: string; browserOnly?: true; digestLang?: string }>,
     digest: null,
     isCustom: boolean,
     options: { allowDigestPendingFallback: boolean; recordBaselineSample: boolean },
@@ -217,6 +217,27 @@ describe('cross-edition panels read the digests of every edition that carries th
     const requested = mocks.fetchCategoryFeeds.mock.calls[0]![0] as Array<{ name: string }>;
     expect(requested.map(f => f.name)).toEqual(['Browser Only Wire']);
     expect(new Set(items.map(i => i.source))).toEqual(new Set(['Finance Wire', 'Commodity Desk', 'Browser Only Wire']));
+  });
+
+  it('fetches a source directly when this language\'s digest omits it (digestLang)', async () => {
+    // BBC Persian is `fa` on the server but unrestricted in the browser: the
+    // English digest never carries it, so it must not count as digest-served.
+    vi.stubGlobal('fetch', digestFetch({
+      finance: editionDigest('markets', ['Finance Wire']),
+      commodity: editionDigest('markets', ['Commodity Desk']),
+    }));
+    mocks.fetchCategoryFeeds.mockImplementation(directFetch);
+    const loader = await makeLoader();
+
+    const persian = { name: 'Persian Service', url: 'https://feeds.example/persian', digestLang: 'fa' };
+    const items = await loader.loadNewsCategory('markets', [
+      ...feeds(['Finance Wire', 'Commodity Desk']),
+      persian,
+    ], null, true, OPTIONS);
+
+    const requested = mocks.fetchCategoryFeeds.mock.calls[0]![0] as Array<{ name: string }>;
+    expect(requested.map(f => f.name)).toEqual(['Persian Service']);
+    expect(new Set(items.map(i => i.source))).toEqual(new Set(['Finance Wire', 'Commodity Desk', 'Persian Service']));
   });
 
   it('falls back to fetching every source when one carrying edition digest is missing', async () => {

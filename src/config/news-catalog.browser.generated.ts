@@ -747,7 +747,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "BBC Persian",
-          "url": "https://feeds.bbci.co.uk/persian/rss.xml"
+          "url": "https://feeds.bbci.co.uk/persian/rss.xml",
+          "digestLang": "fa"
         },
         {
           "name": "Iran International",

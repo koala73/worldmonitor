@@ -19,6 +19,13 @@ export interface BrowserCatalogFeed {
    * placements (shared/news-catalog-pending-migration.json).
    */
   browserOnly?: true;
+  /**
+   * The only digest language that carries this source, set when the server
+   * restricts it to a language the browser does not (e.g. BBC Persian is `fa`
+   * on the server but unrestricted in the browser). A digest in any other
+   * language omits it, so a digest-reading panel must fetch it directly there.
+   */
+  digestLang?: string;
 }
 
 export interface BrowserCatalog {
