@@ -4744,10 +4744,20 @@ const CLASSIFY_SEED_INTERVAL_MS = 15 * 60 * 1000;
 const CLASSIFY_CACHE_TTL = 86400;
 const CLASSIFY_SKIP_TTL = 1800;
 const CLASSIFY_BATCH_SIZE = 50;
-const CLASSIFY_VARIANTS = ['full', 'tech', 'finance', 'happy', 'commodity'];
-// Zero under RELAY_TEST_MODE so the /__test/seed-classify seam runs a full
-// five-variant cycle in milliseconds instead of twelve minutes.
-const CLASSIFY_VARIANT_STAGGER_MS = RELAY_TEST_MODE ? 0 : 3 * 60 * 1000;
+// Every edition the news digest serves, generated from shared/news-catalog.json
+// (scripts/generate-browser-news-catalog.mjs), so a new edition is classified
+// without a relay edit.
+const CLASSIFY_VARIANTS = requireShared('news-digest-editions.json');
+// The waits between editions total CLASSIFY_STAGGER_TOTAL_MS whatever the
+// edition count, leaving the rest of the 15-minute interval for classify work;
+// a fixed per-edition wait would overrun the interval as editions are added and
+// the in-flight guard would then skip every other cycle. Zero under
+// RELAY_TEST_MODE so the /__test/seed-classify seam runs a full cycle in
+// milliseconds.
+const CLASSIFY_STAGGER_TOTAL_MS = 12 * 60 * 1000;
+const CLASSIFY_VARIANT_STAGGER_MS = RELAY_TEST_MODE
+  ? 0
+  : Math.floor(CLASSIFY_STAGGER_TOTAL_MS / Math.max(1, CLASSIFY_VARIANTS.length - 1));
 
 // Relay gates — active only when RELAY_GATES_READY=1 (see Appendix E of docs/internal/news-alerts-enhancements-from-trendradar.md).
 // When the flag is set the relay becomes the sole authoritative source of rss_alert events and

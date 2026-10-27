@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import { INTEL_EDITION } from '../shared/news-catalog-browser';
-import { VALID_VARIANTS } from '../server/worldmonitor/news/v1/list-feed-digest';
+import { VALID_VARIANTS, __testing__ as digestTesting } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { NEWS_LANGUAGES } from '../src/shared/public-rpc-cache';
 import {
   browserPlacedNames,
@@ -124,5 +124,45 @@ describe('coverage rules (fixtures)', () => {
       feed('Multi', [{ edition: 'full', category: 'politics', serverOrder: 1 }], { browser: { url: { en: 'https://m.example/en', gr: 'https://m.example/gr' } } }),
     ];
     assert.deepEqual(unsupportedLanguages(feeds, new Set(['en', 'el'])), ['gr (Multi)', 'he (Hebrew Daily)']);
+  });
+});
+
+describe('digests serve the categories that used to need per-feed browser fetches', () => {
+  const scheduled = (edition: string) =>
+    new Set(digestTesting.buildDigestFeedBatches(edition, 'en').batches.flat().map(entry => entry.category));
+
+  it('the energy edition digest schedules its energy categories', () => {
+    assert.ok(VALID_VARIANTS.has('energy'));
+    for (const category of ['live-news', 'energy', 'supply-chain']) {
+      assert.ok(scheduled('energy').has(category), `energy digest must fetch ${category}`);
+    }
+  });
+
+  it('the tech digest schedules podcasts and think tanks, the finance digest nq-news', () => {
+    assert.ok(scheduled('tech').has('podcasts'));
+    assert.ok(scheduled('tech').has('thinktanks'));
+    assert.ok(scheduled('finance').has('nq-news'));
+  });
+});
+
+describe('relay classify covers every digest edition within its cycle', () => {
+  const relay = readFileSync(join(root, 'scripts/ais-relay.cjs'), 'utf8');
+  const editions = JSON.parse(readFileSync(join(root, 'scripts/shared/news-digest-editions.json'), 'utf8')) as string[];
+  const minutes = (name: string) => {
+    const match = relay.match(new RegExp(`const ${name} = (\\d+) \\* 60 \\* 1000;`));
+    assert.ok(match, `${name} not found in ais-relay.cjs`);
+    return Number(match[1]);
+  };
+
+  it('iterates the generated edition list, which matches the digest editions', () => {
+    assert.match(relay, /const CLASSIFY_VARIANTS = requireShared\('news-digest-editions\.json'\);/);
+    assert.deepEqual([...editions].sort(), [...VALID_VARIANTS].sort());
+  });
+
+  it('keeps the waits between editions inside the classify interval', () => {
+    const interval = minutes('CLASSIFY_SEED_INTERVAL_MS');
+    const staggerTotal = minutes('CLASSIFY_STAGGER_TOTAL_MS');
+    const perEdition = Math.floor(staggerTotal / Math.max(1, editions.length - 1));
+    assert.ok((editions.length - 1) * perEdition < interval, `${editions.length} editions overrun the ${interval}-minute interval`);
   });
 });

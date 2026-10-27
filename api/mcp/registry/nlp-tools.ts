@@ -109,6 +109,7 @@ const TECH_DIGEST_CATEGORIES = [
   'tech', 'ai', 'startups', 'vcblogs', 'regionalStartups', 'unicorns',
   'accelerators', 'security', 'policy', 'github', 'funding', 'cloud',
   'layoffs', 'finance', 'dev', 'ipo', 'producthunt', 'hardware', 'outages',
+  'thinktanks', 'podcasts',
 ] as const;
 const DIGEST_CATEGORIES_BY_VARIANT: Record<NlpDigestVariant, readonly string[]> = {
   full: FULL_DIGEST_CATEGORIES,
