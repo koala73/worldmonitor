@@ -15,6 +15,13 @@
  *
  * Loop-prevention: sibling fetches send x-wm-md-twin so a .md handler never
  * fetches another .md handler, and a redirect onto a .md path is not followed.
+ *
+ * Caller identity: a sibling fetched over HTTP arrives from the platform's own
+ * egress address with no caller headers, so every per-IP limiter behind it
+ * charges one shared bucket instead of the caller. API twins therefore never
+ * take that hop: the domain gateway dispatches the sibling in-process (see
+ * server/gateway.ts), and the HTTP hop is kept for site pages, which must not
+ * resolve to an API function (isPageTwinSibling).
  */
 
 // @ts-expect-error — JS module, no declaration file
@@ -84,6 +91,69 @@ export function resolveMarkdownTwinPath(req: Request): string | null {
   }
   if (isMarkdownTwinPath(pathname)) return pathname;
   return null;
+}
+
+/**
+ * Site paths that vercel.json rewrites onto an API function. A page twin
+ * fetches its sibling over HTTP, which would charge that function's per-IP
+ * limiter to the platform egress address instead of the caller. Pinned against
+ * vercel.json by tests/gateway-markdown-twin-routing.test.mts.
+ */
+const API_REWRITE_PAGE_PATHS = new Set([
+  '/docs/mcp',
+  '/mcp',
+  '/a2a',
+  '/ask',
+  '/agent/auth',
+  '/oauth/token',
+  '/oauth/register',
+  '/oauth/authorize',
+  '/oauth/authorize-pro',
+  '/.well-known/oauth-protected-resource',
+  '/.well-known/oauth-authorization-server',
+  '/.well-known/mcp',
+  '/.well-known/mcp.json',
+  '/.well-known/http-message-signatures-directory',
+]);
+const API_REWRITE_PAGE_PREFIXES = [
+  '/.well-known/oauth-protected-resource/',
+  '/.well-known/oauth-authorization-server/',
+] as const;
+
+function namesApiFunction(path: string): boolean {
+  if (path === '/api' || path.startsWith('/api/')) return true;
+  let end = path.length;
+  while (end > 1 && path.charCodeAt(end - 1) === 47) end -= 1;
+  if (API_REWRITE_PAGE_PATHS.has(path.slice(0, end))) return true;
+  return API_REWRITE_PAGE_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+/** True when a page twin may fetch this sibling over HTTP: a site page, never an API function. */
+export function isPageTwinSibling(pathname: string): boolean {
+  const path = pathname.toLowerCase();
+  // Checked both as sent and percent-decoded: an upstream that normalises
+  // `/%61pi/...` must not reach a function this check let through.
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    return false;
+  }
+  return !namesApiFunction(path) && !namesApiFunction(decoded);
+}
+
+export interface MarkdownTwinOptions {
+  /**
+   * CORS headers for every response, replacing the public `*` default. API
+   * twins pass the caller's own gateway CORS so a twin is no more readable
+   * cross-origin than its direct route.
+   */
+  corsHeaders?: Record<string, string>;
+  /**
+   * Checked against the first sibling and every redirect target; a refused
+   * path answers 404 without being fetched.
+   */
+  isAllowedSibling?: (pathname: string) => boolean;
 }
 
 const HTML_ENTITIES: Record<string, string> = {
@@ -245,20 +315,30 @@ function withMarkdownMetadata(markdown: string, canonical: string | null, fallba
   return `---\ntitle: ${JSON.stringify(title)}${canonicalLine}\n---\n\n${markdown}`;
 }
 
-function markdownHeaders(canonical: string | null, extra: Record<string, string> = {}): Record<string, string> {
+function markdownHeadersFor(
+  canonical: string | null,
+  extra: Record<string, string>,
+  corsHeaders: Record<string, string>,
+): Record<string, string> {
+  const { Vary: corsVary, ...cors } = corsHeaders;
   return {
     'Content-Type': 'text/markdown; charset=utf-8',
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'public, max-age=3600',
-    // The loop-guard header is the only request header that changes the twin
-    // response (loop requests get a 404 stub). CORS is `*` (no Origin echo),
-    // the outbound Accept is fixed, and auth/cookie/UA are never forwarded, so
-    // no other variance needs declaring.
-    Vary: MD_TWIN_LOOP_HEADER,
-    ...getPublicCorsHeaders('GET, HEAD, OPTIONS'),
+    // The loop-guard header changes the twin response (loop requests get a
+    // 404 stub), and so does Origin when the caller's CORS is echoed. The
+    // outbound Accept is fixed and auth/cookie/UA are never forwarded, so no
+    // other variance needs declaring.
+    Vary: corsVary ? `${corsVary}, ${MD_TWIN_LOOP_HEADER}` : MD_TWIN_LOOP_HEADER,
+    ...cors,
     Link: canonical ? `<${canonical}>; rel="canonical", ${DEPRECATION_POLICY_LINK}` : DEPRECATION_POLICY_LINK,
     ...extra,
   };
+}
+
+/** A sibling that told caches not to keep it must not become a cacheable twin. */
+function siblingForbidsSharedCaching(response: Response): boolean {
+  return /\b(?:no-store|private|no-cache)\b/i.test(response.headers.get('cache-control') ?? '');
 }
 
 function headingFromPath(pathname: string): string {
@@ -353,8 +433,12 @@ export async function buildMarkdownTwinResponse(
   req: Request,
   markdownPath: string,
   fetchImpl: typeof fetch = globalThis.fetch,
+  options: MarkdownTwinOptions = {},
 ): Promise<Response> {
-  const corsHeaders = getPublicCorsHeaders('GET, HEAD, OPTIONS');
+  const corsHeaders = { ...(options.corsHeaders ?? getPublicCorsHeaders('GET, HEAD, OPTIONS')) };
+  const markdownHeaders = (canonical: string | null, extra: Record<string, string> = {}) =>
+    markdownHeadersFor(canonical, extra, corsHeaders);
+  const isAllowedSibling = options.isAllowedSibling ?? (() => true);
 
   if (req.method === 'OPTIONS') {
     appendDeprecationPolicyLinkToRecord(corsHeaders);
@@ -376,7 +460,7 @@ export async function buildMarkdownTwinResponse(
   }
 
   const sibling = siblingPathFromMarkdown(markdownPath);
-  if (!sibling) {
+  if (!sibling || !isAllowedSibling(sibling)) {
     return new Response('# Not found\n', {
       status: 404,
       headers: markdownHeaders(null, { ...NOT_A_DOCUMENT }),
@@ -442,7 +526,11 @@ export async function buildMarkdownTwinResponse(
 
     // A .md target would re-enter this handler; the hop budget bounds the
     // chain even when every hop is a legitimate same-origin redirect.
-    if (hops >= MAX_SIBLING_REDIRECTS || isMarkdownTwinPath(redirectTarget.pathname)) {
+    if (
+      hops >= MAX_SIBLING_REDIRECTS ||
+      isMarkdownTwinPath(redirectTarget.pathname) ||
+      !isAllowedSibling(redirectTarget.pathname)
+    ) {
       return new Response('# Not found\n', {
         status: 404,
         headers: markdownHeaders(null, { ...NOT_A_DOCUMENT }),
@@ -464,6 +552,9 @@ export async function buildMarkdownTwinResponse(
   const servesCanonicalPage = !isFailure && !siblingUrl.pathname.startsWith('/api/');
   const responseHeaders: Record<string, string> = {
     ...(isFailure ? NOT_A_DOCUMENT : {}),
+    // The twin is a rendering of the sibling, so it may be cached no more
+    // widely than the sibling allows.
+    ...(!isFailure && siblingForbidsSharedCaching(siblingRes) ? { 'Cache-Control': 'no-store' } : {}),
     ...forwardedResponseHeaders(siblingRes),
   };
 

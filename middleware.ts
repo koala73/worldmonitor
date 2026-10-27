@@ -31,7 +31,23 @@ type LiveTopicPage = NonNullable<ReturnType<typeof liveTopicPageForPath>>;
 
 const SITUATION_SECTIONS = situationSections(CHOKEPOINT_REGISTRY);
 
-const AGENT_UA = new RegExp(`(?:^|[^a-z0-9-])(?:${agentRequestPolicy.userAgents.join('|')})(?:$|[^a-z0-9-])`, 'i');
+function userAgentTokenPattern(tokens: readonly string[]): RegExp {
+  return new RegExp(`(?:^|[^a-z0-9-])(?:${tokens.join('|')})(?:$|[^a-z0-9-])`, 'i');
+}
+
+const AGENT_UA = userAgentTokenPattern(agentRequestPolicy.userAgents);
+
+// AI crawlers and assistant fetchers allowed to read `/api/**/*.md` twins past
+// the bot gate. The shared agent list plus the tokens it does not carry; that
+// list also drives the Cloudflare firewall expressions, so it is not widened
+// here. Every other client meets the same gate as the twin's direct route.
+const MARKDOWN_TWIN_CRAWLER_UA = userAgentTokenPattern([
+  ...agentRequestPolicy.userAgents,
+  'anthropic-ai',
+  'Claude-User',
+  'CCBot',
+  'OAI-SearchBot',
+]);
 
 const BOT_UA =
   /bot|crawl|spider|slurp|archiver|wget|curl\/|python-requests|scrapy|httpclient|go-http|java\/|libwww|perl|ruby|php\/|ahrefsbot|semrushbot|mj12bot|dotbot|baiduspider|yandexbot|sogou|bytespider|petalbot|gptbot|claudebot|ccbot/i;
@@ -68,9 +84,9 @@ const UNBOUNDED_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom'] as const;
 //   got 403 here and concluded the endpoint didn't exist.
 // - /api/download.md: curated static markdown twin of GET /api/download.
 //   Kept on the exact allowlist so a future glob refactor cannot drop the
-//   sampled URL. All other GET/HEAD /api/**/*.md twins bypass via
-//   isPublicApiMarkdownTwin() below — the protocol is site-wide .md twins,
-//   not one sampled path.
+//   sampled URL. Other GET/HEAD /api/**/*.md twins pass only for AI crawlers
+//   or when their sibling is on this list (isMarkdownTwinBypass() below); a
+//   twin renders its sibling, so a generic script gets the sibling's 403.
 const PUBLIC_API_PATHS = new Set([
   '/api/version',
   '/api/health',
@@ -81,11 +97,12 @@ const PUBLIC_API_PATHS = new Set([
   '/api/download.md',
 ]);
 
-function isPublicApiMarkdownTwin(pathname: string, method: string): boolean {
+function isMarkdownTwinBypass(pathname: string, method: string, ua: string): boolean {
   if (method !== 'GET' && method !== 'HEAD') return false;
   if (!pathname.startsWith('/api/') || !pathname.endsWith('.md')) return false;
   if (pathname.includes('..') || pathname.includes('//')) return false;
-  return pathname.length > '/api/.md'.length;
+  if (pathname.length <= '/api/.md'.length) return false;
+  return PUBLIC_API_PATHS.has(pathname.slice(0, -3)) || MARKDOWN_TWIN_CRAWLER_UA.test(ua);
 }
 
 const SOCIAL_IMAGE_UA =
@@ -350,7 +367,7 @@ export default function middleware(request: Request) {
   }
 
   // Public endpoints bypass all bot filtering
-  if (PUBLIC_API_PATHS.has(path) || isPublicApiMarkdownTwin(path, request.method)) {
+  if (PUBLIC_API_PATHS.has(path) || isMarkdownTwinBypass(path, request.method, ua)) {
     return;
   }
 

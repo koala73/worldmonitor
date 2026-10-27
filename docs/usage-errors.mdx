@@ -46,7 +46,7 @@ Before any handler runs, the edge middleware refuses `/api/*` requests whose `Us
 The middleware also has narrowly scoped bypass categories:
 
 - Exact bot-gate bypass paths: intentionally public `/api/version`, `/api/health`, `/api/llms.txt`, `/api/product-catalog`, and `/api/download.md`; authenticated machine routes `/api/seed-contract-probe` (requires `x-probe-secret: $RELAY_SHARED_SECRET`) and `/api/internal/brief-why-matters` (requires `Authorization: Bearer $RELAY_SHARED_SECRET`) also bypass only this User-Agent filter.
-- Method-aware `GET`/`HEAD` API markdown twins: valid requests for `/api/**/*.md` bypass the gate; other methods do not inherit that exception.
+- Method-aware `GET`/`HEAD` API markdown twins: `/api/**/*.md` bypasses the gate for declared AI crawlers (GPTBot, ClaudeBot, anthropic-ai, Claude-User, ChatGPT-User, OAI-SearchBot, PerplexityBot, Google-Extended, Applebot-Extended, CCBot) and for twins of the exact bypass paths above. Any other client meets the same gate as the twin's sibling route, and other methods do not inherit the exception.
 - Recognized social preview UAs may fetch `/api/story` and `/api/og-story`; recognized social image UAs may fetch `.png` paths and valid signed brief-carousel route shapes.
 
 Other `/api/*` paths — including anonymous public reads like `GET /api/bootstrap?public=1` — remain behind the gate. That is why a bare `curl` of a documented anonymous endpoint can return 403 while the same URL works from a browser.
