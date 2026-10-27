@@ -195,6 +195,36 @@ async function assertRejected(res, label) {
 }
 
 describe('api/mcp/auth.ts — checkMcpEntitlementGate predicates (#5379 Gap 4)', () => {
+  it('Marketplace license cannot fall back to the retail free allowance when verification is missing', async () => {
+    const context = { ...USER_KEY_CONTEXT, userId: 'aws-marketplace:license_1' };
+    for (const entitlement of [null, {
+      planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: 0,
+      verificationUnavailable: true, retryAfterSeconds: 30,
+    }]) {
+      const { deps } = makeProDeps({ getEntitlements: async () => entitlement });
+      const result = await authMod.runContextPreChecks(context, deps, RESOURCE_META_URL, CORS);
+      assert.equal(result.ok, false);
+      assert.equal(result.response.status, 503);
+      const body = await result.response.json();
+      assert.equal(body.error?.data?.code, 'entitlement_verification_unavailable');
+    }
+  });
+
+  it('confirmed inactive Marketplace license gives its user key a terminal 403', async () => {
+    const context = { ...USER_KEY_CONTEXT, userId: 'aws-marketplace:license_1' };
+    const { deps } = makeProDeps({ getEntitlements: async () => ({
+      planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: 0,
+    }) });
+    const result = await authMod.runContextPreChecks(context, deps, RESOURCE_META_URL, CORS);
+    assert.equal(result.ok, false);
+    assert.equal(result.response.status, 403);
+    assert.equal(result.response.headers.get('Retry-After'), null);
+    const body = await result.response.json();
+    assert.equal(body.error?.code, -32002);
+    assert.equal(body.error?.data?.reason, 'upgrade-required');
+    assert.equal(body.error?.data?.upgradeUrl, 'https://www.worldmonitor.app/marketplace');
+  });
+
   for (const entry of GATE_ENTRIES) {
     describe(`${entry.kind} context`, () => {
       for (const c of ENTITLEMENT_CASES) {

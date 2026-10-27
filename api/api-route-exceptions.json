@@ -3,6 +3,34 @@
   "schema_version": 1,
   "exceptions": [
     {
+      "path": "api/marketplace/register.ts",
+      "category": "external-protocol",
+      "reason": "AWS Marketplace buyer-registration callback accepts AWS form data, binds the browser with HttpOnly cookies, and redirects to the buyer setup page. The AWS callback and redirect transport cannot use a sebuf JSON RPC envelope.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/marketplace/account.ts",
+      "category": "internal-helper",
+      "reason": "Clerk-authenticated buyer-page control plane for license status and key metadata. It is a same-origin account-management read, not a public data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/marketplace/claim.ts",
+      "category": "internal-helper",
+      "reason": "Clerk-authenticated buyer-page claim consumes the HttpOnly AWS registration and browser-binding cookies. This one-time credential binding is an account-control action, not a public data RPC.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/marketplace/keys.ts",
+      "category": "internal-helper",
+      "reason": "Clerk-authenticated buyer-page credential control plane creates and revokes license-bound keys; the created secret is shown once. It is not a public data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/country-history-tool.ts",
       "category": "external-protocol",
       "reason": "MCP country-history tool definition. It forwards to the generated intelligence RPC with the verified caller's credential and exports no HTTP route.",

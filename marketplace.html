@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>AWS Marketplace | WorldMonitor</title>
+    <style>
+      :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#080d12;color:#e9f0f1}
+      *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 80% 0%,#123436 0%,transparent 37%),#080d12}
+      button,input{font:inherit}button{cursor:pointer}button:disabled{cursor:wait;opacity:.55}a{color:#70d6bb}
+      .shell{width:min(1060px,calc(100% - 40px));margin:0 auto;padding:28px 0 80px}
+      .top{display:flex;align-items:center;justify-content:space-between;gap:20px;border-bottom:1px solid #243136;padding-bottom:22px}
+      .brand{color:#e9f0f1;text-decoration:none;display:flex;align-items:center;gap:11px;font-weight:700;letter-spacing:.02em}
+      .brand-mark{display:grid;place-items:center;width:34px;height:34px;border:1px solid #6ad9b6;color:#6ad9b6;border-radius:9px;font-size:22px}
+      .eyebrow{margin:42px 0 12px;color:#70d6bb;text-transform:uppercase;letter-spacing:.16em;font-size:12px;font-weight:700}
+      h1{font-size:clamp(32px,5vw,54px);line-height:1.08;letter-spacing:-.04em;margin:0;max-width:690px}
+      .intro{color:#a8b8bb;font-size:17px;line-height:1.6;max-width:700px;margin:18px 0 28px}
+      .status{border:1px solid #365249;background:#10241f;color:#b7ead7;padding:13px 16px;border-radius:10px;margin:0 0 22px;line-height:1.45}
+      .status.error{border-color:#82484d;background:#2b171a;color:#ffd4d4}
+      .grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:22px;align-items:start}
+      .card{border:1px solid #26363c;background:#10191e;border-radius:14px;padding:25px;box-shadow:0 12px 35px #0002}
+      .card h2{font-size:20px;letter-spacing:-.02em;margin:0 0 10px}.card p{color:#a8b8bb;line-height:1.55;margin:0 0 16px}
+      .minor{color:#91a5a8;font-size:13px}.primary,.secondary,.danger{border-radius:8px;padding:10px 15px;font-weight:650}
+      .primary{background:#70d6bb;border:1px solid #70d6bb;color:#092018}.primary:hover{background:#92e2cb}
+      .secondary{background:#15272b;border:1px solid #3a6160;color:#e9f0f1}.secondary:hover{border-color:#70d6bb}
+      .danger{background:transparent;border:1px solid #935657;color:#ffbfc1}.danger:hover{background:#3b2023}
+      .actions{display:flex;gap:9px;flex-wrap:wrap;align-items:center}.actions a{font-size:13px}
+      .license{border-top:1px solid #29393e;padding-top:23px;margin-top:23px}.license:first-child{border:0;padding:0;margin:0}
+      .license-head{display:flex;justify-content:space-between;gap:16px;align-items:start}.license-head h3{margin:0 0 4px;font-size:18px}
+      .badge{font-size:12px;text-transform:capitalize;padding:5px 9px;border-radius:99px;border:1px solid #3a7663;color:#9ee7c7;background:#19342b;white-space:nowrap}
+      .badge.inactive{border-color:#865457;color:#ffd0d1;background:#3a2023}
+      dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px 22px;margin:19px 0 23px}dt{color:#8ea4a7;font-size:12px}dd{margin:4px 0 0;overflow-wrap:anywhere;font-size:14px}
+      .key-list{list-style:none;padding:0;margin:12px 0 20px}.key-list li{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #26363c}
+      .key-list strong{font-size:14px}.key-list span{color:#8ea4a7;font-size:12px}.key-list .danger{font-size:12px;padding:7px 10px}
+      .key-form{display:flex;gap:9px;flex-wrap:wrap}.key-form input{min-width:200px;flex:1;background:#091317;border:1px solid #3b5056;color:#fff;padding:10px 12px;border-radius:8px}
+      .secret{margin-top:16px;border:1px solid #bfa463;background:#322910;padding:16px;border-radius:9px}.secret p{color:#f6e3ae;margin:0 0 10px;font-size:13px}
+      .secret code{display:block;word-break:break-all;color:#fff;background:#181609;border-radius:6px;padding:12px;margin-bottom:10px}
+      .side-list{padding-left:18px;color:#a8b8bb;line-height:1.65;font-size:14px}.side-list li{margin-bottom:10px}
+      .help{font-size:13px}.footer{margin-top:32px;border-top:1px solid #243136;padding-top:22px;color:#83969a;font-size:12px;display:flex;gap:18px;flex-wrap:wrap}
+      [hidden]{display:none!important}
+      @media(max-width:760px){.shell{width:min(100% - 28px,600px);padding-top:17px}.grid{grid-template-columns:1fr}.card{padding:19px}dl{grid-template-columns:1fr}.key-list li{align-items:start}.license-head{flex-wrap:wrap}.intro{font-size:15px}}
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="top"><a class="brand" href="/dashboard"><span class="brand-mark" aria-hidden="true">◎</span><span>WorldMonitor</span></a><a class="minor" href="/docs/aws-marketplace">Setup guide →</a></header>
+      <p class="eyebrow">AWS Marketplace customer portal</p>
+      <h1>Connect your WorldMonitor license.</h1>
+      <p class="intro">Claim a purchase from AWS Marketplace, manage its API keys, and connect an MCP client. AWS manages the subscription and billing.</p>
+      <p id="status" class="status" role="status">Checking your account…</p>
+      <div class="grid">
+        <main>
+          <section id="signedOut" class="card" hidden>
+            <h2>Sign in to claim your purchase</h2>
+            <p>Use the WorldMonitor account that should manage this AWS Marketplace license. Your dashboard plan is separate.</p>
+            <button id="signInButton" class="primary" type="button">Sign in or create an account</button>
+          </section>
+          <section id="setup" class="card" hidden>
+            <h2 id="setupTitle">Finish setup</h2>
+            <p id="setupText">We found a pending AWS Marketplace registration for this browser. Claim it for your signed-in account.</p>
+            <div class="actions"><button id="claimButton" class="primary" type="button">Claim license</button><a href="https://console.aws.amazon.com/marketplace/home#/subscriptions">Manage subscription in AWS →</a></div>
+          </section>
+          <section id="licensesPanel" class="card" hidden>
+            <h2>Your Marketplace licenses</h2>
+            <p>Keys below belong to each AWS license. Save a new key when it appears; WorldMonitor cannot show it again.</p>
+            <div id="licenses"></div>
+          </section>
+          <section id="emptyPanel" class="card" hidden>
+            <h2>No license linked yet</h2>
+            <p>Open your WorldMonitor purchase in AWS Marketplace and choose <strong>Set up your account</strong>. Return to this page in the same browser after AWS sends you here.</p>
+            <a class="secondary" href="https://console.aws.amazon.com/marketplace/home#/subscriptions">Open AWS Marketplace subscriptions</a>
+          </section>
+        </main>
+        <aside class="card">
+          <h2>Use your license</h2>
+          <ol class="side-list"><li>Complete AWS account setup in this browser.</li><li>Create a key for the license and store it securely.</li><li>For MCP, connect to <code>https://worldmonitor.app/mcp</code> with <code>X-WorldMonitor-Key</code>.</li><li>For the API, send the same header to supported API routes.</li></ol>
+          <p class="help">Plan changes and cancellation happen in <a href="https://console.aws.amazon.com/marketplace/home#/subscriptions">AWS Marketplace</a>. For account help, email <a href="mailto:support@worldmonitor.app">support@worldmonitor.app</a>. Never send a full key by email.</p>
+        </aside>
+      </div>
+      <footer class="footer"><span>Billing is through AWS Marketplace.</span><a href="/docs/aws-marketplace">Setup and key guide</a><a href="/docs/mcp-quickstart">MCP guide</a><a href="/docs/api-keys">API key guide</a></footer>
+    </div>
+    <script type="module" src="/src/marketplace-main.ts" nonce="wm-static-bootstrap"></script>
+  </body>
+</html>

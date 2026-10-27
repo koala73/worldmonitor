@@ -988,6 +988,7 @@ describe("account deletion registry is enforced, not documentation", () => {
     "proActivationPresentations", // anonymizeBilling: swept alongside billing rows
     "registrations",              // eraseEmailKeyed: verified-email keyed
     "contactMessages",            // eraseEmailKeyed: verified-email keyed
+    "awsMarketplaceRegistrations",
   ]);
 
   const isExternal = (target: string): boolean =>
@@ -1041,7 +1042,8 @@ describe("account deletion registry is enforced, not documentation", () => {
   test("the generic stepper only erases tables the registry marks delete", () => {
     const byTarget = new Map(ACCOUNT_DELETION_REGISTRY.map((e) => [e.target, e.action]));
     const mismatched = PERSONAL_DELETE_TABLES
-      .filter((table) => byTarget.get(table) !== "delete");
+      .filter((table) => byTarget.get(table) !== "delete"
+        && !(table === "awsMarketplaceLicenses" && byTarget.get(table) === "anonymize"));
     expect(
       mismatched,
       `batches.ts erases these tables but the registry does not mark them delete. `

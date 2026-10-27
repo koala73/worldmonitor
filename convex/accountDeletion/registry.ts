@@ -61,6 +61,21 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     notes: "Capture keyHash then delete; invalidate user-api-key Redis",
   },
   {
+    target: "awsMarketplaceLicenses",
+    action: "anonymize",
+    notes: "Delete synthetic keys and registration handles, remove Clerk owner link; retain AWS contract identity for reconciliation",
+  },
+  {
+    target: "awsMarketplaceRegistrations",
+    action: "delete",
+    notes: "Deleted with the claimed license during owner erasure",
+  },
+  {
+    target: "awsMarketplaceAudit",
+    action: "retain",
+    notes: "Append-only security facts without Clerk owner, key hash, or registration hash; protected retention/export is operator-managed",
+  },
+  {
     target: "embedKeys",
     action: "delete",
     notes: "Capture keyHash then delete; invalidate embed-key Redis",

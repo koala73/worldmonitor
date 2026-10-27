@@ -964,6 +964,33 @@ describe("gateway entitlement check", () => {
     }
   });
 
+  test("Marketplace principal bypasses retail Redis entitlement snapshots", async () => {
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    process.env.CONVEX_SITE_URL = "https://example-deployment.convex.site";
+    process.env.CONVEX_SERVER_SHARED_SECRET = "test-secret";
+    vi.mocked(getCachedJson).mockClear();
+    vi.mocked(setCachedJson).mockClear();
+    const fetchMock = vi.fn().mockResolvedValue(new Response("null", {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await getEntitlements("aws-marketplace:license_1");
+      expect(result).toBeNull();
+      expect(getCachedJson).not.toHaveBeenCalled();
+      expect(setCachedJson).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+      vi.unstubAllGlobals();
+    }
+  });
+
   test("confirmed Convex entitlement survives a Redis cache-write failure", async () => {
     vi.mocked(getCachedJson).mockResolvedValueOnce(null);
     vi.mocked(setCachedJson).mockRejectedValueOnce(new Error("upstash unavailable"));

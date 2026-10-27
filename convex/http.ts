@@ -27,6 +27,7 @@ import {
   isInvalidCursorPage,
   isInvalidPaginationCursorError,
 } from "./paginationCursor";
+import { isAwsMarketplacePrincipal, type AwsMarketplaceRequest } from "../shared/aws-marketplace";
 
 // App-serving hosts only, aligned with api/_cors.js and server/cors.ts.
 const APP_ORIGIN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
@@ -301,6 +302,13 @@ export async function internalEntitlementsHttpHandler(
       });
     }
 
+    if (isAwsMarketplacePrincipal(body.userId)) {
+      const projection = await ctx.runQuery((internal as any).awsMarketplace.getPrincipalAccessProjection,
+        { userId: body.userId });
+      return Response.json({ ...projection.entitlement,
+        ...(projection.state === "stale" ? { verificationUnavailable: true, retryAfterSeconds: 30 } : {}),
+      }, { headers: { "Cache-Control": "no-store" } });
+    }
     let result = await ctx.runQuery(
       internal.entitlements.getEntitlementsByUserId,
       { userId: body.userId },
@@ -482,6 +490,87 @@ http.route({
   path: "/api/internal-entitlements",
   method: "POST",
   handler: httpAction(internalEntitlementsHttpHandler),
+});
+
+function isAwsMarketplaceRequest(value: Record<string, unknown>): value is AwsMarketplaceRequest {
+  const str = (key: string) => typeof value[key] === "string";
+  const optionalStr = (key: string) => value[key] === undefined || str(key);
+  const num = (key: string) => typeof value[key] === "number" && Number.isFinite(value[key]);
+  switch (value.operation) {
+    case "stageRegistration":
+      return ["registrationHash", "browserBindingHash", "customerAWSAccountId", "licenseArn", "productCode"].every(str)
+        && optionalStr("customerIdentifier") && optionalStr("agreementId") && num("expiresAt");
+    case "claimRegistration":
+      return ["registrationHash", "browserBindingHash", "userId"].every(str);
+    case "account": return str("userId");
+    case "createKey":
+      return ["userId", "licenseId", "name", "keyHash", "keyPrefix"].every(str);
+    case "revokeKey":
+      return ["userId", "licenseId", "keyId"].every(str);
+    case "beginRefresh":
+      return ["productCode", "customerAWSAccountId", "licenseArn"].every(str)
+        && optionalStr("eventId") && (value.eventTime === undefined || num("eventTime"));
+    case "applyRefresh":
+      return str("licenseId") && num("revision") && num("checkedAt")
+        && optionalStr("eventId") && Array.isArray(value.entitlements)
+        && value.entitlements.length <= 100
+        && value.entitlements.every((item: unknown) => item && typeof item === "object"
+          && typeof (item as Record<string, unknown>).dimension === "string"
+          && typeof (item as Record<string, unknown>).quantity === "number"
+          && typeof (item as Record<string, unknown>).expirationDate === "number");
+    case "listDue": return num("limit") && optionalStr("cursor");
+    default: return false;
+  }
+}
+
+export async function awsMarketplaceHttpHandler(ctx: ActionCtx, request: Request): Promise<Response> {
+  const provided = request.headers.get("x-convex-shared-secret") ?? "";
+  const expected = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+  if (!expected || !(await timingSafeEqualStrings(provided, expected))) {
+    return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  }
+  const body = await parseJsonObjectBody<Record<string, unknown>>(request);
+  if (!body || !isAwsMarketplaceRequest(body)) {
+    return Response.json({ error: "INVALID_REQUEST" }, { status: 400 });
+  }
+  try {
+    let result: unknown;
+    const { operation: _operation, ...args } = body;
+    switch (body.operation) {
+      case "stageRegistration": result = await ctx.runMutation((internal as any).awsMarketplace.stageRegistration, args); break;
+      case "claimRegistration": result = await ctx.runMutation((internal as any).awsMarketplace.claimRegistration, args); break;
+      case "account": result = await ctx.runQuery((internal as any).awsMarketplace.account, args); break;
+      case "createKey": result = await ctx.runMutation((internal as any).awsMarketplace.createKey, args); break;
+      case "revokeKey": result = await ctx.runMutation((internal as any).awsMarketplace.revokeKey, args); break;
+      case "beginRefresh": {
+        const { productCode, customerAWSAccountId, licenseArn, eventId, eventTime } = body;
+        result = await ctx.runMutation((internal as any).awsMarketplace.beginRefresh,
+          { productCode, customerAWSAccountId, licenseArn, eventId, eventTime });
+        break;
+      }
+      case "applyRefresh": result = await ctx.runMutation((internal as any).awsMarketplace.applyRefresh, args); break;
+      case "listDue": result = await ctx.runQuery((internal as any).awsMarketplace.listDue, args); break;
+    }
+    return Response.json(result, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    const code = extractConvexErrorCode(error);
+    if (code && /^[A-Z_]+$/.test(code)) {
+      const conflict = new Set(["REGISTRATION_REPLAYED", "LICENSE_ALREADY_CLAIMED",
+        "DUPLICATE_KEY", "KEY_LIMIT_REACHED", "ACCOUNT_DELETION_IN_PROGRESS"]);
+      const hidden = new Set(["REGISTRATION_NOT_FOUND", "LICENSE_NOT_FOUND", "KEY_NOT_FOUND"]);
+      const status = conflict.has(code) ? 409 : hidden.has(code) ? 404
+        : code === "LICENSE_INACTIVE" ? 403 : 400;
+      return Response.json({ error: code }, { status, headers: { "Cache-Control": "no-store" } });
+    }
+    return Response.json({ error: "MARKETPLACE_UNAVAILABLE" }, { status: 503,
+      headers: { "Cache-Control": "no-store" } });
+  }
+}
+
+http.route({
+  path: "/api/internal/aws-marketplace",
+  method: "POST",
+  handler: httpAction(awsMarketplaceHttpHandler),
 });
 
 http.route({

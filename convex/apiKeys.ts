@@ -12,6 +12,8 @@ import {
 } from "../shared/company-monitoring-contract";
 import { hasDesktopKeyAccess } from "../shared/desktop-key-access";
 import type { Doc } from "./_generated/dataModel";
+import { isAwsMarketplacePrincipal } from "../shared/aws-marketplace";
+import { validPrincipalKey } from "./awsMarketplace";
 
 /**
  * Maximum number of active (non-revoked) API keys per user. Desktop keys are
@@ -390,6 +392,7 @@ export const validateKeyByHash = internalQuery({
       .first();
 
     if (!key || key.revokedAt) return null;
+    if (isAwsMarketplacePrincipal(key.userId) && !(await validPrincipalKey(ctx, key.userId))) return null;
     // Kill switch: with DESKTOP_KEYS_ENABLED off, a desktop row is unknown to
     // every validator (see `desktopKeysEnabled`). API rows are unaffected.
     if (keyKindOf(key) === "desktop" && !desktopKeysEnabled()) return null;

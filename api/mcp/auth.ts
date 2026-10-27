@@ -44,6 +44,7 @@ import { emitMcpRateLimitHit } from './telemetry';
 import { FREE_ACCOUNT_CALLS_PER_DAY } from './upgrade-constants';
 import { buildMcpStructuredDenial, type McpStaticDenialReason } from './upgrade';
 import { relayMcpCheckout } from './checkout';
+import { isAwsMarketplacePrincipal } from '../../shared/aws-marketplace';
 
 // ---------------------------------------------------------------------------
 // Rate limiters
@@ -235,9 +236,9 @@ export function mcpStructuredDenialResponse(
   resourceMetadataUrl: string,
   corsHeaders: Record<string, string>,
   id: unknown = null,
-  opts?: { wwwAuthError?: string; message?: string; code?: number; status?: number },
+  opts?: { wwwAuthError?: string; message?: string; code?: number; status?: number; marketplace?: true },
 ): Response {
-  const built = buildMcpStructuredDenial({ reason });
+  const built = buildMcpStructuredDenial({ reason, marketplace: opts?.marketplace });
   const { data } = built;
   // A caller may keep its own, more specific `message` (e.g. the credential
   // mechanics on the auth-resolution 401s) while still gaining the machine-
@@ -304,6 +305,7 @@ export function getMcpBillingVerificationDenial(
   } | null | undefined,
   corsHeaders: Record<string, string>,
   id: unknown = null,
+  marketplace = false,
 ): Response | null {
   const billingStatus = entitlements?.verificationUnavailable
     ? 'entitlement_verification_unavailable'
@@ -363,7 +365,7 @@ export function getMcpBillingVerificationDenial(
   // on the billing envelope (-32002 / 403), with agent-facing upgrade
   // attribution so clients can distinguish it from the free-account path.
   const structured = billingStatus === 'subscription_lapsed'
-    ? buildMcpStructuredDenial({ reason: 'lapsed-subscription' })
+    ? buildMcpStructuredDenial({ reason: 'lapsed-subscription', marketplace: marketplace ? true : undefined })
     : null;
 
   return new Response(
@@ -691,17 +693,23 @@ async function checkMcpEntitlementGate(
   id: unknown = null,
   options: { requireApiAccess?: boolean } = {},
 ): Promise<McpPreCheckResult> {
+  const marketplace = isAwsMarketplacePrincipal(userId);
   /**
    * Availability failure, not a billing verdict. Mirrors the retryable shape
    * `validateProMcpAuthorization` already uses for its own catch — 503 denies
    * the call (still fail-closed) without asserting anything false about the
    * caller's subscription.
    */
-  const unavailable = (): McpPreCheckResult => ({
+  const unavailable = (rawRetryAfter?: number): McpPreCheckResult => ({
     ok: false,
     response: new Response(
-      JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
-      { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
+      JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.', data: { code: 'entitlement_verification_unavailable' } } }),
+      { status: 503, headers: withMcpNoStore({
+        'Content-Type': 'application/json',
+        'Retry-After': String(typeof rawRetryAfter === 'number' && Number.isFinite(rawRetryAfter)
+          ? Math.max(1, Math.min(60, Math.ceil(rawRetryAfter))) : 5),
+        ...corsHeaders,
+      }) },
     ),
   });
 
@@ -716,6 +724,7 @@ async function checkMcpEntitlementGate(
     // real outage as a routine upsell. Fail closed on a retryable envelope.
     return unavailable();
   }
+  if (marketplace && (!ent || ent.verificationUnavailable)) return unavailable(ent?.retryAfterSeconds);
   // Resolved once from the row this gate already holds: the burst threshold is
   // per-plan (API Business sells 300/min, everyone else 60), and a second
   // lookup on the hot path to learn it would be the round-trip KTD6 removed.
@@ -755,7 +764,10 @@ async function checkMcpEntitlementGate(
       response: mcpStructuredDenialResponse('upgrade-required', resourceMetadataUrl, corsHeaders, id, {
         code: -32002,
         status: 403,
-        message: 'API access subscription required. MCP with an API key needs an active API plan; a desktop key or a Pro-only account cannot use it. Upgrade at https://worldmonitor.app/pricing.',
+        message: marketplace
+          ? 'AWS Marketplace license does not grant API access. Manage the license at https://www.worldmonitor.app/marketplace.'
+          : 'API access subscription required. MCP with an API key needs an active API plan; a desktop key or a Pro-only account cannot use it. Upgrade at https://worldmonitor.app/pricing.',
+        marketplace: marketplace ? true : undefined,
       }),
     };
   }
@@ -767,7 +779,7 @@ async function checkMcpEntitlementGate(
   // `free_account` below; a lapse that lands later during a Pro tool call still
   // uses the downstream 403/-32002 billing envelope in dispatch.
   if (gate.kind === 'billing_verification') {
-    const billingDenial = getMcpBillingVerificationDenial(ent, corsHeaders, id);
+    const billingDenial = getMcpBillingVerificationDenial(ent, corsHeaders, id, marketplace);
     if (billingDenial) return { ok: false, response: billingDenial };
     // #6716 F10: reaching here means the gate classified a billing state that
     // `ent` alone cannot render — in practice `unverifiableEntitlementDenial`,
@@ -780,6 +792,17 @@ async function checkMcpEntitlementGate(
     return unavailable();
   }
   if (gate.kind === 'free_account') {
+    if (marketplace) {
+      // Convex confirmed this license inactive; missing or stale proof returned 503 above.
+      return {
+        ok: false,
+        response: mcpStructuredDenialResponse('upgrade-required', resourceMetadataUrl, corsHeaders, id, {
+          code: -32002,
+          status: 403,
+          marketplace: true,
+        }),
+      };
+    }
     // Shared free-account interpretation (#6716), also honored by OAuth
     // issuance. Admission here is eligibility; the idle-gap + call counters
     // live in dispatch.
@@ -802,6 +825,7 @@ async function checkMcpEntitlementGate(
       code: -32002,
       status: 403,
       message: 'Subscription not active.',
+      marketplace: marketplace ? true : undefined,
     }),
   };
 }

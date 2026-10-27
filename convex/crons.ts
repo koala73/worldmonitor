@@ -4,6 +4,13 @@ import { internal } from "./_generated/api";
 const crons = cronJobs();
 
 crons.hourly(
+  "aws-marketplace-expired-registration-prune",
+  { minuteUTC: 42 },
+  (internal as any).awsMarketplace.pruneExpiredRegistrations,
+  {},
+);
+
+crons.hourly(
   "cleanup-expired-pairing-tokens",
   { minuteUTC: 27 },
   internal.telegramPairingTokens.cleanupExpired,

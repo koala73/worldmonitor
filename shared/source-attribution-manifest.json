@@ -15237,6 +15237,9 @@
           "path": "api/mcp/ui/news-dashboard-app.ts"
         },
         {
+          "path": "api/mcp/upgrade.ts"
+        },
+        {
           "path": "api/not-found.ts"
         },
         {

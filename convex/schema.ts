@@ -842,6 +842,55 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_validUntil", ["validUntil"]),
 
+  awsMarketplaceLicenses: defineTable({
+    productCode: v.string(),
+    customerAWSAccountId: v.string(),
+    licenseArn: v.string(),
+    customerIdentifier: v.optional(v.string()),
+    agreementId: v.optional(v.string()),
+    ownerUserId: v.optional(v.string()),
+    status: v.union(v.literal("pending"), v.literal("active"), v.literal("inactive")),
+    dimension: v.optional(v.string()),
+    planKey: v.optional(v.string()),
+    quantity: v.optional(v.number()),
+    contractExpiresAt: v.optional(v.number()),
+    checkedAt: v.optional(v.number()),
+    nextRefreshAt: v.number(),
+    revision: v.number(),
+    lastEventId: v.optional(v.string()),
+    lastEventTime: v.optional(v.number()),
+    pendingEventId: v.optional(v.string()),
+    pendingEventTime: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_identity", ["productCode", "customerAWSAccountId", "licenseArn"])
+    .index("by_owner", ["ownerUserId"])
+    .index("by_nextRefreshAt", ["nextRefreshAt"]),
+
+  awsMarketplaceRegistrations: defineTable({
+    registrationHash: v.string(),
+    browserBindingHash: v.string(),
+    licenseId: v.id("awsMarketplaceLicenses"),
+    expiresAt: v.number(),
+    claimedByUserId: v.optional(v.string()),
+    claimedAt: v.optional(v.number()),
+  })
+    .index("by_registrationHash", ["registrationHash"])
+    .index("by_license", ["licenseId"])
+    .index("by_expiresAt", ["expiresAt"]),
+
+  awsMarketplaceAudit: defineTable({
+    licenseId: v.id("awsMarketplaceLicenses"),
+    event: v.union(
+      v.literal("claimed"), v.literal("key_created"), v.literal("key_revoked"),
+      v.literal("refresh_active"), v.literal("refresh_inactive"),
+      v.literal("refresh_superseded"),
+    ),
+    at: v.number(),
+    revision: v.optional(v.number()),
+    keyId: v.optional(v.id("userApiKeys")),
+  }).index("by_license_at", ["licenseId", "at"]),
+
   // Customer AI routing restriction (contractual, e.g. "Anthropic only").
   // Kept out of `entitlements.features` on purpose: billing webhooks rewrite
   // that object, and a compliance control must not ride on it. When a row

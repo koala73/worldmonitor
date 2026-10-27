@@ -1213,6 +1213,7 @@ export default defineConfig(({ mode }) => {
           settings: resolve(__dirname, 'settings.html'),
           liveChannels: resolve(__dirname, 'live-channels.html'),
           mcpGrant: resolve(__dirname, 'mcp-grant.html'),
+          marketplace: resolve(__dirname, 'marketplace.html'),
           verify: resolve(__dirname, 'verify.html'),
           desktopSignIn: resolve(__dirname, 'desktop-sign-in.html'),
         },

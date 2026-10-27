@@ -104,6 +104,16 @@ describe('plan mapping', () => {
 });
 
 describe('denial checkout hints', () => {
+  it('points Marketplace denials to license management without a retail checkout hint', () => {
+    for (const reason of ['upgrade-required', 'lapsed-subscription', 'quota-exceeded']) {
+      const { message, data } = buildMcpStructuredDenial({ reason, limit: 50, sharedWithRestApi: true, marketplace: true });
+      assert.equal(data.upgradeUrl, 'https://www.worldmonitor.app/marketplace');
+      assert.equal(data.checkoutTool, undefined);
+      assert.equal(data.recommendedPlan, undefined);
+      assert.doesNotMatch(`${message} ${data.nextStep}`, /dodo|checkout|pricing/i);
+    }
+  });
+
   it('names the plan and tool on the three upgradeable denials for a free account', () => {
     for (const reason of ['allowance-exhausted', 'upgrade-required', 'quota-exceeded']) {
       const { data } = buildMcpStructuredDenial({ reason, limit: 5, sharedWithRestApi: false, upgradeFrom: 'free' });
@@ -153,6 +163,24 @@ describe('denial checkout hints', () => {
 });
 
 describe('start_upgrade tool', () => {
+  it('refuses a Marketplace license without creating a retail checkout or spending quota', async () => {
+    const checkouts = [];
+    const { deps, pipe } = makeProDeps({
+      resolveBearerToContext: async () => ({ kind: 'user_key', userId: 'aws-marketplace:license_1' }),
+      getEntitlements: async () => ({
+        planKey: 'api_starter',
+        features: { tier: 2, apiAccess: true, mcpAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } },
+        validUntil: Date.now() + 86_400_000,
+      }),
+    });
+    deps.createCheckout = async (input) => { checkouts.push(input); return { kind: 'created', checkoutUrl: 'https://checkout.example.test' }; };
+    const called = await invoke(deps, upgrade({ plan: 'api_business' }));
+    assert.equal(called.body.error?.code, -32002);
+    assert.match(called.body.error.message, /AWS Marketplace/);
+    assert.equal(checkouts.length, 0);
+    assert.deepEqual(pipe.ops, []);
+  });
+
   it('is listed, user-bound, quota-exempt and not read-only', async () => {
     const tool = TOOL_REGISTRY.find((entry) => entry.name === 'start_upgrade');
     assert.ok(tool);

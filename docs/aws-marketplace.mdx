@@ -1,0 +1,30 @@
+---
+title: "Use WorldMonitor through AWS Marketplace"
+description: "Claim an AWS Marketplace license, create an API key, and connect a WorldMonitor MCP client."
+---
+
+An AWS Marketplace purchase is managed and billed in AWS. It grants the API and MCP limits stated in your Marketplace offer. It does not change the plan on your personal WorldMonitor dashboard account.
+
+## Claim a purchase
+
+1. In the [AWS Marketplace Manage subscriptions page](https://console.aws.amazon.com/marketplace/home#/subscriptions), open your WorldMonitor subscription and choose **Set up your account**.
+2. AWS sends you to the [WorldMonitor Marketplace setup page](https://www.worldmonitor.app/marketplace). Use the same browser to finish setup. Sign in or create a WorldMonitor account. This person manages the license and its keys.
+3. Select **Claim license**. The page shows the linked license and the status verified from AWS.
+
+The setup link is short lived and can be claimed once. If setup expires, return to your AWS Marketplace subscription and choose **Set up your account** again. Do not email a registration token or paste one into support requests.
+
+## Create and use a key
+
+On the Marketplace setup page, choose the license, enter a key name, and select **Create key**. Copy the complete `wm_...` key when it appears. WorldMonitor stores its hash and cannot show the key again. Save it in a secret manager.
+
+For MCP, connect to `https://worldmonitor.app/mcp` and send the key in the `X-WorldMonitor-Key` header. For direct API requests, send the same header. Each key spends the allowance of its AWS license, including calls made by different apps using that license. The page shows the plan's API and MCP limits; [the MCP allowance tool](/mcp-tools-reference) shows current usage.
+
+To rotate a key, create a new one, update every app using the old key, then select **Revoke key** for the old one. Revocation cannot be undone. A cached key validation can take up to one minute to expire; the live license check also blocks inactive licenses on protected requests.
+
+## Subscription and billing
+
+Open [Manage subscriptions in AWS Marketplace](https://console.aws.amazon.com/marketplace/home#/subscriptions) to review your agreement, change or cancel it where AWS permits, and see billing details. A license whose AWS entitlement has ended stops granting API and MCP access. Keys remain listed so you can identify or revoke them, but they cannot be used until AWS confirms active coverage.
+
+The Marketplace license is separate from WorldMonitor's direct checkout. MCP's `start_upgrade` tool does not create a retail checkout for an AWS license. To change the Marketplace plan, use AWS Marketplace. For WorldMonitor account or key help, contact [support@worldmonitor.app](mailto:support@worldmonitor.app) with the short key prefix and license reference. Never send a complete key.
+
+AWS explains the subscription status and agreement controls in its [buyer guide](https://docs.aws.amazon.com/marketplace/latest/buyerguide/buyer-managing-subscriptions.html).

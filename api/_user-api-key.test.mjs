@@ -850,6 +850,40 @@ test('stale cached entitlement (past validUntil) re-validates against Convex', a
   });
 });
 
+test('Marketplace API keys bypass retail entitlement cache and use the live license verdict', async () => {
+  const userId = 'aws-marketplace:license_1';
+  await withMockedConvex(async (calls) => {
+    const result = await validateBootstrapUserApiAccess(userId);
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 403);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-entitlements')), true);
+    assert.equal(calls.some((call) => call.url.startsWith('https://upstash.test')), false);
+  }, {
+    redisCache: {
+      [`entitlements:test:${userId}`]: {
+        planKey: 'api_business',
+        validUntil: Date.now() + 86_400_000,
+        features: { apiAccess: true },
+      },
+    },
+    entitlementResponse: null,
+  });
+});
+
+test('stale Marketplace license verification is retryable and never uses retail cache', async () => {
+  const userId = 'aws-marketplace:license_stale';
+  await withMockedConvex(async (calls) => {
+    const result = await validateBootstrapUserApiAccess(userId);
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 503);
+    assert.equal(result.reason, 'entitlement_verification_unavailable');
+    assert.equal(result.headers['Retry-After'], '30');
+    assert.equal(calls.some((call) => call.url.startsWith('https://upstash.test')), false);
+  }, {
+    entitlementResponse: { verificationUnavailable: true, retryAfterSeconds: 30 },
+  });
+});
+
 test('transient Convex HTTP 5xx on entitlement check emits the entitlement_verification_unavailable contract', async () => {
   await withMockedConvex(async (calls) => {
     globalThis.fetch = async (input, init) => {

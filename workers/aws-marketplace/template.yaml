@@ -1,0 +1,154 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: WorldMonitor AWS Marketplace entitlement reconciliation
+Parameters:
+  ArtifactBucket:
+    Type: String
+  ArtifactKey:
+    Type: String
+  ProductCodes:
+    Type: String
+    AllowedPattern: '^[-A-Za-z0-9/=:_.@]+(,[-A-Za-z0-9/=:_.@]+)*$'
+  DimensionPlanMap:
+    Type: String
+  ConvexSiteUrl:
+    Type: String
+  ConvexSharedSecret:
+    Type: String
+    NoEcho: true
+  SellerAccountId:
+    Type: String
+    AllowedPattern: '[0-9]{12}'
+Resources:
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+  EventQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 1800
+      MessageRetentionPeriod: 345600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 5
+      SqsManagedSseEnabled: true
+  MarketplaceEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source: [aws.agreement-marketplace]
+        detail-type:
+          - License Updated - Manufacturer
+          - License Deprovisioned - Manufacturer
+        account: [!Ref SellerAccountId]
+        region: [us-east-1]
+        detail:
+          product:
+            code: !Split [',', !Ref ProductCodes]
+      Targets:
+        - Id: marketplace-queue
+          Arn: !GetAtt EventQueue.Arn
+  QueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref EventQueue]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: events.amazonaws.com }
+            Action: sqs:SendMessage
+            Resource: !GetAtt EventQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt MarketplaceEventRule.Arn
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: marketplace-worker
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: aws-marketplace:GetEntitlements
+                Resource: '*'
+              - Effect: Allow
+                Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes]
+                Resource: !GetAtt EventQueue.Arn
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-worker:*
+  WorkerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-worker
+      RetentionInDays: 365
+  Worker:
+    Type: AWS::Lambda::Function
+    DependsOn: WorkerLogGroup
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-worker
+      Runtime: nodejs24.x
+      Handler: index.handler
+      Role: !GetAtt WorkerRole.Arn
+      Timeout: 300
+      MemorySize: 256
+      Code:
+        S3Bucket: !Ref ArtifactBucket
+        S3Key: !Ref ArtifactKey
+      Environment:
+        Variables:
+          AWS_MARKETPLACE_REGION: us-east-1
+          AWS_MARKETPLACE_SELLER_ACCOUNT_ID: !Ref SellerAccountId
+          AWS_MARKETPLACE_PRODUCT_CODES: !Ref ProductCodes
+          AWS_MARKETPLACE_DIMENSION_PLAN_MAP: !Ref DimensionPlanMap
+          CONVEX_SITE_URL: !Ref ConvexSiteUrl
+          CONVEX_SERVER_SHARED_SECRET: !Ref ConvexSharedSecret
+  QueueConsumer:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt EventQueue.Arn
+      FunctionName: !Ref Worker
+      BatchSize: 5
+      FunctionResponseTypes: [ReportBatchItemFailures]
+  ReconcileSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: rate(5 minutes)
+      Targets:
+        - Id: marketplace-worker
+          Arn: !GetAtt Worker.Arn
+  SchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref Worker
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ReconcileSchedule.Arn
+  DeadLetterAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Marketplace entitlement events exhausted retries
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt DeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+Outputs:
+  DeadLetterQueueUrl:
+    Value: !Ref DeadLetterQueue
+  EventQueueUrl:
+    Value: !Ref EventQueue
