@@ -3677,6 +3677,55 @@ test('a malformed request-target gets a 400 and the sidecar keeps serving', asyn
   }
 });
 
+test('a throw that escapes the request handler gets a 500 and the sidecar keeps serving', async () => {
+  const localApi = await setupApiDir({
+    'boom.js': `
+      export default async function handler() {
+        // dispatch() returns this Response; reading its body then throws
+        // inside the request handler's own try.
+        return new Response(new ReadableStream({
+          start(controller) { controller.error(new Error('body failed')); },
+        }));
+      }
+    `,
+    'ping.js': `
+      export default async function handler() {
+        return new Response('pong', { status: 200 });
+      }
+    `,
+  });
+  const errors = [];
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: {
+      log() {},
+      warn() {},
+      error(message) {
+        errors.push(message);
+        // A failing logger inside the handler's own catch is the throw that
+        // escapes handleRequest.
+        if (message === '[local-api] fatal') throw new Error('logger failed');
+      },
+    },
+  });
+  const { port } = await app.start();
+
+  try {
+    const failed = await authFetch(`http://127.0.0.1:${port}/api/boom`);
+    assert.equal(failed.status, 500);
+    assert.deepEqual(await failed.json(), { error: 'Internal server error' });
+    assert.ok(errors.includes('[local-api] unhandled request error'), JSON.stringify(errors));
+
+    const response = await authFetch(`http://127.0.0.1:${port}/api/ping`);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'pong');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('rss-proxy forces active and error responses through an inert response policy', async () => {
   const localApi = await setupApiDir({});
   const originalResolve4 = dns.resolve4;
