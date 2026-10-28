@@ -1834,8 +1834,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "The Next Web",
-          "url": "https://news.google.com/rss/search?q=site:thenextweb.com+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:thenextweb.com+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Tech in Asia",
@@ -1843,58 +1842,47 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "KrASIA",
-          "url": "https://news.google.com/rss/search?q=site:kr-asia.com+OR+KrASIA+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:kr-asia.com+OR+KrASIA+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "SEA Startups",
-          "url": "https://news.google.com/rss/search?q=(Singapore+OR+Indonesia+OR+Vietnam+OR+Thailand+OR+Malaysia)+startup+funding+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(Singapore+OR+Indonesia+OR+Vietnam+OR+Thailand+OR+Malaysia)+startup+funding+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Asia VC News",
-          "url": "https://news.google.com/rss/search?q=(\"Southeast+Asia\"+OR+ASEAN)+venture+capital+OR+funding+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(\"Southeast+Asia\"+OR+ASEAN)+venture+capital+OR+funding+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "China Startups",
-          "url": "https://news.google.com/rss/search?q=China+startup+funding+OR+\"Chinese+startup\"+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=China+startup+funding+OR+\"Chinese+startup\"+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "36Kr English",
-          "url": "https://news.google.com/rss/search?q=site:36kr.com+OR+\"36Kr\"+startup+china+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:36kr.com+OR+\"36Kr\"+startup+china+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "China Tech Giants",
-          "url": "https://news.google.com/rss/search?q=(Alibaba+OR+Tencent+OR+ByteDance+OR+Baidu+OR+JD.com+OR+Xiaomi+OR+Huawei)+when:3d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(Alibaba+OR+Tencent+OR+ByteDance+OR+Baidu+OR+JD.com+OR+Xiaomi+OR+Huawei)+when:3d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Japan Startups",
-          "url": "https://news.google.com/rss/search?q=Japan+startup+funding+OR+\"Japanese+startup\"+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=Japan+startup+funding+OR+\"Japanese+startup\"+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Japan Tech News",
-          "url": "https://news.google.com/rss/search?q=(Japan+startup+OR+Japan+tech+OR+SoftBank+OR+Rakuten+OR+Sony)+funding+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(Japan+startup+OR+Japan+tech+OR+SoftBank+OR+Rakuten+OR+Sony)+funding+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Nikkei Tech",
-          "url": "https://news.google.com/rss/search?q=site:asia.nikkei.com+technology+when:3d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:asia.nikkei.com+technology+when:3d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Korea Tech News",
-          "url": "https://news.google.com/rss/search?q=(Korea+startup+OR+Korean+tech+OR+Samsung+OR+Kakao+OR+Naver+OR+Coupang)+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(Korea+startup+OR+Korean+tech+OR+Samsung+OR+Kakao+OR+Naver+OR+Coupang)+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Korea Startups",
-          "url": "https://news.google.com/rss/search?q=Korea+startup+funding+OR+\"Korean+unicorn\"+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=Korea+startup+funding+OR+\"Korean+unicorn\"+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Inc42 (India)",
@@ -1902,63 +1890,47 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "YourStory",
-          "url": "https://yourstory.com/feed",
-          "browserOnly": true
+          "url": "https://yourstory.com/feed"
         },
         {
           "name": "India Startups",
-          "url": "https://news.google.com/rss/search?q=India+startup+funding+OR+\"Indian+startup\"+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=India+startup+funding+OR+\"Indian+startup\"+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "India Tech News",
-          "url": "https://news.google.com/rss/search?q=(Flipkart+OR+Razorpay+OR+Zerodha+OR+Zomato+OR+Paytm+OR+PhonePe)+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(Flipkart+OR+Razorpay+OR+Zerodha+OR+Zomato+OR+Paytm+OR+PhonePe)+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "SEA Tech News",
-          "url": "https://news.google.com/rss/search?q=(Grab+OR+GoTo+OR+Sea+Limited+OR+Shopee+OR+Tokopedia)+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(Grab+OR+GoTo+OR+Sea+Limited+OR+Shopee+OR+Tokopedia)+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Vietnam Tech",
-          "url": "https://news.google.com/rss/search?q=Vietnam+startup+OR+Vietnam+tech+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=Vietnam+startup+OR+Vietnam+tech+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Indonesia Tech",
-          "url": "https://news.google.com/rss/search?q=Indonesia+startup+OR+Indonesia+tech+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=Indonesia+startup+OR+Indonesia+tech+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Taiwan Tech",
-          "url": "https://news.google.com/rss/search?q=(Taiwan+startup+OR+TSMC+OR+MediaTek+OR+Foxconn)+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
-        },
-        {
-          "name": "LAVCA (LATAM)",
-          "url": "https://news.google.com/rss/search?q=site:lavca.org+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(Taiwan+startup+OR+TSMC+OR+MediaTek+OR+Foxconn)+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "LATAM Startups",
-          "url": "https://news.google.com/rss/search?q=(\"Latin+America\"+startup+OR+LATAM+funding)+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(\"Latin+America\"+startup+OR+LATAM+funding)+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Startups LATAM",
-          "url": "https://news.google.com/rss/search?q=(startup+Brazil+OR+startup+Mexico+OR+startup+Argentina+OR+startup+Colombia+OR+startup+Chile)+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(startup+Brazil+OR+startup+Mexico+OR+startup+Argentina+OR+startup+Colombia+OR+startup+Chile)+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Brazil Tech",
-          "url": "https://news.google.com/rss/search?q=(Nubank+OR+iFood+OR+Mercado+Libre+OR+Rappi+OR+VTEX)+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(Nubank+OR+iFood+OR+Mercado+Libre+OR+Rappi+OR+VTEX)+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "FinTech LATAM",
-          "url": "https://news.google.com/rss/search?q=fintech+(Brazil+OR+Mexico+OR+Argentina+OR+\"Latin+America\")+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=fintech+(Brazil+OR+Mexico+OR+Argentina+OR+\"Latin+America\")+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "TechCabal (Africa)",
@@ -1966,23 +1938,19 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Africa Startups",
-          "url": "https://news.google.com/rss/search?q=Africa+startup+funding+OR+\"African+startup\"+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=Africa+startup+funding+OR+\"African+startup\"+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Africa Tech News",
-          "url": "https://news.google.com/rss/search?q=(Flutterwave+OR+Paystack+OR+Jumia+OR+Andela+OR+\"Africa+startup\")+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(Flutterwave+OR+Paystack+OR+Jumia+OR+Andela+OR+\"Africa+startup\")+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "MENA Startups",
-          "url": "https://news.google.com/rss/search?q=(MENA+startup+OR+\"Middle+East\"+funding+OR+Gulf+startup)+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(MENA+startup+OR+\"Middle+East\"+funding+OR+Gulf+startup)+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "MENA Tech News",
-          "url": "https://news.google.com/rss/search?q=(UAE+startup+OR+Saudi+tech+OR+Dubai+startup+OR+NEOM+tech)+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(UAE+startup+OR+Saudi+tech+OR+Dubai+startup+OR+NEOM+tech)+when:7d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "github": [

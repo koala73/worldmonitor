@@ -444,7 +444,7 @@ World Monitor publishes 778 named providers across 18 source catalog pages. Each
 - [News & OSINT — page 5](https://www.worldmonitor.app/sources/news/page/5/): 60 providers.
 - [News & OSINT — page 6](https://www.worldmonitor.app/sources/news/page/6/): 60 providers.
 - [News & OSINT — page 7](https://www.worldmonitor.app/sources/news/page/7/): 60 providers.
-- [News & OSINT — page 8](https://www.worldmonitor.app/sources/news/page/8/): 53 providers.
+- [News & OSINT — page 8](https://www.worldmonitor.app/sources/news/page/8/): 52 providers.
 - [Finance & Economics](https://www.worldmonitor.app/sources/finance/): 60 providers.
 - [Finance & Economics — page 2](https://www.worldmonitor.app/sources/finance/page/2/): 6 providers.
 - [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 23 providers.
@@ -452,7 +452,7 @@ World Monitor publishes 778 named providers across 18 source catalog pages. Each
 - [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 48 providers.
 - [Aviation & Airspace](https://www.worldmonitor.app/sources/aviation/): 15 providers.
 - [China Coverage](https://www.worldmonitor.app/sources/china/): 14 providers.
-- [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 25 providers.
+- [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 26 providers.
 
 <a id="corpus-comparisons"></a>
 ## Comparisons

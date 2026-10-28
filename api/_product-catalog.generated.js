@@ -166,13 +166,13 @@ export const PUBLIC_PRODUCT_FACTS = {
   ],
   "heroProofStats": {
     "mapLayers": 59,
-    "feeds": 469,
+    "feeds": 468,
     "providers": 778,
     "alertOrigins": 5
   },
   "depthProofStats": {
     "mapLayers": 59,
-    "feeds": 469,
+    "feeds": 468,
     "providers": 778,
     "alertOrigins": 5,
     "chokepoints": 13,

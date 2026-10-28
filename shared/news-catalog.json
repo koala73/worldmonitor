@@ -7903,7 +7903,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 30
         }
       ]
     },
@@ -7914,7 +7915,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 5
+          "browserOrder": 5,
+          "serverOrder": 21
         }
       ]
     },
@@ -7925,7 +7927,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 26
         }
       ]
     },
@@ -7936,7 +7939,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 7
+          "browserOrder": 7,
+          "serverOrder": 9
         }
       ]
     },
@@ -7950,7 +7954,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 11
         }
       ]
     },
@@ -7961,7 +7966,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 9
+          "browserOrder": 9,
+          "serverOrder": 6
         }
       ]
     },
@@ -7972,7 +7978,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 10
+          "browserOrder": 10,
+          "serverOrder": 12
         }
       ]
     },
@@ -7986,7 +7993,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 11
+          "browserOrder": 11,
+          "serverOrder": 17
         }
       ]
     },
@@ -7997,7 +8005,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 12
+          "browserOrder": 12,
+          "serverOrder": 18
         }
       ]
     },
@@ -8008,7 +8017,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 13
+          "browserOrder": 13,
+          "serverOrder": 25
         }
       ]
     },
@@ -8022,7 +8032,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 14
+          "browserOrder": 14,
+          "serverOrder": 20
         }
       ]
     },
@@ -8033,7 +8044,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 15
+          "browserOrder": 15,
+          "serverOrder": 19
         }
       ]
     },
@@ -8044,7 +8056,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 17
+          "browserOrder": 17,
+          "serverOrder": 32
         }
       ]
     },
@@ -8055,7 +8068,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 18
+          "browserOrder": 18,
+          "serverOrder": 14
         }
       ]
     },
@@ -8066,7 +8080,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 19
+          "browserOrder": 19,
+          "serverOrder": 15
         }
       ]
     },
@@ -8080,7 +8095,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 20
+          "browserOrder": 20,
+          "serverOrder": 27
         }
       ]
     },
@@ -8091,7 +8107,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 21
+          "browserOrder": 21,
+          "serverOrder": 31
         }
       ]
     },
@@ -8102,7 +8119,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 22
+          "browserOrder": 22,
+          "serverOrder": 16
         }
       ]
     },
@@ -8116,21 +8134,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 23
-        }
-      ]
-    },
-    {
-      "name": "LAVCA (LATAM)",
-      "url": "https://news.google.com/rss/search?q=site:lavca.org+when:7d&hl=en-US&gl=US&ceid=US:en",
-      "notes": [
-        "Latin America"
-      ],
-      "placements": [
-        {
-          "edition": "tech",
-          "category": "regionalStartups",
-          "browserOrder": 24
+          "browserOrder": 23,
+          "serverOrder": 29
         }
       ]
     },
@@ -8141,7 +8146,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 25
+          "browserOrder": 25,
+          "serverOrder": 22
         }
       ]
     },
@@ -8152,7 +8158,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 26
+          "browserOrder": 26,
+          "serverOrder": 28
         }
       ]
     },
@@ -8163,7 +8170,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 27
+          "browserOrder": 27,
+          "serverOrder": 10
         }
       ]
     },
@@ -8174,7 +8182,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 28
+          "browserOrder": 28,
+          "serverOrder": 13
         }
       ]
     },
@@ -8185,7 +8194,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 30
+          "browserOrder": 30,
+          "serverOrder": 7
         }
       ]
     },
@@ -8196,7 +8206,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 31
+          "browserOrder": 31,
+          "serverOrder": 8
         }
       ]
     },
@@ -8210,7 +8221,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 32
+          "browserOrder": 32,
+          "serverOrder": 23
         }
       ]
     },
@@ -8221,7 +8233,8 @@
         {
           "edition": "tech",
           "category": "regionalStartups",
-          "browserOrder": 33
+          "browserOrder": 33,
+          "serverOrder": 24
         }
       ]
     },
