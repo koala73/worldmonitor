@@ -561,4 +561,34 @@ describe('crude import origin fetch', () => {
     const fetchJson = async () => { throw new Error('Comtrade rate limited (429)'); };
     await assert.rejects(fetchCrudeImportOriginRows([['2025-02']], ['a', 'b'], { fetchJson, retries: 0 }), /429/);
   });
+
+  it('moves to the next key at once on HTTP 401 or 403, and still retries a 5xx on the same key', async () => {
+    const saved = process.env.WM_SEED_RETRY_DELAY_MS;
+    process.env.WM_SEED_RETRY_DELAY_MS = '0';
+    try {
+      const row = (url) => [{ reporterISO: 'JPN', partnerCode: 0, period: new URL(url).searchParams.get('period').split(',')[0], cmdCode: '2709', flowCode: 'M', primaryValue: 1e9 }];
+      const calls = [];
+      const rejected = async (url, key) => {
+        calls.push(key);
+        if (key === 'revoked') throw new Error('Comtrade HTTP 401');
+        if (key === 'forbidden') throw new Error('Comtrade HTTP 403');
+        return row(url);
+      };
+      await fetchCrudeImportOriginRows([['2025-02'], ['2026-03']], ['revoked', 'forbidden', 'good'], { fetchJson: rejected, retries: 3 });
+      assert.deepEqual(calls, ['revoked', 'forbidden', 'good', 'revoked', 'forbidden', 'good']);
+
+      let attempts = 0;
+      const flaky = async (url) => {
+        attempts += 1;
+        if (attempts < 3) throw new Error('Comtrade HTTP 503');
+        return row(url);
+      };
+      const { windowRowCounts } = await fetchCrudeImportOriginRows([['2025-02']], ['only'], { fetchJson: flaky, retries: 3 });
+      assert.equal(attempts, 3);
+      assert.deepEqual(windowRowCounts, [1]);
+    } finally {
+      if (saved === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
+      else process.env.WM_SEED_RETRY_DELAY_MS = saved;
+    }
+  });
 });

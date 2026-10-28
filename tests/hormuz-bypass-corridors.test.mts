@@ -12,6 +12,7 @@ import * as serverRegistry from '../server/_shared/bypass-corridors.ts';
 import * as browserRegistry from '../src/config/bypass-corridors.ts';
 import { pickBestBypass } from '../server/worldmonitor/supply-chain/v1/_multi-sector-shock.ts';
 import { computeLane } from '../server/worldmonitor/supply-chain/v1/get-route-explorer-lane.ts';
+import { BYPASS_CORRIDOR_GEOMETRY_BY_ID } from '../server/worldmonitor/supply-chain/v1/_route-explorer-static-tables.ts';
 
 const hormuz = (registry: typeof serverRegistry) => registry.BYPASS_CORRIDORS_BY_CHOKEPOINT.hormuz_strait ?? [];
 
@@ -58,5 +59,25 @@ describe('Hormuz crude pipelines in the bypass registries', () => {
     assert.ok(!saudiIds.includes('hormuz_adcop_pipeline'), saudiIds.join(', '));
     const qatarIds = qatar.bypassOptions.map((b) => b.id);
     assert.ok(!qatarIds.some((id) => id === 'hormuz_east_west_pipeline' || id === 'hormuz_adcop_pipeline'), qatarIds.join(', '));
+  });
+
+  it('every usable corridor has its own map endpoints; the fallback draws a zero-length arc at the chokepoint', () => {
+    for (const c of serverRegistry.BYPASS_CORRIDORS) {
+      if (c.suitableCargoTypes.length === 0) continue; // "no bypass" placeholders
+      const g = BYPASS_CORRIDOR_GEOMETRY_BY_ID[c.id];
+      assert.ok(g, `${c.id} has no geometry`);
+      assert.notDeepEqual(g.fromPort, g.toPort, `${c.id} is a zero-length arc`);
+    }
+  });
+
+  it('the route explorer draws East-West from Abqaiq to Yanbu and ADCOP from Habshan to Fujairah', async () => {
+    const pipeline = async (fromIso2: string, id: string) => (await computeLane({ fromIso2, toIso2: 'JP', hs2: '27', cargoType: 'tanker' } as never, new Map()))
+      .bypassOptions.find((b) => b.id === id)!;
+    const eastWest = await pipeline('SA', 'hormuz_east_west_pipeline');
+    const adcop = await pipeline('AE', 'hormuz_adcop_pipeline');
+    // Abqaiq lies on the Gulf side; Yanbu on the Red Sea, west of 40E.
+    assert.ok(eastWest.fromPort!.lon > 49 && eastWest.toPort!.lon < 40, JSON.stringify(eastWest));
+    // Habshan lies inside the Gulf, west of the Strait (56.5E); Fujairah outside it, on the Gulf of Oman.
+    assert.ok(adcop.fromPort!.lon < 54 && adcop.toPort!.lon > 56, JSON.stringify(adcop));
   });
 });
