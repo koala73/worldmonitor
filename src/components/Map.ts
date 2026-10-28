@@ -989,9 +989,11 @@ export class MapComponent {
   }
 
   // A collapsed map (phones start with the map section hidden) has no size, so
-  // render() draws nothing and there is no base layer to verify yet.
+  // render() draws nothing and there is no base layer to verify yet. Reads the
+  // cached size like render() so a visible map takes no forced reflow (#5017).
   private isCollapsed(): boolean {
-    return this.container.clientWidth === 0 || this.container.clientHeight === 0;
+    const { width, height } = this.getKnownContainerSize();
+    return width === 0 || height === 0;
   }
 
   private runHealthCheck(): void {
