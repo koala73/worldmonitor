@@ -2240,13 +2240,34 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return wrap;
   }
 
+  /**
+   * Non-IEA importers (India, China): a dated reserve estimate, never IEA
+   * cover. Cover days are shown only when the oil loss was modeled.
+   */
+  private renderReserveEstimate(result: ComputeEnergyShockScenarioResponse): HTMLElement | null {
+    const est = result.reserveEstimate;
+    if (!est || result.ieaStocksCoverage) return null;
+    const mb = `${est.centralMb.toLocaleString('en')} M bbl`;
+    const oilModeled = result.dataAvailable && result.jodiOilCoverage && result.comtradeCoverage && result.effectiveCoverDays > 0
+      && !(result.limitations ?? []).some((l) => l.includes('effective cover are not modeled'));
+    const credibility = est.credibility === 'low' ? '; low credibility' : '';
+    const text = oilModeled && est.coverDaysLow != null && est.coverDaysHigh != null
+      ? `Estimated strategic reserve cover (not IEA data): ~${result.effectiveCoverDays} days under this scenario (range ${est.coverDaysLow}–${est.coverDaysHigh}; ${est.scope}, ${mb}, as of ${est.asOf}${credibility})`
+      : `Estimated strategic reserve (not IEA data): ${mb}, as of ${est.asOf}${credibility}; cover not modeled for this scenario`;
+    const row = this.el('div', 'cdp-economic-source cdp-shock-reserve-estimate', text);
+    row.style.cssText += ';margin-bottom:4px';
+    return row;
+  }
+
   private renderShockResult(result: ComputeEnergyShockScenarioResponse): HTMLElement {
     const container = this.el('div', '');
 
     if (!result.dataAvailable && !result.gasSensitivity?.dataAvailable) {
-      // Measured Gulf shares are still worth showing when the loss is not.
+      // Measured Gulf shares and a reserve estimate are still worth showing when the loss is not.
       const shares = this.renderCrudeShareBaselines(result);
       if (shares) container.append(shares);
+      const reserve = this.renderReserveEstimate(result);
+      if (reserve) container.append(reserve);
       container.append(this.el('div', 'cdp-economic-source', result.assessment));
       return container;
     }
@@ -2329,19 +2350,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
       coverRow.textContent = coverText;
       container.append(coverRow);
-    } else if (result.reserveEstimate) {
-      // Non-IEA importers (India, China): a dated reserve estimate, never IEA cover.
-      const est = result.reserveEstimate;
-      const mb = `${est.centralMb.toLocaleString('en')} M bbl`;
-      const oilModeled = result.jodiOilCoverage && result.comtradeCoverage && result.effectiveCoverDays > 0
-        && !(result.limitations ?? []).some((l) => l.includes('effective cover are not modeled'));
-      const credibility = est.credibility === 'low' ? '; low credibility' : '';
-      const text = oilModeled && est.coverDaysLow != null && est.coverDaysHigh != null
-        ? `Estimated strategic reserve cover (not IEA data): ~${result.effectiveCoverDays} days under this scenario (range ${est.coverDaysLow}–${est.coverDaysHigh}; ${est.scope}, ${mb}, as of ${est.asOf}${credibility})`
-        : `Estimated strategic reserve (not IEA data): ${mb}, as of ${est.asOf}${credibility}; cover not modeled for this scenario`;
-      const row = this.el('div', 'cdp-economic-source cdp-shock-reserve-estimate', text);
-      row.style.cssText += ';margin-bottom:4px';
-      container.append(row);
+    } else {
+      const reserve = this.renderReserveEstimate(result);
+      if (reserve) container.append(reserve);
     }
 
     const assessmentEl = this.el('div', '');

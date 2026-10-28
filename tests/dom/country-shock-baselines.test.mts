@@ -183,3 +183,15 @@ it('flags a low-credibility reserve estimate (China) and says when cover is not 
   }));
   expect(notModeled.querySelector('.cdp-shock-reserve-estimate')?.textContent).toBe('Estimated strategic reserve (not IEA data): 24 M bbl, as of 2026-03-23; cover not modeled for this scenario');
 });
+
+it('shows the reserve estimate, without cover days, when an oil-only result has no usable crude imports (India)', () => {
+  const el = render(japan({
+    countryCode: 'IN', ieaStocksCoverage: false, dataAvailable: false, jodiOilCoverage: false, coverageLevel: 'unsupported',
+    crudeLossKbd: 0, effectiveCoverDays: 0, products: [], gasSensitivity: undefined,
+    assessment: 'Insufficient import data for India to model Strait of Hormuz exposure.',
+    limitations: ['JODI crude import observation unavailable for IN; oil loss, product deficits and effective cover are not modeled (reported as 0).'],
+    reserveEstimate: { scope: 'ISPRL strategic reserve', asOf: '2026-03-23', credibility: 'high', lowMb: 21.4, centralMb: 24, highMb: 39 },
+  }));
+  expect(el.querySelector('.cdp-shock-reserve-estimate')?.textContent).toBe('Estimated strategic reserve (not IEA data): 24 M bbl, as of 2026-03-23; cover not modeled for this scenario');
+  expect(el.textContent).toContain('Insufficient import data for India');
+});

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { NON_IEA_RESERVES } from '../server/worldmonitor/intelligence/v1/_non-iea-reserves.ts';
-import { computeEffectiveCoverDaysWithRamp } from '../server/worldmonitor/intelligence/v1/_shock-compute.ts';
+import { buildAssessment, computeEffectiveCoverDaysWithRamp } from '../server/worldmonitor/intelligence/v1/_shock-compute.ts';
 import { computeEnergyShockScenario } from '../server/worldmonitor/intelligence/v1/compute-energy-shock.ts';
 import { getCountryCostShock } from '../server/worldmonitor/supply-chain/v1/get-country-cost-shock.ts';
 import { buildCrudeImportOrigin, crudeImportOriginPeriods } from '../scripts/seed-oil-trade-series.mjs';
@@ -99,6 +99,15 @@ describe('handler: cover from a non-IEA reserve estimate', () => {
     assert.doesNotMatch(r.assessment, /0\.0%/);
     assert.match(r.assessment, /no refined-product demand observation/);
     assert.match(r.assessment, /estimated strategic reserve cover: ~\d+ days \(not IEA data\)/);
+  });
+
+  it('recorded demand with zero deficits names a 0.0% deficit, not a missing demand observation', () => {
+    // Observed zero crude imports: demand is recorded, every deficit is 0.
+    const products = [{ product: 'Gasoline', deficitPct: 0 }, { product: 'Diesel', deficitPct: 0 }];
+    const msg = buildAssessment('JP', 'hormuz_strait', true, 0.4, 30, 30, 50, products, 'full', false, true, true);
+    assert.doesNotMatch(msg, /no refined-product demand observation/);
+    assert.match(msg, /faces 0\.0% gasoline deficit/);
+    assert.match(buildAssessment('JP', 'hormuz_strait', true, 0.4, 30, 30, 50, [], 'full', false, true, true), /no refined-product demand observation/);
   });
 
   it('China: the estimate carries its low credibility and range', async (t) => {

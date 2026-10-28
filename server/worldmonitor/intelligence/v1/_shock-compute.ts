@@ -340,17 +340,15 @@ export function buildAssessment(
   if (effectiveCoverDays > 90) {
     return `With ${coverPhrase}, ${country} can bridge a ${disruptionPct}% ${cp} disruption for ~${effectiveCoverDays} days${mix}${degradedNote}.`;
   }
-  const worst = products.reduce<{ product: string; deficitPct: number }>(
-    (best, p) => (p.deficitPct > best.deficitPct ? p : best),
-    { product: '', deficitPct: 0 },
-  );
-  const worstDeficit = worst.deficitPct;
-  const worstProduct = worst.product.toLowerCase();
   const coverText = estimated ? `estimated strategic reserve cover: ~${effectiveCoverDays} days (not IEA data)` : `IEA cover: ${ieaCoverText}`;
   // No product with recorded demand: there is no deficit to name, not a 0.0% one.
-  if (!worst.product) {
+  if (products.length === 0) {
     return `${country} has no refined-product demand observation, so product deficits under ${disruptionPct}% ${cp} disruption${mix} are not modeled; ${coverText}${degradedNote}.`;
   }
+  // Recorded demand with every deficit at 0 still names a product (a measured 0.0%).
+  const worst = products.reduce((best, p) => (p.deficitPct > best.deficitPct ? p : best));
+  const worstDeficit = worst.deficitPct;
+  const worstProduct = worst.product.toLowerCase();
   return `${country} faces ${worstDeficit.toFixed(1)}% ${worstProduct} deficit under ${disruptionPct}% ${cp} disruption${mix}; ${coverText}${degradedNote}.`;
 }
 
