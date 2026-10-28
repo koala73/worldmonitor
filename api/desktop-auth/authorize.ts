@@ -111,17 +111,26 @@ export async function desktopAuthAuthorizeHandler(
   return jsonResponse({ code }, 200, cors);
 }
 
+/**
+ * The limiter guards the outbound Clerk session check, so it fails closed: an
+ * unavailable limiter must not let one caller spend the shared Clerk quota.
+ */
+export function desktopAuthorizeRateLimitPolicy(userId: string) {
+  return {
+    scope: 'desktop-auth-authorize',
+    identifier: `user:${userId}`,
+    limit: 10,
+    window: '10 m',
+    failClosed: true,
+  } as const;
+}
+
 export default async function handler(request: Request): Promise<Response> {
   return desktopAuthAuthorizeHandler(request, {
     resolveSession: resolveVerifiedClerkSession,
     verifySession: verifyClerkSessionActive,
     storeCode: storeDesktopAuthCode,
-    rateLimit: (req, userId, cors) => checkRateLimit(req, cors, {
-      scope: 'desktop-auth-authorize',
-      identifier: `user:${userId}`,
-      limit: 10,
-      window: '10 m',
-    }),
+    rateLimit: (req, userId, cors) => checkRateLimit(req, cors, desktopAuthorizeRateLimitPolicy(userId)),
     audit: logDesktopAuthEvent,
   });
 }

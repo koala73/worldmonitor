@@ -310,3 +310,36 @@ describe('Pro MCP grant: the handler requires a live Clerk session (production r
     assert.equal(sessionCalls().length, 1);
   });
 });
+
+describe('the limiter in front of the Clerk session check fails closed', async () => {
+  const { default: authorizeRoute, desktopAuthorizeRateLimitPolicy } = await import('../api/desktop-auth/authorize.ts');
+  const { default: mintRoute, mintRateLimitPolicy } = await import('../api/internal/mcp-grant-mint.ts');
+
+  // The fetch stub throws for every Upstash limiter call, so the production
+  // limiter sees a Redis outage. Failing open would put one caller's requests
+  // straight onto the shared Clerk Backend API quota.
+  it('desktop sign-in answers 503 without asking Clerk when the limiter is down', async () => {
+    clerk.sessions.set('sess_live', { status: 'active' });
+    const bearer = await signToken({ sid: 'sess_live' });
+    const response = await authorizeRoute(
+      post('https://api.worldmonitor.app/api/desktop-auth/authorize', { code_challenge: CHALLENGE }, bearer),
+    );
+    assert.equal(response.status, 503);
+    assert.deepEqual(sessionCalls(), []);
+  });
+
+  it('the MCP grant mint answers 503 without asking Clerk when the limiter is down', async () => {
+    clerk.sessions.set('sess_live', { status: 'active' });
+    const bearer = await signToken({ sid: 'sess_live' });
+    const response = await mintRoute(
+      post('https://api.worldmonitor.app/api/internal/mcp-grant-mint', { nonce: 'n'.repeat(32) }, bearer),
+    );
+    assert.equal(response.status, 503);
+    assert.deepEqual(sessionCalls(), []);
+  });
+
+  it('both production policies are fail-closed', () => {
+    assert.equal(desktopAuthorizeRateLimitPolicy('user_victim').failClosed, true);
+    assert.equal(mintRateLimitPolicy('user_victim').failClosed, true);
+  });
+});

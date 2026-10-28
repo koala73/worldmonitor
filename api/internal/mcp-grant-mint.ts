@@ -420,15 +420,24 @@ export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Re
 // Production handler — wires up the real deps.
 // ---------------------------------------------------------------------------
 
+/**
+ * The limiter guards the outbound Clerk session check, so it fails closed: an
+ * unavailable limiter must not let one caller spend the shared Clerk quota.
+ */
+export function mintRateLimitPolicy(userId: string) {
+  return {
+    scope: 'mcp-grant-mint',
+    identifier: `user:${userId}`,
+    limit: 20,
+    window: '10 m',
+    failClosed: true,
+  } as const;
+}
+
 export default async function handler(req: Request): Promise<Response> {
   return mintGrantHandler(req, {
     resolveSession: resolveVerifiedClerkSession,
-    rateLimit: (request, userId) => checkRateLimit(request, NO_STORE_JSON, {
-      scope: 'mcp-grant-mint',
-      identifier: `user:${userId}`,
-      limit: 20,
-      window: '10 m',
-    }),
+    rateLimit: (request, userId) => checkRateLimit(request, NO_STORE_JSON, mintRateLimitPolicy(userId)),
     verifySession: verifyClerkSessionActive,
     redisGet: rawRedisGet,
     redisSetEx: rawRedisSetEx,
