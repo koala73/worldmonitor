@@ -195,12 +195,27 @@ describe('assertZipExpansionWithin', () => {
     assert.throws(() => assertZipExpansionWithin(buf, 1_000_000), /expands past/);
   });
 
+  it('measures every central-directory record, whatever entry count the archive declares', async () => {
+    const buf = Buffer.from(await padded(2_000_000));
+    const eocd = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+    buf.writeUInt16LE(1, eocd + 8);
+    buf.writeUInt16LE(1, eocd + 10);
+    assert.throws(() => assertZipExpansionWithin(buf, 1_000_000), /expands past/);
+  });
+
   it('refuses a buffer that is not a readable ZIP', () => {
     assert.throws(() => assertZipExpansionWithin(Buffer.from('PK not really a zip'), 1_000_000), /ZIP/);
   });
 });
 
 describe('EPDK crude import tables', () => {
+  it('parses a Word document with unclosed tags in linear time', async () => {
+    const doc = await docx(`${para('Tablo 2.1.1. Aralık 2025')}${'<w:tbl><w:tr><w:tc><w:p>'.repeat(40_000)}`);
+    const started = Date.now();
+    assert.deepEqual(await tablesFromDocx(doc), []);
+    assert.ok(Date.now() - started < 1000, `took ${Date.now() - started} ms`);
+  });
+
   it('parses Turkish-formatted tonnes; a blank cell is zero; text is not a number', () => {
     assert.equal(parseTonnes('2.923.092,68'), 2923092.68);
     assert.equal(parseTonnes('0,00'), 0);
@@ -371,6 +386,23 @@ describe('EPDK fetch', () => {
     assert.equal(months.size, 0);
     assert.deepEqual(failedMonths, ['2025-12']);
     assert.match(logs.join('\n'), /expands past/);
+  });
+
+  it('checks the deadline before each document, not only each month', async () => {
+    const fetched = [];
+    const { months, failedMonths } = await fetchEpdkCrudeImports({
+      wantedMonths: ['2025-12'],
+      fetchText: async () => LISTING,
+      fetchBuffer: async (url) => {
+        fetched.push(url.split('id=')[1]);
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        return Buffer.from('%PDF-1.4');
+      },
+      deadlineAtMs: Date.now() + 40,
+    });
+    assert.deepEqual(fetched, ['decdocx']);
+    assert.equal(months.size, 0);
+    assert.deepEqual(failedMonths, ['2025-12']);
   });
 
   it('a listing with no report months throws, so the seeder keeps its previous section', async () => {

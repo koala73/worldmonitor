@@ -132,6 +132,27 @@ const wordText = (xml) => decodeEntities(
   [...String(xml).matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>|<w:tab\/>|<w:br\/>/g)].map((m) => m[1] ?? ' ').join(''),
 ).replace(/\s+/g, ' ').trim();
 
+// Element spans found with indexOf, never a lazy `[\s\S]*?` regex: that
+// rescans the rest of the document for every unclosed tag. `open` is the tag
+// name without `>`, so `<w:p` matches `<w:p>` and `<w:p w:rsidR=..>` but not
+// `<w:pPr>`. Stops at the first unclosed element.
+function elementSpans(xml, open, close) {
+  const spans = [];
+  let at = 0;
+  for (;;) {
+    const start = xml.indexOf(open, at);
+    if (start < 0) return spans;
+    if (/[\w:-]/.test(xml[start + open.length] ?? '')) {
+      at = start + open.length;
+      continue;
+    }
+    const end = xml.indexOf(close, start + open.length);
+    if (end < 0) return spans;
+    spans.push(xml.slice(start, end + close.length));
+    at = end + close.length;
+  }
+}
+
 /** Tables of a .docx, each titled by the last paragraph before it. */
 export async function tablesFromDocx(buffer) {
   const zip = await JSZip.loadAsync(buffer);
@@ -141,14 +162,18 @@ export async function tablesFromDocx(buffer) {
   const tables = [];
   let cursor = 0;
   let lastParagraph = '';
-  for (const t of xml.matchAll(/<w:tbl>[\s\S]*?<\/w:tbl>/g)) {
-    for (const p of xml.slice(cursor, t.index).matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)) {
-      const text = wordText(p[0]);
+  for (;;) {
+    const start = xml.indexOf('<w:tbl>', cursor);
+    if (start < 0) break;
+    const end = xml.indexOf('</w:tbl>', start);
+    if (end < 0) break;
+    for (const p of elementSpans(xml.slice(cursor, start), '<w:p', '</w:p>')) {
+      const text = wordText(p);
       if (text) lastParagraph = text;
     }
-    cursor = t.index + t[0].length;
-    const rows = [...t[0].matchAll(/<w:tr\b[\s\S]*?<\/w:tr>/g)]
-      .map((r) => [...r[0].matchAll(/<w:tc\b[\s\S]*?<\/w:tc>/g)].map((c) => wordText(c[0])));
+    cursor = end + '</w:tbl>'.length;
+    const rows = elementSpans(xml.slice(start, cursor), '<w:tr', '</w:tr>')
+      .map((r) => elementSpans(r, '<w:tc', '</w:tc>').map(wordText));
     tables.push({ title: lastParagraph, rows });
   }
   return tables;
@@ -343,11 +368,14 @@ export function assertZipExpansionWithin(buf, maxBytes) {
     if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
   }
   if (eocd < 0) throw bad('no end of central directory');
-  const entries = buf.readUInt16LE(eocd + 10);
+  // Walk records by signature, as JSZip does: the declared entry count can
+  // understate the directory and leave entries unmeasured.
+  const declared = buf.readUInt16LE(eocd + 10);
   let at = buf.readUInt32LE(eocd + 16);
   let total = 0;
-  for (let n = 0; n < entries; n++) {
-    if (at + 46 > buf.length || buf.readUInt32LE(at) !== 0x02014b50) throw bad('central directory');
+  let seen = 0;
+  while (at + 46 <= buf.length && buf.readUInt32LE(at) === 0x02014b50) {
+    seen++;
     const method = buf.readUInt16LE(at + 10);
     const compressed = buf.readUInt32LE(at + 20);
     const local = buf.readUInt32LE(at + 42);
@@ -372,6 +400,7 @@ export function assertZipExpansionWithin(buf, maxBytes) {
     }
     if (total > maxBytes) throw new Error(`document expands past ${maxBytes} bytes`);
   }
+  if (seen === 0 || seen < declared) throw bad('central directory');
 }
 
 /**
@@ -400,6 +429,10 @@ export async function fetchEpdkCrudeImports({ wantedMonths, fetchText, fetchBuff
     const docs = report.documents.filter((d) => d.kind in rank).sort((a, b) => rank[a.kind] - rank[b.kind]);
     let found = null;
     for (const doc of docs) {
+      if (Date.now() >= deadlineAtMs) {
+        failures.push(`${report.month}: deadline`);
+        break;
+      }
       try {
         const buf = await fetchBuffer(doc.url);
         if (!isZip(buf)) continue;
