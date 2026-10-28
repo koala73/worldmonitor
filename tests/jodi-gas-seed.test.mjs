@@ -200,15 +200,18 @@ describe('parseCsvRows', () => {
     assert.equal(rows[0].flow, 'IMPLNG');
   });
 
-  it('excludes assessment_code 3 (null/uncertain)', () => {
+  // JODI code 3 means "not assessed", not missing. China files every gas cell
+  // under it, as do Russia, Iraq, Indonesia, Malaysia and others (publication
+  // 28, 2026-10-19). Absence is a non-numeric cell, never the code (#9393).
+  it('keeps assessment_code 3 rows with their reported value', () => {
     const csv = [
       SAMPLE_CSV_HEADER,
       makeRow('DE', '2025-10', 'IMPLNG', 'TJ', '95000', '1'),
       makeRow('DE', '2025-10', 'IMPPIP', 'TJ', '380000', '3'),
     ].join('\n');
     const rows = parseCsvRows(csv);
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0].flow, 'IMPLNG');
+    assert.equal(rows.length, 2);
+    assert.equal(rows.find(r => r.flow === 'IMPPIP')?.obs, 380000);
   });
 
   it('includes assessment_code 1 and 2', () => {
@@ -301,7 +304,7 @@ describe('buildCountryRecords', () => {
     assert.equal(records[0].lngShareOfImports, null);
   });
 
-  it('assessment_code 3 rows are excluded so field becomes null', () => {
+  it('a placeholder cell leaves its field null', () => {
     const rows = [
       { area: 'FR', period: '2025-10', flow: 'IMPLNG', obs: null },
       { area: 'FR', period: '2025-10', flow: 'TOTIMPSB', obs: 200000 },
@@ -318,6 +321,30 @@ describe('buildCountryRecords', () => {
     const records = buildCountryRecords(rows);
     assert.equal(records[0].dataMonth, '2025-10');
     assert.equal(records[0].lngImportsTj, 100);
+  });
+
+  it('skips a month of placeholder cells and uses the earlier reported month', () => {
+    const rows = parseCsvRows([
+      SAMPLE_CSV_HEADER,
+      makeRow('US', '2025-11', 'IMPLNG', 'TJ', '-', '3'),
+      makeRow('US', '2025-11', 'TOTDEMO', 'TJ', 'x', '3'),
+      makeRow('US', '2025-10', 'IMPLNG', 'TJ', '100', '1'),
+    ].join('\n'));
+    const records = buildCountryRecords(rows);
+    assert.equal(records.length, 1);
+    assert.equal(records[0].dataMonth, '2025-10');
+    assert.equal(records[0].lngImportsTj, 100);
+  });
+
+  it('uses the newest month even when its values are unassessed (code 3)', () => {
+    const rows = parseCsvRows([
+      SAMPLE_CSV_HEADER,
+      makeRow('RU', '2026-08', 'INDPROD', 'TJ', '2100000', '3'),
+      makeRow('RU', '2026-07', 'INDPROD', 'TJ', '2000000', '1'),
+    ].join('\n'));
+    const records = buildCountryRecords(rows);
+    assert.equal(records[0].dataMonth, '2026-08');
+    assert.equal(records[0].productionTj, 2100000);
   });
 
   it('includes seededAt ISO string', () => {
@@ -533,5 +560,24 @@ describe('golden fixture (JODI Gas CSV)', () => {
     assert.ok(de != null);
     assert.ok(typeof de.lngShareOfImports === 'number', 'lngShareOfImports should be computed');
     assert.ok(de.lngShareOfImports > 0 && de.lngShareOfImports < 1, 'lngShareOfImports should be between 0 and 1');
+  });
+
+  // The CN rows are verbatim from JODI gas publication 28 (2026-10-19): every
+  // China cell is ASSESSMENT_CODE 3, and the code-1/2 filter dropped China.
+  it('publishes China from its code-3 rows, and the China diagnostic reads ok', () => {
+    const now = new Date('2026-10-28T00:00:00.000Z');
+    const records = gasSeed.buildGasRecordsFromCsv(csv, now);
+    const cn = records.find(r => r.iso2 === 'CN');
+    assert.ok(cn != null, 'CN record missing');
+    assert.equal(cn.dataMonth, '2026-08');
+    assert.equal(cn.lngImportsTj, 305455);
+    assert.equal(cn.pipeImportsTj, 305845);
+    assert.equal(cn.totalImportsTj, 611299);
+    assert.equal(cn.productionTj, 1019793);
+    assert.equal(cn.totalDemandTj, null, 'CN files no TOTDEMO in that month');
+    assert.equal(cn.lngShareOfImports, 0.4997);
+    assert.deepEqual(gasSeed.assessChinaGasCoverage(records, now), {
+      ok: true, reason: null, dataMonth: '2026-08', ageMonths: 2,
+    });
   });
 });

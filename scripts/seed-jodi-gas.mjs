@@ -65,7 +65,6 @@ export function parseCsvRows(csvText) {
   const idxFlow   = header.indexOf('FLOW_BREAKDOWN');
   const idxUnit   = header.indexOf('UNIT_MEASURE');
   const idxObs    = header.indexOf('OBS_VALUE');
-  const idxAssess = header.indexOf('ASSESSMENT_CODE');
 
   if (idxArea < 0 || idxPeriod < 0 || idxFlow < 0 || idxUnit < 0 || idxObs < 0) {
     throw new Error('CSV missing required columns');
@@ -80,9 +79,10 @@ export function parseCsvRows(csvText) {
     if (unit !== UNIT_FILTER) continue;
     const flow = cells[idxFlow]?.trim().replace(/^"|"$/g, '');
     if (!FLOW_MAP[flow]) continue;
-    const assessRaw = idxAssess >= 0 ? cells[idxAssess]?.trim().replace(/^"|"$/g, '') : '';
-    const assessNum = Number(assessRaw);
-    if (assessNum !== 1 && assessNum !== 2) continue;
+    // ASSESSMENT_CODE 3 means JODI has not assessed the value, not that it is
+    // missing: China, Russia, Iraq, Indonesia and Malaysia file every gas cell
+    // under it (publication 28). Absence is a non-numeric cell, which
+    // parseObsValue turns into null (#9393 made the same fix for oil).
     const obs = parseObsValue(cells[idxObs]);
     rows.push({
       area:   cells[idxArea]?.trim().replace(/^"|"$/g, ''),
@@ -106,7 +106,9 @@ export function buildCountryRecords(rows) {
     const periods = [...new Set(areaRows.map(r => r.period))].sort().reverse();
     let chosen = null;
     for (const p of periods) {
-      if (areaRows.some(r => r.period === p)) {
+      // A month counts only if it carries a number, so a newest month of
+      // placeholder cells never hides the last reported one.
+      if (areaRows.some(r => r.period === p && r.obs !== null)) {
         chosen = p;
         break;
       }
@@ -209,7 +211,7 @@ export async function buildGasChinaRowDiagnostic(records, now = new Date(), deps
  */
 export function buildGasRecordsFromCsv(csvText, now = new Date()) {
   const rows = parseCsvRows(csvText);
-  console.log(`  Rows after TJ/flow/assessment filter: ${rows.length}`);
+  console.log(`  Rows after TJ/flow filter: ${rows.length}`);
   const parsed = buildCountryRecords(rows);
 
   const chinaCoverage = assessChinaGasCoverage(parsed, now);
