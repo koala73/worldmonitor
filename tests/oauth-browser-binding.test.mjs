@@ -195,7 +195,13 @@ describe('Pro grant bridge requires the binding', () => {
 
   async function bridgeDeps() {
     return {
+      // Shared by the mint and context handlers: context resolves the userId
+      // alone; mint takes the locally verified session and injects the limiter
+      // and live-session check as pass-throughs.
       resolveUserId: async () => 'user_victim',
+      resolveSession: async () => ({ userId: 'user_victim', orgId: null, role: 'pro', sessionId: 'sess_victim' }),
+      rateLimit: async () => null,
+      verifySession: async () => 'active',
       redisGet: async (key) => {
         const raw = store.get(key);
         return raw == null ? null : JSON.parse(raw);
