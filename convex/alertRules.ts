@@ -9,7 +9,12 @@ import {
 } from "./_generated/server";
 import { channelTypeValidator, digestModeValidator, quietHoursOverrideValidator, sensitivityValidator } from "./constants";
 import { CHOKEPOINT_ALERT_IDS } from "../shared/chokepoint-alert-ids";
+import { PREFERENCE_VARIANTS } from "../shared/cloud-preferences-contract";
 import { mergeEntitlementFeatures } from "./lib/entitlements";
+
+// Every write upserts one row per (userId, variant), so a free-form string let
+// one account mint rows until getAlertRules passed Convex's 16 MiB read limit.
+const alertVariantValidator = v.union(...PREFERENCE_VARIANTS.map((variant) => v.literal(variant)));
 
 type DigestMode = "realtime" | "daily" | "twice_daily" | "weekly";
 type Sensitivity = "all" | "high" | "critical";
@@ -219,7 +224,7 @@ export const getAlertRules = query({
 
 export const setAlertRules = mutation({
   args: {
-    variant: v.string(),
+    variant: alertVariantValidator,
     enabled: v.boolean(),
     eventTypes: v.array(v.string()),
     sensitivity: v.optional(sensitivityValidator),
@@ -309,7 +314,7 @@ export const setAlertRules = mutation({
 
 export const setDigestSettings = mutation({
   args: {
-    variant: v.string(),
+    variant: alertVariantValidator,
     digestMode: digestModeValidator,
     digestHour: v.optional(v.number()),
     digestTimezone: v.optional(v.string()),
@@ -382,7 +387,7 @@ export const getAlertRulesByUserId = internalQuery({
 export const setAlertRulesForUser = internalMutation({
   args: {
     userId: v.string(),
-    variant: v.string(),
+    variant: alertVariantValidator,
     enabled: v.boolean(),
     eventTypes: v.array(v.string()),
     sensitivity: v.optional(sensitivityValidator),
@@ -453,7 +458,7 @@ export const setAlertRulesForUser = internalMutation({
 });
 
 const QUIET_HOURS_ARGS = {
-  variant: v.string(),
+  variant: alertVariantValidator,
   quietHoursEnabled: v.boolean(),
   quietHoursStart: v.optional(v.number()),
   quietHoursEnd: v.optional(v.number()),
@@ -547,7 +552,7 @@ export const setQuietHours = mutation({
 export const setDigestSettingsForUser = internalMutation({
   args: {
     userId: v.string(),
-    variant: v.string(),
+    variant: alertVariantValidator,
     digestMode: digestModeValidator,
     digestHour: v.optional(v.number()),
     digestTimezone: v.optional(v.string()),
@@ -667,7 +672,7 @@ export const setQuietHoursForUser = internalMutation({
 export const setNotificationConfigForUser = internalMutation({
   args: {
     userId: v.string(),
-    variant: v.string(),
+    variant: alertVariantValidator,
     enabled: v.optional(v.boolean()),
     eventTypes: v.optional(v.array(v.string())),
     sensitivity: v.optional(sensitivityValidator),
@@ -764,6 +769,32 @@ export const setNotificationConfigForUser = internalMutation({
         updatedAt: now,
       });
     }
+  },
+});
+
+// One-off repair for rows written before variant was a closed set. Pages the
+// whole table by bytes, not just rows, because the bloated rows are the reason
+// a plain .collect() fails. Walk it with dryRun first, then for real, passing
+// nextCursor back until it is null:
+//   npx convex run alertRules:purgeUnknownVariantRules '{"cursor":null,"dryRun":true}'
+export const purgeUnknownVariantRules = internalMutation({
+  args: { cursor: v.union(v.string(), v.null()), dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, args) => {
+    const known: ReadonlySet<string> = new Set(PREFERENCE_VARIANTS);
+    const page = await ctx.db
+      .query("alertRules")
+      .paginate({ cursor: args.cursor, numItems: 100, maximumBytesRead: 4 * 1024 * 1024 });
+    let deleted = 0;
+    const unknownByVariant: Record<string, number> = {};
+    for (const rule of page.page) {
+      if (known.has(rule.variant)) continue;
+      const label = rule.variant.slice(0, 40);
+      unknownByVariant[label] = (unknownByVariant[label] ?? 0) + 1;
+      if (args.dryRun) continue;
+      await ctx.db.delete(rule._id);
+      deleted += 1;
+    }
+    return { deleted, unknownByVariant, nextCursor: page.isDone ? null : page.continueCursor };
   },
 });
 

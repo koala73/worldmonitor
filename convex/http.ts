@@ -773,6 +773,12 @@ const CHANNEL_TYPES: ReadonlySet<string> = new Set(channelTypeValidator.members.
 function isChannelType(value: unknown): value is Infer<typeof channelTypeValidator> {
   return typeof value === "string" && CHANNEL_TYPES.has(value);
 }
+const ALERT_RULE_ACTIONS: ReadonlySet<string> = new Set([
+  "set-alert-rules",
+  "set-quiet-hours",
+  "set-digest-settings",
+  "set-notification-config",
+]);
 
 http.route({
   path: "/relay/deactivate",
@@ -1140,6 +1146,16 @@ http.route({
           channelType: body.channelType as "telegram" | "slack" | "email" | "discord" | "teams",
         });
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      // The alertRules mutations validate variant too; answering here keeps a
+      // probe's bad variant a 400 instead of an ArgumentValidationError 500.
+      if (
+        ALERT_RULE_ACTIONS.has(action as string) &&
+        typeof body.variant === "string" && body.variant &&
+        !isPreferenceVariant(body.variant)
+      ) {
+        return new Response(JSON.stringify({ error: "INVALID_VARIANT" }), { status: 400, headers: { "Content-Type": "application/json" } });
       }
 
       if (action === "set-alert-rules") {
