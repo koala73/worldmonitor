@@ -18,6 +18,19 @@ export interface ServerFeed {
    * verify_claim) reads it; the digest and panels never see its items.
    */
   depthUrl?: string;
+  /**
+   * The feed republishes a dated snapshot: items carry no date of their own,
+   * so an undated item takes the channel's date. Opt-in per feed, because a
+   * static page that only dates its channel must still fail the date gate.
+   */
+  channelDated?: boolean;
+  /**
+   * Hosts this feed's items link to besides the feed host and its publisher
+   * family's domains, for a feed that lists another site's pages (GitHub
+   * Trending links to github.com). A host many owners share belongs here, on
+   * the one feed, never in a publisher family.
+   */
+  linkHosts?: string[];
 }
 
 export function isServerFeedReachableForLanguage(

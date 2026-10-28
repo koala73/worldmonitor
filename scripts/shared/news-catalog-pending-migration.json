@@ -1,6 +1,4 @@
 {
   "$comment": "Browser sources with no server placement yet (unified-news-catalog plan U6). Shrink-only: tests/news-catalog-coverage.test.mts fails if a name is added, or if a listed name already has a server placement. Remove names as they migrate and lower PENDING_CEILING to match.",
-  "names": [
-    "GitHub Trending"
-  ]
+  "names": []
 }

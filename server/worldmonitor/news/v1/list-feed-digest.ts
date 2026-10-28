@@ -1280,6 +1280,34 @@ function extractFirstDateTag(block: string, isAtom: boolean, lower = asciiLower(
   return '';
 }
 
+/** Epoch ms of a feed date that parses and is not in the future, else null. */
+function usableFeedDateMs(raw: string): number | null {
+  if (!raw) return null;
+  const ms = new Date(normalizeFeedDateZone(raw)).getTime();
+  if (Number.isNaN(ms) || ms > Date.now() + FUTURE_DATE_TOLERANCE_MS) return null;
+  return ms;
+}
+
+/**
+ * The date of a snapshot feed's channel, read from the markup before its first
+ * item, so an item's own date is never mistaken for it.
+ */
+function channelDateMs(xml: string, xmlLower: string, isAtom: boolean): number | null {
+  const opener = isAtom ? '<entry' : '<item';
+  let end = xmlLower.indexOf(opener);
+  while (end !== -1 && !/[\s>]/.test(xmlLower[end + opener.length] ?? '')) {
+    end = xmlLower.indexOf(opener, end + 1);
+  }
+  const head = end === -1 ? xml : xml.slice(0, end);
+  const tags = isAtom ? ['updated', 'published'] : ['pubDate', 'lastBuildDate', 'dc:date'];
+  const headLower = asciiLower(head);
+  for (const tag of tags) {
+    const value = extractTag(head, tag, headLower);
+    if (value) return usableFeedDateMs(value);
+  }
+  return null;
+}
+
 function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResult | null {
   const items: ParsedItem[] = [];
   const countryItems: NonNullable<ParseResult['countryItems']> = [];
@@ -1292,6 +1320,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   const isAtom = matches.length === 0;
   if (isAtom) matches = scanTagBlocks(xml, xmlLower, 'entry');
   const originPublisherTrusted = !isAtom && isTrustedOriginAggregator(feed.url);
+  const snapshotDateMs = feed.channelDated ? channelDateMs(xml, xmlLower, isAtom) : null;
 
   // #4920 coverage ledger: items beyond the per-feed cap were previously
   // dropped with no counter anywhere — fully invisible.
@@ -1337,22 +1366,14 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // require at least one non-empty, parseable, non-future timestamp. Items
     // that fail the gate are dropped — never silently stamped with Date.now()
     // (which is the bug that let static institutional pages reach the brief).
+    // A channel-dated snapshot feed's undated item takes the channel's date,
+    // which passes the same gate.
     const pubDateStr = extractFirstDateTag(block, isAtom, blockLower);
-    if (!pubDateStr) {
+    const publishedAt = pubDateStr ? usableFeedDateMs(pubDateStr) : snapshotDateMs;
+    if (publishedAt === null) {
       if (forDigest) droppedUndated++;
       continue;
     }
-    const parsedDate = new Date(normalizeFeedDateZone(pubDateStr));
-    const parsedMs = parsedDate.getTime();
-    if (Number.isNaN(parsedMs)) {
-      if (forDigest) droppedUndated++;
-      continue;
-    }
-    if (parsedMs > Date.now() + FUTURE_DATE_TOLERANCE_MS) {
-      if (forDigest) droppedUndated++;
-      continue;
-    }
-    const publishedAt = parsedMs;
 
     // RSS 2.0 <source url="...">Name</source> — the originating publisher,
     // emitted per item by Google News. Atom's <source> is a metadata
@@ -2734,7 +2755,9 @@ function linkHostnameForLog(link: string): string {
  *      feed host (e.g. `amp.` editions);
  *   3. the trusted-aggregator origin publisher (RSS `<source>`, only when the
  *      parser marked this feed trusted) — a wire syndicated through Google
- *      News is still the wire's article, not the aggregator's.
+ *      News is still the wire's article, not the aggregator's;
+ *   4. the feed's catalog `linkHosts`, for a feed that lists another site's
+ *      pages.
  *
  * The RSS `<source>` element on an UNTRUSTED feed is upstream text and never
  * enters the set (same rule as `publisherFamilyForItem`): a hostile feed
@@ -2744,11 +2767,12 @@ function linkHostnameForLog(link: string): string {
  */
 function expectedPublisherHostsForItem(
   item: Pick<ParsedItem, 'source' | 'originPublisher' | 'originPublisherTrusted'>,
-  feed: Pick<ServerFeed, 'url'>,
+  feed: Pick<ServerFeed, 'url' | 'linkHosts'>,
 ): string[] {
   const hosts = new Set<string>();
   const feedHost = feedPublisherHost(feed?.url);
   if (feedHost) hosts.add(feedHost);
+  for (const host of feed?.linkHosts ?? []) hosts.add(host);
   const sourceFamily = publisherFamilyFor(item?.source ?? '');
   const familyDomains = PUBLISHER_FAMILY_DOMAIN_TABLE[sourceFamily];
   if (Array.isArray(familyDomains)) for (const domain of familyDomains) hosts.add(domain);
@@ -2773,6 +2797,7 @@ for (const categories of Object.values(VARIANT_FEEDS)) {
       if (!host) continue;
       const hosts = registeredFeedHostsBySource.get(feed.name) ?? new Set<string>();
       hosts.add(host);
+      for (const linkHost of feed.linkHosts ?? []) hosts.add(linkHost);
       registeredFeedHostsBySource.set(feed.name, hosts);
     }
   }
@@ -2811,7 +2836,7 @@ function storyTrackLinkForPersist(
 function isItemLinkAllowed(
   link: string,
   item: Pick<ParsedItem, 'source' | 'originPublisher' | 'originPublisherTrusted'>,
-  feed: Pick<ServerFeed, 'url'>,
+  feed: Pick<ServerFeed, 'url' | 'linkHosts'>,
 ): boolean {
   return isPublisherLink(link, expectedPublisherHostsForItem(item, feed));
 }

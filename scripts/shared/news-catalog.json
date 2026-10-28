@@ -8272,11 +8272,16 @@
     {
       "name": "GitHub Trending",
       "url": "https://mshibanami.github.io/GitHubTrendingRSS/daily/all.xml",
+      "channelDated": true,
+      "linkHosts": [
+        "github.com"
+      ],
       "placements": [
         {
           "edition": "tech",
           "category": "github",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 2
         }
       ]
     },
