@@ -42,7 +42,7 @@ import { loadEnvFile, CHROME_UA, runSeed, withRetry, resolveProxyForConnect, htt
 import { DAY_MIN } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { fetchYearCsv, parseObsValue } from './seed-jodi-oil.mjs';
-import { fetchEpdkCrudeImports, epdkImporterColumns } from './_epdk-crude-imports.mjs';
+import { fetchEpdkCrudeImports, epdkImporterColumns, isEpdkUrl } from './_epdk-crude-imports.mjs';
 import { DOSM_ENERGY_CONSUMPTION_URL, dosmProductDemand } from './_dosm-product-demand.mjs';
 import {
   compactCountry,
@@ -671,15 +671,19 @@ const EPDK_REQUEST_TIMEOUT_MS = 30_000;
 const PUBLISH_RESERVE_MS = 90_000;
 
 // EPDK serves Turkish government downloads that can stall or refuse foreign
-// datacenter egress; the proxy is the fallback, as for ArcGIS.
-async function epdkFetch(url, deadlineAtMs) {
+// datacenter egress; the proxy is the fallback, as for ArcGIS. Requests stay
+// on the EPDK origin: the URL is checked before either leg, and redirects are
+// refused (EPDK serves its documents directly; the proxy leg treats a 3xx as
+// an error).
+export async function epdkFetch(url, deadlineAtMs) {
+  if (!isEpdkUrl(url)) throw new Error('EPDK off-origin URL refused');
   const timeout = () => {
     const left = deadlineAtMs - Date.now();
     if (left <= 0) throw new Error('EPDK budget exhausted');
     return Math.min(EPDK_REQUEST_TIMEOUT_MS, left);
   };
   try {
-    const resp = await fetch(url, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(timeout()) });
+    const resp = await fetch(url, { headers: { 'User-Agent': CHROME_UA }, redirect: 'error', signal: AbortSignal.timeout(timeout()) });
     if (resp.status === 403 || resp.status === 429) throw Object.assign(new Error(`EPDK HTTP ${resp.status}`), { proxyable: true });
     if (!resp.ok) throw new Error(`EPDK HTTP ${resp.status}`);
     return Buffer.from(await resp.arrayBuffer());

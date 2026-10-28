@@ -168,6 +168,14 @@ it('shows JODI-reported stock cover as JODI data, never as IEA cover (India)', (
   expect(el.textContent).not.toContain('IEA cover: ~');
 });
 
+it('shows modeled stock cover of ~0 days as modeled, not as "not modeled"', () => {
+  const el = render(japan({
+    countryCode: 'IN', ieaStocksCoverage: false, effectiveCoverDays: 0,
+    reportedStocks: { ...IN_STOCKS, stockDays: 2 },
+  }));
+  expect(el.querySelector('.cdp-shock-reported-stocks')?.textContent).toBe('Stock cover (JODI-reported, not IEA data): ~0 days under this scenario (crude 45.3 + products 96.0 = 141.3 M bbl at the end of 2026-03, about 2 days of crude imports)');
+});
+
 it('says when cover is not modeled, and shows no stock row for a country that reports none (China)', () => {
   const notModeled = render(japan({
     countryCode: 'IN', ieaStocksCoverage: false, dataAvailable: false, jodiOilCoverage: false, effectiveCoverDays: 0, products: [],

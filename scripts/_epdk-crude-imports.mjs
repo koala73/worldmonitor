@@ -44,6 +44,16 @@ export function monthFromLabel(label) {
   return `${year[1]}-${pad2(TR_MONTHS.indexOf(month[1]) + 1)}`;
 }
 
+/** True only for https://www.epdk.gov.tr URLs: listing links and fetches never leave that origin. */
+export function isEpdkUrl(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && u.origin === EPDK_ORIGIN;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Report months on the listing page, each with its downloads in page order.
  * `kind` comes from the link's icon: word, excel or pdf.
@@ -63,7 +73,15 @@ export function parseEpdkListing(html) {
     const documents = [];
     for (const a of own.matchAll(/<a\b[^>]*href="([^"]*DownloadDocument\?id=[^"]*)"[^>]*>([\s\S]*?)<\/a>/g)) {
       const icon = a[2].match(/\/(word|excel|pdf)\.png/);
-      documents.push({ url: new URL(decodeEntities(a[1]), EPDK_ORIGIN).href, kind: icon ? icon[1] : 'unknown' });
+      let url;
+      try {
+        url = new URL(decodeEntities(a[1]), EPDK_ORIGIN).href;
+      } catch {
+        continue;
+      }
+      // An absolute or protocol-relative href could point anywhere.
+      if (!isEpdkUrl(url)) continue;
+      documents.push({ url, kind: icon ? icon[1] : 'unknown' });
     }
     if (documents.length > 0) reports.push({ month, label, documents });
   }

@@ -14,6 +14,7 @@ import {
   crudeImportsFromTable,
   epdkImporterColumns,
   fetchEpdkCrudeImports,
+  isEpdkUrl,
   iso2FromTurkishName,
   monthFromLabel,
   monthlyCrudeByOrigin,
@@ -22,7 +23,7 @@ import {
   tablesFromDocx,
   tablesFromXlsx,
 } from '../scripts/_epdk-crude-imports.mjs';
-import { CRUDE_ORIGIN_GULF_ISO2, crudeImportOriginNationalSection } from '../scripts/seed-oil-trade-series.mjs';
+import { CRUDE_ORIGIN_GULF_ISO2, crudeImportOriginNationalSection, epdkFetch } from '../scripts/seed-oil-trade-series.mjs';
 
 const HEADER = ['Ülke', 'Ham Petrol', 'Motorin Türleri', 'Toplam', 'Pay (%)'];
 
@@ -106,6 +107,41 @@ describe('EPDK listing', () => {
         { url: 'https://www.epdk.gov.tr/Detay/DownloadDocument?id=z4dR8e3MWFA=', kind: 'word' },
       ] },
     ]);
+  });
+
+  it('drops download links that leave the EPDK origin (absolute, protocol-relative, plain http)', () => {
+    const html = `
+      <li class="accordion-pop"><a data-toggle="collapse" data-target="#a">2026 Yılı Petrol Piyasası Ocak Ayı Sektör Raporu</a>
+        <a href="https://internal-host/DownloadDocument?id=1"><img src ='/Content/img/excel.png' /></a>
+        <a href="//internal-host/DownloadDocument?id=2"><img src ='/Content/img/excel.png' /></a>
+        <a href="http://169.254.169.254/latest/meta-data/?DownloadDocument?id=5"><img src ='/Content/img/excel.png' /></a>
+        <a href="http://www.epdk.gov.tr/Detay/DownloadDocument?id=6"><img src ='/Content/img/excel.png' /></a>
+        <a href="/Detay/DownloadDocument?id=ok"><img src ='/Content/img/word.png' /></a></li>`;
+    assert.deepEqual(parseEpdkListing(html)[0].documents, [{ url: 'https://www.epdk.gov.tr/Detay/DownloadDocument?id=ok', kind: 'word' }]);
+  });
+
+  it('isEpdkUrl accepts only https://www.epdk.gov.tr', () => {
+    assert.equal(isEpdkUrl('https://www.epdk.gov.tr/Detay/DownloadDocument?id=1'), true);
+    for (const url of ['http://www.epdk.gov.tr/x', 'https://epdk.gov.tr/x', 'https://www.epdk.gov.tr.evil.test/x', 'https://www.epdk.gov.tr:8443/x', 'not a url']) {
+      assert.equal(isEpdkUrl(url), false, url);
+    }
+  });
+});
+
+describe('epdkFetch', () => {
+  it('refuses an off-origin URL before any request, and never follows redirects', async (t) => {
+    const original = globalThis.fetch;
+    t.after(() => { globalThis.fetch = original; });
+    const calls = [];
+    globalThis.fetch = async (url, init) => {
+      calls.push({ url: String(url), redirect: init?.redirect });
+      return new Response(new Uint8Array([1, 2]), { status: 200 });
+    };
+    await assert.rejects(epdkFetch('http://169.254.169.254/latest/meta-data/', Date.now() + 60_000), /off-origin/);
+    assert.equal(calls.length, 0);
+    const buf = await epdkFetch('https://www.epdk.gov.tr/Detay/DownloadDocument?id=1', Date.now() + 60_000);
+    assert.equal(buf.length, 2);
+    assert.deepEqual(calls, [{ url: 'https://www.epdk.gov.tr/Detay/DownloadDocument?id=1', redirect: 'error' }]);
   });
 });
 
