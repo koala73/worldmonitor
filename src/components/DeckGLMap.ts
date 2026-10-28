@@ -6828,6 +6828,7 @@ export class DeckGLMap {
       const toggle = this.container.querySelector(`.layer-toggle[data-layer="${key}"] input`) as HTMLInputElement;
       if (toggle) toggle.checked = value;
     });
+    this.enforceLayerLimit({ notify: false });
   }
 
   public getState(): DeckMapState {
@@ -8069,7 +8070,8 @@ export class DeckGLMap {
   // baseline, not an increase, so they never open the performance notice.
   private lastActiveLayerCount: number | null = null;
 
-  private enforceLayerLimit(): void {
+  // `notify: false` rebases the count after a bulk change without opening the notice.
+  private enforceLayerLimit({ notify = true } = {}): void {
     const WARN_THRESHOLD = 13;
     const togglesEl = this.container.querySelector('.deckgl-layer-toggles');
     if (!togglesEl) return;
@@ -8080,7 +8082,7 @@ export class DeckGLMap {
         return toggle?.style.display !== 'none' && row?.style.display !== 'none';
       })
       .filter(i => i.checked).length;
-    const increasing = this.lastActiveLayerCount !== null && activeCount > this.lastActiveLayerCount;
+    const increasing = notify && this.lastActiveLayerCount !== null && activeCount > this.lastActiveLayerCount;
     this.lastActiveLayerCount = activeCount;
     if (activeCount > WARN_THRESHOLD && increasing && !this.layerWarningShown) {
       this.layerWarningShown = true;

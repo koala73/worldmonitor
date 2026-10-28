@@ -538,5 +538,41 @@ describe('DeckGLMap layer performance notice', () => {
     layer.dispatchEvent(new Event('change'));
 
     expect(document.querySelector('.layer-warn-overlay')).not.toBeNull();
+    await closeNotice();
   });
+
+  // A bulk change (a preset, a shared link) moves the baseline without warning, so
+  // the next layer the visitor adds past the threshold still opens the notice.
+  it('rebases on bulk setLayers so the next added layer past the threshold still warns', async () => {
+    const allOn = Object.fromEntries(Object.keys(DEFAULT_MAP_LAYERS).map(key => [key, true])) as unknown as MapLayers;
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const map = new DeckGLMap(container, initialState({ layers: allOn }), { chrome: true });
+    maps.push(map);
+    await map.whenReady();
+
+    const keep = checkedToggles()
+      .filter(input => !input.closest('.layer-toggle-locked'))
+      .map(input => input.closest<HTMLElement>('.layer-toggle')!.dataset.layer!)
+      .filter(key => key !== 'ciiChoropleth' && key !== 'resilienceScore')
+      .slice(0, 13);
+    map.setLayers({ ...allLayersOff(), ...Object.fromEntries(keep.map(key => [key, true])) });
+    expect(checkedToggles()).toHaveLength(13);
+    expect(document.querySelector('.layer-warn-overlay')).toBeNull();
+
+    const added = [...document.querySelectorAll<HTMLInputElement>('.deckgl-layer-toggles .layer-toggle input')]
+      .find(input => !input.checked && !input.closest('.layer-toggle-locked'));
+    if (!added) throw new Error('no layer to add');
+    added.checked = true;
+    added.dispatchEvent(new Event('change'));
+
+    expect(document.querySelector('.layer-warn-overlay')).not.toBeNull();
+    await closeNotice();
+  });
+
+  // The notice module allows one dialog at a time and forgets it only after closing.
+  async function closeNotice(): Promise<void> {
+    document.querySelector<HTMLButtonElement>('.layer-warn-ok')?.click();
+    await vi.advanceTimersByTimeAsync(250);
+  }
 });

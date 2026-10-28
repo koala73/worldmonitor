@@ -6,7 +6,8 @@ import { GlobeMap } from '@/components/GlobeMap';
 
 beforeEach(() => { showLayerWarning.mockClear(); });
 
-// Mirrors the globe's field initializers, which Object.create skips.
+// A real GlobeMap, so the field initializers under test run; only the picker is
+// stubbed, since globe.gl (mocked above) never renders one here.
 function globeWithLayers(checked: number): { host: { enforceLayerLimit(): void }; inputs: HTMLInputElement[] } {
   const toggles = document.createElement('div');
   const inputs = Array.from({ length: checked }, (_, index) => {
@@ -20,9 +21,10 @@ function globeWithLayers(checked: number): { host: { enforceLayerLimit(): void }
     toggles.append(label);
     return input;
   });
-  const host = Object.assign(Object.create(GlobeMap.prototype), {
-    layerTogglesEl: toggles, layerWarningShown: false, lastActiveLayerCount: null,
-  });
+  const state = { layers: {}, timeRange: '7d', view: 'global', zoom: 1, pan: { x: 0, y: 0 } };
+  const globe = new GlobeMap(document.createElement('div'), state as unknown as ConstructorParameters<typeof GlobeMap>[1]);
+  globe.whenReady().catch(() => {});
+  const host = Object.assign(globe, { layerTogglesEl: toggles }) as unknown as { enforceLayerLimit(): void };
   return { host, inputs };
 }
 
