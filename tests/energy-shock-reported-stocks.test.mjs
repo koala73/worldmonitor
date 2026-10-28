@@ -146,6 +146,21 @@ describe('handler: cover from JODI-reported stocks', () => {
     assert.equal(stocksNote(r), undefined);
   });
 
+  it('an anomalous IEA record does not fall back to JODI stocks, and says why there is no cover', async (t) => {
+    t.after(restore);
+    seed({
+      ...HORMUZ, ...ORIGIN,
+      'energy:jodi-oil:v1:JP': { iso2: 'JP', dataMonth: '2026-07', crude: { importsKbd: 2382.1742 }, gasoline: { demandKbd: 790.8 }, stocks: { month: '2026-07', crudeMb: 272.3, productsMb: 104.5 } },
+      'energy:iea-oil-stocks:v1:JP': { daysOfCover: 178, netExporter: false, anomaly: true },
+    });
+    const r = await shock('JP');
+    assert.equal(r.ieaStocksCoverage, false);
+    assert.equal(r.reportedStocks, undefined, 'an IEA member is not given JODI cover because its IEA record is anomalous');
+    assert.equal(r.effectiveCoverDays, 0);
+    assert.equal(stocksNote(r), undefined);
+    assert.match(r.limitations.find((l) => /^Oil stock cover not modeled for JP/.test(l)) ?? '', /IEA stock record for JP is anomalous or incomplete/);
+  });
+
   it('India without JODI crude imports: the stocks are reported, cover is not modeled', async (t) => {
     t.after(restore);
     seed({ ...HORMUZ, ...ORIGIN, 'energy:jodi-oil:v1:IN': { iso2: 'IN', dataMonth: '2026-03', crude: {}, diesel: { demandKbd: 1900 }, stocks: IN_STOCKS } });
