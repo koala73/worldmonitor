@@ -445,7 +445,7 @@ export async function computeEnergyShockScenario(
   if (needsOil) {
     if (currentFlows) {
       const loss = oilModeled ? `, crude loss ${currentFlows.crudeLossKbd} kbd` : '';
-      limitations.push(`Current flows: UN Comtrade monthly import value share ${currentFlows.fromMonth}..${currentFlows.toMonth}: ${(currentFlows.gulfCrudeShare * 100).toFixed(1)}% Gulf${loss}; shown beside the headline, not used for product deficits or cover.`);
+      limitations.push(`Current flows: UN Comtrade monthly import value share ${currentFlows.fromMonth}..${currentFlows.toMonth}: ${(currentFlows.gulfCrudeShare * 100).toFixed(1)}% Gulf${loss}; shown beside the headline, not used for the products table or cover.`);
     } else {
       const reason = originStale && computed.current
         ? 'the latest monthly UN Comtrade fetch failed, so the carried-forward filings are not shown as current'
@@ -476,12 +476,12 @@ export async function computeEnergyShockScenario(
   });
   const hasDemand = (flows: ProductTradeFlows | null | undefined): flows is ProductTradeFlows & { demandKbd: number } =>
     flows?.demandKbd != null && flows.demandKbd > 0;
-  const balanceRows = (flowsFor: (key: RefineryProductKey) => ProductTradeFlows | null | undefined): ProductBalanceRow[] =>
+  const balanceRows = (flowsFor: (key: RefineryProductKey) => ProductTradeFlows | null | undefined, lossKbd = crudeLossKbd): ProductBalanceRow[] =>
     REFINERY_PRODUCTS.flatMap(({ key, name, label }) => {
       const flows = flowsFor(key);
       if (!hasDemand(flows)) return [];
       const balance = computeProductBalance({
-        crudeLossKbd,
+        crudeLossKbd: lossKbd,
         yieldFactor: refineryYields.yields[key],
         demandKbd: flows.demandKbd,
         importsKbd: flows.importsKbd,
@@ -516,9 +516,12 @@ export async function computeEnergyShockScenario(
     const terms = primaryRows.map((row) => balanceTerm(row, GULF_ATTRIBUTED_PRODUCTS.has(row.key) && gulfImportLossFactor != null));
     limitations.push(`product balance, ${basis}: deficit = refinery output loss + Gulf-origin import loss − exports redirected home, ÷ demand, kb/d${windowUsed ? ' averaged over the window' : ''}: ${terms.join('; ')}.`);
     if (windowUsed) {
-      const currentRows = currentTrade ? balanceRows((key) => currentTrade.products[key]) : [];
+      // Current product trade nets the current-flows crude loss when that Gulf share is measured.
+      const currentLoss = currentFlows ? currentFlows.crudeLossKbd : crudeLossKbd;
+      const lossLabel = currentFlows ? `crude loss at the current-flows Gulf share, ${currentFlows.crudeLossKbd} kbd` : 'crude loss as in the headline';
+      const currentRows = currentTrade ? balanceRows((key) => currentTrade.products[key], currentLoss) : [];
       limitations.push(currentTrade && currentRows.length > 0
-        ? `product balance, current flows (${currentTrade.startMonth}–${currentTrade.endMonth}, ${currentTrade.months} month${currentTrade.months === 1 ? '' : 's'}; crude loss as in the headline): ${currentRows.map((row) => `${row.label} ${row.balance.deficitPct.toFixed(1)}%`).join(', ')}.`
+        ? `product balance, current flows (${currentTrade.startMonth}–${currentTrade.endMonth}, ${currentTrade.months} month${currentTrade.months === 1 ? '' : 's'}; ${lossLabel}): ${currentRows.map((row) => `${row.label} ${row.balance.deficitPct.toFixed(1)}%`).join(', ')}.`
         : `product balance, current flows: unavailable for ${code} in this JODI row.`);
     }
     if (gulfImportLossFactor != null) {

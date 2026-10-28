@@ -1100,6 +1100,20 @@ describe('product shortfalls net product trade', () => {
     assert.match(balanceLine(response, 'current flows'), new RegExp(`naphtha ${expected.toFixed(1).replace('.', '\\.')}%`));
   });
 
+  it('the current-flows line nets the current-flows crude loss when that share is measured (JP)', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const row = seededJodiRow('JP');
+    installEnergyShockRedis({ ...productTradeSeed('JP', row), ...originSeed() });
+    const response = await computeShock({ countryCode: 'JP', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    const cur = response.currentFlows;
+    assert.ok(cur && cur.crudeLossKbd > 0 && cur.crudeLossKbd < response.crudeLossKbd, JSON.stringify(cur));
+    const line = balanceLine(response, 'current flows');
+    assert.ok(line?.includes(`crude loss at the current-flows Gulf share, ${cur.crudeLossKbd} kbd`), line);
+    const flows = row.productTrade.currentFlows.products.gasoline;
+    const shortfall = Math.max(0, cur.crudeLossKbd * row.refineryYields.products.gasoline + (flows.importsKbd ?? 0) * KR_GULF_PRODUCT_SHARE - (flows.exportsKbd ?? 0));
+    assert.match(line, new RegExp(`gasoline ${Math.min(100, shortfall / flows.demandKbd * 100).toFixed(1).replace('.', '\\.')}%`));
+  });
+
   it('a JODI row without windowed trade nets the latest month and says so; no separate current-flows line', async (t) => {
     t.after(restoreEnergyShockEnvironment);
     const { productTrade, ...legacy } = seededJodiRow('KR');
@@ -1827,7 +1841,7 @@ describe('pre-crisis and current-flows Gulf share baselines (Comtrade monthly, r
     assert.ok(Math.abs(r.effectiveCoverDays - 178 / 0.927) <= 1, `cover ${r.effectiveCoverDays}`);
 
     assert.ok(r.limitations.some((l) => /pre-crisis baseline/.test(l) && /2025-02\.\.2026-01/.test(l) && /12 of 12 months/.test(l) && /JODI crude imports for 2026-07/.test(l)), r.limitations.join('\n'));
-    assert.ok(r.limitations.some((l) => /^Current flows/.test(l) && /2026-06\.\.2026-08/.test(l) && /60\.5%/.test(l) && /not used for product deficits or cover/.test(l)), r.limitations.join('\n'));
+    assert.ok(r.limitations.some((l) => /^Current flows/.test(l) && /2026-06\.\.2026-08/.test(l) && /60\.5%/.test(l) && /not used for the products table or cover/.test(l)), r.limitations.join('\n'));
     assert.match(r.assessment, /pre-crisis supply mix/);
   });
 
