@@ -70,6 +70,12 @@ export const OPENAPI_FILTER_PARAM_SCHEMA_OVERRIDES = [
     schema: { type: 'array', minItems: 1, maxItems: 24, items: { type: 'string', maxLength: 120 } },
   },
   {
+    path: '/api/news/v1/list-source-items',
+    method: 'get',
+    name: 'lang',
+    schema: { type: 'string', maxLength: 8 },
+  },
+  {
     path: '/api/infrastructure/v1/get-bootstrap-data',
     method: 'get',
     name: 'keys',

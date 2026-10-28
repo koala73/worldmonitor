@@ -26,8 +26,9 @@ message ListSourceItemsRequest {
     (buf.validate.field).repeated.min_items = 1,
     (buf.validate.field).repeated.max_items = 24
   ];
-  // Digest language (ISO 639-1); empty means en. Only sources this language's
-  // digest fetches are read, so a reply holds only rows that feed that digest.
+  // ISO 639-1 language code of a supported digest language (en, fr, ar, etc.);
+  // empty means en. Unsupported codes are rejected with 400. Only sources this
+  // language's digest fetches are read.
   string lang = 4 [
     (sebuf.http.query) = { name: "lang" },
     (buf.validate.field).string.max_len = 8

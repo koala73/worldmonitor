@@ -747,18 +747,30 @@ export class DataLoaderManager implements AppModule {
 
   /**
    * Re-renders the already painted `items` with `rows` in their free slots, up
-   * to `limit`, unless a newer load has started. The panel never waits on it.
+   * to `limit`. The panel never waits on it. A fill is dropped once a newer
+   * load started or another render replaced `items` (a fallback digest
+   * followed by the live one in the same load). The added rows also reach
+   * `ctx.allNews`: before this load commits, through `items`, which the
+   * load returned and commits; after, by appending to the committed set.
    */
   private fillAfterRender(category: string, generation: number, items: NewsItem[], rows: Promise<NewsItem[]>, limit: number): void {
     void rows.then((found) => {
-      if (!this.isCurrentNewsLoad(generation)) return;
+      if (!this.isCurrentNewsLoad(generation) || this.ctx.newsByCategory[category] !== items) return;
       const filled = fillFreeSlots(items, found, limit);
       if (filled.length === items.length) return;
+      const shown = new Set(items);
+      const added = filled.filter(item => !shown.has(item));
       this.renderNewsForCategory(category, filled);
       this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
         status: 'ok',
         itemCount: filled.length,
       });
+      if (this.committedNewsGeneration === generation) {
+        this.ctx.allNews = [...this.ctx.allNews, ...added];
+        this.updateMonitorResults();
+      } else {
+        items.push(...added);
+      }
     });
   }
 
@@ -1999,9 +2011,14 @@ export class DataLoaderManager implements AppModule {
       // fetch would report this cycle's three sources as the whole category and
       // hand clustering a set the user isn't looking at. The #9796 source rows,
       // requested alongside the direct fetch, take only the slots left free.
-      const items = crossEditionFill
-        ? fillFreeSlots(mergeForRender(fetchedItems), await crossEditionFill, this.customCategoryMergedItemLimit)
-        : mergeForRender(fetchedItems);
+      const merged = mergeForRender(fetchedItems);
+      const fillRows = crossEditionFill ? await crossEditionFill : [];
+      // A newer load may have rendered while this one waited for the rows.
+      if (crossEditionFill && !this.isCurrentNewsLoad(generation)) {
+        if (renderTimeout) clearTimeout(renderTimeout);
+        return merged;
+      }
+      const items = fillRows.length > 0 ? fillFreeSlots(merged, fillRows, this.customCategoryMergedItemLimit) : merged;
       const failures = getFeedFailures();
       const failedFeeds = fallbackFeeds.filter(f => failures.has(f.name));
       const windowFailed = fallbackFeeds.length > 0 && failedFeeds.length === fallbackFeeds.length;
@@ -2111,6 +2128,13 @@ export class DataLoaderManager implements AppModule {
         checkBatchForBreakingAlerts(intel);
       }
       this.renderNewsForCategory('intel', intel);
+      // #9796: as for the category digest above. The server reads intel
+      // sources from the full edition.
+      if (intel.length < (digest.categories['intel']?.items ?? []).length) {
+        const delivered = (digest.categories['intel']?.items ?? []).map(protoItemToNewsItem);
+        this.fillAfterRender('intel', generation, intel,
+          this.sourceRowsBelowCap('intel', ['full'], delivered, enabledIntelSources), delivered.length);
+      }
       if (intelPanel && options.recordBaselineSample) {
         try {
           const baseline = await updateBaseline('news:intel', intel.length);

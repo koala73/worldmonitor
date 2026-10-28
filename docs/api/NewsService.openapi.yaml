@@ -1006,12 +1006,14 @@ paths:
                 - name: lang
                   in: query
                   description: |-
-                    Digest language (ISO 639-1); empty means en. Only sources this language's
-                     digest fetches are read, so a reply holds only rows that feed that digest.
+                    ISO 639-1 language code of a supported digest language (en, fr, ar, etc.);
+                     empty means en. Unsupported codes are rejected with 400. Only sources this
+                     language's digest fetches are read.
                   required: false
                   example: "en"
                   schema:
                     type: string
+                    maxLength: 8
                 - name: jmespath
                   in: query
                   description: |-
@@ -2574,8 +2576,9 @@ components:
                     type: string
                     maxLength: 8
                     description: |-
-                        Digest language (ISO 639-1); empty means en. Only sources this language's
-                         digest fetches are read, so a reply holds only rows that feed that digest.
+                        ISO 639-1 language code of a supported digest language (en, fr, ar, etc.);
+                         empty means en. Unsupported codes are rejected with 400. Only sources this
+                         language's digest fetches are read.
             required:
                 - category
                 - sources
