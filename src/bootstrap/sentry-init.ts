@@ -707,6 +707,11 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       if (excType === 'TypeError' && frames.some(f => /sortedTrackListForMenu/.test(f.function ?? ''))) return null;
       // Suppress TypeErrors from anonymous/injected scripts (no real source files or only inline page URL)
       if ((excType === 'TypeError' || /^TypeError:/.test(msg)) && frames.length > 0 && frames.every(f => !f.filename || f.filename === '<anonymous>' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
+      // Suppress ReferenceErrors whose every frame is `<anonymous>` (WORLDMONITOR-1A2:
+      // `Clerk is not defined` from an injected script or console snippet). Nothing
+      // we ship evaluates code at runtime, so our own ReferenceErrors always carry a
+      // bundle or page-URL frame; stricter than the TypeError gate above on purpose.
+      if (excType === 'ReferenceError' && frames.length > 0 && frames.every(f => f.filename === '<anonymous>')) return null;
       // Suppress errors thrown by an injected browser-automation harness driving
       // the page (e.g. Floot's agent). Its selector-resolution helpers throw
       // `Element not found: <sel>`, `No element found: <sel>`, and
