@@ -4,6 +4,8 @@ import { newsHandler } from '../server/worldmonitor/news/v1/handler';
 import { REVOKED_URLS_KEY } from '../server/_shared/digest-revocations';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
 import { lastGoodKey } from '../server/worldmonitor/news/v1/_lastgood';
+import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
+import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds';
 import { NEWS_POOL_MAX_LANGUAGES, sourceLanguage } from '../server/worldmonitor/news/v1/list-news-pool';
 import { NEWS_POOL_LAYOUT } from '../shared/news-pool-layout.generated';
 import { buildNewsPoolLayout } from '../shared/news-catalog';
@@ -40,6 +42,22 @@ function fresh(edition: string, lang: string, body: unknown) {
   cache.set(`news:digest:v1:${edition}:${lang}`, body);
 }
 
+/** One feed's cached parse, as a digest build writes it. */
+function feedRow(edition: string, source: string, titles: string[], extra: Record<string, unknown> = {}) {
+  const feed = Object.values(VARIANT_FEEDS[edition]!).flat().find(entry => entry.name === source)!;
+  assert.ok(feed, `fixture feed ${source} is placed in ${edition}`);
+  cache.set(rssFeedCacheKey(edition, feed.url), {
+    items: titles.map(title => ({
+      source, title, link: `https://news.example.org/${++serial}`, publishedAt: Date.now() - ++serial * 60_000,
+      isAlert: false, level: 'low', category: 'general', confidence: 0.5, classSource: 'keyword',
+      importanceScore: 10, credibilityScore: 50,
+    })),
+    parsedTotal: titles.length,
+    droppedUndated: 0,
+    ...extra,
+  });
+}
+
 async function request(params: Record<string, string | string[]> = {}) {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -71,6 +89,10 @@ beforeEach(() => {
     assert.equal(target, 'https://redis.example.test/pipeline', 'never build a digest or fetch a publisher');
     const batch = JSON.parse(String(init?.body)) as string[][];
     return Response.json(batch.map(command => {
+      if (command[0] === 'GET') {
+        reads.push(command[1]!);
+        return { result: cache.has(command[1]!) ? JSON.stringify(cache.get(command[1]!)) : null };
+      }
       assert.deepEqual(command, ['SMEMBERS', REVOKED_URLS_KEY]);
       return failRevocations ? { error: 'fixture read failure' } : { result: revoked };
     }));
@@ -118,23 +140,49 @@ describe('ListNewsPool', () => {
     }
   });
 
-  it('returns each requested language from the cells that carry it, untranslated', async () => {
-    fresh('full', 'en', digest({ europe: [article('BBC World', 'Talks resume'), article('NRK', 'Stortinget stemmer')] }));
-    fresh('full', 'de', digest({
-      europe: [article('Tagesschau', 'Bundestag stimmt ab'), article('BBC World', 'Talks resume (German cell copy)')],
-    }));
+  it('returns other languages from their feeds, untranslated', async () => {
+    fresh('full', 'en', digest({ europe: [article('BBC World', 'Talks resume'), article('NRK', 'Stortinget stemmer (cell copy)')] }));
+    feedRow('full', 'NRK', ['Stortinget stemmer']);
+    feedRow('full', 'Tagesschau', ['Bundestag stimmt ab']);
 
     const { payload } = await request({ languages: ['no', 'de'] });
 
-    assert.equal(payload.state, 'complete');
+    assert.equal(payload.state, 'partial', 'full places other German and Norwegian feeds this fixture leaves uncached');
     assert.deepEqual(titles(payload), ['Bundestag stimmt ab', 'Stortinget stemmer']);
     assert.deepEqual(Object.fromEntries(payload.items.map(entry => [entry.item!.source, entry.language])), { NRK: 'no', Tagesschau: 'de' });
-    assert.ok(payload.items.every(entry => entry.item!.threat), 'threat classification carried through');
+    assert.ok(payload.items.every(entry => entry.item!.threat?.level), 'threat classification carried through');
+    assert.ok(!reads.some(key => key.startsWith('news:digest:')), 'no digest cell is read for languages other than English');
   });
 
-  it('reads the same cells for reordered, repeated and mixed-case inputs', async () => {
-    fresh('full', 'de', digest({ europe: [article('Tagesschau', 'Bundestag stimmt ab')] }));
-    fresh('full', 'fr', digest({ europe: [article('France 24 FR', 'Le Parlement vote')] }));
+  it('returns a language its digest cell crowded out', async () => {
+    // A category keeps its newest items, and English feeds with no lang ride
+    // along in the French cell, so the cell can hold no French item at all.
+    fresh('full', 'fr', digest({ us: [article('Reuters World', 'Senate votes'), article('AP News', 'Markets open')] }));
+    feedRow('full', 'Radio-Canada', ['Le Sénat vote', 'Les marchés ouvrent', 'Tempête au Québec']);
+
+    const { payload } = await request({ languages: ['fr'] });
+
+    assert.deepEqual(titles(payload), ['Le Sénat vote', 'Les marchés ouvrent', 'Tempête au Québec']);
+    assert.ok(payload.items.every(entry => entry.language === 'fr' && entry.category === 'us'));
+  });
+
+  it('counts a feed whose last fetch failed as uncached', async () => {
+    feedRow('full', 'Tagesschau', [], { attempt: { failure: 'timeout' } });
+    const { payload } = await request({ languages: ['de'] });
+    assert.equal(payload.state, 'unavailable');
+  });
+
+  it('drops feed items older than the digest window', async () => {
+    feedRow('full', 'Tagesschau', ['Bundestag stimmt ab']);
+    const row = [...cache.values()].at(-1) as { items: Array<{ publishedAt: number }> };
+    row.items[0]!.publishedAt = Date.now() - 30 * 24 * 3600_000;
+    const { payload } = await request({ languages: ['de'] });
+    assert.deepEqual(payload.items, []);
+  });
+
+  it('reads the same keys for reordered, repeated and mixed-case inputs', async () => {
+    feedRow('full', 'Tagesschau', ['Bundestag stimmt ab']);
+    feedRow('full', 'Radio-Canada', ['Le Sénat vote']);
     await request({ languages: ['fr', 'de'] });
     const first = [...reads];
     reads = [];
@@ -176,33 +224,34 @@ describe('ListNewsPool', () => {
 
   it('serves a last-good snapshot for a cell with no fresh body, marked stale', async () => {
     const acceptedAt = Date.now() - 2 * 3600_000;
-    cache.set(lastGoodKey('full', 'de'), {
+    cache.set(lastGoodKey('full', 'en'), {
       acceptedAt, categoryCount: 1, itemCount: 1,
-      data: digest({ europe: [article('Tagesschau', 'Bundestag stimmt ab')] }),
+      data: digest({ europe: [article('BBC World', 'Talks resume')] }),
     });
-    // German also comes from feeds with no lang, which live in the English cell.
-    assert.deepEqual(
-      NEWS_POOL_LAYOUT.cells.filter(cell => cell.contentLanguages.includes('de')).map(cell => cell.lang),
-      ['en', 'de'],
-      'fixture premise',
-    );
-    fresh('full', 'en', digest({ europe: [article('BBC World', 'Talks resume')] }));
+    fresh('full', 'th', digest({ asia: [article('Bangkok Post', 'Baht steadies')] }));
 
-    const { payload } = await request({ languages: ['de'] });
+    const { payload } = await request();
 
     assert.equal(payload.state, 'stale');
-    const german = payload.cells.find(cell => cell.language === 'de')!;
-    assert.equal(german.state, 'stale');
-    assert.ok(german.staleAgeSeconds >= 7199);
-    assert.deepEqual(titles(payload), ['Bundestag stimmt ab']);
+    const english = payload.cells.find(cell => cell.language === 'en')!;
+    assert.equal(english.state, 'stale');
+    assert.ok(english.staleAgeSeconds >= 7199);
+    assert.deepEqual(titles(payload), ['Baht steadies', 'Talks resume']);
   });
 
-  it('reports an unwarmed cell as partial coverage, not a quiet result', async () => {
+  it('reports unfetched feeds as partial coverage, not a quiet result', async () => {
     fresh('full', 'en', digest({ europe: [article('BBC World', 'Talks resume')] }));
+    fresh('full', 'th', digest({ asia: [] }));
     const { payload } = await request({ languages: ['en', 'de'] });
     assert.equal(payload.state, 'partial');
     assert.equal(payload.cells.find(cell => cell.language === 'de')!.state, 'missing');
     assert.deepEqual(titles(payload), ['Talks resume']);
+
+    feedRow('full', 'Tagesschau', ['Bundestag stimmt ab']);
+    const some = await request({ languages: ['de'] });
+    const german = some.payload.cells.find(cell => cell.language === 'de')!;
+    assert.equal(german.state, 'partial', 'one of several German feeds cached');
+    assert.equal(some.payload.state, 'partial');
   });
 
   it('is unavailable when no requested cell has a body', async () => {

@@ -2267,7 +2267,7 @@ async function readAdoptionState(
   return { aliasTargetByHash, trackFirstSeenByHash, incompleteHashes };
 }
 
-function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
+export function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
   return {
     source: item.source,
     title: item.title,
