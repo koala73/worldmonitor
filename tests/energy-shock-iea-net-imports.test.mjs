@@ -34,11 +34,11 @@ const HORMUZ = { 'energy:chokepoint-flows:v1': { hormuz_strait: { flowRatio: 0.6
 
 // Japan: JODI 2026-07 crude imports; 2025 net oil imports from the live JODI files.
 const JP_CRUDE = 2382.1742;
-const JP_NET = { year: 2025, kbd: 3113.5, months: 12 };
-const jp = (netOilImports) => ({
+const JP_NET = [{ year: 2025, kbd: 3113.5, months: 12 }, { year: 2024, kbd: 3240.2, months: 12 }];
+const jp = (netOilImports, ieaMonth = '2026-07') => ({
   ...HORMUZ, ...ORIGIN,
   'energy:jodi-oil:v1:JP': { iso2: 'JP', dataMonth: '2026-07', crude: { importsKbd: JP_CRUDE }, gasoline: { demandKbd: 790.8 }, ...(netOilImports !== undefined ? { netOilImports } : {}) },
-  'energy:iea-oil-stocks:v1:JP': { daysOfCover: 178, netExporter: false, anomaly: false },
+  'energy:iea-oil-stocks:v1:JP': { dataMonth: ieaMonth, daysOfCover: 178, netExporter: false, anomaly: false },
 });
 const shock = () => computeEnergyShockScenario({}, { countryCode: 'JP', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
 const cover = (r, basisKbd) => computeEffectiveCoverDaysWithRamp(178, false, r.preCrisisBaseline.crudeLossKbd, r.crudeLossKbd, basisKbd);
@@ -54,14 +54,29 @@ describe('IEA cover in barrels of net oil imports', () => {
     assert.match(basisNote(r), /JODI 2025 net oil imports \(crude and products\) of 3,113\.5 kb\/d/);
   });
 
-  it('falls back to crude imports, and says so, when net oil imports are unavailable', async (t) => {
+  it("takes the year before IEA's own data month, which can lag JODI's across a new year", async (t) => {
     t.after(restore);
-    for (const net of [undefined, null, { year: 2025, kbd: -10, months: 12 }, { year: '2025', kbd: 'x', months: 12 }]) {
-      seed(jp(net));
+    seed(jp(JP_NET, '2025-12'));
+    const r = await shock();
+    assert.equal(r.effectiveCoverDays, cover(r, 3240.2));
+    assert.match(basisNote(r), /JODI 2024 net oil imports \(crude and products\) of 3,240\.2 kb\/d/);
+  });
+
+  it("falls back to crude imports, and says so, when that year's net oil imports are unavailable", async (t) => {
+    t.after(restore);
+    const cases = [
+      [undefined, '2026-07'], [null, '2026-07'], [[{ year: 2025, kbd: -10, months: 12 }], '2026-07'],
+      [[{ year: '2025', kbd: 'x', months: 12 }], '2026-07'], [{ year: 2025, kbd: 3113.5, months: 12 }, '2026-07'],
+      [JP_NET, '2024-11'],
+    ];
+    for (const [net, ieaMonth] of cases) {
+      seed(jp(net, ieaMonth));
       const r = await shock();
       assert.equal(r.effectiveCoverDays, cover(r, JP_CRUDE), JSON.stringify(net));
-      assert.match(basisNote(r), /JODI crude imports of 2,382\.2 kb\/d; net oil imports are unavailable, so cover is misstated for a country that trades products/);
+      assert.match(basisNote(r), new RegExp(`JODI crude imports of 2,382\\.2 kb/d; JODI net oil imports for ${Number(ieaMonth.slice(0, 4)) - 1} are unavailable, so cover is misstated for a country that trades products`));
     }
+    seed(jp(JP_NET, null));
+    assert.match(basisNote(await shock()), /net oil imports for the year IEA counts days against are unavailable/);
   });
 
   it('a stale v14 cache entry (crude-import conversion) is not served', async (t) => {
