@@ -81,7 +81,7 @@ message CrudeShareBaseline {
   int32 months_covered = 4;
   // Gulf share of crude imports times the chokepoint route factor (1.0 for Hormuz).
   double gulf_crude_share = 5;
-  // Loss at disruption_pct with no bypass recovery (currentFlows shares already reflect rerouting); 0 when not modeled (see limitations).
+  // Loss at disruption_pct on the Gulf supplier share, with no bypass recovery. Comtrade records origin, not route, so for currentFlows it counts crude already loading at Yanbu or Fujairah (an upper bound). 0 when not modeled (see limitations).
   double crude_loss_kbd = 6;
   // preCrisisBaseline only: steady state after Hormuz bypass rerouting. Absent for other chokepoints, without per-exporter shares, or when the loss is not modeled.
   optional double crude_loss_after_bypass_kbd = 7;
