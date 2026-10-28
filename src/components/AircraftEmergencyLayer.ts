@@ -61,6 +61,11 @@ export class AircraftEmergencyLayer {
       this.loop?.stop();
       this.loop = undefined;
       clearInterval(this.ticker);
+      // A snapshot kept across a disabled period ages past the freshness window
+      // and would render as an outage on re-enable until the first poll lands.
+      this.snapshot = { observations: [], feeds: [] };
+      this.records = [];
+      this.unknownReceipts.clear();
       this.paint([]);
       this.lastMarkers = '';
       this.lastView = '';
