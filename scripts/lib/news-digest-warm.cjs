@@ -12,7 +12,10 @@
 
 const { buildClassifyDigestHeaders, resolveClassifyApiBase } = require('./classify-digest-request.cjs');
 
-const DIGEST_WARM_INTERVAL_MS = 15 * 60 * 1000;
+// Longer than the digest's 900 s cache TTL plus a build: at exactly 15
+// minutes a cell's request could land just before the entry its previous build
+// cached had expired, get a cache hit, and rebuild only every other cycle.
+const DIGEST_WARM_INTERVAL_MS = 17 * 60 * 1000;
 // Requests start evenly across this window and run without waiting for the
 // previous one, so the cycle ends about one request after it whatever the cell
 // count, inside the interval.
@@ -22,8 +25,8 @@ const DIGEST_WARM_REQUEST_TIMEOUT_MS = 35_000;
 const DIGEST_WARM_HEARTBEAT_KEY = 'relay:heartbeat:news-digest-warm';
 // Health keeps the probe soft until the first healthy cycle writes this.
 const DIGEST_WARM_ACTIVATION_KEY = 'seed-activated:news:digest-warm:v1';
-// Three missed 15-minute cycles before the heartbeat key expires.
-const DIGEST_WARM_HEARTBEAT_TTL_SECONDS = 45 * 60;
+// Three missed cycles before the heartbeat key expires.
+const DIGEST_WARM_HEARTBEAT_TTL_SECONDS = (3 * DIGEST_WARM_INTERVAL_MS) / 1000;
 
 function buildDigestWarmUrl(cell, env = process.env) {
   const variant = encodeURIComponent(cell.edition);
@@ -63,6 +66,9 @@ async function fetchDigestWarmCell(cell, {
   try {
     const resp = await fetchImpl(buildDigestWarmUrl(cell, env), {
       headers: buildClassifyDigestHeaders({ userAgent, relayKey }),
+      // fetch would carry the relay key to a redirect target on another
+      // origin; the digest never redirects, so a redirect is a failed cell.
+      redirect: 'error',
       signal: AbortSignal.timeout(timeoutMs),
     });
     const body = resp.ok ? await resp.json() : null;

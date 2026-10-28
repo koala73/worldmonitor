@@ -57,6 +57,13 @@ describe('warm cells', () => {
     for (const cell of cells) assert.match(cell.lang, /^[a-z]{2}$/);
   });
 
+  it('waits longer than the digest cache TTL plus a request, so every request rebuilds its cell', () => {
+    const digest = readFileSync(join(root, 'server/worldmonitor/news/v1/list-feed-digest.ts'), 'utf8');
+    const match = digest.match(/cachedFetchJsonWithMeta<ListFeedDigestResponse>\(\s*digestCacheKey,\s*(\d+),/);
+    assert.ok(match, 'digest cache TTL not found');
+    assert.ok(DIGEST_WARM_INTERVAL_MS > Number(match[1]) * 1000 + DIGEST_WARM_REQUEST_TIMEOUT_MS);
+  });
+
   it('starts the last request early enough for it to finish inside the interval', () => {
     assert.ok(DIGEST_WARM_SPREAD_MS + DIGEST_WARM_REQUEST_TIMEOUT_MS < DIGEST_WARM_INTERVAL_MS);
   });
@@ -103,7 +110,7 @@ describe('fetchDigestWarmCell', () => {
       userAgent: 'test-agent',
       relayKey: 'relay-secret',
       fetchImpl: async (url, init) => {
-        seen = { url, headers: init.headers };
+        seen = { url, headers: init.headers, redirect: init.redirect };
         return { ok: true, status: 200, json: async () => coverage() };
       },
     });
@@ -111,6 +118,7 @@ describe('fetchDigestWarmCell', () => {
     assert.equal(seen.url, 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?variant=full&lang=de');
     assert.equal(seen.headers['X-WorldMonitor-Key'], 'relay-secret');
     assert.equal(seen.headers['User-Agent'], 'test-agent');
+    assert.equal(seen.redirect, 'error', 'a redirect must not carry the relay key to another origin');
   });
 
   it('turns a thrown fetch into a failed cell', async () => {

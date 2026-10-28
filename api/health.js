@@ -2064,10 +2064,10 @@ const SEED_META = {
   // than the 720min seed-meta threshold above. TTL is 18h on the writer.
   chokepointFlowsRelayHeartbeat: { key: 'relay:heartbeat:chokepoint-flows', maxStaleMin: 480 }, // 6h loop; 8h alarm
   climateNewsRelayHeartbeat:     { key: 'relay:heartbeat:climate-news',     maxStaleMin: 60 },  // 30m loop; 60m alarm
-  // 15m loop; 45m = 3 missed cycles. Soft until the first healthy cycle.
+  // 17m loop; 51m = 3 missed cycles. Soft until the first healthy cycle.
   newsDigestWarmRelayHeartbeat: {
     key: 'relay:heartbeat:news-digest-warm',
-    maxStaleMin: 45,
+    maxStaleMin: 51,
     activationKey: 'seed-activated:news:digest-warm:v1',
     cutover: {
       mode: 'activation-marker',
