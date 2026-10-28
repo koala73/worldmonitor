@@ -31,7 +31,7 @@ export async function withSourceRequestDiagnostics({ source, stage = null, route
   const elapsed = () => Math.round(performance.now() - started);
   const record = {
     event: 'source_request_diagnostic', requestId: randomUUID(), source, stage, route, attempt,
-    phase: 'fetch', createdMs: null, sentMs: null, headersMs: null,
+    phase: 'fetch', createdMs: null, writeStartedMs: null, sentMs: null, headersMs: null,
     status: null, remoteAddress: null, localPort: null,
   };
   const owned = new WeakSet();
@@ -44,10 +44,15 @@ export async function withSourceRequestDiagnostics({ source, stage = null, route
     }],
     ['undici:client:sendHeaders', ({ request, socket }) => {
       if (!owned.has(request)) return;
-      record.sentMs = elapsed();
-      record.phase = 'request_sent';
+      record.writeStartedMs = elapsed();
+      record.phase = 'request_write_started';
       record.remoteAddress = isIP(socket?.remoteAddress || '') ? socket.remoteAddress : null;
       record.localPort = Number.isInteger(socket?.localPort) ? socket.localPort : null;
+    }],
+    ['undici:request:bodySent', ({ request }) => {
+      if (!owned.has(request)) return;
+      record.sentMs = elapsed();
+      record.phase = 'request_sent';
     }],
     ['undici:request:headers', ({ request }) => {
       if (!owned.has(request)) return;
@@ -71,6 +76,11 @@ export async function withSourceRequestDiagnostics({ source, stage = null, route
     record.errorName = causes.map(cause => cause?.name).find(name => ['TimeoutError', 'AbortError', 'TypeError', 'SyntaxError'].includes(name)) ?? 'Error';
     record.proxyConnect = error?.proxyConnect === true;
     if (record.proxyConnect && Number.isInteger(error.status)) record.status = error.status;
+    if (route === 'proxy' && error?.proxyFailure?.stage === 'response_body') {
+      record.phase = 'response_body';
+      const status = error.proxyFailure.httpStatus;
+      if (Number.isInteger(status) && status >= 100 && status <= 599) record.status = status;
+    }
     throw error;
   } finally {
     for (const [name, listener] of listeners) channel(name).unsubscribe(listener);

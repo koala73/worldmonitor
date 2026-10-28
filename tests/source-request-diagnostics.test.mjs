@@ -180,3 +180,32 @@ test('NRCan direct body failures retain the original error and request diagnosti
     assert.ok(!JSON.stringify(logs).includes('secret'));
   });
 });
+
+test('a header-write start does not claim a completed request transmission', async () => {
+  await capture(async logs => {
+    await assert.rejects(withSourceRequestDiagnostics({ source: 'tps' }, async () => {
+      const request = {};
+      channel('undici:request:create').publish({ request });
+      channel('undici:client:sendHeaders').publish({ request, socket: {} });
+      throw new Error('write failed');
+    }));
+    assert.equal(logs[0].phase, 'request_write_started');
+    assert.ok(logs[0].writeStartedMs >= 0);
+    assert.equal(logs[0].sentMs, null);
+  });
+});
+
+test('proxy body failure retains validated status without inventing a header timestamp', async () => {
+  await capture(async logs => {
+    const error = Object.assign(new Error('secret'), { proxyFailure: { stage: 'response_body', httpStatus: 403 } });
+    await assert.rejects(withSourceRequestDiagnostics({ source: 'nrcan', route: 'proxy' }, async () => { throw error; }), e => e === error);
+    assert.equal(logs[0].phase, 'response_body');
+    assert.equal(logs[0].status, 403);
+    assert.equal(logs[0].headersMs, null);
+    const invalid = Object.assign(new Error('secret'), { proxyFailure: { stage: 'secret', httpStatus: 999 } });
+    await assert.rejects(withSourceRequestDiagnostics({ source: 'nrcan', route: 'proxy' }, async () => { throw invalid; }));
+    assert.equal(logs[1].phase, 'fetch');
+    assert.equal(logs[1].status, null);
+    assert.ok(!JSON.stringify(logs).includes('secret'));
+  });
+});
