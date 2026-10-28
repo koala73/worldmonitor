@@ -1019,8 +1019,11 @@ async function fetchClerkToken(session: ClerkSession, skipCache = false): Promis
 export async function getClerkSessionToken(): Promise<string | null> {
   const session = clerkInstance?.session;
   if (!session) return null;
+  const myGen = _tokenGen;
   try {
-    return await session.getToken();
+    const token = await session.getToken();
+    if (myGen !== _tokenGen || clerkInstance?.session !== session) return null;
+    return token;
   } catch {
     return null;
   }
