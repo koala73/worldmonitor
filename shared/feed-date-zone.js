@@ -15,7 +15,8 @@ const ZONE_OFFSETS = {
 const TRAILING_ZONE = /\s([A-Z]{3,4})$/;
 
 // Zone-less shapes Date cannot read, both read as UTC:
-// IAEA `26-10-28  14:21` (YY-MM-DD HH:MM) and
+// IAEA `26-10-28  14:21` (YY-MM-DD HH:MM; only when the first number cannot
+// be a month, so Date still reads month-first `10-28-26 14:21`) and
 // Crisis Group `Friday, October 23, 2026 - 18:13`.
 const SHORT_YEAR_DATE = /^(\d{2})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/;
 const DASHED_TIME = /^([A-Za-z]+, [A-Za-z]+ \d{1,2}, \d{4}) - (\d{1,2}:\d{2})$/;
@@ -24,7 +25,7 @@ const DASHED_TIME = /^([A-Za-z]+, [A-Za-z]+ \d{1,2}, \d{4}) - (\d{1,2}:\d{2})$/;
 export function normalizeFeedDateZone(value) {
   const trimmed = String(value ?? '').trim();
   const short = trimmed.match(SHORT_YEAR_DATE);
-  if (short) return `20${short[1]}-${short[2]}-${short[3]}T${short[4]}:${short[5]}:00Z`;
+  if (short && Number(short[1]) > 12) return `20${short[1]}-${short[2]}-${short[3]}T${short[4]}:${short[5]}:00Z`;
   const dashed = trimmed.match(DASHED_TIME);
   if (dashed) return `${dashed[1]} ${dashed[2]} +0000`;
   const match = trimmed.match(TRAILING_ZONE);
