@@ -82,6 +82,24 @@ describe("deleteInvalidVariantRules", () => {
     expect(again.skipped).toEqual([{ id: ids[0], reason: "NOT_FOUND" }]);
   });
 
+  test("stops before the transaction read limit and hands back the rest", async () => {
+    // ~0.9 MiB per row; 20 of them is past Convex's 16 MiB read limit in prod.
+    // convex-test does not enforce that limit for db.get, so this pins the
+    // byte budget's batching rather than the limit itself.
+    const oversized = Array.from({ length: 7000 }, (_, i) => `${i}`.padEnd(128, "x"));
+    const t = convexTest(schema, modules);
+    const ids = await seed(t, Array.from({ length: 20 }, (_, i) => ({ variant: `size-probe-${i}`, eventTypes: oversized })));
+
+    const first = await t.mutation(internal.alertRules.deleteInvalidVariantRules, { ids });
+    expect(first.deleted.length).toBeGreaterThan(0);
+    expect(first.remaining.length).toBeGreaterThan(0);
+    expect([...first.deleted, ...first.remaining]).toEqual(ids);
+
+    const second = await t.mutation(internal.alertRules.deleteInvalidVariantRules, { ids: first.remaining });
+    expect(second.remaining).toEqual([]);
+    expect(await storedVariants(t)).toEqual([]);
+  });
+
   test("refuses more ids than one call may delete", async () => {
     const t = convexTest(schema, modules);
     const ids = await seed(t, Array.from({ length: 101 }, (_, i) => ({ variant: `sweep-${i}` })));

@@ -767,6 +767,9 @@ export const listShapeViolations = internalQuery({
 });
 
 const DELETE_INVALID_VARIANT_IDS_MAX = 100;
+// A row can be up to 1 MiB, so stopping once 8 MiB is read keeps one call well
+// under Convex's 16 MiB transaction read limit.
+const DELETE_INVALID_VARIANT_BYTES_MAX = 8 * 1024 * 1024;
 
 /**
  * Operator cleanup for the VARIANT_INVALID rows `listShapeViolations`
@@ -783,8 +786,13 @@ export const deleteInvalidVariantRules = internalMutation({
     }
     const deleted: Id<"alertRules">[] = [];
     const skipped: Array<{ id: Id<"alertRules">; reason: "NOT_FOUND" | "VARIANT_VALID" }> = [];
-    for (const id of new Set(args.ids)) {
+    const ids = [...new Set(args.ids)];
+    let bytesRead = 0;
+    let next = 0;
+    for (; next < ids.length && bytesRead < DELETE_INVALID_VARIANT_BYTES_MAX; next++) {
+      const id = ids[next]!;
       const row = await ctx.db.get(id);
+      if (row) bytesRead += getDocumentSize(row);
       if (!row) {
         skipped.push({ id, reason: "NOT_FOUND" });
         continue;
@@ -796,6 +804,7 @@ export const deleteInvalidVariantRules = internalMutation({
       if (!args.dryRun) await ctx.db.delete(id);
       deleted.push(id);
     }
-    return { deleted, skipped };
+    // Ids left unread because of the byte budget; pass them to the next call.
+    return { deleted, skipped, remaining: ids.slice(next) };
   },
 });
