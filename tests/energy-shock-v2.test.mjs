@@ -1088,8 +1088,46 @@ describe('product shortfalls net product trade', () => {
     const diesel = productRow(response, 'Diesel');
     assert.equal(diesel.demandKbd, round1(legacy.diesel.demandKbd));
     assert.equal(diesel.deficitPct, round1(Math.min(100, Math.max(0, crudeLoss * legacy.refineryYields.products.diesel - legacy.diesel.exportsKbd) / legacy.diesel.demandKbd * 100)));
-    assert.match(balanceLine(response, 'latest month'), /^product balance, latest month \(2026-08; no pre-crisis product trade in this JODI row\)/);
+    assert.match(balanceLine(response, 'latest month'), /^product balance, latest month \(2026-08; no usable pre-crisis product trade in this JODI row\)/);
     assert.equal(balanceLine(response, 'current flows'), undefined);
+  });
+
+  // Greptile on #9790: the basis label followed the window's presence, not
+  // the rows that actually used it.
+  it('a pre-crisis window without demand is labelled by the latest month the rows actually use', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const row = seededJodiRow('KR');
+    const empty = Object.fromEntries(Object.keys(row.productTrade.preCrisisBaseline.products).map((k) => [k, { demandKbd: null, importsKbd: null, exportsKbd: null }]));
+    row.productTrade = { ...row.productTrade, preCrisisBaseline: { ...row.productTrade.preCrisisBaseline, months: 3, products: empty } };
+    installEnergyShockRedis(productTradeSeed('KR', row));
+
+    const response = await computeShock({ countryCode: 'KR', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+
+    assert.equal(productRow(response, 'Diesel').demandKbd, round1(row.diesel.demandKbd));
+    assert.match(balanceLine(response, 'latest month'), /^product balance, latest month \(2026-08; no usable pre-crisis product trade in this JODI row\): /);
+    assert.equal(balanceLine(response, 'pre-crisis baseline'), undefined);
+    assert.equal(balanceLine(response, 'current flows'), undefined);
+    const harness = await createCountryDeepDivePanelHarness();
+    t.after(() => harness.cleanup());
+    assert.match(harness.createPanel().renderShockResult(response).textContent, /\(latest month 2026-08; no usable pre-crisis product trade in this JODI row\)/);
+  });
+
+  it('when only some products fall back, the basis names the latest month and those products', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const row = seededJodiRow('KR');
+    const pre = row.productTrade.preCrisisBaseline;
+    row.productTrade = { ...row.productTrade, preCrisisBaseline: { ...pre, products: { ...pre.products, naphtha: { demandKbd: null, importsKbd: null, exportsKbd: null } } } };
+    installEnergyShockRedis(productTradeSeed('KR', row));
+
+    const response = await computeShock({ countryCode: 'KR', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+
+    assert.equal(productRow(response, 'Naphtha').demandKbd, round1(row.naphtha.demandKbd));
+    assert.equal(productRow(response, 'Gasoline').demandKbd, round1(pre.products.gasoline.demandKbd));
+    assert.match(balanceLine(response, 'pre-crisis baseline'), /^product balance, pre-crisis baseline \(2025-02–2026-01; latest month 2026-08 for naphtha\): /);
+    assert.ok(balanceLine(response, 'current flows'));
+    const harness = await createCountryDeepDivePanelHarness();
+    t.after(() => harness.cleanup());
+    assert.match(harness.createPanel().renderShockResult(response).textContent, /\(pre-crisis baseline 2025-02–2026-01; latest month 2026-08 for naphtha\)/);
   });
 
   it('without HS 2710 partner rows only exports are netted, and the limitation says imports are not modeled', async (t) => {

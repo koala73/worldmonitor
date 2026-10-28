@@ -402,15 +402,16 @@ export async function computeEnergyShockScenario(
 
   if (needsOil && primaryRows.length > 0) {
     const dataMonth = typeof jodiOil?.dataMonth === 'string' ? jodiOil.dataMonth : 'unknown';
-    const basis = preCrisisTrade
-      ? `pre-crisis baseline (${preCrisisTrade.startMonth}–${preCrisisTrade.endMonth})`
-      : `latest month (${dataMonth}; no pre-crisis product trade in this JODI row)`;
-    const terms = primaryRows.map((row) => {
-      const term = balanceTerm(row, GULF_ATTRIBUTED_PRODUCTS.has(row.key) && gulfImportLossFactor != null);
-      return preCrisisTrade && !fromWindow(row.key) ? `${term} [latest month ${dataMonth}]` : term;
-    });
-    limitations.push(`product balance, ${basis}: deficit = refinery output loss + Gulf-origin import loss − exports redirected home, ÷ demand, kb/d${preCrisisTrade ? ' averaged over the window' : ''}: ${terms.join('; ')}.`);
-    if (preCrisisTrade) {
+    // The label follows the rows actually used, not the window's presence: a
+    // window can exist with too few months for any product's demand.
+    const latestLabels = primaryRows.filter((row) => !fromWindow(row.key)).map((row) => row.label);
+    const windowUsed = preCrisisTrade != null && latestLabels.length < primaryRows.length;
+    const basis = !windowUsed
+      ? `latest month (${dataMonth}; no usable pre-crisis product trade in this JODI row)`
+      : `pre-crisis baseline (${preCrisisTrade.startMonth}–${preCrisisTrade.endMonth}${latestLabels.length > 0 ? `; latest month ${dataMonth} for ${latestLabels.join(', ')}` : ''})`;
+    const terms = primaryRows.map((row) => balanceTerm(row, GULF_ATTRIBUTED_PRODUCTS.has(row.key) && gulfImportLossFactor != null));
+    limitations.push(`product balance, ${basis}: deficit = refinery output loss + Gulf-origin import loss − exports redirected home, ÷ demand, kb/d${windowUsed ? ' averaged over the window' : ''}: ${terms.join('; ')}.`);
+    if (windowUsed) {
       const currentRows = currentTrade ? balanceRows((key) => currentTrade.products[key]) : [];
       limitations.push(currentTrade && currentRows.length > 0
         ? `product balance, current flows (${currentTrade.startMonth}–${currentTrade.endMonth}, ${currentTrade.months} month${currentTrade.months === 1 ? '' : 's'}; crude loss as in the headline): ${currentRows.map((row) => `${row.label} ${row.balance.deficitPct.toFixed(1)}%`).join(', ')}.`
