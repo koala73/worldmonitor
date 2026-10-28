@@ -6,6 +6,7 @@ import type {
   GasSensitivity,
   GasStorageObservation,
   CrudeShareBaseline,
+  LngShareBaseline,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
@@ -24,14 +25,29 @@ import {
   deriveChokepointConfidence,
   parseFuelMode,
   EU_GAS_STORAGE_COUNTRIES,
+  CHOKEPOINT_LNG_EXPOSURE,
+  GAS_MODEL_BASIS,
+  LNG_HORMUZ_SHARE_KEY,
   computeGasDisruption,
+  hasGasMeasurements,
   buildGasAssessment,
+  buildLngOriginLimitation,
+  lngOriginUnavailableAssessment,
+  resolveLngOrigin,
   REFINERY_PRODUCTS,
   resolveRefineryYields,
   computeMonthlyGulfShares,
   MIN_PRE_CRISIS_MONTHS,
 } from './_shock-compute';
-import type { CrudeImportOriginLike, GulfShareMeasurement, JodiRefineryYieldsLike, MonthlyGulfShare, PartnerShareProductLike } from './_shock-compute';
+import type {
+  CrudeImportOriginLike,
+  GulfShareMeasurement,
+  JodiRefineryYieldsLike,
+  LngOriginForCountry,
+  LngShareBaselineEntry,
+  MonthlyGulfShare,
+  PartnerShareProductLike,
+} from './_shock-compute';
 import { ISO2_TO_COMTRADE } from './_comtrade-reporters';
 import { CURRENT_FLOWS_WINDOW, PRE_CRISIS_WINDOW } from '../../../../shared/hormuz-crisis.js';
 
@@ -217,14 +233,18 @@ export async function computeEnergyShockScenario(
     : null;
   const liveFlowRatio: number | null = rawFlowRatio !== null ? clamp(rawFlowRatio, 0, 1.5) : null;
 
-  // v10: pre-crisis (headline) and current-flows Gulf shares from monthly
-  // Comtrade filings. v9 oil caches (per-country JODI refinery yields, naphtha)
-  // carry the 2024 annual share only.
-  const cacheKey = `energy:shock:${needsOil ? 'v10' : 'v4'}:${code}:${chokepointId}:${disruptionPct}:${degraded ? 'd' : 'l'}:${fuelMode}`;
+  // Oil v10: pre-crisis (headline) and current-flows Gulf shares from monthly
+  // Comtrade filings; v9 (per-country JODI refinery yields, naphtha) carries
+  // the 2024 annual share only.
+  // Gas g2: the Hormuz LNG route share is the importer's measured Qatar + UAE
+  // share, not a flat 30%.
+  const cacheVersion = `${needsOil ? 'v10' : 'v4'}${needsGas ? '-g2' : ''}`;
+  const cacheKey = `energy:shock:${cacheVersion}:${code}:${chokepointId}:${disruptionPct}:${degraded ? 'd' : 'l'}:${fuelMode}`;
   const cached = await getCachedJson(cacheKey);
   if (cached) return cached as ComputeEnergyShockScenarioResponse;
 
-  const [jodiOilResult, ieaStocksResult, gulfShareResult, emberResult, jodiGasResult, gasStorageResult, oilTradeResult] = await Promise.allSettled([
+  const hormuzGas = needsGas && chokepointId === 'hormuz_strait';
+  const [jodiOilResult, ieaStocksResult, gulfShareResult, emberResult, jodiGasResult, gasStorageResult, lngOriginResult, oilTradeResult] = await Promise.allSettled([
     getCachedJson(`energy:jodi-oil:v1:${code}`, true),
     getCachedJson(`energy:iea-oil-stocks:v1:${code}`, true),
     getGulfCrudeShare(code),
@@ -233,6 +253,7 @@ export async function computeEnergyShockScenario(
     needsGas && EU_GAS_STORAGE_COUNTRIES.has(code)
       ? getCachedJson(`energy:gas-storage:v1:${code}`, true)
       : Promise.resolve(null),
+    hormuzGas ? getCachedJson(LNG_HORMUZ_SHARE_KEY, true) : Promise.resolve(null),
     needsOil ? getCachedJson(OIL_TRADE_SERIES_KEY, true) : Promise.resolve(null),
   ]);
 
@@ -272,6 +293,10 @@ export async function computeEnergyShockScenario(
   const emberData = emberResult.status === 'fulfilled' ? (emberResult.value as { fossilShare?: number } | null) : null;
   const jodiGas = jodiGasResult.status === 'fulfilled' ? (jodiGasResult.value as JodiGas | null) : null;
   const gasStorageData = gasStorageResult.status === 'fulfilled' ? (gasStorageResult.value as GasStorageData | null) : null;
+  // Hormuz LNG: both measured baselines for this importer, or why each is missing.
+  const lngOrigin: LngOriginForCountry | undefined = hormuzGas
+    ? resolveLngOrigin(lngOriginResult.status === 'fulfilled' ? lngOriginResult.value : null, code)
+    : undefined;
 
   // Static route factor only (fraction of Gulf crude that transits this
   // chokepoint). The live flow ratio is reported as context and never scales
@@ -452,16 +477,36 @@ export async function computeEnergyShockScenario(
 
   let gasSensitivity: GasSensitivity | undefined;
 
-  const gasDisruption = needsGas && jodiGas
-    ? computeGasDisruption(jodiGas.lngImportsTj, jodiGas.totalDemandTj, chokepointId, disruptionPct)
+  const gasMeasured = needsGas && jodiGas != null && hasGasMeasurements(jodiGas.lngImportsTj, jodiGas.totalDemandTj);
+  const zeroLng = gasMeasured && jodiGas?.lngImportsTj === 0;
+  // A Hormuz importer with recorded LNG imports and no measured origin share
+  // is not modeled: the loss needs a share, and no fixed fraction stands in.
+  // Zero recorded imports lose nothing whatever the share. The headline uses
+  // the pre-crisis share, or current flows when that is the only measurement.
+  const lngMeasured = Boolean(lngOrigin?.preCrisis || lngOrigin?.current);
+  const lngOriginMissing = gasMeasured && hormuzGas && !zeroLng && !lngMeasured;
+  const routeShare = hormuzGas
+    ? (lngOrigin?.preCrisis?.share ?? lngOrigin?.current?.share ?? (zeroLng ? 0 : undefined))
+    : CHOKEPOINT_LNG_EXPOSURE[chokepointId];
+  const gasDisruption = gasMeasured && !lngOriginMissing && jodiGas
+    ? computeGasDisruption(jodiGas.lngImportsTj, jodiGas.totalDemandTj, chokepointId, disruptionPct, routeShare)
     : undefined;
+  const gasDataMonth = typeof jodiGas?.dataMonth === 'string' ? jodiGas.dataMonth : '';
 
   if (needsGas) {
-    limitations.push('Gas results are assumed route sensitivities, not measured country-specific supplier exposure or supply-shortage forecasts.');
+    if (!hormuzGas) {
+      limitations.push('Gas results are assumed route sensitivities, not measured country-specific supplier exposure or supply-shortage forecasts.');
+    } else if (gasMeasured && lngOrigin && lngMeasured) {
+      limitations.push(buildLngOriginLimitation(lngOrigin, gasDataMonth));
+      if (!lngOrigin.current) limitations.push(`Current-flows LNG share unavailable for ${code}: ${lngOrigin.currentReason}.`);
+      limitations.push('Gas results are route sensitivities, not supply-shortage forecasts.');
+    } else if (lngOriginMissing) {
+      limitations.push(`LNG origin share unavailable for ${code}: ${lngOrigin?.preCrisisReason}; Strait of Hormuz LNG loss is not modeled.`);
+    }
     limitations.push('Gas input availability does not establish freshness or model confidence. JODI observation month and storage date apply separately.');
-    limitations.push('Shipping flow ratio is context only, has no observation date in this feed, and does not scale the assumed gas route baseline.');
+    limitations.push('Shipping flow ratio is context only, has no observation date in this feed, and does not scale the gas route share.');
     limitations.push('National gas stock does not establish accessible stock, withdrawal capacity, or operational endurance; no buffer duration is estimated.');
-    if (!gasDisruption) limitations.push(`Insufficient gas measurements for ${code}: finite nonnegative LNG imports and positive demand are required.`);
+    if (!gasMeasured) limitations.push(`Insufficient gas measurements for ${code}: finite nonnegative LNG imports and positive demand are required.`);
   }
 
   if (gasDisruption && jodiGas) {
@@ -470,8 +515,20 @@ export async function computeEnergyShockScenario(
     const lngShareOfImports = typeof jodiGas.lngShareOfImports === 'number'
       && Number.isFinite(jodiGas.lngShareOfImports) && jodiGas.lngShareOfImports >= 0 && jodiGas.lngShareOfImports <= 1
       ? Math.round(jodiGas.lngShareOfImports * 1000) / 1000 : undefined;
-    const dataMonth = typeof jodiGas.dataMonth === 'string' ? jodiGas.dataMonth : '';
+    const dataMonth = gasDataMonth;
     const { lngDisruptionTj, deficitPct: gasDeficitPct } = gasDisruption;
+    // Both measured baselines apply their share to the same JODI imports; the
+    // headline fields equal the pre-crisis one.
+    const measured = hormuzGas && lngMeasured ? lngOrigin : undefined;
+    const lossAt = (share: number) => computeGasDisruption(lngImportsTj, totalDemandTj, chokepointId, disruptionPct, share)!;
+    const toBaseline = (b: LngShareBaselineEntry): LngShareBaseline => ({
+      basis: b.basis,
+      fromMonth: b.fromMonth,
+      toMonth: b.toMonth,
+      monthsCovered: b.monthsCovered,
+      hormuzLngShare: b.share,
+      lngDisruptionTj: lossAt(b.share).lngDisruptionTj,
+    });
 
     let storage: GasStorageObservation | undefined;
     const isEu = EU_GAS_STORAGE_COUNTRIES.has(code);
@@ -498,11 +555,16 @@ export async function computeEnergyShockScenario(
       dataAvailable: true,
       assessment: buildGasAssessment(
         code, chokepointId, true, lngImportsTj, gasDeficitPct, disruptionPct, dataMonth,
+        measured
+          ? { preCrisis: measured.preCrisis, current: measured.current, currentDeficitPct: measured.current ? lossAt(measured.current.share).deficitPct : undefined }
+          : undefined,
       ),
       storage,
       dataSource: 'jodi_monthly',
       dataMonth,
-      modelBasis: 'assumed_route_sensitivity',
+      modelBasis: measured ? GAS_MODEL_BASIS.measured : hormuzGas ? GAS_MODEL_BASIS.zeroLng : GAS_MODEL_BASIS.assumed,
+      preCrisisBaseline: measured?.preCrisis ? toBaseline(measured.preCrisis) : undefined,
+      currentFlows: measured?.current ? toBaseline(measured.current) : undefined,
     };
   }
 
@@ -531,7 +593,8 @@ export async function computeEnergyShockScenario(
   };
 
   if (!needsOil) {
-    response.assessment = gasSensitivity?.assessment ?? buildGasAssessment(code, chokepointId, false, 0, 0, disruptionPct, '');
+    response.assessment = gasSensitivity?.assessment
+      ?? (lngOriginMissing ? lngOriginUnavailableAssessment(code, chokepointId) : buildGasAssessment(code, chokepointId, false, 0, 0, disruptionPct, ''));
     response.dataAvailable = gasSensitivity?.dataAvailable ?? false;
     response.coverageLevel = gasSensitivity ? 'partial' : 'unsupported';
     response.limitations = response.limitations.filter(l =>
@@ -557,6 +620,11 @@ export async function computeEnergyShockScenario(
   if (needsOil && needsGas) {
     response.dataAvailable = oilModeled || gasSensitivity != null;
     response.coverageLevel = response.dataAvailable ? 'partial' : 'unsupported';
+    // An unavailable scenario renders as its assessment alone; name the missing
+    // LNG origin too, or the gas reason would only reach the limitations.
+    if (!response.dataAvailable && lngOriginMissing) {
+      response.assessment = `${response.assessment} ${lngOriginUnavailableAssessment(code, chokepointId)}`;
+    }
   }
 
   const cacheTtl = degraded ? 300 : SHOCK_CACHE_TTL;

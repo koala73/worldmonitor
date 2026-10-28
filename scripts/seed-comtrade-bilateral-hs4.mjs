@@ -13,7 +13,8 @@ import {
   releaseLock,
   sleep,
 } from './_seed-utils.mjs';
-import { HS4_CODES, HS4_BATCHES, PREVIEW_MAX_RECORDS, parseRecords, groupByProduct, groupWorldExports, toCanonicalProduct, toPartnersProduct, comtradeFailureState } from './shared/comtrade.mjs';
+import { HS4_CODES, HS4_BATCHES, PREVIEW_MAX_RECORDS, parseRecords, groupByProduct, groupWorldExports, toCanonicalProduct, toPartnersProduct, comtradeFailureState, normalizeComtradePartner } from './shared/comtrade.mjs';
+import { LNG_CMD_CODE, LNG_HORMUZ_SHARE_KEY, MIN_LNG_PRE_CRISIS_COUNTRIES, buildLngOriginShares, lngOriginRequests, parseLngRows } from './shared/comtrade-lng-origin.mjs';
 export { HS4_CODES, MAX_HS4_CODES_PER_BATCH, groupByProduct } from './shared/comtrade.mjs';
 import { candidatePeriods, periodWindow, recentPeriod } from './shared/comtrade-period.mjs';
 
@@ -35,6 +36,9 @@ const PARTNERS_KEY_PREFIX = 'comtrade:bilateral-hs4-partners:';
 // One key for the whole run: every reporter's exports of every reviewed heading,
 // so the brief can state a supplier's absolute scale and its world rank.
 const WORLD_EXPORTS_KEY = 'comtrade:world-exports-hs4:v1';
+// One key for the whole run: every importer's Hormuz share of LNG (HS 271111)
+// before the crisis and in current flows, read by the energy shock model.
+const LNG_KEY = LNG_HORMUZ_SHARE_KEY;
 const TTL_SECONDS = 3456000; // 40d: monthly cadence + 9d deploy/missed-tick slack
 const LOCK_DOMAIN = 'comtrade:bilateral-hs4';
 const LOCK_TTL_MS = 30 * 60 * 1000; // 30 min
@@ -175,6 +179,15 @@ const COMTRADE_REPORTER_OVERRIDES = require('./shared/comtrade-reporter-override
 const ISO2_TO_UN = Object.fromEntries(
   Object.entries(UN_TO_ISO2).map(([un, iso2]) => [iso2, un]),
 );
+// Reporter codes that are not standard partner identities (490 is Taiwan as a
+// reporter, "Other Asia, nes" as a partner).
+const ISO2_BY_REPORTER_OVERRIDE = Object.fromEntries(
+  Object.entries(COMTRADE_REPORTER_OVERRIDES).map(([iso2, un]) => [un, iso2]),
+);
+/** @param {string} code */
+const lngReporterIso2 = (code) => ISO2_BY_REPORTER_OVERRIDE[code] ?? normalizeComtradePartner(code).iso2;
+/** @param {string} code */
+const lngPartnerKind = (code) => normalizeComtradePartner(code).kind;
 
 /**
  * @param {Array<string[]>} commands
@@ -277,6 +290,13 @@ export function __setSleepForTests(fn) {
   _paceSleep = next;
 }
 
+// The keyless test route caps a response at 500 rows, far fewer importers than
+// the production floor is sized for; tests lower it. null restores it.
+let _lngCoverageFloor = MIN_LNG_PRE_CRISIS_COUNTRIES;
+export function __setLngCoverageFloorForTests(n) {
+  _lngCoverageFloor = typeof n === 'number' ? n : MIN_LNG_PRE_CRISIS_COUNTRIES;
+}
+
 /**
  * @param {string} url
  * @param {number} timeoutMs
@@ -303,8 +323,8 @@ async function fetchBilateralOnce(url, timeoutMs, reserveRequest) {
  * @param {'M' | 'X'} [flowCode] 'M' is the per-reporter import pull; 'X' with
  *   partnerCode=0 is each reporter's exports of the heading to the World.
  */
-function buildFetchUrl(reporterCode, hs4Batch, key, period, flowCode = 'M') {
-  const url = new URL(COMTRADE_FETCH_URL);
+function buildFetchUrl(reporterCode, hs4Batch, key, period, flowCode = 'M', frequency = 'A') {
+  const url = new URL(frequency === 'M' ? COMTRADE_FETCH_URL.replace('/C/A/', '/C/M/') : COMTRADE_FETCH_URL);
   if (reporterCode) url.searchParams.set('reporterCode', reporterCode);
   url.searchParams.set('cmdCode', hs4Batch.join(','));
   url.searchParams.set('flowCode', flowCode);
@@ -340,9 +360,11 @@ function buildFetchUrl(reporterCode, hs4Batch, key, period, flowCode = 'M') {
  *   still reports the number of rows it saw.
  * @param {'M' | 'X'} [flowCode] 'X' builds the all-reporter world-exports
  *   request, which reuses this function purely for its retry and 429 handling.
- * @returns {Promise<Array<{cmdCode: string, partnerCode: string, reporterCode?: string, primaryValue: number, year: number}>>}
+ * @param {{frequency?: 'A' | 'M', parse?: (data: unknown, maxRecords: number) => any[]}} [options] the
+ *   LNG origin requests use the monthly route and their own HS6 row parser.
+ * @returns {Promise<Array<any>>}
  */
-export async function fetchBilateral(reporterCode, hs4Batch, period, reserveRequest, onRawRowCount, flowCode = 'M') {
+export async function fetchBilateral(reporterCode, hs4Batch, period, reserveRequest, onRawRowCount, flowCode = 'M', { frequency = 'A', parse = parseRecords } = {}) {
   period = period ?? recentPeriod();
   let rateLimitedOnce = false;
   let transientRetries = 0;
@@ -353,7 +375,7 @@ export async function fetchBilateral(reporterCode, hs4Batch, period, reserveRequ
   let resp;
   while (true) {
     resp = await fetchBilateralOnce(
-      buildFetchUrl(reporterCode, hs4Batch, getNextKey(), period, flowCode),
+      buildFetchUrl(reporterCode, hs4Batch, getNextKey(), period, flowCode, frequency),
       45_000,
       reserveRequest,
     );
@@ -390,7 +412,7 @@ export async function fetchBilateral(reporterCode, hs4Batch, period, reserveRequ
   // throws outright on a capped response — the one case where knowing how many
   // rows arrived matters most.
   if (Array.isArray(data?.data)) onRawRowCount?.(data.data.length);
-  const parsed = parseRecords(data, MAX_RECORDS);
+  const parsed = parse(data, MAX_RECORDS);
   if (parsed.length === 0 && data?.count > 0) {
     console.warn(`    Reporter ${label}: API returned count=${data.count} but parseRecords produced 0 — response shape may have changed`);
   }
@@ -437,7 +459,7 @@ export async function main({ requestBudget = REQUEST_BUDGET } = {}) {
   const allKeys = countries.flatMap(([iso2]) => [canonicalKey(iso2), partnersKey(iso2)]);
 
   if (lock.skipped) {
-    await extendExistingTtl([...allKeys, WORLD_EXPORTS_KEY, META_KEY], TTL_SECONDS)
+    await extendExistingTtl([...allKeys, WORLD_EXPORTS_KEY, LNG_KEY, META_KEY], TTL_SECONDS)
       .catch(e => console.warn('[bilateral-hs4] TTL extension (skipped) failed:', e.message));
     return;
   }
@@ -451,8 +473,10 @@ export async function main({ requestBudget = REQUEST_BUDGET } = {}) {
   // which is also what a snapshot written before this field existed reads as —
   // api/seed-health.js treats that absence as "no evidence", not as a failure.
   let worldExports = null;
+  // The run's LNG origin outcome, recorded the same way as worldExports.
+  let lngOrigin = null;
   const writeMeta = async (count, status = 'ok', preserveStreaks = {}) => {
-    const meta = JSON.stringify({ fetchedAt: Date.now(), recordCount: count, status, preserveStreaks, requestedHs4s: HS4_CODES, countryCoverage, worldExports });
+    const meta = JSON.stringify({ fetchedAt: Date.now(), recordCount: count, status, preserveStreaks, requestedHs4s: HS4_CODES, countryCoverage, worldExports, lngOrigin });
     // TTL ≥ FRESHNESS_GATE_MS so the gate's "fresh" answer cannot be silently
     // invalidated by Redis eviction. See the SEED_META_TTL_SECONDS comment.
     await redisPipeline([['SET', META_KEY, meta, 'EX', String(SEED_META_TTL_SECONDS)]])
@@ -541,6 +565,47 @@ export async function main({ requestBudget = REQUEST_BUDGET } = {}) {
       // scale rather than the country coverage.
       console.warn(`[bilateral-hs4] world exports unavailable, continuing with reporters: ${err.message}`);
       worldExports = { state: comtradeFailureState(err), attemptedAt: new Date().toISOString() };
+    }
+
+    // Hormuz LNG origin shares: three all-reporter HS 271111 requests (annual
+    // pre-crisis year, the 12 pre-crisis months, crisis months since 2026-03),
+    // reserved before the reporters for the same reason as world exports. The
+    // snapshot is all-or-nothing: the first failure ends the phase, the
+    // previous snapshot is kept, and the reporters do not depend on it.
+    try {
+      /** @type {Record<string, any[]>} */
+      const lngRows = {};
+      for (const request of lngOriginRequests()) {
+        if (requestCount > 0) await _paceSleep(INTER_REQUEST_DELAY_MS);
+        console.log(`[bilateral-hs4] LNG origin ${request.id} (${request.frequency}, ${request.periods.length} periods)...`);
+        lngRows[request.id] = await fetchBilateral('', [LNG_CMD_CODE], request.periods.join(','), reserveRequest, undefined, 'M', { frequency: request.frequency, parse: parseLngRows });
+      }
+      const shares = buildLngOriginShares(lngRows, { reporterIso2: lngReporterIso2, partnerKind: lngPartnerKind });
+      const fetchedAt = new Date().toISOString();
+      const countries = Object.values(shares.countries);
+      const preCrisisCount = countries.filter(c => c.preCrisis).length;
+      if (countries.length === 0) {
+        console.warn('[bilateral-hs4] LNG origin: no usable rows, keeping the previous snapshot');
+        lngOrigin = { state: 'no_records', attemptedAt: fetchedAt };
+      } else if (preCrisisCount < _lngCoverageFloor) {
+        // Entries exist but too few carry a usable share: a thin or withheld
+        // response must not replace a fuller snapshot.
+        console.warn(`[bilateral-hs4] LNG origin: ${preCrisisCount} pre-crisis shares (floor ${_lngCoverageFloor}), keeping the previous snapshot`);
+        lngOrigin = { state: 'incomplete', attemptedAt: fetchedAt, countryCount: countries.length, preCrisisCount };
+      } else {
+        queueWrite(LNG_KEY, JSON.stringify({ fetchedAt, source: 'UN Comtrade data API', ...shares }));
+        lngOrigin = {
+          state: 'observed',
+          fetchedAt,
+          countryCount: countries.length,
+          preCrisisCount,
+          currentCount: countries.filter(c => c.current).length,
+        };
+        console.log(`[bilateral-hs4] LNG origin: ${lngOrigin.countryCount} importers, ${lngOrigin.preCrisisCount} pre-crisis, ${lngOrigin.currentCount} current-flows shares`);
+      }
+    } catch (err) {
+      console.warn(`[bilateral-hs4] LNG origin unavailable, continuing with reporters: ${err.message}`);
+      lngOrigin = { state: comtradeFailureState(err), attemptedAt: new Date().toISOString() };
     }
 
     for (let i = 0; i < countries.length; i++) {
@@ -696,6 +761,7 @@ export async function main({ requestBudget = REQUEST_BUDGET } = {}) {
     // A run that could not rewrite the world-exports snapshot keeps the previous
     // one alive, exactly as a failed reporter keeps its previous shard.
     if (worldExports?.state !== 'observed') preservedKeys.push(WORLD_EXPORTS_KEY);
+    if (lngOrigin?.state !== 'observed') preservedKeys.push(LNG_KEY);
     if (preservedKeys.length > 0) {
       await extendExistingTtl(preservedKeys, TTL_SECONDS)
         .catch(e => console.warn('[bilateral-hs4] TTL extension (preserved) failed:', e.message));
@@ -719,7 +785,7 @@ export async function main({ requestBudget = REQUEST_BUDGET } = {}) {
     console.log(`[bilateral-hs4] Seeded ${writtenCount} country keys (${failedCount} failed, ${preservedKeys.length} preserved)`);
   } catch (err) {
     console.error('[bilateral-hs4] Seed failed:', err.message || err);
-    await extendExistingTtl([...allKeys, WORLD_EXPORTS_KEY, META_KEY], TTL_SECONDS)
+    await extendExistingTtl([...allKeys, WORLD_EXPORTS_KEY, LNG_KEY, META_KEY], TTL_SECONDS)
       .catch(e => console.warn('[bilateral-hs4] TTL extension failed:', e.message));
     await writeMeta(0, 'error');
     throw err;
