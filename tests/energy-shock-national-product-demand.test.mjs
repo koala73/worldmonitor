@@ -95,6 +95,16 @@ describe('product demand from national statistics (Malaysia, DOSM)', () => {
     assert.match(line(r, /^Product demand for MY/), /for diesel, jet fuel, LPG/);
   });
 
+  it('JODI demand in the current-flows window is kept, never replaced by national demand', async (t) => {
+    t.after(restore);
+    const jodi = jodiMy();
+    jodi.productTrade.currentFlows.products.jet.demandKbd = 1000;
+    seed(my({ jodi }));
+    const r = await shock();
+    assert.equal(demandOf(r)['Jet fuel'], 62.9, 'the headline still uses DOSM: JODI has no pre-crisis or latest jet demand');
+    assert.match(line(r, /^product balance, current flows/), /jet fuel 1\.3%/);
+  });
+
   it('a national year more than three years before the JODI flow month is not used', async (t) => {
     t.after(restore);
     const old = productDemandNationalSection({ rows: DOSM.rows.filter((row) => row.date < '2023'), fetchedAt: '2026-10-28T03:00:00.000Z' });

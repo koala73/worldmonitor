@@ -559,7 +559,7 @@ export async function computeEnergyShockScenario(
   const jodiHasDemand = (key: RefineryProductKey) => hasDemand(preCrisisTrade?.products[key]) || hasDemand(latestFlows(key));
   const withNationalDemand = (key: RefineryProductKey, flows: ProductTradeFlows | null | undefined): ProductTradeFlows | null | undefined => {
     const demandKbd = nationalDemand?.products[key];
-    if (flows == null || demandKbd == null || jodiHasDemand(key)) return flows;
+    if (flows == null || demandKbd == null || hasDemand(flows) || jodiHasDemand(key)) return flows;
     return { ...flows, demandKbd };
   };
   const balanceRows = (flowsFor: (key: RefineryProductKey) => ProductTradeFlows | null | undefined, lossKbd = crudeLossKbd): ProductBalanceRow[] =>
