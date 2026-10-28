@@ -25,7 +25,7 @@ test('oil route evidence withholds a proxy and retains covered Comtrade values',
   const s = buildDecisionBrief({ ...selection, fuelMode: 'oil' }, data);
   assert.equal(s.evidence.find(e => e.id === 'baseline-route')!.value, null);
   assert.equal(s.evidence.find(e => e.id === 'comparison-route')!.value, 40);
-  assert.match(s.unknowns.join(' '), /baseline: Comtrade route exposure is unavailable.*fixed proxy/);
+  assert.match(s.unknowns.join(' '), /baseline: Comtrade route exposure is unavailable.*not modeled without a measured origin share/);
   assert.deepEqual(s.results.map(r => r.loss), [100, 100]);
   assert.equal(s.comparison.delta, null);
 });
