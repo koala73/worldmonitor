@@ -80,6 +80,9 @@ beforeEach(() => {
 
 const sessionCalls = () => clerk.calls.filter((call) => call.includes('/v1/sessions/'));
 const mintCalls = () => clerk.calls.filter((call) => call.includes('/v1/sign_in_tokens'));
+// A standard session token has no `plan` claim; these routes must not pay a
+// Clerk user lookup for it ahead of their limiter (Strix, 2026-10-28).
+const planLookups = () => clerk.calls.filter((call) => call.includes('/v1/users/'));
 
 async function signToken(claims: Record<string, unknown>, subject = 'user_victim'): Promise<string> {
   return new SignJWT({ azp: ORIGIN, v: 2, ...claims })
@@ -166,6 +169,7 @@ describe('desktop sign-in: a revoked Clerk session cannot be laundered into a ti
     const response = await authorize(await signToken({ sid: 'sess_live' }));
     assert.equal(response.status, 429);
     assert.equal(sessionCalls().length, 0, 'a limited caller never spends the Clerk quota');
+    assert.equal(planLookups().length, 0, 'nor a plan lookup ahead of the limiter');
     assert.equal(records.size, 0);
   });
 
@@ -232,6 +236,7 @@ describe('desktop sign-in: a revoked Clerk session cannot be laundered into a ti
     assert.deepEqual(await redeemed.json(), { ticket: 'ticket_durable' });
     assert.equal(sessionCalls().length, 2, 'checked once per step, never cached');
     assert.equal(mintCalls().length, 1);
+    assert.equal(planLookups().length, 0, 'no plan lookup for a session token on this route');
   });
 });
 
@@ -282,6 +287,7 @@ describe('Pro MCP grant: the handler requires a live Clerk session (production r
     const { response, nonceReads } = mint(await signToken({ sid: 'sess_live' }), async () => new Response('{}', { status: 429 }));
     assert.equal((await response).status, 429);
     assert.equal(sessionCalls().length, 0, 'a limited caller never spends the Clerk quota');
+    assert.equal(planLookups().length, 0, 'nor a plan lookup ahead of the limiter');
     assert.equal(nonceReads.length, 0);
   });
 

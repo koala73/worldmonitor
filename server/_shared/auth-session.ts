@@ -13,7 +13,7 @@
  * use API-key-only auth.
  */
 
-import { validateBearerToken } from '../auth-session';
+import { validateBearerToken, type ValidateBearerTokenOptions } from '../auth-session';
 import { renderBillingVerificationDenial, unverifiableEntitlementDenial } from './entitlement-check';
 
 export interface ClerkSession {
@@ -52,12 +52,15 @@ export function sessionVerificationUnavailableResponse(headers: Record<string, s
  *
  * Verification errors fail closed and remain retryable.
  */
-export async function resolveClerkSession(request: Request): Promise<ClerkSession | UnverifiableSession | null> {
+export async function resolveClerkSession(
+  request: Request,
+  options: ValidateBearerTokenOptions = {},
+): Promise<ClerkSession | UnverifiableSession | null> {
   try {
     const authHeader = request.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) return null;
 
-    const session = await validateBearerToken(authHeader.slice(7));
+    const session = await validateBearerToken(authHeader.slice(7), options);
     if (!session.valid) return session.reason === 'unverifiable' ? UNVERIFIABLE : null;
     if (!session.userId) return null;
 
@@ -94,7 +97,10 @@ export async function resolveSessionUserId(request: Request): Promise<string | R
  * the limiter, so a limited caller never spends the shared Clerk quota.
  */
 export async function resolveVerifiedClerkSession(request: Request): Promise<ClerkSession | Response | null> {
-  const session = await resolveClerkSession(request);
+  // No plan lookup: these routes never read `role`, and a standard session
+  // token (no `plan` claim) would otherwise cost one Clerk call per request
+  // ahead of the limiter. Only the cached JWKS fetch remains.
+  const session = await resolveClerkSession(request, { resolvePlan: false });
   if (!session) return null;
   if ('reason' in session) return sessionVerificationUnavailableResponse();
   return session;

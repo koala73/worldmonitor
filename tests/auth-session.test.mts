@@ -319,6 +319,52 @@ describe('validateBearerToken (with JWKS)', () => {
     assert.equal(result.acceptedWithinClockTolerance, undefined);
   });
 
+  it('skips the Clerk plan lookup for a plan-less token when resolvePlan is false', async () => {
+    // This suite's module instance was imported with no CLERK_SECRET_KEY, so
+    // its lookup never fires: use a fresh instance that would call Clerk.
+    const originalFetch = globalThis.fetch;
+    const originalSecret = process.env.CLERK_SECRET_KEY;
+    const originalWarn = console.warn;
+    process.env.CLERK_SECRET_KEY = 'sk_test_no_plan_lookup';
+    console.warn = () => {};
+    const lookups: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!url.includes('api.clerk.com')) return originalFetch(input, init); // JWKS
+      lookups.push(url);
+      return Response.json({ public_metadata: { plan: 'pro' } });
+    }) as typeof fetch;
+    try {
+      const mod = await import(`../server/auth-session.ts?no-plan-lookup=${Date.now()}`);
+      const token = await signToken({ sub: 'user_no_plan_claim', sid: 'sess_x' }, { audience: null });
+
+      // Control: by default a plan-less token costs one Backend API call.
+      const looked = await mod.validateBearerToken(token);
+      assert.equal(looked.valid, true);
+      assert.equal(looked.role, 'pro');
+      assert.equal(lookups.length, 1);
+
+      const skipped = await mod.validateBearerToken(
+        await signToken({ sub: 'user_no_plan_claim_2', sid: 'sess_y' }, { audience: null }),
+        { resolvePlan: false },
+      );
+      assert.equal(skipped.valid, true);
+      assert.equal(skipped.role, 'free');
+      assert.equal(skipped.sessionId, 'sess_y');
+      assert.equal(lookups.length, 1, 'no further Backend API call');
+
+      // A token that states its plan keeps it either way.
+      const stated = await mod.validateBearerToken(await signToken({ sub: 'user_stated', plan: 'pro' }), { resolvePlan: false });
+      assert.equal(stated.role, 'pro');
+      assert.equal(lookups.length, 1);
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+      if (originalSecret === undefined) delete process.env.CLERK_SECRET_KEY;
+      else process.env.CLERK_SECRET_KEY = originalSecret;
+    }
+  });
+
   it('surfaces the Clerk session id (`sid`) so callers can check liveness, and omits it when absent', async () => {
     const withSession = await validateBearerToken(await signToken({ sub: 'user_sid', plan: 'pro', sid: 'sess_abc' }));
     assert.equal(withSession.valid, true);

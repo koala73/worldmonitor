@@ -1021,7 +1021,10 @@ export async function getClerkSessionToken(): Promise<string | null> {
   if (!session) return null;
   const myGen = _tokenGen;
   try {
-    const token = await session.getToken();
+    // A fresh token: Clerk's cache may hand back one with seconds left, and the
+    // route this feeds still has Clerk calls of its own to make before it
+    // reads the claims. These are one-shot user clicks, not a hot path.
+    const token = await session.getToken({ skipCache: true });
     if (myGen !== _tokenGen || clerkInstance?.session !== session) return null;
     return token;
   } catch {

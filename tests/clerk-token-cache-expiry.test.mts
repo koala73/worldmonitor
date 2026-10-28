@@ -198,7 +198,7 @@ describe('shouldReuseCachedClerkToken', () => {
 // only it carries `sid`, which those routes check for liveness at Clerk. A
 // JWT-template token (`convex`) omits it (Clerk docs, "JWT templates").
 describe('getClerkSessionToken', () => {
-  it('asks Clerk for the standard session token with no template and no cache options', async () => {
+  it('asks Clerk for the standard session token with no template, bypassing its cache', async () => {
     const calls: unknown[] = [];
     const session = {
       async getToken(...args: unknown[]) {
@@ -209,7 +209,7 @@ describe('getClerkSessionToken', () => {
     __setClerkInstanceForTests({ session } as never);
 
     assert.equal(await getClerkSessionToken(), 'session-token');
-    assert.deepEqual(calls, [[]]);
+    assert.deepEqual(calls, [[{ skipCache: true }]]);
   });
 
   it('discards a pending token when the selected session changes', async () => {

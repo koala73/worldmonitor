@@ -326,7 +326,22 @@ export async function verifiedSubjectIgnoringExpiry(token: string): Promise<stri
  * (app hosts seeded from TRUSTED_RETURN_URL_ORIGINS via the CORS allowlist,
  * plus desktop/preview origins and `SITE_URL`); absent `azp` is fail-open.
  */
-export async function validateBearerToken(token: string): Promise<SessionResult> {
+export interface ValidateBearerTokenOptions {
+  /**
+   * `false` skips the Clerk Backend API plan lookup a standard session token
+   * (no `plan` claim) otherwise triggers; `role` is then `free` unless the
+   * token says otherwise. For routes that do not use the role and must stay
+   * network-free until their rate limiter has run (desktop sign-in, MCP
+   * grant): the lookup is uncached for five minutes at most and never
+   * deduplicated, so it must not sit in front of a limiter.
+   */
+  resolvePlan?: boolean;
+}
+
+export async function validateBearerToken(
+  token: string,
+  options: ValidateBearerTokenOptions = {},
+): Promise<SessionResult> {
   const jwks = getJWKS();
   // No issuer domain configured: a deploy defect, not a bad token.
   if (!jwks) return { valid: false, reason: 'unverifiable' };
@@ -369,7 +384,9 @@ export async function validateBearerToken(token: string): Promise<SessionResult>
         ? rawPlan === 'pro'
           ? 'pro'
           : 'free'
-        : await lookupPlanFromClerk(userId);
+        : options.resolvePlan === false
+          ? 'free'
+          : await lookupPlanFromClerk(userId);
 
     const email = typeof payload.email === 'string' ? payload.email : undefined;
     const givenName = typeof payload.given_name === 'string' ? payload.given_name : undefined;
