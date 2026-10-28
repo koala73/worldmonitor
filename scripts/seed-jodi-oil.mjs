@@ -55,6 +55,34 @@ const SECONDARY_PRODUCTS = {
   LPG: 'lpg',
 };
 
+// Published per country like the others, but kept out of SECONDARY_PRODUCTS:
+// that map is also the demand-change basket and the dataMonth test, which
+// downstream nowcasts pin to five products. Naphtha is 9-30% of refinery
+// output in JP, KR and TW and their largest product import.
+const YIELD_ONLY_PRODUCTS = {
+  NAPHTHA: 'naphtha',
+};
+
+const PUBLISHED_PRODUCTS = { ...SECONDARY_PRODUCTS, ...YIELD_ONLY_PRODUCTS };
+
+// Refinery yields are summed over a trailing window so a single noisy month
+// (Spain jet 1.1% in 2026-07) cannot set a country's yield.
+export const REFINERY_YIELD_WINDOW_MONTHS = 12;
+export const REFINERY_YIELD_MIN_MONTHS = 6;
+// JODI publishes China's crude refinery intake as the balance of its supply:
+// production + imports - exports - intake closes to within 0.2 kb/d in every
+// month, so it is not an observed intake. A month is "balanced" when the
+// residual is within the larger of 1 kb/d and 0.1% of intake; no other JODI
+// reporter balances in more than 5 of 12 months.
+const BALANCE_TOLERANCE_KBD = 1;
+const BALANCE_TOLERANCE_SHARE = 0.001;
+const BALANCING_MONTH_SHARE = 0.75;
+// Gross refinery output also counts NGL and other feedstocks, so output per
+// barrel of crude intake runs 1.0-1.35 for most refiners. Outside this band
+// (Canada 2.24, Lithuania 0.50) the reported crude intake does not describe
+// the output it is meant to feed.
+const PLAUSIBLE_OUTPUT_PER_INTAKE = [0.75, 1.5];
+
 function splitCsvLine(line) {
   const fields = [];
   let field = '';
@@ -221,6 +249,95 @@ function oilDemandChangeFromMonths(byMonth, iso2, dataMonth) {
   };
 }
 
+function crudeIntakeObservation(monthRows, iso2) {
+  // Same CRUDEOIL-then-TOTCRUDE preference as the published crude block, with
+  // every flow of the balance read from the product whose intake was used.
+  for (const product of ['CRUDEOIL', 'TOTCRUDE']) {
+    const intake = pickMonthValue(monthRows, iso2, product, 'REFINOBS', false);
+    if (intake === null) continue;
+    return {
+      intake,
+      production: pickMonthValue(monthRows, iso2, product, 'INDPROD', false),
+      imports: pickMonthValue(monthRows, iso2, product, 'TOTIMPSB', false),
+      exports: pickMonthValue(monthRows, iso2, product, 'TOTEXPSB', false),
+    };
+  }
+  return null;
+}
+
+const roundYield = (value) => Math.round(value * 10_000) / 10_000;
+
+/**
+ * Product refinery output per barrel of refinery intake, summed over the
+ * trailing REFINERY_YIELD_WINDOW_MONTHS ending at dataMonth.
+ *
+ * The denominator is crude refinery intake unless it is not credible: reported
+ * in fewer than REFINERY_YIELD_MIN_MONTHS months, a balancing item (China), or
+ * implausible against total output. Then total refinery output (TOTPRODS) is
+ * used, which makes each yield a share of output. A product needs
+ * REFINERY_YIELD_MIN_MONTHS months with both its output and the denominator,
+ * else its yield is null (the reader then says it is not measured). Returns
+ * null when neither denominator is usable.
+ */
+export function computeRefineryYields(byMonth, iso2, dataMonth) {
+  const startMonth = shiftMonth(dataMonth, -(REFINERY_YIELD_WINDOW_MONTHS - 1));
+  if (startMonth === null) return null;
+  const window = [];
+  for (let offset = REFINERY_YIELD_WINDOW_MONTHS - 1; offset >= 0; offset--) {
+    const month = shiftMonth(dataMonth, -offset);
+    const monthRows = byMonth.get(month) ?? [];
+    const crude = crudeIntakeObservation(monthRows, iso2);
+    const totalOutput = pickMonthValue(monthRows, iso2, 'TOTPRODS', 'REFGROUT', false);
+    window.push({
+      monthRows,
+      intake: crude && crude.intake > 0 ? crude : null,
+      totalOutput: totalOutput !== null && totalOutput > 0 ? totalOutput : null,
+    });
+  }
+
+  const intakeMonths = window.filter((m) => m.intake);
+  const balanceMonths = intakeMonths.filter((m) => m.intake.production !== null && m.intake.imports !== null && m.intake.exports !== null);
+  const balancedCount = balanceMonths.filter(({ intake: c }) => {
+    const residual = c.production + c.imports - c.exports - c.intake;
+    return Math.abs(residual) <= Math.max(BALANCE_TOLERANCE_KBD, c.intake * BALANCE_TOLERANCE_SHARE);
+  }).length;
+  const paired = intakeMonths.filter((m) => m.totalOutput !== null);
+  // Too few paired months cannot reject the intake: the total-output basis
+  // would then be too short to publish, and every yield would fall back.
+  const outputPerIntake = paired.length >= REFINERY_YIELD_MIN_MONTHS
+    ? paired.reduce((s, m) => s + m.totalOutput, 0) / paired.reduce((s, m) => s + m.intake.intake, 0)
+    : null;
+
+  let intakeIssue = null;
+  if (intakeMonths.length < REFINERY_YIELD_MIN_MONTHS) intakeIssue = 'unreported';
+  else if (balanceMonths.length >= REFINERY_YIELD_MIN_MONTHS && balancedCount >= balanceMonths.length * BALANCING_MONTH_SHARE) intakeIssue = 'balancing_item';
+  else if (outputPerIntake !== null && (outputPerIntake < PLAUSIBLE_OUTPUT_PER_INTAKE[0] || outputPerIntake > PLAUSIBLE_OUTPUT_PER_INTAKE[1])) intakeIssue = 'implausible_output_ratio';
+
+  const basis = intakeIssue === null ? 'crude_refinery_intake' : 'total_refinery_output';
+  const denominator = (m) => (basis === 'crude_refinery_intake' ? m.intake?.intake ?? null : m.totalOutput);
+  const months = window.filter((m) => denominator(m) !== null).length;
+  if (months < REFINERY_YIELD_MIN_MONTHS) return null;
+
+  const products = {};
+  for (const [productCode, productName] of Object.entries(PUBLISHED_PRODUCTS)) {
+    let output = 0;
+    let input = 0;
+    let count = 0;
+    for (const m of window) {
+      const d = denominator(m);
+      const out = pickMonthValue(m.monthRows, iso2, productCode, 'REFGROUT', false);
+      if (d === null || out === null || out < 0) continue;
+      output += out;
+      input += d;
+      count++;
+    }
+    const value = count >= REFINERY_YIELD_MIN_MONTHS ? output / input : null;
+    products[productName] = value !== null && value <= 1 ? roundYield(value) : null;
+  }
+
+  return { basis, intakeIssue, startMonth, endMonth: dataMonth, months, products };
+}
+
 export function extractCountryData(allRows, iso2) {
   const byMonth = rowsByMonth(allRows, iso2);
 
@@ -254,7 +371,7 @@ export function extractCountryData(allRows, iso2) {
   const seededAt = new Date().toISOString();
 
   const secondaryProducts = {};
-  for (const [prodCode, prodName] of Object.entries(SECONDARY_PRODUCTS)) {
+  for (const [prodCode, prodName] of Object.entries(PUBLISHED_PRODUCTS)) {
     secondaryProducts[prodName] = {
       demandKbd:    pickVal(prodCode, 'TOTDEMO',  true),
       refOutputKbd: pickVal(prodCode, 'REFGROUT', false),
@@ -293,6 +410,7 @@ export function extractCountryData(allRows, iso2) {
       importsKbd:        crudeImportsKbd,
       exportsKbd:        crudeExportsKbd,
     },
+    refineryYields: computeRefineryYields(byMonth, iso2, dataMonth),
     demandChange: oilDemandChangeFromMonths(byMonth, iso2, dataMonth).change,
     seededAt,
   };

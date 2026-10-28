@@ -288,11 +288,12 @@ whenever their producer recorded one:
 | `ageMonths` | How many months behind the run that observation month is |
 | `unavailableSince` | Epoch milliseconds of the first run that **recorded** the gap, carried forward across runs. Best-effort: a run that cannot read the previous `seed-meta` (Redis blip, first run after deploy) re-dates it to that run. Read it as "first run that recorded this gap", never as a measured outage start |
 
-The block never moves the status. China's rows going unusable is an upstream
-fact no retry clears — every China row in both JODI files has carried
-`ASSESSMENT_CODE 3` ("null/uncertain") since at least 2026-08 — so grading it
-would be a warning nobody can act on. What it must not be is silent: the
-seeders publish the other 50-57 countries regardless of China, and this block
+The block never moves the status. A China row that carries no usable number
+is an upstream fact no retry clears, so grading it would be a warning nobody
+can act on. `ASSESSMENT_CODE 3` is not that case: it marks a value JODI has not
+assessed, every China cell in both JODI files carries it, and both seeders keep
+those values. What it must not be is silent: the
+seeders publish every other country regardless of China, and this block
 is what names the country that dropped out.
 
 It describes the producer's **last completed publish**, like every other

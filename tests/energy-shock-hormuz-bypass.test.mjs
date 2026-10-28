@@ -20,6 +20,7 @@ import {
   computeEffectiveCoverDaysWithRamp,
   computeEffectiveCoverDays,
   computeMonthlyGulfShares,
+  GLOBAL_MEDIAN_REFINERY_YIELD,
   GULF_PARTNER_ISO2,
 } from '../server/worldmonitor/intelligence/v1/_shock-compute.ts';
 import { computeEnergyShockScenario } from '../server/worldmonitor/intelligence/v1/compute-energy-shock.ts';
@@ -153,9 +154,10 @@ describe('handler: Hormuz bypass on the pre-crisis baseline', () => {
     assert.ok(Math.abs(pre.crudeLossAfterBypassKbd - JP_IMPORTS * 0.4112) < 2, `after bypass ${pre.crudeLossAfterBypassKbd}`);
     assert.equal(r.crudeLossKbd, pre.crudeLossAfterBypassKbd, 'the headline loss is the steady state after bypass');
     assert.equal(r.gulfCrudeShare, pre.gulfCrudeShare, 'the share stays the measured Gulf share');
-    // Products use the steady-state loss: gasoline 2382 * 0.4112 * 0.44 / 790.8.
+    // Products use the steady-state loss through the refinery yield; this JODI row
+    // has no country yields, so gasoline takes the global median.
     const gasoline = r.products.find((p) => p.product === 'Gasoline');
-    assert.ok(Math.abs(gasoline.deficitPct - (JP_IMPORTS * 0.4112 * 0.44 / 790.8135) * 100) < 0.3, `${gasoline.deficitPct}`);
+    assert.ok(Math.abs(gasoline.deficitPct - (JP_IMPORTS * 0.4112 * GLOBAL_MEDIAN_REFINERY_YIELD.gasoline / 790.8135) * 100) < 0.3, `${gasoline.deficitPct}`);
     const expectedCover = Math.round(BYPASS_RAMP_DAYS + (178 - BYPASS_RAMP_DAYS * 0.9275) / 0.4112);
     assert.ok(Math.abs(r.effectiveCoverDays - expectedCover) <= 1, `cover ${r.effectiveCoverDays} vs ${expectedCover}`);
     // No bypass recovery is applied to current flows.
@@ -180,9 +182,9 @@ describe('handler: Hormuz bypass on the pre-crisis baseline', () => {
     assert.match(r.assessment, /after bypass rerouting/);
   });
 
-  it('a stale v9 cache entry (no bypass) is not served', async (t) => {
+  it('a stale v10 cache entry (#9789 baselines, no bypass) is not served', async (t) => {
     t.after(restore);
-    seed({ ...HORMUZ, ...JP, ...ORIGIN, 'energy:shock:v9:JP:hormuz_strait:100:l:oil': { countryCode: 'JP', crudeLossKbd: 2209.5, limitations: [] } });
+    seed({ ...HORMUZ, ...JP, ...ORIGIN, 'energy:shock:v10:JP:hormuz_strait:100:l:oil': { countryCode: 'JP', crudeLossKbd: 2209.5, limitations: [] } });
     const r = await shock('JP');
     assert.ok(r.preCrisisBaseline?.crudeLossAfterBypassKbd > 0);
   });
