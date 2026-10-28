@@ -1833,6 +1833,31 @@ describe('buildMarketData — live quotes for the instruments a question names',
   });
 });
 
+// Greptile on #9780: the news-retrieval keyword list keeps eight terms, so a
+// long question filled the slots before "Brent" and the quote fell back to the
+// default four. Instrument matching reads every term of the question.
+const LONG_BRENT_QUESTION = "Explain today's energy market reaction to the latest OPEC production announcement: why is Brent up?";
+
+describe('instrument matching reads the whole question, not the eight-term retrieval cap', () => {
+  it('the retrieval cap drops "brent" from the long question (the gap)', () => {
+    const capped = extractKeywords(LONG_BRENT_QUESTION);
+    assert.equal(capped.length, 8);
+    assert.ok(!capped.includes('brent'), `eight retrieval slots fill before "Brent"; got ${JSON.stringify(capped)}`);
+    assert.ok(extractKeywords(LONG_BRENT_QUESTION, Number.POSITIVE_INFINITY).includes('brent'),
+      'an uncapped extraction keeps every term, so the instrument can still be matched');
+  });
+
+  it('assembleAnalystContext still grounds Brent for the long question', { concurrency: 1 }, async () => {
+    const harness = withStubbedRedis({ 'market:commodities-bootstrap:v1': liveCommoditiesFixture() });
+    try {
+      const ctx = await assembleAnalystContext(undefined, 'market', LONG_BRENT_QUESTION);
+      assert.match(ctx.marketData, /Brent Crude \(BZ=F\) \$110\.89 \(\+1\.35%\)/, `got:\n${ctx.marketData}`);
+    } finally {
+      harness.restore();
+    }
+  });
+});
+
 describe('assembleAnalystContext — the named instrument reaches the Market Data block', { concurrency: 1 }, () => {
   it('a Brent question grounds the Brent quote in the user turn', async () => {
     const harness = withStubbedRedis({ 'market:commodities-bootstrap:v1': liveCommoditiesFixture() });
@@ -1919,6 +1944,12 @@ describe('chat-analyst-grounding — extractPriceFigures', () => {
     const figures = extractPriceFigures('Brent at $80/bbl, gold **$4,056**, TTF €94.7/MWh, up 1.35% on the day, USD 101.3 for WTI.');
     assert.deepEqual(figures.map((f) => f.value), [80, 4056, 94.7, 101.3]);
     assert.deepEqual(figures.map((f) => f.text), ['$80', '$4,056', '€94.7', 'USD 101.3']);
+    assert.deepEqual(figures.map((f) => f.currency), ['USD', 'USD', 'EUR', 'USD'], '"$" and "USD" are the same currency');
+  });
+
+  it('normalises the dollar spellings and keeps other currencies distinct', () => {
+    const figures = extractPriceFigures('US$80, USD 80, $80, £80, ¥80');
+    assert.deepEqual(figures.map((f) => f.currency), ['USD', 'USD', 'USD', 'GBP', 'JPY/CNY']);
   });
 
   it('scales suffixed amounts so "$2bn" is not the price 2', () => {
@@ -1941,6 +1972,17 @@ describe('chat-analyst-grounding — findUnsupportedPrices', () => {
     for (const stated of ['$111', '$110.9', '$110.89', '$4,050', '€95', '$105/t']) {
       assert.deepEqual(findUnsupportedPrices(`Brent trades at ${stated}.`, BRENT_GROUND), [],
         `${stated} rounds to a quote in the block and must pass`);
+    }
+  });
+
+  // Greptile on #9780: the same amount in another currency is a different
+  // price, and "Brent at £110.89" is exactly the wrong fact this check exists
+  // to catch. The dollar spellings are one currency.
+  it('the same amount in another currency is not grounded', () => {
+    assert.deepEqual(findUnsupportedPrices('Brent trades at £110.89.', BRENT_GROUND), ['£110.89']);
+    assert.deepEqual(findUnsupportedPrices('Brent trades at €110.89.', BRENT_GROUND), ['€110.89']);
+    for (const stated of ['US$111', 'USD 111', '$111']) {
+      assert.deepEqual(findUnsupportedPrices(`Brent trades at ${stated}.`, BRENT_GROUND), [], `${stated} is a dollar figure`);
     }
   });
 

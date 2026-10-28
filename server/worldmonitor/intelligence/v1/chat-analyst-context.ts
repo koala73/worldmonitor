@@ -714,7 +714,12 @@ const MAX_KEYWORDS = 8;
 // are just as valid as "US sanctions" or "AI exports").
 const KNOWN_2CHAR_ACRONYMS = new Set(['us', 'uk', 'eu', 'un', 'ai']);
 
-export function extractKeywords(query: string): string[] {
+/**
+ * Content terms of a question, in order. The default cap sizes the news
+ * retrieval; instrument matching passes `Number.POSITIVE_INFINITY`, because a
+ * long question fills eight slots before it reaches "Brent" (#9780 review).
+ */
+export function extractKeywords(query: string, limit: number = MAX_KEYWORDS): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
   for (const raw of query.split(/\W+/)) {
@@ -731,7 +736,7 @@ export function extractKeywords(query: string): string[] {
       result.push(lower);
     }
   }
-  return result.slice(0, MAX_KEYWORDS);
+  return result.slice(0, limit);
 }
 
 // ── GDELT headlines (materialized, never fetched at request time) ─────────────
@@ -1069,6 +1074,9 @@ export async function assembleAnalystContext(
 
   const resolvedDomain = domainFocus ?? 'all';
   const keywords = userQuery ? extractKeywords(userQuery) : [];
+  // Every term, not the retrieval cap: the instrument a long question names
+  // may sit past its eighth content word.
+  const instrumentTerms = userQuery ? extractKeywords(userQuery, Number.POSITIVE_INFINITY) : [];
 
   const ENERGY_EXPOSURE_DOMAINS = new Set(['geo', 'economic', 'all']);
   const needsEnergyExposure = ENERGY_EXPOSURE_DOMAINS.has(resolvedDomain);
@@ -1160,7 +1168,7 @@ export async function assembleAnalystContext(
     riskScores: buildRiskScores(get(riskResult)),
     marketImplications: buildMarketImplications(get(marketImplResult)),
     forecasts: buildForecasts(get(forecastsResult)),
-    marketData: buildMarketData(get(stocksResult), commoditiesData, keywords),
+    marketData: buildMarketData(get(stocksResult), commoditiesData, instrumentTerms),
     macroSignals: buildMacroSignals(get(macroResult)),
     energyExposure: buildEnergyExposure(get(energyExposureResult)),
     coalSpotPrice: needsSpotEnergy ? buildSpotCommodityLine(get(commoditiesResult), 'MTF=F', 'Newcastle coal', '$', '/t') : '',

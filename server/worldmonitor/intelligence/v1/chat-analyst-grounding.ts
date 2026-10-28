@@ -24,13 +24,24 @@ export interface PriceFigure {
   value: number;
   /** Decimal places the author wrote, which sets the rounding tolerance. */
   decimals: number;
+  /** Normalised currency: "$", "US$" and "USD" are all USD. */
+  currency: string;
 }
 
 // A currency marker, optional space, an amount with optional thousands
 // separators and decimals, then an optional magnitude suffix. The marker is
 // what makes the figure a price claim: bare numbers are counts, years and
 // percentages, which this check deliberately leaves alone.
-const PRICE_RE = /(?:US\$|USD|[$€£¥])\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?:\s?(k|m|mn|bn|b|tn|t|thousand|million|billion|trillion)\b)?/gi;
+const PRICE_RE = /(US\$|USD|[$€£¥])\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?:\s?(k|m|mn|bn|b|tn|t|thousand|million|billion|trillion)\b)?/gi;
+
+// The same amount in another currency is a different price (#9780 review):
+// "£110.89" is not grounded by "$110.89". The yen and yuan share a sign.
+const CURRENCY_OF_MARKER: Record<string, string> = {
+  '$': 'USD', 'us$': 'USD', 'usd': 'USD',
+  '€': 'EUR',
+  '£': 'GBP',
+  '¥': 'JPY/CNY',
+};
 
 const SUFFIX_SCALE: Record<string, number> = {
   k: 1e3, thousand: 1e3,
@@ -46,7 +57,7 @@ export function extractPriceFigures(text: string): PriceFigure[] {
   const figures: PriceFigure[] = [];
   if (typeof text !== 'string' || text.length === 0) return figures;
   for (const match of text.matchAll(PRICE_RE)) {
-    const [raw, whole, fraction, suffix] = match;
+    const [raw, marker, whole, fraction, suffix] = match;
     const after = text[match.index! + raw.length];
     // "$80%" is not a price; neither is a figure glued to a following word.
     if (after === '%' || (after !== undefined && /[\p{L}\p{N}]/u.test(after) && !suffix)) continue;
@@ -57,6 +68,7 @@ export function extractPriceFigures(text: string): PriceFigure[] {
       text: raw.trim(),
       value: base * scale,
       decimals: scale === 1 && fraction ? fraction.length : 0,
+      currency: CURRENCY_OF_MARKER[marker!.toLowerCase()] ?? marker!.toUpperCase(),
     });
   }
   return figures;
@@ -65,6 +77,7 @@ export function extractPriceFigures(text: string): PriceFigure[] {
 function isSupported(figure: PriceFigure, ground: PriceFigure[]): boolean {
   const halfUnit = 0.5 * 10 ** -figure.decimals;
   return ground.some((g) => {
+    if (g.currency !== figure.currency) return false;
     const tolerance = Math.max(RELATIVE_TOLERANCE * Math.abs(g.value), halfUnit);
     return Math.abs(figure.value - g.value) <= tolerance;
   });
