@@ -16,7 +16,7 @@ const SITUATION_SECTIONS = situationSections(CHOKEPOINT_REGISTRY);
 export { SITUATION_PAGE_PATH };
 
 /** Bump when the page copy changes so its lastmod advances without touching every sibling. */
-export const SITUATION_CONTENT_VERSION = '2026-10-24';
+export const SITUATION_CONTENT_VERSION = '2026-10-28';
 
 /** Every file whose change alters this page's HTML, for its lastmod clock. */
 export const SITUATION_PAGE_INPUT_PATHS = Object.freeze([
