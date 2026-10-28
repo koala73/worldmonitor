@@ -2252,9 +2252,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private renderReportedStocks(result: ComputeEnergyShockScenarioResponse): HTMLElement | null {
     const s = result.reportedStocks;
     if (!s || result.ieaStocksCoverage) return null;
-    const oilModeled = result.dataAvailable && result.jodiOilCoverage && result.comtradeCoverage && result.effectiveCoverDays > 0
+    // stockDays is present exactly when the stocks were applied, so a modeled
+    // cover of 0 days still reads as modeled.
+    const oilModeled = result.dataAvailable && result.jodiOilCoverage && result.comtradeCoverage && s.stockDays != null
+      && result.effectiveCoverDays >= 0
       && !(result.limitations ?? []).some((l) => l.includes('effective cover are not modeled'));
-    const text = oilModeled && s.stockDays != null
+    const text = oilModeled
       ? `Stock cover (JODI-reported, not IEA data): ~${result.effectiveCoverDays} days under this scenario (crude ${s.crudeMb.toFixed(1)} + products ${s.productsMb.toFixed(1)} = ${s.totalMb.toFixed(1)} M bbl at the end of ${s.month}, about ${s.stockDays} days of crude imports)`
       : `Oil stocks (JODI-reported, not IEA data): ${s.totalMb.toFixed(1)} M bbl at the end of ${s.month}; cover not modeled for this scenario`;
     const row = this.el('div', 'cdp-economic-source cdp-shock-reported-stocks', text);
