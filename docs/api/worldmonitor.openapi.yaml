@@ -51125,6 +51125,7 @@ components:
                 crudeLossKbd:
                     type: number
                     format: double
+                    description: 'Headline loss: pre_crisis_baseline after Hormuz bypass when modeled.'
                 products:
                     type: array
                     items:
@@ -51295,7 +51296,11 @@ components:
                 crudeLossKbd:
                     type: number
                     format: double
-                    description: Loss at disruption_pct; 0 when the loss is not modeled (see limitations).
+                    description: Loss at disruption_pct before Hormuz bypass rerouting; 0 when not modeled (see limitations).
+                crudeLossAfterBypassKbd:
+                    type: number
+                    format: double
+                    description: Steady state after Hormuz bypass rerouting; absent when the bypass or the loss is not modeled.
             description: Gulf crude share over one window and the crude loss it implies.
         worldmonitor_intelligence_v1_GetCountryPortActivityRequest:
             type: object
@@ -60219,7 +60224,7 @@ components:
                 supplyDeficitPct:
                     type: number
                     format: double
-                    description: Average refined-product supply deficit % under full closure at the pre-crisis Gulf crude share (Gasoline/Diesel/Jet fuel/LPG average; HS 27 only)
+                    description: Average refined-product supply deficit % under full closure at the pre-crisis Gulf crude share after Hormuz bypass rerouting (Gasoline/Diesel/Jet fuel/LPG average; HS 27 only)
                 coverageDays:
                     type: integer
                     format: int32

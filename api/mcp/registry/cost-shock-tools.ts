@@ -10,7 +10,7 @@ import type { ToolDef } from '../types';
 // One Gulf crude share window (compute_energy_shock preCrisisBaseline / currentFlows).
 const CRUDE_SHARE_BASELINE_SCHEMA = { type: 'object', properties: {
   basis: { type: 'string', enum: ['comtrade_monthly', 'comtrade_annual'] }, fromMonth: { type: 'string' }, toMonth: { type: 'string' },
-  monthsCovered: { type: 'number' }, gulfCrudeShare: { type: 'number' }, crudeLossKbd: { type: 'number' },
+  monthsCovered: { type: 'number' }, gulfCrudeShare: { type: 'number' }, crudeLossKbd: { type: 'number' }, crudeLossAfterBypassKbd: { type: 'number' },
 } } as const;
 
 const MODES = {
@@ -94,7 +94,7 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
   name: 'compute_energy_shock',
   _validateArgs: params => { requireCountryCode(params.country, 'compute_energy_shock', 'country'); },
   title: 'Energy supply shock scenario',
-  description: 'Compute the existing oil/gas supply-sensitivity scenario for a country and supported chokepoint. Set disruption_pct (10..100, default 100) and fuel_mode (oil/gas/both, default oil). Results carry dataAvailable, coverage flags, coverageLevel, limitations, degraded, chokepointConfidence and gasSensitivity.modelBasis. Oil headline figures use preCrisisBaseline, the Gulf share over the 12 months before the 2026 Hormuz crisis (basis comtrade_annual is the annual fallback); currentFlows covers the latest 3 monthly filings and is absent when unavailable. Shares include the chokepoint route factor. An unavailable source is not a zero deficit; assumed LNG routing is not a measured live-flow shock. Units: products thousand barrels/day, gas terajoules, storage TWh, cover days. Results may be cached; no user scenario is saved.',
+  description: 'Compute the existing oil/gas supply-sensitivity scenario for a country and supported chokepoint. Set disruption_pct (10..100, default 100) and fuel_mode (oil/gas/both, default oil). Results carry dataAvailable, coverage flags, coverageLevel, limitations, degraded, chokepointConfidence and gasSensitivity.modelBasis. Oil headline figures use preCrisisBaseline, the Gulf share over the 12 months before the 2026 Hormuz crisis (basis comtrade_annual is the annual fallback); currentFlows covers the latest 3 monthly filings and is absent when unavailable. Shares include the chokepoint route factor. For Hormuz, crudeLossKbd is after bypass rerouting (Saudi East-West, UAE ADCOP, Iraqi Kirkuk-Ceyhan); preCrisisBaseline.crudeLossKbd is before it. An unavailable source is not a zero deficit; assumed LNG routing is not a measured live-flow shock. Units: products thousand barrels/day, gas terajoules, storage TWh, cover days. Results may be cached; no user scenario is saved.',
   _outputBudgetBytes: 65536,
   inputSchema: {
     type: 'object',

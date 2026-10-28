@@ -2209,8 +2209,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const span = (b: CrudeShareBaseline): string => b.basis === 'comtrade_annual'
       ? `${b.fromMonth.slice(0, 4)} annual`
       : `${monthLabel(b.fromMonth)}–${monthLabel(b.toMonth)}`;
+    const kbd = (v: number): string => Math.round(v).toLocaleString('en');
     const figures = (b: CrudeShareBaseline): string => {
-      const loss = modeled ? `${Math.round(b.crudeLossKbd).toLocaleString('en')} kbd lost` : 'loss not modeled';
+      const loss = !modeled
+        ? 'loss not modeled'
+        : b.crudeLossAfterBypassKbd != null
+          ? `${kbd(b.crudeLossKbd)} kbd lost before bypass, ${kbd(b.crudeLossAfterBypassKbd)} kbd after`
+          : `${kbd(b.crudeLossKbd)} kbd lost`;
       return `${(b.gulfCrudeShare * 100).toFixed(1)}% ${shareLabel}, ${loss}`;
     };
     const wrap = this.el('div', 'cdp-shock-baselines');
@@ -2226,7 +2231,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     curRow.style.color = '#9ca3af';
     wrap.append(curRow);
     if (pre && modeled && result.products.length > 0) {
-      const note = this.el('div', 'cdp-shock-baseline-note', 'Product deficits and cover below use the pre-crisis mix.');
+      const note = this.el('div', 'cdp-shock-baseline-note', pre.crudeLossAfterBypassKbd != null
+        ? 'Product deficits and cover below use the pre-crisis mix after bypass rerouting (Yanbu, Fujairah, Ceyhan).'
+        : 'Product deficits and cover below use the pre-crisis mix.');
       note.style.color = '#6b7280';
       wrap.append(note);
     }

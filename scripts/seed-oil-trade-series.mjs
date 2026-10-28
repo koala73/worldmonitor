@@ -445,6 +445,11 @@ async function fetchMirrorRows(spec, nowMs, keyIndex) {
 // UN M49 codes of the exporters loading inside the Strait of Hormuz; the same
 // set as GULF_PARTNER_CODES in server/worldmonitor/intelligence/v1/_shock-compute.ts.
 export const CRUDE_ORIGIN_GULF_PARTNERS = [682, 784, 368, 414, 364, 634, 48];
+// Exporters with a Hormuz bypass route (SA, AE, IQ): HORMUZ_BYPASS_BY_EXPORTER in
+// server/worldmonitor/intelligence/v1/_hormuz-bypass.ts. Their values are also
+// stored per exporter so the shock model can apply recovery by supplier.
+export const CRUDE_ORIGIN_BYPASS_PARTNERS = [682, 784, 368];
+const BYPASS_PARTNER_ISO2 = { 682: 'SA', 784: 'AE', 368: 'IQ' };
 const CRUDE_ORIGIN_MAX_RECORDS = 100_000;
 const CRUDE_ORIGIN_SOURCE = 'UN Comtrade monthly HS 2709 imports declared by each importer, partners World and SA, AE, IQ, KW, IR, QA, BH; import value (USD million)';
 
@@ -465,13 +470,15 @@ const usdMillions = (v) => Math.round(v / 1000) / 1000;
 
 /**
  * Per-importer monthly import values aligned to `months`. A month without a
- * World row is not an observation (null in both columns). A filed month with
+ * World row is not an observation (null in every column). A filed month with
  * no Gulf partner row is a Gulf value of 0, because Comtrade omits zero rows.
  * Gulf rows above the World total are a filing error and void the month.
+ * `bypassPartnersUsdM` holds the SA, AE and IQ parts of the Gulf column, for
+ * the exporters this importer bought from at all.
  *
  * @param {Array<{reporterISO?: string, partnerCode?: number|string, period?: string|number, cmdCode?: string, flowCode?: string, primaryValue?: number}>} rows
  * @param {string[]} months
- * @returns {Record<string, {worldUsdM: Array<number|null>, gulfUsdM: Array<number|null>}>}
+ * @returns {Record<string, {worldUsdM: Array<number|null>, gulfUsdM: Array<number|null>, bypassPartnersUsdM: Record<string, Array<number|null>>}>}
  */
 export function buildCrudeImportOrigin(rows, months) {
   const index = new Map(months.map((m, i) => [m, i]));
@@ -487,19 +494,29 @@ export function buildCrudeImportOrigin(rows, months) {
     if (partner !== 0 && !gulfPartners.has(partner)) continue;
     let entry = byImporter.get(iso2);
     if (!entry) {
-      entry = { world: months.map(() => null), gulf: months.map(() => 0) };
+      entry = { world: months.map(() => null), gulf: months.map(() => 0), bypass: {} };
       byImporter.set(iso2, entry);
     }
-    if (partner === 0) entry.world[i] = (entry.world[i] ?? 0) + value;
-    else entry.gulf[i] += value;
+    if (partner === 0) {
+      entry.world[i] = (entry.world[i] ?? 0) + value;
+      continue;
+    }
+    entry.gulf[i] += value;
+    const bypassIso2 = BYPASS_PARTNER_ISO2[partner];
+    if (bypassIso2) {
+      entry.bypass[bypassIso2] ??= months.map(() => 0);
+      entry.bypass[bypassIso2][i] += value;
+    }
   }
   const importers = {};
-  for (const [iso2, { world, gulf }] of [...byImporter].sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [iso2, { world, gulf, bypass }] of [...byImporter].sort(([a], [b]) => a.localeCompare(b))) {
     const observed = world.map((w, i) => w !== null && w > 0 && gulf[i] <= w);
     if (!observed.some(Boolean)) continue;
+    const column = (values) => values.map((v, i) => (observed[i] ? usdMillions(v) : null));
     importers[iso2] = {
       worldUsdM: world.map((w, i) => (observed[i] ? usdMillions(w) : null)),
-      gulfUsdM: gulf.map((g, i) => (observed[i] ? usdMillions(g) : null)),
+      gulfUsdM: column(gulf),
+      bypassPartnersUsdM: Object.fromEntries(Object.keys(bypass).sort().map((p) => [p, column(bypass[p])])),
     };
   }
   return importers;

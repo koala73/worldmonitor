@@ -82,10 +82,11 @@ describe('decision brief preview and exports', () => {
     redis.set('energy:chokepoint-flows:v1', { hormuz_strait: { flowRatio: 1 } });
     // `missing` = no JODI crude imports beside World-only Comtrade rows (no origin share).
     // Otherwise a measured 40% Gulf share from the partner-level key drives the loss.
+    // Kuwait has no Hormuz bypass, so no rerouting reduces the loss.
     redis.set('energy:jodi-oil:v1:DE', { crude: { importsKbd: missing ? null : 100 }, diesel: { demandKbd: 80 } });
     redis.set('comtrade:flows:276:2709', [{ partnerCode: '000', tradeValueUsd: 100 }]);
     if (!missing) {
-      redis.set('comtrade:bilateral-hs4-partners:DE:v1', { iso2: 'DE', products: [{ hs4: '2709', year: 2024, totalValue: 1000, partners: [{ partnerIso2: 'SA', partnerCode: 682, value: 400 }, { partnerIso2: 'US', partnerCode: 842, value: 600 }], omittedCount: 0, omittedShare: 0 }] });
+      redis.set('comtrade:bilateral-hs4-partners:DE:v1', { iso2: 'DE', products: [{ hs4: '2709', year: 2024, totalValue: 1000, partners: [{ partnerIso2: 'KW', partnerCode: 414, value: 400 }, { partnerIso2: 'US', partnerCode: 842, value: 600 }], omittedCount: 0, omittedShare: 0 }] });
     }
     const oilSelection = { ...selection, fuelMode: 'oil' as const };
     const captures = await Promise.all([50, 100].map(async disruptionPct => ({

@@ -76,6 +76,22 @@ test('the annual fallback is named in the evidence label, and current flows show
   assert.equal(t.evidence.find(e => e.id === 'baseline-route-current')!.value, 20);
 });
 
+test('oil evidence names the loss after Hormuz bypass and reports the before-bypass loss beside it', () => {
+  const data = captures('JP');
+  for (const { response } of data) {
+    Object.assign(response, { jodiOilCoverage: true, comtradeCoverage: true, gulfCrudeShare: 0.927, crudeLossKbd: 979.5 });
+    response.preCrisisBaseline = { basis: 'comtrade_monthly', fromMonth: '2025-02', toMonth: '2026-01', monthsCovered: 12, gulfCrudeShare: 0.927, crudeLossKbd: 2209.5, crudeLossAfterBypassKbd: 979.5 };
+  }
+  const s = buildDecisionBrief({ ...selection, countryCode: 'JP', countryName: 'Japan', fuelMode: 'oil' }, data);
+  const loss = s.evidence.find(e => e.id === 'baseline-loss')!;
+  assert.match(loss.label, /after Hormuz bypass/);
+  assert.equal(loss.value, 979.5);
+  const before = s.evidence.find(e => e.id === 'baseline-loss-before-bypass')!;
+  assert.match(before.label, /before bypass/);
+  assert.equal(before.value, 2209.5);
+  assert.deepEqual(s.results.map(r => r.loss), [979.5, 979.5]);
+});
+
 test('Germany shared basis retains exact corrected gas results and evidence-specific action', () => {
   const s = buildDecisionBrief(selection, captures());
   assert.deepEqual(s.results.map(r => r.loss), [6197.7, 12395.4]);

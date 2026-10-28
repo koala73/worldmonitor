@@ -52,7 +52,11 @@ export function buildDecisionBrief(selection: DecisionBriefSelection, captures: 
         unknowns.add(`${reference}: current-flows Gulf share is unavailable${reason ? `: ${reason}` : ''}; figures use the pre-crisis baseline.`);
       }
     }
-    add('loss', gas ? 'Assumed monthly LNG loss' : 'Modeled crude loss, pre-crisis baseline', usable ? gas ? g!.lngDisruptionTj : r.crudeLossKbd : null, gas ? 'TJ' : 'kbd', gas ? 'JODI / assumed route sensitivity' : 'JODI / route model');
+    // With the Hormuz bypass modeled, the headline loss is after rerouting; the
+    // before-bypass loss is reported beside it.
+    const afterBypass = !gas && r.preCrisisBaseline?.crudeLossAfterBypassKbd != null;
+    if (afterBypass) add('loss-before-bypass', 'Modeled crude loss, pre-crisis baseline before bypass', usable && nonnegative(r.preCrisisBaseline!.crudeLossKbd) ? r.preCrisisBaseline!.crudeLossKbd : null, 'kbd', 'JODI / route model');
+    add('loss', gas ? 'Assumed monthly LNG loss' : afterBypass ? 'Modeled crude loss, pre-crisis baseline after Hormuz bypass' : 'Modeled crude loss, pre-crisis baseline', usable ? gas ? g!.lngDisruptionTj : r.crudeLossKbd : null, gas ? 'TJ' : 'kbd', gas ? 'JODI / assumed route sensitivity' : 'JODI / route model');
     if (!r.portwatchCoverage) unknowns.add(`${reference}: shipping traffic is unavailable; no closure is established.`);
     return { reference, severity, loss: usable ? gas ? g!.lngDisruptionTj : r.crudeLossKbd : null, unit: gas ? 'TJ' : 'kbd', demandPct: usable && gas ? g!.deficitPct : null, observedAt };
   });

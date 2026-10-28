@@ -21,7 +21,6 @@ const LEGACY_HIGH_RISK_DESCRIPTION_GAPS = new Set([
   'IntelligenceService.openapi.json:ComputeEnergyShockScenarioResponse.comtradeCoverage',
   'IntelligenceService.openapi.json:ComputeEnergyShockScenarioResponse.countryCode',
   'IntelligenceService.openapi.json:ComputeEnergyShockScenarioResponse.coverageLevel',
-  'IntelligenceService.openapi.json:ComputeEnergyShockScenarioResponse.crudeLossKbd',
   'IntelligenceService.openapi.json:ComputeEnergyShockScenarioResponse.dataAvailable',
   'IntelligenceService.openapi.json:ComputeEnergyShockScenarioResponse.degraded',
   'IntelligenceService.openapi.json:ComputeEnergyShockScenarioResponse.disruptionPct',

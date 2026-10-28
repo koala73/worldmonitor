@@ -1,5 +1,8 @@
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
 import { CURRENT_FLOWS_WINDOW, PRE_CRISIS_WINDOW } from '../../../../shared/hormuz-crisis.js';
+import { BYPASS_RAMP_DAYS, HORMUZ_BYPASS_BY_EXPORTER } from './_hormuz-bypass';
+
+const BYPASS_EXPORTERS = Object.keys(HORMUZ_BYPASS_BY_EXPORTER);
 
 // Crude exporters whose loadings sit inside the Strait of Hormuz, per EIA
 // "World Oil Transit Chokepoints" (Saudi Arabia, Iraq, Kuwait, UAE, Iran, Qatar,
@@ -95,6 +98,8 @@ export interface GulfShareMeasurement {
   year?: number;
   /** Fraction of imports held by partners the seeder dropped below its listing threshold. */
   omittedShare?: number;
+  /** Share of imports from each exporter with a Hormuz bypass (SA, AE, IQ) that the row lists. */
+  byPartner?: Partial<Record<string, number>>;
 }
 
 /**
@@ -108,12 +113,15 @@ export function computeGulfShareFromPartners(product: PartnerShareProductLike | 
   const total = product.totalValue;
   if (typeof total !== 'number' || !Number.isFinite(total) || total <= 0) return { share: 0, hasData: false };
   let gulf = 0;
+  const byPartner: Partial<Record<string, number>> = {};
   for (const partner of product.partners) {
     const value = partner?.value;
     if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) continue;
     const iso2 = typeof partner.partnerIso2 === 'string' ? partner.partnerIso2.toUpperCase() : '';
     const code = partner.partnerCode != null ? String(partner.partnerCode).padStart(3, '0') : '';
     if (GULF_PARTNER_ISO2.has(iso2) || GULF_PARTNER_CODES.has(code)) gulf += value;
+    const exporter = BYPASS_EXPORTERS.includes(iso2) ? iso2 : BYPASS_EXPORTER_BY_CODE[code];
+    if (exporter) byPartner[exporter] = (byPartner[exporter] ?? 0) + value / total;
   }
   const omittedShare = typeof product.omittedShare === 'number' && Number.isFinite(product.omittedShare) && product.omittedShare > 0
     ? product.omittedShare : undefined;
@@ -122,8 +130,11 @@ export function computeGulfShareFromPartners(product: PartnerShareProductLike | 
     hasData: true,
     year: typeof product.year === 'number' && Number.isFinite(product.year) ? product.year : undefined,
     omittedShare,
+    byPartner,
   };
 }
+
+const BYPASS_EXPORTER_BY_CODE: Record<string, string> = { '682': 'SA', '784': 'AE', '368': 'IQ' };
 
 /** `crudeImportOrigin` in energy:oil-trade-series:v1 (scripts/seed-oil-trade-series.mjs). */
 export interface CrudeImportOriginLike {
@@ -131,7 +142,11 @@ export interface CrudeImportOriginLike {
   carriedForward?: boolean;
   fetchedAt?: string;
   months?: unknown;
-  importers?: Record<string, { worldUsdM?: Array<number | null>; gulfUsdM?: Array<number | null> } | undefined> | null;
+  importers?: Record<string, {
+    worldUsdM?: Array<number | null>;
+    gulfUsdM?: Array<number | null>;
+    bypassPartnersUsdM?: Record<string, Array<number | null> | undefined>;
+  } | undefined> | null;
 }
 
 export interface MonthlyGulfShare {
@@ -139,6 +154,8 @@ export interface MonthlyGulfShare {
   fromMonth: string;
   toMonth: string;
   monthsCovered: number;
+  /** SA, AE and IQ shares over the same months; absent when the section has no per-exporter columns. */
+  byPartner?: Partial<Record<string, number>>;
 }
 
 /** Fewest filed months of the 12-month pre-crisis window that still make a baseline. */
@@ -161,28 +178,41 @@ export function computeMonthlyGulfShares(
   const months = origin?.months;
   const importer = origin?.importers?.[iso2];
   if (!Array.isArray(months) || !importer || !Array.isArray(importer.worldUsdM) || !Array.isArray(importer.gulfUsdM)) return none;
-  const filed: Array<{ month: string; world: number; gulf: number }> = [];
+  const perExporter = importer.bypassPartnersUsdM && typeof importer.bypassPartnersUsdM === 'object' ? importer.bypassPartnersUsdM : null;
+  const filed: Array<{ month: string; world: number; gulf: number; byPartner: Record<string, number> }> = [];
   months.forEach((month, i) => {
     const world = importer.worldUsdM?.[i];
     const gulf = importer.gulfUsdM?.[i];
     if (typeof month !== 'string' || typeof world !== 'number' || !Number.isFinite(world) || world <= 0) return;
     if (typeof gulf !== 'number' || !Number.isFinite(gulf) || gulf < 0 || gulf > world) return;
-    filed.push({ month, world, gulf });
+    const byPartner: Record<string, number> = {};
+    for (const [iso2, column] of Object.entries(perExporter ?? {})) {
+      const v = Array.isArray(column) ? column[i] : null;
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) byPartner[iso2] = v;
+    }
+    filed.push({ month, world, gulf, byPartner });
   });
   filed.sort((a, b) => a.month.localeCompare(b.month));
-  const share = (rows: typeof filed) => {
+  const window = (rows: typeof filed): Omit<MonthlyGulfShare, 'fromMonth' | 'toMonth' | 'monthsCovered'> => {
     const world = rows.reduce((sum, r) => sum + r.world, 0);
-    return world > 0 ? rows.reduce((sum, r) => sum + r.gulf, 0) / world : 0;
+    if (!(world > 0)) return { share: 0 };
+    const out: Omit<MonthlyGulfShare, 'fromMonth' | 'toMonth' | 'monthsCovered'> = { share: rows.reduce((sum, r) => sum + r.gulf, 0) / world };
+    if (perExporter) {
+      const byPartner: Partial<Record<string, number>> = {};
+      for (const r of rows) for (const [iso2, v] of Object.entries(r.byPartner)) byPartner[iso2] = (byPartner[iso2] ?? 0) + v / world;
+      out.byPartner = byPartner;
+    }
+    return out;
   };
 
   const pre = filed.filter((r) => r.month >= PRE_CRISIS_WINDOW.startMonth && r.month <= PRE_CRISIS_WINDOW.endMonth);
   const preCrisis = pre.length >= MIN_PRE_CRISIS_MONTHS
-    ? { share: share(pre), fromMonth: PRE_CRISIS_WINDOW.startMonth, toMonth: PRE_CRISIS_WINDOW.endMonth, monthsCovered: pre.length }
+    ? { ...window(pre), fromMonth: PRE_CRISIS_WINDOW.startMonth, toMonth: PRE_CRISIS_WINDOW.endMonth, monthsCovered: pre.length }
     : null;
 
   const recent = filed.filter((r) => r.month >= CURRENT_FLOWS_WINDOW.earliestMonth).slice(-CURRENT_FLOWS_WINDOW.months);
   const current = recent.length === CURRENT_FLOWS_WINDOW.months
-    ? { share: share(recent), fromMonth: recent[0]!.month, toMonth: recent[recent.length - 1]!.month, monthsCovered: recent.length }
+    ? { ...window(recent), fromMonth: recent[0]!.month, toMonth: recent[recent.length - 1]!.month, monthsCovered: recent.length }
     : null;
   return { preCrisis, current };
 }
@@ -211,6 +241,30 @@ export function computeEffectiveCoverDays(
     return Math.min(raw, EFFECTIVE_COVER_DAYS_CAP);
   }
   return Math.min(daysOfCover, EFFECTIVE_COVER_DAYS_CAP);
+}
+
+/**
+ * Effective cover when the loss runs at `firstLossKbd` for the bypass ramp
+ * (BYPASS_RAMP_DAYS) and at `steadyLossKbd` after it. Equal first and steady
+ * losses reduce to computeEffectiveCoverDays. Stocks are daysOfCover days of
+ * crude imports.
+ */
+export function computeEffectiveCoverDaysWithRamp(
+  daysOfCover: number,
+  netExporter: boolean,
+  firstLossKbd: number,
+  steadyLossKbd: number,
+  crudeImportsKbd: number,
+): number {
+  if (netExporter) return -1;
+  if (!(daysOfCover > 0 && firstLossKbd > 0 && crudeImportsKbd > 0)) {
+    return computeEffectiveCoverDays(daysOfCover, netExporter, firstLossKbd, crudeImportsKbd);
+  }
+  const stock = daysOfCover * crudeImportsKbd;
+  const rampDraw = BYPASS_RAMP_DAYS * firstLossKbd;
+  if (stock <= rampDraw) return Math.min(Math.round(stock / firstLossKbd), EFFECTIVE_COVER_DAYS_CAP);
+  if (!(steadyLossKbd > 0)) return EFFECTIVE_COVER_DAYS_CAP;
+  return Math.min(Math.round(BYPASS_RAMP_DAYS + (stock - rampDraw) / steadyLossKbd), EFFECTIVE_COVER_DAYS_CAP);
 }
 
 /**

@@ -79,8 +79,10 @@ message CrudeShareBaseline {
   int32 months_covered = 4;
   // Gulf share of crude imports times the chokepoint route factor (1.0 for Hormuz).
   double gulf_crude_share = 5;
-  // Loss at disruption_pct; 0 when the loss is not modeled (see limitations).
+  // Loss at disruption_pct before Hormuz bypass rerouting; 0 when not modeled (see limitations).
   double crude_loss_kbd = 6;
+  // Steady state after Hormuz bypass rerouting; absent when the bypass or the loss is not modeled.
+  optional double crude_loss_after_bypass_kbd = 7;
 }
 
 message ComputeEnergyShockScenarioResponse {
@@ -89,6 +91,7 @@ message ComputeEnergyShockScenarioResponse {
   int32  disruption_pct       = 3;
   // Headline: equal to pre_crisis_baseline. Shares are fractions of import value times the route factor.
   double gulf_crude_share     = 4;
+  // Headline loss: pre_crisis_baseline after Hormuz bypass when modeled.
   double crude_loss_kbd       = 5;
   repeated ProductImpact products = 6;
   int32  effective_cover_days = 7;

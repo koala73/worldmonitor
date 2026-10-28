@@ -68,7 +68,8 @@ export interface SeededProduct {
  * Pick the cheapest viable bypass corridor for a chokepoint.
  * Excludes "no-bypass" placeholder entries (suitableCargoTypes.length === 0),
  * hypothetical/proposed corridors with negative uplift (addedCostMultiplier < 1),
- * and full-closure-only corridors (which only activate on 100% closure scenarios).
+ * full-closure-only corridors (which only activate on 100% closure scenarios),
+ * and origin-restricted pipelines that carry only one exporter's crude.
  * Prefers lower addedTransitDays, then lower addedCostMultiplier as tiebreaker.
  */
 export function pickBestBypass(chokepointId: string): BypassCorridor | null {
@@ -76,7 +77,8 @@ export function pickBestBypass(chokepointId: string): BypassCorridor | null {
   const viable = corridors.filter(c =>
     c.suitableCargoTypes.length > 0
     && c.addedCostMultiplier >= 1
-    && c.activationThreshold === 'partial_closure',
+    && c.activationThreshold === 'partial_closure'
+    && !c.originIso2?.length,
   );
   if (viable.length === 0) return null;
   return [...viable].sort((a, b) => {
