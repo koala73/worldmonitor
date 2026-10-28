@@ -278,6 +278,14 @@ required gates. Run focused checks first and heavy checks sequentially. Keep use
 regression coverage. Remove a check only with evidence that its protection is
 obsolete, redundant, or ineffective.
 
+For PWA changes, build with `VITE_VARIANT=full npx vite build`, then run
+`node --import tsx --test tests/pwa-precache.test.mjs tests/pwa-recovery.test.mjs tests/deploy-config.test.mjs`.
+The generated worker precaches the dashboard entry's static JavaScript/CSS
+dependencies and the fixed offline/install assets, with a 32-file, 2 MiB budget
+checked against `dist/sw.js`. Other app chunks are cached when requested.
+Navigation still falls back to the self-contained offline page. Verify the built
+worker in a browser; the development server does not register it.
+
 For Railway registry changes, use `npm run test:railway-registry` during the edit
 loop. It exercises the real CLI, runner, workflow and registry contracts without
 the unrelated health-status publisher fixtures. Run the expanded source-health

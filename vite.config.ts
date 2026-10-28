@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { VitePWA } from 'vite-plugin-pwa';
+import { appChunkRuntimeCache, createDashboardPrecache } from './shared/pwa-precache';
 import type { OutputBundle } from 'rollup';
 import { resolve, dirname, extname, basename, posix } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
@@ -936,6 +937,7 @@ function webMcpDevSecurityHeadersPlugin(): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
+  const dashboardPrecache = createDashboardPrecache();
   const env = loadEnv(mode, process.cwd(), '');
   // Inject environment variables from .env files into process.env.
   // This ensures that API keys and other secrets in .env.local are
@@ -1026,6 +1028,7 @@ export default defineConfig(({ mode }) => {
       },
       htmlVariantPlugin(activeMeta, activeVariant, isDesktopBuild),
       firstPartyChunkManifestPlugin(),
+      dashboardPrecache.plugin,
       chunkSizeWarningPolicyPlugin(),
       !isDesktopBuild && dashboardHtmlOutputPlugin(),
       // Variant subdomain SEO pages only make sense on the web deployment,
@@ -1073,30 +1076,8 @@ export default defineConfig(({ mode }) => {
         },
 
         workbox: {
-          globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
-          globIgnores: [
-            '**/ml*.js',
-            '**/onnx*.wasm',
-            '**/locale-*.js',
-            '**/clerk-*.js',
-            // Fonts are fetched only when their stylesheet applies. Precache
-            // would pull every local weight into the first mobile visit.
-            '**/*.woff2',
-            // Keep off-page/static-heavy public assets out of the dashboard's
-            // first-visit precache. The small root favicons above remain
-            // explicit includeAssets entries.
-            'pro/**',
-            'favico/**',
-            'textures/**',
-            // #4891: blog OG covers + post images are generated into the prod
-            // build (absent locally), and the png glob was precaching all ~40
-            // of them (~700KB) on every first dashboard visit — and again on
-            // each SW update after a blog deploy. Blog pages fetch their own
-            // images on demand; the dashboard never needs them.
-            'blog/**',
-          ],
-          // globe.gl + three.js grows main bundle past the 2 MiB default limit
-          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+          globPatterns: ['assets/**/*.{js,css}'],
+          manifestTransforms: [dashboardPrecache.manifestTransform],
           navigateFallback: null,
           skipWaiting: true,
           clientsClaim: true,
@@ -1162,6 +1143,7 @@ export default defineConfig(({ mode }) => {
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
+            appChunkRuntimeCache,
             {
               urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/i,
               handler: 'StaleWhileRevalidate',
