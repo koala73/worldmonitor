@@ -73,6 +73,7 @@ import { describePublisherRoster, renderPublisherRosterElement } from './news/pu
 import { decodeHtmlEntities } from '@/utils/html-entities';
 import { renderFollowButton } from '@/utils/follow-button';
 import { renderNotifyCountryLink } from '@/utils/notify-country-link';
+import { MEASURED_LNG_BASIS, SUPPORTED_GAS_MODEL_BASES, lngSharePct, lngWindowLabel } from '@/utils/gas-model-basis';
 import { countryEvidenceMarkdownArtifact } from '@/utils/export';
 import { attemptWebCountryDownload, countryDownloadMessage, type CountryTextDownload } from '@/utils/country-text-download';
 import type { CountryEvidenceBundleInput } from '@/utils/export';
@@ -2156,7 +2157,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         .then((result) => result as ComputeEnergyShockScenarioResponse)
         .then((result) => {
           resultArea.replaceChildren();
-          if (result.gasImpact || (result.gasSensitivity && result.gasSensitivity.modelBasis !== 'assumed_route_sensitivity')) {
+          if (result.gasImpact || (result.gasSensitivity && !SUPPORTED_GAS_MODEL_BASES.has(result.gasSensitivity.modelBasis))) {
             resultArea.append(this.el('div', 'cdp-economic-source', 'Gas scenario uses an outdated model. Retry after the cached response expires.'));
             return;
           }
@@ -2198,7 +2199,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const warn = this.el('div', '');
       warn.style.cssText = 'font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#f59e0b;margin-bottom:6px;padding:3px 6px;background:#1c1400;border-radius:3px';
       warn.textContent = result.gasSensitivity && !result.jodiOilCoverage
-        ? 'Shipping flow data unavailable. Gas sensitivity uses an assumed route baseline.'
+        ? result.gasSensitivity.modelBasis === MEASURED_LNG_BASIS
+          ? 'Shipping flow data unavailable. The gas result does not use it.'
+          : 'Shipping flow data unavailable. Gas sensitivity uses an assumed route baseline.'
         : 'Live flow data unavailable — using historical baseline';
       container.append(warn);
     }
@@ -2296,20 +2299,37 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     if (result.gasSensitivity?.dataAvailable) {
       const gi = result.gasSensitivity;
+      const measuredLng = gi.modelBasis === MEASURED_LNG_BASIS;
       const gasSection = this.el('div', '');
       gasSection.style.cssText = 'margin-top:10px;border-top:1px solid #374151;padding-top:8px';
 
       const gasTitle = this.el('div', '');
       gasTitle.style.cssText = 'font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:#e5e7eb;margin-bottom:4px';
-      gasTitle.textContent = 'Gas / liquefied natural gas assumed sensitivity';
+      gasTitle.textContent = measuredLng ? 'Gas / liquefied natural gas Hormuz exposure' : 'Gas / liquefied natural gas assumed sensitivity';
       gasSection.append(gasTitle);
 
       const metrics = this.el('div', 'cdp-economic-source');
       const lngShare = gi.lngShareOfImports == null ? 'unknown' : `${(gi.lngShareOfImports * 100).toFixed(0)}%`;
       const loss = gi.lngDisruptionTj > 0 && gi.lngDisruptionTj < 0.1 ? '<0.1' : gi.lngDisruptionTj.toFixed(1);
       const demandPct = gi.deficitPct > 0 && gi.deficitPct < 0.1 ? '<0.1' : gi.deficitPct.toFixed(1);
-      metrics.textContent = `Recorded liquefied natural gas share: ${lngShare} | Assumed monthly loss: ${loss} terajoules | Share of recorded demand: ${demandPct}%`;
+      metrics.textContent = measuredLng
+        ? `Recorded liquefied natural gas share: ${lngShare} | Monthly loss at the pre-crisis share: ${loss} terajoules | Share of recorded demand: ${demandPct}%`
+        : `Recorded liquefied natural gas share: ${lngShare} | Assumed monthly loss: ${loss} terajoules | Share of recorded demand: ${demandPct}%`;
       gasSection.append(metrics);
+
+      if (measuredLng && gi.preCrisisBaseline) {
+        // Both measured baselines, each labelled with the months it covers.
+        const pre = gi.preCrisisBaseline;
+        const now = gi.currentFlows;
+        const terajoules = (v: number) => (v > 0 && v < 0.1 ? '<0.1' : v.toFixed(1));
+        const shares = this.el('div', 'cdp-economic-source');
+        shares.style.cssText += ';margin-top:4px';
+        shares.textContent = `Hormuz share of LNG imports (Qatar and the UAE, UN Comtrade): pre-crisis ${lngSharePct(pre.hormuzLngShare)}% (${lngWindowLabel(pre)}) | `
+          + (now
+            ? `current flows ${lngSharePct(now.hormuzLngShare)}% (${lngWindowLabel(now)}), monthly loss ${terajoules(now.lngDisruptionTj)} terajoules`
+            : 'current flows unavailable');
+        gasSection.append(shares);
+      }
 
       if (gi.storage) {
         const s = gi.storage;
@@ -2321,7 +2341,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
       const srcBadge = this.el('div', '');
       srcBadge.style.cssText = 'font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#9ca3af;margin-top:2px';
-      srcBadge.textContent = `Gas inputs: JODI, observation month ${gi.dataMonth || 'unknown'}. Availability does not establish freshness.`;
+      srcBadge.textContent = measuredLng
+        ? `Gas inputs: JODI, observation month ${gi.dataMonth || 'unknown'}; LNG origin: UN Comtrade. Availability does not establish freshness.`
+        : `Gas inputs: JODI, observation month ${gi.dataMonth || 'unknown'}. Availability does not establish freshness.`;
       gasSection.append(srcBadge);
 
       const gasAssess = this.el('div', '');

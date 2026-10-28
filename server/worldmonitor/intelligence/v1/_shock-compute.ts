@@ -223,12 +223,132 @@ export function buildAssessment(
   return `${country} faces ${worstDeficit.toFixed(1)}% ${worstProduct} deficit under ${disruptionPct}% ${cp} disruption; IEA cover: ${ieaCoverText}${degradedNote}.`;
 }
 
+// Fixed, assumed fraction of an importer's LNG that uses each route. Hormuz is
+// absent on purpose: its fraction is the measured Qatar + UAE share of the
+// importer's LNG (LNG_HORMUZ_SHARE_KEY), and an importer without one is
+// reported as unavailable, never given a flat 30%.
 export const CHOKEPOINT_LNG_EXPOSURE: Record<string, number> = {
-  hormuz_strait: 0.30,
   malacca_strait: 0.50,
   suez: 0.20,
   bab_el_mandeb: 0.20,
 };
+
+/**
+ * Written by scripts/seed-comtrade-bilateral-hs4.mjs (scripts/shared/comtrade-lng-origin.mjs).
+ * tests/energy-shock-lng-origin.test.mjs seeds it through the seeder's own
+ * constant, so the two names cannot drift apart unnoticed.
+ */
+export const LNG_HORMUZ_SHARE_KEY = 'comtrade:lng-hormuz-share:v1';
+
+export const GAS_MODEL_BASIS = {
+  /** Hormuz: the route fraction is the importer's measured Qatar + UAE share of LNG imports. */
+  measured: 'comtrade_lng_origin_share',
+  /** Zero recorded LNG imports: the loss is zero whatever the route fraction. */
+  zeroLng: 'observed_zero_lng_imports',
+  /** Other chokepoints: the fixed CHOKEPOINT_LNG_EXPOSURE fraction. */
+  assumed: 'assumed_route_sensitivity',
+} as const;
+
+/** One stored baseline of the LNG origin snapshot, validated. */
+export interface LngShareBaselineEntry {
+  basis: 'comtrade_monthly' | 'comtrade_annual';
+  fromMonth: string;
+  toMonth: string;
+  monthsCovered: number;
+  share: number;
+  measure: 'weight' | 'value';
+  unattributedShare: number;
+}
+
+const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** A stored baseline, or undefined when any field is missing or out of range. */
+export function readLngShareBaseline(raw: unknown): LngShareBaselineEntry | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const b = raw as Record<string, unknown>;
+  if (b.basis !== 'comtrade_monthly' && b.basis !== 'comtrade_annual') return undefined;
+  if (typeof b.fromMonth !== 'string' || !MONTH.test(b.fromMonth) || typeof b.toMonth !== 'string' || !MONTH.test(b.toMonth) || b.fromMonth > b.toMonth) return undefined;
+  if (typeof b.monthsCovered !== 'number' || !Number.isInteger(b.monthsCovered) || b.monthsCovered < 1 || b.monthsCovered > 12) return undefined;
+  if (typeof b.share !== 'number' || !Number.isFinite(b.share) || b.share < 0 || b.share > 1) return undefined;
+  const unattributed = typeof b.unattributedShare === 'number' && Number.isFinite(b.unattributedShare) && b.unattributedShare >= 0 && b.unattributedShare <= 1
+    ? b.unattributedShare : 0;
+  return {
+    basis: b.basis,
+    fromMonth: b.fromMonth,
+    toMonth: b.toMonth,
+    monthsCovered: b.monthsCovered,
+    share: b.share,
+    measure: b.measure === 'value' ? 'value' : 'weight',
+    unattributedShare: unattributed,
+  };
+}
+
+export function formatLngWindow(b: Pick<LngShareBaselineEntry, 'basis' | 'fromMonth' | 'toMonth'>): string {
+  if (b.basis === 'comtrade_annual') return `${b.fromMonth.slice(0, 4)} annual`;
+  return b.fromMonth === b.toMonth ? b.fromMonth : `${b.fromMonth} to ${b.toMonth}`;
+}
+
+const pct1 = (share: number): string => {
+  const v = share * 100;
+  return v > 0 && v < 0.1 ? '<0.1' : v.toFixed(1);
+};
+
+export interface LngOriginForCountry {
+  preCrisis?: LngShareBaselineEntry;
+  current?: LngShareBaselineEntry;
+  /** Why the pre-crisis share is unavailable, as limitation text. */
+  preCrisisReason?: string;
+  /** Why the current-flows share is unavailable, as limitation text. */
+  currentReason?: string;
+}
+
+const UNAVAILABLE_REASON: Record<string, string> = {
+  partners_unattributed: 'UN Comtrade books its LNG imports to unspecified partners ("Areas, nes" or "Special categories")',
+  no_rows: 'no UN Comtrade LNG (HS 271111) import rows for the window',
+};
+
+/** The country's two baselines from the snapshot, with a reason for each one that is missing. */
+export function resolveLngOrigin(snapshot: unknown, iso2: string): LngOriginForCountry {
+  const countries = snapshot && typeof snapshot === 'object' ? (snapshot as { countries?: unknown }).countries : undefined;
+  if (!countries || typeof countries !== 'object') {
+    const reason = 'the UN Comtrade LNG origin snapshot is unavailable';
+    return { preCrisisReason: reason, currentReason: reason };
+  }
+  const entry = (countries as Record<string, unknown>)[iso2];
+  if (!entry || typeof entry !== 'object') {
+    const reason = 'no UN Comtrade LNG (HS 271111) import rows';
+    return { preCrisisReason: reason, currentReason: reason };
+  }
+  const e = entry as Record<string, unknown>;
+  const preCrisis = readLngShareBaseline(e.preCrisis);
+  const current = readLngShareBaseline(e.current);
+  const reasonFor = (code: unknown, present: unknown): string =>
+    (typeof code === 'string' && UNAVAILABLE_REASON[code])
+    || (present != null ? 'the stored UN Comtrade LNG share is malformed' : UNAVAILABLE_REASON.no_rows!);
+  return {
+    preCrisis,
+    current,
+    ...(preCrisis ? {} : { preCrisisReason: reasonFor(e.preCrisisUnavailable, e.preCrisis) }),
+    ...(current ? {} : { currentReason: reasonFor(e.currentUnavailable, e.current) }),
+  };
+}
+
+/** The source line for a measured Hormuz LNG share. */
+export function buildLngOriginLimitation(origin: LngOriginForCountry, jodiMonth: string): string {
+  const pre = origin.preCrisis!;
+  const describe = (b: LngShareBaselineEntry, label: string): string => {
+    const unattributed = b.unattributedShare >= 0.001
+      ? `; ${(b.unattributedShare * 100).toFixed(1)}% booked to unspecified partners is not attributed`
+      : '';
+    return `${label}: ${pct1(b.share)}% by ${b.measure}, UN Comtrade ${b.basis === 'comtrade_monthly' ? 'monthly' : 'annual'} ${formatLngWindow(b)}${unattributed}.`;
+  };
+  return [
+    "LNG Hormuz share: UN Comtrade HS 271111 imports from Qatar and the UAE (Das Island); Oman's Qalhat terminal loads outside the Strait and is excluded.",
+    describe(pre, 'Pre-crisis baseline'),
+    origin.current ? describe(origin.current, 'Current flows') : 'Current flows: unavailable.',
+    `The headline loss applies the pre-crisis share to JODI LNG imports for ${jodiMonth || 'an unknown observation month'}; the current-flows loss applies the current share to the same imports.`,
+  ].join(' ');
+}
 
 export const EU_GAS_STORAGE_COUNTRIES = new Set([
   'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR',
@@ -246,21 +366,47 @@ export function parseFuelMode(raw: string | undefined | null): FuelMode {
   return DEFAULT_FUEL_MODE;
 }
 
+/** Finite nonnegative LNG imports and positive demand: the JODI inputs every gas result needs. */
+export function hasGasMeasurements(lngImportsTj: unknown, totalDemandTj: unknown): boolean {
+  return typeof lngImportsTj === 'number' && Number.isFinite(lngImportsTj) && lngImportsTj >= 0
+    && typeof totalDemandTj === 'number' && Number.isFinite(totalDemandTj) && totalDemandTj > 0;
+}
+
+/**
+ * Monthly LNG loss at `routeShare` (the fraction of LNG imports using the
+ * chokepoint). Undefined without valid JODI inputs or a valid route share;
+ * Hormuz has no default share, so a caller must pass the measured one.
+ */
 export function computeGasDisruption(
   lngImportsTj: number | null | undefined,
   totalDemandTj: number | null | undefined,
   chokepointId: string,
   disruptionPct: number,
+  routeShare: unknown = CHOKEPOINT_LNG_EXPOSURE[chokepointId],
 ): { lngDisruptionTj: number; deficitPct: number } | undefined {
-  if (typeof lngImportsTj !== 'number' || !Number.isFinite(lngImportsTj) || lngImportsTj < 0
-    || typeof totalDemandTj !== 'number' || !Number.isFinite(totalDemandTj) || totalDemandTj <= 0) return undefined;
-  const baseExposure = CHOKEPOINT_LNG_EXPOSURE[chokepointId] ?? 0;
-  const lngDisruptionTj = lngImportsTj * baseExposure * (disruptionPct / 100);
-  const deficitPct = (lngDisruptionTj / totalDemandTj) * 100;
+  if (!hasGasMeasurements(lngImportsTj, totalDemandTj)) return undefined;
+  if (typeof routeShare !== 'number' || !Number.isFinite(routeShare) || routeShare < 0 || routeShare > 1) return undefined;
+  const lngDisruptionTj = (lngImportsTj as number) * routeShare * (disruptionPct / 100);
+  const deficitPct = (lngDisruptionTj / (totalDemandTj as number)) * 100;
   return {
     lngDisruptionTj: Math.round(lngDisruptionTj * 10) / 10 || lngDisruptionTj,
     deficitPct: Math.round(deficitPct * 10) / 10 || deficitPct,
   };
+}
+
+/** The measured Hormuz shares behind a gas result, for its assessment text. */
+export interface MeasuredLngAssessment {
+  preCrisis: LngShareBaselineEntry;
+  current?: LngShareBaselineEntry;
+  /** Loss at the current-flows share as percent of demand. */
+  currentDeficitPct?: number;
+}
+
+const demandPctText = (deficitPct: number): string => (deficitPct > 0 && deficitPct < 0.1 ? '<0.1' : deficitPct.toFixed(1));
+
+/** Assessment for an importer whose LNG origin share is unavailable. */
+export function lngOriginUnavailableAssessment(code: string, chokepointId: string): string {
+  return `LNG origin share unavailable for ${code}; ${chokepointLabel(chokepointId)} LNG exposure is not modeled.`;
 }
 
 export function buildGasAssessment(
@@ -271,6 +417,7 @@ export function buildGasAssessment(
   deficitPct: number,
   disruptionPct: number,
   dataMonth: string,
+  measured?: MeasuredLngAssessment,
 ): string {
   if (!dataAvailable) {
     return `Insufficient gas import data for ${code} to model ${chokepointId} LNG exposure.`;
@@ -278,7 +425,16 @@ export function buildGasAssessment(
   if (lngImportsTj === 0) {
     return `${code} recorded zero LNG imports in ${dataMonth || 'an unknown observation month'}. The modeled direct LNG loss is zero; this does not establish total gas supply security.`;
   }
-  const exposurePct = (CHOKEPOINT_LNG_EXPOSURE[chokepointId] ?? 0) * 100;
-  const demandPct = deficitPct > 0 && deficitPct < 0.1 ? '<0.1' : deficitPct.toFixed(1);
-  return `${code} gas sensitivity assumes ${exposurePct}% of recorded LNG imports use ${chokepointLabel(chokepointId)}. Under ${disruptionPct}% disruption of that assumed route baseline, modeled loss equals ${demandPct}% of JODI demand for ${dataMonth || 'an unknown observation month'}. This is not measured country-specific exposure or a supply-shortage forecast.`;
+  const month = dataMonth || 'an unknown observation month';
+  if (measured) {
+    const { preCrisis, current, currentDeficitPct } = measured;
+    const now = current
+      ? ` and ${pct1(current.share)}% in current flows (${formatLngWindow(current)})`
+      : '; current-flows share unavailable';
+    const nowLoss = current && currentDeficitPct != null ? `; at the current-flows share it equals ${demandPctText(currentDeficitPct)}%` : '';
+    return `${code} LNG exposure to ${chokepointLabel(chokepointId)}: Qatar and the UAE supplied ${pct1(preCrisis.share)}% of LNG imports before the crisis (${formatLngWindow(preCrisis)})${now}. Under ${disruptionPct}% disruption at the pre-crisis share, modeled loss equals ${demandPctText(deficitPct)}% of JODI demand for ${month}${nowLoss}. This is not a supply-shortage forecast.`;
+  }
+  const exposure = CHOKEPOINT_LNG_EXPOSURE[chokepointId];
+  if (exposure === undefined) return lngOriginUnavailableAssessment(code, chokepointId);
+  return `${code} gas sensitivity assumes ${exposure * 100}% of recorded LNG imports use ${chokepointLabel(chokepointId)}. Under ${disruptionPct}% disruption of that assumed route baseline, modeled loss equals ${demandPctText(deficitPct)}% of JODI demand for ${month}. This is not measured country-specific exposure or a supply-shortage forecast.`;
 }

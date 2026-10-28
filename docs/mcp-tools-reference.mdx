@@ -1085,7 +1085,7 @@ Compute the existing country oil/gas supply-sensitivity model for a supported ch
 | `disruption_pct` | integer | Default 100, range 10..100 percent of flow disrupted. |
 | `fuel_mode` | string: oil / gas / both | Default oil. |
 
-The source response retains product supply/demand (thousand barrels per day), effective cover (days), gas quantities (terajoules) and observed gas storage (TWh). Read `dataAvailable`, individual coverage flags, `coverageLevel`, `limitations`, `degraded`, `chokepointConfidence` and `gasSensitivity.modelBasis` before interpreting numeric values. An assumed LNG-route sensitivity is not a measured live-flow shock. EU aggregate storage is not a country's usable storage buffer.
+The source response retains product supply/demand (thousand barrels per day), effective cover (days), gas quantities (terajoules) and observed gas storage (TWh). Read `dataAvailable`, individual coverage flags, `coverageLevel`, `limitations`, `degraded`, `chokepointConfidence` and `gasSensitivity.modelBasis` before interpreting numeric values. For Hormuz the LNG route share is the importer's measured Qatar and UAE share of LNG imports, reported as a pre-crisis baseline and a current-flows figure; other chokepoints use an assumed route share. Neither is a measured live-flow shock. EU aggregate storage is not a country's usable storage buffer.
 
 - **API endpoint:** `GET /api/intelligence/v1/compute-energy-shock`.
 - **Access:** subscription; existing metering, gateway checks, billing denial and retry/backoff apply. Derived results may be cached; no user scenario or trade is saved.
