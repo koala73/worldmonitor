@@ -57,8 +57,9 @@ function rssEvent(extra = {}) {
  * Runs processEvent with /relay/enabled-rules answering `rulesStatus` and
  * records every Upstash LPUSH onto the event queue plus Telegram sends.
  */
-async function run(event, { rulesStatus = 500, upstashOk = true } = {}) {
+async function run(event, { rulesStatus = 500, upstashOk = true, upstashStalls = false } = {}) {
   const requeued = [];
+  const requeueInits = [];
   const sleeps = [];
   let telegram = 0;
   const silence = [console.log, console.warn, console.error];
@@ -66,7 +67,7 @@ async function run(event, { rulesStatus = 500, upstashOk = true } = {}) {
   console.log = console.warn = console.error = (...args) => { logs.push(args.join(' ')); };
   // Back-off sleeps must not slow the suite; record them instead.
   globalThis.setTimeout = (fn, ms) => { sleeps.push(ms); return originalSetTimeout(fn, 0); };
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, init) => {
     const str = String(url);
     const parsed = new URL(str);
     if (parsed.pathname.includes('/relay/enabled-rules')) {
@@ -83,6 +84,13 @@ async function run(event, { rulesStatus = 500, upstashOk = true } = {}) {
     if (parsed.hostname === 'stub.upstash.io') {
       const parts = parsed.pathname.split('/').slice(1).map(decodeURIComponent);
       if (parts[0] === 'LPUSH' && parts[1] === relay.EVENT_QUEUE_KEY) {
+        requeueInits.push(init);
+        if (upstashStalls) {
+          // What a timed-out request surfaces: an AbortError from fetch.
+          const abort = new Error('This operation was aborted');
+          abort.name = 'AbortError';
+          throw abort;
+        }
         if (!upstashOk) return { ok: false, status: 503 };
         requeued.push(JSON.parse(parts[2]));
       }
@@ -95,7 +103,7 @@ async function run(event, { rulesStatus = 500, upstashOk = true } = {}) {
   } finally {
     [console.log, console.warn, console.error] = silence;
   }
-  return { requeued, sleeps, telegram, logs };
+  return { requeued, requeueInits, sleeps, telegram, logs };
 }
 
 describe('relay re-queues an event when the alert-rules read fails', () => {
@@ -127,6 +135,14 @@ describe('relay re-queues an event when the alert-rules read fails', () => {
     const { requeued, logs } = await run(rssEvent(), { upstashOk: false });
     assert.deepEqual(requeued, []);
     assert.ok(logs.some((l) => /could not re-queue rss_alert/.test(l)), logs.join('\n'));
+  });
+
+  it('bounds the re-queue write with a timeout and reports a stalled write as a re-queue failure', async () => {
+    const { requeued, requeueInits, logs } = await run(rssEvent(), { upstashStalls: true });
+    assert.equal(requeueInits.length, 1);
+    assert.ok(requeueInits[0]?.signal instanceof AbortSignal, 'LPUSH must carry an AbortSignal');
+    assert.deepEqual(requeued, []);
+    assert.ok(logs.some((l) => /re-queue of rss_alert failed \(This operation was aborted\) — dropped/.test(l)), logs.join('\n'));
   });
 
   it('a re-queued event delivers normally once the read recovers (attempt counter is not a dedup key)', async () => {

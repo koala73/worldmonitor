@@ -100,9 +100,17 @@ async function fetchEnabledRules(enabled = true) {
 // ── Upstash REST helpers ──────────────────────────────────────────────────────
 
 async function upstashRest(...args) {
+  return upstashRequest(args);
+}
+
+// `signal` bounds one request (the re-queue write uses it so a stalled
+// Upstash call cannot hold the poll loop); the other callers keep the
+// unbounded legacy behaviour.
+async function upstashRequest(args, { signal } = {}) {
   const res = await fetch(`${UPSTASH_URL}/${args.map(encodeURIComponent).join('/')}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-relay/1.0' },
+    signal,
   });
   if (!res.ok) {
     console.warn(`[relay] Upstash error ${res.status} for command ${args[0]}`);
@@ -1731,6 +1739,9 @@ ${profile}`;
 const RULES_FETCH_RETRY_MAX = 5;
 const RULES_FETCH_RETRY_BACKOFF_MS = 2000;
 const RULES_FETCH_RETRY_BACKOFF_MAX_MS = 10000;
+// Same 10 s policy as the relay's Convex calls: a stalled re-queue write is a
+// re-queue failure, not a blocked poll loop.
+const REQUEUE_UPSTASH_TIMEOUT_MS = 10000;
 
 async function requeueAfterRulesFailure(event, err) {
   const attempts = (Number.isInteger(event.rulesFetchAttempts) ? event.rulesFetchAttempts : 0) + 1;
@@ -1738,7 +1749,16 @@ async function requeueAfterRulesFailure(event, err) {
     console.error(`[relay] Dropping ${event.eventType} after ${RULES_FETCH_RETRY_MAX} alert-rules fetch failures:`, err.message);
     return false;
   }
-  const requeued = await upstashRest('LPUSH', EVENT_QUEUE_KEY, JSON.stringify({ ...event, rulesFetchAttempts: attempts }));
+  let requeued = null;
+  try {
+    requeued = await upstashRequest(
+      ['LPUSH', EVENT_QUEUE_KEY, JSON.stringify({ ...event, rulesFetchAttempts: attempts })],
+      { signal: AbortSignal.timeout(REQUEUE_UPSTASH_TIMEOUT_MS) },
+    );
+  } catch (requeueErr) {
+    console.error(`[relay] Failed to fetch alert rules and the re-queue of ${event.eventType} failed (${requeueErr.message}) — dropped:`, err.message);
+    return false;
+  }
   if (requeued === null) {
     console.error(`[relay] Failed to fetch alert rules and could not re-queue ${event.eventType} — dropped:`, err.message);
     return false;
