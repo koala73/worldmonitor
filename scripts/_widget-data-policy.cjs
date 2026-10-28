@@ -334,6 +334,7 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/news/v1/list-label-changes": "Trust-page label history (#9093), not a widget data source",
   "/api/news/v1/list-media-perspective": "Coverage grouped by outlet country and audience for agents (get_media_perspective), not a widget data source",
   "/api/news/v1/list-news-pool": "Several editions and languages merged for agents (get_news_clusters, extract_entities), not a widget data source",
+  "/api/news/v1/list-source-items": "Cached items of a panel's enabled sources below the digest category cap (#9796), not a widget data source",
   "/api/news/v1/search-fact-checks": "Fact-check citations for /verify and verify_claim (#9094), not a widget data source",
   "/api/news/v1/search-claim-headlines": "Claim headline search for /verify and verify_claim, not a widget data source",
   "/api/news/v1/summarize-article-cache": "Blocked by relay widget endpoint policy",

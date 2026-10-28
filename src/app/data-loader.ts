@@ -8,7 +8,7 @@ import { ViewportHydrationLedger, type LoadAllDataTrigger } from '@/app/viewport
 import { yieldToMain } from '@/utils/after-paint';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
 import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
-import type { ClusteredEvent, NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
+import type { ClusteredEvent, Feed, NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
 import type { MarketData } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
 import {
@@ -229,6 +229,7 @@ import type { TechHubsPanel } from '@/components/TechHubsPanel';
 import { EconomicServiceClient, MarketServiceClient, ResearchServiceClient } from '@/services/generated-rpc-clients';
 
 import { protoItemToNewsItem } from '@/services/news-digest-items';
+import { digestServesFeed, fetchSourceItems, fillFreeSlots, sourcesBelowCap } from '@/app/news-source-fill';
 import { normalizeStockSymbol } from '../../shared/stock-symbol';
 
 type PhysicalPremiumFetcher = typeof import('@/services/market')['fetchPhysicalPremiums'];
@@ -727,6 +728,26 @@ export class DataLoaderManager implements AppModule {
    * the missing edition's sources, so the caller falls back to fetching the
    * full reachable feed set instead.
    */
+  /**
+   * `items` plus the cached rows of enabled sources in `feeds` that have no
+   * item in `delivered`, up to `limit` (#9796). Never removes an item.
+   */
+  private async fillSourcesBelowCap(
+    category: string,
+    editions: readonly string[],
+    delivered: readonly NewsItem[],
+    items: NewsItem[],
+    feeds: readonly Feed[],
+    limit: number,
+  ): Promise<NewsItem[]> {
+    const language = getCurrentLanguage();
+    const missing = sourcesBelowCap(delivered, feeds.filter(feed => digestServesFeed(feed, language)).map(feed => feed.name));
+    if (missing.length === 0) return items;
+    const wanted = new Set(missing);
+    const rows = (await fetchSourceItems(editions, category, missing)).filter(item => wanted.has(item.source));
+    return fillFreeSlots(items, rows, limit);
+  }
+
   private async crossEditionCategoryItems(category: string): Promise<{ items: NewsItem[]; servedStale: boolean } | null> {
     const editions = digestEditionsFor(category).filter(edition => edition !== SITE_VARIANT);
     if (editions.length === 0) return null;
@@ -1678,9 +1699,8 @@ export class DataLoaderManager implements AppModule {
         // load left behind.
         this.clearNewsSourceCoverage(category);
         this.setNewsRefreshDegraded(category, false);
-        const items = (digest.categories[category]?.items ?? [])
-          .map(protoItemToNewsItem)
-          .filter(i => enabledNames.has(i.source));
+        const delivered = (digest.categories[category]?.items ?? []).map(protoItemToNewsItem);
+        let items = delivered.filter(i => enabledNames.has(i.source));
 
         void ingestTrendingHeadlines(items.map(i => ({
           title: i.title,
@@ -1706,6 +1726,13 @@ export class DataLoaderManager implements AppModule {
         // retained/persisted fallbacks whose stored coverage may say fresh.
         if (this.isCurrentNewsLoad(generation) && !digestServedStale) {
           checkBatchForBreakingAlerts(items);
+        }
+        // #9796: the enabled-source filter dropped digest items, so the panel
+        // has free slots. Fill them from the cached rows of enabled sources
+        // the category's top items left out. A user who turned nothing off
+        // loses nothing to the filter and never makes this request.
+        if (items.length < delivered.length) {
+          items = await this.fillSourcesBelowCap(category, [SITE_VARIANT], delivered, items, enabledFeeds, delivered.length);
         }
         this.flashMapForNews(items);
         this.renderNewsForCategory(category, items);
@@ -1764,10 +1791,18 @@ export class DataLoaderManager implements AppModule {
             // Every reachable source is digest-served, so there is no partial
             // source coverage to disclose on the badge.
             this.clearNewsSourceCoverage(category);
-            const items = mergeRotatedNewsItems([], digestItems, {
+            let items = mergeRotatedNewsItems([], digestItems, {
               maxItems: this.customCategoryMergedItemLimit,
               enabledSources: enabledNames,
             });
+            // #9796: fill free slots from the cached rows of enabled sources
+            // no carrying edition's top items include.
+            if (items.length < this.customCategoryMergedItemLimit) {
+              const editions = digestEditionsFor(category).filter(edition => edition !== SITE_VARIANT);
+              items = await this.fillSourcesBelowCap(
+                category, editions, crossEdition.items, items, reachableFeeds, this.customCategoryMergedItemLimit,
+              );
+            }
             this.renderNewsForCategory(category, items);
             this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
               status: 'ok',

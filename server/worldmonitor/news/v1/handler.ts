@@ -6,6 +6,7 @@ import { listFeedDigest } from './list-feed-digest';
 import { listCountryHeadlines } from './list-country-headlines';
 import { listMediaPerspective } from './list-media-perspective';
 import { listNewsPool } from './list-news-pool';
+import { listSourceItems } from './list-source-items';
 import { listLabelChanges } from './list-label-changes';
 import { listErrorReports, reviewErrorReport, submitErrorReport } from './error-reports';
 import { searchFactChecks } from './search-fact-checks';
@@ -18,6 +19,7 @@ export const newsHandler: NewsServiceHandler = {
   listCountryHeadlines,
   listMediaPerspective,
   listNewsPool,
+  listSourceItems,
   listLabelChanges,
   submitErrorReport,
   listErrorReports,

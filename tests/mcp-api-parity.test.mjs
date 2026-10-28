@@ -240,6 +240,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: country snapshot capture reads existing full RSS caches; a future country_headlines tool can expose this uncapped country pool"],
   ["GET /api/news/v1/list-error-reports",
     "deferred-to-future-tool: operator review queue (#9093) is secret-gated and holds private reader contacts; no MCP surface by design"],
+  ["GET /api/news/v1/list-source-items",
+    "deferred-to-future-tool: cached rows for a dashboard panel's enabled sources below the digest category cap (#9796); agents read whole categories through list-news-pool"],
   ["GET /api/news/v1/list-label-changes",
     "deferred-to-future-tool: label history (#9093) is read by the /trust page; a future trust tool can expose recent label changes"],
   ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",
