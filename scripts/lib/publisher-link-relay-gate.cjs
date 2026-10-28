@@ -46,6 +46,7 @@ const PUBLISHER_LINK_DOMAINS = {
   'dw': ['dw.com'],
   'eia': ['eia.gov'],
   'fao': ['fao.org'],
+  'folha': ['folha.uol.com.br'],
   'financial-times': ['ft.com'],
   'france-24': ['france24.com'],
   'good-news-network': ['goodnewsnetwork.org'],
@@ -272,6 +273,9 @@ const PUBLISHER_LINK_LABELS = {
   // The bare feed label "Wall Street Journal" intentionally stays a
   // singleton — only the publisher NAME resolves here.
   "wall street journal": "wsj",
+  // Domain-only 'folha' family: feed host feeds.folha.uol.com.br, article
+  // host www1.folha.uol.com.br.
+  "folha de s.paulo": "folha",
 };
 
 /**

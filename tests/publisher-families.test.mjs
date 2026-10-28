@@ -221,7 +221,7 @@ describe('publisher-families map data', () => {
     // NOT merge (that would understate corroboration). Exempt from the
     // two-label minimum: that rule targets label folding, and an empty
     // label list cannot merge anything.
-    const DOMAIN_ONLY_FAMILIES = new Set(['wsj', 'miit']);
+    const DOMAIN_ONLY_FAMILIES = new Set(['wsj', 'miit', 'folha']);
     for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILIES)) {
       assert.equal(typeof entry.publisher, 'string', `${familyId} has no publisher name`);
       assert.ok(entry.publisher.length > 0, `${familyId} has an empty publisher name`);

@@ -201,6 +201,10 @@ const PUBLISHER_FAMILY_DATA = {
   // folding; a domain table entry cannot merge two publishers' counts).
   // Exempted in tests/publisher-families.test.mjs via DOMAIN_ONLY_FAMILIES.
   'wsj': { publisher: "Wall Street Journal", labels: [] },
+  // Same shape as 'wsj': the feed host (feeds.folha.uol.com.br) is not the
+  // article host (www1.folha.uol.com.br), so the ingest gate needs the
+  // folha.uol.com.br domain. Domain-only, exempted alongside 'wsj'.
+  'folha': { publisher: "Folha de S.Paulo", labels: [] },
   'y-combinator': { publisher: "Y Combinator", labels: ["YC Launches", "Y Combinator Blog"] },
   'yahoo-finance': { publisher: "Yahoo Finance", labels: ["Yahoo Finance", "Yahoo Finance Commodities"] },
 };
@@ -234,6 +238,7 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'dw': ['dw.com'],
   'eia': ['eia.gov'],
   'fao': ['fao.org'],
+  'folha': ['folha.uol.com.br'],
   'financial-times': ['ft.com'],
   'france-24': ['france24.com'],
   'good-news-network': ['goodnewsnetwork.org'],
