@@ -833,13 +833,13 @@
       "scripts/seed-storage-facilities.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
+      "scripts/shared/hormuz-crisis.js",
       "scripts/shared/iso3-to-iso2.json",
       "scripts/shared/jodi-content-age.mjs",
       "scripts/shared/jodi-demand-change.mjs",
       "scripts/shared/jodi-measurement-fields.json",
       "scripts/shared/oil-trade-windows.js",
       "shared/country-names.json",
-      "shared/hormuz-crisis.js",
       "shared/iso3-to-iso2.json"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-7-seed-bundle-energy-sources"

@@ -31,7 +31,7 @@ import {
   monthPeriodEnd,
   shiftMonth,
 } from './shared/jodi-demand-change.mjs';
-import { CURRENT_FLOWS_WINDOW, PRE_CRISIS_WINDOW } from '../shared/hormuz-crisis.js';
+import { CURRENT_FLOWS_WINDOW, PRE_CRISIS_WINDOW } from './shared/hormuz-crisis.js';
 
 loadEnvFile(import.meta.url);
 const require = createRequire(import.meta.url);
