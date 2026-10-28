@@ -24,6 +24,7 @@ import {
   REFINERY_YIELD_BASIS,
 } from '../server/worldmonitor/intelligence/v1/_shock-compute.js';
 import { computeEnergyShockScenario } from '../server/worldmonitor/intelligence/v1/compute-energy-shock.ts';
+import { getCountryCostShock } from '../server/worldmonitor/supply-chain/v1/get-country-cost-shock.ts';
 import { buildDecisionBrief } from '../src/utils/decision-brief.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 
@@ -1425,5 +1426,52 @@ describe('production replay 2026-10-28: Gulf crude share comes from Comtrade par
     assert.equal(response.gulfCrudeShare, 0.05);
     assert.equal(response.effectiveCoverDays, 730);
     assert.ok(response.limitations.some((l) => /capped at 730/.test(l)), response.limitations.join('\n'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// get-country-cost-shock consumes the oil scenario: an unmodeled scenario must
+// surface as unavailable there too, not as coverageDays 0 / supplyDeficitPct 0
+// beside hasEnergyModel true (CodeRabbit on #9781).
+// ---------------------------------------------------------------------------
+
+describe('get-country-cost-shock surfaces an unmodeled oil scenario as unavailable', () => {
+  const ORIGINAL_VALID_KEYS = process.env.WORLDMONITOR_VALID_KEYS;
+  const premiumCtx = () => ({
+    request: new Request('https://api.worldmonitor.app/api/supply-chain/v1/get-country-cost-shock', {
+      headers: { 'X-WorldMonitor-Key': 'wm_shock_fixture' },
+    }),
+  });
+  const restore = () => {
+    restoreEnergyShockEnvironment();
+    if (ORIGINAL_VALID_KEYS == null) delete process.env.WORLDMONITOR_VALID_KEYS;
+    else process.env.WORLDMONITOR_VALID_KEYS = ORIGINAL_VALID_KEYS;
+  };
+
+  it('reports hasEnergyModel false with the handler\'s reason when the oil inputs are missing', async (t) => {
+    t.after(restore);
+    process.env.WORLDMONITOR_VALID_KEYS = 'wm_shock_fixture';
+    installEnergyShockRedis({ ...HORMUZ_LIVE_SEED, 'comtrade:flows:156:2709': WORLD_ONLY_FLOWS('156') });
+
+    const result = await getCountryCostShock(premiumCtx(), { iso2: 'CN', chokepointId: 'hormuz_strait', hs2: '27' });
+
+    assert.equal(result.hasEnergyModel, false);
+    assert.equal(result.coverageDays, 0);
+    assert.equal(result.supplyDeficitPct, 0);
+    assert.match(result.unavailableReason, /Oil shock modelling is unavailable for CN/);
+    assert.match(result.unavailableReason, /JODI crude import observation unavailable for CN/);
+  });
+
+  it('keeps the modeled path for a country with both inputs (positive control)', async (t) => {
+    t.after(restore);
+    process.env.WORLDMONITOR_VALID_KEYS = 'wm_shock_fixture';
+    installEnergyShockRedis({ ...HORMUZ_LIVE_SEED, ...JP_PROD_SEED });
+
+    const result = await getCountryCostShock(premiumCtx(), { iso2: 'JP', chokepointId: 'hormuz_strait', hs2: '27' });
+
+    assert.equal(result.hasEnergyModel, true);
+    assert.equal(result.unavailableReason, '');
+    assert.equal(result.coverageDays, Math.round(178 / JP_GULF_SHARE));
+    assert.ok(result.supplyDeficitPct > 0, `supplyDeficitPct ${result.supplyDeficitPct}`);
   });
 });
