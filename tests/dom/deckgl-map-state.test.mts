@@ -511,3 +511,32 @@ it('fetches the current viewport when bases are enabled without another map move
   expect(listMilitaryBases).toHaveBeenCalledTimes(1);
   expect((map as unknown as { serverBases: { id: string }[] }).serverBases[0]?.id).toBe('enabled');
 });
+
+describe('DeckGLMap layer performance notice', () => {
+  const checkedToggles = (): HTMLInputElement[] => [...document.querySelectorAll<HTMLInputElement>('.deckgl-layer-toggles .layer-toggle input')]
+    .filter(input => input.checked);
+
+  // The full variant ships 13 default layers; a saved set can be larger. Neither
+  // is something the visitor just did, so neither may open the notice.
+  it('does not warn about the layers a visitor starts with, only about layers they add past the threshold', async () => {
+    const allOn = Object.fromEntries(Object.keys(DEFAULT_MAP_LAYERS).map(key => [key, true])) as unknown as MapLayers;
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const map = new DeckGLMap(container, initialState({ layers: allOn }), { chrome: true });
+    maps.push(map);
+    await map.whenReady();
+
+    expect(checkedToggles().length).toBeGreaterThan(14);
+    expect(document.querySelector('.layer-warn-overlay')).toBeNull();
+
+    const layer = checkedToggles().find(input => !input.closest('.layer-toggle-locked'));
+    if (!layer) throw new Error('no enabled layer to toggle');
+    layer.checked = false;
+    layer.dispatchEvent(new Event('change'));
+    expect(document.querySelector('.layer-warn-overlay')).toBeNull();
+    layer.checked = true;
+    layer.dispatchEvent(new Event('change'));
+
+    expect(document.querySelector('.layer-warn-overlay')).not.toBeNull();
+  });
+});

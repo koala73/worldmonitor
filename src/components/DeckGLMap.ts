@@ -8065,7 +8065,9 @@ export class DeckGLMap {
   }
 
   private layerWarningShown = false;
-  private lastActiveLayerCount = 0;
+  // Null until the picker first renders: the layers a visitor starts with are a
+  // baseline, not an increase, so they never open the performance notice.
+  private lastActiveLayerCount: number | null = null;
 
   private enforceLayerLimit(): void {
     const WARN_THRESHOLD = 13;
@@ -8078,12 +8080,12 @@ export class DeckGLMap {
         return toggle?.style.display !== 'none' && row?.style.display !== 'none';
       })
       .filter(i => i.checked).length;
-    const increasing = activeCount > this.lastActiveLayerCount;
+    const increasing = this.lastActiveLayerCount !== null && activeCount > this.lastActiveLayerCount;
     this.lastActiveLayerCount = activeCount;
-    if (activeCount >= WARN_THRESHOLD && increasing && !this.layerWarningShown) {
+    if (activeCount > WARN_THRESHOLD && increasing && !this.layerWarningShown) {
       this.layerWarningShown = true;
       showLayerWarning(WARN_THRESHOLD);
-    } else if (activeCount < WARN_THRESHOLD) {
+    } else if (activeCount <= WARN_THRESHOLD) {
       this.layerWarningShown = false;
     }
   }

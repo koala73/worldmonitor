@@ -2926,7 +2926,9 @@ export class GlobeMap {
   }
 
   private layerWarningShown = false;
-  private lastActiveLayerCount = 0;
+  // Null until the picker first renders: the layers a visitor starts with are a
+  // baseline, not an increase, so they never open the performance notice.
+  private lastActiveLayerCount: number | null = null;
 
   /**
    * Shows "shown/total" beside any layer the marker budget is trimming (#5368).
@@ -2963,12 +2965,12 @@ export class GlobeMap {
     const WARN_THRESHOLD = 13;
     const activeCount = Array.from(this.layerTogglesEl.querySelectorAll<HTMLInputElement>('.layer-toggle input'))
       .filter(i => i.checked).length;
-    const increasing = activeCount > this.lastActiveLayerCount;
+    const increasing = this.lastActiveLayerCount !== null && activeCount > this.lastActiveLayerCount;
     this.lastActiveLayerCount = activeCount;
-    if (activeCount >= WARN_THRESHOLD && increasing && !this.layerWarningShown) {
+    if (activeCount > WARN_THRESHOLD && increasing && !this.layerWarningShown) {
       this.layerWarningShown = true;
       showLayerWarning(WARN_THRESHOLD);
-    } else if (activeCount < WARN_THRESHOLD) {
+    } else if (activeCount <= WARN_THRESHOLD) {
       this.layerWarningShown = false;
     }
   }
