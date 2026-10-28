@@ -5250,5 +5250,12 @@
     "audience": "domestic",
     "language": "uk",
     "ownershipClass": "private"
+  },
+  "MIT Tech Review AI": {
+    "country": "US",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "nonprofit",
+    "note": "Owned by MIT."
   }
 }
