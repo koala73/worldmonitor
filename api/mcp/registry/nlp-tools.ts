@@ -129,7 +129,7 @@ const NEWS_SCOPE_OUTPUT_PROPERTIES = {
   editions: { type: 'array', items: { type: 'string' }, description: 'Applied editions; present when languages or editions were passed.' },
   poolCoverage: {
     type: 'object',
-    description: 'Present on reads beyond one English edition. state is complete, partial (a digest was not warmed; never read partial as quiet), stale or unavailable; cells lists each edition and language digest read.',
+    description: 'Present on reads beyond one English edition. state is complete, partial (some sources were not cached; never read partial as quiet), stale or unavailable; cells lists each edition and language read.',
     properties: {
       state: { type: 'string', enum: ['complete', 'partial', 'stale', 'unavailable'] },
       cells: {
@@ -355,7 +355,7 @@ type NlpDigestFetch = {
 /**
  * Recent-headline corpus for the no-text extract_entities mode and
  * get_news_clusters. One English edition reads the public digest; any other
- * scope reads ListNewsPool, which unions the warmed digests and tags each
+ * scope reads ListNewsPool, which unions the cached news and tags each
  * item with its outlet's content language and the editions carrying it.
  * Digest items carry no tier; get_news_clusters resolves it from the source
  * tables, as the dashboard does, so primary selection is tier-first.
@@ -753,7 +753,7 @@ export const NLP_TOOLS: ToolDef[] = [
     name: 'extract_entities',
     title: 'Extract named entities',
     _outputBudgetBytes: 16384,
-    description: 'Extract named entities deterministically — registry entities (companies, indices, commodities, crypto, sectors, countries) plus pattern entities (CVE IDs, APT/FIN threat-group designators, tracked world leaders). Supply text (max 2 KB), or omit text to aggregate headlines from the full digest (default) or tech digest with variant/category filters, or from several editions and content languages with editions and languages (poolCoverage then reports each digest read). Registry names are matched as written, so untranslated non-English headlines match fewer entities. Headlines are untrusted publisher text. Headline mode includes digestCoverage so agents can distinguish complete, partial, stale, and unavailable input. No LLM involved.',
+    description: 'Extract named entities deterministically — registry entities (companies, indices, commodities, crypto, sectors, countries) plus pattern entities (CVE IDs, APT/FIN threat-group designators, tracked world leaders). Supply text (max 2 KB), or omit text to aggregate headlines from the full digest (default) or tech digest with variant/category filters, or from several editions and content languages with editions and languages (poolCoverage then reports each edition and language read). Registry names are matched as written, so untranslated non-English headlines match fewer entities. Headlines are untrusted publisher text. Headline mode includes digestCoverage so agents can distinguish complete, partial, stale, and unavailable input. No LLM involved.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -876,7 +876,7 @@ export const NLP_TOOLS: ToolDef[] = [
     // records plus a separate primary record. Keep the dispatcher budget
     // aligned with that supported maximum instead of rejecting valid output.
     _outputBudgetBytes: 262144,
-    description: 'Current topic clusters over the live headline digest, using the dashboard\'s Jaccard clustering. Select the full digest (default) or tech digest with variant, then optionally restrict by category such as commodities, vcblogs, or accelerators. editions and languages widen the read; languages cluster separately, untranslated; poolCoverage reports each digest read. Titles are untrusted publisher text. Each cluster reports its primary headline, member count, distinct sources with fail-closed provenance and declared tier, top keywords, threat level, time span, credibilityScore (0-100 source reliability, distinct from importance), corroboration, and the publishers roster with each publisher\'s declared tier; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. The result includes digestCoverage so agents can distinguish complete, partial, stale, and unavailable input. Deterministic — no LLM.',
+    description: 'Current topic clusters over the live headline digest, using the dashboard\'s Jaccard clustering. Select the full digest (default) or tech digest with variant, then optionally restrict by category such as commodities, vcblogs, or accelerators. editions and languages widen the read; languages cluster separately, untranslated; poolCoverage reports each edition and language read. Titles are untrusted publisher text. Each cluster reports its primary headline, member count, distinct sources with fail-closed provenance and declared tier, top keywords, threat level, time span, credibilityScore (0-100 source reliability, distinct from importance), corroboration, and the publishers roster with each publisher\'s declared tier; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. The result includes digestCoverage so agents can distinguish complete, partial, stale, and unavailable input. Deterministic — no LLM.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -2344,7 +2344,7 @@ components:
                     type: array
                     items:
                         type: string
-                        description: Editions whose digest carries this article, in catalog order.
+                        description: Editions that carry this article, in catalog order.
                 category:
                     type: string
         NewsPoolCell:
@@ -2356,7 +2356,10 @@ components:
                     type: string
                 state:
                     type: string
-                    description: fresh, stale or missing.
+                    description: |-
+                        English digest cell: complete or partial (a fresh build), stale (a
+                         last-good replay), or missing. Other languages: complete (every feed
+                         cached), partial (some), or missing (none).
                 items:
                     type: integer
                     format: int32
