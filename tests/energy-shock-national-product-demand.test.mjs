@@ -79,7 +79,7 @@ describe('product demand from national statistics (Malaysia, DOSM)', () => {
     assert.doesNotMatch(r.assessment, /no refined-product demand observation/);
     assert.match(
       line(r, /^Product demand for MY/),
-      /DOSM 2024 annual final consumption for gasoline, diesel, jet fuel, LPG.*JODI reports no demand for them.*excludes fuel burned for power/,
+      /DOSM 2024 annual final consumption for gasoline, diesel, jet fuel, LPG.*JODI reports no demand for them in the pre-crisis window or the latest month.*excludes fuel burned for power/,
     );
     assert.match(line(r, /^product balance, pre-crisis baseline/), /2025-02–2026-01/);
   });
@@ -113,6 +113,25 @@ describe('product demand from national statistics (Malaysia, DOSM)', () => {
     const r = await shock();
     assert.deepEqual(r.products, []);
     assert.match(line(r, /DOSM product demand for MY/), /is for 2022, more than 3 years before the 2026-06 JODI flow month; not used/);
+  });
+
+  it('a national year after the JODI flow month is not used', async (t) => {
+    t.after(restore);
+    const future = { ...dosmSection, countries: { MY: { ...dosmSection.countries.MY, year: 2027 } } };
+    seed(my({ national: future }));
+    const r = await shock();
+    assert.deepEqual(r.products, []);
+    assert.match(line(r, /DOSM product demand for MY/), /is for 2027, after the 2026-06 JODI flow month; not used/);
+  });
+
+  it('national demand never makes a pre-crisis entry without trade win over the latest month', async (t) => {
+    t.after(restore);
+    const jodi = jodiMy({ jet: { demandKbd: null, importsKbd: 40, exportsKbd: 7 } });
+    seed(my({ jodi }));
+    const r = await shock();
+    assert.equal(demandOf(r)['Jet fuel'], 62.9);
+    assert.match(line(r, /^product balance, pre-crisis baseline/), /latest month 2026-06 for jet fuel\)/);
+    assert.match(line(r, /^product balance, pre-crisis baseline/), /jet fuel [^;]*− 7(?:\.0)? = /);
   });
 
   it('without the national section Malaysia keeps no products table', async (t) => {
