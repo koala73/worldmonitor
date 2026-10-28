@@ -86,7 +86,8 @@ message GasSensitivity {
 
 // Gulf crude share over one window and the crude loss it implies. preCrisisBaseline: the 12 months before the Hormuz crisis
 // from at least 9 monthly filings, else the annual share (basis comtrade_annual); drives the headline, products and cover.
-// currentFlows: the latest 3 monthly filings since the crisis; absent when unavailable, never used for products or cover.
+// currentFlows: the latest 3 monthly filings since the crisis; absent when unavailable, never used for the
+// products array or cover; the "product balance, current flows" line in limitations nets its crude loss.
 message CrudeShareBaseline {
   // "comtrade_monthly", or "comtrade_annual" for the annual partner-share fallback.
   string basis = 1;
@@ -146,7 +147,7 @@ message ComputeEnergyShockScenarioResponse {
   GasSensitivity gas_sensitivity = 21;
   // Monthly filings for the 12 months before the Hormuz crisis (at least 9; see months_covered), else the annual share (basis comtrade_annual). Drives products and cover.
   CrudeShareBaseline pre_crisis_baseline = 22;
-  // Latest 3 monthly filings since the crisis; absent when unavailable. Not used for products or cover.
+  // Latest 3 monthly filings since the crisis; absent when unavailable. Not used for the products array or cover; the "product balance, current flows" limitation uses its crude_loss_kbd.
   CrudeShareBaseline current_flows = 23;
   // Present for non-IEA importers with an estimate (India, China).
   ReserveEstimate reserve_estimate = 24;
