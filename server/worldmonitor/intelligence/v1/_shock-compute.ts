@@ -375,6 +375,31 @@ export function computeMonthlyGulfShares(
  */
 export const EFFECTIVE_COVER_DAYS_CAP = 730;
 
+/** JODI crude balance figures, kb/d. */
+export interface JodiCrudeBalance {
+  productionKbd?: number | null;
+  refineryIntakeKbd?: number | null;
+  importsKbd?: number | null;
+  exportsKbd?: number | null;
+}
+
+/**
+ * Net crude exporter from a JODI row, for countries without an IEA stock
+ * record (Saudi Arabia, Kuwait, Iraq, Kazakhstan, Nigeria...): production
+ * covers refinery intake and exports exceed imports. An unreported import
+ * figure counts as 0 (Iraq files none). Returns the figures it rests on, or
+ * null when the row cannot show it.
+ */
+export function jodiNetCrudeExporter(crude: JodiCrudeBalance | null | undefined): JodiCrudeBalance | null {
+  const kbd = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+  if (!crude || !kbd(crude.productionKbd) || crude.productionKbd <= 0 || !kbd(crude.exportsKbd)) return null;
+  const importsKbd = kbd(crude.importsKbd) ? crude.importsKbd : null;
+  if (!(crude.exportsKbd > (importsKbd ?? 0))) return null;
+  const refineryIntakeKbd = kbd(crude.refineryIntakeKbd) ? crude.refineryIntakeKbd : null;
+  if (refineryIntakeKbd != null && crude.productionKbd < refineryIntakeKbd) return null;
+  return { productionKbd: crude.productionKbd, refineryIntakeKbd, importsKbd, exportsKbd: crude.exportsKbd };
+}
+
 export function computeEffectiveCoverDays(
   daysOfCover: number,
   netExporter: boolean,
@@ -465,6 +490,10 @@ export function buildAssessment(
     : `${daysOfCover} days IEA cover`;
   // Which Gulf share the figures rest on, e.g. "the pre-crisis supply mix".
   const mix = supplyMix ? ` at ${supplyMix}` : '';
+  // A net exporter needs no import data: checked before the import gates.
+  if (effectiveCoverDays === -1) {
+    return `${country} is a net oil exporter; ${cp} disruption affects export revenue, not domestic supply.`;
+  }
   if (!dataAvailable) {
     return `Insufficient import data for ${country} to model ${cp} exposure.`;
   }
@@ -472,9 +501,6 @@ export function buildAssessment(
   // A fixed proxy share used to fill this gap; it read as a measurement.
   if (comtradeCoverage === false || coverageLevel === 'unsupported') {
     return `Crude import origin data is unavailable for ${country}; ${cp} oil exposure is not modeled.`;
-  }
-  if (effectiveCoverDays === -1) {
-    return `${country} is a net oil exporter; ${cp} disruption affects export revenue, not domestic supply.`;
   }
   // Reached only with a measured share (the branch above returns otherwise).
   if (gulfCrudeShare < 0.1) {

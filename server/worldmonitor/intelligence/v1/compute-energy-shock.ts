@@ -19,6 +19,7 @@ import {
   computeGulfShare,
   computeGulfShareFromPartners,
   computeEffectiveCoverDaysWithRamp,
+  jodiNetCrudeExporter,
   EFFECTIVE_COVER_DAYS_CAP,
   GULF_SHARE_SOURCE_LABEL,
   buildAssessment,
@@ -358,6 +359,9 @@ export async function computeEnergyShockScenario(
   const ieaStocksCoverage = ieaStocks != null && ieaStocks.anomaly !== true
     && (ieaStocks.netExporter === true || (ieaStocks.daysOfCover != null && Number.isFinite(ieaStocks.daysOfCover) && ieaStocks.daysOfCover >= 0));
   const portwatchCoverage = liveFlowRatio !== null;
+  // IEA classifies its members; JODI production and trade classify the rest.
+  const jodiNetExporter = needsOil && !ieaStocksCoverage ? jodiNetCrudeExporter(jodiOil?.crude) : null;
+  const netExporter = needsOil && ((ieaStocksCoverage && ieaStocks?.netExporter === true) || jodiNetExporter != null);
 
   const observedCrudeImportsKbd = jodiOil?.crude?.importsKbd;
   const crudeImportsObserved = typeof observedCrudeImportsKbd === 'number'
@@ -369,11 +373,13 @@ export async function computeEnergyShockScenario(
 
   const limitations: string[] = [];
   if (needsOil) {
-    if (!crudeImportsObserved) {
+    // A net exporter's cover is -1 whatever the import inputs, so the
+    // "reported as 0" lines below would contradict it.
+    if (!crudeImportsObserved && !netExporter) {
       limitations.push(`JODI crude import observation unavailable for ${code}; oil loss, product deficits and effective cover are not modeled (reported as 0).`);
     }
     if (!comtradeCoverage || !preCrisisShare) {
-      limitations.push(`Crude import origin share unavailable for ${code}: no UN Comtrade partner-level crude (HS 2709) import rows; oil loss, product deficits and effective cover are not modeled (reported as 0).`);
+      if (!netExporter) limitations.push(`Crude import origin share unavailable for ${code}: no UN Comtrade partner-level crude (HS 2709) import rows; oil loss, product deficits and effective cover are not modeled (reported as 0).`);
     } else {
       const window = preCrisisWindow;
       const applied = crudeImportsObserved
@@ -430,7 +436,8 @@ export async function computeEnergyShockScenario(
   // crude.importsKbd is unusable, and a measured share can exist without JODI.
   // Reporting "full" coverage beside an insufficient-data message let the panel
   // paint a green badge; jodi_oil_coverage still reports row presence.
-  const coverageLevel = deriveCoverageLevel(crudeImportsObserved, comtradeCoverage, ieaStocksCoverage, degraded);
+  const derivedCoverage = deriveCoverageLevel(crudeImportsObserved, comtradeCoverage, ieaStocksCoverage, degraded);
+  const coverageLevel = netExporter && derivedCoverage === 'unsupported' ? 'partial' : derivedCoverage;
   // Before any rerouting: every Gulf barrel through the chokepoint is lost.
   const lossBeforeBypassKbd = oilModeled ? crudeImportsKbd * gulfCrudeShare * (disruptionPct / 100) : 0;
 
@@ -572,11 +579,11 @@ export async function computeEnergyShockScenario(
 
   const rawDaysOfCover = n(ieaStocks?.daysOfCover);
   const daysOfCover = ieaStocksCoverage ? rawDaysOfCover : 0;
-  const netExporter = ieaStocksCoverage && ieaStocks?.netExporter === true;
-  // Without a modeled loss there is no scenario cover to report: the raw IEA
-  // days would otherwise pass as the scenario result, and the net-exporter -1
-  // would contradict the "reported as 0" limitation above. The panel keys its
-  // cover row on the same "not modeled" limitation text.
+  // A net exporter (IEA or JODI) is -1 whatever the import inputs; the
+  // "reported as 0" limitations are skipped for it above. Otherwise, without a
+  // modeled loss there is no scenario cover to report: the raw IEA days would
+  // pass as the scenario result. The panel keys its cover row on the same
+  // "not modeled" limitation text.
   // Importers outside the IEA (India, China) have no stock observation. A
   // dated reserve estimate gives their cover instead, labelled as an estimate.
   const reserveSource = needsOil && !ieaStocksCoverage ? nonIeaReserveFor(code) : undefined;
@@ -585,7 +592,9 @@ export async function computeEnergyShockScenario(
   const reserveStockDays = (mb: number): number => (mb * 1000) / crudeImportsKbd;
   const reserveCover = (mb: number): number =>
     computeEffectiveCoverDaysWithRamp(reserveStockDays(mb), false, lossBeforeBypassKbd, crudeLossKbd, crudeImportsKbd);
-  const effectiveCoverDays = !oilModeled
+  const effectiveCoverDays = netExporter
+    ? -1
+    : !oilModeled
     ? 0
     : reserveApplied
       ? reserveCover(reserveSource.centralMb)
@@ -609,7 +618,10 @@ export async function computeEnergyShockScenario(
     limitations.push(`Strategic reserve estimate (not IEA data, ${reserveSource.credibility} credibility): ${reserveSource.scope}; ${mb(reserveSource.centralMb)} M bbl central (range ${mb(reserveSource.lowMb)}-${mb(reserveSource.highMb)}) as of ${reserveSource.asOf}; ${coverText}. ${reserveSource.basis}`);
   }
   if (needsOil && effectiveCoverDays === -1) {
-    limitations.push('effectiveCoverDays -1 marks a net oil exporter (IEA); no import-cover duration applies.');
+    const kbd = (v: number | null | undefined): string => (v == null ? 'not reported' : Math.round(v).toLocaleString('en-US'));
+    limitations.push(jodiNetExporter
+      ? `effectiveCoverDays -1 marks a net oil exporter: net crude exporter from JODI ${typeof jodiOil?.dataMonth === 'string' && jodiOil.dataMonth ? jodiOil.dataMonth : '(month unknown)'}, production ${kbd(jodiNetExporter.productionKbd)} kb/d against refinery intake ${kbd(jodiNetExporter.refineryIntakeKbd)}, exports ${kbd(jodiNetExporter.exportsKbd)} against imports ${kbd(jodiNetExporter.importsKbd)}; no import-cover duration applies.`
+      : 'effectiveCoverDays -1 marks a net oil exporter (IEA); no import-cover duration applies.');
   } else if (needsOil && effectiveCoverDays >= EFFECTIVE_COVER_DAYS_CAP) {
     limitations.push(`effectiveCoverDays is capped at ${EFFECTIVE_COVER_DAYS_CAP}; the modeled deficit rate is bridgeable beyond the cap, not exhausted at it.`);
   }
@@ -738,7 +750,7 @@ export async function computeEnergyShockScenario(
     products,
     effectiveCoverDays,
     assessment,
-    dataAvailable: oilModeled,
+    dataAvailable: oilModeled || netExporter,
     jodiOilCoverage,
     comtradeCoverage,
     ieaStocksCoverage,
@@ -783,7 +795,7 @@ export async function computeEnergyShockScenario(
   }
 
   if (needsOil && needsGas) {
-    response.dataAvailable = oilModeled || gasSensitivity != null;
+    response.dataAvailable = oilModeled || netExporter || gasSensitivity != null;
     response.coverageLevel = response.dataAvailable ? 'partial' : 'unsupported';
     // An unavailable scenario renders as its assessment alone; name the missing
     // LNG origin too, or the gas reason would only reach the limitations.

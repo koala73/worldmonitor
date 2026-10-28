@@ -126,9 +126,11 @@ message ComputeEnergyShockScenarioResponse {
   // Headline: preCrisisBaseline.crudeLossAfterBypassKbd when present, else preCrisisBaseline.crudeLossKbd; 0 when the loss is not modeled or fuel_mode is gas.
   double crude_loss_kbd       = 5;
   repeated ProductImpact products = 6;
+  // -1 marks a net oil exporter (IEA flag, or JODI production covering refinery
+  // intake with exports above imports); no import-cover duration applies.
   int32  effective_cover_days = 7;
   string assessment           = 8;
-  bool   data_available       = 9;  // oil mode: requires finite nonnegative observed crude imports; jodi_oil_coverage indicates row presence only. Gas mode: equals gas data available. Both mode: true if either fuel has usable inputs.
+  bool   data_available       = 9;  // oil mode: requires finite nonnegative observed crude imports, or a net oil exporter (effective_cover_days -1); jodi_oil_coverage indicates row presence only. Gas mode: equals gas data available. Both mode: true if either fuel has usable inputs.
 
   // field 10 reserved for future use
 

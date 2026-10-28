@@ -51133,6 +51133,9 @@ components:
                 effectiveCoverDays:
                     type: integer
                     format: int32
+                    description: |-
+                        -1 marks a net oil exporter (IEA flag, or JODI production covering refinery
+                         intake with exports above imports); no import-cover duration applies.
                 assessment:
                     type: string
                 dataAvailable:
