@@ -123,7 +123,7 @@ describe("purgeUnknownVariantRules", () => {
 
     const preview = await t.mutation(internal.alertRules.purgeUnknownVariantRules, { cursor: null, dryRun: true });
     expect(preview.deleted).toBe(0);
-    expect(Object.keys(preview.unknownByVariant).length).toBeGreaterThan(0);
+    expect(preview.unknownByVariant.length).toBeGreaterThan(0);
     expect((await variantsStored(t)).length).toBe(150 + PREFERENCE_VARIANTS.length);
 
     let cursor: string | null = null;
@@ -142,5 +142,23 @@ describe("purgeUnknownVariantRules", () => {
     expect(deleted).toBe(150);
     expect(await variantsStored(t)).toEqual([...PREFERENCE_VARIANTS].sort());
     expect((await t.mutation(internal.alertRules.purgeUnknownVariantRules, { cursor: null })).deleted).toBe(0);
+  });
+
+  test("dry run counts variants that collide with Object.prototype keys", async () => {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      const row = { userId: USER.subject, enabled: false, eventTypes: [], sensitivity: "high" as const, channels: [], updatedAt: 1 };
+      for (const variant of ["constructor", "constructor", "__proto__", "toString"]) {
+        await ctx.db.insert("alertRules", { ...row, variant });
+      }
+    });
+
+    const preview = await t.mutation(internal.alertRules.purgeUnknownVariantRules, { cursor: null, dryRun: true });
+    const byName = (a: { variant: string }, b: { variant: string }) => a.variant.localeCompare(b.variant);
+    expect([...preview.unknownByVariant].sort(byName)).toEqual([
+      { variant: "__proto__", count: 1 },
+      { variant: "constructor", count: 2 },
+      { variant: "toString", count: 1 },
+    ].sort(byName));
   });
 });

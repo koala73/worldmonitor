@@ -785,15 +785,18 @@ export const purgeUnknownVariantRules = internalMutation({
       .query("alertRules")
       .paginate({ cursor: args.cursor, numItems: 100, maximumBytesRead: 4 * 1024 * 1024 });
     let deleted = 0;
-    const unknownByVariant: Record<string, number> = {};
+    // A Map, not an object: stored variants are arbitrary strings, and names
+    // like "constructor" or "__proto__" corrupt plain-object counters.
+    const counts = new Map<string, number>();
     for (const rule of page.page) {
       if (known.has(rule.variant)) continue;
       const label = rule.variant.slice(0, 40);
-      unknownByVariant[label] = (unknownByVariant[label] ?? 0) + 1;
+      counts.set(label, (counts.get(label) ?? 0) + 1);
       if (args.dryRun) continue;
       await ctx.db.delete(rule._id);
       deleted += 1;
     }
+    const unknownByVariant = [...counts].map(([variant, count]) => ({ variant, count }));
     return { deleted, unknownByVariant, nextCursor: page.isDone ? null : page.continueCursor };
   },
 });
