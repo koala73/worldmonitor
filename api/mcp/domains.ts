@@ -110,6 +110,8 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_chokepoint_dependencies: 'geopolitical-security',
   get_positive_events: 'geopolitical-security',
   // Movement & infrastructure
+  find_webcams: 'movement-infrastructure',
+  get_webcam_media: 'movement-infrastructure',
   get_aviation_status: 'movement-infrastructure',
   get_airspace: 'movement-infrastructure',
   get_maritime_activity: 'movement-infrastructure',

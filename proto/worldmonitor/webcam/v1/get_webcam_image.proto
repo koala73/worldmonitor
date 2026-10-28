@@ -20,4 +20,10 @@ message GetWebcamImageResponse {
   // field carries a datetime string, never epoch milliseconds.
   string last_updated = 5;
   string error = 6;
+  // When WorldMonitor resolved these provider URLs, in Unix epoch milliseconds,
+  // not the image capture time.
+  optional int64 resolved_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Type of the selected provider media: snapshot, timelapse, or live.
+  // A provider-supplied live player does not prove the camera is online.
+  optional string media_type = 8;
 }

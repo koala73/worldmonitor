@@ -385,7 +385,8 @@ export const SERVER_NAME = 'worldmonitor';
 // tools); both old names stay callable as aliases.
 // Bumped 1.44.0 → 1.45.0 for get_media_perspective (95 → 96 tools).
 // Bumped 1.45.0 → 1.46.0 for get_no2_activity (96 → 97 tools, #9722).
-export const SERVER_VERSION = '1.46.0';
+// Bumped 1.46.0 → 1.47.0 for webcam discovery and recent media (97 → 99 tools, #5704).
+export const SERVER_VERSION = '1.47.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
@@ -468,6 +469,8 @@ type InstructionDenialCodes = { allowanceExhausted: number; entitlement: number 
 
 function buildServerInstructions({ allowanceExhausted, entitlement }: InstructionDenialCodes): string {
   return [
+    'For webcam visual context, discover a viewport with find_webcams, then resolve one returned ID with get_webcam_media. Results are recent visual context, not confirmation of live conditions. Check lastUpdated separately from catalog freshness and URL resolvedAt. Keep Windy courtesy and link displayed images to windyUrl or playerUrl.',
+    '',
     'Call get_mcp_allowance({}) to read the current verified account allowance, including used, limit, remaining, resetsAt, requestWindows and sharedWithRestApi. It returns the same snapshot as worldmonitor://account/mcp-allowance for hosts without resources/read. Only user-bound OAuth or wm_… credentials are accepted. No account selector or panel_request is accepted. Status spends no daily allowance, including at the daily cap, but uses the shared 192/minute protocol bucket. Unreadable counters return an error, never a zero snapshot. Shared API usage also includes REST traffic and does not identify individual callers.',
     '',
     `Every tool accepts optional \`jmespath\`. Server-side projection is applied AFTER per-tool filter/summary. Typical 80-95% token reduction. A projected response from a tool whose data is licensed for reuse with attribution comes back as {data, _attribution} — keep the _attribution block with the values if you redistribute them. Grammar: ${JMESPATH_SPEC_URL}. Guide + 12 worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.`,

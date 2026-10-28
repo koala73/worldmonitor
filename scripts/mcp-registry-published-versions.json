@@ -120,6 +120,10 @@
     "1.46.0": {
       "tools": 97,
       "manifestSha256": "cc9d68a0f9db74bddc33d0ad847fa229623dabf81b1d58dfb706877a562b6ec1"
+    },
+    "1.47.0": {
+      "tools": 99,
+      "manifestSha256": "b21bca07f365be3a2f15e4881f7354078a8fc679b2827620e1400b42848e4d69"
     }
   }
 }

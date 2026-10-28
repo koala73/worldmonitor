@@ -1385,6 +1385,12 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "api/mcp/registry/webcam-tools.ts"
+        },
+        {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
           "path": "scripts/seed-webcams.mjs"
         },
         {
@@ -14270,6 +14276,9 @@
       "attribution": "Credit www.windy.com and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "api/mcp/registry/webcam-tools.ts"
+        },
         {
           "path": "api/mcp/skill-extension/generated.ts"
         },

@@ -36317,9 +36317,9 @@ paths:
                             example:
                                 "error": "example"
                                 "lastUpdated": "2026-01-15T12:00:00.000Z"
+                                "mediaType": "all"
                                 "playerUrl": "https://example.com/worldmonitor"
-                                "thumbnailUrl": "https://example.com/worldmonitor"
-                                "title": "example"
+                                "resolvedAt": 1717200000000
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_webcam_v1_GetWebcamImageResponse'
                 "400":
@@ -63059,6 +63059,17 @@ components:
                          field carries a datetime string, never epoch milliseconds.
                 error:
                     type: string
+                resolvedAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        When WorldMonitor resolved these provider URLs, in Unix epoch milliseconds,
+                         not the image capture time.. Warning: Values > 2^53 may lose precision in JavaScript
+                mediaType:
+                    type: string
+                    description: |-
+                        Type of the selected provider media: snapshot, timelapse, or live.
+                         A provider-supplied live player does not prove the camera is online.
         worldmonitor_wildfire_v1_ListFireDetectionsRequest:
             type: object
             properties:
