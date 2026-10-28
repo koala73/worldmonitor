@@ -829,7 +829,7 @@ paths:
                   in: query
                   description: One category key within the selected editions.
                   required: false
-                  example: "europe"
+                  example: "us"
                   schema:
                     type: string
                 - name: jmespath
@@ -848,13 +848,12 @@ paths:
                             example:
                                 "cells":
                                     - "edition": "full"
-                                      "generatedAt": "2026-01-15T12:00:00Z"
                                       "items": 1
                                       "language": "fr"
-                                      "staleAgeSeconds": 1
+                                      "state": "complete"
                                 "generatedAt": "2026-01-15T12:00:00Z"
                                 "items":
-                                    - "category": "europe"
+                                    - "category": "us"
                                       "editions":
                                           - "full"
                                       "item":

@@ -153,13 +153,16 @@ export function tokenize(text) {
 // Scripts written without spaces between words: a whole title would be one
 // token, so they are compared by overlapping character pairs instead.
 const UNSPACED_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
+// Korean is spaced, but each Hangul character is a syllable, so a
+// two-character word is a whole word (정부, 경제).
+const HANGUL = /\p{Script=Hangul}/u;
 
 /**
  * Tokens for a title in any language. `tokenize` keeps only a-z and digits,
  * which leaves Cyrillic, Arabic or Chinese titles with no tokens; it stays as
  * is so dashboard clusters do not move. Here every script's letters count:
- * spaced scripts give words of three or more characters, unspaced scripts
- * give character pairs.
+ * spaced scripts give words of three or more characters (two in Hangul),
+ * unspaced scripts give character pairs.
  */
 export function tokenizeAnyScript(text) {
   const tokens = new Set();
@@ -169,7 +172,7 @@ export function tokenizeAnyScript(text) {
     if (UNSPACED_SCRIPT.test(run)) {
       if (chars.length === 1) tokens.add(run);
       for (let i = 0; i + 1 < chars.length; i++) tokens.add(chars[i] + chars[i + 1]);
-    } else if (chars.length > 2 && !STOP_WORDS.has(run)) {
+    } else if (chars.length > (HANGUL.test(run) ? 1 : 2) && !STOP_WORDS.has(run)) {
       tokens.add(run);
     }
   }

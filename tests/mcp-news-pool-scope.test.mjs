@@ -123,12 +123,16 @@ describe('MCP news languages and editions', () => {
         poolItem('RIA', 'Шторм обесточил побережье Приморья', 'https://n/ru3', 'ru', 1785405700000),
         poolItem('Xinhua', '国务院发布新的经济刺激计划', 'https://n/zh1', 'zh', 1785405600000),
         poolItem('CGTN', '国务院发布经济刺激计划', 'https://n/zh2', 'zh', 1785405500000),
+        // Korean words are often two syllables long.
+        poolItem('Yonhap', '정부 경제 발표', 'https://n/ko1', 'ko', 1785405400000),
+        poolItem('KBS', '정부 경제 발표', 'https://n/ko2', 'ko', 1785405300000),
       ],
     };
-    const { result } = await callTool('get_news_clusters', { languages: ['ru', 'zh'] });
+    const { result } = await callTool('get_news_clusters', { languages: ['ko', 'ru', 'zh'] });
     const shape = result.clusters.map((cluster) => [cluster.language, cluster.memberCount]);
-    assert.deepEqual(shape, [['ru', 2], ['ru', 1], ['zh', 2]], 'same story merges across publishers; a different story stays apart');
+    assert.deepEqual(shape, [['ru', 2], ['ru', 1], ['zh', 2], ['ko', 2]], 'same story merges across publishers; a different story stays apart');
     assert.ok(result.clusters[0].topKeywords.includes('бюджет'), `keywords ${result.clusters[0].topKeywords}`);
+    assert.ok(result.clusters[3].topKeywords.includes('경제'), `keywords ${result.clusters[3].topKeywords}`);
   });
 
   it('aggregates entities over several editions through the pool', async () => {
