@@ -12,6 +12,7 @@ import {
   readExistingSeedMeta,
 } from './_seed-utils.mjs';
 import {
+  MAX_JODI_CONTENT_AGE_MONTHS,
   MAX_JODI_GAS_CONTENT_AGE_MIN,
   assessChinaJodiCoverage,
   buildChinaRowDiagnostic,
@@ -94,6 +95,46 @@ export function parseCsvRows(csvText) {
   return rows;
 }
 
+function buildMonthRecord(iso2, period, monthRows) {
+  const fields = {};
+  for (const row of monthRows) {
+    const fieldName = FLOW_MAP[row.flow];
+    if (fieldName) fields[fieldName] = row.obs;
+  }
+
+  const lngImports   = fields.lngImportsTj  ?? null;
+  const totalImports = fields.totalImportsTj ?? null;
+  let lngShare = null;
+  if (lngImports !== null && totalImports !== null && totalImports > 0) {
+    lngShare = +(lngImports / totalImports).toFixed(4);
+  }
+
+  return {
+    iso2,
+    dataMonth:         period,
+    productionTj:      fields.productionTj    ?? null,
+    lngImportsTj:      fields.lngImportsTj    ?? null,
+    pipeImportsTj:     fields.pipeImportsTj   ?? null,
+    lngExportsTj:      fields.lngExportsTj    ?? null,
+    pipeExportsTj:     fields.pipeExportsTj   ?? null,
+    totalImportsTj:    fields.totalImportsTj  ?? null,
+    totalDemandTj:     fields.totalDemandTj   ?? null,
+    closingStockTj:    fields.closingStockTj  ?? null,
+    lngShareOfImports: lngShare,
+    seededAt:          new Date().toISOString(),
+  };
+}
+
+/** Whole months from `earlier` to `later` (both YYYY-MM); Infinity if unparseable. */
+function monthsBetween(earlier, later) {
+  const index = (month) => {
+    const match = /^(\d{4})-(\d{2})$/.exec(String(month));
+    return match ? Number(match[1]) * 12 + Number(match[2]) - 1 : NaN;
+  };
+  const gap = index(later) - index(earlier);
+  return Number.isFinite(gap) ? gap : Infinity;
+}
+
 export function buildCountryRecords(rows) {
   const byArea = new Map();
   for (const row of rows) {
@@ -104,45 +145,29 @@ export function buildCountryRecords(rows) {
   const records = [];
   for (const [iso2, areaRows] of byArea) {
     const periods = [...new Set(areaRows.map(r => r.period))].sort().reverse();
+    // Take the newest month that meets the gas measurement contract (imports,
+    // demand or LNG share). A newer month that carries only production, stock
+    // or exports — common under code 3 — would otherwise replace it and the
+    // country would fail publication. The look-back stops
+    // MAX_JODI_CONTENT_AGE_MONTHS before the newest numeric month, so a decade-
+    // old import month (Brazil's last is 2015-12) is never published as the
+    // country's profile. With no qualifying month, keep the newest month that
+    // carries any number; publication then filters it out.
+    let fallback = null;
     let chosen = null;
     for (const p of periods) {
-      // A month counts only if it carries a number, so a newest month of
-      // placeholder cells never hides the last reported one.
-      if (areaRows.some(r => r.period === p && r.obs !== null)) {
-        chosen = p;
+      const monthRows = areaRows.filter(r => r.period === p);
+      if (!monthRows.some(r => r.obs !== null)) continue;
+      const record = buildMonthRecord(iso2, p, monthRows);
+      fallback ??= record;
+      if (monthsBetween(p, fallback.dataMonth) > MAX_JODI_CONTENT_AGE_MONTHS) break;
+      if (hasGasMeasurements(record)) {
+        chosen = record;
         break;
       }
     }
-    if (!chosen) continue;
-
-    const chosenRows = areaRows.filter(r => r.period === chosen);
-    const fields = {};
-    for (const row of chosenRows) {
-      const fieldName = FLOW_MAP[row.flow];
-      if (fieldName) fields[fieldName] = row.obs;
-    }
-
-    const lngImports   = fields.lngImportsTj  ?? null;
-    const totalImports = fields.totalImportsTj ?? null;
-    let lngShare = null;
-    if (lngImports !== null && totalImports !== null && totalImports > 0) {
-      lngShare = +(lngImports / totalImports).toFixed(4);
-    }
-
-    records.push({
-      iso2,
-      dataMonth:         chosen,
-      productionTj:      fields.productionTj    ?? null,
-      lngImportsTj:      fields.lngImportsTj    ?? null,
-      pipeImportsTj:     fields.pipeImportsTj   ?? null,
-      lngExportsTj:      fields.lngExportsTj    ?? null,
-      pipeExportsTj:     fields.pipeExportsTj   ?? null,
-      totalImportsTj:    fields.totalImportsTj  ?? null,
-      totalDemandTj:     fields.totalDemandTj   ?? null,
-      closingStockTj:    fields.closingStockTj  ?? null,
-      lngShareOfImports: lngShare,
-      seededAt:          new Date().toISOString(),
-    });
+    const record = chosen ?? fallback;
+    if (record) records.push(record);
   }
 
   return records;
@@ -347,6 +372,8 @@ export function buildLngVulnerabilityIndex(members, dataMonth, updatedAt) {
       iso2: r.iso2,
       lngShareOfImports: /** @type {number} */ (r.lngShareOfImports),
       lngImportsTj: /** @type {number} */ (r.lngImportsTj),
+      // Each country publishes its own newest reported month.
+      dataMonth: r.dataMonth,
     }));
 
   const top20PipelineDependent = withPipe
@@ -356,6 +383,8 @@ export function buildLngVulnerabilityIndex(members, dataMonth, updatedAt) {
       iso2: r.iso2,
       lngShareOfImports: /** @type {number} */ (r.lngShareOfImports),
       pipeImportsTj: /** @type {number} */ (r.pipeImportsTj),
+      // Each country publishes its own newest reported month.
+      dataMonth: r.dataMonth,
     }));
 
   return { updatedAt, dataMonth, top20LngDependent, top20PipelineDependent };

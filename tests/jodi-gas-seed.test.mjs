@@ -336,6 +336,48 @@ describe('buildCountryRecords', () => {
     assert.equal(records[0].lngImportsTj, 100);
   });
 
+  it('a newer production-only month never replaces an earlier month with imports', () => {
+    // Production is not part of the gas measurement contract, so choosing the
+    // code-3 production month would drop the country at publication.
+    const csv = [
+      SAMPLE_CSV_HEADER,
+      makeRow('KZ', '2026-08', 'INDPROD', 'TJ', '150000', '3'),
+      makeRow('KZ', '2026-07', 'IMPPIP', 'TJ', '38000', '1'),
+      makeRow('KZ', '2026-07', 'TOTIMPSB', 'TJ', '38000', '1'),
+    ].join('\n');
+    const records = gasSeed.buildGasRecordsFromCsv(csv, new Date('2026-10-28T00:00:00.000Z'));
+    assert.equal(records.length, 1);
+    assert.equal(records[0].dataMonth, '2026-07');
+    assert.equal(records[0].pipeImportsTj, 38000);
+  });
+
+  it('never reaches back years for an import month (Brazil files production only since 2016)', () => {
+    const csv = [
+      SAMPLE_CSV_HEADER,
+      makeRow('BR', '2026-08', 'INDPROD', 'TJ', '160000', '3'),
+      makeRow('BR', '2015-12', 'IMPLNG', 'TJ', '40000', '1'),
+      makeRow('BR', '2015-12', 'TOTIMPSB', 'TJ', '120000', '1'),
+      // Exactly six months back is still inside the content-age window.
+      makeRow('MX', '2026-08', 'INDPROD', 'TJ', '96000', '3'),
+      makeRow('MX', '2026-02', 'IMPPIP', 'TJ', '30000', '1'),
+    ].join('\n');
+    const records = gasSeed.buildGasRecordsFromCsv(csv, new Date('2026-10-28T00:00:00.000Z'));
+    assert.deepEqual(records.map(r => `${r.iso2}@${r.dataMonth}`), ['MX@2026-02']);
+  });
+
+  it('a country with no import or demand month keeps its newest numeric month (then fails publication)', () => {
+    const rows = parseCsvRows([
+      SAMPLE_CSV_HEADER,
+      makeRow('RU', '2026-08', 'INDPROD', 'TJ', '2002840', '3'),
+      makeRow('RU', '2026-07', 'INDPROD', 'TJ', '1919049', '3'),
+    ].join('\n'));
+    assert.equal(buildCountryRecords(rows)[0].dataMonth, '2026-08');
+    assert.equal(gasSeed.buildGasRecordsFromCsv([
+      SAMPLE_CSV_HEADER,
+      makeRow('RU', '2026-08', 'INDPROD', 'TJ', '2002840', '3'),
+    ].join('\n')).length, 0);
+  });
+
   it('uses the newest month even when its values are unassessed (code 3)', () => {
     const rows = parseCsvRows([
       SAMPLE_CSV_HEADER,
@@ -507,6 +549,18 @@ describe('buildLngVulnerabilityIndex', () => {
     assert.equal(entry.lngShareOfImports, 0.0);
     assert.equal(entry.pipeImportsTj, 380000);
     assert.ok(!('lngImportsTj' in entry));
+  });
+
+  it('each ranking entry carries the month its share describes', () => {
+    // Countries publish their own newest reported month (KZ was at 2024-12),
+    // so the index-level dataMonth cannot date every entry.
+    const members = makeMembers([
+      { iso2: 'JP', lngShareOfImports: 1.0, lngImportsTj: 4200000, pipeImportsTj: 0, dataMonth: '2026-08' },
+      { iso2: 'KZ', lngShareOfImports: 0.0, lngImportsTj: 0, pipeImportsTj: 38000, dataMonth: '2026-07' },
+    ]);
+    const result = buildLngVulnerabilityIndex(members, '2026-08', '2026-10-28T00:00:00.000Z');
+    assert.equal(result.top20LngDependent[0].dataMonth, '2026-08');
+    assert.equal(result.top20PipelineDependent[0].dataMonth, '2026-07');
   });
 });
 
