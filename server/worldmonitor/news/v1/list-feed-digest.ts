@@ -1079,7 +1079,11 @@ export async function fetchAndParseRss(
         negativeCache: false,
       };
       const empty: ParseResult = { items: [], parsedTotal: 0, droppedUndated: 0, attempt };
-      await setCachedJson(cacheKey, empty, CACHE_TTL_EMPTY_S);
+      // Our own deadline says nothing about the feed: caching it would make
+      // the next builds serve an empty row for 5 minutes instead of fetching.
+      if (attempt.failure !== 'deadline-abort') {
+        await setCachedJson(cacheKey, empty, CACHE_TTL_EMPTY_S);
+      }
       return empty;
     }
 

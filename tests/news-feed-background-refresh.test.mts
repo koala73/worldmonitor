@@ -188,3 +188,26 @@ describe('feed cache background refresh', () => {
     assert.equal(upstreamCalls.length, 1);
   });
 });
+
+describe('deadline-aborted fetches', () => {
+  it('does not cache an empty row when the global deadline aborted the fetch', async () => {
+    const deadline = new AbortController();
+    install(() => {
+      deadline.abort();
+      throw new DOMException('The operation was aborted.', 'AbortError');
+    });
+    const result = await fetchAndParseRss(FEED, VARIANT, deadline.signal);
+    assert.equal(result.items.length, 0);
+    assert.equal(result.attempt?.failure, 'deadline-abort');
+    // The next build must fetch the feed again, not serve a 5-minute empty row
+    // that the old batch barrier would never have started.
+    assert.equal(redis.redis.get(KEY), undefined);
+  });
+
+  it('still caches an empty row for an upstream failure', async () => {
+    install(() => new Response('nope', { status: 503 }));
+    const result = await fetchAndParseRss(FEED, VARIANT, new AbortController().signal);
+    assert.equal(result.items.length, 0);
+    assert.notEqual(redis.redis.get(KEY), undefined);
+  });
+});
