@@ -51168,6 +51168,8 @@ components:
                     $ref: '#/components/schemas/worldmonitor_intelligence_v1_CrudeShareBaseline'
                 currentFlows:
                     $ref: '#/components/schemas/worldmonitor_intelligence_v1_CrudeShareBaseline'
+                reserveEstimate:
+                    $ref: '#/components/schemas/worldmonitor_intelligence_v1_ReserveEstimate'
         worldmonitor_intelligence_v1_ProductImpact:
             type: object
             properties:
@@ -51302,6 +51304,33 @@ components:
                     format: double
                     description: Steady state after Hormuz bypass rerouting; absent when the bypass or the loss is not modeled.
             description: Gulf crude share over one window and the crude loss it implies.
+        worldmonitor_intelligence_v1_ReserveEstimate:
+            type: object
+            properties:
+                scope:
+                    type: string
+                asOf:
+                    type: string
+                credibility:
+                    type: string
+                    description: '"high" or "low".'
+                lowMb:
+                    type: number
+                    format: double
+                centralMb:
+                    type: number
+                    format: double
+                highMb:
+                    type: number
+                    format: double
+                coverDaysLow:
+                    type: integer
+                    format: int32
+                    description: Cover at the low and high stock; absent when the loss is not modeled.
+                coverDaysHigh:
+                    type: integer
+                    format: int32
+            description: Non-IEA strategic reserve estimate (not IEA data) behind effective_cover_days.
         worldmonitor_intelligence_v1_GetCountryPortActivityRequest:
             type: object
             properties:

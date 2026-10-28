@@ -937,6 +937,7 @@ export interface ComputeEnergyShockScenarioResponse {
   gasSensitivity?: GasSensitivity;
   preCrisisBaseline?: CrudeShareBaseline;
   currentFlows?: CrudeShareBaseline;
+  reserveEstimate?: ReserveEstimate;
 }
 
 export interface ProductImpact {
@@ -997,6 +998,17 @@ export interface CrudeShareBaseline {
   gulfCrudeShare: number;
   crudeLossKbd: number;
   crudeLossAfterBypassKbd?: number;
+}
+
+export interface ReserveEstimate {
+  scope: string;
+  asOf: string;
+  credibility: string;
+  lowMb: number;
+  centralMb: number;
+  highMb: number;
+  coverDaysLow?: number;
+  coverDaysHigh?: number;
 }
 
 export interface GetCountryPortActivityRequest {

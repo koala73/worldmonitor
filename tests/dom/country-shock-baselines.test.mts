@@ -155,3 +155,31 @@ it('renders no baseline block for gas-only results', () => {
   const el = render(japan({ preCrisisBaseline: undefined, currentFlows: undefined }));
   expect(el.querySelector('.cdp-shock-baselines')).toBeNull();
 });
+
+it('shows non-IEA reserve cover as an estimate, never as IEA cover (India)', () => {
+  const el = render(japan({
+    countryCode: 'IN', ieaStocksCoverage: false, effectiveCoverDays: 11,
+    reserveEstimate: { scope: 'ISPRL strategic reserve', asOf: '2026-03-23', credibility: 'high', lowMb: 21.4, centralMb: 24, highMb: 39, coverDaysLow: 10, coverDaysHigh: 18 },
+  }));
+  const row = el.querySelector('.cdp-shock-reserve-estimate')?.textContent;
+  expect(row).toBe('Estimated strategic reserve cover (not IEA data): ~11 days under this scenario (range 10–18; ISPRL strategic reserve, 24 M bbl, as of 2026-03-23)');
+  expect(el.textContent).not.toContain('IEA cover: ~');
+});
+
+it('flags a low-credibility reserve estimate (China) and says when cover is not modeled', () => {
+  const china = render(japan({
+    countryCode: 'CN', ieaStocksCoverage: false, effectiveCoverDays: 586,
+    reserveEstimate: { scope: 'government plus state-directed commercial crude stocks', asOf: '2025-12', credibility: 'low', lowMb: 360, centralMb: 1200, highMb: 1400, coverDaysLow: 161, coverDaysHigh: 687 },
+  }));
+  expect(china.querySelector('.cdp-shock-reserve-estimate')?.textContent).toContain('low credibility');
+  const notModeled = render(japan({
+    countryCode: 'IN', ieaStocksCoverage: false, dataAvailable: false, jodiOilCoverage: false, effectiveCoverDays: 0, products: [],
+    gasSensitivity: {
+      lngShareOfImports: 1, lngImportsTj: 111255.8, lngDisruptionTj: 33376.7, totalDemandTj: 185285.1, deficitPct: 18,
+      dataAvailable: true, assessment: 'IN gas sensitivity.', dataSource: 'jodi_monthly', dataMonth: '2026-03', modelBasis: 'assumed_route_sensitivity',
+    },
+    limitations: ['JODI crude import observation unavailable for IN; oil loss, product deficits and effective cover are not modeled (reported as 0).'],
+    reserveEstimate: { scope: 'ISPRL strategic reserve', asOf: '2026-03-23', credibility: 'high', lowMb: 21.4, centralMb: 24, highMb: 39 },
+  }));
+  expect(notModeled.querySelector('.cdp-shock-reserve-estimate')?.textContent).toBe('Estimated strategic reserve (not IEA data): 24 M bbl, as of 2026-03-23; cover not modeled for this scenario');
+});

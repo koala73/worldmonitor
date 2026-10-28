@@ -306,9 +306,15 @@ export function buildAssessment(
   ieaStocksCoverage?: boolean,
   comtradeCoverage?: boolean,
   supplyMix?: string,
+  /** 'estimate': daysOfCover is a non-IEA strategic reserve estimate, never called IEA cover. */
+  coverSource: 'iea' | 'estimate' = 'iea',
 ): string {
   const country = countryLabel(code);
   const cp = chokepointLabel(chokepointId);
+  const estimated = coverSource === 'estimate';
+  const coverPhrase = estimated
+    ? `an estimated ${daysOfCover} days of strategic reserves (not IEA data)`
+    : `${daysOfCover} days IEA cover`;
   // Which Gulf share the figures rest on, e.g. "the pre-crisis supply mix".
   const mix = supplyMix ? ` at ${supplyMix}` : '';
   if (!dataAvailable) {
@@ -329,10 +335,10 @@ export function buildAssessment(
   const degradedNote = degraded ? ' (live flow data unavailable, using historical baseline)' : '';
   const ieaCoverText = ieaStocksCoverage === false ? 'unknown' : `${daysOfCover} days`;
   if (effectiveCoverDays >= EFFECTIVE_COVER_DAYS_CAP) {
-    return `With ${daysOfCover} days IEA cover, ${code} is indefinitely bridgeable against a ${disruptionPct}% ${chokepointId} disruption at this deficit rate${mix}${degradedNote}.`;
+    return `With ${coverPhrase}, ${code} is indefinitely bridgeable against a ${disruptionPct}% ${chokepointId} disruption at this deficit rate${mix}${degradedNote}.`;
   }
   if (effectiveCoverDays > 90) {
-    return `With ${daysOfCover} days IEA cover, ${country} can bridge a ${disruptionPct}% ${cp} disruption for ~${effectiveCoverDays} days${mix}${degradedNote}.`;
+    return `With ${coverPhrase}, ${country} can bridge a ${disruptionPct}% ${cp} disruption for ~${effectiveCoverDays} days${mix}${degradedNote}.`;
   }
   const worst = products.reduce<{ product: string; deficitPct: number }>(
     (best, p) => (p.deficitPct > best.deficitPct ? p : best),
@@ -340,7 +346,12 @@ export function buildAssessment(
   );
   const worstDeficit = worst.deficitPct;
   const worstProduct = worst.product.toLowerCase();
-  return `${country} faces ${worstDeficit.toFixed(1)}% ${worstProduct} deficit under ${disruptionPct}% ${cp} disruption${mix}; IEA cover: ${ieaCoverText}${degradedNote}.`;
+  const coverText = estimated ? `estimated strategic reserve cover: ~${effectiveCoverDays} days (not IEA data)` : `IEA cover: ${ieaCoverText}`;
+  // No product with recorded demand: there is no deficit to name, not a 0.0% one.
+  if (!worst.product) {
+    return `${country} has no refined-product demand observation, so product deficits under ${disruptionPct}% ${cp} disruption${mix} are not modeled; ${coverText}${degradedNote}.`;
+  }
+  return `${country} faces ${worstDeficit.toFixed(1)}% ${worstProduct} deficit under ${disruptionPct}% ${cp} disruption${mix}; ${coverText}${degradedNote}.`;
 }
 
 export const CHOKEPOINT_LNG_EXPOSURE: Record<string, number> = {

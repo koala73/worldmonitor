@@ -9827,6 +9827,8 @@ components:
                     $ref: '#/components/schemas/CrudeShareBaseline'
                 currentFlows:
                     $ref: '#/components/schemas/CrudeShareBaseline'
+                reserveEstimate:
+                    $ref: '#/components/schemas/ReserveEstimate'
         ProductImpact:
             type: object
             properties:
@@ -9961,6 +9963,33 @@ components:
                     format: double
                     description: Steady state after Hormuz bypass rerouting; absent when the bypass or the loss is not modeled.
             description: Gulf crude share over one window and the crude loss it implies.
+        ReserveEstimate:
+            type: object
+            properties:
+                scope:
+                    type: string
+                asOf:
+                    type: string
+                credibility:
+                    type: string
+                    description: '"high" or "low".'
+                lowMb:
+                    type: number
+                    format: double
+                centralMb:
+                    type: number
+                    format: double
+                highMb:
+                    type: number
+                    format: double
+                coverDaysLow:
+                    type: integer
+                    format: int32
+                    description: Cover at the low and high stock; absent when the loss is not modeled.
+                coverDaysHigh:
+                    type: integer
+                    format: int32
+            description: Non-IEA strategic reserve estimate (not IEA data) behind effective_cover_days.
         GetCountryPortActivityRequest:
             type: object
             properties:

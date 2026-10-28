@@ -85,6 +85,20 @@ message CrudeShareBaseline {
   optional double crude_loss_after_bypass_kbd = 7;
 }
 
+// Non-IEA strategic reserve estimate (not IEA data) behind effective_cover_days.
+message ReserveEstimate {
+  string scope = 1;
+  string as_of = 2;
+  // "high" or "low".
+  string credibility = 3;
+  double low_mb = 4;
+  double central_mb = 5;
+  double high_mb = 6;
+  // Cover at the low and high stock; absent when the loss is not modeled.
+  optional int32 cover_days_low = 7;
+  optional int32 cover_days_high = 8;
+}
+
 message ComputeEnergyShockScenarioResponse {
   string country_code         = 1;
   string chokepoint_id        = 2;
@@ -117,4 +131,6 @@ message ComputeEnergyShockScenarioResponse {
   CrudeShareBaseline pre_crisis_baseline = 22;
   // Latest 3 monthly filings since the crisis; absent when unavailable. Not used for products or cover.
   CrudeShareBaseline current_flows = 23;
+  // Present for non-IEA importers with an estimate (India, China).
+  ReserveEstimate reserve_estimate = 24;
 }

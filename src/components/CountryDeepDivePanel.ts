@@ -2329,6 +2329,19 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
       coverRow.textContent = coverText;
       container.append(coverRow);
+    } else if (result.reserveEstimate) {
+      // Non-IEA importers (India, China): a dated reserve estimate, never IEA cover.
+      const est = result.reserveEstimate;
+      const mb = `${est.centralMb.toLocaleString('en')} M bbl`;
+      const oilModeled = result.jodiOilCoverage && result.comtradeCoverage && result.effectiveCoverDays > 0
+        && !(result.limitations ?? []).some((l) => l.includes('effective cover are not modeled'));
+      const credibility = est.credibility === 'low' ? '; low credibility' : '';
+      const text = oilModeled && est.coverDaysLow != null && est.coverDaysHigh != null
+        ? `Estimated strategic reserve cover (not IEA data): ~${result.effectiveCoverDays} days under this scenario (range ${est.coverDaysLow}–${est.coverDaysHigh}; ${est.scope}, ${mb}, as of ${est.asOf}${credibility})`
+        : `Estimated strategic reserve (not IEA data): ${mb}, as of ${est.asOf}${credibility}; cover not modeled for this scenario`;
+      const row = this.el('div', 'cdp-economic-source cdp-shock-reserve-estimate', text);
+      row.style.cssText += ';margin-bottom:4px';
+      container.append(row);
     }
 
     const assessmentEl = this.el('div', '');
