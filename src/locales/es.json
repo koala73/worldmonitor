@@ -1126,7 +1126,7 @@
         "ucdpEvents": "Eventos de la UCDP",
         "displacementFlows": "Flujos de desplazamiento",
         "climateAnomalies": "Anomalías climáticas",
-        "weatherAlerts": "Alertas de clima severo (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Alertas meteorológicas",
         "strategicWaterways": "Vías navegables estratégicas",
         "economicCenters": "Centros Económicos",
         "criticalMinerals": "Minerales críticos",
@@ -1148,9 +1148,9 @@
         "radiationSpike": "Pico de radiación",
         "radiationElevated": "Radiación elevada",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "Restricciones de espacio aéreo NOTAM",
-        "no2Activity": "Actividad industrial (NO2)"
+        "no2Activity": "Actividad industrial"
       },
       "layersTitle": "capas",
       "layerSearch": "Buscar capas...",
@@ -4078,7 +4078,7 @@
           "2": "Las polilíneas de condiciones de la carretera pueden simplificar la geometría compleja de las autopistas."
         },
         "related": {
-          "0": "Alertas de clima severo (NWS, ECCC, WMO SWIC)",
+          "0": "Alertas meteorológicas",
           "1": "Actualidad de los datos"
         }
       },
@@ -4094,7 +4094,7 @@
           "2": "Las entradas sin una gravedad cartografiable (semántica CAP y de color de Alberta, estado de evacuación de B.C. o gravedad CAP de SaskAlert) se descartan en lugar de inventarse. El color o el nivel del resumen de SaskAlert no se trata como gravedad CAP."
         },
         "related": {
-          "0": "Alertas de clima severo (NWS, ECCC, WMO SWIC)",
+          "0": "Alertas meteorológicas",
           "1": "Capa Eventos naturales",
           "2": "Actualidad de los datos"
         }
@@ -4127,7 +4127,7 @@
         },
         "related": {
           "0": "Ventanas emergentes de la capa Eventos naturales",
-          "1": "Alertas de clima severo (NWS, ECCC, WMO SWIC)",
+          "1": "Alertas meteorológicas",
           "2": "Señales naturales del informe de inteligencia"
         }
       },

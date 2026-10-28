@@ -1295,7 +1295,7 @@
         "ucdpEvents": "Evenimente de conflict armat",
         "displacementFlows": "Fluxuri de deplasare",
         "climateAnomalies": "Anomalii climatice",
-        "weatherAlerts": "Alerte de vreme severă (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Alerte meteo",
         "strategicWaterways": "Căi navigabile strategice",
         "economicCenters": "Centre Economice",
         "criticalMinerals": "Minerale critice",
@@ -1317,9 +1317,9 @@
         "radiationSpike": "Vârf de radiații",
         "radiationElevated": "Radiații ridicate",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "Restricții de spațiu aerian NOTAM",
-        "no2Activity": "Activitate industrială (NO2)"
+        "no2Activity": "Activitate industrială"
       },
       "tooltip": {
         "earthquake": "Cutremur",
@@ -4078,7 +4078,7 @@
           "2": "Poliliniile de stare a drumului pot simplifica geometria complexă a autostrăzilor."
         },
         "related": {
-          "0": "Alerte de vreme severă (NWS, ECCC, WMO SWIC)",
+          "0": "Alerte meteo",
           "1": "Starea de actualitate a datelor"
         }
       },
@@ -4094,7 +4094,7 @@
           "2": "Intrările fără o severitate care poate fi pusă pe hartă sunt eliminate, nu inventate. Este vorba de semantica CAP și de culoare din Alberta, de starea de evacuare din Columbia Britanică sau de severitatea CAP SaskAlert. Culoarea sau nivelul din rezumatul SaskAlert nu sunt tratate ca severitate CAP."
         },
         "related": {
-          "0": "Alerte de vreme severă (NWS, ECCC, WMO SWIC)",
+          "0": "Alerte meteo",
           "1": "strat Evenimente naturale",
           "2": "Starea de actualitate a datelor"
         }
@@ -4127,7 +4127,7 @@
         },
         "related": {
           "0": "Ferestre pop-up ale stratului Evenimente naturale",
-          "1": "Alerte de vreme severă (NWS, ECCC, WMO SWIC)",
+          "1": "Alerte meteo",
           "2": "Semnale naturale în rezumatul informativ"
         }
       },

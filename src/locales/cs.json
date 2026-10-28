@@ -1286,7 +1286,7 @@
         "ucdpEvents": "UCDP události",
         "displacementFlows": "Toky vysídlení",
         "climateAnomalies": "Klimatické anomálie",
-        "weatherAlerts": "Varování před nebezpečným počasím (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Meteorologická varování",
         "strategicWaterways": "Strategické vodní cesty",
         "economicCenters": "Ekonomická centra",
         "criticalMinerals": "Kritické minerály",
@@ -1308,9 +1308,9 @@
         "radiationSpike": "Skokový nárůst radiace",
         "radiationElevated": "Zvýšená radiace",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "Omezení vzdušného prostoru NOTAM",
-        "no2Activity": "Průmyslová aktivita (NO2)"
+        "no2Activity": "Průmyslová aktivita"
       },
       "tooltip": {
         "earthquake": "Zemětřesení",
@@ -4098,7 +4098,7 @@
           "2": "Křivky stavu silnic mohou zjednodušit složitou geometrii dálnic."
         },
         "related": {
-          "0": "Varování před nebezpečným počasím (NWS, ECCC, WMO SWIC)",
+          "0": "Meteorologická varování",
           "1": "Stav aktuálnosti dat"
         }
       },
@@ -4114,7 +4114,7 @@
           "2": "Položky bez mapovatelné závažnosti se zahazují a nevymýšlejí se. Jde o sémantiku CAP a barvy Alberty, stav evakuace Britské Kolumbie nebo závažnost CAP SaskAlert. Barva nebo stupeň v souhrnu SaskAlert se nebere jako závažnost CAP."
         },
         "related": {
-          "0": "Varování před nebezpečným počasím (NWS, ECCC, WMO SWIC)",
+          "0": "Meteorologická varování",
           "1": "vrstva Přírodní události",
           "2": "Stav aktuálnosti dat"
         }
@@ -4147,7 +4147,7 @@
         },
         "related": {
           "0": "Vyskakovací okna vrstvy Přírodní události",
-          "1": "Varování před nebezpečným počasím (NWS, ECCC, WMO SWIC)",
+          "1": "Meteorologická varování",
           "2": "Přírodní signály ve zpravodajské svodce"
         }
       },

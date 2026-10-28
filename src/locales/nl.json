@@ -583,7 +583,7 @@
         "ucdpEvents": "UCDP-evenementen",
         "displacementFlows": "Verplaatsingsstromen",
         "climateAnomalies": "Klimaatafwijkingen",
-        "weatherAlerts": "Waarschuwingen voor zwaar weer (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Weerwaarschuwingen",
         "strategicWaterways": "Strategische waterwegen",
         "economicCenters": "Economische Centra",
         "criticalMinerals": "Kritieke mineralen",
@@ -605,9 +605,9 @@
         "radiationSpike": "Stralingspiek",
         "radiationElevated": "Verhoogde straling",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "NOTAM-luchtruimbeperkingen",
-        "no2Activity": "Industriële activiteit (NO2)"
+        "no2Activity": "Industriële activiteit"
       },
       "layersTitle": "Lagen",
       "layerSearch": "Lagen zoeken...",
@@ -4058,7 +4058,7 @@
           "2": "Polylijnen van wegconditie kunnen complexe snelweggeometrie vereenvoudigen."
         },
         "related": {
-          "0": "Waarschuwingen voor zwaar weer (NWS, ECCC, WMO SWIC)",
+          "0": "Weerwaarschuwingen",
           "1": "Data Freshness"
         }
       },
@@ -4074,7 +4074,7 @@
           "2": "Meldingen zonder een ernst die op de kaart kan worden gezet (CAP- en kleursemantiek van Alberta, evacuatiestatus van B.C. of CAP-ernst van SaskAlert) worden weggelaten in plaats van verzonnen. Kleur of niveau van de SaskAlert-samenvatting telt niet als CAP-ernst."
         },
         "related": {
-          "0": "Waarschuwingen voor zwaar weer (NWS, ECCC, WMO SWIC)",
+          "0": "Weerwaarschuwingen",
           "1": "Laag Natuurlijke gebeurtenissen",
           "2": "Data Freshness"
         }
@@ -4107,7 +4107,7 @@
         },
         "related": {
           "0": "Pop-ups van de laag Natuurlijke gebeurtenissen",
-          "1": "Waarschuwingen voor zwaar weer (NWS, ECCC, WMO SWIC)",
+          "1": "Weerwaarschuwingen",
           "2": "Natuursignalen van het inlichtingenoverzicht"
         }
       },

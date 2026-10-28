@@ -1289,7 +1289,7 @@
         "ucdpEvents": "Sự kiện UCDP",
         "displacementFlows": "Dòng Di dời",
         "climateAnomalies": "Bất thường Khí hậu",
-        "weatherAlerts": "Cảnh báo thời tiết nghiêm trọng (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Cảnh báo thời tiết",
         "strategicWaterways": "Đường thủy Chiến lược",
         "economicCenters": "Trung tâm Kinh tế",
         "criticalMinerals": "Khoáng sản Chiến lược",
@@ -1311,9 +1311,9 @@
         "radiationSpike": "Đột tăng bức xạ",
         "radiationElevated": "Bức xạ tăng cao",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "Hạn chế không phận NOTAM",
-        "no2Activity": "Hoạt động công nghiệp (NO2)"
+        "no2Activity": "Hoạt động công nghiệp"
       },
       "tooltip": {
         "earthquake": "Động đất",
@@ -4038,7 +4038,7 @@
           "2": "Đường gấp khúc tình trạng mặt đường có thể đơn giản hóa hình học đường cao tốc phức tạp."
         },
         "related": {
-          "0": "Cảnh báo thời tiết nghiêm trọng (NWS, ECCC, WMO SWIC)",
+          "0": "Cảnh báo thời tiết",
           "1": "Trạng thái độ mới của dữ liệu"
         }
       },
@@ -4054,7 +4054,7 @@
           "2": "Mục không có mức nghiêm trọng đưa được lên bản đồ (ngữ nghĩa CAP và màu của Alberta, trạng thái sơ tán của British Columbia, hoặc mức nghiêm trọng CAP của SaskAlert) bị loại, không bị bịa ra. Màu hoặc mức trong phần tóm tắt của SaskAlert không được coi là mức nghiêm trọng CAP."
         },
         "related": {
-          "0": "Cảnh báo thời tiết nghiêm trọng (NWS, ECCC, WMO SWIC)",
+          "0": "Cảnh báo thời tiết",
           "1": "Lớp Thiên tai",
           "2": "Trạng thái độ mới của dữ liệu"
         }
@@ -4087,7 +4087,7 @@
         },
         "related": {
           "0": "Cửa sổ lớp Thiên tai",
-          "1": "Cảnh báo thời tiết nghiêm trọng (NWS, ECCC, WMO SWIC)",
+          "1": "Cảnh báo thời tiết",
           "2": "Tín hiệu tự nhiên trong tổng quan quốc gia"
         }
       },

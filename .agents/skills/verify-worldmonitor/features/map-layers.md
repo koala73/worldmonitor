@@ -14,7 +14,7 @@ The layer controls under the map decide what a user sees on it — conflicts, ho
 
 - `notam-airspace` enables the Aviation layer, proves the on-demand `notamAirspace` key (FAA NMS airspace areas) is fetched only once Aviation is on and only on deck.gl, hovers a drawn restriction for its tooltip, and checks there is no separate NOTAM toggle.
 
-- `no2-activity` enables the opt-in Industrial activity (NO2) layer on deck.gl, proves `GET /api/economic/v1/get-no2-activity` is read only once the layer is on, checks the legend carries every state and the Copernicus credit, hovers a country for its card, and toggles off. The layer is deck.gl only; on SVG and the globe the chip must not be offered.
+- `no2-activity` enables the opt-in Industrial Activity layer on deck.gl, proves `GET /api/economic/v1/get-no2-activity` is read only once the layer is on, checks the legend carries every state and the Copernicus credit, hovers a country for its card, and toggles off. The layer is deck.gl only; on SVG and the globe the chip must not be offered.
 
 Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/no2-activity.mjs --name no2-activity` with `WM_VERIFY_HEADED=1` for deck.gl, or `WM_VERIFY_MOBILE=1` for the 390px drive. The step serves the shared fixture (`tests/helpers/no2-activity-fixture.mjs`) through the real handler, so strengthening, weakening, unchanged, baseline-pending and excluded regions all appear; `WM_VERIFY_CENTER=lon,lat` and `WM_VERIFY_ZOOM` frame a region. It does not prove live Copernicus data.
 

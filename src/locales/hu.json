@@ -1436,7 +1436,7 @@
         "ucdpEvents": "Fegyveres konfliktus események",
         "displacementFlows": "Kényszermigrációs áramlások",
         "climateAnomalies": "Éghajlati anomáliák",
-        "weatherAlerts": "Súlyos időjárási riasztások (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Időjárási riasztások",
         "strategicWaterways": "Szűk átjárók",
         "economicCenters": "Gazdasági központok",
         "criticalMinerals": "Kritikus ásványok",
@@ -1456,9 +1456,9 @@
         "speciesRecovery": "Fajmegmentés",
         "renewableInstallations": "Tiszta energia",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "NOTAM légtéri korlátozások",
-        "no2Activity": "Ipari aktivitás (NO2)"
+        "no2Activity": "Ipari aktivitás"
       },
       "tooltip": {
         "earthquake": "Földrengés",
@@ -4058,7 +4058,7 @@
           "2": "Az útállapot-vonalak egyszerűsíthetik a bonyolult autópálya-geometriát."
         },
         "related": {
-          "0": "Súlyos időjárási riasztások (NWS, ECCC, WMO SWIC)",
+          "0": "Időjárási riasztások",
           "1": "Az adatfrissesség állapota"
         }
       },
@@ -4074,7 +4074,7 @@
           "2": "A térképezhető súlyosság nélküli bejegyzések kiesnek, nem pedig kitalálódnak. Ez Alberta CAP- és színszemantikája, Brit Columbia kitelepítési állapota vagy a SaskAlert CAP-súlyossága. A SaskAlert összefoglaló színe vagy szintje nem számít CAP-súlyosságnak."
         },
         "related": {
-          "0": "Súlyos időjárási riasztások (NWS, ECCC, WMO SWIC)",
+          "0": "Időjárási riasztások",
           "1": "réteg Természeti események",
           "2": "Az adatfrissesség állapota"
         }
@@ -4107,7 +4107,7 @@
         },
         "related": {
           "0": "A Természeti események rétegének felugró ablakai",
-          "1": "Súlyos időjárási riasztások (NWS, ECCC, WMO SWIC)",
+          "1": "Időjárási riasztások",
           "2": "Természeti jelek a hírszerzési összefoglalóban"
         }
       },

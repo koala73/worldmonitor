@@ -1292,7 +1292,7 @@
         "ucdpEvents": "UCDP Olaylari",
         "displacementFlows": "Yerinden Edilme Akislari",
         "climateAnomalies": "Iklim Anomalileri",
-        "weatherAlerts": "Şiddetli hava uyarıları (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Hava durumu uyarıları",
         "strategicWaterways": "Stratejik Suyollari",
         "economicCenters": "Ekonomik Merkezler",
         "criticalMinerals": "Kritik Mineraller",
@@ -1314,9 +1314,9 @@
         "radiationSpike": "Radyasyon artışı",
         "radiationElevated": "Yükseltilmiş radyasyon",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "NOTAM Hava Sahasına İlişkin Kısıtlamalar",
-        "no2Activity": "Sanayi faaliyeti (NO2)"
+        "no2Activity": "Sanayi faaliyeti"
       },
       "tooltip": {
         "earthquake": "Deprem",
@@ -4058,7 +4058,7 @@
           "2": "Yol durumu çoklu çizgileri karmaşık otoyol geometrisini sadeleştirebilir."
         },
         "related": {
-          "0": "Şiddetli hava uyarıları (NWS, ECCC, WMO SWIC)",
+          "0": "Hava durumu uyarıları",
           "1": "Data Freshness durumu"
         }
       },
@@ -4074,7 +4074,7 @@
           "2": "Haritaya işlenebilir şiddeti olmayan kayıtlar (Alberta CAP renk anlamı, B.C. tahliye durumu veya SaskAlert CAP şiddeti) uydurulmaz, bırakılır. SaskAlert özetindeki renk ve düzey CAP şiddeti sayılmaz."
         },
         "related": {
-          "0": "Şiddetli hava uyarıları (NWS, ECCC, WMO SWIC)",
+          "0": "Hava durumu uyarıları",
           "1": "«Dogal Olaylar» katmanı",
           "2": "Data Freshness durumu"
         }
@@ -4107,7 +4107,7 @@
         },
         "related": {
           "0": "Doğal olay katmanı açılır pencereleri",
-          "1": "Şiddetli hava uyarıları (NWS, ECCC, WMO SWIC)",
+          "1": "Hava durumu uyarıları",
           "2": "Ülke özetindeki doğal sinyaller"
         }
       },

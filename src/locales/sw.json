@@ -1436,7 +1436,7 @@
         "ucdpEvents": "Matukio ya Migogoro ya Silaha",
         "displacementFlows": "Mitiririko ya Uhamisho",
         "climateAnomalies": "Matatizo ya Hali ya Hewa",
-        "weatherAlerts": "Tahadhari za hali mbaya ya hewa (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Tahadhari za hali ya hewa",
         "strategicWaterways": "Chokepoints",
         "economicCenters": "Vituo vya Uchumi",
         "criticalMinerals": "Madini Muhimu",
@@ -1456,9 +1456,9 @@
         "speciesRecovery": "Urejeshaji wa Aina",
         "renewableInstallations": "Nishati Safi",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "Vikwazo vya Anga la NOTAM",
-        "no2Activity": "Shughuli za viwanda (NO2)"
+        "no2Activity": "Shughuli za viwanda"
       },
       "tooltip": {
         "earthquake": "Tetemeko la ardhi",
@@ -4058,7 +4058,7 @@
           "2": "Mistari ya hali ya barabara inaweza kurahisisha jiometri tata ya barabara kuu."
         },
         "related": {
-          "0": "Tahadhari za hali mbaya ya hewa (NWS, ECCC, WMO SWIC)",
+          "0": "Tahadhari za hali ya hewa",
           "1": "Hali ya upya wa data"
         }
       },
@@ -4074,7 +4074,7 @@
           "2": "Ingizo zisizo na ukali unaoweza kuchorwa (maana ya CAP au rangi ya Alberta, hali ya uhamishaji ya British Columbia, au ukali wa CAP wa SaskAlert) huachwa badala ya kuvumbuliwa. Rangi au kiwango cha muhtasari wa SaskAlert hakihesabiwi kuwa ukali wa CAP."
         },
         "related": {
-          "0": "Tahadhari za hali mbaya ya hewa (NWS, ECCC, WMO SWIC)",
+          "0": "Tahadhari za hali ya hewa",
           "1": "Tabaka la Matukio ya Asili",
           "2": "Hali ya upya wa data"
         }
@@ -4107,7 +4107,7 @@
         },
         "related": {
           "0": "Madirisha ya Tabaka la Matukio ya Asili",
-          "1": "Tahadhari za hali mbaya ya hewa (NWS, ECCC, WMO SWIC)",
+          "1": "Tahadhari za hali ya hewa",
           "2": "Ishara za matukio ya asili katika Ujasusi kwa kifupi"
         }
       },

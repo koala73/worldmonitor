@@ -1289,7 +1289,7 @@
         "ucdpEvents": "UCDPイベント",
         "displacementFlows": "避難民フロー",
         "climateAnomalies": "気候異常",
-        "weatherAlerts": "重大気象警報（NWS、ECCC、WMO SWIC）",
+        "weatherAlerts": "気象警報",
         "strategicWaterways": "戦略的水路",
         "economicCenters": "経済中心地",
         "criticalMinerals": "重要鉱物",
@@ -1311,9 +1311,9 @@
         "radiationSpike": "放射線スパイク",
         "radiationElevated": "放射線上昇",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "NOTAM飛行制限空域",
-        "no2Activity": "産業活動（NO2）"
+        "no2Activity": "産業活動"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -4038,7 +4038,7 @@
           "2": "路面状況のポリラインは、複雑な高速道路の形状を簡略化することがあります。"
         },
         "related": {
-          "0": "重大気象警報（NWS、ECCC、WMO SWIC）",
+          "0": "気象警報",
           "1": "データの鮮度ステータス"
         }
       },
@@ -4054,7 +4054,7 @@
           "2": "地図に載せられる深刻度がない項目（アルバータのCAPと色の意味、ブリティッシュコロンビアの避難状態、SaskAlertのCAP深刻度）は、値を作らず捨てます。SaskAlertの要約に出る色やレベルは、CAPの深刻度としては扱いません。"
         },
         "related": {
-          "0": "重大気象警報（NWS、ECCC、WMO SWIC）",
+          "0": "気象警報",
           "1": "自然災害レイヤー",
           "2": "データの鮮度ステータス"
         }
@@ -4087,7 +4087,7 @@
         },
         "related": {
           "0": "自然災害レイヤーのポップアップ",
-          "1": "重大気象警報（NWS、ECCC、WMO SWIC）",
+          "1": "気象警報",
           "2": "国の概要の自然シグナル"
         }
       },
