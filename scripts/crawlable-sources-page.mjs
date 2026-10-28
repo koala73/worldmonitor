@@ -121,6 +121,8 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['factchecktools.googleapis.com', 'news'],
   // BestTime live busyness is the fallback feed for the PizzINT (Pentagon pizza) panel.
   ['besttime.app', 'military'],
+  // Turkey's crude imports by origin for the energy shock model.
+  ['www.epdk.gov.tr', 'energy'],
   // UN M49 region table behind media-perspective outlet_regions (build-time only).
   ['unstats.un.org', 'news'],
   ['api.scrapecreators.com', 'news'],
@@ -381,6 +383,7 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['www.ecb.europa.eu', 'European Central Bank (ECB)'],
   ['www.ecdc.europa.eu', 'European Centre for Disease Prevention and Control'],
   ['www.eia.gov', 'U.S. Energy Information Administration (EIA)'],
+  ['www.epdk.gov.tr', 'Energy Market Regulatory Authority of Türkiye (EPDK)'],
   ['www.fao.org', 'UN Food and Agriculture Organization (FAO)'],
   ['www.federalreserve.gov', 'U.S. Federal Reserve'],
   ['www.gdacs.org', 'Global Disaster Alert and Coordination System (GDACS)'],

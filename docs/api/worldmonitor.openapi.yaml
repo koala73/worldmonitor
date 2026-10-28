@@ -51310,7 +51310,10 @@ components:
             properties:
                 basis:
                     type: string
-                    description: '"comtrade_monthly", or "comtrade_annual" for the annual partner-share fallback.'
+                    description: |-
+                        "comtrade_monthly" (UN Comtrade import value); "national_monthly" (the importer's own customs or regulator
+                         statistics in tonnes, a volume share; Turkey from EPDK, which files no partners to Comtrade); or
+                         "comtrade_annual" for the annual partner-share fallback.
                 fromMonth:
                     type: string
                 toMonth:
@@ -51334,7 +51337,8 @@ components:
                     description: 'preCrisisBaseline only: steady state after Hormuz bypass rerouting. Absent for other chokepoints, without per-exporter shares, or when the loss is not modeled.'
             description: |-
                 Gulf crude share over one window and the crude loss it implies. preCrisisBaseline: the 12 months before the Hormuz crisis
-                 from at least 9 monthly filings, else the annual share (basis comtrade_annual); drives the headline, products and cover.
+                 from at least 9 monthly filings (Comtrade, or national statistics for an importer with no Comtrade partner filings),
+                 else the annual share (basis comtrade_annual); drives the headline, products and cover.
                  currentFlows: the latest 3 monthly filings since the crisis; absent when unavailable, never used for the
                  products array or cover; the "product balance, current flows" line in limitations nets its crude loss.
         worldmonitor_intelligence_v1_ReserveEstimate:

@@ -297,6 +297,34 @@ export interface CrudeImportOriginLike {
   } | undefined> | null;
 }
 
+/**
+ * `crudeImportOriginNational` in the same key: importers that file no
+ * partner-level crude to Comtrade, from their own statistics, in tonnes.
+ */
+export interface NationalCrudeOriginLike {
+  status?: string;
+  carriedForward?: boolean;
+  fetchedAt?: string;
+  months?: unknown;
+  importers?: Record<string, {
+    source?: string;
+    worldT?: Array<number | null>;
+    gulfT?: Array<number | null>;
+    bypassPartnersT?: Record<string, Array<number | null> | undefined>;
+  } | undefined> | null;
+}
+
+/** Reads a national section with the Comtrade share arithmetic: shares are unit-free. */
+export function nationalOriginAsShares(section: NationalCrudeOriginLike | null | undefined): CrudeImportOriginLike | null {
+  if (!section?.importers) return null;
+  const importers: NonNullable<CrudeImportOriginLike['importers']> = {};
+  for (const [iso2, imp] of Object.entries(section.importers)) {
+    if (!imp) continue;
+    importers[iso2] = { worldUsdM: imp.worldT, gulfUsdM: imp.gulfT, bypassPartnersUsdM: imp.bypassPartnersT };
+  }
+  return { ...section, importers };
+}
+
 export interface MonthlyGulfShare {
   share: number;
   fromMonth: string;

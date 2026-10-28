@@ -26,6 +26,10 @@
 // (shared/hormuz-crisis.js). The mirror above cannot serve: it keeps each
 // exporter's top buyers only and has no buyer total.
 //
+// `crudeImportOriginNational` fills importers that file no partner-level
+// crude imports to Comtrade from their own national statistics, in tonnes:
+// Turkey from the EPDK monthly petroleum market reports (_epdk-crude-imports.mjs).
+//
 // No source is turned into a modelled export estimate. A month a source does
 // not cover is null, never zero, and every source carries its newest observed
 // month and a status (ok, stale, not_reported, unavailable).
@@ -34,6 +38,7 @@ import { loadEnvFile, CHROME_UA, runSeed, withRetry, resolveProxyForConnect, htt
 import { DAY_MIN } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { fetchYearCsv, parseObsValue } from './seed-jodi-oil.mjs';
+import { fetchEpdkCrudeImports, epdkImporterColumns } from './_epdk-crude-imports.mjs';
 import {
   compactCountry,
   lastCompleteMonth,
@@ -450,6 +455,8 @@ export const CRUDE_ORIGIN_GULF_PARTNERS = [682, 784, 368, 414, 364, 634, 48];
 // stored per exporter so the shock model can apply recovery by supplier.
 export const CRUDE_ORIGIN_BYPASS_PARTNERS = [682, 784, 368];
 const BYPASS_PARTNER_ISO2 = { 682: 'SA', 784: 'AE', 368: 'IQ' };
+/** CRUDE_ORIGIN_GULF_PARTNERS as ISO2, for sources that name countries. */
+export const CRUDE_ORIGIN_GULF_ISO2 = ['SA', 'AE', 'IQ', 'KW', 'IR', 'QA', 'BH'];
 const CRUDE_ORIGIN_MAX_RECORDS = 100_000;
 const CRUDE_ORIGIN_SOURCE = 'UN Comtrade monthly HS 2709 imports declared by each importer, partners World and SA, AE, IQ, KW, IR, QA, BH; import value (USD million)';
 
@@ -601,6 +608,70 @@ async function fetchCrudeImportOrigin(nowMs, previous) {
   } catch (err) {
     console.warn(`  Crude import origin unavailable: ${err.message}`);
     return crudeImportOriginSection({ months, error: err, fetchedAt, previous });
+  }
+}
+
+// ── National crude-origin statistics ────────────────────────────────────────
+
+const EPDK_SOURCE = 'EPDK (Turkish energy market regulator) monthly petroleum market sector reports: crude oil imports by country of origin, tonnes; partners World and SA, AE, IQ, KW, IR, QA, BH';
+
+/**
+ * The published `crudeImportOriginNational` section: importers absent from
+ * Comtrade, from their own statistics, in tonnes. Same carry-forward rule
+ * as `crudeImportOrigin`: an empty or failed fetch keeps the previous section.
+ */
+export function crudeImportOriginNationalSection({ months, byMonth, fetchedAt, error, previous }) {
+  const importers = {};
+  if (!error && byMonth) {
+    const tr = epdkImporterColumns(byMonth, months, CRUDE_ORIGIN_GULF_ISO2, Object.values(BYPASS_PARTNER_ISO2));
+    if (tr.worldT.some((v) => v !== null)) importers.TR = { source: 'EPDK', ...tr };
+  }
+  if (Object.keys(importers).length > 0) {
+    return { status: 'ok', fetchedAt, source: EPDK_SOURCE, unit: 'tonnes', months, importers };
+  }
+  if (previous?.importers && Object.keys(previous.importers).length > 0) {
+    return { ...previous, status: 'unavailable', carriedForward: true };
+  }
+  return { status: 'unavailable', fetchedAt, source: EPDK_SOURCE, unit: 'tonnes', months, importers: {} };
+}
+
+// EPDK serves Turkish government downloads that can stall or refuse foreign
+// datacenter egress; the proxy is the fallback, as for ArcGIS.
+async function epdkFetch(url) {
+  try {
+    const resp = await fetch(url, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+    if (resp.status === 403 || resp.status === 429) throw Object.assign(new Error(`EPDK HTTP ${resp.status}`), { proxyable: true });
+    if (!resp.ok) throw new Error(`EPDK HTTP ${resp.status}`);
+    return Buffer.from(await resp.arrayBuffer());
+  } catch (err) {
+    const timeoutLike = err?.name === 'TimeoutError' || err?.proxyable || /fetch failed/i.test(err?.message ?? '');
+    const proxyAuth = timeoutLike ? resolveProxyForConnect() : null;
+    if (!proxyAuth) throw err;
+    const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { timeoutMs: 60_000 });
+    return buffer;
+  }
+}
+
+async function fetchCrudeImportOriginNational(nowMs, previous) {
+  const months = crudeImportOriginPeriods(nowMs).flat();
+  const fetchedAt = new Date(nowMs).toISOString();
+  try {
+    // A cumulative (January-to-month) report needs the month before it too.
+    const wantedMonths = monthRange(shiftMonth(months[0], -1), months.at(-1));
+    const { months: byMonth, unmatched } = await fetchEpdkCrudeImports({
+      wantedMonths,
+      fetchText: async (url) => (await epdkFetch(url)).toString('utf8'),
+      fetchBuffer: epdkFetch,
+      log: (line) => console.warn(line),
+    });
+    if (unmatched.length > 0) console.warn(`  EPDK: unrecognised origin names void their months: ${unmatched.join(', ')}`);
+    const section = crudeImportOriginNationalSection({ months, byMonth, fetchedAt, previous });
+    const filed = section.importers.TR?.worldT.filter((v) => v !== null).length ?? 0;
+    console.log(`  National crude origin: TR ${filed}/${months.length} months (${section.status}${section.carriedForward ? ', carried forward' : ''})`);
+    return section;
+  } catch (err) {
+    console.warn(`  National crude origin unavailable: ${err.message}`);
+    return crudeImportOriginNationalSection({ months, error: err, fetchedAt, previous });
   }
 }
 
@@ -864,6 +935,7 @@ export async function fetchOilTradeSeries({ nowMs = Date.now() } = {}) {
   const ordered = Object.fromEntries(OIL_TRADE_COUNTRIES.map((c) => [c.iso2, countries[c.iso2]]));
   // Two more keyed Comtrade calls, after the per-country lanes have drained.
   const crudeImportOrigin = await fetchCrudeImportOrigin(nowMs, previous?.crudeImportOrigin);
+  const crudeImportOriginNational = await fetchCrudeImportOriginNational(nowMs, previous?.crudeImportOriginNational);
 
   return {
     generatedAt: new Date(nowMs).toISOString(),
@@ -872,6 +944,7 @@ export async function fetchOilTradeSeries({ nowMs = Date.now() } = {}) {
     unavailable,
     countries: ordered,
     crudeImportOrigin,
+    crudeImportOriginNational,
   };
 }
 

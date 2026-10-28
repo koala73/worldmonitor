@@ -85,11 +85,14 @@ message GasSensitivity {
 }
 
 // Gulf crude share over one window and the crude loss it implies. preCrisisBaseline: the 12 months before the Hormuz crisis
-// from at least 9 monthly filings, else the annual share (basis comtrade_annual); drives the headline, products and cover.
+// from at least 9 monthly filings (Comtrade, or national statistics for an importer with no Comtrade partner filings),
+// else the annual share (basis comtrade_annual); drives the headline, products and cover.
 // currentFlows: the latest 3 monthly filings since the crisis; absent when unavailable, never used for the
 // products array or cover; the "product balance, current flows" line in limitations nets its crude loss.
 message CrudeShareBaseline {
-  // "comtrade_monthly", or "comtrade_annual" for the annual partner-share fallback.
+  // "comtrade_monthly" (UN Comtrade import value); "national_monthly" (the importer's own customs or regulator
+  // statistics in tonnes, a volume share; Turkey from EPDK, which files no partners to Comtrade); or
+  // "comtrade_annual" for the annual partner-share fallback.
   string basis = 1;
   string from_month = 2;
   string to_month = 3;
@@ -149,7 +152,7 @@ message ComputeEnergyShockScenarioResponse {
 
   // v2 fields
   bool   jodi_oil_coverage     = 11;  // JODI oil data present for this country
-  bool   comtrade_coverage     = 12;  // Comtrade crude flows data present
+  bool   comtrade_coverage     = 12;  // Crude origin share present: Comtrade, or national statistics (preCrisisBaseline.basis says which)
   bool   iea_stocks_coverage   = 13;  // IEA strategic stocks data present
   bool   portwatch_coverage    = 14;  // PortWatch live flow data present
   string coverage_level        = 15;  // "full" | "partial" | "unsupported"
