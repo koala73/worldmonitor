@@ -1,5 +1,5 @@
 import * as d3 from 'd3';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { MapComponent } from '@/components/Map';
 
@@ -8,8 +8,6 @@ type HealthMap = {
   ensureBaseLayerIntact: () => void;
   render: ReturnType<typeof vi.fn>;
 };
-
-afterEach(() => { vi.restoreAllMocks(); });
 
 // Phones open with the map section collapsed (display:none), so the SVG has never
 // had a size to draw countries into. That is not a broken base layer.
