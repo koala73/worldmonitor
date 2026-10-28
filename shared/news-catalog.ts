@@ -38,6 +38,8 @@ export interface CatalogFeed {
   type?: string;
   deadlinePriority?: number;
   depthUrl?: string;
+  channelDated?: boolean;
+  linkHosts?: string[];
   browser?: {
     url?: CatalogUrl;
     lang?: string | null;
@@ -79,6 +81,8 @@ export interface ServerCatalogFeed {
   strategicDefault?: boolean;
   deadlinePriority?: number;
   depthUrl?: string;
+  channelDated?: boolean;
+  linkHosts?: string[];
 }
 
 function indexServerPlacements(catalog: NewsCatalog): Map<string, CatalogFeed[]> {
@@ -116,6 +120,8 @@ function toServerFeed(feed: CatalogFeed): ServerCatalogFeed {
   if (feed.strategicDefault !== undefined) entry.strategicDefault = feed.strategicDefault;
   if (feed.deadlinePriority !== undefined) entry.deadlinePriority = feed.deadlinePriority;
   if (feed.depthUrl !== undefined) entry.depthUrl = feed.depthUrl;
+  if (feed.channelDated !== undefined) entry.channelDated = feed.channelDated;
+  if (feed.linkHosts !== undefined) entry.linkHosts = feed.linkHosts;
   return entry;
 }
 

@@ -171,11 +171,7 @@ describe('digests serve the categories that used to need per-feed browser fetche
       .filter(p => p.edition === 'tech' && p.browserOrder !== undefined && (!feed.lang || feed.lang === 'en'))
       .map(p => `${p.category}|${feed.name}`))
       .filter(key => !fetched.has(key));
-    // GitHub Trending dates only its channel, never its items, so the digest's
-    // date gate would drop every item; it stays browser-only until the digest
-    // can date a snapshot feed by its channel.
-    assert.deepEqual(browserOnly, ['github|GitHub Trending']);
-    assert.ok(pending.has('GitHub Trending'), 'the browser keeps fetching it while it is pending');
+    assert.deepEqual(browserOnly, []);
     for (const name of ['DevOps.com', 'FwdStart Newsletter']) {
       const feed = catalog.feeds.find(f => f.name === name);
       assert.match(feed?.url ?? '', /^https:\/\//, `${name} must have an absolute URL the server can fetch`);
@@ -195,10 +191,13 @@ describe('digests serve the categories that used to need per-feed browser fetche
         if (!fetched.has(feed.name)) missing.push(`${edition}|${feed.name}`);
       }
     }
-    // GitHub Trending stays browser-only until the digest can date a snapshot
-    // feed by its channel (see the batch 3 test above).
-    assert.deepEqual(missing, ['tech|GitHub Trending']);
-    assert.deepEqual(pendingNames, ['GitHub Trending']);
+    assert.deepEqual(missing, []);
+    assert.deepEqual(pendingNames, []);
+    // GitHub Trending dates only its channel and links to github.com, so its
+    // entry opts in to both.
+    const trending = catalog.feeds.find(f => f.name === 'GitHub Trending') as { channelDated?: boolean; linkHosts?: string[] } | undefined;
+    assert.equal(trending?.channelDated, true);
+    assert.deepEqual(trending?.linkHosts, ['github.com']);
     for (const name of ['FAS', 'New Scientist', 'Ransomware.live']) {
       const feed = catalog.feeds.find(f => f.name === name);
       assert.match(feed?.url ?? '', /^https:\/\/news\.google\.com\/rss\/search\?q=site:[^&]+\+when:\d+d&/,
