@@ -13,10 +13,8 @@ import {
   schema,
   setStoredEntitlement,
 } from "./companyMonitoring.helpers";
-import { installLiveClerkSessions, liveSession } from "./clerkSession.helpers";
 
 installCompanyMonitoringTestEnvironment();
-installLiveClerkSessions();
 
 describe("account-bound Company Monitoring API-key scopes", () => {
   test("issuing the first scoped key provisions the root, and an unscoped key does not", async () => {
@@ -26,15 +24,15 @@ describe("account-bound Company Monitoring API-key scopes", () => {
     expect(await accountFor(t, OWNER_A)).toBeNull();
 
     // An unscoped key must stay entirely off Company Monitoring.
-    await t.withIdentity(liveSession({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` })).action(
+    await t.withIdentity({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` }).mutation(
       api.apiKeys.createApiKey,
       { name: "generic", keyPrefix: "wm_ddddd", keyHash: "d".repeat(64) },
     );
     expect(await accountFor(t, OWNER_A)).toBeNull();
 
     // Requesting scopes is a first-use entry point: it provisions.
-    const scoped = await t.withIdentity(liveSession({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` }))
-      .action(api.apiKeys.createApiKey, {
+    const scoped = await t.withIdentity({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` })
+      .mutation(api.apiKeys.createApiKey, {
         name: "company-monitoring",
         keyPrefix: "wm_eeeee",
         keyHash: "e".repeat(64),
@@ -51,7 +49,7 @@ describe("account-bound Company Monitoring API-key scopes", () => {
     await grantProvisioned(t, OWNER_A, "api_starter");
     const account = await accountFor(t, OWNER_A);
 
-    const key = await t.withIdentity(liveSession({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` })).action(
+    const key = await t.withIdentity({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` }).mutation(
       api.apiKeys.createApiKey,
       {
         name: "company-monitoring",

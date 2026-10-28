@@ -132,9 +132,10 @@ JWT verification is stateless: a token whose Clerk session was revoked (sign-out
 
 - `/api/desktop-auth/authorize` verifies the bearer locally, applies its per-user rate limit, then requires a live session before binding a code and stores the `sid` with it; `/api/desktop-auth/token` re-checks that `sid` after the PKCE verifier matched and before minting the sign-in ticket.
 - `/api/internal/mcp-grant-mint` follows the same order: local verify, per-user rate limit (20 per 10 minutes), then the live-session check, before the nonce or entitlement are read.
-- `apiKeys.createApiKey` (API and desktop keys) is a Convex action that checks the session before writing the row, behind a per-account lookup budget (10 per 10 minutes, counted in Redis, fail-open) so one account cannot exhaust the shared Clerk Backend API quota.
 
-A missing `sid` or an inactive session is a 401 (`AUTH_REQUIRED` from Convex); Clerk being unreachable is a retryable 503 (`SESSION_VERIFICATION_UNAVAILABLE`) — nothing is issued on a guess. At `/token` the one-time code is already consumed when the check runs, so its 503 (`session_check_unavailable`) carries no `Retry-After`: the desktop restarts the browser sign-in.
+Only Clerk's **standard session token** carries `sid`; JWT-template tokens (including the `convex` template) get just `azp, exp, iat, iss, jti, nbf, sub`. The desktop sign-in page and the MCP grant page therefore send `getClerkSessionToken()` (`session.getToken()` with no template) to these routes, not `getClerkToken()`. For the same reason the Convex `apiKeys.createApiKey` mutation cannot see a session id (its identity comes from the `convex` template) and does not run this check.
+
+A missing `sid` or an inactive session is a 401; Clerk being unreachable is a retryable 503 — nothing is issued on a guess. At `/token` the one-time code is already consumed when the check runs, so its 503 (`session_check_unavailable`) carries no `Retry-After`: the desktop restarts the browser sign-in.
 
 ---
 

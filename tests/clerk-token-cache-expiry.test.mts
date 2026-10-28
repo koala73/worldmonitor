@@ -38,6 +38,7 @@ import {
   __setClerkInstanceForTests,
   clerkTokenExpiresAtMs,
   clearClerkTokenCache,
+  getClerkSessionToken,
   getClerkToken,
   shouldReuseCachedClerkToken,
 } from '../src/services/clerk.ts';
@@ -190,6 +191,33 @@ describe('shouldReuseCachedClerkToken', () => {
       }),
       false,
     );
+  });
+});
+
+// The desktop sign-in and MCP grant pages must send the STANDARD session token:
+// only it carries `sid`, which those routes check for liveness at Clerk. A
+// JWT-template token (`convex`) omits it (Clerk docs, "JWT templates").
+describe('getClerkSessionToken', () => {
+  it('asks Clerk for the standard session token with no template and no cache options', async () => {
+    const calls: unknown[] = [];
+    const session = {
+      async getToken(...args: unknown[]) {
+        calls.push(args);
+        return 'session-token';
+      },
+    };
+    __setClerkInstanceForTests({ session } as never);
+
+    assert.equal(await getClerkSessionToken(), 'session-token');
+    assert.deepEqual(calls, [[]]);
+  });
+
+  it('returns null when nobody is signed in or Clerk refuses', async () => {
+    __setClerkInstanceForTests(null);
+    assert.equal(await getClerkSessionToken(), null);
+
+    __setClerkInstanceForTests({ session: { async getToken() { throw new Error('offline'); } } } as never);
+    assert.equal(await getClerkSessionToken(), null);
   });
 });
 

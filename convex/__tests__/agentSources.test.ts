@@ -8,14 +8,11 @@ import schema from "../schema";
 import { api, internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import { PAGE_SIZE } from "../agentSources";
-import { installLiveClerkSessions, liveSession } from "./clerkSession.helpers";
 
 const modules = import.meta.glob("../**/*.ts");
 
-installLiveClerkSessions();
-
 const USER = { subject: "user-agent-src", tokenIdentifier: "clerk|user-agent-src", email: "a@example.com" };
-const API_USER = liveSession({ subject: "user-agent-api", tokenIdentifier: "clerk|user-agent-api" });
+const API_USER = { subject: "user-agent-api", tokenIdentifier: "clerk|user-agent-api" };
 
 const userRow = (t: ReturnType<typeof convexTest>, userId: string) =>
   t.run(async (ctx) =>
@@ -70,7 +67,7 @@ describe("apiKeys.createApiKey source", () => {
         updatedAt: Date.now(),
       });
     });
-    const { id } = await t.withIdentity(API_USER).action(api.apiKeys.createApiKey, {
+    const { id } = await t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, {
       name: "agent key",
       keyPrefix: "wm_a1b2c",
       keyHash: "a1b2c".repeat(13).slice(0, 64),
@@ -100,7 +97,7 @@ describe("apiKeys.createApiKey source", () => {
 
   test("rejects a client-supplied source", async () => {
     const t = convexTest(schema, modules);
-    await expect(t.withIdentity(API_USER).action(api.apiKeys.createApiKey, {
+    await expect(t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, {
       name: "agent key",
       keyPrefix: "wm_a1b2c",
       keyHash: "a1b2c".repeat(13).slice(0, 64),
