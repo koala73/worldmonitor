@@ -51133,6 +51133,12 @@ components:
                 effectiveCoverDays:
                     type: integer
                     format: int32
+                    description: |-
+                        -1 marks a net oil exporter: the IEA flag, or, without an IEA record, a JODI
+                         crude row with positive production, crude exports above imports (unreported
+                         imports count as zero; an invalid reported figure disqualifies the row), and
+                         production at least refinery intake when intake is reported. No
+                         import-cover duration applies. It does not mean domestic supply is unexposed.
                 assessment:
                     type: string
                 dataAvailable:

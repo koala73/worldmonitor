@@ -325,11 +325,8 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
   it('REGRESSION (#6427): new client-only full-variant feeds require a reviewed server decision', () => {
     const clientFullFeeds = extractFullFeedsByCategory('client');
     const serverFullFeeds = extractFullFeedsByCategory('server');
-    const INTENTIONAL_CLIENT_ONLY = new Map([
-      ['thinktanks:Brookings', 'Intentionally client-only catalog source.'],
-      ['thinktanks:Carnegie', 'Intentionally client-only catalog source.'],
-      ['thinktanks:RUSI', 'Intentionally client-only catalog source.'],
-    ]);
+    // Empty since U6 batch 4: the full digest fetches every full-variant feed.
+    const INTENTIONAL_CLIENT_ONLY = new Map();
     assertReasonedExceptions(INTENTIONAL_CLIENT_ONLY, 'client-only exception');
     const unreviewed = [];
     for (const key of clientFullFeeds.keys()) {

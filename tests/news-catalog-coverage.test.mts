@@ -182,6 +182,30 @@ describe('digests serve the categories that used to need per-feed browser fetche
     }
   });
 
+  it('every English digest fetches every source its edition shows (U6 batch 4)', () => {
+    const missing: string[] = [];
+    for (const edition of new Set(catalog.feeds.flatMap(feed => feed.placements.map(p => p.edition)))) {
+      const variant = edition === INTEL_EDITION ? 'full' : edition;
+      if (!VALID_VARIANTS.has(variant)) continue;
+      const fetched = new Set(digestTesting.buildDigestFeedBatches(variant, 'en').batches.flat()
+        .map(entry => entry.feed.name));
+      for (const feed of catalog.feeds) {
+        if (feed.lang && feed.lang !== 'en') continue;
+        if (!feed.placements.some(p => p.edition === edition && p.browserOrder !== undefined)) continue;
+        if (!fetched.has(feed.name)) missing.push(`${edition}|${feed.name}`);
+      }
+    }
+    // GitHub Trending stays browser-only until the digest can date a snapshot
+    // feed by its channel (see the batch 3 test above).
+    assert.deepEqual(missing, ['tech|GitHub Trending']);
+    assert.deepEqual(pendingNames, ['GitHub Trending']);
+    for (const name of ['FAS', 'New Scientist', 'Ransomware.live']) {
+      const feed = catalog.feeds.find(f => f.name === name);
+      assert.match(feed?.url ?? '', /^https:\/\/news\.google\.com\/rss\/search\?q=site:[^&]+\+when:\d+d&/,
+        `${name} reads a dated Google News site: query`);
+    }
+  });
+
   // The pending list is by name, so a source the server fetches in one edition
   // used to hide a browser placement no digest fetches in another (MIT Tech
   // Review on the tech edition's tech panel). Panels match items by source
