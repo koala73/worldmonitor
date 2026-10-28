@@ -2258,7 +2258,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         const basis = balance.slice('product balance, '.length, balance.indexOf(':')).replace(/ \((.*)\)$/, ' $1');
         const tradeNote = this.el('div', '');
         tradeNote.style.cssText = 'font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#aaa;margin-bottom:4px';
-        tradeNote.textContent = `Deficit nets exports redirected home and adds lost Gulf-origin imports (${basis}); see Model assumptions.`;
+        const importsModeled = !(result.limitations ?? []).some((l) => l.startsWith('Gulf-origin product imports are not modeled'));
+        tradeNote.textContent = `Deficit nets exports redirected home${importsModeled ? ' and adds lost Gulf-origin imports' : ''} (${basis}); see Model assumptions.`;
         container.append(tradeNote);
       }
     }

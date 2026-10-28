@@ -1161,6 +1161,12 @@ describe('product shortfalls net product trade', () => {
     const outputLoss = row.crude.importsKbd * 0.7 * row.refineryYields.products.naphtha;
     assert.equal(productRow(response, 'Naphtha').deficitPct, round1(Math.max(0, outputLoss - pre.exportsKbd) / pre.demandKbd * 100));
     assert.ok(response.limitations.some((l) => /^Gulf-origin product imports are not modeled for KR: no UN Comtrade partner-level HS 2710 import rows/.test(l)), response.limitations.join('\n'));
+    // CodeRabbit on #9790: the table note must not claim an import loss the model did not add.
+    const harness = await createCountryDeepDivePanelHarness();
+    t.after(() => harness.cleanup());
+    const text = harness.createPanel().renderShockResult(response).textContent;
+    assert.match(text, /Deficit nets exports redirected home \(pre-crisis baseline 2025-02–2026-01\); see Model assumptions\./);
+    assert.doesNotMatch(text, /adds lost Gulf-origin imports/);
   });
 
   it('gas-only mode drops the product-balance lines with the other oil limitations', async (t) => {
