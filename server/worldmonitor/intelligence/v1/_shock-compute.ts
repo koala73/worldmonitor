@@ -43,14 +43,97 @@ export const CHOKEPOINT_EXPOSURE: Record<string, number> = {
   malacca_strait: 0.7,
 };
 
-export const REFINERY_YIELD: Record<string, number> = {
-  Gasoline: 0.44,
-  Diesel: 0.30,
-  'Jet fuel': 0.10,
-  LPG: 0.05,
+export type RefineryProductKey = 'gasoline' | 'diesel' | 'jet' | 'lpg' | 'naphtha';
+
+/** Modeled refined products, in response order: JODI row key and display name. */
+export const REFINERY_PRODUCTS: ReadonlyArray<{ key: RefineryProductKey; name: string; label: string }> = [
+  { key: 'gasoline', name: 'Gasoline', label: 'gasoline' },
+  { key: 'diesel', name: 'Diesel', label: 'diesel' },
+  { key: 'jet', name: 'Jet fuel', label: 'jet fuel' },
+  { key: 'lpg', name: 'LPG', label: 'LPG' },
+  { key: 'naphtha', name: 'Naphtha', label: 'naphtha' },
+];
+
+/**
+ * Fallback for a product without a measured country yield: the median of the
+ * yields scripts/seed-jodi-oil.mjs computes (its own denominator rule) for the
+ * 44 JODI reporters averaging ≥100 kb/d crude intake, over each one's latest
+ * 12 months (ending 2025-08 to 2026-08), from the JODI files read 2026-10-28.
+ */
+export const GLOBAL_MEDIAN_REFINERY_YIELD: Record<RefineryProductKey, number> = {
+  gasoline: 0.242,
+  diesel: 0.394,
+  jet: 0.069,
+  lpg: 0.036,
+  naphtha: 0.085,
 };
 
-export const REFINERY_YIELD_BASIS = 'refinery yields: US-average EIA basis, gasoline 44%, diesel 30%, jet 10%, LPG 5%';
+export const GLOBAL_MEDIAN_REFINERY_YIELD_SOURCE = 'global median = median of 44 JODI refiners with ≥100 kb/d crude intake, latest 12 months to 2026-08 (JODI files read 2026-10-28)';
+
+/** `refineryYields` as scripts/seed-jodi-oil.mjs publishes it on each country row. */
+export interface JodiRefineryYieldsLike {
+  basis?: string | null;
+  intakeIssue?: string | null;
+  startMonth?: string | null;
+  endMonth?: string | null;
+  months?: number | null;
+  products?: Partial<Record<string, unknown>> | null;
+}
+
+export interface ResolvedRefineryYields {
+  yields: Record<RefineryProductKey, number>;
+  /** One limitation line naming the basis, window and every yield used. */
+  basis: string;
+}
+
+const YIELD_BASES = new Set(['crude_refinery_intake', 'total_refinery_output']);
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+const INTAKE_ISSUE_TEXT: Record<string, string> = {
+  balancing_item: 'JODI crude refinery intake is a balancing item (production + imports − exports), not an observation',
+  implausible_output_ratio: 'JODI crude refinery intake is implausible against total refinery output',
+  unreported: 'JODI crude refinery intake is not reported for enough months',
+};
+
+const pctText = (v: number) => `${(v * 100).toFixed(1)}%`;
+
+function measuredYield(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : null;
+}
+
+/**
+ * Per-product yields for the modeled products: the country's own trailing
+ * JODI yields where measured, the labelled global median for the rest. The
+ * US-average constants previously applied to every country are gone.
+ */
+export function resolveRefineryYields(code: string, raw: JodiRefineryYieldsLike | null | undefined): ResolvedRefineryYields {
+  const window = raw && typeof raw.basis === 'string' && YIELD_BASES.has(raw.basis)
+    && typeof raw.startMonth === 'string' && MONTH_RE.test(raw.startMonth)
+    && typeof raw.endMonth === 'string' && MONTH_RE.test(raw.endMonth)
+    && raw.products != null && typeof raw.products === 'object'
+    ? raw : null;
+  const yields = {} as Record<RefineryProductKey, number>;
+  const measured: string[] = [];
+  const median: string[] = [];
+  for (const { key, label } of REFINERY_PRODUCTS) {
+    const value = window ? measuredYield(window.products?.[key]) : null;
+    yields[key] = value ?? GLOBAL_MEDIAN_REFINERY_YIELD[key];
+    if (value !== null) measured.push(`${label} ${pctText(value)}`);
+    else median.push(`${label} ${pctText(GLOBAL_MEDIAN_REFINERY_YIELD[key])}`);
+  }
+  if (!window || measured.length === 0) {
+    return { yields, basis: `refinery yields: no JODI country yields for ${code}; global median used: ${median.join(', ')} (${GLOBAL_MEDIAN_REFINERY_YIELD_SOURCE}).` };
+  }
+  const denominator = window.basis === 'crude_refinery_intake' ? 'crude refinery intake' : 'total refinery output';
+  const months = typeof window.months === 'number' && Number.isFinite(window.months) ? ` (${window.months} months)` : '';
+  const why = window.basis === 'total_refinery_output' && typeof window.intakeIssue === 'string' && INTAKE_ISSUE_TEXT[window.intakeIssue]
+    ? ` because ${INTAKE_ISSUE_TEXT[window.intakeIssue]}` : '';
+  const fallback = median.length > 0
+    ? `; ${median.join(', ')} ${median.length === 1 ? 'is' : 'are'} the global median (no country output; ${GLOBAL_MEDIAN_REFINERY_YIELD_SOURCE})` : '';
+  return {
+    yields,
+    basis: `refinery yields: ${code} JODI product output ÷ ${denominator}, ${window.startMonth}–${window.endMonth}${months}${why}: ${measured.join(', ')}${fallback}. Gross output includes non-crude refinery feeds.`,
+  };
+}
 
 export function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));

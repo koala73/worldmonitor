@@ -20,13 +20,15 @@ import {
   CHOKEPOINT_LNG_EXPOSURE,
   EU_GAS_STORAGE_COUNTRIES,
   computeGasDisruption,
-  REFINERY_YIELD,
-  REFINERY_YIELD_BASIS,
+  GLOBAL_MEDIAN_REFINERY_YIELD,
+  GLOBAL_MEDIAN_REFINERY_YIELD_SOURCE,
 } from '../server/worldmonitor/intelligence/v1/_shock-compute.js';
 import { computeEnergyShockScenario } from '../server/worldmonitor/intelligence/v1/compute-energy-shock.ts';
 import { getCountryCostShock } from '../server/worldmonitor/supply-chain/v1/get-country-cost-shock.ts';
 import { buildDecisionBrief } from '../src/utils/decision-brief.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
+import { parseCsv, extractCountryData } from '../scripts/seed-jodi-oil.mjs';
+import { readFileSync } from 'node:fs';
 
 import { ISO2_TO_COMTRADE } from '../server/worldmonitor/intelligence/v1/_comtrade-reporters.js';
 
@@ -851,66 +853,140 @@ describe('gas-only mode response', () => {
 });
 
 // ---------------------------------------------------------------------------
-// REFINERY_YIELD coefficients
+// Refinery yields: each country's own JODI yields, or a labelled global median.
+// The US-average constants (gasoline 44%, diesel 30%, jet 10%, LPG 5%) applied
+// to every country overstated KR gasoline 2.5x and understated DE diesel 1.6x.
 // ---------------------------------------------------------------------------
 
-describe('REFINERY_YIELD coefficients', () => {
-  it('has entries for all four products', () => {
-    for (const p of ['Gasoline', 'Diesel', 'Jet fuel', 'LPG']) {
-      assert.ok(p in REFINERY_YIELD, `missing ${p}`);
-      assert.ok(REFINERY_YIELD[p] > 0 && REFINERY_YIELD[p] < 1, `${p} yield out of range`);
+// The exact rows scripts/seed-jodi-oil.mjs publishes from the public JODI files
+// (read 2026-10-28), so these tests run the producer-to-reader path.
+const JODI_WINDOW_ROWS = parseCsv(readFileSync(new URL('./fixtures/energy-shock/jodi-oil-refinery-window-2026-10-28.csv', import.meta.url), 'utf8'));
+const seededJodiRow = (iso2) => extractCountryData(JODI_WINDOW_ROWS, iso2);
+
+function refineryYieldSeed(iso2, row = seededJodiRow(iso2)) {
+  return {
+    ...liveChokepointSeed(),
+    [`energy:jodi-oil:v1:${iso2}`]: row,
+    [`energy:iea-oil-stocks:v1:${iso2}`]: { daysOfCover: 200, netExporter: false, anomaly: false },
+    // A measured 70% Gulf crude share keeps the arithmetic readable.
+    [`comtrade:bilateral-hs4-partners:${iso2}:v1`]: { iso2, products: [{ hs4: '2709', year: 2024, totalValue: 1000, partners: [{ partnerIso2: 'SA', partnerCode: 682, value: 700 }, { partnerIso2: 'US', partnerCode: 842, value: 300 }], omittedCount: 0, omittedShare: 0 }] },
+  };
+}
+
+const yieldLimitation = (response) => response.limitations.find((l) => l.startsWith('refinery yields'));
+const productRow = (response, name) => response.products.find((p) => p.product === name);
+const round1 = (v) => Math.round(v * 10) / 10;
+
+describe('refinery yields are per country, from the JODI row', () => {
+  it('KR: product losses use Korea\'s own yields, not the US average, and naphtha is a product row', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const row = seededJodiRow('KR');
+    installEnergyShockRedis(refineryYieldSeed('KR', row));
+
+    const response = await computeShock({ countryCode: 'KR', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+
+    const crudeLoss = row.crude.importsKbd * 0.7;
+    assert.equal(response.crudeLossKbd, round1(crudeLoss));
+    assert.deepEqual(response.products.map((p) => p.product), ['Gasoline', 'Diesel', 'Jet fuel', 'LPG', 'Naphtha']);
+    for (const [name, key] of [['Gasoline', 'gasoline'], ['Diesel', 'diesel'], ['Jet fuel', 'jet'], ['LPG', 'lpg'], ['Naphtha', 'naphtha']]) {
+      const p = productRow(response, name);
+      const expectedLoss = crudeLoss * row.refineryYields.products[key];
+      assert.equal(p.outputLossKbd, round1(expectedLoss), `${name} loss`);
+      assert.equal(p.demandKbd, round1(row[key].demandKbd), `${name} demand`);
+      assert.equal(p.deficitPct, round1(Math.min(100, (expectedLoss / row[key].demandKbd) * 100)), `${name} deficit`);
+    }
+    assert.ok(productRow(response, 'Gasoline').outputLossKbd < crudeLoss * 0.2, 'KR gasoline yield is ~18%, not 44%');
+
+    const basis = yieldLimitation(response);
+    assert.match(basis, /^refinery yields: KR JODI product output ÷ crude refinery intake, 2025-09–2026-08 \(12 months\)/);
+    assert.match(basis, /gasoline 17\.8%, diesel 33\.6%, jet fuel 15\.0%, LPG 3\.1%, naphtha 28\.3%/);
+    assert.ok(!response.limitations.some((l) => /US-average|EIA basis/.test(l)), response.limitations.join('\n'));
+  });
+
+  it('DE: diesel uses Germany\'s 48.9% yield, not 30%', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const row = seededJodiRow('DE');
+    installEnergyShockRedis(refineryYieldSeed('DE', row));
+    const response = await computeShock({ countryCode: 'DE', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    assert.equal(productRow(response, 'Diesel').outputLossKbd, round1(row.crude.importsKbd * 0.7 * 0.4886));
+  });
+
+  it('a product without a country yield takes the labelled global median; the others keep the country yield', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const row = seededJodiRow('KR');
+    row.refineryYields = { ...row.refineryYields, products: { ...row.refineryYields.products, jet: null } };
+    installEnergyShockRedis(refineryYieldSeed('KR', row));
+
+    const response = await computeShock({ countryCode: 'KR', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+
+    const crudeLoss = row.crude.importsKbd * 0.7;
+    assert.equal(productRow(response, 'Jet fuel').outputLossKbd, round1(crudeLoss * GLOBAL_MEDIAN_REFINERY_YIELD.jet));
+    assert.equal(productRow(response, 'Gasoline').outputLossKbd, round1(crudeLoss * row.refineryYields.products.gasoline));
+    const basis = yieldLimitation(response);
+    assert.match(basis, /gasoline 17\.8%, diesel 33\.6%, LPG 3\.1%, naphtha 28\.3%/);
+    assert.match(basis, /jet fuel 6\.9% is the global median/);
+    assert.ok(basis.includes(GLOBAL_MEDIAN_REFINERY_YIELD_SOURCE), basis);
+  });
+
+  it('a JODI row without trailing-12-month yields uses the global median for every product, never the US average', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const { refineryYields, ...legacy } = seededJodiRow('KR');
+    assert.ok(refineryYields, 'fixture row has yields to drop');
+    installEnergyShockRedis(refineryYieldSeed('KR', legacy));
+
+    const response = await computeShock({ countryCode: 'KR', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+
+    const crudeLoss = legacy.crude.importsKbd * 0.7;
+    for (const [name, key] of [['Gasoline', 'gasoline'], ['Diesel', 'diesel'], ['Naphtha', 'naphtha']]) {
+      assert.equal(productRow(response, name).outputLossKbd, round1(crudeLoss * GLOBAL_MEDIAN_REFINERY_YIELD[key]), name);
+    }
+    const basis = yieldLimitation(response);
+    assert.match(basis, /^refinery yields: no JODI country yields for KR; global median used: gasoline 24\.2%, diesel 39\.4%, jet fuel 6\.9%, LPG 3\.6%, naphtha 8\.5%/);
+    assert.ok(basis.includes(GLOBAL_MEDIAN_REFINERY_YIELD_SOURCE), basis);
+  });
+
+  it('CN: the limitation says total refinery output is the denominator and why', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis(refineryYieldSeed('CN'));
+    const response = await computeShock({ countryCode: 'CN', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    const basis = yieldLimitation(response);
+    assert.match(basis, /^refinery yields: CN JODI product output ÷ total refinery output, 2025-09–2026-08 \(12 months\)/);
+    assert.match(basis, /crude refinery intake is a balancing item/);
+    assert.match(basis, /gasoline 23\.2%, diesel 25\.2%/);
+  });
+
+  it('a malformed yield is not trusted: out-of-range or non-numeric values fall back to the median', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const row = seededJodiRow('KR');
+    row.refineryYields = { ...row.refineryYields, products: { ...row.refineryYields.products, gasoline: 1.4, diesel: '0.3', lpg: -0.1 } };
+    installEnergyShockRedis(refineryYieldSeed('KR', row));
+    const response = await computeShock({ countryCode: 'KR', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    const crudeLoss = row.crude.importsKbd * 0.7;
+    assert.equal(productRow(response, 'Gasoline').outputLossKbd, round1(crudeLoss * GLOBAL_MEDIAN_REFINERY_YIELD.gasoline));
+    assert.equal(productRow(response, 'Diesel').outputLossKbd, round1(crudeLoss * GLOBAL_MEDIAN_REFINERY_YIELD.diesel));
+    assert.equal(productRow(response, 'LPG').outputLossKbd, round1(crudeLoss * GLOBAL_MEDIAN_REFINERY_YIELD.lpg));
+  });
+
+  it('ignores oil caches written with the US-average yields (v8)', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...refineryYieldSeed('KR'),
+      'energy:shock:v8:KR:hormuz_strait:100:l:oil': { dataAvailable: true, assessment: 'v8 US-average yields', products: [] },
+      'energy:shock:v8:KR:hormuz_strait:100:l:both': { dataAvailable: true, assessment: 'v8 US-average yields', products: [] },
+    });
+    for (const fuelMode of ['oil', 'both']) {
+      const response = await computeShock({ countryCode: 'KR', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode });
+      assert.notEqual(response.assessment, 'v8 US-average yields', fuelMode);
+      assert.ok(productRow(response, 'Naphtha'), fuelMode);
     }
   });
-
-  it('yields sum to < 1.0 (crude has residuals)', () => {
-    const total = Object.values(REFINERY_YIELD).reduce((s, v) => s + v, 0);
-    assert.ok(total < 1.0, `total yield ${total} should be < 1.0`);
-    assert.ok(total > 0.8, `total yield ${total} should be > 0.8 (sanity check)`);
-  });
-
-  it('gasoline has highest yield', () => {
-    assert.ok(REFINERY_YIELD['Gasoline'] > REFINERY_YIELD['Diesel']);
-    assert.ok(REFINERY_YIELD['Gasoline'] > REFINERY_YIELD['Jet fuel']);
-    assert.ok(REFINERY_YIELD['Gasoline'] > REFINERY_YIELD['LPG']);
-  });
 });
 
-// ---------------------------------------------------------------------------
-// per-product deficit divergence with named yields
-// ---------------------------------------------------------------------------
-
-describe('per-product deficit with correct yield formula', () => {
-  it('outputLossKbd = crudeLossKbd * yieldFactor (not demand * ratio * yield)', () => {
-    const crudeLossKbd = 100;
-    const gasolineLoss = crudeLossKbd * REFINERY_YIELD['Gasoline']; // 100 * 0.44 = 44
-    const dieselLoss = crudeLossKbd * REFINERY_YIELD['Diesel'];     // 100 * 0.30 = 30
-    assert.equal(gasolineLoss, 44);
-    assert.equal(dieselLoss, 30);
-  });
-
-  it('deficit depends on demand, not on yield alone', () => {
-    const crudeLossKbd = 100;
-    const gasolineDemand = 500;
-    const jetDemand = 20;
-    const gasolineLoss = crudeLossKbd * REFINERY_YIELD['Gasoline']; // 44
-    const jetLoss = crudeLossKbd * REFINERY_YIELD['Jet fuel'];       // 10
-    const gasolineDeficit = (gasolineLoss / gasolineDemand) * 100;   // 8.8%
-    const jetDeficit = (jetLoss / jetDemand) * 100;                  // 50%
-    assert.ok(jetDeficit > gasolineDeficit, 'low-demand product has higher deficit even with lower yield');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// REFINERY_YIELD_BASIS string
-// ---------------------------------------------------------------------------
-
-describe('REFINERY_YIELD_BASIS string', () => {
-  it('mentions all four products with percentages', () => {
-    assert.ok(REFINERY_YIELD_BASIS.includes('gasoline 44%'));
-    assert.ok(REFINERY_YIELD_BASIS.includes('diesel 30%'));
-    assert.ok(REFINERY_YIELD_BASIS.includes('jet 10%'));
-    assert.ok(REFINERY_YIELD_BASIS.includes('LPG 5%'));
-    assert.ok(REFINERY_YIELD_BASIS.includes('EIA'));
+describe('GLOBAL_MEDIAN_REFINERY_YIELD', () => {
+  it('is the measured JODI median, not the US average', () => {
+    assert.deepEqual(GLOBAL_MEDIAN_REFINERY_YIELD, { gasoline: 0.242, diesel: 0.394, jet: 0.069, lpg: 0.036, naphtha: 0.085 });
+    assert.match(GLOBAL_MEDIAN_REFINERY_YIELD_SOURCE, /44 JODI refiners/);
+    assert.match(GLOBAL_MEDIAN_REFINERY_YIELD_SOURCE, /2026-10-28/);
   });
 });
 
