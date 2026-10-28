@@ -10,6 +10,7 @@
  *
  * Generation and hashing stay client-side for the same reason they do in
  * `api-keys.ts`: the plaintext is shown once and never reaches a server log.
+ * Creation uses a live-session-gated edge route; list/revoke use Convex.
  */
 
 import {
@@ -17,7 +18,7 @@ import {
   getConvexApi,
   waitForConvexAuthForUser,
 } from './convex-client';
-import { getCurrentClerkUser } from './clerk';
+import { getClerkSessionToken, getCurrentClerkUser } from './clerk';
 import {
   assertAccountStillCurrent,
   settleAccountOperation,
@@ -86,21 +87,18 @@ export async function createEmbedKey(name: string): Promise<CreateEmbedKeyResult
   const keyPrefix = embedKeyPrefix(plaintext);
   const keyHash = await sha256Hex(plaintext);
 
-  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
-  if (!client || !api) throw new Error('Convex unavailable');
-  if (!await waitForConvexAuthForUser(userId)) {
-    throw new Error('Account changed while creating the embed key. Try again.');
-  }
-
-  const result = await settleAccountOperation(
-    userId,
-    'creating the embed key',
-    () => client.mutation(
-      (api as any).embedKeys.createEmbedKey,
-      { name: name.trim(), keyPrefix, keyHash },
-    ),
-  );
+  const token = await settleAccountOperation(userId, 'creating the embed key', getClerkSessionToken);
+  if (!token) throw new Error('Account changed while creating the embed key. Try again.');
   assertAccountStillCurrent(userId, 'creating the embed key');
+  const response = await settleAccountOperation(userId, 'creating the embed key', () => fetch('/api/user-embed-keys', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: name.trim(), keyPrefix, keyHash }),
+  }));
+  assertAccountStillCurrent(userId, 'creating the embed key');
+  const result = await settleAccountOperation(userId, 'creating the embed key', () => response.json().catch(() => null));
+  assertAccountStillCurrent(userId, 'creating the embed key');
+  if (!response.ok) throw new Error(typeof result?.error === 'string' ? result.error : 'service_unavailable');
 
   return { id: result.id, name: result.name, keyPrefix: result.keyPrefix, key: plaintext };
 }

@@ -22,6 +22,7 @@
 *Could not find public function for 'accountDeletion/sideEffects:runExternalErase'*
 *Could not find public function for 'agentSources:countBySource'*
 *Could not find public function for 'agentSources:pageSources'*
+*Could not find public function for 'alertRules:deleteInvalidVariantRules'*
 *Could not find public function for 'alertRules:getAlertRulesByUserId'*
 *Could not find public function for 'alertRules:getByEnabled'*
 *Could not find public function for 'alertRules:getDigestRules'*
@@ -152,6 +153,7 @@
 *Could not find public function for 'emailSuppressions:remove'*
 *Could not find public function for 'emailSuppressions:suppress'*
 *Could not find public function for 'emailUnsubscribe:applyUnsubscribe'*
+*Could not find public function for 'embedKeys:createEmbedKeyForUser'*
 *Could not find public function for 'embedKeys:touchKeyLastUsed'*
 *Could not find public function for 'embedKeys:validateKeyByHash'*
 *Could not find public function for 'entitlements:clearAiRoutingPolicy'*

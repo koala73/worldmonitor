@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { LIVE_TOPIC_PAGES } from './live-pages/index.mjs';
 import { LIVE_PAGE_RELATED, renderLiveDataLinks } from './live-pages/related-links.mjs';
 
-export const LIVE_TOPIC_PAGES_CONTENT_VERSION = '2026-10-18';
+export const LIVE_TOPIC_PAGES_CONTENT_VERSION = '2026-10-28';
 export const LIVE_TOPIC_PAGES_INPUT_PATHS = Object.freeze([
   'scripts/build-live-topic-pages.mjs',
   'scripts/live-pages',

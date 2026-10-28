@@ -213,7 +213,7 @@ async function assertUniqueKeyHash(ctx: MutationCtx, keyHash: string) {
  * discipline and key shape as an API key; the kind is stored server-side.
  *
  * Gated by the Deploy Order flag, then the shared desktop-key predicate on the
- * MERGED features, as `createEmbedKey` does: rows written before
+ * MERGED features, as `createEmbedKeyForUser` does: rows written before
  * `desktopKeyAccess` existed omit it, and the predicate is fail-closed on
  * `undefined`. The cap is the plan's `maxDesktopKeys` (also catalog-merged).
  */

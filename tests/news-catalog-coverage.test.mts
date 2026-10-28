@@ -155,6 +155,15 @@ describe('digests serve the categories that used to need per-feed browser fetche
     assert.ok(!latamSources('en').includes('Folha de S.Paulo'));
   });
 
+  it('the tech digest fetches its regional startup sources (U6 batch 2)', () => {
+    const regional = digestTesting.buildDigestFeedBatches('tech', 'en').batches.flat()
+      .filter(entry => entry.category === 'regionalStartups')
+      .map(entry => entry.feed.name);
+    for (const name of ['YourStory', 'KrASIA', 'MENA Startups', 'Africa Tech News', 'FinTech LATAM']) {
+      assert.ok(regional.includes(name), `tech digest must fetch ${name}`);
+    }
+  });
+
   it('a Spanish outlet the browser shows in every language builds only in the Spanish digest', () => {
     const latamSources = (lang: string) => digestTesting.buildDigestFeedBatches('full', lang).batches.flat()
       .filter(entry => entry.category === 'latam')

@@ -6,13 +6,14 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { channelTypeValidator, digestModeValidator, quietHoursOverrideValidator, sensitivityValidator } from "./constants";
 import { CHOKEPOINT_ALERT_IDS } from "../shared/chokepoint-alert-ids";
 import {
   ALERT_RULES_PER_USER_MAX,
   dedupeStrings,
   getAlertRuleShapeViolation,
+  isAlertRuleVariant,
   listAlertRuleShapeViolations,
   type AlertRuleShapeCode,
 } from "../shared/alert-rule-shape";
@@ -762,5 +763,48 @@ export const listShapeViolations = internalQuery({
       continueCursor: result.continueCursor,
       isDone: result.isDone,
     };
+  },
+});
+
+const DELETE_INVALID_VARIANT_IDS_MAX = 100;
+// A row can be up to 1 MiB, so stopping once 8 MiB is read keeps one call well
+// under Convex's 16 MiB transaction read limit.
+const DELETE_INVALID_VARIANT_BYTES_MAX = 8 * 1024 * 1024;
+
+/**
+ * Operator cleanup for the VARIANT_INVALID rows `listShapeViolations`
+ * reports. Takes ids from that audit rather than scanning, and re-checks each
+ * row here: only a row whose variant is still outside the registry is
+ * deleted. Rows with a registry variant are kept even when they break another
+ * shape rule, because those are settings the dashboard can still reach.
+ */
+export const deleteInvalidVariantRules = internalMutation({
+  args: { ids: v.array(v.id("alertRules")), dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, args) => {
+    if (args.ids.length > DELETE_INVALID_VARIANT_IDS_MAX) {
+      throw new ConvexError(`pass at most ${DELETE_INVALID_VARIANT_IDS_MAX} ids per call`);
+    }
+    const deleted: Id<"alertRules">[] = [];
+    const skipped: Array<{ id: Id<"alertRules">; reason: "NOT_FOUND" | "VARIANT_VALID" }> = [];
+    const ids = [...new Set(args.ids)];
+    let bytesRead = 0;
+    let next = 0;
+    for (; next < ids.length && bytesRead < DELETE_INVALID_VARIANT_BYTES_MAX; next++) {
+      const id = ids[next]!;
+      const row = await ctx.db.get(id);
+      if (row) bytesRead += getDocumentSize(row);
+      if (!row) {
+        skipped.push({ id, reason: "NOT_FOUND" });
+        continue;
+      }
+      if (isAlertRuleVariant(row.variant)) {
+        skipped.push({ id, reason: "VARIANT_VALID" });
+        continue;
+      }
+      if (!args.dryRun) await ctx.db.delete(id);
+      deleted.push(id);
+    }
+    // Ids left unread because of the byte budget; pass them to the next call.
+    return { deleted, skipped, remaining: ids.slice(next) };
   },
 });

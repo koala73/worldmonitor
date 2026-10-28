@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { expect, test, describe } from "vitest";
+import { afterEach, beforeEach, expect, test, describe, vi } from "vitest";
 import schema from "../schema";
 import { api, internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
@@ -77,6 +77,100 @@ async function seedLegacyEntitlement(
 // Catalog
 // ---------------------------------------------------------------------------
 
+describe("gateway-only embed key creation relay", () => {
+  beforeEach(() => {
+    vi.stubEnv("CONVEX_TENANT_RELAY_SECRET", "gateway-test-secret");
+    vi.stubEnv("CONVEX_NOTIFICATION_RELAY_SECRET", "delivery-test-secret");
+  });
+  afterEach(() => vi.unstubAllEnvs());
+  const post = (t: ReturnType<typeof convexTest>, body: unknown, secret?: string) => t.fetch("/relay/embed-keys/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(secret ? { Authorization: `Bearer ${secret}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  test.each([undefined, "wrong-secret", "delivery-test-secret"])("rejects unauthorized secret %s without writing", async (secret) => {
+    const t = convexTest(schema, modules);
+    const response = await post(t, { userId: PRO_USER.subject, clerkPlan: "pro", ...makeKeyArgs(1) }, secret);
+    expect(response.status).toBe(401);
+    expect(await t.run(ctx => ctx.db.query("embedKeys").collect())).toEqual([]);
+  });
+  test("creates for the relay body user without a Convex identity", async () => {
+    const t = convexTest(schema, modules);
+    await seedEntitlement(t, PRO_USER.subject, "pro_monthly");
+    const response = await post(t, { userId: PRO_USER.subject, ...makeKeyArgs(1), allowedOrigins: ["https://partner.example"] }, "gateway-test-secret");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.allowedOrigins).toEqual(["https://partner.example"]);
+    const row = await t.run(ctx => ctx.db.get(result.id));
+    expect(row).toMatchObject({ userId: PRO_USER.subject, keyHash: makeKeyArgs(1).keyHash });
+  });
+  test("accepts a server-resolved pro role without entitlement and denies free", async () => {
+    const t = convexTest(schema, modules);
+    const body = { userId: ROLE_ONLY_PRO_USER.subject, ...makeKeyArgs(1) };
+    const denied = await post(t, { ...body, clerkPlan: "free" }, "gateway-test-secret");
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toEqual({ error: "EMBED_ACCESS_REQUIRED" });
+    expect(await t.run(ctx => ctx.db.query("embedKeys").collect())).toEqual([]);
+    const response = await post(t, { ...body, clerkPlan: "pro" }, "gateway-test-secret");
+    expect(response.status).toBe(200);
+    expect(await t.run(ctx => ctx.db.query("embedKeys").collect())).toHaveLength(1);
+  });
+  test.each([
+    ["INVALID_NAME", { name: " " }],
+    ["INVALID_PREFIX", { keyPrefix: "invalid" }],
+    ["INVALID_HASH", { keyHash: "invalid" }],
+    ["INVALID_ORIGIN", { allowedOrigins: ["https://partner.example/path"] }],
+    ["TOO_MANY_ORIGINS", { allowedOrigins: Array.from({ length: 11 }, (_, i) => `https://p${i}.example`) }],
+    ["INVALID_REQUEST", { userId: "" }],
+    ["INVALID_REQUEST", { userId: 42 }],
+    ["INVALID_REQUEST", { clerkPlan: "admin" }],
+    ["INVALID_REQUEST", { clerkPlan: null }],
+    ["INVALID_REQUEST", { name: 42 }],
+    ["INVALID_REQUEST", { keyPrefix: null }],
+    ["INVALID_REQUEST", { keyHash: [] }],
+    ["INVALID_REQUEST", { allowedOrigins: [42] }],
+    ["INVALID_REQUEST", { allowedOrigins: "https://partner.example" }],
+  ])("maps %s to 400 (%j)", async (code, args) => {
+    const t = convexTest(schema, modules);
+    const response = await post(t, { userId: PRO_USER.subject, clerkPlan: "pro", ...makeKeyArgs(1), ...args }, "gateway-test-secret");
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: code });
+    expect(await t.run(ctx => ctx.db.query("embedKeys").collect())).toEqual([]);
+  });
+  test.each([null, [], {}])("rejects a malformed request body %j", async (body) => {
+    const t = convexTest(schema, modules);
+    const response = await post(t, body, "gateway-test-secret");
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "INVALID_REQUEST" });
+  });
+  test("maps duplicate hashes to 400 and the key limit to 409", async () => {
+    const t = convexTest(schema, modules);
+    const body = { userId: PRO_USER.subject, clerkPlan: "pro" };
+    expect((await post(t, { ...body, ...makeKeyArgs(1) }, "gateway-test-secret")).status).toBe(200);
+    const duplicate = await post(t, { ...body, ...makeKeyArgs(1) }, "gateway-test-secret");
+    expect(duplicate.status).toBe(400);
+    expect(await duplicate.json()).toEqual({ error: "DUPLICATE_KEY" });
+    for (let i = 2; i <= 5; i++) {
+      expect((await post(t, { ...body, ...makeKeyArgs(i) }, "gateway-test-secret")).status).toBe(200);
+    }
+    const limited = await post(t, { ...body, ...makeKeyArgs(6) }, "gateway-test-secret");
+    expect(limited.status).toBe(409);
+    expect(await limited.json()).toEqual({ error: "KEY_LIMIT_REACHED" });
+    expect(await t.run(ctx => ctx.db.query("embedKeys").collect())).toHaveLength(5);
+  });
+  test("maps the account-deletion write fence to 403", async () => {
+    const t = convexTest(schema, modules);
+    await t.run(ctx => ctx.db.insert("accountDeletions", {
+      userId: PRO_USER.subject, userIdHash: "a".repeat(64), source: "self",
+      status: "pending", step: "personal", startedAt: NOW, updatedAt: NOW,
+    }));
+    const response = await post(t, { userId: PRO_USER.subject, clerkPlan: "pro", ...makeKeyArgs(1) }, "gateway-test-secret");
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "ACCOUNT_DELETION_IN_PROGRESS" });
+    expect(await t.run(ctx => ctx.db.query("embedKeys").collect())).toEqual([]);
+  });
+});
+
 describe("embedAccess in the product catalog", () => {
   test("every paid plan grants it and free does not", () => {
     for (const [planKey, entry] of Object.entries(PRODUCT_CATALOG)) {
@@ -135,15 +229,18 @@ describe("read-time merge", () => {
 });
 
 // ---------------------------------------------------------------------------
-// createEmbedKey — the gate
+// createEmbedKeyForUser — the gate
 // ---------------------------------------------------------------------------
 
-describe("createEmbedKey entitlement gate", () => {
+describe("createEmbedKeyForUser entitlement gate", () => {
   test("succeeds for a verified Clerk PRO identity without an entitlement row", async () => {
     const t = convexTest(schema, modules);
 
     await expect(
-      t.withIdentity(ROLE_ONLY_PRO_USER).mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1)),
+      t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: ROLE_ONLY_PRO_USER.subject, clerkPlan: ROLE_ONLY_PRO_USER.plan,
+        ...makeKeyArgs(1),
+      }),
     ).resolves.toMatchObject({ keyPrefix: "wme_00001" });
   });
 
@@ -154,10 +251,10 @@ describe("createEmbedKey entitlement gate", () => {
     // The whole reason this credential is not a wm_ key: Pro cannot mint one.
     expect(getFeaturesForPlan("pro_monthly").apiAccess).toBe(false);
 
-    const result = await t.withIdentity(PRO_USER).mutation(
-      api.embedKeys.createEmbedKey,
-      makeKeyArgs(1),
-    );
+    const result = await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
+      ...makeKeyArgs(1),
+    });
 
     expect(result).toMatchObject({ name: "embed-key-1", keyPrefix: "wme_00001" });
     expect(result.id).toBeTruthy();
@@ -175,10 +272,16 @@ describe("createEmbedKey entitlement gate", () => {
     await seedEntitlement(t, "user-api", "api_starter");
 
     await expect(
-      t.withIdentity(BUSINESS_USER).mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1)),
+      t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: BUSINESS_USER.subject, clerkPlan: "free",
+        ...makeKeyArgs(1),
+      }),
     ).resolves.toMatchObject({ keyPrefix: "wme_00001" });
     await expect(
-      t.withIdentity(API_USER).mutation(api.embedKeys.createEmbedKey, makeKeyArgs(2)),
+      t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: API_USER.subject, clerkPlan: "free",
+        ...makeKeyArgs(2),
+      }),
     ).resolves.toMatchObject({ keyPrefix: "wme_00002" });
   });
 
@@ -189,7 +292,10 @@ describe("createEmbedKey entitlement gate", () => {
     await seedLegacyEntitlement(t, "user-pro", "pro_monthly");
 
     await expect(
-      t.withIdentity(PRO_USER).mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1)),
+      t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: PRO_USER.subject, clerkPlan: "free",
+        ...makeKeyArgs(1),
+      }),
     ).resolves.toMatchObject({ keyPrefix: "wme_00001" });
   });
 
@@ -198,7 +304,10 @@ describe("createEmbedKey entitlement gate", () => {
     await seedLegacyEntitlement(t, "user-free", "free");
 
     await expect(
-      t.withIdentity(FREE_USER).mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1)),
+      t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: FREE_USER.subject, clerkPlan: "free",
+        ...makeKeyArgs(1),
+      }),
     ).rejects.toThrow(/EMBED_ACCESS_REQUIRED/);
   });
 
@@ -206,7 +315,10 @@ describe("createEmbedKey entitlement gate", () => {
     const t = convexTest(schema, modules);
 
     await expect(
-      t.withIdentity(FREE_USER).mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1)),
+      t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: FREE_USER.subject, clerkPlan: "free",
+        ...makeKeyArgs(1),
+      }),
     ).rejects.toThrow(/EMBED_ACCESS_REQUIRED/);
   });
 
@@ -215,7 +327,10 @@ describe("createEmbedKey entitlement gate", () => {
     await seedEntitlement(t, "user-free", "free");
 
     await expect(
-      t.withIdentity(FREE_USER).mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1)),
+      t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: FREE_USER.subject, clerkPlan: "free",
+        ...makeKeyArgs(1),
+      }),
     ).rejects.toThrow(/EMBED_ACCESS_REQUIRED/);
   });
 
@@ -224,30 +339,32 @@ describe("createEmbedKey entitlement gate", () => {
     await seedEntitlement(t, "user-pro", "pro_monthly", { validUntil: PAST });
 
     await expect(
-      t.withIdentity(PRO_USER).mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1)),
+      t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: PRO_USER.subject, clerkPlan: "free",
+        ...makeKeyArgs(1),
+      }),
     ).rejects.toThrow(/EMBED_ACCESS_REQUIRED/);
   });
 
-  test("requires authentication", async () => {
-    const t = convexTest(schema, modules);
-
-    await expect(
-      t.mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1)),
-    ).rejects.toThrow();
+  test("exposes no public key-creating mutation", async () => {
+    const functions = await import("../embedKeys");
+    expect(functions).not.toHaveProperty("createEmbedKey");
+    expect(functions.createEmbedKeyForUser.isInternal).toBe(true);
   });
 });
 
 // ---------------------------------------------------------------------------
-// createEmbedKey — input validation
+// createEmbedKeyForUser — input validation
 // ---------------------------------------------------------------------------
 
-describe("createEmbedKey input validation", () => {
+describe("createEmbedKeyForUser input validation", () => {
   test("rejects a wm_ prefix — the two credential surfaces do not share a shape", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, "user-pro", "pro_monthly");
 
     await expect(
-      t.withIdentity(PRO_USER).mutation(api.embedKeys.createEmbedKey, {
+      t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: PRO_USER.subject, clerkPlan: "free",
         ...makeKeyArgs(1),
         keyPrefix: "wm_00001",
       }),
@@ -257,44 +374,62 @@ describe("createEmbedKey input validation", () => {
   test("rejects malformed prefixes, hashes and names", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, "user-pro", "pro_monthly");
-    const asPro = t.withIdentity(PRO_USER);
 
     for (const keyPrefix of ["wme_0000", "wme_000011", "wme_ABCDE", "wme_zzzzz", "wme_"]) {
       await expect(
-        asPro.mutation(api.embedKeys.createEmbedKey, { ...makeKeyArgs(1), keyPrefix }),
+        t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+          userId: PRO_USER.subject, clerkPlan: "free",
+          ...makeKeyArgs(1), keyPrefix,
+        }),
       ).rejects.toThrow(/INVALID_PREFIX/);
     }
     for (const keyHash of ["a".repeat(63), "a".repeat(65), "A".repeat(64), "z".repeat(64)]) {
       await expect(
-        asPro.mutation(api.embedKeys.createEmbedKey, { ...makeKeyArgs(1), keyHash }),
+        t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+          userId: PRO_USER.subject, clerkPlan: "free",
+          ...makeKeyArgs(1), keyHash,
+        }),
       ).rejects.toThrow(/INVALID_HASH/);
     }
     await expect(
-      asPro.mutation(api.embedKeys.createEmbedKey, { ...makeKeyArgs(1), name: "   " }),
+      t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: PRO_USER.subject, clerkPlan: "free",
+        ...makeKeyArgs(1), name: "   ",
+      }),
     ).rejects.toThrow(/INVALID_NAME/);
   });
 
   test("rejects a duplicate key hash", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, "user-pro", "pro_monthly");
-    const asPro = t.withIdentity(PRO_USER);
 
-    await asPro.mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1));
+    await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
+      ...makeKeyArgs(1),
+    });
     await expect(
-      asPro.mutation(api.embedKeys.createEmbedKey, { ...makeKeyArgs(2), keyHash: makeKeyArgs(1).keyHash }),
+      t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: PRO_USER.subject, clerkPlan: "free",
+        ...makeKeyArgs(2), keyHash: makeKeyArgs(1).keyHash,
+      }),
     ).rejects.toThrow(/DUPLICATE_KEY/);
   });
 
   test("enforces a per-user cap of 5 active keys", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, "user-pro", "pro_monthly");
-    const asPro = t.withIdentity(PRO_USER);
 
     for (let i = 1; i <= 5; i++) {
-      await asPro.mutation(api.embedKeys.createEmbedKey, makeKeyArgs(i));
+      await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: PRO_USER.subject, clerkPlan: "free",
+        ...makeKeyArgs(i),
+      });
     }
     await expect(
-      asPro.mutation(api.embedKeys.createEmbedKey, makeKeyArgs(6)),
+      t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: PRO_USER.subject, clerkPlan: "free",
+        ...makeKeyArgs(6),
+      }),
     ).rejects.toThrow(/KEY_LIMIT_REACHED/);
   });
 
@@ -303,14 +438,23 @@ describe("createEmbedKey input validation", () => {
     await seedEntitlement(t, "user-pro", "pro_monthly");
     const asPro = t.withIdentity(PRO_USER);
 
-    const first = await asPro.mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1));
+    const first = await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
+      ...makeKeyArgs(1),
+    });
     for (let i = 2; i <= 5; i++) {
-      await asPro.mutation(api.embedKeys.createEmbedKey, makeKeyArgs(i));
+      await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: PRO_USER.subject, clerkPlan: "free",
+        ...makeKeyArgs(i),
+      });
     }
     await asPro.mutation(api.embedKeys.revokeEmbedKey, { keyId: first.id });
 
     await expect(
-      asPro.mutation(api.embedKeys.createEmbedKey, makeKeyArgs(6)),
+      t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: PRO_USER.subject, clerkPlan: "free",
+        ...makeKeyArgs(6),
+      }),
     ).resolves.toMatchObject({ keyPrefix: "wme_00006" });
   });
 
@@ -320,10 +464,16 @@ describe("createEmbedKey input validation", () => {
     await seedEntitlement(t, "user-other", "pro_monthly");
 
     for (let i = 1; i <= 5; i++) {
-      await t.withIdentity(PRO_USER).mutation(api.embedKeys.createEmbedKey, makeKeyArgs(i));
+      await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: PRO_USER.subject, clerkPlan: "free",
+        ...makeKeyArgs(i),
+      });
     }
     await expect(
-      t.withIdentity(OTHER_USER).mutation(api.embedKeys.createEmbedKey, makeKeyArgs(6)),
+      t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: OTHER_USER.subject, clerkPlan: "free",
+        ...makeKeyArgs(6),
+      }),
     ).resolves.toMatchObject({ keyPrefix: "wme_00006" });
   });
 });
@@ -338,7 +488,8 @@ describe("allowedOrigins", () => {
     await seedEntitlement(t, "user-pro", "pro_monthly");
     const asPro = t.withIdentity(PRO_USER);
 
-    const created = await asPro.mutation(api.embedKeys.createEmbedKey, {
+    const created = await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
       ...makeKeyArgs(1),
       allowedOrigins: ["https://partner.example", "http://localhost:3000"],
     });
@@ -355,10 +506,10 @@ describe("allowedOrigins", () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, "user-pro", "pro_monthly");
 
-    const created = await t.withIdentity(PRO_USER).mutation(
-      api.embedKeys.createEmbedKey,
-      makeKeyArgs(1),
-    );
+    const created = await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
+      ...makeKeyArgs(1),
+    });
 
     expect(created.allowedOrigins).toBeUndefined();
     const row = await t.run(async (ctx) => ctx.db.get(created.id));
@@ -368,15 +519,16 @@ describe("allowedOrigins", () => {
   test("dedupes and drops blanks; an all-blank list stores nothing", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, "user-pro", "pro_monthly");
-    const asPro = t.withIdentity(PRO_USER);
 
-    const deduped = await asPro.mutation(api.embedKeys.createEmbedKey, {
+    const deduped = await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
       ...makeKeyArgs(1),
       allowedOrigins: ["https://a.example", " https://a.example ", "", "  "],
     });
     expect(deduped.allowedOrigins).toEqual(["https://a.example"]);
 
-    const empty = await asPro.mutation(api.embedKeys.createEmbedKey, {
+    const empty = await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
       ...makeKeyArgs(2),
       allowedOrigins: ["", "   "],
     });
@@ -386,7 +538,6 @@ describe("allowedOrigins", () => {
   test("rejects anything that is not a bare origin", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, "user-pro", "pro_monthly");
-    const asPro = t.withIdentity(PRO_USER);
 
     for (const bad of [
       "partner.example",                 // no scheme
@@ -396,7 +547,8 @@ describe("allowedOrigins", () => {
       "not a url",
     ]) {
       await expect(
-        asPro.mutation(api.embedKeys.createEmbedKey, {
+        t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+          userId: PRO_USER.subject, clerkPlan: "free",
           ...makeKeyArgs(1),
           allowedOrigins: [bad],
         }),
@@ -410,7 +562,8 @@ describe("allowedOrigins", () => {
 
     const eleven = Array.from({ length: 11 }, (_, i) => `https://p${i}.example`);
     await expect(
-      t.withIdentity(PRO_USER).mutation(api.embedKeys.createEmbedKey, {
+      t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: PRO_USER.subject, clerkPlan: "free",
         ...makeKeyArgs(1),
         allowedOrigins: eleven,
       }),
@@ -420,7 +573,8 @@ describe("allowedOrigins", () => {
   test("validateKeyByHash does not expose them — nothing enforces origins", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, "user-pro", "pro_monthly");
-    await t.withIdentity(PRO_USER).mutation(api.embedKeys.createEmbedKey, {
+    await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
       ...makeKeyArgs(1),
       allowedOrigins: ["https://partner.example"],
     });
@@ -442,8 +596,14 @@ describe("listEmbedKeys", () => {
     await seedEntitlement(t, "user-pro", "pro_monthly");
     await seedEntitlement(t, "user-other", "pro_monthly");
 
-    await t.withIdentity(PRO_USER).mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1));
-    await t.withIdentity(OTHER_USER).mutation(api.embedKeys.createEmbedKey, makeKeyArgs(2));
+    await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
+      ...makeKeyArgs(1),
+    });
+    await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: OTHER_USER.subject, clerkPlan: "free",
+      ...makeKeyArgs(2),
+    });
 
     const mine = await t.withIdentity(PRO_USER).query(api.embedKeys.listEmbedKeys, {});
     expect(mine).toHaveLength(1);
@@ -462,7 +622,10 @@ describe("listEmbedKeys", () => {
     await seedEntitlement(t, "user-pro", "pro_monthly");
     const asPro = t.withIdentity(PRO_USER);
 
-    const created = await asPro.mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1));
+    const created = await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
+      ...makeKeyArgs(1),
+    });
     await asPro.mutation(api.embedKeys.revokeEmbedKey, { keyId: created.id });
 
     const keys = await asPro.query(api.embedKeys.listEmbedKeys, {});
@@ -481,7 +644,10 @@ describe("revokeEmbedKey", () => {
     await seedEntitlement(t, "user-pro", "pro_monthly");
     const asPro = t.withIdentity(PRO_USER);
 
-    const created = await asPro.mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1));
+    const created = await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
+      ...makeKeyArgs(1),
+    });
     const result = await asPro.mutation(api.embedKeys.revokeEmbedKey, { keyId: created.id });
 
     expect(result).toEqual({ ok: true, keyHash: makeKeyArgs(1).keyHash });
@@ -494,10 +660,10 @@ describe("revokeEmbedKey", () => {
     await seedEntitlement(t, "user-pro", "pro_monthly");
     await seedEntitlement(t, "user-other", "pro_monthly");
 
-    const created = await t.withIdentity(PRO_USER).mutation(
-      api.embedKeys.createEmbedKey,
-      makeKeyArgs(1),
-    );
+    const created = await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
+      ...makeKeyArgs(1),
+    });
 
     await expect(
       t.withIdentity(OTHER_USER).mutation(api.embedKeys.revokeEmbedKey, { keyId: created.id }),
@@ -511,7 +677,10 @@ describe("revokeEmbedKey", () => {
     await seedEntitlement(t, "user-pro", "pro_monthly");
     const asPro = t.withIdentity(PRO_USER);
 
-    const created = await asPro.mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1));
+    const created = await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
+      ...makeKeyArgs(1),
+    });
     await asPro.mutation(api.embedKeys.revokeEmbedKey, { keyId: created.id });
 
     await expect(
@@ -528,7 +697,10 @@ describe("validateKeyByHash", () => {
   test("resolves an active key to its owner", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, "user-pro", "pro_monthly");
-    await t.withIdentity(PRO_USER).mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1));
+    await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
+      ...makeKeyArgs(1),
+    });
 
     const result = await t.query(internal.embedKeys.validateKeyByHash, {
       keyHash: makeKeyArgs(1).keyHash,
@@ -549,7 +721,10 @@ describe("validateKeyByHash", () => {
     await seedEntitlement(t, "user-pro", "pro_monthly");
     const asPro = t.withIdentity(PRO_USER);
 
-    const created = await asPro.mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1));
+    const created = await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
+      ...makeKeyArgs(1),
+    });
     await asPro.mutation(api.embedKeys.revokeEmbedKey, { keyId: created.id });
 
     await expect(
@@ -584,10 +759,10 @@ describe("touchKeyLastUsed", () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, "user-pro", "pro_monthly");
 
-    const created = await t.withIdentity(PRO_USER).mutation(
-      api.embedKeys.createEmbedKey,
-      makeKeyArgs(1),
-    );
+    const created = await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
+      ...makeKeyArgs(1),
+    });
     await t.mutation(internal.embedKeys.touchKeyLastUsed, { keyId: created.id });
     const first = await t.run(async (ctx) => (await ctx.db.get(created.id))?.lastUsedAt);
     expect(first).toBeGreaterThan(0);
@@ -602,7 +777,10 @@ describe("touchKeyLastUsed", () => {
     await seedEntitlement(t, "user-pro", "pro_monthly");
     const asPro = t.withIdentity(PRO_USER);
 
-    const created = await asPro.mutation(api.embedKeys.createEmbedKey, makeKeyArgs(1));
+    const created = await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+      userId: PRO_USER.subject, clerkPlan: "free",
+      ...makeKeyArgs(1),
+    });
     await asPro.mutation(api.embedKeys.revokeEmbedKey, { keyId: created.id });
     await t.mutation(internal.embedKeys.touchKeyLastUsed, { keyId: created.id });
 

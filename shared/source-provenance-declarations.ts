@@ -373,7 +373,6 @@ export const CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS: Readonly<
   "La Silla Vacía": { risk: 'unknown', type: 'unknown' },
   "LATAM Startups": { risk: 'unknown', type: 'unknown' },
   "Latin America": { risk: 'unknown', type: 'unknown' },
-  "LAVCA (LATAM)": { risk: 'unknown', type: 'unknown' },
   "Layoffs News": { risk: 'unknown', type: 'reviewed' },
   "Layoffs.fyi": { risk: 'unknown', type: 'reviewed' },
   "Le Devoir": { risk: 'reviewed', type: 'reviewed' },
