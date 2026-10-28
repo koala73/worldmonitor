@@ -2325,6 +2325,8 @@ const ON_DEMAND_KEYS = new Set([
   'tensionEvidence',
   // Relay strike-pressure tally: the marker is written after its first healthy publish.
   'strikePressure',
+  // Relay digest warm cycle: the marker is written after its first healthy cycle.
+  'newsDigestWarmRelayHeartbeat',
   // Scheduled producer. The marker is written only after a successful
   // publish of the canonical snapshot. Before that first publish, absence is
   // pending activation; after it, missing or stale data is strict.
