@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { newsHandler } from '../server/worldmonitor/news/v1/handler';
 import { REVOKED_URLS_KEY } from '../server/_shared/digest-revocations';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis';
+import { drainResponseHeaders } from '../server/_shared/response-headers';
 import { lastGoodKey } from '../server/worldmonitor/news/v1/_lastgood';
 import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
 import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds';
@@ -63,8 +64,9 @@ async function request(params: Record<string, string | string[]> = {}) {
   for (const [key, value] of Object.entries(params)) {
     for (const item of Array.isArray(value) ? value : [value]) query.append(key, item);
   }
-  const res = await route.handler(new Request(`https://example.test/api/news/v1/list-news-pool?${query}`));
-  return { res, payload: await res.json() as ListNewsPoolResponse };
+  const req = new Request(`https://example.test/api/news/v1/list-news-pool?${query}`);
+  const res = await route.handler(req);
+  return { req, res, payload: await res.json() as ListNewsPoolResponse };
 }
 
 const titles = (payload: ListNewsPoolResponse) => payload.items.map(entry => entry.item!.title).sort();
@@ -164,6 +166,31 @@ describe('ListNewsPool', () => {
 
     assert.deepEqual(titles(payload), ['Le Sénat vote', 'Les marchés ouvrent', 'Tempête au Québec']);
     assert.ok(payload.items.every(entry => entry.language === 'fr' && entry.category === 'us'));
+  });
+
+  it('scores feed-row items the way the digest does, not with the row placeholders', async () => {
+    feedRow('full', 'Tagesschau', ['Bundestag stimmt ab']);
+    const { payload } = await request({ languages: ['de'] });
+    const item = payload.items[0]!.item!;
+    assert.ok(item.credibilityScore > 0, `credibilityScore ${item.credibilityScore}`);
+    assert.ok(item.importanceScore > 0, `importanceScore ${item.importanceScore}`);
+  });
+
+  it('marks every response except a complete one uncacheable', async () => {
+    fresh('full', 'en', digest({ europe: [article('BBC World', 'Talks resume')] }));
+    fresh('full', 'th', digest({ asia: [article('Bangkok Post', 'Baht steadies')] }));
+    const complete = await request();
+    assert.equal(complete.payload.state, 'complete');
+    assert.equal(drainResponseHeaders(complete.req)?.['X-No-Cache'], undefined);
+
+    const partial = await request({ languages: ['en', 'de'] });
+    assert.equal(partial.payload.state, 'partial');
+    assert.equal(drainResponseHeaders(partial.req)?.['X-No-Cache'], '1');
+
+    cache.clear();
+    const down = await request();
+    assert.equal(down.payload.state, 'unavailable');
+    assert.equal(drainResponseHeaders(down.req)?.['X-No-Cache'], '1');
   });
 
   it('counts a feed whose last fetch failed as uncached', async () => {

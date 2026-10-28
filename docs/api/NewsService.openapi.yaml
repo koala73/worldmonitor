@@ -794,7 +794,7 @@ paths:
             tags:
                 - NewsService
             summary: ListNewsPool
-            description: ListNewsPool unions the warmed digests for several editions and content languages, one item per article URL. Never builds a digest. PRO-gated. Requires entitlement tier >= 1.
+            description: 'ListNewsPool merges cached news for several editions and content languages, one item per article URL: English from the warmed digest cells, other languages from their feeds'' cached parses. Reads cache only; never builds a digest or fetches a feed. PRO-gated. Requires entitlement tier >= 1.'
             operationId: ListNewsPool
             security:
                 - WorldMonitorKey: []
@@ -808,7 +808,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "en"
+                      - "fr"
                   schema:
                     type: array
                     items:
@@ -820,7 +820,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "full"
                   schema:
                     type: array
                     items:
@@ -829,7 +829,7 @@ paths:
                   in: query
                   description: One category key within the selected editions.
                   required: false
-                  example: "cs.AI"
+                  example: "europe"
                   schema:
                     type: string
                 - name: jmespath
@@ -847,16 +847,16 @@ paths:
                         application/json:
                             example:
                                 "cells":
-                                    - "edition": "example"
+                                    - "edition": "full"
                                       "generatedAt": "2026-01-15T12:00:00Z"
                                       "items": 1
-                                      "language": "typescript"
+                                      "language": "fr"
                                       "staleAgeSeconds": 1
                                 "generatedAt": "2026-01-15T12:00:00Z"
                                 "items":
-                                    - "category": "cs.AI"
+                                    - "category": "europe"
                                       "editions":
-                                          - "example"
+                                          - "full"
                                       "item":
                                           "corroborationCount": 42
                                           "credibilityScore": 42
@@ -865,8 +865,8 @@ paths:
                                           "link": "https://example.com/worldmonitor"
                                           "source": "example"
                                           "title": "example"
-                                      "language": "en"
-                                "state": "example"
+                                      "language": "fr"
+                                "state": "complete"
                             schema:
                                 $ref: '#/components/schemas/ListNewsPoolResponse'
                 "400":

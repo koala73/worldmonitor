@@ -44,16 +44,18 @@ const poolResponse = {
 describe('MCP news languages and editions', () => {
   let mcpHandler;
   let requests;
+  let poolBody;
 
   beforeEach(async () => {
     process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
     process.env.MCP_TELEMETRY = 'false';
     requests = [];
+    poolBody = poolResponse;
     globalThis.fetch = async (input, init = {}) => {
       const url = String(input);
       requests.push(url);
       if (url.includes('/api/news/v1/list-feed-digest')) return Response.json(digestResponse);
-      if (url.includes('/api/news/v1/list-news-pool')) return Response.json(poolResponse);
+      if (url.includes('/api/news/v1/list-news-pool')) return Response.json(poolBody);
       throw new Error(`unexpected fetch: ${url}`);
     };
     const mod = await import(`../api/mcp.ts?pool=${Date.now()}-${Math.random()}`);
@@ -108,6 +110,25 @@ describe('MCP news languages and editions', () => {
     assert.equal(result.clusters[0].threatLevel, 'high');
     assert.ok(result.clusters[0].corroboration);
     assert.deepEqual(result.clusters[0].editions, ['full']);
+  });
+
+  it('clusters non-Latin headlines by their own letters', async () => {
+    poolBody = {
+      ...poolResponse,
+      state: 'complete',
+      cells: [{ edition: 'full', language: 'ru', state: 'complete', items: 3, staleAgeSeconds: 0, generatedAt: '' }],
+      items: [
+        poolItem('TASS', 'Госдума приняла бюджет на следующий год', 'https://n/ru1', 'ru', 1785405900000),
+        poolItem('Interfax', 'Госдума приняла бюджет на следующий год в третьем чтении', 'https://n/ru2', 'ru', 1785405800000),
+        poolItem('RIA', 'Шторм обесточил побережье Приморья', 'https://n/ru3', 'ru', 1785405700000),
+        poolItem('Xinhua', '国务院发布新的经济刺激计划', 'https://n/zh1', 'zh', 1785405600000),
+        poolItem('CGTN', '国务院发布经济刺激计划', 'https://n/zh2', 'zh', 1785405500000),
+      ],
+    };
+    const { result } = await callTool('get_news_clusters', { languages: ['ru', 'zh'] });
+    const shape = result.clusters.map((cluster) => [cluster.language, cluster.memberCount]);
+    assert.deepEqual(shape, [['ru', 2], ['ru', 1], ['zh', 2]], 'same story merges across publishers; a different story stays apart');
+    assert.ok(result.clusters[0].topKeywords.includes('бюджет'), `keywords ${result.clusters[0].topKeywords}`);
   });
 
   it('aggregates entities over several editions through the pool', async () => {

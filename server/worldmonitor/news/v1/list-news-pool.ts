@@ -31,12 +31,19 @@ import { ValidationError } from '../../../../src/generated/server/worldmonitor/n
 import { getCachedJsonBatch, readCachedJson } from '../../../_shared/redis';
 import { getOutletProfile } from '../../../_shared/outlet-profile';
 import { filterRevokedUrls } from '../../../_shared/digest-revocations';
+import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { NEWS_POOL_LAYOUT } from '../../../../shared/news-pool-layout.generated';
 import { classifyStaleSnapshot, isAcceptableDigest } from './_lastgood';
 import { readAcceptedSnapshot, readRevokedUrlSet } from './_lastgood-store';
 import { INTEL_SOURCES, VARIANT_FEEDS } from './_feeds';
 import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
-import { suppressRevoked, toProtoItem, type ParsedItem } from './list-feed-digest';
+import {
+  computeImportanceScore,
+  computeItemCredibilityScore,
+  suppressRevoked,
+  toProtoItem,
+  type ParsedItem,
+} from './list-feed-digest';
 
 export const NEWS_POOL_MAX_LANGUAGES = 8;
 
@@ -131,15 +138,40 @@ function healthyRow(value: unknown): ParsedItem[] | null {
   return value.items as ParsedItem[];
 }
 
+/**
+ * A feed row stores zero scores; the digest fills them in after merging every
+ * feed. Score the item the same way, counting only the corroboration the row
+ * itself recorded, since this read never sees the other feeds.
+ */
+function scoredRowItem(value: ParsedItem): NewsItem {
+  const corroboration = Math.max(value.corroborationCount ?? 1, value.entityCorroborationCount ?? 0);
+  return toProtoItem({
+    ...value,
+    importanceScore: computeImportanceScore(value.level, value.source, corroboration, value.publishedAt, {
+      title: value.title,
+      classSource: value.classSource,
+      entityCorroborationCount: value.entityCorroborationCount,
+    }),
+    credibilityScore: computeItemCredibilityScore(value, corroboration),
+  });
+}
+
 function unavailable(at: string, cells: NewsPoolCell[]): ListNewsPoolResponse {
   return { items: [], cells, state: 'unavailable', generatedAt: at };
 }
 
 export async function listNewsPool(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ListNewsPoolRequest,
 ): Promise<ListNewsPoolResponse> {
-  const query = canonicalQuery(req);
+  const response = await readPool(canonicalQuery(req));
+  // Only a complete read may be cached: an outage or a gap must clear on the
+  // next request, and a stale replay must not outlive its serving window.
+  if (response.state !== 'complete') markNoCacheResponse(ctx.request);
+  return response;
+}
+
+async function readPool(query: PoolQuery): Promise<ListNewsPoolResponse> {
   const nowMs = Date.now();
   const at = new Date(nowMs).toISOString();
   const digestCells = query.languages.includes('en')
@@ -226,7 +258,7 @@ export async function listNewsPool(
     for (const value of filterRevokedUrls(parsed, revoked.urls).kept) {
       if (!value?.title || !value.link) continue;
       if (!(value.publishedAt >= oldest && value.publishedAt <= newest)) continue;
-      const item = toProtoItem(value);
+      const item = scoredRowItem(value);
       const language = sourceLanguage(item.source || row.name);
       if (language !== row.language) continue;
       tally.cell.items += 1;

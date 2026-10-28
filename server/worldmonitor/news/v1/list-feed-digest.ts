@@ -661,7 +661,7 @@ function compareAnchorCandidates(a: ParsedItem, b: ParsedItem): number {
   return 0;
 }
 
-function computeItemCredibilityScore(
+export function computeItemCredibilityScore(
   item: CredibilitySourceItem,
   independentCorroborationCount: number,
 ): number {
@@ -744,7 +744,7 @@ function entityCorroborationScore(count: number | undefined): number {
   return Math.min(Math.max(finite, 0), 5) * ENTITY_CORROBORATION_SCORE_PER_SOURCE;
 }
 
-function computeImportanceScore(
+export function computeImportanceScore(
   level: ThreatLevel,
   source: string,
   corroborationCount: number,

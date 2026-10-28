@@ -23,6 +23,7 @@ import {
   extractEntities as extractPatternEntities,
 } from '../../../shared/keyword-spike-core.js';
 import { clusterNewsCore, protoThreatLevelToLabel, topClusterKeywords } from '../../../shared/news-clustering-core.js';
+import { tokenize, tokenizeAnyScript } from '../../../shared/text-analysis-core.js';
 import type { NewsItemCore } from '../../../shared/news-clustering-core.js';
 import { NEWS_POOL_LAYOUT } from '../../../shared/news-pool-layout.generated';
 import { getSourceProvenanceState } from '../../../shared/source-provenance.js';
@@ -598,6 +599,14 @@ function isNlpDigestCoverageState(value: unknown): value is NlpDigestCoverageSta
 }
 
 /**
+ * English titles keep the dashboard's tokenizer, so default reads cluster
+ * exactly as before; every other language needs its own script's letters.
+ */
+function titleTokenizer(language: string | undefined): (title: string) => Set<string> {
+  return !language || language === 'en' ? tokenize : tokenizeAnyScript;
+}
+
+/**
  * Clusters each content language on its own: token overlap across languages
  * means nothing until titles are translated. Items from the public digest
  * carry no language and cluster as one group, as before. Clusters keep the
@@ -610,13 +619,13 @@ function clusterNlpItemsByLanguage(items: NlpNewsItem[]) {
     if (group) group.push(item);
     else byLanguage.set(item.language ?? '', [item]);
   }
-  if (byLanguage.size <= 1) return clusterNewsCore(items, getSourceTier);
+  if (byLanguage.size <= 1) return clusterNewsCore(items, getSourceTier, titleTokenizer(items[0]?.language));
   const position = new Map(items.map((item, index) => [item.link || `${item.source}|${item.title}`, index]));
   const first = (cluster: ReturnType<typeof clusterNewsCore>[number]) => Math.min(
     ...cluster.allItems.map((item) => position.get(item.link || `${item.source}|${item.title}`) ?? Number.MAX_SAFE_INTEGER),
   );
   return [...byLanguage.values()]
-    .flatMap((group) => clusterNewsCore(group, getSourceTier))
+    .flatMap((group) => clusterNewsCore(group, getSourceTier, titleTokenizer(group[0]?.language)))
     .map((cluster) => ({ cluster, at: first(cluster) }))
     .sort((a, b) => a.at - b.at)
     .map(({ cluster }) => cluster);
@@ -1030,7 +1039,7 @@ export const NLP_TOOLS: ToolDef[] = [
             tier: declaredSourceTier(source),
             ...provenanceBySource.get(source)!,
           })),
-          topKeywords: topClusterKeywords(cluster, 5),
+          topKeywords: topClusterKeywords(cluster, 5, titleTokenizer(members[0]?.language)),
           isAlert: cluster.isAlert,
           threatLevel: cluster.threat?.level ?? 'info',
           threatCategory: cluster.threat?.category ?? 'general',

@@ -43,7 +43,7 @@ service NewsService {
     option (sebuf.http.config) = {path: "/list-media-perspective", method: HTTP_METHOD_GET};
   }
 
-  // ListNewsPool unions the warmed digests for several editions and content languages, one item per article URL. Never builds a digest.
+  // ListNewsPool merges cached news for several editions and content languages, one item per article URL: English from the warmed digest cells, other languages from their feeds' cached parses. Reads cache only; never builds a digest or fetches a feed.
   rpc ListNewsPool(ListNewsPoolRequest) returns (ListNewsPoolResponse) {
     option (sebuf.http.config) = {path: "/list-news-pool", method: HTTP_METHOD_GET};
   }

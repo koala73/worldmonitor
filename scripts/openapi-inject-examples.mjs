@@ -247,6 +247,18 @@ function overrideStringExample(key, context = {}) {
     if (key === 'audience') return 'domestic';
     if (key === 'outletregions') return 'northern-europe';
   }
+  // ListNewsPool validates languages, editions and categories against the
+  // catalog layout, so the heuristic's "example" values are rejected with 400.
+  if (where.includes('listnewspool') || where.includes('list-news-pool')) {
+    if (key === 'languages') return 'fr';
+    if (key === 'editions') return 'full';
+    if (key === 'category') return 'europe';
+  }
+  if (where.includes('listnewspool') || where.includes('list-news-pool') || where.includes('newspoolcell')) {
+    if (key === 'edition') return 'full';
+    if (key === 'language') return 'fr';
+    if (key === 'state') return 'complete';
+  }
   if (where.includes('listvulnerabilityrankings') || where.includes('list-vulnerability-rankings')) {
     if (key === 'commodityid') return 'crude_oil';
     if (key === 'band') return 'high';
