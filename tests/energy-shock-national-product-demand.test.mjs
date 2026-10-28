@@ -75,6 +75,7 @@ describe('product demand from national statistics (Malaysia, DOSM)', () => {
     const r = await shock();
     assert.equal(r.gulfCrudeShare, 0.58);
     assert.deepEqual(demandOf(r), { Gasoline: 340.5, Diesel: 240.7, 'Jet fuel': 62.9, LPG: 77.5 }, 'naphtha has no DOSM demand');
+    assert.ok(r.products.find((p) => p.product === 'Jet fuel')?.deficitPct > 0, 'the national-demand jet fuel deficit is modeled, not zero');
     assert.ok(r.products.every((p) => p.deficitPct >= 0 && p.deficitPct <= 100));
     assert.doesNotMatch(r.assessment, /no refined-product demand observation/);
     assert.match(
