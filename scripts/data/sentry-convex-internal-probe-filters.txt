@@ -26,6 +26,7 @@
 *Could not find public function for 'alertRules:getBriefOnlyUsers'*
 *Could not find public function for 'alertRules:getByEnabled'*
 *Could not find public function for 'alertRules:getDigestRules'*
+*Could not find public function for 'alertRules:listShapeViolations'*
 *Could not find public function for 'alertRules:setAlertRulesForUser'*
 *Could not find public function for 'alertRules:setDigestSettingsForUser'*
 *Could not find public function for 'alertRules:setNotificationConfigForUser'*

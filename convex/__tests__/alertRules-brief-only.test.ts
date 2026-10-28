@@ -46,7 +46,8 @@ describe("alertRules.getBriefOnlyUsers", () => {
       await ent("user_pro_expired", "pro_monthly", now - DAY);
     });
 
-    const users = await t.query(internal.alertRules.getBriefOnlyUsers, {});
+    const { page: users, isDone } = await t.query(internal.alertRules.getBriefOnlyUsers, { cursor: null });
+    expect(isDone).toBe(true);
     expect([...users].sort()).toEqual([
       "user_pro_disabled_daily",
       "user_pro_no_rules",

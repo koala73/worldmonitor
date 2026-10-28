@@ -121,16 +121,12 @@ for (const state of states) {
       });
     });
 
-    test("every public and internal alert-settings writer is fenced", async () => {
+    test("every alert-settings writer is fenced", async () => {
       const t = await makeT(state);
-      const user = t.withIdentity(identity);
       const userId = identity.subject;
       const rules = { variant: "full", enabled: true, channels: [], eventTypes: [] };
       const digest = { variant: "full", digestMode: "daily" as const };
       const quiet = { variant: "full", quietHoursEnabled: false };
-      await rejected(user.mutation(api.alertRules.setAlertRules, rules));
-      await rejected(user.mutation(api.alertRules.setDigestSettings, digest));
-      await rejected(user.mutation(api.alertRules.setQuietHours, quiet));
       await rejected(t.mutation(internal.alertRules.setAlertRulesForUser, { ...rules, userId }));
       await rejected(t.mutation(internal.alertRules.setDigestSettingsForUser, { ...digest, userId }));
       await rejected(t.mutation(internal.alertRules.setQuietHoursForUser, { ...quiet, userId }));

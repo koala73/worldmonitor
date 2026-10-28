@@ -21,7 +21,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import schema from "../schema";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -60,8 +60,8 @@ describe("alertRules.tickers — persistence + normalization", () => {
   test("plain symbol list is stored as-is", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: ["watchlist_story_alert"],
@@ -76,8 +76,8 @@ describe("alertRules.tickers — persistence + normalization", () => {
   test("normalizes case + whitespace + dedupe (first-seen order)", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],
@@ -100,8 +100,8 @@ describe("alertRules.tickers — persistence + normalization", () => {
     // M&M.NS and 8 more dictionary symbols).
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],
@@ -121,7 +121,6 @@ describe("alertRules.tickers — persistence + normalization", () => {
   test("caps at 50 entries — throws TICKERS_LIMIT_EXCEEDED on 51", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
     const symbols: string[] = [];
     const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     outer: for (let i = 0; i < letters.length; i++) {
@@ -131,7 +130,8 @@ describe("alertRules.tickers — persistence + normalization", () => {
       }
     }
     await expect(
-      asUser.mutation(api.alertRules.setAlertRules, {
+      t.mutation(internal.alertRules.setAlertRulesForUser, {
+        userId: USER.subject,
         variant: VARIANT,
         enabled: true,
         eventTypes: [],
@@ -145,8 +145,8 @@ describe("alertRules.tickers — persistence + normalization", () => {
   test("backward compat: insert without tickers field → field absent on row", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],
@@ -161,8 +161,8 @@ describe("alertRules.tickers — persistence + normalization", () => {
   test("preserve-on-omit: existing tickers:['AAPL'] + caller omits → row still has ['AAPL']", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: ["watchlist_story_alert"],
@@ -171,7 +171,8 @@ describe("alertRules.tickers — persistence + normalization", () => {
       tickers: ["AAPL"],
     });
     // Second write omits tickers (e.g. user toggled 'enabled' on the form).
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: false,
       eventTypes: ["watchlist_story_alert"],
@@ -186,8 +187,8 @@ describe("alertRules.tickers — persistence + normalization", () => {
   test("explicit reset: existing tickers:['AAPL'] + caller passes [] → row stores []", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],
@@ -195,7 +196,8 @@ describe("alertRules.tickers — persistence + normalization", () => {
       channels: [],
       tickers: ["AAPL"],
     });
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],

@@ -1720,6 +1720,34 @@ ${profile}`;
   return impact;
 }
 
+// A rules-read failure used to drop the event on the floor. The read is shared
+// across every tenant (one Convex transaction over every enabled rule), so a
+// transient failure there — a Convex blip, or the read limit tripped by an
+// oversized row before the shape bounds existed — silently lost alerts for
+// everyone. Now the event goes back on the queue (LPUSH = behind everything
+// already queued; the loop RPOPs from the tail) with an attempt counter, and
+// the relay backs off so an outage does not spin. After the last attempt the
+// drop is logged loudly instead of quietly.
+const RULES_FETCH_RETRY_MAX = 5;
+const RULES_FETCH_RETRY_BACKOFF_MS = 2000;
+const RULES_FETCH_RETRY_BACKOFF_MAX_MS = 10000;
+
+async function requeueAfterRulesFailure(event, err) {
+  const attempts = (Number.isInteger(event.rulesFetchAttempts) ? event.rulesFetchAttempts : 0) + 1;
+  if (attempts > RULES_FETCH_RETRY_MAX) {
+    console.error(`[relay] Dropping ${event.eventType} after ${RULES_FETCH_RETRY_MAX} alert-rules fetch failures:`, err.message);
+    return false;
+  }
+  const requeued = await upstashRest('LPUSH', EVENT_QUEUE_KEY, JSON.stringify({ ...event, rulesFetchAttempts: attempts }));
+  if (requeued === null) {
+    console.error(`[relay] Failed to fetch alert rules and could not re-queue ${event.eventType} — dropped:`, err.message);
+    return false;
+  }
+  console.warn(`[relay] Failed to fetch alert rules (attempt ${attempts}/${RULES_FETCH_RETRY_MAX}); re-queued ${event.eventType}:`, err.message);
+  await new Promise(r => setTimeout(r, Math.min(RULES_FETCH_RETRY_BACKOFF_MS * attempts, RULES_FETCH_RETRY_BACKOFF_MAX_MS)));
+  return true;
+}
+
 async function processEvent(event) {
   if (event.eventType === 'channel_welcome') { await processWelcome(event); return; }
   if (event.eventType === 'flush_quiet_held') { await processFlushQuietHeld(event); return; }
@@ -1749,7 +1777,7 @@ async function processEvent(event) {
   try {
     enabledRules = await fetchEnabledRules(true);
   } catch (err) {
-    console.error('[relay] Failed to fetch alert rules:', err.message);
+    await requeueAfterRulesFailure(event, err);
     return;
   }
 
@@ -2062,4 +2090,8 @@ module.exports = {
   popNextEvent,
   holdEvent,
   QUIET_HELD_MAX,
+  // Exported so the re-queue suite drives the real retry path.
+  requeueAfterRulesFailure,
+  RULES_FETCH_RETRY_MAX,
+  EVENT_QUEUE_KEY,
 };
