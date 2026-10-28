@@ -59,7 +59,7 @@ function normalizeCompanyMonitoringScopes(scopes: string[] | undefined) {
 }
 
 // ---------------------------------------------------------------------------
-// Public mutations & queries (require Clerk JWT via ctx.auth)
+// Internal key issuance and public key management (Clerk JWT via ctx.auth)
 // ---------------------------------------------------------------------------
 
 /**
@@ -90,8 +90,10 @@ async function keySourceFields(
   return { sourceRef: user.signupRef, ...(user.signupSource ? { source: user.signupSource } : {}) };
 }
 
-export const createApiKey = mutation({
+// Only the live-session-gated edge relay may issue keys.
+export const createApiKeyForUser = internalMutation({
   args: {
+    userId: v.string(),
     name: v.string(),
     keyPrefix: v.string(),
     keyHash: v.string(),
@@ -100,7 +102,7 @@ export const createApiKey = mutation({
     keyKind: v.optional(keyKindValidator),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
+    const userId = args.userId;
     await assertAccountWritable(ctx, userId);
 
     if (args.keyKind === "desktop") {

@@ -126,6 +126,18 @@ The gateway tries the API key first. If that fails on a premium endpoint, it fal
 
 Non-premium endpoints don't require any authentication from web origins.
 
+### Live-session checks for credential issuance
+
+JWT verification is stateless: a token whose Clerk session was revoked (sign-out, "sign out other devices", an admin revoke) still verifies until `exp`. Routes that trade a bearer for a credential that outlives it therefore also ask Clerk whether the token's session (`sid`) is still `active` for the same user — `GET /v1/sessions/{sid}` via `verifyClerkSessionActive` (`server/auth-session.ts`), never cached:
+
+- `/api/desktop-auth/authorize` verifies the bearer locally, applies its per-user rate limit, then requires a live session before binding a code and stores the `sid` with it; `/api/desktop-auth/token` re-checks that `sid` after the PKCE verifier matched and before minting the sign-in ticket.
+- `/api/user-api-keys` verifies the standard session token locally, applies a fail-closed per-user limit (10 per 10 minutes), then requires a live session before issuing an API or desktop key through the gateway-only Convex relay. Key creation is an internal mutation (`apiKeys.createApiKeyForUser`); there is no public Convex key-creation mutation.
+- `/api/internal/mcp-grant-mint` follows the same order: local verify, per-user rate limit (20 per 10 minutes), then the live-session check, before the nonce or entitlement are read.
+
+Only Clerk's **standard session token** carries `sid`; JWT-template tokens (including the `convex` template) get just `azp, exp, iat, iss, jti, nbf, sub`. The desktop sign-in page, MCP grant page, and API-key creation service therefore send `getClerkSessionToken()` (`session.getToken()` with no template) to these routes, not `getClerkToken()`.
+
+A missing `sid` or an inactive session is a 401; Clerk being unreachable is a retryable 503 — nothing is issued on a guess. At `/token` the one-time code is already consumed when the check runs, so its 503 (`session_check_unavailable`) carries no `Retry-After`: the desktop restarts the browser sign-in.
+
 ---
 
 ## Environment Variables

@@ -6956,7 +6956,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 94
         }
       ]
     },
@@ -6968,7 +6969,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 7
+          "browserOrder": 7,
+          "serverOrder": 93
         }
       ]
     },
@@ -6980,7 +6982,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 83
         }
       ]
     },
@@ -6992,7 +6995,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 10
+          "browserOrder": 10,
+          "serverOrder": 86
         }
       ]
     },
@@ -7004,7 +7008,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 11
+          "browserOrder": 11,
+          "serverOrder": 91
         }
       ]
     },
@@ -7016,19 +7021,21 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 12
+          "browserOrder": 12,
+          "serverOrder": 92
         }
       ]
     },
     {
       "name": "Corriere della Sera",
-      "url": "https://www.corriere.it/rss/homepage.xml",
+      "url": "https://news.google.com/rss/search?q=site:corriere.it+when:1d&hl=it&gl=IT&ceid=IT:it",
       "lang": "it",
       "placements": [
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 16
+          "browserOrder": 16,
+          "serverOrder": 87
         }
       ]
     },
@@ -7040,7 +7047,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 17
+          "browserOrder": 17,
+          "serverOrder": 99
         }
       ]
     },
@@ -7052,7 +7060,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 19
+          "browserOrder": 19,
+          "serverOrder": 95
         }
       ]
     },
@@ -7064,7 +7073,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 20
+          "browserOrder": 20,
+          "serverOrder": 90
         }
       ]
     },
@@ -7076,7 +7086,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 22
+          "browserOrder": 22,
+          "serverOrder": 89
         }
       ]
     },
@@ -7088,7 +7099,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 23
+          "browserOrder": 23,
+          "serverOrder": 100
         }
       ]
     },
@@ -7103,7 +7115,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 29
+          "browserOrder": 29,
+          "serverOrder": 85
         }
       ]
     },
@@ -7115,7 +7128,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 30
+          "browserOrder": 30,
+          "serverOrder": 88
         }
       ]
     },
@@ -7130,7 +7144,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 72
+          "browserOrder": 72,
+          "serverOrder": 84
         }
       ]
     },
@@ -7142,7 +7157,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 75
+          "browserOrder": 75,
+          "serverOrder": 96
         }
       ]
     },
@@ -7153,7 +7169,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 76
+          "browserOrder": 76,
+          "serverOrder": 101
         }
       ]
     },
@@ -7164,7 +7181,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 77
+          "browserOrder": 77,
+          "serverOrder": 97
         }
       ]
     },
@@ -7175,7 +7193,8 @@
         {
           "edition": "full",
           "category": "europe",
-          "browserOrder": 78
+          "browserOrder": 78,
+          "serverOrder": 98
         }
       ]
     },
@@ -7186,7 +7205,8 @@
         {
           "edition": "full",
           "category": "middleeast",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 29
         }
       ]
     },
@@ -7197,7 +7217,8 @@
         {
           "edition": "full",
           "category": "middleeast",
-          "browserOrder": 7
+          "browserOrder": 7,
+          "serverOrder": 30
         }
       ]
     },
@@ -7208,7 +7229,8 @@
         {
           "edition": "full",
           "category": "middleeast",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 31
         }
       ]
     },
@@ -7220,40 +7242,44 @@
         {
           "edition": "full",
           "category": "middleeast",
-          "browserOrder": 16
+          "browserOrder": 16,
+          "serverOrder": 28
         }
       ]
     },
     {
       "name": "CDC",
-      "url": "https://news.google.com/rss/search?q=site:cdc.gov+OR+CDC+health&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://news.google.com/rss/search?q=site:cdc.gov+OR+CDC+health+when:7d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "full",
           "category": "gov",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 11
         }
       ]
     },
     {
       "name": "FEMA",
-      "url": "https://news.google.com/rss/search?q=site:fema.gov+OR+FEMA+emergency&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://news.google.com/rss/search?q=site:fema.gov+OR+FEMA+emergency+when:7d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "full",
           "category": "gov",
-          "browserOrder": 9
+          "browserOrder": 9,
+          "serverOrder": 13
         }
       ]
     },
     {
       "name": "DHS",
-      "url": "https://news.google.com/rss/search?q=site:dhs.gov+OR+\"Homeland+Security\"&hl=en-US&gl=US&ceid=US:en",
+      "url": "https://news.google.com/rss/search?q=site:dhs.gov+OR+\"Homeland+Security\"+when:3d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "full",
           "category": "gov",
-          "browserOrder": 10
+          "browserOrder": 10,
+          "serverOrder": 12
         }
       ]
     },
@@ -7264,13 +7290,15 @@
         {
           "edition": "full",
           "category": "thinktanks",
-          "browserOrder": 4
+          "browserOrder": 4,
+          "serverOrder": 8
         },
         {
           "edition": "intel",
           "category": "intel",
           "browserOrder": 18,
-          "type": "research"
+          "type": "research",
+          "serverOrder": 24
         }
       ],
       "notes": [
@@ -7333,7 +7361,8 @@
         {
           "edition": "full",
           "category": "thinktanks",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 9
         }
       ]
     },
@@ -7365,7 +7394,7 @@
     },
     {
       "name": "FPRI",
-      "url": "https://www.fpri.org/feed/",
+      "url": "https://news.google.com/rss/search?q=site:fpri.org+when:7d&hl=en-US&gl=US&ceid=US:en",
       "notes": [
         "FPRI - Foreign Policy Research Institute (US foreign policy)"
       ],
@@ -7373,7 +7402,8 @@
         {
           "edition": "full",
           "category": "thinktanks",
-          "browserOrder": 10
+          "browserOrder": 10,
+          "serverOrder": 6
         }
       ]
     },
@@ -7387,7 +7417,8 @@
         {
           "edition": "full",
           "category": "thinktanks",
-          "browserOrder": 11
+          "browserOrder": 11,
+          "serverOrder": 7
         }
       ]
     },
@@ -7398,7 +7429,8 @@
         {
           "edition": "full",
           "category": "crisis",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 3
         }
       ]
     },
@@ -7410,7 +7442,8 @@
         {
           "edition": "full",
           "category": "africa",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 33
         }
       ]
     },
@@ -7421,7 +7454,8 @@
         {
           "edition": "full",
           "category": "latam",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 21
         }
       ]
     },
@@ -7432,7 +7466,8 @@
         {
           "edition": "full",
           "category": "latam",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 24
         }
       ]
     },
@@ -7444,7 +7479,8 @@
         {
           "edition": "full",
           "category": "latam",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 23
         }
       ]
     },
@@ -7456,7 +7492,8 @@
         {
           "edition": "full",
           "category": "latam",
-          "browserOrder": 7
+          "browserOrder": 7,
+          "serverOrder": 19
         }
       ]
     },
@@ -7468,7 +7505,8 @@
         {
           "edition": "full",
           "category": "latam",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 17
         }
       ]
     },
@@ -7480,18 +7518,24 @@
         {
           "edition": "full",
           "category": "latam",
-          "browserOrder": 9
+          "browserOrder": 9,
+          "serverOrder": 18
         }
       ]
     },
     {
       "name": "La Silla Vacía",
       "url": "https://www.lasillavacia.com/rss",
+      "lang": "es",
+      "browser": {
+        "lang": null
+      },
       "placements": [
         {
           "edition": "full",
           "category": "latam",
-          "browserOrder": 10
+          "browserOrder": 10,
+          "serverOrder": 20
         }
       ]
     },
@@ -7502,7 +7546,8 @@
         {
           "edition": "full",
           "category": "latam",
-          "browserOrder": 15
+          "browserOrder": 15,
+          "serverOrder": 22
         }
       ]
     },
@@ -7513,7 +7558,8 @@
         {
           "edition": "full",
           "category": "latam",
-          "browserOrder": 16
+          "browserOrder": 16,
+          "serverOrder": 16
         }
       ]
     },
@@ -7524,30 +7570,33 @@
         {
           "edition": "full",
           "category": "asia",
-          "browserOrder": 11
+          "browserOrder": 11,
+          "serverOrder": 48
         }
       ]
     },
     {
       "name": "India News Network",
-      "url": "https://news.google.com/rss/search?q=India+diplomacy+foreign+policy+news&hl=en&gl=US&ceid=US:en",
+      "url": "https://news.google.com/rss/search?q=India+diplomacy+foreign+policy+news+when:3d&hl=en&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "full",
           "category": "asia",
-          "browserOrder": 13
+          "browserOrder": 13,
+          "serverOrder": 47
         }
       ]
     },
     {
       "name": "Thai PBS",
-      "url": "https://news.google.com/rss/search?q=Thai+PBS+World+news&hl=en&gl=US&ceid=US:en",
+      "url": "https://news.google.com/rss/search?q=Thai+PBS+World+news+when:2d&hl=en&gl=US&ceid=US:en",
       "lang": "th",
       "placements": [
         {
           "edition": "full",
           "category": "asia",
-          "browserOrder": 22
+          "browserOrder": 22,
+          "serverOrder": 49
         }
       ]
     },
@@ -7559,7 +7608,8 @@
         {
           "edition": "full",
           "category": "asia",
-          "browserOrder": 24
+          "browserOrder": 24,
+          "serverOrder": 50
         }
       ]
     },
@@ -7571,7 +7621,8 @@
         {
           "edition": "full",
           "category": "asia",
-          "browserOrder": 26
+          "browserOrder": 26,
+          "serverOrder": 45
         }
       ]
     },
@@ -7585,7 +7636,8 @@
         {
           "edition": "full",
           "category": "asia",
-          "browserOrder": 27
+          "browserOrder": 27,
+          "serverOrder": 44
         }
       ]
     },
@@ -7596,7 +7648,8 @@
         {
           "edition": "full",
           "category": "asia",
-          "browserOrder": 28
+          "browserOrder": 28,
+          "serverOrder": 46
         }
       ]
     },
@@ -7607,7 +7660,8 @@
         {
           "edition": "full",
           "category": "energy",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 3
         }
       ]
     },

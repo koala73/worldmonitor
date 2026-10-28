@@ -121,6 +121,66 @@ describe('lookupClerkPlan', () => {
   });
 });
 
+describe('verifyClerkSessionActive', () => {
+  it('reports active only for a live session of the same user, unavailable when Clerk cannot answer', async () => {
+    const originalSecret = process.env.CLERK_SECRET_KEY;
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+    process.env.CLERK_SECRET_KEY = 'sk_test_session_check';
+    console.warn = () => {};
+
+    try {
+      const mod = await import(`../server/auth-session.ts?session-check=${Date.now()}`);
+      const requests: Array<{ url: string; agent: string | null }> = [];
+      let answer: () => Response | never = () => Response.json({ id: 'sess_1', status: 'active', user_id: 'user_1' });
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({ url: String(input), agent: new Headers(init?.headers).get('user-agent') });
+        return answer();
+      }) as typeof fetch;
+
+      assert.equal(await mod.verifyClerkSessionActive('sess_1', 'user_1'), 'active');
+      assert.equal(requests[0]!.url, 'https://api.clerk.com/v1/sessions/sess_1');
+      assert.match(requests[0]!.agent ?? '', /worldmonitor/i);
+
+      // Clerk answered: this session is not usable.
+      answer = () => Response.json({ id: 'sess_1', status: 'revoked', user_id: 'user_1' });
+      assert.equal(await mod.verifyClerkSessionActive('sess_1', 'user_1'), 'inactive');
+      answer = () => Response.json({ id: 'sess_1', status: 'active', user_id: 'user_other' });
+      assert.equal(await mod.verifyClerkSessionActive('sess_1', 'user_1'), 'inactive');
+      answer = () => Response.json({ id: 'sess_2', status: 'active', user_id: 'user_1' });
+      assert.equal(await mod.verifyClerkSessionActive('sess_1', 'user_1'), 'inactive');
+      answer = () => new Response('', { status: 404 });
+      assert.equal(await mod.verifyClerkSessionActive('sess_1', 'user_1'), 'inactive');
+      assert.equal(await mod.verifyClerkSessionActive('', 'user_1'), 'inactive');
+
+      // No answer: never an "active" verdict.
+      answer = () => new Response('', { status: 503 });
+      assert.equal(await mod.verifyClerkSessionActive('sess_1', 'user_1'), 'unavailable');
+      answer = () => new Response('', { status: 401 });
+      assert.equal(await mod.verifyClerkSessionActive('sess_1', 'user_1'), 'unavailable');
+      answer = () => { throw new DOMException('timed out', 'TimeoutError'); };
+      assert.equal(await mod.verifyClerkSessionActive('sess_1', 'user_1'), 'unavailable');
+      answer = () => { throw new TypeError('fetch failed'); };
+      assert.equal(await mod.verifyClerkSessionActive('sess_1', 'user_1'), 'unavailable');
+
+      // Liveness is the question, so nothing is cached.
+      answer = () => Response.json({ id: 'sess_1', status: 'active', user_id: 'user_1' });
+      const before = requests.length;
+      await mod.verifyClerkSessionActive('sess_1', 'user_1');
+      await mod.verifyClerkSessionActive('sess_1', 'user_1');
+      assert.equal(requests.length, before + 2);
+
+      delete process.env.CLERK_SECRET_KEY;
+      assert.equal(await mod.verifyClerkSessionActive('sess_1', 'user_1'), 'unavailable');
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+      if (originalSecret === undefined) delete process.env.CLERK_SECRET_KEY;
+      else process.env.CLERK_SECRET_KEY = originalSecret;
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Suite 2: full JWT validation with self-signed keys + local JWKS server
 // ---------------------------------------------------------------------------
@@ -257,6 +317,69 @@ describe('validateBearerToken (with JWKS)', () => {
     assert.equal(result.role, 'pro');
     // A token with real life left was not admitted by the tolerance.
     assert.equal(result.acceptedWithinClockTolerance, undefined);
+  });
+
+  it('skips the Clerk plan lookup for a plan-less token when resolvePlan is false', async () => {
+    // This suite's module instance was imported with no CLERK_SECRET_KEY, so
+    // its lookup never fires: use a fresh instance that would call Clerk.
+    const originalFetch = globalThis.fetch;
+    const originalSecret = process.env.CLERK_SECRET_KEY;
+    const originalWarn = console.warn;
+    process.env.CLERK_SECRET_KEY = 'sk_test_no_plan_lookup';
+    console.warn = () => {};
+    const lookups: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!url.includes('api.clerk.com')) return originalFetch(input, init); // JWKS
+      lookups.push(url);
+      return Response.json({ public_metadata: { plan: 'pro' } });
+    }) as typeof fetch;
+    try {
+      const mod = await import(`../server/auth-session.ts?no-plan-lookup=${Date.now()}`);
+      const token = await signToken({ sub: 'user_no_plan_claim', sid: 'sess_x' }, { audience: null });
+
+      // Control: by default a plan-less token costs one Backend API call.
+      const looked = await mod.validateBearerToken(token);
+      assert.equal(looked.valid, true);
+      assert.equal(looked.role, 'pro');
+      assert.equal(lookups.length, 1);
+
+      const skipped = await mod.validateBearerToken(
+        await signToken({ sub: 'user_no_plan_claim_2', sid: 'sess_y' }, { audience: null }),
+        { resolvePlan: false },
+      );
+      assert.equal(skipped.valid, true);
+      assert.equal(skipped.role, 'free');
+      assert.equal(skipped.sessionId, 'sess_y');
+      assert.equal(lookups.length, 1, 'no further Backend API call');
+
+      // A token that states its plan keeps it either way.
+      const stated = await mod.validateBearerToken(await signToken({ sub: 'user_stated', plan: 'pro' }), { resolvePlan: false });
+      assert.equal(stated.role, 'pro');
+      assert.equal(lookups.length, 1);
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+      if (originalSecret === undefined) delete process.env.CLERK_SECRET_KEY;
+      else process.env.CLERK_SECRET_KEY = originalSecret;
+    }
+  });
+
+  it('surfaces the Clerk session id (`sid`) so callers can check liveness, and omits it when absent', async () => {
+    const withSession = await validateBearerToken(await signToken({ sub: 'user_sid', plan: 'pro', sid: 'sess_abc' }));
+    assert.equal(withSession.valid, true);
+    assert.equal((withSession as { sessionId?: string }).sessionId, 'sess_abc');
+
+    const noSession = await validateBearerToken(await signToken({ sub: 'user_nosid', plan: 'pro' }));
+    assert.equal(noSession.valid, true);
+    assert.equal((noSession as { sessionId?: string }).sessionId, undefined);
+
+    // A non-string or empty sid is not a session id.
+    for (const sid of ['', 42, null]) {
+      const result = await validateBearerToken(await signToken({ sub: 'user_badsid', plan: 'pro', sid }));
+      assert.equal(result.valid, true, String(sid));
+      assert.equal((result as { sessionId?: string }).sessionId, undefined, String(sid));
+    }
   });
 
   it('accepts a valid Free token and normalizes role to free', async () => {
