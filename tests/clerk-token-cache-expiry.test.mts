@@ -212,6 +212,35 @@ describe('getClerkSessionToken', () => {
     assert.deepEqual(calls, [[]]);
   });
 
+  it('discards a pending token when the selected session changes', async () => {
+    let resolveToken!: (token: string) => void;
+    const pendingToken = new Promise<string>((resolve) => { resolveToken = resolve; });
+    const clerk = { session: { getToken: () => pendingToken } };
+    __setClerkInstanceForTests(clerk as never);
+
+    const result = getClerkSessionToken();
+    clerk.session = { getToken: async () => 'session-b-token' };
+    resolveToken('session-a-token');
+
+    assert.equal(await result, null);
+    assert.equal(await getClerkSessionToken(), 'session-b-token');
+  });
+
+  it('discards a pending token when the token generation is invalidated', async () => {
+    let resolveToken!: (token: string) => void;
+    const pendingToken = new Promise<string>((resolve) => { resolveToken = resolve; });
+    const tokens = [pendingToken, Promise.resolve('fresh-session-token')];
+    const session = { getToken: () => tokens.shift()! };
+    __setClerkInstanceForTests({ session } as never);
+
+    const result = getClerkSessionToken();
+    clearClerkTokenCache();
+    resolveToken('superseded-session-token');
+
+    assert.equal(await result, null);
+    assert.equal(await getClerkSessionToken(), 'fresh-session-token');
+  });
+
   it('returns null when nobody is signed in or Clerk refuses', async () => {
     __setClerkInstanceForTests(null);
     assert.equal(await getClerkSessionToken(), null);
