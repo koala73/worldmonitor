@@ -811,8 +811,9 @@ paths:
                       - "fr"
                   schema:
                     type: array
+                    maxItems: 8
                     items:
-                        type: string
+                      type: string
                 - name: editions
                   in: query
                   description: Digest editions, e.g. full, tech, finance. Empty means full.
@@ -823,8 +824,9 @@ paths:
                       - "full"
                   schema:
                     type: array
+                    maxItems: 8
                     items:
-                        type: string
+                      type: string
                 - name: category
                   in: query
                   description: One category key within the selected editions.
@@ -832,6 +834,7 @@ paths:
                   example: "us"
                   schema:
                     type: string
+                    maxLength: 32
                 - name: jmespath
                   in: query
                   description: |-
