@@ -423,6 +423,16 @@ describe('refinery yields from the trailing 12 JODI months', () => {
     assert.equal(extractCountryData(windowFixture({ total: 700 }), 'XX').refineryYields.intakeIssue, 'implausible_output_ratio');
   });
 
+  it('one month of total output cannot reject twelve months of intake', () => {
+    // Greptile on #9788: a single 1.6x month used to flip the basis to total
+    // output, which then had too few months, so every yield went to the median.
+    const rows = windowFixture({ total: null, extra: [makeRow({ REF_AREA: 'XX', TIME_PERIOD: '2026-06', ENERGY_PRODUCT: 'TOTPRODS', FLOW_BREAKDOWN: 'REFGROUT', OBS_VALUE: '1600', ASSESSMENT_CODE: '1' })] });
+    const yields = extractCountryData(rows, 'XX').refineryYields;
+    assert.equal(yields.basis, 'crude_refinery_intake');
+    assert.equal(yields.intakeIssue, null);
+    assert.equal(yields.products.gasoline, 0.25);
+  });
+
   it('unreported intake falls back to total output; no denominator at all publishes no yields', () => {
     const noIntake = extractCountryData(windowFixture({ intake: null, total: 1000 }), 'XX').refineryYields;
     assert.equal(noIntake.basis, 'total_refinery_output');

@@ -302,7 +302,9 @@ export function computeRefineryYields(byMonth, iso2, dataMonth) {
     return Math.abs(residual) <= Math.max(BALANCE_TOLERANCE_KBD, c.intake * BALANCE_TOLERANCE_SHARE);
   }).length;
   const paired = intakeMonths.filter((m) => m.totalOutput !== null);
-  const outputPerIntake = paired.length > 0
+  // Too few paired months cannot reject the intake: the total-output basis
+  // would then be too short to publish, and every yield would fall back.
+  const outputPerIntake = paired.length >= REFINERY_YIELD_MIN_MONTHS
     ? paired.reduce((s, m) => s + m.totalOutput, 0) / paired.reduce((s, m) => s + m.intake.intake, 0)
     : null;
 
