@@ -80,8 +80,13 @@ describe('decision brief preview and exports', () => {
   for (const missing of [true, false]) it(`exports real oil handler state with missing imports=${missing}`, async () => {
     redis.clear();
     redis.set('energy:chokepoint-flows:v1', { hormuz_strait: { flowRatio: 1 } });
+    // `missing` = no JODI crude imports beside World-only Comtrade rows (no origin share).
+    // Otherwise a measured 40% Gulf share from the partner-level key drives the loss.
     redis.set('energy:jodi-oil:v1:DE', { crude: { importsKbd: missing ? null : 100 }, diesel: { demandKbd: 80 } });
     redis.set('comtrade:flows:276:2709', [{ partnerCode: '000', tradeValueUsd: 100 }]);
+    if (!missing) {
+      redis.set('comtrade:bilateral-hs4-partners:DE:v1', { iso2: 'DE', products: [{ hs4: '2709', year: 2024, totalValue: 1000, partners: [{ partnerIso2: 'SA', partnerCode: 682, value: 400 }, { partnerIso2: 'US', partnerCode: 842, value: 600 }], omittedCount: 0, omittedShare: 0 }] });
+    }
     const oilSelection = { ...selection, fuelMode: 'oil' as const };
     const captures = await Promise.all([50, 100].map(async disruptionPct => ({
       retrievedAt: '2026-09-10T10:00:00Z',
@@ -89,8 +94,11 @@ describe('decision brief preview and exports', () => {
     }))) as [DecisionBriefCapture, DecisionBriefCapture];
     const data = buildDecisionBrief(oilSelection, captures);
     expect(data.results.map(r => r.loss)).toEqual(missing ? [null, null] : [20, 40]);
-    expect(data.evidence.find(e => e.id === 'baseline-route')!.value).toBeNull();
-    expect(data.unknowns.join(' ')).toContain('fixed proxy');
+    expect(data.evidence.find(e => e.id === 'baseline-route')!.value).toBe(missing ? null : 40);
+    const unavailableText = 'not modeled without a measured origin share';
+    if (missing) expect(data.unknowns.join(' ')).toContain(unavailableText);
+    else expect(data.unknowns.join(' ')).not.toContain('Comtrade route exposure is unavailable');
+    expect(data.unknowns.join(' ')).not.toContain('fixed proxy');
     expect(data.action.text).toContain(missing ? 'Recover the oil import' : "Compare Germany's");
     const blobs: Blob[] = [];
     vi.spyOn(URL, 'createObjectURL').mockImplementation(blob => { blobs.push(blob as Blob); return 'blob:test'; });
@@ -101,7 +109,8 @@ describe('decision brief preview and exports', () => {
     fuel.value = 'oil'; fuel.dispatchEvent(new Event('change'));
     click(root, 'Capture / refresh both');
     await vi.waitFor(() => expect(root.querySelector('.cdp-decision-action')?.textContent).toBe(data.action.text));
-    expect(root.textContent).toContain('fixed proxy');
+    if (missing) expect(root.textContent).toContain(unavailableText);
+    expect(root.textContent).not.toContain('fixed proxy');
     click(root, 'Download decision HTML'); click(root, 'Download decision JSON');
     const exported = JSON.parse(await blobs[1]!.text());
     expect(exported.operationalWorksheet.baseline.firstGapDay).toBe(8);

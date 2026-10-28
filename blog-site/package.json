@@ -23,7 +23,7 @@
     "astro": "^7.3.3",
     "gray-matter": "^4.0.3",
     "http-cache-semantics": "file:../vendor/http-cache-semantics",
-    "satori": "^0.25.0",
+    "satori": "^0.33.5",
     "sharp": "^0.35.5"
   },
   "overrides": {
