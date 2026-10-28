@@ -407,7 +407,9 @@ export function extractClosingStocks(allRows, iso2) {
   }
   for (const month of [...byMonth.keys()].sort((a, b) => b.localeCompare(a))) {
     const m = byMonth.get(month);
-    const crude = m.CRUDEOIL ?? m.TOTCRUDE ?? null;
+    // A zero TOTCRUDE barrel stock is a placeholder: India files KBBL 0 beside
+    // 6,086 kt in the same row set.
+    const crude = m.CRUDEOIL ?? (m.TOTCRUDE > 0 ? m.TOTCRUDE : null);
     const products = m.TOTPRODS ?? null;
     if (crude === null || products === null || crude + products <= 0) continue;
     return { month, crudeMb: crude / 1000, productsMb: products / 1000 };

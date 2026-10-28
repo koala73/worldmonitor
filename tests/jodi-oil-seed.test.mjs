@@ -1031,6 +1031,11 @@ describe('closing stocks (CLOSTLV)', () => {
     assert.deepEqual(extractCountryData(rows, 'IN').stocks, { month: '2026-03', crudeMb: 25.354, productsMb: 33.166 });
   });
 
+  it('a zero TOTCRUDE stock is a placeholder, not an empty tank (India files KBBL 0 beside 6,086 kt)', () => {
+    const rows = [...flows('2026-03'), stock('CRUDEOIL', '2026-03', '-'), stock('TOTCRUDE', '2026-03', '0'), stock('TOTPRODS', '2026-03', '95989')];
+    assert.equal(extractCountryData(rows, 'IN').stocks, null);
+  });
+
   it('is null when no month reports both, or the total is zero, and never reads another country', () => {
     assert.equal(extractCountryData([...flows('2026-03'), stock('CRUDEOIL', '2026-03', '45280')], 'IN').stocks, null);
     assert.equal(extractCountryData([...flows('2026-03'), stock('CRUDEOIL', '2026-03', '0'), stock('TOTPRODS', '2026-03', '0')], 'IN').stocks, null);
