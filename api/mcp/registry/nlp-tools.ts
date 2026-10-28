@@ -1068,7 +1068,7 @@ export const NLP_TOOLS: ToolDef[] = [
     name: 'verify_claim',
     title: 'Check a claim against news coverage',
     _outputBudgetBytes: 65536,
-    description: 'Return an evidence card for a claim or headline: the live-digest clusters reporting the same event, a result state (corroborated, single-publisher, tier4-only, unknown, or not-found when the digest was searched and nothing reports it; unknown when there were no headlines to search), WorldMonitor\'s coverage verdict over the matched clusters, the publishers roster with declared tiers, matched headlines with fail-closed source provenance, a figure check (numbers and dates in the claim that no matched headline states) and first/last sighting. found=false means the claim was not matched, never that it is false; this is coverage, not accuracy. factChecks quotes ratings IFCN-verified fact-checkers published about a similar claim, each with checker, date and link; the rating is theirs and never changes state. Deterministic, no LLM. Requires a paid plan; one downstream search, weight 2 on API plans. claim is up to 300 characters; variant picks the full or tech digest. Matching covers English headlines only. Read-only.',
+    description: 'Return an evidence card for a claim or headline: the live-digest clusters reporting the same event, a result state (corroborated, single-publisher, tier4-only, unknown, or not-found when the digest was searched and nothing reports it; unknown when there were no headlines to search), WorldMonitor\'s coverage verdict over the matched clusters, the publishers roster with declared tiers, matched headlines with fail-closed source provenance, a figure check (numbers and dates in the claim that no matched headline states) and first/last sighting. found=false means the claim was not matched, never that it is false; this is coverage, not accuracy. factChecks quotes ratings IFCN-verified fact-checkers published about a similar claim, each with checker, date and link; the rating is theirs and never changes state. Deterministic, no LLM. Requires a paid plan; one downstream search, weight 2 on API plans. claim is up to 300 characters; variant picks the full or tech digest. It searches the English edition only. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1177,7 +1177,7 @@ export const NLP_TOOLS: ToolDef[] = [
           variant,
         };
       }
-      // The claim pool and fact-checks are English; matching another language needs translation first.
+      // The claim pool searches the English full edition's feeds; other languages need translation first.
       const digest = await fetchNlpNewsItems(base, context, { languages: ['en'], editions: [variant], echo: false }, '', execution);
       return {
         ...buildClaimCard(claim, digest.items),
