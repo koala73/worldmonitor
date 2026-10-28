@@ -9956,7 +9956,10 @@ components:
                     type: number
                     format: double
                     description: Loss at disruption_pct; 0 when the loss is not modeled (see limitations).
-            description: Gulf crude share over one window and the crude loss it implies.
+            description: |-
+                Gulf crude share over one window and the crude loss it implies. preCrisisBaseline: the 12 months before the Hormuz crisis
+                 from at least 9 monthly filings, else the annual share (basis comtrade_annual); drives the headline, products and cover.
+                 currentFlows: the latest 3 monthly filings since the crisis; absent when unavailable, never used for products or cover.
         GetCountryPortActivityRequest:
             type: object
             properties:
