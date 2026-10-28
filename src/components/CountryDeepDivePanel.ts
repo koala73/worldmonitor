@@ -2211,12 +2211,16 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       ? `${b.fromMonth.slice(0, 4)} annual`
       : `${monthLabel(b.fromMonth)}–${monthLabel(b.toMonth)}`;
     const kbd = (v: number): string => Math.round(v).toLocaleString('en');
-    const figures = (b: CrudeShareBaseline): string => {
+    // Current flows count Gulf-origin crude already loading at Yanbu or
+    // Fujairah and get no bypass recovery, so on Hormuz they are an upper bound.
+    const figures = (b: CrudeShareBaseline, current = false): string => {
       const loss = !modeled
         ? 'loss not modeled'
         : b.crudeLossAfterBypassKbd != null
           ? `${kbd(b.crudeLossKbd)} kbd lost before bypass, ${kbd(b.crudeLossAfterBypassKbd)} kbd after`
-          : `${kbd(b.crudeLossKbd)} kbd lost`;
+          : current && result.chokepointId === 'hormuz_strait'
+            ? `up to ${kbd(b.crudeLossKbd)} kbd lost (no bypass recovery)`
+            : `${kbd(b.crudeLossKbd)} kbd lost`;
       return `${(b.gulfCrudeShare * 100).toFixed(1)}% ${shareLabel}, ${loss}`;
     };
     const wrap = this.el('div', 'cdp-shock-baselines');
@@ -2227,7 +2231,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const curReason = limitations.find((l) => l.startsWith('Current flows unavailable for '))
       ?.replace(/^Current flows unavailable for [A-Z]{2}: /, '').replace(/\.$/, '');
     const curRow = this.el('div', 'cdp-shock-baseline', cur
-      ? `Current flows (${span(cur)}): ${figures(cur)}`
+      ? `Current flows (${span(cur)}): ${figures(cur, true)}`
       : `Current flows: not available${curReason ? ` (${curReason})` : ''}`);
     curRow.style.color = '#9ca3af';
     wrap.append(curRow);
