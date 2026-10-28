@@ -669,13 +669,34 @@ export function crudeImportOriginNationalSection({ months, byMonth, failedMonths
 const EPDK_BUDGET_MS = 150_000;
 const EPDK_REQUEST_TIMEOUT_MS = 30_000;
 const PUBLISH_RESERVE_MS = 90_000;
+// A report is a few MB; the cap bounds what one download can hold in memory.
+export const EPDK_MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
+
+async function readCapped(resp, maxBytes) {
+  const tooLarge = () => new Error(`EPDK document too large (over ${maxBytes} bytes)`);
+  if (Number(resp.headers.get('content-length')) > maxBytes) {
+    await resp.body?.cancel().catch(() => {});
+    throw tooLarge();
+  }
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of resp.body ?? []) {
+    size += chunk.byteLength;
+    if (size > maxBytes) {
+      await resp.body.cancel().catch(() => {});
+      throw tooLarge();
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
 
 // EPDK serves Turkish government downloads that can stall or refuse foreign
 // datacenter egress; the proxy is the fallback, as for ArcGIS. Requests stay
 // on the EPDK origin: the URL is checked before either leg, and redirects are
 // refused (EPDK serves its documents directly; the proxy leg treats a 3xx as
-// an error).
-export async function epdkFetch(url, deadlineAtMs) {
+// an error). Each leg stops reading past `maxBytes`.
+export async function epdkFetch(url, deadlineAtMs, maxBytes = EPDK_MAX_DOCUMENT_BYTES) {
   if (!isEpdkUrl(url)) throw new Error('EPDK off-origin URL refused');
   const timeout = () => {
     const left = deadlineAtMs - Date.now();
@@ -686,13 +707,13 @@ export async function epdkFetch(url, deadlineAtMs) {
     const resp = await fetch(url, { headers: { 'User-Agent': CHROME_UA }, redirect: 'error', signal: AbortSignal.timeout(timeout()) });
     if (resp.status === 403 || resp.status === 429) throw Object.assign(new Error(`EPDK HTTP ${resp.status}`), { proxyable: true });
     if (!resp.ok) throw new Error(`EPDK HTTP ${resp.status}`);
-    return Buffer.from(await resp.arrayBuffer());
+    return await readCapped(resp, maxBytes);
   } catch (err) {
     const timeoutLike = err?.name === 'TimeoutError' || err?.proxyable || /fetch failed/i.test(err?.message ?? '');
     const proxyAuth = timeoutLike ? resolveProxyForConnect() : null;
     if (!proxyAuth) throw err;
     if (err?.message === 'EPDK budget exhausted') throw err;
-    const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { timeoutMs: timeout() });
+    const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { timeoutMs: timeout(), maxResponseBytes: maxBytes });
     return buffer;
   }
 }

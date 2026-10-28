@@ -11,6 +11,7 @@ import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 
 import {
+  assertZipExpansionWithin,
   crudeImportsFromTable,
   epdkImporterColumns,
   fetchEpdkCrudeImports,
@@ -142,6 +143,60 @@ describe('epdkFetch', () => {
     const buf = await epdkFetch('https://www.epdk.gov.tr/Detay/DownloadDocument?id=1', Date.now() + 60_000);
     assert.equal(buf.length, 2);
     assert.deepEqual(calls, [{ url: 'https://www.epdk.gov.tr/Detay/DownloadDocument?id=1', redirect: 'error' }]);
+  });
+
+  it('refuses a document over the byte cap, by declared length or while streaming', async (t) => {
+    const original = globalThis.fetch;
+    t.after(() => { globalThis.fetch = original; });
+    const url = 'https://www.epdk.gov.tr/Detay/DownloadDocument?id=1';
+    let pulled = 0;
+    const body = (chunks) => new ReadableStream({
+      pull(controller) {
+        if (pulled >= chunks) return controller.close();
+        pulled++;
+        controller.enqueue(new Uint8Array(64));
+      },
+    }, { highWaterMark: 0 });
+    globalThis.fetch = async () => new Response(body(100), { status: 200, headers: { 'content-length': '6400' } });
+    await assert.rejects(epdkFetch(url, Date.now() + 60_000, 1000), /too large/);
+    assert.equal(pulled, 0);
+    globalThis.fetch = async () => new Response(body(100), { status: 200 });
+    await assert.rejects(epdkFetch(url, Date.now() + 60_000, 1000), /too large/);
+    assert.ok(pulled < 100, `read ${pulled} chunks`);
+    pulled = 0;
+    globalThis.fetch = async () => new Response(body(10), { status: 200 });
+    assert.equal((await epdkFetch(url, Date.now() + 60_000, 1000)).length, 640);
+  });
+});
+
+describe('assertZipExpansionWithin', () => {
+  const padded = async (bytes) => {
+    const zip = new JSZip();
+    zip.file('word/document.xml', '<w:document/>');
+    zip.file('word/media/pad.bin', Buffer.alloc(bytes));
+    return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+  };
+
+  it('passes an archive under the cap and refuses one that inflates past it', async () => {
+    const buf = await padded(2_000_000);
+    assert.ok(buf.length < 10_000, 'zeros compress to a small archive');
+    assertZipExpansionWithin(buf, 3_000_000);
+    assert.throws(() => assertZipExpansionWithin(buf, 1_000_000), /expands past/);
+  });
+
+  it('counts real inflated bytes, not the sizes the archive declares', async () => {
+    const buf = Buffer.from(await padded(2_000_000));
+    // Rewrite every declared uncompressed size to 1 byte.
+    for (let i = 0; i + 4 <= buf.length; i++) {
+      const sig = buf.readUInt32LE(i);
+      if (sig === 0x04034b50) buf.writeUInt32LE(1, i + 22);
+      if (sig === 0x02014b50) buf.writeUInt32LE(1, i + 24);
+    }
+    assert.throws(() => assertZipExpansionWithin(buf, 1_000_000), /expands past/);
+  });
+
+  it('refuses a buffer that is not a readable ZIP', () => {
+    assert.throws(() => assertZipExpansionWithin(Buffer.from('PK not really a zip'), 1_000_000), /ZIP/);
   });
 });
 
@@ -299,6 +354,23 @@ describe('EPDK fetch', () => {
     assert.equal(downloads, 0);
     assert.equal(months.size, 0);
     assert.deepEqual(failedMonths, ['2025-12', '2026-01', '2026-02']);
+  });
+
+  it('a document that inflates past the cap is a failure, never parsed', async () => {
+    const zip = await JSZip.loadAsync(await DEC_2025_DOCX());
+    zip.file('word/media/pad.bin', Buffer.alloc(2_000_000));
+    const bomb = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    const logs = [];
+    const { months, failedMonths } = await fetchEpdkCrudeImports({
+      wantedMonths: ['2025-12'],
+      fetchText: async () => LISTING,
+      fetchBuffer: async (url) => (url.endsWith('decdocx') ? bomb : Buffer.from('%PDF-1.4')),
+      log: (line) => logs.push(line),
+      maxInflatedBytes: 1_000_000,
+    });
+    assert.equal(months.size, 0);
+    assert.deepEqual(failedMonths, ['2025-12']);
+    assert.match(logs.join('\n'), /expands past/);
   });
 
   it('a listing with no report months throws, so the seeder keeps its previous section', async () => {
