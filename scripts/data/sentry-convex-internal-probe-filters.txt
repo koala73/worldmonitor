@@ -152,6 +152,7 @@
 *Could not find public function for 'emailSuppressions:remove'*
 *Could not find public function for 'emailSuppressions:suppress'*
 *Could not find public function for 'emailUnsubscribe:applyUnsubscribe'*
+*Could not find public function for 'embedKeys:createEmbedKeyForUser'*
 *Could not find public function for 'embedKeys:touchKeyLastUsed'*
 *Could not find public function for 'embedKeys:validateKeyByHash'*
 *Could not find public function for 'entitlements:clearAiRoutingPolicy'*

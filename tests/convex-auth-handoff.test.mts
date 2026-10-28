@@ -18,6 +18,7 @@ import {
   rebindConvexAuthForWatchHandoff,
   waitForConvexAuth,
 } from '../src/services/convex-client.ts';
+import { createEmbedKey } from '../src/services/embed-keys.ts';
 import { createApiKey, listApiKeys } from '../src/services/api-keys.ts';
 import {
   acknowledgePlanLimitNotice,
@@ -463,6 +464,59 @@ describe('generation-scoped Convex auth handoff', () => {
     assert.equal(calls.length, 0, 'no API-key fetch may cross the switch');
   });
 
+  it('does not dispatch an embed-key create if A changes while auth is pending', async () => {
+    const token = deferred<string | null>();
+    let tokenRequested = false;
+    __setClerkInstanceForTests({
+      session: { getToken: async () => { tokenRequested = true; return token.promise; } },
+      user: { id: 'A' },
+    } as never);
+    const calls: unknown[] = [];
+    globalThis.fetch = async (...args) => { calls.push(args); return Response.json({}); };
+    const rejected = assert.rejects(createEmbedKey('A key'), /Account changed while creating the embed key/);
+    await waitForCondition(() => tokenRequested, 'session token must be pending');
+    __setClerkInstanceForTests({
+      session: { getToken: async () => 'token-b' }, user: { id: 'B' },
+    } as never);
+    token.resolve('token-a');
+    await rejected;
+    assert.equal(calls.length, 0, 'no embed-key fetch may cross the switch');
+  });
+
+  it('creates an embed key through the standard session route and sends only its hash', async () => {
+    const tokenOptions: unknown[] = [];
+    __setClerkInstanceForTests({
+      session: { getToken: async (options: unknown) => { tokenOptions.push(options); return 'session-a'; } },
+      user: { id: 'A' },
+    } as never);
+    let sent: Record<string, string> | undefined;
+    globalThis.fetch = async (url, init) => {
+      assert.equal(url, '/api/user-embed-keys');
+      assert.equal(init?.method, 'POST');
+      assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer session-a');
+      sent = JSON.parse(String(init?.body));
+      return Response.json({ id: 'embed_a', name: sent!.name, keyPrefix: sent!.keyPrefix });
+    };
+    const result = await createEmbedKey('  Partner  ');
+    assert.deepEqual(tokenOptions, [{ skipCache: true }], 'must not request the convex template');
+    assert.equal(result.id, 'embed_a');
+    assert.equal(result.name, 'Partner');
+    assert.match(result.key, /^wme_[a-f0-9]{40}$/);
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(result.key));
+    const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    assert.deepEqual(sent, { name: 'Partner', keyPrefix: result.key.slice(0, 9), keyHash: hash });
+  });
+
+  for (const code of ['KEY_LIMIT_REACHED', 'EMBED_ACCESS_REQUIRED']) {
+    it(`preserves embed creation error ${code} for Settings`, async () => {
+      __setClerkInstanceForTests({
+        session: { getToken: async () => 'session-a' }, user: { id: 'A' },
+      } as never);
+      globalThis.fetch = async () => Response.json({ error: code }, { status: 403 });
+      await assert.rejects(createEmbedKey('Partner'), { message: code });
+    });
+  }
+
   it('checks the initiating account immediately before dispatch', async () => {
     __setClerkInstanceForTests({
       session: { getToken: async () => 'token-b' },
@@ -555,6 +609,28 @@ describe('generation-scoped Convex auth handoff', () => {
       session: { getToken: async () => 'token-b' }, user: { id: 'B' },
     } as never);
     response.resolve(Response.json({ id: 'key_a', name: 'A key', keyPrefix: 'wm_a' }));
+    await rejected;
+    assert.equal(calls.length, 1, 'the A request completed, but its plaintext stayed discarded');
+  });
+
+  it('rejects an A embed key that resolves after Clerk selects B', async () => {
+    __setClerkInstanceForTests({
+      session: { getToken: async () => 'token-a' }, user: { id: 'A' },
+    } as never);
+    const response = deferred<Response>();
+    const calls: unknown[] = [];
+    globalThis.fetch = async (url, init) => {
+      assert.equal(url, '/api/user-embed-keys');
+      assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer token-a');
+      calls.push(url);
+      return response.promise;
+    };
+    const rejected = assert.rejects(createEmbedKey('A key'), /Account changed while creating the embed key/);
+    await waitForCondition(() => calls.length === 1, 'A fetch must be pending');
+    __setClerkInstanceForTests({
+      session: { getToken: async () => 'token-b' }, user: { id: 'B' },
+    } as never);
+    response.resolve(Response.json({ id: 'key_a', name: 'A key', keyPrefix: 'wme_a' }));
     await rejected;
     assert.equal(calls.length, 1, 'the A request completed, but its plaintext stayed discarded');
   });

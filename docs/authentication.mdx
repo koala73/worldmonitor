@@ -132,9 +132,10 @@ JWT verification is stateless: a token whose Clerk session was revoked (sign-out
 
 - `/api/desktop-auth/authorize` verifies the bearer locally, applies its per-user rate limit, then requires a live session before binding a code and stores the `sid` with it; `/api/desktop-auth/token` re-checks that `sid` after the PKCE verifier matched and before minting the sign-in ticket.
 - `/api/user-api-keys` verifies the standard session token locally, applies a fail-closed per-user limit (10 per 10 minutes), then requires a live session before issuing an API or desktop key through the gateway-only Convex relay. Key creation is an internal mutation (`apiKeys.createApiKeyForUser`); there is no public Convex key-creation mutation.
+- `/api/user-embed-keys` applies the same live-session check and fail-closed per-user limit before issuing an embed key. After body validation, it resolves the Clerk role server-side with `lookupClerkPlan` (a five-minute cache of `public_metadata.plan`); an unavailable lookup returns a retryable 503. The gateway-only relay calls the internal `embedKeys.createEmbedKeyForUser` mutation. There is no public Convex embed-key creation mutation.
 - `/api/internal/mcp-grant-mint` follows the same order: local verify, per-user rate limit (20 per 10 minutes), then the live-session check, before the nonce or entitlement are read.
 
-Only Clerk's **standard session token** carries `sid`; JWT-template tokens (including the `convex` template) get just `azp, exp, iat, iss, jti, nbf, sub`. The desktop sign-in page, MCP grant page, and API-key creation service therefore send `getClerkSessionToken()` (`session.getToken()` with no template) to these routes, not `getClerkToken()`.
+Only Clerk's **standard session token** carries `sid`; JWT-template tokens (including the `convex` template) get just `azp, exp, iat, iss, jti, nbf, sub`. The desktop sign-in page, MCP grant page, and API- and embed-key creation services therefore send `getClerkSessionToken()` (`session.getToken()` with no template) to these routes, not `getClerkToken()`.
 
 A missing `sid` or an inactive session is a 401; Clerk being unreachable is a retryable 503 — nothing is issued on a guess. At `/token` the one-time code is already consumed when the check runs, so its 503 (`session_check_unavailable`) carries no `Retry-After`: the desktop restarts the browser sign-in.
 
