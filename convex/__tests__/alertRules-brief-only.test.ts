@@ -143,14 +143,27 @@ describe("alertRules brief-only users", () => {
         await ctx.db.insert("entitlements", { userId, planKey: "pro_monthly", features: getFeaturesForPlan("pro_monthly"), validUntil: now + 30 * DAY, updatedAt: now });
       }
     });
+    // convex-test runs `_handler`; wrapping it records the range bound each
+    // page was asked for. Results alone cannot show drift here: the index is
+    // ascending, so a later bound only drops rows already behind the cursor.
+    const fn = alertRules.listPaidUserIds as unknown as { _handler: (ctx: unknown, args: { now: number }) => unknown };
+    const pageNows: number[] = [];
+    const realHandler = fn._handler;
+    const handler = vi.spyOn(fn, "_handler").mockImplementation((ctx, args) => {
+      pageNows.push(args.now);
+      return realHandler(ctx, args);
+    });
     let tick = now;
     const clock = vi.spyOn(Date, "now").mockImplementation(() => (tick += 1_000));
     try {
       const res = await t.fetch("/relay/brief-only-users", delivery);
       expect(res.status).toBe(200);
       expect(((await res.json()) as string[]).sort()).toEqual(paid);
+      expect(pageNows.length).toBeGreaterThan(1);
+      expect(new Set(pageNows).size).toBe(1);
     } finally {
       clock.mockRestore();
+      handler.mockRestore();
     }
   }, 60_000);
 
