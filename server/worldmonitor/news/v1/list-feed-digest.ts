@@ -131,6 +131,7 @@ import {
 } from '../../../_shared/cache-keys';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import diplomacyKeywordsData from '../../../../shared/diplomacy-keywords.json';
+import { normalizeFeedDateZone } from '../../../../shared/feed-date-zone.js';
 import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
 // #6428: entity corroboration must count publishers, not feed labels.
 import {
@@ -1296,7 +1297,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       if (forDigest) droppedUndated++;
       continue;
     }
-    const parsedDate = new Date(pubDateStr);
+    const parsedDate = new Date(normalizeFeedDateZone(pubDateStr));
     const parsedMs = parsedDate.getTime();
     if (Number.isNaN(parsedMs)) {
       if (forDigest) droppedUndated++;

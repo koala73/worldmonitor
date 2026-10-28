@@ -248,3 +248,65 @@ describe('parseRssXml — partial-feed preservation (R8)', () => {
     assert.equal(result, null);
   });
 });
+
+describe('parseRssXml — named zone abbreviations', () => {
+  // Bild ships `Wed, 28 Oct 2026 10:29:20 CET`; Date returns Invalid Date for
+  // CET, so every Bild item used to count as undated and drop.
+  function zoned(ms: number, zone: string, offsetHours: number): string {
+    return new Date(ms + offsetHours * 3600_000).toUTCString().replace('GMT', zone);
+  }
+  const at = Math.floor((Date.now() - 2 * 3600_000) / 1000) * 1000;
+
+  for (const [zone, offset] of [['CET', 1], ['CEST', 2], ['AEDT', 11], ['JST', 9], ['MSK', 3]] as const) {
+    it(`keeps an item dated in ${zone} at its true instant`, () => {
+      const xml = wrapRss(`
+        <item>
+          <title>Bundestag vote</title>
+          <link>https://example.com/a</link>
+          <pubDate>${zoned(at, zone, offset)}</pubDate>
+        </item>
+      `);
+      const result = parseRssXml(xml, FEED, 'full');
+      assert.ok(result, 'parseRssXml returned null');
+      assert.equal(result!.droppedUndated, 0);
+      assert.equal(result!.items[0]?.publishedAt, at);
+    });
+  }
+
+  // The date shapes the feeds migrated in U6 batch 1 actually publish, copied
+  // from live responses (2026-10-28). Each must parse to its stated instant.
+  for (const [feed, raw, iso] of [
+    ['Bild', 'Wed, 28 Oct 2026 10:29:20 CET', '2026-10-28T09:29:20.000Z'],
+    ['Folha de S.Paulo', '28 Oct 2026 06:00:00 -0300', '2026-10-28T09:00:00.000Z'],
+    ['Die Zeit', 'Wed, 28 Oct 2026 09:30:06 -0000', '2026-10-28T09:30:06.000Z'],
+    ['Tuoi Tre News', 'Wed, 28 Oct 2026 16:25:00 GMT+7', '2026-10-28T09:25:00.000Z'],
+    ['El Tiempo', 'Wed, 28 Oct 2026 04:17:02 -0500', '2026-10-28T09:17:02.000Z'],
+    ['RAND', '2026-10-27T19:07:07Z', '2026-10-27T19:07:07.000Z'],
+    ['Google News', 'Wed, 28 Oct 2026 08:47:25 GMT', '2026-10-28T08:47:25.000Z'],
+  ] as const) {
+    it(`parses ${feed}'s published date format (${raw})`, () => {
+      const xml = wrapRss(`
+        <item>
+          <title>Headline</title>
+          <link>https://example.com/a</link>
+          <pubDate>${raw}</pubDate>
+        </item>
+      `);
+      const result = parseRssXml(xml, FEED, 'full');
+      assert.equal(result!.droppedUndated, 0);
+      assert.equal(new Date(result!.items[0]!.publishedAt).toISOString(), iso);
+    });
+  }
+
+  it('still drops an item in an ambiguous zone (IST)', () => {
+    const xml = wrapRss(`
+      <item>
+        <title>Ambiguous</title>
+        <link>https://example.com/a</link>
+        <pubDate>${zoned(at, 'IST', 5.5)}</pubDate>
+      </item>
+    `);
+    const result = parseRssXml(xml, FEED, 'full');
+    assert.equal(result!.droppedUndated, 1);
+  });
+});

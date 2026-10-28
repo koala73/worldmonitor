@@ -239,20 +239,17 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "El País",
           "url": "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada",
-          "lang": "es",
-          "browserOnly": true
+          "lang": "es"
         },
         {
           "name": "El Mundo",
           "url": "https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml",
-          "lang": "es",
-          "browserOnly": true
+          "lang": "es"
         },
         {
           "name": "BBC Mundo",
           "url": "https://www.bbc.com/mundo/index.xml",
-          "lang": "es",
-          "browserOnly": true
+          "lang": "es"
         },
         {
           "name": "Tagesschau",
@@ -262,20 +259,17 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Bild",
           "url": "https://www.bild.de/feed/alles.xml",
-          "lang": "de",
-          "browserOnly": true
+          "lang": "de"
         },
         {
           "name": "Der Spiegel",
           "url": "https://www.spiegel.de/schlagzeilen/tops/index.rss",
-          "lang": "de",
-          "browserOnly": true
+          "lang": "de"
         },
         {
           "name": "Die Zeit",
           "url": "https://newsfeed.zeit.de/index",
-          "lang": "de",
-          "browserOnly": true
+          "lang": "de"
         },
         {
           "name": "Handelsblatt",
@@ -294,15 +288,13 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Corriere della Sera",
-          "url": "https://www.corriere.it/rss/homepage.xml",
-          "lang": "it",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:corriere.it+when:1d&hl=it&gl=IT&ceid=IT:it",
+          "lang": "it"
         },
         {
           "name": "Repubblica",
           "url": "https://www.repubblica.it/rss/homepage/rss2.0.xml",
-          "lang": "it",
-          "browserOnly": true
+          "lang": "it"
         },
         {
           "name": "NOS Nieuws",
@@ -312,14 +304,12 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "NRC",
           "url": "https://www.nrc.nl/rss/",
-          "lang": "nl",
-          "browserOnly": true
+          "lang": "nl"
         },
         {
           "name": "De Telegraaf",
           "url": "https://news.google.com/rss/search?q=site:telegraaf.nl+when:1d&hl=nl&gl=NL&ceid=NL:nl",
-          "lang": "nl",
-          "browserOnly": true
+          "lang": "nl"
         },
         {
           "name": "SVT Nyheter",
@@ -329,14 +319,12 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Dagens Nyheter",
           "url": "https://www.dn.se/rss/",
-          "lang": "sv",
-          "browserOnly": true
+          "lang": "sv"
         },
         {
           "name": "Svenska Dagbladet",
           "url": "https://www.svd.se/feed/articles.rss",
-          "lang": "sv",
-          "browserOnly": true
+          "lang": "sv"
         },
         {
           "name": "Yle News",
@@ -361,14 +349,12 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "BBC Turkce",
           "url": "https://feeds.bbci.co.uk/turkce/rss.xml",
-          "lang": "tr",
-          "browserOnly": true
+          "lang": "tr"
         },
         {
           "name": "DW Turkish",
           "url": "https://rss.dw.com/xml/rss-tur-all",
-          "lang": "tr",
-          "browserOnly": true
+          "lang": "tr"
         },
         {
           "name": "Hurriyet",
@@ -580,8 +566,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "BBC Russian",
           "url": "https://feeds.bbci.co.uk/russian/rss.xml",
-          "lang": "ru",
-          "browserOnly": true
+          "lang": "ru"
         },
         {
           "name": "Interfax RU",
@@ -598,23 +583,19 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Novaya Gazeta Europe",
           "url": "https://novayagazeta.eu/feed/rss",
-          "lang": "ru",
-          "browserOnly": true
+          "lang": "ru"
         },
         {
           "name": "TASS",
-          "url": "https://news.google.com/rss/search?q=site:tass.com+OR+TASS+Russia+when:1d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:tass.com+OR+TASS+Russia+when:1d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "RT",
-          "url": "https://rt-english.com/rss/",
-          "browserOnly": true
+          "url": "https://rt-english.com/rss/"
         },
         {
           "name": "RT Russia",
-          "url": "https://rt-english.com/rss/russia/",
-          "browserOnly": true
+          "url": "https://rt-english.com/rss/russia/"
         },
         {
           "name": "Kyiv Independent",
@@ -756,18 +737,15 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Fars News",
-          "url": "https://news.google.com/rss/search?q=site:farsnews.ir+when:2d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:farsnews.ir+when:2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "IRNA",
-          "url": "https://en.irna.ir/rss",
-          "browserOnly": true
+          "url": "https://en.irna.ir/rss"
         },
         {
           "name": "Mehr News",
-          "url": "https://en.mehrnews.com/rss",
-          "browserOnly": true
+          "url": "https://en.mehrnews.com/rss"
         },
         {
           "name": "Haaretz",
@@ -800,8 +778,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Asharq News",
           "url": "https://asharq.com/snapchat/rss.xml",
-          "lang": "ar",
-          "browserOnly": true
+          "lang": "ar"
         },
         {
           "name": "Rudaw",
@@ -1004,18 +981,15 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "CDC",
-          "url": "https://news.google.com/rss/search?q=site:cdc.gov+OR+CDC+health&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:cdc.gov+OR+CDC+health+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "FEMA",
-          "url": "https://news.google.com/rss/search?q=site:fema.gov+OR+FEMA+emergency&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:fema.gov+OR+FEMA+emergency+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "DHS",
-          "url": "https://news.google.com/rss/search?q=site:dhs.gov+OR+\"Homeland+Security\"&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:dhs.gov+OR+\"Homeland+Security\"+when:3d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "U.S. Trade Representative",
@@ -1063,8 +1037,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "RAND",
-          "url": "https://www.rand.org/pubs/articles.xml",
-          "browserOnly": true
+          "url": "https://www.rand.org/pubs/articles.xml"
         },
         {
           "name": "Brookings",
@@ -1082,8 +1055,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Responsible Statecraft",
-          "url": "https://responsiblestatecraft.org/feed/",
-          "browserOnly": true
+          "url": "https://responsiblestatecraft.org/feed/"
         },
         {
           "name": "RUSI",
@@ -1092,13 +1064,11 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "FPRI",
-          "url": "https://www.fpri.org/feed/",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:fpri.org+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Jamestown",
-          "url": "https://jamestown.org/feed/",
-          "browserOnly": true
+          "url": "https://jamestown.org/feed/"
         },
         {
           "name": "ISW",
@@ -1120,8 +1090,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "UNHCR",
-          "url": "https://news.google.com/rss/search?q=site:unhcr.org+OR+UNHCR+refugees+when:3d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:unhcr.org+OR+UNHCR+refugees+when:3d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "africa": [
@@ -1165,8 +1134,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "BBC Afrique",
           "url": "https://www.bbc.com/afrique/index.xml",
-          "lang": "fr",
-          "browserOnly": true
+          "lang": "fr"
         },
         {
           "name": "Premium Times",
@@ -1289,8 +1257,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Latin America",
-          "url": "https://news.google.com/rss/search?q=(Brazil+OR+Mexico+OR+Argentina+OR+Venezuela+OR+Colombia+OR+Haiti)+when:2d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(Brazil+OR+Mexico+OR+Argentina+OR+Venezuela+OR+Colombia+OR+Haiti)+when:2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "BBC Latin America",
@@ -1298,8 +1265,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Reuters LatAm",
-          "url": "https://news.google.com/rss/search?q=site:reuters.com+(Brazil+OR+Mexico+OR+Argentina)+when:3d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:reuters.com+(Brazil+OR+Mexico+OR+Argentina)+when:3d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Guardian Americas",
@@ -1313,31 +1279,27 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "O Globo",
           "url": "https://news.google.com/rss/search?q=site:oglobo.globo.com+when:1d&hl=pt-BR&gl=BR&ceid=BR:pt-419",
-          "lang": "pt",
-          "browserOnly": true
+          "lang": "pt"
         },
         {
           "name": "Folha de S.Paulo",
           "url": "https://feeds.folha.uol.com.br/emcimadahora/rss091.xml",
-          "lang": "pt",
-          "browserOnly": true
+          "lang": "pt"
         },
         {
           "name": "Brasil Paralelo",
           "url": "https://www.brasilparalelo.com.br/noticias/rss.xml",
-          "lang": "pt",
-          "browserOnly": true
+          "lang": "pt"
         },
         {
           "name": "El Tiempo",
           "url": "https://www.eltiempo.com/rss/mundo_latinoamerica.xml",
-          "lang": "es",
-          "browserOnly": true
+          "lang": "es"
         },
         {
           "name": "La Silla Vacía",
           "url": "https://www.lasillavacia.com/rss",
-          "browserOnly": true
+          "digestLang": "es"
         },
         {
           "name": "Primicias",
@@ -1360,13 +1322,11 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Mexico Security",
-          "url": "https://news.google.com/rss/search?q=(Mexico+cartel+OR+Mexico+violence+OR+Mexico+troops+OR+narco+Mexico)+when:2d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(Mexico+cartel+OR+Mexico+violence+OR+Mexico+troops+OR+narco+Mexico)+when:2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "AP Mexico",
-          "url": "https://news.google.com/rss/search?q=site:apnews.com+Mexico+when:3d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:apnews.com+Mexico+when:3d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "InSight Crime",
@@ -1454,8 +1414,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Indian Express",
-          "url": "https://indianexpress.com/section/india/feed/",
-          "browserOnly": true
+          "url": "https://indianexpress.com/section/india/feed/"
         },
         {
           "name": "NDTV",
@@ -1463,8 +1422,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "India News Network",
-          "url": "https://news.google.com/rss/search?q=India+diplomacy+foreign+policy+news&hl=en&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=India+diplomacy+foreign+policy+news+when:3d&hl=en&gl=US&ceid=US:en"
         },
         {
           "name": "BBC Hindi",
@@ -1510,9 +1468,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Thai PBS",
-          "url": "https://news.google.com/rss/search?q=Thai+PBS+World+news&hl=en&gl=US&ceid=US:en",
-          "lang": "th",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=Thai+PBS+World+news+when:2d&hl=en&gl=US&ceid=US:en",
+          "lang": "th"
         },
         {
           "name": "VnExpress",
@@ -1523,8 +1480,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Tuoi Tre News",
           "url": "https://news.tuoitre.vn/rss",
-          "lang": "vi",
-          "browserOnly": true
+          "lang": "vi"
         },
         {
           "name": "Yonhap News",
@@ -1535,18 +1491,15 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Chosun Ilbo",
           "url": "https://www.chosun.com/arc/outboundfeeds/rss/?outputType=xml",
-          "lang": "ko",
-          "browserOnly": true
+          "lang": "ko"
         },
         {
           "name": "ABC News Australia",
-          "url": "https://www.abc.net.au/news/feed/2942460/rss.xml",
-          "browserOnly": true
+          "url": "https://www.abc.net.au/news/feed/2942460/rss.xml"
         },
         {
           "name": "Guardian Australia",
-          "url": "https://www.theguardian.com/australia-news/rss",
-          "browserOnly": true
+          "url": "https://www.theguardian.com/australia-news/rss"
         },
         {
           "name": "Guardian Pacific",
@@ -1653,8 +1606,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Mining & Resources",
-          "url": "https://news.google.com/rss/search?q=(lithium+OR+\"rare+earth\"+OR+cobalt+OR+mining)+when:3d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(lithium+OR+\"rare+earth\"+OR+cobalt+OR+mining)+when:3d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "science": [
@@ -3412,8 +3364,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
     {
       "name": "RAND",
       "url": "https://www.rand.org/pubs/articles.xml",
-      "type": "research",
-      "browserOnly": true
+      "type": "research"
     },
     {
       "name": "Brookings",

@@ -5,6 +5,10 @@
  * desktop redeems the one-time code from its loopback redirect with the PKCE
  * verifier only it holds, and gets a short-lived, single-use Clerk sign-in
  * ticket. Unauthenticated by design: the desktop has no session yet.
+ *
+ * The browser session the code was bound to is re-checked at Clerk before
+ * the ticket is minted: a sign-out between /authorize and /token must not
+ * still produce a fresh session.
  */
 
 export const config = { runtime: 'edge' };
@@ -17,6 +21,7 @@ import { verifyPkceS256 } from '../_crypto.js';
 import { checkRateLimit } from '../_rate-limit.js';
 // @ts-expect-error JS module without declarations.
 import { captureSilentError } from '../_sentry-edge.js';
+import { verifyClerkSessionActive, type ClerkSessionCheck } from '../../server/auth-session';
 import {
   clientIp,
   desktopAuthCodeKey,
@@ -34,6 +39,8 @@ import {
 
 export interface DesktopTokenDeps {
   takeCode(key: string): Promise<DesktopAuthCodeRecord | null>;
+  /** Is the session the code was bound to still live at Clerk, for this user? */
+  verifySession(sessionId: string, userId: string): Promise<ClerkSessionCheck>;
   mintTicket(userId: string): Promise<MintTicketResult>;
   rateLimit(request: Request, cors: Record<string, string>): Promise<Response | null>;
   audit(event: DesktopAuthAuditEvent): void;
@@ -88,6 +95,20 @@ export async function desktopAuthTokenHandler(
     return jsonResponse({ error: 'invalid_grant' }, 400, cors);
   }
 
+  // The code was bound to a live session at /authorize; it may have been
+  // signed out since. Fail closed when Clerk cannot answer: no answer, no
+  // ticket. GETDEL has already burned the code, so a retry of this exchange
+  // cannot succeed — no Retry-After; the desktop restarts the browser flow.
+  const liveness = await deps.verifySession(record.sessionId, record.userId);
+  if (liveness === 'unavailable') {
+    audit('session_check_unavailable', record.userId);
+    return jsonResponse({ error: 'session_check_unavailable' }, 503, cors);
+  }
+  if (liveness !== 'active') {
+    audit('session_inactive', record.userId);
+    return jsonResponse({ error: 'session_inactive' }, 401, cors);
+  }
+
   let minted: MintTicketResult;
   try {
     minted = await deps.mintTicket(record.userId);
@@ -111,6 +132,7 @@ export async function desktopAuthTokenHandler(
 export default async function handler(request: Request): Promise<Response> {
   return desktopAuthTokenHandler(request, {
     takeCode: takeDesktopAuthCode,
+    verifySession: verifyClerkSessionActive,
     mintTicket: mintClerkSignInTicket,
     rateLimit: (req, cors) => checkRateLimit(req, cors, {
       scope: 'desktop-auth-token',

@@ -22,7 +22,7 @@
 
 import {
   initClerk,
-  getClerkToken,
+  getClerkSessionToken,
   getCurrentClerkUser,
   isClerkSignInOpen,
   openSignIn,
@@ -179,7 +179,9 @@ function getNonceFromQuery(): string | null {
 }
 
 async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const token = await getClerkToken();
+  // Standard session token (carries `sid`): the grant mint confirms the session
+  // is live at Clerk, and JWT-template tokens omit that claim.
+  const token = await getClerkSessionToken();
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
   return fetch(`${API_BASE}${path}`, { ...init, headers });

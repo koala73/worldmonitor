@@ -434,7 +434,9 @@ describe('CIMD — Pro grant path', () => {
     const mintRes = await mintGrantHandler(new Request('https://worldmonitor.app/api/internal/mcp-grant-mint', {
       method: 'POST', headers: { 'Content-Type': 'application/json', cookie: flow.cookie }, body: JSON.stringify({ nonce: flow.nonce }),
     }), {
-      resolveUserId: async () => 'user_pro',
+      resolveSession: async () => ({ userId: 'user_pro', orgId: null, role: 'pro', sessionId: 'sess_pro' }),
+      rateLimit: async () => null,
+      verifySession: async () => 'active',
       redisGet,
       redisSetEx: async (k, v) => { store.set(k, JSON.stringify(v)); return true; },
       redisSetNxEx: async (k, v) => { if (store.has(k)) return false; store.set(k, JSON.stringify(v)); return true; },
@@ -471,7 +473,9 @@ describe('CIMD — Pro grant path', () => {
     const mintRes = await mintGrantHandler(new Request('https://worldmonitor.app/api/internal/mcp-grant-mint', {
       method: 'POST', headers: { 'Content-Type': 'application/json', cookie: flow.cookie }, body: JSON.stringify({ nonce: flow.nonce }),
     }), {
-      resolveUserId: async () => 'user_pro',
+      resolveSession: async () => ({ userId: 'user_pro', orgId: null, role: 'pro', sessionId: 'sess_pro' }),
+      rateLimit: async () => null,
+      verifySession: async () => 'active',
       redisGet,
       redisSetEx: async (k, v) => { store.set(k, JSON.stringify(v)); return true; },
       redisSetNxEx: async (k, v) => { if (store.has(k)) return false; store.set(k, JSON.stringify(v)); return true; },
@@ -514,7 +518,9 @@ describe('CIMD — Pro grant path', () => {
     const mintRes = await mintGrantHandler(new Request('https://worldmonitor.app/api/internal/mcp-grant-mint', {
       method: 'POST', headers: { 'Content-Type': 'application/json', cookie: flow.cookie }, body: JSON.stringify({ nonce: flow.nonce }),
     }), {
-      resolveUserId: async () => 'user_pro',
+      resolveSession: async () => ({ userId: 'user_pro', orgId: null, role: 'pro', sessionId: 'sess_pro' }),
+      rateLimit: async () => null,
+      verifySession: async () => 'active',
       redisGet,
       redisSetEx: async (k, v) => { store.set(k, JSON.stringify(v)); return true; },
       redisSetNxEx: async (k, v) => { if (store.has(k)) return false; store.set(k, JSON.stringify(v)); return true; },
@@ -548,7 +554,8 @@ describe('CIMD — Pro grant path', () => {
     const res = await mintGrantHandler(new Request('https://worldmonitor.app/api/internal/mcp-grant-mint', {
       method: 'POST', headers: { 'Content-Type': 'application/json', cookie: flow.cookie }, body: JSON.stringify({ nonce: flow.nonce }),
     }), {
-      resolveUserId: async () => 'user_pro', redisGet,
+      resolveSession: async () => ({ userId: 'user_pro', orgId: null, role: 'pro', sessionId: 'sess_pro' }),
+      rateLimit: async () => null, verifySession: async () => 'active', redisGet,
       redisSetEx: async () => true, redisSetNxEx: async () => true,
       getEntitlements: async () => PRO_ENT, isAllowedRedirectUri, signGrant: (p) => signGrant(p), now: () => NOW,
     });

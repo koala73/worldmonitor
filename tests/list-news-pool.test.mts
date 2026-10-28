@@ -71,6 +71,18 @@ async function request(params: Record<string, string | string[]> = {}) {
 
 const titles = (payload: ListNewsPoolResponse) => payload.items.map(entry => entry.item!.title).sort();
 
+// Every other full cell an English read covers (feeds tagged for another
+// language that publish in English, like Tuoi Tre News). Derived from the
+// layout so a catalog migration adding one does not break the fixtures.
+const OTHER_ENGLISH_CELLS = NEWS_POOL_LAYOUT.cells
+  .filter(cell => cell.edition === 'full' && cell.contentLanguages.includes('en') && !['en', 'th'].includes(cell.lang))
+  .map(cell => cell.lang);
+
+function freshOtherEnglishCells() {
+  // One Norwegian item keeps each digest acceptable; an English read filters it out.
+  for (const lang of OTHER_ENGLISH_CELLS) fresh('full', lang, digest({ asia: [article('NRK', `Filler (${lang})`)] }));
+}
+
 beforeEach(() => {
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture-token';
@@ -129,13 +141,17 @@ describe('ListNewsPool', () => {
   it('defaults to English items from the full digest', async () => {
     fresh('full', 'en', digest({ europe: [article('BBC World', 'Talks resume'), article('NRK', 'Stortinget stemmer')] }));
     fresh('full', 'th', digest({ asia: [article('Bangkok Post', 'Baht steadies')] }));
+    freshOtherEnglishCells();
 
     const { res, payload } = await request();
 
     assert.equal(res.status, 200);
     assert.equal(payload.state, 'complete');
     assert.deepEqual(titles(payload), ['Baht steadies', 'Talks resume'], 'Norwegian NRK stays out of an English read; English Bangkok Post comes in');
-    assert.deepEqual(payload.cells.map(cell => `${cell.edition}:${cell.language}:${cell.state}`), ['full:en:complete', 'full:th:complete']);
+    assert.deepEqual(
+      payload.cells.map(cell => `${cell.edition}:${cell.language}:${cell.state}`).sort(),
+      ['en', 'th', ...OTHER_ENGLISH_CELLS].map(lang => `full:${lang}:complete`).sort(),
+    );
     for (const entry of payload.items) {
       assert.equal(entry.language, 'en');
       assert.deepEqual(entry.editions, ['full']);
@@ -179,6 +195,7 @@ describe('ListNewsPool', () => {
   it('marks every response except a complete one uncacheable', async () => {
     fresh('full', 'en', digest({ europe: [article('BBC World', 'Talks resume')] }));
     fresh('full', 'th', digest({ asia: [article('Bangkok Post', 'Baht steadies')] }));
+    freshOtherEnglishCells();
     const complete = await request();
     assert.equal(complete.payload.state, 'complete');
     assert.equal(drainResponseHeaders(complete.req)?.['X-No-Cache'], undefined);
@@ -256,6 +273,7 @@ describe('ListNewsPool', () => {
       data: digest({ europe: [article('BBC World', 'Talks resume')] }),
     });
     fresh('full', 'th', digest({ asia: [article('Bangkok Post', 'Baht steadies')] }));
+    freshOtherEnglishCells();
 
     const { payload } = await request();
 

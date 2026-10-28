@@ -3,7 +3,7 @@
  * services/desktop-sign-in-page.ts; this file wires it to the DOM and Clerk.
  */
 
-import { getClerk, getClerkToken, getCurrentClerkUser, initClerk, openSignIn, subscribeClerk } from '@/services/clerk';
+import { getClerk, getClerkSessionToken, getCurrentClerkUser, initClerk, openSignIn, subscribeClerk } from '@/services/clerk';
 import { resolveLaunch, runDesktopSignInContinue, type LaunchStorage } from '@/services/desktop-sign-in-page';
 import { safeStorageGet } from '@/utils/safe-storage';
 
@@ -75,7 +75,9 @@ el('continueButton').addEventListener('click', async () => {
   error.hidden = true;
   try {
     const outcome = await runDesktopSignInContinue(launch, {
-      getToken: getClerkToken,
+      // The standard session token: it carries `sid`, which /authorize needs to
+      // confirm the session is live at Clerk. JWT-template tokens omit it.
+      getToken: getClerkSessionToken,
       fetch: (url, init) => fetch(url, init),
       navigate: (url) => location.assign(url),
       storage: sessionStore,

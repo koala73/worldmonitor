@@ -38,6 +38,7 @@ import {
   __setClerkInstanceForTests,
   clerkTokenExpiresAtMs,
   clearClerkTokenCache,
+  getClerkSessionToken,
   getClerkToken,
   shouldReuseCachedClerkToken,
 } from '../src/services/clerk.ts';
@@ -190,6 +191,62 @@ describe('shouldReuseCachedClerkToken', () => {
       }),
       false,
     );
+  });
+});
+
+// The desktop sign-in and MCP grant pages must send the STANDARD session token:
+// only it carries `sid`, which those routes check for liveness at Clerk. A
+// JWT-template token (`convex`) omits it (Clerk docs, "JWT templates").
+describe('getClerkSessionToken', () => {
+  it('asks Clerk for the standard session token with no template, bypassing its cache', async () => {
+    const calls: unknown[] = [];
+    const session = {
+      async getToken(...args: unknown[]) {
+        calls.push(args);
+        return 'session-token';
+      },
+    };
+    __setClerkInstanceForTests({ session } as never);
+
+    assert.equal(await getClerkSessionToken(), 'session-token');
+    assert.deepEqual(calls, [[{ skipCache: true }]]);
+  });
+
+  it('discards a pending token when the selected session changes', async () => {
+    let resolveToken!: (token: string) => void;
+    const pendingToken = new Promise<string>((resolve) => { resolveToken = resolve; });
+    const clerk = { session: { getToken: () => pendingToken } };
+    __setClerkInstanceForTests(clerk as never);
+
+    const result = getClerkSessionToken();
+    clerk.session = { getToken: async () => 'session-b-token' };
+    resolveToken('session-a-token');
+
+    assert.equal(await result, null);
+    assert.equal(await getClerkSessionToken(), 'session-b-token');
+  });
+
+  it('discards a pending token when the token generation is invalidated', async () => {
+    let resolveToken!: (token: string) => void;
+    const pendingToken = new Promise<string>((resolve) => { resolveToken = resolve; });
+    const tokens = [pendingToken, Promise.resolve('fresh-session-token')];
+    const session = { getToken: () => tokens.shift()! };
+    __setClerkInstanceForTests({ session } as never);
+
+    const result = getClerkSessionToken();
+    clearClerkTokenCache();
+    resolveToken('superseded-session-token');
+
+    assert.equal(await result, null);
+    assert.equal(await getClerkSessionToken(), 'fresh-session-token');
+  });
+
+  it('returns null when nobody is signed in or Clerk refuses', async () => {
+    __setClerkInstanceForTests(null);
+    assert.equal(await getClerkSessionToken(), null);
+
+    __setClerkInstanceForTests({ session: { async getToken() { throw new Error('offline'); } } } as never);
+    assert.equal(await getClerkSessionToken(), null);
   });
 });
 
