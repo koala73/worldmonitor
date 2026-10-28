@@ -53,10 +53,19 @@ freshness or content status.
 | `hazards.hko-warnings` | Hong Kong Observatory warnings | `launched` |
 | `military.cross-strait-activity` | Official Cross-Strait activity baseline | `launched` |
 
-JODI remains available to existing global energy products. Its China oil and
-gas contracts stay blocked because the reviewed upstream country index does not
-currently publish substantive `CN` rows. A healthy global JODI heartbeat
-therefore cannot be presented as China coverage.
+JODI remains available to existing global energy products. JODI does publish
+substantive `CN` rows: China files its numbers under `ASSESSMENT_CODE` 3, which
+JODI uses for values it has not assessed, not for missing ones. The 2026 oil
+files hold 256 numeric China cells, and the gas world file (publication 28,
+2026-10-19) carries China's monthly LNG and pipeline imports, production and
+exports through 2026-08. It has no China demand or closing-stock rows.
+
+Earlier seeders discarded every code-3 cell, so `CN` never reached
+`energy:jodi-oil:v1` or `energy:jodi-gas:v1`, and `chinaRow` read
+`china-missing`. Both seeders now keep code-3 values and treat only a
+non-numeric cell as absent. The China oil and gas contracts stay blocked until
+a scheduled run on that code publishes the `CN` keys. Until then a healthy
+global JODI heartbeat cannot be presented as China coverage.
 
 Detailed method and source contracts:
 

@@ -214,6 +214,51 @@ export function buildDigestWarmCells(): DigestWarmCell[] {
   return cells;
 }
 
+export interface NewsPoolCell extends DigestWarmCell {
+  /**
+   * Content languages of the feeds only this cell fetches. A feed with no
+   * `lang` is fetched by every language cell of its edition and counted under
+   * `en`, its own cell, whatever language it publishes in.
+   */
+  contentLanguages: string[];
+}
+
+export interface NewsPoolLayout {
+  /** Edition → digest category keys, in server layout order. */
+  editions: Record<string, string[]>;
+  /** Every content language some cell carries, English first. */
+  languages: string[];
+  cells: NewsPoolCell[];
+}
+
+const englishFirst = (a: string, b: string) => (a === 'en' ? -1 : b === 'en' ? 1 : a.localeCompare(b));
+
+/**
+ * What ListNewsPool can read: the digest cells with the content languages
+ * each one carries, the editions and their category keys (the full digest
+ * also carries intel sources under `INTEL_EDITION`), and every language
+ * available. `contentLanguage` maps a source name to the language it
+ * publishes in (its outlet profile). Generated into
+ * shared/news-pool-layout.generated.ts so MCP tools validate against it
+ * without bundling the catalog.
+ */
+export function buildNewsPoolLayout(contentLanguage: (sourceName: string) => string): NewsPoolLayout {
+  const variantFeeds = buildServerVariantFeeds();
+  const cells = buildDigestWarmCells().map((cell) => {
+    const feeds = Object.values(variantFeeds[cell.edition] ?? {}).flat();
+    if (cell.edition === 'full') feeds.push(...buildServerIntelSources());
+    const own = feeds.filter((feed) => (feed.lang ?? 'en') === cell.lang);
+    const contentLanguages = [...new Set(own.map((feed) => contentLanguage(feed.name)))].sort(englishFirst);
+    return { ...cell, contentLanguages };
+  });
+  const editions: Record<string, string[]> = {};
+  for (const [edition, categories] of Object.entries(NEWS_CATALOG.layout.server)) {
+    editions[edition] = edition === 'full' ? [...categories, INTEL_EDITION] : [...categories];
+  }
+  const languages = [...new Set(cells.flatMap((cell) => cell.contentLanguages))].sort(englishFirst);
+  return { editions, languages, cells };
+}
+
 /** Browser view of one edition: category → feeds, in browser order. */
 export function buildBrowserCategoryFeeds(edition: string): Record<string, BrowserCatalogFeed[]> {
   return browserCategoryFeeds((browserSlice ??= projectBrowserCatalog()), edition);

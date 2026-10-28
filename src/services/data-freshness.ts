@@ -96,7 +96,7 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   cyber_threats: { name: 'Cyber Threat IOCs', requiredForRisk: false, panelId: 'map' },
   // This branch widened the weather source to cover ECCC as well as NWS; main's
   // road entries below are untouched by that.
-  weather: { name: 'Severe Weather Alerts (NWS, ECCC, WMO SWIC)', requiredForRisk: false, panelId: 'weather' },
+  weather: { name: 'Weather Alerts', requiredForRisk: false, panelId: 'weather' },
   // One entry per CANADA_ROAD_SOURCES descriptor. Five sources union onto the
   // canadaRoads layer, and recording them all as ontario_511 made an Alberta,
   // Toronto or BC outage read as an Ontario one — or vanish entirely.

@@ -15,6 +15,7 @@ All notable changes to World Monitor are documented here. Subscribe via [RSS](ht
 
 ### Fixed
 
+- **JODI gas keeps values marked "not assessed", so China is no longer dropped.** The JODI gas seed discarded every cell under assessment code 3, which JODI uses for values it has not assessed, not for missing ones. China files every gas value under it, as do Hong Kong, Taiwan, Indonesia, Malaysia, Singapore, Thailand, the Philippines, Brunei and others, so they never reached country energy profiles or the energy shock model. Kazakhstan and Mexico were held at their last code-1 month (2024-12 and 2025-02) and now move to 2026-07. Placeholder cells still count as missing, and a month of placeholders no longer hides an earlier reported month. JODI oil got the same fix in #9393.
 - **`get_tariff_trends` with a tariffs-only dataset returns the US MFN series again.** The old name stays off `tools/list`. That call runs Pro `get_tariff_averages` for reporter `840`. Any other dataset still returns `get_price_and_debt_indicators`. A free account gets the same Pro denial as a direct call to `get_tariff_averages`. A successful response through the old name includes a `deprecation` object in `structuredContent` that names the tool that ran. The text carries it too, except for a `jmespath` projection that returns an array or scalar, whose text stays the raw value. `dataset: ["tariffs"]` on `get_price_and_debt_indicators` still returns Invalid params.
 
 ### Added

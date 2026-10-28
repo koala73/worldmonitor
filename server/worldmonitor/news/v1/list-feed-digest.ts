@@ -263,7 +263,7 @@ type DigestFeedEntry = { attemptId: string; category: string; feed: ServerFeed }
  * on the next request rather than on the next rebuild. Returns the original
  * object untouched when nothing was suppressed, so the common path stays free.
  */
-function suppressRevoked(
+export function suppressRevoked(
   data: ListFeedDigestResponse,
   revoked: ReadonlySet<string>,
 ): { data: ListFeedDigestResponse; dropped: number } {
@@ -661,7 +661,7 @@ function compareAnchorCandidates(a: ParsedItem, b: ParsedItem): number {
   return 0;
 }
 
-function computeItemCredibilityScore(
+export function computeItemCredibilityScore(
   item: CredibilitySourceItem,
   independentCorroborationCount: number,
 ): number {
@@ -744,7 +744,7 @@ function entityCorroborationScore(count: number | undefined): number {
   return Math.min(Math.max(finite, 0), 5) * ENTITY_CORROBORATION_SCORE_PER_SOURCE;
 }
 
-function computeImportanceScore(
+export function computeImportanceScore(
   level: ThreatLevel,
   source: string,
   corroborationCount: number,
@@ -2267,7 +2267,7 @@ async function readAdoptionState(
   return { aliasTargetByHash, trackFirstSeenByHash, incompleteHashes };
 }
 
-function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
+export function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
   return {
     source: item.source,
     title: item.title,

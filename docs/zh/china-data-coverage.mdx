@@ -50,9 +50,17 @@ description: "查看 WorldMonitor 中国数据覆盖清单，了解官方宏观�
 | `hazards.hko-warnings` | 香港天文台警报 | `launched` |
 | `military.cross-strait-activity` | 官方台海活动基线 | `launched` |
 
-JODI 仍可用于现有全球能源产品。其中国石油与天然气契约保持阻止，
-因为审核后的上游国家索引目前没有发布实质性的 `CN` 行。因此，
-健康的全球 JODI heartbeat 不能被呈现为中国覆盖。
+JODI 仍可用于现有全球能源产品。JODI 确实发布了实质性的 `CN` 行：
+中国以 `ASSESSMENT_CODE` 3 报送数据，JODI 用该代码表示数值尚未评估，
+而不是数值缺失。2026 年石油文件包含 256 个中国数值单元；天然气全球文件
+（第 28 期发布，2026-10-19）包含中国截至 2026-08 的月度 LNG 与管道进口、
+产量和出口，但没有中国需求或期末库存行。
+
+此前的 seeder 丢弃了所有代码 3 的单元，因此 `CN` 从未写入
+`energy:jodi-oil:v1` 或 `energy:jodi-gas:v1`，`chinaRow` 显示
+`china-missing`。两个 seeder 现在都保留代码 3 的数值，只把非数值单元视为缺失。
+在基于该代码的定时运行发布 `CN` 键之前，中国石油与天然气契约保持阻止；
+在此之前，健康的全球 JODI heartbeat 不能被呈现为中国覆盖。
 
 详细方法与来源契约：
 

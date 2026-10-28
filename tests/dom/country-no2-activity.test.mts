@@ -32,7 +32,7 @@ function fixture(response: GetNo2ActivityResponse | Error) {
   Reflect.set(panel, 'no2ActivityBody', body);
   Reflect.set(panel, 'currentCode', 'DE');
   Reflect.set(panel, 'abortController', new AbortController());
-  Reflect.set(panel, 'sections', [{ id: 'activity', title: 'Industrial Activity (NO2)', body, card }]);
+  Reflect.set(panel, 'sections', [{ id: 'activity', title: 'Industrial Activity', body, card }]);
   const failures: unknown[] = [];
   Reflect.set(panel, 'setSectionFailure', (...args: unknown[]) => { if (args[0] === 'activity') failures.push(args); });
   const never = () => new Promise(() => {});

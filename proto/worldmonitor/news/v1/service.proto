@@ -8,6 +8,7 @@ import "worldmonitor/news/v1/get_summarize_article_cache.proto";
 import "worldmonitor/news/v1/list_feed_digest.proto";
 import "worldmonitor/news/v1/list_country_headlines.proto";
 import "worldmonitor/news/v1/list_media_perspective.proto";
+import "worldmonitor/news/v1/list_news_pool.proto";
 import "worldmonitor/news/v1/list_label_changes.proto";
 import "worldmonitor/news/v1/error_reports.proto";
 import "worldmonitor/news/v1/search_fact_checks.proto";
@@ -40,6 +41,11 @@ service NewsService {
   // ListMediaPerspective groups headlines about one country by outlet home country and audience.
   rpc ListMediaPerspective(ListMediaPerspectiveRequest) returns (ListMediaPerspectiveResponse) {
     option (sebuf.http.config) = {path: "/list-media-perspective", method: HTTP_METHOD_GET};
+  }
+
+  // ListNewsPool merges cached news for several editions and content languages, one item per article URL: English from the warmed digest cells, other languages from their feeds' cached parses. Reads cache only; never builds a digest or fetches a feed.
+  rpc ListNewsPool(ListNewsPoolRequest) returns (ListNewsPoolResponse) {
+    option (sebuf.http.config) = {path: "/list-news-pool", method: HTTP_METHOD_GET};
   }
 
   // ListLabelChanges returns stories whose corroboration label moved between single-publisher and corroborated in the last seven days, with the publishers behind each change.
