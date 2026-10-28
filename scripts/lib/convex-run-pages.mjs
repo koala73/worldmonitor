@@ -2,22 +2,39 @@
  * Walk a paginated internal Convex query through `npx convex run`.
  *
  * The cross-tenant `alertRules` reads (`getByEnabled`, `getDigestRules`,
- * `getBriefOnlyUsers`, `listShapeViolations`) are internal (GHSA-r649-4cqj-w93h)
- * and paginated: each call returns `{ page, continueCursor, isDone }` and a page
- * is byte-bounded so one oversized row cannot push a transaction past the
- * Convex read limit. Operator scripts run them with the deploy key, one
- * `npx convex run` per page.
+ * `listShapeViolations`, ...) are internal (GHSA-r649-4cqj-w93h) and
+ * paginated: each call returns `{ page, continueCursor, isDone }` and a page
+ * is byte-bounded (4 MiB of rows plus the row that crossed it) so one
+ * oversized row cannot push a transaction past the Convex read limit.
+ * Operator scripts run them with the deploy key, one `npx convex run` per
+ * page.
  *
- * `run` is injectable so the loop is unit-testable without a deployment.
+ * `run` is injectable so the paging loop is unit-testable without a
+ * deployment; `command` / `commandArgs` are injectable so the real runner's
+ * large-output path is testable with a local process in place of `npx`.
  */
 import { spawnSync } from "node:child_process";
 
-export function runConvexFunction(fn, args, { env = process.env, extraArgs = [], timeoutMs = 60_000 } = {}) {
+// A page can serialize to ~5 MiB (4 MiB byte bound + one 1 MiB row, plus JSON
+// escaping). spawnSync's default maxBuffer is 1 MiB and kills the child
+// with a truncated stdout, which read as "unparseable output".
+export const CONVEX_RUN_MAX_BUFFER = 64 * 1024 * 1024;
+
+export function runConvexFunction(fn, args, {
+  env = process.env,
+  extraArgs = [],
+  timeoutMs = 60_000,
+  command = "npx",
+  commandArgs = ["convex", "run"],
+} = {}) {
   const result = spawnSync(
-    "npx",
-    ["convex", "run", ...extraArgs, fn, JSON.stringify(args)],
-    { env, encoding: "utf-8", timeout: timeoutMs },
+    command,
+    [...commandArgs, ...extraArgs, fn, JSON.stringify(args)],
+    { env, encoding: "utf-8", timeout: timeoutMs, maxBuffer: CONVEX_RUN_MAX_BUFFER },
   );
+  if (result.error) {
+    throw new Error(`${fn} failed: ${result.error.message}`);
+  }
   if (result.status !== 0) {
     const tail = (result.stderr || result.stdout || "").trim().split("\n").slice(-3).join(" | ");
     throw new Error(`${fn} failed (exit ${result.status})${tail ? `: ${tail}` : ""}`);

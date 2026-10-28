@@ -659,35 +659,68 @@ export const getDigestRules = internalQuery({
 // a default in-app brief for each (it never sends one to a channel), so the
 // dashboard's Latest Brief panel is not stuck on "composing" for a paying user
 // who never set a schedule. "Paid" mirrors /relay/entitlement: validUntil >=
-// now and the catalog-merged features.tier >= 1. One page walks `numItems`
-// active entitlements and reads at most ALERT_RULES_PER_USER_MAX + 1 rules per
-// user, so a page is bounded by rows, not by the account that holds them.
-export const getBriefOnlyUsers = internalQuery({
+// now and the catalog-merged features.tier >= 1.
+//
+// Two byte-bounded scans compose the answer in /relay/brief-only-users
+// (`briefOnlyUserIds` below): every alertRules row once, folded into per-user
+// flags, and every active entitlement once. Reading each paid user's rules
+// inside the entitlement page would put the bound on rows, not bytes — three
+// legacy accounts with seven ~900 KB rows each would exceed the transaction
+// limit in one page — and a `take(n)` per user would miss an AI-digest opt-out
+// on the (n+1)th row of an over-cap legacy account.
+export const listPaidUserIds = internalQuery({
   args: pageArgs,
   handler: async (ctx, args) => {
     const now = Date.now();
     const result = await ctx.db
       .query("entitlements")
       .withIndex("by_validUntil", (q) => q.gte("validUntil", now))
-      .paginate({ cursor: args.cursor, numItems: clampPageItems(args.numItems ?? 64), maximumBytesRead: RULES_PAGE_MAX_BYTES });
-    const paid = new Set(
-      result.page
+      .paginate({ cursor: args.cursor, numItems: clampPageItems(args.numItems), maximumBytesRead: RULES_PAGE_MAX_BYTES });
+    return {
+      page: result.page
         .filter((e) => (mergeEntitlementFeatures(e.planKey, e.features).tier ?? 0) >= 1)
         .map((e) => e.userId),
-    );
-    const page: string[] = [];
-    for (const userId of paid) {
-      const rules = await ctx.db
-        .query("alertRules")
-        .withIndex("by_user", (q) => q.eq("userId", userId))
-        .take(ALERT_RULES_PER_USER_MAX + 1);
-      if (rules.some((r) => r.aiDigestEnabled === false)) continue;
-      if (rules.some((r) => r.enabled && r.digestMode !== undefined && r.digestMode !== "realtime")) continue;
-      page.push(userId);
-    }
-    return { page, continueCursor: result.continueCursor, isDone: result.isDone };
+      continueCursor: result.continueCursor,
+      isDone: result.isDone,
+    };
   },
 });
+
+export type BriefRuleFlags = { userId: string; optedOut: boolean; hasDigest: boolean };
+
+/** One page of alertRules rows folded into per-user brief flags; a user may appear on several pages (OR the flags). */
+export const listBriefRuleFlags = internalQuery({
+  args: pageArgs,
+  handler: async (ctx, args) => {
+    const result = await ctx.db
+      .query("alertRules")
+      .paginate({ cursor: args.cursor, numItems: clampPageItems(args.numItems), maximumBytesRead: RULES_PAGE_MAX_BYTES });
+    const byUser = new Map<string, BriefRuleFlags>();
+    for (const r of result.page as Doc<"alertRules">[]) {
+      const flags = byUser.get(r.userId) ?? { userId: r.userId, optedOut: false, hasDigest: false };
+      if (r.aiDigestEnabled === false) flags.optedOut = true;
+      if (r.enabled && r.digestMode !== undefined && r.digestMode !== "realtime") flags.hasDigest = true;
+      byUser.set(r.userId, flags);
+    }
+    return { page: [...byUser.values()], continueCursor: result.continueCursor, isDone: result.isDone };
+  },
+});
+
+/** Pure composition of the two scans above: paid users with neither flag. */
+export function briefOnlyUserIds(paidUserIds: Iterable<string>, flags: Iterable<BriefRuleFlags>): string[] {
+  const excluded = new Set<string>();
+  for (const f of flags) {
+    if (f.optedOut || f.hasDigest) excluded.add(f.userId);
+  }
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const userId of paidUserIds) {
+    if (excluded.has(userId) || seen.has(userId)) continue;
+    seen.add(userId);
+    out.push(userId);
+  }
+  return out;
+}
 
 /**
  * Pre-deploy / post-deploy audit (read-only): one page of rows that break the

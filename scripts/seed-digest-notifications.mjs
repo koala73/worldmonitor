@@ -2094,7 +2094,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 /**
- * Paid users who need a default in-app brief (Convex `getBriefOnlyUsers`).
+ * Paid users who need a default in-app brief (Convex `/relay/brief-only-users`).
  * Never fatal: on any failure the run composes for digest rules only, as it
  * did before this list existed.
  *

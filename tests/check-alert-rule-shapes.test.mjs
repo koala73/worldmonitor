@@ -10,8 +10,44 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { collectConvexPages, collectConvexRows } from '../scripts/lib/convex-run-pages.mjs';
+import { CONVEX_RUN_MAX_BUFFER, collectConvexPages, collectConvexRows, runConvexFunction } from '../scripts/lib/convex-run-pages.mjs';
 import { summarizeShapeAudit } from '../scripts/check-alert-rule-shapes.mjs';
+
+// Stands in for `npx convex run`: prints a page whose size is set by the
+// `numItems` arg (KiB of filler), so the real runner's large-output path is
+// exercised with a local process.
+const FAKE_CONVEX_RUN = [
+  '-e',
+  [
+    'const args = JSON.parse(process.argv[process.argv.length - 1]);',
+    'const row = { userId: "u", variant: "full", eventTypes: ["x".repeat(1024)] };',
+    'const page = Array.from({ length: args.numItems }, () => row);',
+    'process.stdout.write(JSON.stringify({ page, continueCursor: "_end", isDone: true }));',
+  ].join('\n'),
+];
+
+describe('runConvexFunction', () => {
+  it('reads a page larger than spawnSync\'s default 1 MiB buffer', () => {
+    assert.ok(CONVEX_RUN_MAX_BUFFER > 4 * 1024 * 1024, 'buffer must hold a 4 MiB byte-bounded page plus one row');
+    const result = runConvexFunction('alertRules:getByEnabled', { enabled: true, numItems: 3000 }, {
+      command: process.execPath,
+      commandArgs: FAKE_CONVEX_RUN,
+    });
+    assert.equal(result.page.length, 3000);
+    assert.ok(JSON.stringify(result).length > 3 * 1024 * 1024, 'the fake page exceeds 3 MiB');
+  });
+
+  it('surfaces a failed or unparseable run as an error', () => {
+    assert.throws(
+      () => runConvexFunction('x', {}, { command: process.execPath, commandArgs: ['-e', 'process.exit(3)'] }),
+      /x failed \(exit 3\)/,
+    );
+    assert.throws(
+      () => runConvexFunction('x', {}, { command: process.execPath, commandArgs: ['-e', 'process.stdout.write("not json")'] }),
+      /unparseable output: not json/,
+    );
+  });
+});
 
 function stubRunner(pages) {
   const calls = [];

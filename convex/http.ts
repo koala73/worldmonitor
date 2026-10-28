@@ -5,6 +5,7 @@ import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
 import { timingSafeEqualStrings } from "./lib/svixVerify";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
+import { briefOnlyUserIds, type BriefRuleFlags } from "./alertRules";
 import {
   CHECKOUT_RATE_LIMITED,
   isCheckoutTimedOutOutcome,
@@ -1400,8 +1401,11 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
-    const userIds = await collectPages((cursor) =>
-      ctx.runQuery((internal as any).alertRules.getBriefOnlyUsers, { cursor }));
+    const [paidUserIds, flags] = await Promise.all([
+      collectPages<string>((cursor) => ctx.runQuery((internal as any).alertRules.listPaidUserIds, { cursor })),
+      collectPages<BriefRuleFlags>((cursor) => ctx.runQuery((internal as any).alertRules.listBriefRuleFlags, { cursor })),
+    ]);
+    const userIds = briefOnlyUserIds(paidUserIds, flags);
     return new Response(JSON.stringify(userIds), {
       status: 200,
       headers: { "Content-Type": "application/json" },
