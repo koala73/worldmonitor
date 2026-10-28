@@ -7,6 +7,7 @@ import { fetchMcpDownstream } from '../downstream';
 import type { ToolDef } from '../types';
 
 import { NEWS_DASHBOARD_UI_URI } from '../ui/news-dashboard-app';
+import { normalizeSummaryLanguage } from '../../../server/worldmonitor/news/v1/_shared';
 
 function newsDashboardView(params: Record<string, unknown>) {
   const parsedView = parseNewsDashboardRequest(params);
@@ -60,7 +61,7 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
       headlines: { type: 'array', minItems: 1, maxItems: 8, items: { type: 'string', maxLength: 500 }, description: 'Headlines to work on: 1-8 for a brief, exactly 1 for a translation. Each up to 500 characters; a longer translation is refused.' },
       bodies: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 400 }, description: 'Optional article snippets, index-aligned with headlines (up to 400 characters each), that ground the brief. Ignored for translation.' },
       mode: { type: 'string', enum: ['brief', 'translate'], description: 'brief (default) summarizes the headlines; translate renders one headline in lang.' },
-      lang: { type: 'string', maxLength: 16, description: 'BCP 47 language code: the target language for translate and the output language for brief (default en).' },
+      lang: { type: 'string', maxLength: 16, description: 'BCP 47 language code: the target language for translate and the output language for brief (default en). One of the dashboard languages (en, ar, bg, cs, de, el, es, fa, fr, hi, hr, hu, it, ja, ko, nl, pl, pt, ro, ru, sv, sw, th, tr, uk, vi, zh, zh-TW); a regional tag such as pt-BR resolves to its base language, zh-Hant to zh-TW.' },
       geoContext: { type: 'string', maxLength: 100, description: 'Optional short geographic or topical framing passed to the model with the headlines.' },
     },
     required: ['headlines'],
@@ -86,7 +87,12 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   _execute: async (params, base, context, execution) => {
     const mode = params.mode ?? 'brief';
-    const lang = params.lang ?? 'en';
+    // summarize-article refuses any language outside the dashboard set, so a
+    // regional tag is resolved here rather than failing downstream.
+    const lang = normalizeSummaryLanguage(typeof params.lang === 'string' ? params.lang : 'en');
+    if (!lang) {
+      throw new RpcValidationError('analyze_news_headlines', [{ field: 'lang', description: 'Unsupported language. Use one of the dashboard languages, e.g. en, fr, de, es, ar, zh, zh-TW, ja.' }]);
+    }
     if (mode === 'translate' && (!Array.isArray(params.headlines) || params.headlines.length !== 1)) {
       throw new RpcValidationError('analyze_news_headlines', [{ field: 'headlines', description: 'Translation requires exactly one headline.' }]);
     }

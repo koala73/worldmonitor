@@ -6,7 +6,9 @@
 // inlines large JSON as an escaped JSON.parse string, which costs ~5 KB here.
 // It also writes scripts/shared/news-digest-editions.json, the edition list
 // the relay's classify loop iterates, so the relay image ships a few bytes
-// instead of the whole catalog and does not redeploy on every feed edit.
+// instead of the whole catalog and does not redeploy on every feed edit, and
+// scripts/shared/news-digest-warm-cells.json, the (edition, language) digests
+// the relay's warm cycle requests.
 // Run under tsx: `node --import tsx <this>`.
 // --check exits 1 when a committed output is stale.
 
@@ -14,14 +16,19 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { NEWS_CATALOG, projectBrowserCatalog } from '../shared/news-catalog.ts';
+import { NEWS_CATALOG, buildDigestWarmCells, projectBrowserCatalog } from '../shared/news-catalog.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const BROWSER_CATALOG_PATH = 'src/config/news-catalog.browser.generated.ts';
 export const DIGEST_EDITIONS_PATH = 'scripts/shared/news-digest-editions.json';
+export const DIGEST_WARM_CELLS_PATH = 'scripts/shared/news-digest-warm-cells.json';
 
 export function renderDigestEditions() {
   return `${JSON.stringify(Object.keys(NEWS_CATALOG.layout.server), null, 2)}\n`;
+}
+
+export function renderDigestWarmCells() {
+  return `${JSON.stringify(buildDigestWarmCells(), null, 2)}\n`;
 }
 
 export function renderBrowserCatalog() {
@@ -57,6 +64,7 @@ function main() {
   const results = [
     syncOutput(BROWSER_CATALOG_PATH, renderBrowserCatalog(), check),
     syncOutput(DIGEST_EDITIONS_PATH, renderDigestEditions(), check),
+    syncOutput(DIGEST_WARM_CELLS_PATH, renderDigestWarmCells(), check),
   ];
   if (results.includes(false)) process.exit(1);
 }

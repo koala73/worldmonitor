@@ -712,6 +712,9 @@ const STANDALONE_KEYS = {
   // and alarms earlier than the underlying seed-meta staleness window.
   chokepointFlowsRelayHeartbeat: 'relay:heartbeat:chokepoint-flows',
   climateNewsRelayHeartbeat:     'relay:heartbeat:climate-news',
+  // News digest warm cycle (scripts/lib/news-digest-warm.cjs): written only
+  // when at least half the (edition, language) digests served news (#9766).
+  newsDigestWarmRelayHeartbeat: 'relay:heartbeat:news-digest-warm',
   // Bundle tick heartbeat written by `_bundle-runner.mjs` on every container
   // start, including skip-all ticks. Detects Railway cron-scheduler freeze
   // (#6691) that member seed-meta budgets (17.5d+) cannot see.
@@ -2061,6 +2064,18 @@ const SEED_META = {
   // than the 720min seed-meta threshold above. TTL is 18h on the writer.
   chokepointFlowsRelayHeartbeat: { key: 'relay:heartbeat:chokepoint-flows', maxStaleMin: 480 }, // 6h loop; 8h alarm
   climateNewsRelayHeartbeat:     { key: 'relay:heartbeat:climate-news',     maxStaleMin: 60 },  // 30m loop; 60m alarm
+  // 17m loop; 51m = 3 missed cycles. Soft until the first healthy cycle.
+  newsDigestWarmRelayHeartbeat: {
+    key: 'relay:heartbeat:news-digest-warm',
+    maxStaleMin: 51,
+    activationKey: 'seed-activated:news:digest-warm:v1',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 9766,
+      activationKey: 'seed-activated:news:digest-warm:v1',
+    },
+  },
   staticRefBundleTick: {
     key: 'bundle:heartbeat:static-ref',
     maxStaleMin: 2880, // daily cron `0 3 * * *`; 48h = 2× cadence
@@ -2310,6 +2325,8 @@ const ON_DEMAND_KEYS = new Set([
   'tensionEvidence',
   // Relay strike-pressure tally: the marker is written after its first healthy publish.
   'strikePressure',
+  // Relay digest warm cycle: the marker is written after its first healthy cycle.
+  'newsDigestWarmRelayHeartbeat',
   // Scheduled producer. The marker is written only after a successful
   // publish of the canonical snapshot. Before that first publish, absence is
   // pending activation; after it, missing or stale data is strict.
@@ -2463,6 +2480,8 @@ const ACTIVATION_MARKERS = {
   gdeltCountryEvents: SEED_META.gdeltCountryEvents.activationKey,
   // Written by scripts/ais-relay.cjs after the first healthy strike-pressure publish.
   strikePressure: 'seed-activated:conflict:strike-pressure',
+  // Written by scripts/ais-relay.cjs after the first healthy digest warm cycle.
+  newsDigestWarmRelayHeartbeat: SEED_META.newsDigestWarmRelayHeartbeat.activationKey,
   physicalPremiums: SEED_META.physicalPremiums.activationKey,
   // Written by publishUsHtsIndex in scripts/seed-supply-chain-trade.mjs.
   usHtsDuties: SEED_META.usHtsDuties.activationKey,

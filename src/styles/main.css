@@ -26412,7 +26412,7 @@ body.map-width-resizing {
   border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .chat-msg-error { color: var(--yellow) !important; }
-.chat-msg-streaming .chat-msg-body { opacity: 0.75; white-space: pre-wrap; }
+.chat-msg-streaming .chat-msg-body { opacity: 0.75; }
 .chat-streaming-dot {
   display: inline-block;
   width: 6px;

@@ -70,6 +70,7 @@ COPY scripts/lib/digest-stale-gate.cjs ./scripts/lib/digest-stale-gate.cjs
 COPY scripts/lib/publisher-link-relay-gate.cjs ./scripts/lib/publisher-link-relay-gate.cjs
 # Classify digest URL/auth/transport helper required by ais-relay.cjs (#7437).
 COPY scripts/lib/classify-digest-request.cjs ./scripts/lib/classify-digest-request.cjs
+COPY scripts/lib/news-digest-warm.cjs ./scripts/lib/news-digest-warm.cjs
 COPY scripts/lib/saudi-civil-defense-alerts.cjs ./scripts/lib/saudi-civil-defense-alerts.cjs
 COPY scripts/lib/chokepoint-disruption-alerts.cjs ./scripts/lib/chokepoint-disruption-alerts.cjs
 # Middle East strike feed (conflict:iran-events:v1), required at relay startup;
@@ -144,6 +145,7 @@ COPY scripts/shared/ucdp-candidate.cjs ./scripts/shared/ucdp-candidate.cjs
 COPY scripts/shared/compare-and-delete-script.cjs ./scripts/shared/compare-and-delete-script.cjs
 # Edition list for the classify loop, generated from shared/news-catalog.json.
 COPY scripts/shared/news-digest-editions.json ./scripts/shared/news-digest-editions.json
+COPY scripts/shared/news-digest-warm-cells.json ./scripts/shared/news-digest-warm-cells.json
 # A missing inventory artifact fails the image build before relay startup.
 COPY --from=inventory-builder /workspace/scripts/shared/inventory-facts.generated.json ./scripts/shared/inventory-facts.generated.json
 COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
