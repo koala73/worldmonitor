@@ -30,6 +30,12 @@ import {
   buildWorldBrief,
   extractKeywords,
 } from '../server/worldmonitor/intelligence/v1/chat-analyst-context.ts';
+import {
+  extractPriceFigures,
+  findUnsupportedPrices,
+  formatPriceCaveat,
+  withPriceGrounding,
+} from '../server/worldmonitor/intelligence/v1/chat-analyst-grounding.ts';
 import { assembleBriefStoryContext } from '../server/worldmonitor/intelligence/v1/brief-story-context.ts';
 import { getCachedEnvelopeJson, readCachedJson, __resetKeyPrefixCacheForTests } from '../server/_shared/redis.ts';
 import {
@@ -1494,7 +1500,7 @@ describe('#5857 — pure formatters cannot be tricked into forging a line', () =
         { quotes: [{ symbol: '^GSPC', price: 5000, changePercent: 1.2 }] },
         { quotes: [{ symbol: 'CL=F', price: 80, changePercent: -0.5 }] },
       ),
-      'Market Data:\nEquities: ^GSPC $5000.00 (+1.20%)\nCommodities: CL=F $80.00 (-0.50%)',
+      'Market Data:\nEquities: ^GSPC 5000.00 (+1.20%)\nCommodities: Crude Oil WTI (CL=F) $80.00 (-0.50%)',
     );
     assert.equal(
       buildRiskScores({ scores: [{ countryName: "Côte d'Ivoire", score: 62.5 }] }),
@@ -1726,5 +1732,418 @@ describe('#5857 — brief-story-context inherits the guard from the shared build
     } finally {
       harness.restore();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Live quotes for the instruments a question names (Brent "$80" incident,
+// 2026-10-27 15:50 UTC)
+//
+// A Pro user asked "Why is Brent up today?" and the analyst answered with an
+// "$80" Brent level while the dashboard's Brent tile read $109.76. The Market
+// Data block rendered only the seed's first four commodity quotes (^VIX, gold,
+// silver, copper), so Brent — ninth in market:commodities-bootstrap:v1 — never
+// reached the prompt, and the model answered the price question from training
+// knowledge. The block also read `changePercent`, a field the seeder never
+// writes (the proto field is `change`, "percentage change from previous
+// close"), so every quote it did carry read "+0.00%".
+// ---------------------------------------------------------------------------
+
+/**
+ * Served order and field names of market:commodities-bootstrap:v1 on
+ * 2026-10-28 (public list-commodity-quotes). The Yahoo path writes
+ * name = symbol, `change` is the percent move, and Brent is the ninth quote.
+ */
+function liveCommoditiesFixture() {
+  const rows: Array<[string, number, number]> = [
+    ['^VIX', 17.52, -4.73], ['GC=F', 4056, -0.46], ['SI=F', 54.055, -0.84], ['HG=F', 6.6435, -0.14],
+    ['PL=F', 1537, -0.01], ['PA=F', 1028.5, 0], ['ALI=F', 3185.25, 0.07], ['CL=F', 101.32, 1.42],
+    ['BZ=F', 110.89, 1.35], ['NG=F', 3.053, 1.63], ['TTF=F', 94.675, -1.44], ['HO=F', 4.6017, -0.34],
+  ];
+  return {
+    quotes: rows.map(([symbol, price, change]) => ({ symbol, name: symbol, display: symbol, price, change, sparkline: [] })),
+  };
+}
+
+function liveEquitiesFixture() {
+  const rows: Array<[string, string, number, number]> = [
+    ['SPY', 'SPDR S&P 500', 500, 1.2], ['QQQ', 'Invesco QQQ', 420, 1.5], ['DIA', 'SPDR Dow', 390, 0.4],
+    ['AAPL', 'Apple Inc.', 230, 0.8], ['MSFT', 'Microsoft', 410, 0.3], ['GOOGL', 'Alphabet', 170, -0.2],
+    ['AMZN', 'Amazon', 185, 0.1], ['NVDA', 'NVIDIA', 128, 3.4],
+  ];
+  return {
+    quotes: rows.map(([symbol, name, price, change]) => ({ symbol, name, display: symbol, price, change, sparkline: [] })),
+  };
+}
+
+function commodityLine(out: string): string {
+  return out.split('\n').find((l) => l.startsWith('Commodities: ')) ?? '';
+}
+
+describe('buildMarketData — live quotes for the instruments a question names', () => {
+  it('a Brent question carries the live Brent quote, labelled, with its percent move', () => {
+    const out = buildMarketData(null, liveCommoditiesFixture(), extractKeywords('Why is Brent up today?'));
+    assert.match(out, /Brent Crude \(BZ=F\) \$110\.89 \(\+1\.35%\)/,
+      `the quote the question is about must be in the block, named so the model can connect "Brent" to it; got:\n${out}`);
+  });
+
+  it('the default block reads the seeder\'s `change` field instead of rendering +0.00%', () => {
+    const out = buildMarketData(null, liveCommoditiesFixture());
+    assert.match(out, /VIX \(\^VIX\) 17\.52 \(-4\.73%\)/, `got:\n${out}`);
+    assert.match(out, /Gold \(GC=F\) \$4056\.00 \(-0\.46%\)/, `got:\n${out}`);
+    assert.ok(!out.includes('+0.00%'), `no quote may read +0.00% when the payload carries a move; got:\n${out}`);
+  });
+
+  it('without a named instrument the default block alone cannot ground Brent (the incident)', () => {
+    const out = buildMarketData(null, liveCommoditiesFixture(), extractKeywords("Summarize today's market picture"));
+    assert.ok(!out.includes('BZ=F'), `Brent is ninth in the seed and outside the default cap; got:\n${out}`);
+  });
+
+  it('"oil" pulls both crude benchmarks', () => {
+    const out = buildMarketData(null, liveCommoditiesFixture(), extractKeywords('What is moving oil today, and what should I watch?'));
+    assert.match(out, /Crude Oil WTI \(CL=F\) \$101\.32 \(\+1\.42%\)/, `got:\n${out}`);
+    assert.match(out, /Brent Crude \(BZ=F\) \$110\.89 \(\+1\.35%\)/, `got:\n${out}`);
+  });
+
+  it('named quotes lead the line and the default quotes still follow', () => {
+    const line = commodityLine(buildMarketData(null, liveCommoditiesFixture(), ['brent']));
+    const brentAt = line.indexOf('BZ=F');
+    const vixAt = line.indexOf('^VIX');
+    assert.ok(brentAt !== -1 && vixAt !== -1, `both the named and the default quotes render; got:\n${line}`);
+    assert.ok(brentAt < vixAt, `the named instrument comes first; got:\n${line}`);
+    assert.equal(line.split(', ').length, 5, `one named quote plus the four defaults; got:\n${line}`);
+  });
+
+  it('an equity named by ticker or company name is included past the default cap', () => {
+    for (const query of ['Why is NVDA up?', 'What is Nvidia doing today?']) {
+      const out = buildMarketData(liveEquitiesFixture(), null, extractKeywords(query));
+      assert.match(out, /NVIDIA \(NVDA\) \$128\.00 \(\+3\.40%\)/, `"${query}" must surface the eighth equity; got:\n${out}`);
+    }
+  });
+
+  it('keywords that name nothing leave the default block unchanged', () => {
+    const named = buildMarketData(liveEquitiesFixture(), liveCommoditiesFixture(), extractKeywords('What is happening in Ukraine?'));
+    const plain = buildMarketData(liveEquitiesFixture(), liveCommoditiesFixture());
+    assert.equal(named, plain);
+  });
+
+  it('a payload name that differs from the symbol labels the quote', () => {
+    const out = buildMarketData({ quotes: [{ symbol: 'SPY', name: 'SPDR S&P 500', price: 500, change: 1.2 }] }, null);
+    assert.equal(out, 'Market Data:\nEquities: SPDR S&P 500 (SPY) $500.00 (+1.20%)');
+  });
+
+  // Strix on #9780: the alias lookup must not walk the prototype chain, or a
+  // payload symbol spelled like an Object member throws inside context
+  // assembly and the route answers 503.
+  it('a quote symbol spelled like an Object member neither throws nor earns aliases', () => {
+    for (const symbol of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      const out = buildMarketData(null, { quotes: [{ symbol, price: 10, change: 0.5 }] }, ['oil']);
+      assert.equal(out, `Market Data:\nCommodities: ${symbol} $10.00 (+0.50%)`, `symbol "${symbol}" renders plainly`);
+    }
+  });
+});
+
+// CodeRabbit on #9780: every quote rendered with "$", so TTF (EUR/MWh) read as
+// a dollar price. Under market focus the € spot line is filtered out, so a
+// correct "€95" answer was caveated while "$95" passed with the wrong
+// currency. Index levels and exchange rates are not currency amounts at all,
+// and a listing outside the US quotes in its exchange currency.
+describe('each quote renders in its own currency, so the price check grounds the right one', () => {
+  it('TTF renders in euros: a € answer is grounded and a $ answer is flagged', () => {
+    const block = buildMarketData(null, liveCommoditiesFixture(), ['ttf']);
+    assert.match(block, /TTF Natural Gas \(TTF=F\) €94\.6[78] \(-1\.44%\)/, block);
+    assert.deepEqual(findUnsupportedPrices('TTF is near €95/MWh after the cold snap.', block), []);
+    assert.deepEqual(findUnsupportedPrices('TTF is near $95/MWh after the cold snap.', block), ['$95']);
+  });
+
+  it('an exchange rate carries no currency sign', () => {
+    const block = buildMarketData(null, {
+      quotes: [{ symbol: 'EURUSD=X', price: 1.1125, change: -0.05 }, { symbol: 'USDJPY=X', price: 157.937, change: 0.02 }],
+    });
+    assert.match(block, /EUR\/USD \(EURUSD=X\) 1\.11 \(-0\.05%\)/, block);
+    assert.match(block, /USD\/JPY \(USDJPY=X\) 157\.94 \(\+0\.02%\)/, block);
+    assert.ok(!block.includes('$'), `a rate is not a dollar amount; got:\n${block}`);
+  });
+
+  it('an index level carries no currency sign', () => {
+    const block = buildMarketData({ quotes: [{ symbol: '^GSPC', name: 'S&P 500', price: 5000, change: 1.2 }] }, liveCommoditiesFixture());
+    assert.match(block, /S&P 500 \(\^GSPC\) 5000\.00 \(\+1\.20%\)/, block);
+    assert.match(block, /VIX \(\^VIX\) 17\.52 \(-4\.73%\)/, block);
+  });
+
+  it('a listing outside the US renders in its exchange currency, which the price check reads back', () => {
+    const block = buildMarketData({
+      quotes: [
+        { symbol: 'RELIANCE.NS', name: 'Reliance Industries', price: 2950.5, change: 0.3 },
+        { symbol: '0700.HK', name: 'Tencent', price: 410, change: -1.1 },
+        { symbol: 'NESN.SW', name: 'Nestle', price: 85.2, change: 0.1 },
+        { symbol: '2222.SR', name: 'Saudi Aramco', price: 27.5, change: 0.4 },
+        { symbol: 'SHOP.TO', name: 'Shopify', price: 120, change: 2 },
+        { symbol: 'BRK.B', name: 'Berkshire Hathaway', price: 450, change: 0.2 },
+      ],
+    }, null);
+    assert.match(block, /Reliance Industries \(RELIANCE\.NS\) ₹2950\.50 \(\+0\.30%\)/, block);
+    assert.match(block, /Tencent \(0700\.HK\) HK\$410\.00 \(-1\.10%\)/, block);
+    assert.match(block, /Nestle \(NESN\.SW\) CHF 85\.20 \(\+0\.10%\)/, block);
+    assert.match(block, /Saudi Aramco \(2222\.SR\) SAR 27\.50 \(\+0\.40%\)/, block);
+    assert.match(block, /Shopify \(SHOP\.TO\) C\$120\.00 \(\+2\.00%\)/, block);
+    assert.match(block, /Berkshire Hathaway \(BRK\.B\) \$450\.00 \(\+0\.20%\)/, 'a share class is not an exchange suffix');
+    assert.deepEqual(findUnsupportedPrices('Reliance at ₹2,950, Aramco at SAR 27.5, Shopify at C$120.', block), []);
+    assert.deepEqual(findUnsupportedPrices('Tencent trades at $410.', block), ['$410'], 'a Hong Kong listing is not a dollar price');
+  });
+});
+
+// Greptile on #9780: the news-retrieval keyword list keeps eight terms, so a
+// long question filled the slots before "Brent" and the quote fell back to the
+// default four. Instrument matching reads every term of the question.
+const LONG_BRENT_QUESTION = "Explain today's energy market reaction to the latest OPEC production announcement: why is Brent up?";
+
+describe('instrument matching reads the whole question, not the eight-term retrieval cap', () => {
+  it('the retrieval cap drops "brent" from the long question (the gap)', () => {
+    const capped = extractKeywords(LONG_BRENT_QUESTION);
+    assert.equal(capped.length, 8);
+    assert.ok(!capped.includes('brent'), `eight retrieval slots fill before "Brent"; got ${JSON.stringify(capped)}`);
+    assert.ok(extractKeywords(LONG_BRENT_QUESTION, Number.POSITIVE_INFINITY).includes('brent'),
+      'an uncapped extraction keeps every term, so the instrument can still be matched');
+  });
+
+  it('assembleAnalystContext still grounds Brent for the long question', { concurrency: 1 }, async () => {
+    const harness = withStubbedRedis({ 'market:commodities-bootstrap:v1': liveCommoditiesFixture() });
+    try {
+      const ctx = await assembleAnalystContext(undefined, 'market', LONG_BRENT_QUESTION);
+      assert.match(ctx.marketData, /Brent Crude \(BZ=F\) \$110\.89 \(\+1\.35%\)/, `got:\n${ctx.marketData}`);
+    } finally {
+      harness.restore();
+    }
+  });
+});
+
+describe('assembleAnalystContext — the named instrument reaches the Market Data block', { concurrency: 1 }, () => {
+  it('a Brent question grounds the Brent quote in the user turn', async () => {
+    const harness = withStubbedRedis({ 'market:commodities-bootstrap:v1': liveCommoditiesFixture() });
+    try {
+      const ctx = await assembleAnalystContext(undefined, 'market', 'Why is Brent up today?');
+      assert.match(ctx.marketData, /Brent Crude \(BZ=F\) \$110\.89 \(\+1\.35%\)/, `got:\n${ctx.marketData}`);
+      const turn = buildAnalystUserTurn(ctx, 'market', 'Why is Brent up today?');
+      assert.ok(turn.indexOf('BZ=F') < turn.indexOf(LIVE_CONTEXT_CLOSE), 'the quote sits inside the live-context block');
+    } finally {
+      harness.restore();
+    }
+  });
+
+  it('a prior-turn instrument stays in the block when the follow-up pivots', async () => {
+    // api/chat-analyst.ts builds the retrieval query as `${query} ${prevUserTurn}`.
+    const harness = withStubbedRedis({ 'market:commodities-bootstrap:v1': liveCommoditiesFixture() });
+    try {
+      const ctx = await assembleAnalystContext(undefined, 'all', 'And natural gas? Why is Brent up today?');
+      assert.match(ctx.marketData, /Natural Gas \(NG=F\)/, `got:\n${ctx.marketData}`);
+      assert.match(ctx.marketData, /Brent Crude \(BZ=F\)/, `got:\n${ctx.marketData}`);
+    } finally {
+      harness.restore();
+    }
+  });
+});
+
+describe('buildAnalystSystemPrompt — price levels come from the block or are declared unavailable', () => {
+  it('tells the model where a price may come from and what to say when it is absent', () => {
+    const prompt = buildAnalystSystemPrompt(fullCtx(), 'market');
+    assert.match(prompt, /price/i);
+    assert.match(prompt, /quote/i, 'the rule names the lines that carry quotes');
+    assert.match(prompt, /not available|unavailable/i, 'the rule names the fallback instead of leaving estimation open');
+    assert.match(prompt, /never estimate|do not estimate|rather than estimat/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Output check: a price the answer states must appear in the live context
+//
+// The brief pipeline drops a sentence whose figures are not in its ground text
+// (validateNoHallucinatedFacts in shared/brief-llm-core.js). The analyst
+// streams token by token, so a stated figure cannot be retracted; the check
+// instead appends a visible caveat naming the unsupported price(s) before the
+// terminal event and lets the route report the miss. It is price-specific
+// (currency-prefixed amounts, rounding tolerance) because the general numeric
+// validator reads every count, year and rounded percentage as a fact.
+// ---------------------------------------------------------------------------
+
+const BRENT_GROUND = [
+  'Market Data:',
+  'Commodities: VIX (^VIX) $17.52 (-4.73%), Gold (GC=F) $4056.00 (-0.46%), Brent Crude (BZ=F) $110.89 (+1.35%)',
+  'Energy Spot Prices',
+  'TTF gas: €94.68/MWh (-1.44% today) | Newcastle coal: $104.75/t (+8.32% today)',
+].join('\n');
+
+function sseStream(events: string[]): ReadableStream<Uint8Array> {
+  const enc = new TextEncoder();
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const e of events) controller.enqueue(enc.encode(e));
+      controller.close();
+    },
+  });
+}
+
+async function readAll(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.getReader();
+  const dec = new TextDecoder();
+  let out = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    out += dec.decode(value, { stream: true });
+  }
+  return out + dec.decode();
+}
+
+function sseEvents(raw: string): Array<Record<string, unknown>> {
+  return raw.split('\n').filter((l) => l.startsWith('data: ')).map((l) => JSON.parse(l.slice(6)) as Record<string, unknown>);
+}
+
+describe('chat-analyst-grounding — extractPriceFigures', () => {
+  it('reads currency-prefixed amounts, with thousands separators and markdown, and skips percentages', () => {
+    const figures = extractPriceFigures('Brent at $80/bbl, gold **$4,056**, TTF €94.7/MWh, up 1.35% on the day, USD 101.3 for WTI.');
+    assert.deepEqual(figures.map((f) => f.value), [80, 4056, 94.7, 101.3]);
+    assert.deepEqual(figures.map((f) => f.text), ['$80', '$4,056', '€94.7', 'USD 101.3']);
+    assert.deepEqual(figures.map((f) => f.currency), ['USD', 'USD', 'EUR', 'USD'], '"$" and "USD" are the same currency');
+  });
+
+  it('normalises the dollar spellings and keeps other currencies distinct', () => {
+    const figures = extractPriceFigures('US$80, USD 80, $80, £80, ¥80');
+    assert.deepEqual(figures.map((f) => f.currency), ['USD', 'USD', 'USD', 'GBP', 'JPY/CNY']);
+  });
+
+  it('reads the exchange currencies the Market Data block renders', () => {
+    const figures = extractPriceFigures('HK$410, C$120, CHF 85.2, SAR 27.5, AED 4, ₹2,950, ₩71,000, CN¥1,200');
+    assert.deepEqual(figures.map((f) => f.currency), ['HKD', 'CAD', 'CHF', 'SAR', 'AED', 'INR', 'KRW', 'JPY/CNY']);
+    assert.deepEqual(figures.map((f) => f.value), [410, 120, 85.2, 27.5, 4, 2950, 71000, 1200]);
+  });
+
+  it('an alphabetic currency code must stand on its own word', () => {
+    assert.deepEqual(extractPriceFigures('Caesar 80 and focused 80 and released 80'), [], 'no "SAR", "USD" or "AED" inside other words');
+  });
+
+  it('scales suffixed amounts so "$2bn" is not the price 2', () => {
+    const [bn] = extractPriceFigures('inflows of $2bn');
+    assert.equal(bn?.value, 2_000_000_000);
+  });
+
+  it('returns nothing for prose without a currency amount', () => {
+    assert.deepEqual(extractPriceFigures('Brent rose 1.35% to a four-week high on 27 October 2026.'), []);
+  });
+});
+
+describe('chat-analyst-grounding — findUnsupportedPrices', () => {
+  it('flags the $80 Brent level when the block carries $110.89', () => {
+    const answer = '**SIGNAL**\nBrent is holding near $80 a barrel after the OPEC+ decision.';
+    assert.deepEqual(findUnsupportedPrices(answer, BRENT_GROUND), ['$80']);
+  });
+
+  it('accepts a figure rounded from a quote in the block', () => {
+    for (const stated of ['$111', '$110.9', '$110.89', '$4,050', '€95', '$105/t']) {
+      assert.deepEqual(findUnsupportedPrices(`Brent trades at ${stated}.`, BRENT_GROUND), [],
+        `${stated} rounds to a quote in the block and must pass`);
+    }
+  });
+
+  // Greptile on #9780: the same amount in another currency is a different
+  // price, and "Brent at £110.89" is exactly the wrong fact this check exists
+  // to catch. The dollar spellings are one currency.
+  it('the same amount in another currency is not grounded', () => {
+    assert.deepEqual(findUnsupportedPrices('Brent trades at £110.89.', BRENT_GROUND), ['£110.89']);
+    assert.deepEqual(findUnsupportedPrices('Brent trades at €110.89.', BRENT_GROUND), ['€110.89']);
+    for (const stated of ['US$111', 'USD 111', '$111']) {
+      assert.deepEqual(findUnsupportedPrices(`Brent trades at ${stated}.`, BRENT_GROUND), [], `${stated} is a dollar figure`);
+    }
+  });
+
+  it('a figure the user introduced is grounded by the question, not flagged', () => {
+    const ground = `${BRENT_GROUND}\n--- QUESTION ---\nIs Brent really at $80?`;
+    assert.deepEqual(findUnsupportedPrices('No — Brent is at $110.89, not $80.', ground), []);
+  });
+
+  it('reports each unsupported figure once, in order of appearance', () => {
+    const answer = 'Brent at $80, WTI near $75, and $80 again as support.';
+    assert.deepEqual(findUnsupportedPrices(answer, BRENT_GROUND), ['$80', '$75']);
+  });
+
+  it('an answer without prices never flags', () => {
+    assert.deepEqual(findUnsupportedPrices('Brent rose 1.35% on supply news.', BRENT_GROUND), []);
+  });
+});
+
+describe('chat-analyst-grounding — withPriceGrounding over the SSE stream', () => {
+  it('appends a caveat naming the unsupported price before the terminal event and reports it', async () => {
+    const reported: string[][] = [];
+    const out = withPriceGrounding(
+      sseStream(['data: {"delta":"Brent is near "}\n\n', 'data: {"delta":"$80 a barrel."}\n\ndata: {"done":true}\n\n']),
+      BRENT_GROUND,
+      (prices) => { reported.push(prices); },
+    );
+    const events = sseEvents(await readAll(out));
+    const doneAt = events.findIndex((e) => e.done === true);
+    assert.ok(doneAt > 0, 'the terminal event is preserved');
+    const caveat = events[doneAt - 1];
+    assert.equal(typeof caveat?.delta, 'string');
+    assert.match(String(caveat?.delta), /\$80/, 'the caveat names the figure');
+    assert.equal(caveat?.delta, formatPriceCaveat(['$80']));
+    assert.deepEqual(reported, [['$80']], 'the route is told so it can log the miss');
+    const answer = events.slice(0, doneAt - 1).map((e) => e.delta).join('');
+    assert.equal(answer, 'Brent is near $80 a barrel.', 'the streamed answer is forwarded unchanged');
+  });
+
+  it('is byte-transparent when every stated price is in the block', async () => {
+    const raw = 'data: {"delta":"Brent at $110.89, "}\n\ndata: {"delta":"up 1.35%."}\n\ndata: {"done":true}\n\n';
+    let fired = false;
+    const out = await readAll(withPriceGrounding(sseStream([raw.slice(0, 17), raw.slice(17)]), BRENT_GROUND, () => { fired = true; }));
+    assert.equal(out, raw);
+    assert.equal(fired, false);
+  });
+
+  it('passes an error event through without a caveat', async () => {
+    const raw = 'data: {"delta":"Brent at $80"}\n\ndata: {"error":"llm_unavailable"}\n\n';
+    const out = await readAll(withPriceGrounding(sseStream([raw]), BRENT_GROUND));
+    assert.equal(out, raw, 'no done event, so nothing to annotate — the client already shows the failure');
+  });
+
+  // Strix on #9780: a terminal frame without its trailing newline sat in the
+  // tail buffer and skipped the check. No producer emits one (llm.ts frames
+  // every event with "\n\n"), but the tail is parsed the same way regardless.
+  it('a done event without a trailing newline still gets the caveat, and the tail bytes are unchanged', async () => {
+    const raw = 'data: {"delta":"Brent at $80."}\n\ndata: {"done":true}';
+    const events = sseEvents(await readAll(withPriceGrounding(sseStream([raw]), BRENT_GROUND)));
+    assert.deepEqual(events.map((e) => Object.keys(e)[0]), ['delta', 'delta', 'done']);
+    assert.equal(events[1]?.delta, formatPriceCaveat(['$80']));
+    const clean = 'data: {"delta":"Brent at $110.89."}\n\ndata: {"done":true}';
+    assert.equal(await readAll(withPriceGrounding(sseStream([clean]), BRENT_GROUND)), clean, 'no newline is invented');
+  });
+
+  it('a client cancel reaches the source synchronously (the quota wrapper relies on it)', async () => {
+    let sourceCancelled = false;
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode('data: {"delta":"partial"}\n\n')); },
+      cancel() { sourceCancelled = true; },
+    });
+    const grounded = withPriceGrounding(source, BRENT_GROUND);
+    await grounded.cancel('client disconnected');
+    assert.equal(sourceCancelled, true);
+  });
+
+  it('the caveat is plain language and marks the figure unverified', () => {
+    const one = formatPriceCaveat(['$80']);
+    assert.match(one, /\$80/);
+    assert.match(one, /unverified/i);
+    assert.match(one, /live data/i);
+    assert.ok(one.startsWith('\n\n'), 'rendered as its own paragraph after the answer');
+    const two = formatPriceCaveat(['$80', '$75']);
+    assert.match(two, /\$80, \$75/);
+  });
+});
+
+describe('api/chat-analyst handler — the served stream is price-grounded', () => {
+  it('grounds the served stream outermost, leaving the quota wrapper on the raw provider stream', () => {
+    const src = readFileSync(new URL('../api/chat-analyst.ts', import.meta.url), 'utf-8');
+    assert.match(src, /const stream = withPriceGrounding\(\s*prependSseEvents\(/,
+      'the price check wraps the quota/meta wrapper, which keeps reading llmStream directly');
+    assert.match(src, /step:\s*'price-grounding'/, 'an ungrounded price is reported server-side');
   });
 });

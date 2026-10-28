@@ -28,6 +28,7 @@ import { reportHighUsageIfCrossed } from '../server/_shared/high-usage-alarm';
 import { assembleAnalystContext } from '../server/worldmonitor/intelligence/v1/chat-analyst-context';
 import { buildAnalystMessages } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt';
 import { buildActionEvents } from '../server/worldmonitor/intelligence/v1/chat-analyst-actions';
+import { withPriceGrounding } from '../server/worldmonitor/intelligence/v1/chat-analyst-grounding';
 import { callLlmReasoningStream } from '../server/_shared/llm';
 import { getAiRoutingDecisionForUser, toLlmRoutingPolicy } from '../server/_shared/ai-routing-policy';
 import { sanitizeForPrompt } from '../server/_shared/llm-sanitize.js';
@@ -325,13 +326,32 @@ export default async function handler(req: Request): Promise<Response> {
     // Always prepend a meta event so the client knows which sources are live
     // and whether context is degraded — before the first token arrives.
     // Optionally follows with an action event for visual/chart queries.
-    const stream = prependSseEvents(
-      [
-        { meta: { sources: context.activeSources, degraded: context.degraded } },
-        ...buildActionEvents(query).map((a) => ({ action: a })),
-      ],
-      llmStream,
-      rollbackUnservedQuota,
+    //
+    // Outermost, a price the answer states must appear in the user turn (the
+    // live-context block plus the question): on 2026-10-27 the analyst gave an
+    // "$80" Brent level that nothing in its context supported. Streamed tokens
+    // cannot be retracted, so an unsupported figure gets a visible caveat before
+    // the terminal event and is reported here so the miss rate is observable.
+    // The quota wrapper stays directly on the provider stream: whether answer
+    // content was served is judged on the raw bytes, with no stage in between.
+    const groundText = messages.filter((m) => m.role === 'user').map((m) => m.content).join('\n');
+    const stream = withPriceGrounding(
+      prependSseEvents(
+        [
+          { meta: { sources: context.activeSources, degraded: context.degraded } },
+          ...buildActionEvents(query).map((a) => ({ action: a })),
+        ],
+        llmStream,
+        rollbackUnservedQuota,
+      ),
+      groundText,
+      (prices) => {
+        console.warn(`[chat-analyst] answer stated prices absent from the live context: ${prices.join(', ')}`);
+        void captureSilentError(new Error(`chat-analyst answer stated unsupported price(s): ${prices.join(', ')}`), {
+          tags: { route: 'api/chat-analyst', step: 'price-grounding' },
+          fingerprint: ['api/chat-analyst', 'price-grounding'],
+        });
+      },
     );
 
     return new Response(stream, {
