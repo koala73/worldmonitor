@@ -385,6 +385,38 @@ export function computeProductTrade(byMonth, iso2, dataMonth) {
   };
 }
 
+// Month-end closing stocks are filed in thousand barrels, not kb/d.
+const STOCK_FLOW = 'CLOSTLV';
+const STOCK_UNIT = 'KBBL';
+const isStockRow = (r) => r.FLOW_BREAKDOWN === STOCK_FLOW && r.UNIT_MEASURE === STOCK_UNIT;
+
+/**
+ * Latest month in which the country reported both crude and total-product
+ * closing stocks, in million barrels. Crude and products together are the
+ * scope IEA days of cover count; one without the other understates it, so a
+ * month needs both. Null when no month does.
+ */
+export function extractClosingStocks(allRows, iso2) {
+  const byMonth = new Map();
+  for (const r of allRows) {
+    if (r.REF_AREA !== iso2 || !r.TIME_PERIOD || !isStockRow(r)) continue;
+    const val = parseObsValue(r.OBS_VALUE);
+    if (val === null || val < 0) continue;
+    if (!byMonth.has(r.TIME_PERIOD)) byMonth.set(r.TIME_PERIOD, {});
+    byMonth.get(r.TIME_PERIOD)[r.ENERGY_PRODUCT] = val;
+  }
+  for (const month of [...byMonth.keys()].sort((a, b) => b.localeCompare(a))) {
+    const m = byMonth.get(month);
+    // A zero TOTCRUDE barrel stock is a placeholder: India files KBBL 0 beside
+    // 6,086 kt in the same row set.
+    const crude = m.CRUDEOIL ?? (m.TOTCRUDE > 0 ? m.TOTCRUDE : null);
+    const products = m.TOTPRODS ?? null;
+    if (crude === null || products === null || crude + products <= 0) continue;
+    return { month, crudeMb: crude / 1000, productsMb: products / 1000 };
+  }
+  return null;
+}
+
 export function extractCountryData(allRows, iso2) {
   const byMonth = rowsByMonth(allRows, iso2);
 
@@ -460,6 +492,7 @@ export function extractCountryData(allRows, iso2) {
     refineryYields: computeRefineryYields(byMonth, iso2, dataMonth),
     productTrade: computeProductTrade(byMonth, iso2, dataMonth),
     demandChange: oilDemandChangeFromMonths(byMonth, iso2, dataMonth).change,
+    stocks: extractClosingStocks(allRows, iso2),
     seededAt,
   };
 }
@@ -520,7 +553,8 @@ export function mergeSourceRows(
     ...(secondaryPrior ? parseCsv(secondaryPrior) : []),
     ...(secondaryLookback ? parseCsv(secondaryLookback) : []),
   ];
-  return allRows.filter(r => r.UNIT_MEASURE === 'KBD');
+  // Flows are kb/d; closing stocks are the one KBBL measure kept.
+  return allRows.filter(r => r.UNIT_MEASURE === 'KBD' || isStockRow(r));
 }
 
 /**

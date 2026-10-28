@@ -7,7 +7,7 @@
       "type": "skill-md",
       "description": "Model oil or gas supply shock exposure for a country and chokepoint. Use when the user asks how an energy disruption could affect fuel supply, strategic cover, or product deficits.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/assess-energy-shock/SKILL.md",
-      "digest": "sha256:66b7f33fe3beac18145208ba89c1f54c8a10ab4597d83e8e23f442072867fe14"
+      "digest": "sha256:14499ffb0f1532acb1d5f63a8a0a111c23176ba14ad4906166b5d62c6bb933d4"
     },
     {
       "name": "check-airport-delays",

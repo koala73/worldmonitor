@@ -996,3 +996,54 @@ describe('JODI current-year source resolution (#6799)', () => {
     assert.deepEqual(result.attempted, jodiCsvCandidates('primary', 2026));
   });
 });
+
+// JODI files carry month-end closing stocks (CLOSTLV, thousand barrels) beside
+// the kb/d flows. They are the only recurring stock observation for importers
+// outside the IEA (India, Taiwan, Thailand, Philippines...).
+describe('closing stocks (CLOSTLV)', () => {
+  const stock = (product, month, value, area = 'IN') => makeRow({ REF_AREA: area, TIME_PERIOD: month, ENERGY_PRODUCT: product, FLOW_BREAKDOWN: 'CLOSTLV', UNIT_MEASURE: 'KBBL', OBS_VALUE: value });
+  const flows = (month, area = 'IN') => [
+    makeRow({ REF_AREA: area, TIME_PERIOD: month, ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'TOTDEMO', OBS_VALUE: '1900' }),
+    makeRow({ REF_AREA: area, TIME_PERIOD: month, ENERGY_PRODUCT: 'CRUDEOIL', FLOW_BREAKDOWN: 'TOTIMPSB', OBS_VALUE: '4800' }),
+  ];
+
+  it('mergeSourceRows keeps the stock rows, which are in KBBL, not KBD', () => {
+    const rows = mergeSourceRows(
+      makeCsv([stock('CRUDEOIL', '2026-03', '45280'), makeRow({ FLOW_BREAKDOWN: 'TOTIMPSB', UNIT_MEASURE: 'KTONS' })]), '',
+      makeCsv([...flows('2026-03'), stock('TOTPRODS', '2026-03', '95989')]), '',
+    );
+    assert.equal(rows.filter((r) => r.FLOW_BREAKDOWN === 'CLOSTLV').length, 2);
+    assert.ok(!rows.some((r) => r.UNIT_MEASURE === 'KTONS'), 'other non-KBD units stay out');
+  });
+
+  it('publishes the latest month reporting both crude and product stocks, in million barrels', () => {
+    const rows = [
+      ...flows('2026-04'), ...flows('2026-03'),
+      stock('CRUDEOIL', '2026-03', '45280'), stock('TOTPRODS', '2026-03', '95989'),
+      stock('CRUDEOIL', '2026-04', '44000'), // products not yet filed for April
+      stock('CRUDEOIL', '2026-02', '47000'), stock('TOTPRODS', '2026-02', '90000'),
+    ];
+    assert.deepEqual(extractCountryData(rows, 'IN').stocks, { month: '2026-03', crudeMb: 45.28, productsMb: 95.989 });
+  });
+
+  it('falls back to TOTCRUDE when CRUDEOIL carries no stock', () => {
+    const rows = [...flows('2026-03'), stock('CRUDEOIL', '2026-03', '-'), stock('TOTCRUDE', '2026-03', '25354'), stock('TOTPRODS', '2026-03', '33166')];
+    assert.deepEqual(extractCountryData(rows, 'IN').stocks, { month: '2026-03', crudeMb: 25.354, productsMb: 33.166 });
+  });
+
+  it('a zero TOTCRUDE stock is a placeholder, not an empty tank (India files KBBL 0 beside 6,086 kt)', () => {
+    const rows = [...flows('2026-03'), stock('CRUDEOIL', '2026-03', '-'), stock('TOTCRUDE', '2026-03', '0'), stock('TOTPRODS', '2026-03', '95989')];
+    assert.equal(extractCountryData(rows, 'IN').stocks, null);
+  });
+
+  it('is null when no month reports both, or the total is zero, and never reads another country', () => {
+    assert.equal(extractCountryData([...flows('2026-03'), stock('CRUDEOIL', '2026-03', '45280')], 'IN').stocks, null);
+    assert.equal(extractCountryData([...flows('2026-03'), stock('CRUDEOIL', '2026-03', '0'), stock('TOTPRODS', '2026-03', '0')], 'IN').stocks, null);
+    assert.equal(extractCountryData([...flows('2026-03'), stock('CRUDEOIL', '2026-03', '1', 'TH'), stock('TOTPRODS', '2026-03', '1', 'TH')], 'IN').stocks, null);
+  });
+
+  it('stock rows never change the flow data month', () => {
+    const rows = [...flows('2026-03'), stock('CRUDEOIL', '2026-05', '1'), stock('TOTPRODS', '2026-05', '1'), stock('GASDIES', '2026-05', '1')];
+    assert.equal(extractCountryData(rows, 'IN').dataMonth, '2026-03');
+  });
+});

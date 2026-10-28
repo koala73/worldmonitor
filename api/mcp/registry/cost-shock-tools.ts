@@ -94,7 +94,7 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
   name: 'compute_energy_shock',
   _validateArgs: params => { requireCountryCode(params.country, 'compute_energy_shock', 'country'); },
   title: 'Energy supply shock scenario',
-  description: 'Compute the oil/gas supply-sensitivity scenario for a country and supported chokepoint. Set disruption_pct (10..100, default 100) and fuel_mode (oil/gas/both, default oil). Results carry dataAvailable, coverage flags, coverageLevel, limitations, degraded, chokepointConfidence and gasSensitivity.modelBasis. Oil headline figures use preCrisisBaseline, the Gulf share over the 12 months before the 2026 Hormuz crisis (basis comtrade_annual is the annual fallback); currentFlows covers the latest 3 monthly filings and is absent when unavailable. Shares include the chokepoint route factor. For Hormuz, crudeLossKbd is after bypass rerouting (Saudi East-West, UAE ADCOP, Iraqi Kirkuk-Ceyhan); preCrisisBaseline.crudeLossKbd is before it. An unavailable source is not a zero deficit; assumed LNG routing is not a measured live-flow shock. Units: products kb/d, gas TJ, storage TWh, cover days. India/China cover uses reserveEstimate (dated estimate, not IEA data). Results may be cached; no user scenario is saved.',
+  description: 'Compute the oil/gas supply-sensitivity scenario for a country and supported chokepoint. Set disruption_pct (10..100, default 100) and fuel_mode (oil/gas/both, default oil). Results carry dataAvailable, coverage flags, coverageLevel, limitations, degraded, chokepointConfidence and gasSensitivity.modelBasis. Oil headline figures use preCrisisBaseline, the Gulf share over the 12 months before the 2026 Hormuz crisis (basis comtrade_annual is the annual fallback); currentFlows covers the latest 3 monthly filings and is absent when unavailable. Shares include the chokepoint route factor. For Hormuz, crudeLossKbd is after bypass rerouting (Saudi East-West, UAE ADCOP, Iraqi Kirkuk-Ceyhan); preCrisisBaseline.crudeLossKbd is before it. An unavailable source is not a zero deficit; assumed LNG routing is not a measured live-flow shock. Units: products kb/d, gas TJ, storage TWh, cover days. Non-IEA cover uses reportedStocks (JODI month-end stocks, not IEA data). Results may be cached; no user scenario is saved.',
   _outputBudgetBytes: 65536,
   inputSchema: {
     type: 'object',
@@ -116,10 +116,9 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
       portwatchCoverage: { type: 'boolean' }, coverageLevel: { type: 'string' }, degraded: { type: 'boolean' },
       chokepointConfidence: { type: 'string' }, liveFlowRatio: { type: 'number' },
       preCrisisBaseline: CRUDE_SHARE_BASELINE_SCHEMA, currentFlows: CRUDE_SHARE_BASELINE_SCHEMA,
-      reserveEstimate: { type: 'object', properties: {
-        scope: { type: 'string' }, asOf: { type: 'string' }, credibility: { type: 'string', enum: ['high', 'low'] },
-        lowMb: { type: 'number' }, centralMb: { type: 'number' }, highMb: { type: 'number' },
-        coverDaysLow: { type: 'number' }, coverDaysHigh: { type: 'number' },
+      reportedStocks: { type: 'object', properties: {
+        source: { type: 'string', enum: ['jodi'] }, month: { type: 'string' },
+        crudeMb: { type: 'number' }, productsMb: { type: 'number' }, totalMb: { type: 'number' }, stockDays: { type: 'number' },
       } },
       limitations: { type: 'array', items: { type: 'string' } },
       products: { type: 'array', items: { type: 'object', properties: {

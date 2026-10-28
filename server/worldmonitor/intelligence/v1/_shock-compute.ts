@@ -375,6 +375,38 @@ export function computeMonthlyGulfShares(
  */
 export const EFFECTIVE_COVER_DAYS_CAP = 730;
 
+/** Stocks older than this, against the JODI flow month, are not used for cover. */
+export const JODI_STOCK_MAX_AGE_MONTHS = 12;
+
+export interface JodiStocks {
+  month: string;
+  crudeMb: number;
+  productsMb: number;
+}
+
+const monthIndex = (ym: unknown): number | null => {
+  if (typeof ym !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) return null;
+  return Number(ym.slice(0, 4)) * 12 + Number(ym.slice(5, 7)) - 1;
+};
+
+/**
+ * The month-end crude and product stocks a JODI row carries, when the month is
+ * a valid YYYY-MM and both figures are finite and nonnegative with a positive
+ * total. Stocks are usable for cover only when they can be dated against a
+ * valid flow month and are at most JODI_STOCK_MAX_AGE_MONTHS older than it;
+ * otherwise `unusable` says why, for a limitation.
+ */
+export function parseJodiStocks(raw: unknown, flowMonth: unknown): { stocks: JodiStocks; unusable: 'stale' | 'undated' | null } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { month, crudeMb, productsMb } = raw as Record<string, unknown>;
+  const mb = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+  const stockIndex = monthIndex(month);
+  if (stockIndex == null || !mb(crudeMb) || !mb(productsMb) || crudeMb + productsMb <= 0) return null;
+  const flowIndex = monthIndex(flowMonth);
+  const unusable = flowIndex == null ? 'undated' : flowIndex - stockIndex > JODI_STOCK_MAX_AGE_MONTHS ? 'stale' : null;
+  return { stocks: { month: month as string, crudeMb, productsMb }, unusable };
+}
+
 /** JODI crude balance figures, kb/d. */
 export interface JodiCrudeBalance {
   productionKbd?: number | null;
@@ -483,14 +515,14 @@ export function buildAssessment(
   ieaStocksCoverage?: boolean,
   comtradeCoverage?: boolean,
   supplyMix?: string,
-  /** 'estimate': daysOfCover is a non-IEA strategic reserve estimate, never called IEA cover. */
-  coverSource: 'iea' | 'estimate' = 'iea',
+  /** 'jodi': daysOfCover is stock reported to JODI by a country outside the IEA, never called IEA cover. */
+  coverSource: 'iea' | 'jodi' = 'iea',
 ): string {
   const country = countryLabel(code);
   const cp = chokepointLabel(chokepointId);
-  const estimated = coverSource === 'estimate';
+  const estimated = coverSource === 'jodi';
   const coverPhrase = estimated
-    ? `an estimated ${daysOfCover} days of strategic reserves (not IEA data)`
+    ? `about ${daysOfCover} days of oil stocks reported to JODI (not IEA data)`
     : `${daysOfCover} days IEA cover`;
   // Which Gulf share the figures rest on, e.g. "the pre-crisis supply mix".
   const mix = supplyMix ? ` at ${supplyMix}` : '';
@@ -518,7 +550,7 @@ export function buildAssessment(
   if (effectiveCoverDays > 90) {
     return `With ${coverPhrase}, ${country} can bridge a ${disruptionPct}% ${cp} disruption for ~${effectiveCoverDays} days${mix}${degradedNote}.`;
   }
-  const coverText = estimated ? `estimated strategic reserve cover: ~${effectiveCoverDays} days (not IEA data)` : `IEA cover: ${ieaCoverText}`;
+  const coverText = estimated ? `JODI-reported stock cover: ~${effectiveCoverDays} days (not IEA data)` : `IEA cover: ${ieaCoverText}`;
   // No product with recorded demand: there is no deficit to name, not a 0.0% one.
   if (products.length === 0) {
     return `${country} has no refined-product demand observation, so product deficits under ${disruptionPct}% ${cp} disruption${mix} are not modeled; ${coverText}${degradedNote}.`;

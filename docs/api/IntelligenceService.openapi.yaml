@@ -9834,7 +9834,10 @@ components:
                 currentFlows:
                     $ref: '#/components/schemas/CrudeShareBaseline'
                 reserveEstimate:
+                    deprecated: true
                     $ref: '#/components/schemas/ReserveEstimate'
+                reportedStocks:
+                    $ref: '#/components/schemas/ReportedStocks'
         ProductImpact:
             type: object
             properties:
@@ -10025,7 +10028,34 @@ components:
                 coverDaysHigh:
                     type: integer
                     format: int32
-            description: Non-IEA strategic reserve estimate (not IEA data) behind effective_cover_days.
+            description: 'Deprecated: hand-entered reserve estimates were replaced by ReportedStocks.'
+        ReportedStocks:
+            type: object
+            properties:
+                source:
+                    type: string
+                    description: '"jodi".'
+                month:
+                    type: string
+                    description: YYYY-MM, the month the stocks closed.
+                crudeMb:
+                    type: number
+                    format: double
+                    description: Millions of barrels, as are products_mb and total_mb; each rounded separately.
+                productsMb:
+                    type: number
+                    format: double
+                totalMb:
+                    type: number
+                    format: double
+                stockDays:
+                    type: integer
+                    format: int32
+                    description: total_mb in days of JODI crude imports; absent unless the stocks set the cover.
+            description: |-
+                Month-end oil stocks a country without an IEA record reports to JODI (not
+                 IEA data). They set effective_cover_days only when stock_days is present;
+                 a net exporter keeps -1. Whether government reserves count depends on the reporter.
         GetCountryPortActivityRequest:
             type: object
             properties:
