@@ -35,10 +35,18 @@ export function buildDecisionBrief(selection: DecisionBriefSelection, captures: 
         unknowns.add('Accessible storage and withdrawal capacity are unknown; storage is excluded from the comparison.');
       }
     } else {
-      add('route', 'Comtrade-backed crude route share', usable && r.comtradeCoverage && nonnegative(r.gulfCrudeShare) ? r.gulfCrudeShare * 100 : null, '%', 'UN Comtrade / route model');
+      // The headline share and loss are the pre-crisis baseline (the 12 months
+      // before the Hormuz crisis); current flows are reported beside them.
+      const pct = (v: number) => Math.round(v * 1000) / 10;
+      const pre = r.preCrisisBaseline;
+      const cur = r.currentFlows;
+      add('route', 'Comtrade crude route share, pre-crisis baseline', usable && r.comtradeCoverage && nonnegative(r.gulfCrudeShare) ? pct(r.gulfCrudeShare) : null, '%', 'UN Comtrade / route model', month(pre?.toMonth));
       if (identity && !r.comtradeCoverage) unknowns.add(`${reference}: Comtrade route exposure is unavailable; the oil loss is not modeled without a measured origin share.`);
+      add('route-current', 'Comtrade crude route share, current flows', identity && r.comtradeCoverage && cur && nonnegative(cur.gulfCrudeShare) ? pct(cur.gulfCrudeShare) : null, '%', 'UN Comtrade / route model', month(cur?.toMonth));
+      add('loss-current', 'Modeled crude loss, current flows', usable && cur && nonnegative(cur.crudeLossKbd) ? cur.crudeLossKbd : null, 'kbd', 'JODI / route model', month(cur?.toMonth));
+      if (identity && r.comtradeCoverage && !cur) unknowns.add(`${reference}: current-flows Gulf share is unavailable (fewer than 3 monthly Comtrade filings since the crisis began); figures use the pre-crisis baseline.`);
     }
-    add('loss', gas ? 'Assumed monthly LNG loss' : 'Modeled crude loss', usable ? gas ? g!.lngDisruptionTj : r.crudeLossKbd : null, gas ? 'TJ' : 'kbd', gas ? 'JODI / assumed route sensitivity' : 'JODI / route model');
+    add('loss', gas ? 'Assumed monthly LNG loss' : 'Modeled crude loss, pre-crisis baseline', usable ? gas ? g!.lngDisruptionTj : r.crudeLossKbd : null, gas ? 'TJ' : 'kbd', gas ? 'JODI / assumed route sensitivity' : 'JODI / route model');
     if (!r.portwatchCoverage) unknowns.add(`${reference}: shipping traffic is unavailable; no closure is established.`);
     return { reference, severity, loss: usable ? gas ? g!.lngDisruptionTj : r.crudeLossKbd : null, unit: gas ? 'TJ' : 'kbd', demandPct: usable && gas ? g!.deficitPct : null, observedAt };
   });

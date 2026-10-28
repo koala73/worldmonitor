@@ -51121,6 +51121,7 @@ components:
                 gulfCrudeShare:
                     type: number
                     format: double
+                    description: 'Headline share and loss: equal to pre_crisis_baseline.'
                 crudeLossKbd:
                     type: number
                     format: double
@@ -51162,6 +51163,10 @@ components:
                     $ref: '#/components/schemas/worldmonitor_intelligence_v1_GasImpact'
                 gasSensitivity:
                     $ref: '#/components/schemas/worldmonitor_intelligence_v1_GasSensitivity'
+                preCrisisBaseline:
+                    $ref: '#/components/schemas/worldmonitor_intelligence_v1_CrudeShareBaseline'
+                currentFlows:
+                    $ref: '#/components/schemas/worldmonitor_intelligence_v1_CrudeShareBaseline'
         worldmonitor_intelligence_v1_ProductImpact:
             type: object
             properties:
@@ -51270,6 +51275,26 @@ components:
                     type: string
                 scope:
                     type: string
+        worldmonitor_intelligence_v1_CrudeShareBaseline:
+            type: object
+            properties:
+                basis:
+                    type: string
+                    description: '"comtrade_monthly" or "comtrade_annual".'
+                fromMonth:
+                    type: string
+                toMonth:
+                    type: string
+                monthsCovered:
+                    type: integer
+                    format: int32
+                gulfCrudeShare:
+                    type: number
+                    format: double
+                crudeLossKbd:
+                    type: number
+                    format: double
+            description: Gulf crude share over one window and the crude loss it implies.
         worldmonitor_intelligence_v1_GetCountryPortActivityRequest:
             type: object
             properties:
@@ -60192,7 +60217,7 @@ components:
                 supplyDeficitPct:
                     type: number
                     format: double
-                    description: Average refined-product supply deficit % under full closure (Gasoline/Diesel/Jet fuel/LPG average; HS 27 only)
+                    description: Average refined-product supply deficit % under full closure at the pre-crisis Gulf crude share (Gasoline/Diesel/Jet fuel/LPG average; HS 27 only)
                 coverageDays:
                     type: integer
                     format: int32

@@ -30,6 +30,30 @@ test('oil route evidence withholds a proxy and retains covered Comtrade values',
   assert.equal(s.comparison.delta, null);
 });
 
+test('oil evidence labels the pre-crisis baseline and reports current flows beside it', () => {
+  const data = captures('JP');
+  for (const { response } of data) {
+    Object.assign(response, { jodiOilCoverage: true, comtradeCoverage: true, gulfCrudeShare: 0.927, crudeLossKbd: 1104 });
+    response.preCrisisBaseline = { basis: 'comtrade_monthly', fromMonth: '2025-02', toMonth: '2026-01', monthsCovered: 12, gulfCrudeShare: 0.927, crudeLossKbd: 1104 };
+  }
+  data[0].response.currentFlows = { basis: 'comtrade_monthly', fromMonth: '2026-06', toMonth: '2026-08', monthsCovered: 3, gulfCrudeShare: 0.605, crudeLossKbd: 720.6 };
+  const s = buildDecisionBrief({ ...selection, countryCode: 'JP', countryName: 'Japan', fuelMode: 'oil' }, data);
+  const route = s.evidence.find(e => e.id === 'baseline-route')!;
+  assert.match(route.label, /pre-crisis baseline/);
+  assert.equal(route.value, 92.7);
+  assert.equal(route.observedAt, '2026-01');
+  assert.match(s.evidence.find(e => e.id === 'baseline-loss')!.label, /pre-crisis baseline/);
+  const current = s.evidence.find(e => e.id === 'baseline-route-current')!;
+  assert.match(current.label, /current flows/);
+  assert.equal(current.value, 60.5);
+  assert.equal(current.observedAt, '2026-08');
+  assert.equal(s.evidence.find(e => e.id === 'baseline-loss-current')!.value, 720.6);
+  // The comparison capture has no current-flows figure: null, and named as unknown.
+  assert.equal(s.evidence.find(e => e.id === 'comparison-route-current')!.value, null);
+  assert.match(s.unknowns.join(' '), /comparison: current-flows Gulf share is unavailable/);
+  assert.deepEqual(s.results.map(r => r.loss), [1104, 1104], 'the compared loss stays the pre-crisis headline');
+});
+
 test('Germany shared basis retains exact corrected gas results and evidence-specific action', () => {
   const s = buildDecisionBrief(selection, captures());
   assert.deepEqual(s.results.map(r => r.loss), [6197.7, 12395.4]);

@@ -5,6 +5,7 @@ import type {
   ProductImpact,
   GasSensitivity,
   GasStorageObservation,
+  CrudeShareBaseline,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
@@ -27,9 +28,12 @@ import {
   buildGasAssessment,
   REFINERY_YIELD,
   REFINERY_YIELD_BASIS,
+  computeMonthlyGulfShares,
+  MIN_PRE_CRISIS_MONTHS,
 } from './_shock-compute';
-import type { GulfShareMeasurement, PartnerShareProductLike } from './_shock-compute';
+import type { CrudeImportOriginLike, GulfShareMeasurement, MonthlyGulfShare, PartnerShareProductLike } from './_shock-compute';
 import { ISO2_TO_COMTRADE } from './_comtrade-reporters';
+import { CURRENT_FLOWS_WINDOW, PRE_CRISIS_WINDOW } from '../../../../shared/hormuz-crisis.js';
 
 const SHOCK_CACHE_TTL = 300;
 
@@ -44,6 +48,9 @@ const CP_TO_PORTWATCH: Record<string, string> = {
 // scripts/seed-comtrade-bilateral-hs4.mjs for the country-port-cluster set.
 const CRUDE_HS4 = '2709';
 const bilateralPartnersKey = (iso2: string): string => `comtrade:bilateral-hs4-partners:${iso2}:v1`;
+// Importer-declared monthly crude imports from World and the Gulf, in the
+// crudeImportOrigin section of the oil trade series (seed-oil-trade-series.mjs).
+const OIL_TRADE_SERIES_KEY = 'energy:oil-trade-series:v1';
 
 interface JodiProduct {
   demandKbd?: number | null;
@@ -208,13 +215,13 @@ export async function computeEnergyShockScenario(
     : null;
   const liveFlowRatio: number | null = rawFlowRatio !== null ? clamp(rawFlowRatio, 0, 1.5) : null;
 
-  // v8: Gulf share from Comtrade partner rows, unscaled by the live flow ratio,
-  // and no proxy. Earlier oil caches carry the proxied, flow-scaled numbers.
-  const cacheKey = `energy:shock:${needsOil ? 'v8' : 'v4'}:${code}:${chokepointId}:${disruptionPct}:${degraded ? 'd' : 'l'}:${fuelMode}`;
+  // v9: pre-crisis (headline) and current-flows Gulf shares from monthly
+  // Comtrade filings. v8 oil caches carry the 2024 annual share only.
+  const cacheKey = `energy:shock:${needsOil ? 'v9' : 'v4'}:${code}:${chokepointId}:${disruptionPct}:${degraded ? 'd' : 'l'}:${fuelMode}`;
   const cached = await getCachedJson(cacheKey);
   if (cached) return cached as ComputeEnergyShockScenarioResponse;
 
-  const [jodiOilResult, ieaStocksResult, gulfShareResult, emberResult, jodiGasResult, gasStorageResult] = await Promise.allSettled([
+  const [jodiOilResult, ieaStocksResult, gulfShareResult, emberResult, jodiGasResult, gasStorageResult, oilTradeResult] = await Promise.allSettled([
     getCachedJson(`energy:jodi-oil:v1:${code}`, true),
     getCachedJson(`energy:iea-oil-stocks:v1:${code}`, true),
     getGulfCrudeShare(code),
@@ -223,11 +230,36 @@ export async function computeEnergyShockScenario(
     needsGas && EU_GAS_STORAGE_COUNTRIES.has(code)
       ? getCachedJson(`energy:gas-storage:v1:${code}`, true)
       : Promise.resolve(null),
+    needsOil ? getCachedJson(OIL_TRADE_SERIES_KEY, true) : Promise.resolve(null),
   ]);
 
   const jodiOil = jodiOilResult.status === 'fulfilled' ? (jodiOilResult.value as JodiOil | null) : null;
   const ieaStocks = ieaStocksResult.status === 'fulfilled' ? (ieaStocksResult.value as IeaStocks | null) : null;
-  const gulfShare: GulfShareMeasurement = gulfShareResult.status === 'fulfilled' ? gulfShareResult.value : NO_GULF_SHARE;
+  const annualShare: GulfShareMeasurement = gulfShareResult.status === 'fulfilled' ? gulfShareResult.value : NO_GULF_SHARE;
+  const crudeOrigin = oilTradeResult.status === 'fulfilled'
+    ? ((oilTradeResult.value as { crudeImportOrigin?: CrudeImportOriginLike } | null)?.crudeImportOrigin ?? null)
+    : null;
+  const monthly = computeMonthlyGulfShares(crudeOrigin, code);
+  // Why a monthly figure is missing: the series itself (seeder not run or
+  // fetch failed with nothing to carry forward), or this importer's filings.
+  const originSeriesMissing = !crudeOrigin?.importers || Object.keys(crudeOrigin.importers).length === 0;
+  const preCrisisWindow = `${PRE_CRISIS_WINDOW.startMonth}..${PRE_CRISIS_WINDOW.endMonth}`;
+  const monthlyGap = (filings: string): string => originSeriesMissing
+    ? 'the monthly UN Comtrade crude-origin series is not available'
+    : filings;
+  // Pre-crisis baseline: monthly filings for the 12 months before the crisis,
+  // else the annual partner share (also pre-crisis by vintage), labelled.
+  const preCrisisShare: (MonthlyGulfShare & { basis: 'comtrade_monthly' | 'comtrade_annual' }) | null = monthly.preCrisis
+    ? { ...monthly.preCrisis, basis: 'comtrade_monthly' }
+    : annualShare.hasData
+      ? {
+        basis: 'comtrade_annual',
+        share: annualShare.share,
+        fromMonth: annualShare.year != null ? `${annualShare.year}-01` : '',
+        toMonth: annualShare.year != null ? `${annualShare.year}-12` : '',
+        monthsCovered: annualShare.year != null ? 12 : 0,
+      }
+      : null;
 
   const emberData = emberResult.status === 'fulfilled' ? (emberResult.value as { fossilShare?: number } | null) : null;
   const jodiGas = jodiGasResult.status === 'fulfilled' ? (jodiGasResult.value as JodiGas | null) : null;
@@ -239,7 +271,7 @@ export async function computeEnergyShockScenario(
   const baseExposure = CHOKEPOINT_EXPOSURE[chokepointId] ?? 1.0;
 
   const jodiOilCoverage = jodiOil != null;
-  const comtradeCoverage = gulfShare.hasData;
+  const comtradeCoverage = preCrisisShare != null;
   const ieaStocksCoverage = ieaStocks != null && ieaStocks.anomaly !== true
     && (ieaStocks.netExporter === true || (ieaStocks.daysOfCover != null && Number.isFinite(ieaStocks.daysOfCover) && ieaStocks.daysOfCover >= 0));
   const portwatchCoverage = liveFlowRatio !== null;
@@ -257,14 +289,26 @@ export async function computeEnergyShockScenario(
     if (!crudeImportsObserved) {
       limitations.push(`JODI crude import observation unavailable for ${code}; oil loss, product deficits and effective cover are not modeled (reported as 0).`);
     }
-    if (!comtradeCoverage) {
+    if (!comtradeCoverage || !preCrisisShare) {
       limitations.push(`Crude import origin share unavailable for ${code}: no UN Comtrade partner-level crude (HS 2709) import rows; oil loss, product deficits and effective cover are not modeled (reported as 0).`);
     } else {
-      const year = gulfShare.year != null ? ` ${gulfShare.year}` : '';
-      const omitted = gulfShare.omittedShare != null
-        ? `; partners below the Comtrade partner-listing threshold (${(gulfShare.omittedShare * 100).toFixed(1)}% of imports) are not attributed`
+      const window = preCrisisWindow;
+      const applied = crudeImportsObserved
+        ? `, applied to JODI crude imports for ${typeof jodiOil?.dataMonth === 'string' && jodiOil.dataMonth ? jodiOil.dataMonth : 'an unknown month'}`
         : '';
-      limitations.push(`Gulf crude share: UN Comtrade${year} import value share from ${GULF_SHARE_SOURCE_LABEL}; Hormuz bypass pipelines (Saudi East-West to Yanbu, UAE ADCOP to Fujairah) are not modeled${omitted}.`);
+      const bypass = 'Hormuz bypass pipelines (Saudi East-West to Yanbu, UAE ADCOP to Fujairah) are not modeled';
+      if (preCrisisShare.basis === 'comtrade_monthly') {
+        limitations.push(`Gulf crude share (headline, pre-crisis baseline): UN Comtrade monthly import value share ${window} (${preCrisisShare.monthsCovered} of 12 months) from ${GULF_SHARE_SOURCE_LABEL}${applied}; ${bypass}.`);
+      } else {
+        const year = annualShare.year != null ? ` ${annualShare.year}` : '';
+        const omitted = annualShare.omittedShare != null
+          ? `; partners below the Comtrade partner-listing threshold (${(annualShare.omittedShare * 100).toFixed(1)}% of imports) are not attributed`
+          : '';
+        const why = monthlyGap(crudeOrigin?.importers?.[code]
+          ? `fewer than ${MIN_PRE_CRISIS_MONTHS} of the 12 months ${window} have UN Comtrade monthly crude filings for ${code}`
+          : `there are no UN Comtrade monthly crude filings for ${code} in ${window}`);
+        limitations.push(`Gulf crude share (headline, pre-crisis baseline): UN Comtrade${year} annual import value share from ${GULF_SHARE_SOURCE_LABEL}${applied}, because ${why}; ${bypass}${omitted}.`);
+      }
     }
   }
   if (!ieaStocksCoverage) {
@@ -297,7 +341,7 @@ export async function computeEnergyShockScenario(
 
   // The measured share is reported whenever Comtrade has it, even when JODI is
   // missing: it is an input, and the limitation above says the loss is not modeled.
-  const gulfCrudeShare = comtradeCoverage ? gulfShare.share * baseExposure : 0;
+  const gulfCrudeShare = preCrisisShare ? preCrisisShare.share * baseExposure : 0;
 
   // Keyed on oilModeled, not jodiOilCoverage: a JODI row can exist while its
   // crude.importsKbd is unusable, and a measured share can exist without JODI.
@@ -305,6 +349,37 @@ export async function computeEnergyShockScenario(
   // paint a green badge; jodi_oil_coverage still reports row presence.
   const coverageLevel = deriveCoverageLevel(crudeImportsObserved, comtradeCoverage, ieaStocksCoverage, degraded);
   const crudeLossKbd = oilModeled ? crudeImportsKbd * gulfCrudeShare * (disruptionPct / 100) : 0;
+
+  const toBaseline = (b: MonthlyGulfShare & { basis: string }): CrudeShareBaseline => {
+    const share = b.share * baseExposure;
+    return {
+      basis: b.basis,
+      fromMonth: b.fromMonth,
+      toMonth: b.toMonth,
+      monthsCovered: b.monthsCovered,
+      gulfCrudeShare: Math.round(share * 1000) / 1000,
+      crudeLossKbd: oilModeled ? Math.round(crudeImportsKbd * share * (disruptionPct / 100) * 10) / 10 : 0,
+    };
+  };
+  const preCrisisBaseline = preCrisisShare ? toBaseline(preCrisisShare) : undefined;
+  // Shown beside the headline only: the latest filings already reflect the
+  // closure (cargoes rerouted via Yanbu and Fujairah, replacement supply), so
+  // they answer "what is still exposed now", not "what if it closed".
+  const currentFlows = monthly.current ? toBaseline({ ...monthly.current, basis: 'comtrade_monthly' }) : undefined;
+  if (needsOil) {
+    if (currentFlows) {
+      const loss = oilModeled ? `, crude loss ${currentFlows.crudeLossKbd} kbd` : '';
+      limitations.push(`Current flows: UN Comtrade monthly import value share ${currentFlows.fromMonth}..${currentFlows.toMonth}: ${(currentFlows.gulfCrudeShare * 100).toFixed(1)}% Gulf${loss}; shown beside the headline, not used for product deficits or cover.`);
+    } else {
+      limitations.push(`Current flows unavailable for ${code}: ${monthlyGap(`fewer than ${CURRENT_FLOWS_WINDOW.months} UN Comtrade monthly crude import filings since ${CURRENT_FLOWS_WINDOW.earliestMonth}`)}.`);
+    }
+    if (monthly.preCrisis || monthly.current) {
+      if (crudeOrigin?.carriedForward) {
+        const fetched = typeof crudeOrigin.fetchedAt === 'string' ? crudeOrigin.fetchedAt.slice(0, 10) : 'an earlier';
+        limitations.push(`Monthly Comtrade crude origin data is carried forward from the ${fetched} fetch; the latest fetch failed.`);
+      }
+    }
+  }
 
   const productDefs: Array<{ name: string; demand: number }> = [
     { name: 'Gasoline', demand: n(jodiOil?.gasoline?.demandKbd) },
@@ -360,6 +435,9 @@ export async function computeEnergyShockScenario(
     degraded,
     ieaStocksCoverage,
     comtradeCoverage,
+    preCrisisShare?.basis === 'comtrade_monthly'
+      ? 'the pre-crisis supply mix'
+      : preCrisisShare?.fromMonth ? `the ${preCrisisShare.fromMonth.slice(0, 4)} supply mix` : undefined,
   );
 
   let gasSensitivity: GasSensitivity | undefined;
@@ -438,6 +516,8 @@ export async function computeEnergyShockScenario(
     chokepointConfidence: needsGas ? 'none' : chokepointConfidence,
     liveFlowRatio: liveFlowRatio !== null ? Math.round(liveFlowRatio * 1000) / 1000 : undefined,
     gasSensitivity,
+    preCrisisBaseline,
+    currentFlows,
   };
 
   if (!needsOil) {
@@ -447,10 +527,14 @@ export async function computeEnergyShockScenario(
     response.limitations = response.limitations.filter(l =>
       !l.includes('refinery yield') &&
       !l.includes('Gulf crude share') &&
+      !l.startsWith('Current flows') &&
+      !l.startsWith('Monthly Comtrade crude origin') &&
       !l.includes('IEA strategic stock') &&
       !l.includes('PortWatch flow data unavailable, using historical baseline multipliers')
     );
     // Zero out oil-specific fields for gas-only mode
+    response.preCrisisBaseline = undefined;
+    response.currentFlows = undefined;
     response.gulfCrudeShare = 0;
     response.crudeLossKbd = 0;
     response.products = [];

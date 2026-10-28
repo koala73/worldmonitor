@@ -22,7 +22,10 @@ import {
   computeGasDisruption,
   REFINERY_YIELD,
   REFINERY_YIELD_BASIS,
+  computeMonthlyGulfShares,
 } from '../server/worldmonitor/intelligence/v1/_shock-compute.js';
+import { buildCrudeImportOrigin, crudeImportOriginPeriods } from '../scripts/seed-oil-trade-series.mjs';
+import { readFileSync } from 'node:fs';
 import { computeEnergyShockScenario } from '../server/worldmonitor/intelligence/v1/compute-energy-shock.ts';
 import { getCountryCostShock } from '../server/worldmonitor/supply-chain/v1/get-country-cost-shock.ts';
 import { buildDecisionBrief } from '../src/utils/decision-brief.ts';
@@ -1426,6 +1429,213 @@ describe('production replay 2026-10-28: Gulf crude share comes from Comtrade par
     assert.equal(response.gulfCrudeShare, 0.05);
     assert.equal(response.effectiveCoverDays, 730);
     assert.ok(response.limitations.some((l) => /capped at 730/.test(l)), response.limitations.join('\n'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pre-crisis and current-flows baselines (follow-up to #9781). The 2024
+// annual value share put Japan at 94.6% Gulf while METI measured 60.7% Middle
+// East in Aug 2026. Both figures are now reported, each labelled: the
+// pre-crisis baseline (the 12 full months before the Hormuz crisis) drives the
+// headline "if it closed" numbers, and current flows (the latest 3 importer
+// filings since 2026-03) are shown beside it. Inputs are the importers' own
+// Comtrade monthly HS 2709 declarations, recorded 2026-10-28.
+// ---------------------------------------------------------------------------
+
+const ORIGIN_FIXTURE = JSON.parse(readFileSync(new URL('./fixtures/energy-shock/comtrade-crude-origin-2026-10-28.json', import.meta.url), 'utf8'));
+const ORIGIN_MONTHS = crudeImportOriginPeriods(Date.parse('2026-10-28T12:00:00Z')).flat();
+const ORIGIN_SECTION = {
+  status: 'ok',
+  fetchedAt: '2026-10-28T03:00:00.000Z',
+  source: 'UN Comtrade monthly HS 2709 imports declared by each importer',
+  months: ORIGIN_MONTHS,
+  importers: buildCrudeImportOrigin(ORIGIN_FIXTURE.rows, ORIGIN_MONTHS),
+};
+const originSeed = (section = ORIGIN_SECTION) => ({ 'energy:oil-trade-series:v1': { countries: {}, crudeImportOrigin: section } });
+
+describe('computeMonthlyGulfShares', () => {
+  const months = ['2025-02', '2025-03', '2025-04', '2025-05', '2025-06', '2025-07', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05'];
+  const origin = (worldUsdM, gulfUsdM) => ({ status: 'ok', months, importers: { XX: { worldUsdM, gulfUsdM } } });
+
+  it('pre-crisis share is the Gulf sum over the World sum across the filed months of 2025-02..2026-01', () => {
+    const world = months.map(() => 100);
+    const gulf = months.map((m) => (m < '2026-02' ? 50 : 10));
+    const { preCrisis } = computeMonthlyGulfShares(origin(world, gulf), 'XX');
+    assert.deepEqual(preCrisis, { share: 0.5, fromMonth: '2025-02', toMonth: '2026-01', monthsCovered: 12 });
+  });
+
+  it('pre-crisis needs at least 9 of the 12 months filed', () => {
+    const world = months.map((m, i) => (i < 8 ? 100 : null));
+    const gulf = world.map((w) => (w == null ? null : 50));
+    assert.equal(computeMonthlyGulfShares(origin(world, gulf), 'XX').preCrisis, null);
+  });
+
+  it('current flows are the latest 3 filings since 2026-03; February 2026 never counts', () => {
+    const world = months.map(() => 100);
+    const gulf = months.map((m) => (m >= '2026-03' ? 20 : m === '2026-02' ? 90 : 50));
+    assert.deepEqual(computeMonthlyGulfShares(origin(world, gulf), 'XX').current, { share: 0.2, fromMonth: '2026-03', toMonth: '2026-05', monthsCovered: 3 });
+    const twoMonths = world.map((w, i) => (months[i] === '2026-05' ? null : w));
+    assert.equal(computeMonthlyGulfShares(origin(twoMonths, gulf), 'XX').current, null, 'two crisis-period filings are not a 3-month current figure');
+  });
+
+  it('an importer whose filings stop before the crisis has no current figure (Korea after 2025-12)', () => {
+    const world = months.map((m) => (m <= '2025-12' ? 100 : null));
+    const gulf = world.map((w) => (w == null ? null : 70));
+    const shares = computeMonthlyGulfShares(origin(world, gulf), 'XX');
+    assert.equal(shares.preCrisis?.monthsCovered, 11);
+    assert.equal(shares.current, null);
+  });
+
+  it('a missing importer or malformed section yields no monthly share', () => {
+    assert.deepEqual(computeMonthlyGulfShares(origin(months.map(() => 1), months.map(() => 1)), 'JP'), { preCrisis: null, current: null });
+    assert.deepEqual(computeMonthlyGulfShares(null, 'JP'), { preCrisis: null, current: null });
+    assert.deepEqual(computeMonthlyGulfShares({ months: 'x', importers: {} }, 'JP'), { preCrisis: null, current: null });
+  });
+});
+
+describe('pre-crisis and current-flows Gulf share baselines (Comtrade monthly, recorded 2026-10-28)', () => {
+  it('Japan: headline uses the pre-crisis 92.7% share; current flows (Jun-Aug 2026) 60.5% are reported beside it', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({ ...HORMUZ_LIVE_SEED, ...JP_PROD_SEED, ...originSeed() });
+
+    const r = await computeShock({ countryCode: 'JP', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+
+    const pre = r.preCrisisBaseline;
+    const cur = r.currentFlows;
+    assert.ok(pre && cur, 'both baselines are reported');
+    assert.deepEqual({ basis: pre.basis, fromMonth: pre.fromMonth, toMonth: pre.toMonth, monthsCovered: pre.monthsCovered },
+      { basis: 'comtrade_monthly', fromMonth: '2025-02', toMonth: '2026-01', monthsCovered: 12 });
+    assert.ok(Math.abs(pre.gulfCrudeShare - 0.927) < 0.001, `pre-crisis ${pre.gulfCrudeShare}`);
+    assert.deepEqual({ basis: cur.basis, fromMonth: cur.fromMonth, toMonth: cur.toMonth, monthsCovered: cur.monthsCovered },
+      { basis: 'comtrade_monthly', fromMonth: '2026-06', toMonth: '2026-08', monthsCovered: 3 });
+    assert.ok(Math.abs(cur.gulfCrudeShare - 0.605) < 0.001, `current ${cur.gulfCrudeShare}`);
+
+    // The headline figures are the pre-crisis baseline, not the 2024 annual 94.6%.
+    assert.equal(r.gulfCrudeShare, pre.gulfCrudeShare);
+    assert.equal(r.crudeLossKbd, pre.crudeLossKbd);
+    assert.ok(Math.abs(pre.crudeLossKbd - JP_CRUDE_IMPORTS_KBD * 0.927) < 2, `pre-crisis loss ${pre.crudeLossKbd}`);
+    assert.ok(Math.abs(cur.crudeLossKbd - JP_CRUDE_IMPORTS_KBD * 0.605) < 2, `current loss ${cur.crudeLossKbd}`);
+    assert.ok(Math.abs(r.effectiveCoverDays - 178 / 0.927) <= 1, `cover ${r.effectiveCoverDays}`);
+
+    assert.ok(r.limitations.some((l) => /pre-crisis baseline/.test(l) && /2025-02\.\.2026-01/.test(l) && /12 of 12 months/.test(l) && /JODI crude imports for 2026-07/.test(l)), r.limitations.join('\n'));
+    assert.ok(r.limitations.some((l) => /^Current flows/.test(l) && /2026-06\.\.2026-08/.test(l) && /60\.5%/.test(l) && /not used for product deficits or cover/.test(l)), r.limitations.join('\n'));
+    assert.match(r.assessment, /pre-crisis supply mix/);
+  });
+
+  it('a cached v8 response (annual share, no baselines) is not served after the change', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED, ...JP_PROD_SEED, ...originSeed(),
+      'energy:shock:v8:JP:hormuz_strait:100:l:oil': { countryCode: 'JP', gulfCrudeShare: 0.946, limitations: [] },
+    });
+    const r = await computeShock({ countryCode: 'JP', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    assert.ok(r.preCrisisBaseline, 'the stale v8 entry must not answer');
+  });
+
+  it('Korea: pre-crisis from 11 monthly filings; no current figure because Korea files nothing since 2025-12', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED, ...originSeed(),
+      'energy:jodi-oil:v1:KR': { iso2: 'KR', dataMonth: '2026-07', crude: { importsKbd: 3005.8 }, gasoline: { demandKbd: 285.9 }, diesel: { demandKbd: 443.7 } },
+      'energy:iea-oil-stocks:v1:KR': { daysOfCover: 214, netExporter: false, anomaly: false },
+      ...partnersSeed('KR', 1000, [{ partnerCode: 682, partnerIso2: 'SA', value: 707 }, { partnerCode: 842, partnerIso2: 'US', value: 293 }]),
+    });
+    const r = await computeShock({ countryCode: 'KR', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    assert.equal(r.preCrisisBaseline?.basis, 'comtrade_monthly');
+    assert.equal(r.preCrisisBaseline?.monthsCovered, 11);
+    assert.ok(Math.abs(r.preCrisisBaseline.gulfCrudeShare - 0.686) < 0.001, `${r.preCrisisBaseline.gulfCrudeShare}`);
+    assert.equal(r.currentFlows, undefined);
+    assert.ok(r.limitations.some((l) => /Current flows unavailable for KR/.test(l) && /since 2026-03/.test(l)), r.limitations.join('\n'));
+  });
+
+  it('China: no monthly filings, so the pre-crisis baseline is the labelled 2024 annual share and current flows are unavailable', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED, ...originSeed(),
+      'energy:jodi-oil:v1:CN': { iso2: 'CN', dataMonth: '2026-08', crude: { importsKbd: 8955.9 }, gasoline: { demandKbd: 3300 }, diesel: { demandKbd: 3500 } },
+      ...partnersSeed('CN', 1000, [{ partnerCode: 682, partnerIso2: 'SA', value: 200 }, { partnerCode: 368, partnerIso2: 'IQ', value: 178 }, { partnerCode: 643, partnerIso2: 'RU', value: 622 }]),
+    });
+    const r = await computeShock({ countryCode: 'CN', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    assert.deepEqual({ basis: r.preCrisisBaseline?.basis, fromMonth: r.preCrisisBaseline?.fromMonth, toMonth: r.preCrisisBaseline?.toMonth },
+      { basis: 'comtrade_annual', fromMonth: '2024-01', toMonth: '2024-12' });
+    assert.equal(r.preCrisisBaseline.gulfCrudeShare, 0.378);
+    assert.equal(r.gulfCrudeShare, 0.378);
+    assert.equal(r.currentFlows, undefined);
+    assert.ok(r.limitations.some((l) => /pre-crisis baseline/.test(l) && /UN Comtrade 2024 annual/.test(l) && /no UN Comtrade monthly crude filings for CN in 2025-02\.\.2026-01/.test(l)), r.limitations.join('\n'));
+    assert.ok(r.limitations.some((l) => /Current flows unavailable for CN/.test(l)), r.limitations.join('\n'));
+    assert.match(r.assessment, /2024 supply mix/);
+  });
+
+  it('India without JODI imports: both shares are measured, both losses are not modeled', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({ ...HORMUZ_LIVE_SEED, ...originSeed(), ...partnersSeed('IN', IN_TOTAL_2709, IN_PARTNERS_2709) });
+    const r = await computeShock({ countryCode: 'IN', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    assert.ok(Math.abs(r.preCrisisBaseline.gulfCrudeShare - 0.482) < 0.001);
+    assert.ok(Math.abs(r.currentFlows.gulfCrudeShare - 0.261) < 0.001);
+    assert.equal(r.preCrisisBaseline.crudeLossKbd, 0);
+    assert.equal(r.currentFlows.crudeLossKbd, 0);
+    assert.equal(r.dataAvailable, false);
+  });
+
+  it('United States: 8.9% pre-crisis, 1.9% in May-Jul 2026; loss scales with disruption_pct under both', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED, ...originSeed(),
+      'energy:jodi-oil:v1:US': { dataMonth: '2026-07', crude: { importsKbd: 5888 }, gasoline: { demandKbd: 9316.5 }, diesel: { demandKbd: 3627.3 } },
+      'energy:iea-oil-stocks:v1:US': { daysOfCover: null, netExporter: true, anomaly: false },
+    });
+    const r = await computeShock({ countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 50, fuelMode: 'oil' });
+    assert.ok(Math.abs(r.preCrisisBaseline.gulfCrudeShare - 0.089) < 0.001);
+    assert.equal(r.currentFlows.fromMonth, '2026-05');
+    assert.ok(Math.abs(r.currentFlows.gulfCrudeShare - 0.019) < 0.001);
+    // The reported share is rounded to 3 decimals; the loss uses the unrounded share.
+    const tolerance = 5888 * 0.0005 * 0.5 + 0.1;
+    assert.ok(Math.abs(r.preCrisisBaseline.crudeLossKbd - 5888 * r.preCrisisBaseline.gulfCrudeShare * 0.5) < tolerance);
+    assert.ok(Math.abs(r.currentFlows.crudeLossKbd - 5888 * r.currentFlows.gulfCrudeShare * 0.5) < tolerance);
+    assert.equal(r.comtradeCoverage, true, 'a monthly share is Comtrade coverage without any annual partner row');
+  });
+
+  it('a carried-forward section is used and says so', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({ ...HORMUZ_LIVE_SEED, ...JP_PROD_SEED, ...originSeed({ ...ORIGIN_SECTION, status: 'unavailable', carriedForward: true }) });
+    const r = await computeShock({ countryCode: 'JP', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    assert.equal(r.preCrisisBaseline?.basis, 'comtrade_monthly');
+    assert.ok(r.limitations.some((l) => /carried forward from the 2026-10-28 fetch/.test(l)), r.limitations.join('\n'));
+  });
+
+  it('gas-only mode carries no oil baselines', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({ ...HORMUZ_LIVE_SEED, ...JP_PROD_SEED, ...originSeed(), 'energy:jodi-gas:v1:JP': { lngImportsTj: 274197, totalDemandTj: 299947, dataMonth: '2026-07' } });
+    const r = await computeShock({ countryCode: 'JP', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'gas' });
+    assert.equal(r.preCrisisBaseline, undefined);
+    assert.equal(r.currentFlows, undefined);
+    assert.ok(!r.limitations.some((l) => /pre-crisis baseline|Current flows/.test(l)), r.limitations.join('\n'));
+  });
+
+  it('without the monthly section the pre-crisis baseline is the labelled annual share (production before the first seeder run)', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({ ...HORMUZ_LIVE_SEED, ...JP_PROD_SEED });
+    const r = await computeShock({ countryCode: 'JP', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    assert.equal(r.preCrisisBaseline?.basis, 'comtrade_annual');
+    assert.ok(Math.abs(r.gulfCrudeShare - JP_GULF_SHARE) < 0.001);
+    assert.equal(r.currentFlows, undefined);
+    // A missing series is not the same claim as "Japan filed nothing".
+    assert.ok(!r.limitations.some((l) => /no UN Comtrade monthly crude filings for JP|fewer than 3 UN Comtrade monthly/.test(l)), r.limitations.join('\n'));
+    assert.ok(r.limitations.some((l) => /pre-crisis baseline/.test(l) && /UN Comtrade 2024 annual/.test(l) && /monthly UN Comtrade crude-origin series is not available/.test(l)), r.limitations.join('\n'));
+    assert.ok(r.limitations.some((l) => /Current flows unavailable for JP: the monthly UN Comtrade crude-origin series is not available/.test(l)), r.limitations.join('\n'));
+  });
+
+  it('an importer with too few pre-crisis filings falls back to the annual share and says why', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const months = ORIGIN_SECTION.months;
+    const sparse = months.map((m) => (m >= '2025-02' && m <= '2025-07' ? 100 : null));
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED, ...JP_PROD_SEED,
+      ...originSeed({ ...ORIGIN_SECTION, importers: { ...ORIGIN_SECTION.importers, JP: { worldUsdM: sparse, gulfUsdM: sparse.map((v) => (v == null ? null : 90)) } } }),
+    });
+    const r = await computeShock({ countryCode: 'JP', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    assert.equal(r.preCrisisBaseline?.basis, 'comtrade_annual');
+    assert.ok(r.limitations.some((l) => /fewer than 9 of the 12 months 2025-02\.\.2026-01 have UN Comtrade monthly crude filings for JP/.test(l)), r.limitations.join('\n'));
   });
 });
 

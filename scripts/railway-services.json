@@ -833,6 +833,7 @@
       "scripts/seed-storage-facilities.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
+      "scripts/shared/hormuz-crisis.js",
       "scripts/shared/iso3-to-iso2.json",
       "scripts/shared/jodi-content-age.mjs",
       "scripts/shared/jodi-demand-change.mjs",

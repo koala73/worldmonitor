@@ -9780,6 +9780,7 @@ components:
                 gulfCrudeShare:
                     type: number
                     format: double
+                    description: 'Headline share and loss: equal to pre_crisis_baseline.'
                 crudeLossKbd:
                     type: number
                     format: double
@@ -9821,6 +9822,10 @@ components:
                     $ref: '#/components/schemas/GasImpact'
                 gasSensitivity:
                     $ref: '#/components/schemas/GasSensitivity'
+                preCrisisBaseline:
+                    $ref: '#/components/schemas/CrudeShareBaseline'
+                currentFlows:
+                    $ref: '#/components/schemas/CrudeShareBaseline'
         ProductImpact:
             type: object
             properties:
@@ -9929,6 +9934,26 @@ components:
                     type: string
                 scope:
                     type: string
+        CrudeShareBaseline:
+            type: object
+            properties:
+                basis:
+                    type: string
+                    description: '"comtrade_monthly" or "comtrade_annual".'
+                fromMonth:
+                    type: string
+                toMonth:
+                    type: string
+                monthsCovered:
+                    type: integer
+                    format: int32
+                gulfCrudeShare:
+                    type: number
+                    format: double
+                crudeLossKbd:
+                    type: number
+                    format: double
+            description: Gulf crude share over one window and the crude loss it implies.
         GetCountryPortActivityRequest:
             type: object
             properties:

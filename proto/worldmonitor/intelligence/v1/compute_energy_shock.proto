@@ -70,10 +70,22 @@ message GasSensitivity {
   string model_basis = 11;
 }
 
+// Gulf crude share over one window and the crude loss it implies.
+message CrudeShareBaseline {
+  // "comtrade_monthly" or "comtrade_annual".
+  string basis = 1;
+  string from_month = 2;
+  string to_month = 3;
+  int32 months_covered = 4;
+  double gulf_crude_share = 5;
+  double crude_loss_kbd = 6;
+}
+
 message ComputeEnergyShockScenarioResponse {
   string country_code         = 1;
   string chokepoint_id        = 2;
   int32  disruption_pct       = 3;
+  // Headline share and loss: equal to pre_crisis_baseline.
   double gulf_crude_share     = 4;
   double crude_loss_kbd       = 5;
   repeated ProductImpact products = 6;
@@ -96,4 +108,8 @@ message ComputeEnergyShockScenarioResponse {
   // Deprecated and no longer returned. Use gas_sensitivity for gas scenarios.
   GasImpact gas_impact        = 20 [deprecated = true];
   GasSensitivity gas_sensitivity = 21;
+  // 12 full months before the Hormuz crisis; drives products and cover.
+  CrudeShareBaseline pre_crisis_baseline = 22;
+  // Latest 3 monthly filings since the crisis; absent when unavailable.
+  CrudeShareBaseline current_flows = 23;
 }

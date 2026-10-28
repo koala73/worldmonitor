@@ -1,4 +1,5 @@
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
+import { CURRENT_FLOWS_WINDOW, PRE_CRISIS_WINDOW } from '../../../../shared/hormuz-crisis.js';
 
 // Crude exporters whose loadings sit inside the Strait of Hormuz, per EIA
 // "World Oil Transit Chokepoints" (Saudi Arabia, Iraq, Kuwait, UAE, Iran, Qatar,
@@ -124,6 +125,68 @@ export function computeGulfShareFromPartners(product: PartnerShareProductLike | 
   };
 }
 
+/** `crudeImportOrigin` in energy:oil-trade-series:v1 (scripts/seed-oil-trade-series.mjs). */
+export interface CrudeImportOriginLike {
+  status?: string;
+  carriedForward?: boolean;
+  fetchedAt?: string;
+  months?: unknown;
+  importers?: Record<string, { worldUsdM?: Array<number | null>; gulfUsdM?: Array<number | null> } | undefined> | null;
+}
+
+export interface MonthlyGulfShare {
+  share: number;
+  fromMonth: string;
+  toMonth: string;
+  monthsCovered: number;
+}
+
+/** Fewest filed months of the 12-month pre-crisis window that still make a baseline. */
+export const MIN_PRE_CRISIS_MONTHS = 9;
+
+/**
+ * Gulf share of one importer's crude imports by value, from its own monthly
+ * Comtrade filings, over two windows (shared/hormuz-crisis.js):
+ * - preCrisis: the filed months of the 12 full months before the crisis,
+ *   at least MIN_PRE_CRISIS_MONTHS of them; reported against the window bounds.
+ * - current: the latest CURRENT_FLOWS_WINDOW.months filed months no earlier
+ *   than CURRENT_FLOWS_WINDOW.earliestMonth, all of them required.
+ * A month without a World value is not filed; null means unavailable.
+ */
+export function computeMonthlyGulfShares(
+  origin: CrudeImportOriginLike | null | undefined,
+  iso2: string,
+): { preCrisis: MonthlyGulfShare | null; current: MonthlyGulfShare | null } {
+  const none = { preCrisis: null, current: null };
+  const months = origin?.months;
+  const importer = origin?.importers?.[iso2];
+  if (!Array.isArray(months) || !importer || !Array.isArray(importer.worldUsdM) || !Array.isArray(importer.gulfUsdM)) return none;
+  const filed: Array<{ month: string; world: number; gulf: number }> = [];
+  months.forEach((month, i) => {
+    const world = importer.worldUsdM?.[i];
+    const gulf = importer.gulfUsdM?.[i];
+    if (typeof month !== 'string' || typeof world !== 'number' || !Number.isFinite(world) || world <= 0) return;
+    if (typeof gulf !== 'number' || !Number.isFinite(gulf) || gulf < 0 || gulf > world) return;
+    filed.push({ month, world, gulf });
+  });
+  filed.sort((a, b) => a.month.localeCompare(b.month));
+  const share = (rows: typeof filed) => {
+    const world = rows.reduce((sum, r) => sum + r.world, 0);
+    return world > 0 ? rows.reduce((sum, r) => sum + r.gulf, 0) / world : 0;
+  };
+
+  const pre = filed.filter((r) => r.month >= PRE_CRISIS_WINDOW.startMonth && r.month <= PRE_CRISIS_WINDOW.endMonth);
+  const preCrisis = pre.length >= MIN_PRE_CRISIS_MONTHS
+    ? { share: share(pre), fromMonth: PRE_CRISIS_WINDOW.startMonth, toMonth: PRE_CRISIS_WINDOW.endMonth, monthsCovered: pre.length }
+    : null;
+
+  const recent = filed.filter((r) => r.month >= CURRENT_FLOWS_WINDOW.earliestMonth).slice(-CURRENT_FLOWS_WINDOW.months);
+  const current = recent.length === CURRENT_FLOWS_WINDOW.months
+    ? { share: share(recent), fromMonth: recent[0]!.month, toMonth: recent[recent.length - 1]!.month, monthsCovered: recent.length }
+    : null;
+  return { preCrisis, current };
+}
+
 /**
  * Upper bound on shock scenario output days. Beyond this, the model is no longer meaningful;
  * a reader should understand the country as "indefinitely bridgeable" at the given deficit rate.
@@ -188,9 +251,12 @@ export function buildAssessment(
   degraded?: boolean,
   ieaStocksCoverage?: boolean,
   comtradeCoverage?: boolean,
+  supplyMix?: string,
 ): string {
   const country = countryLabel(code);
   const cp = chokepointLabel(chokepointId);
+  // Which Gulf share the figures rest on, e.g. "the pre-crisis supply mix".
+  const mix = supplyMix ? ` at ${supplyMix}` : '';
   if (!dataAvailable) {
     return `Insufficient import data for ${country} to model ${cp} exposure.`;
   }
@@ -204,15 +270,15 @@ export function buildAssessment(
   }
   // Reached only with a measured share (the branch above returns otherwise).
   if (gulfCrudeShare < 0.1) {
-    return `${country} has low Gulf crude dependence (${Math.round(gulfCrudeShare * 100)}%); ${cp} disruption has limited direct impact.`;
+    return `${country} has low Gulf crude dependence (${Math.round(gulfCrudeShare * 100)}%${mix}); ${cp} disruption has limited direct impact.`;
   }
   const degradedNote = degraded ? ' (live flow data unavailable, using historical baseline)' : '';
   const ieaCoverText = ieaStocksCoverage === false ? 'unknown' : `${daysOfCover} days`;
   if (effectiveCoverDays >= EFFECTIVE_COVER_DAYS_CAP) {
-    return `With ${daysOfCover} days IEA cover, ${code} is indefinitely bridgeable against a ${disruptionPct}% ${chokepointId} disruption at this deficit rate${degradedNote}.`;
+    return `With ${daysOfCover} days IEA cover, ${code} is indefinitely bridgeable against a ${disruptionPct}% ${chokepointId} disruption at this deficit rate${mix}${degradedNote}.`;
   }
   if (effectiveCoverDays > 90) {
-    return `With ${daysOfCover} days IEA cover, ${country} can bridge a ${disruptionPct}% ${cp} disruption for ~${effectiveCoverDays} days${degradedNote}.`;
+    return `With ${daysOfCover} days IEA cover, ${country} can bridge a ${disruptionPct}% ${cp} disruption for ~${effectiveCoverDays} days${mix}${degradedNote}.`;
   }
   const worst = products.reduce<{ product: string; deficitPct: number }>(
     (best, p) => (p.deficitPct > best.deficitPct ? p : best),
@@ -220,7 +286,7 @@ export function buildAssessment(
   );
   const worstDeficit = worst.deficitPct;
   const worstProduct = worst.product.toLowerCase();
-  return `${country} faces ${worstDeficit.toFixed(1)}% ${worstProduct} deficit under ${disruptionPct}% ${cp} disruption; IEA cover: ${ieaCoverText}${degradedNote}.`;
+  return `${country} faces ${worstDeficit.toFixed(1)}% ${worstProduct} deficit under ${disruptionPct}% ${cp} disruption${mix}; IEA cover: ${ieaCoverText}${degradedNote}.`;
 }
 
 export const CHOKEPOINT_LNG_EXPOSURE: Record<string, number> = {

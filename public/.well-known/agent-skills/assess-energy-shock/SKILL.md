@@ -43,6 +43,8 @@ GET https://api.worldmonitor.app/api/intelligence/v1/compute-energy-shock
   "disruptionPct": 50,
   "gulfCrudeShare": 0.42,
   "crudeLossKbd": 210.5,
+  "preCrisisBaseline": { "basis": "comtrade_monthly", "fromMonth": "2025-02", "toMonth": "2026-01", "monthsCovered": 12, "gulfCrudeShare": 0.42, "crudeLossKbd": 210.5 },
+  "currentFlows": { "basis": "comtrade_monthly", "fromMonth": "2026-06", "toMonth": "2026-08", "monthsCovered": 3, "gulfCrudeShare": 0.27, "crudeLossKbd": 135.3 },
   "products": [
     { "product": "diesel", "outputLossKbd": 58.4, "demandKbd": 820.1, "deficitPct": 7.1 }
   ],
@@ -65,7 +67,9 @@ GET https://api.worldmonitor.app/api/intelligence/v1/compute-energy-shock
 }
 ```
 
-`dataAvailable: false` or `coverageLevel: "unsupported"` means inputs are insufficient, not zero exposure. Missing or invalid LNG imports or nonpositive demand suppress `gasSensitivity`. Observed zero LNG imports remain valid.
+`dataAvailable: false` or `coverageLevel: "unsupported"` means inputs are insufficient, not zero exposure.
+
+Oil reports two Gulf crude shares. `preCrisisBaseline` covers the 12 full months before the 2026 Hormuz crisis (Feb 2025 to Jan 2026) and drives `gulfCrudeShare`, `crudeLossKbd`, `products` and `effectiveCoverDays`. `currentFlows` covers the latest 3 monthly filings since March 2026 and is reported beside it; it is absent when the importer has not filed. `basis` is `comtrade_monthly` (the importer's own UN Comtrade filings) or `comtrade_annual` (the annual partner share, used when monthly filings are missing, as for China). State which baseline a figure uses. Missing or invalid LNG imports or nonpositive demand suppress `gasSensitivity`. Observed zero LNG imports remain valid.
 
 Gas `modelBasis` is `assumed_route_sensitivity`. The calculation is recorded monthly LNG imports multiplied by a fixed assumed route share and disruption percentage. Current shipping flow does not scale it. It is not measured country-specific supplier exposure or a supply-shortage forecast. `deficitPct` is the assumed loss as a percentage of recorded demand and may exceed 100 when imports exceed demand. `lngShareOfImports` is a fraction and is absent when unknown.
 

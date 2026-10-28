@@ -7,6 +7,12 @@ import { assertToolFetchOk, RpcValidationError } from '../billing-denial';
 import { fetchMcpDownstream } from '../downstream';
 import type { ToolDef } from '../types';
 
+// One Gulf crude share window (compute_energy_shock preCrisisBaseline / currentFlows).
+const CRUDE_SHARE_BASELINE_SCHEMA = { type: 'object', properties: {
+  basis: { type: 'string', enum: ['comtrade_monthly', 'comtrade_annual'] }, fromMonth: { type: 'string' }, toMonth: { type: 'string' },
+  monthsCovered: { type: 'number' }, gulfCrudeShare: { type: 'number' }, crudeLossKbd: { type: 'number' },
+} } as const;
+
 const MODES = {
   energy: '/api/supply-chain/v1/get-country-cost-shock',
   'multi-sector': '/api/supply-chain/v1/get-multi-sector-cost-shock',
@@ -88,7 +94,7 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
   name: 'compute_energy_shock',
   _validateArgs: params => { requireCountryCode(params.country, 'compute_energy_shock', 'country'); },
   title: 'Energy supply shock scenario',
-  description: 'Compute the existing oil/gas supply-sensitivity scenario for a country and supported chokepoint. Set disruption_pct (10..100, default 100) and fuel_mode (oil/gas/both, default oil). Results carry dataAvailable, coverage flags, coverageLevel, limitations, degraded, chokepointConfidence and gasSensitivity.modelBasis. An unavailable source is not a zero deficit; assumed LNG routing sensitivity is not a measured live-flow shock. Product output/demand are thousand barrels/day, gas quantities are terajoules, storage is TWh and cover is days. Derived scenarios may be cached; no trade or saved user scenario is created.',
+  description: 'Compute the existing oil/gas supply-sensitivity scenario for a country and supported chokepoint. Set disruption_pct (10..100, default 100) and fuel_mode (oil/gas/both, default oil). Results carry dataAvailable, coverage flags, coverageLevel, limitations, degraded, chokepointConfidence and gasSensitivity.modelBasis. Oil headline figures (gulfCrudeShare, crudeLossKbd, products, cover) use preCrisisBaseline, the Gulf share over the 12 full months before the 2026 Hormuz crisis; currentFlows is the share over the latest 3 monthly filings since, reported beside it and absent when unavailable. An unavailable source is not a zero deficit; assumed LNG routing sensitivity is not a measured live-flow shock. Product output/demand are thousand barrels/day, gas quantities are terajoules, storage is TWh and cover is days. Derived scenarios may be cached; no trade or saved user scenario is created.',
   _outputBudgetBytes: 65536,
   inputSchema: {
     type: 'object',
@@ -109,6 +115,7 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
       jodiOilCoverage: { type: 'boolean' }, comtradeCoverage: { type: 'boolean' }, ieaStocksCoverage: { type: 'boolean' },
       portwatchCoverage: { type: 'boolean' }, coverageLevel: { type: 'string' }, degraded: { type: 'boolean' },
       chokepointConfidence: { type: 'string' }, liveFlowRatio: { type: 'number' },
+      preCrisisBaseline: CRUDE_SHARE_BASELINE_SCHEMA, currentFlows: CRUDE_SHARE_BASELINE_SCHEMA,
       limitations: { type: 'array', items: { type: 'string' } },
       products: { type: 'array', items: { type: 'object', properties: {
         product: { type: 'string' }, outputLossKbd: { type: 'number' }, demandKbd: { type: 'number' }, deficitPct: { type: 'number' },

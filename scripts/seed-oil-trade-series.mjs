@@ -19,6 +19,13 @@
 //               normal months and 0.3 for the UAE during the 2026 Hormuz
 //               closure, when ships ran dark), so it is never an export total.
 //
+// The payload also carries `crudeImportOrigin`: each importer's own monthly
+// Comtrade declaration of HS 2709 imports from World and from the seven
+// exporters that load inside the Strait of Hormuz. The energy shock model
+// reads it for its pre-crisis and current-flows Gulf shares
+// (shared/hormuz-crisis.js). The mirror above cannot serve: it keeps each
+// exporter's top buyers only and has no buyer total.
+//
 // No source is turned into a modelled export estimate. A month a source does
 // not cover is null, never zero, and every source carries its newest observed
 // month and a status (ok, stale, not_reported, unavailable).
@@ -34,8 +41,14 @@ import {
   monthRange,
   shiftMonth,
 } from './shared/oil-trade-windows.js';
+// The scripts/shared mirror: Railway packages scripts/ only (#3811).
+import { PRE_CRISIS_WINDOW } from './shared/hormuz-crisis.js';
+import { createRequire } from 'node:module';
 
 loadEnvFile(import.meta.url);
+
+/** @type {Record<string, string>} */
+const ISO3_TO_ISO2 = createRequire(import.meta.url)('./shared/iso3-to-iso2.json');
 
 export const OIL_TRADE_CANONICAL_KEY = 'energy:oil-trade-series:v1';
 export const OIL_TRADE_ACTIVATION_KEY = 'seed-activated:energy:oil-trade-series';
@@ -427,6 +440,126 @@ async function fetchMirrorRows(spec, nowMs, keyIndex) {
   return rows;
 }
 
+// ── Crude import origin (importer-declared) ─────────────────────────────────
+
+// UN M49 codes of the exporters loading inside the Strait of Hormuz; the same
+// set as GULF_PARTNER_CODES in server/worldmonitor/intelligence/v1/_shock-compute.ts.
+export const CRUDE_ORIGIN_GULF_PARTNERS = [682, 784, 368, 414, 364, 634, 48];
+const CRUDE_ORIGIN_MAX_RECORDS = 100_000;
+const CRUDE_ORIGIN_SOURCE = 'UN Comtrade monthly HS 2709 imports declared by each importer, partners World and SA, AE, IQ, KW, IR, QA, BH; import value (USD million)';
+
+/**
+ * Period lists the run requests, one Comtrade call each (12 periods at most):
+ * the fixed pre-crisis window, then the last 12 complete months after it.
+ * @param {number} nowMs
+ */
+export function crudeImportOriginPeriods(nowMs) {
+  const pre = monthRange(PRE_CRISIS_WINDOW.startMonth, PRE_CRISIS_WINDOW.endMonth);
+  const end = lastCompleteMonth(nowMs);
+  const recentFrom = [shiftMonth(end, -11), shiftMonth(PRE_CRISIS_WINDOW.endMonth, 1)].sort().at(-1);
+  const recent = recentFrom <= end ? monthRange(recentFrom, end) : [];
+  return [pre, recent].filter((p) => p.length > 0);
+}
+
+const usdMillions = (v) => Math.round(v / 1000) / 1000;
+
+/**
+ * Per-importer monthly import values aligned to `months`. A month without a
+ * World row is not an observation (null in both columns). A filed month with
+ * no Gulf partner row is a Gulf value of 0, because Comtrade omits zero rows.
+ * Gulf rows above the World total are a filing error and void the month.
+ *
+ * @param {Array<{reporterISO?: string, partnerCode?: number|string, period?: string|number, cmdCode?: string, flowCode?: string, primaryValue?: number}>} rows
+ * @param {string[]} months
+ * @returns {Record<string, {worldUsdM: Array<number|null>, gulfUsdM: Array<number|null>}>}
+ */
+export function buildCrudeImportOrigin(rows, months) {
+  const index = new Map(months.map((m, i) => [m, i]));
+  const gulfPartners = new Set(CRUDE_ORIGIN_GULF_PARTNERS);
+  const byImporter = new Map();
+  for (const r of rows ?? []) {
+    if (String(r?.cmdCode) !== '2709' || r?.flowCode !== 'M') continue;
+    const iso2 = ISO3_TO_ISO2[String(r?.reporterISO ?? '')];
+    const i = index.get(`${String(r?.period).slice(0, 4)}-${String(r?.period).slice(4, 6)}`);
+    const value = Number(r?.primaryValue);
+    const partner = Number(r?.partnerCode);
+    if (!iso2 || i === undefined || !Number.isFinite(value) || value < 0) continue;
+    if (partner !== 0 && !gulfPartners.has(partner)) continue;
+    let entry = byImporter.get(iso2);
+    if (!entry) {
+      entry = { world: months.map(() => null), gulf: months.map(() => 0) };
+      byImporter.set(iso2, entry);
+    }
+    if (partner === 0) entry.world[i] = (entry.world[i] ?? 0) + value;
+    else entry.gulf[i] += value;
+  }
+  const importers = {};
+  for (const [iso2, { world, gulf }] of [...byImporter].sort(([a], [b]) => a.localeCompare(b))) {
+    const observed = world.map((w, i) => w !== null && w > 0 && gulf[i] <= w);
+    if (!observed.some(Boolean)) continue;
+    importers[iso2] = {
+      worldUsdM: world.map((w, i) => (observed[i] ? usdMillions(w) : null)),
+      gulfUsdM: gulf.map((g, i) => (observed[i] ? usdMillions(g) : null)),
+    };
+  }
+  return importers;
+}
+
+/**
+ * The published `crudeImportOrigin` section. A failed or empty fetch keeps the
+ * previous section (status unavailable, carriedForward, its own fetchedAt)
+ * rather than publishing nothing over it.
+ */
+export function crudeImportOriginSection({ months, rows, fetchedAt, error, previous }) {
+  const importers = error ? {} : buildCrudeImportOrigin(rows, months);
+  if (Object.keys(importers).length > 0) {
+    return { status: 'ok', fetchedAt, source: CRUDE_ORIGIN_SOURCE, months, importers };
+  }
+  if (previous?.importers && Object.keys(previous.importers).length > 0) {
+    return { ...previous, status: 'unavailable', carriedForward: true };
+  }
+  return { status: 'unavailable', fetchedAt, source: CRUDE_ORIGIN_SOURCE, months, importers: {} };
+}
+
+async function fetchCrudeImportOriginRows(periods, key) {
+  const rows = [];
+  for (const months of periods) {
+    const params = new URLSearchParams({
+      period: months.map((m) => m.replace('-', '')).join(','),
+      partnerCode: ['0', ...CRUDE_ORIGIN_GULF_PARTNERS].join(','),
+      cmdCode: '2709',
+      flowCode: 'M',
+      customsCode: 'C00',
+      motCode: '0',
+      partner2Code: '0',
+      includeDesc: 'true',
+      maxRecords: String(CRUDE_ORIGIN_MAX_RECORDS),
+    });
+    const data = await withRetry(() => fetchComtradeJson(`https://comtradeapi.un.org/data/v1/get/C/M/HS?${params}`, key), 3, 8000);
+    // A capped answer silently drops reporters; refuse it.
+    if (data.length >= CRUDE_ORIGIN_MAX_RECORDS) throw new Error(`crude origin response capped at ${data.length} rows`);
+    rows.push(...data);
+  }
+  return rows;
+}
+
+async function fetchCrudeImportOrigin(nowMs, previous) {
+  const periods = crudeImportOriginPeriods(nowMs);
+  const months = periods.flat();
+  const fetchedAt = new Date(nowMs).toISOString();
+  const keys = (process.env.COMTRADE_API_KEYS || '').split(',').map((k) => k.trim()).filter(Boolean);
+  try {
+    if (keys.length === 0) throw new Error('COMTRADE_API_KEYS not set');
+    const rows = await fetchCrudeImportOriginRows(periods, keys[0]);
+    const section = crudeImportOriginSection({ months, rows, fetchedAt, previous });
+    console.log(`  Crude import origin: ${Object.keys(section.importers).length} importers (${section.status}${section.carriedForward ? ', carried forward' : ''})`);
+    return section;
+  } catch (err) {
+    console.warn(`  Crude import origin unavailable: ${err.message}`);
+    return crudeImportOriginSection({ months, error: err, fetchedAt, previous });
+  }
+}
+
 // ── PortWatch AIS ───────────────────────────────────────────────────────────
 
 const PORTWATCH_PORTS_URL =
@@ -685,6 +818,8 @@ export async function fetchOilTradeSeries({ nowMs = Date.now() } = {}) {
   }));
   // Stable key order regardless of completion order.
   const ordered = Object.fromEntries(OIL_TRADE_COUNTRIES.map((c) => [c.iso2, countries[c.iso2]]));
+  // Two more keyed Comtrade calls, after the per-country lanes have drained.
+  const crudeImportOrigin = await fetchCrudeImportOrigin(nowMs, previous?.crudeImportOrigin);
 
   return {
     generatedAt: new Date(nowMs).toISOString(),
@@ -692,6 +827,7 @@ export async function fetchOilTradeSeries({ nowMs = Date.now() } = {}) {
     conversion: { crudeBblPerTonne: CRUDE_BBL_PER_TONNE, productsBblPerTonne: PRODUCTS_BBL_PER_TONNE },
     unavailable,
     countries: ordered,
+    crudeImportOrigin,
   };
 }
 
