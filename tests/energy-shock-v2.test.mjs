@@ -1703,22 +1703,91 @@ describe('production replay 2026-10-28: Gulf crude share comes from Comtrade par
     assert.ok(response.limitations.some((l) => /effectiveCoverDays -1/.test(l) && /net oil exporter/.test(l)), response.limitations.join('\n'));
   });
 
-  it('a net exporter without JODI crude imports reports cover 0, not -1, so the value matches the "reported as 0" limitation', async (t) => {
+  it('an IEA net exporter without JODI crude imports or an origin share reports -1, not an unmodeled 0 (Mexico)', async (t) => {
     t.after(restoreEnergyShockEnvironment);
     installEnergyShockRedis({
       ...HORMUZ_LIVE_SEED,
-      'energy:iea-oil-stocks:v1:US': { daysOfCover: null, netExporter: true, anomaly: false },
-      ...partnersSeed('US', 1000, [{ partnerCode: 682, partnerIso2: 'SA', value: 80 }, { partnerCode: 124, partnerIso2: 'CA', value: 920 }]),
+      'energy:iea-oil-stocks:v1:MX': { daysOfCover: null, netExporter: true, anomaly: false },
     });
 
-    const response = await computeShock({ countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    const response = await computeShock({ countryCode: 'MX', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
 
-    assert.equal(response.ieaStocksCoverage, true);
-    assert.equal(response.jodiOilCoverage, false);
-    assert.equal(response.dataAvailable, false);
-    assert.equal(response.effectiveCoverDays, 0);
-    assert.ok(response.limitations.some((l) => /JODI crude import observation unavailable for US/.test(l) && /effective cover are not modeled \(reported as 0\)/.test(l)), response.limitations.join('\n'));
-    assert.ok(!response.limitations.some((l) => /effectiveCoverDays -1/.test(l)), 'no net-exporter sentinel explanation when nothing is modeled');
+    assert.equal(response.effectiveCoverDays, -1);
+    assert.equal(response.dataAvailable, true, 'a net-exporter classification is a usable result');
+    assert.equal(response.crudeLossKbd, 0);
+    assert.match(response.assessment, /net oil exporter/);
+    assert.ok(response.limitations.some((l) => /effectiveCoverDays -1/.test(l) && /net oil exporter \(IEA\)/.test(l)), response.limitations.join('\n'));
+    assert.ok(!response.limitations.some((l) => /reported as 0/.test(l)), 'the -1 sentinel never sits beside a "reported as 0" limitation');
+  });
+
+  it('a non-IEA producer is a net exporter from JODI: production covers refinery intake and exports exceed imports (Saudi Arabia)', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED,
+      'energy:jodi-oil:v1:SA': { dataMonth: '2026-08', crude: { productionKbd: 6238, refineryIntakeKbd: 2297, importsKbd: 68, exportsKbd: 4451 } },
+    });
+
+    const response = await computeShock({ countryCode: 'SA', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+
+    assert.equal(response.ieaStocksCoverage, false);
+    assert.equal(response.effectiveCoverDays, -1);
+    assert.equal(response.dataAvailable, true);
+    assert.notEqual(response.coverageLevel, 'unsupported');
+    assert.match(response.assessment, /Saudi Arabia is a net oil exporter/);
+    assert.ok(response.limitations.some((l) => /net crude exporter from JODI 2026-08/.test(l) && /production 6,238/.test(l) && /exports 4,451/.test(l)), response.limitations.join('\n'));
+    assert.ok(!response.limitations.some((l) => /origin share unavailable|reported as 0/.test(l)), response.limitations.join('\n'));
+  });
+
+  it('a producer that does not report crude imports to JODI is still a net exporter when exports exceed zero (Iraq)', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED,
+      'energy:jodi-oil:v1:IQ': { dataMonth: '2026-07', crude: { productionKbd: 4100, refineryIntakeKbd: 900, exportsKbd: 3300 } },
+    });
+
+    const response = await computeShock({ countryCode: 'IQ', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+
+    assert.equal(response.effectiveCoverDays, -1);
+    assert.match(response.assessment, /net oil exporter/);
+  });
+
+  it('JODI never overrides an IEA record, and an importing producer is not a net exporter', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED,
+      // New Zealand exports its small crude output and imports products: IEA says importer.
+      'energy:jodi-oil:v1:NZ': { crude: { productionKbd: 13, refineryIntakeKbd: 0, importsKbd: 0, exportsKbd: 25 } },
+      'energy:iea-oil-stocks:v1:NZ': { daysOfCover: 86, netExporter: false, anomaly: false },
+      // Malaysia produces crude but refines more than it produces.
+      'energy:jodi-oil:v1:MY': { crude: { productionKbd: 350, refineryIntakeKbd: 500, importsKbd: 300, exportsKbd: 200 } },
+    });
+
+    for (const countryCode of ['NZ', 'MY']) {
+      const response = await computeShock({ countryCode, chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+      assert.notEqual(response.effectiveCoverDays, -1, countryCode);
+      assert.doesNotMatch(response.assessment, /net oil exporter/, countryCode);
+    }
+  });
+
+  it('an IEA importer record without usable cover is still not reclassified from JODI', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED,
+      'energy:jodi-oil:v1:NZ': { crude: { productionKbd: 13, refineryIntakeKbd: 0, importsKbd: 0, exportsKbd: 25 } },
+      'energy:iea-oil-stocks:v1:NZ': { daysOfCover: null, netExporter: false, anomaly: false },
+    });
+    const response = await computeShock({ countryCode: 'NZ', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    assert.notEqual(response.effectiveCoverDays, -1);
+  });
+
+  it('a negative reported import figure is invalid, not an unreported 0', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED,
+      'energy:jodi-oil:v1:KW': { dataMonth: '2026-07', crude: { productionKbd: 2500, refineryIntakeKbd: 800, importsKbd: -5, exportsKbd: 1700 } },
+    });
+    const response = await computeShock({ countryCode: 'KW', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    assert.notEqual(response.effectiveCoverDays, -1);
   });
 
   it('IEA reserves with no origin share give cover 0 and the not-modeled limitation, never a raw IEA figure', async (t) => {
@@ -2063,5 +2132,23 @@ describe('get-country-cost-shock surfaces an unmodeled oil scenario as unavailab
     assert.ok(result.coverageDays > 0);
     assert.match(result.unavailableReason, /supplyDeficitPct is unavailable: no refined-product demand observation for JP/);
     assert.match(result.unavailableReason, /coverageDays is modelled/);
+  });
+
+  it('a JODI net exporter without an IEA record: coverageDays 0 is "not applicable", never "no IEA stock observation" (Saudi Arabia)', async (t) => {
+    t.after(restore);
+    process.env.WORLDMONITOR_VALID_KEYS = 'wm_shock_fixture';
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED,
+      // Recorded product demand: the deficit is unmodeled because there is no
+      // modeled import loss, not because demand is missing.
+      'energy:jodi-oil:v1:SA': { dataMonth: '2026-08', crude: { productionKbd: 9800, refineryIntakeKbd: 2700, importsKbd: 0, exportsKbd: 6900 }, gasoline: { demandKbd: 550 }, diesel: { demandKbd: 700 } },
+    });
+
+    const result = await getCountryCostShock(premiumCtx(), { iso2: 'SA', chokepointId: 'hormuz_strait', hs2: '27' });
+
+    assert.equal(result.coverageDays, 0);
+    assert.doesNotMatch(result.unavailableReason, /no IEA stock observation|no refined-product demand observation/);
+    assert.match(result.unavailableReason, /coverageDays is not applicable: SA is a net oil exporter/);
+    assert.match(result.unavailableReason, /supplyDeficitPct is not modeled: SA is a net oil exporter with no modeled import loss/);
   });
 });
