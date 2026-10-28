@@ -200,15 +200,18 @@ describe('parseCsvRows', () => {
     assert.equal(rows[0].flow, 'IMPLNG');
   });
 
-  it('excludes assessment_code 3 (null/uncertain)', () => {
+  // JODI code 3 means "not assessed", not missing. China files every gas cell
+  // under it, as do Russia, Iraq, Indonesia, Malaysia and others (publication
+  // 28, 2026-10-19). Absence is a non-numeric cell, never the code (#9393).
+  it('keeps assessment_code 3 rows with their reported value', () => {
     const csv = [
       SAMPLE_CSV_HEADER,
       makeRow('DE', '2025-10', 'IMPLNG', 'TJ', '95000', '1'),
       makeRow('DE', '2025-10', 'IMPPIP', 'TJ', '380000', '3'),
     ].join('\n');
     const rows = parseCsvRows(csv);
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0].flow, 'IMPLNG');
+    assert.equal(rows.length, 2);
+    assert.equal(rows.find(r => r.flow === 'IMPPIP')?.obs, 380000);
   });
 
   it('includes assessment_code 1 and 2', () => {
@@ -301,7 +304,7 @@ describe('buildCountryRecords', () => {
     assert.equal(records[0].lngShareOfImports, null);
   });
 
-  it('assessment_code 3 rows are excluded so field becomes null', () => {
+  it('a placeholder cell leaves its field null', () => {
     const rows = [
       { area: 'FR', period: '2025-10', flow: 'IMPLNG', obs: null },
       { area: 'FR', period: '2025-10', flow: 'TOTIMPSB', obs: 200000 },
@@ -318,6 +321,72 @@ describe('buildCountryRecords', () => {
     const records = buildCountryRecords(rows);
     assert.equal(records[0].dataMonth, '2025-10');
     assert.equal(records[0].lngImportsTj, 100);
+  });
+
+  it('skips a month of placeholder cells and uses the earlier reported month', () => {
+    const rows = parseCsvRows([
+      SAMPLE_CSV_HEADER,
+      makeRow('US', '2025-11', 'IMPLNG', 'TJ', '-', '3'),
+      makeRow('US', '2025-11', 'TOTDEMO', 'TJ', 'x', '3'),
+      makeRow('US', '2025-10', 'IMPLNG', 'TJ', '100', '1'),
+    ].join('\n'));
+    const records = buildCountryRecords(rows);
+    assert.equal(records.length, 1);
+    assert.equal(records[0].dataMonth, '2025-10');
+    assert.equal(records[0].lngImportsTj, 100);
+  });
+
+  it('a newer production-only month never replaces an earlier month with imports', () => {
+    // Production is not part of the gas measurement contract, so choosing the
+    // code-3 production month would drop the country at publication.
+    const csv = [
+      SAMPLE_CSV_HEADER,
+      makeRow('KZ', '2026-08', 'INDPROD', 'TJ', '150000', '3'),
+      makeRow('KZ', '2026-07', 'IMPPIP', 'TJ', '38000', '1'),
+      makeRow('KZ', '2026-07', 'TOTIMPSB', 'TJ', '38000', '1'),
+    ].join('\n');
+    const records = gasSeed.buildGasRecordsFromCsv(csv, new Date('2026-10-28T00:00:00.000Z'));
+    assert.equal(records.length, 1);
+    assert.equal(records[0].dataMonth, '2026-07');
+    assert.equal(records[0].pipeImportsTj, 38000);
+  });
+
+  it('never reaches back years for an import month (Brazil files production only since 2016)', () => {
+    const csv = [
+      SAMPLE_CSV_HEADER,
+      makeRow('BR', '2026-08', 'INDPROD', 'TJ', '160000', '3'),
+      makeRow('BR', '2015-12', 'IMPLNG', 'TJ', '40000', '1'),
+      makeRow('BR', '2015-12', 'TOTIMPSB', 'TJ', '120000', '1'),
+      // Exactly six months back is still inside the content-age window.
+      makeRow('MX', '2026-08', 'INDPROD', 'TJ', '96000', '3'),
+      makeRow('MX', '2026-02', 'IMPPIP', 'TJ', '30000', '1'),
+    ].join('\n');
+    const records = gasSeed.buildGasRecordsFromCsv(csv, new Date('2026-10-28T00:00:00.000Z'));
+    assert.deepEqual(records.map(r => `${r.iso2}@${r.dataMonth}`), ['MX@2026-02']);
+  });
+
+  it('a country with no import or demand month keeps its newest numeric month (then fails publication)', () => {
+    const rows = parseCsvRows([
+      SAMPLE_CSV_HEADER,
+      makeRow('RU', '2026-08', 'INDPROD', 'TJ', '2002840', '3'),
+      makeRow('RU', '2026-07', 'INDPROD', 'TJ', '1919049', '3'),
+    ].join('\n'));
+    assert.equal(buildCountryRecords(rows)[0].dataMonth, '2026-08');
+    assert.equal(gasSeed.buildGasRecordsFromCsv([
+      SAMPLE_CSV_HEADER,
+      makeRow('RU', '2026-08', 'INDPROD', 'TJ', '2002840', '3'),
+    ].join('\n')).length, 0);
+  });
+
+  it('uses the newest month even when its values are unassessed (code 3)', () => {
+    const rows = parseCsvRows([
+      SAMPLE_CSV_HEADER,
+      makeRow('RU', '2026-08', 'INDPROD', 'TJ', '2100000', '3'),
+      makeRow('RU', '2026-07', 'INDPROD', 'TJ', '2000000', '1'),
+    ].join('\n'));
+    const records = buildCountryRecords(rows);
+    assert.equal(records[0].dataMonth, '2026-08');
+    assert.equal(records[0].productionTj, 2100000);
   });
 
   it('includes seededAt ISO string', () => {
@@ -481,6 +550,18 @@ describe('buildLngVulnerabilityIndex', () => {
     assert.equal(entry.pipeImportsTj, 380000);
     assert.ok(!('lngImportsTj' in entry));
   });
+
+  it('each ranking entry carries the month its share describes', () => {
+    // Countries publish their own newest reported month (KZ was at 2024-12),
+    // so the index-level dataMonth cannot date every entry.
+    const members = makeMembers([
+      { iso2: 'JP', lngShareOfImports: 1.0, lngImportsTj: 4200000, pipeImportsTj: 0, dataMonth: '2026-08' },
+      { iso2: 'KZ', lngShareOfImports: 0.0, lngImportsTj: 0, pipeImportsTj: 38000, dataMonth: '2026-07' },
+    ]);
+    const result = buildLngVulnerabilityIndex(members, '2026-08', '2026-10-28T00:00:00.000Z');
+    assert.equal(result.top20LngDependent[0].dataMonth, '2026-08');
+    assert.equal(result.top20PipelineDependent[0].dataMonth, '2026-07');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -533,5 +614,24 @@ describe('golden fixture (JODI Gas CSV)', () => {
     assert.ok(de != null);
     assert.ok(typeof de.lngShareOfImports === 'number', 'lngShareOfImports should be computed');
     assert.ok(de.lngShareOfImports > 0 && de.lngShareOfImports < 1, 'lngShareOfImports should be between 0 and 1');
+  });
+
+  // The CN rows are verbatim from JODI gas publication 28 (2026-10-19): every
+  // China cell is ASSESSMENT_CODE 3, and the code-1/2 filter dropped China.
+  it('publishes China from its code-3 rows, and the China diagnostic reads ok', () => {
+    const now = new Date('2026-10-28T00:00:00.000Z');
+    const records = gasSeed.buildGasRecordsFromCsv(csv, now);
+    const cn = records.find(r => r.iso2 === 'CN');
+    assert.ok(cn != null, 'CN record missing');
+    assert.equal(cn.dataMonth, '2026-08');
+    assert.equal(cn.lngImportsTj, 305455);
+    assert.equal(cn.pipeImportsTj, 305845);
+    assert.equal(cn.totalImportsTj, 611299);
+    assert.equal(cn.productionTj, 1019793);
+    assert.equal(cn.totalDemandTj, null, 'CN files no TOTDEMO in that month');
+    assert.equal(cn.lngShareOfImports, 0.4997);
+    assert.deepEqual(gasSeed.assessChinaGasCoverage(records, now), {
+      ok: true, reason: null, dataMonth: '2026-08', ageMonths: 2,
+    });
   });
 });
