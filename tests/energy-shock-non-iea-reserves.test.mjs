@@ -152,9 +152,9 @@ describe('handler: cover from a non-IEA reserve estimate', () => {
     assert.ok(!r.limitations.some((l) => /^Strategic reserve estimate/.test(l)));
   });
 
-  it('a stale v11 cache entry (#9792, no estimate) is not served', async (t) => {
+  it('a stale v12 cache entry (#9792, no estimate) is not served', async (t) => {
     t.after(restore);
-    seed({ ...HORMUZ, ...ORIGIN, ...IN_JODI, 'energy:shock:v11:IN:hormuz_strait:100:l:oil': { countryCode: 'IN', effectiveCoverDays: 0, limitations: [] } });
+    seed({ ...HORMUZ, ...ORIGIN, ...IN_JODI, 'energy:shock:v12:IN:hormuz_strait:100:l:oil': { countryCode: 'IN', effectiveCoverDays: 0, limitations: [] } });
     const r = await shock('IN');
     assert.ok(r.reserveEstimate);
   });

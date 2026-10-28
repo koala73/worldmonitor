@@ -182,9 +182,9 @@ describe('handler: Hormuz bypass on the pre-crisis baseline', () => {
     assert.match(r.assessment, /after bypass rerouting/);
   });
 
-  it('a stale v10 cache entry (#9789 baselines, no bypass) is not served', async (t) => {
+  it('a stale v11 cache entry (#9789 baselines, no bypass) is not served', async (t) => {
     t.after(restore);
-    seed({ ...HORMUZ, ...JP, ...ORIGIN, 'energy:shock:v10:JP:hormuz_strait:100:l:oil': { countryCode: 'JP', crudeLossKbd: 2209.5, limitations: [] } });
+    seed({ ...HORMUZ, ...JP, ...ORIGIN, 'energy:shock:v11:JP:hormuz_strait:100:l:oil': { countryCode: 'JP', crudeLossKbd: 2209.5, limitations: [] } });
     const r = await shock('JP');
     assert.ok(r.preCrisisBaseline?.crudeLossAfterBypassKbd > 0);
   });

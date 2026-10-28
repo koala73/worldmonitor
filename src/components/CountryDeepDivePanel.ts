@@ -2301,7 +2301,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       table.style.cssText = 'width:100%;font-size:calc(11px * var(--wm-panel-effective-scale, 1));border-collapse:collapse;margin-bottom:6px';
       const thead = this.el('thead', '');
       const hr = this.el('tr', '');
-      const headers = ['Product', 'Demand', 'Loss', 'Deficit'];
+      const headers = ['Product', 'Demand', 'Refinery loss', 'Deficit'];
       for (const h of headers) {
         const th = this.el('th', '');
         th.textContent = h;
@@ -2331,6 +2331,18 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
       table.append(tbody);
       container.append(table);
+
+      // The deficit is net of product trade, so it is not loss ÷ demand. The
+      // handler names the trade basis in its "product balance, <basis>:" line.
+      const balance = (result.limitations ?? []).find((l) => l.startsWith('product balance, ') && !l.startsWith('product balance, current flows'));
+      if (balance) {
+        const basis = balance.slice('product balance, '.length, balance.indexOf(':')).replace(/ \((.*)\)$/, ' $1');
+        const tradeNote = this.el('div', '');
+        tradeNote.style.cssText = 'font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#aaa;margin-bottom:4px';
+        const importsModeled = !(result.limitations ?? []).some((l) => l.startsWith('Gulf-origin product imports are not modeled'));
+        tradeNote.textContent = `Deficit nets exports redirected home${importsModeled ? ' and adds lost Gulf-origin imports' : ''} (${basis}); see Model assumptions.`;
+        container.append(tradeNote);
+      }
     }
 
     if (result.ieaStocksCoverage) {
