@@ -7,9 +7,12 @@
  * here. Each digest build caches every feed's parse (`rssFeedCacheKey`); this
  * read returns those rows and never fetches a feed or builds a digest.
  *
- * Source names are canonicalised (sorted, deduplicated), so every caller with
- * the same set, such as free-tier users under the same source cap, shares one
- * response.
+ * Access matches the dashboard: any session the gateway accepts, anonymous
+ * ones included, since anonymous visitors turn panel sources off too. Only
+ * sources the requested language's digest fetches are read, so a reply holds
+ * rows that already feed a public digest, just past its category cap.
+ * Browser calls carry a session and are not shared at the CDN; each is one
+ * pipelined Redis read of at most 24 keys.
  */
 import type {
   ListSourceItemsRequest,
@@ -23,7 +26,8 @@ import { getCachedJsonBatch } from '../../../_shared/redis';
 import { filterRevokedUrls } from '../../../_shared/digest-revocations';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { readRevokedUrlSet } from './_lastgood-store';
-import { INTEL_SOURCES, SERVER_EDITIONS, VARIANT_FEEDS, type ServerFeed } from './_feeds';
+import { INTEL_SOURCES, SERVER_EDITIONS, VARIANT_FEEDS, isServerFeedReachableForLanguage, type ServerFeed } from './_feeds';
+import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
 import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
 import { healthyRow, scoredRowItem } from './list-news-pool';
 
@@ -41,6 +45,7 @@ interface SourceQuery {
   editions: string[];
   category: string;
   sources: string[];
+  lang: string;
 }
 
 function canonicalQuery(req: ListSourceItemsRequest): SourceQuery {
@@ -60,7 +65,11 @@ function canonicalQuery(req: ListSourceItemsRequest): SourceQuery {
   if (sources.some((source) => source.length > MAX_SOURCE_NAME_LENGTH)) {
     throw new ValidationError([{ field: 'sources', description: `Source names are at most ${MAX_SOURCE_NAME_LENGTH} characters` }]);
   }
-  return { editions, category, sources };
+  const lang = req.lang.trim().toLowerCase() || 'en';
+  if (!NEWS_LANGUAGES.has(lang)) {
+    throw new ValidationError([{ field: 'lang', description: 'Use a supported digest language' }]);
+  }
+  return { editions, category, sources, lang };
 }
 
 export async function listSourceItems(
@@ -78,7 +87,8 @@ async function readSources(query: SourceQuery): Promise<ListSourceItemsResponse>
   const nowMs = Date.now();
   const placements = query.sources.map((source) => {
     for (const edition of query.editions) {
-      const feed = placedFeeds(edition, query.category).find((entry) => entry.name === source);
+      const feed = placedFeeds(edition, query.category)
+        .find((entry) => entry.name === source && isServerFeedReachableForLanguage(entry, query.lang));
       if (feed) return { source, edition, key: rssFeedCacheKey(edition, feed.url) };
     }
     return { source, edition: '', key: '' };

@@ -9,6 +9,12 @@ import type { AppContext } from '@/app/app-context';
 import type { ListFeedDigestResponse, NewsItem as ProtoNewsItem } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { SITE_VARIANT } from '@/config/variant';
 
+const mocks = vi.hoisted(() => ({ fetchCategoryFeeds: vi.fn() }));
+vi.mock('@/services/rss', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/rss')>(),
+  fetchCategoryFeeds: mocks.fetchCategoryFeeds,
+  getFeedFailures: () => new Map(),
+}));
 vi.mock('@/services/analysis-worker', () => ({
   analysisWorker: { clusterNews: vi.fn(), analyzeCorrelations: vi.fn() },
 }));
@@ -32,6 +38,15 @@ interface LoaderInternals {
     isCustom: boolean,
     options: { allowDigestPendingFallback: boolean; recordBaselineSample: boolean },
   ): Promise<NewsItemLike[]>;
+  beginNewsLoad(): number;
+}
+
+interface Harness { loader: LoaderInternals; ctx: AppContext }
+
+/** What the panel shows for `category` once a pending fill has landed. */
+async function shownAfterFill(ctx: AppContext, category: string, count: number): Promise<NewsItemLike[]> {
+  await vi.waitFor(() => expect(ctx.newsByCategory[category]).toHaveLength(count));
+  return ctx.newsByCategory[category] as NewsItemLike[];
 }
 
 let minute = 0;
@@ -66,7 +81,7 @@ function sourceRowsFetch(rows: Record<string, ProtoNewsItem[]>, status = 200) {
   });
 }
 
-async function makeLoader(disabled: string[] = []) {
+async function makeLoader(disabled: string[] = []): Promise<Harness> {
   const ctx = {
     statusPanel: { updateDigestCoverage: vi.fn(), updateFeed: vi.fn(), updateApi: vi.fn() },
     disabledSources: new Set<string>(disabled),
@@ -80,7 +95,7 @@ async function makeLoader(disabled: string[] = []) {
   } as unknown as AppContext;
   const { DataLoaderManager } = await import('@/app/data-loader');
   const loader = new DataLoaderManager(ctx, { renderCriticalBanner: () => undefined, refreshOpenCountryBrief: () => undefined });
-  return loader as unknown as LoaderInternals;
+  return { loader: loader as unknown as LoaderInternals, ctx };
 }
 
 const OPTIONS = { allowDigestPendingFallback: false, recordBaselineSample: false };
@@ -95,7 +110,7 @@ describe('preset panels fill slots the source filter freed from cached source ro
   it('a panel with every source on makes no request and shows exactly the digest items', async () => {
     const fetchMock = sourceRowsFetch({});
     vi.stubGlobal('fetch', fetchMock);
-    const loader = await makeLoader();
+    const { loader, ctx } = await makeLoader();
     const digest = digestOf('europe', [...protoItems('Wire A', 2), ...protoItems('Wire B', 2)]);
 
     const items = await loader.loadNewsCategory('europe', feeds(['Wire A', 'Wire B', 'Niche C']), fresh(digest), false, OPTIONS);
@@ -107,17 +122,20 @@ describe('preset panels fill slots the source filter freed from cached source ro
   it('fills from enabled sources below the cap when the user turned a source off, up to the digest count', async () => {
     const fetchMock = sourceRowsFetch({ 'Niche C': protoItems('Niche C', 3), 'Niche D': protoItems('Niche D', 1) });
     vi.stubGlobal('fetch', fetchMock);
-    const loader = await makeLoader(['Wire B']);
+    const { loader, ctx } = await makeLoader(['Wire B']);
     const digest = digestOf('europe', [...protoItems('Wire A', 2), ...protoItems('Wire B', 2)]);
 
-    const items = await loader.loadNewsCategory('europe', feeds(['Wire A', 'Wire B', 'Niche D', 'Niche C']), fresh(digest), false, OPTIONS);
+    const returned = await loader.loadNewsCategory('europe', feeds(['Wire A', 'Wire B', 'Niche D', 'Niche C']), fresh(digest), false, OPTIONS);
 
+    // The digest items render first; the fill lands after.
+    expect(returned.map(i => i.source)).toEqual(['Wire A', 'Wire A']);
+    const items = await shownAfterFill(ctx, 'europe', 4);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const url = new URL(String(fetchMock.mock.calls[0]![0]), 'https://x.test');
     expect(url.searchParams.getAll('sources')).toEqual(['Niche C', 'Niche D']);
     expect(url.searchParams.getAll('editions')).toEqual([SITE_VARIANT]);
     expect(url.searchParams.get('category')).toBe('europe');
-    expect(items).toHaveLength(4);
+    expect(url.searchParams.get('lang')).toBe('en');
     expect(items.filter(i => i.source === 'Wire A')).toHaveLength(2);
     expect(new Set(items.map(i => i.source))).toEqual(new Set(['Wire A', 'Niche C', 'Niche D']));
   });
@@ -125,7 +143,7 @@ describe('preset panels fill slots the source filter freed from cached source ro
   it('does not ask for a source this language\'s digest never fetches', async () => {
     const fetchMock = sourceRowsFetch({});
     vi.stubGlobal('fetch', fetchMock);
-    const loader = await makeLoader(['Wire B']);
+    const { loader, ctx } = await makeLoader(['Wire B']);
     const digest = digestOf('europe', [...protoItems('Wire A', 1), ...protoItems('Wire B', 1)]);
 
     await loader.loadNewsCategory('europe', [
@@ -138,33 +156,74 @@ describe('preset panels fill slots the source filter freed from cached source ro
 
   it('keeps the digest items when the source-rows request fails', async () => {
     vi.stubGlobal('fetch', sourceRowsFetch({}, 503));
-    const loader = await makeLoader(['Wire B']);
+    const { loader, ctx } = await makeLoader(['Wire B']);
     const digest = digestOf('europe', [...protoItems('Wire A', 2), ...protoItems('Wire B', 2)]);
 
-    const items = await loader.loadNewsCategory('europe', feeds(['Wire A', 'Wire B', 'Niche C']), fresh(digest), false, OPTIONS);
+    await loader.loadNewsCategory('europe', feeds(['Wire A', 'Wire B', 'Niche C']), fresh(digest), false, OPTIONS);
+    await new Promise(resolve => setTimeout(resolve, 20));
 
-    expect(items.map(i => i.source)).toEqual(['Wire A', 'Wire A']);
+    expect((ctx.newsByCategory.europe as NewsItemLike[]).map(i => i.source)).toEqual(['Wire A', 'Wire A']);
+  });
+
+  it('drops a fill that lands after a newer load started', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const rows = sourceRowsFetch({ 'Niche C': protoItems('Niche C', 1) });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => { await gate; return rows(input); }));
+    const { loader, ctx } = await makeLoader(['Wire B']);
+    const digest = digestOf('europe', [...protoItems('Wire A', 1), ...protoItems('Wire B', 1)]);
+
+    await loader.loadNewsCategory('europe', feeds(['Wire A', 'Wire B', 'Niche C']), fresh(digest), false, OPTIONS);
+    loader.beginNewsLoad();
+    release();
+    await vi.waitFor(() => expect(rows).toHaveBeenCalledTimes(1));
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect((ctx.newsByCategory.europe as NewsItemLike[]).map(i => i.source)).toEqual(['Wire A']);
   });
 });
 
 describe('cross-edition panels fill from sources no carrying digest includes', () => {
-  it('reads the missing source from the carrying editions', async () => {
-    const rows = sourceRowsFetch({ 'Niche Desk': protoItems('Niche Desk', 2) });
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  function crossEditionFetch(rows: ReturnType<typeof sourceRowsFetch>) {
+    return vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), 'https://www.worldmonitor.app');
       if (!url.pathname.endsWith('/list-feed-digest')) return rows(input);
       const edition = url.searchParams.get('variant');
       const body = digestOf('markets', protoItems(edition === 'finance' ? 'Finance Wire' : 'Commodity Desk', 2));
       return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
     });
-    vi.stubGlobal('fetch', fetchMock);
-    const loader = await makeLoader();
+  }
 
-    const items = await loader.loadNewsCategory('markets', feeds(['Finance Wire', 'Commodity Desk', 'Niche Desk']), null, true, OPTIONS);
+  it('reads the missing source from the carrying editions', async () => {
+    const rows = sourceRowsFetch({ 'Niche Desk': protoItems('Niche Desk', 2) });
+    vi.stubGlobal('fetch', crossEditionFetch(rows));
+    const { loader, ctx } = await makeLoader();
 
+    await loader.loadNewsCategory('markets', feeds(['Finance Wire', 'Commodity Desk', 'Niche Desk']), null, true, OPTIONS);
+
+    const items = await shownAfterFill(ctx, 'markets', 6);
     expect(rows).toHaveBeenCalledTimes(1);
     const url = new URL(String(rows.mock.calls[0]![0]), 'https://x.test');
     expect(url.searchParams.getAll('editions').sort()).toEqual(['commodity', 'finance']);
     expect(new Set(items.map(i => i.source))).toEqual(new Set(['Finance Wire', 'Commodity Desk', 'Niche Desk']));
+  });
+
+  it('fills from source rows on a panel that also fetches a source directly', async () => {
+    const rows = sourceRowsFetch({ 'Niche Desk': protoItems('Niche Desk', 1) });
+    vi.stubGlobal('fetch', crossEditionFetch(rows));
+    const direct = { source: 'Browser Desk', title: 'Browser Desk 0', link: 'https://example.com/browser/0', pubDate: new Date() };
+    mocks.fetchCategoryFeeds.mockResolvedValue([direct]);
+    const { loader, ctx } = await makeLoader();
+
+    const items = await loader.loadNewsCategory('markets', [
+      ...feeds(['Finance Wire', 'Commodity Desk', 'Niche Desk']),
+      { name: 'Browser Desk', url: 'https://feeds.example/browser', browserOnly: true },
+    ], null, true, OPTIONS);
+
+    expect(mocks.fetchCategoryFeeds).toHaveBeenCalledTimes(1);
+    const url = new URL(String(rows.mock.calls[0]![0]), 'https://x.test');
+    expect(url.searchParams.getAll('sources')).toEqual(['Niche Desk']);
+    expect(new Set(items.map(i => i.source))).toEqual(new Set(['Finance Wire', 'Commodity Desk', 'Niche Desk', 'Browser Desk']));
+    expect(ctx.newsByCategory.markets).toEqual(items);
   });
 });

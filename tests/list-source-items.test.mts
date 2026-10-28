@@ -127,6 +127,23 @@ describe('ListSourceItems', () => {
     assert.deepEqual(reads.filter(key => key.includes('rss:feed:')), [rssFeedCacheKey('tech', TECH_ONLY.url)]);
   });
 
+  it('reads only sources the requested language\'s digest fetches', async () => {
+    // A feed the server fetches for one language only: its cached row exists,
+    // but no other language's digest carries it.
+    const [category, feed] = Object.entries(VARIANT_FEEDS.full!)
+      .flatMap(([key, feeds]) => feeds.map(entry => [key, entry] as const))
+      .find(([, entry]) => entry.lang && entry.lang !== 'en' && !entry.strategicDefault)!;
+    feedRow('full', feed, 2);
+
+    const english = await request({ category, sources: [feed.name] });
+    assert.deepEqual(english.payload.sources.map(s => s.state), ['unplaced']);
+    assert.deepEqual(english.payload.items, []);
+
+    const own = await request({ category, sources: [feed.name], lang: feed.lang! });
+    assert.deepEqual(own.payload.sources.map(s => s.state), ['found']);
+    assert.equal((await request({ category, sources: [feed.name], lang: 'xx' })).res.status, 400);
+  });
+
   it('reads intel sources from the full edition', async () => {
     const intel = INTEL_SOURCES[0]!;
     feedRow('full', intel, 1);

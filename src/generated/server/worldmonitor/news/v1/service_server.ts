@@ -210,6 +210,7 @@ export interface ListSourceItemsRequest {
   editions: string[];
   category: string;
   sources: string[];
+  lang: string;
 }
 
 export interface ListSourceItemsResponse {
@@ -720,6 +721,7 @@ export function createNewsServiceRoutes(
             editions: params.getAll("editions"),
             category: params.get("category") ?? "",
             sources: params.getAll("sources"),
+            lang: params.get("lang") ?? "",
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listSourceItems", body);

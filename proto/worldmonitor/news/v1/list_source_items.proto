@@ -15,15 +15,22 @@ message ListSourceItemsRequest {
   ];
   // One category key within the selected editions.
   string category = 2 [
-    (sebuf.http.query) = { name: "category" },
+    (sebuf.http.query) = { name: "category", required: true },
     (buf.validate.field).string.min_len = 1,
     (buf.validate.field).string.max_len = 32
   ];
-  // Catalog source names, at most 24. Order and duplicates do not matter.
+  // Catalog source names, at most 24, each at most 120 characters. Order and
+  // duplicates do not matter.
   repeated string sources = 3 [
-    (sebuf.http.query) = { name: "sources" },
+    (sebuf.http.query) = { name: "sources", required: true },
     (buf.validate.field).repeated.min_items = 1,
     (buf.validate.field).repeated.max_items = 24
+  ];
+  // Digest language (ISO 639-1); empty means en. Only sources this language's
+  // digest fetches are read, so a reply holds only rows that feed that digest.
+  string lang = 4 [
+    (sebuf.http.query) = { name: "lang" },
+    (buf.validate.field).string.max_len = 8
   ];
 }
 
@@ -38,7 +45,8 @@ message ListSourceItemsResponse {
 message SourceItemsState {
   string source = 1;
   // found (a cached parse), missing (no healthy cached parse), or unplaced
-  // (no requested edition places the source in the category).
+  // (no requested edition's digest in this language fetches the source in
+  // the category).
   string state = 2;
   // Edition whose cached parse was read; empty unless found.
   string edition = 3;

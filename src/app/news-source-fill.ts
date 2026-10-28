@@ -70,15 +70,20 @@ let client: InstanceType<typeof NewsServiceClient> | null = null;
 
 /**
  * Cached items of `sources` in `category`, read from the first of `editions`
- * that places each one. Sorted names keep one CDN entry per source set. An
- * error yields no items: the panel keeps what the digest gave it.
+ * whose `language` digest fetches each one. An error yields no items: the
+ * panel keeps what the digest gave it.
  */
-export async function fetchSourceItems(editions: readonly string[], category: string, sources: readonly string[]): Promise<NewsItem[]> {
+export async function fetchSourceItems(
+  editions: readonly string[],
+  category: string,
+  sources: readonly string[],
+  language: string,
+): Promise<NewsItem[]> {
   if (sources.length === 0) return [];
   client ??= new NewsServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
   try {
     const response = await client.listSourceItems(
-      { editions: [...editions], category, sources: [...sources].sort() },
+      { editions: [...editions], category, sources: [...sources].sort(), lang: language },
       { signal: AbortSignal.timeout(SOURCE_FILL_TIMEOUT_MS) },
     );
     return response.items.map(protoItemToNewsItem);

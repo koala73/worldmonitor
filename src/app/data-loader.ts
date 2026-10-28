@@ -729,23 +729,37 @@ export class DataLoaderManager implements AppModule {
    * full reachable feed set instead.
    */
   /**
-   * `items` plus the cached rows of enabled sources in `feeds` that have no
-   * item in `delivered`, up to `limit` (#9796). Never removes an item.
+   * Cached rows of the enabled sources in `feeds` that this language's digest
+   * fetches but that have no item in `delivered` (#9796). Never rejects.
    */
-  private async fillSourcesBelowCap(
+  private async sourceRowsBelowCap(
     category: string,
     editions: readonly string[],
     delivered: readonly NewsItem[],
-    items: NewsItem[],
     feeds: readonly Feed[],
-    limit: number,
   ): Promise<NewsItem[]> {
     const language = getCurrentLanguage();
     const missing = sourcesBelowCap(delivered, feeds.filter(feed => digestServesFeed(feed, language)).map(feed => feed.name));
-    if (missing.length === 0) return items;
+    if (missing.length === 0) return [];
     const wanted = new Set(missing);
-    const rows = (await fetchSourceItems(editions, category, missing)).filter(item => wanted.has(item.source));
-    return fillFreeSlots(items, rows, limit);
+    return (await fetchSourceItems(editions, category, missing, language)).filter(item => wanted.has(item.source));
+  }
+
+  /**
+   * Re-renders the already painted `items` with `rows` in their free slots, up
+   * to `limit`, unless a newer load has started. The panel never waits on it.
+   */
+  private fillAfterRender(category: string, generation: number, items: NewsItem[], rows: Promise<NewsItem[]>, limit: number): void {
+    void rows.then((found) => {
+      if (!this.isCurrentNewsLoad(generation)) return;
+      const filled = fillFreeSlots(items, found, limit);
+      if (filled.length === items.length) return;
+      this.renderNewsForCategory(category, filled);
+      this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
+        status: 'ok',
+        itemCount: filled.length,
+      });
+    });
   }
 
   private async crossEditionCategoryItems(category: string): Promise<{ items: NewsItem[]; servedStale: boolean } | null> {
@@ -1700,7 +1714,7 @@ export class DataLoaderManager implements AppModule {
         this.clearNewsSourceCoverage(category);
         this.setNewsRefreshDegraded(category, false);
         const delivered = (digest.categories[category]?.items ?? []).map(protoItemToNewsItem);
-        let items = delivered.filter(i => enabledNames.has(i.source));
+        const items = delivered.filter(i => enabledNames.has(i.source));
 
         void ingestTrendingHeadlines(items.map(i => ({
           title: i.title,
@@ -1727,15 +1741,16 @@ export class DataLoaderManager implements AppModule {
         if (this.isCurrentNewsLoad(generation) && !digestServedStale) {
           checkBatchForBreakingAlerts(items);
         }
-        // #9796: the enabled-source filter dropped digest items, so the panel
-        // has free slots. Fill them from the cached rows of enabled sources
-        // the category's top items left out. A user who turned nothing off
-        // loses nothing to the filter and never makes this request.
-        if (items.length < delivered.length) {
-          items = await this.fillSourcesBelowCap(category, [SITE_VARIANT], delivered, items, enabledFeeds, delivered.length);
-        }
         this.flashMapForNews(items);
         this.renderNewsForCategory(category, items);
+        // #9796: the enabled-source filter dropped digest items, so the panel
+        // has free slots. Fill them, after the digest items are on screen,
+        // from the cached rows of enabled sources the category's top items
+        // left out. A user who turned nothing off never makes this request.
+        if (items.length < delivered.length) {
+          this.fillAfterRender(category, generation, items,
+            this.sourceRowsBelowCap(category, [SITE_VARIANT], delivered, enabledFeeds), delivered.length);
+        }
 
         this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
           status: 'ok',
@@ -1758,6 +1773,7 @@ export class DataLoaderManager implements AppModule {
       // Sources no digest carries yet (`browserOnly`, still on the migration
       // list) keep the rotating direct fetch below, merged onto these items.
       let crossEditionCarry: NewsItem[] | null = null;
+      let crossEditionFill: Promise<NewsItem[]> | null = null;
       let crossEditionServedStale = false;
       let rotationFeeds = reachableFeeds;
       if (isCustom) {
@@ -1787,23 +1803,25 @@ export class DataLoaderManager implements AppModule {
           const digestLanguage = getCurrentLanguage();
           const directFeeds = reachableFeeds.filter(f =>
             f.browserOnly || (f.digestLang !== undefined && f.digestLang !== digestLanguage));
+          const items = mergeRotatedNewsItems([], digestItems, {
+            maxItems: this.customCategoryMergedItemLimit,
+            enabledSources: enabledNames,
+          });
+          // #9796: the cached rows of digest-served sources no carrying
+          // edition's top items include, for the panel's free slots. Directly
+          // fetched sources are not digest-served, so the two never overlap.
+          if (items.length < this.customCategoryMergedItemLimit) {
+            const editions = digestEditionsFor(category).filter(edition => edition !== SITE_VARIANT);
+            crossEditionFill = this.sourceRowsBelowCap(category, editions, crossEdition.items, reachableFeeds);
+          }
           if (directFeeds.length === 0) {
             // Every reachable source is digest-served, so there is no partial
             // source coverage to disclose on the badge.
             this.clearNewsSourceCoverage(category);
-            let items = mergeRotatedNewsItems([], digestItems, {
-              maxItems: this.customCategoryMergedItemLimit,
-              enabledSources: enabledNames,
-            });
-            // #9796: fill free slots from the cached rows of enabled sources
-            // no carrying edition's top items include.
-            if (items.length < this.customCategoryMergedItemLimit) {
-              const editions = digestEditionsFor(category).filter(edition => edition !== SITE_VARIANT);
-              items = await this.fillSourcesBelowCap(
-                category, editions, crossEdition.items, items, reachableFeeds, this.customCategoryMergedItemLimit,
-              );
-            }
             this.renderNewsForCategory(category, items);
+            if (crossEditionFill) {
+              this.fillAfterRender(category, generation, items, crossEditionFill, this.customCategoryMergedItemLimit);
+            }
             this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
               status: 'ok',
               itemCount: items.length,
@@ -1979,8 +1997,11 @@ export class DataLoaderManager implements AppModule {
       // the value that lands in ctx.allNews — reads the MERGED set, because for
       // a custom category that is what the panel actually shows. Using the raw
       // fetch would report this cycle's three sources as the whole category and
-      // hand clustering a set the user isn't looking at.
-      const items = mergeForRender(fetchedItems);
+      // hand clustering a set the user isn't looking at. The #9796 source rows,
+      // requested alongside the direct fetch, take only the slots left free.
+      const items = crossEditionFill
+        ? fillFreeSlots(mergeForRender(fetchedItems), await crossEditionFill, this.customCategoryMergedItemLimit)
+        : mergeForRender(fetchedItems);
       const failures = getFeedFailures();
       const failedFeeds = fallbackFeeds.filter(f => failures.has(f.name));
       const windowFailed = fallbackFeeds.length > 0 && failedFeeds.length === fallbackFeeds.length;

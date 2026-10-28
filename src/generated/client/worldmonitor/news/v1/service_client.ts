@@ -210,6 +210,7 @@ export interface ListSourceItemsRequest {
   editions: string[];
   category: string;
   sources: string[];
+  lang: string;
 }
 
 export interface ListSourceItemsResponse {
@@ -568,6 +569,7 @@ export class NewsServiceClient {
     if (req.editions && req.editions.length > 0) req.editions.forEach(v => params.append("editions", v));
     if (req.category != null && req.category !== "") params.set("category", String(req.category));
     if (req.sources && req.sources.length > 0) req.sources.forEach(v => params.append("sources", v));
+    if (req.lang != null && req.lang !== "") params.set("lang", String(req.lang));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

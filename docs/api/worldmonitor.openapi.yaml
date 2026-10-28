@@ -26729,7 +26729,7 @@ paths:
                 - name: category
                   in: query
                   description: One category key within the selected editions.
-                  required: false
+                  required: true
                   example: "europe"
                   schema:
                     type: string
@@ -26737,8 +26737,10 @@ paths:
                     maxLength: 32
                 - name: sources
                   in: query
-                  description: Catalog source names, at most 24. Order and duplicates do not matter.
-                  required: false
+                  description: |-
+                    Catalog source names, at most 24, each at most 120 characters. Order and
+                     duplicates do not matter.
+                  required: true
                   style: form
                   explode: true
                   example:
@@ -26750,6 +26752,15 @@ paths:
                     items:
                       type: string
                       maxLength: 120
+                - name: lang
+                  in: query
+                  description: |-
+                    Digest language (ISO 639-1); empty means en. Only sources this language's
+                     digest fetches are read, so a reply holds only rows that feed that digest.
+                  required: false
+                  example: "en"
+                  schema:
+                    type: string
                 - name: jmespath
                   in: query
                   description: |-
@@ -56655,9 +56666,20 @@ components:
                         type: string
                         maxItems: 24
                         minItems: 1
-                        description: Catalog source names, at most 24. Order and duplicates do not matter.
+                        description: |-
+                            Catalog source names, at most 24, each at most 120 characters. Order and
+                             duplicates do not matter.
                     maxItems: 24
                     minItems: 1
+                lang:
+                    type: string
+                    maxLength: 8
+                    description: |-
+                        Digest language (ISO 639-1); empty means en. Only sources this language's
+                         digest fetches are read, so a reply holds only rows that feed that digest.
+            required:
+                - category
+                - sources
         worldmonitor_news_v1_ListSourceItemsResponse:
             type: object
             properties:
@@ -56680,7 +56702,8 @@ components:
                     type: string
                     description: |-
                         found (a cached parse), missing (no healthy cached parse), or unplaced
-                         (no requested edition places the source in the category).
+                         (no requested edition's digest in this language fetches the source in
+                         the category).
                 edition:
                     type: string
                     description: Edition whose cached parse was read; empty unless found.
