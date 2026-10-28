@@ -1824,9 +1824,12 @@ export class DataLoaderManager implements AppModule {
           // #9796: the cached rows of digest-served sources no carrying
           // edition's top items include, for the panel's free slots. Directly
           // fetched sources are not digest-served, so the two never overlap.
+          // Read from every enabled source, as the digest items above are: a
+          // source the browser limits to another language can still be in
+          // this language's digest.
           if (items.length < this.customCategoryMergedItemLimit) {
             const editions = digestEditionsFor(category).filter(edition => edition !== SITE_VARIANT);
-            crossEditionFill = this.sourceRowsBelowCap(category, editions, crossEdition.items, reachableFeeds);
+            crossEditionFill = this.sourceRowsBelowCap(category, editions, crossEdition.items, enabledFeeds);
           }
           if (directFeeds.length === 0) {
             // Every reachable source is digest-served, so there is no partial

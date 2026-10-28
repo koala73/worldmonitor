@@ -297,6 +297,22 @@ describe('cross-edition panels fill from sources no carrying digest includes', (
     expect(new Set(items.map(i => i.source))).toEqual(new Set(['Finance Wire', 'Commodity Desk', 'Niche Desk']));
   });
 
+  it('reads a source the browser limits to another language when every digest carries it', async () => {
+    const rows = sourceRowsFetch({ 'Desk Français': protoItems('Desk Français', 1) });
+    vi.stubGlobal('fetch', crossEditionFetch(rows));
+    const { loader, ctx } = await makeLoader();
+
+    await loader.loadNewsCategory('markets', [
+      ...feeds(['Finance Wire', 'Commodity Desk']),
+      { name: 'Desk Français', url: 'https://feeds.example/fr-desk', lang: 'fr' },
+    ], null, true, OPTIONS);
+
+    const items = await shownAfterFill(ctx, 'markets', 5);
+    const url = new URL(String(rows.mock.calls[0]![0]), 'https://x.test');
+    expect(url.searchParams.getAll('sources')).toEqual(['Desk Français']);
+    expect(items.some(i => i.source === 'Desk Français')).toBe(true);
+  });
+
   it('fills from source rows on a panel that also fetches a source directly', async () => {
     const rows = sourceRowsFetch({ 'Niche Desk': protoItems('Niche Desk', 1) });
     vi.stubGlobal('fetch', crossEditionFetch(rows));
