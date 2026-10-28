@@ -46,6 +46,22 @@ describe('decodeFeedBody: decode a feed in the charset it declares', () => {
     assert.match(decodeFeedBody(bytes, 'text/xml'), /Ásia/);
     assert.match(decodeFeedBody(new Uint8Array(Buffer.from('<rss><title>Ásia</title></rss>', 'utf8')), null), /Ásia/);
   });
+
+  it('detects UTF-16 from its byte-order mark in both byte orders', () => {
+    const xml = '<?xml version="1.0" encoding="UTF-16"?><rss><item><title>Ásia</title></item></rss>';
+    const le = new Uint8Array([0xff, 0xfe, ...Buffer.from(xml, 'utf16le')]);
+    const be = new Uint8Array([0xfe, 0xff, ...Buffer.from(xml, 'utf16le').swap16()]);
+    for (const bytes of [le, be]) {
+      const text = decodeFeedBody(bytes, 'text/xml');
+      assert.ok(text.startsWith('<?xml'), 'the BOM is consumed and the prolog is readable');
+      assert.match(text, /<title>Ásia<\/title>/);
+    }
+  });
+
+  it('lets a byte-order mark override a wrong Content-Type charset', () => {
+    const bytes = new Uint8Array([0xef, 0xbb, 0xbf, ...Buffer.from('<rss><title>Ásia</title></rss>', 'utf8')]);
+    assert.match(decodeFeedBody(bytes, 'text/xml; charset=ISO-8859-1'), /Ásia/);
+  });
 });
 
 describe('parseRssXml: a publisher click-counter link resolves to the article', () => {
@@ -60,6 +76,9 @@ describe('parseRssXml: a publisher click-counter link resolves to the article', 
     const xml = folhaXml(rfc822(Date.now() - 60_000))
       .replace(ARTICLE, 'https://evil.example/phish');
     const result = __testing__.parseRssXml(xml, FOLHA_FEED, 'full');
-    assert.equal(result?.items[0]?.link ?? '', '');
+    assert.ok(result, 'parse must succeed');
+    assert.equal(result.items.length, 1);
+    assert.equal(result.items[0].title, 'Vice-presidente da Federação Japonesa renuncia após apoio da Ásia');
+    assert.equal(result.items[0].link, '');
   });
 });

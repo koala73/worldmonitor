@@ -856,6 +856,13 @@ const RSS_MAX_BODY_BYTES = 5 * 1024 * 1024;
  * accented title. An unknown label falls back to UTF-8.
  */
 export function decodeFeedBody(bytes: Uint8Array, contentType: string | null): string {
+  // A byte-order mark wins over any declaration, as in browsers. UTF-16 has
+  // no ASCII prolog to sniff, so the BOM is the only way to find it.
+  const bom = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? 'utf-8'
+    : bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le'
+      : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be'
+        : null;
+  if (bom) return new TextDecoder(bom).decode(bytes);
   let label = /charset\s*=\s*["']?([\w.:-]+)/i.exec(contentType ?? '')?.[1];
   if (!label) {
     // The prolog is ASCII in every encoding a feed declares, so a Latin-1
