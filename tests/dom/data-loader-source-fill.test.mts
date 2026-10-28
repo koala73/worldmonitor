@@ -166,7 +166,7 @@ describe('preset panels fill slots the source filter freed from cached source ro
 
     await loader.loadNewsCategory('europe', [
       ...feeds(['Wire A', 'Wire B']),
-      { name: 'Le Quotidien', url: 'https://feeds.example/fr', lang: 'fr' },
+      { name: 'Le Quotidien', url: 'https://feeds.example/fr', lang: 'fr', digestLang: 'fr' },
     ], fresh(digest), false, OPTIONS);
 
     expect(fetchMock).not.toHaveBeenCalled();

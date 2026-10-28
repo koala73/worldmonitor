@@ -132,22 +132,26 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Radio-Canada",
           "url": "https://ici.radio-canada.ca/info/rss/info/en-continu",
-          "lang": "fr"
+          "lang": "fr",
+          "digestLang": "fr"
         },
         {
           "name": "La Presse",
           "url": "https://www.lapresse.ca/actualites/rss",
-          "lang": "fr"
+          "lang": "fr",
+          "digestLang": "fr"
         },
         {
           "name": "Le Devoir",
           "url": "https://www.ledevoir.com/rss/manchettes.xml",
-          "lang": "fr"
+          "lang": "fr",
+          "digestLang": "fr"
         },
         {
           "name": "TVA Nouvelles",
           "url": "https://www.tvanouvelles.ca/rss.xml",
-          "lang": "fr"
+          "lang": "fr",
+          "digestLang": "fr"
         },
         {
           "name": "Vancouver Sun",
@@ -239,92 +243,110 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "El País",
           "url": "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada",
-          "lang": "es"
+          "lang": "es",
+          "digestLang": "es"
         },
         {
           "name": "El Mundo",
           "url": "https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml",
-          "lang": "es"
+          "lang": "es",
+          "digestLang": "es"
         },
         {
           "name": "BBC Mundo",
           "url": "https://www.bbc.com/mundo/index.xml",
-          "lang": "es"
+          "lang": "es",
+          "digestLang": "es"
         },
         {
           "name": "Tagesschau",
           "url": "https://www.tagesschau.de/xml/rss2/",
-          "lang": "de"
+          "lang": "de",
+          "digestLang": "de"
         },
         {
           "name": "Bild",
           "url": "https://www.bild.de/feed/alles.xml",
-          "lang": "de"
+          "lang": "de",
+          "digestLang": "de"
         },
         {
           "name": "Der Spiegel",
           "url": "https://www.spiegel.de/schlagzeilen/tops/index.rss",
-          "lang": "de"
+          "lang": "de",
+          "digestLang": "de"
         },
         {
           "name": "Die Zeit",
           "url": "https://newsfeed.zeit.de/index",
-          "lang": "de"
+          "lang": "de",
+          "digestLang": "de"
         },
         {
           "name": "Handelsblatt",
           "url": "https://www.handelsblatt.com/contentexport/feed/schlagzeilen",
-          "lang": "de"
+          "lang": "de",
+          "digestLang": "de"
         },
         {
           "name": "Welt",
           "url": "https://www.welt.de/feeds/latest.rss",
-          "lang": "de"
+          "lang": "de",
+          "digestLang": "de"
         },
         {
           "name": "ANSA",
           "url": "https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml",
-          "lang": "it"
+          "lang": "it",
+          "digestLang": "it"
         },
         {
           "name": "Corriere della Sera",
           "url": "https://news.google.com/rss/search?q=site:corriere.it+when:1d&hl=it&gl=IT&ceid=IT:it",
-          "lang": "it"
+          "lang": "it",
+          "digestLang": "it"
         },
         {
           "name": "Repubblica",
           "url": "https://www.repubblica.it/rss/homepage/rss2.0.xml",
-          "lang": "it"
+          "lang": "it",
+          "digestLang": "it"
         },
         {
           "name": "NOS Nieuws",
           "url": "https://feeds.nos.nl/nosnieuwsalgemeen",
-          "lang": "nl"
+          "lang": "nl",
+          "digestLang": "nl"
         },
         {
           "name": "NRC",
           "url": "https://www.nrc.nl/rss/",
-          "lang": "nl"
+          "lang": "nl",
+          "digestLang": "nl"
         },
         {
           "name": "De Telegraaf",
           "url": "https://news.google.com/rss/search?q=site:telegraaf.nl+when:1d&hl=nl&gl=NL&ceid=NL:nl",
-          "lang": "nl"
+          "lang": "nl",
+          "digestLang": "nl"
         },
         {
           "name": "SVT Nyheter",
           "url": "https://www.svt.se/nyheter/rss.xml",
-          "lang": "sv"
+          "lang": "sv",
+          "digestLang": "sv"
         },
         {
           "name": "Dagens Nyheter",
           "url": "https://www.dn.se/rss/",
-          "lang": "sv"
+          "lang": "sv",
+          "digestLang": "sv"
         },
         {
           "name": "Svenska Dagbladet",
           "url": "https://www.svd.se/feed/articles.rss",
-          "lang": "sv"
+          "lang": "sv",
+          "digestLang": "sv"
         },
         {
           "name": "Yle News",
@@ -349,12 +371,14 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "BBC Turkce",
           "url": "https://feeds.bbci.co.uk/turkce/rss.xml",
-          "lang": "tr"
+          "lang": "tr",
+          "digestLang": "tr"
         },
         {
           "name": "DW Turkish",
           "url": "https://rss.dw.com/xml/rss-tur-all",
-          "lang": "tr"
+          "lang": "tr",
+          "digestLang": "tr"
         },
         {
           "name": "Hurriyet",
@@ -389,92 +413,110 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "PAP",
           "url": "https://news.google.com/rss/search?q=site%3Apap.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl",
-          "lang": "pl"
+          "lang": "pl",
+          "digestLang": "pl"
         },
         {
           "name": "Gazeta Wyborcza",
           "url": "https://news.google.com/rss/search?q=site%3Awyborcza.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl",
-          "lang": "pl"
+          "lang": "pl",
+          "digestLang": "pl"
         },
         {
           "name": "Polityka",
           "url": "https://news.google.com/rss/search?q=site%3Apolityka.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl",
-          "lang": "pl"
+          "lang": "pl",
+          "digestLang": "pl"
         },
         {
           "name": "Onet",
           "url": "https://news.google.com/rss/search?q=site%3Awiadomosci.onet.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl",
-          "lang": "pl"
+          "lang": "pl",
+          "digestLang": "pl"
         },
         {
           "name": "OKO.press",
           "url": "https://oko.press/feed",
-          "lang": "pl"
+          "lang": "pl",
+          "digestLang": "pl"
         },
         {
           "name": "TVP Info",
           "url": "https://news.google.com/rss/search?q=site%3Atvp.info%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl",
-          "lang": "pl"
+          "lang": "pl",
+          "digestLang": "pl"
         },
         {
           "name": "Telex",
           "url": "https://telex.hu/rss",
-          "lang": "hu"
+          "lang": "hu",
+          "digestLang": "hu"
         },
         {
           "name": "Index.hu",
           "url": "https://index.hu/24ora/rss",
-          "lang": "hu"
+          "lang": "hu",
+          "digestLang": "hu"
         },
         {
           "name": "HVG",
           "url": "https://hvg.hu/rss",
-          "lang": "hu"
+          "lang": "hu",
+          "digestLang": "hu"
         },
         {
           "name": "444.hu",
           "url": "https://444.hu/feed",
-          "lang": "hu"
+          "lang": "hu",
+          "digestLang": "hu"
         },
         {
           "name": "24.hu",
           "url": "https://24.hu/feed/",
-          "lang": "hu"
+          "lang": "hu",
+          "digestLang": "hu"
         },
         {
           "name": "Híradó",
           "url": "https://news.google.com/rss/search?q=site%3Ahirado.hu%20when%3A2d&hl=hu&gl=HU&ceid=HU:hu",
-          "lang": "hu"
+          "lang": "hu",
+          "digestLang": "hu"
         },
         {
           "name": "Portfolio.hu",
           "url": "https://portfolio.hu/rss/all.xml",
-          "lang": "hu"
+          "lang": "hu",
+          "digestLang": "hu"
         },
         {
           "name": "ATV",
           "url": "https://www.atv.hu/rss",
-          "lang": "hu"
+          "lang": "hu",
+          "digestLang": "hu"
         },
         {
           "name": "Seznam Zprávy",
           "url": "https://www.seznamzpravy.cz/rss",
-          "lang": "cs"
+          "lang": "cs",
+          "digestLang": "cs"
         },
         {
           "name": "N1 Croatia",
           "url": "https://n1info.hr/feed/",
-          "lang": "hr"
+          "lang": "hr",
+          "digestLang": "hr"
         },
         {
           "name": "Index.hr",
           "url": "https://www.index.hr/rss",
-          "lang": "hr"
+          "lang": "hr",
+          "digestLang": "hr"
         },
         {
           "name": "Jutarnji list",
           "url": "https://www.jutarnji.hr/feed",
-          "lang": "hr"
+          "lang": "hr",
+          "digestLang": "hr"
         },
         {
           "name": "Balkan Insight",
@@ -483,22 +525,26 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Digi24",
           "url": "https://www.digi24.ro/rss",
-          "lang": "ro"
+          "lang": "ro",
+          "digestLang": "ro"
         },
         {
           "name": "HotNews",
           "url": "https://www.hotnews.ro/rss",
-          "lang": "ro"
+          "lang": "ro",
+          "digestLang": "ro"
         },
         {
           "name": "G4Media",
           "url": "https://www.g4media.ro/feed/",
-          "lang": "ro"
+          "lang": "ro",
+          "digestLang": "ro"
         },
         {
           "name": "Dnevnik",
           "url": "https://www.dnevnik.bg/rss/",
-          "lang": "bg"
+          "lang": "bg",
+          "digestLang": "bg"
         },
         {
           "name": "Kathimerini",
@@ -509,47 +555,56 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Naftemporiki",
           "url": "https://www.naftemporiki.gr/feed/",
-          "lang": "el"
+          "lang": "el",
+          "digestLang": "el"
         },
         {
           "name": "in.gr",
           "url": "https://www.in.gr/feed/",
-          "lang": "el"
+          "lang": "el",
+          "digestLang": "el"
         },
         {
           "name": "iefimerida",
           "url": "https://www.iefimerida.gr/rss.xml",
-          "lang": "el"
+          "lang": "el",
+          "digestLang": "el"
         },
         {
           "name": "Proto Thema",
           "url": "https://news.google.com/rss/search?q=site%3Aprotothema.gr%20when%3A2d&hl=el&gl=GR&ceid=GR:el",
-          "lang": "el"
+          "lang": "el",
+          "digestLang": "el"
         },
         {
           "name": "ERT",
           "url": "https://news.google.com/rss/search?q=site%3Aert.gr%20when%3A2d&hl=el&gl=GR&ceid=GR:el",
-          "lang": "el"
+          "lang": "el",
+          "digestLang": "el"
         },
         {
           "name": "AMNA",
           "url": "https://news.google.com/rss/search?q=site%3Aamna.gr%20when%3A2d&hl=el&gl=GR&ceid=GR:el",
-          "lang": "el"
+          "lang": "el",
+          "digestLang": "el"
         },
         {
           "name": "Ta Nea",
           "url": "https://www.tanea.gr/feed/",
-          "lang": "el"
+          "lang": "el",
+          "digestLang": "el"
         },
         {
           "name": "Liberal GR",
           "url": "https://news.google.com/rss/search?q=site%3Aliberal.gr%20when%3A2d&hl=el&gl=GR&ceid=GR:el",
-          "lang": "el"
+          "lang": "el",
+          "digestLang": "el"
         },
         {
           "name": "CNN Greece",
           "url": "https://news.google.com/rss/search?q=site%3Acnn.gr%20when%3A2d&hl=el&gl=GR&ceid=GR:el",
-          "lang": "el"
+          "lang": "el",
+          "digestLang": "el"
         },
         {
           "name": "ERR News",
@@ -566,12 +621,14 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "BBC Russian",
           "url": "https://feeds.bbci.co.uk/russian/rss.xml",
-          "lang": "ru"
+          "lang": "ru",
+          "digestLang": "ru"
         },
         {
           "name": "Interfax RU",
           "url": "https://www.interfax.ru/rss.asp",
-          "lang": "ru"
+          "lang": "ru",
+          "digestLang": "ru"
         },
         {
           "name": "Meduza",
@@ -583,7 +640,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Novaya Gazeta Europe",
           "url": "https://novayagazeta.eu/feed/rss",
-          "lang": "ru"
+          "lang": "ru",
+          "digestLang": "ru"
         },
         {
           "name": "TASS",
@@ -630,27 +688,32 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Ukrainska Pravda",
           "url": "https://news.google.com/rss/search?q=site%3Apravda.com.ua%20when%3A2d&hl=uk&gl=UA&ceid=UA:uk",
-          "lang": "uk"
+          "lang": "uk",
+          "digestLang": "uk"
         },
         {
           "name": "Hromadske",
           "url": "https://news.google.com/rss/search?q=site%3Ahromadske.ua%20when%3A3d&hl=uk&gl=UA&ceid=UA:uk",
-          "lang": "uk"
+          "lang": "uk",
+          "digestLang": "uk"
         },
         {
           "name": "Bihus.Info",
           "url": "https://news.google.com/rss/search?q=site%3Abihus.info%20when%3A7d&hl=uk&gl=UA&ceid=UA:uk",
-          "lang": "uk"
+          "lang": "uk",
+          "digestLang": "uk"
         },
         {
           "name": "Slidstvo.Info",
           "url": "https://news.google.com/rss/search?q=site%3Aslidstvo.info%20when%3A7d&hl=uk&gl=UA&ceid=UA:uk",
-          "lang": "uk"
+          "lang": "uk",
+          "digestLang": "uk"
         },
         {
           "name": "ZN.UA",
           "url": "https://news.google.com/rss/search?q=site%3Azn.ua%20when%3A3d&hl=uk&gl=UA&ceid=UA:uk",
-          "lang": "uk"
+          "lang": "uk",
+          "digestLang": "uk"
         },
         {
           "name": "Moscow Times",
@@ -683,12 +746,14 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "NewsMaker",
           "url": "https://newsmaker.md/feed",
-          "lang": "ru"
+          "lang": "ru",
+          "digestLang": "ru"
         },
         {
           "name": "Ziarul de Gardă",
           "url": "https://www.zdg.md/feed/",
-          "lang": "ro"
+          "lang": "ro",
+          "digestLang": "ro"
         },
         {
           "name": "Sky News",
@@ -778,7 +843,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Asharq News",
           "url": "https://asharq.com/snapchat/rss.xml",
-          "lang": "ar"
+          "lang": "ar",
+          "digestLang": "ar"
         },
         {
           "name": "Rudaw",
@@ -943,7 +1009,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Jin10",
           "url": "https://news.google.com/rss/search?q=site%3Ajin10.com%20when%3A1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans",
-          "lang": "zh"
+          "lang": "zh",
+          "digestLang": "zh"
         }
       ],
       "gov": [
@@ -1131,7 +1198,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "BBC Afrique",
           "url": "https://www.bbc.com/afrique/index.xml",
-          "lang": "fr"
+          "lang": "fr",
+          "digestLang": "fr"
         },
         {
           "name": "Premium Times",
@@ -1176,12 +1244,14 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Actualite.cd",
           "url": "https://actualite.cd/feed",
-          "lang": "fr"
+          "lang": "fr",
+          "digestLang": "fr"
         },
         {
           "name": "Radio Okapi",
           "url": "https://www.radiookapi.net/rss.xml",
-          "lang": "fr"
+          "lang": "fr",
+          "digestLang": "fr"
         },
         {
           "name": "MyJoyOnline",
@@ -1194,7 +1264,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Le Quotidien",
           "url": "https://lequotidien.sn/feed/",
-          "lang": "fr"
+          "lang": "fr",
+          "digestLang": "fr"
         },
         {
           "name": "RFI Afrique",
@@ -1221,7 +1292,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Aïr Info",
           "url": "https://airinfoagadez.com/feed/",
-          "lang": "fr"
+          "lang": "fr",
+          "digestLang": "fr"
         },
         {
           "name": "Daily Nation",
@@ -1234,17 +1306,20 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Tchadinfos",
           "url": "https://tchadinfos.com/feed/",
-          "lang": "fr"
+          "lang": "fr",
+          "digestLang": "fr"
         },
         {
           "name": "Alwihda Info",
           "url": "https://www.alwihdainfo.com/rss/",
-          "lang": "fr"
+          "lang": "fr",
+          "digestLang": "fr"
         },
         {
           "name": "Radio Ndeke Luka",
           "url": "https://www.radiondekeluka.org/feed/",
-          "lang": "fr"
+          "lang": "fr",
+          "digestLang": "fr"
         }
       ],
       "latam": [
@@ -1271,27 +1346,32 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Clarín",
           "url": "https://www.clarin.com/rss/lo-ultimo/",
-          "lang": "es"
+          "lang": "es",
+          "digestLang": "es"
         },
         {
           "name": "O Globo",
           "url": "https://news.google.com/rss/search?q=site:oglobo.globo.com+when:1d&hl=pt-BR&gl=BR&ceid=BR:pt-419",
-          "lang": "pt"
+          "lang": "pt",
+          "digestLang": "pt"
         },
         {
           "name": "Folha de S.Paulo",
           "url": "https://feeds.folha.uol.com.br/emcimadahora/rss091.xml",
-          "lang": "pt"
+          "lang": "pt",
+          "digestLang": "pt"
         },
         {
           "name": "Brasil Paralelo",
           "url": "https://www.brasilparalelo.com.br/noticias/rss.xml",
-          "lang": "pt"
+          "lang": "pt",
+          "digestLang": "pt"
         },
         {
           "name": "El Tiempo",
           "url": "https://www.eltiempo.com/rss/mundo_latinoamerica.xml",
-          "lang": "es"
+          "lang": "es",
+          "digestLang": "es"
         },
         {
           "name": "La Silla Vacía",
@@ -1301,17 +1381,20 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Primicias",
           "url": "https://www.primicias.ec/feed/",
-          "lang": "es"
+          "lang": "es",
+          "digestLang": "es"
         },
         {
           "name": "Infobae Americas",
           "url": "https://www.infobae.com/arc/outboundfeeds/rss/",
-          "lang": "es"
+          "lang": "es",
+          "digestLang": "es"
         },
         {
           "name": "El Universo",
           "url": "https://www.eluniverso.com/arc/outboundfeeds/rss/category/noticias/?outputType=xml",
-          "lang": "es"
+          "lang": "es",
+          "digestLang": "es"
         },
         {
           "name": "Mexico News Daily",
@@ -1340,7 +1423,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "AyiboPost",
           "url": "https://news.google.com/rss/search?q=site%3Aayibopost.com%20Haiti%20when%3A14d&hl=fr&gl=FR&ceid=FR:fr",
-          "lang": "fr"
+          "lang": "fr",
+          "digestLang": "fr"
         },
         {
           "name": "Caracas Chronicles",
@@ -1349,7 +1433,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Efecto Cocuyo",
           "url": "https://efectococuyo.com/feed/",
-          "lang": "es"
+          "lang": "es",
+          "digestLang": "es"
         },
         {
           "name": "Havana Times",
@@ -1358,7 +1443,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "14ymedio",
           "url": "https://www.14ymedio.com/rss/",
-          "lang": "es"
+          "lang": "es",
+          "digestLang": "es"
         }
       ],
       "asia": [
@@ -1424,22 +1510,26 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "BBC Hindi",
           "url": "https://feeds.bbci.co.uk/hindi/rss.xml",
-          "lang": "hi"
+          "lang": "hi",
+          "digestLang": "hi"
         },
         {
           "name": "Aaj Tak",
           "url": "https://www.aajtak.in/rssfeeds/?id=home",
-          "lang": "hi"
+          "lang": "hi",
+          "digestLang": "hi"
         },
         {
           "name": "NDTV India",
           "url": "https://feeds.feedburner.com/ndtvkhabar-latest",
-          "lang": "hi"
+          "lang": "hi",
+          "digestLang": "hi"
         },
         {
           "name": "Amar Ujala",
           "url": "https://www.amarujala.com/rss/national.xml",
-          "lang": "hi"
+          "lang": "hi",
+          "digestLang": "hi"
         },
         {
           "name": "CNA",
@@ -1466,7 +1556,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Thai PBS",
           "url": "https://news.google.com/rss/search?q=Thai+PBS+World+news+when:2d&hl=en&gl=US&ceid=US:en",
-          "lang": "th"
+          "lang": "th",
+          "digestLang": "th"
         },
         {
           "name": "VnExpress",
@@ -1477,7 +1568,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Tuoi Tre News",
           "url": "https://news.tuoitre.vn/rss",
-          "lang": "vi"
+          "lang": "vi",
+          "digestLang": "vi"
         },
         {
           "name": "Yonhap News",
@@ -1488,7 +1580,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Chosun Ilbo",
           "url": "https://www.chosun.com/arc/outboundfeeds/rss/?outputType=xml",
-          "lang": "ko"
+          "lang": "ko",
+          "digestLang": "ko"
         },
         {
           "name": "ABC News Australia",
@@ -1581,7 +1674,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Times of India",
           "url": "https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms",
-          "lang": "en"
+          "lang": "en",
+          "digestLang": "en"
         },
         {
           "name": "Japan Times",
@@ -2456,7 +2550,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "Jin10",
           "url": "https://news.google.com/rss/search?q=site%3Ajin10.com%20when%3A1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans",
-          "lang": "zh"
+          "lang": "zh",
+          "digestLang": "zh"
         },
         {
           "name": "Reuters Crypto",

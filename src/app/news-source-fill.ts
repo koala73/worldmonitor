@@ -1,4 +1,4 @@
-import type { Feed, NewsItem } from '@/types';
+import type { NewsItem } from '@/types';
 import { NewsServiceClient } from '@/services/generated-rpc-clients';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { protoItemToNewsItem } from '@/services/news-digest-items';
@@ -13,18 +13,6 @@ import { effectivePubDateMs } from '@/services/feed-date';
 /** The server's per-request cap (list_source_items.proto). */
 export const SOURCE_FILL_MAX_SOURCES = 24;
 const SOURCE_FILL_TIMEOUT_MS = 5_000;
-
-/**
- * Whether the `language` digest fetches this feed: the server skips a feed
- * whose language differs unless it is a strategic default (the server's
- * isServerFeedReachableForLanguage). Its cached row exists either way, so
- * reading it for another language's panel would show items that panel never had.
- */
-export function digestServesFeed(feed: Feed, language: string): boolean {
-  if (feed.browserOnly) return false;
-  const serverLang = feed.digestLang ?? feed.lang;
-  return !serverLang || serverLang === language || !!feed.strategicDefault;
-}
 
 /**
  * Enabled, digest-served sources with no item among the items the digest

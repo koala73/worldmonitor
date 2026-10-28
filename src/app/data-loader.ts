@@ -229,7 +229,8 @@ import type { TechHubsPanel } from '@/components/TechHubsPanel';
 import { EconomicServiceClient, MarketServiceClient, ResearchServiceClient } from '@/services/generated-rpc-clients';
 
 import { protoItemToNewsItem } from '@/services/news-digest-items';
-import { digestServesFeed, fetchSourceItems, fillFreeSlots, sourcesBelowCap } from '@/app/news-source-fill';
+import { fetchSourceItems, fillFreeSlots, sourcesBelowCap } from '@/app/news-source-fill';
+import { digestCarriesFeed } from '../../shared/news-catalog-browser';
 import { normalizeStockSymbol } from '../../shared/stock-symbol';
 
 type PhysicalPremiumFetcher = typeof import('@/services/market')['fetchPhysicalPremiums'];
@@ -738,8 +739,10 @@ export class DataLoaderManager implements AppModule {
     delivered: readonly NewsItem[],
     feeds: readonly Feed[],
   ): Promise<NewsItem[]> {
+    // A source the language's digest skips still has a cached row; reading it
+    // would show this panel items it never had.
     const language = getCurrentLanguage();
-    const missing = sourcesBelowCap(delivered, feeds.filter(feed => digestServesFeed(feed, language)).map(feed => feed.name));
+    const missing = sourcesBelowCap(delivered, feeds.filter(feed => digestCarriesFeed(feed, language)).map(feed => feed.name));
     if (missing.length === 0) return [];
     const wanted = new Set(missing);
     return (await fetchSourceItems(editions, category, missing, language)).filter(item => wanted.has(item.source));
@@ -1813,8 +1816,7 @@ export class DataLoaderManager implements AppModule {
           // it: a server-side language restriction (`digestLang`) can exclude
           // a source the browser still reaches.
           const digestLanguage = getCurrentLanguage();
-          const directFeeds = reachableFeeds.filter(f =>
-            f.browserOnly || (f.digestLang !== undefined && f.digestLang !== digestLanguage));
+          const directFeeds = reachableFeeds.filter(f => !digestCarriesFeed(f, digestLanguage));
           const items = mergeRotatedNewsItems([], digestItems, {
             maxItems: this.customCategoryMergedItemLimit,
             enabledSources: enabledNames,
