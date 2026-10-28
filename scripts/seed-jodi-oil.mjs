@@ -417,6 +417,36 @@ export function extractClosingStocks(allRows, iso2) {
   return null;
 }
 
+// IEA counts days of cover against the previous calendar year's average net
+// imports of all oil: crude with NGL and feedstocks (TOTCRUDE), and products.
+const NET_IMPORTS_MIN_MONTHS = 9;
+
+/**
+ * Average net oil imports, kb/d, over the calendar year before `dataMonth`:
+ * crude (TOTCRUDE, else CRUDEOIL) plus total products, imports less exports.
+ * A month counts only when all four figures are reported. Null with fewer
+ * than NET_IMPORTS_MIN_MONTHS such months or a net-exporting year.
+ */
+export function computeNetOilImports(byMonth, iso2, dataMonth) {
+  const year = Number(dataMonth.slice(0, 4)) - 1;
+  let sum = 0;
+  let months = 0;
+  for (let m = 1; m <= 12; m++) {
+    const monthRows = byMonth.get(`${year}-${String(m).padStart(2, '0')}`);
+    if (!monthRows) continue;
+    const pick = (product, flow) => pickMonthValue(monthRows, iso2, product, flow, false);
+    const crudeCode = pick('TOTCRUDE', 'TOTIMPSB') !== null ? 'TOTCRUDE' : 'CRUDEOIL';
+    const values = [pick(crudeCode, 'TOTIMPSB'), pick(crudeCode, 'TOTEXPSB'), pick('TOTPRODS', 'TOTIMPSB'), pick('TOTPRODS', 'TOTEXPSB')];
+    if (values.some((v) => v === null)) continue;
+    const [crudeImp, crudeExp, prodImp, prodExp] = values;
+    sum += crudeImp - crudeExp + prodImp - prodExp;
+    months++;
+  }
+  if (months < NET_IMPORTS_MIN_MONTHS) return null;
+  const kbd = Math.round((sum / months) * 10) / 10;
+  return kbd > 0 ? { year, kbd, months } : null;
+}
+
 export function extractCountryData(allRows, iso2) {
   const byMonth = rowsByMonth(allRows, iso2);
 
@@ -493,6 +523,7 @@ export function extractCountryData(allRows, iso2) {
     productTrade: computeProductTrade(byMonth, iso2, dataMonth),
     demandChange: oilDemandChangeFromMonths(byMonth, iso2, dataMonth).change,
     stocks: extractClosingStocks(allRows, iso2),
+    netOilImports: computeNetOilImports(byMonth, iso2, dataMonth),
     seededAt,
   };
 }

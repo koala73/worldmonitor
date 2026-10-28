@@ -384,6 +384,14 @@ export interface JodiStocks {
   productsMb: number;
 }
 
+/** JODI net oil imports for a year, as the seeder publishes them; null unless usable. */
+export function parseNetOilImports(raw: unknown): { year: number; kbd: number } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { year, kbd } = raw as Record<string, unknown>;
+  if (typeof year !== 'number' || !Number.isInteger(year) || typeof kbd !== 'number' || !Number.isFinite(kbd) || kbd <= 0) return null;
+  return { year, kbd };
+}
+
 const monthIndex = (ym: unknown): number | null => {
   if (typeof ym !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) return null;
   return Number(ym.slice(0, 4)) * 12 + Number(ym.slice(5, 7)) - 1;
