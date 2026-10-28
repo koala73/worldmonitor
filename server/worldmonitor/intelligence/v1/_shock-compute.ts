@@ -1,6 +1,12 @@
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
 
-export const GULF_PARTNER_CODES = new Set(['682', '784', '368', '414', '364']);
+// Crude exporters whose loadings sit inside the Strait of Hormuz, per EIA
+// "World Oil Transit Chokepoints" (Saudi Arabia, Iraq, Kuwait, UAE, Iran, Qatar,
+// Bahrain). Oman (512) loads outside the Strait and is deliberately absent.
+// UN M49 numeric codes, as Comtrade reports partners.
+export const GULF_PARTNER_CODES = new Set(['682', '784', '368', '414', '364', '634', '048']);
+export const GULF_PARTNER_ISO2 = new Set(['SA', 'AE', 'IQ', 'KW', 'IR', 'QA', 'BH']);
+export const GULF_SHARE_SOURCE_LABEL = 'SA, AE, IQ, KW, IR, QA, BH';
 
 export const VALID_CHOKEPOINTS = new Set(filterParamContracts.intelligenceChokepointIds);
 export const VALID_FUEL_MODES = new Set(filterParamContracts.intelligenceFuelModes);
@@ -71,6 +77,53 @@ export function computeGulfShare(flows: ComtradeFlowLike[]): { share: number; ha
   return { share: gulfImports / totalImports, hasData: true };
 }
 
+/** One HS heading of `comtrade:bilateral-hs4-partners:{iso2}:v1` (see supply-chain `PartnersProduct`). */
+export interface PartnerShareProductLike {
+  hs4?: string;
+  year?: number;
+  totalValue?: number | null;
+  partners?: Array<{ partnerCode?: number | string; partnerIso2?: string; value?: number | null }> | null;
+  omittedCount?: number;
+  omittedShare?: number;
+}
+
+export interface GulfShareMeasurement {
+  share: number;
+  hasData: boolean;
+  /** Comtrade reference year of the measurement; undefined when hasData is false. */
+  year?: number;
+  /** Fraction of imports held by partners the seeder dropped below its listing threshold. */
+  omittedShare?: number;
+}
+
+/**
+ * Gulf share of a reporter's crude imports from the partner-level HS 2709 row
+ * the bilateral seeder publishes: Σ value(Gulf partners) / reported World total.
+ * The World total is the denominator, so a partner the seeder omitted below its
+ * listing threshold lowers the share by at most `omittedShare`.
+ */
+export function computeGulfShareFromPartners(product: PartnerShareProductLike | null | undefined): GulfShareMeasurement {
+  if (!product || !Array.isArray(product.partners)) return { share: 0, hasData: false };
+  const total = product.totalValue;
+  if (typeof total !== 'number' || !Number.isFinite(total) || total <= 0) return { share: 0, hasData: false };
+  let gulf = 0;
+  for (const partner of product.partners) {
+    const value = partner?.value;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) continue;
+    const iso2 = typeof partner.partnerIso2 === 'string' ? partner.partnerIso2.toUpperCase() : '';
+    const code = partner.partnerCode != null ? String(partner.partnerCode).padStart(3, '0') : '';
+    if (GULF_PARTNER_ISO2.has(iso2) || GULF_PARTNER_CODES.has(code)) gulf += value;
+  }
+  const omittedShare = typeof product.omittedShare === 'number' && Number.isFinite(product.omittedShare) && product.omittedShare > 0
+    ? product.omittedShare : undefined;
+  return {
+    share: Math.min(gulf / total, 1),
+    hasData: true,
+    year: typeof product.year === 'number' && Number.isFinite(product.year) ? product.year : undefined,
+    omittedShare,
+  };
+}
+
 /**
  * Upper bound on shock scenario output days. Beyond this, the model is no longer meaningful;
  * a reader should understand the country as "indefinitely bridgeable" at the given deficit rate.
@@ -97,14 +150,19 @@ export function computeEffectiveCoverDays(
   return Math.min(daysOfCover, EFFECTIVE_COVER_DAYS_CAP);
 }
 
+/**
+ * Observed crude imports (JODI) and a measured Gulf import share (Comtrade
+ * partner rows) are both required inputs of the oil loss: without either the
+ * scenario is unsupported, not partially modeled. IEA stocks and live shipping
+ * only refine a supported scenario.
+ */
 export function deriveCoverageLevel(
   jodiOil: boolean,
   comtrade: boolean,
   ieaStocksCoverage?: boolean,
   degraded?: boolean,
 ): 'full' | 'partial' | 'unsupported' {
-  if (!jodiOil) return 'unsupported';
-  if (!comtrade) return 'partial';
+  if (!jodiOil || !comtrade) return 'unsupported';
   if (ieaStocksCoverage === false || degraded) return 'partial';
   return 'full';
 }
@@ -133,13 +191,19 @@ export function buildAssessment(
 ): string {
   const country = countryLabel(code);
   const cp = chokepointLabel(chokepointId);
-  if (coverageLevel === 'unsupported' || !dataAvailable) {
+  if (!dataAvailable) {
     return `Insufficient import data for ${country} to model ${cp} exposure.`;
+  }
+  // Observed imports but no partner-level origin share: the loss is not modeled.
+  // A fixed proxy share used to fill this gap; it read as a measurement.
+  if (comtradeCoverage === false || coverageLevel === 'unsupported') {
+    return `Crude import origin data is unavailable for ${country}; ${cp} oil exposure is not modeled.`;
   }
   if (effectiveCoverDays === -1) {
     return `${country} is a net oil exporter; ${cp} disruption affects export revenue, not domestic supply.`;
   }
-  if (gulfCrudeShare < 0.1 && comtradeCoverage !== false) {
+  // Reached only with a measured share (the branch above returns otherwise).
+  if (gulfCrudeShare < 0.1) {
     return `${country} has low Gulf crude dependence (${Math.round(gulfCrudeShare * 100)}%); ${cp} disruption has limited direct impact.`;
   }
   const degradedNote = degraded ? ' (live flow data unavailable, using historical baseline)' : '';
@@ -156,8 +220,7 @@ export function buildAssessment(
   );
   const worstDeficit = worst.deficitPct;
   const worstProduct = worst.product.toLowerCase();
-  const proxyNote = comtradeCoverage === false ? '. Gulf share proxied at 40%' : '';
-  return `${country} faces ${worstDeficit.toFixed(1)}% ${worstProduct} deficit under ${disruptionPct}% ${cp} disruption; IEA cover: ${ieaCoverText}${proxyNote}${degradedNote}.`;
+  return `${country} faces ${worstDeficit.toFixed(1)}% ${worstProduct} deficit under ${disruptionPct}% ${cp} disruption; IEA cover: ${ieaCoverText}${degradedNote}.`;
 }
 
 export const CHOKEPOINT_LNG_EXPOSURE: Record<string, number> = {

@@ -2252,8 +2252,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (result.ieaStocksCoverage) {
       const coverRow = this.el('div', 'cdp-economic-source');
       coverRow.style.cssText += ';margin-bottom:4px';
+      // effectiveCoverDays is 0 whenever the oil loss was not modeled (missing
+      // JODI crude imports or Comtrade origin share); the handler says so in a
+      // limitation. That zero is "not computed", never "reserves exhausted".
+      const oilNotModeled = !result.jodiOilCoverage || !result.comtradeCoverage
+        || (result.limitations ?? []).some((l) => l.includes('effective cover are not modeled'));
       let coverText: string;
-      if (result.effectiveCoverDays < 0) {
+      if (oilNotModeled) {
+        coverText = 'IEA cover: not modeled for this scenario (crude import inputs unavailable)';
+      } else if (result.effectiveCoverDays < 0) {
         coverText = 'Net oil exporter — strategic reserve cover not applicable';
       } else if (result.effectiveCoverDays > 0) {
         coverText = `IEA cover: ~${result.effectiveCoverDays} days under this scenario`;

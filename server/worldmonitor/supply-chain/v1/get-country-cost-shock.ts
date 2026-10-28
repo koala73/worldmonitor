@@ -61,7 +61,11 @@ export async function getCountryCostShock(
   const premiumBps = warRiskTierToInsurancePremiumBps(warRiskTier);
 
   const isEnergy = hs2 === '27';
-  const hasEnergyModel = isEnergy && (registry?.shockModelSupported ?? false);
+  const modelSupported = isEnergy && (registry?.shockModelSupported ?? false);
+  // has_energy_model means supply_deficit_pct and coverage_days ARE modelled.
+  // A supported route whose oil scenario has no usable inputs is still
+  // unavailable, so the flag follows the shock's dataAvailable below.
+  let hasEnergyModel = modelSupported;
 
   let supplyDeficitPct = 0;
   let coverageDays = 0;
@@ -69,7 +73,7 @@ export async function getCountryCostShock(
 
   if (!isEnergy) {
     unavailableReason = `Energy stockpile coverage (coverageDays) is available for HS 27 (mineral fuels) only. HS ${hs2} cost modelling deferred to v2.`;
-  } else if (!hasEnergyModel) {
+  } else if (!modelSupported) {
     unavailableReason = `Cost shock modelling for ${registry?.displayName ?? chokepointId} is not yet supported. Only Suez, Hormuz, Malacca, and Bab el-Mandeb have energy models in v1.`;
   } else {
     // Outer cache collapses 3 serial Redis reads → 1 on warm path; cachedFetchJson coalesces concurrent cold misses.
@@ -83,14 +87,39 @@ export async function getCountryCostShock(
       }).catch(() => null)
     ).catch(() => null);
 
-    coverageDays = Math.max(0, shock?.effectiveCoverDays ?? 0);
-    // Average deficit across all modelled products (Gasoline, Diesel, Jet fuel, LPG) with demand > 0.
-    // computeEnergyShockScenario already filters to products with demand; zero-deficit products
-    // are valid data points (demand exists but disruption causes no shortage) and must stay in the denominator.
-    const productDeficits = shock?.products?.map((p: { product: string; deficitPct: number }) => p.deficitPct) ?? [];
-    supplyDeficitPct = productDeficits.length > 0
-      ? productDeficits.reduce((a: number, b: number) => a + b, 0) / productDeficits.length
-      : 0;
+    if (!shock || shock.dataAvailable !== true) {
+      // Missing JODI crude imports or Comtrade origin share: the shock reports
+      // zeros that are "not modelled", never a zero-impact result. Surface the
+      // handler's own reason when it has one.
+      hasEnergyModel = false;
+      const missing = shock?.limitations?.find((l) => /not modeled/.test(l));
+      unavailableReason = shock
+        ? `Oil shock modelling is unavailable for ${iso2}: ${missing ?? shock.assessment ?? 'required crude import inputs are missing'}`
+        : `Oil shock modelling is unavailable for ${iso2}: the energy scenario could not be computed.`;
+    } else {
+      // dataAvailable covers the loss inputs only. Each reported field has its
+      // own prerequisite: coverage needs an IEA stock observation (a net
+      // exporter is observed and reports 0 by contract), the deficit needs at
+      // least one refined product with recorded demand. A field without its
+      // observation stays 0 and is named in unavailableReason; has_energy_model
+      // is true only when both are modelled, as the proto defines it.
+      const productDeficits = shock.products?.map((p: { product: string; deficitPct: number }) => p.deficitPct) ?? [];
+      const coverageModeled = shock.ieaStocksCoverage === true;
+      const deficitModeled = productDeficits.length > 0;
+      if (coverageModeled) coverageDays = Math.max(0, shock.effectiveCoverDays ?? 0);
+      // Average deficit across all modelled products (Gasoline, Diesel, Jet fuel, LPG) with demand > 0.
+      // computeEnergyShockScenario already filters to products with demand; zero-deficit products
+      // are valid data points (demand exists but disruption causes no shortage) and must stay in the denominator.
+      if (deficitModeled) supplyDeficitPct = productDeficits.reduce((a: number, b: number) => a + b, 0) / productDeficits.length;
+      hasEnergyModel = coverageModeled && deficitModeled;
+      const gaps: string[] = [];
+      if (!coverageModeled) gaps.push(`coverageDays is unavailable: no IEA stock observation for ${iso2}`);
+      if (!deficitModeled) gaps.push(`supplyDeficitPct is unavailable: no refined-product demand observation for ${iso2}`);
+      if (gaps.length > 0) {
+        const modeled = coverageModeled ? 'coverageDays is modelled' : deficitModeled ? 'supplyDeficitPct is modelled' : '';
+        unavailableReason = `${gaps.join('; ')}${modeled ? ` (${modeled})` : ''}.`;
+      }
+    }
   }
 
   return {

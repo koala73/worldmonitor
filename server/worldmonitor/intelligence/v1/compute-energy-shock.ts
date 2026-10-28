@@ -14,7 +14,10 @@ import {
   CHOKEPOINT_EXPOSURE,
   VALID_CHOKEPOINTS,
   computeGulfShare,
+  computeGulfShareFromPartners,
   computeEffectiveCoverDays,
+  EFFECTIVE_COVER_DAYS_CAP,
+  GULF_SHARE_SOURCE_LABEL,
   buildAssessment,
   deriveCoverageLevel,
   deriveChokepointConfidence,
@@ -25,6 +28,7 @@ import {
   REFINERY_YIELD,
   REFINERY_YIELD_BASIS,
 } from './_shock-compute';
+import type { GulfShareMeasurement, PartnerShareProductLike } from './_shock-compute';
 import { ISO2_TO_COMTRADE } from './_comtrade-reporters';
 
 const SHOCK_CACHE_TTL = 300;
@@ -36,7 +40,10 @@ const CP_TO_PORTWATCH: Record<string, string> = {
   malacca_strait: 'malacca_strait',
 };
 
-const PROXIED_GULF_SHARE = 0.40;
+// Partner-level crude (HS 2709) imports by reporter, written by
+// scripts/seed-comtrade-bilateral-hs4.mjs for the country-port-cluster set.
+const CRUDE_HS4 = '2709';
+const bilateralPartnersKey = (iso2: string): string => `comtrade:bilateral-hs4-partners:${iso2}:v1`;
 
 interface JodiProduct {
   demandKbd?: number | null;
@@ -89,6 +96,11 @@ interface ComtradeFlowsResult {
   fetchedAt?: string;
 }
 
+interface BilateralPartnersPayload {
+  iso2?: string;
+  products?: PartnerShareProductLike[];
+}
+
 interface ChokepointEntry {
   currentMbd?: number;
   baselineMbd?: number;
@@ -103,22 +115,42 @@ function n(v: number | null | undefined): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
-async function getGulfCrudeShare(countryCode: string): Promise<{ share: number; hasData: boolean }> {
-  const numericCode = ISO2_TO_COMTRADE[countryCode];
-  if (!numericCode) return { share: 0, hasData: false };
+const NO_GULF_SHARE: GulfShareMeasurement = { share: 0, hasData: false };
 
-  const key = `comtrade:flows:${numericCode}:2709`;
-  const result = await getCachedJson(key, true);
-  if (!result) return { share: 0, hasData: false };
+/**
+ * Measured Gulf share of the country's crude imports. The partner-level
+ * bilateral row is authoritative; the strategic trade-flows key is consulted
+ * only when it carries partner rows (its seeder currently aggregates every
+ * partner into one World total, which `computeGulfShare` rejects). No proxy:
+ * when neither source has partner rows the share is unavailable.
+ */
+async function getGulfCrudeShare(countryCode: string): Promise<GulfShareMeasurement> {
+  const partnersPayload = await getCachedJson(bilateralPartnersKey(countryCode), true)
+    .then((v) => v as BilateralPartnersPayload | null)
+    .catch(() => null);
+  const crudeProduct = Array.isArray(partnersPayload?.products)
+    ? partnersPayload.products.find((p) => String(p?.hs4 ?? '') === CRUDE_HS4)
+    : undefined;
+  const fromPartners = computeGulfShareFromPartners(crudeProduct);
+  if (fromPartners.hasData) return fromPartners;
+
+  const numericCode = ISO2_TO_COMTRADE[countryCode];
+  if (!numericCode) return NO_GULF_SHARE;
+
+  const result = await getCachedJson(`comtrade:flows:${numericCode}:${CRUDE_HS4}`, true).catch(() => null);
+  if (!result) return NO_GULF_SHARE;
 
   const flowsResult = result as ComtradeFlowsResult;
   const flows: ComtradeFlowRecord[] = Array.isArray(result)
     ? (result as ComtradeFlowRecord[])
     : (flowsResult.flows ?? []);
+  if (flows.length === 0) return NO_GULF_SHARE;
 
-  if (flows.length === 0) return { share: 0, hasData: false };
-
-  return computeGulfShare(flows);
+  const legacy = computeGulfShare(flows);
+  const years = flows.map((f) => f.year).filter((y) => Number.isFinite(y));
+  return legacy.hasData
+    ? { ...legacy, year: years.length > 0 ? Math.max(...years) : undefined }
+    : NO_GULF_SHARE;
 }
 
 export async function computeEnergyShockScenario(
@@ -176,7 +208,9 @@ export async function computeEnergyShockScenario(
     : null;
   const liveFlowRatio: number | null = rawFlowRatio !== null ? clamp(rawFlowRatio, 0, 1.5) : null;
 
-  const cacheKey = `energy:shock:${needsOil ? 'v7' : 'v4'}:${code}:${chokepointId}:${disruptionPct}:${degraded ? 'd' : 'l'}:${fuelMode}`;
+  // v8: Gulf share from Comtrade partner rows, unscaled by the live flow ratio,
+  // and no proxy. Earlier oil caches carry the proxied, flow-scaled numbers.
+  const cacheKey = `energy:shock:${needsOil ? 'v8' : 'v4'}:${code}:${chokepointId}:${disruptionPct}:${degraded ? 'd' : 'l'}:${fuelMode}`;
   const cached = await getCachedJson(cacheKey);
   if (cached) return cached as ComputeEnergyShockScenarioResponse;
 
@@ -193,26 +227,45 @@ export async function computeEnergyShockScenario(
 
   const jodiOil = jodiOilResult.status === 'fulfilled' ? (jodiOilResult.value as JodiOil | null) : null;
   const ieaStocks = ieaStocksResult.status === 'fulfilled' ? (ieaStocksResult.value as IeaStocks | null) : null;
-  const { share: rawGulfShare, hasData: comtradeHasData } = gulfShareResult.status === 'fulfilled'
-    ? gulfShareResult.value
-    : { share: 0, hasData: false };
+  const gulfShare: GulfShareMeasurement = gulfShareResult.status === 'fulfilled' ? gulfShareResult.value : NO_GULF_SHARE;
 
   const emberData = emberResult.status === 'fulfilled' ? (emberResult.value as { fossilShare?: number } | null) : null;
   const jodiGas = jodiGasResult.status === 'fulfilled' ? (jodiGasResult.value as JodiGas | null) : null;
   const gasStorageData = gasStorageResult.status === 'fulfilled' ? (gasStorageResult.value as GasStorageData | null) : null;
 
+  // Static route factor only (fraction of Gulf crude that transits this
+  // chokepoint). The live flow ratio is reported as context and never scales
+  // the share or the loss: the scenario's severity is disruption_pct.
   const baseExposure = CHOKEPOINT_EXPOSURE[chokepointId] ?? 1.0;
-  const exposureMult = liveFlowRatio !== null ? baseExposure * liveFlowRatio : baseExposure;
 
   const jodiOilCoverage = jodiOil != null;
-  const comtradeCoverage = comtradeHasData;
+  const comtradeCoverage = gulfShare.hasData;
   const ieaStocksCoverage = ieaStocks != null && ieaStocks.anomaly !== true
     && (ieaStocks.netExporter === true || (ieaStocks.daysOfCover != null && Number.isFinite(ieaStocks.daysOfCover) && ieaStocks.daysOfCover >= 0));
   const portwatchCoverage = liveFlowRatio !== null;
 
+  const observedCrudeImportsKbd = jodiOil?.crude?.importsKbd;
+  const crudeImportsObserved = typeof observedCrudeImportsKbd === 'number'
+    && Number.isFinite(observedCrudeImportsKbd) && observedCrudeImportsKbd >= 0;
+  const crudeImportsKbd = crudeImportsObserved ? observedCrudeImportsKbd : 0;
+  // Both measured inputs of the loss are required. An unavailable input is
+  // reported as unavailable, never filled with a proxy or shown as zero loss.
+  const oilModeled = crudeImportsObserved && comtradeCoverage;
+
   const limitations: string[] = [];
-  if (!comtradeCoverage && jodiOilCoverage) {
-    limitations.push('Gulf crude share proxied at 40% (no Comtrade data)');
+  if (needsOil) {
+    if (!crudeImportsObserved) {
+      limitations.push(`JODI crude import observation unavailable for ${code}; oil loss, product deficits and effective cover are not modeled (reported as 0).`);
+    }
+    if (!comtradeCoverage) {
+      limitations.push(`Crude import origin share unavailable for ${code}: no UN Comtrade partner-level crude (HS 2709) import rows; oil loss, product deficits and effective cover are not modeled (reported as 0).`);
+    } else {
+      const year = gulfShare.year != null ? ` ${gulfShare.year}` : '';
+      const omitted = gulfShare.omittedShare != null
+        ? `; partners below the Comtrade partner-listing threshold (${(gulfShare.omittedShare * 100).toFixed(1)}% of imports) are not attributed`
+        : '';
+      limitations.push(`Gulf crude share: UN Comtrade${year} import value share from ${GULF_SHARE_SOURCE_LABEL}; Hormuz bypass pipelines (Saudi East-West to Yanbu, UAE ADCOP to Fujairah) are not modeled${omitted}.`);
+    }
   }
   if (!ieaStocksCoverage) {
     limitations.push('IEA strategic stock data unavailable');
@@ -220,6 +273,8 @@ export async function computeEnergyShockScenario(
   limitations.push(REFINERY_YIELD_BASIS);
   if (degraded) {
     limitations.push('PortWatch flow data unavailable, using historical baseline multipliers');
+  } else if (needsOil) {
+    limitations.push('Shipping flow ratio is context only and does not scale the crude route share or the modeled oil loss.');
   }
 
   const fossilShare = typeof emberData?.fossilShare === 'number' ? emberData.fossilShare : null;
@@ -240,20 +295,16 @@ export async function computeEnergyShockScenario(
     }
   }
 
-  const effectiveGulfShare = !comtradeCoverage ? PROXIED_GULF_SHARE : rawGulfShare;
-  const gulfCrudeShare = effectiveGulfShare * exposureMult;
+  // The measured share is reported whenever Comtrade has it, even when JODI is
+  // missing: it is an input, and the limitation above says the loss is not modeled.
+  const gulfCrudeShare = comtradeCoverage ? gulfShare.share * baseExposure : 0;
 
-  const observedCrudeImportsKbd = jodiOil?.crude?.importsKbd;
-  const dataAvailable = typeof observedCrudeImportsKbd === 'number'
-    && Number.isFinite(observedCrudeImportsKbd) && observedCrudeImportsKbd >= 0;
-  const crudeImportsKbd = dataAvailable ? observedCrudeImportsKbd : 0;
-
-  // Keyed on dataAvailable, not jodiOilCoverage: a JODI row can exist while its
-  // crude.importsKbd is unusable, and reporting "full" coverage next to
-  // dataAvailable:false let the panel paint a green badge beside an
-  // insufficient-data message. jodi_oil_coverage still reports row presence.
-  const coverageLevel = deriveCoverageLevel(dataAvailable, comtradeCoverage, ieaStocksCoverage, degraded);
-  const crudeLossKbd = crudeImportsKbd * gulfCrudeShare * (disruptionPct / 100);
+  // Keyed on oilModeled, not jodiOilCoverage: a JODI row can exist while its
+  // crude.importsKbd is unusable, and a measured share can exist without JODI.
+  // Reporting "full" coverage beside an insufficient-data message let the panel
+  // paint a green badge; jodi_oil_coverage still reports row presence.
+  const coverageLevel = deriveCoverageLevel(crudeImportsObserved, comtradeCoverage, ieaStocksCoverage, degraded);
+  const crudeLossKbd = oilModeled ? crudeImportsKbd * gulfCrudeShare * (disruptionPct / 100) : 0;
 
   const productDefs: Array<{ name: string; demand: number }> = [
     { name: 'Gasoline', demand: n(jodiOil?.gasoline?.demandKbd) },
@@ -262,7 +313,7 @@ export async function computeEnergyShockScenario(
     { name: 'LPG', demand: n(jodiOil?.lpg?.demandKbd) },
   ];
 
-  const products: ProductImpact[] = productDefs
+  const products: ProductImpact[] = !oilModeled ? [] : productDefs
     .filter((p) => p.demand > 0)
     .map((p) => {
       const yieldFactor = REFINERY_YIELD[p.name] ?? 0.20;
@@ -281,14 +332,25 @@ export async function computeEnergyShockScenario(
   const rawDaysOfCover = n(ieaStocks?.daysOfCover);
   const daysOfCover = ieaStocksCoverage ? rawDaysOfCover : 0;
   const netExporter = ieaStocksCoverage && ieaStocks?.netExporter === true;
-  const effectiveCoverDays = computeEffectiveCoverDays(daysOfCover, netExporter, crudeLossKbd, crudeImportsKbd);
+  // Without a modeled loss there is no scenario cover to report: the raw IEA
+  // days would otherwise pass as the scenario result, and the net-exporter -1
+  // would contradict the "reported as 0" limitation above. The panel keys its
+  // cover row on the same "not modeled" limitation text.
+  const effectiveCoverDays = oilModeled
+    ? computeEffectiveCoverDays(daysOfCover, netExporter, crudeLossKbd, crudeImportsKbd)
+    : 0;
+  if (needsOil && effectiveCoverDays === -1) {
+    limitations.push('effectiveCoverDays -1 marks a net oil exporter (IEA); no import-cover duration applies.');
+  } else if (needsOil && effectiveCoverDays >= EFFECTIVE_COVER_DAYS_CAP) {
+    limitations.push(`effectiveCoverDays is capped at ${EFFECTIVE_COVER_DAYS_CAP}; the modeled deficit rate is bridgeable beyond the cap, not exhausted at it.`);
+  }
 
   const chokepointConfidence = deriveChokepointConfidence(liveFlowRatio, degraded);
 
   const assessment = buildAssessment(
     code,
     chokepointId,
-    dataAvailable,
+    crudeImportsObserved,
     gulfCrudeShare,
     effectiveCoverDays,
     daysOfCover,
@@ -365,7 +427,7 @@ export async function computeEnergyShockScenario(
     products,
     effectiveCoverDays,
     assessment,
-    dataAvailable,
+    dataAvailable: oilModeled,
     jodiOilCoverage,
     comtradeCoverage,
     ieaStocksCoverage,
@@ -399,7 +461,7 @@ export async function computeEnergyShockScenario(
   }
 
   if (needsOil && needsGas) {
-    response.dataAvailable = dataAvailable || gasSensitivity != null;
+    response.dataAvailable = oilModeled || gasSensitivity != null;
     response.coverageLevel = response.dataAvailable ? 'partial' : 'unsupported';
   }
 
