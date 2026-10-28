@@ -171,7 +171,11 @@ describe('digests serve the categories that used to need per-feed browser fetche
       .filter(p => p.edition === 'tech' && p.browserOrder !== undefined && (!feed.lang || feed.lang === 'en'))
       .map(p => `${p.category}|${feed.name}`))
       .filter(key => !fetched.has(key));
-    assert.deepEqual(browserOnly, []);
+    // GitHub Trending dates only its channel, never its items, so the digest's
+    // date gate would drop every item; it stays browser-only until the digest
+    // can date a snapshot feed by its channel.
+    assert.deepEqual(browserOnly, ['github|GitHub Trending']);
+    assert.ok(pending.has('GitHub Trending'), 'the browser keeps fetching it while it is pending');
     for (const name of ['DevOps.com', 'FwdStart Newsletter']) {
       const feed = catalog.feeds.find(f => f.name === name);
       assert.match(feed?.url ?? '', /^https:\/\//, `${name} must have an absolute URL the server can fetch`);

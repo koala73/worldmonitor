@@ -8270,8 +8270,7 @@
         {
           "edition": "tech",
           "category": "github",
-          "browserOrder": 1,
-          "serverOrder": 2
+          "browserOrder": 1
         }
       ]
     },
