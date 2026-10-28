@@ -8,7 +8,7 @@ message ComputeEnergyShockScenarioRequest {
   string country_code   = 1 [(sebuf.http.query) = {name: "country_code"}];
   // Chokepoint identifier to model as disrupted.
   string chokepoint_id  = 2 [(sebuf.http.query) = {name: "chokepoint_id"}];
-  // Percent of chokepoint flow disrupted, from 0 to 100.
+  // Percent of chokepoint flow disrupted, 10 to 100. Other values are clamped; an absent value models 10.
   int32  disruption_pct = 3 [(sebuf.http.query) = {name: "disruption_pct"}];
   // Fuel mode to model: "oil", "gas", or "both". Defaults to "oil".
   string fuel_mode      = 4 [(sebuf.http.query) = {name: "fuel_mode"}];
@@ -79,9 +79,9 @@ message CrudeShareBaseline {
   int32 months_covered = 4;
   // Gulf share of crude imports times the chokepoint route factor (1.0 for Hormuz).
   double gulf_crude_share = 5;
-  // Loss at disruption_pct before Hormuz bypass rerouting; 0 when not modeled (see limitations).
+  // Loss at disruption_pct with no bypass recovery (currentFlows shares already reflect rerouting); 0 when not modeled (see limitations).
   double crude_loss_kbd = 6;
-  // Steady state after Hormuz bypass rerouting; absent when the bypass or the loss is not modeled.
+  // preCrisisBaseline only: steady state after Hormuz bypass rerouting. Absent for other chokepoints, without per-exporter shares, or when the loss is not modeled.
   optional double crude_loss_after_bypass_kbd = 7;
 }
 

@@ -100,6 +100,14 @@ export const BYPASS_CORRIDOR_GEOMETRY_BY_ID: Record<
     fromPort: [56.5, 26.5], // Hormuz Strait
     toPort: [18.49, -34.36], // Cape of Good Hope
   },
+  hormuz_east_west_pipeline: {
+    fromPort: [49.67, 25.94], // Abqaiq
+    toPort: [38.06, 24.09], // Yanbu, Red Sea
+  },
+  hormuz_adcop_pipeline: {
+    fromPort: [53.64, 23.84], // Habshan
+    toPort: [56.36, 25.17], // Fujairah, Gulf of Oman
+  },
   btc_pipeline: {
     fromPort: [49.85, 40.4], // Baku
     toPort: [35.24, 36.87], // Ceyhan, Turkey
