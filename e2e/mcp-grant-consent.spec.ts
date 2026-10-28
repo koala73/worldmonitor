@@ -84,7 +84,7 @@ async function stubClerkModule(
           window.__emitClerkSubscription?.();
         };
         export async function initClerk() {}
-        export function getClerkToken() { return Promise.resolve(user ? 'stub-jwt-token' : null); }
+        export function getClerkSessionToken() { return Promise.resolve(user ? 'stub-jwt-token' : null); }
         export function getCurrentClerkUser() { return user; }
         export function isClerkSignInOpen() {
           return Boolean(document.querySelector('.cl-modalBackdrop'));
