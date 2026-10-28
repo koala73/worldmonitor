@@ -107,6 +107,22 @@ async function computeShock(request) {
   return computeEnergyShockScenario({}, request);
 }
 
+/**
+ * A measured Hormuz LNG share (`comtrade:lng-hormuz-share:v1`) for gas tests
+ * whose subject is not the share: coverage, flow scaling, storage, rounding.
+ * Hormuz has no fixed route fraction, so without it these importers are
+ * unavailable. 0.30 keeps the figures those tests were written against.
+ */
+function lngShareSeed(shares) {
+  const preCrisis = (share) => ({ basis: 'comtrade_annual', fromMonth: '2025-01', toMonth: '2025-12', monthsCovered: 12, share, measure: 'weight', unattributedShare: 0 });
+  return {
+    'comtrade:lng-hormuz-share:v1': {
+      fetchedAt: '2026-11-01T06:00:00.000Z',
+      countries: Object.fromEntries(Object.entries(shares).map(([iso2, share]) => [iso2, { preCrisis: preCrisis(share), current: null, currentUnavailable: 'no_rows' }])),
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // deriveCoverageLevel
 // ---------------------------------------------------------------------------
@@ -604,7 +620,7 @@ describe('cache key includes degraded state and fuelMode', () => {
 
   it('does not reuse an oil response for gas-only mode', async (t) => {
     t.after(restoreEnergyShockEnvironment);
-    installEnergyShockRedis({ ...liveChokepointSeed(), ...US_OIL_SEED, ...US_GAS_SEED });
+    installEnergyShockRedis({ ...liveChokepointSeed(), ...US_OIL_SEED, ...US_GAS_SEED, ...lngShareSeed({ US: 0.3 }) });
 
     const oil = await computeShock({
       countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 60, fuelMode: 'oil',
@@ -638,11 +654,12 @@ describe('parseFuelMode', () => {
 // ---------------------------------------------------------------------------
 
 describe('CHOKEPOINT_LNG_EXPOSURE', () => {
-  it('has all 4 chokepoints', () => {
-    for (const cp of ['hormuz_strait', 'malacca_strait', 'suez', 'bab_el_mandeb']) {
+  it('has a fixed fraction for every chokepoint except Hormuz', () => {
+    for (const cp of ['malacca_strait', 'suez', 'bab_el_mandeb']) {
       assert.ok(cp in CHOKEPOINT_LNG_EXPOSURE, `missing ${cp}`);
       assert.ok(CHOKEPOINT_LNG_EXPOSURE[cp] > 0 && CHOKEPOINT_LNG_EXPOSURE[cp] <= 1);
     }
+    assert.equal('hormuz_strait' in CHOKEPOINT_LNG_EXPOSURE, false, 'Hormuz uses the measured Qatar + UAE share');
   });
 });
 
@@ -664,10 +681,14 @@ describe('EU_GAS_STORAGE_COUNTRIES', () => {
 // ---------------------------------------------------------------------------
 
 describe('computeGasDisruption', () => {
-  it('computes hormuz LNG disruption correctly', () => {
-    const { lngDisruptionTj, deficitPct } = computeGasDisruption(1000, 5000, 'hormuz_strait', 100);
+  it('computes hormuz LNG disruption at the measured share it is given', () => {
+    const { lngDisruptionTj, deficitPct } = computeGasDisruption(1000, 5000, 'hormuz_strait', 100, 0.3);
     assert.equal(lngDisruptionTj, 300);
     assert.equal(deficitPct, 6);
+  });
+
+  it('has no hormuz loss without a measured share', () => {
+    assert.equal(computeGasDisruption(1000, 5000, 'hormuz_strait', 100), undefined);
   });
 
   it('computes malacca at 50% disruption', () => {
@@ -676,7 +697,7 @@ describe('computeGasDisruption', () => {
   });
 
   it('returns zero for zero lngImportsTj', () => {
-    const { lngDisruptionTj, deficitPct } = computeGasDisruption(0, 5000, 'hormuz_strait', 100);
+    const { lngDisruptionTj, deficitPct } = computeGasDisruption(0, 5000, 'hormuz_strait', 100, 0);
     assert.equal(lngDisruptionTj, 0);
     assert.equal(deficitPct, 0);
   });
@@ -822,7 +843,7 @@ describe('grid-tightness limitation from Ember fossilShare', () => {
 describe('gas-only mode response', () => {
   it('uses gas coverage and removes all oil-only response data', async (t) => {
     t.after(restoreEnergyShockEnvironment);
-    installEnergyShockRedis({ ...liveChokepointSeed(), ...US_OIL_SEED, ...US_GAS_SEED });
+    installEnergyShockRedis({ ...liveChokepointSeed(), ...US_OIL_SEED, ...US_GAS_SEED, ...lngShareSeed({ US: 0.3 }) });
 
     const response = await computeShock({
       countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 80, fuelMode: 'gas',
@@ -838,7 +859,8 @@ describe('gas-only mode response', () => {
     assert.equal(response.jodiOilCoverage, false);
     assert.equal(response.comtradeCoverage, false);
     assert.equal(response.ieaStocksCoverage, false);
-    assert.ok(response.limitations.some((limitation) => limitation.includes('assumed route sensitivities')));
+    assert.ok(response.limitations.some((limitation) => limitation.startsWith('LNG Hormuz share: UN Comtrade HS 271111')));
+    assert.ok(!response.limitations.some((limitation) => limitation.includes('assumed route sensitivities')));
     assert.ok(!response.limitations.some((limitation) => limitation.includes('refinery yield')));
     assert.ok(!response.limitations.some((limitation) => limitation.includes('Gulf crude share')));
     assert.ok(!response.limitations.some((limitation) => limitation.includes('IEA strategic stock')));
@@ -846,7 +868,7 @@ describe('gas-only mode response', () => {
 
   it('marks a valid degraded gas-only response as partial', async (t) => {
     t.after(restoreEnergyShockEnvironment);
-    installEnergyShockRedis(US_GAS_SEED);
+    installEnergyShockRedis({ ...US_GAS_SEED, ...lngShareSeed({ US: 0.3 }) });
 
     const response = await computeShock({
       countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 80, fuelMode: 'gas',
@@ -1022,8 +1044,12 @@ describe('buildAssessment picks actual worst product', () => {
 });
 
 describe('gas sensitivity preserves measurement meaning', () => {
-  for (const [disruptionPct, loss, deficit] of [[50, 6197.7, 1.3], [100, 12395.4, 2.7]]) {
-    it(`replays captured DE inputs at ${disruptionPct}% without traffic scaling or endurance`, async (t) => {
+  // Before the measured Hormuz share, these captured inputs gave 6197.7 / 12395.4
+  // TJ: 30% of DE's recorded LNG imports. UN Comtrade books every German LNG
+  // import to partner 899 "Areas, nes" (recorded 2026-10-28), so the origin
+  // share, and with it the Hormuz loss, is unavailable rather than assumed.
+  for (const disruptionPct of [50, 100]) {
+    it(`replays captured DE inputs at ${disruptionPct}% as an unavailable origin share, without old caches or endurance`, async (t) => {
       t.after(restoreEnergyShockEnvironment);
       const { body: profile } = JSON.parse(await (await import('node:fs/promises')).readFile(new URL('./fixtures/energy-shock/de-profile-2026-09-10.json', import.meta.url), 'utf8'));
       const { body: old } = JSON.parse(await (await import('node:fs/promises')).readFile(new URL('./fixtures/energy-shock/de-shock-100-2026-09-10.json', import.meta.url), 'utf8'));
@@ -1034,20 +1060,22 @@ describe('gas sensitivity preserves measurement meaning', () => {
           lngShareOfImports: profile.gasLngShare / 100, dataMonth: profile.jodiGasDataMonth,
         },
         'energy:gas-storage:v1:DE': old.gasImpact.storage,
+        'comtrade:lng-hormuz-share:v1': { fetchedAt: '2026-10-28T09:00:00.000Z', countries: {
+          DE: { preCrisis: null, preCrisisUnavailable: 'partners_unattributed', current: null, currentUnavailable: 'partners_unattributed' },
+        } },
         [`energy:shock:v2:DE:hormuz_strait:${disruptionPct}:l:gas`]: old,
         [`energy:shock:v3:DE:hormuz_strait:${disruptionPct}:l:gas`]: old,
+        [`energy:shock:v4:DE:hormuz_strait:${disruptionPct}:l:gas`]: old,
       });
       const response = await computeShock({ countryCode: 'DE', chokepointId: 'hormuz_strait', disruptionPct, fuelMode: 'gas' });
-      assert.equal(response.gasSensitivity?.lngDisruptionTj, loss);
-      assert.equal(response.gasSensitivity?.deficitPct, deficit);
-      assert.equal(response.coverageLevel, 'partial');
+      assert.equal(response.gasSensitivity, undefined, 'no loss without a measured share');
+      assert.equal(response.gasImpact, undefined, 'an old cached gasImpact response is not reused');
+      assert.equal(response.dataAvailable, false);
+      assert.equal(response.coverageLevel, 'unsupported');
       assert.notEqual(response.chokepointConfidence, 'high');
-      assert.equal(response.gasSensitivity?.dataMonth, '2026-01');
-      assert.equal(response.gasSensitivity?.storage?.date, '2026-09-07');
-      assert.equal(response.gasSensitivity?.storage?.bufferDays, undefined);
-      assert.match(response.assessment, /assumes 30%/i);
-      assert.match(response.assessment, /not.*shortage forecast/i);
-      assert.doesNotMatch(response.assessment, /days|can bridge|low.*dependence|faces/i);
+      assert.equal(response.assessment, 'LNG origin share unavailable for DE; Strait of Hormuz LNG exposure is not modeled.');
+      assert.ok(response.limitations.some((l) => /LNG origin share unavailable for DE: UN Comtrade books more than 10% of its LNG imports to unspecified partners/.test(l)), response.limitations.join('\n'));
+      assert.doesNotMatch(response.assessment, /30%|days|can bridge|low.*dependence|faces/i);
     });
   }
 
@@ -1093,9 +1121,9 @@ describe('gas sensitivity preserves measurement meaning', () => {
 
 describe('gas sensitivity edge cases through the handler', () => {
   for (const flow of [null, 0, 0.122, 1]) {
-    it(`does not scale total assumed loss by shipping flow ${flow}`, async (t) => {
+    it(`does not scale total loss by shipping flow ${flow}`, async (t) => {
       t.after(restoreEnergyShockEnvironment);
-      installEnergyShockRedis({ ...(flow === null ? {} : liveChokepointSeed(flow)), ...US_GAS_SEED });
+      installEnergyShockRedis({ ...(flow === null ? {} : liveChokepointSeed(flow)), ...US_GAS_SEED, ...lngShareSeed({ US: 0.3 }) });
       const response = await computeShock({ countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'gas' });
       assert.equal(response.gasSensitivity.lngDisruptionTj, 300);
       assert.equal(response.gasSensitivity.deficitPct, 6);
@@ -1109,7 +1137,7 @@ describe('gas sensitivity edge cases through the handler', () => {
   for (const lngImportsTj of [0, 0.001]) {
     it(`preserves ${lngImportsTj} LNG without inventing share or endurance`, async (t) => {
       t.after(restoreEnergyShockEnvironment);
-      installEnergyShockRedis({ ...liveChokepointSeed(),
+      installEnergyShockRedis({ ...liveChokepointSeed(), ...lngShareSeed({ DE: 0.3 }),
         'energy:jodi-gas:v1:DE': { lngImportsTj, totalDemandTj: 1000, dataMonth: '2026-01' },
         'energy:gas-storage:v1:DE': { fillPct: 54.75, gasTwh: 135.5, date: '2026-09-07' },
       });
@@ -1133,7 +1161,7 @@ describe('gas sensitivity edge cases through the handler', () => {
 
   it('does not publish missing storage observations as zeros', async (t) => {
     t.after(restoreEnergyShockEnvironment);
-    installEnergyShockRedis({ 'energy:jodi-gas:v1:DE': { lngImportsTj: 100, totalDemandTj: 1000 },
+    installEnergyShockRedis({ 'energy:jodi-gas:v1:DE': { lngImportsTj: 100, totalDemandTj: 1000 }, ...lngShareSeed({ DE: 0.3 }),
       'energy:gas-storage:v1:DE': { fillPct: null, gasTwh: null, date: '2026-09-07' } });
     const response = await computeShock({ countryCode: 'DE', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'gas' });
     assert.equal(response.gasSensitivity.storage, undefined);
@@ -1146,6 +1174,7 @@ describe('gas response JSON contract', () => {
     installEnergyShockRedis({
       'energy:jodi-gas:v1:DE': { lngImportsTj: 1000, totalDemandTj: 5000, dataMonth: '2026-01' },
       'energy:gas-storage:v1:DE': { gasTwh: 135.5, fillPct: 54.75, date: '2026-09-07' },
+      ...lngShareSeed({ DE: 0.3 }),
     });
     const { IntelligenceServiceClient } = await import('../src/generated/client/worldmonitor/intelligence/v1/service_client.ts');
     const client = new IntelligenceServiceClient('https://fixture.invalid', {
@@ -1164,13 +1193,17 @@ describe('gas response JSON contract', () => {
     const response = await client.computeEnergyShockScenario({ countryCode: 'DE', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'gas' });
     assert.equal(response.gasSensitivity.lngDisruptionTj, 300);
     assert.equal(response.gasSensitivity.deficitPct, 6);
-    assert.equal(response.gasSensitivity.modelBasis, 'assumed_route_sensitivity');
+    assert.equal(response.gasSensitivity.modelBasis, 'comtrade_lng_origin_share');
+    assert.deepEqual(response.gasSensitivity.preCrisisBaseline, {
+      basis: 'comtrade_annual', fromMonth: '2025-01', toMonth: '2025-12', monthsCovered: 12, hormuzLngShare: 0.3, lngDisruptionTj: 300,
+    }, 'the baseline survives the generated client');
+    assert.equal(response.gasSensitivity.currentFlows, undefined);
     assert.equal(Object.hasOwn(response, 'gasImpact'), false);
     const { assessment, dataAvailable, gasImpact } = await Response.json(response).json();
     assert.equal(dataAvailable, true);
     assert.equal(gasImpact, undefined);
     assert.match(assessment, /6.0% of JODI demand/);
-    assert.match(assessment, /not measured country-specific exposure or a supply-shortage forecast/);
+    assert.match(assessment, /not a supply-shortage forecast/);
     assert.doesNotMatch(assessment, /days|no direct LNG impact|low LNG dependence|bridge/);
     assert.equal(response.gasSensitivity.dataMonth, '2026-01');
     assert.equal(response.gasSensitivity.storage.date, '2026-09-07');
@@ -1212,14 +1245,15 @@ describe('observed oil imports through handler and Decision brief', () => {
     });
   }
 
-  it('isolates old oil and both caches while preserving gas-only cache reuse', async (t) => {
+  it('isolates old oil, both and gas caches', async (t) => {
     t.after(restoreEnergyShockEnvironment);
     const request = { countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 100 };
-    installEnergyShockRedis({ ...liveChokepointSeed(), ...US_GAS_SEED,
+    installEnergyShockRedis({ ...liveChokepointSeed(), ...US_GAS_SEED, ...lngShareSeed({ US: 0.3 }),
       'energy:jodi-oil:v1:US': { crude: { importsKbd: null }, diesel: { demandKbd: 80 } },
       'energy:shock:v2:US:hormuz_strait:100:l:oil': { dataAvailable: true, assessment: 'old oil' },
       'energy:shock:v4:US:hormuz_strait:100:l:both': { dataAvailable: false, assessment: 'old both' },
-      'energy:shock:v4:US:hormuz_strait:100:l:gas': { dataAvailable: true, assessment: 'gas cache retained' },
+      // Written by the assumed 30% route model; the measured Hormuz share replaces it.
+      'energy:shock:v4:US:hormuz_strait:100:l:gas': { dataAvailable: true, assessment: 'old gas' },
     });
     const oil = await computeShock({ ...request, fuelMode: 'oil' });
     assert.equal(oil.dataAvailable, false);
@@ -1228,7 +1262,9 @@ describe('observed oil imports through handler and Decision brief', () => {
     assert.equal(both.dataAvailable, true);
     assert.equal(both.gasSensitivity.dataAvailable, true);
     assert.notEqual(both.assessment, 'old both');
-    assert.equal((await computeShock({ ...request, fuelMode: 'gas' })).assessment, 'gas cache retained');
+    const gas = await computeShock({ ...request, fuelMode: 'gas' });
+    assert.notEqual(gas.assessment, 'old gas');
+    assert.equal(gas.gasSensitivity.modelBasis, 'comtrade_lng_origin_share');
   });
 });
 
@@ -1380,6 +1416,8 @@ describe('production replay 2026-10-28: Gulf crude share comes from Comtrade par
       ...partnersSeed('IN', IN_TOTAL_2709, IN_PARTNERS_2709),
       'comtrade:flows:699:2709': WORLD_ONLY_FLOWS('699'),
       'energy:jodi-gas:v1:IN': { lngImportsTj: 111255.81, pipeImportsTj: 0, totalDemandTj: 185285.09, lngShareOfImports: 1, dataMonth: '2026-03' },
+      // India's measured pre-crisis Hormuz LNG share (UN Comtrade, recorded 2026-10-28).
+      ...lngShareSeed({ IN: 0.5824 }),
     });
 
     const response = await computeShock({ countryCode: 'IN', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'both' });
@@ -1485,12 +1523,17 @@ describe('production replay 2026-10-28: Gulf crude share comes from Comtrade par
       'energy:iea-oil-stocks:v1:DE': { daysOfCover: 124, netExporter: false, anomaly: false },
       'comtrade:flows:276:2709': WORLD_ONLY_FLOWS('276'),
       'energy:jodi-gas:v1:DE': { lngImportsTj: 25135, pipeImportsTj: 248000, totalDemandTj: 137779, lngShareOfImports: 0.092, dataMonth: '2026-07' },
+      // UN Comtrade books every German LNG import to "Areas, nes" (recorded 2026-10-28).
+      'comtrade:lng-hormuz-share:v1': { countries: { DE: { preCrisis: null, preCrisisUnavailable: 'partners_unattributed', current: null, currentUnavailable: 'partners_unattributed' } } },
     });
 
     const response = await computeShock({ countryCode: 'DE', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'both' });
 
     assert.equal(response.ieaStocksCoverage, true);
-    assert.equal(response.dataAvailable, true, 'gas keeps the combined scenario available');
+    // Neither origin is measured, so neither fuel's Hormuz loss is modeled.
+    assert.equal(response.dataAvailable, false);
+    assert.equal(response.gasSensitivity, undefined);
+    assert.ok(response.limitations.some((l) => /LNG origin share unavailable for DE/.test(l)), response.limitations.join('\n'));
     assert.equal(response.effectiveCoverDays, 0);
     assert.ok(response.limitations.some((l) => /Crude import origin share unavailable for DE/.test(l) && /effective cover are not modeled \(reported as 0\)/.test(l)), response.limitations.join('\n'));
   });

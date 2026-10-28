@@ -980,6 +980,8 @@ export interface GasSensitivity {
   dataSource: string;
   dataMonth: string;
   modelBasis: string;
+  preCrisisBaseline?: LngShareBaseline;
+  currentFlows?: LngShareBaseline;
 }
 
 export interface GasStorageObservation {
@@ -988,6 +990,15 @@ export interface GasStorageObservation {
   trend: string;
   date: string;
   scope: string;
+}
+
+export interface LngShareBaseline {
+  basis: string;
+  fromMonth: string;
+  toMonth: string;
+  monthsCovered: number;
+  hormuzLngShare: number;
+  lngDisruptionTj: number;
 }
 
 export interface CrudeShareBaseline {

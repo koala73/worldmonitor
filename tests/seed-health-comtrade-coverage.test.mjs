@@ -93,3 +93,28 @@ test('a failed world-exports fetch is visible alongside the countries that still
   assert.equal(entry.bilateralCoverage.worldExports.state,'unavailable');
   assert.deepEqual(Object.keys(entry.bilateralCoverage.countryCoverage).sort(),['DE','JP','TV']);
 });
+
+// The three Hormuz LNG origin requests are one run-level snapshot like world
+// exports: the energy shock model reads it, so a failed run is a coverage gap,
+// and a snapshot written before the field existed is absence of evidence.
+const LNG_ORIGIN = {state:'observed',fetchedAt:'2026-11-01T06:00:00.000Z',countryCount:116,preCrisisCount:110,currentCount:54};
+
+test('an observed LNG origin snapshot reaches the health payload without changing status', async () => {
+  const entry = await bilateralEntry({...healthy, lngOrigin: LNG_ORIGIN});
+  assert.deepEqual(entry.bilateralCoverage.lngOrigin, LNG_ORIGIN);
+  assert.equal(entry.status,'ok');
+});
+
+for (const state of ['no_records', 'unavailable', 'malformed', 'incomplete']) {
+  test(`a ${state} LNG origin outcome is a coverage gap`, async () => {
+    const entry = await bilateralEntry({...healthy, lngOrigin: {state, attemptedAt: '2026-11-01T06:00:00.000Z'}});
+    assert.equal(entry.status,'coverage_partial');
+    assert.equal(entry.bilateralCoverage.lngOrigin.state, state);
+  });
+}
+
+test('a run recorded before the LNG origin snapshot existed stays ok and reports null', async () => {
+  const entry = await bilateralEntry(healthy);
+  assert.equal(entry.bilateralCoverage.lngOrigin, null);
+  assert.equal(entry.status,'ok');
+});

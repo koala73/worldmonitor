@@ -8,6 +8,7 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   main,
@@ -15,12 +16,34 @@ import {
   MAX_PRESERVE_RUNS,
   MIN_COUNTRY_COVERAGE,
   __setSleepForTests,
+  __setLngCoverageFloorForTests,
 } from '../scripts/seed-comtrade-bilateral-hs4.mjs';
 
 const META_KEY = 'seed-meta:comtrade:bilateral-hs4';
 const KEY_PREFIX = 'comtrade:bilateral-hs4:';
 const PARTNERS_KEY_PREFIX = 'comtrade:bilateral-hs4-partners:';
 const WORLD_EXPORTS_KEY = 'comtrade:world-exports-hs4:v1';
+const LNG_KEY = 'comtrade:lng-hormuz-share:v1';
+/** Run-level requests made before the first reporter: two world-export batches and three LNG origin requests. */
+const RESERVED_REQUESTS = 5;
+/**
+ * The recorded all-reporter HS 271111 responses, answered by request shape.
+ * The suite runs keyless, where the preview route caps a response at 500 rows,
+ * so the mock answers with the recorded rows of Japan, Korea and Germany only.
+ */
+const LNG_REPORTERS = new Set([392, 410, 276]);
+const lngFixture = (name) => {
+  const body = JSON.parse(readFileSync(
+    new URL(`./fixtures/energy-shock/comtrade-lng-271111-${name}-2026-10-28.json`, import.meta.url), 'utf8'));
+  const data = body.data.filter(r => LNG_REPORTERS.has(r.reporterCode));
+  return { count: data.length, data };
+};
+const LNG_RESPONSES = { annual: lngFixture('annual'), preCrisis: lngFixture('pre-crisis'), current: lngFixture('current') };
+function lngResponseFor(href) {
+  const url = new URL(href);
+  if (url.pathname.includes('/C/A/')) return LNG_RESPONSES.annual;
+  return url.searchParams.get('period').startsWith('202502') ? LNG_RESPONSES.preCrisis : LNG_RESPONSES.current;
+}
 const REDIS_URL = 'https://fake-upstash.test';
 
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -69,6 +92,8 @@ let worldEmpty = false;
 let countryRows = null;
 /** When true, acquiring the run lock fails the way an unreachable Redis does. */
 let lockUnavailable = false;
+/** HTTP status the LNG origin requests answer with; the recorded response when null. */
+let lngStatus = null;
 
 /**
  * One heading's world-export rows: the reporter totals a `flowCode=X` request
@@ -135,6 +160,7 @@ beforeEach(() => {
   worldEmpty = false;
   countryRows = null;
   lockUnavailable = false;
+  lngStatus = null;
 
   process.env.UPSTASH_REDIS_REST_URL = REDIS_URL;
   process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
@@ -144,6 +170,10 @@ beforeEach(() => {
   // No prior seed-meta in most cases, so the freshness gate lets the run
   // through; FORCE_RESEED would bypass the gate under test rather than exercise it.
   delete process.env.FORCE_RESEED;
+
+  // The mocked LNG responses carry three reporters (the keyless 500-row cap);
+  // the production floor is sized for ~114, so the suite lowers it.
+  __setLngCoverageFloorForTests(1);
 
   __setSleepForTests((delayMs) => {
     if (delayMs === 60_000) rateLimitWaitCount++;
@@ -172,7 +202,9 @@ beforeEach(() => {
       comtradeCallCount++;
       comtradeUrls.push(href);
       const isWorldExports = new URL(href).searchParams.get('flowCode') === 'X';
-      if (!isWorldExports) countryCallCount++;
+      const isLng = new URL(href).searchParams.get('cmdCode') === '271111';
+      if (!isWorldExports && !isLng) countryCallCount++;
+      if (isLng && lngStatus) return new Response('{}', { status: lngStatus });
       if (isWorldExports && worldStatus) return new Response('{}', { status: worldStatus });
       if (isWorldExports && worldEmpty) return respond({ count: 0, data: [] });
       if (rateLimitEverything) return new Response('{}', { status: 429 });
@@ -195,6 +227,7 @@ beforeEach(() => {
         const rows = worldRows(cmdCode);
         return respond({ count: rows.length, data: rows });
       }
+      if (isLng) return respond(lngResponseFor(href));
       if (countryRows) return respond({ count: countryRows.length, data: countryRows });
       if (batchRawRowCounts) {
         const batchIndex = (countryCallCount - 1) % batchRawRowCounts.length;
@@ -228,6 +261,7 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
   __setSleepForTests(null);
+  __setLngCoverageFloorForTests(null);
   process.env.UPSTASH_REDIS_REST_URL = ORIGINAL_ENV.url;
   process.env.UPSTASH_REDIS_REST_TOKEN = ORIGINAL_ENV.token;
   if (ORIGINAL_ENV.force === undefined) delete process.env.FORCE_RESEED;
@@ -245,7 +279,9 @@ function writtenPayload(key) {
 
 /** Whether any request in this run carried the world-exports shape. */
 const worldExportUrls = () => comtradeUrls.filter(h => new URL(h).searchParams.get('flowCode') === 'X');
-const reporterUrls = () => comtradeUrls.filter(h => new URL(h).searchParams.get('flowCode') === 'M');
+const reporterUrls = () => comtradeUrls.filter(h => new URL(h).searchParams.get('flowCode') === 'M'
+  && new URL(h).searchParams.get('cmdCode') !== '271111');
+const lngUrls = () => comtradeUrls.filter(h => new URL(h).searchParams.get('cmdCode') === '271111');
 
 /** The seed-meta record the run persisted. */
 function writtenMeta() {
@@ -376,8 +412,8 @@ test('the request budget counts retry attempts, not only logical batch fetches',
   countriesWithData = 1;
   failSecondBatch = true;
   existingKeys.add(`${KEY_PREFIX}US:v1`);
-  // 4 = the two reserved world-export requests plus this reporter's two batches.
-  await main({requestBudget:4});
+  // The reserved run-level requests plus this reporter's two batches.
+  await main({ requestBudget: RESERVED_REQUESTS + 2 });
   assert(!redisCommands.some(c => c[0] === 'SET' && c[1] === `${KEY_PREFIX}US:v1`));
   assert.equal(writtenMeta().countryCoverage.US.state, 'unavailable');
   assert.equal(writtenMeta().preserveStreaks.US, 1);
@@ -387,7 +423,7 @@ for (const [defect, state] of [['malformed', 'malformed'], ['capped', 'incomplet
   test(`a ${defect} provider response is recorded as ${state} and preserves the country`, async () => {
     providerDefect = defect;
     existingKeys.add(`${KEY_PREFIX}US:v1`);
-    await main({ requestBudget: 4 });
+    await main({ requestBudget: RESERVED_REQUESTS + 2 });
     assert(!redisCommands.some(c => c[0] === 'SET' && c[1] === `${KEY_PREFIX}US:v1`));
     assert.equal(writtenMeta().countryCoverage.US.state, state);
     assert.equal(writtenMeta().preserveStreaks.US, 1);
@@ -402,7 +438,7 @@ test('every batch asks Comtrade for aggregate-only rows', async () => {
   // change the row count, not the result.
   countriesWithData = 1;
 
-  await main({ requestBudget: 4 });
+  await main({ requestBudget: RESERVED_REQUESTS + 2 });
 
   assert.equal(reporterUrls().length, 2, 'expected both catalogue batches to be requested');
   for (const href of comtradeUrls) {
@@ -419,7 +455,7 @@ test('coverage records the raw row count each batch returned', async () => {
   // the provider actually sent back.
   batchRawRowCounts = [4, 3];
 
-  await main({ requestBudget: 4 });
+  await main({ requestBudget: RESERVED_REQUESTS + 2 });
 
   const coverage = writtenMeta().countryCoverage.US;
   assert.equal(coverage.state, 'observed');
@@ -433,7 +469,7 @@ test('a capped batch records the count it saw alongside the incomplete state', a
   providerDefect = 'capped';
   existingKeys.add(`${KEY_PREFIX}US:v1`);
 
-  await main({ requestBudget: 4 });
+  await main({ requestBudget: RESERVED_REQUESTS + 2 });
 
   const cap = Number(new URL(reporterUrls()[0]).searchParams.get('maxRecords'));
   const coverage = writtenMeta().countryCoverage.US;
@@ -449,18 +485,18 @@ test('the two world-exports requests are reserved before the first reporter', as
   // and the per-reporter pre-check would then over-commit the remainder.
   countriesWithData = 5;
 
-  await main({ requestBudget: 6 });
+  await main({ requestBudget: RESERVED_REQUESTS + 4 });
 
   assert.equal(worldExportUrls().length, 2, 'both catalogue batches need a world-exports request');
   assert.deepEqual(comtradeUrls.slice(0, 2), worldExportUrls(),
     'the reservation must happen before any reporter is fetched');
-  assert.equal(reporterUrls().length, 4, 'a budget of 6 leaves 4 requests, i.e. at most 2 reporters');
+  assert.equal(reporterUrls().length, 4, 'the reserved requests leave 4, i.e. at most 2 reporters');
 });
 
 test('a world-exports request asks every reporter for its exports to the World', async () => {
   countriesWithData = 1;
 
-  await main({ requestBudget: 4 });
+  await main({ requestBudget: RESERVED_REQUESTS + 2 });
 
   const [first, second] = worldExportUrls().map(href => new URL(href).searchParams);
   for (const params of [first, second]) {
@@ -484,7 +520,7 @@ test('a world-exports request asks every reporter for its exports to the World',
 test('an observed world-exports fetch is published and summarised in seed-meta', async () => {
   countriesWithData = 1;
 
-  await main({ requestBudget: 4 });
+  await main({ requestBudget: RESERVED_REQUESTS + 2 });
 
   const payload = writtenPayload(WORLD_EXPORTS_KEY);
   assert.ok(payload.fetchedAt, 'the brief dates the supplier scale it prints');
@@ -513,7 +549,9 @@ test('a failed world-exports fetch is recorded and the reporters still seed', as
   worldStatus = 503;
   countriesWithData = 2;
 
-  await main({ requestBudget: 8 });
+  // The failed world batch makes three attempts (two 5xx retries) against its
+  // two reserved slots, so the two reporters need one request more.
+  await main({ requestBudget: RESERVED_REQUESTS + 4 + 1 });
 
   const meta = writtenMeta();
   assert.equal(meta.worldExports.state, 'unavailable');
@@ -535,7 +573,7 @@ test('a world-exports answer with no usable rows is no_records and keeps the pre
   worldEmpty = true;
   countriesWithData = 1;
 
-  await main({ requestBudget: 4 });
+  await main({ requestBudget: RESERVED_REQUESTS + 2 });
 
   const meta = writtenMeta();
   assert.equal(meta.worldExports.state, 'no_records');
@@ -551,10 +589,96 @@ test('a world-exports answer with no usable rows is no_records and keeps the pre
 test('an observed world-exports fetch does not extend the snapshot it just rewrote', async () => {
   countriesWithData = 1;
 
-  await main({ requestBudget: 4 });
+  await main({ requestBudget: RESERVED_REQUESTS + 2 });
 
   assert.ok(redisCommands.some(c => c[0] === 'SET' && c[1] === WORLD_EXPORTS_KEY));
   assert.ok(!redisCommands.some(c => c[0] === 'EXPIRE' && c[1] === WORLD_EXPORTS_KEY));
+});
+
+// ─── Hormuz LNG origin shares (HS 271111) ────────────────────────────────────
+
+test('the three LNG origin requests are all-reporter, all-partner and reserved before the first reporter', async () => {
+  countriesWithData = 1;
+
+  await main({ requestBudget: RESERVED_REQUESTS + 2 });
+
+  assert.equal(lngUrls().length, 3);
+  assert.deepEqual(comtradeUrls.slice(2, 5), lngUrls(), 'reserved after world exports and before any reporter');
+  const [annual, preCrisis, current] = lngUrls().map(href => new URL(href));
+  assert.match(annual.pathname, /\/C\/A\/HS$/);
+  assert.match(preCrisis.pathname, /\/C\/M\/HS$/);
+  assert.match(current.pathname, /\/C\/M\/HS$/);
+  assert.equal(annual.searchParams.get('period'), '2025,2024');
+  assert.equal(preCrisis.searchParams.get('period').split(',').length, 12);
+  // The request slides to the latest 12 complete months, so only the floor is fixed.
+  assert.ok(current.searchParams.get('period').split(',').every(p => p >= '202603'), 'no current-flows month before 2026-03');
+  for (const url of [annual, preCrisis, current]) {
+    const params = url.searchParams;
+    assert.equal(params.get('cmdCode'), '271111', 'LNG only: HS4 2711 mixes in LPG and pipeline gas');
+    assert.equal(params.get('flowCode'), 'M');
+    assert.equal(params.has('reporterCode'), false, 'one call covers every importer');
+    assert.equal(params.has('partnerCode'), false, 'all partners, so withheld origins are visible');
+    assert.equal(params.get('partner2Code'), '0');
+  }
+  assert.equal(reporterUrls().length, 2, 'the reporter still gets both batches');
+});
+
+test('an observed LNG run publishes both baselines from the recorded responses', async () => {
+  countriesWithData = 1;
+
+  await main({ requestBudget: RESERVED_REQUESTS + 2 });
+
+  const payload = writtenPayload(LNG_KEY);
+  assert.ok(payload.fetchedAt);
+  assert.equal(payload.cmdCode, '271111');
+  assert.deepEqual(payload.hormuzPartnerCodes, ['634', '784']);
+  assert.deepEqual(payload.preCrisisWindow, { startMonth: '2025-02', endMonth: '2026-01', annualYears: ['2025', '2024'] });
+  const { JP, KR, DE } = payload.countries;
+  assert.deepEqual([JP.preCrisis.basis, JP.preCrisis.share, JP.current.fromMonth, JP.current.toMonth, JP.current.share],
+    ['comtrade_monthly', 0.064, '2026-06', '2026-08', 0.0044]);
+  assert.deepEqual([KR.preCrisis.basis, KR.preCrisis.share, KR.current], ['comtrade_annual', 0.1545, null]);
+  assert.equal(DE.preCrisis, null);
+  assert.equal(DE.preCrisisUnavailable, 'partners_unattributed');
+
+  const meta = writtenMeta();
+  assert.equal(meta.lngOrigin.state, 'observed');
+  assert.equal(meta.lngOrigin.fetchedAt, payload.fetchedAt);
+  assert.equal(meta.lngOrigin.countryCount, Object.keys(payload.countries).length);
+  assert.ok(!redisCommands.some(c => c[0] === 'EXPIRE' && c[1] === LNG_KEY), 'a rewritten snapshot needs no TTL refresh');
+});
+
+test('an LNG snapshot below the pre-crisis coverage floor keeps the previous one', async () => {
+  // JP and KR have pre-crisis shares, DE is withheld: two usable importers.
+  __setLngCoverageFloorForTests(3);
+  countriesWithData = 1;
+
+  await main({ requestBudget: RESERVED_REQUESTS + 2 });
+
+  const meta = writtenMeta();
+  assert.equal(meta.lngOrigin.state, 'incomplete');
+  assert.equal(meta.lngOrigin.preCrisisCount, 2);
+  assert.ok(!redisCommands.some(c => c[0] === 'SET' && c[1] === LNG_KEY), 'a thin snapshot must not replace a fuller one');
+  assert.ok(redisCommands.some(c => c[0] === 'EXPIRE' && c[1] === LNG_KEY));
+});
+
+test('a failed LNG request keeps the previous snapshot, stops the LNG phase and still seeds the reporters', async () => {
+  lngStatus = 503;
+  countriesWithData = 2;
+
+  await main({ requestBudget: RESERVED_REQUESTS + 4 });
+
+  const meta = writtenMeta();
+  assert.equal(meta.lngOrigin.state, 'unavailable');
+  assert.ok(meta.lngOrigin.attemptedAt);
+  assert.ok(!redisCommands.some(c => c[0] === 'SET' && c[1] === LNG_KEY),
+    'a partial LNG fetch must not overwrite the last good snapshot');
+  assert.ok(redisCommands.some(c => c[0] === 'EXPIRE' && c[1] === LNG_KEY),
+    'the last good snapshot is kept alive like world exports');
+  // One logical request (three attempts with the 5xx retries), not three: the
+  // snapshot is all-or-nothing, so the rest would only spend quota.
+  assert.equal(lngUrls().length, 3);
+  assert.equal(new Set(lngUrls().map(h => new URL(h).searchParams.get('period'))).size, 1);
+  assert.equal(meta.recordCount, 2, 'the reporters do not depend on the LNG snapshot');
 });
 
 // ─── Sibling partners key (R1 / KTD1) ────────────────────────────────────────
@@ -562,7 +686,7 @@ test('an observed world-exports fetch does not extend the snapshot it just rewro
 test('a country write issues the canonical key and its sibling partner key', async () => {
   countryRows = THRESHOLD_ROWS;
 
-  await main({ requestBudget: 4 });
+  await main({ requestBudget: RESERVED_REQUESTS + 2 });
 
   const canonical = writtenPayload(`${KEY_PREFIX}US:v1`);
   const [product] = canonical.products;
@@ -633,6 +757,7 @@ test('a lock-skipped run extends both country keys and the world-exports key', a
   assert.ok(expired.has(`${PARTNERS_KEY_PREFIX}NL:v1`),
     'a sibling left out here expires alone while its canonical key survives');
   assert.ok(expired.has(WORLD_EXPORTS_KEY));
+  assert.ok(expired.has(LNG_KEY), 'the LNG snapshot is a run-level key like world exports');
   assert.ok(expired.has(META_KEY));
   assert.equal(comtradeCallCount, 0, 'a skipped run must not spend quota');
 });
@@ -660,7 +785,7 @@ test('the write pipeline flushes on accumulated bytes, not only on the command c
   // would be several megabytes, which Upstash rejects and which no test caught.
   countryRows = BULKY_ROWS;
 
-  await main({ requestBudget: 2 + 2 * 40 });
+  await main({ requestBudget: RESERVED_REQUESTS + 2 * 40 });
 
   const writeFlushes = pipelineBatches.filter(cmds => cmds.some(c => c[0] === 'SET' && c[1].startsWith(KEY_PREFIX)));
   assert.ok(writeFlushes.length >= 2, `expected repeated flushes, got ${writeFlushes.length}`);
