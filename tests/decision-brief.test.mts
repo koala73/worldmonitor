@@ -55,6 +55,25 @@ test('oil evidence labels the pre-crisis baseline and reports current flows besi
   assert.deepEqual(s.results.map(r => r.loss), [1104, 1104], 'the compared loss stays the pre-crisis headline');
 });
 
+test('in both mode, gas data does not make an unmodeled oil loss read as a 0 kbd loss', () => {
+  // A JODI row with invalid crude imports: dataAvailable is true from gas alone,
+  // and the handler reports the oil loss as 0 with a "not modeled" limitation.
+  const data = captures('JP');
+  for (const { response } of data) {
+    Object.assign(response, { jodiOilCoverage: true, comtradeCoverage: true, gulfCrudeShare: 0.927, crudeLossKbd: 0 });
+    response.limitations = ['JODI crude import observation unavailable for JP; oil loss, product deficits and effective cover are not modeled (reported as 0).'];
+    response.preCrisisBaseline = { basis: 'comtrade_monthly', fromMonth: '2025-02', toMonth: '2026-01', monthsCovered: 12, gulfCrudeShare: 0.927, crudeLossKbd: 0 };
+    response.currentFlows = { basis: 'comtrade_monthly', fromMonth: '2026-06', toMonth: '2026-08', monthsCovered: 3, gulfCrudeShare: 0.605, crudeLossKbd: 0 };
+  }
+  const s = buildDecisionBrief({ ...selection, countryCode: 'JP', countryName: 'Japan', fuelMode: 'both' }, data);
+  assert.equal(s.evidence.find(e => e.id === 'baseline-loss-current')!.value, null);
+  assert.equal(s.evidence.find(e => e.id === 'baseline-loss')!.value, null);
+  assert.deepEqual(s.results.map(r => r.loss), [null, null]);
+  // The shares are measured and keep their own guards.
+  assert.equal(s.evidence.find(e => e.id === 'baseline-route-current')!.value, 60.5);
+  assert.match(s.unknowns.join(' '), /baseline: the oil loss is not modeled/);
+});
+
 test('the annual fallback is named in the evidence label, and current flows show without a pre-crisis share', () => {
   const data = captures('CN');
   for (const { response } of data) {
