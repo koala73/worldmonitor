@@ -110,6 +110,7 @@ export const NEWS_POOL_LAYOUT: NewsPoolLayout = {
     "nl",
     "no",
     "pl",
+    "pt",
     "ro",
     "ru",
     "sv",
@@ -127,6 +128,7 @@ export const NEWS_POOL_LAYOUT: NewsPoolLayout = {
         "ar",
         "da",
         "de",
+        "es",
         "no",
         "pl",
         "ru",
@@ -247,6 +249,13 @@ export const NEWS_POOL_LAYOUT: NewsPoolLayout = {
     },
     {
       "edition": "full",
+      "lang": "pt",
+      "contentLanguages": [
+        "pt"
+      ]
+    },
+    {
+      "edition": "full",
       "lang": "ro",
       "contentLanguages": [
         "ro"
@@ -291,6 +300,7 @@ export const NEWS_POOL_LAYOUT: NewsPoolLayout = {
       "edition": "full",
       "lang": "vi",
       "contentLanguages": [
+        "en",
         "vi"
       ]
     },

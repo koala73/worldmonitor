@@ -143,6 +143,16 @@ describe('digests serve the categories that used to need per-feed browser fetche
     assert.ok(scheduled('tech').has('thinktanks'));
     assert.ok(scheduled('finance').has('nq-news'));
   });
+
+  // AE1: a source migrated out of the browser-only list is fetched by the
+  // digest in its own language, and only there.
+  it('the Portuguese full digest fetches Folha de S.Paulo in latam; the English one does not', () => {
+    const latamSources = (lang: string) => digestTesting.buildDigestFeedBatches('full', lang).batches.flat()
+      .filter(entry => entry.category === 'latam')
+      .map(entry => entry.feed.name);
+    assert.ok(latamSources('pt').includes('Folha de S.Paulo'));
+    assert.ok(!latamSources('en').includes('Folha de S.Paulo'));
+  });
 });
 
 describe('relay classify covers every digest edition within its cycle', () => {

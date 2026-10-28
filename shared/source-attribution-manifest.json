@@ -2691,6 +2691,20 @@
       ]
     },
     {
+      "host": "corriere.it",
+      "provider": "corriere.it",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit corriere.it and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "cp24.com",
       "provider": "cp24.com",
       "kind": "feed",
@@ -4462,6 +4476,20 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit foreignpolicy.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "fpri.org",
+      "provider": "fpri.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit fpri.org and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -11317,15 +11345,10 @@
       "host": "www.corriere.it",
       "provider": "www.corriere.it",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.corriere.it and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.crisisgroup.org",
@@ -11812,15 +11835,10 @@
       "host": "www.fpri.org",
       "provider": "www.fpri.org",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.fpri.org and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.france24.com",
