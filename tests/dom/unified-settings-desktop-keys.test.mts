@@ -384,7 +384,7 @@ describe('Settings -> API Keys: desktop key lifecycle', () => {
     ['INVALID_API_KEY_SCOPES', 'Desktop keys cannot have API scopes'],
   ])('maps %s to a clear message', async (code, message) => {
     createApiKey.mockImplementationOnce(async () => {
-      throw new Error(`[CONVEX M(apiKeys:createApiKey)] Uncaught ConvexError: ${code}`);
+      throw new Error(code);
     });
     openApiKeysTab();
     await keysLoaded();

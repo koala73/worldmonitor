@@ -471,6 +471,39 @@ export async function relayAiRoutingPolicyHttpHandler(
 
 const http = httpRouter();
 
+// The gateway has verified both the JWT and the live Clerk session.
+http.route({
+  path: "/relay/api-keys/create",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
+    if (unauthorized) return unauthorized;
+    const body = await parseJsonObjectBody<Record<string, unknown>>(request);
+    if (!body || typeof body.userId !== "string" || !body.userId
+      || typeof body.name !== "string" || typeof body.keyPrefix !== "string" || typeof body.keyHash !== "string"
+      || (body.scopes !== undefined && (!Array.isArray(body.scopes) || !body.scopes.every(s => typeof s === "string")))
+      || (body.keyKind !== undefined && body.keyKind !== "api" && body.keyKind !== "desktop")) {
+      return Response.json({ error: "INVALID_REQUEST" }, { status: 400 });
+    }
+    try {
+      const result = await ctx.runMutation(internal.apiKeys.createApiKeyForUser, {
+        userId: body.userId, name: body.name, keyPrefix: body.keyPrefix, keyHash: body.keyHash,
+        scopes: body.scopes as string[] | undefined,
+        keyKind: body.keyKind as "api" | "desktop" | undefined,
+      });
+      return Response.json(result);
+    } catch (error) {
+      const code = extractConvexErrorCode(error);
+      if (code) {
+        const status = code.endsWith("LIMIT_REACHED") ? 409
+          : code.startsWith("INVALID_") || code === "DUPLICATE_KEY" ? 400 : 403;
+        return Response.json({ error: code }, { status });
+      }
+      return Response.json({ error: "INTERNAL_ERROR" }, { status: 500 });
+    }
+  }),
+});
+
 // Only the edge contact handler may write leads after its public abuse checks.
 http.route({
   path: "/leads/submit-contact",
