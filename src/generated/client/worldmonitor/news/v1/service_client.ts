@@ -177,6 +177,35 @@ export interface MediaPerspectiveHeadline {
   link: string;
 }
 
+export interface ListNewsPoolRequest {
+  languages: string[];
+  editions: string[];
+  category: string;
+}
+
+export interface ListNewsPoolResponse {
+  items: NewsPoolItem[];
+  cells: NewsPoolCell[];
+  state: string;
+  generatedAt: string;
+}
+
+export interface NewsPoolItem {
+  item?: NewsItem;
+  language: string;
+  editions: string[];
+  category: string;
+}
+
+export interface NewsPoolCell {
+  edition: string;
+  language: string;
+  state: string;
+  items: number;
+  staleAgeSeconds: number;
+  generatedAt: string;
+}
+
 export interface ListLabelChangesRequest {
   storyId: string;
   limit: number;
@@ -485,6 +514,33 @@ export class NewsServiceClient {
     }
 
     return await resp.json() as ListMediaPerspectiveResponse;
+  }
+
+  async listNewsPool(req: ListNewsPoolRequest, options?: NewsServiceCallOptions): Promise<ListNewsPoolResponse> {
+    let path = "/api/news/v1/list-news-pool";
+    const params = new URLSearchParams();
+    if (req.languages && req.languages.length > 0) req.languages.forEach(v => params.append("languages", v));
+    if (req.editions && req.editions.length > 0) req.editions.forEach(v => params.append("editions", v));
+    if (req.category != null && req.category !== "") params.set("category", String(req.category));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListNewsPoolResponse;
   }
 
   async listLabelChanges(req: ListLabelChangesRequest, options?: NewsServiceCallOptions): Promise<ListLabelChangesResponse> {

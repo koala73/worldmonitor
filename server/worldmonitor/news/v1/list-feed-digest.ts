@@ -263,7 +263,7 @@ type DigestFeedEntry = { attemptId: string; category: string; feed: ServerFeed }
  * on the next request rather than on the next rebuild. Returns the original
  * object untouched when nothing was suppressed, so the common path stays free.
  */
-function suppressRevoked(
+export function suppressRevoked(
   data: ListFeedDigestResponse,
   revoked: ReadonlySet<string>,
 ): { data: ListFeedDigestResponse; dropped: number } {
