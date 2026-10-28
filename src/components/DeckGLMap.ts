@@ -59,7 +59,7 @@ import type { ClimateAnomaly } from '@/services/climate';
 import type { RadiationObservation } from '@/services/radiation';
 import { ArcLayer } from '@deck.gl/layers';
 import type { WeatherAlert } from '@/services/weather';
-import type { CanadaRoadRecord } from '@/services/canada-roads';
+import { isReportableCanadaRoad, type CanadaRoadRecord } from '@/services/canada-roads-core';
 import type { CanadaAlert } from '@/services/canada-alerts';
 import { escapeHtml } from '@/utils/sanitize';
 import { corroborationLabelHtml } from '@/utils/corroboration-flag';
@@ -7399,7 +7399,7 @@ export class DeckGLMap {
   }
 
   public setCanadaRoads(records: CanadaRoadRecord[]): void {
-    this.canadaRoads = records;
+    this.canadaRoads = records.filter(isReportableCanadaRoad);
   }
   public setCanadaAlerts(alerts: CanadaAlert[]): void {
     this.canadaAlerts = alerts;
