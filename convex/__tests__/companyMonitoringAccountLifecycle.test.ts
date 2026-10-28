@@ -28,8 +28,10 @@ import {
   setStoredEntitlement,
   TEST_OWNER_FENCE_SECRET,
 } from "./companyMonitoring.helpers";
+import { installLiveClerkSessions, liveSession } from "./clerkSession.helpers";
 
 installCompanyMonitoringTestEnvironment();
+installLiveClerkSessions();
 
 describe("Company Monitoring account lifecycle", () => {
   // #6256 acceptance criterion, proven by ablation rather than by asserting an
@@ -200,7 +202,7 @@ describe("Company Monitoring account lifecycle", () => {
       t.query(CM.companies.listCompaniesForOwner, { ownerUserId: OWNER_A }),
     ).rejects.toThrow(/COMPANY_MONITORING_ACCESS_DENIED/);
     await expect(
-      t.withIdentity({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` }).mutation(
+      t.withIdentity(liveSession({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` })).action(
         api.apiKeys.createApiKey,
         {
           name: "after-expiry",

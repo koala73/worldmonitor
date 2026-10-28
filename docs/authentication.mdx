@@ -126,6 +126,16 @@ The gateway tries the API key first. If that fails on a premium endpoint, it fal
 
 Non-premium endpoints don't require any authentication from web origins.
 
+### Live-session checks for credential issuance
+
+JWT verification is stateless: a token whose Clerk session was revoked (sign-out, "sign out other devices", an admin revoke) still verifies until `exp`. Routes that trade a bearer for a credential that outlives it therefore also ask Clerk whether the token's session (`sid`) is still `active` for the same user — `GET /v1/sessions/{sid}` via `verifyClerkSessionActive` (`server/auth-session.ts`, mirrored for Convex in `convex/lib/clerkSession.ts`), never cached:
+
+- `/api/desktop-auth/authorize` requires a live session before binding a code, stores the `sid` with it, and `/api/desktop-auth/token` re-checks that `sid` before minting the sign-in ticket.
+- `/api/internal/mcp-grant-mint` resolves the caller through `resolveLiveSessionUserId`.
+- `apiKeys.createApiKey` (API and desktop keys) is a Convex action that checks the session before writing the row.
+
+A missing `sid` or an inactive session is a 401 (`AUTH_REQUIRED` from Convex); Clerk being unreachable is a retryable 503 (`SESSION_VERIFICATION_UNAVAILABLE`) — nothing is issued on a guess.
+
 ---
 
 ## Environment Variables

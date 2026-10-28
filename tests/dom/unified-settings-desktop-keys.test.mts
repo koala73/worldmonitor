@@ -382,6 +382,9 @@ describe('Settings -> API Keys: desktop key lifecycle', () => {
     ['DESKTOP_KEYS_DISABLED', "Desktop keys aren't available yet"],
     ['DESKTOP_KEY_ACCESS_REQUIRED', 'Desktop keys need an active Pro or Pro Business plan'],
     ['INVALID_API_KEY_SCOPES', 'Desktop keys cannot have API scopes'],
+    // Issuance re-checks the Clerk session is live (Strix 2026-10-27).
+    ['AUTH_REQUIRED', 'Your session is no longer signed in. Sign in again'],
+    ['SESSION_VERIFICATION_UNAVAILABLE', 'Could not confirm your session. Try again'],
   ])('maps %s to a clear message', async (code, message) => {
     createApiKey.mockImplementationOnce(async () => {
       throw new Error(`[CONVEX M(apiKeys:createApiKey)] Uncaught ConvexError: ${code}`);

@@ -1,8 +1,9 @@
 import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
-import { internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireUserId, resolveUserId } from "./lib/auth";
+import { requireLiveClerkSession } from "./lib/clerkSession";
 import { mergeEntitlementFeatures } from "./lib/entitlements";
 import { activeAccountForOwner } from "./companyMonitoring/_shared";
 import { ensureActiveAccount } from "./companyMonitoring/accounts";
@@ -11,7 +12,7 @@ import {
   type CompanyMonitoringApiScope,
 } from "../shared/company-monitoring-contract";
 import { hasDesktopKeyAccess } from "../shared/desktop-key-access";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 
 /**
  * Maximum number of active (non-revoked) API keys per user. Desktop keys are
@@ -90,16 +91,41 @@ async function keySourceFields(
   return { sourceRef: user.signupRef, ...(user.signupSource ? { source: user.signupSource } : {}) };
 }
 
-export const createApiKey = mutation({
-  args: {
-    name: v.string(),
-    keyPrefix: v.string(),
-    keyHash: v.string(),
-    scopes: v.optional(v.array(v.string())),
-    // Omitted means "api", so every existing caller is unchanged.
-    keyKind: v.optional(keyKindValidator),
+const createApiKeyArgs = {
+  name: v.string(),
+  keyPrefix: v.string(),
+  keyHash: v.string(),
+  scopes: v.optional(v.array(v.string())),
+  // Omitted means "api", so every existing caller is unchanged.
+  keyKind: v.optional(keyKindValidator),
+};
+
+export interface CreatedApiKey {
+  id: Id<"userApiKeys">;
+  name: string;
+  keyPrefix: string;
+  scopes: CompanyMonitoringApiScope[] | undefined;
+  companyMonitoringAccountId: string | undefined;
+  keyKind: ApiKeyKind;
+}
+
+/**
+ * An action rather than a mutation: the key outlives the Clerk session that
+ * creates it, so that session must be live at Clerk — not merely signed —
+ * and only an action can ask. The row is written by `createApiKeyRecord`
+ * under the same identity.
+ */
+export const createApiKey = action({
+  args: createApiKeyArgs,
+  handler: async (ctx, args): Promise<CreatedApiKey> => {
+    await requireLiveClerkSession(ctx);
+    return await ctx.runMutation(internal.apiKeys.createApiKeyRecord, args);
   },
-  handler: async (ctx, args) => {
+});
+
+export const createApiKeyRecord = internalMutation({
+  args: createApiKeyArgs,
+  handler: async (ctx, args): Promise<CreatedApiKey> => {
     const userId = await requireUserId(ctx);
     await assertAccountWritable(ctx, userId);
 

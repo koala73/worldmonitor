@@ -9,7 +9,9 @@
  *   1. Caller is the Clerk-authenticated apex page; sends Bearer JWT +
  *      JSON `{nonce}` (nonce minted by `api/oauth/authorize.js` and
  *      stored at `oauth:nonce:<n>`).
- *   2. Resolve userId via Clerk JWKS verify. 401 on miss.
+ *   2. Resolve userId via Clerk JWKS verify, then confirm the token's
+ *      session is still live at Clerk (the grant outlives the bearer, so a
+ *      revoked session must not be able to mint one). 401 on miss.
  *   3. Validate `oauth:nonce:<n>` exists (DO NOT consume — U5 consumes).
  *   4. Resolve the client: `oauth:client:<client_id>` for DCR, or the CIMD
  *      document for a URL client_id (#9244).
@@ -66,7 +68,7 @@
 
 export const config = { runtime: 'edge' };
 
-import { resolveSessionUserId } from '../../server/_shared/auth-session';
+import { resolveLiveSessionUserId } from '../../server/_shared/auth-session';
 import {
   getEntitlements,
   isEntitlementBackendConfigured,
@@ -395,7 +397,7 @@ export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Re
 
 export default async function handler(req: Request): Promise<Response> {
   return mintGrantHandler(req, {
-    resolveUserId: resolveSessionUserId,
+    resolveUserId: resolveLiveSessionUserId,
     redisGet: rawRedisGet,
     redisSetEx: rawRedisSetEx,
     redisSetNxEx: rawRedisSetNxEx,

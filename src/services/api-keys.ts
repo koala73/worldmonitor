@@ -76,10 +76,12 @@ export async function createApiKey(name: string, keyKind: ApiKeyKind = 'api'): P
     throw new Error(`Account changed while creating the ${noun}. Try again.`);
   }
 
+  // An action: Convex re-checks the Clerk session is live before issuing a
+  // credential that outlives it (a mutation cannot reach Clerk).
   const result = await settleAccountOperation(
     userId,
     `creating the ${noun}`,
-    () => client.mutation(
+    () => client.action(
       (api as any).apiKeys.createApiKey,
       // Omit keyKind for API keys so the mutation args stay exactly as before.
       keyKind === 'desktop'

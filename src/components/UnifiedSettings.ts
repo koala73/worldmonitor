@@ -1993,7 +1993,18 @@ export class UnifiedSettings {
     if (raw.includes('INVALID_API_KEY_SCOPES')) {
       return 'Desktop keys cannot have API scopes.';
     }
-    return raw || 'Failed to create desktop key';
+    return this.sessionKeyErrorMessage(raw) ?? (raw || 'Failed to create desktop key');
+  }
+
+  /** Key issuance re-checks the Clerk session is live; these are its two refusals. */
+  private sessionKeyErrorMessage(raw: string): string | null {
+    if (raw.includes('SESSION_VERIFICATION_UNAVAILABLE')) {
+      return 'Could not confirm your session. Try again in a moment.';
+    }
+    if (raw.includes('AUTH_REQUIRED')) {
+      return 'Your session is no longer signed in. Sign in again to create a key.';
+    }
+    return null;
   }
 
   private renderDesktopKeysContent(): string {
@@ -2148,7 +2159,7 @@ export class UnifiedSettings {
         ? 'Maximum of 5 active keys reached. Revoke an existing key first.'
         : msg.includes('API_ACCESS_REQUIRED')
         ? 'API keys require an API access subscription (API Starter or higher).'
-        : msg;
+        : this.sessionKeyErrorMessage(msg) ?? msg;
       this.renderApiKeysError();
     } finally {
       if (this.isAccountRequestCurrent(request)) {

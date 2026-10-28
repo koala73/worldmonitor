@@ -3,14 +3,17 @@ import { describe, expect, test } from "vitest";
 import { api, internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import schema from "../schema";
+import { installLiveClerkSessions, liveSession } from "./clerkSession.helpers";
 
 const modules = import.meta.glob("../**/*.ts");
-const identity = {
+
+installLiveClerkSessions();
+const identity = liveSession({
   subject: "user_deleting",
   tokenIdentifier: "clerk|user_deleting",
   email: "deleting@example.com",
   emailVerified: true,
-};
+});
 const states: Array<Pick<Doc<"accountDeletions">, "status" | "step">> = [
   { status: "pending", step: "personal" },
   { status: "pending", step: "external" },
@@ -41,7 +44,15 @@ const rejected = async (request: Promise<unknown>) => {
     () => { throw new Error("expected the write fence to reject"); },
     (err: unknown) => err,
   );
-  expect(JSON.parse(String((error as { data?: unknown }).data))).toEqual({
+  // convex-test serializes ConvexError data once per function boundary and,
+  // unlike the backend (which decodes a nested mutation's error before the
+  // action sees it), never decodes in between — so a fence hit inside an
+  // action's `runMutation` (apiKeys.createApiKey) arrives encoded twice. The
+  // production client receives it decoded once either way; decode until the
+  // object surfaces.
+  let data: unknown = (error as { data?: unknown }).data;
+  while (typeof data === "string") data = JSON.parse(data);
+  expect(data).toEqual({
     kind: "ACCOUNT_DELETION_IN_PROGRESS",
   });
 };
@@ -71,7 +82,7 @@ for (const state of states) {
       const t = await makeT(state);
       const user = t.withIdentity(identity);
       const key = { name: "stale session", keyHash: "a".repeat(64), keyPrefix: "wm_abcdefgh" };
-      await rejected(user.mutation(api.apiKeys.createApiKey, key));
+      await rejected(user.action(api.apiKeys.createApiKey, key));
       await rejected(user.mutation(api.embedKeys.createEmbedKey, { ...key, keyPrefix: "wme_abcdefgh" }));
       await rejected(t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: identity.subject }));
       await rejected(user.mutation(api.followedCountries.followCountry, { country: "US" }));

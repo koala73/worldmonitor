@@ -30,6 +30,7 @@
 *Could not find public function for 'alertRules:setDigestSettingsForUser'*
 *Could not find public function for 'alertRules:setNotificationConfigForUser'*
 *Could not find public function for 'alertRules:setQuietHoursForUser'*
+*Could not find public function for 'apiKeys:createApiKeyRecord'*
 *Could not find public function for 'apiKeys:getKeyOwner'*
 *Could not find public function for 'apiKeys:touchKeyLastUsed'*
 *Could not find public function for 'apiKeys:validateKeyByHash'*
