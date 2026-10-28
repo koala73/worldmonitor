@@ -839,6 +839,7 @@
       "scripts/shared/jodi-measurement-fields.json",
       "scripts/shared/oil-trade-windows.js",
       "shared/country-names.json",
+      "shared/hormuz-crisis.js",
       "shared/iso3-to-iso2.json"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-7-seed-bundle-energy-sources"

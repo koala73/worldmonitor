@@ -450,6 +450,47 @@ describe('refinery yields from the trailing 12 JODI months', () => {
     assert.equal(extractCountryData(windowFixture({ gasoline: 1200, total: 1300 }), 'XX').refineryYields.products.gasoline, null);
   });
 
+  it('product trade: pre-crisis baseline (2025-02–2026-01) and current flows (latest 3 months, none before 2026-03)', () => {
+    // Expected averages computed independently from the fixture (Python).
+    const kr = extractCountryData(windowRows, 'KR').productTrade;
+    assert.deepEqual({ ...kr.preCrisisBaseline, products: undefined }, { startMonth: '2025-02', endMonth: '2026-01', months: 12, products: undefined });
+    assert.deepEqual(kr.preCrisisBaseline.products.gasoline, { demandKbd: 268.9, importsKbd: 0, exportsKbd: 298.3 });
+    assert.deepEqual(kr.preCrisisBaseline.products.diesel, { demandKbd: 439.6, importsKbd: 0, exportsKbd: 571.7 });
+    assert.deepEqual(kr.preCrisisBaseline.products.jet, { demandKbd: 157.7, importsKbd: 0, exportsKbd: 252.8 });
+    assert.deepEqual(kr.preCrisisBaseline.products.naphtha, { demandKbd: 1193.3, importsKbd: 650.5, exportsKbd: 95.7 });
+    assert.deepEqual({ ...kr.currentFlows, products: undefined }, { startMonth: '2026-06', endMonth: '2026-08', months: 3, products: undefined });
+    assert.deepEqual(kr.currentFlows.products.jet, { demandKbd: 159.1, importsKbd: 0, exportsKbd: 328.7 });
+    assert.deepEqual(kr.currentFlows.products.naphtha, { demandKbd: 1058.4, importsKbd: 390.3, exportsKbd: 27.9 });
+
+    const jp = extractCountryData(windowRows, 'JP').productTrade;
+    assert.deepEqual(jp.preCrisisBaseline.products.naphtha, { demandKbd: 589, importsKbd: 390.7, exportsKbd: 4.4 });
+    assert.deepEqual(jp.currentFlows.products.diesel, { demandKbd: 643.5, importsKbd: 14, exportsKbd: 99.4 });
+  });
+
+  it('product trade: India ends 2026-03, so current flows is that one month; unreported imports stay null', () => {
+    const india = extractCountryData(windowRows, 'IN').productTrade;
+    assert.deepEqual({ ...india.currentFlows, products: undefined }, { startMonth: '2026-03', endMonth: '2026-03', months: 1, products: undefined });
+    assert.deepEqual(india.currentFlows.products.diesel, { demandKbd: 2122.4, importsKbd: 0.7, exportsKbd: 468.9 });
+    assert.deepEqual(india.preCrisisBaseline.products.gasoline, { demandKbd: 975.8, importsKbd: null, exportsKbd: 396.8 });
+    assert.deepEqual(india.preCrisisBaseline.products.naphtha, { demandKbd: 289, importsKbd: 33.2, exportsKbd: 152.1 });
+  });
+
+  it('product trade: a window needs half its months per flow; no current window before 2026-03; no data is null', () => {
+    const tradeRows = (monthsList, flow = 'TOTEXPSB', value = '100') => monthsList.map((month) => makeRow({ REF_AREA: 'XX', TIME_PERIOD: month, ENERGY_PRODUCT: 'GASOLINE', FLOW_BREAKDOWN: flow, OBS_VALUE: value, ASSESSMENT_CODE: '1' }));
+    const pre = ['2025-02', '2025-03', '2025-04', '2025-05', '2025-06'];
+    const five = extractCountryData([...tradeRows(pre), ...tradeRows(['2026-06'], 'TOTDEMO')], 'XX').productTrade;
+    assert.equal(five.preCrisisBaseline.months, 5);
+    assert.equal(five.preCrisisBaseline.products.gasoline.exportsKbd, null, '5 of 12 months is not a baseline');
+    const six = extractCountryData([...tradeRows([...pre, '2025-07']), ...tradeRows(['2026-06'], 'TOTDEMO')], 'XX').productTrade;
+    assert.equal(six.preCrisisBaseline.products.gasoline.exportsKbd, 100);
+    assert.equal(six.currentFlows.products.gasoline.demandKbd, 100);
+    assert.equal(six.currentFlows.products.gasoline.exportsKbd, null, 'no exports reported in 2026-04..06');
+    const early = extractCountryData(tradeRows(['2025-12', '2026-01', '2026-02'], 'TOTDEMO'), 'XX').productTrade;
+    assert.equal(early.currentFlows, null, 'a data month before 2026-03 has no current-flows window');
+    assert.equal(early.preCrisisBaseline.months, 2);
+    assert.equal(extractCountryData(tradeRows(['2026-07'], 'TOTDEMO'), 'XX').productTrade.preCrisisBaseline, null);
+  });
+
   it('naphtha does not join the demand-change basket', () => {
     const rows = [];
     for (const month of ['2025-06', '2026-06']) {

@@ -22,12 +22,14 @@ import {
   computeGasDisruption,
   GLOBAL_MEDIAN_REFINERY_YIELD,
   GLOBAL_MEDIAN_REFINERY_YIELD_SOURCE,
+  computeProductBalance,
 } from '../server/worldmonitor/intelligence/v1/_shock-compute.js';
 import { computeEnergyShockScenario } from '../server/worldmonitor/intelligence/v1/compute-energy-shock.ts';
 import { getCountryCostShock } from '../server/worldmonitor/supply-chain/v1/get-country-cost-shock.ts';
 import { buildDecisionBrief } from '../src/utils/decision-brief.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { parseCsv, extractCountryData } from '../scripts/seed-jodi-oil.mjs';
+import { createCountryDeepDivePanelHarness } from './helpers/country-deep-dive-panel-harness.mjs';
 import { readFileSync } from 'node:fs';
 
 import { ISO2_TO_COMTRADE } from '../server/worldmonitor/intelligence/v1/_comtrade-reporters.js';
@@ -892,8 +894,6 @@ describe('refinery yields are per country, from the JODI row', () => {
       const p = productRow(response, name);
       const expectedLoss = crudeLoss * row.refineryYields.products[key];
       assert.equal(p.outputLossKbd, round1(expectedLoss), `${name} loss`);
-      assert.equal(p.demandKbd, round1(row[key].demandKbd), `${name} demand`);
-      assert.equal(p.deficitPct, round1(Math.min(100, (expectedLoss / row[key].demandKbd) * 100)), `${name} deficit`);
     }
     assert.ok(productRow(response, 'Gasoline').outputLossKbd < crudeLoss * 0.2, 'KR gasoline yield is ~18%, not 44%');
 
@@ -987,6 +987,150 @@ describe('GLOBAL_MEDIAN_REFINERY_YIELD', () => {
     assert.deepEqual(GLOBAL_MEDIAN_REFINERY_YIELD, { gasoline: 0.242, diesel: 0.394, jet: 0.069, lpg: 0.036, naphtha: 0.085 });
     assert.match(GLOBAL_MEDIAN_REFINERY_YIELD_SOURCE, /44 JODI refiners/);
     assert.match(GLOBAL_MEDIAN_REFINERY_YIELD_SOURCE, /2026-10-28/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Product shortfalls net product trade: exports are redirected home before
+// demand is hit, and Gulf-origin product imports are lost with the route.
+// ---------------------------------------------------------------------------
+
+// UN Comtrade 2024 HS 2710 partner rows for KR (production key, 2026-10-28):
+// AE + QA + KW + SA hold 46.1% of import value.
+const KR_GULF_PRODUCT_SHARE = 0.461;
+function productTradeSeed(iso2, row = seededJodiRow(iso2), { productShare = KR_GULF_PRODUCT_SHARE } = {}) {
+  const seed = refineryYieldSeed(iso2, row);
+  const partnersKey = `comtrade:bilateral-hs4-partners:${iso2}:v1`;
+  if (productShare != null) {
+    seed[partnersKey].products.push({ hs4: '2710', year: 2024, totalValue: 1000, partners: [{ partnerIso2: 'AE', partnerCode: 784, value: productShare * 1000 }, { partnerIso2: 'SG', partnerCode: 702, value: (1 - productShare) * 1000 }], omittedCount: 0, omittedShare: 0 });
+  }
+  return seed;
+}
+const balanceLine = (response, basis) => response.limitations.find((l) => l.startsWith(`product balance, ${basis}`));
+
+describe('computeProductBalance', () => {
+  it('nets exports before demand is hit and adds Gulf-origin import losses', () => {
+    // KR diesel 2026-07, research example: 703.6 lost, 591.0 exported, 443.7 demand -> 25.4%.
+    const diesel = computeProductBalance({ crudeLossKbd: 2125.8, yieldFactor: 0.331, demandKbd: 443.7, importsKbd: 0, exportsKbd: 591.0, gulfImportLossFactor: 0.461 });
+    assert.deepEqual(Object.fromEntries(Object.entries(diesel).map(([k, v]) => [k, Math.round(v * 1e4) / 1e4])),
+      { outputLossKbd: 703.6398, gulfImportLossKbd: 0, exportBufferKbd: 591, shortfallKbd: 112.6398, deficitPct: 25.3865 });
+    const naphtha = computeProductBalance({ crudeLossKbd: 1000, yieldFactor: 0.2, demandKbd: 1000, importsKbd: 600, exportsKbd: 100, gulfImportLossFactor: 0.5 });
+    assert.equal(naphtha.gulfImportLossKbd, 300);
+    assert.equal(naphtha.shortfallKbd, 400);
+    assert.equal(naphtha.deficitPct, 40);
+  });
+
+  it('exports above the loss leave no shortfall; unknown trade is never invented', () => {
+    assert.equal(computeProductBalance({ crudeLossKbd: 2125.8, yieldFactor: 0.162, demandKbd: 160.9, importsKbd: 0, exportsKbd: 349.2, gulfImportLossFactor: null }).deficitPct, 0);
+    const unknown = computeProductBalance({ crudeLossKbd: 100, yieldFactor: 0.5, demandKbd: 100, importsKbd: null, exportsKbd: null, gulfImportLossFactor: 0.5 });
+    assert.deepEqual([unknown.gulfImportLossKbd, unknown.exportBufferKbd, unknown.deficitPct], [0, 0, 50]);
+    assert.equal(computeProductBalance({ crudeLossKbd: 100, yieldFactor: 0.5, demandKbd: 100, importsKbd: 80, exportsKbd: 0, gulfImportLossFactor: null }).gulfImportLossKbd, 0, 'no attributed share, no import loss');
+    assert.equal(computeProductBalance({ crudeLossKbd: 1000, yieldFactor: 0.5, demandKbd: 100, importsKbd: 0, exportsKbd: 0, gulfImportLossFactor: null }).deficitPct, 100, 'capped at 100%');
+  });
+});
+
+describe('product shortfalls net product trade', () => {
+  it('KR: pre-crisis exports cover the gasoline, diesel and jet losses; naphtha also loses its Gulf imports', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const row = seededJodiRow('KR');
+    installEnergyShockRedis(productTradeSeed('KR', row));
+
+    const response = await computeShock({ countryCode: 'KR', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+
+    const crudeLoss = row.crude.importsKbd * 0.7;
+    const pre = row.productTrade.preCrisisBaseline.products;
+    for (const [name, key, gulfShare] of [['Gasoline', 'gasoline', KR_GULF_PRODUCT_SHARE], ['Diesel', 'diesel', KR_GULF_PRODUCT_SHARE], ['Jet fuel', 'jet', KR_GULF_PRODUCT_SHARE], ['LPG', 'lpg', null], ['Naphtha', 'naphtha', KR_GULF_PRODUCT_SHARE]]) {
+      const p = productRow(response, name);
+      const outputLoss = crudeLoss * row.refineryYields.products[key];
+      const importLoss = gulfShare == null ? 0 : pre[key].importsKbd * gulfShare;
+      const shortfall = Math.max(0, outputLoss + importLoss - pre[key].exportsKbd);
+      assert.equal(p.outputLossKbd, round1(outputLoss), `${name} output loss`);
+      assert.equal(p.demandKbd, round1(pre[key].demandKbd), `${name} demand is the pre-crisis average`);
+      assert.equal(p.deficitPct, round1(Math.min(100, (shortfall / pre[key].demandKbd) * 100)), `${name} deficit`);
+    }
+    for (const name of ['Gasoline', 'Diesel', 'Jet fuel']) {
+      assert.ok(productRow(response, name).deficitPct < 50, `${name}: Korea exports most of its output (was 100% gross)`);
+    }
+    assert.ok(productRow(response, 'Naphtha').deficitPct > 50, 'naphtha loses refinery output and Gulf imports');
+
+    const line = balanceLine(response, 'pre-crisis baseline');
+    assert.match(line, /^product balance, pre-crisis baseline \(2025-02–2026-01\): deficit = refinery output loss \+ Gulf-origin import loss − exports redirected home, ÷ demand, kb\/d averaged over the window: /);
+    const jetOut = crudeLoss * row.refineryYields.products.jet;
+    const jetShort = Math.max(0, jetOut - pre.jet.exportsKbd);
+    assert.ok(line.includes(`jet fuel ${jetOut.toFixed(1)} + 0.0 − 252.8 = ${jetShort.toFixed(1)} of 157.7 (${(jetShort / 157.7 * 100).toFixed(1)}%)`), line);
+    assert.ok(line.includes('LPG ') && /LPG [\d.]+ \+ n\/a − 5\.6/.test(line), `LPG imports are unattributed: ${line}`);
+    assert.match(balanceLine(response, 'current flows'), /^product balance, current flows \(2026-06–2026-08, 3 months; crude loss as in the headline\): gasoline \d+\.\d%, diesel \d+\.\d%, jet fuel 0\.0%, LPG \d+\.\d%, naphtha \d+\.\d%\.$/);
+    const imports = response.limitations.find((l) => l.startsWith('Gulf-origin product imports'));
+    assert.match(imports, /UN Comtrade 2024 HS 2710 import value share from SA, AE, IQ, KW, IR, QA, BH: 46\.1%/);
+    assert.match(imports, /LPG imports are not attributed/);
+  });
+
+  it('the current-flows line uses the latest 3 months of trade, not the pre-crisis averages', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const row = seededJodiRow('KR');
+    installEnergyShockRedis(productTradeSeed('KR', row));
+    const response = await computeShock({ countryCode: 'KR', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    const crudeLoss = row.crude.importsKbd * 0.7;
+    const cur = row.productTrade.currentFlows.products.naphtha;
+    const expected = Math.min(100, Math.max(0, crudeLoss * row.refineryYields.products.naphtha + cur.importsKbd * KR_GULF_PRODUCT_SHARE - cur.exportsKbd) / cur.demandKbd * 100);
+    assert.match(balanceLine(response, 'current flows'), new RegExp(`naphtha ${expected.toFixed(1).replace('.', '\\.')}%`));
+  });
+
+  it('a JODI row without windowed trade nets the latest month and says so; no separate current-flows line', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const { productTrade, ...legacy } = seededJodiRow('KR');
+    assert.ok(productTrade);
+    installEnergyShockRedis(productTradeSeed('KR', legacy));
+
+    const response = await computeShock({ countryCode: 'KR', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+
+    const crudeLoss = legacy.crude.importsKbd * 0.7;
+    const diesel = productRow(response, 'Diesel');
+    assert.equal(diesel.demandKbd, round1(legacy.diesel.demandKbd));
+    assert.equal(diesel.deficitPct, round1(Math.min(100, Math.max(0, crudeLoss * legacy.refineryYields.products.diesel - legacy.diesel.exportsKbd) / legacy.diesel.demandKbd * 100)));
+    assert.match(balanceLine(response, 'latest month'), /^product balance, latest month \(2026-08; no pre-crisis product trade in this JODI row\)/);
+    assert.equal(balanceLine(response, 'current flows'), undefined);
+  });
+
+  it('without HS 2710 partner rows only exports are netted, and the limitation says imports are not modeled', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const row = seededJodiRow('KR');
+    installEnergyShockRedis(productTradeSeed('KR', row, { productShare: null }));
+    const response = await computeShock({ countryCode: 'KR', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    const pre = row.productTrade.preCrisisBaseline.products.naphtha;
+    const outputLoss = row.crude.importsKbd * 0.7 * row.refineryYields.products.naphtha;
+    assert.equal(productRow(response, 'Naphtha').deficitPct, round1(Math.max(0, outputLoss - pre.exportsKbd) / pre.demandKbd * 100));
+    assert.ok(response.limitations.some((l) => /^Gulf-origin product imports are not modeled for KR: no UN Comtrade partner-level HS 2710 import rows/.test(l)), response.limitations.join('\n'));
+  });
+
+  it('gas-only mode drops the product-balance lines with the other oil limitations', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({ ...productTradeSeed('KR'), 'energy:jodi-gas:v1:KR': { lngImportsTj: 193604, pipeImportsTj: 0, totalDemandTj: 115795, lngShareOfImports: 1, dataMonth: '2026-07' } });
+    const response = await computeShock({ countryCode: 'KR', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'gas' });
+    assert.ok(!response.limitations.some((l) => /^product balance|^Gulf-origin product imports/.test(l)), response.limitations.join('\n'));
+  });
+
+  it('the Country brief table labels the refinery loss and says the deficit nets product trade', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis(productTradeSeed('KR'));
+    const response = await computeShock({ countryCode: 'KR', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    restoreEnergyShockEnvironment();
+    const harness = await createCountryDeepDivePanelHarness();
+    t.after(() => harness.cleanup());
+    const text = harness.createPanel().renderShockResult(response).textContent;
+    assert.match(text, /ProductDemandRefinery lossDeficit/);
+    assert.match(text, /Deficit nets exports redirected home and adds lost Gulf-origin imports \(pre-crisis baseline 2025-02–2026-01\)/);
+    assert.match(text, /Naphtha1193\.3 kbd/);
+  });
+
+  it('ignores oil caches written before product trade was netted (v9)', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...productTradeSeed('KR'),
+      'energy:shock:v9:KR:hormuz_strait:100:l:oil': { dataAvailable: true, assessment: 'v9 gross deficits', products: [] },
+    });
+    const response = await computeShock({ countryCode: 'KR', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    assert.notEqual(response.assessment, 'v9 gross deficits');
   });
 });
 

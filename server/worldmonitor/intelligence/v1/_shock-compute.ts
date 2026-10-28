@@ -135,6 +135,71 @@ export function resolveRefineryYields(code: string, raw: JodiRefineryYieldsLike 
   };
 }
 
+export interface ProductBalanceInput {
+  crudeLossKbd: number;
+  yieldFactor: number;
+  demandKbd: number;
+  /** Null when JODI does not report the flow: no import loss and no export buffer is invented. */
+  importsKbd: number | null;
+  exportsKbd: number | null;
+  /** Gulf share of the product's imports × route exposure × disruption fraction; null when not attributed. */
+  gulfImportLossFactor: number | null;
+}
+
+export interface ProductBalance {
+  outputLossKbd: number;
+  gulfImportLossKbd: number;
+  exportBufferKbd: number;
+  shortfallKbd: number;
+  deficitPct: number;
+}
+
+/**
+ * Domestic shortfall of one refined product: lost refinery output plus lost
+ * Gulf-origin imports, less the exports a country can redirect home before
+ * its own demand is hit.
+ */
+export function computeProductBalance(input: ProductBalanceInput): ProductBalance {
+  const outputLossKbd = input.crudeLossKbd * input.yieldFactor;
+  const gulfImportLossKbd = input.gulfImportLossFactor != null && input.importsKbd != null && input.importsKbd > 0
+    ? input.importsKbd * input.gulfImportLossFactor : 0;
+  const exportBufferKbd = input.exportsKbd != null && input.exportsKbd > 0 ? input.exportsKbd : 0;
+  const shortfallKbd = Math.max(0, outputLossKbd + gulfImportLossKbd - exportBufferKbd);
+  return { outputLossKbd, gulfImportLossKbd, exportBufferKbd, shortfallKbd, deficitPct: clamp((shortfallKbd / input.demandKbd) * 100, 0, 100) };
+}
+
+export interface ProductTradeFlows {
+  demandKbd: number | null;
+  importsKbd: number | null;
+  exportsKbd: number | null;
+}
+
+export interface ProductTradeWindow {
+  startMonth: string;
+  endMonth: string;
+  months: number;
+  products: Partial<Record<RefineryProductKey, ProductTradeFlows>>;
+}
+
+const finiteOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+
+/** One `productTrade` window from scripts/seed-jodi-oil.mjs, or null when malformed. */
+export function parseProductTradeWindow(raw: unknown): ProductTradeWindow | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const w = raw as { startMonth?: unknown; endMonth?: unknown; months?: unknown; products?: unknown };
+  if (typeof w.startMonth !== 'string' || !MONTH_RE.test(w.startMonth)
+    || typeof w.endMonth !== 'string' || !MONTH_RE.test(w.endMonth)
+    || typeof w.months !== 'number' || !Number.isFinite(w.months) || w.months < 1
+    || !w.products || typeof w.products !== 'object') return null;
+  const products: Partial<Record<RefineryProductKey, ProductTradeFlows>> = {};
+  for (const { key } of REFINERY_PRODUCTS) {
+    const p = (w.products as Record<string, { demandKbd?: unknown; importsKbd?: unknown; exportsKbd?: unknown } | null>)[key];
+    if (!p || typeof p !== 'object') continue;
+    products[key] = { demandKbd: finiteOrNull(p.demandKbd), importsKbd: finiteOrNull(p.importsKbd), exportsKbd: finiteOrNull(p.exportsKbd) };
+  }
+  return { startMonth: w.startMonth, endMonth: w.endMonth, months: w.months, products };
+}
+
 export function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
