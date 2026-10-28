@@ -195,3 +195,31 @@ it('shows the reported stocks, without cover days, when an oil-only result has n
   expect(el.querySelector('.cdp-shock-reported-stocks')?.textContent).toBe('Oil stocks (JODI-reported, not IEA data): 141.3 M bbl at the end of 2026-03; cover not modeled for this scenario');
   expect(el.textContent).toContain('Insufficient import data for India');
 });
+
+const EXPORTER_ROW = 'Net oil exporter — strategic reserve cover not applicable';
+function netExporter(overrides: Partial<ComputeEnergyShockScenarioResponse>): ComputeEnergyShockScenarioResponse {
+  return japan({
+    comtradeCoverage: false, gulfCrudeShare: 0, crudeLossKbd: 0, products: [], effectiveCoverDays: -1,
+    coverageLevel: 'partial', preCrisisBaseline: undefined, currentFlows: undefined, ...overrides,
+  });
+}
+
+it('an IEA net exporter without an origin share reads as a net exporter, not "not modeled" (Mexico)', () => {
+  const el = render(netExporter({
+    countryCode: 'MX', jodiOilCoverage: false,
+    assessment: 'Mexico is a net oil exporter, so no import-cover duration applies; Strait of Hormuz disruption mainly affects export revenue and can still reach refiners that import Gulf crude or products.',
+    limitations: ['effectiveCoverDays -1 marks a net oil exporter (IEA); no import-cover duration applies.'],
+  }));
+  expect(el.textContent).toContain(EXPORTER_ROW);
+  expect(el.textContent).not.toContain('IEA cover');
+});
+
+it('a net exporter without an IEA record still reads as a net exporter (Saudi Arabia, from JODI)', () => {
+  const el = render(netExporter({
+    countryCode: 'SA', ieaStocksCoverage: false,
+    assessment: 'Saudi Arabia is a net oil exporter, so no import-cover duration applies; Strait of Hormuz disruption mainly affects export revenue and can still reach refiners that import Gulf crude or products.',
+    limitations: ['effectiveCoverDays -1 marks a net oil exporter: net crude exporter from JODI 2026-08, production 9,800 kb/d against refinery intake 2,700, exports 6,900 against imports 0; no import-cover duration applies.'],
+  }));
+  expect(el.textContent).toContain(EXPORTER_ROW);
+  expect(el.querySelector('.cdp-shock-reserve-estimate')).toBeNull();
+});

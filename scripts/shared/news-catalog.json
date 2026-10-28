@@ -7316,19 +7316,21 @@
         {
           "edition": "full",
           "category": "thinktanks",
-          "browserOrder": 5
+          "browserOrder": 5,
+          "serverOrder": 10
         }
       ]
     },
     {
       "name": "Brookings",
-      "url": "https://news.google.com/rss/search?q=site:brookings.edu&hl=en&gl=US&ceid=US:en",
+      "url": "https://news.google.com/rss/search?q=site:brookings.edu+when:7d&hl=en&gl=US&ceid=US:en",
       "type": "research",
       "placements": [
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 19
+          "browserOrder": 19,
+          "serverOrder": 26
         }
       ]
     },
@@ -7339,19 +7341,21 @@
         {
           "edition": "full",
           "category": "thinktanks",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 11
         }
       ]
     },
     {
       "name": "Carnegie",
-      "url": "https://news.google.com/rss/search?q=site:carnegieendowment.org&hl=en&gl=US&ceid=US:en",
+      "url": "https://news.google.com/rss/search?q=site:carnegieendowment.org+when:7d&hl=en&gl=US&ceid=US:en",
       "type": "research",
       "placements": [
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 20
+          "browserOrder": 20,
+          "serverOrder": 28
         }
       ]
     },
@@ -7380,7 +7384,8 @@
         {
           "edition": "full",
           "category": "thinktanks",
-          "browserOrder": 9
+          "browserOrder": 9,
+          "serverOrder": 12
         }
       ]
     },
@@ -7392,7 +7397,8 @@
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 23
+          "browserOrder": 23,
+          "serverOrder": 39
         }
       ]
     },
@@ -8932,7 +8938,8 @@
         {
           "edition": "finance",
           "category": "markets",
-          "browserOrder": 4
+          "browserOrder": 4,
+          "serverOrder": 11
         }
       ]
     },
@@ -8943,7 +8950,8 @@
         {
           "edition": "finance",
           "category": "markets",
-          "browserOrder": 5
+          "browserOrder": 5,
+          "serverOrder": 9
         }
       ]
     },
@@ -8954,7 +8962,8 @@
         {
           "edition": "finance",
           "category": "markets",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 10
         }
       ]
     },
@@ -8965,7 +8974,8 @@
         {
           "edition": "finance",
           "category": "forex",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 2
         }
       ]
     },
@@ -8976,7 +8986,8 @@
         {
           "edition": "finance",
           "category": "forex",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 1
         }
       ]
     },
@@ -8987,7 +8998,8 @@
         {
           "edition": "finance",
           "category": "bonds",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 2
         }
       ]
     },
@@ -8998,7 +9010,8 @@
         {
           "edition": "finance",
           "category": "bonds",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 1
         }
       ]
     },
@@ -9009,7 +9022,13 @@
         {
           "edition": "finance",
           "category": "commodities",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 2
+        },
+        {
+          "edition": "full",
+          "category": "commodities",
+          "serverOrder": 2
         }
       ]
     },
@@ -9020,7 +9039,13 @@
         {
           "edition": "finance",
           "category": "commodities",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 3
+        },
+        {
+          "edition": "full",
+          "category": "commodities",
+          "serverOrder": 3
         }
       ]
     },
@@ -9031,7 +9056,8 @@
         {
           "edition": "finance",
           "category": "crypto",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 20
         }
       ]
     },
@@ -9042,7 +9068,8 @@
         {
           "edition": "finance",
           "category": "centralbanks",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 4
         }
       ]
     },
@@ -9053,7 +9080,8 @@
         {
           "edition": "finance",
           "category": "centralbanks",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 3
         }
       ]
     },
@@ -9064,7 +9092,8 @@
         {
           "edition": "finance",
           "category": "centralbanks",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 2
         }
       ]
     },
@@ -9075,7 +9104,8 @@
         {
           "edition": "finance",
           "category": "centralbanks",
-          "browserOrder": 5
+          "browserOrder": 5,
+          "serverOrder": 5
         }
       ]
     },
@@ -9086,7 +9116,8 @@
         {
           "edition": "finance",
           "category": "economic",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 2
         }
       ]
     },
@@ -9097,7 +9128,8 @@
         {
           "edition": "finance",
           "category": "ipo",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 1
         }
       ]
     },
@@ -9108,7 +9140,8 @@
         {
           "edition": "finance",
           "category": "ipo",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 2
         }
       ]
     },
@@ -9119,7 +9152,8 @@
         {
           "edition": "happy",
           "category": "positive",
-          "browserOrder": 4
+          "browserOrder": 4,
+          "serverOrder": 9
         }
       ]
     },
@@ -9130,7 +9164,8 @@
         {
           "edition": "happy",
           "category": "positive",
-          "browserOrder": 5
+          "browserOrder": 5,
+          "serverOrder": 4
         }
       ]
     },
@@ -9141,7 +9176,8 @@
         {
           "edition": "happy",
           "category": "positive",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 6
         }
       ]
     },
@@ -9152,7 +9188,8 @@
         {
           "edition": "happy",
           "category": "positive",
-          "browserOrder": 7
+          "browserOrder": 7,
+          "serverOrder": 5
         }
       ]
     },
@@ -9163,7 +9200,8 @@
         {
           "edition": "happy",
           "category": "positive",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 7
         }
       ]
     },
@@ -9174,7 +9212,8 @@
         {
           "edition": "happy",
           "category": "positive",
-          "browserOrder": 9
+          "browserOrder": 9,
+          "serverOrder": 8
         }
       ]
     },
@@ -9185,7 +9224,8 @@
         {
           "edition": "happy",
           "category": "science",
-          "browserOrder": 0
+          "browserOrder": 0,
+          "serverOrder": 4
         }
       ]
     },
@@ -9196,18 +9236,20 @@
         {
           "edition": "happy",
           "category": "science",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 6
         }
       ]
     },
     {
       "name": "New Scientist",
-      "url": "https://www.newscientist.com/feed/home/",
+      "url": "https://news.google.com/rss/search?q=site:newscientist.com+when:3d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "happy",
           "category": "science",
-          "browserOrder": 4
+          "browserOrder": 4,
+          "serverOrder": 7
         }
       ]
     },
@@ -9218,7 +9260,8 @@
         {
           "edition": "happy",
           "category": "science",
-          "browserOrder": 7
+          "browserOrder": 7,
+          "serverOrder": 5
         }
       ]
     },
@@ -9229,7 +9272,8 @@
         {
           "edition": "happy",
           "category": "nature",
-          "browserOrder": 0
+          "browserOrder": 0,
+          "serverOrder": 2
         }
       ]
     },
@@ -9240,7 +9284,8 @@
         {
           "edition": "happy",
           "category": "nature",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 3
         }
       ]
     },
@@ -9251,7 +9296,8 @@
         {
           "edition": "happy",
           "category": "inspiring",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 2
         }
       ]
     },
@@ -9265,7 +9311,8 @@
         {
           "edition": "commodity",
           "category": "gold-silver",
-          "browserOrder": 5
+          "browserOrder": 5,
+          "serverOrder": 7
         }
       ]
     },
@@ -9276,7 +9323,8 @@
         {
           "edition": "commodity",
           "category": "gold-silver",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 8
         }
       ]
     },
@@ -9287,7 +9335,8 @@
         {
           "edition": "commodity",
           "category": "gold-silver",
-          "browserOrder": 7
+          "browserOrder": 7,
+          "serverOrder": 6
         }
       ]
     },
@@ -9301,7 +9350,8 @@
         {
           "edition": "commodity",
           "category": "gold-silver",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 5
         }
       ]
     },
@@ -9545,7 +9595,8 @@
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 35
         }
       ]
     },
@@ -9557,7 +9608,8 @@
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 10
+          "browserOrder": 10,
+          "serverOrder": 42
         }
       ]
     },
@@ -9572,7 +9624,8 @@
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 12
+          "browserOrder": 12,
+          "serverOrder": 29
         }
       ]
     },
@@ -9584,7 +9637,8 @@
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 13
+          "browserOrder": 13,
+          "serverOrder": 30
         }
       ]
     },
@@ -9596,19 +9650,21 @@
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 17
+          "browserOrder": 17,
+          "serverOrder": 37
         }
       ]
     },
     {
       "name": "FAS",
-      "url": "https://news.google.com/rss/search?q=site:fas.org+nuclear+weapons+security&hl=en&gl=US&ceid=US:en",
+      "url": "https://news.google.com/rss/search?q=site:fas.org+when:30d&hl=en-US&gl=US&ceid=US:en",
       "type": "research",
       "placements": [
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 21
+          "browserOrder": 21,
+          "serverOrder": 33
         }
       ]
     },
@@ -9620,7 +9676,8 @@
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 22
+          "browserOrder": 22,
+          "serverOrder": 38
         }
       ]
     },
@@ -9632,7 +9689,8 @@
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 24
+          "browserOrder": 24,
+          "serverOrder": 43
         }
       ]
     },
@@ -9644,7 +9702,8 @@
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 25
+          "browserOrder": 25,
+          "serverOrder": 34
         }
       ]
     },
@@ -9656,7 +9715,8 @@
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 26
+          "browserOrder": 26,
+          "serverOrder": 41
         }
       ]
     },
@@ -9668,7 +9728,8 @@
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 27
+          "browserOrder": 27,
+          "serverOrder": 27
         }
       ]
     },
@@ -9680,19 +9741,21 @@
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 28
+          "browserOrder": 28,
+          "serverOrder": 36
         }
       ]
     },
     {
       "name": "Ransomware.live",
-      "url": "https://www.ransomware.live/rss.xml",
+      "url": "https://news.google.com/rss/search?q=site:ransomware.live+when:7d&hl=en-US&gl=US&ceid=US:en",
       "type": "cyber",
       "placements": [
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 33
+          "browserOrder": 33,
+          "serverOrder": 40
         }
       ]
     },
@@ -9704,7 +9767,8 @@
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 35
+          "browserOrder": 35,
+          "serverOrder": 32
         }
       ]
     },
@@ -9716,7 +9780,8 @@
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 43
+          "browserOrder": 43,
+          "serverOrder": 31
         }
       ]
     }
