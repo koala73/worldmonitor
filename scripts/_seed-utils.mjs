@@ -1469,12 +1469,12 @@ async function httpsProxyFetchJson(url, proxyAuth, proxyAttempt = 0) {
 // `headers` are forwarded to the origin (e.g. an API subscription key); the
 // shared User-Agent is applied unless a caller sets its own.
 export async function httpsProxyFetchRaw(url, proxyAuth, {
-  accept = '*/*', timeoutMs = 20_000, signal, proxyAttempt = 0, headers = {}, onErrorResponse,
+  accept = '*/*', timeoutMs = 20_000, signal, proxyAttempt = 0, headers = {}, onErrorResponse, maxResponseBytes,
 } = {}) {
   const { proxyFetch, parseProxyConfigForAttempt } = createRequire(import.meta.url)('./_proxy-utils.cjs');
   const proxyConfig = parseProxyConfigForAttempt(proxyAuth, proxyAttempt);
   if (!proxyConfig) throw new Error('Invalid proxy auth string');
-  const result = await proxyFetch(url, proxyConfig, { accept, timeoutMs, signal, headers: { 'User-Agent': CHROME_UA, ...headers } });
+  const result = await proxyFetch(url, proxyConfig, { accept, timeoutMs, signal, maxResponseBytes, headers: { 'User-Agent': CHROME_UA, ...headers } });
   if (!result.ok) {
     onErrorResponse?.(result);
     throw Object.assign(new Error(`HTTP ${result.status}`), { status: result.status });
