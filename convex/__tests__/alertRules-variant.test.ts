@@ -156,9 +156,28 @@ describe("purgeUnknownVariantRules", () => {
     const preview = await t.mutation(internal.alertRules.purgeUnknownVariantRules, { cursor: null, dryRun: true });
     const byName = (a: { variant: string }, b: { variant: string }) => a.variant.localeCompare(b.variant);
     expect([...preview.unknownByVariant].sort(byName)).toEqual([
-      { variant: "__proto__", count: 1 },
-      { variant: "constructor", count: 2 },
-      { variant: "toString", count: 1 },
+      { variant: "__proto__", variantLength: 9, count: 1 },
+      { variant: "constructor", variantLength: 11, count: 2 },
+      { variant: "toString", variantLength: 8, count: 1 },
     ].sort(byName));
+  });
+
+  test("dry run keeps distinct variants that share a 40-character prefix apart", async () => {
+    const t = convexTest(schema, modules);
+    const prefix = "x".repeat(40);
+    await t.run(async (ctx) => {
+      const row = { userId: USER.subject, enabled: false, eventTypes: [], sensitivity: "high" as const, channels: [], updatedAt: 1 };
+      for (const variant of [`${prefix}-a`, `${prefix}-a`, `${prefix}-bb`, prefix]) {
+        await ctx.db.insert("alertRules", { ...row, variant });
+      }
+    });
+
+    const preview = await t.mutation(internal.alertRules.purgeUnknownVariantRules, { cursor: null, dryRun: true });
+    const byLength = (a: { variantLength: number }, b: { variantLength: number }) => a.variantLength - b.variantLength;
+    expect([...preview.unknownByVariant].sort(byLength)).toEqual([
+      { variant: prefix, variantLength: 40, count: 1 },
+      { variant: `${prefix}…`, variantLength: 42, count: 2 },
+      { variant: `${prefix}…`, variantLength: 43, count: 1 },
+    ]);
   });
 });

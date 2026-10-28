@@ -786,17 +786,23 @@ export const purgeUnknownVariantRules = internalMutation({
       .paginate({ cursor: args.cursor, numItems: 100, maximumBytesRead: 4 * 1024 * 1024 });
     let deleted = 0;
     // A Map, not an object: stored variants are arbitrary strings, and names
-    // like "constructor" or "__proto__" corrupt plain-object counters.
+    // like "constructor" or "__proto__" corrupt plain-object counters. Keyed on
+    // the FULL variant so two legacy variants that share a prefix are never
+    // merged in the report; the label is shortened only for output (a legacy
+    // variant can be ~900 KB) and `variantLength` keeps same-label records apart.
     const counts = new Map<string, number>();
     for (const rule of page.page) {
       if (known.has(rule.variant)) continue;
-      const label = rule.variant.slice(0, 40);
-      counts.set(label, (counts.get(label) ?? 0) + 1);
+      counts.set(rule.variant, (counts.get(rule.variant) ?? 0) + 1);
       if (args.dryRun) continue;
       await ctx.db.delete(rule._id);
       deleted += 1;
     }
-    const unknownByVariant = [...counts].map(([variant, count]) => ({ variant, count }));
+    const unknownByVariant = [...counts].map(([variant, count]) => ({
+      variant: variant.length > 40 ? `${variant.slice(0, 40)}…` : variant,
+      variantLength: variant.length,
+      count,
+    }));
     return { deleted, unknownByVariant, nextCursor: page.isDone ? null : page.continueCursor };
   },
 });
