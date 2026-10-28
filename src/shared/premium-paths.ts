@@ -80,6 +80,7 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/economic/v1/list-global-tenders',
   // Outlet-perspective grouping is a Pro MCP tool; the REST route matches it.
   '/api/news/v1/list-media-perspective',
+  '/api/news/v1/list-news-pool',
   '/api/trade/v1/list-comtrade-flows',
   '/api/trade/v1/get-tariff-trends',
   '/api/trade/v1/get-bilateral-tariff',

@@ -192,6 +192,10 @@ function isCuratedOmission(key, context = {}) {
   // Same for `scope`: it belongs to occurrence events only, and the handler
   // rejects any scope on a chokepoint.disruption subscription.
   if (key === 'scope' && where.includes('registerwebhook')) return true;
+  // ListNewsPool: the example cell is a French feed-row read, which has no
+  // build time or replay age, so those fields stay out and `state` gets a slot.
+  if ((where.includes('listnewspool') || where.includes('list-news-pool')) && context.name === 'cells'
+    && (key === 'generatedAt' || key === 'staleAgeSeconds')) return true;
   // GetTradeFlows / GetTariffTrends: a 200 carrying rows always has
   // unavailableReason at the UNSPECIFIED zero value. The generic enum picker
   // skips the zero value and so paired rows with INVALID_REQUEST — a response
@@ -246,6 +250,19 @@ function overrideStringExample(key, context = {}) {
     if (key === 'outletcountries') return 'US';
     if (key === 'audience') return 'domestic';
     if (key === 'outletregions') return 'northern-europe';
+  }
+  // ListNewsPool validates languages, editions and categories against the
+  // catalog layout, so the heuristic's "example" values are rejected with 400.
+  // French in full: Radio-Canada, placed under `us`.
+  if (where.includes('listnewspool') || where.includes('list-news-pool')) {
+    if (key === 'languages') return 'fr';
+    if (key === 'editions') return 'full';
+    if (key === 'category') return 'us';
+  }
+  if (where.includes('listnewspool') || where.includes('list-news-pool') || where.includes('newspoolcell')) {
+    if (key === 'edition') return 'full';
+    if (key === 'language') return 'fr';
+    if (key === 'state') return 'complete';
   }
   if (where.includes('listvulnerabilityrankings') || where.includes('list-vulnerability-rankings')) {
     if (key === 'commodityid') return 'crude_oil';

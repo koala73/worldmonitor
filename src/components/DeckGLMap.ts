@@ -6828,6 +6828,7 @@ export class DeckGLMap {
       const toggle = this.container.querySelector(`.layer-toggle[data-layer="${key}"] input`) as HTMLInputElement;
       if (toggle) toggle.checked = value;
     });
+    this.enforceLayerLimit({ notify: false });
   }
 
   public getState(): DeckMapState {
@@ -8065,25 +8066,24 @@ export class DeckGLMap {
   }
 
   private layerWarningShown = false;
-  private lastActiveLayerCount = 0;
+  // Null until the picker first renders: the layers a visitor starts with are a
+  // baseline, not an increase, so they never open the performance notice.
+  private lastActiveLayerCount: number | null = null;
 
-  private enforceLayerLimit(): void {
+  // `notify: false` rebases the count after a bulk change without opening the notice.
+  private enforceLayerLimit({ notify = true } = {}): void {
     const WARN_THRESHOLD = 13;
     const togglesEl = this.container.querySelector('.deckgl-layer-toggles');
     if (!togglesEl) return;
-    const activeCount = Array.from(togglesEl.querySelectorAll<HTMLInputElement>('.layer-toggle input'))
-      .filter(i => {
-        const toggle = i.closest('.layer-toggle') as HTMLElement | null;
-        const row = i.closest('.layer-toggle-row') as HTMLElement | null;
-        return toggle?.style.display !== 'none' && row?.style.display !== 'none';
-      })
+    // Skip toggles hidden for this variant, but not rows an active layer search hides.
+    const activeCount = Array.from(togglesEl.querySelectorAll<HTMLInputElement>('.layer-toggle:not([data-layer-hidden]) input'))
       .filter(i => i.checked).length;
-    const increasing = activeCount > this.lastActiveLayerCount;
+    const increasing = notify && this.lastActiveLayerCount !== null && activeCount > this.lastActiveLayerCount;
     this.lastActiveLayerCount = activeCount;
-    if (activeCount >= WARN_THRESHOLD && increasing && !this.layerWarningShown) {
+    if (activeCount > WARN_THRESHOLD && increasing && !this.layerWarningShown) {
       this.layerWarningShown = true;
       showLayerWarning(WARN_THRESHOLD);
-    } else if (activeCount < WARN_THRESHOLD) {
+    } else if (activeCount <= WARN_THRESHOLD) {
       this.layerWarningShown = false;
     }
   }

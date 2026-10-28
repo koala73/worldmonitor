@@ -31,6 +31,25 @@ export const OPENAPI_FILTER_PARAM_SCHEMA_OVERRIDES = [
     name: 'country_codes',
     schema: { type: 'array', minItems: 1, maxItems: 250, items: { type: 'string' } },
   },
+  // ListNewsPool: the request validator caps these (list_news_pool.proto).
+  {
+    path: '/api/news/v1/list-news-pool',
+    method: 'get',
+    name: 'languages',
+    schema: { type: 'array', maxItems: 8, items: { type: 'string' } },
+  },
+  {
+    path: '/api/news/v1/list-news-pool',
+    method: 'get',
+    name: 'editions',
+    schema: { type: 'array', maxItems: 8, items: { type: 'string' } },
+  },
+  {
+    path: '/api/news/v1/list-news-pool',
+    method: 'get',
+    name: 'category',
+    schema: { type: 'string', maxLength: 32 },
+  },
   {
     path: '/api/infrastructure/v1/get-bootstrap-data',
     method: 'get',

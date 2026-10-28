@@ -437,6 +437,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/news/v1/list-feed-digest': 'fast',
   '/api/news/v1/list-country-headlines': 'fast',
   '/api/news/v1/list-media-perspective': 'fast',
+  '/api/news/v1/list-news-pool': 'fast',
   '/api/news/v1/list-label-changes': 'fast',
   // #9093 operator queue: never cached, it is gated by a secret header.
   '/api/news/v1/list-error-reports': 'no-store',

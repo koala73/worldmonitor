@@ -148,6 +148,7 @@ const MAP = [
   [/:\/api\/intelligence\/v1\/list-wsb-tickers$/, { cap: 'markets.wsb' }],
   [/:\/api\/intelligence\/v1\/classify-event$/,           { cap: 'news.classification' }],
   [/:\/api\/news\/v1\/list-media-perspective$/,          { cap: 'news.media_perspective' }],
+  [/:\/api\/news\/v1\/list-news-pool$/,                   { cap: 'news.pool' }],
   [/:\/api\/intelligence\/v1\/deduct-situation$/,         { cap: 'intel.deduction' }],
   [/:\/api\/intelligence\/v1\/(search-intel-history|get-intel-timeline|get-similar-events)$/, { cap: 'intel.memory' }],
   // get-country-coverage (#7526) is the agent-facing sibling of the country

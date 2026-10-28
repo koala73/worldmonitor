@@ -111,6 +111,62 @@ describe("alertRules brief-only users", () => {
     expect(first.page.length).toBeLessThan(21);
   }, 180_000);
 
+  // Production has more active entitlements than one 256-row page. The
+  // entitlement scan's index range is `validUntil >= now`; when every page
+  // read its own Date.now(), page 2 ran a different query than the cursor
+  // came from and Convex threw InvalidCursor, so the route 500ed and the
+  // digest cron silently composed no default briefs (Sentry WORLDMONITOR-19Z).
+  // convex-test does not bind a cursor to its query, so the contract is
+  // pinned directly: the range comes from the caller's `now`, not the clock.
+  test("the entitlement scan's range comes from the caller's now, not the page's clock", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("entitlements", { userId: "lapsed-mid-scan", planKey: "pro_monthly", features: getFeaturesForPlan("pro_monthly"), validUntil: now + 1_000, updatedAt: now });
+    });
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now + 60_000);
+    try {
+      const atScanStart = await t.query(internal.alertRules.listPaidUserIds, { cursor: null, now });
+      const atClock = await t.query(internal.alertRules.listPaidUserIds, { cursor: null, now: now + 60_000 });
+      expect([atScanStart.page, atClock.page]).toEqual([["lapsed-mid-scan"], []]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("a multi-page entitlement scan keeps one range while the clock moves between pages", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const paid = Array.from({ length: 300 }, (_, i) => `paid-${String(i).padStart(3, "0")}`);
+    await t.run(async (ctx) => {
+      for (const userId of paid) {
+        await ctx.db.insert("entitlements", { userId, planKey: "pro_monthly", features: getFeaturesForPlan("pro_monthly"), validUntil: now + 30 * DAY, updatedAt: now });
+      }
+    });
+    // convex-test runs `_handler`; wrapping it records the range bound each
+    // page was asked for. Results alone cannot show drift here: the index is
+    // ascending, so a later bound only drops rows already behind the cursor.
+    const fn = alertRules.listPaidUserIds as unknown as { _handler: (ctx: unknown, args: { now: number }) => unknown };
+    const pageNows: number[] = [];
+    const realHandler = fn._handler;
+    const handler = vi.spyOn(fn, "_handler").mockImplementation((ctx, args) => {
+      pageNows.push(args.now);
+      return realHandler(ctx, args);
+    });
+    let tick = now;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => (tick += 1_000));
+    try {
+      const res = await t.fetch("/relay/brief-only-users", delivery);
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as string[]).sort()).toEqual(paid);
+      expect(pageNows.length).toBeGreaterThan(1);
+      expect(new Set(pageNows).size).toBe(1);
+    } finally {
+      clock.mockRestore();
+      handler.mockRestore();
+    }
+  }, 60_000);
+
   test("briefOnlyUserIds ORs flags across pages and dedupes paid ids", () => {
     const out = alertRules.briefOnlyUserIds(
       ["a", "b", "c", "c", "d"],

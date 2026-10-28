@@ -23,7 +23,9 @@ import {
   extractEntities as extractPatternEntities,
 } from '../../../shared/keyword-spike-core.js';
 import { clusterNewsCore, protoThreatLevelToLabel, topClusterKeywords } from '../../../shared/news-clustering-core.js';
+import { tokenize, tokenizeAnyScript } from '../../../shared/text-analysis-core.js';
 import type { NewsItemCore } from '../../../shared/news-clustering-core.js';
+import { NEWS_POOL_LAYOUT } from '../../../shared/news-pool-layout.generated';
 import { getSourceProvenanceState } from '../../../shared/source-provenance.js';
 import { OUTLET_PROFILE_OUTPUT_PROPERTIES, OUTLET_PROFILE_REQUIRED, withOutletProfile } from '../../../server/_shared/outlet-profile';
 import { computeCredibilityScore } from '../../../shared/news-credibility.js';
@@ -45,7 +47,7 @@ import { searchClaimPool } from '../../../server/worldmonitor/news/v1/search-cla
 import { buildAuthHeaders } from '../auth';
 import { fetchMcpDownstream } from '../downstream';
 import { assertToolFetchOk } from '../billing-denial';
-import { argStr, ciIncludes } from '../filters';
+import { argStr, argStrList, ciIncludes } from '../filters';
 import { McpSourceUnavailableError } from '../source-unavailable';
 import type { ToolDef, McpToolExecutionContext } from '../types';
 
@@ -94,34 +96,57 @@ const KEYWORD_SPIKE_MAX_STORED = 25;
 const KEYWORD_SPIKE_LINK_MAX_BYTES = 384;
 const DIGEST_ACCUMULATOR_KEY_MCP = 'digest:accumulator:v1:full:en';
 
-// Agent-addressable digest variants and their category keys. Kept as local
-// enums so Edge MCP tools never import server/ — parity with _feeds.ts is
-// asserted by tests/agent-commodities-news-parity.test.mts and the tools/list
-// enum check in mcp-nlp-tools.test.mjs.
+// `variant` is the original single-edition selector (full or tech) and stays
+// as an alias of `editions`. Edition category keys and the content languages
+// come from the generated news pool layout, so they cannot drift from the
+// catalog the digest builds from.
 const NLP_DIGEST_VARIANTS = ['full', 'tech'] as const;
 type NlpDigestVariant = typeof NLP_DIGEST_VARIANTS[number];
-const FULL_DIGEST_CATEGORIES = [
-  'politics', 'us', 'europe', 'middleeast', 'tech', 'ai', 'finance',
-  'commodities', 'gov', 'africa', 'latam', 'asia', 'energy', 'thinktanks',
-  'crisis', 'layoffs', 'science', 'intel',
-] as const;
-const TECH_DIGEST_CATEGORIES = [
-  'tech', 'ai', 'startups', 'vcblogs', 'regionalStartups', 'unicorns',
-  'accelerators', 'security', 'policy', 'github', 'funding', 'cloud',
-  'layoffs', 'finance', 'dev', 'ipo', 'producthunt', 'hardware', 'outages',
-  'thinktanks', 'podcasts',
-] as const;
-const DIGEST_CATEGORIES_BY_VARIANT: Record<NlpDigestVariant, readonly string[]> = {
-  full: FULL_DIGEST_CATEGORIES,
-  tech: TECH_DIGEST_CATEGORIES,
-};
-const ALL_DIGEST_CATEGORIES = [...new Set([...FULL_DIGEST_CATEGORIES, ...TECH_DIGEST_CATEGORIES])];
+const NEWS_EDITIONS = Object.keys(NEWS_POOL_LAYOUT.editions);
+const ALL_DIGEST_CATEGORIES = [...new Set(Object.values(NEWS_POOL_LAYOUT.editions).flat())];
+const NEWS_LANGUAGE_LIMIT = 8;
 const DIGEST_CATEGORY_DESC =
-  'Restrict to one category from the selected digest variant. full: ' +
-  FULL_DIGEST_CATEGORIES.join(', ') +
-  '; tech: ' +
-  TECH_DIGEST_CATEGORIES.join(', ') +
-  '. Echoed as `category` in the result; an unknown value yields headlineCount 0 and a `note` listing categories present in the current digest.';
+  'Restrict to one category of the selected editions. '
+  + Object.entries(NEWS_POOL_LAYOUT.editions).map(([edition, categories]) => `${edition}: ${categories.join(', ')}`).join('; ')
+  + '. Echoed as `category` in the result; an unknown value yields headlineCount 0 and a `note` listing categories present in the current digest.';
+const NEWS_SCOPE_INPUT_PROPERTIES = {
+  languages: {
+    type: 'array',
+    items: { type: 'string', enum: [...NEWS_POOL_LAYOUT.languages] },
+    maxItems: NEWS_LANGUAGE_LIMIT,
+    uniqueItems: true,
+    description: `Content languages to read (ISO 639-1), up to ${NEWS_LANGUAGE_LIMIT}. Defaults to ["en"]. Each language is processed on its own and titles stay untranslated.`,
+  },
+  editions: {
+    type: 'array',
+    items: { type: 'string', enum: NEWS_EDITIONS },
+    maxItems: NEWS_EDITIONS.length,
+    uniqueItems: true,
+    description: 'Digest editions to read. Defaults to ["full"]; overrides variant.',
+  },
+} as const;
+const NEWS_SCOPE_OUTPUT_PROPERTIES = {
+  languages: { type: 'array', items: { type: 'string' }, description: 'Applied languages; present when languages or editions were passed.' },
+  editions: { type: 'array', items: { type: 'string' }, description: 'Applied editions; present when languages or editions were passed.' },
+  poolCoverage: {
+    type: 'object',
+    description: 'Present on reads beyond one English edition. state is complete, partial (some sources were not cached; never read partial as quiet), stale or unavailable; cells lists each edition and language read.',
+    properties: {
+      state: { type: 'string', enum: ['complete', 'partial', 'stale', 'unavailable'] },
+      cells: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            edition: { type: 'string' }, language: { type: 'string' },
+            state: { type: 'string', enum: ['complete', 'partial', 'stale', 'missing'] },
+            items: { type: 'number' }, staleAgeSeconds: { type: 'number' },
+          },
+        },
+      },
+    },
+  },
+} as const;
 
 const SOURCE_PROVENANCE_REQUIRED = [
   'risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases', 'summary',
@@ -173,12 +198,14 @@ function patternEntityKind(value: string): 'cve' | 'apt' | 'fin' | 'leader' {
   return 'leader';
 }
 
+type NlpDigestRawItem = {
+  source?: string; title?: string; snippet?: string; link?: string; publishedAt?: number;
+  isAlert?: boolean; credibilityScore?: number; corroborationCount?: number;
+  threat?: { level?: string; category?: string; confidence?: number; source?: string };
+};
+
 type NlpDigestCategoryGroup = {
-  items?: Array<{
-    source?: string; title?: string; snippet?: string; link?: string; publishedAt?: number;
-    isAlert?: boolean; credibilityScore?: number; corroborationCount?: number;
-    threat?: { level?: string; category?: string; confidence?: number; source?: string };
-  }>;
+  items?: NlpDigestRawItem[];
 };
 
 const NLP_DIGEST_COVERAGE_STATES = ['complete', 'partial', 'stale', 'unavailable'] as const;
@@ -231,10 +258,63 @@ const NLP_DIGEST_COVERAGE_OUTPUT_SCHEMA = {
   },
 } as const;
 
+/** A digest item with the language and editions a pool read reports. */
+type NlpNewsItem = NewsItemCore & { language?: string; editions?: string[] };
+
+type NlpPoolCoverage = {
+  state: 'complete' | 'partial' | 'stale' | 'unavailable';
+  cells: Array<{ edition: string; language: string; state: string; items: number; staleAgeSeconds: number }>;
+};
+
+/**
+ * What to read. One English edition goes to the public digest exactly as
+ * before; any other language or several editions go to ListNewsPool.
+ * `echo` is set when the caller passed languages or editions, so the result
+ * reports them; a call without them returns what it always did.
+ */
+type NlpNewsScope = { languages: string[]; editions: string[]; echo: boolean };
+
+function isPoolScope(scope: NlpNewsScope): boolean {
+  return scope.editions.length > 1 || scope.languages.length !== 1 || scope.languages[0] !== 'en';
+}
+
+/** Validates languages, editions and the variant alias. */
+function resolveNlpNewsScope(params: Record<string, unknown>): NlpNewsScope | { error: string } {
+  const languages = [...new Set(argStrList(params.languages))].sort();
+  const editions = [...new Set(argStrList(params.editions))];
+  if (languages.length > NEWS_LANGUAGE_LIMIT || languages.some((lang) => !NEWS_POOL_LAYOUT.languages.includes(lang))) {
+    return { error: `languages must be at most ${NEWS_LANGUAGE_LIMIT} of: ${NEWS_POOL_LAYOUT.languages.join(', ')}` };
+  }
+  if (editions.some((edition) => !NEWS_EDITIONS.includes(edition))) {
+    return { error: `editions must be from: ${NEWS_EDITIONS.join(', ')}` };
+  }
+  const variant = resolveNlpDigestVariant(params.variant);
+  if (!variant) return { error: `variant must be one of: ${NLP_DIGEST_VARIANTS.join(', ')}` };
+  if (editions.length > 0 && params.variant !== undefined && (editions.length !== 1 || editions[0] !== variant)) {
+    return { error: 'pass editions or variant, not both' };
+  }
+  return {
+    languages: languages.length > 0 ? languages : ['en'],
+    editions: editions.length > 0 ? NEWS_EDITIONS.filter((edition) => editions.includes(edition)) : [variant],
+    echo: languages.length > 0 || editions.length > 0,
+  };
+}
+
+/** The scope fields a result reports: none for a call that passed neither filter. */
+function nlpScopeEcho(scope: NlpNewsScope, fetched: NlpDigestFetch): Record<string, unknown> {
+  return {
+    ...(scope.echo ? { languages: scope.languages, editions: scope.editions } : {}),
+    ...(fetched.poolCoverage ? { poolCoverage: fetched.poolCoverage } : {}),
+  };
+}
+
 type NlpDigestFetch = {
-  items: NewsItemCore[];
+  items: NlpNewsItem[];
   generatedAt: string;
-  variant: NlpDigestVariant;
+  /** The edition read through the public digest; null for a pool read. */
+  variant: string | null;
+  /** Per-cell coverage of a ListNewsPool read. */
+  poolCoverage?: NlpPoolCoverage;
   /** Applied category filter, or null when aggregating every selected-variant bucket. */
   category: string | null;
   /** Present when a non-empty category filter did not match any digest key. */
@@ -275,7 +355,9 @@ type NlpDigestFetch = {
 
 /**
  * Recent-headline corpus for the no-text extract_entities mode and
- * get_news_clusters: the selected full/en or tech/en feed digest.
+ * get_news_clusters. One English edition reads the public digest; any other
+ * scope reads ListNewsPool, which unions the cached news and tags each
+ * item with its outlet's content language and the editions carrying it.
  * Digest items carry no tier; get_news_clusters resolves it from the source
  * tables, as the dashboard does, so primary selection is tier-first.
  *
@@ -284,44 +366,145 @@ type NlpDigestFetch = {
  * the keys present in the current snapshot so agents can self-correct —
  * empty-but-valid buckets stay silent (headlineCount 0, no note).
  */
-async function fetchNlpDigestItems(
+async function fetchNlpNewsItems(
   base: string,
   context: Parameters<typeof buildAuthHeaders>[0],
-  variant: NlpDigestVariant,
+  scope: NlpNewsScope,
   category: string,
   // Required-but-nullable, matching fetchMcpDownstream: a caller that forgets
   // the execution context fails typecheck instead of silently dropping the
   // self-hosted transport token.
   execution: McpToolExecutionContext | undefined,
 ): Promise<NlpDigestFetch> {
-  const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=${variant}&lang=en`;
-  const auth = await buildAuthHeaders(context, 'GET', digestUrl, null);
-  const res = await fetchMcpDownstream(digestUrl, {
+  const pool = isPoolScope(scope);
+  const scopeCategories = [...new Set(scope.editions.flatMap((edition) => NEWS_POOL_LAYOUT.editions[edition] ?? []))];
+  if (pool && category && !scopeCategories.includes(category)) {
+    return {
+      items: [],
+      generatedAt: '',
+      variant: null,
+      category,
+      note: nlpTruncateUtf8(`Unknown digest category "${category}". Available: ${scopeCategories.join(', ')}.`, NLP_DIGEST_NOTE_MAX_BYTES),
+    };
+  }
+  const query = new URLSearchParams();
+  if (pool) {
+    for (const lang of scope.languages) query.append('languages', lang);
+    for (const edition of scope.editions) query.append('editions', edition);
+    if (category) query.set('category', category);
+  } else {
+    query.set('variant', scope.editions[0]!);
+    query.set('lang', 'en');
+  }
+  const path = pool ? 'list-news-pool' : 'list-feed-digest';
+  // One downstream call either way, so a widened read weighs what a default read does.
+  const url = `${base}/api/news/v1/${path}?${query}`;
+  const auth = await buildAuthHeaders(context, 'GET', url, null);
+  const res = await fetchMcpDownstream(url, {
     headers: { ...auth, 'User-Agent': NLP_UA },
     signal: AbortSignal.timeout(NLP_DIGEST_TIMEOUT_MS),
   }, execution);
-  await assertToolFetchOk(res, 'list-feed-digest');
-  const body = await res.json() as {
-    categories?: Record<string, NlpDigestCategoryGroup>;
-    feedStatuses?: Record<string, string>;
-    generatedAt?: string;
-    coverage?: {
-      state?: string;
-      itemsServed?: number;
-      publisherCount?: number;
-      feedCompleted?: number;
-      feedTotal?: number;
-      categoryCompleted?: number;
-      categoryTotal?: number;
-      categoryStates?: Record<string, string>;
-      servedStale?: boolean;
-      staleAgeSeconds?: number;
-      staleReason?: string;
-    };
-  };
+  await assertToolFetchOk(res, path);
+  return pool
+    ? nlpPoolFetch(await res.json() as NlpPoolBody, category)
+    : nlpDigestFetch(await res.json() as NlpDigestBody, scope.editions[0]!, category);
+}
 
+/** One digest item, bounded field by field. The caller has checked title and source. */
+function toNlpNewsItem(raw: NlpDigestRawItem): NlpNewsItem {
+  return {
+    source: nlpTruncateUtf8(raw.source!, NLP_DIGEST_SOURCE_MAX_BYTES),
+    title: nlpTruncateUtf8(raw.title!, NLP_DIGEST_TITLE_MAX_BYTES),
+    // #9095: without the lead, same-copy detection cannot merge reprints and
+    // max(seen, reported) restores the count the digest already lowered.
+    ...(typeof raw.snippet === 'string' && raw.snippet.trim() !== ''
+      ? { snippet: nlpTruncateUtf8(raw.snippet, NLP_DIGEST_SNIPPET_MAX_BYTES) }
+      : {}),
+    link: nlpTruncateUtf8(raw.link ?? '', NLP_DIGEST_LINK_MAX_BYTES),
+    pubDate: new Date(Number(raw.publishedAt) || 0),
+    isAlert: raw.isAlert === true,
+    credibilityScore: Number.isFinite(raw.credibilityScore)
+      ? nlpClampInt(raw.credibilityScore, 0, 100, 0)
+      : undefined,
+    ...(Number.isFinite(raw.corroborationCount) && (raw.corroborationCount as number) >= 1
+      ? { corroborationCount: Math.floor(raw.corroborationCount as number) }
+      : {}),
+    threat: raw.threat ? {
+      level: protoThreatLevelToLabel(raw.threat.level),
+      category: nlpTruncateUtf8(
+        raw.threat.category ?? 'general',
+        NLP_DIGEST_METADATA_MAX_BYTES,
+      ) as NonNullable<NewsItemCore['threat']>['category'],
+      confidence: typeof raw.threat.confidence === 'number' ? raw.threat.confidence : 0.5,
+      source: raw.threat.source === 'ml' || raw.threat.source === 'llm' ? raw.threat.source : 'keyword',
+    } : undefined,
+  };
+}
+
+type NlpPoolBody = {
+  items?: Array<{ item?: NlpDigestRawItem; language?: string; editions?: string[] }>;
+  cells?: Array<{ edition?: string; language?: string; state?: string; items?: number; staleAgeSeconds?: number }>;
+  state?: string;
+  generatedAt?: string;
+};
+
+const NLP_POOL_STATES = ['complete', 'partial', 'stale', 'unavailable'] as const;
+
+function nlpPoolFetch(body: NlpPoolBody, category: string): NlpDigestFetch {
+  // An unrecognized state is not evidence of coverage.
+  const state = (NLP_POOL_STATES as readonly string[]).includes(body.state ?? '')
+    ? body.state as NlpPoolCoverage['state']
+    : 'unavailable';
+  const items: NlpNewsItem[] = [];
+  for (const entry of body.items ?? []) {
+    const raw = entry?.item;
+    if (!raw?.title || !raw.source) continue;
+    items.push({
+      ...toNlpNewsItem(raw),
+      language: nlpTruncateUtf8(entry.language ?? '', NLP_DIGEST_METADATA_MAX_BYTES),
+      editions: (entry.editions ?? []).filter((edition) => NEWS_EDITIONS.includes(edition)),
+    });
+  }
+  return {
+    items,
+    generatedAt: nlpTruncateUtf8(body.generatedAt ?? '', NLP_DIGEST_METADATA_MAX_BYTES),
+    variant: null,
+    category: category || null,
+    poolCoverage: {
+      state,
+      cells: (body.cells ?? []).map((cell) => ({
+        edition: nlpTruncateUtf8(cell.edition ?? '', NLP_DIGEST_METADATA_MAX_BYTES),
+        language: nlpTruncateUtf8(cell.language ?? '', NLP_DIGEST_METADATA_MAX_BYTES),
+        state: nlpTruncateUtf8(cell.state ?? '', NLP_DIGEST_METADATA_MAX_BYTES),
+        items: nlpClampInt(cell.items ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
+        staleAgeSeconds: nlpClampInt(cell.staleAgeSeconds ?? 0, 0, Number.MAX_SAFE_INTEGER, 0),
+      })),
+    },
+  };
+}
+
+type NlpDigestBody = {
+  categories?: Record<string, NlpDigestCategoryGroup>;
+  feedStatuses?: Record<string, string>;
+  generatedAt?: string;
+  coverage?: {
+    state?: string;
+    itemsServed?: number;
+    publisherCount?: number;
+    feedCompleted?: number;
+    feedTotal?: number;
+    categoryCompleted?: number;
+    categoryTotal?: number;
+    categoryStates?: Record<string, string>;
+    servedStale?: boolean;
+    staleAgeSeconds?: number;
+    staleReason?: string;
+  };
+};
+
+function nlpDigestFetch(body: NlpDigestBody, variant: string, category: string): NlpDigestFetch {
   const seen = new Set<string>();
-  const items: NewsItemCore[] = [];
+  const items: NlpNewsItem[] = [];
   const categories = body.categories ?? {};
   // #7085: carry the digest's coverage block through to agents in a
   // compact, closed shape. Unknown states are malformed, not synonyms for
@@ -383,7 +566,7 @@ async function fetchNlpDigestItems(
     // carries; fall back to the static enum when the digest is empty.
     const listed = availableCategories.length > 0
       ? availableCategories.join(', ')
-      : DIGEST_CATEGORIES_BY_VARIANT[variant].join(', ');
+      : (NEWS_POOL_LAYOUT.editions[variant] ?? []).join(', ');
     note = nlpTruncateUtf8(
       `Unknown digest category "${category}". Available: ${listed}.`,
       NLP_DIGEST_NOTE_MAX_BYTES,
@@ -396,36 +579,7 @@ async function fetchNlpDigestItems(
       const key = raw.link || `${raw.source}|${raw.title}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const source = nlpTruncateUtf8(raw.source, NLP_DIGEST_SOURCE_MAX_BYTES);
-      const title = nlpTruncateUtf8(raw.title, NLP_DIGEST_TITLE_MAX_BYTES);
-      const link = nlpTruncateUtf8(raw.link ?? '', NLP_DIGEST_LINK_MAX_BYTES);
-      items.push({
-        source,
-        title,
-        // #9095: without the lead, same-copy detection cannot merge reprints and
-        // max(seen, reported) restores the count the digest already lowered.
-        ...(typeof raw.snippet === 'string' && raw.snippet.trim() !== ''
-          ? { snippet: nlpTruncateUtf8(raw.snippet, NLP_DIGEST_SNIPPET_MAX_BYTES) }
-          : {}),
-        link,
-        pubDate: new Date(Number(raw.publishedAt) || 0),
-        isAlert: raw.isAlert === true,
-        credibilityScore: Number.isFinite(raw.credibilityScore)
-          ? nlpClampInt(raw.credibilityScore, 0, 100, 0)
-          : undefined,
-        ...(Number.isFinite(raw.corroborationCount) && (raw.corroborationCount as number) >= 1
-          ? { corroborationCount: Math.floor(raw.corroborationCount as number) }
-          : {}),
-        threat: raw.threat ? {
-          level: protoThreatLevelToLabel(raw.threat.level),
-          category: nlpTruncateUtf8(
-            raw.threat.category ?? 'general',
-            NLP_DIGEST_METADATA_MAX_BYTES,
-          ) as NonNullable<NewsItemCore['threat']>['category'],
-          confidence: typeof raw.threat.confidence === 'number' ? raw.threat.confidence : 0.5,
-          source: raw.threat.source === 'ml' || raw.threat.source === 'llm' ? raw.threat.source : 'keyword',
-        } : undefined,
-      });
+      items.push(toNlpNewsItem(raw));
     }
   }
   return {
@@ -442,6 +596,44 @@ async function fetchNlpDigestItems(
 function isNlpDigestCoverageState(value: unknown): value is NlpDigestCoverageState {
   return typeof value === 'string'
     && (NLP_DIGEST_COVERAGE_STATES as readonly string[]).includes(value);
+}
+
+/**
+ * English titles keep the dashboard's tokenizer, so default reads cluster
+ * exactly as before; every other language needs its own script's letters.
+ */
+function titleTokenizer(language: string | undefined): (title: string) => Set<string> {
+  return !language || language === 'en' ? tokenize : tokenizeAnyScript;
+}
+
+/**
+ * Clusters each content language on its own: token overlap across languages
+ * means nothing until titles are translated. Items from the public digest
+ * carry no language and cluster as one group, as before. Clusters keep the
+ * order of their earliest member in the input.
+ */
+function clusterNlpItemsByLanguage(items: NlpNewsItem[]) {
+  const byLanguage = new Map<string, NlpNewsItem[]>();
+  for (const item of items) {
+    const group = byLanguage.get(item.language ?? '');
+    if (group) group.push(item);
+    else byLanguage.set(item.language ?? '', [item]);
+  }
+  if (byLanguage.size <= 1) return clusterNewsCore(items, getSourceTier, titleTokenizer(items[0]?.language));
+  const position = new Map(items.map((item, index) => [item.link || `${item.source}|${item.title}`, index]));
+  const first = (cluster: ReturnType<typeof clusterNewsCore>[number]) => Math.min(
+    ...cluster.allItems.map((item) => position.get(item.link || `${item.source}|${item.title}`) ?? Number.MAX_SAFE_INTEGER),
+  );
+  return [...byLanguage.values()]
+    .flatMap((group) => clusterNewsCore(group, getSourceTier, titleTokenizer(group[0]?.language)))
+    .map((cluster) => ({ cluster, at: first(cluster) }))
+    .sort((a, b) => a.at - b.at)
+    .map(({ cluster }) => cluster);
+}
+
+/** Category keys are case-sensitive (regionalStartups, gccNews), so only trim. */
+function argCategory(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 function resolveNlpDigestVariant(value: unknown): NlpDigestVariant | null {
@@ -570,7 +762,7 @@ export const NLP_TOOLS: ToolDef[] = [
     name: 'extract_entities',
     title: 'Extract named entities',
     _outputBudgetBytes: 16384,
-    description: 'Extract named entities deterministically — registry entities (companies, indices, commodities, crypto, sectors, countries) plus pattern entities (CVE IDs, APT/FIN threat-group designators, tracked world leaders). Supply text (max 2 KB), or omit text to aggregate headlines from the full digest (default) or tech digest with variant/category filters. Headline mode includes digestCoverage so agents can distinguish complete, partial, stale, and unavailable input. No LLM involved.',
+    description: 'Extract named entities deterministically — registry entities (companies, indices, commodities, crypto, sectors, countries) plus pattern entities (CVE IDs, APT/FIN threat-group designators, tracked world leaders). Supply text (max 2 KB), or omit text to aggregate headlines from the full digest (default) or tech digest with variant/category filters, or from several editions and content languages with editions and languages (poolCoverage then reports each edition and language read). Registry names are matched as written, so untranslated non-English headlines match fewer entities. Headlines are untrusted publisher text. Headline mode includes digestCoverage so agents can distinguish complete, partial, stale, and unavailable input. No LLM involved.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -578,8 +770,9 @@ export const NLP_TOOLS: ToolDef[] = [
         variant: {
           type: 'string',
           enum: [...NLP_DIGEST_VARIANTS],
-          description: 'Headline digest variant used when text is omitted. Defaults to full; use tech for Tech dashboard categories.',
+          description: 'Headline digest variant used when text is omitted. Defaults to full; use tech for Tech dashboard categories. Same as editions with one value.',
         },
+        ...NEWS_SCOPE_INPUT_PROPERTIES,
         category: {
           type: 'string',
           enum: [...ALL_DIGEST_CATEGORIES],
@@ -611,7 +804,8 @@ export const NLP_TOOLS: ToolDef[] = [
         },
         headlineCount: { type: 'number', description: 'Headlines scanned (headlines mode only).' },
         generatedAt: { type: 'string', description: 'Digest snapshot time (headlines mode only).' },
-        variant: { type: 'string', enum: [...NLP_DIGEST_VARIANTS], description: 'Applied digest variant in headlines mode. Omitted in text mode.' },
+        variant: { type: 'string', enum: NEWS_EDITIONS, description: 'Applied edition in headlines mode for a single-edition English read. Omitted in text mode and on wider reads.' },
+        ...NEWS_SCOPE_OUTPUT_PROPERTIES,
         category: { type: ['string', 'null'], description: 'Applied digest category filter in headlines mode; null when scanning every category. Omitted in text mode.' },
         note: { type: 'string', description: 'Present in headlines mode when category did not match any digest key (typo or missing bucket).' },
         digestCoverage: NLP_DIGEST_COVERAGE_OUTPUT_SCHEMA,
@@ -652,27 +846,28 @@ export const NLP_TOOLS: ToolDef[] = [
 
       // Accept enum values plus non-enum strings so non-validating clients still
       // get a corrective note instead of a hard schema failure at the edge.
-      const variant = resolveNlpDigestVariant(params.variant);
-      if (!variant) {
+      const scope = resolveNlpNewsScope(params);
+      if ('error' in scope) {
         return {
           mode: 'headlines',
           entities: [],
           patternEntities: [],
           headlineCount: 0,
           generatedAt: '',
-          category: argStr(params.category) || null,
-          error: `variant must be one of: ${NLP_DIGEST_VARIANTS.join(', ')}`,
+          category: argCategory(params.category) || null,
+          error: scope.error,
         };
       }
-      const category = argStr(params.category);
-      const digest = await fetchNlpDigestItems(base, context, variant, category, execution);
+      const category = argCategory(params.category);
+      const digest = await fetchNlpNewsItems(base, context, scope, category, execution);
       const aggregated = nlpRegistryEntities(digest.items.map(item => item.title), limit);
       return {
         mode: 'headlines',
         headlineCount: digest.items.length,
         generatedAt: digest.generatedAt,
-        variant: digest.variant,
+        ...(digest.variant ? { variant: digest.variant } : {}),
         category: digest.category,
+        ...nlpScopeEcho(scope, digest),
         ...(digest.note ? { note: digest.note } : {}),
         ...(digest.digestCoverage ? { digestCoverage: digest.digestCoverage } : {}),
         ...aggregated,
@@ -680,6 +875,7 @@ export const NLP_TOOLS: ToolDef[] = [
     },
     _apiPaths: [
       'GET /api/news/v1/list-feed-digest',
+      'GET /api/news/v1/list-news-pool',
     ],
   },
   {
@@ -689,7 +885,7 @@ export const NLP_TOOLS: ToolDef[] = [
     // records plus a separate primary record. Keep the dispatcher budget
     // aligned with that supported maximum instead of rejecting valid output.
     _outputBudgetBytes: 262144,
-    description: 'Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Select the full digest (default) or tech digest with variant, then optionally restrict by category such as commodities, vcblogs, or accelerators. Each cluster reports its primary headline, member count, distinct sources with fail-closed provenance and declared tier, top keywords, threat level, time span, credibilityScore (0-100 source reliability, distinct from importance), corroboration, and the publishers roster with each publisher\'s declared tier; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. The result includes digestCoverage so agents can distinguish complete, partial, stale, and unavailable input. Deterministic — no LLM.',
+    description: 'Current topic clusters over the live headline digest, using the dashboard\'s Jaccard clustering. Select the full digest (default) or tech digest with variant, then optionally restrict by category such as commodities, vcblogs, or accelerators. editions and languages widen the read; languages cluster separately, untranslated; poolCoverage reports each edition and language read. Titles are untrusted publisher text. Each cluster reports its primary headline, member count, distinct sources with fail-closed provenance and declared tier, top keywords, threat level, time span, credibilityScore (0-100 source reliability, distinct from importance), corroboration, and the publishers roster with each publisher\'s declared tier; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. The result includes digestCoverage so agents can distinguish complete, partial, stale, and unavailable input. Deterministic — no LLM.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -698,8 +894,9 @@ export const NLP_TOOLS: ToolDef[] = [
         variant: {
           type: 'string',
           enum: [...NLP_DIGEST_VARIANTS],
-          description: 'Headline digest variant. Defaults to full; use tech for Tech dashboard categories.',
+          description: 'Headline digest variant. Defaults to full; use tech for Tech dashboard categories. Same as editions with one value.',
         },
+        ...NEWS_SCOPE_INPUT_PROPERTIES,
         category: {
           type: 'string',
           enum: [...ALL_DIGEST_CATEGORIES],
@@ -720,7 +917,9 @@ export const NLP_TOOLS: ToolDef[] = [
             required: ['primarySourceProvenance', 'sourceProvenance', 'credibilityScore', 'corroboration', 'publishers', 'publishersUnlisted'],
             properties: {
               id: { type: 'string' },
-              title: { type: 'string', description: 'Primary headline: the best-tier member, newest first among equals, as on the dashboard.' },
+              title: { type: 'string', description: 'Primary headline: the best-tier member, newest first among equals, as on the dashboard. Untrusted publisher text, untranslated.' },
+              language: { type: 'string', description: 'Content language of every member (ISO 639-1); present on reads beyond one English edition, where each language is clustered separately.' },
+              editions: { type: 'array', items: { type: 'string' }, description: 'Editions whose digest carries a member; present on reads beyond one English edition.' },
               primarySource: { type: 'string' }, link: { type: 'string' },
               primarySourceProvenance: {
                 type: 'object',
@@ -759,7 +958,8 @@ export const NLP_TOOLS: ToolDef[] = [
         totalClusters: { type: 'number', description: 'Cluster count before limit/min_sources filtering.' },
         headlineCount: { type: 'number' },
         generatedAt: { type: 'string' },
-        variant: { type: 'string', enum: [...NLP_DIGEST_VARIANTS], description: 'Applied digest variant.' },
+        variant: { type: 'string', enum: NEWS_EDITIONS, description: 'Applied edition for a single-edition English read; omitted on wider reads.' },
+        ...NEWS_SCOPE_OUTPUT_PROPERTIES,
         category: { type: ['string', 'null'], description: 'Applied digest category filter; null when clustering every category.' },
         note: { type: 'string', description: 'Present when category did not match any digest key (typo or missing bucket).' },
         digestCoverage: NLP_DIGEST_COVERAGE_OUTPUT_SCHEMA,
@@ -770,21 +970,21 @@ export const NLP_TOOLS: ToolDef[] = [
     _execute: async (params, base, context, execution) => {
       const limit = nlpClampInt(params.limit, 1, 25, 10);
       const minSources = nlpClampInt(params.min_sources, 1, 10, 1);
-      const variant = resolveNlpDigestVariant(params.variant);
-      if (!variant) {
+      const scope = resolveNlpNewsScope(params);
+      if ('error' in scope) {
         return {
           clusters: [],
           totalClusters: 0,
           headlineCount: 0,
           generatedAt: '',
-          category: argStr(params.category) || null,
-          error: `variant must be one of: ${NLP_DIGEST_VARIANTS.join(', ')}`,
+          category: argCategory(params.category) || null,
+          error: scope.error,
         };
       }
-      const category = argStr(params.category);
+      const category = argCategory(params.category);
       const query = argStr(params.query);
-      const digest = await fetchNlpDigestItems(base, context, variant, category, execution);
-      const clusters = clusterNewsCore(digest.items, getSourceTier);
+      const digest = await fetchNlpNewsItems(base, context, scope, category, execution);
+      const clusters = clusterNlpItemsByLanguage(digest.items);
       const selectedClusters = clusters
         .map(cluster => ({
           cluster,
@@ -816,9 +1016,14 @@ export const NLP_TOOLS: ToolDef[] = [
           [...new Set([cluster.primarySource, ...projectedSources])]
             .map(source => [source, withOutletProfile(source, getSourceProvenanceState(source))] as const),
         );
+        const members = cluster.allItems as NlpNewsItem[];
         return {
           id: cluster.id,
           title: cluster.primaryTitle,
+          ...(digest.poolCoverage ? {
+            language: members[0]?.language ?? '',
+            editions: NEWS_EDITIONS.filter((edition) => members.some((member) => member.editions?.includes(edition))),
+          } : {}),
           primarySource: cluster.primarySource,
           primarySourceProvenance: provenanceBySource.get(cluster.primarySource)!,
           link: cluster.primaryLink,
@@ -834,7 +1039,7 @@ export const NLP_TOOLS: ToolDef[] = [
             tier: declaredSourceTier(source),
             ...provenanceBySource.get(source)!,
           })),
-          topKeywords: topClusterKeywords(cluster, 5),
+          topKeywords: topClusterKeywords(cluster, 5, titleTokenizer(members[0]?.language)),
           isAlert: cluster.isAlert,
           threatLevel: cluster.threat?.level ?? 'info',
           threatCategory: cluster.threat?.category ?? 'general',
@@ -856,21 +1061,23 @@ export const NLP_TOOLS: ToolDef[] = [
         totalClusters: clusters.length,
         headlineCount: digest.items.length,
         generatedAt: digest.generatedAt,
-        variant: digest.variant,
+        ...(digest.variant ? { variant: digest.variant } : {}),
         category: digest.category,
+        ...nlpScopeEcho(scope, digest),
         ...(digest.note ? { note: digest.note } : {}),
         ...(digest.digestCoverage ? { digestCoverage: digest.digestCoverage } : {}),
       };
     },
     _apiPaths: [
       'GET /api/news/v1/list-feed-digest',
+      'GET /api/news/v1/list-news-pool',
     ],
   },
   {
     name: 'verify_claim',
     title: 'Check a claim against news coverage',
     _outputBudgetBytes: 65536,
-    description: 'Return an evidence card for a claim or headline: the live-digest clusters reporting the same event, a result state (corroborated, single-publisher, tier4-only, unknown, or not-found when the digest was searched and nothing reports it; unknown when there were no headlines to search), WorldMonitor\'s coverage verdict over the matched clusters, the publishers roster with declared tiers, matched headlines with fail-closed source provenance, a figure check (numbers and dates in the claim that no matched headline states) and first/last sighting. found=false means the claim was not matched, never that it is false; this is coverage, not accuracy. factChecks quotes ratings IFCN-verified fact-checkers published about a similar claim, each with checker, date and link; the rating is theirs and never changes state. Deterministic, no LLM. Requires a paid plan; one downstream search, weight 2 on API plans. claim is up to 300 characters; variant picks the full or tech digest. Read-only.',
+    description: 'Return an evidence card for a claim or headline: the live-digest clusters reporting the same event, a result state (corroborated, single-publisher, tier4-only, unknown, or not-found when the digest was searched and nothing reports it; unknown when there were no headlines to search), WorldMonitor\'s coverage verdict over the matched clusters, the publishers roster with declared tiers, matched headlines with fail-closed source provenance, a figure check (numbers and dates in the claim that no matched headline states) and first/last sighting. found=false means the claim was not matched, never that it is false; this is coverage, not accuracy. factChecks quotes ratings IFCN-verified fact-checkers published about a similar claim, each with checker, date and link; the rating is theirs and never changes state. Deterministic, no LLM. Requires a paid plan; one downstream search, weight 2 on API plans. claim is up to 300 characters; variant picks the full or tech digest. It searches the English edition only. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -979,7 +1186,8 @@ export const NLP_TOOLS: ToolDef[] = [
           variant,
         };
       }
-      const digest = await fetchNlpDigestItems(base, context, variant, '', execution);
+      // The claim pool searches the English full edition's feeds; other languages need translation first.
+      const digest = await fetchNlpNewsItems(base, context, { languages: ['en'], editions: [variant], echo: false }, '', execution);
       return {
         ...buildClaimCard(claim, digest.items),
         factChecks,
@@ -1000,7 +1208,7 @@ export const NLP_TOOLS: ToolDef[] = [
     name: 'get_keyword_spikes',
     title: 'Keyword and threat spikes',
     _outputBudgetBytes: 32768,
-    description: 'Keyword/CVE/APT spikes vs baseline, each with sourceNames and {title, source, link}. Uses the dashboard term-candidacy and spike-decision math. sourceNames are curated publisher names, or the original feed label when unmapped. sampleHeadlines are up to 3 newest recent-window stories; sourceNames is the complete publisher set. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard\'s incremental 7-day client history. Results are cached for 10 minutes. Deterministic — no LLM.',
+    description: 'Keyword/CVE/APT spikes vs baseline, each with sourceNames and {title, source, link}. Uses the dashboard term-candidacy and spike-decision math. sourceNames are curated publisher names, or the original feed label when unmapped. sampleHeadlines are up to 3 newest recent-window stories; sourceNames is the complete publisher set. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard\'s incremental 7-day client history. The accumulator holds the English full edition only; there are no languages or editions filters. Results are cached for 10 minutes. Deterministic — no LLM.',
     inputSchema: {
       type: 'object',
       properties: {
