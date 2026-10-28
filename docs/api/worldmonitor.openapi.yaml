@@ -60256,7 +60256,7 @@ components:
                 supplyDeficitPct:
                     type: number
                     format: double
-                    description: Average refined-product supply deficit % under full closure at the pre-crisis Gulf crude share, after bypass rerouting for Hormuz when per-exporter shares exist (Gasoline/Diesel/Jet fuel/LPG average; HS 27 only)
+                    description: Average refined-product supply deficit % under full closure at the pre-crisis Gulf crude share, after bypass rerouting for Hormuz when per-exporter shares exist (Gasoline/Diesel/Jet fuel/LPG/Naphtha average; HS 27 only)
                 coverageDays:
                     type: integer
                     format: int32
