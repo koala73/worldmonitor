@@ -13,21 +13,22 @@
  * use API-key-only auth.
  */
 
-import { validateBearerToken, verifyClerkSessionActive } from '../auth-session';
+import { validateBearerToken } from '../auth-session';
 import { renderBillingVerificationDenial, unverifiableEntitlementDenial } from './entitlement-check';
 
 export interface ClerkSession {
   userId: string;
   orgId: string | null;
   role: 'free' | 'pro';
-  /** Clerk `sid`; null when the token carries none (machine tokens). */
+  /**
+   * Clerk `sid`; null when the token carries none (machine tokens). A route
+   * that trades the bearer for a credential outliving it (desktop sign-in
+   * ticket, Pro MCP grant) must pass this to `verifyClerkSessionActive` —
+   * after its rate limit — since signature verification alone would let a
+   * revoked session (sign-out, "sign out other devices", admin revoke) be
+   * laundered into a fresh credential until `exp`.
+   */
   sessionId?: string | null;
-}
-
-/** A session Clerk confirmed live for this request — see `resolveLiveClerkSession`. */
-export interface LiveClerkSession {
-  userId: string;
-  sessionId: string;
 }
 
 export interface UnverifiableSession {
@@ -97,33 +98,4 @@ export async function resolveVerifiedClerkSession(request: Request): Promise<Cle
   if (!session) return null;
   if ('reason' in session) return sessionVerificationUnavailableResponse();
   return session;
-}
-
-/**
- * Like `resolveClerkSession`, but the session must still be live at Clerk.
- *
- * For routes that trade the bearer for a credential that outlives it (the
- * desktop sign-in ticket, the Pro MCP grant). Signature verification alone
- * would let a token whose session was revoked — sign-out, "sign out other
- * devices", an admin revoke — be laundered into a fresh session until `exp`.
- *
- * Null (401) when the token carries no `sid` or Clerk reports the session
- * inactive; a retryable 503 when Clerk could not answer. Never minted on.
- */
-export async function resolveLiveClerkSession(request: Request): Promise<LiveClerkSession | Response | null> {
-  const session = await resolveClerkSession(request);
-  if (!session) return null;
-  if ('reason' in session) return sessionVerificationUnavailableResponse();
-  if (!session.sessionId) return null;
-  const check = await verifyClerkSessionActive(session.sessionId, session.userId);
-  if (check === 'unavailable') return sessionVerificationUnavailableResponse();
-  if (check !== 'active') return null;
-  return { userId: session.userId, sessionId: session.sessionId };
-}
-
-/** `resolveSessionUserId` with the live-session requirement of `resolveLiveClerkSession`. */
-export async function resolveLiveSessionUserId(request: Request): Promise<string | Response | null> {
-  const session = await resolveLiveClerkSession(request);
-  if (session instanceof Response) return session;
-  return session?.userId ?? null;
 }

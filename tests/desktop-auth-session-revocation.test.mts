@@ -5,10 +5,10 @@
  * Clerk whether the session is live — the desktop sign-in (which mints a
  * brand-new session) and the Pro MCP grant. Strix pentest, 2026-10-27.
  *
- * Production wiring under test: the real `resolveLiveClerkSession`,
- * `verifyClerkSessionActive`, `mintClerkSignInTicket` and both default
- * handlers. Only fetch (JWKS + Clerk Backend API + Upstash), rate limiting
- * and the code store are stubbed.
+ * Production pieces under test: the real `resolveVerifiedClerkSession`,
+ * `verifyClerkSessionActive`, `mintClerkSignInTicket` and the exported
+ * handlers. Only fetch (JWKS + Clerk Backend API), the Upstash-backed rate
+ * limiter and the Redis stores are stubbed.
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -235,41 +235,72 @@ describe('desktop sign-in: a revoked Clerk session cannot be laundered into a ti
   });
 });
 
-describe('Pro MCP grant: the production handler requires a live Clerk session', async () => {
-  const { default: mintGrant } = await import('../api/internal/mcp-grant-mint.ts');
-  const mint = (bearer: string) => mintGrant(
-    post('https://worldmonitor.app/api/internal/mcp-grant-mint', { nonce: 'nonce_xyz' }, bearer),
-  );
+describe('Pro MCP grant: the handler requires a live Clerk session (production resolvers)', async () => {
+  const { mintGrantHandler } = await import('../api/internal/mcp-grant-mint.ts');
+  const { resolveVerifiedClerkSession } = await import('../server/_shared/auth-session.ts');
+  const { verifyClerkSessionActive } = await import('../server/auth-session.ts');
+
+  // Real bearer resolution and Clerk check; the Upstash-backed limiter and
+  // Redis are injected so the test needs no Redis (the nonce never exists).
+  function mint(bearer: string, rateLimit: () => Promise<Response | null> = async () => null) {
+    const nonceReads: string[] = [];
+    const response = mintGrantHandler(
+      post('https://worldmonitor.app/api/internal/mcp-grant-mint', { nonce: 'nonce_xyz' }, bearer),
+      {
+        resolveSession: resolveVerifiedClerkSession,
+        rateLimit,
+        verifySession: verifyClerkSessionActive,
+        redisGet: async (key) => { nonceReads.push(key); return null; },
+        redisSetEx: async () => true,
+        redisSetNxEx: async () => true,
+        getEntitlements: async () => null,
+        isAllowedRedirectUri: () => true,
+        signGrant: async () => 'grant',
+        now: () => Date.now(),
+      },
+    );
+    return { response, nonceReads };
+  }
 
   it('answers 401 for a revoked session before reading the nonce', async () => {
     clerk.sessions.set('sess_revoked', { status: 'revoked' });
-    const response = await mint(await signToken({ sid: 'sess_revoked' }));
-    assert.equal(response.status, 401);
-    assert.deepEqual(await response.json(), { error: 'UNAUTHENTICATED', error_description: 'A valid Clerk session is required.' });
-    assert.equal(clerk.calls.some((call) => call.includes(REDIS_URL)), false);
+    const { response, nonceReads } = mint(await signToken({ sid: 'sess_revoked' }));
+    assert.equal((await response).status, 401);
+    assert.deepEqual(await (await response).json(), { error: 'UNAUTHENTICATED', error_description: 'A valid Clerk session is required.' });
+    assert.equal(nonceReads.length, 0);
+    assert.equal(sessionCalls().length, 1);
   });
 
-  it('answers 401 for a token without a sid', async () => {
-    const response = await mint(await signToken({}));
-    assert.equal(response.status, 401);
+  it('answers 401 for a token without a sid, without asking Clerk', async () => {
+    const { response } = mint(await signToken({}));
+    assert.equal((await response).status, 401);
     assert.equal(sessionCalls().length, 0);
+  });
+
+  it('rate-limits on the locally verified identity before any Clerk call', async () => {
+    clerk.sessions.set('sess_live', { status: 'active' });
+    const { response, nonceReads } = mint(await signToken({ sid: 'sess_live' }), async () => new Response('{}', { status: 429 }));
+    assert.equal((await response).status, 429);
+    assert.equal(sessionCalls().length, 0, 'a limited caller never spends the Clerk quota');
+    assert.equal(nonceReads.length, 0);
   });
 
   it('answers a retryable 503 when Clerk cannot confirm the session', async () => {
     clerk.sessions.set('sess_live', { httpStatus: 500 });
-    const response = await mint(await signToken({ sid: 'sess_live' }));
-    assert.equal(response.status, 503);
-    assert.equal((await response.json() as { error: string }).error, 'SERVICE_UNAVAILABLE');
-    assert.ok(response.headers.get('retry-after'));
-    assert.equal(clerk.calls.some((call) => call.includes(REDIS_URL)), false);
+    const { response, nonceReads } = mint(await signToken({ sid: 'sess_live' }));
+    assert.equal((await response).status, 503);
+    assert.equal((await (await response).json() as { error: string }).error, 'SERVICE_UNAVAILABLE');
+    assert.ok((await response).headers.get('retry-after'));
+    assert.equal(nonceReads.length, 0);
   });
 
   it('lets a live session through to the nonce lookup', async () => {
     clerk.sessions.set('sess_live', { status: 'active' });
-    const response = await mint(await signToken({ sid: 'sess_live' }));
-    // Auth passed; the stubbed Redis has no such nonce.
-    assert.equal(response.status, 400);
-    assert.equal((await response.json() as { error: string }).error, 'INVALID_NONCE');
+    const { response, nonceReads } = mint(await signToken({ sid: 'sess_live' }));
+    // Auth passed; the injected Redis has no such nonce.
+    assert.equal((await response).status, 400);
+    assert.equal((await (await response).json() as { error: string }).error, 'INVALID_NONCE');
+    assert.deepEqual(nonceReads, ['oauth:nonce:nonce_xyz']);
     assert.equal(sessionCalls().length, 1);
   });
 });
