@@ -50,6 +50,7 @@ test('oil evidence labels the pre-crisis baseline and reports current flows besi
   assert.equal(current.value, 60.5);
   assert.equal(current.observedAt, '2026-08');
   assert.equal(s.evidence.find(e => e.id === 'baseline-loss-current')!.value, 720.6);
+  assert.match(s.evidence.find(e => e.id === 'baseline-loss-current')!.label, /without bypass recovery/, 'current flows are an upper bound, not comparable to an after-bypass headline');
   // The comparison capture has no current-flows figure: null, and named as unknown.
   assert.equal(s.evidence.find(e => e.id === 'comparison-route-current')!.value, null);
   assert.match(s.unknowns.join(' '), /comparison: current-flows Gulf share is unavailable/);
@@ -95,6 +96,15 @@ test('the annual fallback is named in the evidence label, and current flows show
   }
   const t = buildDecisionBrief({ ...selection, countryCode: 'XX', countryName: 'X', fuelMode: 'oil' }, onlyCurrent);
   assert.equal(t.evidence.find(e => e.id === 'baseline-route-current')!.value, 20);
+});
+
+test('with neither Gulf share, the unknown does not claim the figures use a pre-crisis baseline', () => {
+  const data = captures('XX');
+  for (const { response } of data) Object.assign(response, { jodiOilCoverage: true, comtradeCoverage: false, dataAvailable: false });
+  const s = buildDecisionBrief({ ...selection, countryCode: 'XX', countryName: 'X', fuelMode: 'oil' }, data);
+  const unknowns = s.unknowns.join(' ');
+  assert.match(unknowns, /baseline: current-flows Gulf share is unavailable; no pre-crisis share is available either/);
+  assert.doesNotMatch(unknowns, /figures use the pre-crisis baseline/);
 });
 
 test('oil evidence names the loss after Hormuz bypass and reports the before-bypass loss beside it', () => {

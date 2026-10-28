@@ -93,7 +93,8 @@ message CrudeShareBaseline {
   string from_month = 2;
   string to_month = 3;
   int32 months_covered = 4;
-  // Gulf share of crude imports times the chokepoint route factor (1.0 for Hormuz).
+  // Gulf share of crude import value (not barrels) times the chokepoint route factor: 1.0 for Hormuz, below 1 on other
+  // routes, where it is not the measured Gulf import share.
   double gulf_crude_share = 5;
   // Loss at disruption_pct on the Gulf supplier share, with no bypass recovery. Comtrade records origin, not route, so for currentFlows it counts crude already loading at Yanbu or Fujairah (an upper bound). 0 when not modeled (see limitations).
   double crude_loss_kbd = 6;

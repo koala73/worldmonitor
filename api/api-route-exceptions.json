@@ -871,6 +871,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/user-api-keys.ts",
+      "category": "internal-helper",
+      "reason": "First-party API and desktop key issuance. Requires a locally verified Clerk session, a fail-closed per-user limiter, and a live session check before the gateway-only Convex relay can create a key.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/desktop-auth/authorize.ts",
       "category": "internal-helper",
       "reason": "Desktop browser sign-in, browser half (#9396 follow-up). POST {code_challenge} from the Clerk-protected /desktop-sign-in page; returns a one-time code bound to the desktop's PKCE challenge, which the page hands to the desktop on a 127.0.0.1 loopback redirect (RFC 8252). Private plumbing of one first-party flow, not a product data API.",

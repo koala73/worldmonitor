@@ -148,9 +148,22 @@ describe('digest feed parser: output on fixture feeds is unchanged', () => {
     });
   });
 
-  it('Smartraveller fixture feed (titled, but no date dialect the gate accepts)', () => {
+  it('Smartraveller fixture feed (AEST/AEDT dates read at their true instant)', () => {
     const xml = readFileSync(new URL('./fixtures/smartraveller-advisories-2026-10-23.rss', import.meta.url), 'utf8');
-    assert.deepEqual(projectItems(xml), { parsedTotal: 5, droppedUndated: 5, items: [] });
+    const projected = projectItems(xml);
+    assert.equal(projected.parsedTotal, 5);
+    assert.equal(projected.droppedUndated, 0);
+    // 23:00 AEDT (+11) and 22:00 AEST (+10) are both 12:00 UTC.
+    assert.deepEqual(
+      projected.items.map((item) => [item.title, new Date(item.publishedAt).toISOString()]),
+      [
+        ['No travel advice', '2026-10-07T12:00:00.000Z'],
+        ['Guam', '2026-10-20T12:00:00.000Z'],
+        ['Armenia', '2026-06-17T12:00:00.000Z'],
+        ['Mauritania', '2026-05-14T12:00:00.000Z'],
+        ['Libya', '2026-08-13T12:00:00.000Z'],
+      ],
+    );
   });
 
   it('every block and tag body of the fixture feeds matches the regex oracle', () => {

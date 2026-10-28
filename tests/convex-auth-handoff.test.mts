@@ -173,7 +173,9 @@ function installFakeClient(): FakeConvexClient {
   return fake;
 }
 
+const originalFetch = globalThis.fetch;
 afterEach(() => {
+  globalThis.fetch = originalFetch;
   destroyEntitlementSubscription();
   destroySubscriptionWatch();
   __setConvexClientFactoryForTests(null);
@@ -443,37 +445,22 @@ describe('generation-scoped Convex auth handoff', () => {
   });
 
   it('does not dispatch an API-key create if A changes while auth is pending', async () => {
+    const token = deferred<string | null>();
+    let tokenRequested = false;
     __setClerkInstanceForTests({
-      session: { getToken: async () => 'token-a' },
+      session: { getToken: async () => { tokenRequested = true; return token.promise; } },
       user: { id: 'A' },
     } as never);
-    const fake = installFakeClient();
-
-    // Leave A's barrier unresolved so the sensitive operation is in flight
-    // when Clerk selects B.
-    const createRejected = assert.rejects(
-      createApiKey('A key'),
-      /Account changed while creating the API key/,
-    );
-    await flushMicrotasks();
-
+    const calls: unknown[] = [];
+    globalThis.fetch = async (...args) => { calls.push(args); return Response.json({}); };
+    const rejected = assert.rejects(createApiKey('A key'), /Account changed while creating the API key/);
+    await waitForCondition(() => tokenRequested, 'session token must be pending');
     __setClerkInstanceForTests({
-      session: { getToken: async () => 'token-b' },
-      user: { id: 'B' },
+      session: { getToken: async () => 'token-b' }, user: { id: 'B' },
     } as never);
-    const handoffB = rebindConvexAuthForWatchHandoff(
-      () => true,
-      () => {},
-      1_000,
-      [],
-    );
-    await flushMicrotasks();
-
-    await createRejected;
-    assert.equal(fake.mutations.length, 0, 'no account-bound mutation may cross the switch');
-
-    fake.authConfigs[1].onChange(true);
-    assert.equal(await handoffB, true);
+    token.resolve('token-a');
+    await rejected;
+    assert.equal(calls.length, 0, 'no API-key fetch may cross the switch');
   });
 
   it('checks the initiating account immediately before dispatch', async () => {
@@ -552,34 +539,24 @@ describe('generation-scoped Convex auth handoff', () => {
 
   it('rejects an A API key that resolves after Clerk selects B', async () => {
     __setClerkInstanceForTests({
-      session: { getToken: async () => 'token-a' },
-      user: { id: 'A' },
+      session: { getToken: async () => 'token-a' }, user: { id: 'A' },
     } as never);
-    const fake = installFakeClient();
-    fake.authConfigs[0].onChange(true);
-    const mutation = deferred<{
-      id: string;
-      name: string;
-      keyPrefix: string;
-    }>();
-    fake.mutationResult = mutation.promise;
-
-    const rejected = assert.rejects(
-      createApiKey('A key'),
-      /Account changed while creating the API key/,
-    );
-    await waitForCalls(fake.mutations, 1);
-
-    mutation.resolve({ id: 'key_a', name: 'A key', keyPrefix: 'wm_a' });
-    queueMicrotask(() => {
-      __setClerkInstanceForTests({
-        session: { getToken: async () => 'token-b' },
-        user: { id: 'B' },
-      } as never);
-    });
-
+    const response = deferred<Response>();
+    const calls: unknown[] = [];
+    globalThis.fetch = async (url, init) => {
+      assert.equal(url, '/api/user-api-keys');
+      assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer token-a');
+      calls.push(url);
+      return response.promise;
+    };
+    const rejected = assert.rejects(createApiKey('A key'), /Account changed while creating the API key/);
+    await waitForCondition(() => calls.length === 1, 'A fetch must be pending');
+    __setClerkInstanceForTests({
+      session: { getToken: async () => 'token-b' }, user: { id: 'B' },
+    } as never);
+    response.resolve(Response.json({ id: 'key_a', name: 'A key', keyPrefix: 'wm_a' }));
     await rejected;
-    assert.equal(fake.mutations.length, 1, 'the A mutation completed, but its plaintext stayed discarded');
+    assert.equal(calls.length, 1, 'the A request completed, but its plaintext stayed discarded');
   });
 
   it('rejects a notice acknowledgement when the identity-bound auth gate fails', async () => {
