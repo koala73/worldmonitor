@@ -383,11 +383,13 @@ export async function computeEnergyShockScenario(
   const gasMeasured = needsGas && jodiGas != null && hasGasMeasurements(jodiGas.lngImportsTj, jodiGas.totalDemandTj);
   const zeroLng = gasMeasured && jodiGas?.lngImportsTj === 0;
   // A Hormuz importer with recorded LNG imports and no measured origin share
-  // is not modeled: the loss needs the share, and no fixed fraction stands in.
-  // Zero recorded imports lose nothing whatever the share.
-  const lngOriginMissing = gasMeasured && hormuzGas && !zeroLng && !lngOrigin?.preCrisis;
+  // is not modeled: the loss needs a share, and no fixed fraction stands in.
+  // Zero recorded imports lose nothing whatever the share. The headline uses
+  // the pre-crisis share, or current flows when that is the only measurement.
+  const lngMeasured = Boolean(lngOrigin?.preCrisis || lngOrigin?.current);
+  const lngOriginMissing = gasMeasured && hormuzGas && !zeroLng && !lngMeasured;
   const routeShare = hormuzGas
-    ? (lngOrigin?.preCrisis?.share ?? (zeroLng ? 0 : undefined))
+    ? (lngOrigin?.preCrisis?.share ?? lngOrigin?.current?.share ?? (zeroLng ? 0 : undefined))
     : CHOKEPOINT_LNG_EXPOSURE[chokepointId];
   const gasDisruption = gasMeasured && !lngOriginMissing && jodiGas
     ? computeGasDisruption(jodiGas.lngImportsTj, jodiGas.totalDemandTj, chokepointId, disruptionPct, routeShare)
@@ -397,7 +399,7 @@ export async function computeEnergyShockScenario(
   if (needsGas) {
     if (!hormuzGas) {
       limitations.push('Gas results are assumed route sensitivities, not measured country-specific supplier exposure or supply-shortage forecasts.');
-    } else if (gasMeasured && lngOrigin?.preCrisis) {
+    } else if (gasMeasured && lngOrigin && lngMeasured) {
       limitations.push(buildLngOriginLimitation(lngOrigin, gasDataMonth));
       if (!lngOrigin.current) limitations.push(`Current-flows LNG share unavailable for ${code}: ${lngOrigin.currentReason}.`);
       limitations.push('Gas results are route sensitivities, not supply-shortage forecasts.');
@@ -420,7 +422,7 @@ export async function computeEnergyShockScenario(
     const { lngDisruptionTj, deficitPct: gasDeficitPct } = gasDisruption;
     // Both measured baselines apply their share to the same JODI imports; the
     // headline fields equal the pre-crisis one.
-    const measured = hormuzGas && lngOrigin?.preCrisis ? lngOrigin : undefined;
+    const measured = hormuzGas && lngMeasured ? lngOrigin : undefined;
     const lossAt = (share: number) => computeGasDisruption(lngImportsTj, totalDemandTj, chokepointId, disruptionPct, share)!;
     const toBaseline = (b: LngShareBaselineEntry): LngShareBaseline => ({
       basis: b.basis,
@@ -456,7 +458,7 @@ export async function computeEnergyShockScenario(
       dataAvailable: true,
       assessment: buildGasAssessment(
         code, chokepointId, true, lngImportsTj, gasDeficitPct, disruptionPct, dataMonth,
-        measured?.preCrisis
+        measured
           ? { preCrisis: measured.preCrisis, current: measured.current, currentDeficitPct: measured.current ? lossAt(measured.current.share).deficitPct : undefined }
           : undefined,
       ),

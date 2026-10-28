@@ -303,7 +303,7 @@ export interface LngOriginForCountry {
 }
 
 const UNAVAILABLE_REASON: Record<string, string> = {
-  partners_unattributed: 'UN Comtrade books its LNG imports to unspecified partners ("Areas, nes" or "Special categories")',
+  partners_unattributed: 'UN Comtrade books more than 10% of its LNG imports to unspecified partners ("Areas, nes", "Special categories" or value missing from the partner rows)',
   no_rows: 'no UN Comtrade LNG (HS 271111) import rows for the window',
 };
 
@@ -322,8 +322,9 @@ export function resolveLngOrigin(snapshot: unknown, iso2: string): LngOriginForC
   const e = entry as Record<string, unknown>;
   const preCrisis = readLngShareBaseline(e.preCrisis);
   const current = readLngShareBaseline(e.current);
+  // Own keys only: a stored code such as "toString" must not resolve through the prototype.
   const reasonFor = (code: unknown, present: unknown): string =>
-    (typeof code === 'string' && UNAVAILABLE_REASON[code])
+    (typeof code === 'string' && Object.prototype.hasOwnProperty.call(UNAVAILABLE_REASON, code) ? UNAVAILABLE_REASON[code] : undefined)
     || (present != null ? 'the stored UN Comtrade LNG share is malformed' : UNAVAILABLE_REASON.no_rows!);
   return {
     preCrisis,
@@ -333,9 +334,12 @@ export function resolveLngOrigin(snapshot: unknown, iso2: string): LngOriginForC
   };
 }
 
-/** The source line for a measured Hormuz LNG share. */
+/**
+ * The source line for a measured Hormuz LNG share. The headline loss uses the
+ * pre-crisis share, or the current-flows share when that is the only one.
+ */
 export function buildLngOriginLimitation(origin: LngOriginForCountry, jodiMonth: string): string {
-  const pre = origin.preCrisis!;
+  const pre = origin.preCrisis;
   const describe = (b: LngShareBaselineEntry, label: string): string => {
     const unattributed = b.unattributedShare >= 0.001
       ? `; ${(b.unattributedShare * 100).toFixed(1)}% booked to unspecified partners is not attributed`
@@ -344,9 +348,11 @@ export function buildLngOriginLimitation(origin: LngOriginForCountry, jodiMonth:
   };
   return [
     "LNG Hormuz share: UN Comtrade HS 271111 imports from Qatar and the UAE (Das Island); Oman's Qalhat terminal loads outside the Strait and is excluded.",
-    describe(pre, 'Pre-crisis baseline'),
+    pre ? describe(pre, 'Pre-crisis baseline') : `Pre-crisis baseline: unavailable (${origin.preCrisisReason ?? UNAVAILABLE_REASON.no_rows}).`,
     origin.current ? describe(origin.current, 'Current flows') : 'Current flows: unavailable.',
-    `The headline loss applies the pre-crisis share to JODI LNG imports for ${jodiMonth || 'an unknown observation month'}; the current-flows loss applies the current share to the same imports.`,
+    pre
+      ? `The headline loss applies the pre-crisis share to JODI LNG imports for ${jodiMonth || 'an unknown observation month'}; the current-flows loss applies the current share to the same imports.`
+      : `The headline loss applies the current-flows share to JODI LNG imports for ${jodiMonth || 'an unknown observation month'}.`,
   ].join(' ');
 }
 
@@ -394,9 +400,9 @@ export function computeGasDisruption(
   };
 }
 
-/** The measured Hormuz shares behind a gas result, for its assessment text. */
+/** The measured Hormuz shares behind a gas result, for its assessment text. At least one is present. */
 export interface MeasuredLngAssessment {
-  preCrisis: LngShareBaselineEntry;
+  preCrisis?: LngShareBaselineEntry;
   current?: LngShareBaselineEntry;
   /** Loss at the current-flows share as percent of demand. */
   currentDeficitPct?: number;
@@ -426,13 +432,18 @@ export function buildGasAssessment(
     return `${code} recorded zero LNG imports in ${dataMonth || 'an unknown observation month'}. The modeled direct LNG loss is zero; this does not establish total gas supply security.`;
   }
   const month = dataMonth || 'an unknown observation month';
-  if (measured) {
+  if (measured?.preCrisis) {
     const { preCrisis, current, currentDeficitPct } = measured;
     const now = current
       ? ` and ${pct1(current.share)}% in current flows (${formatLngWindow(current)})`
       : '; current-flows share unavailable';
     const nowLoss = current && currentDeficitPct != null ? `; at the current-flows share it equals ${demandPctText(currentDeficitPct)}%` : '';
     return `${code} LNG exposure to ${chokepointLabel(chokepointId)}: Qatar and the UAE supplied ${pct1(preCrisis.share)}% of LNG imports before the crisis (${formatLngWindow(preCrisis)})${now}. Under ${disruptionPct}% disruption at the pre-crisis share, modeled loss equals ${demandPctText(deficitPct)}% of JODI demand for ${month}${nowLoss}. This is not a supply-shortage forecast.`;
+  }
+  if (measured?.current) {
+    // Only current flows are measured: they drive the loss, and the text says so.
+    const { current } = measured;
+    return `${code} LNG exposure to ${chokepointLabel(chokepointId)}: Qatar and the UAE supplied ${pct1(current.share)}% of LNG imports in current flows (${formatLngWindow(current)}); pre-crisis share unavailable. Under ${disruptionPct}% disruption at the current-flows share, modeled loss equals ${demandPctText(deficitPct)}% of JODI demand for ${month}. This is not a supply-shortage forecast.`;
   }
   const exposure = CHOKEPOINT_LNG_EXPOSURE[chokepointId];
   if (exposure === undefined) return lngOriginUnavailableAssessment(code, chokepointId);

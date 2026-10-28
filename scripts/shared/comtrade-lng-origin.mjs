@@ -27,12 +27,21 @@ export const HORMUZ_LNG_PARTNER_CODES = Object.freeze(['634', '784']);
 const HORMUZ = new Set(HORMUZ_LNG_PARTNER_CODES);
 
 /**
- * Above this fraction of imports booked to non-country partners ("Areas, nes",
- * "Special categories"), the origin is withheld and no share is published.
- * Germany and Austria book 100% this way. Elsewhere the fraction is under 1%,
- * so 10% bounds the understatement of a published share.
+ * Above this fraction of imports not attributed to a named country, the origin
+ * is withheld and no share is published. Unattributed means booked to a
+ * non-country partner ("Areas, nes", "Special categories") or missing from the
+ * partner rows altogether (World total minus the partner sum). Germany and
+ * Austria book 100% to non-country partners; elsewhere the fraction was under
+ * 1% on 2026-10-28, so 10% bounds the understatement of a published share.
  */
 export const MAX_UNATTRIBUTED_SHARE = 0.10;
+
+/**
+ * A snapshot with fewer pre-crisis shares than this does not replace the last
+ * good one. 114 importers had one on 2026-10-28; the floor catches a collapse
+ * (a thin or unusable response) without tracking normal filing variation.
+ */
+export const MIN_LNG_PRE_CRISIS_COUNTRIES = 40;
 
 /** A month's partner weights must sum to its World weight within this tolerance to be used. */
 const WEIGHT_TOLERANCE = 0.02;
@@ -198,7 +207,9 @@ function measureWindow(aggs) {
   return {
     measure: byWeight ? 'weight' : 'value',
     share: Math.round(Math.min(share, 1) * 10_000) / 10_000,
-    unattributedShare: Math.round((sum((a) => a.unattributedValue) / worldValue) * 1000) / 1000,
+    // Value missing from the partner rows is as unattributed as value booked
+    // to "Areas, nes": dividing by the World total understates the share by it.
+    unattributedShare: Math.round((sum((a) => a.unattributedValue + Math.max(0, a.worldValue - a.partnerValue)) / worldValue) * 1000) / 1000,
   };
 }
 

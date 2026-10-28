@@ -993,7 +993,7 @@ describe('gas sensitivity preserves measurement meaning', () => {
       assert.equal(response.coverageLevel, 'unsupported');
       assert.notEqual(response.chokepointConfidence, 'high');
       assert.equal(response.assessment, 'LNG origin share unavailable for DE; Strait of Hormuz LNG exposure is not modeled.');
-      assert.ok(response.limitations.some((l) => /LNG origin share unavailable for DE: UN Comtrade books its LNG imports to unspecified partners/.test(l)), response.limitations.join('\n'));
+      assert.ok(response.limitations.some((l) => /LNG origin share unavailable for DE: UN Comtrade books more than 10% of its LNG imports to unspecified partners/.test(l)), response.limitations.join('\n'));
       assert.doesNotMatch(response.assessment, /30%|days|can bridge|low.*dependence|faces/i);
     });
   }

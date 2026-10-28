@@ -16,6 +16,7 @@ import {
   MAX_PRESERVE_RUNS,
   MIN_COUNTRY_COVERAGE,
   __setSleepForTests,
+  __setLngCoverageFloorForTests,
 } from '../scripts/seed-comtrade-bilateral-hs4.mjs';
 
 const META_KEY = 'seed-meta:comtrade:bilateral-hs4';
@@ -170,6 +171,10 @@ beforeEach(() => {
   // through; FORCE_RESEED would bypass the gate under test rather than exercise it.
   delete process.env.FORCE_RESEED;
 
+  // The mocked LNG responses carry three reporters (the keyless 500-row cap);
+  // the production floor is sized for ~114, so the suite lowers it.
+  __setLngCoverageFloorForTests(1);
+
   __setSleepForTests((delayMs) => {
     if (delayMs === 60_000) rateLimitWaitCount++;
     return Promise.resolve();
@@ -256,6 +261,7 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
   __setSleepForTests(null);
+  __setLngCoverageFloorForTests(null);
   process.env.UPSTASH_REDIS_REST_URL = ORIGINAL_ENV.url;
   process.env.UPSTASH_REDIS_REST_TOKEN = ORIGINAL_ENV.token;
   if (ORIGINAL_ENV.force === undefined) delete process.env.FORCE_RESEED;
@@ -604,7 +610,8 @@ test('the three LNG origin requests are all-reporter, all-partner and reserved b
   assert.match(current.pathname, /\/C\/M\/HS$/);
   assert.equal(annual.searchParams.get('period'), '2025,2024');
   assert.equal(preCrisis.searchParams.get('period').split(',').length, 12);
-  assert.ok(current.searchParams.get('period').startsWith('202603'), 'no current-flows month before 2026-03');
+  // The request slides to the latest 12 complete months, so only the floor is fixed.
+  assert.ok(current.searchParams.get('period').split(',').every(p => p >= '202603'), 'no current-flows month before 2026-03');
   for (const url of [annual, preCrisis, current]) {
     const params = url.searchParams;
     assert.equal(params.get('cmdCode'), '271111', 'LNG only: HS4 2711 mixes in LPG and pipeline gas');
@@ -638,6 +645,20 @@ test('an observed LNG run publishes both baselines from the recorded responses',
   assert.equal(meta.lngOrigin.fetchedAt, payload.fetchedAt);
   assert.equal(meta.lngOrigin.countryCount, Object.keys(payload.countries).length);
   assert.ok(!redisCommands.some(c => c[0] === 'EXPIRE' && c[1] === LNG_KEY), 'a rewritten snapshot needs no TTL refresh');
+});
+
+test('an LNG snapshot below the pre-crisis coverage floor keeps the previous one', async () => {
+  // JP and KR have pre-crisis shares, DE is withheld: two usable importers.
+  __setLngCoverageFloorForTests(3);
+  countriesWithData = 1;
+
+  await main({ requestBudget: RESERVED_REQUESTS + 2 });
+
+  const meta = writtenMeta();
+  assert.equal(meta.lngOrigin.state, 'incomplete');
+  assert.equal(meta.lngOrigin.preCrisisCount, 2);
+  assert.ok(!redisCommands.some(c => c[0] === 'SET' && c[1] === LNG_KEY), 'a thin snapshot must not replace a fuller one');
+  assert.ok(redisCommands.some(c => c[0] === 'EXPIRE' && c[1] === LNG_KEY));
 });
 
 test('a failed LNG request keeps the previous snapshot, stops the LNG phase and still seeds the reporters', async () => {

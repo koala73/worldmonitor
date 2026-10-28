@@ -14,7 +14,7 @@ import {
   sleep,
 } from './_seed-utils.mjs';
 import { HS4_CODES, HS4_BATCHES, PREVIEW_MAX_RECORDS, parseRecords, groupByProduct, groupWorldExports, toCanonicalProduct, toPartnersProduct, comtradeFailureState, normalizeComtradePartner } from './shared/comtrade.mjs';
-import { LNG_CMD_CODE, LNG_HORMUZ_SHARE_KEY, buildLngOriginShares, lngOriginRequests, parseLngRows } from './shared/comtrade-lng-origin.mjs';
+import { LNG_CMD_CODE, LNG_HORMUZ_SHARE_KEY, MIN_LNG_PRE_CRISIS_COUNTRIES, buildLngOriginShares, lngOriginRequests, parseLngRows } from './shared/comtrade-lng-origin.mjs';
 export { HS4_CODES, MAX_HS4_CODES_PER_BATCH, groupByProduct } from './shared/comtrade.mjs';
 import { candidatePeriods, periodWindow, recentPeriod } from './shared/comtrade-period.mjs';
 
@@ -288,6 +288,13 @@ export function __setSleepForTests(fn) {
   const next = typeof fn === 'function' ? fn : sleep;
   _retrySleep = next;
   _paceSleep = next;
+}
+
+// The keyless test route caps a response at 500 rows, far fewer importers than
+// the production floor is sized for; tests lower it. null restores it.
+let _lngCoverageFloor = MIN_LNG_PRE_CRISIS_COUNTRIES;
+export function __setLngCoverageFloorForTests(n) {
+  _lngCoverageFloor = typeof n === 'number' ? n : MIN_LNG_PRE_CRISIS_COUNTRIES;
 }
 
 /**
@@ -576,16 +583,22 @@ export async function main({ requestBudget = REQUEST_BUDGET } = {}) {
       const shares = buildLngOriginShares(lngRows, { reporterIso2: lngReporterIso2, partnerKind: lngPartnerKind });
       const fetchedAt = new Date().toISOString();
       const countries = Object.values(shares.countries);
+      const preCrisisCount = countries.filter(c => c.preCrisis).length;
       if (countries.length === 0) {
         console.warn('[bilateral-hs4] LNG origin: no usable rows, keeping the previous snapshot');
         lngOrigin = { state: 'no_records', attemptedAt: fetchedAt };
+      } else if (preCrisisCount < _lngCoverageFloor) {
+        // Entries exist but too few carry a usable share: a thin or withheld
+        // response must not replace a fuller snapshot.
+        console.warn(`[bilateral-hs4] LNG origin: ${preCrisisCount} pre-crisis shares (floor ${_lngCoverageFloor}), keeping the previous snapshot`);
+        lngOrigin = { state: 'incomplete', attemptedAt: fetchedAt, countryCount: countries.length, preCrisisCount };
       } else {
         queueWrite(LNG_KEY, JSON.stringify({ fetchedAt, source: 'UN Comtrade data API', ...shares }));
         lngOrigin = {
           state: 'observed',
           fetchedAt,
           countryCount: countries.length,
-          preCrisisCount: countries.filter(c => c.preCrisis).length,
+          preCrisisCount,
           currentCount: countries.filter(c => c.current).length,
         };
         console.log(`[bilateral-hs4] LNG origin: ${lngOrigin.countryCount} importers, ${lngOrigin.preCrisisCount} pre-crisis, ${lngOrigin.currentCount} current-flows shares`);

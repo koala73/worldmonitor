@@ -12,6 +12,7 @@ import {
   HORMUZ_LNG_PARTNER_CODES,
   LNG_CMD_CODE,
   MAX_UNATTRIBUTED_SHARE,
+  MIN_LNG_PRE_CRISIS_COUNTRIES,
   buildLngOriginShares,
   lngOriginRequests,
   parseLngRows,
@@ -60,6 +61,10 @@ describe('lngOriginRequests', () => {
   it('skips the current request before the first full crisis month has closed', () => {
     const ids = lngOriginRequests(new Date('2026-03-15T00:00:00Z')).map((r) => r.id);
     assert.deepEqual(ids, ['annual', 'preCrisis']);
+  });
+
+  it('sets a snapshot floor well below the 114 pre-crisis shares observed on 2026-10-28', () => {
+    assert.ok(MIN_LNG_PRE_CRISIS_COUNTRIES >= 20 && MIN_LNG_PRE_CRISIS_COUNTRIES <= 60);
   });
 
   it('counts Qatar and the UAE as Hormuz loadings and leaves Oman out', () => {
@@ -187,7 +192,8 @@ describe('buildLngOriginShares edge cases', () => {
     for (const period of ['202502', '202503', '202504', '202505', '202506', '202507', '202508', '202509', '202510', '202511', '202512', '202601']) {
       preCrisis.push(row('392', '0', period, 100, 100), row('392', '634', period, period === '202507' ? 200 : 10, 10), row('392', '36', period, 90, 90));
     }
-    const { countries } = buildLngOriginShares({ annual: [row('392', '0', '2025', 1200, 1200), row('392', '634', '2025', 120, 120)], preCrisis, current: [] }, options);
+    const annual = [row('392', '0', '2025', 1200, 1200), row('392', '634', '2025', 120, 120), row('392', '36', '2025', 1080, 1080)];
+    const { countries } = buildLngOriginShares({ annual, preCrisis, current: [] }, options);
     assert.equal(countries.JP.preCrisis.basis, 'comtrade_annual', 'an inconsistent month leaves the monthly window incomplete');
   });
 
@@ -195,6 +201,23 @@ describe('buildLngOriginShares edge cases', () => {
     const annual = [row('392', '0', '2025', 100, 100), row('392', '634', '2025', 10, 10), row('392', '634', '2025', 20, 20), row('392', '36', '2025', 80, 80)];
     const { countries } = buildLngOriginShares({ annual, preCrisis: [], current: [] }, options);
     assert.equal(countries.JP.preCrisis.share, 0.2);
+  });
+
+  it('counts World value missing from the partner rows as unattributed and withholds the share', () => {
+    // Partner rows cover 60% of the World total: dividing by the full total
+    // would understate the Hormuz share by up to 40 points.
+    const annual = [row('392', '0', '2025', 100, 100), row('392', '634', '2025', 10, 10), row('392', '36', '2025', 50, 50)];
+    const { countries } = buildLngOriginShares({ annual, preCrisis: [], current: [] }, options);
+    assert.equal(countries.JP.preCrisis, null);
+    assert.equal(countries.JP.preCrisisUnavailable, 'partners_unattributed');
+  });
+
+  it('keeps a share whose partner rows cover the World total within the threshold, and reports the gap', () => {
+    const annual = [row('392', '0', '2025', 100, 100), row('392', '634', '2025', 10, 10), row('392', '36', '2025', 85, 85)];
+    const { countries } = buildLngOriginShares({ annual, preCrisis: [], current: [] }, options);
+    assert.equal(countries.JP.preCrisis.share, 0.1);
+    assert.equal(countries.JP.preCrisis.measure, 'value', 'partner weights 95 of 100 fail the 2% weight check');
+    assert.equal(countries.JP.preCrisis.unattributedShare, 0.05);
   });
 
   it('reports no_rows for a pre-crisis window with neither monthly nor annual data', () => {

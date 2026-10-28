@@ -117,7 +117,7 @@ test('measured Hormuz LNG captures are usable and label both baselines', () => {
   assert.deepEqual([pre.value, pre.unit, pre.source, pre.observedAt], [6.4, '%', 'UN Comtrade', '2026-01']);
   assert.match(pre.label, /pre-crisis.*2025-02 to 2026-01/i);
   const now = s.evidence.find(e => e.id === 'baseline-hormuz-current')!;
-  assert.deepEqual([now.value, now.observedAt], [0.4, '2026-08']);
+  assert.deepEqual([now.value, now.observedAt], [0.44, '2026-08'], 'evidence keeps the share unrounded; display rounds');
   assert.match(now.label, /current flows.*2026-06 to 2026-08/i);
   const loss = s.evidence.find(e => e.id === 'baseline-loss')!;
   assert.match(loss.label, /pre-crisis share/);
@@ -126,6 +126,43 @@ test('measured Hormuz LNG captures are usable and label both baselines', () => {
   assert.match(text, /measured from UN Comtrade/);
   assert.doesNotMatch(text, /assumed route|Assumed route|route fraction is fixed/);
   assert.doesNotMatch(s.action.constraint, /supplier and route exposure/);
+});
+
+test('a small measured share stays nonzero in the evidence', () => {
+  const data = measuredCaptures();
+  for (const { response } of data) response.gasSensitivity!.currentFlows!.hormuzLngShare = 0.0004;
+  const s = buildDecisionBrief(japan, data);
+  assert.equal(s.evidence.find(e => e.id === 'baseline-hormuz-current')!.value, 0.04);
+});
+
+test('a current-flows-only capture labels the loss with the share that drives it', () => {
+  const data = measuredCaptures();
+  for (const { response } of data) {
+    const g = response.gasSensitivity!;
+    delete g.preCrisisBaseline;
+    g.lngDisruptionTj = g.currentFlows!.lngDisruptionTj;
+  }
+  const s = buildDecisionBrief(japan, data);
+  assert.equal(s.evidence.find(e => e.id === 'baseline-hormuz-pre-crisis')!.value, null);
+  assert.match(s.evidence.find(e => e.id === 'baseline-loss')!.label, /current-flows share/);
+  assert.match(s.unknowns.join(' '), /pre-crisis Hormuz LNG share is unavailable/);
+});
+
+test('zero recorded LNG imports get neutral wording, not the assumed-route text', () => {
+  const data = measuredCaptures();
+  for (const { response } of data) {
+    const g = response.gasSensitivity!;
+    Object.assign(g, { lngImportsTj: 0, lngDisruptionTj: 0, deficitPct: 0, modelBasis: 'observed_zero_lng_imports', assessment: 'JP recorded zero LNG imports in 2026-07.' });
+    delete g.preCrisisBaseline; delete g.currentFlows;
+  }
+  const s = buildDecisionBrief(japan, data);
+  assert.deepEqual(s.results.map(r => r.loss), [0, 0]);
+  const loss = s.evidence.find(e => e.id === 'baseline-loss')!;
+  assert.doesNotMatch(`${loss.label} ${loss.source}`, /assumed/i);
+  assert.equal(loss.source, 'JODI');
+  const text = [...s.assumptions, s.impact, s.action.constraint].join(' ');
+  assert.doesNotMatch(text, /assumed route|Assumed route|route fraction is fixed/);
+  assert.match(text, /zero recorded LNG imports/i);
 });
 
 test('a measured capture without current flows lists it as unknown, never zero', () => {

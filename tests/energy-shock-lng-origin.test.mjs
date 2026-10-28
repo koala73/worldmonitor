@@ -179,6 +179,34 @@ describe('Hormuz LNG exposure uses measured Comtrade supplier shares', () => {
     });
   }
 
+  it('a current-flows share alone drives the loss, labelled as such, when the pre-crisis share is unavailable', async (t) => {
+    // Azerbaijan is the one importer in the 2026-10-28 snapshot with current
+    // flows and no pre-crisis share; Japan's inputs stand in for it here.
+    t.after(restore);
+    const current = { basis: 'comtrade_monthly', fromMonth: '2026-06', toMonth: '2026-08', monthsCovered: 3, share: 0.0044, measure: 'weight', unattributedShare: 0 };
+    install({ ...seedFor('JP'), [LNG_HORMUZ_SHARE_KEY]: { countries: { JP: { preCrisis: null, preCrisisUnavailable: 'no_rows', current } } } });
+    const r = await shock(gasRequest('JP'));
+    const g = r.gasSensitivity;
+    assert.equal(g.modelBasis, 'comtrade_lng_origin_share');
+    assert.equal(g.preCrisisBaseline, undefined, 'the unavailable baseline stays absent');
+    assert.equal(g.currentFlows.hormuzLngShare, 0.0044);
+    assert.equal(g.lngDisruptionTj, g.currentFlows.lngDisruptionTj, 'the headline uses the only measured share');
+    assert.match(r.assessment, /pre-crisis share unavailable/);
+    assert.match(r.assessment, /at the current-flows share, modeled loss equals/);
+    const origin = r.limitations.find((l) => l.startsWith('LNG Hormuz share'));
+    assert.match(origin, /Pre-crisis baseline: unavailable \(no UN Comtrade LNG \(HS 271111\) import rows for the window\)/);
+    assert.match(origin, /The headline loss applies the current-flows share/);
+  });
+
+  it('ignores a stored reason code that names an Object.prototype member', async (t) => {
+    t.after(restore);
+    install({ ...seedFor('JP'), [LNG_HORMUZ_SHARE_KEY]: { countries: { JP: { preCrisis: null, preCrisisUnavailable: 'toString', current: null, currentUnavailable: 'constructor' } } } });
+    const r = await shock(gasRequest('JP'));
+    const reason = r.limitations.find((l) => l.startsWith('LNG origin share unavailable for JP'));
+    assert.match(reason, /no UN Comtrade LNG \(HS 271111\) import rows for the window/);
+    assert.doesNotMatch(r.limitations.join(' '), /native code|function/);
+  });
+
   it('zero recorded LNG imports stay a measured zero loss even without an origin share', async (t) => {
     t.after(restore);
     install({ ...HORMUZ_RED, 'energy:jodi-gas:v1:DE': { dataMonth: '2026-07', lngImportsTj: 0, totalDemandTj: 1000 } });
