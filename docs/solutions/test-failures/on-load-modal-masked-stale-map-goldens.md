@@ -31,15 +31,15 @@ PR #9784 stopped the map's "Performance notice" from opening on every page load.
 ## What Didn't Work
 
 - **Assuming the golden had the overlay baked in.** Opening the golden showed no dimming and no dialog, which ruled this out.
-- **Assuming deterministic mode was off.** In isolation the harness body class and styles were present. `hideRasterBasemap()` hides only the raster `carto-dark-layer`, so a vector basemap always shows through. The attribution was a red herring.
+- **Assuming deterministic mode was off.** In isolation the harness body class and styles were present. `hideRasterBasemap()` only zeroes the opacity of the raster `carto-dark-layer`, so any vector basemap present stays visible. The attribution was a red herring.
 
 ## Solution
 
 The control experiment settled it. With `main`'s `DeckGLMap.ts` swapped into the dev server, the harness page loads with 31 layers checked, so the notice opens. `.layer-warn-overlay` then dims and blurs the whole map. Every element screenshot of `.deckgl-map-wrapper` came out near-uniform dark, close enough to the stale golden's dark background to pass `maxDiffPixelRatio: 0.04` in `e2e/map-harness.spec.ts`. Removing the notice exposed the real scene, which had drifted since February.
 
-1. Enumerate every mismatch before touching baselines. `toHaveScreenshot` is a hard assertion, so the loop stops at the first failure. Temporarily switch it to `expect.soft(...)`, run the full and tech variants, then revert. Here only `layer-full-conflicts-z4.png` was stale. The other 82 full scenarios and all tech scenarios still matched.
+1. Enumerate every mismatch before touching baselines. `toHaveScreenshot` is a hard assertion, so the loop stops at the first failure. Temporarily switch it to `expect.soft(...)`, run the full and tech variants, then revert. Here only `layer-full-conflicts-z4.png` was stale. The other 25 full scenarios and all 29 tech scenarios still matched.
 2. Re-record only that golden with `--update-snapshots`.
-3. Prove the macOS-recorded golden will pass on CI's Linux runner. Copy CI's `*-actual.png` from the failed run's artifact over the golden, run the test against the local render, then restore the new golden. It passed, so the two renders agree within the threshold.
+3. Prove the macOS-recorded golden will pass on CI's Linux runner. The new golden is a local render, so compare a local render against CI's: copy CI's `*-actual.png` from the failed run's artifact over the golden, run the test, then restore the new golden. It passed, so local and CI renders agree within the threshold. This holds only while the local render is deterministic. Confirm with two consecutive local runs against the new golden. The CI run on the pushed golden is the final proof.
 4. Fix the harness tests that encoded the bug. The warning-copy test now asserts no notice on load and opens it by re-adding a layer, which fails on `main`. The bases-viewport test no longer clicks a "Got it" button that never appears.
 
 ## Why This Works
@@ -48,7 +48,7 @@ A full-viewport overlay changes every pixel the screenshot sees and lowers its c
 
 ## Prevention
 
-- Before re-recording any golden, take an element screenshot of the harness at load and check that no modal, toast, or overlay is open. Any page-level overlay present when goldens are recorded or compared makes the suite unable to fail.
+- Before re-recording any golden, take an element screenshot of the harness at load and check that no modal, toast, or overlay is open. An overlay that covers the screenshot target (here `.deckgl-map-wrapper`) when goldens are recorded or compared can mask scene differences, as the dimming notice did.
 - When one scenario fails, enumerate all of them with `expect.soft` before deciding the scope of a re-record.
 - Check a regenerated golden against the CI runner's actual image, not only against a local re-run.
 - Related layer-notice behaviors that PR #9784 pinned with DOM tests in `tests/dom/deckgl-map-state.test.mts`: the starting layers are a baseline; a bulk `setLayers` rebases the count without notifying; rows an active layer search hides still count, because the count skips only toggles marked `data-layer-hidden`.
