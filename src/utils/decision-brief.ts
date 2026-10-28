@@ -61,7 +61,7 @@ export function buildDecisionBrief(selection: DecisionBriefSelection, captures: 
     // With the Hormuz bypass modeled, the headline loss is after rerouting; the
     // before-bypass loss is reported beside it.
     const afterBypass = !gas && r.preCrisisBaseline?.crudeLossAfterBypassKbd != null;
-    if (afterBypass) add('loss-before-bypass', 'Modeled crude loss, pre-crisis baseline before bypass', usable && nonnegative(r.preCrisisBaseline!.crudeLossKbd) ? r.preCrisisBaseline!.crudeLossKbd : null, 'kbd', 'JODI / route model');
+    if (afterBypass) add('loss-before-bypass', 'Modeled crude loss, pre-crisis baseline before bypass', oilLossModeled && nonnegative(r.preCrisisBaseline!.crudeLossKbd) ? r.preCrisisBaseline!.crudeLossKbd : null, 'kbd', 'JODI / route model');
     add('loss', gas ? 'Assumed monthly LNG loss' : afterBypass ? 'Modeled crude loss, pre-crisis baseline after Hormuz bypass' : 'Modeled crude loss, pre-crisis baseline', lossUsable ? gas ? g!.lngDisruptionTj : r.crudeLossKbd : null, gas ? 'TJ' : 'kbd', gas ? 'JODI / assumed route sensitivity' : 'JODI / route model');
     if (!r.portwatchCoverage) unknowns.add(`${reference}: shipping traffic is unavailable; no closure is established.`);
     return { reference, severity, loss: lossUsable ? gas ? g!.lngDisruptionTj : r.crudeLossKbd : null, unit: gas ? 'TJ' : 'kbd', demandPct: usable && gas ? g!.deficitPct : null, observedAt };

@@ -409,7 +409,8 @@ export async function computeEnergyShockScenario(
   if (needsOil) {
     if (currentFlows) {
       const loss = oilModeled ? `, crude loss ${currentFlows.crudeLossKbd} kbd` : '';
-      const rerouted = chokepointId === 'hormuz_strait' ? '; these flows already reflect rerouting via Yanbu and Fujairah, so no bypass recovery is applied to them' : '';
+      // Comtrade records supplier origin, not route: Saudi crude loaded at Yanbu still counts as Saudi.
+      const rerouted = chokepointId === 'hormuz_strait' ? '; a supplier-share estimate (Comtrade records origin, not route), so it counts Gulf crude already loading at Yanbu or Fujairah and applies no bypass recovery' : '';
       limitations.push(`Current flows: UN Comtrade monthly import value share ${currentFlows.fromMonth}..${currentFlows.toMonth}: ${(currentFlows.gulfCrudeShare * 100).toFixed(1)}% Gulf${loss}${rerouted}; shown beside the headline, not used for product deficits or cover.`);
     } else {
       const reason = originStale && computed.current

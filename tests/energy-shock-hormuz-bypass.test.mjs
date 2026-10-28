@@ -158,7 +158,7 @@ describe('handler: Hormuz bypass on the pre-crisis baseline', () => {
     assert.ok(Math.abs(gasoline.deficitPct - (JP_IMPORTS * 0.4112 * 0.44 / 790.8135) * 100) < 0.3, `${gasoline.deficitPct}`);
     const expectedCover = Math.round(BYPASS_RAMP_DAYS + (178 - BYPASS_RAMP_DAYS * 0.9275) / 0.4112);
     assert.ok(Math.abs(r.effectiveCoverDays - expectedCover) <= 1, `cover ${r.effectiveCoverDays} vs ${expectedCover}`);
-    // Current flows already arrive by the bypass routes: no recovery is applied to them.
+    // No bypass recovery is applied to current flows.
     assert.equal(r.currentFlows.crudeLossAfterBypassKbd, undefined);
     const bypassNote = r.limitations.find((l) => /^Hormuz bypass/.test(l));
     assert.ok(bypassNote, r.limitations.join('\n'));
@@ -171,7 +171,12 @@ describe('handler: Hormuz bypass on the pre-crisis baseline', () => {
     assert.match(bypassNote, /\d[\d,]* kbd before bypass, \d[\d,]* kbd after/);
     assert.match(bypassNote, /range \d[\d,]*-\d[\d,]* kbd from high to low recovery/);
     assert.ok(!r.limitations.some((l) => /bypass pipelines .* are not modeled/.test(l)), 'the old not-modeled clause is gone');
-    assert.ok(r.limitations.some((l) => /^Current flows/.test(l) && /already reflect rerouting/.test(l)), r.limitations.join('\n'));
+    // Comtrade records supplier origin, not route: the current-flows loss counts
+    // Gulf crude already loading at Yanbu or Fujairah, so it is labelled a supplier-share estimate.
+    const current = r.limitations.find((l) => /^Current flows/.test(l));
+    assert.match(current, /supplier-share estimate/);
+    assert.match(current, /origin, not route/);
+    assert.doesNotMatch(current, /already reflect rerouting/);
     assert.match(r.assessment, /after bypass rerouting/);
   });
 

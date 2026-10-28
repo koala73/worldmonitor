@@ -9955,7 +9955,7 @@ components:
                 crudeLossKbd:
                     type: number
                     format: double
-                    description: Loss at disruption_pct with no bypass recovery (currentFlows shares already reflect rerouting); 0 when not modeled (see limitations).
+                    description: Loss at disruption_pct on the Gulf supplier share, with no bypass recovery. Comtrade records origin, not route, so for currentFlows it counts crude already loading at Yanbu or Fujairah (an upper bound). 0 when not modeled (see limitations).
                 crudeLossAfterBypassKbd:
                     type: number
                     format: double
