@@ -332,9 +332,11 @@ export async function computeEnergyShockScenario(
   const rawDaysOfCover = n(ieaStocks?.daysOfCover);
   const daysOfCover = ieaStocksCoverage ? rawDaysOfCover : 0;
   const netExporter = ieaStocksCoverage && ieaStocks?.netExporter === true;
-  // Without a modeled loss there is no scenario cover to report; the raw IEA
-  // days would otherwise pass as the scenario result.
-  const effectiveCoverDays = oilModeled || netExporter
+  // Without a modeled loss there is no scenario cover to report: the raw IEA
+  // days would otherwise pass as the scenario result, and the net-exporter -1
+  // would contradict the "reported as 0" limitation above. The panel keys its
+  // cover row on the same "not modeled" limitation text.
+  const effectiveCoverDays = oilModeled
     ? computeEffectiveCoverDays(daysOfCover, netExporter, crudeLossKbd, crudeImportsKbd)
     : 0;
   if (needsOil && effectiveCoverDays === -1) {

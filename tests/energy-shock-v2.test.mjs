@@ -1372,6 +1372,42 @@ describe('production replay 2026-10-28: Gulf crude share comes from Comtrade par
     assert.ok(response.limitations.some((l) => /effectiveCoverDays -1/.test(l) && /net oil exporter/.test(l)), response.limitations.join('\n'));
   });
 
+  it('a net exporter without JODI crude imports reports cover 0, not -1, so the value matches the "reported as 0" limitation', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED,
+      'energy:iea-oil-stocks:v1:US': { daysOfCover: null, netExporter: true, anomaly: false },
+      ...partnersSeed('US', 1000, [{ partnerCode: 682, partnerIso2: 'SA', value: 80 }, { partnerCode: 124, partnerIso2: 'CA', value: 920 }]),
+    });
+
+    const response = await computeShock({ countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+
+    assert.equal(response.ieaStocksCoverage, true);
+    assert.equal(response.jodiOilCoverage, false);
+    assert.equal(response.dataAvailable, false);
+    assert.equal(response.effectiveCoverDays, 0);
+    assert.ok(response.limitations.some((l) => /JODI crude import observation unavailable for US/.test(l) && /effective cover are not modeled \(reported as 0\)/.test(l)), response.limitations.join('\n'));
+    assert.ok(!response.limitations.some((l) => /effectiveCoverDays -1/.test(l)), 'no net-exporter sentinel explanation when nothing is modeled');
+  });
+
+  it('IEA reserves with no origin share give cover 0 and the not-modeled limitation, never a raw IEA figure', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED,
+      'energy:jodi-oil:v1:DE': { crude: { importsKbd: 1560 }, diesel: { demandKbd: 766.7 } },
+      'energy:iea-oil-stocks:v1:DE': { daysOfCover: 124, netExporter: false, anomaly: false },
+      'comtrade:flows:276:2709': WORLD_ONLY_FLOWS('276'),
+      'energy:jodi-gas:v1:DE': { lngImportsTj: 25135, pipeImportsTj: 248000, totalDemandTj: 137779, lngShareOfImports: 0.092, dataMonth: '2026-07' },
+    });
+
+    const response = await computeShock({ countryCode: 'DE', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'both' });
+
+    assert.equal(response.ieaStocksCoverage, true);
+    assert.equal(response.dataAvailable, true, 'gas keeps the combined scenario available');
+    assert.equal(response.effectiveCoverDays, 0);
+    assert.ok(response.limitations.some((l) => /Crude import origin share unavailable for DE/.test(l) && /effective cover are not modeled \(reported as 0\)/.test(l)), response.limitations.join('\n'));
+  });
+
   it('the 730-day cap is self-described when it binds', async (t) => {
     t.after(restoreEnergyShockEnvironment);
     installEnergyShockRedis({
