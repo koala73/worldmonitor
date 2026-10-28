@@ -784,7 +784,9 @@ function createTimeoutLinkedController(parentSignal: AbortSignal): {
     controller.abort();
   }, FEED_TIMEOUT_MS);
   const onAbort = () => controller.abort();
-  parentSignal.addEventListener('abort', onAbort, { once: true });
+  // An abort event that already fired never reaches a listener added now.
+  if (parentSignal.aborted) controller.abort();
+  else parentSignal.addEventListener('abort', onAbort, { once: true });
 
   return {
     controller,
@@ -1039,8 +1041,9 @@ export async function fetchAndParseRss(
     let relayAttempted = false;
     let relayBodyShape: 'rss' | 'html-or-empty' | 'no-relay' | 'fetch-error' = 'no-relay';
 
-    // Fallback: route through Railway relay (different IP, avoids Vercel blocks)
-    if (!text) {
+    // Fallback: route through Railway relay (different IP, avoids Vercel blocks).
+    // Not once the digest deadline has passed: nothing would wait for it.
+    if (!text && !signal.aborted) {
       const relay = await fetchViaRelay(feed.url, signal);
       relayAttempted = relay.attempted;
       relayBodyShape = relay.bodyShape;
