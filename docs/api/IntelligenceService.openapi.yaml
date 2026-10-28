@@ -9780,7 +9780,7 @@ components:
                 gulfCrudeShare:
                     type: number
                     format: double
-                    description: 'Headline share and loss: equal to pre_crisis_baseline.'
+                    description: 'Headline: equal to pre_crisis_baseline. Shares are fractions of import value times the route factor.'
                 crudeLossKbd:
                     type: number
                     format: double

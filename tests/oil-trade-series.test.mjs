@@ -25,6 +25,7 @@ import {
   crudeImportOriginPeriods,
   buildCrudeImportOrigin,
   crudeImportOriginSection,
+  fetchCrudeImportOriginRows,
 } from '../scripts/seed-oil-trade-series.mjs';
 import { GULF_PARTNER_CODES } from '../server/worldmonitor/intelligence/v1/_shock-compute.ts';
 import { PRE_CRISIS_WINDOW } from '../shared/hormuz-crisis.js';
@@ -539,5 +540,25 @@ describe('crude import origin (importer-declared Comtrade monthly)', () => {
     assert.equal(none.status, 'unavailable');
     assert.deepEqual(none.importers, {});
     assert.equal(none.carriedForward, undefined);
+  });
+});
+
+describe('crude import origin fetch', () => {
+  it('fails over to the next configured Comtrade key when one key fails', async () => {
+    const calls = [];
+    const fetchJson = async (url, key) => {
+      calls.push(key);
+      if (key === 'revoked') throw new Error('Comtrade HTTP 401');
+      return [{ reporterISO: 'JPN', partnerCode: 0, period: new URL(url).searchParams.get('period').split(',')[0], cmdCode: '2709', flowCode: 'M', primaryValue: 1e9 }];
+    };
+    const { rows, windowRowCounts } = await fetchCrudeImportOriginRows([['2025-02'], ['2026-03']], ['revoked', 'good'], { fetchJson, retries: 0 });
+    assert.deepEqual(windowRowCounts, [1, 1]);
+    assert.equal(rows.length, 2);
+    assert.deepEqual(calls, ['revoked', 'good', 'revoked', 'good']);
+  });
+
+  it('throws only when every key fails', async () => {
+    const fetchJson = async () => { throw new Error('Comtrade rate limited (429)'); };
+    await assert.rejects(fetchCrudeImportOriginRows([['2025-02']], ['a', 'b'], { fetchJson, retries: 0 }), /429/);
   });
 });

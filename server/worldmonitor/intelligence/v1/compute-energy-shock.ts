@@ -239,7 +239,12 @@ export async function computeEnergyShockScenario(
   const crudeOrigin = oilTradeResult.status === 'fulfilled'
     ? ((oilTradeResult.value as { crudeImportOrigin?: CrudeImportOriginLike } | null)?.crudeImportOrigin ?? null)
     : null;
-  const monthly = computeMonthlyGulfShares(crudeOrigin, code);
+  const computed = computeMonthlyGulfShares(crudeOrigin, code);
+  // A carried-forward section is last-good data from a failed refresh. The
+  // pre-crisis window is fixed history and stays valid; "current" flows from
+  // it are not current, so they are withheld.
+  const originStale = crudeOrigin?.carriedForward === true;
+  const monthly = { preCrisis: computed.preCrisis, current: originStale ? null : computed.current };
   // Why a monthly figure is missing: the series itself (seeder not run or
   // fetch failed with nothing to carry forward), or this importer's filings.
   const originSeriesMissing = !crudeOrigin?.importers || Object.keys(crudeOrigin.importers).length === 0;
@@ -371,10 +376,13 @@ export async function computeEnergyShockScenario(
       const loss = oilModeled ? `, crude loss ${currentFlows.crudeLossKbd} kbd` : '';
       limitations.push(`Current flows: UN Comtrade monthly import value share ${currentFlows.fromMonth}..${currentFlows.toMonth}: ${(currentFlows.gulfCrudeShare * 100).toFixed(1)}% Gulf${loss}; shown beside the headline, not used for product deficits or cover.`);
     } else {
-      limitations.push(`Current flows unavailable for ${code}: ${monthlyGap(`fewer than ${CURRENT_FLOWS_WINDOW.months} UN Comtrade monthly crude import filings since ${CURRENT_FLOWS_WINDOW.earliestMonth}`)}.`);
+      const reason = originStale && computed.current
+        ? 'the latest monthly UN Comtrade fetch failed, so the carried-forward filings are not shown as current'
+        : monthlyGap(`fewer than ${CURRENT_FLOWS_WINDOW.months} UN Comtrade monthly crude import filings since ${CURRENT_FLOWS_WINDOW.earliestMonth}`);
+      limitations.push(`Current flows unavailable for ${code}: ${reason}.`);
     }
-    if (monthly.preCrisis || monthly.current) {
-      if (crudeOrigin?.carriedForward) {
+    if (computed.preCrisis || computed.current) {
+      if (originStale) {
         const fetched = typeof crudeOrigin.fetchedAt === 'string' ? crudeOrigin.fetchedAt.slice(0, 10) : 'an earlier';
         limitations.push(`Monthly Comtrade crude origin data is carried forward from the ${fetched} fetch; the latest fetch failed.`);
       }

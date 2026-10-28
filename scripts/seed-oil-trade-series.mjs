@@ -524,7 +524,12 @@ export function crudeImportOriginSection({ months, rows, fetchedAt, error, previ
   return { status: 'unavailable', fetchedAt, source: CRUDE_ORIGIN_SOURCE, months, importers: {} };
 }
 
-async function fetchCrudeImportOriginRows(periods, key) {
+/**
+ * One call per period list, failing over across the configured keys: a
+ * rate-limited or revoked first key must not cost the weekly refresh.
+ * `fetchJson` and `retries` are injectable for tests.
+ */
+export async function fetchCrudeImportOriginRows(periods, keys, { fetchJson = fetchComtradeJson, retries = 3 } = {}) {
   const rows = [];
   const windowRowCounts = [];
   for (const months of periods) {
@@ -539,7 +544,18 @@ async function fetchCrudeImportOriginRows(periods, key) {
       includeDesc: 'true',
       maxRecords: String(CRUDE_ORIGIN_MAX_RECORDS),
     });
-    const data = await withRetry(() => fetchComtradeJson(`https://comtradeapi.un.org/data/v1/get/C/M/HS?${params}`, key), 3, 8000);
+    const url = `https://comtradeapi.un.org/data/v1/get/C/M/HS?${params}`;
+    let data = null;
+    let lastError = null;
+    for (const key of keys) {
+      try {
+        data = retries > 0 ? await withRetry(() => fetchJson(url, key), retries, 8000) : await fetchJson(url, key);
+        break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    if (data === null) throw lastError ?? new Error('no Comtrade key available');
     // A capped answer silently drops reporters; refuse it.
     if (data.length >= CRUDE_ORIGIN_MAX_RECORDS) throw new Error(`crude origin response capped at ${data.length} rows`);
     windowRowCounts.push(data.length);
@@ -555,7 +571,7 @@ async function fetchCrudeImportOrigin(nowMs, previous) {
   const keys = (process.env.COMTRADE_API_KEYS || '').split(',').map((k) => k.trim()).filter(Boolean);
   try {
     if (keys.length === 0) throw new Error('COMTRADE_API_KEYS not set');
-    const { rows, windowRowCounts } = await fetchCrudeImportOriginRows(periods, keys[0]);
+    const { rows, windowRowCounts } = await fetchCrudeImportOriginRows(periods, keys);
     if (windowRowCounts.some((count) => count === 0)) console.warn(`  Crude import origin: a requested window returned no rows (${windowRowCounts.join(', ')}); keeping the previous section`);
     const section = crudeImportOriginSection({ months, rows, fetchedAt, previous, windowRowCounts });
     console.log(`  Crude import origin: ${Object.keys(section.importers).length} importers (${section.status}${section.carriedForward ? ', carried forward' : ''})`);

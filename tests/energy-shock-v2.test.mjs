@@ -1595,12 +1595,15 @@ describe('pre-crisis and current-flows Gulf share baselines (Comtrade monthly, r
     assert.equal(r.comtradeCoverage, true, 'a monthly share is Comtrade coverage without any annual partner row');
   });
 
-  it('a carried-forward section is used and says so', async (t) => {
+  it('a carried-forward section keeps the fixed pre-crisis baseline but withholds current flows', async (t) => {
     t.after(restoreEnergyShockEnvironment);
     installEnergyShockRedis({ ...HORMUZ_LIVE_SEED, ...JP_PROD_SEED, ...originSeed({ ...ORIGIN_SECTION, status: 'unavailable', carriedForward: true }) });
     const r = await computeShock({ countryCode: 'JP', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
     assert.equal(r.preCrisisBaseline?.basis, 'comtrade_monthly');
     assert.ok(r.limitations.some((l) => /carried forward from the 2026-10-28 fetch/.test(l)), r.limitations.join('\n'));
+    // The latest filings from a failed refresh are not current data.
+    assert.equal(r.currentFlows, undefined);
+    assert.ok(r.limitations.some((l) => /Current flows unavailable for JP: the latest monthly UN Comtrade fetch failed/.test(l)), r.limitations.join('\n'));
   });
 
   it('gas-only mode carries no oil baselines', async (t) => {
