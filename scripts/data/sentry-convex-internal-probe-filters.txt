@@ -22,6 +22,7 @@
 *Could not find public function for 'accountDeletion/sideEffects:runExternalErase'*
 *Could not find public function for 'agentSources:countBySource'*
 *Could not find public function for 'agentSources:pageSources'*
+*Could not find public function for 'alertRules:deleteInvalidVariantRules'*
 *Could not find public function for 'alertRules:getAlertRulesByUserId'*
 *Could not find public function for 'alertRules:getByEnabled'*
 *Could not find public function for 'alertRules:getDigestRules'*
