@@ -384,25 +384,27 @@ export interface JodiStocks {
   productsMb: number;
 }
 
-const monthIndex = (ym: string): number | null => {
-  const m = /^(\d{4})-(\d{2})$/.exec(ym);
-  return m ? Number(m[1]) * 12 + Number(m[2]) - 1 : null;
+const monthIndex = (ym: unknown): number | null => {
+  if (typeof ym !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) return null;
+  return Number(ym.slice(0, 4)) * 12 + Number(ym.slice(5, 7)) - 1;
 };
 
 /**
- * The month-end crude and product stocks a JODI row carries, when both are
- * finite and nonnegative with a positive total. `stale` marks stocks more than
- * JODI_STOCK_MAX_AGE_MONTHS before the row's flow month: they are reported in
- * a limitation but never used for cover.
+ * The month-end crude and product stocks a JODI row carries, when the month is
+ * a valid YYYY-MM and both figures are finite and nonnegative with a positive
+ * total. Stocks are usable for cover only when they can be dated against a
+ * valid flow month and are at most JODI_STOCK_MAX_AGE_MONTHS older than it;
+ * otherwise `unusable` says why, for a limitation.
  */
-export function parseJodiStocks(raw: unknown, flowMonth: unknown): { stocks: JodiStocks; stale: boolean } | null {
+export function parseJodiStocks(raw: unknown, flowMonth: unknown): { stocks: JodiStocks; unusable: 'stale' | 'undated' | null } | null {
   if (!raw || typeof raw !== 'object') return null;
   const { month, crudeMb, productsMb } = raw as Record<string, unknown>;
   const mb = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
-  if (typeof month !== 'string' || monthIndex(month) == null || !mb(crudeMb) || !mb(productsMb) || crudeMb + productsMb <= 0) return null;
-  const flow = typeof flowMonth === 'string' ? monthIndex(flowMonth) : null;
-  const stale = flow != null && flow - monthIndex(month)! > JODI_STOCK_MAX_AGE_MONTHS;
-  return { stocks: { month, crudeMb, productsMb }, stale };
+  const stockIndex = monthIndex(month);
+  if (stockIndex == null || !mb(crudeMb) || !mb(productsMb) || crudeMb + productsMb <= 0) return null;
+  const flowIndex = monthIndex(flowMonth);
+  const unusable = flowIndex == null ? 'undated' : flowIndex - stockIndex > JODI_STOCK_MAX_AGE_MONTHS ? 'stale' : null;
+  return { stocks: { month: month as string, crudeMb, productsMb }, unusable };
 }
 
 export function computeEffectiveCoverDays(

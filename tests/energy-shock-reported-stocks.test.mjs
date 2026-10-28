@@ -114,6 +114,19 @@ describe('handler: cover from JODI-reported stocks', () => {
     assert.ok(r.limitations.some((l) => /JODI stocks for IN are from 2025-02, more than 12 months before/.test(l)), r.limitations.join('\n'));
   });
 
+  it('an impossible stock month is rejected, and stocks that cannot be dated against the flow month give no cover', async (t) => {
+    t.after(restore);
+    const row = IN_JODI['energy:jodi-oil:v1:IN'];
+    seed({ ...HORMUZ, ...ORIGIN, 'energy:jodi-oil:v1:IN': { ...row, stocks: { ...IN_STOCKS, month: '2026-13' } } });
+    assert.equal((await shock('IN')).reportedStocks, undefined);
+    for (const dataMonth of [undefined, '2026-00', 'latest']) {
+      seed({ ...HORMUZ, ...ORIGIN, 'energy:jodi-oil:v1:IN': { ...row, dataMonth } });
+      const r = await shock('IN');
+      assert.equal(r.reportedStocks, undefined, String(dataMonth));
+      assert.ok(r.limitations.some((l) => /JODI stocks for IN \(2026-03\) cannot be dated against a valid JODI flow month/.test(l)), r.limitations.join('\n'));
+    }
+  });
+
   it('malformed stock fields are ignored, not read as zero stock', async (t) => {
     t.after(restore);
     seed({ ...HORMUZ, ...ORIGIN, 'energy:jodi-oil:v1:IN': { ...IN_JODI['energy:jodi-oil:v1:IN'], stocks: { month: '2026-03', crudeMb: 'x', productsMb: 96 } } });

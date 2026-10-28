@@ -584,7 +584,7 @@ export async function computeEnergyShockScenario(
   // crude and product stocks they report to JODI give their cover instead,
   // labelled as JODI data. A country that reports none gets no cover.
   const parsedStocks = needsOil && !ieaStocksCoverage ? parseJodiStocks(jodiOil?.stocks, jodiOil?.dataMonth) : null;
-  const jodiStocks = parsedStocks && !parsedStocks.stale ? parsedStocks.stocks : null;
+  const jodiStocks = parsedStocks && parsedStocks.unusable == null ? parsedStocks.stocks : null;
   const stocksTotalMb = jodiStocks ? jodiStocks.crudeMb + jodiStocks.productsMb : 0;
   const stocksApplied = jodiStocks != null && oilModeled && crudeImportsKbd > 0;
   // Stock in days of crude imports, so the IEA cover formula applies unchanged.
@@ -610,9 +610,11 @@ export async function computeEnergyShockScenario(
       : 'cover is not modeled because the oil loss is not modeled';
     limitations.push(`Oil stocks reported to JODI (not IEA data): crude ${mb1(jodiStocks.crudeMb).toFixed(1)} + products ${mb1(jodiStocks.productsMb).toFixed(1)} = ${mb1(stocksTotalMb).toFixed(1)} M bbl at the end of ${jodiStocks.month}, ${coverText}. JODI stocks are what the country reports as held on its territory; whether government reserves are included depends on the reporter.`);
   } else if (needsOil && !ieaStocksCoverage && !netExporter) {
-    limitations.push(parsedStocks?.stale
+    limitations.push(parsedStocks?.unusable === 'stale'
       ? `Oil stock cover not modeled for ${code}: JODI stocks for ${code} are from ${parsedStocks.stocks.month}, more than ${JODI_STOCK_MAX_AGE_MONTHS} months before the ${jodiOil?.dataMonth} flow month.`
-      : `Oil stock cover not modeled for ${code}: no IEA or JODI stock observation.`);
+      : parsedStocks?.unusable === 'undated'
+        ? `Oil stock cover not modeled for ${code}: JODI stocks for ${code} (${parsedStocks.stocks.month}) cannot be dated against a valid JODI flow month.`
+        : `Oil stock cover not modeled for ${code}: no IEA or JODI stock observation.`);
   }
   if (needsOil && effectiveCoverDays === -1) {
     limitations.push('effectiveCoverDays -1 marks a net oil exporter (IEA); no import-cover duration applies.');
