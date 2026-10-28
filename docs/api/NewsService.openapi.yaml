@@ -2589,10 +2589,12 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/NewsItem'
+                    maxItems: 72
                 sources:
                     type: array
                     items:
                         $ref: '#/components/schemas/SourceItemsState'
+                    maxItems: 24
                 generatedAt:
                     type: string
         SourceItemsState:

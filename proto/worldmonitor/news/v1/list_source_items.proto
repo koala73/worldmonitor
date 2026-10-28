@@ -37,9 +37,9 @@ message ListSourceItemsRequest {
 
 message ListSourceItemsResponse {
   // Up to three newest items per found source, newest first.
-  repeated NewsItem items = 1;
+  repeated NewsItem items = 1 [(buf.validate.field).repeated.max_items = 72];
   // One per requested source, in the canonical (sorted) order.
-  repeated SourceItemsState sources = 2;
+  repeated SourceItemsState sources = 2 [(buf.validate.field).repeated.max_items = 24];
   string generated_at = 3;
 }
 

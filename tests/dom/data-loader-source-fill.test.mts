@@ -128,7 +128,7 @@ describe('preset panels fill slots the source filter freed from cached source ro
   it('a panel with every source on makes no request and shows exactly the digest items', async () => {
     const fetchMock = sourceRowsFetch({});
     vi.stubGlobal('fetch', fetchMock);
-    const { loader, ctx } = await makeLoader();
+    const { loader } = await makeLoader();
     const digest = digestOf('europe', [...protoItems('Wire A', 2), ...protoItems('Wire B', 2)]);
 
     const items = await loader.loadNewsCategory('europe', feeds(['Wire A', 'Wire B', 'Niche C']), fresh(digest), false, OPTIONS);
@@ -161,7 +161,7 @@ describe('preset panels fill slots the source filter freed from cached source ro
   it('does not ask for a source this language\'s digest never fetches', async () => {
     const fetchMock = sourceRowsFetch({});
     vi.stubGlobal('fetch', fetchMock);
-    const { loader, ctx } = await makeLoader(['Wire B']);
+    const { loader } = await makeLoader(['Wire B']);
     const digest = digestOf('europe', [...protoItems('Wire A', 1), ...protoItems('Wire B', 1)]);
 
     await loader.loadNewsCategory('europe', [
@@ -268,6 +268,11 @@ describe('a fill reaches the committed news set and never overwrites a newer ren
 });
 
 describe('cross-edition panels fill from sources no carrying digest includes', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    mocks.fetchCategoryFeeds.mockReset();
+  });
+
   function crossEditionFetch(rows: ReturnType<typeof sourceRowsFetch>) {
     return vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), 'https://www.worldmonitor.app');

@@ -56720,10 +56720,12 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_news_v1_NewsItem'
+                    maxItems: 72
                 sources:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_news_v1_SourceItemsState'
+                    maxItems: 24
                 generatedAt:
                     type: string
         worldmonitor_news_v1_SourceItemsState:
