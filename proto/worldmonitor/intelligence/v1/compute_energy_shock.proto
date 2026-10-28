@@ -70,7 +70,9 @@ message GasSensitivity {
   string model_basis = 11;
 }
 
-// Gulf crude share over one window and the crude loss it implies.
+// Gulf crude share over one window and the crude loss it implies. preCrisisBaseline: the 12 months before the Hormuz crisis
+// from at least 9 monthly filings, else the annual share (basis comtrade_annual); drives the headline, products and cover.
+// currentFlows: the latest 3 monthly filings since the crisis; absent when unavailable, never used for products or cover.
 message CrudeShareBaseline {
   // "comtrade_monthly", or "comtrade_annual" for the annual partner-share fallback.
   string basis = 1;
