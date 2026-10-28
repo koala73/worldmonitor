@@ -360,7 +360,9 @@ export async function computeEnergyShockScenario(
     && (ieaStocks.netExporter === true || (ieaStocks.daysOfCover != null && Number.isFinite(ieaStocks.daysOfCover) && ieaStocks.daysOfCover >= 0));
   const portwatchCoverage = liveFlowRatio !== null;
   // IEA classifies its members; JODI production and trade classify the rest.
-  const jodiNetExporter = needsOil && !ieaStocksCoverage ? jodiNetCrudeExporter(jodiOil?.crude) : null;
+  // Only without any IEA record: an IEA importer record with unusable cover
+  // still says the country imports.
+  const jodiNetExporter = needsOil && ieaStocks == null ? jodiNetCrudeExporter(jodiOil?.crude) : null;
   const netExporter = needsOil && ((ieaStocksCoverage && ieaStocks?.netExporter === true) || jodiNetExporter != null);
 
   const observedCrudeImportsKbd = jodiOil?.crude?.importsKbd;

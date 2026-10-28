@@ -387,13 +387,17 @@ export interface JodiCrudeBalance {
  * Net crude exporter from a JODI row, for countries without an IEA stock
  * record (Saudi Arabia, Kuwait, Iraq, Kazakhstan, Nigeria...): production
  * covers refinery intake and exports exceed imports. An unreported import
- * figure counts as 0 (Iraq files none). Returns the figures it rests on, or
- * null when the row cannot show it.
+ * figure counts as 0 (Iraq files none); a reported but invalid one (negative)
+ * disqualifies the row. Exports above imports already imply production above
+ * intake in the crude balance, so the intake check only guards a stock-draw
+ * month and is skipped when intake is unreported. Returns the figures it rests
+ * on, or null when the row cannot show it.
  */
 export function jodiNetCrudeExporter(crude: JodiCrudeBalance | null | undefined): JodiCrudeBalance | null {
   const kbd = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
   if (!crude || !kbd(crude.productionKbd) || crude.productionKbd <= 0 || !kbd(crude.exportsKbd)) return null;
-  const importsKbd = kbd(crude.importsKbd) ? crude.importsKbd : null;
+  if (crude.importsKbd != null && !kbd(crude.importsKbd)) return null;
+  const importsKbd = crude.importsKbd ?? null;
   if (!(crude.exportsKbd > (importsKbd ?? 0))) return null;
   const refineryIntakeKbd = kbd(crude.refineryIntakeKbd) ? crude.refineryIntakeKbd : null;
   if (refineryIntakeKbd != null && crude.productionKbd < refineryIntakeKbd) return null;
@@ -492,7 +496,7 @@ export function buildAssessment(
   const mix = supplyMix ? ` at ${supplyMix}` : '';
   // A net exporter needs no import data: checked before the import gates.
   if (effectiveCoverDays === -1) {
-    return `${country} is a net oil exporter; ${cp} disruption affects export revenue, not domestic supply.`;
+    return `${country} is a net oil exporter, so no import-cover duration applies; ${cp} disruption mainly affects export revenue and can still reach refiners that import Gulf crude or products.`;
   }
   if (!dataAvailable) {
     return `Insufficient import data for ${country} to model ${cp} exposure.`;

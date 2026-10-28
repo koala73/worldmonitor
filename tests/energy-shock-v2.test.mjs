@@ -1769,6 +1769,27 @@ describe('production replay 2026-10-28: Gulf crude share comes from Comtrade par
     }
   });
 
+  it('an IEA importer record without usable cover is still not reclassified from JODI', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED,
+      'energy:jodi-oil:v1:NZ': { crude: { productionKbd: 13, refineryIntakeKbd: 0, importsKbd: 0, exportsKbd: 25 } },
+      'energy:iea-oil-stocks:v1:NZ': { daysOfCover: null, netExporter: false, anomaly: false },
+    });
+    const response = await computeShock({ countryCode: 'NZ', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    assert.notEqual(response.effectiveCoverDays, -1);
+  });
+
+  it('a negative reported import figure is invalid, not an unreported 0', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED,
+      'energy:jodi-oil:v1:KW': { dataMonth: '2026-07', crude: { productionKbd: 2500, refineryIntakeKbd: 800, importsKbd: -5, exportsKbd: 1700 } },
+    });
+    const response = await computeShock({ countryCode: 'KW', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil' });
+    assert.notEqual(response.effectiveCoverDays, -1);
+  });
+
   it('IEA reserves with no origin share give cover 0 and the not-modeled limitation, never a raw IEA figure', async (t) => {
     t.after(restoreEnergyShockEnvironment);
     installEnergyShockRedis({
@@ -2118,13 +2139,16 @@ describe('get-country-cost-shock surfaces an unmodeled oil scenario as unavailab
     process.env.WORLDMONITOR_VALID_KEYS = 'wm_shock_fixture';
     installEnergyShockRedis({
       ...HORMUZ_LIVE_SEED,
-      'energy:jodi-oil:v1:SA': { dataMonth: '2026-08', crude: { productionKbd: 9800, refineryIntakeKbd: 2700, importsKbd: 0, exportsKbd: 6900 } },
+      // Recorded product demand: the deficit is unmodeled because there is no
+      // modeled import loss, not because demand is missing.
+      'energy:jodi-oil:v1:SA': { dataMonth: '2026-08', crude: { productionKbd: 9800, refineryIntakeKbd: 2700, importsKbd: 0, exportsKbd: 6900 }, gasoline: { demandKbd: 550 }, diesel: { demandKbd: 700 } },
     });
 
     const result = await getCountryCostShock(premiumCtx(), { iso2: 'SA', chokepointId: 'hormuz_strait', hs2: '27' });
 
     assert.equal(result.coverageDays, 0);
-    assert.doesNotMatch(result.unavailableReason, /no IEA stock observation/);
+    assert.doesNotMatch(result.unavailableReason, /no IEA stock observation|no refined-product demand observation/);
     assert.match(result.unavailableReason, /coverageDays is not applicable: SA is a net oil exporter/);
+    assert.match(result.unavailableReason, /supplyDeficitPct is not modeled: SA is a net oil exporter with no modeled import loss/);
   });
 });

@@ -207,7 +207,7 @@ function netExporter(overrides: Partial<ComputeEnergyShockScenarioResponse>): Co
 it('an IEA net exporter without an origin share reads as a net exporter, not "not modeled" (Mexico)', () => {
   const el = render(netExporter({
     countryCode: 'MX', jodiOilCoverage: false,
-    assessment: 'Mexico is a net oil exporter; Strait of Hormuz disruption affects export revenue, not domestic supply.',
+    assessment: 'Mexico is a net oil exporter, so no import-cover duration applies; Strait of Hormuz disruption mainly affects export revenue and can still reach refiners that import Gulf crude or products.',
     limitations: ['effectiveCoverDays -1 marks a net oil exporter (IEA); no import-cover duration applies.'],
   }));
   expect(el.textContent).toContain(EXPORTER_ROW);
@@ -217,7 +217,7 @@ it('an IEA net exporter without an origin share reads as a net exporter, not "no
 it('a net exporter without an IEA record still reads as a net exporter (Saudi Arabia, from JODI)', () => {
   const el = render(netExporter({
     countryCode: 'SA', ieaStocksCoverage: false,
-    assessment: 'Saudi Arabia is a net oil exporter; Strait of Hormuz disruption affects export revenue, not domestic supply.',
+    assessment: 'Saudi Arabia is a net oil exporter, so no import-cover duration applies; Strait of Hormuz disruption mainly affects export revenue and can still reach refiners that import Gulf crude or products.',
     limitations: ['effectiveCoverDays -1 marks a net oil exporter: net crude exporter from JODI 2026-08, production 9,800 kb/d against refinery intake 2,700, exports 6,900 against imports 0; no import-cover duration applies.'],
   }));
   expect(el.textContent).toContain(EXPORTER_ROW);

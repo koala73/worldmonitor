@@ -118,7 +118,11 @@ export async function getCountryCostShock(
       const gaps: string[] = [];
       if (netExporter) gaps.push(`coverageDays is not applicable: ${iso2} is a net oil exporter`);
       else if (!coverageModeled) gaps.push(`coverageDays is unavailable: no IEA stock observation for ${iso2}`);
-      if (!deficitModeled) gaps.push(`supplyDeficitPct is unavailable: no refined-product demand observation for ${iso2}`);
+      if (!deficitModeled) {
+        gaps.push(netExporter
+          ? `supplyDeficitPct is not modeled: ${iso2} is a net oil exporter with no modeled import loss`
+          : `supplyDeficitPct is unavailable: no refined-product demand observation for ${iso2}`);
+      }
       if (gaps.length > 0) {
         const modeled = coverageModeled ? 'coverageDays is modelled' : deficitModeled ? 'supplyDeficitPct is modelled' : '';
         unavailableReason = `${gaps.join('; ')}${modeled ? ` (${modeled})` : ''}.`;
