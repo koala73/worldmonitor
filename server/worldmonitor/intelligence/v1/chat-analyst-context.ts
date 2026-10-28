@@ -220,9 +220,47 @@ const INSTRUMENT_ALIASES: ReadonlyMap<string, readonly string[]> = new Map([
   ['^VIX', ['volatility']],
 ]);
 
+// ── Quote currency ───────────────────────────────────────────────────────────
+//
+// shared/commodities.json and shared/stocks.json carry no currency, and a "$"
+// on every quote misled the price check (#9780 review): TTF trades in EUR/MWh,
+// so a correct "€95" answer read as unsupported under market focus while "$95"
+// passed. Index levels (^GSPC, ^VIX) and exchange rates (=X) are not currency
+// amounts. A listing outside the US quotes in its exchange currency, keyed by
+// the Yahoo Finance exchange suffix; every suffix in shared/stocks.json is
+// here. Everything else trades in US dollars
+// (scripts/_bet-templates-commodities.mjs: USD/bbl, USD/MMBtu, USD/oz).
+const COMMODITY_CURRENCY_SIGN: ReadonlyMap<string, string> = new Map([
+  ['TTF=F', '€'], // Dutch TTF gas, EUR/MWh — the spot line below renders it the same way
+]);
+const EXCHANGE_SUFFIX_CURRENCY_SIGN: ReadonlyMap<string, string> = new Map([
+  ['.NS', '₹'],    // NSE India, INR
+  ['.SS', 'CN¥'],  // Shanghai, CNY
+  ['.SZ', 'CN¥'],  // Shenzhen, CNY
+  ['.HK', 'HK$'],  // Hong Kong, HKD
+  ['.SR', 'SAR '], // Saudi Tadawul, SAR
+  ['.T', '¥'],     // Tokyo, JPY
+  ['.TO', 'C$'],   // Toronto, CAD
+  ['.SW', 'CHF '], // SIX Swiss, CHF
+  ['.MI', '€'],    // Milan, EUR
+  ['.KS', '₩'],    // Korea, KRW
+  ['.AE', 'AED '], // Dubai DFM, AED
+]);
+
+function quoteCurrencySign(rawSymbol: string): string {
+  if (rawSymbol.startsWith('^') || rawSymbol.endsWith('=X')) return '';
+  const commodity = COMMODITY_CURRENCY_SIGN.get(rawSymbol);
+  if (commodity !== undefined) return commodity;
+  const dot = rawSymbol.lastIndexOf('.');
+  const exchange = dot > 0 ? EXCHANGE_SUFFIX_CURRENCY_SIGN.get(rawSymbol.slice(dot)) : undefined;
+  return exchange ?? '$';
+}
+
 interface QuoteRow {
   symbol: string;
   label: string;
+  /** Currency sign rendered before the price; empty for an index or a rate. */
+  sign: string;
   price: number;
   change: number;
   /** Symbol, label and aliases: what a question may call this instrument. */
@@ -248,7 +286,7 @@ function quoteRows(payload: unknown, labels: ReadonlyMap<string, string> | null)
     const payloadName = sanitizeForPromptLine(safeStr(quote.name));
     const label = configured ? sanitizeForPromptLine(configured) : (payloadName && payloadName !== symbol ? payloadName : '');
     const aliases = (INSTRUMENT_ALIASES.get(rawSymbol) ?? []).join(' ');
-    rows.push({ symbol, label, price, change, searchText: `${symbol} ${label} ${aliases}` });
+    rows.push({ symbol, label, sign: quoteCurrencySign(rawSymbol), price, change, searchText: `${symbol} ${label} ${aliases}` });
   }
   return rows;
 }
@@ -264,7 +302,7 @@ function selectQuotes(rows: QuoteRow[], keywords: string[], defaultCount: number
 
 function formatQuote(row: QuoteRow): string {
   const name = row.label ? `${row.label} (${row.symbol})` : row.symbol;
-  return `${name} $${row.price.toFixed(2)} (${formatChange(row.change)})`;
+  return `${name} ${row.sign}${row.price.toFixed(2)} (${formatChange(row.change)})`;
 }
 
 export function buildMarketData(stocks: unknown, commodities: unknown, keywords: string[] = []): string {

@@ -31,16 +31,27 @@ export interface PriceFigure {
 // A currency marker, optional space, an amount with optional thousands
 // separators and decimals, then an optional magnitude suffix. The marker is
 // what makes the figure a price claim: bare numbers are counts, years and
-// percentages, which this check deliberately leaves alone.
-const PRICE_RE = /(US\$|USD|[$€£¥])\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?:\s?(k|m|mn|bn|b|tn|t|thousand|million|billion|trillion)\b)?/gi;
+// percentages, which this check deliberately leaves alone. The markers are
+// the ones the Market Data block renders (chat-analyst-context.ts,
+// quoteCurrencySign); a marker that starts with a letter must open a word, so
+// "Caesar 80" is not a riyal price.
+const PRICE_RE = /(\bUS\$|\bHK\$|\bC\$|\bCN¥|\bUSD|\bCHF|\bSAR|\bAED|[$€£¥₹₩])\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?:\s?(k|m|mn|bn|b|tn|t|thousand|million|billion|trillion)\b)?/gi;
 
 // The same amount in another currency is a different price (#9780 review):
-// "£110.89" is not grounded by "$110.89". The yen and yuan share a sign.
+// "£110.89" is not grounded by "$110.89". The yen and yuan share a sign, so
+// "¥" and "CN¥" are one class.
 const CURRENCY_OF_MARKER: Record<string, string> = {
   '$': 'USD', 'us$': 'USD', 'usd': 'USD',
+  'hk$': 'HKD',
+  'c$': 'CAD',
   '€': 'EUR',
   '£': 'GBP',
-  '¥': 'JPY/CNY',
+  '¥': 'JPY/CNY', 'cn¥': 'JPY/CNY',
+  '₹': 'INR',
+  '₩': 'KRW',
+  chf: 'CHF',
+  sar: 'SAR',
+  aed: 'AED',
 };
 
 const SUFFIX_SCALE: Record<string, number> = {

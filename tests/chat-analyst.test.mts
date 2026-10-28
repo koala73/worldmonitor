@@ -1500,7 +1500,7 @@ describe('#5857 — pure formatters cannot be tricked into forging a line', () =
         { quotes: [{ symbol: '^GSPC', price: 5000, changePercent: 1.2 }] },
         { quotes: [{ symbol: 'CL=F', price: 80, changePercent: -0.5 }] },
       ),
-      'Market Data:\nEquities: ^GSPC $5000.00 (+1.20%)\nCommodities: Crude Oil WTI (CL=F) $80.00 (-0.50%)',
+      'Market Data:\nEquities: ^GSPC 5000.00 (+1.20%)\nCommodities: Crude Oil WTI (CL=F) $80.00 (-0.50%)',
     );
     assert.equal(
       buildRiskScores({ scores: [{ countryName: "Côte d'Ivoire", score: 62.5 }] }),
@@ -1789,7 +1789,7 @@ describe('buildMarketData — live quotes for the instruments a question names',
 
   it('the default block reads the seeder\'s `change` field instead of rendering +0.00%', () => {
     const out = buildMarketData(null, liveCommoditiesFixture());
-    assert.match(out, /VIX \(\^VIX\) \$17\.52 \(-4\.73%\)/, `got:\n${out}`);
+    assert.match(out, /VIX \(\^VIX\) 17\.52 \(-4\.73%\)/, `got:\n${out}`);
     assert.match(out, /Gold \(GC=F\) \$4056\.00 \(-0\.46%\)/, `got:\n${out}`);
     assert.ok(!out.includes('+0.00%'), `no quote may read +0.00% when the payload carries a move; got:\n${out}`);
   });
@@ -1840,6 +1840,56 @@ describe('buildMarketData — live quotes for the instruments a question names',
       const out = buildMarketData(null, { quotes: [{ symbol, price: 10, change: 0.5 }] }, ['oil']);
       assert.equal(out, `Market Data:\nCommodities: ${symbol} $10.00 (+0.50%)`, `symbol "${symbol}" renders plainly`);
     }
+  });
+});
+
+// CodeRabbit on #9780: every quote rendered with "$", so TTF (EUR/MWh) read as
+// a dollar price. Under market focus the € spot line is filtered out, so a
+// correct "€95" answer was caveated while "$95" passed with the wrong
+// currency. Index levels and exchange rates are not currency amounts at all,
+// and a listing outside the US quotes in its exchange currency.
+describe('each quote renders in its own currency, so the price check grounds the right one', () => {
+  it('TTF renders in euros: a € answer is grounded and a $ answer is flagged', () => {
+    const block = buildMarketData(null, liveCommoditiesFixture(), ['ttf']);
+    assert.match(block, /TTF Natural Gas \(TTF=F\) €94\.6[78] \(-1\.44%\)/, block);
+    assert.deepEqual(findUnsupportedPrices('TTF is near €95/MWh after the cold snap.', block), []);
+    assert.deepEqual(findUnsupportedPrices('TTF is near $95/MWh after the cold snap.', block), ['$95']);
+  });
+
+  it('an exchange rate carries no currency sign', () => {
+    const block = buildMarketData(null, {
+      quotes: [{ symbol: 'EURUSD=X', price: 1.1125, change: -0.05 }, { symbol: 'USDJPY=X', price: 157.937, change: 0.02 }],
+    });
+    assert.match(block, /EUR\/USD \(EURUSD=X\) 1\.11 \(-0\.05%\)/, block);
+    assert.match(block, /USD\/JPY \(USDJPY=X\) 157\.94 \(\+0\.02%\)/, block);
+    assert.ok(!block.includes('$'), `a rate is not a dollar amount; got:\n${block}`);
+  });
+
+  it('an index level carries no currency sign', () => {
+    const block = buildMarketData({ quotes: [{ symbol: '^GSPC', name: 'S&P 500', price: 5000, change: 1.2 }] }, liveCommoditiesFixture());
+    assert.match(block, /S&P 500 \(\^GSPC\) 5000\.00 \(\+1\.20%\)/, block);
+    assert.match(block, /VIX \(\^VIX\) 17\.52 \(-4\.73%\)/, block);
+  });
+
+  it('a listing outside the US renders in its exchange currency, which the price check reads back', () => {
+    const block = buildMarketData({
+      quotes: [
+        { symbol: 'RELIANCE.NS', name: 'Reliance Industries', price: 2950.5, change: 0.3 },
+        { symbol: '0700.HK', name: 'Tencent', price: 410, change: -1.1 },
+        { symbol: 'NESN.SW', name: 'Nestle', price: 85.2, change: 0.1 },
+        { symbol: '2222.SR', name: 'Saudi Aramco', price: 27.5, change: 0.4 },
+        { symbol: 'SHOP.TO', name: 'Shopify', price: 120, change: 2 },
+        { symbol: 'BRK.B', name: 'Berkshire Hathaway', price: 450, change: 0.2 },
+      ],
+    }, null);
+    assert.match(block, /Reliance Industries \(RELIANCE\.NS\) ₹2950\.50 \(\+0\.30%\)/, block);
+    assert.match(block, /Tencent \(0700\.HK\) HK\$410\.00 \(-1\.10%\)/, block);
+    assert.match(block, /Nestle \(NESN\.SW\) CHF 85\.20 \(\+0\.10%\)/, block);
+    assert.match(block, /Saudi Aramco \(2222\.SR\) SAR 27\.50 \(\+0\.40%\)/, block);
+    assert.match(block, /Shopify \(SHOP\.TO\) C\$120\.00 \(\+2\.00%\)/, block);
+    assert.match(block, /Berkshire Hathaway \(BRK\.B\) \$450\.00 \(\+0\.20%\)/, 'a share class is not an exchange suffix');
+    assert.deepEqual(findUnsupportedPrices('Reliance at ₹2,950, Aramco at SAR 27.5, Shopify at C$120.', block), []);
+    assert.deepEqual(findUnsupportedPrices('Tencent trades at $410.', block), ['$410'], 'a Hong Kong listing is not a dollar price');
   });
 });
 
@@ -1960,6 +2010,16 @@ describe('chat-analyst-grounding — extractPriceFigures', () => {
   it('normalises the dollar spellings and keeps other currencies distinct', () => {
     const figures = extractPriceFigures('US$80, USD 80, $80, £80, ¥80');
     assert.deepEqual(figures.map((f) => f.currency), ['USD', 'USD', 'USD', 'GBP', 'JPY/CNY']);
+  });
+
+  it('reads the exchange currencies the Market Data block renders', () => {
+    const figures = extractPriceFigures('HK$410, C$120, CHF 85.2, SAR 27.5, AED 4, ₹2,950, ₩71,000, CN¥1,200');
+    assert.deepEqual(figures.map((f) => f.currency), ['HKD', 'CAD', 'CHF', 'SAR', 'AED', 'INR', 'KRW', 'JPY/CNY']);
+    assert.deepEqual(figures.map((f) => f.value), [410, 120, 85.2, 27.5, 4, 2950, 71000, 1200]);
+  });
+
+  it('an alphabetic currency code must stand on its own word', () => {
+    assert.deepEqual(extractPriceFigures('Caesar 80 and focused 80 and released 80'), [], 'no "SAR", "USD" or "AED" inside other words');
   });
 
   it('scales suffixed amounts so "$2bn" is not the price 2', () => {
