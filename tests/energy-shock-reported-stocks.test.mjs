@@ -146,6 +146,19 @@ describe('handler: cover from JODI-reported stocks', () => {
     assert.equal(stocksNote(r), undefined);
   });
 
+  it('a JODI net exporter reports its stocks without stock days, never as "~-1 days" of cover', async (t) => {
+    t.after(restore);
+    // Crude balance that reads as a net exporter, with a measured Gulf share so the loss is modeled.
+    const exporter = { ...IN_JODI['energy:jodi-oil:v1:IN'], crude: { productionKbd: 9000, refineryIntakeKbd: 5000, importsKbd: IN_IMPORTS, exportsKbd: 5000 } };
+    seed({ ...HORMUZ, ...ORIGIN, 'energy:jodi-oil:v1:IN': exporter });
+    const r = await shock('IN');
+    assert.equal(r.effectiveCoverDays, -1);
+    assert.equal(r.reportedStocks?.totalMb, 141.3);
+    assert.equal(r.reportedStocks?.stockDays, undefined);
+    assert.doesNotMatch(stocksNote(r), /~-1 days/);
+    assert.match(stocksNote(r), /no import cover applies to a net oil exporter/);
+  });
+
   it('an anomalous IEA record does not fall back to JODI stocks, and says why there is no cover', async (t) => {
     t.after(restore);
     seed({
