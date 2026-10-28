@@ -1054,11 +1054,11 @@ describe('closing stocks (CLOSTLV)', () => {
 // exporter (Korea).
 describe('net oil imports (IEA days basis)', () => {
   const flow = (area, month, product, flowCode, value) => makeRow({ REF_AREA: area, TIME_PERIOD: month, ENERGY_PRODUCT: product, FLOW_BREAKDOWN: flowCode, OBS_VALUE: String(value) });
-  const year = (area, y, { crudeImp, crudeExp, prodImp, prodExp }, months = 12, crudeCode = 'TOTCRUDE') => {
+  const year = (area, y, { crudeImp, crudeExp, prodImp, prodExp }, months = 12, crudeCode = 'TOTCRUDE', crudeImpByMonth = {}) => {
     const rows = [];
     for (let m = 1; m <= months; m++) {
       const ym = `${y}-${String(m).padStart(2, '0')}`;
-      rows.push(flow(area, ym, crudeCode, 'TOTIMPSB', crudeImp), flow(area, ym, crudeCode, 'TOTEXPSB', crudeExp),
+      rows.push(flow(area, ym, crudeCode, 'TOTIMPSB', crudeImpByMonth[m] ?? crudeImp), flow(area, ym, crudeCode, 'TOTEXPSB', crudeExp),
         flow(area, ym, 'TOTPRODS', 'TOTIMPSB', prodImp), flow(area, ym, 'TOTPRODS', 'TOTEXPSB', prodExp));
     }
     return rows;
@@ -1068,26 +1068,47 @@ describe('net oil imports (IEA days basis)', () => {
   it('averages crude plus product net imports over the calendar year before the data month', () => {
     // Australia-like: little crude, large product imports.
     const rows = [...year('AU', 2025, { crudeImp: 150, crudeExp: 20, prodImp: 900, prodExp: 40 }), ...current('AU', '2026-08')];
-    assert.deepEqual(extractCountryData(rows, 'AU').netOilImports, { year: 2025, kbd: 990, months: 12 });
+    assert.deepEqual(extractCountryData(rows, 'AU').netOilImports, [{ year: 2025, kbd: 990, months: 12 }]);
   });
 
   it('a product exporter nets its exports (Korea-like)', () => {
     const rows = [...year('KR', 2025, { crudeImp: 2800, crudeExp: 0, prodImp: 900, prodExp: 1300 }), ...current('KR', '2026-08')];
-    assert.equal(extractCountryData(rows, 'KR').netOilImports.kbd, 2400);
+    assert.equal(extractCountryData(rows, 'KR').netOilImports[0].kbd, 2400);
   });
 
   it('uses CRUDEOIL when TOTCRUDE is not reported', () => {
     const rows = [...year('JP', 2025, { crudeImp: 2400, crudeExp: 0, prodImp: 600, prodExp: 300 }, 12, 'CRUDEOIL'), ...current('JP', '2026-08')];
-    assert.equal(extractCountryData(rows, 'JP').netOilImports.kbd, 2700);
+    assert.equal(extractCountryData(rows, 'JP').netOilImports[0].kbd, 2700);
   });
 
-  it('is null with fewer than 9 complete months, or when the year is a net exporter', () => {
-    assert.equal(extractCountryData([...year('AU', 2025, { crudeImp: 150, crudeExp: 20, prodImp: 900, prodExp: 40 }, 8), ...current('AU', '2026-08')], 'AU').netOilImports, null);
-    assert.equal(extractCountryData([...year('NO', 2025, { crudeImp: 0, crudeExp: 1500, prodImp: 100, prodExp: 300 }), ...current('NO', '2026-08')], 'NO').netOilImports, null);
+  it('weights each month by its days, not equally', () => {
+    // 1,000 kb/d all year except a 2,000 kb/d February: (1000 x 337 + 2000 x 28) / 365.
+    const rows = [...year('JP', 2025, { crudeImp: 1000, crudeExp: 0, prodImp: 0, prodExp: 0 }, 12, 'TOTCRUDE', { 2: 2000 }), ...current('JP', '2026-08')];
+    assert.equal(extractCountryData(rows, 'JP').netOilImports[0].kbd, 1076.7);
   });
 
-  it('is null when the previous year is not in the files (a data month a year behind)', () => {
+  it('publishes every complete year before the data month, newest first, for the reader to match IEA', () => {
+    const rows = [
+      ...year('AU', 2024, { crudeImp: 200, crudeExp: 20, prodImp: 800, prodExp: 30 }),
+      ...year('AU', 2025, { crudeImp: 150, crudeExp: 20, prodImp: 900, prodExp: 40 }),
+      ...current('AU', '2026-01'),
+    ];
+    assert.deepEqual(extractCountryData(rows, 'AU').netOilImports.map((e) => [e.year, e.kbd]), [[2025, 990], [2024, 950]]);
+  });
+
+  it('omits a year with fewer than 9 complete months, or a net-exporting year', () => {
+    assert.deepEqual(extractCountryData([...year('AU', 2025, { crudeImp: 150, crudeExp: 20, prodImp: 900, prodExp: 40 }, 8), ...current('AU', '2026-08')], 'AU').netOilImports, []);
+    assert.deepEqual(extractCountryData([...year('NO', 2025, { crudeImp: 0, crudeExp: 1500, prodImp: 100, prodExp: 300 }), ...current('NO', '2026-08')], 'NO').netOilImports, []);
+  });
+
+  it("never counts the data month's own year (a data month a year behind)", () => {
     const rows = [...year('AU', 2025, { crudeImp: 150, crudeExp: 20, prodImp: 900, prodExp: 40 }), ...current('AU', '2025-12')];
-    assert.equal(extractCountryData(rows, 'AU').netOilImports, null);
+    assert.deepEqual(extractCountryData(rows, 'AU').netOilImports, []);
+  });
+
+  it('reads the optional lookback primary file, which holds the year IEA counts against each January', () => {
+    const csv = makeCsv([makeRow({ REF_AREA: 'AU', TIME_PERIOD: '2024-05', ENERGY_PRODUCT: 'TOTCRUDE', FLOW_BREAKDOWN: 'TOTIMPSB', OBS_VALUE: '150' })]);
+    const rows = mergeSourceRows('', '', makeCsv([makeRow({})]), '', '', csv);
+    assert.ok(rows.some((r) => r.TIME_PERIOD === '2024-05' && r.ENERGY_PRODUCT === 'TOTCRUDE'));
   });
 });

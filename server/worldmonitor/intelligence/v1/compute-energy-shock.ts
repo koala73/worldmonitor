@@ -617,8 +617,11 @@ export async function computeEnergyShockScenario(
   // IEA days count the previous calendar year's net oil imports, crude and
   // products, so they become barrels at that rate. Crude imports alone
   // understate a product importer (Australia) and overstate a product
-  // exporter (Korea); they stand in only when JODI has no full year.
-  const netOilImports = parseNetOilImports(jodiOil?.netOilImports);
+  // exporter (Korea); they stand in only when JODI has no full year. The
+  // year is the one before IEA's own data month, which can lag JODI's.
+  const ieaMonth = typeof ieaStocks?.dataMonth === 'string' && /^\d{4}-\d{2}$/.test(ieaStocks.dataMonth) ? ieaStocks.dataMonth : null;
+  const ieaBasisYear = ieaMonth ? Number(ieaMonth.slice(0, 4)) - 1 : null;
+  const netOilImports = parseNetOilImports(jodiOil?.netOilImports, ieaBasisYear);
   const ieaBasisKbd = netOilImports?.kbd ?? crudeImportsKbd;
   const effectiveCoverDays = !oilModeled
     ? 0
@@ -629,7 +632,7 @@ export async function computeEnergyShockScenario(
     const kbd = (v: number): string => v.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
     limitations.push(netOilImports
       ? `IEA days of cover converted to barrels with JODI ${netOilImports.year} net oil imports (crude and products) of ${kbd(netOilImports.kbd)} kb/d, the basis IEA counts days against.`
-      : `IEA days of cover converted to barrels with JODI crude imports of ${kbd(crudeImportsKbd)} kb/d; net oil imports are unavailable, so cover is misstated for a country that trades products.`);
+      : `IEA days of cover converted to barrels with JODI crude imports of ${kbd(crudeImportsKbd)} kb/d; JODI net oil imports for ${ieaBasisYear ?? 'the year IEA counts days against'} are unavailable, so cover is misstated for a country that trades products.`);
   }
   const mb1 = (v: number): number => Math.round(v * 10) / 10;
   let reportedStocks: ReportedStocks | undefined;
