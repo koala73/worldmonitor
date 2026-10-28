@@ -3,11 +3,11 @@ import test from 'node:test';
 import {
   CANADA_ROAD_SOURCES,
   hasHealthyCanadaRoadSource,
-  isReportableCanadaRoad,
   loadCanadaRoadSourcesCore,
   unionCanadaRoadRecords,
   type CanadaRoadRecord,
 } from '../src/services/canada-roads-core';
+import { isReportableCanadaRoad } from '../src/services/canada-road-report';
 
 function road(id: string, source = ''): CanadaRoadRecord {
   return {
