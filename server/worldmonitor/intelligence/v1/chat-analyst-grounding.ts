@@ -132,7 +132,9 @@ export function withPriceGrounding(
   let innerReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   let cancelled = false;
 
-  const forwardLine = (line: string, controller: ReadableStreamDefaultController<Uint8Array>) => {
+  // `terminated` is false only for an unframed tail at end of stream, which is
+  // forwarded byte for byte but still inspected (#9780 review).
+  const forwardLine = (line: string, controller: ReadableStreamDefaultController<Uint8Array>, terminated = true) => {
     if (line.startsWith('data: ')) {
       let event: { delta?: unknown; done?: unknown } | null = null;
       try {
@@ -150,7 +152,7 @@ export function withPriceGrounding(
         }
       }
     }
-    controller.enqueue(enc.encode(`${line}\n`));
+    controller.enqueue(enc.encode(terminated ? `${line}\n` : line));
   };
 
   return new ReadableStream<Uint8Array>({
@@ -167,7 +169,7 @@ export function withPriceGrounding(
         }
         if (cancelled) return;
         buffered += dec.decode();
-        if (buffered) controller.enqueue(enc.encode(buffered));
+        if (buffered) forwardLine(buffered, controller, false);
         controller.close();
       } catch (err) {
         if (!cancelled) controller.error(err);

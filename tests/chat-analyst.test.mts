@@ -1831,6 +1831,16 @@ describe('buildMarketData — live quotes for the instruments a question names',
     const out = buildMarketData({ quotes: [{ symbol: 'SPY', name: 'SPDR S&P 500', price: 500, change: 1.2 }] }, null);
     assert.equal(out, 'Market Data:\nEquities: SPDR S&P 500 (SPY) $500.00 (+1.20%)');
   });
+
+  // Strix on #9780: the alias lookup must not walk the prototype chain, or a
+  // payload symbol spelled like an Object member throws inside context
+  // assembly and the route answers 503.
+  it('a quote symbol spelled like an Object member neither throws nor earns aliases', () => {
+    for (const symbol of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      const out = buildMarketData(null, { quotes: [{ symbol, price: 10, change: 0.5 }] }, ['oil']);
+      assert.equal(out, `Market Data:\nCommodities: ${symbol} $10.00 (+0.50%)`, `symbol "${symbol}" renders plainly`);
+    }
+  });
 });
 
 // Greptile on #9780: the news-retrieval keyword list keeps eight terms, so a
@@ -2033,6 +2043,18 @@ describe('chat-analyst-grounding — withPriceGrounding over the SSE stream', ()
     const raw = 'data: {"delta":"Brent at $80"}\n\ndata: {"error":"llm_unavailable"}\n\n';
     const out = await readAll(withPriceGrounding(sseStream([raw]), BRENT_GROUND));
     assert.equal(out, raw, 'no done event, so nothing to annotate — the client already shows the failure');
+  });
+
+  // Strix on #9780: a terminal frame without its trailing newline sat in the
+  // tail buffer and skipped the check. No producer emits one (llm.ts frames
+  // every event with "\n\n"), but the tail is parsed the same way regardless.
+  it('a done event without a trailing newline still gets the caveat, and the tail bytes are unchanged', async () => {
+    const raw = 'data: {"delta":"Brent at $80."}\n\ndata: {"done":true}';
+    const events = sseEvents(await readAll(withPriceGrounding(sseStream([raw]), BRENT_GROUND)));
+    assert.deepEqual(events.map((e) => Object.keys(e)[0]), ['delta', 'delta', 'done']);
+    assert.equal(events[1]?.delta, formatPriceCaveat(['$80']));
+    const clean = 'data: {"delta":"Brent at $110.89."}\n\ndata: {"done":true}';
+    assert.equal(await readAll(withPriceGrounding(sseStream([clean]), BRENT_GROUND)), clean, 'no newline is invented');
   });
 
   it('a client cancel reaches the source synchronously (the quota wrapper relies on it)', async () => {

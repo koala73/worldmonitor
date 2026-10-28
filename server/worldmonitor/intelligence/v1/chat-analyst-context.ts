@@ -208,15 +208,17 @@ const COMMODITY_LABELS: ReadonlyMap<string, string> = new Map(
 );
 
 // Words a question uses for an instrument that its configured name does not
-// carry. "oil" must reach Brent, not only "Crude Oil WTI".
-const INSTRUMENT_ALIASES: Record<string, readonly string[]> = {
-  'CL=F': ['oil', 'crude', 'petroleum'],
-  'BZ=F': ['oil', 'crude', 'petroleum'],
-  'NG=F': ['natgas', 'lng'],
-  'TTF=F': ['natgas', 'lng'],
-  'HO=F': ['diesel', 'distillate'],
-  '^VIX': ['volatility'],
-};
+// carry. "oil" must reach Brent, not only "Crude Oil WTI". A Map, like the
+// labels: the symbol is payload text, and a plain-object lookup would walk the
+// prototype chain for a symbol spelled "constructor" (#9780 review).
+const INSTRUMENT_ALIASES: ReadonlyMap<string, readonly string[]> = new Map([
+  ['CL=F', ['oil', 'crude', 'petroleum']],
+  ['BZ=F', ['oil', 'crude', 'petroleum']],
+  ['NG=F', ['natgas', 'lng']],
+  ['TTF=F', ['natgas', 'lng']],
+  ['HO=F', ['diesel', 'distillate']],
+  ['^VIX', ['volatility']],
+]);
 
 interface QuoteRow {
   symbol: string;
@@ -245,7 +247,7 @@ function quoteRows(payload: unknown, labels: ReadonlyMap<string, string> | null)
     const configured = labels?.get(rawSymbol);
     const payloadName = sanitizeForPromptLine(safeStr(quote.name));
     const label = configured ? sanitizeForPromptLine(configured) : (payloadName && payloadName !== symbol ? payloadName : '');
-    const aliases = (INSTRUMENT_ALIASES[rawSymbol] ?? []).join(' ');
+    const aliases = (INSTRUMENT_ALIASES.get(rawSymbol) ?? []).join(' ');
     rows.push({ symbol, label, price, change, searchText: `${symbol} ${label} ${aliases}` });
   }
   return rows;
