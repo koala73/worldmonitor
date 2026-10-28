@@ -17,6 +17,33 @@ export {
   selectUniqueHeadlinePairs,
 } from '../../../../src/utils/summary-cache-key';
 import { MAX_BODY_LEN } from '../../../../src/utils/summary-cache-key';
+import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
+
+// ========================================================================
+// Output languages: the dashboard UI languages (src/services/i18n.ts
+// SUPPORTED_LANGUAGES, pinned by tests/summarize-output-lang.test.mts): the
+// digest set plus Traditional Chinese, which the digest folds into `zh`.
+// `lang` (brief/analysis) and the translate target are interpolated into the
+// prompt, so both are this closed set.
+// ========================================================================
+
+export const SUMMARY_OUTPUT_LANGUAGES: ReadonlySet<string> = new Set([...NEWS_LANGUAGES, 'zh-TW']);
+
+/**
+ * Maps a BCP 47 tag to a supported output language: exact codes in any case,
+ * Traditional Chinese tags (zh-Hant, zh-TW, zh-HK, zh-MO) to `zh-TW`, and
+ * other regional tags (pt-BR, en_US, zh-CN) to their primary language. Null
+ * when nothing supported matches.
+ */
+export function normalizeSummaryLanguage(tag: string): string | null {
+  const lower = tag.trim().toLowerCase().replace(/_/g, '-');
+  for (const code of SUMMARY_OUTPUT_LANGUAGES) {
+    if (code.toLowerCase() === lower) return code;
+  }
+  if (/^zh-(?:hant|tw|hk|mo)(?:-|$)/.test(lower)) return 'zh-TW';
+  const primary = lower.split('-')[0] ?? '';
+  return SUMMARY_OUTPUT_LANGUAGES.has(primary) ? primary : null;
+}
 
 // ========================================================================
 // Hash utility (unified FNV-1a 52-bit -- H-7 fix)
@@ -125,7 +152,11 @@ export function buildArticlePrompts(
   // Case-folded to match buildSummaryCacheKey: one cache row, one prompt.
   const isTechVariant = opts.variant.toLowerCase() === 'tech';
   const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}.${isTechVariant ? '' : ' Provide geopolitical context appropriate for the current date.'}`;
-  const langInstruction = opts.lang && opts.lang !== 'en' ? `\nIMPORTANT: Output the summary in ${opts.lang.toUpperCase()} language.` : '';
+  // The handler refuses any other lang; the allowlist check here keeps a
+  // free-form value out of the system prompt for every other caller too.
+  const langInstruction = opts.lang && opts.lang !== 'en' && SUMMARY_OUTPUT_LANGUAGES.has(opts.lang)
+    ? `\nIMPORTANT: Output the summary in ${opts.lang.toUpperCase()} language.`
+    : '';
 
   let systemPrompt: string;
   let userPrompt: string;

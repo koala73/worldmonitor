@@ -8,6 +8,7 @@ import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import {
   CACHE_TTL_SECONDS,
   MAX_BODY_LEN,
+  SUMMARY_OUTPUT_LANGUAGES,
   TRANSLATE_TEXT_CLOSE,
   TRANSLATE_TEXT_OPEN,
   buildArticlePrompts,
@@ -32,7 +33,6 @@ import {
 import { callLlm, isDefaultChainProvider, resolveProviderChain, stripThinkingTags } from '../../../_shared/llm';
 import { aiRoutingCacheSuffix, resolveAiRouting, toLlmRoutingPolicy } from '../../../_shared/ai-routing-policy';
 import { buildLlmCallEvent, deliverUsageEvents } from '../../../_shared/usage';
-import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
 
 // Best-effort llm_call telemetry (#4895). This handler bypasses callLlm (the
 // client picks the provider), so it emits its own events.
@@ -77,7 +77,7 @@ export function hasReasoningPreamble(text: string): boolean {
 // the dashboard's UI languages (the digest set plus Traditional Chinese, which
 // the digest folds into `zh`) so an anonymous caller cannot turn translate into
 // an unmetered general-purpose prompt with a cache-busting key.
-export const TRANSLATE_TARGET_LANGUAGES: ReadonlySet<string> = new Set([...NEWS_LANGUAGES, 'zh-TW']);
+export const TRANSLATE_TARGET_LANGUAGES: ReadonlySet<string> = SUMMARY_OUTPUT_LANGUAGES;
 
 // Translate reads one headline; longer text is refused rather than silently
 // cut, so a caller never gets a translation of a prefix it did not choose.
@@ -253,6 +253,22 @@ export async function summarizeArticle(
       errorType: 'ValidationError',
       status: 'SUMMARIZE_STATUS_ERROR',
       statusDetail: 'Unsupported translation language',
+    });
+  }
+
+  // Brief and analysis interpolate `lang` into the system prompt. '' means no
+  // output-language instruction; anything else must be a UI language.
+  if (mode !== 'translate' && lang !== '' && !SUMMARY_OUTPUT_LANGUAGES.has(lang)) {
+    return unserved({
+      summary: '',
+      model: '',
+      provider,
+      tokens: 0,
+      fallback: false,
+      error: 'Unsupported output language',
+      errorType: 'ValidationError',
+      status: 'SUMMARIZE_STATUS_ERROR',
+      statusDetail: 'Unsupported output language',
     });
   }
 
