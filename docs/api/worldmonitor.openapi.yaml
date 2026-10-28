@@ -51184,6 +51184,9 @@ components:
                 demandKbd:
                     type: number
                     format: double
+                    description: |-
+                        JODI demand; for a product JODI reports none, the country's own annual
+                         final consumption (a "Product demand for" limitation names source and year).
                 deficitPct:
                     type: number
                     format: double

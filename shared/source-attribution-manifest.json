@@ -678,6 +678,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/_dosm-product-demand.mjs"
+        },
+        {
           "path": "scripts/backfill-fuel-prices-prev.mjs"
         },
         {
