@@ -178,6 +178,18 @@ describe('EPDK monthly crude by origin', () => {
     assert.equal(months.has('2026-02'), false, 'a revised January above February cumulative is not a month');
   });
 
+  it('rechecks a derived month against its own total: two tables in tolerance can difference out of it', () => {
+    // Rows 1,004,000 vs total 1,000,000 and 1,996,000 vs 2,000,000 each pass
+    // 0.5%; the derived month's rows (992,000) miss its total (1,000,000) by 0.8%.
+    const table = (month, total, rows) => ({ month, cumulative: true, totalT: total, rows: rows.map(([name, tonnes]) => ({ name, tonnes })) });
+    const { months } = monthlyCrudeByOrigin([
+      table('2026-01', 1_000_000, [['Irak', 504_000], ['Rusya Federasyonu', 500_000]]),
+      table('2026-02', 2_000_000, [['Irak', 996_000], ['Rusya Federasyonu', 1_000_000]]),
+    ]);
+    assert.equal(months.has('2026-01'), true);
+    assert.equal(months.has('2026-02'), false);
+  });
+
   it('a cumulative month without the previous month is absent, never the cumulative total', () => {
     const { months } = monthlyCrudeByOrigin([entry('2026-03', true, [['Irak', 900]])]);
     assert.equal(months.has('2026-03'), false);
@@ -209,8 +221,8 @@ describe('EPDK fetch', () => {
   it('downloads only wanted months, Word before Excel, never PDF', async () => {
     const files = { decdocx: await DEC_2025_DOCX(), janxlsx: await JAN_2026_XLSX(), febxlsx: await FEB_2026_XLSX() };
     const fetched = [];
-    const { months, unmatched } = await fetchEpdkCrudeImports({
-      wantedMonths: ['2025-12', '2026-01', '2026-02'],
+    const { months, unmatched, failedMonths } = await fetchEpdkCrudeImports({
+      wantedMonths: ['2025-12', '2026-01', '2026-02', '2026-03'],
       fetchText: async () => LISTING,
       fetchBuffer: async (url) => {
         const id = url.split('id=')[1];
@@ -221,13 +233,14 @@ describe('EPDK fetch', () => {
     });
     assert.deepEqual(fetched, ['febxlsx', 'janxlsx', 'decdocx']);
     assert.deepEqual(unmatched, []);
+    assert.deepEqual(failedMonths, []);
     assert.deepEqual([...months.keys()].sort(), ['2025-12', '2026-01', '2026-02']);
     assert.deepEqual(months.get('2026-02'), { totalT: 1400, byIso2: { IQ: 700, RU: 700 } });
     assert.equal(months.get('2025-12').byIso2.SA, 127220.07);
   });
 
-  it('a failed download falls through to the next document of the month', async () => {
-    const { months } = await fetchEpdkCrudeImports({
+  it('a month whose documents all fail is a failed month; one not yet published is not', async () => {
+    const { months, failedMonths } = await fetchEpdkCrudeImports({
       wantedMonths: ['2025-12'],
       fetchText: async () => LISTING,
       fetchBuffer: async (url) => {
@@ -236,6 +249,20 @@ describe('EPDK fetch', () => {
       },
     });
     assert.equal(months.size, 0);
+    assert.deepEqual(failedMonths, ['2025-12']);
+  });
+
+  it('stops downloading at the deadline and reports the remaining listed months as failed', async () => {
+    let downloads = 0;
+    const { months, failedMonths } = await fetchEpdkCrudeImports({
+      wantedMonths: ['2025-12', '2026-01', '2026-02', '2027-01'],
+      fetchText: async () => LISTING,
+      fetchBuffer: async () => { downloads++; return Buffer.alloc(0); },
+      deadlineAtMs: Date.now() - 1,
+    });
+    assert.equal(downloads, 0);
+    assert.equal(months.size, 0);
+    assert.deepEqual(failedMonths, ['2025-12', '2026-01', '2026-02']);
   });
 
   it('a listing with no report months throws, so the seeder keeps its previous section', async () => {
@@ -252,6 +279,27 @@ describe('crudeImportOriginNational section', () => {
     assert.equal(s.status, 'ok');
     assert.equal(s.unit, 'tonnes');
     assert.deepEqual(s.importers.TR, { source: 'EPDK', worldT: [null, 1400], gulfT: [null, 700], bypassPartnersT: { SA: [null, 0], AE: [null, 0], IQ: [null, 700] } });
+  });
+
+  it('a fetch that lost listed months fills them from the previous section and is carried forward', () => {
+    const wider = ['2026-01', '2026-02', '2026-03'];
+    const previous = crudeImportOriginNationalSection({
+      months: ['2025-12', ...wider.slice(0, 2)],
+      byMonth: new Map([['2026-01', { totalT: 2000, byIso2: { IQ: 600, SA: 400, RU: 1000 } }], ['2026-02', { totalT: 1400, byIso2: { IQ: 700, RU: 700 } }]]),
+      fetchedAt: '2026-10-21T00:00:00.000Z',
+    });
+    const fresh = new Map([['2026-02', { totalT: 1400, byIso2: { IQ: 700, RU: 700 } }]]);
+    const s = crudeImportOriginNationalSection({ months: wider, byMonth: fresh, failedMonths: ['2026-01', '2026-03', '2025-01'], fetchedAt: '2026-10-28T00:00:00.000Z', previous });
+    assert.equal(s.status, 'unavailable');
+    assert.equal(s.carriedForward, true, 'the reader then withholds current flows');
+    assert.equal(s.fetchedAt, '2026-10-21T00:00:00.000Z');
+    assert.deepEqual(s.failedMonths, ['2026-01', '2026-03']);
+    assert.deepEqual(s.importers.TR.worldT, [2000, 1400, null], 'January from the previous run, March has no earlier value');
+    assert.deepEqual(s.importers.TR.bypassPartnersT.SA, [400, 0, null]);
+
+    const first = crudeImportOriginNationalSection({ months: wider, byMonth: fresh, failedMonths: ['2026-03'], fetchedAt: '2026-10-28T00:00:00.000Z' });
+    assert.equal(first.carriedForward, true, 'a first run that lost months is not a clean refresh either');
+    assert.deepEqual(first.importers.TR.worldT, [null, 1400, null]);
   });
 
   it('a failed or empty fetch carries the previous section forward', () => {

@@ -227,10 +227,16 @@ export function iso2FromTurkishName(name) {
  * comes from its own monthly table, else from its cumulative table less the
  * previous month's of the same year (January's cumulative is the month).
  * A month is void (absent) when a row with crude cannot be named, the rows
- * do not add up to the table total within 0.5%, or a difference goes
- * negative beyond rounding.
+ * do not add up to the table total within 0.5% (a derived month is checked
+ * again: two tables each within tolerance can difference to one outside
+ * it), or a difference goes negative beyond rounding.
  * @returns {{months: Map<string, {totalT: number, byIso2: Record<string, number>}>, unmatched: string[]}}
  */
+const addsUp = (byIso2, totalT) => {
+  const sum = Object.values(byIso2).reduce((a, b) => a + b, 0);
+  return Math.abs(sum - totalT) <= Math.max(1, totalT * 0.005);
+};
+
 export function monthlyCrudeByOrigin(parsed) {
   const unmatched = new Set();
   const named = (entry) => {
@@ -244,8 +250,7 @@ export function monthlyCrudeByOrigin(parsed) {
       }
       byIso2[iso2] = (byIso2[iso2] ?? 0) + tonnes;
     }
-    const sum = Object.values(byIso2).reduce((a, b) => a + b, 0);
-    if (Math.abs(sum - entry.totalT) > Math.max(1, entry.totalT * 0.005)) return null;
+    if (!addsUp(byIso2, entry.totalT)) return null;
     return { totalT: entry.totalT, byIso2 };
   };
   const monthly = new Map();
@@ -271,7 +276,7 @@ export function monthlyCrudeByOrigin(parsed) {
       if (diff > 0.5) byIso2[iso2] = diff;
     }
     const totalT = cum.totalT - prev.totalT;
-    if (ok && totalT > 0) months.set(month, { totalT, byIso2 });
+    if (ok && totalT > 0 && addsUp(byIso2, totalT)) months.set(month, { totalT, byIso2 });
   }
   return { months, unmatched: [...unmatched].sort() };
 }
@@ -307,18 +312,26 @@ const isZip = (buf) => buf.length > 4 && buf[0] === 0x50 && buf[1] === 0x4b;
 /**
  * Downloads each wanted month's report (Word first, then Excel; PDF is not
  * parsed) until one carries the imports-by-country table for that month.
- * `fetchBuffer(url)` resolves to a Buffer. Failures for one month leave it
- * absent; a listing that cannot be read throws.
+ * `fetchBuffer(url)` resolves to a Buffer. A listing that cannot be read
+ * throws. `failedMonths` are wanted months EPDK lists but that yielded no
+ * usable month (download, parse or consistency failure, or the deadline);
+ * months EPDK has not published yet are not failures.
  */
-export async function fetchEpdkCrudeImports({ wantedMonths, fetchText, fetchBuffer, log = () => {} }) {
+export async function fetchEpdkCrudeImports({ wantedMonths, fetchText, fetchBuffer, log = () => {}, deadlineAtMs = Infinity }) {
   const reports = parseEpdkListing(await fetchText(EPDK_LISTING_URL));
   if (reports.length === 0) throw new Error('EPDK listing has no report months');
   const wanted = new Set(wantedMonths);
+  const listed = new Set();
   const parsed = [];
   const failures = [];
   const rank = { word: 0, excel: 1 };
   for (const report of reports) {
     if (!wanted.has(report.month)) continue;
+    listed.add(report.month);
+    if (Date.now() >= deadlineAtMs) {
+      failures.push(`${report.month}: deadline`);
+      continue;
+    }
     const docs = report.documents.filter((d) => d.kind in rank).sort((a, b) => rank[a.kind] - rank[b.kind]);
     let found = null;
     for (const doc of docs) {
@@ -338,5 +351,7 @@ export async function fetchEpdkCrudeImports({ wantedMonths, fetchText, fetchBuff
     if (found) parsed.push(found);
   }
   if (failures.length > 0) log(`  EPDK: ${failures.length} document(s) failed (${failures.slice(0, 3).join('; ')})`);
-  return monthlyCrudeByOrigin(parsed);
+  const result = monthlyCrudeByOrigin(parsed);
+  const failedMonths = [...listed].filter((m) => !result.months.has(m)).sort();
+  return { ...result, failedMonths };
 }

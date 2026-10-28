@@ -619,12 +619,35 @@ const EPDK_SOURCE = 'EPDK (Turkish energy market regulator) monthly petroleum ma
  * The published `crudeImportOriginNational` section: importers absent from
  * Comtrade, from their own statistics, in tonnes. Same carry-forward rule
  * as `crudeImportOrigin`: an empty or failed fetch keeps the previous section.
+ * A fetch that lost listed months fills them from the previous section and
+ * is published as carried forward (status unavailable, the previous
+ * fetchedAt), so the reader withholds current flows rather than presenting
+ * older months as the latest.
  */
-export function crudeImportOriginNationalSection({ months, byMonth, fetchedAt, error, previous }) {
+export function crudeImportOriginNationalSection({ months, byMonth, failedMonths = [], fetchedAt, error, previous }) {
   const importers = {};
   if (!error && byMonth) {
     const tr = epdkImporterColumns(byMonth, months, CRUDE_ORIGIN_GULF_ISO2, Object.values(BYPASS_PARTNER_ISO2));
     if (tr.worldT.some((v) => v !== null)) importers.TR = { source: 'EPDK', ...tr };
+  }
+  const lost = failedMonths.filter((m) => months.includes(m));
+  if (importers.TR && lost.length > 0) {
+    const prevTr = previous?.importers?.TR;
+    const prevIndex = new Map((Array.isArray(previous?.months) ? previous.months : []).map((m, i) => [m, i]));
+    if (prevTr) {
+      for (const month of lost) {
+        const i = months.indexOf(month);
+        const j = prevIndex.get(month);
+        if (j === undefined || prevTr.worldT?.[j] == null) continue;
+        importers.TR.worldT[i] = prevTr.worldT[j];
+        importers.TR.gulfT[i] = prevTr.gulfT?.[j] ?? null;
+        for (const p of Object.keys(importers.TR.bypassPartnersT)) importers.TR.bypassPartnersT[p][i] = prevTr.bypassPartnersT?.[p]?.[j] ?? null;
+      }
+    }
+    return {
+      status: 'unavailable', carriedForward: true, fetchedAt: previous?.fetchedAt ?? fetchedAt,
+      source: EPDK_SOURCE, unit: 'tonnes', months, importers, failedMonths: lost,
+    };
   }
   if (Object.keys(importers).length > 0) {
     return { status: 'ok', fetchedAt, source: EPDK_SOURCE, unit: 'tonnes', months, importers };
@@ -635,11 +658,23 @@ export function crudeImportOriginNationalSection({ months, byMonth, fetchedAt, e
   return { status: 'unavailable', fetchedAt, source: EPDK_SOURCE, unit: 'tonnes', months, importers: {} };
 }
 
+// EPDK runs beside the other sources on its own budget, inside the run's
+// fetch deadline with room left to publish: stalled reports must cost the
+// national section (carried forward), never the whole series.
+const EPDK_BUDGET_MS = 150_000;
+const EPDK_REQUEST_TIMEOUT_MS = 30_000;
+const PUBLISH_RESERVE_MS = 90_000;
+
 // EPDK serves Turkish government downloads that can stall or refuse foreign
 // datacenter egress; the proxy is the fallback, as for ArcGIS.
-async function epdkFetch(url) {
+async function epdkFetch(url, deadlineAtMs) {
+  const timeout = () => {
+    const left = deadlineAtMs - Date.now();
+    if (left <= 0) throw new Error('EPDK budget exhausted');
+    return Math.min(EPDK_REQUEST_TIMEOUT_MS, left);
+  };
   try {
-    const resp = await fetch(url, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+    const resp = await fetch(url, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(timeout()) });
     if (resp.status === 403 || resp.status === 429) throw Object.assign(new Error(`EPDK HTTP ${resp.status}`), { proxyable: true });
     if (!resp.ok) throw new Error(`EPDK HTTP ${resp.status}`);
     return Buffer.from(await resp.arrayBuffer());
@@ -647,25 +682,29 @@ async function epdkFetch(url) {
     const timeoutLike = err?.name === 'TimeoutError' || err?.proxyable || /fetch failed/i.test(err?.message ?? '');
     const proxyAuth = timeoutLike ? resolveProxyForConnect() : null;
     if (!proxyAuth) throw err;
-    const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { timeoutMs: 60_000 });
+    if (err?.message === 'EPDK budget exhausted') throw err;
+    const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { timeoutMs: timeout() });
     return buffer;
   }
 }
 
-async function fetchCrudeImportOriginNational(nowMs, previous) {
+async function fetchCrudeImportOriginNational(nowMs, previous, runDeadlineAtMs = Infinity) {
   const months = crudeImportOriginPeriods(nowMs).flat();
   const fetchedAt = new Date(nowMs).toISOString();
+  const deadlineAtMs = Math.min(Date.now() + EPDK_BUDGET_MS, runDeadlineAtMs - PUBLISH_RESERVE_MS);
   try {
     // A cumulative (January-to-month) report needs the month before it too.
     const wantedMonths = monthRange(shiftMonth(months[0], -1), months.at(-1));
-    const { months: byMonth, unmatched } = await fetchEpdkCrudeImports({
+    const { months: byMonth, unmatched, failedMonths } = await fetchEpdkCrudeImports({
       wantedMonths,
-      fetchText: async (url) => (await epdkFetch(url)).toString('utf8'),
-      fetchBuffer: epdkFetch,
+      fetchText: async (url) => (await epdkFetch(url, deadlineAtMs)).toString('utf8'),
+      fetchBuffer: (url) => epdkFetch(url, deadlineAtMs),
       log: (line) => console.warn(line),
+      deadlineAtMs,
     });
     if (unmatched.length > 0) console.warn(`  EPDK: unrecognised origin names void their months: ${unmatched.join(', ')}`);
-    const section = crudeImportOriginNationalSection({ months, byMonth, fetchedAt, previous });
+    if (failedMonths.length > 0) console.warn(`  EPDK: listed months without a usable table: ${failedMonths.join(', ')}`);
+    const section = crudeImportOriginNationalSection({ months, byMonth, failedMonths, fetchedAt, previous });
     const filed = section.importers.TR?.worldT.filter((v) => v !== null).length ?? 0;
     console.log(`  National crude origin: TR ${filed}/${months.length} months (${section.status}${section.carriedForward ? ', carried forward' : ''})`);
     return section;
@@ -862,9 +901,11 @@ export function contentMeta(data) {
   return { newestItemAt: endOf(months.at(-1)), oldestItemAt: endOf(months[0]) };
 }
 
-export async function fetchOilTradeSeries({ nowMs = Date.now() } = {}) {
+export async function fetchOilTradeSeries({ nowMs = Date.now(), fetchDeadlineAtMs = Infinity } = {}) {
   // Best effort: a failed source keeps these months instead of being nulled.
   const previous = await readSeedSnapshot(OIL_TRADE_CANONICAL_KEY).catch(() => null);
+  // EPDK is a different host from every other source: start it now, on its own budget.
+  const nationalOrigin = fetchCrudeImportOriginNational(nowMs, previous?.crudeImportOriginNational, fetchDeadlineAtMs);
   const failed = { production: false, jodi: false };
   let eia = new Map();
   let jodi = new Map();
@@ -935,7 +976,7 @@ export async function fetchOilTradeSeries({ nowMs = Date.now() } = {}) {
   const ordered = Object.fromEntries(OIL_TRADE_COUNTRIES.map((c) => [c.iso2, countries[c.iso2]]));
   // Two more keyed Comtrade calls, after the per-country lanes have drained.
   const crudeImportOrigin = await fetchCrudeImportOrigin(nowMs, previous?.crudeImportOrigin);
-  const crudeImportOriginNational = await fetchCrudeImportOriginNational(nowMs, previous?.crudeImportOriginNational);
+  const crudeImportOriginNational = await nationalOrigin;
 
   return {
     generatedAt: new Date(nowMs).toISOString(),
@@ -977,7 +1018,7 @@ export const seedOptions = {
 };
 
 if (process.argv[1]?.endsWith('seed-oil-trade-series.mjs')) {
-  runSeed('energy', 'oil-trade-series', OIL_TRADE_CANONICAL_KEY, () => fetchOilTradeSeries(), seedOptions).catch((err) => {
+  runSeed('energy', 'oil-trade-series', OIL_TRADE_CANONICAL_KEY, ({ fetchDeadlineAtMs } = {}) => fetchOilTradeSeries({ fetchDeadlineAtMs }), seedOptions).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);
     process.exit(1);
