@@ -165,3 +165,18 @@ test('TPS adapter preserves timeout budget and reports the native cause', async 
     assert.ok(!JSON.stringify(logs).includes('secret'));
   });
 });
+
+test('NRCan direct body failures retain the original error and request diagnostics', async () => {
+  const { fetchApprovedAtom, NRCAN_ATOM_URL } = await import('../scripts/seismology/nrcan-atom.mjs');
+  await capture(async logs => {
+    const error = Object.assign(new Error('secret body failure'), { code: 'ECONNRESET' });
+    const response = new Response(new ReadableStream({ start(controller) { controller.error(error); } }));
+    await assert.rejects(fetchApprovedAtom(NRCAN_ATOM_URL, { fetchFn: async () => response }), e => e === error);
+    assert.equal(logs.length, 1);
+    assert.equal(logs[0].status, 200);
+    assert.equal(logs[0].phase, 'response_headers');
+    assert.equal(logs[0].outcome, 'error');
+    assert.equal(logs[0].errorCode, 'ECONNRESET');
+    assert.ok(!JSON.stringify(logs).includes('secret'));
+  });
+});

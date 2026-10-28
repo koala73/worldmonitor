@@ -291,7 +291,7 @@ export async function fetchApprovedAtom(url, {
   const cacheKey = nrcanAtomCacheKey(parsed.toString());
   if (cache?.has(cacheKey)) return cache.get(cacheKey);
 
-  const response = await withSourceRequestDiagnostics({ source: 'nrcan', route: 'direct' }, async observe => {
+  const { response, xml } = await withSourceRequestDiagnostics({ source: 'nrcan', route: 'direct' }, async observe => {
     const result = await fetchFn(parsed.toString(), {
       headers: {
         Accept: NRCAN_ACCEPT,
@@ -301,7 +301,7 @@ export async function fetchApprovedAtom(url, {
       signal: AbortSignal.timeout(15_000),
     });
     observe(result);
-    return result;
+    return { response: result, xml: result.ok ? await readBoundedText(result, maxBytes) : null };
   });
   if (response.status === 403 && proxyAuth) {
     await response.body?.cancel?.();
@@ -313,7 +313,6 @@ export async function fetchApprovedAtom(url, {
     await response.body?.cancel?.();
     throw httpRetryError(response, { remainingBudgetMs: 2_000 });
   }
-  const xml = await readBoundedText(response, maxBytes);
   cache?.set(cacheKey, xml);
   return xml;
 }
