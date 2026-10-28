@@ -1041,13 +1041,11 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Brookings",
-          "url": "https://news.google.com/rss/search?q=site:brookings.edu+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:brookings.edu+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Carnegie",
-          "url": "https://news.google.com/rss/search?q=site:carnegieendowment.org+when:7d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:carnegieendowment.org+when:7d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "War on the Rocks",
@@ -1059,8 +1057,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "RUSI",
-          "url": "https://news.google.com/rss/search?q=site:rusi.org+when:3d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:rusi.org+when:3d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "FPRI",
@@ -2310,18 +2307,15 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Reuters Markets",
-          "url": "https://news.google.com/rss/search?q=site:reuters.com+markets+stocks+when:1d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:reuters.com+markets+stocks+when:1d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Bloomberg Markets",
-          "url": "https://news.google.com/rss/search?q=site:bloomberg.com+markets+when:1d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:bloomberg.com+markets+when:1d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Investing.com News",
-          "url": "https://news.google.com/rss/search?q=site:investing.com+markets+when:1d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:investing.com+markets+when:1d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Fox Business",
@@ -2351,13 +2345,11 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Dollar Watch",
-          "url": "https://news.google.com/rss/search?q=(\"dollar+index\"+OR+DXY+OR+\"US+dollar\"+OR+\"euro+dollar\")+when:2d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(\"dollar+index\"+OR+DXY+OR+\"US+dollar\"+OR+\"euro+dollar\")+when:2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Central Bank Rates",
-          "url": "https://news.google.com/rss/search?q=(\"central+bank\"+OR+\"interest+rate\"+OR+\"rate+decision\"+OR+\"monetary+policy\")+when:2d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(\"central+bank\"+OR+\"interest+rate\"+OR+\"rate+decision\"+OR+\"monetary+policy\")+when:2d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "bonds": [
@@ -2367,13 +2359,11 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Treasury Watch",
-          "url": "https://news.google.com/rss/search?q=(\"US+Treasury\"+OR+\"Treasury+auction\"+OR+\"10-year+yield\"+OR+\"2-year+yield\")+when:2d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(\"US+Treasury\"+OR+\"Treasury+auction\"+OR+\"10-year+yield\"+OR+\"2-year+yield\")+when:2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Corporate Bonds",
-          "url": "https://news.google.com/rss/search?q=(\"corporate+bond\"+OR+\"high+yield\"+OR+\"investment+grade\"+OR+\"credit+spread\")+when:3d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(\"corporate+bond\"+OR+\"high+yield\"+OR+\"investment+grade\"+OR+\"credit+spread\")+when:3d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "commodities": [
@@ -2388,13 +2378,11 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Agriculture",
-          "url": "https://news.google.com/rss/search?q=(wheat+OR+corn+OR+soybeans+OR+coffee+OR+sugar)+price+OR+commodity+when:3d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(wheat+OR+corn+OR+soybeans+OR+coffee+OR+sugar)+price+OR+commodity+when:3d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Commodity Trading",
-          "url": "https://news.google.com/rss/search?q=(\"commodity+trading\"+OR+\"futures+market\"+OR+CME+OR+NYMEX+OR+COMEX)+when:2d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(\"commodity+trading\"+OR+\"futures+market\"+OR+CME+OR+NYMEX+OR+COMEX)+when:2d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "crypto": [
@@ -2412,8 +2400,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Crypto News",
-          "url": "https://news.google.com/rss/search?q=(bitcoin+OR+ethereum+OR+crypto+OR+\"digital+assets\")+when:1d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(bitcoin+OR+ethereum+OR+crypto+OR+\"digital+assets\")+when:1d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "DeFi News",
@@ -2492,18 +2479,15 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "ECB Watch",
-          "url": "https://news.google.com/rss/search?q=(\"European+Central+Bank\"+OR+ECB+OR+Lagarde)+monetary+policy+when:3d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(\"European+Central+Bank\"+OR+ECB+OR+Lagarde)+monetary+policy+when:3d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "BoJ Watch",
-          "url": "https://news.google.com/rss/search?q=(\"Bank+of+Japan\"+OR+BoJ)+monetary+policy+when:3d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(\"Bank+of+Japan\"+OR+BoJ)+monetary+policy+when:3d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "BoE Watch",
-          "url": "https://news.google.com/rss/search?q=(\"Bank+of+England\"+OR+BoE)+monetary+policy+when:3d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(\"Bank+of+England\"+OR+BoE)+monetary+policy+when:3d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "PBoC Watch",
@@ -2511,8 +2495,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Global Central Banks",
-          "url": "https://news.google.com/rss/search?q=(\"rate+hike\"+OR+\"rate+cut\"+OR+\"interest+rate+decision\")+central+bank+when:3d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(\"rate+hike\"+OR+\"rate+cut\"+OR+\"interest+rate+decision\")+central+bank+when:3d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "economic": [
@@ -2526,8 +2509,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Housing Market",
-          "url": "https://news.google.com/rss/search?q=(\"housing+market\"+OR+\"home+prices\"+OR+\"mortgage+rates\"+OR+REIT)+when:3d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(\"housing+market\"+OR+\"home+prices\"+OR+\"mortgage+rates\"+OR+REIT)+when:3d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "ipo": [
@@ -2537,13 +2519,11 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Earnings Reports",
-          "url": "https://news.google.com/rss/search?q=(\"earnings+report\"+OR+\"quarterly+earnings\"+OR+\"revenue+beat\"+OR+\"earnings+miss\")+when:2d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(\"earnings+report\"+OR+\"quarterly+earnings\"+OR+\"revenue+beat\"+OR+\"earnings+miss\")+when:2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "M&A News",
-          "url": "https://news.google.com/rss/search?q=(\"merger\"+OR+\"acquisition\"+OR+\"takeover+bid\"+OR+\"buyout\")+billion+when:3d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(\"merger\"+OR+\"acquisition\"+OR+\"takeover+bid\"+OR+\"buyout\")+billion+when:3d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "derivatives": [
@@ -2663,40 +2643,33 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Upworthy",
-          "url": "https://www.upworthy.com/feed/",
-          "browserOnly": true
+          "url": "https://www.upworthy.com/feed/"
         },
         {
           "name": "DailyGood",
-          "url": "https://www.dailygood.org/feed",
-          "browserOnly": true
+          "url": "https://www.dailygood.org/feed"
         },
         {
           "name": "Good Good Good",
-          "url": "https://www.goodgoodgood.co/articles/rss.xml",
-          "browserOnly": true
+          "url": "https://www.goodgoodgood.co/articles/rss.xml"
         },
         {
           "name": "GOOD Magazine",
-          "url": "https://www.good.is/feed/",
-          "browserOnly": true
+          "url": "https://www.good.is/feed/"
         },
         {
           "name": "Sunny Skyz",
-          "url": "https://www.sunnyskyz.com/rss_tebow.php",
-          "browserOnly": true
+          "url": "https://www.sunnyskyz.com/rss_tebow.php"
         },
         {
           "name": "The Better India",
-          "url": "https://thebetterindia.com/feed/",
-          "browserOnly": true
+          "url": "https://thebetterindia.com/feed/"
         }
       ],
       "science": [
         {
           "name": "GNN Science",
-          "url": "https://www.goodnewsnetwork.org/category/news/science/feed/",
-          "browserOnly": true
+          "url": "https://www.goodnewsnetwork.org/category/news/science/feed/"
         },
         {
           "name": "ScienceDaily",
@@ -2708,13 +2681,11 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Live Science",
-          "url": "https://www.livescience.com/feeds.xml",
-          "browserOnly": true
+          "url": "https://www.livescience.com/feeds.xml"
         },
         {
           "name": "New Scientist",
-          "url": "https://www.newscientist.com/feed/home/",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:newscientist.com+when:3d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Singularity Hub",
@@ -2726,20 +2697,17 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "Greater Good (Berkeley)",
-          "url": "https://greatergood.berkeley.edu/site/rss/articles",
-          "browserOnly": true
+          "url": "https://greatergood.berkeley.edu/site/rss/articles"
         }
       ],
       "nature": [
         {
           "name": "GNN Animals",
-          "url": "https://www.goodnewsnetwork.org/category/news/animals/feed/",
-          "browserOnly": true
+          "url": "https://www.goodnewsnetwork.org/category/news/animals/feed/"
         },
         {
           "name": "GNN Earth",
-          "url": "https://www.goodnewsnetwork.org/category/news/earth/feed/",
-          "browserOnly": true
+          "url": "https://www.goodnewsnetwork.org/category/news/earth/feed/"
         },
         {
           "name": "Mongabay",
@@ -2761,8 +2729,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "GNN Heroes Spotlight",
-          "url": "https://www.goodnewsnetwork.org/category/news/heroes/feed/",
-          "browserOnly": true
+          "url": "https://www.goodnewsnetwork.org/category/news/heroes/feed/"
         }
       ],
       "community": [
@@ -2826,23 +2793,19 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "GoldSeek",
-          "url": "https://www.goldseek.com/rss.xml",
-          "browserOnly": true
+          "url": "https://www.goldseek.com/rss.xml"
         },
         {
           "name": "SilverSeek",
-          "url": "https://www.silverseek.com/rss.xml",
-          "browserOnly": true
+          "url": "https://www.silverseek.com/rss.xml"
         },
         {
           "name": "Gold Silver Worlds",
-          "url": "https://goldsilverworlds.com/feed/",
-          "browserOnly": true
+          "url": "https://goldsilverworlds.com/feed/"
         },
         {
           "name": "FX Empire Gold",
-          "url": "https://news.google.com/rss/search?q=site:fxempire.com+gold+when:1d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=site:fxempire.com+gold+when:1d&hl=en-US&gl=US&ceid=US:en"
         }
       ],
       "energy": [
@@ -3200,8 +3163,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
     {
       "name": "Janes",
       "url": "https://news.google.com/rss/search?q=site:janes.com+when:3d&hl=en-US&gl=US&ceid=US:en",
-      "type": "defense",
-      "browserOnly": true
+      "type": "defense"
     },
     {
       "name": "Military Times",
@@ -3236,8 +3198,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
     {
       "name": "UK MOD",
       "url": "https://www.gov.uk/government/organisations/ministry-of-defence.atom",
-      "type": "defense",
-      "browserOnly": true
+      "type": "defense"
     },
     {
       "name": "CSIS",
@@ -3247,14 +3208,12 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
     {
       "name": "Chatham House",
       "url": "https://news.google.com/rss/search?q=site:chathamhouse.org+when:7d&hl=en-US&gl=US&ceid=US:en",
-      "type": "intl",
-      "browserOnly": true
+      "type": "intl"
     },
     {
       "name": "ECFR",
       "url": "https://news.google.com/rss/search?q=site:ecfr.eu+when:7d&hl=en-US&gl=US&ceid=US:en",
-      "type": "intl",
-      "browserOnly": true
+      "type": "intl"
     },
     {
       "name": "Foreign Policy",
@@ -3274,8 +3233,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
     {
       "name": "Middle East Institute",
       "url": "https://news.google.com/rss/search?q=site:mei.edu+when:7d&hl=en-US&gl=US&ceid=US:en",
-      "type": "intl",
-      "browserOnly": true
+      "type": "intl"
     },
     {
       "name": "RAND",
@@ -3284,63 +3242,53 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
     },
     {
       "name": "Brookings",
-      "url": "https://news.google.com/rss/search?q=site:brookings.edu&hl=en&gl=US&ceid=US:en",
-      "type": "research",
-      "browserOnly": true
+      "url": "https://news.google.com/rss/search?q=site:brookings.edu+when:7d&hl=en&gl=US&ceid=US:en",
+      "type": "research"
     },
     {
       "name": "Carnegie",
-      "url": "https://news.google.com/rss/search?q=site:carnegieendowment.org&hl=en&gl=US&ceid=US:en",
-      "type": "research",
-      "browserOnly": true
+      "url": "https://news.google.com/rss/search?q=site:carnegieendowment.org+when:7d&hl=en&gl=US&ceid=US:en",
+      "type": "research"
     },
     {
       "name": "FAS",
-      "url": "https://news.google.com/rss/search?q=site:fas.org+nuclear+weapons+security&hl=en&gl=US&ceid=US:en",
-      "type": "research",
-      "browserOnly": true
+      "url": "https://news.google.com/rss/search?q=site:fas.org+when:30d&hl=en-US&gl=US&ceid=US:en",
+      "type": "research"
     },
     {
       "name": "NTI",
       "url": "https://news.google.com/rss/search?q=site:nti.org+when:30d&hl=en-US&gl=US&ceid=US:en",
-      "type": "research",
-      "browserOnly": true
+      "type": "research"
     },
     {
       "name": "RUSI",
       "url": "https://news.google.com/rss/search?q=site:rusi.org+when:7d&hl=en-US&gl=US&ceid=US:en",
-      "type": "research",
-      "browserOnly": true
+      "type": "research"
     },
     {
       "name": "Wilson Center",
       "url": "https://news.google.com/rss/search?q=site:wilsoncenter.org+when:7d&hl=en-US&gl=US&ceid=US:en",
-      "type": "research",
-      "browserOnly": true
+      "type": "research"
     },
     {
       "name": "GMF",
       "url": "https://news.google.com/rss/search?q=site:gmfus.org+when:7d&hl=en-US&gl=US&ceid=US:en",
-      "type": "research",
-      "browserOnly": true
+      "type": "research"
     },
     {
       "name": "Stimson Center",
       "url": "https://www.stimson.org/feed/",
-      "type": "research",
-      "browserOnly": true
+      "type": "research"
     },
     {
       "name": "CNAS",
       "url": "https://news.google.com/rss/search?q=site:cnas.org+when:7d&hl=en-US&gl=US&ceid=US:en",
-      "type": "research",
-      "browserOnly": true
+      "type": "research"
     },
     {
       "name": "Lowy Institute",
       "url": "https://news.google.com/rss/search?q=site:lowyinstitute.org+when:7d&hl=en-US&gl=US&ceid=US:en",
-      "type": "research",
-      "browserOnly": true
+      "type": "research"
     },
     {
       "name": "Arms Control Assn",
@@ -3364,9 +3312,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
     },
     {
       "name": "Ransomware.live",
-      "url": "https://www.ransomware.live/rss.xml",
-      "type": "cyber",
-      "browserOnly": true
+      "url": "https://news.google.com/rss/search?q=site:ransomware.live+when:7d&hl=en-US&gl=US&ceid=US:en",
+      "type": "cyber"
     },
     {
       "name": "FAO News",
@@ -3376,8 +3323,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
     {
       "name": "FAO GIEWS",
       "url": "https://news.google.com/rss/search?q=site:fao.org+GIEWS+food+security+when:30d&hl=en-US&gl=US&ceid=US:en",
-      "type": "economic",
-      "browserOnly": true
+      "type": "economic"
     },
     {
       "name": "OCCRP",
@@ -3417,8 +3363,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
     {
       "name": "EU ISS",
       "url": "https://news.google.com/rss/search?q=site:iss.europa.eu+when:7d&hl=en-US&gl=US&ceid=US:en",
-      "type": "intl",
-      "browserOnly": true
+      "type": "intl"
     }
   ],
   "digestLayout": {

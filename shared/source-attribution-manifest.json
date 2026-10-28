@@ -6725,6 +6725,20 @@
       ]
     },
     {
+      "host": "newscientist.com",
+      "provider": "newscientist.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit newscientist.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "newsfeed.zeit.de",
       "provider": "newsfeed.zeit.de",
       "kind": "feed",
@@ -7777,6 +7791,20 @@
       "license": "Excluded: live-video playback transport; channel/provider terms apply separately",
       "attribution": "Excluded from the external-provider count: presentation-only HLS stream, not an ingested dataset.",
       "status": "excluded"
+    },
+    {
+      "host": "ransomware.live",
+      "provider": "ransomware.live",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit ransomware.live and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
     },
     {
       "host": "raw.githubusercontent.com",
@@ -12804,15 +12832,10 @@
       "host": "www.newscientist.com",
       "provider": "www.newscientist.com",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.newscientist.com and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.newyorkfed.org",
@@ -13159,19 +13182,11 @@
     {
       "host": "www.ransomware.live",
       "provider": "www.ransomware.live",
-      "kind": "feed+structured",
-      "observed": true,
+      "kind": "structured",
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.ransomware.live and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.rappler.com",
