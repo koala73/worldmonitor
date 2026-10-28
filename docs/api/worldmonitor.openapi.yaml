@@ -51386,25 +51386,21 @@ components:
                 crudeMb:
                     type: number
                     format: double
-                    description: Crude stocks, millions of barrels.
+                    description: Millions of barrels, as are products_mb and total_mb; each rounded separately.
                 productsMb:
                     type: number
                     format: double
-                    description: Refined product stocks, millions of barrels.
                 totalMb:
                     type: number
                     format: double
-                    description: crude_mb + products_mb, millions of barrels.
                 stockDays:
                     type: integer
                     format: int32
-                    description: total_mb in days of JODI crude imports; absent when the loss is not modeled.
+                    description: total_mb in days of JODI crude imports; absent unless the stocks set the cover.
             description: |-
-                Month-end oil stocks a country without an IEA stock record reports to JODI
-                 (not IEA data). They determine effective_cover_days only when stock_days is
-                 present; without a modeled oil loss they are reported, stock_days is absent
-                 and effective_cover_days is 0. Crude plus refined products held in the
-                 country; whether government reserves are included depends on the reporter.
+                Month-end oil stocks a country without an IEA record reports to JODI (not
+                 IEA data). They set effective_cover_days only when stock_days is present;
+                 a net exporter keeps -1. Whether government reserves count depends on the reporter.
         worldmonitor_intelligence_v1_GetCountryPortActivityRequest:
             type: object
             properties:
