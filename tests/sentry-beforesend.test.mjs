@@ -2977,6 +2977,18 @@ describe('beforeSend — ReferenceError with only <anonymous> frames (WORLDMONIT
       [{ filename: 'https://www.worldmonitor.app/', lineno: 12, function: '?' }])));
   });
 
+  // The TypeError gate above also accepts blob: and filename-less frames; this
+  // gate must not, so copying that wider condition here goes red.
+  it('keeps a ReferenceError with a blob: frame beside an <anonymous> one', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError',
+      [anon(), { filename: 'blob:https://www.worldmonitor.app/3f2a', lineno: 1, function: '?' }])));
+  });
+
+  it('keeps a ReferenceError with a filename-less frame beside an <anonymous> one', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError',
+      [anon(), { lineno: 1, function: '?' }])));
+  });
+
   it('keeps a ReferenceError with no frames at all', () => {
     assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError', [])));
   });
