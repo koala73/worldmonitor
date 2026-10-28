@@ -44,7 +44,7 @@ export const NON_IEA_RESERVES: Readonly<Record<'IN' | 'CN', ReserveEstimateSourc
     asOf: '2025-12',
     scope: 'government reserve (low) up to government plus state-directed commercial crude stocks (high)',
     credibility: 'low',
-    basis: 'EIA balance-method estimate for Dec 2025: about 360 M bbl government-held, and about 1.4 bn bbl including the commercial stocks state firms were told to hold. China publishes no stock data. Vortexa put state-controlled onshore stocks at 735 M bbl in late 2025, and 2026 draws are unquantified.',
+    basis: 'Low and high: EIA balance-method estimates for Dec 2025, about 360 M bbl government-held and about 1.4 bn bbl including the commercial stocks state firms were told to hold. Central: a WorldMonitor judgment of 1.2 bn bbl, below EIA\'s upper figure for unquantified 2026 draws; EIA gives no central value. China publishes no stock data. Vortexa put state-controlled onshore stocks at 735 M bbl in late 2025, and 2026 draws are unquantified.',
     sources: [
       'https://www.eia.gov/todayinenergy/detail.php?id=67504',
     ],
