@@ -3274,9 +3274,9 @@ export const CACHE_TOOLS: ToolDef[] = [
           const comparison = compareOilWindows(expanded, { nowMs, windowMonths });
           return selected.length > 0 ? { ...rest, comparison, months } : { ...rest, comparison };
         });
-      // crudeImportOrigin is the energy shock model's per-importer input, not
-      // part of this tool's exporter series.
-      const { crudeImportOrigin: _crudeImportOrigin, ...series } = payload as Record<string, unknown>;
+      // crudeImportOrigin and crudeImportOriginNational are the energy shock
+      // model's per-importer inputs, not part of this tool's exporter series.
+      const { crudeImportOrigin: _crudeImportOrigin, crudeImportOriginNational: _crudeImportOriginNational, ...series } = payload as Record<string, unknown>;
       return { ...data, oilTradeSeries: { ...series, windowMonths, countries } };
     },
   },

@@ -20,6 +20,7 @@ import {
   computeGulfShareFromPartners,
   computeEffectiveCoverDaysWithRamp,
   parseJodiStocks,
+  parseNetOilImports,
   JODI_STOCK_MAX_AGE_MONTHS,
   jodiNetCrudeExporter,
   EFFECTIVE_COVER_DAYS_CAP,
@@ -41,12 +42,14 @@ import {
   REFINERY_PRODUCTS,
   resolveRefineryYields,
   computeMonthlyGulfShares,
+  nationalOriginAsShares,
   MIN_PRE_CRISIS_MONTHS,
   computeProductBalance,
   parseProductTradeWindow,
 } from './_shock-compute';
 import type {
   CrudeImportOriginLike,
+  NationalCrudeOriginLike,
   GulfShareMeasurement,
   JodiRefineryYieldsLike,
   LngOriginForCountry,
@@ -104,6 +107,7 @@ interface JodiOil {
   refineryYields?: JodiRefineryYieldsLike | null;
   productTrade?: { preCrisisBaseline?: unknown; currentFlows?: unknown } | null;
   stocks?: unknown;
+  netOilImports?: unknown;
 }
 
 interface IeaStocks {
@@ -284,12 +288,16 @@ export async function computeEnergyShockScenario(
     : null;
   const liveFlowRatio: number | null = rawFlowRatio !== null ? clamp(rawFlowRatio, 0, 1.5) : null;
 
+  // Oil v16: Turkey's crude origin from EPDK national statistics (basis
+  // national_monthly) where Comtrade has no partner filings.
+  // Oil v15: IEA days converted to barrels with JODI net oil imports (crude
+  // and products); v14 used crude imports alone.
   // Oil v14: cover for importers outside the IEA from the stocks they report
   // to JODI. v13 oil caches carry hand-entered India/China reserve estimates;
   // v12 report no cover for them; v11 count every Gulf barrel as lost.
   // Gas g2: the Hormuz LNG route share is the importer's measured Qatar + UAE
   // share, not a flat 30%.
-  const cacheVersion = `${needsOil ? 'v14' : 'v4'}${needsGas ? '-g2' : ''}`;
+  const cacheVersion = `${needsOil ? 'v16' : 'v4'}${needsGas ? '-g2' : ''}`;
   const cacheKey = `energy:shock:${cacheVersion}:${code}:${chokepointId}:${disruptionPct}:${degraded ? 'd' : 'l'}:${fuelMode}`;
   const cached = await getCachedJson(cacheKey);
   if (cached) return cached as ComputeEnergyShockScenarioResponse;
@@ -313,10 +321,27 @@ export async function computeEnergyShockScenario(
   const jodiOil = jodiOilResult.status === 'fulfilled' ? (jodiOilResult.value as JodiOil | null) : null;
   const ieaStocks = ieaStocksResult.status === 'fulfilled' ? (ieaStocksResult.value as IeaStocks | null) : null;
   const annualShare: GulfShareMeasurement = gulfShareResult.status === 'fulfilled' ? gulfShareResult.value : NO_GULF_SHARE;
-  const crudeOrigin = oilTradeResult.status === 'fulfilled'
-    ? ((oilTradeResult.value as { crudeImportOrigin?: CrudeImportOriginLike } | null)?.crudeImportOrigin ?? null)
+  const oilTrade = oilTradeResult.status === 'fulfilled'
+    ? (oilTradeResult.value as { crudeImportOrigin?: CrudeImportOriginLike; crudeImportOriginNational?: NationalCrudeOriginLike } | null)
     : null;
-  const computed = computeMonthlyGulfShares(crudeOrigin, code);
+  const comtradeOrigin = oilTrade?.crudeImportOrigin ?? null;
+  const comtradeComputed = computeMonthlyGulfShares(comtradeOrigin, code);
+  // An importer that files no monthly crude partners to Comtrade (Turkey)
+  // takes both windows from its own national statistics instead. Those are
+  // tonnes, so the share is by volume where Comtrade's is by value.
+  const nationalSection = oilTrade?.crudeImportOriginNational ?? null;
+  const nationalComputed = comtradeComputed.preCrisis || comtradeComputed.current
+    ? { preCrisis: null, current: null }
+    : computeMonthlyGulfShares(nationalOriginAsShares(nationalSection), code);
+  const useNational = Boolean(nationalComputed.preCrisis || nationalComputed.current);
+  const crudeOrigin: CrudeImportOriginLike | NationalCrudeOriginLike | null = useNational ? nationalSection : comtradeOrigin;
+  const computed = useNational ? nationalComputed : comtradeComputed;
+  const monthlyBasis = useNational ? 'national_monthly' : 'comtrade_monthly';
+  const nationalSource = (useNational && nationalSection?.importers?.[code]?.source) || 'national statistics';
+  const monthlySource = useNational ? nationalSource : 'UN Comtrade';
+  const monthlyShareLabel = useNational
+    ? `${nationalSource} monthly crude import volume share (tonnes)`
+    : 'UN Comtrade monthly import value share';
   // A carried-forward section is last-good data from a failed refresh. The
   // pre-crisis window is fixed history and stays valid; "current" flows from
   // it are not current, so they are withheld.
@@ -331,8 +356,8 @@ export async function computeEnergyShockScenario(
     : filings;
   // Pre-crisis baseline: monthly filings for the 12 months before the crisis,
   // else the annual partner share (also pre-crisis by vintage), labelled.
-  const preCrisisShare: (MonthlyGulfShare & { basis: 'comtrade_monthly' | 'comtrade_annual' }) | null = monthly.preCrisis
-    ? { ...monthly.preCrisis, basis: 'comtrade_monthly' }
+  const preCrisisShare: (MonthlyGulfShare & { basis: 'comtrade_monthly' | 'national_monthly' | 'comtrade_annual' }) | null = monthly.preCrisis
+    ? { ...monthly.preCrisis, basis: monthlyBasis }
     : annualShare.hasData
       ? {
         basis: 'comtrade_annual',
@@ -390,8 +415,8 @@ export async function computeEnergyShockScenario(
       const applied = crudeImportsObserved
         ? `, applied to JODI crude imports for ${typeof jodiOil?.dataMonth === 'string' && jodiOil.dataMonth ? jodiOil.dataMonth : 'an unknown month'}`
         : '';
-      if (preCrisisShare.basis === 'comtrade_monthly') {
-        limitations.push(`Gulf crude share (headline, pre-crisis baseline): UN Comtrade monthly import value share ${window} (${preCrisisShare.monthsCovered} of 12 months) from ${GULF_SHARE_SOURCE_LABEL}${applied}.`);
+      if (preCrisisShare.basis !== 'comtrade_annual') {
+        limitations.push(`Gulf crude share (headline, pre-crisis baseline): ${monthlyShareLabel} ${window} (${preCrisisShare.monthsCovered} of 12 months) from ${GULF_SHARE_SOURCE_LABEL}${applied}.`);
       } else {
         const year = annualShare.year != null ? ` ${annualShare.year}` : '';
         const omitted = annualShare.omittedShare != null
@@ -489,23 +514,23 @@ export async function computeEnergyShockScenario(
   // Shown beside the headline only: the latest filings already reflect the
   // closure (cargoes rerouted via Yanbu and Fujairah, replacement supply), so
   // they answer "what is still exposed now", not "what if it closed".
-  const currentFlows = monthly.current ? toBaseline({ ...monthly.current, basis: 'comtrade_monthly' }) : undefined;
+  const currentFlows = monthly.current ? toBaseline({ ...monthly.current, basis: monthlyBasis }) : undefined;
   if (needsOil) {
     if (currentFlows) {
       const loss = oilModeled ? `, crude loss ${currentFlows.crudeLossKbd} kbd` : '';
-      // Comtrade records supplier origin, not route: Saudi crude loaded at Yanbu still counts as Saudi.
-      const rerouted = chokepointId === 'hormuz_strait' ? '; a supplier-share estimate (Comtrade records origin, not route), so it counts Gulf crude already loading at Yanbu or Fujairah and applies no bypass recovery' : '';
-      limitations.push(`Current flows: UN Comtrade monthly import value share ${currentFlows.fromMonth}..${currentFlows.toMonth}: ${(currentFlows.gulfCrudeShare * 100).toFixed(1)}% Gulf${loss}${rerouted}; shown beside the headline, not used for the products table or cover.`);
+      // Both sources record supplier origin, not route: Saudi crude loaded at Yanbu still counts as Saudi.
+      const rerouted = chokepointId === 'hormuz_strait' ? `; a supplier-share estimate (${monthlySource} records origin, not route), so it counts Gulf crude already loading at Yanbu, Fujairah or Ceyhan and applies no bypass recovery` : '';
+      limitations.push(`Current flows: ${monthlyShareLabel} ${currentFlows.fromMonth}..${currentFlows.toMonth}: ${(currentFlows.gulfCrudeShare * 100).toFixed(1)}% Gulf${loss}${rerouted}; shown beside the headline, not used for the products table or cover.`);
     } else {
       const reason = originStale && computed.current
-        ? 'the latest monthly UN Comtrade fetch failed, so the carried-forward filings are not shown as current'
-        : monthlyGap(`fewer than ${CURRENT_FLOWS_WINDOW.months} UN Comtrade monthly crude import filings since ${CURRENT_FLOWS_WINDOW.earliestMonth}`);
+        ? `the latest monthly ${monthlySource} fetch failed, so the carried-forward filings are not shown as current`
+        : monthlyGap(`fewer than ${CURRENT_FLOWS_WINDOW.months} ${monthlySource} monthly crude import filings since ${CURRENT_FLOWS_WINDOW.earliestMonth}`);
       limitations.push(`Current flows unavailable for ${code}: ${reason}.`);
     }
     if (computed.preCrisis || computed.current) {
       if (originStale) {
         const fetched = typeof crudeOrigin.fetchedAt === 'string' ? crudeOrigin.fetchedAt.slice(0, 10) : 'an earlier';
-        limitations.push(`Monthly Comtrade crude origin data is carried forward from the ${fetched} fetch; the latest fetch failed.`);
+        limitations.push(`Monthly ${monthlySource} crude origin data is carried forward from the ${fetched} fetch; the latest fetch failed.`);
       }
     }
   }
@@ -601,13 +626,31 @@ export async function computeEnergyShockScenario(
   const stocksApplied = jodiStocks != null && oilModeled && !netExporter && crudeImportsKbd > 0;
   // Stock in days of crude imports, so the IEA cover formula applies unchanged.
   const stockDays = stocksApplied ? (stocksTotalMb * 1000) / crudeImportsKbd : 0;
+  // IEA days count the previous calendar year's net oil imports, crude and
+  // products, so they become barrels at that rate. JODI's raw sums are a
+  // proxy: IEA also deducts naphtha, adjusts for stock changes and converts
+  // products to crude-oil equivalent. Crude imports alone
+  // understate a product importer (Australia) and overstate a product
+  // exporter (Korea); they stand in only when JODI has no eligible value for
+  // that year (9+ complete months, net importing). The year is the one before
+  // IEA's own data month, which can lag or lead JODI's.
+  const ieaMonth = typeof ieaStocks?.dataMonth === 'string' && /^\d{4}-\d{2}$/.test(ieaStocks.dataMonth) ? ieaStocks.dataMonth : null;
+  const ieaBasisYear = ieaMonth ? Number(ieaMonth.slice(0, 4)) - 1 : null;
+  const netOilImports = parseNetOilImports(jodiOil?.netOilImports, ieaBasisYear);
+  const ieaBasisKbd = netOilImports?.kbd ?? crudeImportsKbd;
   const effectiveCoverDays = netExporter
     ? -1
     : !oilModeled
     ? 0
     : stocksApplied
       ? computeEffectiveCoverDaysWithRamp(stockDays, false, lossBeforeBypassKbd, crudeLossKbd, crudeImportsKbd)
-      : computeEffectiveCoverDaysWithRamp(daysOfCover, netExporter, lossBeforeBypassKbd, crudeLossKbd, crudeImportsKbd);
+      : computeEffectiveCoverDaysWithRamp(daysOfCover, netExporter, lossBeforeBypassKbd, crudeLossKbd, ieaBasisKbd);
+  if (oilModeled && ieaStocksCoverage && !netExporter && daysOfCover > 0) {
+    const kbd = (v: number): string => v.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    limitations.push(netOilImports
+      ? `IEA days of cover converted to barrels with JODI ${netOilImports.year} net oil imports (crude and products) of ${kbd(netOilImports.kbd)} kb/d, a proxy for the net imports IEA counts days against, which deduct naphtha, adjust for stock changes and convert products to crude-oil equivalent.`
+      : `IEA days of cover converted to barrels with JODI crude imports of ${kbd(crudeImportsKbd)} kb/d; JODI net oil imports for ${ieaBasisYear ?? 'the year IEA counts days against'} are unavailable, so cover is misstated for a country that trades products.`);
+  }
   const mb1 = (v: number): number => Math.round(v * 10) / 10;
   let reportedStocks: ReportedStocks | undefined;
   if (jodiStocks) {
@@ -658,7 +701,7 @@ export async function computeEnergyShockScenario(
     degraded,
     ieaStocksCoverage || stocksApplied,
     comtradeCoverage,
-    (preCrisisShare?.basis === 'comtrade_monthly'
+    (preCrisisShare && preCrisisShare.basis !== 'comtrade_annual'
       ? 'the pre-crisis supply mix'
       : preCrisisShare?.fromMonth ? `the ${preCrisisShare.fromMonth.slice(0, 4)} supply mix` : '')
       + (bypassModeled ? ' after bypass rerouting' : '') || undefined,
@@ -795,7 +838,7 @@ export async function computeEnergyShockScenario(
       !l.startsWith('Hormuz bypass') &&
       !l.startsWith('Oil stocks reported to JODI') &&
       !l.startsWith('Oil stock cover not modeled') &&
-      !l.startsWith('Monthly Comtrade crude origin') &&
+      !/^Monthly .+ crude origin data is carried forward/.test(l) &&
       !l.includes('IEA strategic stock') &&
       !l.includes('PortWatch flow data unavailable, using historical baseline multipliers')
     );

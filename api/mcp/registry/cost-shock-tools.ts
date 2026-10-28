@@ -9,7 +9,7 @@ import type { ToolDef } from '../types';
 
 // One Gulf crude share window (compute_energy_shock preCrisisBaseline / currentFlows).
 const CRUDE_SHARE_BASELINE_SCHEMA = { type: 'object', properties: {
-  basis: { type: 'string', enum: ['comtrade_monthly', 'comtrade_annual'] }, fromMonth: { type: 'string' }, toMonth: { type: 'string' },
+  basis: { type: 'string', enum: ['comtrade_monthly', 'national_monthly', 'comtrade_annual'] }, fromMonth: { type: 'string' }, toMonth: { type: 'string' },
   monthsCovered: { type: 'number' }, gulfCrudeShare: { type: 'number' }, crudeLossKbd: { type: 'number' }, crudeLossAfterBypassKbd: { type: 'number' },
 } } as const;
 

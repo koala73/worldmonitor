@@ -11705,6 +11705,20 @@
       ]
     },
     {
+      "host": "www.epdk.gov.tr",
+      "provider": "www.epdk.gov.tr",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.epdk.gov.tr and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_epdk-crude-imports.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.ethiopia-insight.com",
       "provider": "www.ethiopia-insight.com",
       "kind": "feed",

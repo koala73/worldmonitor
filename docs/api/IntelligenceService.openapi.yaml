@@ -9780,7 +9780,7 @@ components:
                 gulfCrudeShare:
                     type: number
                     format: double
-                    description: 'Headline: preCrisisBaseline.gulfCrudeShare, a fraction of import value times the route factor; 0 when that baseline is absent or fuel_mode is gas.'
+                    description: 'Headline: preCrisisBaseline.gulfCrudeShare, a fraction of import value (tonnes if national_monthly) times the route factor; 0 when that baseline is absent or fuel_mode is gas.'
                 crudeLossKbd:
                     type: number
                     format: double
@@ -9975,7 +9975,10 @@ components:
             properties:
                 basis:
                     type: string
-                    description: '"comtrade_monthly", or "comtrade_annual" for the annual partner-share fallback.'
+                    description: |-
+                        "comtrade_monthly" (UN Comtrade import value); "national_monthly" (the importer's own customs or regulator
+                         statistics in tonnes, a volume share; Turkey from EPDK, as Turkey files no crude partners to Comtrade); or
+                         "comtrade_annual" for the annual partner-share fallback.
                 fromMonth:
                     type: string
                 toMonth:
@@ -9987,7 +9990,7 @@ components:
                     type: number
                     format: double
                     description: |-
-                        Gulf share of crude import value (not barrels) times the chokepoint route factor: 1.0 for Hormuz and Bab el-Mandeb,
+                        Gulf share of crude import value (tonnes if national_monthly) times the chokepoint route factor: 1.0 for Hormuz and Bab el-Mandeb,
                          0.6 for Suez and 0.7 for Malacca, where it is below the measured Gulf import share.
                 crudeLossKbd:
                     type: number
@@ -9999,7 +10002,8 @@ components:
                     description: 'preCrisisBaseline only: steady state after Hormuz bypass rerouting. Absent for other chokepoints, without per-exporter shares, or when the loss is not modeled.'
             description: |-
                 Gulf crude share over one window and the crude loss it implies. preCrisisBaseline: the 12 months before the Hormuz crisis
-                 from at least 9 monthly filings, else the annual share (basis comtrade_annual); drives the headline, products and cover.
+                 from at least 9 monthly filings (Comtrade, or national statistics for an importer with no Comtrade partner filings),
+                 else the annual share (basis comtrade_annual); drives the headline, products and cover.
                  currentFlows: the latest 3 monthly filings since the crisis; absent when unavailable, never used for the
                  products array or cover; the "product balance, current flows" line in limitations nets its crude loss.
         ReserveEstimate:
