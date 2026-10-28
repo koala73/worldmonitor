@@ -9989,7 +9989,8 @@ components:
             description: |-
                 Gulf crude share over one window and the crude loss it implies. preCrisisBaseline: the 12 months before the Hormuz crisis
                  from at least 9 monthly filings, else the annual share (basis comtrade_annual); drives the headline, products and cover.
-                 currentFlows: the latest 3 monthly filings since the crisis; absent when unavailable, never used for products or cover.
+                 currentFlows: the latest 3 monthly filings since the crisis; absent when unavailable, never used for the
+                 products array or cover; the "product balance, current flows" line in limitations nets its crude loss.
         GetCountryPortActivityRequest:
             type: object
             properties:
