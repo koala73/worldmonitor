@@ -548,8 +548,13 @@ export async function fetchCrudeImportOriginRows(periods, keys, { fetchJson = fe
     let data = null;
     let lastError = null;
     for (const key of keys) {
+      // A rejected key (401/403) will not recover on retry: fail over at once.
+      const fetchOnce = () => fetchJson(url, key).catch((err) => {
+        if (/^Comtrade HTTP 40[13]$/.test(err?.message ?? '')) err.nonRetryable = true;
+        throw err;
+      });
       try {
-        data = retries > 0 ? await withRetry(() => fetchJson(url, key), retries, 8000) : await fetchJson(url, key);
+        data = retries > 0 ? await withRetry(fetchOnce, retries, 8000) : await fetchOnce();
         break;
       } catch (err) {
         lastError = err;
