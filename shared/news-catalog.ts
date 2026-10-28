@@ -188,6 +188,32 @@ export function buildServerIntelSources(): ServerCatalogFeed[] {
   return serverPlacedFeeds(INTEL_EDITION, INTEL_EDITION).map(toServerFeed);
 }
 
+export interface DigestWarmCell {
+  edition: string;
+  lang: string;
+}
+
+/**
+ * Every (edition, language) digest that is the only build fetching some feed:
+ * an edition paired with each language it places a server feed in (a feed with
+ * no `lang` is English; intel feeds build with `full`). A feed's rows are
+ * written only when a digest that includes it builds, so the relay's warm cycle
+ * requests each of these whether or not any reader does. Editions in server
+ * layout order, languages sorted with English first.
+ */
+export function buildDigestWarmCells(): DigestWarmCell[] {
+  const variantFeeds = buildServerVariantFeeds();
+  const cells: DigestWarmCell[] = [];
+  for (const edition of Object.keys(NEWS_CATALOG.layout.server)) {
+    const feeds = Object.values(variantFeeds[edition] ?? {}).flat();
+    if (edition === 'full') feeds.push(...buildServerIntelSources());
+    const langs = [...new Set(feeds.map((feed) => feed.lang ?? 'en'))]
+      .sort((a, b) => (a === 'en' ? -1 : b === 'en' ? 1 : a.localeCompare(b)));
+    for (const lang of langs) cells.push({ edition, lang });
+  }
+  return cells;
+}
+
 /** Browser view of one edition: category → feeds, in browser order. */
 export function buildBrowserCategoryFeeds(edition: string): Record<string, BrowserCatalogFeed[]> {
   return browserCategoryFeeds((browserSlice ??= projectBrowserCatalog()), edition);
