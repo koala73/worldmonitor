@@ -3410,7 +3410,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const [militaryCard, militaryBody] = this.sectionCard('military', t('countryBrief.militaryActivity'));
     const [infraCard, infraBody] = this.sectionCard('infrastructure', t('countryBrief.infrastructure'));
     const [economicCard, economicBody] = this.sectionCard('economic', t('countryBrief.economicIndicators'));
-    const [no2ActivityCard, no2ActivityBody] = this.sectionCard('activity', 'Industrial Activity (NO2)', 'Direction of Sentinel-5P tropospheric NO2 over the latest 56-day window against the same dates in prior years, after a 10% dead band. Contains modified Copernicus Sentinel data.');
+    const [no2ActivityCard, no2ActivityBody] = this.sectionCard('activity', 'Industrial Activity', 'Direction of Sentinel-5P tropospheric NO2 over the latest 56-day window against the same dates in prior years, after a 10% dead band. Contains modified Copernicus Sentinel data.');
     this.no2ActivityBody = no2ActivityBody;
     no2ActivityBody.append(this.makeLoading('Loading NO2 activity\u2026'));
     const [housingCard, housingBody] = this.sectionCard(
