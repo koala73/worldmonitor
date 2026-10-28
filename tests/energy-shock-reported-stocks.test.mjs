@@ -1,14 +1,13 @@
 /**
- * Strategic reserves for importers outside the IEA (India, China). They have
- * no IEA stock observation, so the oil shock reported no cover at all. A
- * dated low/central/high reserve estimate now gives cover days, labelled as an
- * estimate everywhere and never as IEA data.
+ * Oil stocks for importers outside the IEA. They have no IEA stock
+ * observation, so cover comes from the month-end crude and product stocks
+ * they report to JODI, a recurring source the JODI seeder already downloads.
+ * A country that reports none (China) gets no cover; no figure is typed in.
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { NON_IEA_RESERVES } from '../server/worldmonitor/intelligence/v1/_non-iea-reserves.ts';
 import { buildAssessment, computeEffectiveCoverDaysWithRamp } from '../server/worldmonitor/intelligence/v1/_shock-compute.ts';
 import { computeEnergyShockScenario } from '../server/worldmonitor/intelligence/v1/compute-energy-shock.ts';
 import { getCountryCostShock } from '../server/worldmonitor/supply-chain/v1/get-country-cost-shock.ts';
@@ -34,71 +33,56 @@ const ORIGIN = { 'energy:oil-trade-series:v1': { countries: {}, crudeImportOrigi
 const HORMUZ = { 'energy:chokepoint-flows:v1': { hormuz_strait: { flowRatio: 0.606 } } };
 // JODI rows as the fixed JODI seeder (#9393) publishes them from the 2026-10-28 files.
 const IN_IMPORTS = 4496.651;
-const IN_JODI = { 'energy:jodi-oil:v1:IN': { iso2: 'IN', dataMonth: '2026-03', crude: { importsKbd: IN_IMPORTS }, gasoline: { demandKbd: 900 }, diesel: { demandKbd: 1900 } } };
+// India's JODI 2026-03 closing stocks: crude 45,280 kbbl, products 95,989 kbbl.
+const IN_STOCKS = { month: '2026-03', crudeMb: 45.28, productsMb: 95.989 };
+const IN_TOTAL_MB = 45.28 + 95.989;
+const IN_JODI = { 'energy:jodi-oil:v1:IN': { iso2: 'IN', dataMonth: '2026-03', crude: { importsKbd: IN_IMPORTS }, gasoline: { demandKbd: 900 }, diesel: { demandKbd: 1900 }, stocks: IN_STOCKS } };
 const CN_IMPORTS = 8955.9019;
 const CN = {
-  'energy:jodi-oil:v1:CN': { iso2: 'CN', dataMonth: '2026-08', crude: { importsKbd: CN_IMPORTS }, gasoline: { demandKbd: 3300 }, diesel: { demandKbd: 3500 } },
+  'energy:jodi-oil:v1:CN': { iso2: 'CN', dataMonth: '2026-08', crude: { importsKbd: CN_IMPORTS }, gasoline: { demandKbd: 3300 }, diesel: { demandKbd: 3500 }, stocks: null },
   'comtrade:bilateral-hs4-partners:CN:v1': { iso2: 'CN', products: [{ hs4: '2709', year: 2024, totalValue: 1000, partners: [
     { partnerCode: 682, partnerIso2: 'SA', value: 200 }, { partnerCode: 368, partnerIso2: 'IQ', value: 178 }, { partnerCode: 643, partnerIso2: 'RU', value: 622 },
   ], omittedCount: 0, omittedShare: 0 }] },
 };
 const shock = (countryCode, extra = {}) => computeEnergyShockScenario({}, { countryCode, chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'oil', ...extra });
 const cover = (r, stockMb, imports) => computeEffectiveCoverDaysWithRamp(stockMb * 1000 / imports, false, r.preCrisisBaseline.crudeLossKbd, r.crudeLossKbd, imports);
+const stocksNote = (r) => r.limitations.find((l) => /^Oil stocks reported to JODI/.test(l));
 
-describe('non-IEA reserve constants', () => {
-  it('cover India and China with dated, ordered, sourced ranges; China is flagged low credibility', () => {
-    assert.deepEqual(Object.keys(NON_IEA_RESERVES).sort(), ['CN', 'IN']);
-    for (const [iso2, e] of Object.entries(NON_IEA_RESERVES)) {
-      assert.ok(e.lowMb > 0 && e.lowMb <= e.centralMb && e.centralMb <= e.highMb, iso2);
-      assert.match(e.asOf, /^\d{4}-\d{2}(-\d{2})?$/, iso2);
-      assert.ok(e.scope.length > 0 && e.basis.length > 0, iso2);
-      assert.ok(e.sources.length > 0 && e.sources.every((s) => /^https:\/\//.test(s)), iso2);
-    }
-    assert.equal(NON_IEA_RESERVES.IN.credibility, 'high');
-    assert.equal(NON_IEA_RESERVES.CN.credibility, 'low');
-    // India: 3.372 MMT held on 2026-03-23 (64% of 5.33 MMT), about 24 M bbl.
-    assert.equal(NON_IEA_RESERVES.IN.centralMb, 24);
-    assert.equal(NON_IEA_RESERVES.IN.asOf, '2026-03-23');
-    // China: about 360 M bbl government-held, about 1.4 bn bbl with state-directed commercial stocks (EIA, Dec 2025).
-    assert.equal(NON_IEA_RESERVES.CN.lowMb, 360);
-    assert.equal(NON_IEA_RESERVES.CN.highMb, 1400);
-  });
-});
-
-describe('handler: cover from a non-IEA reserve estimate', () => {
-  it('India: estimated cover from the ISPRL reserve, labelled as an estimate and never as IEA data', async (t) => {
+describe('handler: cover from JODI-reported stocks', () => {
+  it('India: cover from its JODI crude and product stocks, labelled as JODI data and never as IEA cover', async (t) => {
     t.after(restore);
     seed({ ...HORMUZ, ...ORIGIN, ...IN_JODI });
     const r = await shock('IN');
-    assert.equal(r.ieaStocksCoverage, false, 'an estimate is not IEA coverage');
-    const est = r.reserveEstimate;
-    assert.ok(est, 'reserveEstimate is reported');
-    assert.equal(est.credibility, 'high');
-    assert.equal(est.asOf, '2026-03-23');
-    assert.deepEqual([est.lowMb, est.centralMb, est.highMb], [NON_IEA_RESERVES.IN.lowMb, 24, NON_IEA_RESERVES.IN.highMb]);
-    assert.equal(r.effectiveCoverDays, cover(r, 24, IN_IMPORTS));
-    assert.equal(est.coverDaysLow, cover(r, NON_IEA_RESERVES.IN.lowMb, IN_IMPORTS));
-    assert.equal(est.coverDaysHigh, cover(r, NON_IEA_RESERVES.IN.highMb, IN_IMPORTS));
-    assert.ok(est.coverDaysLow <= r.effectiveCoverDays && r.effectiveCoverDays <= est.coverDaysHigh);
-    const note = r.limitations.find((l) => /^Strategic reserve estimate/.test(l));
+    assert.equal(r.ieaStocksCoverage, false, 'JODI stocks are not IEA coverage');
+    assert.equal(r.reserveEstimate, undefined, 'the deprecated hand-entered estimate is gone');
+    const s = r.reportedStocks;
+    assert.ok(s, 'reportedStocks is reported');
+    assert.equal(s.source, 'jodi');
+    assert.equal(s.month, '2026-03');
+    assert.equal(s.crudeMb, 45.3);
+    assert.equal(s.productsMb, 96);
+    assert.equal(s.totalMb, 141.3);
+    assert.equal(s.stockDays, Math.round(IN_TOTAL_MB * 1000 / IN_IMPORTS));
+    assert.equal(r.effectiveCoverDays, cover(r, IN_TOTAL_MB, IN_IMPORTS));
+    assert.ok(r.effectiveCoverDays > 0);
+    const note = stocksNote(r);
     assert.ok(note, r.limitations.join('\n'));
     assert.match(note, /not IEA data/);
-    assert.match(note, /24 M bbl/);
-    assert.match(note, /2026-03-23/);
-    assert.match(note, /commercial stocks are not counted/);
+    assert.match(note, /crude 45\.3 \+ products 96\.0 = 141\.3 M bbl at the end of 2026-03/);
+    assert.match(note, /government reserves/);
     assert.ok(r.limitations.includes('IEA strategic stock data unavailable'));
     assert.doesNotMatch(r.assessment, /IEA cover: ~|days IEA cover/);
-    assert.match(r.assessment, /estimated strategic reserve/);
+    assert.match(r.assessment, /JODI-reported stock cover: ~\d+ days \(not IEA data\)/);
   });
 
   it('a JODI row with crude imports but no product demand does not read as a 0.0% deficit', async (t) => {
     t.after(restore);
-    seed({ ...HORMUZ, ...ORIGIN, 'energy:jodi-oil:v1:IN': { iso2: 'IN', dataMonth: '2026-03', crude: { importsKbd: IN_IMPORTS } } });
+    seed({ ...HORMUZ, ...ORIGIN, 'energy:jodi-oil:v1:IN': { iso2: 'IN', dataMonth: '2026-03', crude: { importsKbd: IN_IMPORTS }, stocks: IN_STOCKS } });
     const r = await shock('IN');
     assert.deepEqual(r.products, []);
     assert.doesNotMatch(r.assessment, /0\.0%/);
     assert.match(r.assessment, /no refined-product demand observation/);
-    assert.match(r.assessment, /estimated strategic reserve cover: ~\d+ days \(not IEA data\)/);
+    assert.match(r.assessment, /JODI-reported stock cover: ~\d+ days \(not IEA data\)/);
   });
 
   it('recorded demand with zero deficits names a 0.0% deficit, not a missing demand observation', () => {
@@ -110,56 +94,72 @@ describe('handler: cover from a non-IEA reserve estimate', () => {
     assert.match(buildAssessment('JP', 'hormuz_strait', true, 0.4, 30, 30, 50, [], 'full', false, true, true), /no refined-product demand observation/);
   });
 
-  it('China: the estimate carries its low credibility and range', async (t) => {
+  it('China reports no stocks to JODI: no cover and no figure stands in for one', async (t) => {
     t.after(restore);
     seed({ ...HORMUZ, ...ORIGIN, ...CN });
     const r = await shock('CN');
-    assert.equal(r.reserveEstimate?.credibility, 'low');
-    assert.equal(r.effectiveCoverDays, cover(r, NON_IEA_RESERVES.CN.centralMb, CN_IMPORTS));
-    const note = r.limitations.find((l) => /^Strategic reserve estimate/.test(l));
-    assert.match(note, /low credibility/);
-    assert.match(note, /publishes no stock data/);
+    assert.equal(r.reportedStocks, undefined);
+    assert.equal(r.reserveEstimate, undefined);
+    assert.equal(r.effectiveCoverDays, 0);
+    assert.equal(stocksNote(r), undefined);
+    assert.ok(r.limitations.some((l) => /^Oil stock cover not modeled for CN: no IEA or JODI stock observation/.test(l)), r.limitations.join('\n'));
   });
 
-  it('a country with IEA stocks keeps IEA cover and gets no estimate', async (t) => {
+  it('stocks more than 12 months older than the JODI flow month are not used', async (t) => {
+    t.after(restore);
+    seed({ ...HORMUZ, ...ORIGIN, 'energy:jodi-oil:v1:IN': { ...IN_JODI['energy:jodi-oil:v1:IN'], stocks: { ...IN_STOCKS, month: '2025-02' } } });
+    const r = await shock('IN');
+    assert.equal(r.reportedStocks, undefined);
+    assert.equal(r.effectiveCoverDays, 0);
+    assert.ok(r.limitations.some((l) => /JODI stocks for IN are from 2025-02, more than 12 months before/.test(l)), r.limitations.join('\n'));
+  });
+
+  it('malformed stock fields are ignored, not read as zero stock', async (t) => {
+    t.after(restore);
+    seed({ ...HORMUZ, ...ORIGIN, 'energy:jodi-oil:v1:IN': { ...IN_JODI['energy:jodi-oil:v1:IN'], stocks: { month: '2026-03', crudeMb: 'x', productsMb: 96 } } });
+    const r = await shock('IN');
+    assert.equal(r.reportedStocks, undefined);
+  });
+
+  it('a country with IEA stocks keeps IEA cover and ignores its JODI stocks', async (t) => {
     t.after(restore);
     seed({
       ...HORMUZ, ...ORIGIN,
-      'energy:jodi-oil:v1:JP': { iso2: 'JP', dataMonth: '2026-07', crude: { importsKbd: 2382.1742 }, gasoline: { demandKbd: 790.8 } },
+      'energy:jodi-oil:v1:JP': { iso2: 'JP', dataMonth: '2026-07', crude: { importsKbd: 2382.1742 }, gasoline: { demandKbd: 790.8 }, stocks: { month: '2026-07', crudeMb: 272.3, productsMb: 104.5 } },
       'energy:iea-oil-stocks:v1:JP': { daysOfCover: 178, netExporter: false, anomaly: false },
     });
     const r = await shock('JP');
-    assert.equal(r.reserveEstimate, undefined);
-    assert.ok(!r.limitations.some((l) => /^Strategic reserve estimate/.test(l)));
+    assert.equal(r.reportedStocks, undefined);
+    assert.equal(stocksNote(r), undefined);
   });
 
-  it('India without JODI imports: the reserve is reported, cover is not modeled', async (t) => {
+  it('India without JODI crude imports: the stocks are reported, cover is not modeled', async (t) => {
     t.after(restore);
-    seed({ ...HORMUZ, ...ORIGIN });
+    seed({ ...HORMUZ, ...ORIGIN, 'energy:jodi-oil:v1:IN': { iso2: 'IN', dataMonth: '2026-03', crude: {}, diesel: { demandKbd: 1900 }, stocks: IN_STOCKS } });
     const r = await shock('IN');
     assert.equal(r.effectiveCoverDays, 0);
-    assert.equal(r.reserveEstimate?.centralMb, 24);
-    assert.equal(r.reserveEstimate?.coverDaysLow, undefined);
-    assert.equal(r.reserveEstimate?.coverDaysHigh, undefined);
-    assert.ok(r.limitations.some((l) => /^Strategic reserve estimate/.test(l) && /cover is not modeled/.test(l)), r.limitations.join('\n'));
+    assert.equal(r.reportedStocks?.totalMb, 141.3);
+    assert.equal(r.reportedStocks?.stockDays, undefined);
+    assert.match(stocksNote(r), /cover is not modeled/);
   });
 
-  it('gas-only mode carries no reserve estimate', async (t) => {
+  it('gas-only mode carries no stocks', async (t) => {
     t.after(restore);
     seed({ ...HORMUZ, ...ORIGIN, ...IN_JODI, 'energy:jodi-gas:v1:IN': { lngImportsTj: 111255.8, totalDemandTj: 185285.1, dataMonth: '2026-03' } });
     const r = await shock('IN', { fuelMode: 'gas' });
-    assert.equal(r.reserveEstimate, undefined);
-    assert.ok(!r.limitations.some((l) => /^Strategic reserve estimate/.test(l)));
+    assert.equal(r.reportedStocks, undefined);
+    assert.equal(stocksNote(r), undefined);
   });
 
-  it('a stale v12 cache entry (#9792, no estimate) is not served', async (t) => {
+  it('a stale v13 cache entry (#9793, hand-entered estimate) is not served', async (t) => {
     t.after(restore);
-    seed({ ...HORMUZ, ...ORIGIN, ...IN_JODI, 'energy:shock:v12:IN:hormuz_strait:100:l:oil': { countryCode: 'IN', effectiveCoverDays: 0, limitations: [] } });
+    seed({ ...HORMUZ, ...ORIGIN, ...IN_JODI, 'energy:shock:v13:IN:hormuz_strait:100:l:oil': { countryCode: 'IN', effectiveCoverDays: 11, reserveEstimate: { centralMb: 24 }, limitations: [] } });
     const r = await shock('IN');
-    assert.ok(r.reserveEstimate);
+    assert.ok(r.reportedStocks);
+    assert.equal(r.reserveEstimate, undefined);
   });
 
-  it('get-country-cost-shock keeps coverageDays as IEA-only: the estimate is not passed off as IEA cover', async (t) => {
+  it('get-country-cost-shock keeps coverageDays as IEA-only: JODI stocks are not passed off as IEA cover', async (t) => {
     t.after(restore);
     process.env.WORLDMONITOR_VALID_KEYS = 'wm_reserve_fixture';
     seed({ ...HORMUZ, ...ORIGIN, ...IN_JODI });

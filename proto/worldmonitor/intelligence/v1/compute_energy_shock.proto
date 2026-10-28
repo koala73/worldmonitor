@@ -103,7 +103,7 @@ message CrudeShareBaseline {
   optional double crude_loss_after_bypass_kbd = 7;
 }
 
-// Non-IEA strategic reserve estimate (not IEA data) behind effective_cover_days.
+// Deprecated: hand-entered reserve estimates were replaced by ReportedStocks.
 message ReserveEstimate {
   string scope = 1;
   string as_of = 2;
@@ -115,6 +115,21 @@ message ReserveEstimate {
   // Cover at the low and high stock; absent when the loss is not modeled.
   optional int32 cover_days_low = 7;
   optional int32 cover_days_high = 8;
+}
+
+// Month-end oil stocks a country outside the IEA reports to JODI (not IEA data),
+// behind effective_cover_days. Crude plus refined products held in the country;
+// whether government reserves are included depends on the reporter.
+message ReportedStocks {
+  // "jodi".
+  string source = 1;
+  // YYYY-MM, the month the stocks closed.
+  string month = 2;
+  double crude_mb = 3;
+  double products_mb = 4;
+  double total_mb = 5;
+  // total_mb in days of JODI crude imports; absent when the loss is not modeled.
+  optional int32 stock_days = 6;
 }
 
 message ComputeEnergyShockScenarioResponse {
@@ -149,6 +164,8 @@ message ComputeEnergyShockScenarioResponse {
   CrudeShareBaseline pre_crisis_baseline = 22;
   // Latest 3 monthly filings since the crisis; absent when unavailable. Not used for the products array or cover; the "product balance, current flows" limitation uses its crude_loss_kbd.
   CrudeShareBaseline current_flows = 23;
-  // Present for non-IEA importers with an estimate (India, China).
-  ReserveEstimate reserve_estimate = 24;
+  // Deprecated and no longer returned. Use reported_stocks.
+  ReserveEstimate reserve_estimate = 24 [deprecated = true];
+  // Present for importers outside the IEA that report crude and product stocks to JODI (India, Taiwan, Thailand, the Philippines...).
+  ReportedStocks reported_stocks = 25;
 }

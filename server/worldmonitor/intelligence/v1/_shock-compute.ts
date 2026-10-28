@@ -375,6 +375,36 @@ export function computeMonthlyGulfShares(
  */
 export const EFFECTIVE_COVER_DAYS_CAP = 730;
 
+/** Stocks older than this, against the JODI flow month, are not used for cover. */
+export const JODI_STOCK_MAX_AGE_MONTHS = 12;
+
+export interface JodiStocks {
+  month: string;
+  crudeMb: number;
+  productsMb: number;
+}
+
+const monthIndex = (ym: string): number | null => {
+  const m = /^(\d{4})-(\d{2})$/.exec(ym);
+  return m ? Number(m[1]) * 12 + Number(m[2]) - 1 : null;
+};
+
+/**
+ * The month-end crude and product stocks a JODI row carries, when both are
+ * finite and nonnegative with a positive total. `stale` marks stocks more than
+ * JODI_STOCK_MAX_AGE_MONTHS before the row's flow month: they are reported in
+ * a limitation but never used for cover.
+ */
+export function parseJodiStocks(raw: unknown, flowMonth: unknown): { stocks: JodiStocks; stale: boolean } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { month, crudeMb, productsMb } = raw as Record<string, unknown>;
+  const mb = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+  if (typeof month !== 'string' || monthIndex(month) == null || !mb(crudeMb) || !mb(productsMb) || crudeMb + productsMb <= 0) return null;
+  const flow = typeof flowMonth === 'string' ? monthIndex(flowMonth) : null;
+  const stale = flow != null && flow - monthIndex(month)! > JODI_STOCK_MAX_AGE_MONTHS;
+  return { stocks: { month, crudeMb, productsMb }, stale };
+}
+
 export function computeEffectiveCoverDays(
   daysOfCover: number,
   netExporter: boolean,
@@ -454,14 +484,14 @@ export function buildAssessment(
   ieaStocksCoverage?: boolean,
   comtradeCoverage?: boolean,
   supplyMix?: string,
-  /** 'estimate': daysOfCover is a non-IEA strategic reserve estimate, never called IEA cover. */
-  coverSource: 'iea' | 'estimate' = 'iea',
+  /** 'jodi': daysOfCover is stock reported to JODI by a country outside the IEA, never called IEA cover. */
+  coverSource: 'iea' | 'jodi' = 'iea',
 ): string {
   const country = countryLabel(code);
   const cp = chokepointLabel(chokepointId);
-  const estimated = coverSource === 'estimate';
+  const estimated = coverSource === 'jodi';
   const coverPhrase = estimated
-    ? `an estimated ${daysOfCover} days of strategic reserves (not IEA data)`
+    ? `about ${daysOfCover} days of oil stocks reported to JODI (not IEA data)`
     : `${daysOfCover} days IEA cover`;
   // Which Gulf share the figures rest on, e.g. "the pre-crisis supply mix".
   const mix = supplyMix ? ` at ${supplyMix}` : '';
@@ -488,7 +518,7 @@ export function buildAssessment(
   if (effectiveCoverDays > 90) {
     return `With ${coverPhrase}, ${country} can bridge a ${disruptionPct}% ${cp} disruption for ~${effectiveCoverDays} days${mix}${degradedNote}.`;
   }
-  const coverText = estimated ? `estimated strategic reserve cover: ~${effectiveCoverDays} days (not IEA data)` : `IEA cover: ${ieaCoverText}`;
+  const coverText = estimated ? `JODI-reported stock cover: ~${effectiveCoverDays} days (not IEA data)` : `IEA cover: ${ieaCoverText}`;
   // No product with recorded demand: there is no deficit to name, not a 0.0% one.
   if (products.length === 0) {
     return `${country} has no refined-product demand observation, so product deficits under ${disruptionPct}% ${cp} disruption${mix} are not modeled; ${coverText}${degradedNote}.`;

@@ -937,7 +937,9 @@ export interface ComputeEnergyShockScenarioResponse {
   gasSensitivity?: GasSensitivity;
   preCrisisBaseline?: CrudeShareBaseline;
   currentFlows?: CrudeShareBaseline;
+  /** @deprecated */
   reserveEstimate?: ReserveEstimate;
+  reportedStocks?: ReportedStocks;
 }
 
 export interface ProductImpact {
@@ -1020,6 +1022,15 @@ export interface ReserveEstimate {
   highMb: number;
   coverDaysLow?: number;
   coverDaysHigh?: number;
+}
+
+export interface ReportedStocks {
+  source: string;
+  month: string;
+  crudeMb: number;
+  productsMb: number;
+  totalMb: number;
+  stockDays?: number;
 }
 
 export interface GetCountryPortActivityRequest {

@@ -7,7 +7,7 @@ import type {
   GasStorageObservation,
   CrudeShareBaseline,
   LngShareBaseline,
-  ReserveEstimate,
+  ReportedStocks,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
@@ -19,6 +19,8 @@ import {
   computeGulfShare,
   computeGulfShareFromPartners,
   computeEffectiveCoverDaysWithRamp,
+  parseJodiStocks,
+  JODI_STOCK_MAX_AGE_MONTHS,
   EFFECTIVE_COVER_DAYS_CAP,
   GULF_SHARE_SOURCE_LABEL,
   buildAssessment,
@@ -58,7 +60,6 @@ import { ISO2_TO_COMTRADE } from './_comtrade-reporters';
 import { CURRENT_FLOWS_WINDOW, PRE_CRISIS_WINDOW } from '../../../../shared/hormuz-crisis.js';
 import { HORMUZ_BYPASS_AS_OF, HORMUZ_BYPASS_BY_EXPORTER, lostShareAfterBypass } from './_hormuz-bypass';
 import type { BypassScenario } from './_hormuz-bypass';
-import { nonIeaReserveFor } from './_non-iea-reserves';
 
 const BYPASS_EXPORTER_NAMES: Record<string, string> = { SA: 'Saudi Arabia', AE: 'UAE', IQ: 'Iraq' };
 // Round to the reported 0.1 kbd first so prose and fields agree (2209.47 -> 2209.5 -> 2,210).
@@ -101,6 +102,7 @@ interface JodiOil {
   crude?: { importsKbd?: number | null } | null;
   refineryYields?: JodiRefineryYieldsLike | null;
   productTrade?: { preCrisisBaseline?: unknown; currentFlows?: unknown } | null;
+  stocks?: unknown;
 }
 
 interface IeaStocks {
@@ -281,11 +283,12 @@ export async function computeEnergyShockScenario(
     : null;
   const liveFlowRatio: number | null = rawFlowRatio !== null ? clamp(rawFlowRatio, 0, 1.5) : null;
 
-  // Oil v13: cover from non-IEA reserve estimates (India, China). v12 oil caches
-  // report no cover for them; v11 count every Gulf barrel as lost.
+  // Oil v14: cover for importers outside the IEA from the stocks they report
+  // to JODI. v13 oil caches carry hand-entered India/China reserve estimates;
+  // v12 report no cover for them; v11 count every Gulf barrel as lost.
   // Gas g2: the Hormuz LNG route share is the importer's measured Qatar + UAE
   // share, not a flat 30%.
-  const cacheVersion = `${needsOil ? 'v13' : 'v4'}${needsGas ? '-g2' : ''}`;
+  const cacheVersion = `${needsOil ? 'v14' : 'v4'}${needsGas ? '-g2' : ''}`;
   const cacheKey = `energy:shock:${cacheVersion}:${code}:${chokepointId}:${disruptionPct}:${degraded ? 'd' : 'l'}:${fuelMode}`;
   const cached = await getCachedJson(cacheKey);
   if (cached) return cached as ComputeEnergyShockScenarioResponse;
@@ -577,36 +580,39 @@ export async function computeEnergyShockScenario(
   // days would otherwise pass as the scenario result, and the net-exporter -1
   // would contradict the "reported as 0" limitation above. The panel keys its
   // cover row on the same "not modeled" limitation text.
-  // Importers outside the IEA (India, China) have no stock observation. A
-  // dated reserve estimate gives their cover instead, labelled as an estimate.
-  const reserveSource = needsOil && !ieaStocksCoverage ? nonIeaReserveFor(code) : undefined;
-  const reserveApplied = reserveSource != null && oilModeled && crudeImportsKbd > 0;
+  // Importers outside the IEA have no IEA stock observation. The month-end
+  // crude and product stocks they report to JODI give their cover instead,
+  // labelled as JODI data. A country that reports none gets no cover.
+  const parsedStocks = needsOil && !ieaStocksCoverage ? parseJodiStocks(jodiOil?.stocks, jodiOil?.dataMonth) : null;
+  const jodiStocks = parsedStocks && !parsedStocks.stale ? parsedStocks.stocks : null;
+  const stocksTotalMb = jodiStocks ? jodiStocks.crudeMb + jodiStocks.productsMb : 0;
+  const stocksApplied = jodiStocks != null && oilModeled && crudeImportsKbd > 0;
   // Stock in days of crude imports, so the IEA cover formula applies unchanged.
-  const reserveStockDays = (mb: number): number => (mb * 1000) / crudeImportsKbd;
-  const reserveCover = (mb: number): number =>
-    computeEffectiveCoverDaysWithRamp(reserveStockDays(mb), false, lossBeforeBypassKbd, crudeLossKbd, crudeImportsKbd);
+  const stockDays = stocksApplied ? (stocksTotalMb * 1000) / crudeImportsKbd : 0;
   const effectiveCoverDays = !oilModeled
     ? 0
-    : reserveApplied
-      ? reserveCover(reserveSource.centralMb)
+    : stocksApplied
+      ? computeEffectiveCoverDaysWithRamp(stockDays, false, lossBeforeBypassKbd, crudeLossKbd, crudeImportsKbd)
       : computeEffectiveCoverDaysWithRamp(daysOfCover, netExporter, lossBeforeBypassKbd, crudeLossKbd, crudeImportsKbd);
-  let reserveEstimate: ReserveEstimate | undefined;
-  if (reserveSource) {
-    reserveEstimate = {
-      scope: reserveSource.scope,
-      asOf: reserveSource.asOf,
-      credibility: reserveSource.credibility,
-      lowMb: reserveSource.lowMb,
-      centralMb: reserveSource.centralMb,
-      highMb: reserveSource.highMb,
-      coverDaysLow: reserveApplied ? reserveCover(reserveSource.lowMb) : undefined,
-      coverDaysHigh: reserveApplied ? reserveCover(reserveSource.highMb) : undefined,
+  const mb1 = (v: number): number => Math.round(v * 10) / 10;
+  let reportedStocks: ReportedStocks | undefined;
+  if (jodiStocks) {
+    reportedStocks = {
+      source: 'jodi',
+      month: jodiStocks.month,
+      crudeMb: mb1(jodiStocks.crudeMb),
+      productsMb: mb1(jodiStocks.productsMb),
+      totalMb: mb1(stocksTotalMb),
+      stockDays: stocksApplied ? Math.round(stockDays) : undefined,
     };
-    const mb = (v: number): string => v.toLocaleString('en-US');
-    const coverText = reserveApplied
-      ? `effective cover ~${effectiveCoverDays} days (range ${reserveEstimate.coverDaysLow}-${reserveEstimate.coverDaysHigh}) against the modeled loss`
+    const coverText = stocksApplied
+      ? `about ${reportedStocks.stockDays} days of crude imports; effective cover ~${effectiveCoverDays} days against the modeled loss`
       : 'cover is not modeled because the oil loss is not modeled';
-    limitations.push(`Strategic reserve estimate (not IEA data, ${reserveSource.credibility} credibility): ${reserveSource.scope}; ${mb(reserveSource.centralMb)} M bbl central (range ${mb(reserveSource.lowMb)}-${mb(reserveSource.highMb)}) as of ${reserveSource.asOf}; ${coverText}. ${reserveSource.basis}`);
+    limitations.push(`Oil stocks reported to JODI (not IEA data): crude ${mb1(jodiStocks.crudeMb).toFixed(1)} + products ${mb1(jodiStocks.productsMb).toFixed(1)} = ${mb1(stocksTotalMb).toFixed(1)} M bbl at the end of ${jodiStocks.month}, ${coverText}. JODI stocks are what the country reports as held on its territory; whether government reserves are included depends on the reporter.`);
+  } else if (needsOil && !ieaStocksCoverage && !netExporter) {
+    limitations.push(parsedStocks?.stale
+      ? `Oil stock cover not modeled for ${code}: JODI stocks for ${code} are from ${parsedStocks.stocks.month}, more than ${JODI_STOCK_MAX_AGE_MONTHS} months before the ${jodiOil?.dataMonth} flow month.`
+      : `Oil stock cover not modeled for ${code}: no IEA or JODI stock observation.`);
   }
   if (needsOil && effectiveCoverDays === -1) {
     limitations.push('effectiveCoverDays -1 marks a net oil exporter (IEA); no import-cover duration applies.');
@@ -622,18 +628,18 @@ export async function computeEnergyShockScenario(
     crudeImportsObserved,
     gulfCrudeShare,
     effectiveCoverDays,
-    reserveApplied ? Math.round(reserveStockDays(reserveSource.centralMb)) : daysOfCover,
+    stocksApplied ? Math.round(stockDays) : daysOfCover,
     disruptionPct,
     products,
     coverageLevel,
     degraded,
-    ieaStocksCoverage || reserveApplied,
+    ieaStocksCoverage || stocksApplied,
     comtradeCoverage,
     (preCrisisShare?.basis === 'comtrade_monthly'
       ? 'the pre-crisis supply mix'
       : preCrisisShare?.fromMonth ? `the ${preCrisisShare.fromMonth.slice(0, 4)} supply mix` : '')
       + (bypassModeled ? ' after bypass rerouting' : '') || undefined,
-    reserveApplied ? 'estimate' : 'iea',
+    stocksApplied ? 'jodi' : 'iea',
   );
 
   let gasSensitivity: GasSensitivity | undefined;
@@ -751,7 +757,7 @@ export async function computeEnergyShockScenario(
     gasSensitivity,
     preCrisisBaseline,
     currentFlows,
-    reserveEstimate,
+    reportedStocks,
   };
 
   if (!needsOil) {
@@ -764,7 +770,8 @@ export async function computeEnergyShockScenario(
       !l.includes('Gulf crude share') &&
       !l.startsWith('Current flows') &&
       !l.startsWith('Hormuz bypass') &&
-      !l.startsWith('Strategic reserve estimate') &&
+      !l.startsWith('Oil stocks reported to JODI') &&
+      !l.startsWith('Oil stock cover not modeled') &&
       !l.startsWith('Monthly Comtrade crude origin') &&
       !l.includes('IEA strategic stock') &&
       !l.includes('PortWatch flow data unavailable, using historical baseline multipliers')
@@ -772,7 +779,7 @@ export async function computeEnergyShockScenario(
     // Zero out oil-specific fields for gas-only mode
     response.preCrisisBaseline = undefined;
     response.currentFlows = undefined;
-    response.reserveEstimate = undefined;
+    response.reportedStocks = undefined;
     response.gulfCrudeShare = 0;
     response.crudeLossKbd = 0;
     response.products = [];
