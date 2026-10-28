@@ -182,6 +182,14 @@ describe('balanceStreamingMarkdown', () => {
     ['**Open\nnext line', 'Open\nnext line'],
     ['```\ncode **x', '```\ncode **x\n```'],
     ['`a ** b` done', '`a ** b` done'],
+    ['Oil is *volatile*', 'Oil is *volatile*'],
+    ['Oil is *volat', 'Oil is *volat*'],
+    ['Oil is *', 'Oil is'],
+    ['*Open\nnext line', 'Open\nnext line'],
+    ['* bullet one\n* bul', '* bullet one\n* bul'],
+    ['**Bold *ital', '**Bold *ital***'],
+    ['*Ital **bo', '*Ital **bo***'],
+    ['**Bold** and *ital*', '**Bold** and *ital*'],
   ])('%j -> %j', (input, expected) => {
     expect(balanceStreamingMarkdown(input)).toBe(expected);
   });

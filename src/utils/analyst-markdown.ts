@@ -20,15 +20,30 @@ export function postProcessAnalystHtml(html: string): string {
 
 const FENCE_RE = /^ {0,3}```/gm;
 const INLINE_CODE_RE = /`[^`\n]*`/g;
+const BULLET_STAR_RE = /^( {0,3})\*(?=\s)/gm;
 const TRAILING_STARS_RE = /\*+$/;
 
-/** Blank out inline code spans (same length) so their asterisks are not counted. */
-function maskInlineCode(text: string): string {
-  return text.replace(INLINE_CODE_RE, (span) => ' '.repeat(span.length));
+/**
+ * Blank out (same length) everything that is not an emphasis marker, so marker
+ * positions in the result index straight into the original text: inline code
+ * spans and `* ` list bullets.
+ */
+function maskNonEmphasis(text: string): string {
+  return text
+    .replace(INLINE_CODE_RE, (span) => ' '.repeat(span.length))
+    .replace(BULLET_STAR_RE, '$1 ');
 }
 
-function countBold(text: string): number {
-  return (maskInlineCode(text).match(/\*\*/g) ?? []).length;
+/** Index of the last unmatched `**` and `*` opener, or -1 when balanced. */
+function openEmphasis(text: string): { bold: number; italic: number } {
+  const masked = maskNonEmphasis(text);
+  const bolds = [...masked.matchAll(/\*\*/g)].map((m) => m.index);
+  // Lone `*` markers once every `**` pair is blanked out.
+  const singles = [...masked.replace(/\*\*/g, '  ').matchAll(/\*/g)].map((m) => m.index);
+  return {
+    bold: bolds.length % 2 === 1 ? bolds[bolds.length - 1]! : -1,
+    italic: singles.length % 2 === 1 ? singles[singles.length - 1]! : -1,
+  };
 }
 
 /**
@@ -36,10 +51,12 @@ function countBold(text: string): number {
  * so the streaming bubble shows formatted text instead of raw markers.
  *
  * - An open code fence is closed, so the partial code renders as a block.
- * - A trailing run of asterisks that does not close an open bold run (the first
- *   half of a `**` split across chunks, or an opener with no text yet) is dropped.
- * - A bold run still open at the end is closed. If it spans a line break, marked
- *   could not pair it anyway, so its opener is dropped instead.
+ * - A trailing run of asterisks that does not close an open `**` or `*` run
+ *   (the first half of a `**` split across chunks, or an opener with no text
+ *   yet) is dropped.
+ * - A `**` or `*` run still open at the end is closed, innermost first. If it
+ *   spans a line break, marked could not pair it anyway, so its opener is
+ *   dropped instead.
  *
  * Only the display copy is balanced; the accumulated answer is left untouched.
  */
@@ -50,16 +67,28 @@ export function balanceStreamingMarkdown(text: string): string {
   const trailing = TRAILING_STARS_RE.exec(out);
   if (trailing) {
     const before = out.slice(0, trailing.index);
-    const closesOpenBold = countBold(before) % 2 === 1 && trailing[0].length >= 2;
-    if (!closesOpenBold) out = before.trimEnd();
+    const open = openEmphasis(before);
+    const run = trailing[0].length;
+    const closes = (run === 1 && open.italic >= 0)
+      || (run === 2 && open.bold >= 0)
+      || (run >= 3 && (open.bold >= 0 || open.italic >= 0));
+    if (!closes) out = before.trimEnd();
   }
 
-  if (countBold(out) % 2 === 1) {
-    const opener = maskInlineCode(out).lastIndexOf('**');
-    const rest = out.slice(opener + 2);
-    out = rest.includes('\n') || rest.trim() === ''
-      ? out.slice(0, opener) + rest
-      : `${out}**`;
+  const open = openEmphasis(out);
+  // Close the innermost (latest) opener first so nesting stays valid.
+  const openers = [
+    { index: open.bold, marker: '**' },
+    { index: open.italic, marker: '*' },
+  ].filter((o) => o.index >= 0).sort((x, y) => y.index - x.index);
+  let closers = '';
+  for (const { index, marker } of openers) {
+    const rest = out.slice(index + marker.length);
+    if (rest.includes('\n') || rest.trim() === '') {
+      out = out.slice(0, index) + rest;
+    } else {
+      closers += marker;
+    }
   }
-  return out;
+  return out + closers;
 }
