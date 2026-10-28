@@ -324,11 +324,12 @@ function isKeyFreeApiTarget(target: string): boolean {
     || target.startsWith('/api/version');
 }
 
-// Key issuance asks Clerk whether the caller's session is still live, so it
-// needs the caller's standard session token (it carries `sid`). The desktop
+// Key issuance (API and embed) asks Clerk whether the caller's session is live.
+// It needs the caller's standard session token (it carries `sid`). The desktop
 // cloud credential is a template token without one.
 function isSessionBoundApiTarget(target: string): boolean {
-  return target.split('?')[0] === '/api/user-api-keys';
+  const path = target.split('?')[0];
+  return path === '/api/user-api-keys' || path === '/api/user-embed-keys';
 }
 
 function callerBearer(input: RequestInfo | URL, init?: RequestInit): string | undefined {

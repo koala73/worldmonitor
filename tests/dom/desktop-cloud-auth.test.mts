@@ -259,19 +259,21 @@ describe('desktop key issuance through the installed fetch wrapper', () => {
     return new Headers(payload.request.headers);
   }
 
-  for (const pro of [true, false]) {
-    it(`forwards the caller's session bearer for a ${pro ? 'Pro' : 'free'} desktop`, async () => {
-      entitled.value = pro;
-      clerkToken.mockResolvedValue('template-jwt');
-      (await import('@/services/runtime')).installRuntimeFetchPatch();
-      await window.fetch('/api/user-api-keys', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer session-jwt' },
-        body: '{}',
+  for (const path of ['/api/user-api-keys', '/api/user-embed-keys?source=settings']) {
+    for (const pro of [true, false]) {
+      it(`forwards the caller's session bearer for a ${pro ? 'Pro' : 'free'} desktop on ${path}`, async () => {
+        entitled.value = pro;
+        clerkToken.mockResolvedValue('template-jwt');
+        (await import('@/services/runtime')).installRuntimeFetchPatch();
+        await window.fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer session-jwt' },
+          body: '{}',
+        });
+        expect(sentHeaders().get('x-worldmonitor-user-authorization')).toBe('Bearer session-jwt');
+        expect(sentHeaders().get('authorization')).toBeNull();
       });
-      expect(sentHeaders().get('x-worldmonitor-user-authorization')).toBe('Bearer session-jwt');
-      expect(sentHeaders().get('authorization')).toBeNull();
-    });
+    }
   }
 
   it('keeps the desktop cloud credential on other routes', async () => {

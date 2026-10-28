@@ -72,7 +72,7 @@ for (const state of states) {
       const user = t.withIdentity(identity);
       const key = { name: "stale session", keyHash: "a".repeat(64), keyPrefix: "wm_abcdefgh" };
       await rejected(t.mutation(internal.apiKeys.createApiKeyForUser, { userId: identity.subject, ...key }));
-      await rejected(user.mutation(api.embedKeys.createEmbedKey, { ...key, keyPrefix: "wme_abcdefgh" }));
+      await rejected(t.mutation(internal.embedKeys.createEmbedKeyForUser, { userId: identity.subject, ...key, keyPrefix: "wme_abcdefgh" }));
       await rejected(t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: identity.subject }));
       await rejected(user.mutation(api.followedCountries.followCountry, { country: "US" }));
       await rejected(user.mutation(api.followedCountries.unfollowCountry, { country: "US" }));

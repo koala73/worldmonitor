@@ -51,7 +51,8 @@ export async function userApiKeyCreateHandler(request: Request, deps: UserApiKey
       ...(body.scopes !== undefined ? { scopes: body.scopes } : {}),
       ...(body.keyKind !== undefined ? { keyKind: body.keyKind } : {}),
     });
-    if (response.status === 404 || response.status >= 500) return unavailable();
+    // A relay 401 is a gateway-secret mismatch (e.g. mid-rotation), not the caller's session.
+    if (response.status === 401 || response.status === 404 || response.status >= 500) return unavailable();
     const result = await response.json();
     if (response.status >= 400 && response.status < 500 && typeof result?.error === 'string') {
       return jsonResponse({ error: result.error }, response.status, cors);

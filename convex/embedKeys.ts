@@ -1,7 +1,7 @@
 import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { requireUserId, resolveUserId, resolveUserIdentity } from "./lib/auth";
+import { requireUserId, resolveUserId } from "./lib/auth";
 import { mergeEntitlementFeatures } from "./lib/entitlements";
 import { hasAccountEmbedAccess } from "../shared/embed-access";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
@@ -37,31 +37,33 @@ function normalizeAllowedOrigins(origins: string[] | undefined): string[] | unde
 }
 
 // ---------------------------------------------------------------------------
-// Public mutations & queries (require Clerk JWT via ctx.auth)
+// Internal key issuance
 // ---------------------------------------------------------------------------
 
 /**
- * Create a new partner-embed key.
+ * Create a new partner-embed key for a user verified by the edge relay.
  *
  * Same shown-once discipline as `convex/apiKeys.ts`: the caller generates the
  * random key client-side and passes the SHA-256 hex hash + the display prefix.
  * The plaintext key is NEVER stored in Convex.
  *
- * The gate is the shared account embed predicate — a verified Clerk PRO role
+ * The gate is the shared account embed predicate — a server-resolved Clerk PRO role
  * or active paid embed entitlement — NOT `apiAccess`. An embed key is
  * published in the partner's HTML, so it must be mintable by every paid tier;
  * Pro and Pro Business are `apiAccess: false` and `createApiKey` rejects them.
  */
-export const createEmbedKey = mutation({
+// Only the live-session-gated edge relay may issue keys.
+export const createEmbedKeyForUser = internalMutation({
   args: {
+    userId: v.string(),
+    clerkPlan: v.optional(v.union(v.literal("free"), v.literal("pro"))),
     name: v.string(),
     keyPrefix: v.string(),
     keyHash: v.string(),
     allowedOrigins: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const identity = await resolveUserIdentity(ctx);
-    const userId = identity?.subject ?? await requireUserId(ctx);
+    const userId = args.userId;
     await assertAccountWritable(ctx, userId);
 
     const entitlement = await ctx.db
@@ -80,7 +82,7 @@ export const createEmbedKey = mutation({
           validUntil: entitlement.validUntil,
         }
       : null;
-    if (!hasAccountEmbedAccess(identity?.plan, merged, Date.now())) {
+    if (!hasAccountEmbedAccess(args.clerkPlan, merged, Date.now())) {
       throw new ConvexError("EMBED_ACCESS_REQUIRED");
     }
 

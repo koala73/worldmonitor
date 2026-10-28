@@ -2736,12 +2736,6 @@
     "ownershipClass": "unreviewed",
     "note": "Google News topic query aggregating many publishers; no single owner."
   },
-  "LAVCA (LATAM)": {
-    "country": "US",
-    "audience": "international",
-    "language": "en",
-    "ownershipClass": "nonprofit"
-  },
   "Layoffs News": {
     "country": "INTL",
     "audience": "international",
