@@ -97,7 +97,7 @@ const ALLOW_LIST: AllowEntry[] = [
   },
   {
     file: 'shared/news-clustering-core.js',
-    line: 210,
+    line: 211,
     reason: 'cluster date aggregation for firstSeen/lastUpdated metadata; not a per-item ranking comparator.',
   },
   {

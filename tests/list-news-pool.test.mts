@@ -51,7 +51,7 @@ function feedRow(edition: string, source: string, titles: string[], extra: Recor
     items: titles.map(title => ({
       source, title, link: `https://news.example.org/${++serial}`, publishedAt: Date.now() - ++serial * 60_000,
       isAlert: false, level: 'low', category: 'general', confidence: 0.5, classSource: 'keyword',
-      importanceScore: 10, credibilityScore: 50,
+      importanceScore: 0, credibilityScore: 0, corroborationCount: 1, entityCorroborationCount: 0,
     })),
     parsedTotal: titles.length,
     droppedUndated: 0,
