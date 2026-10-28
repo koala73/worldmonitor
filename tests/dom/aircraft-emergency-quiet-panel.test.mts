@@ -37,7 +37,40 @@ describe('aircraft emergency panel stays quiet when there is nothing to report',
     // Re-asserting the enabled state must not reopen a quiet panel.
     layer.setEnabled(true);
     expect(panel(container).hidden).toBe(true);
+
+    // Nor may a real disable/re-enable cycle, before or after the next empty result.
+    layer.setEnabled(false);
+    layer.setEnabled(true);
+    expect(panel(container).hidden).toBe(true);
+    await poll.tasks[1]!({});
+    expect(panel(container).hidden).toBe(true);
     layer.destroy();
+  });
+
+  // A feed still reporting a squawk whose observation expired is still worth a warning.
+  it('keeps the panel open while a feed reports a squawk whose observation has expired', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    try {
+      const container = document.body.appendChild(document.createElement('div'));
+      const layer = new AircraftEmergencyLayer(container, () => {});
+      layer.setEnabled(true);
+      const undated = {
+        address: 'abc123', squawk: '7700', source: 'adsb.lol', observedAt: 0,
+        callsign: 'TEST1', registration: '', aircraftType: '', description: '', militaryFlag: 'unknown',
+      };
+      poll.next = { observations: [undated], feeds: feeds('available') };
+      await poll.tasks[0]!({});
+
+      vi.setSystemTime(Date.now() + 16 * 60_000);
+      poll.next = { observations: [undated], feeds: feeds('available') };
+      await poll.tasks[0]!({});
+
+      expect(panel(container).textContent).toContain('Stale or unknown observations have expired.');
+      expect(panel(container).hidden).toBe(false);
+      layer.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('opens the panel when a matching squawk is reported', async () => {
