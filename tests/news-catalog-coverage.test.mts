@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import { INTEL_EDITION } from '../shared/news-catalog-browser';
+import { projectBrowserCatalog } from '../shared/news-catalog';
 import { VALID_VARIANTS, __testing__ as digestTesting } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { NEWS_LANGUAGES } from '../src/shared/public-rpc-cache';
 import {
@@ -152,6 +153,17 @@ describe('digests serve the categories that used to need per-feed browser fetche
       .map(entry => entry.feed.name);
     assert.ok(latamSources('pt').includes('Folha de S.Paulo'));
     assert.ok(!latamSources('en').includes('Folha de S.Paulo'));
+  });
+
+  it('a Spanish outlet the browser shows in every language builds only in the Spanish digest', () => {
+    const latamSources = (lang: string) => digestTesting.buildDigestFeedBatches('full', lang).batches.flat()
+      .filter(entry => entry.category === 'latam')
+      .map(entry => entry.feed.name);
+    assert.ok(latamSources('es').includes('La Silla Vacía'));
+    assert.ok(!latamSources('en').includes('La Silla Vacía'));
+    const browser = projectBrowserCatalog().editions.full!.latam!.find(feed => feed.name === 'La Silla Vacía')!;
+    assert.equal(browser.lang, undefined, 'browser targeting unchanged');
+    assert.equal(browser.digestLang, 'es');
   });
 });
 

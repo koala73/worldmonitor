@@ -1298,7 +1298,8 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "La Silla Vacía",
-          "url": "https://www.lasillavacia.com/rss"
+          "url": "https://www.lasillavacia.com/rss",
+          "digestLang": "es"
         },
         {
           "name": "Primicias",

@@ -128,7 +128,6 @@ export const NEWS_POOL_LAYOUT: NewsPoolLayout = {
         "ar",
         "da",
         "de",
-        "es",
         "no",
         "pl",
         "ru",

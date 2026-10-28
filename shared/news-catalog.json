@@ -7526,6 +7526,10 @@
     {
       "name": "La Silla Vacía",
       "url": "https://www.lasillavacia.com/rss",
+      "lang": "es",
+      "browser": {
+        "lang": null
+      },
       "placements": [
         {
           "edition": "full",
