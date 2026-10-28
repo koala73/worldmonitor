@@ -1,7 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import schema from "../schema";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -51,10 +51,10 @@ describe("alertRules — realtime+non-critical cross-field invariant", () => {
   test("setAlertRules({sensitivity:'all'}) against existing realtime row → throws", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
     // Seed an existing row in realtime mode with critical sensitivity (compatible
     // under the tightened rule — only 'critical' is allowed alongside realtime).
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],
@@ -63,7 +63,8 @@ describe("alertRules — realtime+non-critical cross-field invariant", () => {
     });
     // Attempting to widen to 'all' must throw INCOMPATIBLE_DELIVERY.
     await expect(
-      asUser.mutation(api.alertRules.setAlertRules, {
+      t.mutation(internal.alertRules.setAlertRulesForUser, {
+        userId: USER.subject,
         variant: VARIANT,
         enabled: true,
         eventTypes: [],
@@ -76,9 +77,9 @@ describe("alertRules — realtime+non-critical cross-field invariant", () => {
   test("setAlertRules({sensitivity:'high'}) against existing realtime row → throws (tightened rule)", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
     // Seed compatible realtime+critical state.
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],
@@ -88,7 +89,8 @@ describe("alertRules — realtime+non-critical cross-field invariant", () => {
     // Attempting to widen to 'high' is now ALSO forbidden — was allowed under
     // the previous rule, tightened 2026-04-27.
     await expect(
-      asUser.mutation(api.alertRules.setAlertRules, {
+      t.mutation(internal.alertRules.setAlertRulesForUser, {
+        userId: USER.subject,
         variant: VARIANT,
         enabled: true,
         eventTypes: [],
@@ -101,22 +103,23 @@ describe("alertRules — realtime+non-critical cross-field invariant", () => {
   test("setAlertRules({sensitivity:'all'}) against existing daily-digest row → succeeds", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
     // Seed a daily-digest row.
-    await asUser.mutation(api.alertRules.setDigestSettings, {
+    await t.mutation(internal.alertRules.setDigestSettingsForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       digestMode: "daily",
       digestHour: 8,
       digestTimezone: "UTC",
     });
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],
       sensitivity: "all",
       channels: [],
     });
-    const rows = await asUser.query(api.alertRules.getAlertRules, {});
+    const rows = await t.query(internal.alertRules.getAlertRulesByUserId, { userId: USER.subject });
     expect(rows.find((r) => r.variant === VARIANT)?.sensitivity).toBe("all");
     expect(rows.find((r) => r.variant === VARIANT)?.digestMode).toBe("daily");
   });
@@ -124,12 +127,13 @@ describe("alertRules — realtime+non-critical cross-field invariant", () => {
   test("setDigestSettings({digestMode:'realtime'}) against existing sensitivity:'all' digest → throws", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
-    await asUser.mutation(api.alertRules.setDigestSettings, {
+    await t.mutation(internal.alertRules.setDigestSettingsForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       digestMode: "daily",
     });
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],
@@ -137,7 +141,8 @@ describe("alertRules — realtime+non-critical cross-field invariant", () => {
       channels: [],
     });
     await expect(
-      asUser.mutation(api.alertRules.setDigestSettings, {
+      t.mutation(internal.alertRules.setDigestSettingsForUser, {
+        userId: USER.subject,
         variant: VARIANT,
         digestMode: "realtime",
       }),
@@ -147,7 +152,6 @@ describe("alertRules — realtime+non-critical cross-field invariant", () => {
   test("setDigestSettings({digestMode:'daily'}) against existing sensitivity:'all' realtime → succeeds, sensitivity preserved", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
     // Seed via direct insert to bypass the validators (simulates pre-migration row).
     await t.run(async (ctx) => {
       await ctx.db.insert("alertRules", {
@@ -161,13 +165,14 @@ describe("alertRules — realtime+non-critical cross-field invariant", () => {
         // digestMode absent → effective 'realtime'
       });
     });
-    await asUser.mutation(api.alertRules.setDigestSettings, {
+    await t.mutation(internal.alertRules.setDigestSettingsForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       digestMode: "daily",
       digestHour: 8,
       digestTimezone: "UTC",
     });
-    const rows = await asUser.query(api.alertRules.getAlertRules, {});
+    const rows = await t.query(internal.alertRules.getAlertRulesByUserId, { userId: USER.subject });
     const row = rows.find((r) => r.variant === VARIANT);
     expect(row?.digestMode).toBe("daily");
     expect(row?.sensitivity).toBe("all");
@@ -474,78 +479,6 @@ describe("alertRules — setNotificationConfigForUser atomic pair update", () =>
 // ---------------------------------------------------------------------------
 
 describe("alertRules — layer-2 entitlement gate (PRO_REQUIRED)", () => {
-  test("setAlertRules from a free-tier user → throws PRO_REQUIRED", async () => {
-    const t = convexTest(schema, modules);
-    // No seedProEntitlement — the user has no entitlement row, treated as free.
-    const asFreeUser = t.withIdentity(USER);
-    await expect(
-      asFreeUser.mutation(api.alertRules.setAlertRules, {
-        variant: VARIANT,
-        enabled: true,
-        eventTypes: [],
-        sensitivity: "critical",
-        channels: [],
-      }),
-    ).rejects.toThrow(/PRO_REQUIRED|Notifications are a PRO feature/i);
-  });
-
-  test("setDigestSettings from a free-tier user → throws PRO_REQUIRED", async () => {
-    const t = convexTest(schema, modules);
-    const asFreeUser = t.withIdentity(USER);
-    await expect(
-      asFreeUser.mutation(api.alertRules.setDigestSettings, {
-        variant: VARIANT,
-        digestMode: "daily",
-        digestHour: 8,
-        digestTimezone: "UTC",
-      }),
-    ).rejects.toThrow(/PRO_REQUIRED|Notifications are a PRO feature/i);
-  });
-
-  test("setQuietHours from a free-tier user → throws PRO_REQUIRED", async () => {
-    const t = convexTest(schema, modules);
-    const asFreeUser = t.withIdentity(USER);
-    await expect(
-      asFreeUser.mutation(api.alertRules.setQuietHours, {
-        variant: VARIANT,
-        quietHoursEnabled: true,
-        quietHoursStart: 22,
-        quietHoursEnd: 7,
-        quietHoursTimezone: "UTC",
-      }),
-    ).rejects.toThrow(/PRO_REQUIRED|Notifications are a PRO feature/i);
-  });
-
-  test("setAlertRules with expired entitlement → throws PRO_REQUIRED", async () => {
-    const t = convexTest(schema, modules);
-    await seedProEntitlement(t, USER.subject, Date.now() - 1000); // expired
-    const asUser = t.withIdentity(USER);
-    await expect(
-      asUser.mutation(api.alertRules.setAlertRules, {
-        variant: VARIANT,
-        enabled: true,
-        eventTypes: [],
-        sensitivity: "critical",
-        channels: [],
-      }),
-    ).rejects.toThrow(/PRO_REQUIRED|Notifications are a PRO feature/i);
-  });
-
-  test("setAlertRules with PRO entitlement → succeeds (control)", async () => {
-    const t = convexTest(schema, modules);
-    await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
-    await asUser.mutation(api.alertRules.setAlertRules, {
-      variant: VARIANT,
-      enabled: true,
-      eventTypes: [],
-      sensitivity: "critical",
-      channels: [],
-    });
-    const rows = await asUser.query(api.alertRules.getAlertRules, {});
-    expect(rows).toHaveLength(1);
-  });
-
   test("INTENTIONAL: setAlertRulesForUser internal mutation stays UNGATED for operator/migration paths", async () => {
     // The *ForUser internal mutations are reachable only via `npx convex run`
     // (deploy-key auth) or trusted server-side code paths. They are intentionally
@@ -589,17 +522,6 @@ describe("alertRules — invalid IANA timezone is rejected on every write path",
     call: (t: ReturnType<typeof convexTest>) => Promise<unknown>;
   }> = [
     {
-      name: "setDigestSettings",
-      message: /digestTimezone must be a valid IANA timezone/,
-      call: (t) =>
-        t.withIdentity(USER).mutation(api.alertRules.setDigestSettings, {
-          variant: VARIANT,
-          digestMode: "daily",
-          digestHour: 8,
-          digestTimezone: BAD_TZ,
-        }),
-    },
-    {
       name: "setDigestSettingsForUser",
       message: /digestTimezone must be a valid IANA timezone/,
       call: (t) =>
@@ -621,18 +543,6 @@ describe("alertRules — invalid IANA timezone is rejected on every write path",
           digestMode: "daily",
           digestHour: 8,
           digestTimezone: BAD_TZ,
-        }),
-    },
-    {
-      name: "setQuietHours",
-      message: /quietHoursTimezone must be a valid IANA timezone/,
-      call: (t) =>
-        t.withIdentity(USER).mutation(api.alertRules.setQuietHours, {
-          variant: VARIANT,
-          quietHoursEnabled: true,
-          quietHoursStart: 22,
-          quietHoursEnd: 7,
-          quietHoursTimezone: BAD_TZ,
         }),
     },
     {

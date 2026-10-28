@@ -10,6 +10,8 @@ export interface CanadaRoadRecord {
   isFullClosure: boolean;
   lanesAffected: string | null;
   roadwayName?: string;
+  locationDescription?: string;
+  roadConditions?: string[];
   headline: string;
   description: string;
   path?: [number, number][] | null;
@@ -88,6 +90,9 @@ function isCanadaRoadRecord(value: unknown): value is CanadaRoadRecord {
     && (record.kind === undefined || ['event', 'alert', 'condition'].includes(record.kind))
     && validOptionalString(record.type)
     && validOptionalString(record.roadwayName)
+    && validOptionalString(record.locationDescription)
+    && (record.roadConditions === undefined || (Array.isArray(record.roadConditions)
+      && record.roadConditions.every((condition) => typeof condition === 'string')))
     && validOptionalString(record.resource)
     && validOptionalString(record.source)
     && validNullableString(record.district)

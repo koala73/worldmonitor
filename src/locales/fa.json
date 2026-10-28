@@ -1436,7 +1436,7 @@
         "ucdpEvents": "Armed Conflict Events",
         "displacementFlows": "Displacement Flows",
         "climateAnomalies": "Climate Anomalies",
-        "weatherAlerts": "هشدارهای آب‌وهوای شدید (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "هشدارهای آب‌وهوایی",
         "strategicWaterways": "Chokepoints",
         "economicCenters": "Economic Centers",
         "criticalMinerals": "Critical Minerals",
@@ -1456,9 +1456,9 @@
         "speciesRecovery": "Species Recovery",
         "renewableInstallations": "Clean Energy",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "محدودیت‌های فضای هوایی NOTAM",
-        "no2Activity": "فعالیت صنعتی (NO2)"
+        "no2Activity": "فعالیت صنعتی"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -4058,7 +4058,7 @@
           "2": "چندخطی وضعیت جاده ممکن است هندسه پیچیده بزرگراه را ساده کند."
         },
         "related": {
-          "0": "هشدارهای آب‌وهوای شدید (NWS, ECCC, WMO SWIC)",
+          "0": "هشدارهای آب‌وهوایی",
           "1": "وضعیت تازگی داده‌ها"
         }
       },
@@ -4074,7 +4074,7 @@
           "2": "مدخل‌های بدون شدت قابل نقشه (معنای CAP یا رنگ آلبرتا، وضعیت تخلیه بریتیش کلمبیا، یا شدت CAP در SaskAlert) کنار گذاشته می‌شوند و شدت برایشان ساخته نمی‌شود. رنگ یا سطح خلاصه SaskAlert شدت CAP شمرده نمی‌شود."
         },
         "related": {
-          "0": "هشدارهای آب‌وهوای شدید (NWS, ECCC, WMO SWIC)",
+          "0": "هشدارهای آب‌وهوایی",
           "1": "لایه Natural Events",
           "2": "وضعیت تازگی داده‌ها"
         }
@@ -4107,7 +4107,7 @@
         },
         "related": {
           "0": "پنجره‌های لایه Natural Events",
-          "1": "هشدارهای آب‌وهوای شدید (NWS, ECCC, WMO SWIC)",
+          "1": "هشدارهای آب‌وهوایی",
           "2": "سیگنال‌های رویداد طبیعی در Intelligence Brief"
         }
       },

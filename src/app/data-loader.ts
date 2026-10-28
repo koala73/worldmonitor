@@ -1,5 +1,6 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { getRpcBaseUrl } from '@/services/rpc-client';
+import { isReportableCanadaRoad } from '@/services/canada-road-report';
 import { enqueuePanelCall, invokePanelMethod } from '@/app/pending-panel-data';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import { runHydrationTier, type HydrationTask } from '@/app/hydration-scheduler';
@@ -3491,7 +3492,7 @@ export class DataLoaderManager implements AppModule {
         .filter(([, state]) => state === 'unavailable' || state === 'malformed')
         .map(([key]) => key);
       this.ctx.map?.setCanadaRoads(records);
-      this.ctx.map?.setLayerReady('canadaRoads', records.length > 0);
+      this.ctx.map?.setLayerReady('canadaRoads', records.some(isReportableCanadaRoad));
       this.ctx.statusPanel?.updateFeed('Canada Roads', {
         status: degradedSources.length > 0 ? 'warning' : 'ok',
         itemCount: records.length,

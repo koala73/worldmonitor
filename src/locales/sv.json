@@ -583,7 +583,7 @@
         "ucdpEvents": "UCDP-evenemang",
         "displacementFlows": "Förskjutningsflöden",
         "climateAnomalies": "Klimatanomalier",
-        "weatherAlerts": "Varningar för svåra väderförhållanden (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Vädervarningar",
         "strategicWaterways": "Strategiska vattenvägar",
         "economicCenters": "ekonomiska centra",
         "criticalMinerals": "Kritiska mineraler",
@@ -605,9 +605,9 @@
         "radiationSpike": "Strålningsökning",
         "radiationElevated": "Förhöjd strålning",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "NOTAM-luftrumsbegränsningar",
-        "no2Activity": "Industriell aktivitet (NO2)"
+        "no2Activity": "Industriell aktivitet"
       },
       "layersTitle": "Lager",
       "layerSearch": "Sök lager...",
@@ -4058,7 +4058,7 @@
           "2": "Linjer för väglag kan förenkla komplex motorvägsgeometri."
         },
         "related": {
-          "0": "Varningar för svåra väderförhållanden (NWS, ECCC, WMO SWIC)",
+          "0": "Vädervarningar",
           "1": "Status för dataaktualitet"
         }
       },
@@ -4074,7 +4074,7 @@
           "2": "Poster utan en allvarlighetsgrad som kan ritas ut faller bort i stället för att hittas på. Det gäller Albertas CAP- och färgsemantik, evakueringsstatus i British Columbia eller CAP-allvarlighetsgrad från SaskAlert. Färg eller nivå i SaskAlerts sammanfattning räknas inte som CAP-allvarlighetsgrad."
         },
         "related": {
-          "0": "Varningar för svåra väderförhållanden (NWS, ECCC, WMO SWIC)",
+          "0": "Vädervarningar",
           "1": "lager Naturliga händelser",
           "2": "Status för dataaktualitet"
         }
@@ -4107,7 +4107,7 @@
         },
         "related": {
           "0": "Popup-fönster för lagret Naturliga händelser",
-          "1": "Varningar för svåra väderförhållanden (NWS, ECCC, WMO SWIC)",
+          "1": "Vädervarningar",
           "2": "Natursignaler i underrättelseöversikten"
         }
       },

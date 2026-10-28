@@ -128,7 +128,11 @@
     { "source": "/dashboard/", "destination": "/dashboard", "permanent": true },
     { "source": "/story/", "destination": "/story", "permanent": true },
     { "source": "/stocks/", "destination": "/stocks", "permanent": true },
-    { "source": "/stocks/:symbol/", "destination": "/stocks/:symbol", "permanent": true }
+    { "source": "/stocks/:symbol/", "destination": "/stocks/:symbol", "permanent": true },
+    { "source": "/verify/", "destination": "/verify", "permanent": true },
+    { "source": "/mcp-grant/", "destination": "/mcp-grant", "permanent": true },
+    { "source": "/desktop-sign-in/", "destination": "/desktop-sign-in", "permanent": true },
+    { "source": "/embed/", "destination": "/embed", "permanent": true }
   ],
   "rewrites": [
     { "source": "/plugin/assets/boot-:attempt([0-9]+)/:asset([a-zA-Z0-9_.-]+\\.js)", "destination": "/plugin/assets/:asset" },

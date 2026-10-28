@@ -23,9 +23,11 @@
 *Could not find public function for 'agentSources:countBySource'*
 *Could not find public function for 'agentSources:pageSources'*
 *Could not find public function for 'alertRules:getAlertRulesByUserId'*
-*Could not find public function for 'alertRules:getBriefOnlyUsers'*
 *Could not find public function for 'alertRules:getByEnabled'*
 *Could not find public function for 'alertRules:getDigestRules'*
+*Could not find public function for 'alertRules:listBriefRuleFlags'*
+*Could not find public function for 'alertRules:listPaidUserIds'*
+*Could not find public function for 'alertRules:listShapeViolations'*
 *Could not find public function for 'alertRules:setAlertRulesForUser'*
 *Could not find public function for 'alertRules:setDigestSettingsForUser'*
 *Could not find public function for 'alertRules:setNotificationConfigForUser'*

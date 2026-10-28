@@ -1126,7 +1126,7 @@
         "ucdpEvents": "Eventi UCDP",
         "displacementFlows": "Flussi di sfollamento",
         "climateAnomalies": "Anomalie climatiche",
-        "weatherAlerts": "Allerte meteo severe (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Allerte meteo",
         "strategicWaterways": "Vie d’acqua strategiche",
         "economicCenters": "Centri economici",
         "criticalMinerals": "Minerali critici",
@@ -1148,9 +1148,9 @@
         "radiationSpike": "Picco di radiazione",
         "radiationElevated": "Radiazione elevata",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "Restrizioni Spazio Aereo NOTAM",
-        "no2Activity": "Attività industriale (NO2)"
+        "no2Activity": "Attività industriale"
       },
       "layersTitle": "Livelli",
       "layerSearch": "Cerca livelli...",
@@ -4078,7 +4078,7 @@
           "2": "Le polilinee delle condizioni stradali possono semplificare la geometria complessa delle autostrade."
         },
         "related": {
-          "0": "Allerte meteo severe (NWS, ECCC, WMO SWIC)",
+          "0": "Allerte meteo",
           "1": "Freschezza dati"
         }
       },
@@ -4094,7 +4094,7 @@
           "2": "Le voci senza una gravità mappabile (semantica CAP e di colore dell'Alberta, stato di evacuazione di B.C. o gravità CAP di SaskAlert) sono scartate invece di essere inventate. Il colore o il livello del riepilogo SaskAlert non è trattato come gravità CAP."
         },
         "related": {
-          "0": "Allerte meteo severe (NWS, ECCC, WMO SWIC)",
+          "0": "Allerte meteo",
           "1": "Livello Eventi naturali",
           "2": "Freschezza dati"
         }
@@ -4127,7 +4127,7 @@
         },
         "related": {
           "0": "Popup del livello Eventi naturali",
-          "1": "Allerte meteo severe (NWS, ECCC, WMO SWIC)",
+          "1": "Allerte meteo",
           "2": "Segnali naturali del rapporto di intelligence"
         }
       },

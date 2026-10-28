@@ -584,7 +584,7 @@
         "ucdpEvents": "Eventos UCDP",
         "displacementFlows": "Fluxos de deslocamento",
         "climateAnomalies": "Anomalias Climáticas",
-        "weatherAlerts": "Alertas de tempo severo (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Alertas meteorológicos",
         "strategicWaterways": "Hidrovias Estratégicas",
         "economicCenters": "Centros Econômicos",
         "criticalMinerals": "Minerais Críticos",
@@ -606,9 +606,9 @@
         "radiationSpike": "Pico de radiação",
         "radiationElevated": "Radiação elevada",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "Restrições de Espaço Aéreo NOTAM",
-        "no2Activity": "Atividade industrial (NO2)"
+        "no2Activity": "Atividade industrial"
       },
       "layersTitle": "Camadas",
       "layerSearch": "Pesquisar camadas...",
@@ -4078,7 +4078,7 @@
           "2": "As polilinhas de condição da estrada podem simplificar a geometria complexa das rodovias."
         },
         "related": {
-          "0": "Alertas de tempo severo (NWS, ECCC, WMO SWIC)",
+          "0": "Alertas meteorológicos",
           "1": "Data Freshness"
         }
       },
@@ -4094,7 +4094,7 @@
           "2": "Entradas sem uma gravidade mapeável (semântica CAP e de cor de Alberta, estado de evacuação de B.C. ou gravidade CAP do SaskAlert) são descartadas em vez de inventadas. A cor ou o nível do resumo do SaskAlert não é tratado como gravidade CAP."
         },
         "related": {
-          "0": "Alertas de tempo severo (NWS, ECCC, WMO SWIC)",
+          "0": "Alertas meteorológicos",
           "1": "Camada Eventos Naturais",
           "2": "Data Freshness"
         }
@@ -4127,7 +4127,7 @@
         },
         "related": {
           "0": "Pop-ups da camada Eventos Naturais",
-          "1": "Alertas de tempo severo (NWS, ECCC, WMO SWIC)",
+          "1": "Alertas meteorológicos",
           "2": "Sinais naturais do Resumo de Inteligência"
         }
       },

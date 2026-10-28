@@ -1444,7 +1444,7 @@
         "ucdpEvents": "Događaji Oružanih Konfliktaa",
         "displacementFlows": "Tokovi Raseljenih",
         "climateAnomalies": "Klimatske Anomalije",
-        "weatherAlerts": "Upozorenja za opasne vremenske prilike (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Vremenska upozorenja",
         "strategicWaterways": "Uska Grla",
         "economicCenters": "Ekonomski Centri",
         "criticalMinerals": "Kritični Minerali",
@@ -1464,9 +1464,9 @@
         "speciesRecovery": "Oporavak vrsta",
         "renewableInstallations": "Čista energija",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "NOTAM ograničenja zračnog prostora",
-        "no2Activity": "Industrijska aktivnost (NO2)"
+        "no2Activity": "Industrijska aktivnost"
       },
       "tooltip": {
         "earthquake": "Zemljotres",
@@ -4089,7 +4089,7 @@
           "2": "Polilinije stanja cesta mogu pojednostavniti složenu geometriju autocesta."
         },
         "related": {
-          "0": "Upozorenja za opasne vremenske prilike (NWS, ECCC, WMO SWIC)",
+          "0": "Vremenska upozorenja",
           "1": "Status ažurnosti podataka"
         }
       },
@@ -4105,7 +4105,7 @@
           "2": "Unosi bez ozbiljnosti koja se može mapirati odbacuju se, a ne izmišljaju. Riječ je o semantici CAP i boje Alberte, statusu evakuacije Britanske Kolumbije ili ozbiljnosti CAP SaskAlert. Boja ili razina u sažetku SaskAlert ne tretira se kao ozbiljnost CAP."
         },
         "related": {
-          "0": "Upozorenja za opasne vremenske prilike (NWS, ECCC, WMO SWIC)",
+          "0": "Vremenska upozorenja",
           "1": "sloj Prirodni Događaji",
           "2": "Status ažurnosti podataka"
         }
@@ -4138,7 +4138,7 @@
         },
         "related": {
           "0": "Skočni prozori sloja Prirodni Događaji",
-          "1": "Upozorenja za opasne vremenske prilike (NWS, ECCC, WMO SWIC)",
+          "1": "Vremenska upozorenja",
           "2": "Prirodni signali u obavještajnom pregledu"
         }
       },

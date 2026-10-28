@@ -1123,7 +1123,7 @@
         "ucdpEvents": "Bewaffnete Konfliktereignisse",
         "displacementFlows": "Fluchtbewegungen",
         "climateAnomalies": "Klimaanomalien",
-        "weatherAlerts": "Unwetterwarnungen (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Wetterwarnungen",
         "strategicWaterways": "Engpässe",
         "economicCenters": "Wirtschaftszentren",
         "criticalMinerals": "Kritische Mineralien",
@@ -1145,9 +1145,9 @@
         "radiationSpike": "Strahlungsspitze",
         "radiationElevated": "Erhöhte Strahlung",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "NOTAM-Luftraumbeschränkungen",
-        "no2Activity": "Industrielle Aktivität (NO2)"
+        "no2Activity": "Industrielle Aktivität"
       },
       "layersTitle": "Ebenen",
       "layerSearch": "Ebenen suchen...",
@@ -4058,7 +4058,7 @@
           "2": "Polylinien zum Straßenzustand können komplexe Autobahngeometrie vereinfachen."
         },
         "related": {
-          "0": "Unwetterwarnungen (NWS, ECCC, WMO SWIC)",
+          "0": "Wetterwarnungen",
           "1": "Status der Datenaktualität"
         }
       },
@@ -4074,7 +4074,7 @@
           "2": "Einträge ohne kartierbare Schwere (CAP-/Farb-Semantik von Alberta, Evakuierungsstatus von British Columbia oder CAP-Schwere von SaskAlert) werden verworfen und nicht erfunden. Farbe oder Stufe in der SaskAlert-Zusammenfassung gelten nicht als CAP-Schwere."
         },
         "related": {
-          "0": "Unwetterwarnungen (NWS, ECCC, WMO SWIC)",
+          "0": "Wetterwarnungen",
           "1": "Naturereignisse",
           "2": "Status der Datenaktualität"
         }
@@ -4107,7 +4107,7 @@
         },
         "related": {
           "0": "Popups der Naturereignisse",
-          "1": "Unwetterwarnungen (NWS, ECCC, WMO SWIC)",
+          "1": "Wetterwarnungen",
           "2": "Natursignale im Länderbrief"
         }
       },

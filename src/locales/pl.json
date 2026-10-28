@@ -1092,7 +1092,7 @@
         "ucdpEvents": "Wydarzenia UCDP",
         "displacementFlows": "Przepływy wypornościowe",
         "climateAnomalies": "Anomalie klimatyczne",
-        "weatherAlerts": "Ostrzeżenia przed gwałtowną pogodą (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Ostrzeżenia pogodowe",
         "strategicWaterways": "Strategiczne drogi wodne",
         "economicCenters": "Centra Gospodarcze",
         "criticalMinerals": "Minerały krytyczne",
@@ -1114,9 +1114,9 @@
         "radiationSpike": "Skok radioaktywności",
         "radiationElevated": "Podwyższona radioaktywność",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "Ograniczenia przestrzeni powietrznej NOTAM",
-        "no2Activity": "Aktywność przemysłowa (NO2)"
+        "no2Activity": "Aktywność przemysłowa"
       },
       "layersTitle": "Warstwy",
       "layerSearch": "Szukaj warstw...",
@@ -4098,7 +4098,7 @@
           "2": "Polilinie warunków drogowych mogą upraszczać złożoną geometrię autostrad."
         },
         "related": {
-          "0": "Ostrzeżenia przed gwałtowną pogodą (NWS, ECCC, WMO SWIC)",
+          "0": "Ostrzeżenia pogodowe",
           "1": "Status aktualności danych"
         }
       },
@@ -4114,7 +4114,7 @@
           "2": "Wpisy bez mapowalnej istotności są odrzucane, a nie dopisywane. Chodzi o semantykę CAP i koloru Alberty, status ewakuacji Kolumbii Brytyjskiej albo istotność CAP SaskAlert. Kolor albo poziom w podsumowaniu SaskAlert nie jest traktowany jako istotność CAP."
         },
         "related": {
-          "0": "Ostrzeżenia przed gwałtowną pogodą (NWS, ECCC, WMO SWIC)",
+          "0": "Ostrzeżenia pogodowe",
           "1": "warstwa Zdarzenia naturalne",
           "2": "Status aktualności danych"
         }
@@ -4147,7 +4147,7 @@
         },
         "related": {
           "0": "Okna warstwy Zdarzenia naturalne",
-          "1": "Ostrzeżenia przed gwałtowną pogodą (NWS, ECCC, WMO SWIC)",
+          "1": "Ostrzeżenia pogodowe",
           "2": "Sygnały przyrodnicze w raporcie wywiadowczym"
         }
       },

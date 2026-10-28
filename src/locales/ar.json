@@ -1255,7 +1255,7 @@
         "ucdpEvents": "أحداث UCDP",
         "displacementFlows": "تدفقات النزوح",
         "climateAnomalies": "شذوذات مناخية",
-        "weatherAlerts": "تنبيهات الطقس الشديد (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "تنبيهات الطقس",
         "strategicWaterways": "ممرات مائية استراتيجية",
         "economicCenters": "مراكز اقتصادية",
         "criticalMinerals": "معادن حيوية",
@@ -1277,9 +1277,9 @@
         "radiationSpike": "ارتفاع حاد في الإشعاع",
         "radiationElevated": "إشعاع مرتفع",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "قيود المجال الجوي NOTAM",
-        "no2Activity": "النشاط الصناعي (NO2)"
+        "no2Activity": "النشاط الصناعي"
       },
       "tooltip": {
         "earthquake": "زلزال",
@@ -4138,7 +4138,7 @@
           "2": "خطوط حالة الطريق قد تبسّط هندسة الطرق السريعة المعقدة."
         },
         "related": {
-          "0": "تنبيهات الطقس الشديد (NWS, ECCC, WMO SWIC)",
+          "0": "تنبيهات الطقس",
           "1": "حالة حداثة البيانات"
         }
       },
@@ -4154,7 +4154,7 @@
           "2": "تُسقَط المدخلات التي بلا شدة قابلة للرسم (دلالات CAP واللون في ألبرتا، أو حالة الإخلاء في كولومبيا البريطانية، أو شدة CAP في SaskAlert) بدل اختراع شدة لها. لون ملخص SaskAlert أو مستواه لا يُعامل على أنه شدة CAP."
         },
         "related": {
-          "0": "تنبيهات الطقس الشديد (NWS, ECCC, WMO SWIC)",
+          "0": "تنبيهات الطقس",
           "1": "طبقة أحداث طبيعية",
           "2": "حالة حداثة البيانات"
         }
@@ -4187,7 +4187,7 @@
         },
         "related": {
           "0": "نوافذ طبقة الأحداث الطبيعية",
-          "1": "تنبيهات الطقس الشديد (NWS, ECCC, WMO SWIC)",
+          "1": "تنبيهات الطقس",
           "2": "إشارات الطبيعة في موجز استخباراتي"
         }
       },

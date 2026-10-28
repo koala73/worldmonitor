@@ -35,7 +35,13 @@ import { sha256Hex } from './hash';
 // headline-only rows aged out cleanly on first tick after deploy. See
 // docs/plans/2026-04-24-001-fix-rss-description-end-to-end-plan.md U6.
 // Retire translation entries created before prompt and cache input selection agreed.
-export const CACHE_VERSION = 'v11';
+//
+// Bumped v11 → v12 on 2026-10-28: the translate prompt now keeps the text in a
+// delimited data block and refuses over-long answers. Rows written under the
+// old prompt could carry an answer an injected headline steered (a live eval
+// echoed a planted canary 4 times in 4), and a cache hit is served verbatim,
+// so they are retired rather than left to age out over the 24 h TTL.
+export const CACHE_VERSION = 'v12';
 
 // 128 bits of SHA-256. Wide enough that a second preimage is infeasible,
 // short enough that the longest key stays inside the 120-character tail the

@@ -261,8 +261,10 @@ describe('Fix 4: cache version bump', () => {
     // attacker-chosen text. (v8 → v9 on 2026-08-01 for prompt/cache selection
     // parity, #5969; v7 → v8 on 2026-07-06 for the DeepSeek cutover, #4944;
     // v6 → v7 on 2026-07-05 for pair-dedup, #4914.)
-    assert.match(src, /CACHE_VERSION\s*=\s*'v11'/,
-      'CACHE_VERSION must be v11 to retire older poisoned cache rows');
+    // v11 → v12 on 2026-10-28: rows written by the pre-delimiter translate
+    // prompt may carry an injected answer and are served verbatim on a hit.
+    assert.match(src, /CACHE_VERSION\s*=\s*'v12'/,
+      'CACHE_VERSION must be v12 to retire older poisoned cache rows');
   });
 
   it('cache identity does not use the collidable FNV hash', () => {

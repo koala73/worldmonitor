@@ -5,6 +5,7 @@ import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
 import { timingSafeEqualStrings } from "./lib/svixVerify";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
+import { briefOnlyUserIds, type BriefRuleFlags } from "./alertRules";
 import {
   CHECKOUT_RATE_LIMITED,
   isCheckoutTimedOutOutcome,
@@ -156,6 +157,45 @@ function extractConvexErrorCode(err: unknown): string | null {
     if (typeof code === "string") return code;
   }
   return null;
+}
+
+// Row-shape bounds every alertRules writer enforces (convex/alertRules.ts
+// assertRuleShape / assertRuleSlotAvailable). Surfaced as a 400 with the
+// machine-readable code so the edge handler and the client can route on it.
+const ALERT_RULE_SHAPE_CODES = new Set([
+  "VARIANT_INVALID",
+  "EVENT_TYPES_INVALID",
+  "CHANNELS_INVALID",
+  "RULE_LIMIT_EXCEEDED",
+]);
+
+function alertRuleValidationResponse(err: unknown, passthroughCodes: readonly string[] = []): Response | null {
+  const code = extractConvexErrorCode(err);
+  if (!code || (!ALERT_RULE_SHAPE_CODES.has(code) && !passthroughCodes.includes(code))) return null;
+  const parsed = parseConvexErrorData(err);
+  const message = (parsed && typeof parsed === "object")
+    ? (parsed as { message?: string }).message ?? ""
+    : "";
+  return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
+}
+
+// Walks every page of a paginated internal query. The cross-tenant alertRules
+// reads are byte-bounded per page so one oversized row cannot push a single
+// transaction past the Convex read limit; the HTTP action stitches the pages.
+async function collectPages<T>(
+  fetchPage: (cursor: string | null) => Promise<{ page: T[]; continueCursor: string; isDone: boolean }>,
+): Promise<T[]> {
+  const out: T[] = [];
+  let cursor: string | null = null;
+  // 10,000 pages × 256 rows is far beyond any plausible table size; the guard
+  // only turns a cursor bug into an error instead of an unbounded loop.
+  for (let guard = 0; guard < 10_000; guard++) {
+    const result = await fetchPage(cursor);
+    out.push(...result.page);
+    if (result.isDone) return out;
+    cursor = result.continueCursor;
+  }
+  throw new Error("paginated read did not terminate");
 }
 
 function readConvexErrorNumber(err: unknown, field: string): number | null {
@@ -1193,13 +1233,8 @@ http.route({
           if (code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED" || code === "CHOKEPOINTS_INVALID") {
             return new Response(JSON.stringify({ error: code }), { status: 400, headers: { "Content-Type": "application/json" } });
           }
-          if (code === "INCOMPATIBLE_DELIVERY") {
-            const parsed = parseConvexErrorData(err);
-            const message = (parsed && typeof parsed === "object")
-              ? (parsed as { message?: string }).message ?? ""
-              : "";
-            return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
-          }
+          const validation = alertRuleValidationResponse(err, ["INCOMPATIBLE_DELIVERY"]);
+          if (validation) return validation;
           throw err;
         }
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -1213,16 +1248,22 @@ http.route({
         if (body.quietHoursOverride !== undefined && !VALID_OVERRIDE.has(body.quietHoursOverride)) {
           return new Response(JSON.stringify({ error: "invalid quietHoursOverride" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        await ctx.runMutation((internal as any).alertRules.setQuietHoursForUser, {
-          userId,
-          variant: body.variant,
-          quietHoursEnabled: body.quietHoursEnabled,
-          quietHoursStart: body.quietHoursStart,
-          quietHoursEnd: body.quietHoursEnd,
-          quietHoursTimezone: body.quietHoursTimezone,
-          quietHoursOverride: body.quietHoursOverride as "critical_only" | "silence_all" | "batch_on_wake" | undefined,
-          countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
-        });
+        try {
+          await ctx.runMutation((internal as any).alertRules.setQuietHoursForUser, {
+            userId,
+            variant: body.variant,
+            quietHoursEnabled: body.quietHoursEnabled,
+            quietHoursStart: body.quietHoursStart,
+            quietHoursEnd: body.quietHoursEnd,
+            quietHoursTimezone: body.quietHoursTimezone,
+            quietHoursOverride: body.quietHoursOverride as "critical_only" | "silence_all" | "batch_on_wake" | undefined,
+            countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
+          });
+        } catch (err: unknown) {
+          const validation = alertRuleValidationResponse(err, ["COUNTRIES_LIMIT_EXCEEDED"]);
+          if (validation) return validation;
+          throw err;
+        }
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
@@ -1234,14 +1275,20 @@ http.route({
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        await ctx.runMutation((internal as any).alertRules.setDigestSettingsForUser, {
-          userId,
-          variant: body.variant,
-          digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly",
-          digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
-          digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
-          countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
-        });
+        try {
+          await ctx.runMutation((internal as any).alertRules.setDigestSettingsForUser, {
+            userId,
+            variant: body.variant,
+            digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly",
+            digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
+            digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
+            countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
+          });
+        } catch (err: unknown) {
+          const validation = alertRuleValidationResponse(err, ["COUNTRIES_LIMIT_EXCEEDED", "INCOMPATIBLE_DELIVERY"]);
+          if (validation) return validation;
+          throw err;
+        }
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
@@ -1303,9 +1350,10 @@ http.route({
           const message = (parsed && typeof parsed === "object")
             ? (parsed as { message?: string }).message ?? ""
             : "";
-          if (code === "INCOMPATIBLE_DELIVERY" || code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED" || code === "CHOKEPOINTS_INVALID") {
-            return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
-          }
+          const validation = alertRuleValidationResponse(err, [
+            "INCOMPATIBLE_DELIVERY", "TICKERS_LIMIT_EXCEEDED", "COUNTRIES_LIMIT_EXCEEDED", "CHOKEPOINTS_INVALID",
+          ]);
+          if (validation) return validation;
           if (code === "PRO_REQUIRED") {
             // 402 Payment Required — the canonical HTTP status for paywall-gated
             // content. Client reads `error: "PRO_REQUIRED"` to route to the
@@ -1336,7 +1384,8 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
-    const rules = await ctx.runQuery((internal as any).alertRules.getDigestRules);
+    const rules = await collectPages((cursor) =>
+      ctx.runQuery((internal as any).alertRules.getDigestRules, { cursor }));
     return new Response(JSON.stringify(rules), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -1352,7 +1401,11 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
-    const userIds = await ctx.runQuery((internal as any).alertRules.getBriefOnlyUsers);
+    const [paidUserIds, flags] = await Promise.all([
+      collectPages<string>((cursor) => ctx.runQuery((internal as any).alertRules.listPaidUserIds, { cursor })),
+      collectPages<BriefRuleFlags>((cursor) => ctx.runQuery((internal as any).alertRules.listBriefRuleFlags, { cursor })),
+    ]);
+    const userIds = briefOnlyUserIds(paidUserIds, flags);
     return new Response(JSON.stringify(userIds), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -1378,10 +1431,8 @@ http.route({
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
     const enabled = new URL(request.url).searchParams.get("enabled") !== "false";
-    const rules = await ctx.runQuery(
-      (internal as any).alertRules.getByEnabled,
-      { enabled },
-    );
+    const rules = await collectPages((cursor) =>
+      ctx.runQuery((internal as any).alertRules.getByEnabled, { enabled, cursor }));
     return new Response(JSON.stringify(rules), {
       status: 200,
       headers: { "Content-Type": "application/json" },

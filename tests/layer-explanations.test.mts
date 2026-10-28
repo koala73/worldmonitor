@@ -340,7 +340,7 @@ describe('layer explanation metadata', () => {
   test('weather explanation discloses NWS, ECCC, and WMO SWIC coverage', () => {
     const weather = copyBlock('weather');
 
-    assert.equal(LAYER_REGISTRY.weather.fallbackLabel, 'Severe Weather Alerts (NWS, ECCC, WMO SWIC)');
+    assert.equal(LAYER_REGISTRY.weather.fallbackLabel, 'Weather Alerts');
     assert.match(weather.source, /National Weather Service \(NWS\)/i);
     assert.match(weather.source, /Environment and Climate Change Canada \(ECCC\)/i);
     assert.match(weather.source, /WMO Severe Weather Information Centre \(SWIC\)/i);
@@ -361,7 +361,7 @@ describe('layer explanation metadata', () => {
   test('canadaAlerts explanation discloses Alberta, B.C., and Saskatchewan coverage', () => {
     const canadaAlerts = copyBlock('canadaAlerts');
 
-    assert.equal(LAYER_REGISTRY.canadaAlerts.fallbackLabel, 'Canada Alerts (AB + BC + SK)');
+    assert.equal(LAYER_REGISTRY.canadaAlerts.fallbackLabel, 'Canada Alerts');
     assert.match(canadaAlerts.source, /Alberta Emergency Alert/i);
     assert.match(canadaAlerts.source, /OGL-BC Evacuation Orders and Alerts/i);
     assert.match(canadaAlerts.source, /SaskAlert/i);
@@ -382,6 +382,23 @@ describe('layer explanation metadata', () => {
       .map(([key]) => key);
 
     assert.deepEqual(new Set(curated), declared);
+  });
+
+  // Picker labels are short Title Case names; source and coverage detail
+  // belongs in the explanation card behind the (i) button.
+  test('layer picker labels are short Title Case names without parentheticals', () => {
+    const lowercaseWords = new Set(['of', 'and']);
+    const layerLabels = lookupLocale(enLocale, 'components.deckgl.layers') as Record<string, string>;
+    for (const def of Object.values(LAYER_REGISTRY)) {
+      for (const label of [def.fallbackLabel, layerLabels[def.i18nSuffix]]) {
+        if (label === undefined) continue;
+        assert.doesNotMatch(label, /[(（]/, `${def.key} label "${label}" must not carry a parenthetical`);
+        for (const word of label.split(' ')) {
+          if (lowercaseWords.has(word)) continue;
+          assert.doesNotMatch(word, /^\p{Ll}/u, `${def.key} label "${label}" must be Title Case`);
+        }
+      }
+    }
   });
 });
 

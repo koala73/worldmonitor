@@ -1019,6 +1019,18 @@ export const CREDENTIAL_BEARING_HEADERS = [
   'Cookie',
 ] as const;
 
+// The only caller headers a `.md` twin's in-process sibling request carries:
+// the network identity the rate limiters and usage telemetry key on, and the
+// Origin the CORS allowlist checks. Credentials (CREDENTIAL_BEARING_HEADERS)
+// and gateway-internal markers are deliberately absent.
+const MARKDOWN_TWIN_CALLER_HEADERS = [
+  'x-real-ip',
+  'x-vercel-forwarded-for',
+  'cf-connecting-ip',
+  'x-wm-edge-proof',
+  'origin',
+] as const;
+
 export function hasCredentialBearingHeader(request: Request): boolean {
   return CREDENTIAL_BEARING_HEADERS.some((header) => Boolean(request.headers.get(header)));
 }
@@ -1075,16 +1087,17 @@ export function createDomainGateway(
 
     // Vercel resolves versioned API paths such as
     // `/api/forecast/v1/get-forecast-scorecard.md` to the more-specific
-    // `api/<domain>/v1/[rpc].ts` function before the root API catch-all. Handle
-    // markdown probes here, before auth and RPC dispatch, so every dynamic
-    // domain gateway follows the same site-wide `.md` twin contract without a
-    // broad rewrite that would shadow the real endpoints (#4724).
+    // `api/<domain>/v1/[rpc].ts` function before the root API catch-all, so
+    // every dynamic domain gateway serves the site-wide `.md` twin contract
+    // here without a broad rewrite that would shadow the real endpoints
+    // (#4724). The sibling is dispatched back through this gateway in-process,
+    // so origin, auth and both rate limiters run exactly as on a direct call.
     if (
       originalPathname.startsWith('/api/') &&
       isMarkdownTwinPath(originalPathname) &&
       (originalRequest.method === 'GET' || originalRequest.method === 'HEAD')
     ) {
-      return buildMarkdownTwinResponse(originalRequest, originalPathname);
+      return serveMarkdownTwin(originalRequest, originalPathname, ctx);
     }
 
     let request = stripClientTrustedHeaders(originalRequest);
@@ -2919,7 +2932,47 @@ export function createDomainGateway(
     });
   }
 
-  return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
+  // A `.md` twin of an API route. The sibling request never leaves this
+  // isolate: an HTTP self-fetch reaches the gateway from the platform egress
+  // address with no caller headers, so every per-IP limiter charged one bucket
+  // shared by all twin readers and the caller was never charged at all.
+  //
+  // The sibling carries only the caller's network identity and Origin. Never a
+  // credential: a twin is an anonymous rendering, and its body is cached by
+  // the sibling's rules. The identity headers arrive from the platform exactly
+  // as on the twin request itself, and the gateway re-derives trust from them
+  // (edge proof, Origin allowlist) the same way it does for a direct call.
+  async function serveMarkdownTwin(caller: Request, markdownPath: string, ctx?: GatewayCtx): Promise<Response> {
+    let corsHeaders: Record<string, string>;
+    try {
+      corsHeaders = isDisallowedOrigin(caller) ? getOriginDeniedCorsHeaders(caller) : getCorsHeaders(caller);
+    } catch {
+      // Fail closed: no CORS headers means a browser blocks any cross-origin
+      // read. The sibling dispatch reports the same failure as its own 500.
+      corsHeaders = {};
+    }
+    const callerOrigin = new URL(caller.url).origin;
+    const dispatchSibling = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      // Only a route this gateway serves; never a network fetch. A redirect
+      // onto any other path ends as a plain 404.
+      if (url.origin !== callerOrigin || router.allowedMethods(stripTrailingSlashes(url.pathname)).length === 0) {
+        return new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } });
+      }
+      const headers = new Headers(init?.headers);
+      for (const name of MARKDOWN_TWIN_CALLER_HEADERS) {
+        const value = caller.headers.get(name);
+        if (value) headers.set(name, value);
+      }
+      return gatewayHandler(new Request(url, { method: init?.method ?? 'GET', headers, signal: init?.signal }), ctx);
+    }) as typeof fetch;
+    return buildMarkdownTwinResponse(caller, markdownPath, dispatchSibling, {
+      corsHeaders,
+      inheritSiblingCacheControl: true,
+    });
+  }
+
+  const gatewayHandler = async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
     let response: Response;
     try {
       response = await dispatch(originalRequest, ctx);
@@ -2936,4 +2989,5 @@ export function createDomainGateway(
     pendingDirectLlmReservations.delete(originalRequest);
     return originalRequest.method === 'HEAD' ? toHeadResponse(response) : response;
   };
+  return gatewayHandler;
 }

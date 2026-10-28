@@ -30,6 +30,7 @@ import {
   checkScopedRateLimit,
   scopedTooManyRequestsResponse,
 } from '../server/_shared/rate-limit';
+import { getAlertRuleShapeViolation } from '../shared/alert-rule-shape';
 
 // Prefer explicit CONVEX_SITE_URL; fall back to deriving from CONVEX_URL (same pattern as notification-relay.cjs).
 const CONVEX_SITE_URL =
@@ -216,6 +217,31 @@ async function publishFlushHeld(userId: string, variant: string): Promise<void> 
       fingerprint: ['api/notification-channels', 'publish-flush-held', err instanceof Error ? err.name : 'Error'],
     });
   }
+}
+
+/**
+ * Same row-shape bounds Convex enforces in every alertRules writer
+ * (shared/alert-rule-shape.ts), answered here as a 400 so an out-of-shape
+ * rule never spends a relay round trip. The per-account row cap needs the
+ * table, so Convex answers that one and its 400 passes through below.
+ */
+function alertRuleShapeError(
+  body: { variant?: unknown; eventTypes?: unknown; channels?: unknown },
+  cors: Record<string, string>,
+): Response | null {
+  const violation = getAlertRuleShapeViolation({ variant: body.variant, eventTypes: body.eventTypes, channels: body.channels });
+  return violation ? json({ error: violation.code, message: violation.message }, 400, cors) : null;
+}
+
+/** Relay 400/402 bodies carry a machine-readable code the client routes on; pass them through intact. */
+async function relayValidationPassthrough(resp: Response, cors: Record<string, string>): Promise<Response | null> {
+  if (resp.status !== 400 && resp.status !== 402) return null;
+  const text = await resp.text().catch(() => '');
+  let payload: unknown = { error: 'Validation failed' };
+  if (text) {
+    try { payload = JSON.parse(text); } catch { /* keep default */ }
+  }
+  return json(payload, resp.status, cors);
 }
 
 function json(body: unknown, status: number, cors: Record<string, string>, noCache = false): Response {
@@ -746,6 +772,8 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
 
       if (action === 'set-alert-rules') {
         const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, countries, tickers, chokepoints } = body;
+        const shapeError = alertRuleShapeError({ variant, eventTypes, channels }, corsHeaders);
+        if (shapeError) return finish(shapeError);
         if (tickers !== undefined && !Array.isArray(tickers)) {
           return finish(json({ error: 'TICKERS_MUST_BE_ARRAY' }, 400, corsHeaders));
         }
@@ -767,17 +795,12 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         });
         if (!resp.ok) {
           // A 400 carries a structured validation code (TICKERS_LIMIT_EXCEEDED /
-          // COUNTRIES_LIMIT_EXCEEDED); 402 is the paywall (PRO_REQUIRED). Pass
-          // both through with body intact so the client renders the real reason
-          // instead of a generic toast — mirrors set-notification-config below.
-          if (resp.status === 400 || resp.status === 402) {
-            const text = await resp.text().catch(() => '');
-            let payload: unknown = { error: 'Validation failed' };
-            if (text) {
-              try { payload = JSON.parse(text); } catch { /* keep default */ }
-            }
-            return finish(json(payload, resp.status, corsHeaders));
-          }
+          // COUNTRIES_LIMIT_EXCEEDED / RULE_LIMIT_EXCEEDED); 402 is the paywall
+          // (PRO_REQUIRED). Pass both through with body intact so the client
+          // renders the real reason instead of a generic toast — mirrors
+          // set-notification-config below.
+          const passthrough = await relayValidationPassthrough(resp, corsHeaders);
+          if (passthrough) return finish(passthrough);
           console.error('[notification-channels] POST set-alert-rules relay error:', resp.status);
           return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
@@ -790,6 +813,8 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         if (!variant || quietHoursEnabled === undefined) {
           return finish(json({ error: 'variant and quietHoursEnabled required' }, 400, corsHeaders));
         }
+        const shapeError = alertRuleShapeError({ variant }, corsHeaders);
+        if (shapeError) return finish(shapeError);
         if (quietHoursOverride !== undefined && !VALID_OVERRIDE.has(quietHoursOverride)) {
           return finish(json({ error: 'invalid quietHoursOverride' }, 400, corsHeaders));
         }
@@ -805,6 +830,8 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           countries,
         });
         if (!resp.ok) {
+          const passthrough = await relayValidationPassthrough(resp, corsHeaders);
+          if (passthrough) return finish(passthrough);
           console.error('[notification-channels] POST set-quiet-hours relay error:', resp.status);
           return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
@@ -821,6 +848,8 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         if (!variant || !digestMode || !VALID_DIGEST_MODE.has(digestMode)) {
           return finish(json({ error: 'variant and valid digestMode required' }, 400, corsHeaders));
         }
+        const shapeError = alertRuleShapeError({ variant }, corsHeaders);
+        if (shapeError) return finish(shapeError);
         const resp = await convexRelay({
           action: 'set-digest-settings',
           userId: session.userId,
@@ -831,6 +860,8 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           countries,
         });
         if (!resp.ok) {
+          const passthrough = await relayValidationPassthrough(resp, corsHeaders);
+          if (passthrough) return finish(passthrough);
           console.error('[notification-channels] POST set-digest-settings relay error:', resp.status);
           return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
@@ -848,6 +879,8 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         const VALID_DIGEST_MODE = new Set(['realtime', 'daily', 'twice_daily', 'weekly']);
         const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries, tickers, chokepoints } = body;
         if (!variant) return finish(json({ error: 'variant required' }, 400, corsHeaders));
+        const shapeError = alertRuleShapeError({ variant, eventTypes, channels }, corsHeaders);
+        if (shapeError) return finish(shapeError);
         if (sensitivity !== undefined && !VALID_SENSITIVITY.has(sensitivity)) {
           return finish(json({ error: 'invalid sensitivity' }, 400, corsHeaders));
         }
@@ -885,14 +918,8 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           // must pass through with body intact so the client renders the
           // real reason — inline helper text for 400, upgrade-flow modal
           // for 402 — instead of a generic toast.
-          if (resp.status === 400 || resp.status === 402) {
-            const text = await resp.text().catch(() => '');
-            let payload: unknown = { error: 'Validation failed' };
-            if (text) {
-              try { payload = JSON.parse(text); } catch { /* keep default */ }
-            }
-            return finish(json(payload, resp.status, corsHeaders));
-          }
+          const passthrough = await relayValidationPassthrough(resp, corsHeaders);
+          if (passthrough) return finish(passthrough);
           console.error('[notification-channels] POST set-notification-config relay error:', resp.status);
           return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }

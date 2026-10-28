@@ -1289,7 +1289,7 @@
         "ucdpEvents": "UCDP事件",
         "displacementFlows": "流離失所流向",
         "climateAnomalies": "氣候異常",
-        "weatherAlerts": "惡劣天氣預警（NWS、ECCC、WMO SWIC）",
+        "weatherAlerts": "天氣預警",
         "strategicWaterways": "戰略水道",
         "economicCenters": "經濟中心",
         "criticalMinerals": "關鍵礦產",
@@ -1311,9 +1311,9 @@
         "radiationSpike": "輻射峰值",
         "radiationElevated": "輻射升高",
         "canadaRoads": "Canada 道路",
-        "canadaAlerts": "加拿大警報（AB + BC + SK）",
+        "canadaAlerts": "加拿大警報",
         "notamAirspace": "NOTAM 空域限制",
-        "no2Activity": "工業活動（NO2）"
+        "no2Activity": "工業活動"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -4038,7 +4038,7 @@
           "2": "路況折線可能簡化複雜的公路幾何。"
         },
         "related": {
-          "0": "惡劣天氣預警（NWS、ECCC、WMO SWIC）",
+          "0": "天氣預警",
           "1": "資料新鮮度狀態"
         }
       },
@@ -4054,7 +4054,7 @@
           "2": "沒有可對映嚴重程度的條目（艾伯塔CAP與顏色語義、不列顛哥倫比亞疏散狀態，或SaskAlert的CAP嚴重程度）會被丟棄，而不會被編造。SaskAlert摘要中的顏色或級別不視為CAP嚴重程度。"
         },
         "related": {
-          "0": "惡劣天氣預警（NWS、ECCC、WMO SWIC）",
+          "0": "天氣預警",
           "1": "自然事件圖層",
           "2": "資料新鮮度狀態"
         }
@@ -4087,7 +4087,7 @@
         },
         "related": {
           "0": "自然事件圖層彈窗",
-          "1": "惡劣天氣預警（NWS、ECCC、WMO SWIC）",
+          "1": "天氣預警",
           "2": "國家簡報的自然訊號"
         }
       },

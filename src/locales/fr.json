@@ -1246,7 +1246,7 @@
         "ucdpEvents": "Événements UCDP",
         "displacementFlows": "Flux de déplacement",
         "climateAnomalies": "Anomalies climatiques",
-        "weatherAlerts": "Alertes de temps violent (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Alertes météo",
         "strategicWaterways": "Voies navigables stratégiques",
         "economicCenters": "Centres économiques",
         "criticalMinerals": "Minéraux critiques",
@@ -1268,9 +1268,9 @@
         "radiationSpike": "Pic de radiation",
         "radiationElevated": "Radiation élevée",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "Restrictions d'espace aérien NOTAM",
-        "no2Activity": "Activité industrielle (NO2)"
+        "no2Activity": "Activité industrielle"
       },
       "tooltip": {
         "earthquake": "Tremblement de terre",
@@ -4078,7 +4078,7 @@
           "2": "Les polylignes de conditions routières peuvent simplifier la géométrie complexe des autoroutes."
         },
         "related": {
-          "0": "Alertes de temps violent (NWS, ECCC, WMO SWIC)",
+          "0": "Alertes météo",
           "1": "Statut Data Freshness"
         }
       },
@@ -4094,7 +4094,7 @@
           "2": "Les entrées sans gravité cartographiable (sémantique CAP et de couleur de l'Alberta, statut d'évacuation de la C.-B., ou gravité CAP de SaskAlert) sont écartées plutôt qu'inventées. La couleur ou le niveau du résumé SaskAlert n'est pas traité comme une gravité CAP."
         },
         "related": {
-          "0": "Alertes de temps violent (NWS, ECCC, WMO SWIC)",
+          "0": "Alertes météo",
           "1": "Couche Événements naturels",
           "2": "Statut Data Freshness"
         }
@@ -4127,7 +4127,7 @@
         },
         "related": {
           "0": "Fenêtres de la couche Événements naturels",
-          "1": "Alertes de temps violent (NWS, ECCC, WMO SWIC)",
+          "1": "Alertes météo",
           "2": "Signaux naturels du Brief Renseignement"
         }
       },

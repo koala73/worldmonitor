@@ -88,6 +88,16 @@ const {
   classifyDigestRetryDecision,
 } = require('./lib/classify-digest-request.cjs');
 const {
+  DIGEST_WARM_ACTIVATION_KEY,
+  DIGEST_WARM_HEARTBEAT_KEY,
+  DIGEST_WARM_HEARTBEAT_TTL_SECONDS,
+  DIGEST_WARM_INTERVAL_MS,
+  fetchDigestWarmCell,
+  runDigestWarmCycle,
+  shouldPublishDigestWarmHeartbeat,
+  summarizeDigestWarmCycle,
+} = require('./lib/news-digest-warm.cjs');
+const {
   YahooQuoteSummaryClient,
   buildSectorSeedMeta,
   buildSectorValuationCoverage,
@@ -5567,6 +5577,52 @@ async function startClassifySeedLoop() {
   const activeProviders = CLASSIFY_LLM_PROVIDERS.filter((p) => !!process.env[p.envKey]).map((p) => p.name);
   console.log(`[Classify] Seed loop starting (interval ${CLASSIFY_SEED_INTERVAL_MS / 1000 / 60}min, providers:${activeProviders.length ? activeProviders.join(',') : 'none'})`);
   startBootSeedLoop('Classify', 'seed-meta:classify', CLASSIFY_SEED_INTERVAL_MS, seedClassify, (e) => console.warn('[Classify] Initial seed error:', e?.message || e), (e) => console.warn('[Classify] Seed error:', e?.message || e));
+}
+
+// ─────────────────────────────────────────────────────────────
+// News digest warm cycle — requests every (edition, language) digest the
+// catalog places a feed in, so every catalog feed is fetched whether or not a
+// reader requests its language (scripts/lib/news-digest-warm.cjs).
+// ─────────────────────────────────────────────────────────────
+const DIGEST_WARM_CELLS = requireShared('news-digest-warm-cells.json');
+let digestWarmInFlight = false;
+
+async function seedDigestWarm() {
+  if (digestWarmInFlight) {
+    console.log('[DigestWarm] Previous cycle still running, skipping');
+    return;
+  }
+  digestWarmInFlight = true;
+  const startedAt = Date.now();
+  try {
+    const results = await runDigestWarmCycle(DIGEST_WARM_CELLS, {
+      fetchCell: (cell) => fetchDigestWarmCell(cell, { userAgent: CHROME_UA, relayKey: RELAY_API_KEY }),
+    });
+    const summary = summarizeDigestWarmCycle(results, { fetchedAt: Date.now(), durMs: Date.now() - startedAt });
+    console.log(
+      `[DigestWarm] ${summary.cells} cells: ${summary.fresh} fresh, ${summary.stale} stale, ${summary.failed} failed ` +
+        `in ${Math.round(summary.durMs / 1000)}s${summary.failures.length ? ` (${summary.failures.join(', ')})` : ''}`,
+    );
+    if (!shouldPublishDigestWarmHeartbeat(summary)) {
+      console.warn(`[DigestWarm] Fewer than half the cells served news${RELAY_API_KEY ? '' : ' (WORLDMONITOR_RELAY_KEY not set)'} — heartbeat not written`);
+      return;
+    }
+    if (!await upstashSet(DIGEST_WARM_HEARTBEAT_KEY, summary, DIGEST_WARM_HEARTBEAT_TTL_SECONDS)) return;
+    // Durable, no TTL: health reads the probe as pending until the first
+    // healthy cycle and strict afterwards (api/health.js ACTIVATION_MARKERS).
+    await upstashEval("return redis.call('SET', KEYS[1], ARGV[1])", [DIGEST_WARM_ACTIVATION_KEY], [String(summary.fetchedAt)]);
+  } finally {
+    digestWarmInFlight = false;
+  }
+}
+
+function startDigestWarmLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[DigestWarm] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[DigestWarm] Warm loop starting (${DIGEST_WARM_CELLS.length} cells, interval ${DIGEST_WARM_INTERVAL_MS / 1000 / 60}min)`);
+  startBootSeedLoop('DigestWarm', DIGEST_WARM_HEARTBEAT_KEY, DIGEST_WARM_INTERVAL_MS, seedDigestWarm, (e) => console.warn('[DigestWarm] Initial cycle error:', e?.message || e), (e) => console.warn('[DigestWarm] Cycle error:', e?.message || e));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -15570,6 +15626,7 @@ server.listen(PORT, () => {
   startChokepointWarmPingLoop();
   startCableHealthWarmPingLoop();
   startClassifySeedLoop();
+  startDigestWarmLoop();
   startMiddleEastStrikesLoop();
   startServiceStatusesSeedLoop();
   startTheaterPostureSeedLoop();

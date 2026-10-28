@@ -1289,7 +1289,7 @@
         "ucdpEvents": "UCDP 사건",
         "displacementFlows": "난민 이동",
         "climateAnomalies": "기후 이상",
-        "weatherAlerts": "악천후 경보(NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "기상 경보",
         "strategicWaterways": "전략 수로",
         "economicCenters": "경제 중심지",
         "criticalMinerals": "핵심 광물",
@@ -1311,9 +1311,9 @@
         "radiationSpike": "방사능 급증",
         "radiationElevated": "상승된 방사능",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)",
+        "canadaAlerts": "Canada Alerts",
         "notamAirspace": "NOTAM 공역 제한",
-        "no2Activity": "산업 활동(NO2)"
+        "no2Activity": "산업 활동"
       },
       "tooltip": {
         "earthquake": "지진",
@@ -4038,7 +4038,7 @@
           "2": "노면 상태 폴리라인은 복잡한 고속도로 형상을 단순화할 수 있습니다."
         },
         "related": {
-          "0": "악천후 경보(NWS, ECCC, WMO SWIC)",
+          "0": "기상 경보",
           "1": "데이터 최신성 상태"
         }
       },
@@ -4054,7 +4054,7 @@
           "2": "지도에 올릴 수 있는 심각도가 없는 항목(앨버타 CAP과 색의 의미, 브리티시컬럼비아 대피 상태, SaskAlert CAP 심각도)은 값을 만들지 않고 버립니다. SaskAlert 요약의 색이나 수준은 CAP 심각도로 보지 않습니다."
         },
         "related": {
-          "0": "악천후 경보(NWS, ECCC, WMO SWIC)",
+          "0": "기상 경보",
           "1": "자연재해 레이어",
           "2": "데이터 최신성 상태"
         }
@@ -4087,7 +4087,7 @@
         },
         "related": {
           "0": "자연재해 레이어 팝업",
-          "1": "악천후 경보(NWS, ECCC, WMO SWIC)",
+          "1": "기상 경보",
           "2": "국가 개요의 자연 신호"
         }
       },
