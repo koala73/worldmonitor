@@ -107,7 +107,7 @@ describe('API-key creation live-session gate', () => {
     relayStatus = 409; const response = await run(await request());
     assert.equal(response.status, 409); assert.deepEqual(await response.json(), { error: 'KEY_LIMIT_REACHED' });
   });
-  for (const status of [404, 500, 503, 0]) it(`makes relay failure ${status} retryable`, async () => {
+  for (const status of [401, 404, 500, 503, 0]) it(`makes relay failure ${status} retryable`, async () => {
     relayStatus = status || 200; relayThrows = status === 0;
     const response = await run(await request());
     assert.equal(response.status, 503); assert.equal(response.headers.get('Retry-After'), '5');
