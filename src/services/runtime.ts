@@ -324,6 +324,19 @@ function isKeyFreeApiTarget(target: string): boolean {
     || target.startsWith('/api/version');
 }
 
+// Key issuance asks Clerk whether the caller's session is still live, so it
+// needs the caller's standard session token (it carries `sid`). The desktop
+// cloud credential is a template token without one.
+function isSessionBoundApiTarget(target: string): boolean {
+  return target.split('?')[0] === '/api/user-api-keys';
+}
+
+function callerBearer(input: RequestInfo | URL, init?: RequestInit): string | undefined {
+  const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+  const value = headers.get('Authorization');
+  return value?.startsWith('Bearer ') ? value : undefined;
+}
+
 function canRetryRequest(input: RequestInfo | URL, init?: RequestInit): boolean {
   const request = input instanceof Request ? input : undefined;
   const method = (init?.method ?? request?.method ?? 'GET').toUpperCase();
@@ -343,7 +356,9 @@ async function fetchLocalWithStartupRetry(
   // never need the user's cloud credential.
   const userAuthorization = isLocalOnlyApiTarget(target)
     ? undefined
-    : (await (await import('@/services/desktop-cloud-auth')).getDesktopCloudAuthorization()) ?? undefined;
+    : isSessionBoundApiTarget(target)
+      ? callerBearer(input, init)
+      : (await (await import('@/services/desktop-cloud-auth')).getDesktopCloudAuthorization()) ?? undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
