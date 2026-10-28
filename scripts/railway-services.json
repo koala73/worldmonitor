@@ -587,6 +587,7 @@
       "scripts/lib/provincial-511.mjs",
       "scripts/lib/toronto-official-cad.mjs",
       "scripts/lib/toronto-road-restrictions.mjs",
+      "scripts/lib/source-request-diagnostics.mjs",
       "scripts/lib/tps-open-data.mjs",
       "scripts/lib/tps-seed-runner.mjs",
       "scripts/nixpacks.toml",
@@ -1659,6 +1660,7 @@
       "scripts/package.json",
       "scripts/railpack.json",
       "scripts/seed-earthquakes.mjs",
+      "scripts/lib/source-request-diagnostics.mjs",
       "scripts/seismology/nrcan-atom.mjs",
       "scripts/shared/compare-and-delete-script.cjs"
     ],
