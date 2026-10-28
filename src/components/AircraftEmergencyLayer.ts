@@ -43,6 +43,8 @@ export class AircraftEmergencyLayer {
   constructor(private container: HTMLElement, private paint: (markers: EmergencyMapMarker[]) => void) {
     this.element.className = 'aircraft-emergency-layer';
     this.element.setAttribute('aria-label', 'Aircraft emergencies');
+    // render() opens the panel only when there is something to report.
+    this.element.hidden = true;
     this.container.addEventListener('aircraft-emergency-select', this.select);
   }
 
@@ -54,7 +56,7 @@ export class AircraftEmergencyLayer {
   setEnabled(enabled: boolean): void {
     const detached = !this.element.isConnected;
     if (enabled && detached) { this.container.appendChild(this.element); this.lastMarkers = ''; this.lastView = ''; }
-    this.element.hidden = !enabled;
+    if (!enabled) this.element.hidden = true;
     if (enabled === this.enabled) { if (enabled && detached) this.render(); return; }
     this.enabled = enabled;
     if (!enabled) {
@@ -100,6 +102,9 @@ export class AircraftEmergencyLayer {
       : available ? (this.records.length ? `${this.records.length} reported aircraft`
         : this.snapshot.observations.length ? 'No current aircraft reports. Stale or unknown observations have expired.' : 'No matching squawks reported by this feed')
         : freshFeeds.length ? 'Partial data. Some squawk queries are unavailable or stale.' : 'Aircraft data unavailable or stale.';
+    // Loading, or every feed fresh and reporting no squawk at all: keep the map clear.
+    this.element.hidden = this.snapshot.feeds.length === 0
+      || (available && this.records.length === 0 && this.snapshot.observations.length === 0);
     view.append(node('p', status), node('p', 'Reported transponder signals. Reception coverage is incomplete. No incident or resolution is confirmed.'));
     const feeds = node('details', '');
     feeds.open = sourceOpen;

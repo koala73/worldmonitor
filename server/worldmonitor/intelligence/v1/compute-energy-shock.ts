@@ -38,6 +38,8 @@ import {
   resolveRefineryYields,
   computeMonthlyGulfShares,
   MIN_PRE_CRISIS_MONTHS,
+  computeProductBalance,
+  parseProductTradeWindow,
 } from './_shock-compute';
 import type {
   CrudeImportOriginLike,
@@ -47,6 +49,9 @@ import type {
   LngShareBaselineEntry,
   MonthlyGulfShare,
   PartnerShareProductLike,
+  ProductBalance,
+  ProductTradeFlows,
+  RefineryProductKey,
 } from './_shock-compute';
 import { ISO2_TO_COMTRADE } from './_comtrade-reporters';
 import { CURRENT_FLOWS_WINDOW, PRE_CRISIS_WINDOW } from '../../../../shared/hormuz-crisis.js';
@@ -63,14 +68,19 @@ const CP_TO_PORTWATCH: Record<string, string> = {
 // Partner-level crude (HS 2709) imports by reporter, written by
 // scripts/seed-comtrade-bilateral-hs4.mjs for the country-port-cluster set.
 const CRUDE_HS4 = '2709';
+// Refined products (naphtha, gasoline, jet, gas oil, fuel oil) in the same key.
+const PRODUCTS_HS4 = '2710';
 const bilateralPartnersKey = (iso2: string): string => `comtrade:bilateral-hs4-partners:${iso2}:v1`;
 // Importer-declared monthly crude imports from World and the Gulf, in the
 // crudeImportOrigin section of the oil trade series (seed-oil-trade-series.mjs).
 const OIL_TRADE_SERIES_KEY = 'energy:oil-trade-series:v1';
+// HS 2711 mixes LPG with LNG, so LPG imports get no Gulf attribution.
+const GULF_ATTRIBUTED_PRODUCTS = new Set<RefineryProductKey>(['gasoline', 'diesel', 'jet', 'naphtha']);
 
 interface JodiProduct {
   demandKbd?: number | null;
   importsKbd?: number | null;
+  exportsKbd?: number | null;
 }
 
 interface JodiOil {
@@ -82,6 +92,7 @@ interface JodiOil {
   naphtha?: JodiProduct | null;
   crude?: { importsKbd?: number | null } | null;
   refineryYields?: JodiRefineryYieldsLike | null;
+  productTrade?: { preCrisisBaseline?: unknown; currentFlows?: unknown } | null;
 }
 
 interface IeaStocks {
@@ -178,6 +189,35 @@ async function getGulfCrudeShare(countryCode: string): Promise<GulfShareMeasurem
     : NO_GULF_SHARE;
 }
 
+/** Measured Gulf share of the country's refined-product (HS 2710) imports. */
+async function getGulfProductShare(countryCode: string): Promise<GulfShareMeasurement> {
+  const payload = await getCachedJson(bilateralPartnersKey(countryCode), true)
+    .then((v) => v as BilateralPartnersPayload | null)
+    .catch(() => null);
+  const product = Array.isArray(payload?.products)
+    ? payload.products.find((p) => String(p?.hs4 ?? '') === PRODUCTS_HS4)
+    : undefined;
+  return computeGulfShareFromPartners(product);
+}
+
+interface ProductBalanceRow {
+  key: RefineryProductKey;
+  name: string;
+  label: string;
+  flows: ProductTradeFlows & { demandKbd: number };
+  balance: ProductBalance;
+}
+
+const kbd = (v: number) => v.toFixed(1);
+
+/** "gasoline 366.6 + 0.0 − 298.3 = 68.3 of 268.9 (25.4%)"; n/a marks an unreported or unattributed flow. */
+function balanceTerm(row: ProductBalanceRow, attributed: boolean): string {
+  const { flows, balance } = row;
+  const imports = attributed && flows.importsKbd != null ? kbd(balance.gulfImportLossKbd) : 'n/a';
+  const exports = flows.exportsKbd != null ? kbd(flows.exportsKbd) : 'n/a';
+  return `${row.label} ${kbd(balance.outputLossKbd)} + ${imports} − ${exports} = ${kbd(balance.shortfallKbd)} of ${kbd(flows.demandKbd)} (${balance.deficitPct.toFixed(1)}%)`;
+}
+
 export async function computeEnergyShockScenario(
   _ctx: ServerContext,
   req: ComputeEnergyShockScenarioRequest,
@@ -233,18 +273,18 @@ export async function computeEnergyShockScenario(
     : null;
   const liveFlowRatio: number | null = rawFlowRatio !== null ? clamp(rawFlowRatio, 0, 1.5) : null;
 
-  // Oil v10: pre-crisis (headline) and current-flows Gulf shares from monthly
-  // Comtrade filings; v9 (per-country JODI refinery yields, naphtha) carries
-  // the 2024 annual share only.
+  // Oil v11: pre-crisis (headline) and current-flows Gulf shares from monthly
+  // Comtrade filings; v10 (product-trade netting) and earlier carry the 2024
+  // annual share only.
   // Gas g2: the Hormuz LNG route share is the importer's measured Qatar + UAE
   // share, not a flat 30%.
-  const cacheVersion = `${needsOil ? 'v10' : 'v4'}${needsGas ? '-g2' : ''}`;
+  const cacheVersion = `${needsOil ? 'v11' : 'v4'}${needsGas ? '-g2' : ''}`;
   const cacheKey = `energy:shock:${cacheVersion}:${code}:${chokepointId}:${disruptionPct}:${degraded ? 'd' : 'l'}:${fuelMode}`;
   const cached = await getCachedJson(cacheKey);
   if (cached) return cached as ComputeEnergyShockScenarioResponse;
 
   const hormuzGas = needsGas && chokepointId === 'hormuz_strait';
-  const [jodiOilResult, ieaStocksResult, gulfShareResult, emberResult, jodiGasResult, gasStorageResult, lngOriginResult, oilTradeResult] = await Promise.allSettled([
+  const [jodiOilResult, ieaStocksResult, gulfShareResult, emberResult, jodiGasResult, gasStorageResult, lngOriginResult, productShareResult, oilTradeResult] = await Promise.allSettled([
     getCachedJson(`energy:jodi-oil:v1:${code}`, true),
     getCachedJson(`energy:iea-oil-stocks:v1:${code}`, true),
     getGulfCrudeShare(code),
@@ -254,8 +294,10 @@ export async function computeEnergyShockScenario(
       ? getCachedJson(`energy:gas-storage:v1:${code}`, true)
       : Promise.resolve(null),
     hormuzGas ? getCachedJson(LNG_HORMUZ_SHARE_KEY, true) : Promise.resolve(null),
+    needsOil ? getGulfProductShare(code) : Promise.resolve(NO_GULF_SHARE),
     needsOil ? getCachedJson(OIL_TRADE_SERIES_KEY, true) : Promise.resolve(null),
   ]);
+  const gulfProductShare: GulfShareMeasurement = productShareResult.status === 'fulfilled' ? productShareResult.value : NO_GULF_SHARE;
 
   const jodiOil = jodiOilResult.status === 'fulfilled' ? (jodiOilResult.value as JodiOil | null) : null;
   const ieaStocks = ieaStocksResult.status === 'fulfilled' ? (ieaStocksResult.value as IeaStocks | null) : null;
@@ -418,26 +460,74 @@ export async function computeEnergyShockScenario(
     }
   }
 
-  const productDefs = REFINERY_PRODUCTS.map(({ key, name }) => ({
-    name,
-    demand: n(jodiOil?.[key]?.demandKbd),
-    yieldFactor: refineryYields.yields[key],
+  // Product shortfalls net product trade: exports are redirected home before
+  // demand is hit, and Gulf-origin imports are lost with the route. The
+  // headline rows use the pre-crisis window; a row seeded before the windows
+  // existed nets its latest month instead, and says so. Current flows are
+  // reported in one limitation line.
+  const preCrisisTrade = parseProductTradeWindow(jodiOil?.productTrade?.preCrisisBaseline);
+  const currentTrade = parseProductTradeWindow(jodiOil?.productTrade?.currentFlows);
+  const gulfImportLossFactor = gulfProductShare.hasData ? gulfProductShare.share * baseExposure * (disruptionPct / 100) : null;
+  const observed = (v: number | null | undefined) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+  const latestFlows = (key: RefineryProductKey): ProductTradeFlows => ({
+    demandKbd: observed(jodiOil?.[key]?.demandKbd),
+    importsKbd: observed(jodiOil?.[key]?.importsKbd),
+    exportsKbd: observed(jodiOil?.[key]?.exportsKbd),
+  });
+  const hasDemand = (flows: ProductTradeFlows | null | undefined): flows is ProductTradeFlows & { demandKbd: number } =>
+    flows?.demandKbd != null && flows.demandKbd > 0;
+  const balanceRows = (flowsFor: (key: RefineryProductKey) => ProductTradeFlows | null | undefined): ProductBalanceRow[] =>
+    REFINERY_PRODUCTS.flatMap(({ key, name, label }) => {
+      const flows = flowsFor(key);
+      if (!hasDemand(flows)) return [];
+      const balance = computeProductBalance({
+        crudeLossKbd,
+        yieldFactor: refineryYields.yields[key],
+        demandKbd: flows.demandKbd,
+        importsKbd: flows.importsKbd,
+        exportsKbd: flows.exportsKbd,
+        gulfImportLossFactor: GULF_ATTRIBUTED_PRODUCTS.has(key) ? gulfImportLossFactor : null,
+      });
+      return [{ key, name, label, flows, balance }];
+    });
+  const fromWindow = (key: RefineryProductKey) => hasDemand(preCrisisTrade?.products[key]);
+  const primaryRows = oilModeled
+    ? balanceRows((key) => (fromWindow(key) ? preCrisisTrade?.products[key] : latestFlows(key)))
+    : [];
+
+  const products: ProductImpact[] = primaryRows.map((row) => ({
+    product: row.name,
+    outputLossKbd: Math.round(row.balance.outputLossKbd * 10) / 10,
+    // Round to 1 decimal to match outputLossKbd precision; raw JODI values like
+    // 136.5629 kbd wasted display space with fake precision (see #2971).
+    demandKbd: Math.round(row.flows.demandKbd * 10) / 10,
+    deficitPct: Math.round(row.balance.deficitPct * 10) / 10,
   }));
 
-  const products: ProductImpact[] = !oilModeled ? [] : productDefs
-    .filter((p) => p.demand > 0)
-    .map((p) => {
-      const outputLossKbd = crudeLossKbd * p.yieldFactor;
-      const deficitPct = clamp((outputLossKbd / p.demand) * 100, 0, 100);
-      return {
-        product: p.name,
-        outputLossKbd: Math.round(outputLossKbd * 10) / 10,
-        // Round to 1 decimal to match outputLossKbd precision; raw JODI values like
-        // 136.5629 kbd wasted display space with fake precision (see #2971).
-        demandKbd: Math.round(p.demand * 10) / 10,
-        deficitPct: Math.round(deficitPct * 10) / 10,
-      };
-    });
+  if (needsOil && primaryRows.length > 0) {
+    const dataMonth = typeof jodiOil?.dataMonth === 'string' ? jodiOil.dataMonth : 'unknown';
+    // The label follows the rows actually used, not the window's presence: a
+    // window can exist with too few months for any product's demand.
+    const latestLabels = primaryRows.filter((row) => !fromWindow(row.key)).map((row) => row.label);
+    const windowUsed = preCrisisTrade != null && latestLabels.length < primaryRows.length;
+    const basis = !windowUsed
+      ? `latest month (${dataMonth}; no usable pre-crisis product trade in this JODI row)`
+      : `pre-crisis baseline (${preCrisisTrade.startMonth}–${preCrisisTrade.endMonth}${latestLabels.length > 0 ? `; latest month ${dataMonth} for ${latestLabels.join(', ')}` : ''})`;
+    const terms = primaryRows.map((row) => balanceTerm(row, GULF_ATTRIBUTED_PRODUCTS.has(row.key) && gulfImportLossFactor != null));
+    limitations.push(`product balance, ${basis}: deficit = refinery output loss + Gulf-origin import loss − exports redirected home, ÷ demand, kb/d${windowUsed ? ' averaged over the window' : ''}: ${terms.join('; ')}.`);
+    if (windowUsed) {
+      const currentRows = currentTrade ? balanceRows((key) => currentTrade.products[key]) : [];
+      limitations.push(currentTrade && currentRows.length > 0
+        ? `product balance, current flows (${currentTrade.startMonth}–${currentTrade.endMonth}, ${currentTrade.months} month${currentTrade.months === 1 ? '' : 's'}; crude loss as in the headline): ${currentRows.map((row) => `${row.label} ${row.balance.deficitPct.toFixed(1)}%`).join(', ')}.`
+        : `product balance, current flows: unavailable for ${code} in this JODI row.`);
+    }
+    if (gulfImportLossFactor != null) {
+      const year = gulfProductShare.year != null ? ` ${gulfProductShare.year}` : '';
+      limitations.push(`Gulf-origin product imports: UN Comtrade${year} HS 2710 import value share from ${GULF_SHARE_SOURCE_LABEL}: ${(gulfProductShare.share * 100).toFixed(1)}%, applied to gasoline, diesel, jet fuel and naphtha imports; LPG imports are not attributed (HS 2711 mixes LPG with LNG).`);
+    } else {
+      limitations.push(`Gulf-origin product imports are not modeled for ${code}: no UN Comtrade partner-level HS 2710 import rows; deficits net exports only.`);
+    }
+  }
 
   const rawDaysOfCover = n(ieaStocks?.daysOfCover);
   const daysOfCover = ieaStocksCoverage ? rawDaysOfCover : 0;
