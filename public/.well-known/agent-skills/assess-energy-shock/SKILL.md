@@ -55,10 +55,13 @@ GET https://api.worldmonitor.app/api/intelligence/v1/compute-energy-shock
   "chokepointConfidence": "none",
   "liveFlowRatio": 0.88,
   "gasSensitivity": {
-    "lngShareOfImports": 0.825,
-    "dataMonth": "2026-01",
-    "modelBasis": "assumed_route_sensitivity",
-    "deficitPct": 12.3,
+    "lngShareOfImports": 1,
+    "dataMonth": "2026-07",
+    "modelBasis": "comtrade_lng_origin_share",
+    "preCrisisBaseline": { "basis": "comtrade_monthly", "fromMonth": "2025-02", "toMonth": "2026-01", "monthsCovered": 12, "hormuzLngShare": 0.064, "lngDisruptionTj": 8774.3 },
+    "currentFlows": { "basis": "comtrade_monthly", "fromMonth": "2026-06", "toMonth": "2026-08", "monthsCovered": 3, "hormuzLngShare": 0.0044, "lngDisruptionTj": 603.2 },
+    "lngDisruptionTj": 8774.3,
+    "deficitPct": 2.9,
     "assessment": "...",
     "dataAvailable": true
   }
@@ -67,7 +70,7 @@ GET https://api.worldmonitor.app/api/intelligence/v1/compute-energy-shock
 
 `dataAvailable: false` or `coverageLevel: "unsupported"` means inputs are insufficient, not zero exposure. Missing or invalid LNG imports or nonpositive demand suppress `gasSensitivity`. Observed zero LNG imports remain valid.
 
-Gas `modelBasis` is `assumed_route_sensitivity`. The calculation is recorded monthly LNG imports multiplied by a fixed assumed route share and disruption percentage. Current shipping flow does not scale it. It is not measured country-specific supplier exposure or a supply-shortage forecast. `deficitPct` is the assumed loss as a percentage of recorded demand and may exceed 100 when imports exceed demand. `lngShareOfImports` is a fraction and is absent when unknown.
+Gas `modelBasis` says where the route share comes from. For `hormuz_strait` it is `comtrade_lng_origin_share`: the importer's measured share of LNG imports from Qatar and the UAE (UN Comtrade HS 271111; Oman's Qalhat terminal loads outside the Strait). `preCrisisBaseline` covers the 12 months before the crisis (2025-02 to 2026-01) when the importer filed them monthly, otherwise the 2025 calendar year (`basis: comtrade_annual`, 2024 for late filers); the headline `lngDisruptionTj` and `deficitPct` equal it, or `currentFlows` when the pre-crisis share is unavailable (the assessment says which). `currentFlows` covers the latest three monthly observations since 2026-03. A share is withheld when more than 10% of the importer's LNG imports are not attributed to a named partner. A baseline is absent when unavailable; never read an absent baseline as zero. An importer with recorded LNG imports and no measured share has no `gasSensitivity`, and a limitation starts `LNG origin share unavailable`. `observed_zero_lng_imports` marks zero recorded LNG imports. Other chokepoints use `assumed_route_sensitivity`: recorded monthly LNG imports multiplied by a fixed assumed route share. Current shipping flow does not scale it under either basis. Neither is a supply-shortage forecast. `deficitPct` is the assumed loss as a percentage of recorded demand and may exceed 100 when imports exceed demand. `lngShareOfImports` is a fraction and is absent when unknown.
 
 Gas coverage is at most `partial`. Gas and combined mode `chokepointConfidence` is `none` because shipping data cannot establish confidence in country LNG exposure. `degraded` and `portwatchCoverage` describe shipping input availability, not gas freshness. Read `gasSensitivity.dataMonth` for the JODI observation month and `storage.date` separately. Empty dates mean unknown. A recent response does not make observations current.
 

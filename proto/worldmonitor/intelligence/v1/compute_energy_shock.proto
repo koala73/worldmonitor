@@ -50,11 +50,22 @@ message GasStorageObservation {
   string scope = 5;
 }
 
+// Hormuz (Qatar, UAE) share of LNG imports over one window, from UN Comtrade HS 271111.
+message LngShareBaseline {
+  // "comtrade_monthly" or "comtrade_annual".
+  string basis = 1;
+  string from_month = 2;
+  string to_month = 3;
+  int32 months_covered = 4;
+  double hormuz_lng_share = 5;
+  double lng_disruption_tj = 6;
+}
+
 message GasSensitivity {
   // Fraction, not percent. Absent when the measurement is unavailable.
   optional double lng_share_of_imports = 1;
   double lng_imports_tj = 2;
-  // Assumed monthly LNG loss against the route baseline, independent of current shipping flow.
+  // Monthly LNG loss at the route share, independent of current shipping flow.
   double lng_disruption_tj = 3;
   double total_demand_tj = 4;
   // Loss as percent of recorded demand. May exceed 100; not a supply-shortage estimate.
@@ -66,8 +77,11 @@ message GasSensitivity {
   string data_source = 9;
   // JODI observation month (YYYY-MM), or empty when unknown. Availability does not imply freshness.
   string data_month = 10;
-  // "assumed_route_sensitivity". No country-specific supplier exposure is measured.
+  // "comtrade_lng_origin_share" (Hormuz), "observed_zero_lng_imports", or "assumed_route_sensitivity" (fixed route share).
   string model_basis = 11;
+  // Hormuz only; the headline loss uses it. Absent when unavailable.
+  LngShareBaseline pre_crisis_baseline = 12;
+  LngShareBaseline current_flows = 13;
 }
 
 message ComputeEnergyShockScenarioResponse {

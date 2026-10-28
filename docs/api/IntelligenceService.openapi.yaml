@@ -9892,7 +9892,7 @@ components:
                 lngDisruptionTj:
                     type: number
                     format: double
-                    description: Assumed monthly LNG loss against the route baseline, independent of current shipping flow.
+                    description: Monthly LNG loss at the route share, independent of current shipping flow.
                 totalDemandTj:
                     type: number
                     format: double
@@ -9913,7 +9913,11 @@ components:
                     description: JODI observation month (YYYY-MM), or empty when unknown. Availability does not imply freshness.
                 modelBasis:
                     type: string
-                    description: '"assumed_route_sensitivity". No country-specific supplier exposure is measured.'
+                    description: '"comtrade_lng_origin_share" (Hormuz), "observed_zero_lng_imports", or "assumed_route_sensitivity" (fixed route share).'
+                preCrisisBaseline:
+                    $ref: '#/components/schemas/LngShareBaseline'
+                currentFlows:
+                    $ref: '#/components/schemas/LngShareBaseline'
         GasStorageObservation:
             type: object
             properties:
@@ -9929,6 +9933,26 @@ components:
                     type: string
                 scope:
                     type: string
+        LngShareBaseline:
+            type: object
+            properties:
+                basis:
+                    type: string
+                    description: '"comtrade_monthly" or "comtrade_annual".'
+                fromMonth:
+                    type: string
+                toMonth:
+                    type: string
+                monthsCovered:
+                    type: integer
+                    format: int32
+                hormuzLngShare:
+                    type: number
+                    format: double
+                lngDisruptionTj:
+                    type: number
+                    format: double
+            description: Hormuz (Qatar, UAE) share of LNG imports over one window, from UN Comtrade HS 271111.
         GetCountryPortActivityRequest:
             type: object
             properties:

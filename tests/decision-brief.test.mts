@@ -5,12 +5,14 @@ import type { DecisionBriefCapture, DecisionBriefSelection } from '../src/types/
 import { computeGasDisruption } from '../server/worldmonitor/intelligence/v1/_shock-compute.ts';
 
 const selection: DecisionBriefSelection = { countryCode: 'DE', countryName: 'Germany', chokepointId: 'hormuz_strait', fuelMode: 'gas', baselinePct: 50, comparisonPct: 100 };
+// Captures from the assumed-route model (a fixed 30% share). The live handler
+// now measures the Hormuz share; measuredCaptures below covers those responses.
 function captures(code = 'DE', lng = 41318, demand = 467224): [DecisionBriefCapture, DecisionBriefCapture] {
   return [50, 100].map(disruptionPct => ({ retrievedAt: '2026-09-10T10:00:00Z', response: {
     countryCode: code, chokepointId: 'hormuz_strait', disruptionPct, gulfCrudeShare: 0, crudeLossKbd: 0, products: [], effectiveCoverDays: 0,
     assessment: '', dataAvailable: true, jodiOilCoverage: false, comtradeCoverage: false, ieaStocksCoverage: false, portwatchCoverage: false,
     coverageLevel: 'partial', limitations: [], degraded: true, chokepointConfidence: '',
-    gasSensitivity: { lngImportsTj: lng, totalDemandTj: demand, ...computeGasDisruption(lng, demand, 'hormuz_strait', disruptionPct)!, dataAvailable: true, assessment: '30% assumed route exposure.', dataSource: 'JODI', dataMonth: '2026-05', modelBasis: 'assumed_route_sensitivity' },
+    gasSensitivity: { lngImportsTj: lng, totalDemandTj: demand, ...computeGasDisruption(lng, demand, 'hormuz_strait', disruptionPct, 0.3)!, dataAvailable: true, assessment: '30% assumed route exposure.', dataSource: 'JODI', dataMonth: '2026-05', modelBasis: 'assumed_route_sensitivity' },
   } })) as [DecisionBriefCapture, DecisionBriefCapture];
 }
 
@@ -83,6 +85,106 @@ for (const change of ['month', 'lng', 'demand', 'source', 'source-differs', 'sou
     assert.equal(buildDecisionBrief(selection, data).comparison.delta, null);
   });
 }
+
+// Captures from the measured Hormuz model: Japan, JODI 2026-07, UN Comtrade
+// pre-crisis 6.4% (2025-02 to 2026-01) and current flows 0.4% (2026-06 to 2026-08).
+function measuredCaptures(): [DecisionBriefCapture, DecisionBriefCapture] {
+  const lng = 274197; const demand = 299947;
+  return [50, 100].map(disruptionPct => {
+    const pre = computeGasDisruption(lng, demand, 'hormuz_strait', disruptionPct, 0.064)!;
+    const now = computeGasDisruption(lng, demand, 'hormuz_strait', disruptionPct, 0.0044)!;
+    return { retrievedAt: '2026-11-02T10:00:00Z', response: {
+      countryCode: 'JP', chokepointId: 'hormuz_strait', disruptionPct, gulfCrudeShare: 0, crudeLossKbd: 0, products: [], effectiveCoverDays: 0,
+      assessment: '', dataAvailable: true, jodiOilCoverage: false, comtradeCoverage: false, ieaStocksCoverage: false, portwatchCoverage: true,
+      coverageLevel: 'partial', limitations: [], degraded: false, chokepointConfidence: 'none',
+      gasSensitivity: {
+        lngImportsTj: lng, totalDemandTj: demand, ...pre, dataAvailable: true, dataSource: 'jodi_monthly', dataMonth: '2026-07',
+        assessment: 'JP LNG exposure to Strait of Hormuz: Qatar and the UAE supplied 6.4% of LNG imports before the crisis (2025-02 to 2026-01) and 0.4% in current flows (2026-06 to 2026-08).',
+        modelBasis: 'comtrade_lng_origin_share',
+        preCrisisBaseline: { basis: 'comtrade_monthly', fromMonth: '2025-02', toMonth: '2026-01', monthsCovered: 12, hormuzLngShare: 0.064, lngDisruptionTj: pre.lngDisruptionTj },
+        currentFlows: { basis: 'comtrade_monthly', fromMonth: '2026-06', toMonth: '2026-08', monthsCovered: 3, hormuzLngShare: 0.0044, lngDisruptionTj: now.lngDisruptionTj },
+      },
+    } };
+  }) as [DecisionBriefCapture, DecisionBriefCapture];
+}
+const japan: DecisionBriefSelection = { ...selection, countryCode: 'JP', countryName: 'Japan' };
+
+test('measured Hormuz LNG captures are usable and label both baselines', () => {
+  const s = buildDecisionBrief(japan, measuredCaptures());
+  assert.deepEqual(s.results.map(r => r.loss), [8774.3, 17548.6], 'the pre-crisis baseline drives the result');
+  assert.equal(s.comparison.delta, 8774.3);
+  const pre = s.evidence.find(e => e.id === 'baseline-hormuz-pre-crisis')!;
+  assert.deepEqual([pre.value, pre.unit, pre.source, pre.observedAt], [6.4, '%', 'UN Comtrade', '2026-01']);
+  assert.match(pre.label, /pre-crisis.*2025-02 to 2026-01/i);
+  const now = s.evidence.find(e => e.id === 'baseline-hormuz-current')!;
+  assert.deepEqual([now.value, now.observedAt], [0.44, '2026-08'], 'evidence keeps the share unrounded; display rounds');
+  assert.match(now.label, /current flows.*2026-06 to 2026-08/i);
+  const loss = s.evidence.find(e => e.id === 'baseline-loss')!;
+  assert.match(loss.label, /pre-crisis share/);
+  assert.match(loss.source, /UN Comtrade/);
+  const text = [...s.assumptions, s.impact, s.action.constraint].join(' ');
+  assert.match(text, /measured from UN Comtrade/);
+  assert.doesNotMatch(text, /assumed route|Assumed route|route fraction is fixed/);
+  assert.doesNotMatch(s.action.constraint, /supplier and route exposure/);
+});
+
+test('a small measured share stays nonzero in the evidence', () => {
+  const data = measuredCaptures();
+  for (const { response } of data) response.gasSensitivity!.currentFlows!.hormuzLngShare = 0.0004;
+  const s = buildDecisionBrief(japan, data);
+  assert.equal(s.evidence.find(e => e.id === 'baseline-hormuz-current')!.value, 0.04);
+});
+
+test('a current-flows-only capture labels the loss with the share that drives it', () => {
+  const data = measuredCaptures();
+  for (const { response } of data) {
+    const g = response.gasSensitivity!;
+    delete g.preCrisisBaseline;
+    g.lngDisruptionTj = g.currentFlows!.lngDisruptionTj;
+  }
+  const s = buildDecisionBrief(japan, data);
+  assert.equal(s.evidence.find(e => e.id === 'baseline-hormuz-pre-crisis')!.value, null);
+  assert.match(s.evidence.find(e => e.id === 'baseline-loss')!.label, /current-flows share/);
+  assert.match(s.unknowns.join(' '), /pre-crisis Hormuz LNG share is unavailable/);
+});
+
+test('zero recorded LNG imports get neutral wording, not the assumed-route text', () => {
+  const data = measuredCaptures();
+  for (const { response } of data) {
+    const g = response.gasSensitivity!;
+    Object.assign(g, { lngImportsTj: 0, lngDisruptionTj: 0, deficitPct: 0, modelBasis: 'observed_zero_lng_imports', assessment: 'JP recorded zero LNG imports in 2026-07.' });
+    delete g.preCrisisBaseline; delete g.currentFlows;
+  }
+  const s = buildDecisionBrief(japan, data);
+  assert.deepEqual(s.results.map(r => r.loss), [0, 0]);
+  const loss = s.evidence.find(e => e.id === 'baseline-loss')!;
+  assert.doesNotMatch(`${loss.label} ${loss.source}`, /assumed/i);
+  assert.equal(loss.source, 'JODI');
+  const text = [...s.assumptions, s.impact, s.action.constraint].join(' ');
+  assert.doesNotMatch(text, /assumed route|Assumed route|route fraction is fixed/);
+  assert.match(text, /zero recorded LNG imports/i);
+});
+
+test('a measured capture without current flows lists it as unknown, never zero', () => {
+  const data = measuredCaptures();
+  for (const { response } of data) delete response.gasSensitivity!.currentFlows;
+  const s = buildDecisionBrief(japan, data);
+  assert.equal(s.evidence.find(e => e.id === 'baseline-hormuz-current')!.value, null);
+  assert.match(s.unknowns.join(' '), /current-flows Hormuz LNG share is unavailable/);
+  assert.deepEqual(s.results.map(r => r.loss), [8774.3, 17548.6]);
+});
+
+test('withholds delta when the measured pre-crisis share differs between captures', () => {
+  const data = measuredCaptures();
+  data[1].response.gasSensitivity!.preCrisisBaseline!.hormuzLngShare = 0.07;
+  assert.equal(buildDecisionBrief(japan, data).comparison.delta, null);
+});
+
+test('an unknown gas model basis is not usable', () => {
+  const data = measuredCaptures();
+  for (const { response } of data) response.gasSensitivity!.modelBasis = 'route_guess';
+  assert.deepEqual(buildDecisionBrief(japan, data).results.map(r => r.loss), [null, null]);
+});
 
 test('old storage retains its own date and is explicitly excluded from comparison', () => {
   const data = captures();
