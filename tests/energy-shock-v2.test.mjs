@@ -1474,4 +1474,41 @@ describe('get-country-cost-shock surfaces an unmodeled oil scenario as unavailab
     assert.equal(result.coverageDays, Math.round(178 / JP_GULF_SHARE));
     assert.ok(result.supplyDeficitPct > 0, `supplyDeficitPct ${result.supplyDeficitPct}`);
   });
+
+  it('no IEA observation: the deficit stays modelled, coverageDays is named unavailable, and the joint flag is false', async (t) => {
+    t.after(restore);
+    process.env.WORLDMONITOR_VALID_KEYS = 'wm_shock_fixture';
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED,
+      'energy:jodi-oil:v1:IN': { crude: { importsKbd: 4800 }, diesel: { demandKbd: 1900 }, gasoline: { demandKbd: 900 } },
+      ...partnersSeed('IN', IN_TOTAL_2709, IN_PARTNERS_2709),
+    });
+
+    const result = await getCountryCostShock(premiumCtx(), { iso2: 'IN', chokepointId: 'hormuz_strait', hs2: '27' });
+
+    assert.equal(result.hasEnergyModel, false);
+    assert.equal(result.coverageDays, 0);
+    assert.ok(result.supplyDeficitPct > 0, `supplyDeficitPct ${result.supplyDeficitPct} must still carry the modelled deficit`);
+    assert.match(result.unavailableReason, /coverageDays is unavailable: no IEA stock observation for IN/);
+    assert.match(result.unavailableReason, /supplyDeficitPct is modelled/);
+  });
+
+  it('crude imports without any refined-product demand: coverage stays modelled, the deficit is named unavailable', async (t) => {
+    t.after(restore);
+    process.env.WORLDMONITOR_VALID_KEYS = 'wm_shock_fixture';
+    installEnergyShockRedis({
+      ...HORMUZ_LIVE_SEED,
+      'energy:jodi-oil:v1:JP': { crude: { importsKbd: JP_CRUDE_IMPORTS_KBD }, gasoline: { refOutputKbd: 783.9 } },
+      'energy:iea-oil-stocks:v1:JP': { daysOfCover: 178, netExporter: false, anomaly: false },
+      ...partnersSeed('JP', JP_TOTAL_2709, JP_PARTNERS_2709),
+    });
+
+    const result = await getCountryCostShock(premiumCtx(), { iso2: 'JP', chokepointId: 'hormuz_strait', hs2: '27' });
+
+    assert.equal(result.hasEnergyModel, false);
+    assert.equal(result.supplyDeficitPct, 0);
+    assert.equal(result.coverageDays, Math.round(178 / JP_GULF_SHARE));
+    assert.match(result.unavailableReason, /supplyDeficitPct is unavailable: no refined-product demand observation for JP/);
+    assert.match(result.unavailableReason, /coverageDays is modelled/);
+  });
 });
