@@ -1101,9 +1101,11 @@ describe('net oil imports (IEA days basis)', () => {
     assert.deepEqual(extractCountryData([...year('NO', 2025, { crudeImp: 0, crudeExp: 1500, prodImp: 100, prodExp: 300 }), ...current('NO', '2026-08')], 'NO').netOilImports, []);
   });
 
-  it("never counts the data month's own year (a data month a year behind)", () => {
-    const rows = [...year('AU', 2025, { crudeImp: 150, crudeExp: 20, prodImp: 900, prodExp: 40 }), ...current('AU', '2025-12')];
-    assert.deepEqual(extractCountryData(rows, 'AU').netOilImports, []);
+  it("counts the data month's own year once it has 9 complete months (IEA in January, JODI at December)", () => {
+    const full = [...year('AU', 2025, { crudeImp: 150, crudeExp: 20, prodImp: 900, prodExp: 40 }), ...current('AU', '2025-12')];
+    assert.deepEqual(extractCountryData(full, 'AU').netOilImports, [{ year: 2025, kbd: 990, months: 12 }]);
+    const partial = [...year('AU', 2025, { crudeImp: 150, crudeExp: 20, prodImp: 900, prodExp: 40 }, 8), ...current('AU', '2025-08')];
+    assert.deepEqual(extractCountryData(partial, 'AU').netOilImports, []);
   });
 
   it('reads the optional lookback primary file, which holds the year IEA counts against each January', () => {

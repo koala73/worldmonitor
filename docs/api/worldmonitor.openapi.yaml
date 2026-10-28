@@ -51121,7 +51121,7 @@ components:
                 gulfCrudeShare:
                     type: number
                     format: double
-                    description: 'Headline: preCrisisBaseline.gulfCrudeShare, a fraction of import value times the route factor; 0 when that baseline is absent or fuel_mode is gas.'
+                    description: 'Headline: preCrisisBaseline.gulfCrudeShare, a fraction of import value (tonnes if national_monthly) times the route factor; 0 when that baseline is absent or fuel_mode is gas.'
                 crudeLossKbd:
                     type: number
                     format: double
@@ -51321,7 +51321,7 @@ components:
                     type: string
                     description: |-
                         "comtrade_monthly" (UN Comtrade import value); "national_monthly" (the importer's own customs or regulator
-                         statistics in tonnes, a volume share; Turkey from EPDK, which files no partners to Comtrade); or
+                         statistics in tonnes, a volume share; Turkey from EPDK, as Turkey files no crude partners to Comtrade); or
                          "comtrade_annual" for the annual partner-share fallback.
                 fromMonth:
                     type: string
@@ -51334,7 +51334,7 @@ components:
                     type: number
                     format: double
                     description: |-
-                        Gulf share of crude import value (not barrels) times the chokepoint route factor: 1.0 for Hormuz and Bab el-Mandeb,
+                        Gulf share of crude import value (tonnes if national_monthly) times the chokepoint route factor: 1.0 for Hormuz and Bab el-Mandeb,
                          0.6 for Suez and 0.7 for Malacca, where it is below the measured Gulf import share.
                 crudeLossKbd:
                     type: number

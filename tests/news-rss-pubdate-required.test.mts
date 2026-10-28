@@ -332,3 +332,47 @@ describe('parseRssXml — named zone abbreviations', () => {
     });
   }
 });
+
+describe('parseRssXml — channel-dated snapshot feeds', () => {
+  // GitHub Trending republishes a daily snapshot: the channel carries the
+  // snapshot date, the items carry none.
+  const itemDate = new Date(RECENT_ISO).toUTCString();
+  const snapshot = (channelDate: string) => `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel>
+    <title>GitHub Daily Trending Repositories</title>
+    <pubDate>${channelDate}</pubDate>
+    <item><title>owner/repo-a</title><link>https://github.com/owner/repo-a</link></item>
+    <item><title>owner/repo-b</title><link>https://github.com/owner/repo-b</link><pubDate>${itemDate}</pubDate></item>
+  </channel></rss>`;
+  const SNAPSHOT_FEED = { url: 'https://example.com/trending.xml', name: 'Trending', channelDated: true } as const;
+  const channelAt = Math.floor((Date.now() - 2 * 3600_000) / 1000) * 1000;
+
+  it('dates an undated item by the channel date when the feed opts in', () => {
+    const result = parseRssXml(snapshot(new Date(channelAt).toUTCString()), SNAPSHOT_FEED, 'tech');
+    assert.equal(result!.droppedUndated, 0);
+    const byTitle = new Map(result!.items.map((item) => [item.title, item.publishedAt]));
+    assert.equal(byTitle.get('owner/repo-a'), channelAt);
+    assert.equal(byTitle.get('owner/repo-b'), Date.parse(itemDate), 'an item date still wins');
+  });
+
+  it('still drops undated items from a feed that has not opted in', () => {
+    const result = parseRssXml(snapshot(new Date(channelAt).toUTCString()), FEED, 'tech');
+    assert.equal(result!.droppedUndated, 1);
+    assert.deepEqual(result!.items.map((item) => item.title), ['owner/repo-b']);
+  });
+
+  it('drops the undated items when the channel date is itself unusable', () => {
+    for (const channelDate of ['', 'not a date', new Date(Date.now() + 3 * 3600_000).toUTCString()]) {
+      const result = parseRssXml(snapshot(channelDate), SNAPSHOT_FEED, 'tech');
+      assert.equal(result!.droppedUndated, 1, `channel date ${JSON.stringify(channelDate)}`);
+    }
+  });
+
+  it('reads the channel date, not an item date, when the channel has none', () => {
+    const xml = wrapRss(`
+      <item><title>Dated</title><link>https://example.com/a</link><pubDate>${itemDate}</pubDate></item>
+      <item><title>Undated</title><link>https://example.com/b</link></item>
+    `);
+    const result = parseRssXml(xml, SNAPSHOT_FEED, 'tech');
+    assert.equal(result!.droppedUndated, 1);
+  });
+});

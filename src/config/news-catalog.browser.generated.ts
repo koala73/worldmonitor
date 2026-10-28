@@ -1936,8 +1936,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         },
         {
           "name": "GitHub Trending",
-          "url": "https://mshibanami.github.io/GitHubTrendingRSS/daily/all.xml",
-          "browserOnly": true
+          "url": "https://mshibanami.github.io/GitHubTrendingRSS/daily/all.xml"
         },
         {
           "name": "YC Launches",

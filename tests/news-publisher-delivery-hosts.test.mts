@@ -10,6 +10,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
+import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds';
 import catalog from '../shared/news-catalog.json' with { type: 'json' };
 import { publisherFamilyFor, PUBLISHER_FAMILY_DOMAIN_TABLE } from '../shared/publisher-families.js';
 
@@ -80,5 +81,35 @@ describe('every server feed on a delivery host names its publisher domains', () 
       if (!domains?.length) missing.push(`${feed.name} (${host})`);
     }
     assert.deepEqual(missing, [], 'add a family with the domains these publishers link to in shared/publisher-families.js and the relay gate');
+  });
+});
+
+describe('publisher-link gate: a feed that lists other owners links to the hosts its catalog entry names', () => {
+  // GitHub Trending's feed is on mshibanami.github.io and links to repositories
+  // on github.com. github.com hosts many owners, so it cannot be a publisher
+  // family domain; the catalog entry names it for this feed alone.
+  const trending = (Object.values(VARIANT_FEEDS.tech ?? {}).flat() as Array<{ name: string; url: string; linkHosts?: string[] }>)
+    .find((feed) => feed.name === 'GitHub Trending')!;
+  const repo = 'https://github.com/owner/repo';
+  const persisted = (source: string) =>
+    __testing__.storyTrackLinkForPersist({ link: repo, source, originPublisher: '', originPublisherTrusted: false });
+
+  it('the digest fetches GitHub Trending with github.com as its link host', () => {
+    assert.ok(trending, 'GitHub Trending has a server placement');
+    assert.deepEqual(trending.linkHosts, ['github.com']);
+  });
+
+  it('keeps a repository link from that feed, at parse and at persist', () => {
+    const result = __testing__.parseRssXml(rssWithLink(repo), trending, 'tech');
+    assert.equal(result!.items[0]!.link, repo);
+    assert.equal(persisted(trending.name), repo);
+  });
+
+  it('blanks a link to any other host, and a github.com link from a feed without the entry', () => {
+    const elsewhere = __testing__.parseRssXml(rssWithLink('https://evil.example/github.com'), trending, 'tech');
+    assert.equal(elsewhere!.items[0]!.link, '');
+    const unlisted = __testing__.parseRssXml(rssWithLink(repo), { name: 'Some Feed', url: trending.url }, 'tech');
+    assert.equal(unlisted!.items[0]!.link, '');
+    assert.equal(persisted('Some Feed'), '');
   });
 });

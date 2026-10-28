@@ -52,6 +52,7 @@ describe('IEA cover in barrels of net oil imports', () => {
     assert.equal(r.effectiveCoverDays, cover(r, 3113.5));
     assert.ok(r.effectiveCoverDays > cover(r, JP_CRUDE), 'Japan imports products too, so its stock is larger than crude imports imply');
     assert.match(basisNote(r), /JODI 2025 net oil imports \(crude and products\) of 3,113\.5 kb\/d/);
+    assert.match(basisNote(r), /a proxy for the net imports IEA counts days against, which deduct naphtha, adjust for stock changes and convert products to crude-oil equivalent/);
   });
 
   it("takes the year before IEA's own data month, which can lag JODI's across a new year", async (t) => {
