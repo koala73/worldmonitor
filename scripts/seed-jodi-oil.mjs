@@ -31,6 +31,7 @@ import {
   monthPeriodEnd,
   shiftMonth,
 } from './shared/jodi-demand-change.mjs';
+import { CURRENT_FLOWS_WINDOW, PRE_CRISIS_WINDOW } from './shared/hormuz-crisis.js';
 
 loadEnvFile(import.meta.url);
 const require = createRequire(import.meta.url);
@@ -338,6 +339,52 @@ export function computeRefineryYields(byMonth, iso2, dataMonth) {
   return { basis, intakeIssue, startMonth, endMonth: dataMonth, months, products };
 }
 
+const TRADE_FLOWS = { demandKbd: 'TOTDEMO', importsKbd: 'TOTIMPSB', exportsKbd: 'TOTEXPSB' };
+
+/**
+ * Per-product demand, imports and exports averaged over one window of months.
+ * A month without a numeric cell is absent, never zero. A flow needs at least
+ * half the window's months (rounded down, minimum one), else it is null.
+ * Returns null when no month in the window carries any product flow.
+ */
+function productTradeWindow(byMonth, iso2, months) {
+  const minMonths = Math.max(1, Math.floor(months.length / 2));
+  const monthRows = months.map((month) => byMonth.get(month) ?? []);
+  const covered = monthRows.filter((rows) => Object.keys(PUBLISHED_PRODUCTS).some((productCode) =>
+    Object.values(TRADE_FLOWS).some((flow) => pickMonthValue(rows, iso2, productCode, flow, true) !== null))).length;
+  if (covered === 0) return null;
+  const products = {};
+  for (const [productCode, productName] of Object.entries(PUBLISHED_PRODUCTS)) {
+    products[productName] = {};
+    for (const [field, flow] of Object.entries(TRADE_FLOWS)) {
+      const values = monthRows.map((rows) => pickMonthValue(rows, iso2, productCode, flow, true)).filter((v) => v !== null);
+      products[productName][field] = values.length >= minMonths
+        ? Math.round((values.reduce((s, v) => s + v, 0) / values.length) * 10) / 10
+        : null;
+    }
+  }
+  return { startMonth: months[0], endMonth: months[months.length - 1], months: covered, products };
+}
+
+/**
+ * Product trade for the shock model's two baselines (shared/hormuz-crisis.js):
+ * the pre-crisis months, and current flows = the latest CURRENT_FLOWS_WINDOW
+ * months ending at dataMonth, none before its earliest month.
+ */
+export function computeProductTrade(byMonth, iso2, dataMonth) {
+  const preMonths = [];
+  for (let m = PRE_CRISIS_WINDOW.startMonth; m <= PRE_CRISIS_WINDOW.endMonth; m = shiftMonth(m, 1)) preMonths.push(m);
+  const currentMonths = [];
+  for (let offset = CURRENT_FLOWS_WINDOW.months - 1; offset >= 0; offset--) {
+    const month = shiftMonth(dataMonth, -offset);
+    if (month !== null && month >= CURRENT_FLOWS_WINDOW.earliestMonth) currentMonths.push(month);
+  }
+  return {
+    preCrisisBaseline: productTradeWindow(byMonth, iso2, preMonths),
+    currentFlows: currentMonths.length > 0 ? productTradeWindow(byMonth, iso2, currentMonths) : null,
+  };
+}
+
 export function extractCountryData(allRows, iso2) {
   const byMonth = rowsByMonth(allRows, iso2);
 
@@ -411,6 +458,7 @@ export function extractCountryData(allRows, iso2) {
       exportsKbd:        crudeExportsKbd,
     },
     refineryYields: computeRefineryYields(byMonth, iso2, dataMonth),
+    productTrade: computeProductTrade(byMonth, iso2, dataMonth),
     demandChange: oilDemandChangeFromMonths(byMonth, iso2, dataMonth).change,
     seededAt,
   };

@@ -988,9 +988,17 @@ export class MapComponent {
     return legend;
   }
 
+  // A collapsed map (phones start with the map section hidden) has no size, so
+  // render() draws nothing and there is no base layer to verify yet. Reads the
+  // cached size like render() so a visible map takes no forced reflow (#5017).
+  private isCollapsed(): boolean {
+    const { width, height } = this.getKnownContainerSize();
+    return width === 0 || height === 0;
+  }
+
   private runHealthCheck(): void {
     const svgNode = this.svg.node();
-    if (!svgNode) return;
+    if (!svgNode || this.isCollapsed()) return;
 
     // Verify base layer exists and has content
     const baseGroup = svgNode.querySelector('.map-base');
@@ -4989,6 +4997,7 @@ export class MapComponent {
   }
 
   private ensureBaseLayerIntact(): void {
+    if (this.isCollapsed()) return;
     // Query DOM directly instead of relying on cached d3 selection
     const svgNode = this.svg.node();
     const domBaseGroup = svgNode?.querySelector('.map-base');
