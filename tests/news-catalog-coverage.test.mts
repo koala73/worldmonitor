@@ -164,6 +164,45 @@ describe('digests serve the categories that used to need per-feed browser fetche
     }
   });
 
+  it('the tech digest fetches every tech source the browser shows (U6 batch 3)', () => {
+    const fetched = new Set(digestTesting.buildDigestFeedBatches('tech', 'en').batches.flat()
+      .map(entry => `${entry.category}|${entry.feed.name}`));
+    const browserOnly = catalog.feeds.flatMap(feed => feed.placements
+      .filter(p => p.edition === 'tech' && p.browserOrder !== undefined && (!feed.lang || feed.lang === 'en'))
+      .map(p => `${p.category}|${feed.name}`))
+      .filter(key => !fetched.has(key));
+    assert.deepEqual(browserOnly, []);
+    for (const name of ['DevOps.com', 'FwdStart Newsletter']) {
+      const feed = catalog.feeds.find(f => f.name === name);
+      assert.match(feed?.url ?? '', /^https:\/\//, `${name} must have an absolute URL the server can fetch`);
+    }
+  });
+
+  // The pending list is by name, so a source the server fetches in one edition
+  // used to hide a browser placement no digest fetches in another (MIT Tech
+  // Review on the tech edition's tech panel). Panels match items by source
+  // name, and the on-demand edition reads whichever digest carries its category.
+  it('every browser placement of a migrated source is fetched by a digest for that panel', () => {
+    const served = new Map<string, Set<string>>();
+    for (const feed of catalog.feeds) {
+      for (const p of feed.placements) {
+        if (p.serverOrder === undefined) continue;
+        const keys = served.get(feed.name) ?? new Set<string>();
+        keys.add(`${p.edition}|${p.category}`);
+        served.set(feed.name, keys);
+      }
+    }
+    const gaps = catalog.feeds.flatMap(feed => feed.placements
+      .filter(p => p.browserOrder !== undefined && !pending.has(feed.name))
+      .filter((p) => {
+        const keys = served.get(feed.name) ?? new Set<string>();
+        if (keys.has(`${p.edition}|${p.category}`)) return false;
+        return !(p.edition === 'ondemand' && [...keys].some(key => key.endsWith(`|${p.category}`)));
+      })
+      .map(p => `${p.edition}|${p.category}|${feed.name}`));
+    assert.deepEqual(gaps, []);
+  });
+
   it('a Spanish outlet the browser shows in every language builds only in the Spanish digest', () => {
     const latamSources = (lang: string) => digestTesting.buildDigestFeedBatches('full', lang).batches.flat()
       .filter(entry => entry.category === 'latam')

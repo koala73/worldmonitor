@@ -228,7 +228,6 @@ export const CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS: Readonly<
   "EU ISS": { risk: 'unknown', type: 'reviewed' },
   "EU Startups": { risk: 'unknown', type: 'reviewed' },
   "EU Tech Policy": { risk: 'unknown', type: 'unknown' },
-  "Euractiv Digital": { risk: 'unknown', type: 'unknown' },
   "Eurasianet": { risk: 'reviewed', type: 'reviewed' },
   "EuroNews": { risk: 'reviewed', type: 'reviewed' },
   "EV Battery Supply": { risk: 'unknown', type: 'unknown' },

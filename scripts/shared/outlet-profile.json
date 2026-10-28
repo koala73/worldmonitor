@@ -1650,12 +1650,6 @@
     "ownershipClass": "unreviewed",
     "note": "Google News topic query aggregating many publishers; no single owner."
   },
-  "Euractiv Digital": {
-    "country": "BE",
-    "audience": "international",
-    "language": "en",
-    "ownershipClass": "private"
-  },
   "Eurasianet": {
     "country": "US",
     "audience": "international",

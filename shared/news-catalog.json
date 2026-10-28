@@ -2445,7 +2445,8 @@
         {
           "edition": "tech",
           "category": "tech",
-          "browserOrder": 4
+          "browserOrder": 4,
+          "serverOrder": 9
         }
       ]
     },
@@ -2607,7 +2608,8 @@
         {
           "edition": "finance",
           "category": "markets",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 8
         }
       ]
     },
@@ -4488,13 +4490,14 @@
     },
     {
       "name": "CSIS",
-      "url": "https://news.google.com/rss/search?q=site:csis.org&hl=en&gl=US&ceid=US:en",
+      "url": "https://news.google.com/rss/search?q=site:csis.org+when:7d&hl=en&gl=US&ceid=US:en",
       "type": "defense",
       "placements": [
         {
           "edition": "intel",
           "category": "intel",
-          "browserOrder": 11
+          "browserOrder": 11,
+          "serverOrder": 25
         }
       ]
     },
@@ -6423,7 +6426,8 @@
         {
           "edition": "finance",
           "category": "economic",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 1
         }
       ]
     },
@@ -7672,7 +7676,8 @@
         {
           "edition": "tech",
           "category": "tech",
-          "browserOrder": 5
+          "browserOrder": 5,
+          "serverOrder": 8
         }
       ]
     },
@@ -7683,7 +7688,8 @@
         {
           "edition": "tech",
           "category": "tech",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 7
         }
       ]
     },
@@ -7694,7 +7700,8 @@
         {
           "edition": "tech",
           "category": "tech",
-          "browserOrder": 7
+          "browserOrder": 7,
+          "serverOrder": 5
         }
       ]
     },
@@ -7705,7 +7712,8 @@
         {
           "edition": "tech",
           "category": "tech",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 6
         }
       ]
     },
@@ -7716,7 +7724,8 @@
         {
           "edition": "tech",
           "category": "ai",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 8
         }
       ]
     },
@@ -7727,7 +7736,8 @@
         {
           "edition": "tech",
           "category": "ai",
-          "browserOrder": 4
+          "browserOrder": 4,
+          "serverOrder": 7
         }
       ]
     },
@@ -7738,7 +7748,8 @@
         {
           "edition": "tech",
           "category": "ai",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 6
         }
       ]
     },
@@ -7749,7 +7760,8 @@
         {
           "edition": "tech",
           "category": "ai",
-          "browserOrder": 7
+          "browserOrder": 7,
+          "serverOrder": 4
         }
       ]
     },
@@ -7760,7 +7772,8 @@
         {
           "edition": "tech",
           "category": "ai",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 5
         }
       ]
     },
@@ -7771,7 +7784,8 @@
         {
           "edition": "tech",
           "category": "ai",
-          "browserOrder": 9
+          "browserOrder": 9,
+          "serverOrder": 9
         }
       ]
     },
@@ -7782,7 +7796,8 @@
         {
           "edition": "tech",
           "category": "startups",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 7
         }
       ]
     },
@@ -7793,7 +7808,8 @@
         {
           "edition": "tech",
           "category": "startups",
-          "browserOrder": 4
+          "browserOrder": 4,
+          "serverOrder": 3
         }
       ]
     },
@@ -7804,7 +7820,8 @@
         {
           "edition": "tech",
           "category": "startups",
-          "browserOrder": 5
+          "browserOrder": 5,
+          "serverOrder": 8
         }
       ]
     },
@@ -7815,7 +7832,8 @@
         {
           "edition": "tech",
           "category": "startups",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 9
         }
       ]
     },
@@ -7826,7 +7844,8 @@
         {
           "edition": "tech",
           "category": "startups",
-          "browserOrder": 7
+          "browserOrder": 7,
+          "serverOrder": 5
         }
       ]
     },
@@ -7837,7 +7856,8 @@
         {
           "edition": "tech",
           "category": "startups",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 6
         }
       ]
     },
@@ -7848,7 +7868,8 @@
         {
           "edition": "tech",
           "category": "startups",
-          "browserOrder": 9
+          "browserOrder": 9,
+          "serverOrder": 4
         }
       ]
     },
@@ -7859,7 +7880,8 @@
         {
           "edition": "tech",
           "category": "vcblogs",
-          "browserOrder": 4
+          "browserOrder": 4,
+          "serverOrder": 7
         }
       ]
     },
@@ -7870,7 +7892,8 @@
         {
           "edition": "tech",
           "category": "vcblogs",
-          "browserOrder": 5
+          "browserOrder": 5,
+          "serverOrder": 8
         }
       ]
     },
@@ -7881,18 +7904,20 @@
         {
           "edition": "tech",
           "category": "vcblogs",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 6
         }
       ]
     },
     {
       "name": "FwdStart Newsletter",
-      "url": "/api/fwdstart",
+      "url": "https://news.google.com/rss/search?q=site:fwdstart.me+when:7d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "tech",
           "category": "vcblogs",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 5
         }
       ]
     },
@@ -8245,7 +8270,8 @@
         {
           "edition": "tech",
           "category": "github",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 2
         }
       ]
     },
@@ -8256,7 +8282,8 @@
         {
           "edition": "tech",
           "category": "github",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 4
         }
       ]
     },
@@ -8267,7 +8294,8 @@
         {
           "edition": "tech",
           "category": "github",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 1
         }
       ]
     },
@@ -8278,7 +8306,8 @@
         {
           "edition": "tech",
           "category": "github",
-          "browserOrder": 4
+          "browserOrder": 4,
+          "serverOrder": 3
         }
       ]
     },
@@ -8289,7 +8318,8 @@
         {
           "edition": "tech",
           "category": "ipo",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 2
         }
       ]
     },
@@ -8300,7 +8330,8 @@
         {
           "edition": "tech",
           "category": "funding",
-          "browserOrder": 0
+          "browserOrder": 0,
+          "serverOrder": 1
         }
       ]
     },
@@ -8311,7 +8342,8 @@
         {
           "edition": "tech",
           "category": "funding",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 2
         }
       ]
     },
@@ -8322,7 +8354,8 @@
         {
           "edition": "tech",
           "category": "funding",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 3
         }
       ]
     },
@@ -8333,7 +8366,8 @@
         {
           "edition": "tech",
           "category": "security",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 3
         }
       ]
     },
@@ -8344,7 +8378,8 @@
         {
           "edition": "tech",
           "category": "security",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 2
         }
       ]
     },
@@ -8355,7 +8390,8 @@
         {
           "edition": "tech",
           "category": "policy",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 4
         }
       ]
     },
@@ -8369,18 +8405,8 @@
         {
           "edition": "tech",
           "category": "policy",
-          "browserOrder": 4
-        }
-      ]
-    },
-    {
-      "name": "Euractiv Digital",
-      "url": "https://news.google.com/rss/search?q=site:euractiv.com+digital+OR+tech+when:7d&hl=en-US&gl=US&ceid=US:en",
-      "placements": [
-        {
-          "edition": "tech",
-          "category": "policy",
-          "browserOrder": 5
+          "browserOrder": 4,
+          "serverOrder": 6
         }
       ]
     },
@@ -8391,7 +8417,8 @@
         {
           "edition": "tech",
           "category": "policy",
-          "browserOrder": 6
+          "browserOrder": 6,
+          "serverOrder": 5
         }
       ]
     },
@@ -8405,7 +8432,8 @@
         {
           "edition": "tech",
           "category": "policy",
-          "browserOrder": 7
+          "browserOrder": 7,
+          "serverOrder": 3
         }
       ]
     },
@@ -8419,7 +8447,8 @@
         {
           "edition": "tech",
           "category": "policy",
-          "browserOrder": 8
+          "browserOrder": 8,
+          "serverOrder": 8
         }
       ]
     },
@@ -8433,7 +8462,8 @@
         {
           "edition": "tech",
           "category": "policy",
-          "browserOrder": 9
+          "browserOrder": 9,
+          "serverOrder": 7
         }
       ]
     },
@@ -8624,7 +8654,8 @@
         {
           "edition": "tech",
           "category": "finance",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 2
         }
       ]
     },
@@ -8635,18 +8666,20 @@
         {
           "edition": "tech",
           "category": "finance",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 3
         }
       ]
     },
     {
       "name": "DevOps.com",
-      "url": "https://devops.com/feed/",
+      "url": "https://news.google.com/rss/search?q=site:devops.com+when:7d&hl=en-US&gl=US&ceid=US:en",
       "placements": [
         {
           "edition": "tech",
           "category": "cloud",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 2
         }
       ]
     },
@@ -8657,7 +8690,8 @@
         {
           "edition": "tech",
           "category": "unicorns",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 2
         }
       ]
     },
@@ -8668,7 +8702,8 @@
         {
           "edition": "tech",
           "category": "unicorns",
-          "browserOrder": 3
+          "browserOrder": 3,
+          "serverOrder": 3
         }
       ]
     },
@@ -8679,7 +8714,8 @@
         {
           "edition": "tech",
           "category": "accelerators",
-          "browserOrder": 1
+          "browserOrder": 1,
+          "serverOrder": 4
         }
       ]
     },
@@ -8690,7 +8726,8 @@
         {
           "edition": "tech",
           "category": "accelerators",
-          "browserOrder": 2
+          "browserOrder": 2,
+          "serverOrder": 2
         }
       ]
     },
@@ -8701,7 +8738,8 @@
         {
           "edition": "tech",
           "category": "accelerators",
-          "browserOrder": 4
+          "browserOrder": 4,
+          "serverOrder": 3
         }
       ]
     },
