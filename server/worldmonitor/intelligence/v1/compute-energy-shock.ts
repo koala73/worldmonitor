@@ -585,13 +585,22 @@ export async function computeEnergyShockScenario(
       });
       return [{ key, name, label, flows, balance }];
     });
-  const fromWindow = (key: RefineryProductKey) => hasDemand(withNationalDemand(key, preCrisisTrade?.products[key]));
+  // National demand fills a window entry only when JODI reported its trade;
+  // an entry the seeder left all-null would otherwise outrank the latest
+  // month's observed imports and exports.
+  const hasTrade = (flows: ProductTradeFlows | null | undefined) => flows?.importsKbd != null || flows?.exportsKbd != null;
+  const fromWindow = (key: RefineryProductKey) => {
+    const entry = preCrisisTrade?.products[key];
+    return hasDemand(entry) || (hasTrade(entry) && hasDemand(withNationalDemand(key, entry)));
+  };
   const primaryRows = oilModeled
     ? balanceRows((key) => withNationalDemand(key, fromWindow(key) ? preCrisisTrade?.products[key] : latestFlows(key)))
     : [];
 
   if (nationalDemandRaw && !nationalDemandRaw.usable && oilModeled) {
-    limitations.push(`${nationalDemandRaw.source} product demand for ${code} is for ${nationalDemandRaw.year}, more than ${NATIONAL_DEMAND_MAX_AGE_YEARS} years before the ${typeof jodiOil?.dataMonth === 'string' ? jodiOil.dataMonth : 'unknown'} JODI flow month; not used.`);
+    const flowMonth = typeof jodiOil?.dataMonth === 'string' ? jodiOil.dataMonth : 'unknown';
+    const when = nationalDemandRaw.year > Number(flowMonth.slice(0, 4)) ? 'after' : `more than ${NATIONAL_DEMAND_MAX_AGE_YEARS} years before`;
+    limitations.push(`${nationalDemandRaw.source} product demand for ${code} is for ${nationalDemandRaw.year}, ${when} the ${flowMonth} JODI flow month; not used.`);
   }
 
   const products: ProductImpact[] = primaryRows.map((row) => ({
@@ -625,7 +634,7 @@ export async function computeEnergyShockScenario(
     }
     const nationalLabels = nationalDemand ? primaryRows.filter((row) => !jodiHasDemand(row.key)).map((row) => row.label) : [];
     if (nationalDemand && nationalLabels.length > 0) {
-      limitations.push(`Product demand for ${code}: ${nationalDemand.source} ${nationalDemand.year} annual final consumption for ${nationalLabels.join(', ')}, converted to kb/d; JODI reports no demand for them. Final consumption excludes fuel burned for power generation and refinery own use.`);
+      limitations.push(`Product demand for ${code}: ${nationalDemand.source} ${nationalDemand.year} annual final consumption for ${nationalLabels.join(', ')}, converted to kb/d; JODI reports no demand for them in the pre-crisis window or the latest month. Final consumption excludes fuel burned for power generation and refinery own use.`);
     }
     if (gulfImportLossFactor != null) {
       const year = gulfProductShare.year != null ? ` ${gulfProductShare.year}` : '';

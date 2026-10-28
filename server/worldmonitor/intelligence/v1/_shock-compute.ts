@@ -348,7 +348,7 @@ export interface NationalProductDemand {
   source: string;
   year: number;
   products: Partial<Record<RefineryProductKey, number>>;
-  /** False when the year is more than NATIONAL_DEMAND_MAX_AGE_YEARS before the flow month. */
+  /** False when the year is after the flow month's or more than NATIONAL_DEMAND_MAX_AGE_YEARS before it. */
   usable: boolean;
 }
 
@@ -372,7 +372,7 @@ export function parseNationalProductDemand(
     source: typeof entry.source === 'string' && entry.source ? entry.source : 'national statistics',
     year,
     products,
-    usable: flowYear != null && flowYear - year <= NATIONAL_DEMAND_MAX_AGE_YEARS,
+    usable: flowYear != null && flowYear - year >= 0 && flowYear - year <= NATIONAL_DEMAND_MAX_AGE_YEARS,
   };
 }
 
