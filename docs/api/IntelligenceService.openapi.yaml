@@ -3746,7 +3746,7 @@ paths:
                         - 'bab_el_mandeb'
                 - name: disruption_pct
                   in: query
-                  description: Percent of chokepoint flow disrupted, from 0 to 100.
+                  description: Percent of chokepoint flow disrupted, from 10 to 100. The handler clamps other values into that range, so 0 or an omitted value models 10.
                   required: false
                   example: 1
                   schema:
@@ -9763,7 +9763,7 @@ components:
                 disruptionPct:
                     type: integer
                     format: int32
-                    description: Percent of chokepoint flow disrupted, from 0 to 100.
+                    description: Percent of chokepoint flow disrupted, from 10 to 100. The handler clamps other values into that range, so 0 or an omitted value models 10.
                 fuelMode:
                     type: string
                     description: 'Fuel mode to model: "oil", "gas", or "both". Defaults to "oil".'
@@ -9975,7 +9975,9 @@ components:
                 gulfCrudeShare:
                     type: number
                     format: double
-                    description: Gulf share of crude imports times the chokepoint route factor (1.0 for Hormuz).
+                    description: |-
+                        Gulf share of crude import value (not barrels) times the chokepoint route factor: 1.0 for Hormuz, below 1 on other
+                         routes, where it is not the measured Gulf import share.
                 crudeLossKbd:
                     type: number
                     format: double

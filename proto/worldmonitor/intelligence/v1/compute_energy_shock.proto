@@ -8,7 +8,7 @@ message ComputeEnergyShockScenarioRequest {
   string country_code   = 1 [(sebuf.http.query) = {name: "country_code"}];
   // Chokepoint identifier to model as disrupted.
   string chokepoint_id  = 2 [(sebuf.http.query) = {name: "chokepoint_id"}];
-  // Percent of chokepoint flow disrupted, from 0 to 100.
+  // Percent of chokepoint flow disrupted, from 10 to 100. The handler clamps other values into that range, so 0 or an omitted value models 10.
   int32  disruption_pct = 3 [(sebuf.http.query) = {name: "disruption_pct"}];
   // Fuel mode to model: "oil", "gas", or "both". Defaults to "oil".
   string fuel_mode      = 4 [(sebuf.http.query) = {name: "fuel_mode"}];
@@ -93,7 +93,8 @@ message CrudeShareBaseline {
   string from_month = 2;
   string to_month = 3;
   int32 months_covered = 4;
-  // Gulf share of crude imports times the chokepoint route factor (1.0 for Hormuz).
+  // Gulf share of crude import value (not barrels) times the chokepoint route factor: 1.0 for Hormuz, below 1 on other
+  // routes, where it is not the measured Gulf import share.
   double gulf_crude_share = 5;
   // Loss at disruption_pct; 0 when the loss is not modeled (see limitations).
   double crude_loss_kbd = 6;
