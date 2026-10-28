@@ -2948,3 +2948,53 @@ describe('confirmed deck.gl loop-stop reports', () => {
   }
 });
 
+// ─── WORLDMONITOR-1A2: ReferenceError from an anonymous-only stack ─────────
+//
+// `Clerk is not defined` (Chrome 156 / macOS, onunhandledrejection) carried
+// two `<anonymous>:1` frames and nothing else: an injected script or a DevTools
+// console snippet naming a bare `Clerk` global. Our code reaches Clerk only as
+// `window.Clerk` (a property read, never a ReferenceError), and nothing in
+// src/ or shared/ evaluates code at runtime (no eval / new Function), so every
+// ReferenceError our bundle can raise carries a bundle or page-URL frame. The
+// gate is the stack invariant, not the identifier, so the next injected global
+// does not need its own ignoreErrors entry.
+describe('beforeSend — ReferenceError with only <anonymous> frames (WORLDMONITOR-1A2)', () => {
+  const anon = () => ({ filename: '<anonymous>', lineno: 1, function: '?' });
+
+  it('suppresses the production "Clerk is not defined" shape', () => {
+    assert.equal(
+      beforeSend(makeEvent('Clerk is not defined', 'ReferenceError', [anon(), anon()])),
+      null,
+    );
+  });
+
+  it('keeps a ReferenceError raised from a first-party bundle frame', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError', [anon(), firstPartyFrame()])));
+  });
+
+  it('keeps a ReferenceError from an inline page script (document URL frame)', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError',
+      [{ filename: 'https://www.worldmonitor.app/', lineno: 12, function: '?' }])));
+  });
+
+  // The TypeError gate above also accepts blob: and filename-less frames; this
+  // gate must not, so copying that wider condition here goes red.
+  it('keeps a ReferenceError with a blob: frame beside an <anonymous> one', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError',
+      [anon(), { filename: 'blob:https://www.worldmonitor.app/3f2a', lineno: 1, function: '?' }])));
+  });
+
+  it('keeps a ReferenceError with a filename-less frame beside an <anonymous> one', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError',
+      [anon(), { lineno: 1, function: '?' }])));
+  });
+
+  it('keeps a ReferenceError with no frames at all', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError', [])));
+  });
+
+  it('keeps an anonymous-only Error that is not a ReferenceError', () => {
+    assert.ok(beforeSend(makeEvent('Clerk failed to load', 'Error', [anon()])));
+  });
+});
+
