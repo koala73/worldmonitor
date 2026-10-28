@@ -61,7 +61,8 @@ function memoryStore() {
 
 function authorizeDeps(store = memoryStore(), overrides: Partial<DesktopAuthorizeDeps> = {}): DesktopAuthorizeDeps {
   return {
-    resolveSession: async () => ({ userId: 'user_123', sessionId: 'sess_123' }),
+    resolveSession: async () => ({ userId: 'user_123', orgId: null, role: 'pro', sessionId: 'sess_123' }),
+    verifySession: async () => 'active',
     storeCode: store.store,
     rateLimit: async () => null,
     audit: () => {},
@@ -118,6 +119,69 @@ describe('POST /api/desktop-auth/authorize', () => {
       authorizeDeps(store, { resolveSession: async () => null }),
     );
     assert.equal(response.status, 401);
+    assert.equal(store.records.size, 0);
+  });
+
+  it('refuses a bearer without a session id before the rate limit or Clerk', async () => {
+    const store = memoryStore();
+    let limited = 0;
+    let checks = 0;
+    const response = await desktopAuthAuthorizeHandler(
+      post('authorize', { code_challenge: CHALLENGE }),
+      authorizeDeps(store, {
+        resolveSession: async () => ({ userId: 'user_123', orgId: null, role: 'pro', sessionId: null }),
+        rateLimit: async () => { limited += 1; return null; },
+        verifySession: async () => { checks += 1; return 'active'; },
+      }),
+    );
+    assert.equal(response.status, 401);
+    assert.equal(limited, 0);
+    assert.equal(checks, 0);
+    assert.equal(store.records.size, 0);
+  });
+
+  it('applies the per-user rate limit before the Clerk session check', async () => {
+    const store = memoryStore();
+    let checks = 0;
+    const response = await desktopAuthAuthorizeHandler(
+      post('authorize', { code_challenge: CHALLENGE }),
+      authorizeDeps(store, {
+        rateLimit: async () => new Response('{}', { status: 429 }),
+        verifySession: async () => { checks += 1; return 'active'; },
+      }),
+    );
+    assert.equal(response.status, 429);
+    assert.equal(checks, 0, 'a limited caller never spends the Clerk quota');
+    assert.equal(store.records.size, 0);
+  });
+
+  it('refuses a session Clerk reports inactive, and stores nothing', async () => {
+    const store = memoryStore();
+    const checks: Array<[string, string]> = [];
+    const events: Array<Record<string, unknown>> = [];
+    const response = await desktopAuthAuthorizeHandler(
+      post('authorize', { code_challenge: CHALLENGE }),
+      authorizeDeps(store, {
+        verifySession: async (sessionId, userId) => { checks.push([sessionId, userId]); return 'inactive'; },
+        audit: (event) => events.push(event),
+      }),
+    );
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { error: 'unauthenticated' });
+    assert.deepEqual(checks, [['sess_123', 'user_123']]);
+    assert.equal(events.at(-1)?.outcome, 'session_inactive');
+    assert.equal(store.records.size, 0);
+  });
+
+  it('fails closed with a retryable 503 when the session check is unavailable', async () => {
+    const store = memoryStore();
+    const response = await desktopAuthAuthorizeHandler(
+      post('authorize', { code_challenge: CHALLENGE }),
+      authorizeDeps(store, { verifySession: async () => 'unavailable' }),
+    );
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('retry-after'), '5');
+    assert.equal(response.headers.get('cache-control'), 'no-store');
     assert.equal(store.records.size, 0);
   });
 
@@ -253,21 +317,23 @@ describe('POST /api/desktop-auth/token', () => {
     assert.equal(store.records.size, 0, 'the code is burned');
   });
 
-  it('fails closed with 503 when the session check is unavailable, and does not mint', async () => {
+  it('fails closed with 503 when the session check is unavailable, does not mint, and does not invite a retry of a burned code', async () => {
     const store = memoryStore();
     const code = await authorize(store);
     let minted = 0;
-    const response = await desktopAuthTokenHandler(
-      post('token', { code, code_verifier: VERIFIER }),
-      tokenDeps(store, {
-        verifySession: async () => 'unavailable',
-        mintTicket: async () => { minted += 1; return { kind: 'ticket', ticket: 't' }; },
-      }),
-    );
+    const deps = tokenDeps(store, {
+      verifySession: async () => 'unavailable',
+      mintTicket: async () => { minted += 1; return { kind: 'ticket', ticket: 't' }; },
+    });
+    const response = await desktopAuthTokenHandler(post('token', { code, code_verifier: VERIFIER }), deps);
     assert.equal(response.status, 503);
-    assert.equal(response.headers.get('retry-after'), '5');
-    assert.deepEqual(await response.json(), { error: 'service_unavailable' });
+    assert.equal(response.headers.get('retry-after'), null, 'GETDEL burned the code; the browser flow must restart');
+    assert.deepEqual(await response.json(), { error: 'session_check_unavailable' });
     assert.equal(minted, 0);
+
+    const retry = await desktopAuthTokenHandler(post('token', { code, code_verifier: VERIFIER }), deps);
+    assert.equal(retry.status, 400);
+    assert.deepEqual(await retry.json(), { error: 'invalid_grant' });
   });
 
   it('checks the session only after the verifier matched', async () => {

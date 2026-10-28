@@ -96,11 +96,13 @@ export async function desktopAuthTokenHandler(
   }
 
   // The code was bound to a live session at /authorize; it may have been
-  // signed out since. Fail closed when Clerk cannot answer: no answer, no ticket.
+  // signed out since. Fail closed when Clerk cannot answer: no answer, no
+  // ticket. GETDEL has already burned the code, so a retry of this exchange
+  // cannot succeed — no Retry-After; the desktop restarts the browser flow.
   const liveness = await deps.verifySession(record.sessionId, record.userId);
   if (liveness === 'unavailable') {
     audit('session_check_unavailable', record.userId);
-    return jsonResponse({ error: 'service_unavailable' }, 503, { ...cors, 'Retry-After': '5' });
+    return jsonResponse({ error: 'session_check_unavailable' }, 503, cors);
   }
   if (liveness !== 'active') {
     audit('session_inactive', record.userId);

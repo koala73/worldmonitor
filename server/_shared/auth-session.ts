@@ -86,6 +86,20 @@ export async function resolveSessionUserId(request: Request): Promise<string | R
 }
 
 /**
+ * The bearer's identity from the local JWKS check alone — no outbound call —
+ * as the retryable-denial contract: null = 401, Response = the token could not
+ * be verified. Cheap enough to gate a per-user rate limiter; a route that then
+ * needs the session live calls `verifyClerkSessionActive` on `sessionId` after
+ * the limiter, so a limited caller never spends the shared Clerk quota.
+ */
+export async function resolveVerifiedClerkSession(request: Request): Promise<ClerkSession | Response | null> {
+  const session = await resolveClerkSession(request);
+  if (!session) return null;
+  if ('reason' in session) return sessionVerificationUnavailableResponse();
+  return session;
+}
+
+/**
  * Like `resolveClerkSession`, but the session must still be live at Clerk.
  *
  * For routes that trade the bearer for a credential that outlives it (the

@@ -171,6 +171,80 @@ describe("createApiKey session liveness", () => {
     expect(stored[0]).toMatchObject({ userId: "user-api", keyHash: makeKeyArgs(1).keyHash });
   });
 
+  describe("per-caller lookup budget", () => {
+    const REDIS = "https://redis.test.invalid";
+    const saved = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
+    beforeEach(() => {
+      process.env.UPSTASH_REDIS_REST_URL = REDIS;
+      process.env.UPSTASH_REDIS_REST_TOKEN = "redis-token";
+    });
+    afterEach(() => {
+      if (saved.url === undefined) delete process.env.UPSTASH_REDIS_REST_URL; else process.env.UPSTASH_REDIS_REST_URL = saved.url;
+      if (saved.token === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN; else process.env.UPSTASH_REDIS_REST_TOKEN = saved.token;
+    });
+
+    /** An Upstash pipeline that counts INCR per key, or answers as told. */
+    function redis(answer?: { httpStatus: number } | { throws: Error }) {
+      const counts = new Map<string, number>();
+      const pipelines: unknown[] = [];
+      const next = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (url !== `${REDIS}/pipeline`) throw new Error(`unexpected fetch ${url}`);
+        if (answer && "throws" in answer) throw answer.throws;
+        if (answer) return new Response("", { status: answer.httpStatus });
+        const commands = JSON.parse(String(init?.body)) as Array<[string, string, ...unknown[]]>;
+        pipelines.push(commands);
+        const key = commands[0]![1];
+        const count = (counts.get(key) ?? 0) + 1;
+        counts.set(key, count);
+        return Response.json([{ result: count }, { result: 1 }]);
+      }) as typeof fetch;
+      return { next, counts, pipelines };
+    }
+
+    test("the 11th lookup in a window is refused before Clerk is asked", async () => {
+      const t = convexTest(schema, modules);
+      await seedApiEntitlement(t, "user-api");
+      const store = redis();
+      const clerk = clerkSessionFetch({ next: store.next });
+      vi.stubGlobal("fetch", clerk);
+
+      for (let n = 1; n <= 10; n++) {
+        await t.withIdentity(API_USER).action(api.apiKeys.createApiKey, makeKeyArgs(n)).catch(() => {});
+      }
+      expect(clerk.calls).toHaveLength(10);
+      expect(store.pipelines[0]).toEqual([["INCR", "clerk-liveness:user-api"], ["EXPIRE", "clerk-liveness:user-api", 600, "NX"]]);
+
+      await expect(
+        t.withIdentity(API_USER).action(api.apiKeys.createApiKey, makeKeyArgs(11)),
+      ).rejects.toThrow(/SESSION_CHECK_RATE_LIMITED/);
+      expect(clerk.calls).toHaveLength(10);
+      expect(store.counts.get("clerk-liveness:user-api")).toBe(11);
+      // Another account has its own budget.
+      await seedApiEntitlement(t, "user-other");
+      await t.withIdentity(OTHER_USER).action(api.apiKeys.createApiKey, makeKeyArgs(12));
+      expect(clerk.calls).toHaveLength(11);
+    });
+
+    test.each([
+      ["answers 5xx", { httpStatus: 503 }],
+      ["is unreachable", { throws: new TypeError("fetch failed") }],
+    ] as const)("fails open when the counter store %s: Clerk still decides", async (_label, answer) => {
+      const t = convexTest(schema, modules);
+      await seedApiEntitlement(t, "user-api");
+      const clerk = clerkSessionFetch({
+        next: redis(answer).next,
+        sessions: { [sessionIdFor("user-api")]: { status: "revoked" } },
+      });
+      vi.stubGlobal("fetch", clerk);
+
+      await expect(
+        t.withIdentity(API_USER).action(api.apiKeys.createApiKey, makeKeyArgs(1)),
+      ).rejects.toThrow(/AUTH_REQUIRED/);
+      expect(clerk.calls).toHaveLength(1);
+    });
+  });
+
   test("a desktop key is gated the same way", async () => {
     const t = convexTest(schema, modules);
     process.env.DESKTOP_KEYS_ENABLED = "true";

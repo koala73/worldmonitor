@@ -2001,6 +2001,9 @@ export class UnifiedSettings {
     if (raw.includes('SESSION_VERIFICATION_UNAVAILABLE')) {
       return 'Could not confirm your session. Try again in a moment.';
     }
+    if (raw.includes('SESSION_CHECK_RATE_LIMITED')) {
+      return 'Too many attempts. Wait a few minutes, then try again.';
+    }
     if (raw.includes('AUTH_REQUIRED')) {
       return 'Your session is no longer signed in. Sign in again to create a key.';
     }

@@ -101,20 +101,21 @@ function post(url: string, body: unknown, bearer?: string): Request {
 }
 
 describe('desktop sign-in: a revoked Clerk session cannot be laundered into a ticket', async () => {
-  const { resolveLiveClerkSession } = await import('../server/_shared/auth-session.ts');
+  const { resolveVerifiedClerkSession } = await import('../server/_shared/auth-session.ts');
   const { verifyClerkSessionActive } = await import('../server/auth-session.ts');
   const { desktopAuthAuthorizeHandler } = await import('../api/desktop-auth/authorize.ts');
   const { desktopAuthTokenHandler } = await import('../api/desktop-auth/token.ts');
   const { mintClerkSignInTicket } = await import('../api/_desktop-auth.ts');
 
-  function flow() {
+  function flow(rateLimit: () => Promise<Response | null> = async () => null) {
     const records = new Map<string, DesktopAuthCodeRecord>();
     const authorize = (bearer: string) => desktopAuthAuthorizeHandler(
       post('https://api.worldmonitor.app/api/desktop-auth/authorize', { code_challenge: CHALLENGE }, bearer),
       {
-        resolveSession: resolveLiveClerkSession,
+        resolveSession: resolveVerifiedClerkSession,
+        verifySession: verifyClerkSessionActive,
         storeCode: async (key, record) => { records.set(key, record); return true; },
-        rateLimit: async () => null,
+        rateLimit,
         audit: () => {},
       },
     );
@@ -157,6 +158,15 @@ describe('desktop sign-in: a revoked Clerk session cannot be laundered into a ti
     assert.equal(response.status, 401);
     assert.equal(records.size, 0);
     assert.equal(sessionCalls().length, 0);
+  });
+
+  it('rate-limits on the locally verified identity before any Clerk call', async () => {
+    clerk.sessions.set('sess_live', { status: 'active' });
+    const { records, authorize } = flow(async () => new Response('{}', { status: 429 }));
+    const response = await authorize(await signToken({ sid: 'sess_live' }));
+    assert.equal(response.status, 429);
+    assert.equal(sessionCalls().length, 0, 'a limited caller never spends the Clerk quota');
+    assert.equal(records.size, 0);
   });
 
   it('refuses a sid Clerk does not know', async () => {
@@ -207,7 +217,9 @@ describe('desktop sign-in: a revoked Clerk session cannot be laundered into a ti
     clerk.sessions.set('sess_live', { httpStatus: 502 });
     const redeemed = await token(code);
     assert.equal(redeemed.status, 503);
-    assert.equal(redeemed.headers.get('retry-after'), '5');
+    assert.deepEqual(await redeemed.json(), { error: 'session_check_unavailable' });
+    // The code is single-use and already burned: no Retry-After, restart instead.
+    assert.equal(redeemed.headers.get('retry-after'), null);
     assert.equal(mintCalls().length, 0);
   });
 

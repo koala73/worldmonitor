@@ -42,12 +42,54 @@ export async function verifyClerkSessionActive(sessionId: string, userId: string
   }
 }
 
+/** Clerk session lookups one account may force per window (matches the desktop /authorize limit). */
+const CLERK_LIVENESS_BUDGET = 10;
+const CLERK_LIVENESS_WINDOW_SECONDS = 600;
+
+/**
+ * Per-caller budget for the uncached lookup above.
+ *
+ * A public action that calls `requireLiveClerkSession` is reachable by any
+ * signed-in client, and every call spends one request of the instance-wide
+ * Clerk Backend API quota. Without a ceiling one account could drive that
+ * quota to 429 and fail every other user's session check closed. Counted in
+ * the shared Upstash Redis (raw key, like the edge limiters). Fails open when
+ * the counter store is absent or unreachable: this bounds abuse, it is not an
+ * authorization decision — the liveness check itself still runs.
+ */
+export async function consumeClerkLivenessBudget(userId: string): Promise<boolean> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return true;
+  const key = `clerk-liveness:${userId}`;
+  try {
+    const response = await fetch(`${url}/pipeline`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "worldmonitor-convex/1.0" },
+      body: JSON.stringify([
+        ["INCR", key],
+        ["EXPIRE", key, CLERK_LIVENESS_WINDOW_SECONDS, "NX"],
+      ]),
+      signal: AbortSignal.timeout(CLERK_SESSION_TIMEOUT_MS),
+    });
+    if (!response.ok) return true;
+    const results = (await response.json()) as Array<{ result?: unknown }>;
+    const count = results[0]?.result;
+    return typeof count !== "number" || count <= CLERK_LIVENESS_BUDGET;
+  } catch (err) {
+    // sentry-coverage-ok a counter outage must not block sign-in; the Clerk check below still decides.
+    console.warn("[clerk-session] liveness budget unavailable:", err instanceof Error ? err.message : String(err));
+    return true;
+  }
+}
+
 /**
  * The caller's userId, only once Clerk confirms the token's session is live.
  *
  * Actions only: a mutation cannot reach Clerk. Throws `AUTH_REQUIRED` when
  * there is no identity, no `sid`, or the session is no longer active (sign in
- * again is the fix), and `SESSION_VERIFICATION_UNAVAILABLE` when Clerk could
+ * again is the fix), `SESSION_CHECK_RATE_LIMITED` when this account has used
+ * its lookup budget, and `SESSION_VERIFICATION_UNAVAILABLE` when Clerk could
  * not answer — fail closed, never mint on a guess.
  */
 export async function requireLiveClerkSession(ctx: ActionCtx): Promise<string> {
@@ -61,6 +103,10 @@ export async function requireLiveClerkSession(ctx: ActionCtx): Promise<string> {
   // non-OIDC claims on the identity. Absent means this is not a session token.
   const sessionId = identity.sid;
   if (typeof sessionId !== "string" || !sessionId) throw new ConvexError("AUTH_REQUIRED");
+  // Network-free identity keys the budget, so the budget runs before Clerk.
+  if (!(await consumeClerkLivenessBudget(identity.subject))) {
+    throw new ConvexError("SESSION_CHECK_RATE_LIMITED");
+  }
   const check = await verifyClerkSessionActive(sessionId, identity.subject);
   if (check === "unavailable") throw new ConvexError("SESSION_VERIFICATION_UNAVAILABLE");
   if (check !== "active") throw new ConvexError("AUTH_REQUIRED");

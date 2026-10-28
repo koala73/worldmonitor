@@ -470,6 +470,8 @@ describe('generation-scoped Convex auth handoff', () => {
     await flushMicrotasks();
 
     await createRejected;
+    // createApiKey is a Convex action (it re-checks the Clerk session live).
+    assert.equal(fake.actions.length, 0, 'no account-bound action may cross the switch');
     assert.equal(fake.mutations.length, 0, 'no account-bound mutation may cross the switch');
 
     fake.authConfigs[1].onChange(true);
@@ -557,20 +559,22 @@ describe('generation-scoped Convex auth handoff', () => {
     } as never);
     const fake = installFakeClient();
     fake.authConfigs[0].onChange(true);
-    const mutation = deferred<{
+    // createApiKey is a Convex action (it re-checks the Clerk session live
+    // before writing the row); the account guard wraps it the same way.
+    const action = deferred<{
       id: string;
       name: string;
       keyPrefix: string;
     }>();
-    fake.mutationResult = mutation.promise;
+    fake.actionResult = action.promise;
 
     const rejected = assert.rejects(
       createApiKey('A key'),
       /Account changed while creating the API key/,
     );
-    await waitForCalls(fake.mutations, 1);
+    await waitForCalls(fake.actions, 1);
 
-    mutation.resolve({ id: 'key_a', name: 'A key', keyPrefix: 'wm_a' });
+    action.resolve({ id: 'key_a', name: 'A key', keyPrefix: 'wm_a' });
     queueMicrotask(() => {
       __setClerkInstanceForTests({
         session: { getToken: async () => 'token-b' },
@@ -579,7 +583,8 @@ describe('generation-scoped Convex auth handoff', () => {
     });
 
     await rejected;
-    assert.equal(fake.mutations.length, 1, 'the A mutation completed, but its plaintext stayed discarded');
+    assert.equal(fake.actions.length, 1, 'the A action completed, but its plaintext stayed discarded');
+    assert.equal(fake.mutations.length, 0);
   });
 
   it('rejects a notice acknowledgement when the identity-bound auth gate fails', async () => {

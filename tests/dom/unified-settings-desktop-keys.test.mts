@@ -385,6 +385,7 @@ describe('Settings -> API Keys: desktop key lifecycle', () => {
     // Issuance re-checks the Clerk session is live (Strix 2026-10-27).
     ['AUTH_REQUIRED', 'Your session is no longer signed in. Sign in again'],
     ['SESSION_VERIFICATION_UNAVAILABLE', 'Could not confirm your session. Try again'],
+    ['SESSION_CHECK_RATE_LIMITED', 'Too many attempts. Wait a few minutes'],
   ])('maps %s to a clear message', async (code, message) => {
     createApiKey.mockImplementationOnce(async () => {
       throw new Error(`[CONVEX M(apiKeys:createApiKey)] Uncaught ConvexError: ${code}`);
