@@ -668,13 +668,17 @@ export const getDigestRules = internalQuery({
 // legacy accounts with seven ~900 KB rows each would exceed the transaction
 // limit in one page — and a `take(n)` per user would miss an AI-digest opt-out
 // on the (n+1)th row of an over-cap legacy account.
+//
+// `now` comes from the caller and must be identical on every page: a Convex
+// cursor is bound to its query, and a range bound read from the clock inside
+// each page made page 2 a different query (InvalidCursor, Sentry
+// WORLDMONITOR-19Z).
 export const listPaidUserIds = internalQuery({
-  args: pageArgs,
+  args: { ...pageArgs, now: v.number() },
   handler: async (ctx, args) => {
-    const now = Date.now();
     const result = await ctx.db
       .query("entitlements")
-      .withIndex("by_validUntil", (q) => q.gte("validUntil", now))
+      .withIndex("by_validUntil", (q) => q.gte("validUntil", args.now))
       .paginate({ cursor: args.cursor, numItems: clampPageItems(args.numItems), maximumBytesRead: RULES_PAGE_MAX_BYTES });
     return {
       page: result.page

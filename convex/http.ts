@@ -1401,8 +1401,10 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
+    // One clock read for the whole scan: every page must run the same query.
+    const now = Date.now();
     const [paidUserIds, flags] = await Promise.all([
-      collectPages<string>((cursor) => ctx.runQuery((internal as any).alertRules.listPaidUserIds, { cursor })),
+      collectPages<string>((cursor) => ctx.runQuery((internal as any).alertRules.listPaidUserIds, { cursor, now })),
       collectPages<BriefRuleFlags>((cursor) => ctx.runQuery((internal as any).alertRules.listBriefRuleFlags, { cursor })),
     ]);
     const userIds = briefOnlyUserIds(paidUserIds, flags);
