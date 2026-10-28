@@ -18,18 +18,40 @@ export function postProcessAnalystHtml(html: string): string {
     .replace(PLAIN_CAPS_RE, '<div class="chat-section-header">$1</div>');
 }
 
-const FENCE_RE = /^ {0,3}```/gm;
+const FENCE_OPEN_RE = /^ {0,3}(`{3,}|~{3,})/;
 const INLINE_CODE_RE = /`[^`\n]*`/g;
 const BULLET_STAR_RE = /^( {0,3})\*(?=\s)/gm;
 const TRAILING_STARS_RE = /\*+$/;
 
 /**
+ * Blank out (same length) fenced code blocks, so their asterisks are not paired
+ * with prose markers. Returns the fence a still-open block needs to close it:
+ * the opener's character, at least the opener's length (CommonMark 4.5).
+ */
+function maskFencedCode(text: string): { masked: string; openFence: string | null } {
+  let open: { char: string; length: number } | null = null;
+  const lines = text.split('\n').map((line) => {
+    if (open) {
+      const closer = new RegExp(`^ {0,3}${open.char}{${open.length},}\\s*$`);
+      if (closer.test(line)) open = null;
+      return ' '.repeat(line.length);
+    }
+    const opener = FENCE_OPEN_RE.exec(line);
+    if (!opener) return line;
+    open = { char: opener[1]![0]!, length: opener[1]!.length };
+    return ' '.repeat(line.length);
+  });
+  const fence = open as { char: string; length: number } | null;
+  return { masked: lines.join('\n'), openFence: fence ? fence.char.repeat(fence.length) : null };
+}
+
+/**
  * Blank out (same length) everything that is not an emphasis marker, so marker
- * positions in the result index straight into the original text: inline code
- * spans and `* ` list bullets.
+ * positions in the result index straight into the original text: fenced code,
+ * inline code spans and `* ` list bullets.
  */
 function maskNonEmphasis(text: string): string {
-  return text
+  return maskFencedCode(text).masked
     .replace(INLINE_CODE_RE, (span) => ' '.repeat(span.length))
     .replace(BULLET_STAR_RE, '$1 ');
 }
@@ -50,7 +72,8 @@ function openEmphasis(text: string): { bold: number; italic: number } {
  * Make a partial (still streaming) analyst answer safe to run through marked,
  * so the streaming bubble shows formatted text instead of raw markers.
  *
- * - An open code fence is closed, so the partial code renders as a block.
+ * - An open code fence is closed with a matching fence, so the partial code
+ *   renders as a block. Markers inside fenced or inline code are ignored.
  * - A trailing run of asterisks that does not close an open `**` or `*` run
  *   (the first half of a `**` split across chunks, or an opener with no text
  *   yet) is dropped.
@@ -61,7 +84,8 @@ function openEmphasis(text: string): { bold: number; italic: number } {
  * Only the display copy is balanced; the accumulated answer is left untouched.
  */
 export function balanceStreamingMarkdown(text: string): string {
-  if ((text.match(FENCE_RE) ?? []).length % 2 === 1) return `${text}\n\`\`\``;
+  const { openFence } = maskFencedCode(text);
+  if (openFence) return `${text}\n${openFence}`;
 
   let out = text.trimEnd();
   const trailing = TRAILING_STARS_RE.exec(out);

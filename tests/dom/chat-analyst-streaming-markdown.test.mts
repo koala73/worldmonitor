@@ -190,6 +190,11 @@ describe('balanceStreamingMarkdown', () => {
     ['**Bold *ital', '**Bold *ital***'],
     ['*Ital **bo', '*Ital **bo***'],
     ['**Bold** and *ital*', '**Bold** and *ital*'],
+    ['````\ncode', '````\ncode\n````'],
+    ['~~~\ncode', '~~~\ncode\n~~~'],
+    ['````\n```\nstill code', '````\n```\nstill code\n````'],
+    ['```python\nresult = a ** b\n```\n\n**Result', '```python\nresult = a ** b\n```\n\n**Result**'],
+    ['```\nx = *p\n```\n\nOil is *volatile*', '```\nx = *p\n```\n\nOil is *volatile*'],
   ])('%j -> %j', (input, expected) => {
     expect(balanceStreamingMarkdown(input)).toBe(expected);
   });
