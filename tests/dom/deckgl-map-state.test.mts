@@ -570,6 +570,31 @@ describe('DeckGLMap layer performance notice', () => {
     await closeNotice();
   });
 
+  // Layer search hides non-matching rows; they are still active layers.
+  it('counts layers hidden by an active search, so clearing the search and removing a layer never warns', async () => {
+    const allOn = Object.fromEntries(Object.keys(DEFAULT_MAP_LAYERS).map(key => [key, true])) as unknown as MapLayers;
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const map = new DeckGLMap(container, initialState({ layers: allOn }), { chrome: true });
+    maps.push(map);
+    await map.whenReady();
+
+    const search = document.querySelector<HTMLInputElement>('.deckgl-layer-toggles .layer-search');
+    if (!search) throw new Error('layer search missing');
+    search.value = 'nuclear';
+    search.dispatchEvent(new Event('input'));
+    map.setLayers(map.getState().layers);
+    search.value = '';
+    search.dispatchEvent(new Event('input'));
+
+    const layer = checkedToggles().find(input => !input.closest('.layer-toggle-locked'));
+    if (!layer) throw new Error('no enabled layer to toggle');
+    layer.checked = false;
+    layer.dispatchEvent(new Event('change'));
+
+    expect(document.querySelector('.layer-warn-overlay')).toBeNull();
+  });
+
   // The notice module allows one dialog at a time and forgets it only after closing.
   async function closeNotice(): Promise<void> {
     document.querySelector<HTMLButtonElement>('.layer-warn-ok')?.click();

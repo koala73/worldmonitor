@@ -8075,12 +8075,8 @@ export class DeckGLMap {
     const WARN_THRESHOLD = 13;
     const togglesEl = this.container.querySelector('.deckgl-layer-toggles');
     if (!togglesEl) return;
-    const activeCount = Array.from(togglesEl.querySelectorAll<HTMLInputElement>('.layer-toggle input'))
-      .filter(i => {
-        const toggle = i.closest('.layer-toggle') as HTMLElement | null;
-        const row = i.closest('.layer-toggle-row') as HTMLElement | null;
-        return toggle?.style.display !== 'none' && row?.style.display !== 'none';
-      })
+    // Skip toggles hidden for this variant, but not rows an active layer search hides.
+    const activeCount = Array.from(togglesEl.querySelectorAll<HTMLInputElement>('.layer-toggle:not([data-layer-hidden]) input'))
       .filter(i => i.checked).length;
     const increasing = notify && this.lastActiveLayerCount !== null && activeCount > this.lastActiveLayerCount;
     this.lastActiveLayerCount = activeCount;
