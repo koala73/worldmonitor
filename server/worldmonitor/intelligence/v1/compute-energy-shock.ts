@@ -610,8 +610,9 @@ export async function computeEnergyShockScenario(
   // proxy: IEA also deducts naphtha, adjusts for stock changes and converts
   // products to crude-oil equivalent. Crude imports alone
   // understate a product importer (Australia) and overstate a product
-  // exporter (Korea); they stand in only when JODI has no full year. The
-  // year is the one before IEA's own data month, which can lag JODI's.
+  // exporter (Korea); they stand in only when JODI has no eligible value for
+  // that year (9+ complete months, net importing). The year is the one before
+  // IEA's own data month, which can lag or lead JODI's.
   const ieaMonth = typeof ieaStocks?.dataMonth === 'string' && /^\d{4}-\d{2}$/.test(ieaStocks.dataMonth) ? ieaStocks.dataMonth : null;
   const ieaBasisYear = ieaMonth ? Number(ieaMonth.slice(0, 4)) - 1 : null;
   const netOilImports = parseNetOilImports(jodiOil?.netOilImports, ieaBasisYear);

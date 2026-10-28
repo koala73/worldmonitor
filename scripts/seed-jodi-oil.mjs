@@ -452,14 +452,15 @@ export function computeNetOilImports(byMonth, iso2, year) {
 }
 
 /**
- * Net oil imports for every complete calendar year before `dataMonth` in the
- * files, newest first. IEA's own data month decides which year its days count
- * against, and it can lag JODI's across a new year, so the reader picks.
+ * Net oil imports for every calendar year up to `dataMonth`'s in the files,
+ * newest first; computeNetOilImports drops a year with fewer than 9 complete
+ * months. IEA's own data month decides which year its days count against, and
+ * it can lag or lead JODI's across a new year, so the reader picks.
  */
 export function netOilImportsByYear(byMonth, iso2, dataMonth) {
   const dataYear = Number(String(dataMonth).slice(0, 4));
   const years = [...new Set([...byMonth.keys()].map((m) => Number(m.slice(0, 4))))]
-    .filter((y) => Number.isInteger(y) && y < dataYear)
+    .filter((y) => Number.isInteger(y) && y <= dataYear)
     .sort((a, b) => b - a);
   return years.map((y) => computeNetOilImports(byMonth, iso2, y)).filter(Boolean);
 }
