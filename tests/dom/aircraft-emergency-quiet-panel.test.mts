@@ -14,7 +14,7 @@ vi.mock('@/services/runtime', () => ({
 }));
 vi.mock('@/services/aircraft-emergencies', () => ({ fetchAircraftEmergencies: async () => poll.next }));
 
-import { EMERGENCY_CODES } from '../../shared/aircraft-emergencies';
+import { EMERGENCY_CODES, OBSERVATION_MAX_AGE_MS } from '../../shared/aircraft-emergencies';
 import { AircraftEmergencyLayer } from '@/components/AircraftEmergencyLayer';
 
 const feeds = (status: 'available' | 'unavailable') =>
@@ -102,5 +102,26 @@ describe('aircraft emergency panel stays quiet when there is nothing to report',
     expect(panel(container).hidden).toBe(false);
     expect(panel(container).textContent).toContain('Aircraft data unavailable or stale.');
     layer.destroy();
+  });
+
+  // Polling stalls (offline, backgrounded fetch failing): fresh-but-quiet data ages into an outage.
+  it('opens the panel when initially fresh empty feeds go stale', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    try {
+      const container = document.body.appendChild(document.createElement('div'));
+      const layer = new AircraftEmergencyLayer(container, () => {});
+      layer.setEnabled(true);
+      poll.next = { observations: [], feeds: feeds('available') };
+      await poll.tasks[0]!({});
+      expect(panel(container).hidden).toBe(true);
+
+      vi.advanceTimersByTime(OBSERVATION_MAX_AGE_MS + 5_000);
+
+      expect(panel(container).hidden).toBe(false);
+      expect(panel(container).textContent).toContain('Aircraft data unavailable or stale.');
+      layer.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
