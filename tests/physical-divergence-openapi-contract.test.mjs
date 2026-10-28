@@ -23,16 +23,22 @@ describe('physical divergence OpenAPI contract', () => {
       type: 'array',
       uniqueItems: true,
     };
+    const rpcs = [
+      ['GetPhysicalDivergenceIndexRequest', '/api/market/v1/get-physical-divergence-index'],
+      ['GetPhysicalPremiumsRequest', '/api/market/v1/get-physical-premiums'],
+    ];
     for (const [label, spec] of specs) {
-      const request = schema(spec, 'GetPhysicalDivergenceIndexRequest');
-      assert.deepEqual(
-        request.properties.metals,
-        { ...expected, description: 'Accepted values are "gold" and "silver". Empty returns both metals.' },
-        label,
-      );
-      const operation = spec.paths['/api/market/v1/get-physical-divergence-index'].get;
-      const parameter = operation.parameters.find((candidate) => candidate.name === 'metals');
-      assert.deepEqual(parameter.schema, expected, label);
+      for (const [requestName, path] of rpcs) {
+        const request = schema(spec, requestName);
+        assert.deepEqual(
+          request.properties.metals,
+          { ...expected, description: 'Accepted values are "gold" and "silver". Empty returns both metals.' },
+          `${label} ${requestName}`,
+        );
+        const operation = spec.paths[path].get;
+        const parameter = operation.parameters.find((candidate) => candidate.name === 'metals');
+        assert.deepEqual(parameter.schema, expected, `${label} ${path}`);
+      }
     }
   });
 

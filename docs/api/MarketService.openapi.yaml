@@ -432,6 +432,9 @@ paths:
                     type: array
                     items:
                         type: string
+                        pattern: ^(?:gold|silver)$
+                    maxItems: 2
+                    uniqueItems: true
                 - name: jmespath
                   in: query
                   description: |-
@@ -3759,7 +3762,10 @@ components:
                     type: array
                     items:
                         type: string
-                        description: Accepted values are "gold" and "silver". Empty returns both metals.
+                        pattern: ^(?:gold|silver)$
+                    maxItems: 2
+                    uniqueItems: true
+                    description: Accepted values are "gold" and "silver". Empty returns both metals.
             description: GetPhysicalPremiumsRequest optionally limits the response to gold or silver.
         GetPhysicalPremiumsResponse:
             type: object

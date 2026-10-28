@@ -68,6 +68,20 @@ const SCORECARD_REASON_PATTERN = '^(?:source-unavailable|country-unavailable|inv
 const ISO2_PATTERN = '^[A-Z]{2}$';
 const PHYSICAL_METAL_PATTERN = '^(?:gold|silver)$';
 const PHYSICAL_METALS_DESCRIPTION = 'Accepted values are "gold" and "silver". Empty returns both metals.';
+// protoc-gen-openapiv3 drops the items pattern and copies repeated rules onto
+// the item schema, so both metal-filtered market RPCs get their contract here.
+const PHYSICAL_METAL_RPCS = [
+  {
+    requestSchema: 'GetPhysicalDivergenceIndexRequest',
+    operationId: 'GetPhysicalDivergenceIndex',
+    path: '/api/market/v1/get-physical-divergence-index',
+  },
+  {
+    requestSchema: 'GetPhysicalPremiumsRequest',
+    operationId: 'GetPhysicalPremiums',
+    path: '/api/market/v1/get-physical-premiums',
+  },
+];
 const BASELINE_REGION_DESCRIPTION = 'Only the global baseline is defined. Omitted or empty defaults to global.';
 
 function scorecardResponseOneOf(unavailableReasons) {
@@ -163,9 +177,17 @@ function injectScorecardJsonContracts(spec) {
   return changed;
 }
 
-function injectPhysicalDivergenceJsonContracts(spec) {
+function injectPhysicalMetalJsonContracts(spec) {
+  let changed = false;
+  for (const rpc of PHYSICAL_METAL_RPCS) {
+    if (injectPhysicalMetalJsonContract(spec, rpc)) changed = true;
+  }
+  return changed;
+}
+
+function injectPhysicalMetalJsonContract(spec, { requestSchema, path }) {
   const schemas = spec.components?.schemas;
-  const request = schemas?.GetPhysicalDivergenceIndexRequest;
+  const request = schemas?.[requestSchema];
   if (!request?.properties?.metals) return false;
   let changed = false;
   const expected = {
@@ -179,7 +201,7 @@ function injectPhysicalDivergenceJsonContracts(spec) {
     request.properties.metals = expected;
     changed = true;
   }
-  const operation = spec.paths?.['/api/market/v1/get-physical-divergence-index']?.get;
+  const operation = spec.paths?.[path]?.get;
   const parameter = operation?.parameters?.find((candidate) => (
     candidate?.in === 'query' && candidate.name === 'metals'
   ));
@@ -340,7 +362,7 @@ function queryNamesForRequiredFields(schemaName, schema) {
 
 function injectJson(spec) {
   let changed = injectScorecardJsonContracts(spec);
-  if (injectPhysicalDivergenceJsonContracts(spec)) changed = true;
+  if (injectPhysicalMetalJsonContracts(spec)) changed = true;
   const schemas = spec.components?.schemas ?? {};
   // The generator emits const but does not account for IGNORE_IF_ZERO_VALUE.
   const baselineRegion = schemas.GetTemporalBaselineRequest?.properties?.region;
@@ -765,11 +787,19 @@ function injectYamlScorecardContracts(lines) {
   return changed;
 }
 
-function injectYamlPhysicalDivergenceContracts(lines) {
-  if (yamlSchemaBlocks(lines, 'GetPhysicalDivergenceIndexRequest').length === 0) return false;
+function injectYamlPhysicalMetalContracts(lines) {
+  let changed = false;
+  for (const rpc of PHYSICAL_METAL_RPCS) {
+    if (injectYamlPhysicalMetalContract(lines, rpc)) changed = true;
+  }
+  return changed;
+}
+
+function injectYamlPhysicalMetalContract(lines, { requestSchema, operationId }) {
+  if (yamlSchemaBlocks(lines, requestSchema).length === 0) return false;
   let changed = replaceYamlSchemaProperty(
     lines,
-    'GetPhysicalDivergenceIndexRequest',
+    requestSchema,
     'metals',
     (pad) => [
       `${pad}metals:`,
@@ -782,7 +812,7 @@ function injectYamlPhysicalDivergenceContracts(lines) {
       `${pad}    description: ${PHYSICAL_METALS_DESCRIPTION}`,
     ],
   );
-  for (const block of [...yamlOperationBlocks(lines, 'GetPhysicalDivergenceIndex')].reverse()) {
+  for (const block of [...yamlOperationBlocks(lines, operationId)].reverse()) {
     for (let index = block.start + 1; index < block.end; index++) {
       if (lines[index].trim() !== '- name: metals') continue;
       const indent = leadingSpaces(lines[index]);
@@ -822,7 +852,7 @@ function injectYamlPhysicalDivergenceContracts(lines) {
 function injectYaml(text, contracts) {
   const lines = text.split('\n');
   let changed = injectYamlScorecardContracts(lines);
-  if (injectYamlPhysicalDivergenceContracts(lines)) changed = true;
+  if (injectYamlPhysicalMetalContracts(lines)) changed = true;
   for (const [schemaName, field] of COUNTRY_HEADLINE_ARRAY_FIELDS) {
     for (const block of [...yamlSchemaBlocks(lines, schemaName)].reverse()) {
       const indent = leadingSpaces(lines[block.start]) + 8;
