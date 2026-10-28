@@ -508,10 +508,13 @@ export function buildCrudeImportOrigin(rows, months) {
 /**
  * The published `crudeImportOrigin` section. A failed or empty fetch keeps the
  * previous section (status unavailable, carriedForward, its own fetchedAt)
- * rather than publishing nothing over it.
+ * rather than publishing nothing over it. So does a requested window (one
+ * Comtrade call) that returned no rows: publishing the other window alone
+ * would drop every importer's pre-crisis or current baseline.
  */
-export function crudeImportOriginSection({ months, rows, fetchedAt, error, previous }) {
-  const importers = error ? {} : buildCrudeImportOrigin(rows, months);
+export function crudeImportOriginSection({ months, rows, fetchedAt, error, previous, windowRowCounts = [] }) {
+  const emptyWindow = windowRowCounts.some((count) => !(count > 0));
+  const importers = error || emptyWindow ? {} : buildCrudeImportOrigin(rows, months);
   if (Object.keys(importers).length > 0) {
     return { status: 'ok', fetchedAt, source: CRUDE_ORIGIN_SOURCE, months, importers };
   }
@@ -523,6 +526,7 @@ export function crudeImportOriginSection({ months, rows, fetchedAt, error, previ
 
 async function fetchCrudeImportOriginRows(periods, key) {
   const rows = [];
+  const windowRowCounts = [];
   for (const months of periods) {
     const params = new URLSearchParams({
       period: months.map((m) => m.replace('-', '')).join(','),
@@ -538,9 +542,10 @@ async function fetchCrudeImportOriginRows(periods, key) {
     const data = await withRetry(() => fetchComtradeJson(`https://comtradeapi.un.org/data/v1/get/C/M/HS?${params}`, key), 3, 8000);
     // A capped answer silently drops reporters; refuse it.
     if (data.length >= CRUDE_ORIGIN_MAX_RECORDS) throw new Error(`crude origin response capped at ${data.length} rows`);
+    windowRowCounts.push(data.length);
     rows.push(...data);
   }
-  return rows;
+  return { rows, windowRowCounts };
 }
 
 async function fetchCrudeImportOrigin(nowMs, previous) {
@@ -550,8 +555,9 @@ async function fetchCrudeImportOrigin(nowMs, previous) {
   const keys = (process.env.COMTRADE_API_KEYS || '').split(',').map((k) => k.trim()).filter(Boolean);
   try {
     if (keys.length === 0) throw new Error('COMTRADE_API_KEYS not set');
-    const rows = await fetchCrudeImportOriginRows(periods, keys[0]);
-    const section = crudeImportOriginSection({ months, rows, fetchedAt, previous });
+    const { rows, windowRowCounts } = await fetchCrudeImportOriginRows(periods, keys[0]);
+    if (windowRowCounts.some((count) => count === 0)) console.warn(`  Crude import origin: a requested window returned no rows (${windowRowCounts.join(', ')}); keeping the previous section`);
+    const section = crudeImportOriginSection({ months, rows, fetchedAt, previous, windowRowCounts });
     console.log(`  Crude import origin: ${Object.keys(section.importers).length} importers (${section.status}${section.carriedForward ? ', carried forward' : ''})`);
     return section;
   } catch (err) {

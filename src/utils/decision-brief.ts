@@ -40,11 +40,17 @@ export function buildDecisionBrief(selection: DecisionBriefSelection, captures: 
       const pct = (v: number) => Math.round(v * 1000) / 10;
       const pre = r.preCrisisBaseline;
       const cur = r.currentFlows;
-      add('route', 'Comtrade crude route share, pre-crisis baseline', usable && r.comtradeCoverage && nonnegative(r.gulfCrudeShare) ? pct(r.gulfCrudeShare) : null, '%', 'UN Comtrade / route model', month(pre?.toMonth));
+      const preBasis = pre ? pre.basis === 'comtrade_annual' ? ` (annual ${pre.fromMonth.slice(0, 4)})` : ` (monthly ${pre.fromMonth}..${pre.toMonth})` : '';
+      add('route', `Comtrade crude route share, pre-crisis baseline${preBasis}`, usable && r.comtradeCoverage && nonnegative(r.gulfCrudeShare) ? pct(r.gulfCrudeShare) : null, '%', 'UN Comtrade / route model', month(pre?.toMonth));
       if (identity && !r.comtradeCoverage) unknowns.add(`${reference}: Comtrade route exposure is unavailable; the oil loss is not modeled without a measured origin share.`);
-      add('route-current', 'Comtrade crude route share, current flows', identity && r.comtradeCoverage && cur && nonnegative(cur.gulfCrudeShare) ? pct(cur.gulfCrudeShare) : null, '%', 'UN Comtrade / route model', month(cur?.toMonth));
+      add('route-current', `Comtrade crude route share, current flows${cur ? ` (monthly ${cur.fromMonth}..${cur.toMonth})` : ''}`, identity && cur && nonnegative(cur.gulfCrudeShare) ? pct(cur.gulfCrudeShare) : null, '%', 'UN Comtrade / route model', month(cur?.toMonth));
       add('loss-current', 'Modeled crude loss, current flows', usable && cur && nonnegative(cur.crudeLossKbd) ? cur.crudeLossKbd : null, 'kbd', 'JODI / route model', month(cur?.toMonth));
-      if (identity && r.comtradeCoverage && !cur) unknowns.add(`${reference}: current-flows Gulf share is unavailable (fewer than 3 monthly Comtrade filings since the crisis began); figures use the pre-crisis baseline.`);
+      if (identity && !cur) {
+        // The handler names the cause (series not available yet, or too few filings).
+        const reason = (r.limitations ?? []).find(l => l.startsWith('Current flows unavailable for '))
+          ?.replace(/^Current flows unavailable for [A-Z]{2}: /, '').replace(/\.$/, '');
+        unknowns.add(`${reference}: current-flows Gulf share is unavailable${reason ? `: ${reason}` : ''}; figures use the pre-crisis baseline.`);
+      }
     }
     add('loss', gas ? 'Assumed monthly LNG loss' : 'Modeled crude loss, pre-crisis baseline', usable ? gas ? g!.lngDisruptionTj : r.crudeLossKbd : null, gas ? 'TJ' : 'kbd', gas ? 'JODI / assumed route sensitivity' : 'JODI / route model');
     if (!r.portwatchCoverage) unknowns.add(`${reference}: shipping traffic is unavailable; no closure is established.`);

@@ -72,12 +72,14 @@ message GasSensitivity {
 
 // Gulf crude share over one window and the crude loss it implies.
 message CrudeShareBaseline {
-  // "comtrade_monthly" or "comtrade_annual".
+  // "comtrade_monthly", or "comtrade_annual" for the annual partner-share fallback.
   string basis = 1;
   string from_month = 2;
   string to_month = 3;
   int32 months_covered = 4;
+  // Gulf share of crude imports times the chokepoint route factor (1.0 for Hormuz).
   double gulf_crude_share = 5;
+  // Loss at disruption_pct; 0 when the loss is not modeled (see limitations).
   double crude_loss_kbd = 6;
 }
 

@@ -9939,7 +9939,7 @@ components:
             properties:
                 basis:
                     type: string
-                    description: '"comtrade_monthly" or "comtrade_annual".'
+                    description: '"comtrade_monthly", or "comtrade_annual" for the annual partner-share fallback.'
                 fromMonth:
                     type: string
                 toMonth:
@@ -9950,9 +9950,11 @@ components:
                 gulfCrudeShare:
                     type: number
                     format: double
+                    description: Gulf share of crude imports times the chokepoint route factor (1.0 for Hormuz).
                 crudeLossKbd:
                     type: number
                     format: double
+                    description: Loss at disruption_pct; 0 when the loss is not modeled (see limitations).
             description: Gulf crude share over one window and the crude loss it implies.
         GetCountryPortActivityRequest:
             type: object

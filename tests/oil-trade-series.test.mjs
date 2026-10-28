@@ -522,6 +522,19 @@ describe('crude import origin (importer-declared Comtrade monthly)', () => {
     assert.equal(failed.fetchedAt, '2026-10-21T03:00:00.000Z', 'the carried data keeps the date it was fetched');
     assert.deepEqual(failed.importers, ok.importers);
 
+    // A requested window that comes back empty would silently drop its baseline
+    // (pre-crisis or current) for every importer: keep the previous section.
+    const emptyWindow = crudeImportOriginSection({
+      months,
+      rows: [{ reporterISO: 'JPN', partnerCode: 0, period: '202502', cmdCode: '2709', flowCode: 'M', primaryValue: 2e9 }],
+      windowRowCounts: [1, 0],
+      fetchedAt: '2026-10-28T03:00:00.000Z',
+      previous: ok,
+    });
+    assert.equal(emptyWindow.status, 'unavailable');
+    assert.equal(emptyWindow.carriedForward, true);
+    assert.deepEqual(emptyWindow.importers, ok.importers);
+
     const none = crudeImportOriginSection({ months, error: new Error('Comtrade HTTP 503'), fetchedAt: '2026-10-28T03:00:00.000Z' });
     assert.equal(none.status, 'unavailable');
     assert.deepEqual(none.importers, {});

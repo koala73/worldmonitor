@@ -2193,8 +2193,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
    */
   private renderCrudeShareBaselines(result: ComputeEnergyShockScenarioResponse): HTMLElement | null {
     const pre = result.preCrisisBaseline;
-    if (!pre) return null;
-    const modeled = result.dataAvailable && result.jodiOilCoverage;
+    const cur = result.currentFlows;
+    if (!pre && !cur) return null;
+    const limitations = result.limitations ?? [];
+    // Oil-specific: in "both" mode gas data alone makes dataAvailable true.
+    const modeled = result.dataAvailable && result.jodiOilCoverage && result.comtradeCoverage
+      && !limitations.some((l) => l.includes('effective cover are not modeled'));
+    // Shares are route-adjusted (Gulf share x the chokepoint's route factor);
+    // only Hormuz carries every Gulf barrel.
+    const shareLabel = result.chokepointId === 'hormuz_strait' ? 'Gulf crude' : 'Gulf crude on this route';
     const monthLabel = (m: string): string => {
       const [y, mo] = m.split('-').map(Number);
       return y && mo ? new Date(Date.UTC(y, mo - 1, 1)).toLocaleString('en', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : m;
@@ -2204,18 +2211,21 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       : `${monthLabel(b.fromMonth)}–${monthLabel(b.toMonth)}`;
     const figures = (b: CrudeShareBaseline): string => {
       const loss = modeled ? `${Math.round(b.crudeLossKbd).toLocaleString('en')} kbd lost` : 'loss not modeled';
-      return `${(b.gulfCrudeShare * 100).toFixed(1)}% Gulf crude, ${loss}`;
+      return `${(b.gulfCrudeShare * 100).toFixed(1)}% ${shareLabel}, ${loss}`;
     };
     const wrap = this.el('div', 'cdp-shock-baselines');
     wrap.style.cssText = 'font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#d1d5db;margin-bottom:6px;line-height:1.5';
-    wrap.append(this.el('div', 'cdp-shock-baseline', `Pre-crisis (${span(pre)}): ${figures(pre)}`));
-    const cur = result.currentFlows;
+    wrap.append(this.el('div', 'cdp-shock-baseline', pre ? `Pre-crisis (${span(pre)}): ${figures(pre)}` : 'Pre-crisis: not available'));
+    // The server names why current flows are missing (series not seeded yet,
+    // or too few filings); an absent figure alone proves neither.
+    const curReason = limitations.find((l) => l.startsWith('Current flows unavailable for '))
+      ?.replace(/^Current flows unavailable for [A-Z]{2}: /, '').replace(/\.$/, '');
     const curRow = this.el('div', 'cdp-shock-baseline', cur
       ? `Current flows (${span(cur)}): ${figures(cur)}`
-      : 'Current flows: not available (no monthly import filings since the crisis)');
+      : `Current flows: not available${curReason ? ` (${curReason})` : ''}`);
     curRow.style.color = '#9ca3af';
     wrap.append(curRow);
-    if (modeled && result.products.length > 0) {
+    if (pre && modeled && result.products.length > 0) {
       const note = this.el('div', 'cdp-shock-baseline-note', 'Product deficits and cover below use the pre-crisis mix.');
       note.style.color = '#6b7280';
       wrap.append(note);
@@ -2227,6 +2237,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const container = this.el('div', '');
 
     if (!result.dataAvailable && !result.gasSensitivity?.dataAvailable) {
+      // Measured Gulf shares are still worth showing when the loss is not.
+      const shares = this.renderCrudeShareBaselines(result);
+      if (shares) container.append(shares);
       container.append(this.el('div', 'cdp-economic-source', result.assessment));
       return container;
     }

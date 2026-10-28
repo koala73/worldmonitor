@@ -39,7 +39,7 @@ test('oil evidence labels the pre-crisis baseline and reports current flows besi
   data[0].response.currentFlows = { basis: 'comtrade_monthly', fromMonth: '2026-06', toMonth: '2026-08', monthsCovered: 3, gulfCrudeShare: 0.605, crudeLossKbd: 720.6 };
   const s = buildDecisionBrief({ ...selection, countryCode: 'JP', countryName: 'Japan', fuelMode: 'oil' }, data);
   const route = s.evidence.find(e => e.id === 'baseline-route')!;
-  assert.match(route.label, /pre-crisis baseline/);
+  assert.match(route.label, /pre-crisis baseline \(monthly 2025-02\.\.2026-01\)/);
   assert.equal(route.value, 92.7);
   assert.equal(route.observedAt, '2026-01');
   assert.match(s.evidence.find(e => e.id === 'baseline-loss')!.label, /pre-crisis baseline/);
@@ -51,7 +51,29 @@ test('oil evidence labels the pre-crisis baseline and reports current flows besi
   // The comparison capture has no current-flows figure: null, and named as unknown.
   assert.equal(s.evidence.find(e => e.id === 'comparison-route-current')!.value, null);
   assert.match(s.unknowns.join(' '), /comparison: current-flows Gulf share is unavailable/);
+  assert.doesNotMatch(s.unknowns.join(' '), /fewer than 3 monthly Comtrade filings/, 'an absent figure is not proof the importer filed nothing');
   assert.deepEqual(s.results.map(r => r.loss), [1104, 1104], 'the compared loss stays the pre-crisis headline');
+});
+
+test('the annual fallback is named in the evidence label, and current flows show without a pre-crisis share', () => {
+  const data = captures('CN');
+  for (const { response } of data) {
+    Object.assign(response, { jodiOilCoverage: true, comtradeCoverage: true, gulfCrudeShare: 0.378, crudeLossKbd: 3385 });
+    response.preCrisisBaseline = { basis: 'comtrade_annual', fromMonth: '2024-01', toMonth: '2024-12', monthsCovered: 12, gulfCrudeShare: 0.378, crudeLossKbd: 3385 };
+    response.limitations = ['Current flows unavailable for CN: fewer than 3 UN Comtrade monthly crude import filings since 2026-03.'];
+  }
+  const s = buildDecisionBrief({ ...selection, countryCode: 'CN', countryName: 'China', fuelMode: 'oil' }, data);
+  assert.match(s.evidence.find(e => e.id === 'baseline-route')!.label, /pre-crisis baseline \(annual 2024\)/);
+  assert.match(s.unknowns.join(' '), /baseline: current-flows Gulf share is unavailable: fewer than 3 UN Comtrade monthly crude import filings since 2026-03/);
+
+  // No measured pre-crisis share, three current filings: the current share is still evidence.
+  const onlyCurrent = captures('XX');
+  for (const { response } of onlyCurrent) {
+    Object.assign(response, { jodiOilCoverage: true, comtradeCoverage: false, dataAvailable: false });
+    response.currentFlows = { basis: 'comtrade_monthly', fromMonth: '2026-06', toMonth: '2026-08', monthsCovered: 3, gulfCrudeShare: 0.2, crudeLossKbd: 0 };
+  }
+  const t = buildDecisionBrief({ ...selection, countryCode: 'XX', countryName: 'X', fuelMode: 'oil' }, onlyCurrent);
+  assert.equal(t.evidence.find(e => e.id === 'baseline-route-current')!.value, 20);
 });
 
 test('Germany shared basis retains exact corrected gas results and evidence-specific action', () => {
