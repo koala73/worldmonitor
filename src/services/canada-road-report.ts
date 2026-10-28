@@ -9,7 +9,10 @@ export function isReportableCanadaRoad(record: CanadaRoadRecord): boolean {
   const text = (value?: string | null) => (value || '').trim();
   const headline = text(record.headline).toLowerCase() === text(record.roadwayName).toLowerCase()
     ? '' : record.headline;
-  const details = [headline, record.description, record.lanesAffected, record.currImpact].map(text);
+  const location = text(record.locationDescription).toLowerCase();
+  const reportText = [headline, record.description].map(text)
+    .filter((value) => value.toLowerCase() !== location);
+  const details = [...reportText, record.lanesAffected, record.currImpact, ...(record.roadConditions || [])].map(text);
   const types = [record.eventType, record.type].map(text);
   const severity = text(record.severity);
 

@@ -245,6 +245,9 @@ export function normalize511Record(item, ctx) {
     isFullClosure,
     lanesAffected: item?.LanesAffected ?? item?.lanesAffected ?? null,
     roadwayName: textOf(item?.RoadwayName, item?.roadwayName),
+    locationDescription: textOf(item?.LocationDescription, item?.locationDescription),
+    roadConditions: (Array.isArray(item?.Condition) ? item.Condition : [item?.Condition])
+      .filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim()),
     headline: textOf(
       item?.RoadwayName,
       item?.LocationDescription,

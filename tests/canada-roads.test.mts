@@ -4,10 +4,12 @@ import {
   CANADA_ROAD_SOURCES,
   hasHealthyCanadaRoadSource,
   loadCanadaRoadSourcesCore,
+  recordsFromPayload,
   unionCanadaRoadRecords,
   type CanadaRoadRecord,
 } from '../src/services/canada-roads-core';
 import { isReportableCanadaRoad } from '../src/services/canada-road-report';
+import { normalize511Record } from '../scripts/lib/provincial-511.mjs';
 
 function road(id: string, source = ''): CanadaRoadRecord {
   return {
@@ -124,6 +126,8 @@ test('corrupt record arrays are malformed rather than available or unavailable',
 test('corrupt optional record fields are malformed before map rendering', async () => {
   for (const corrupt of [
     { ...road('bad-source'), source: { bad: true } },
+    { ...road('bad-location'), locationDescription: 42 },
+    { ...road('bad-conditions'), roadConditions: ['No Report', null] },
     { ...road('bad-centroid'), centroid: ['bad', null] },
     { ...road('bad-path'), path: [[-123, 49], [null, 50]] },
     { ...road('bad-time'), lastUpdated: Number.NaN },
@@ -219,5 +223,24 @@ test('keeps incidents, closures, and meaningful conditions despite a placeholder
 test('does not hide a record just because severity is None or Unknown', () => {
   for (const severity of ['None', 'Unknown', '']) {
     assert.equal(isReportableCanadaRoad(placeholderRoad({ severity, lanesAffected: null })), true);
+  }
+});
+
+test('filters normalized Ontario conditions without mistaking a location for a report', () => {
+  for (const roadwayName of ['627', undefined]) {
+    for (const conditions of [['No Report'], ['No Data'], ['No Report', 'Bare and dry'], ['Icy sections']]) {
+      const record = normalize511Record({
+        RoadwayName: roadwayName,
+        LocationDescription: 'From Highway 17 to Pukaskwa Park',
+        Condition: conditions,
+      }, { kind: 'condition', jurisdiction: 'ON' });
+      assert.deepEqual(recordsFromPayload({ records: [record] }), [record]);
+      assert.equal(isReportableCanadaRoad(record), conditions.some(value => !/^No /.test(value)), JSON.stringify(conditions));
+      assert.deepEqual(record.roadConditions, conditions);
+      assert.equal(record.locationDescription, 'From Highway 17 to Pukaskwa Park');
+      assert.equal(isReportableCanadaRoad({ ...record, isFullClosure: true }), true);
+      assert.equal(isReportableCanadaRoad({ ...record, description: 'Collision ahead' }), true);
+      assert.equal(isReportableCanadaRoad({ ...record, severity: 'Severe' }), true);
+    }
   }
 });
