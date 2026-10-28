@@ -17,6 +17,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
+import { normalizeFeedDateZone } from '../shared/feed-date-zone.js';
 
 const { parseRssXml, extractFirstDateTag, FUTURE_DATE_TOLERANCE_MS } = __testing__;
 
@@ -283,6 +284,10 @@ describe('parseRssXml — named zone abbreviations', () => {
     ['El Tiempo', 'Wed, 28 Oct 2026 04:17:02 -0500', '2026-10-28T09:17:02.000Z'],
     ['RAND', '2026-10-27T19:07:07Z', '2026-10-27T19:07:07.000Z'],
     ['Google News', 'Wed, 28 Oct 2026 08:47:25 GMT', '2026-10-28T08:47:25.000Z'],
+    // Zone-less shapes, read as UTC (the full-edition sweep found every item
+    // of both feeds dropped as undated).
+    ['IAEA', '\n26-10-28  14:21\n', '2026-10-28T14:21:00.000Z'],
+    ['CrisisWatch', 'Friday, October 23, 2026 - 18:13', '2026-10-23T18:13:00.000Z'],
   ] as const) {
     it(`parses ${feed}'s published date format (${raw})`, () => {
       const xml = wrapRss(`
@@ -298,15 +303,32 @@ describe('parseRssXml — named zone abbreviations', () => {
     });
   }
 
-  it('still drops an item in an ambiguous zone (IST)', () => {
-    const xml = wrapRss(`
-      <item>
-        <title>Ambiguous</title>
-        <link>https://example.com/a</link>
-        <pubDate>${zoned(at, 'IST', 5.5)}</pubDate>
-      </item>
-    `);
-    const result = parseRssXml(xml, FEED, 'full');
-    assert.equal(result!.droppedUndated, 1);
+  // A two-digit date is year-first only when its first number cannot be a
+  // month, as in IAEA's `26-10-28`. Month-first `10-28-26` is left for Date,
+  // which reads it as 28 October 2026.
+  it('rewrites a year-first two-digit date but leaves a month-first one alone', () => {
+    assert.equal(normalizeFeedDateZone('26-10-28  14:21'), '2026-10-28T14:21:00Z');
+    for (const raw of ['10-28-26 14:21', '03-04-26 10:00', '12-01-26 09:15']) {
+      assert.equal(normalizeFeedDateZone(raw), raw);
+    }
   });
+
+  // IST: India, Ireland or Israel. BST: British Summer (+1) or Bangladesh
+  // Standard (+6) Time; a Dhaka feed read as +1 would be five hours off.
+  // Twelve hours old, so a wrong offset would still land in the past and be
+  // kept rather than caught by the future-date gate.
+  const older = at - 10 * 3600_000;
+  for (const [zone, offset] of [['IST', 5.5], ['BST', 6]] as const) {
+    it(`still drops an item in an ambiguous zone (${zone})`, () => {
+      const xml = wrapRss(`
+        <item>
+          <title>Ambiguous</title>
+          <link>https://example.com/a</link>
+          <pubDate>${zoned(older, zone, offset)}</pubDate>
+        </item>
+      `);
+      const result = parseRssXml(xml, FEED, 'full');
+      assert.equal(result!.droppedUndated, 1);
+    });
+  }
 });

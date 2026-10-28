@@ -104,7 +104,10 @@ export async function getCountryCostShock(
       // observation stays 0 and is named in unavailableReason; has_energy_model
       // is true only when both are modelled, as the proto defines it.
       const productDeficits = shock.products?.map((p: { product: string; deficitPct: number }) => p.deficitPct) ?? [];
-      const coverageModeled = shock.ieaStocksCoverage === true;
+      // A net exporter (effectiveCoverDays -1, from IEA or JODI) has no
+      // import cover to model: coverageDays stays 0 and is named not applicable.
+      const netExporter = shock.effectiveCoverDays === -1;
+      const coverageModeled = shock.ieaStocksCoverage === true && !netExporter;
       const deficitModeled = productDeficits.length > 0;
       if (coverageModeled) coverageDays = Math.max(0, shock.effectiveCoverDays ?? 0);
       // Average deficit across all modelled products (Gasoline, Diesel, Jet fuel, LPG, Naphtha) with demand > 0.
@@ -113,8 +116,13 @@ export async function getCountryCostShock(
       if (deficitModeled) supplyDeficitPct = productDeficits.reduce((a: number, b: number) => a + b, 0) / productDeficits.length;
       hasEnergyModel = coverageModeled && deficitModeled;
       const gaps: string[] = [];
-      if (!coverageModeled) gaps.push(`coverageDays is unavailable: no IEA stock observation for ${iso2}`);
-      if (!deficitModeled) gaps.push(`supplyDeficitPct is unavailable: no refined-product demand observation for ${iso2}`);
+      if (netExporter) gaps.push(`coverageDays is not applicable: ${iso2} is a net oil exporter`);
+      else if (!coverageModeled) gaps.push(`coverageDays is unavailable: no IEA stock observation for ${iso2}`);
+      if (!deficitModeled) {
+        gaps.push(netExporter
+          ? `supplyDeficitPct is not modeled: ${iso2} is a net oil exporter with no modeled import loss`
+          : `supplyDeficitPct is unavailable: no refined-product demand observation for ${iso2}`);
+      }
       if (gaps.length > 0) {
         const modeled = coverageModeled ? 'coverageDays is modelled' : deficitModeled ? 'supplyDeficitPct is modelled' : '';
         unavailableReason = `${gaps.join('; ')}${modeled ? ` (${modeled})` : ''}.`;
