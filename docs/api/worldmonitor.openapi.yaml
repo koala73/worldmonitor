@@ -51319,8 +51319,8 @@ components:
                     type: number
                     format: double
                     description: |-
-                        Gulf share of crude import value (not barrels) times the chokepoint route factor: 1.0 for Hormuz, below 1 on other
-                         routes, where it is not the measured Gulf import share.
+                        Gulf share of crude import value (not barrels) times the chokepoint route factor: 1.0 for Hormuz and Bab el-Mandeb,
+                         0.6 for Suez and 0.7 for Malacca, where it is below the measured Gulf import share.
                 crudeLossKbd:
                     type: number
                     format: double
