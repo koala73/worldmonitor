@@ -327,6 +327,143 @@ describe('extractCountryData schema', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Country refinery yields: trailing-12-month product output ÷ refinery intake
+// ---------------------------------------------------------------------------
+
+describe('refinery yields from the trailing 12 JODI months', () => {
+  // Real JODI KBD rows (public annual files read 2026-10-28), cut to the flows
+  // the yield window reads for JP, KR, DE, US, CN, CA and IN.
+  const windowRows = parseCsv(readFileSync(resolve(FIXTURE_DIR, 'energy-shock/jodi-oil-refinery-window-2026-10-28.csv'), 'utf-8'));
+  // Expected values were computed independently from the same fixture (Python).
+  const MEASURED = {
+    JP: { startMonth: '2025-09', endMonth: '2026-08', gasoline: 0.3065, diesel: 0.316, jet: 0.0887, fuelOil: 0.0904, lpg: 0.0287, naphtha: 0.0945 },
+    KR: { startMonth: '2025-09', endMonth: '2026-08', gasoline: 0.1777, diesel: 0.336, jet: 0.1504, fuelOil: 0.0873, lpg: 0.0306, naphtha: 0.2831 },
+    DE: { startMonth: '2025-09', endMonth: '2026-08', gasoline: 0.2827, diesel: 0.4886, jet: 0.0641, fuelOil: 0.0444, lpg: 0.0389, naphtha: 0.1045 },
+    US: { startMonth: '2025-09', endMonth: '2026-08', gasoline: 0.4981, diesel: 0.3022, jet: 0.1164, fuelOil: 0.019, lpg: 0.0211, naphtha: 0.0084 },
+    IN: { startMonth: '2025-04', endMonth: '2026-03', gasoline: 0.2109, diesel: 0.4537, jet: 0.0639, fuelOil: 0.0308, lpg: 0.0768, naphtha: 0.0868 },
+  };
+
+  for (const [iso2, expected] of Object.entries(MEASURED)) {
+    it(`${iso2}: product output ÷ crude refinery intake over ${expected.startMonth}–${expected.endMonth}`, () => {
+      const row = extractCountryData(windowRows, iso2);
+      const { startMonth, endMonth, ...products } = expected;
+      assert.equal(row.dataMonth, endMonth);
+      assert.deepEqual(
+        { ...row.refineryYields, products: undefined },
+        { basis: 'crude_refinery_intake', intakeIssue: null, startMonth, endMonth, months: 12, products: undefined },
+      );
+      assert.deepEqual(row.refineryYields.products, products);
+    });
+  }
+
+  it('stores naphtha as a product, with the same four flows as the others', () => {
+    const kr = extractCountryData(windowRows, 'KR');
+    assert.deepEqual(Object.keys(kr.naphtha).sort(), ['demandKbd', 'exportsKbd', 'importsKbd', 'refOutputKbd']);
+    for (const field of ['demandKbd', 'refOutputKbd', 'importsKbd']) {
+      assert.ok(kr.naphtha[field] > 0, `KR naphtha ${field} = ${kr.naphtha[field]}`);
+    }
+  });
+
+  it('CN: JODI refinery intake is a balancing item, so total refinery output is the denominator', () => {
+    const cn = extractCountryData(windowRows, 'CN');
+    assert.equal(cn.refineryYields.basis, 'total_refinery_output');
+    assert.equal(cn.refineryYields.intakeIssue, 'balancing_item');
+    assert.deepEqual(cn.refineryYields.products, { gasoline: 0.232, diesel: 0.2517, jet: null, fuelOil: 0.048, lpg: 0.1084, naphtha: 0.1318 });
+  });
+
+  it('CA: total output at 2.2x crude intake is not a credible crude-intake basis', () => {
+    const ca = extractCountryData(windowRows, 'CA');
+    assert.equal(ca.refineryYields.basis, 'total_refinery_output');
+    assert.equal(ca.refineryYields.intakeIssue, 'implausible_output_ratio');
+    assert.equal(ca.refineryYields.products.gasoline, 0.27, 'not the 60.5% a crude-only denominator gives');
+  });
+
+  // Synthetic 12-month windows ending 2026-06 for the rule's edges.
+  const months = (n, end = '2026-06') => Array.from({ length: n }, (_, i) => {
+    const [y, m] = end.split('-').map(Number);
+    const idx = y * 12 + m - 1 - i;
+    return `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, '0')}`;
+  });
+  function windowFixture({ count = 12, intake = 1000, total = 1050, gasoline = 250, balancedMonths = 0, extra = [] } = {}) {
+    const rows = [];
+    months(count).forEach((month, i) => {
+      const add = (product, flow, value) => rows.push(makeRow({ REF_AREA: 'XX', TIME_PERIOD: month, ENERGY_PRODUCT: product, FLOW_BREAKDOWN: flow, OBS_VALUE: String(value), ASSESSMENT_CODE: '1' }));
+      add('GASOLINE', 'REFGROUT', gasoline);
+      add('GASOLINE', 'TOTDEMO', 300);
+      if (total != null) add('TOTPRODS', 'REFGROUT', total);
+      if (intake != null) {
+        add('CRUDEOIL', 'REFINOBS', intake);
+        add('CRUDEOIL', 'INDPROD', 100);
+        add('CRUDEOIL', 'TOTEXPSB', 0);
+        // A balanced month reports intake as exactly production + imports - exports.
+        add('CRUDEOIL', 'TOTIMPSB', i < balancedMonths ? intake - 100 : intake - 100 + 40);
+      }
+    });
+    return [...rows, ...extra];
+  }
+
+  it('sums over the window only: an older month cannot move the yield', () => {
+    const old = makeRow({ REF_AREA: 'XX', TIME_PERIOD: '2025-06', ENERGY_PRODUCT: 'GASOLINE', FLOW_BREAKDOWN: 'REFGROUT', OBS_VALUE: '900', ASSESSMENT_CODE: '1' });
+    const oldIntake = makeRow({ REF_AREA: 'XX', TIME_PERIOD: '2025-06', ENERGY_PRODUCT: 'CRUDEOIL', FLOW_BREAKDOWN: 'REFINOBS', OBS_VALUE: '1000', ASSESSMENT_CODE: '1' });
+    const row = extractCountryData(windowFixture({ extra: [old, oldIntake] }), 'XX');
+    assert.equal(row.refineryYields.startMonth, '2025-07');
+    assert.equal(row.refineryYields.products.gasoline, 0.25);
+  });
+
+  it('balancing rule: 9 of 12 balanced months flag the intake, 8 of 12 do not', () => {
+    assert.equal(extractCountryData(windowFixture({ balancedMonths: 9 }), 'XX').refineryYields.intakeIssue, 'balancing_item');
+    const eight = extractCountryData(windowFixture({ balancedMonths: 8 }), 'XX').refineryYields;
+    assert.equal(eight.basis, 'crude_refinery_intake');
+    assert.equal(eight.intakeIssue, null);
+  });
+
+  it('plausibility band: output at 1.5x intake keeps the intake basis, 1.6x does not', () => {
+    assert.equal(extractCountryData(windowFixture({ total: 1500 }), 'XX').refineryYields.basis, 'crude_refinery_intake');
+    assert.equal(extractCountryData(windowFixture({ total: 1600 }), 'XX').refineryYields.intakeIssue, 'implausible_output_ratio');
+    assert.equal(extractCountryData(windowFixture({ total: 700 }), 'XX').refineryYields.intakeIssue, 'implausible_output_ratio');
+  });
+
+  it('one month of total output cannot reject twelve months of intake', () => {
+    // Greptile on #9788: a single 1.6x month used to flip the basis to total
+    // output, which then had too few months, so every yield went to the median.
+    const rows = windowFixture({ total: null, extra: [makeRow({ REF_AREA: 'XX', TIME_PERIOD: '2026-06', ENERGY_PRODUCT: 'TOTPRODS', FLOW_BREAKDOWN: 'REFGROUT', OBS_VALUE: '1600', ASSESSMENT_CODE: '1' })] });
+    const yields = extractCountryData(rows, 'XX').refineryYields;
+    assert.equal(yields.basis, 'crude_refinery_intake');
+    assert.equal(yields.intakeIssue, null);
+    assert.equal(yields.products.gasoline, 0.25);
+  });
+
+  it('unreported intake falls back to total output; no denominator at all publishes no yields', () => {
+    const noIntake = extractCountryData(windowFixture({ intake: null, total: 1000 }), 'XX').refineryYields;
+    assert.equal(noIntake.basis, 'total_refinery_output');
+    assert.equal(noIntake.intakeIssue, 'unreported');
+    assert.equal(noIntake.products.gasoline, 0.25);
+    assert.equal(extractCountryData(windowFixture({ intake: null, total: null }), 'XX').refineryYields, null);
+  });
+
+  it('a product with fewer than 6 paired months, or a yield above 100%, is null; the others stay measured', () => {
+    assert.equal(extractCountryData(windowFixture({ count: 5 }), 'XX').refineryYields, null, '5 months of intake is not a window');
+    const sparseJet = months(5).map((month) => makeRow({ REF_AREA: 'XX', TIME_PERIOD: month, ENERGY_PRODUCT: 'JETKERO', FLOW_BREAKDOWN: 'REFGROUT', OBS_VALUE: '80', ASSESSMENT_CODE: '1' }));
+    const row = extractCountryData(windowFixture({ extra: sparseJet }), 'XX');
+    assert.equal(row.refineryYields.products.jet, null);
+    assert.equal(row.refineryYields.products.gasoline, 0.25);
+    assert.equal(extractCountryData(windowFixture({ gasoline: 1200, total: 1300 }), 'XX').refineryYields.products.gasoline, null);
+  });
+
+  it('naphtha does not join the demand-change basket', () => {
+    const rows = [];
+    for (const month of ['2025-06', '2026-06']) {
+      for (const product of ['GASOLINE', 'GASDIES', 'JETKERO', 'NAPHTHA']) {
+        rows.push(makeRow({ REF_AREA: 'XX', TIME_PERIOD: month, ENERGY_PRODUCT: product, FLOW_BREAKDOWN: 'TOTDEMO', OBS_VALUE: '100', ASSESSMENT_CODE: '1' }));
+      }
+    }
+    const row = extractCountryData(rows, 'XX');
+    assert.equal(row.naphtha.demandKbd, 100);
+    assert.deepEqual(row.demandChange.products, ['diesel', 'gasoline', 'jet']);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Observed year-over-year oil-product demand change (#6067)
 // ---------------------------------------------------------------------------
 

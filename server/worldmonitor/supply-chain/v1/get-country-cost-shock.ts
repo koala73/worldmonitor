@@ -107,7 +107,7 @@ export async function getCountryCostShock(
       const coverageModeled = shock.ieaStocksCoverage === true;
       const deficitModeled = productDeficits.length > 0;
       if (coverageModeled) coverageDays = Math.max(0, shock.effectiveCoverDays ?? 0);
-      // Average deficit across all modelled products (Gasoline, Diesel, Jet fuel, LPG) with demand > 0.
+      // Average deficit across all modelled products (Gasoline, Diesel, Jet fuel, LPG, Naphtha) with demand > 0.
       // computeEnergyShockScenario already filters to products with demand; zero-deficit products
       // are valid data points (demand exists but disruption causes no shortage) and must stay in the denominator.
       if (deficitModeled) supplyDeficitPct = productDeficits.reduce((a: number, b: number) => a + b, 0) / productDeficits.length;

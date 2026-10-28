@@ -74,9 +74,10 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
     id: 'energy.jodi-oil',
     label: 'JODI oil',
     ownerIssue: 5271,
-    // JODI remains a global source, but its current published country index
-    // has no substantive CN row. Do not advertise China coverage until that
-    // upstream contract recovers.
+    // JODI publishes CN rows under ASSESSMENT_CODE 3 ("not assessed"), which
+    // the oil and gas seeders discarded until #9393 and the gas follow-up.
+    // Keep both contracts blocked until a scheduled run on that code has
+    // published energy:jodi-{oil,gas}:v1:CN.
     launchStatus: 'blocked',
     blockedReason: CHINA_COVERAGE_REASON_CODES.CHINA_UPSTREAM_ROW_UNAVAILABLE,
     transport: metaTransport('seed-meta:energy:jodi-oil', 57_600),

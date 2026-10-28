@@ -26,12 +26,12 @@ import {
   EU_GAS_STORAGE_COUNTRIES,
   computeGasDisruption,
   buildGasAssessment,
-  REFINERY_YIELD,
-  REFINERY_YIELD_BASIS,
+  REFINERY_PRODUCTS,
+  resolveRefineryYields,
   computeMonthlyGulfShares,
   MIN_PRE_CRISIS_MONTHS,
 } from './_shock-compute';
-import type { CrudeImportOriginLike, GulfShareMeasurement, MonthlyGulfShare, PartnerShareProductLike } from './_shock-compute';
+import type { CrudeImportOriginLike, GulfShareMeasurement, JodiRefineryYieldsLike, MonthlyGulfShare, PartnerShareProductLike } from './_shock-compute';
 import { ISO2_TO_COMTRADE } from './_comtrade-reporters';
 import { CURRENT_FLOWS_WINDOW, PRE_CRISIS_WINDOW } from '../../../../shared/hormuz-crisis.js';
 
@@ -63,7 +63,9 @@ interface JodiOil {
   diesel?: JodiProduct | null;
   jet?: JodiProduct | null;
   lpg?: JodiProduct | null;
+  naphtha?: JodiProduct | null;
   crude?: { importsKbd?: number | null } | null;
+  refineryYields?: JodiRefineryYieldsLike | null;
 }
 
 interface IeaStocks {
@@ -215,9 +217,10 @@ export async function computeEnergyShockScenario(
     : null;
   const liveFlowRatio: number | null = rawFlowRatio !== null ? clamp(rawFlowRatio, 0, 1.5) : null;
 
-  // v9: pre-crisis (headline) and current-flows Gulf shares from monthly
-  // Comtrade filings. v8 oil caches carry the 2024 annual share only.
-  const cacheKey = `energy:shock:${needsOil ? 'v9' : 'v4'}:${code}:${chokepointId}:${disruptionPct}:${degraded ? 'd' : 'l'}:${fuelMode}`;
+  // v10: pre-crisis (headline) and current-flows Gulf shares from monthly
+  // Comtrade filings. v9 oil caches (per-country JODI refinery yields, naphtha)
+  // carry the 2024 annual share only.
+  const cacheKey = `energy:shock:${needsOil ? 'v10' : 'v4'}:${code}:${chokepointId}:${disruptionPct}:${degraded ? 'd' : 'l'}:${fuelMode}`;
   const cached = await getCachedJson(cacheKey);
   if (cached) return cached as ComputeEnergyShockScenarioResponse;
 
@@ -319,7 +322,8 @@ export async function computeEnergyShockScenario(
   if (!ieaStocksCoverage) {
     limitations.push('IEA strategic stock data unavailable');
   }
-  limitations.push(REFINERY_YIELD_BASIS);
+  const refineryYields = resolveRefineryYields(code, jodiOil?.refineryYields);
+  limitations.push(refineryYields.basis);
   if (degraded) {
     limitations.push('PortWatch flow data unavailable, using historical baseline multipliers');
   } else if (needsOil) {
@@ -389,18 +393,16 @@ export async function computeEnergyShockScenario(
     }
   }
 
-  const productDefs: Array<{ name: string; demand: number }> = [
-    { name: 'Gasoline', demand: n(jodiOil?.gasoline?.demandKbd) },
-    { name: 'Diesel', demand: n(jodiOil?.diesel?.demandKbd) },
-    { name: 'Jet fuel', demand: n(jodiOil?.jet?.demandKbd) },
-    { name: 'LPG', demand: n(jodiOil?.lpg?.demandKbd) },
-  ];
+  const productDefs = REFINERY_PRODUCTS.map(({ key, name }) => ({
+    name,
+    demand: n(jodiOil?.[key]?.demandKbd),
+    yieldFactor: refineryYields.yields[key],
+  }));
 
   const products: ProductImpact[] = !oilModeled ? [] : productDefs
     .filter((p) => p.demand > 0)
     .map((p) => {
-      const yieldFactor = REFINERY_YIELD[p.name] ?? 0.20;
-      const outputLossKbd = crudeLossKbd * yieldFactor;
+      const outputLossKbd = crudeLossKbd * p.yieldFactor;
       const deficitPct = clamp((outputLossKbd / p.demand) * 100, 0, 100);
       return {
         product: p.name,
