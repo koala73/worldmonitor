@@ -8,6 +8,7 @@ vi.mock('../config/loader.js', () => ({
   }],
 }));
 const { aggregateBasket } = await import('./aggregate.js');
+const { INDEX_METHODOLOGY_VERSION } = await import('../index-methodology.js');
 
 function basketRow(item: string, category: string, retailer: string, price: number) {
   return { basket_item_id: item, category, weight: '1', retailer_product_id: `${retailer}-${item}`,
@@ -67,4 +68,9 @@ it('tags index rows with the first-observation methodology so earlier fallback r
     .filter(([sql]) => (sql as string).includes('INSERT INTO computed_indices'))
     .map(([sql]) => sql as string);
   for (const sql of indexSql) expect(sql).not.toContain("'1')");
+
+  expect(INDEX_METHODOLOGY_VERSION).toBe('2');
+  const writes = indexWrites();
+  expect(writes.length).toBeGreaterThan(0);
+  for (const args of writes) expect(args[args.length - 1]).toBe(INDEX_METHODOLOGY_VERSION);
 });
