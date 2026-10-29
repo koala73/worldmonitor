@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, PUBLISH_BLOCKED_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 import { DAY, readSectionFreshness, bundleHeartbeatKey, BUNDLE_HEARTBEAT_TTL_SECONDS } from '../scripts/_bundle-runner.mjs';
 import { OWID_SOURCE_VERSION } from '../scripts/seed-owid-energy-mix.mjs';
+import { JODI_OIL_SOURCE_VERSION } from '../scripts/seed-jodi-oil.mjs';
 import {
   SUPERSEDED_KEY_TTL_SECONDS,
   atomicSwitch,
@@ -105,7 +106,12 @@ test('an error canonical envelope never makes a failed migration look fresh', as
   assert.equal(freshness, null);
 });
 
-test('energy-sources wires the OWID freshness gate to the producer version', () => {
+for (const gate of [
+  { label: 'OWID-Energy-Mix', script: 'seed-owid-energy-mix.mjs', constant: 'OWID_SOURCE_VERSION' },
+  // A deploy that changes what JODI-Oil writes must reseed on the next tick,
+  // not wait out the interval with the old payload still served.
+  { label: 'JODI-Oil', script: 'seed-jodi-oil.mjs', constant: 'JODI_OIL_SOURCE_VERSION' },
+]) test(`energy-sources wires the ${gate.label} freshness gate to the producer version`, () => {
   const bundlePath = join(SCRIPTS_DIR, 'seed-bundle-energy-sources.mjs');
   const rawSource = readFileSync(bundlePath, 'utf8');
   const sectionSource = extractRunBundleSectionSource(rawSource, 'energy-sources');
@@ -116,29 +122,44 @@ test('energy-sources wires the OWID freshness gate to the producer version', () 
   );
   const source = stripLineComments(sectionSource);
   const sections = extractBundleSections(source);
-  const owidSections = sections.filter((section) => section.label === 'OWID-Energy-Mix');
+  const gateSections = sections.filter((section) => section.label === gate.label);
 
   assert.equal(sections.length, countSectionAnchors(source));
   assert.equal(sections.length, countSectionScriptKeys(source));
   assert.equal(
-    owidSections.length,
+    gateSections.length,
     1,
-    'seed-bundle-energy-sources.mjs must declare exactly one OWID-Energy-Mix section',
+    `seed-bundle-energy-sources.mjs must declare exactly one ${gate.label} section`,
   );
-  const [owidSection] = owidSections;
-  assert.equal(owidSection.script, 'seed-owid-energy-mix.mjs');
+  const [gateSection] = gateSections;
+  assert.equal(gateSection.script, gate.script);
   assert.equal(
-    owidSection.expectedSourceVersionExpr,
-    'OWID_SOURCE_VERSION',
-    'OWID-Energy-Mix must reference the producer source-version constant',
+    gateSection.expectedSourceVersionExpr,
+    gate.constant,
+    `${gate.label} must reference the producer source-version constant`,
   );
   assert.equal(
     hasNamedImportBinding(rawSource, {
-      moduleSpecifier: './seed-owid-energy-mix.mjs',
-      importedName: 'OWID_SOURCE_VERSION',
+      moduleSpecifier: `./${gate.script}`,
+      importedName: gate.constant,
     }),
     true,
-    'OWID_SOURCE_VERSION must be imported from the OWID energy-mix producer',
+    `${gate.constant} must be imported from ${gate.script}`,
+  );
+});
+
+test('a JODI-Oil seed-meta written before the current source version is due', async () => {
+  const section = {
+    seedMetaKey: 'energy:jodi-oil',
+    canonicalKey: 'energy:jodi-oil:v1:_countries',
+    expectedSourceVersion: JODI_OIL_SOURCE_VERSION,
+  };
+  const fetchedAt = Date.now();
+  const read = (meta) => async (key) => (key === 'seed-meta:energy:jodi-oil' ? meta : ['US', 'MY']);
+  assert.equal(await readSectionFreshness(section, read({ fetchedAt, recordCount: 81 })), null);
+  assert.deepEqual(
+    await readSectionFreshness(section, read({ fetchedAt, recordCount: 81, sourceVersion: JODI_OIL_SOURCE_VERSION })),
+    { fetchedAt },
   );
 });
 
