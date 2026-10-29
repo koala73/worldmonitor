@@ -5660,6 +5660,97 @@ describe('crawlable corpus generator', () => {
     assert.ok(data.changelog.every((entry) => entry.bullets.length > 0 && entry.bullets.length <= 8));
     assert.match(data.lastmod.chokepoints, /^\d{4}-\d{2}-\d{2}$/);
   });
+
+  it('keeps source category titles within 60 characters and unique', async () => {
+    const { outDir, manifest } = await defaultCorpusBuild();
+    const titles = new Map();
+    const seen = new Map();
+    for (const route of manifest.sections.sources.routes) {
+      const window = new Window();
+      try {
+        window.document.write(read(outDir, `${route.slice(1)}index.html`));
+        const title = window.document.querySelector('title')?.textContent ?? '';
+        const ogTitle = window.document.querySelector('meta[property="og:title"]')?.getAttribute('content');
+        const twitterTitle = window.document.querySelector('meta[name="twitter:title"]')?.getAttribute('content');
+        assert.equal(ogTitle, title, route);
+        assert.equal(twitterTitle, title, route);
+        assert.ok([...title].length <= 60, `${route} title is ${[...title].length} code points`);
+        assert.ok(!seen.has(title), `${route} repeats the title of ${seen.get(title)}`);
+        seen.set(title, route);
+        titles.set(route, title);
+      } finally {
+        window.close();
+      }
+    }
+    assert.equal(titles.get('/sources/energy/'), 'Energy & Commodities Data Sources | World Monitor');
+    assert.equal(titles.get('/sources/china/'), 'China Coverage: Data Sources and Providers | World Monitor');
+
+    const sourcesHtml = read(outDir, 'sources/index.html');
+    const sourcesWindow = new Window();
+    try {
+      sourcesWindow.document.write(sourcesHtml);
+      const sourcesTitle = sourcesWindow.document.querySelector('title')?.textContent ?? '';
+      assert.equal(sourcesWindow.document.querySelector('meta[property="og:title"]')?.getAttribute('content'), sourcesTitle);
+      assert.equal(sourcesWindow.document.querySelector('meta[name="twitter:title"]')?.getAttribute('content'), sourcesTitle);
+      assert.equal(sourcesTitle, 'Global Data Sources: OSINT, Markets, Energy | World Monitor');
+    } finally {
+      sourcesWindow.close();
+    }
+    assert.equal(
+      jsonLdObjects(sourcesHtml).find((node) => node['@type'] === 'CollectionPage')?.name,
+      'World Monitor data source catalog',
+    );
+
+    const toolsWindow = new Window();
+    try {
+      toolsWindow.document.write(read(outDir, 'tools/index.html'));
+      const toolsTitle = toolsWindow.document.querySelector('title')?.textContent ?? '';
+      assert.equal(toolsWindow.document.querySelector('meta[property="og:title"]')?.getAttribute('content'), toolsTitle);
+      assert.equal(toolsWindow.document.querySelector('meta[name="twitter:title"]')?.getAttribute('content'), toolsTitle);
+      assert.equal(toolsTitle, 'Live Tools: Outages, Fear & Greed, Oil, Debt | World Monitor');
+      for (const href of [
+        '/tools/internet-outages/',
+        '/tools/fear-and-greed-index/',
+        '/tools/crude-oil-inventories/',
+        '/tools/national-debt-clock/',
+      ]) {
+        assert.ok(toolsWindow.document.querySelector(`a[href="${href}"]`), href);
+      }
+      const toolsDescription = toolsWindow.document.querySelector('meta[name="description"]')?.getAttribute('content') ?? '';
+      assert.ok(toolsDescription.startsWith('Check hazards, airspace, shipping, outages'), toolsDescription);
+    } finally {
+      toolsWindow.close();
+    }
+
+    const compareWindow = new Window();
+    try {
+      compareWindow.document.write(read(outDir, 'compare/chokepoint-monitoring-tools/index.html'));
+      const compareTitle = compareWindow.document.querySelector('title')?.textContent ?? '';
+      assert.equal(compareWindow.document.querySelector('meta[property="og:title"]')?.getAttribute('content'), compareTitle);
+      assert.equal(compareWindow.document.querySelector('meta[name="twitter:title"]')?.getAttribute('content'), compareTitle);
+      assert.equal(compareTitle, 'Chokepoint Monitoring Tools: Hormuz, Suez | World Monitor');
+      const compareDescription = compareWindow.document.querySelector('meta[name="description"]')?.getAttribute('content') ?? '';
+      assert.ok(compareDescription.startsWith('Compare chokepoint monitoring tools for Hormuz, Suez, and Malacca'), compareDescription);
+    } finally {
+      compareWindow.close();
+    }
+
+    const ciiWindow = new Window();
+    try {
+      ciiWindow.document.write(read(outDir, 'country-instability-index/index.html'));
+      const description = ciiWindow.document.querySelector('meta[name="description"]')?.getAttribute('content') ?? '';
+      const phrase = description.match(/available 24-hour comparison-window movement|available 24-hour movement/)?.[0];
+      const count = description.match(/(\d+) Tier-1 countries/)?.[1];
+      assert.ok(phrase, description);
+      assert.ok(count, description);
+      const expected = `Live Country Instability Index rankings: scores, ${phrase}, severity and update times for ${count} Tier-1 countries.`;
+      assert.equal(description, expected);
+      const shortVariant = `Live Country Instability Index rankings: scores, available 24-hour movement, severity and update times for ${count} Tier-1 countries.`;
+      assert.ok([...shortVariant].length >= 120, `${[...shortVariant].length} code points`);
+    } finally {
+      ciiWindow.close();
+    }
+  });
 });
 
 describe('live-pulse snapshot injection (#7533)', () => {
