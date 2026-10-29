@@ -2,7 +2,6 @@ import feeds from './shared/regional-energy-feeds.json' with { type: 'json' };
 import { readFileSync } from 'node:fs';
 import { rootCertificates } from 'node:tls';
 import { Agent, fetch as undiciFetch } from 'undici';
-import { loadEnvFile, runSeed } from './_seed-utils.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import {
   parsePgcb, parseNiso, parseCammesa, parseEskom, parseOns, parseAnpTrade,
@@ -136,18 +135,6 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
 export function regionalEnergyContentMeta(data) {
   const times = data.observations.map(p => periodEnd(p.period));
   return { newestItemAt: Math.max(...times), oldestItemAt: Math.min(...times) };
-}
-
-export async function runRegionalEnergyFeed(id, moduleUrl) {
-  const feed = feeds.find(f => f.id === id);
-  if (!feed) throw new Error('Unknown regional energy feed');
-  if (process.argv.includes('--dry-run')) {
-    const data = await fetchRegionalEnergyFeed(id);
-    console.log(JSON.stringify(data, null, 2));
-    return;
-  }
-  loadEnvFile(moduleUrl);
-  await runSeed('energy', `regional-${id}`, regionalEnergyKey(id), () => fetchRegionalEnergyFeed(id), regionalEnergySeedOptions(id));
 }
 
 export function regionalEnergySeedOptions(id) {
