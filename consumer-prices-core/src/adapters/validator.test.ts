@@ -605,6 +605,8 @@ describe('validateSearchHit — India multipacks and wrong products', () => {
     ['Sunflower Oil 1L', 'Vishwai sunflower oil pack of 4', '1 L', 4000],
     ['Basmati Rice 1kg', 'RED ROSE TIBAR BASMATI RICE, 1 KG (PACK OF 20 - 20 KG )', '1 KG', 20000],
     ['White Sugar 1kg', 'Annprash White Sugar - 1 kg (Pack of 2)', '1 kg', 2000],
+    ['Sunflower Oil 1L', 'Fortune Sunflower Oil 2 x 1L (Pack of 2)', '1 L', 2000],
+    ['Sunflower Oil 1L', 'Fortune Sunflower Oil 2 x 1 L', '1 L', 2000],
   ])('rejects %s matched to the multipack "%s"', (canonicalName, productName, sizeText, total) => {
     const r = check(canonicalName, productName, sizeText);
     expect(r.ok).toBe(false);

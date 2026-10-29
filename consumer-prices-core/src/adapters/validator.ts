@@ -150,12 +150,15 @@ function urlPathWords(productUrl: string | undefined): string {
 // `N pack` forms are already read by parseSize.
 const PACK_OF = /\b(?:pack|set|combo)\s+of\s+(\d+)\b/i;
 const TITLE_SIZE = /(?<!\d)\d+(?:\.\d+)?\s*[a-z]+/gi;
+// "2 x 1L" in a title. Stricter than parseSize's pack prefix, which would read
+// "1121 XXXL Basmati" (a rice variety) as 1121 packs.
+const TITLE_N_X_SIZE = /(?<![\d.])(\d+)\s*[x×]\s*(\d+(?:\.\d+)?\s*[a-z]+)/i;
 
 /**
  * The total size of a "pack of N" title, as `N x <unit size>`, or null.
  *
  * Extractors report the size printed for ONE unit ("1 L") while the multipack
- * appears only in the title ("Vishwai sunflower oil pack of 4", ₹2,120), so
+ * appears only in the title, as "pack of N" or "N x <size>" ("Vishwai sunflower oil pack of 4", ₹2,120), so
  * the window alone admitted 4 L as the 1 L item. The unit size is the
  * smallest size the title states, else the extracted size: a title can state
  * both the unit and the total ("1 KG (PACK OF 20 - 20 KG)", "400g (Pack of 2,
@@ -170,7 +173,16 @@ function titleMultipackSize(
   if (item.baseUnit === 'ct') return null;
   const match = PACK_OF.exec(productName);
   const count = match ? Number(match[1]) : 0;
-  if (!match || count <= 1) return null;
+  if (!match || count <= 1) {
+    // Only fills a multiplier the extractor dropped: sizeText must read as ONE
+    // unit of the same dimension. An unparseable or cross-dimension sizeText
+    // keeps its own verdict.
+    const nx = TITLE_N_X_SIZE.exec(productName);
+    const total = nx && Number(nx[1]) > 1 ? parseSize(`${nx[1]} x ${nx[2]}`) : null;
+    const extracted = parseSize(sizeText);
+    const dropped = total && extracted && extracted.packCount === 1 && extracted.baseUnit === total.baseUnit;
+    return dropped ? total.rawText : null;
+  }
   const titleSizes = [...productName.replace(match[0], ' ').matchAll(TITLE_SIZE)]
     .map((m) => parseSize(m[0]))
     .filter((size): size is ParsedSize => size !== null);
