@@ -758,9 +758,11 @@ const HUB_DASHBOARD_VIEWS = {
     path: '/dashboard?layers=ais,waterways,tradeRoutes,hotspots,sanctions,cables&timeRange=24h',
     label: 'Open shipping and chokepoint layers on the live map →',
   },
+  // ciiChoropleth shades countries on desktop only (the mobile SVG map skips it);
+  // the label promises country risk, which every renderer gives via the country brief.
   countries: {
     path: '/dashboard?layers=ciiChoropleth,hotspots,conflicts&timeRange=7d',
-    label: 'Open the country instability map →',
+    label: 'Open country risk on the live map →',
   },
 };
 
