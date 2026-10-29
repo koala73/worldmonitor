@@ -1023,7 +1023,9 @@ const SEED_META = {
       failureCodePattern: /^MND_[A-Z0-9_]{1,60}$/,
     },
   },
-  crossStraitActivityJapanMod:  { key: 'seed-meta:military:cross-strait-activity:japan-mod', maxStaleMin: 720 },
+  // One X read per 12-hour UTC slot, run by a 3-hour bundle: a healthy read can
+  // be 15h old, so 18h tolerates bundle lag but not a missed slot.
+  crossStraitActivityJapanMod:  { key: 'seed-meta:military:cross-strait-activity:japan-mod', maxStaleMin: 1080 },
   chinaPolicyEvents: { key: 'seed-meta:china:policy-events', maxStaleMin: 2_160 },
   // decisionGroups (#6060): the seeder's afterPublish diagnostics name which
   // groups are quiet, stale, or unavailable, so a shortfall is actionable
