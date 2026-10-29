@@ -23,6 +23,8 @@ and reservoir datasets are outside this initial path.
 
 Each feed includes provider attribution, licence text, artifact URLs, fetch time,
 source observation time and up to eight observations per metric/area series.
+The API returns fetch and observation instants as Unix epoch milliseconds, or
+zero when unavailable. Reporting periods retain their source calendar format.
 Licences remain unconfirmed where no data licence was established. Public access
 does not establish reuse rights. The registry is
 `scripts/shared/regional-energy-feeds.json`.

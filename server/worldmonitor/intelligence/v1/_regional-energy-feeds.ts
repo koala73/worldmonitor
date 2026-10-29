@@ -18,7 +18,7 @@ function observationTime(period: unknown): number {
 function decodeFeed(feed: typeof feeds[number], raw: unknown, nowMs: number): RegionalEnergyFeed {
   const empty: RegionalEnergyFeed = {
     sourceId: feed.id, name: feed.name, sourceUrl: feed.sourceUrl, licence: feed.licence,
-    status: 'unavailable', fetchedAt: '', observedAt: '', dataUrls: [], observations: [], error: '',
+    status: 'unavailable', fetchedAt: 0, observedAt: 0, dataUrls: [], observations: [], error: '',
   };
   if (raw == null) return empty;
   const invalid = { ...empty, status: 'error', error: 'invalid_cache_record' };
@@ -46,7 +46,7 @@ function decodeFeed(feed: typeof feeds[number], raw: unknown, nowMs: number): Re
   const staleCount = [...latest.values()].filter(p => p.stale).length;
   return {
     ...empty, status: staleCount === latest.size ? 'stale' : staleCount ? 'partial' : 'available',
-    fetchedAt: new Date(fetchedAt).toISOString(), observedAt: new Date(Math.max(...[...latest.values()].map(p => p.time))).toISOString(),
+    fetchedAt, observedAt: Math.max(...[...latest.values()].map(p => p.time)),
     dataUrls: record.dataUrls as string[], observations,
   };
 }

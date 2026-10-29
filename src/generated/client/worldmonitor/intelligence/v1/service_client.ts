@@ -913,8 +913,8 @@ export interface RegionalEnergyFeed {
   sourceUrl: string;
   licence: string;
   status: string;
-  fetchedAt: string;
-  observedAt: string;
+  fetchedAt: number;
+  observedAt: number;
   dataUrls: string[];
   observations: RegionalEnergyObservation[];
   error: string;

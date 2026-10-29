@@ -122,8 +122,9 @@ message RegionalEnergyFeed {
   // available, partial, stale, unavailable, or error. Partial means that the
   // latest series have different freshness states. It is not a risk rating.
   string status = 5;
-  string fetched_at = 6;
-  string observed_at = 7;
+  // Unix epoch milliseconds; zero when unavailable.
+  int64 fetched_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 observed_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   repeated string data_urls = 8;
   repeated RegionalEnergyObservation observations = 9;
   // Stable failure code. Empty for a valid record, including retained stale data.

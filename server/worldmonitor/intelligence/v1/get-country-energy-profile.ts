@@ -7,7 +7,7 @@ import { ApiError } from '../../../../src/generated/server/worldmonitor/intellig
 import jodiMeasurementFields from '../../../../scripts/shared/jodi-measurement-fields.json';
 
 import { getRawJson } from '../../../_shared/redis';
-import { setResponseHeader } from '../../../_shared/response-headers';
+import { markNoCacheResponse, setResponseHeader } from '../../../_shared/response-headers';
 import { ENERGY_SPINE_KEY_PREFIX, EMBER_ELECTRICITY_KEY_PREFIX, SPR_POLICIES_KEY } from '../../../_shared/cache-keys';
 import { readRegionalEnergyFeeds } from './_regional-energy-feeds';
 import {
@@ -425,6 +425,7 @@ export async function getCountryEnergyProfile(
   const sprPolicy = sprRegistry?.policies?.[code] ?? null;
   const importDependency = resolveEnergyImportDependency(staticRecord);
   const regionalEnergyFeeds = await readRegionalEnergyFeeds(code, getRawJson);
+  if (regionalEnergyFeeds.some(feed => feed.status === 'error')) markNoCacheResponse(ctx.request);
 
   if (spine != null && typeof spine === 'object' && spine.coverage != null) {
     let emberFallback: EmberData | null = null;

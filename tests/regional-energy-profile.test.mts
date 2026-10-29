@@ -6,6 +6,7 @@ import { fetchRegionalEnergyFeed, regionalEnergyContentMeta } from '../scripts/_
 import { buildEnvelope } from '../scripts/_seed-envelope-source.mjs';
 import { getCountryEnergyProfile } from '../server/worldmonitor/intelligence/v1/get-country-energy-profile';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
+import { drainResponseHeaders } from '../server/_shared/response-headers';
 
 const now = Date.parse('2026-10-29T16:00:00Z');
 const snapshot = (sourceId = 'pgcb', overrides = {}) => ({
@@ -26,7 +27,10 @@ test('country profile reads only its source keys and preserves observed zero', a
   assert.equal(feeds[0].observations[0].value, 0);
   assert.equal(feeds[1].status, 'unavailable');
   assert.deepEqual(feeds[1].observations, []);
-  assert.equal(feeds[1].fetchedAt, '');
+  assert.equal(feeds[0].fetchedAt, Date.parse('2026-10-29T15:00:00Z'));
+  assert.equal(feeds[0].observedAt, Date.parse('2026-10-29T14:00:00Z'));
+  assert.equal(feeds[1].fetchedAt, 0);
+  assert.equal(feeds[1].observedAt, 0);
 });
 
 test('countries without these feeds perform no optional reads', async () => {
@@ -103,10 +107,39 @@ test('a provider response survives publication envelope, Redis decoding and both
     const pgcb = response.regionalEnergyFeeds.find(f => f.sourceId === 'pgcb')!;
     assert.equal(pgcb.observations.find(p => p.metric === 'generation')!.value, 15636);
     assert.equal(pgcb.observations.find(p => p.metric === 'generation.solar')!.value, 0);
-    assert.equal(pgcb.observedAt, data.observedAt);
+    assert.equal(pgcb.observedAt, Date.parse(data.observedAt));
     assert.equal(pgcb.licence, 'Unconfirmed');
     assert.deepEqual(pgcb.dataUrls, data.dataUrls);
     assert.equal(response.regionalEnergyFeeds.find(f => f.sourceId === 'petrobangla')!.status, 'unavailable');
     assert.ok(!JSON.stringify(response).includes('"_seed"'));
+  }
+});
+
+test('optional cache failures disable response caching and recovery clears the marker on both profile paths', async t => {
+  const savedEnv = { ...process.env }, savedFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = savedFetch;
+    for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key];
+    Object.assign(process.env, savedEnv);
+  });
+  delete process.env.LOCAL_API_MODE;
+  for (const spine of [null, { coverage: { hasMix: true }, sources: { mixYear: 2025 }, mix: { coalShare: 10 } }]) {
+    const redis = installRedis({ 'energy:regional:pgcb:v1': snapshot(), 'energy:spine:v1:BD': spine });
+    let failing = true;
+    globalThis.fetch = async (input, init) => {
+      if (failing && decodeURIComponent(String(input)).includes('/get/energy:regional:petrobangla:v1')) return new Response('unavailable', { status: 503 });
+      return redis.fetchImpl(input, init);
+    };
+    for (const expectedError of [true, false]) {
+      failing = expectedError;
+      const request = new Request('https://www.worldmonitor.app');
+      const response = await getCountryEnergyProfile({ request, pathParams: {}, headers: {} }, { countryCode: 'BD' });
+      assert.equal(response.mixAvailable, spine !== null);
+      assert.equal(response.regionalEnergyFeeds[0].sourceId, 'pgcb');
+      assert.equal(response.regionalEnergyFeeds[0].error, '');
+      const petrobangla = response.regionalEnergyFeeds.find(feed => feed.sourceId === 'petrobangla')!;
+      assert.equal(petrobangla.error, expectedError ? 'cache_read_failed' : '');
+      assert.equal(drainResponseHeaders(request)?.['X-No-Cache'], expectedError ? '1' : undefined);
+    }
   }
 });
