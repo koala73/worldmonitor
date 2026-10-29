@@ -112,11 +112,25 @@ it('records zero coverage when the freshness window leaves the basket empty', as
   expect(clear).toBeLessThan(sqls.findIndex((sql) => sql.includes('INSERT INTO computed_indices')));
   expect(tx.mock.calls[clear][1]).toEqual(['basket']);
 });
-it('releases its own hold once the item has no fresh peer left to disagree with', async () => {
-  query.mockResolvedValueOnce({ rows: [row('held', 61, 'review', 'validate-job')] });
+it('keeps its hold while another retailer was seen recently but is missing from the priced rows', async () => {
+  // The peer's latest observation is out of stock, so the priced query drops it;
+  // a scrape still saw it inside the window, so the disagreement is not resolved.
+  query.mockResolvedValueOnce({ rows: [row('held', 61, 'review', 'validate-job')] })
+    .mockResolvedValueOnce({ rows: [{ basket_item_id: 'item', retailers: 2 }] });
   await validateAll();
   expect(query).toHaveBeenCalledTimes(2);
-  const [sql, args] = query.mock.calls[1];
+  const [sql, args] = query.mock.calls[1] as [string, unknown[]];
+  expect(sql).toContain('rp.last_seen_at >= NOW() - make_interval(days => $3)');
+  expect(sql).not.toContain('in_stock');
+  expect(args).toEqual(['test', 'AE', MAX_OBSERVATION_AGE_DAYS]);
+});
+it('releases its own hold once the item has no fresh peer left to disagree with', async () => {
+  // Only the held retailer itself was seen within the window.
+  query.mockResolvedValueOnce({ rows: [row('held', 61, 'review', 'validate-job')] })
+    .mockResolvedValueOnce({ rows: [{ basket_item_id: 'item', retailers: 1 }] });
+  await validateAll();
+  expect(query).toHaveBeenCalledTimes(3);
+  const [sql, args] = query.mock.calls[2];
   expect(sql).toContain("SET match_status = 'auto'");
   expect(JSON.parse(args[1])).toMatchObject({ reason: 'no_fresh_peer', price: 61 });
   expect(args[2]).toBe('observation-held');

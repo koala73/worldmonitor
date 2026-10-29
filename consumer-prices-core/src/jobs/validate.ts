@@ -100,14 +100,40 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
     byItem.get(r.basketItemId)!.push(r);
   }
 
+  // Retailers a scrape saw within the window, per item, whatever their stock.
+  // The priced query above also drops a retailer whose latest observation is
+  // out of stock; that says nothing about this item's price, so releasing a
+  // hold then would publish a price this job flagged. A hold is released only
+  // when no other retailer has been seen at all. Loaded once, on first need.
+  let seenRetailers: Map<string, number> | null = null;
+  const othersSeen = async (basketItemId: string): Promise<boolean> => {
+    if (!seenRetailers) {
+      const seen = await query<{ basket_item_id: string; retailers: number }>(
+        `SELECT pm.basket_item_id, COUNT(DISTINCT r.id)::int AS retailers
+         FROM product_matches pm
+         JOIN retailer_products rp ON rp.id = pm.retailer_product_id
+         JOIN retailers r ON r.id = rp.retailer_id AND r.market_code = $2 AND r.active = true
+         JOIN basket_items bi ON bi.id = pm.basket_item_id AND bi.active = true
+         JOIN baskets b ON b.id = bi.basket_id AND b.slug = $1
+         WHERE pm.match_status <> 'rejected'
+           AND rp.last_seen_at >= NOW() - make_interval(days => $3)
+         GROUP BY pm.basket_item_id`,
+        [basketSlug, marketCode, MAX_OBSERVATION_AGE_DAYS],
+      );
+      seenRetailers = new Map(seen.rows.map((r) => [r.basket_item_id, Number(r.retailers)]));
+    }
+    return (seenRetailers.get(basketItemId) ?? 0) > 1;
+  };
+
   let flagged = 0;
   let restored = 0;
 
-  for (const [, itemRows] of byItem) {
+  for (const [basketItemId, itemRows] of byItem) {
     // Need >= 2 retailers to compute a meaningful cross-retailer median.
     // Single-retailer items cannot be sanity-checked, so nothing is flagged —
-    // but a hold this job placed while a peer existed is released once that
-    // peer's observations have aged out, or the item stays held forever.
+    // but a hold this job placed while a peer existed is released once no
+    // scrape has seen that peer within the window, or the item stays held
+    // forever.
     const pricesByRetailer = new Map<string, number[]>();
     for (const row of itemRows) {
       const prices = pricesByRetailer.get(row.retailerSlug) ?? [];
@@ -151,7 +177,10 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
           `${(row.currencyCode ?? "").padEnd(3)}${row.price.toFixed(2).padStart(7)}  (median=${med.toFixed(2)}, ratio=${ratio.toFixed(2)}x)`,
         );
         flagged++;
-      } else if (!isOutlier && wasReview && row.reviewedBy === 'validate-job' && row.admitted) {
+      } else if (
+        !isOutlier && wasReview && row.reviewedBy === 'validate-job' && row.admitted &&
+        (peered || !(await othersSeen(basketItemId)))
+      ) {
         // Price returned to normal range — restore so it flows into aggregate again.
         await query(
           `UPDATE product_matches
