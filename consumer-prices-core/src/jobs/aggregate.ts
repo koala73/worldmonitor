@@ -7,6 +7,7 @@ import { query, closePool } from '../db/client.js';
 import { loadAllBasketConfigs } from '../config/loader.js';
 import { validateAll } from './validate.js';
 import { FX_RATES_TO_USD } from '../fx/rates.js';
+import { MAX_OBSERVATION_AGE_DAYS } from '../observation-freshness.js';
 
 const logger = {
   info: (msg: string, ...args: unknown[]) => console.log(`[aggregate] ${msg}`, ...args),
@@ -58,8 +59,9 @@ async function getBasketRows(basketSlug: string, marketCode: string): Promise<Ba
        WHERE retailer_product_id = rp.id
        ORDER BY observed_at DESC, id DESC LIMIT 1
      ) po ON po.in_stock = true
+       AND po.observed_at >= NOW() - make_interval(days => $3)
      WHERE b.slug = $1`,
-    [basketSlug, marketCode],
+    [basketSlug, marketCode, MAX_OBSERVATION_AGE_DAYS],
   );
 
   return result.rows.map((r) => ({

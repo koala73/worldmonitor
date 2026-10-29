@@ -4,6 +4,7 @@ vi.mock('../db/client.js', () => ({ query, closePool: vi.fn() }));
 vi.mock('../config/loader.js', () => ({ loadAllBasketConfigs: () => [{ slug: 'test', marketCode: 'AE' }] }));
 const { validateAll } = await import('./validate.js');
 const { aggregateBasket } = await import('./aggregate.js');
+const { MAX_OBSERVATION_AGE_DAYS } = await import('../observation-freshness.js');
 function row(id: string, price: number, status = 'auto', owner: string | null = null, admitted: boolean | null = true) {
   return { match_id: id, basket_item_id: 'item', match_status: status, retailer_slug: id,
     canonical_name: 'Milk', price: String(price), currency_code: 'AED', reviewed_by: owner,
@@ -78,3 +79,27 @@ it('selects the latest observation before checking stock', async () => {
   expect(sql).not.toContain('WHERE retailer_product_id = rp.id AND in_stock = true');
   expect(sql).toContain(') po ON po.in_stock = true');
 });
+it.each([
+  ['validate', () => validateAll(), 0],
+  ['aggregate', async () => { query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] }); await aggregateBasket('test', 'AE'); }, 1],
+] as const)('%s reads only observations from the freshness window', async (_name, run, callIndex) => {
+  await run();
+  const [sql, args] = query.mock.calls[callIndex] as [string, unknown[]];
+  expect(sql).toMatch(/\) po ON po\.in_stock = true\s+AND po\.observed_at >= NOW\(\) - make_interval\(days => \$3\)/);
+  expect(args[2]).toBe(MAX_OBSERVATION_AGE_DAYS);
+});
+it('releases its own hold once the item has no fresh peer left to disagree with', async () => {
+  query.mockResolvedValueOnce({ rows: [row('held', 61, 'review', 'validate-job')] });
+  await validateAll();
+  expect(query).toHaveBeenCalledTimes(2);
+  const [sql, args] = query.mock.calls[1];
+  expect(sql).toContain("SET match_status = 'auto'");
+  expect(JSON.parse(args[1])).toMatchObject({ reason: 'no_fresh_peer', price: 61 });
+  expect(args[2]).toBe('observation-held');
+});
+it.each([['human', true], ['validate-job', false]] as const)(
+  'keeps an unpeered hold owned by %s with admission %s', async (owner, admitted) => {
+    query.mockResolvedValueOnce({ rows: [row('held', 61, 'review', owner, admitted)] });
+    await validateAll();
+    expect(query).toHaveBeenCalledTimes(1);
+  });

@@ -15,6 +15,7 @@ import { query, closePool } from '../db/client.js';
 import { loadAllBasketConfigs } from '../config/loader.js';
 import { classifyMatchAdmission } from './scrape-coverage.js';
 import type { ValidatorResult } from '../adapters/validator.js';
+import { MAX_OBSERVATION_AGE_DAYS } from '../observation-freshness.js';
 
 const logger = {
   info: (msg: string, ...args: unknown[]) => console.log(`[validate] ${msg}`, ...args),
@@ -69,13 +70,14 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
      JOIN baskets b ON b.id = bi.basket_id AND b.slug = $1
      JOIN canonical_products cp ON cp.id = pm.canonical_product_id
      JOIN LATERAL (
-       SELECT id, price, in_stock, raw_payload_json FROM price_observations
+       SELECT id, price, in_stock, observed_at, raw_payload_json FROM price_observations
        WHERE retailer_product_id = rp.id
        ORDER BY observed_at DESC, id DESC LIMIT 1
      ) po ON po.in_stock = true
+       AND po.observed_at >= NOW() - make_interval(days => $3)
      WHERE pm.match_status IN ('auto', 'approved', 'review')
        AND pm.pin_disabled_at IS NULL`,
-    [basketSlug, marketCode],
+    [basketSlug, marketCode, MAX_OBSERVATION_AGE_DAYS],
   );
 
   const rows: MatchRow[] = result.rows.map((r) => ({
@@ -103,23 +105,25 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
 
   for (const [, itemRows] of byItem) {
     // Need >= 2 retailers to compute a meaningful cross-retailer median.
-    // Single-retailer items cannot be sanity-checked — skip.
+    // Single-retailer items cannot be sanity-checked, so nothing is flagged —
+    // but a hold this job placed while a peer existed is released once that
+    // peer's observations have aged out, or the item stays held forever.
     const pricesByRetailer = new Map<string, number[]>();
     for (const row of itemRows) {
       const prices = pricesByRetailer.get(row.retailerSlug) ?? [];
       prices.push(row.price);
       pricesByRetailer.set(row.retailerSlug, prices);
     }
-    if (pricesByRetailer.size < 2) continue;
+    const peered = pricesByRetailer.size >= 2;
     const peerPrices = [...pricesByRetailer.values()].map(prices => median(prices));
-    const med = median(peerPrices);
-    if (med === 0) continue;
+    const med = peered ? median(peerPrices) : 0;
+    if (peered && med === 0) continue;
     const disputedPair = peerPrices.length === 2 &&
       Math.max(...peerPrices) / Math.min(...peerPrices) > UPPER_RATIO;
 
     for (const row of itemRows) {
-      const ratio = row.price / med;
-      const isOutlier = disputedPair || ratio > UPPER_RATIO || ratio < LOWER_RATIO;
+      const ratio = peered ? row.price / med : 1;
+      const isOutlier = peered && (disputedPair || ratio > UPPER_RATIO || ratio < LOWER_RATIO);
       const wasReview = row.matchStatus === 'review';
 
       if (isOutlier && !wasReview) {
@@ -160,17 +164,21 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
              AND $3 = (SELECT id::text FROM price_observations
                        WHERE retailer_product_id = product_matches.retailer_product_id
                        ORDER BY observed_at DESC, id DESC LIMIT 1)`,
-          [row.matchId, JSON.stringify({
+          [row.matchId, JSON.stringify(peered ? {
             restoredAt: new Date().toISOString(),
             reason: 'price_within_range',
             price: row.price,
             medianPrice: Math.round(med * 100) / 100,
             ratio: Math.round(ratio * 100) / 100,
+          } : {
+            restoredAt: new Date().toISOString(),
+            reason: 'no_fresh_peer',
+            price: row.price,
           }), row.observationId],
         );
         logger.info(
           `  RESTORED ${row.canonicalName.padEnd(30)} ${row.retailerSlug.padEnd(20)}` +
-          `${(row.currencyCode ?? "").padEnd(3)}${row.price.toFixed(2).padStart(7)}  now within range`,
+          `${(row.currencyCode ?? "").padEnd(3)}${row.price.toFixed(2).padStart(7)}  ${peered ? 'now within range' : 'no fresh peer'}`,
         );
         restored++;
       }
