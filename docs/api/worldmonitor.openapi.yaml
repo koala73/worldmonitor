@@ -51413,7 +51413,7 @@ components:
                 observedAt:
                     type: integer
                     format: int64
-                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Latest observation period in Unix epoch milliseconds; zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
                 dataUrls:
                     type: array
                     items:

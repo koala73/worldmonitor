@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { X509Certificate } from 'node:crypto';
 import { rootCertificates } from 'node:tls';
+import { execFileSync } from 'node:child_process';
+import { extractBundleSections } from './helpers/bundle-section-parser.mjs';
+import { sectionWorstCaseMs, BUNDLE_PREFLIGHT_HEADROOM_MS } from '../scripts/_bundle-runner.mjs';
 import { fetchRegionalEnergyFeed, regionalEnergySeedOptions } from '../scripts/_regional-energy-source.mjs';
 import feeds from '../scripts/shared/regional-energy-feeds.json' with { type: 'json' };
 import { __testing__ as health } from '../api/health.js';
@@ -18,6 +21,34 @@ const json = name => JSON.parse(fixture(name));
 const point = (rows, metric) => rows.find(r => r.metric === metric);
 
 describe('regional energy source observations', () => {
+  it('rejects large unterminated HTML without blocking the worker', () => {
+    execFileSync(process.execPath, ['--input-type=module', '-e', `
+      import assert from 'node:assert/strict';
+      import { parsePgcb, parseNiso, discoverPetrobanglaPdf } from './scripts/lib/regional-energy-feeds.mjs';
+      for (const token of ['<!--', '<', '<table>', '<tr>', '<td>', '<span id="MainContent_lblCurrentDay">']) {
+        const html = token.repeat(Math.ceil(1_000_000 / token.length));
+        for (const parse of [parsePgcb, parseNiso, discoverPetrobanglaPdf]) assert.throws(() => parse(html));
+      }
+      assert.throws(() => parsePgcb('<table>Generation(MW)' + 'Gas'.repeat(350_000) + '</table>'));
+    `], { cwd: new URL('../', import.meta.url), timeout: 5000 });
+  });
+
+  it('reserves a turn for every regional feed even when all earlier feeds time out', () => {
+    const ids = [];
+    for (const group of ['grid', 'reports']) {
+      const source = readFileSync(new URL(`../scripts/seed-bundle-regional-energy-${group}.mjs`, import.meta.url), 'utf8');
+      const sections = extractBundleSections(source);
+      assert.equal(sections.length, 4);
+      assert.match(source, /maxBundleMs: 570_000, prefetchFreshness: true/);
+      const worstCase = sections.reduce((total, section) => total + sectionWorstCaseMs({ timeoutMs: Number(section.timeoutMsExpr.replaceAll('_', '')) }), BUNDLE_PREFLIGHT_HEADROOM_MS);
+      assert.ok(worstCase <= 550_000, `all sections must fit together: ${worstCase}`);
+      ids.push(...sections.map(section => section.label.replace('Regional-Energy-', '')));
+    }
+    assert.deepEqual(ids.sort(), feeds.map(feed => feed.id).sort());
+    const legacy = readFileSync(new URL('../scripts/seed-bundle-energy-sources.mjs', import.meta.url), 'utf8');
+    assert.doesNotMatch(legacy, /Regional-Energy-/);
+  });
+
   it('reads PGCB fuel columns without hidden demand or load-shedding cells', () => {
     const rows = parsePgcb(fixture('pgcb.html'));
     assert.equal(point(rows, 'generation').value, 15636);

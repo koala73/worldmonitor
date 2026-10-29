@@ -3,10 +3,38 @@ import Papa from 'papaparse';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const PT_MONTHS = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
-const text = s => String(s).replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;/g, ' ').replace(/\s+/g, ' ').trim();
-const cleanHtml = s => s.replace(/<!--[\s\S]*?-->/g, '');
-const cells = s => [...s.matchAll(/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(m => text(m[1]));
-const rows = s => [...cleanHtml(s).matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map(m => cells(m[1]));
+function cleanHtml(source) {
+  const parts = [];
+  let at = 0;
+  for (;;) {
+    const open = source.indexOf('<!--', at);
+    if (open < 0) { parts.push(source.slice(at)); break; }
+    parts.push(source.slice(at, open));
+    const close = source.indexOf('-->', open + 4);
+    if (close < 0) break;
+    at = close + 3;
+  }
+  return parts.join('');
+}
+const text = s => cleanHtml(String(s)).replace(/<[^<>]*>/g, ' ').replace(/&nbsp;|&#160;/g, ' ').replace(/\s+/g, ' ').trim();
+
+// Consume tag tokens once so missing closing tags cannot restart a body scan.
+function blocks(source, names) {
+  const tags = new RegExp(`<(/?)(${names})\\b([^<>]*)>`, 'gi');
+  const result = [];
+  let opened = null;
+  for (const tag of source.matchAll(tags)) {
+    const name = tag[2].toLowerCase();
+    if (!opened && !tag[1]) opened = { name, attrs: tag[3], at: tag.index + tag[0].length };
+    else if (opened && tag[1] && name === opened.name) {
+      result.push({ attrs: opened.attrs, inner: source.slice(opened.at, tag.index) });
+      opened = null;
+    }
+  }
+  return result;
+}
+const cells = s => blocks(s, 'td|th').map(cell => text(cell.inner));
+const rows = s => blocks(cleanHtml(s), 'tr').map(row => cells(row.inner));
 
 function number(raw, commaDecimal = false) {
   if (typeof raw === 'number') {
@@ -67,8 +95,14 @@ function columns(header, names) {
 }
 
 export function parsePgcb(html) {
-  const table = cleanHtml(html).match(/<table\b[^>]*>[\s\S]*?Generation\(MW\)[\s\S]*?<\/table>/i)?.[0];
-  if (!table || !/Gas[\s\S]*Liquid Fuel[\s\S]*Coal[\s\S]*Hydro[\s\S]*Solar[\s\S]*Wind[\s\S]*India[\s\S]*Nepal/.test(table)) throw new Error('Changed PGCB fuel table');
+  const table = blocks(cleanHtml(html), 'table').find(table => /Generation\(MW\)/.test(table.inner))?.inner;
+  if (!table) throw new Error('Changed PGCB fuel table');
+  let headerAt = 0;
+  for (const heading of ['Gas', 'Liquid Fuel', 'Coal', 'Hydro', 'Solar', 'Wind', 'India', 'Nepal']) {
+    const at = table.indexOf(heading, headerAt);
+    if (at < 0) throw new Error('Changed PGCB fuel table');
+    headerAt = at + heading.length;
+  }
   const points = [];
   for (const row of rows(table)) {
     if (!/^\d{2}-\d{2}-\d{4}$/.test(row[0] ?? '')) continue;
@@ -84,10 +118,11 @@ export function parsePgcb(html) {
 }
 
 export function parseNiso(html) {
+  const spans = blocks(cleanHtml(html), 'span');
   const span = id => {
-    const match = cleanHtml(html).match(new RegExp(`<span[^>]+id="MainContent_${id}"[^>]*>([\\s\\S]*?)<\\/span>`));
+    const match = spans.find(span => new RegExp(`\\bid="MainContent_${id}"`).test(span.attrs));
     if (!match) throw new Error(`Missing NISO ${id}`);
-    return text(match[1]);
+    return text(match.inner);
   };
   const [d, m, y] = span('lblCurrentDay').split('/');
   const period = `${y}-${m}-${d}`;
@@ -259,8 +294,8 @@ export function discoverGsePdf(payload) {
 }
 
 export function discoverPetrobanglaPdf(html) {
-  const report = [...cleanHtml(html).matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].find(m => /দৈনিক-গ্যাস-ইনটেক-অফটেক-প্রতিবেদন/.test(m[1]));
-  const url = report?.[1].match(/href="(https:[^"]+office-petrobangla[^"<>]+\.pdf)"/i)?.[1];
+  const report = blocks(cleanHtml(html), 'tr').find(row => /দৈনিক-গ্যাস-ইনটেক-অফটেক-প্রতিবেদন/.test(row.inner));
+  const url = report?.inner.match(/href="(https:[^"]+office-petrobangla[^"<>]+\.pdf)"/i)?.[1];
   if (!url) throw new Error('Missing Petrobangla daily gas PDF');
   return publicUrl(url, ['objectstorage.ap-dcc-gazipur-1.oraclecloud15.com']);
 }

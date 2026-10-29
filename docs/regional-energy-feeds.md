@@ -56,8 +56,15 @@ missing or stale data stays strict, even after its cache TTL expires.
 The MCP headline energy tool does not yet expose the regional series; the
 omission is recorded in its parity exclusions.
 
-The existing energy-sources bundle owns all eight writers. Its registry target
-is hourly at minute 30; members retain their individual interval gates. After
+Two isolated bundles own the writers. `seed-bundle-regional-energy-grid` runs
+PGCB, NISO, CAMMESA and ONS. `seed-bundle-regional-energy-reports` runs
+Petrobangla, Eskom, GSE and ANP. Both registry targets are hourly at minute 30;
+members retain their individual interval gates. Each bundle has a 570-second
+budget and four 120-second child deadlines. Including the runner's ten-second
+termination grace per child and twenty-second preflight, all four fit in 540
+seconds, even when every source times out. The child fetch phase has an
+80-second deadline, leaving forty seconds for publication and cleanup.
+Slow or failed sources retain last-good data without blocking later feeds. After
 an authorized rollout, confirm the actual Railway schedule and image commit,
 then observe two natural hourly runs and at least one daily run. Check logs for
 `Regional-Energy-` and `regional-`, health metadata/record counts, and the profile
@@ -67,9 +74,8 @@ Monthly feeds need a later natural publication to prove report rollover.
 
 On repeated HTTP/parser failures or non-advancing observations, retain last-good
 data, inspect the linked provider artifact, and mark the rollout unaccepted.
-The deploying operator owns validation. Roll back the bundle image and schedule
-if these feeds interfere with existing energy publication. Do not clear caches
-to conceal failures.
+The deploying operator owns validation. Roll back the regional bundle images
+and schedules if their publication fails. Do not clear caches to conceal failures.
 
 ## Bangladesh certificate chains
 

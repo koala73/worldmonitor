@@ -124,6 +124,7 @@ message RegionalEnergyFeed {
   string status = 5;
   // Unix epoch milliseconds; zero when unavailable.
   int64 fetched_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Latest observation period in Unix epoch milliseconds; zero when unavailable.
   int64 observed_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   repeated string data_urls = 8;
   repeated RegionalEnergyObservation observations = 9;
