@@ -718,7 +718,9 @@
       "eyebrow": "In hun woorden",
       "title": "Wat mensen zeggen over World Monitor",
       "sub": "{{users}} mensen in {{countries}} landen hebben World Monitor gebruikt. Dit zeiden de pers en sommigen van hen.",
-      "translatedJa": "Vertaald uit het Japans"
+      "translatedJa": "Vertaald uit het Japans",
+      "prev": "Vorige citaten",
+      "next": "Meer citaten"
     }
   },
   "whatsNew": {

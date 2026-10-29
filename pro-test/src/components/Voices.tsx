@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { t } from '../i18n';
 
 /**
@@ -55,9 +57,52 @@ export const VOICES: ReadonlyArray<Voice> = [
   },
 ];
 
-// One row that scrolls sideways, so the quotes cost one card of height.
-export const VoiceCards = () => (
-  <ul className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4">
+// One row that scrolls sideways, so the quotes cost one card of height. Mice
+// cannot swipe and macOS hides scrollbars, so arrows page the row.
+export const VoiceCards = () => {
+  const rowRef = useRef<HTMLUListElement>(null);
+  const [edges, setEdges] = useState({ atStart: true, atEnd: false });
+
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const update = () => setEdges({
+      atStart: row.scrollLeft <= 1,
+      atEnd: row.scrollLeft + row.clientWidth >= row.scrollWidth - 1,
+    });
+    update();
+    row.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      row.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
+  const page = (direction: 1 | -1) => {
+    const row = rowRef.current;
+    if (row) row.scrollBy({ left: direction * row.clientWidth * 0.9, behavior: 'smooth' });
+  };
+
+  const arrowClass = 'flex items-center justify-center w-10 h-10 border border-wm-border bg-wm-card text-wm-text hover:border-wm-green disabled:opacity-30 disabled:hover:border-wm-border transition-colors';
+
+  return (
+    <div>
+      <VoiceRow rowRef={rowRef} />
+      <div className="flex justify-end gap-2 mt-2">
+        <button type="button" className={arrowClass} onClick={() => page(-1)} disabled={edges.atStart} aria-label={t('welcome.voices.prev')}>
+          <ChevronLeft className="w-5 h-5" aria-hidden="true" />
+        </button>
+        <button type="button" className={arrowClass} onClick={() => page(1)} disabled={edges.atEnd} aria-label={t('welcome.voices.next')}>
+          <ChevronRight className="w-5 h-5" aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const VoiceRow = ({ rowRef }: { rowRef: RefObject<HTMLUListElement | null> }) => (
+  <ul ref={rowRef} className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4">
     {VOICES.map((voice) => (
       <li key={voice.href} className="snap-start shrink-0 w-[85%] sm:w-[22rem] flex">
         <a

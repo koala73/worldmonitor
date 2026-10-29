@@ -718,7 +718,9 @@
       "eyebrow": "使用者怎麼說",
       "title": "大家如何評價 World Monitor",
       "sub": "{{countries}} 個國家的 {{users}} 人使用過 World Monitor。以下是媒體和部分使用者的評價。",
-      "translatedJa": "譯自日語"
+      "translatedJa": "譯自日語",
+      "prev": "上一組引語",
+      "next": "更多引語"
     }
   },
   "whatsNew": {

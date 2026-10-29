@@ -718,7 +718,9 @@
       "eyebrow": "Bằng lời của họ",
       "title": "Mọi người nói gì về World Monitor",
       "sub": "{{users}} người tại {{countries}} quốc gia đã dùng World Monitor. Đây là những gì báo chí và một số người dùng đã nói.",
-      "translatedJa": "Dịch từ tiếng Nhật"
+      "translatedJa": "Dịch từ tiếng Nhật",
+      "prev": "Trích dẫn trước",
+      "next": "Thêm trích dẫn"
     }
   },
   "whatsNew": {

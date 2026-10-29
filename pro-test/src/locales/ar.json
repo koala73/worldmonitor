@@ -718,7 +718,9 @@
       "eyebrow": "بكلماتهم",
       "title": "ماذا يقول الناس عن World Monitor",
       "sub": "استخدم {{users}} شخص في {{countries}} دولة World Monitor. إليك ما قالته الصحافة وبعضهم.",
-      "translatedJa": "مترجم من اليابانية"
+      "translatedJa": "مترجم من اليابانية",
+      "prev": "الاقتباسات السابقة",
+      "next": "المزيد من الاقتباسات"
     }
   },
   "whatsNew": {

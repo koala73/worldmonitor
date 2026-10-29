@@ -718,7 +718,9 @@
       "eyebrow": "Med deras ord",
       "title": "Vad folk säger om World Monitor",
       "sub": "{{users}} personer i {{countries}} länder har använt World Monitor. Så här sa pressen och några av dem.",
-      "translatedJa": "Översatt från japanska"
+      "translatedJa": "Översatt från japanska",
+      "prev": "Föregående citat",
+      "next": "Fler citat"
     }
   },
   "whatsNew": {

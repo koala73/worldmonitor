@@ -718,7 +718,9 @@
       "eyebrow": "Njihovim riječima",
       "title": "Što ljudi kažu o World Monitoru",
       "sub": "{{users}} ljudi u {{countries}} zemalja koristilo je World Monitor. Evo što su rekli mediji i neki od njih.",
-      "translatedJa": "Prevedeno s japanskog"
+      "translatedJa": "Prevedeno s japanskog",
+      "prev": "Prethodni citati",
+      "next": "Još citata"
     }
   },
   "whatsNew": {

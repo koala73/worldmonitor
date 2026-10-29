@@ -590,6 +590,8 @@
   "welcome.tasks.verifyTitle": "Verify a breaking event",
   "welcome.tasks.workflow": "Step-by-step workflow",
   "welcome.voices.eyebrow": "In their words",
+  "welcome.voices.next": "More quotes",
+  "welcome.voices.prev": "Previous quotes",
   "welcome.voices.sub": "{{users}} people in {{countries}} countries have used World Monitor. Here is what the press and some of them said.",
   "welcome.voices.title": "What people say about World Monitor",
   "welcome.voices.translatedJa": "Translated from Japanese",

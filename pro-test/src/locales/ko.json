@@ -718,7 +718,9 @@
       "eyebrow": "그들의 말",
       "title": "사람들이 말하는 World Monitor",
       "sub": "{{countries}}개국 {{users}}명이 World Monitor를 사용했습니다. 언론과 일부 사용자의 이야기를 소개합니다.",
-      "translatedJa": "일본어에서 번역"
+      "translatedJa": "일본어에서 번역",
+      "prev": "이전 인용문",
+      "next": "더 많은 인용문"
     }
   },
   "whatsNew": {

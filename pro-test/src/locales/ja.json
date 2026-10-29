@@ -718,7 +718,9 @@
       "eyebrow": "ユーザーの声",
       "title": "World Monitor についての声",
       "sub": "{{countries}}か国の{{users}}人が World Monitor を利用しています。報道機関と利用者の声を紹介します。",
-      "translatedJa": "日本語からの翻訳"
+      "translatedJa": "日本語からの翻訳",
+      "prev": "前の引用",
+      "next": "さらに引用を見る"
     }
   },
   "whatsNew": {

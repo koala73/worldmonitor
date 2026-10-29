@@ -718,7 +718,9 @@
       "eyebrow": "Az ő szavaikkal",
       "title": "Mit mondanak az emberek a World Monitorról",
       "sub": "{{users}} ember {{countries}} országban használta a World Monitort. Ezt mondta róla a sajtó és néhányuk.",
-      "translatedJa": "Japánból fordítva"
+      "translatedJa": "Japánból fordítva",
+      "prev": "Előző idézetek",
+      "next": "További idézetek"
     }
   },
   "whatsNew": {

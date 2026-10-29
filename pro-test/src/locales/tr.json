@@ -718,7 +718,9 @@
       "eyebrow": "Kendi sözleriyle",
       "title": "İnsanlar World Monitor hakkında ne diyor",
       "sub": "{{countries}} ülkede {{users}} kişi World Monitor’ü kullandı. İşte basının ve bazılarının söyledikleri.",
-      "translatedJa": "Japoncadan çevrildi"
+      "translatedJa": "Japoncadan çevrildi",
+      "prev": "Önceki alıntılar",
+      "next": "Daha fazla alıntı"
     }
   },
   "whatsNew": {

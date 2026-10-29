@@ -718,7 +718,9 @@
       "eyebrow": "उनके शब्दों में",
       "title": "लोग World Monitor के बारे में क्या कहते हैं",
       "sub": "{{countries}} देशों में {{users}} लोगों ने World Monitor का उपयोग किया है। प्रेस और उनमें से कुछ ने यह कहा।",
-      "translatedJa": "जापानी से अनूदित"
+      "translatedJa": "जापानी से अनूदित",
+      "prev": "पिछले उद्धरण",
+      "next": "और उद्धरण"
     }
   },
   "whatsNew": {

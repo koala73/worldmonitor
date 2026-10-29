@@ -718,7 +718,9 @@
       "eyebrow": "Jejich slovy",
       "title": "Co lidé říkají o World Monitor",
       "sub": "{{users}} lidí ve {{countries}} zemích používalo World Monitor. Tohle o něm řekl tisk a někteří z nich.",
-      "translatedJa": "Přeloženo z japonštiny"
+      "translatedJa": "Přeloženo z japonštiny",
+      "prev": "Předchozí citace",
+      "next": "Další citace"
     }
   },
   "whatsNew": {

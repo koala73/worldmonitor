@@ -718,7 +718,9 @@
       "eyebrow": "În cuvintele lor",
       "title": "Ce spun oamenii despre World Monitor",
       "sub": "{{users}} de oameni din {{countries}} de țări au folosit World Monitor. Iată ce au spus presa și unii dintre ei.",
-      "translatedJa": "Tradus din japoneză"
+      "translatedJa": "Tradus din japoneză",
+      "prev": "Citatele anterioare",
+      "next": "Mai multe citate"
     }
   },
   "whatsNew": {
