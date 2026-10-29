@@ -70,11 +70,11 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
      JOIN baskets b ON b.id = bi.basket_id AND b.slug = $1
      JOIN canonical_products cp ON cp.id = pm.canonical_product_id
      JOIN LATERAL (
-       SELECT id, price, in_stock, observed_at, raw_payload_json FROM price_observations
+       SELECT id, price, in_stock, raw_payload_json FROM price_observations
        WHERE retailer_product_id = rp.id
        ORDER BY observed_at DESC, id DESC LIMIT 1
      ) po ON po.in_stock = true
-       AND po.observed_at >= NOW() - make_interval(days => $3)
+       AND rp.last_seen_at >= NOW() - make_interval(days => $3)
      WHERE pm.match_status IN ('auto', 'approved', 'review')
        AND pm.pin_disabled_at IS NULL`,
     [basketSlug, marketCode, MAX_OBSERVATION_AGE_DAYS],

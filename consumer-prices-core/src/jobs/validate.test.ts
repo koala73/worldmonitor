@@ -82,11 +82,21 @@ it('selects the latest observation before checking stock', async () => {
 it.each([
   ['validate', () => validateAll(), 0],
   ['aggregate', async () => { query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] }); await aggregateBasket('test', 'AE'); }, 1],
-] as const)('%s reads only observations from the freshness window', async (_name, run, callIndex) => {
+] as const)('%s reads only products a scrape saw within the freshness window', async (_name, run, callIndex) => {
   await run();
   const [sql, args] = query.mock.calls[callIndex] as [string, unknown[]];
-  expect(sql).toMatch(/\) po ON po\.in_stock = true\s+AND po\.observed_at >= NOW\(\) - make_interval\(days => \$3\)/);
+  // last_seen_at, not observed_at: an unchanged payload reuses its old
+  // observation row, so observed_at stops moving while the price stays current.
+  expect(sql).toMatch(/\) po ON po\.in_stock = true\s+AND rp\.last_seen_at >= NOW\(\) - make_interval\(days => \$3\)/);
+  expect(sql).not.toContain('po.observed_at >= NOW()');
   expect(args[2]).toBe(MAX_OBSERVATION_AGE_DAYS);
+});
+it('records zero coverage when the freshness window leaves the basket empty', async () => {
+  query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] }).mockResolvedValueOnce({ rows: [] });
+  await aggregateBasket('test', 'AE');
+  const writes = query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO computed_indices'));
+  expect(writes).toHaveLength(1);
+  expect(writes[0][1]).toEqual(expect.arrayContaining(['basket', 'coverage_pct', 0]));
 });
 it('releases its own hold once the item has no fresh peer left to disagree with', async () => {
   query.mockResolvedValueOnce({ rows: [row('held', 61, 'review', 'validate-job')] });

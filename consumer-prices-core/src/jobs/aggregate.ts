@@ -59,7 +59,7 @@ async function getBasketRows(basketSlug: string, marketCode: string): Promise<Ba
        WHERE retailer_product_id = rp.id
        ORDER BY observed_at DESC, id DESC LIMIT 1
      ) po ON po.in_stock = true
-       AND po.observed_at >= NOW() - make_interval(days => $3)
+       AND rp.last_seen_at >= NOW() - make_interval(days => $3)
      WHERE b.slug = $1`,
     [basketSlug, marketCode, MAX_OBSERVATION_AGE_DAYS],
   );
@@ -203,7 +203,11 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
 
   const rows = await getBasketRows(basketSlug, marketCode);
   if (rows.length === 0) {
-    logger.warn(`No matched products for ${basketSlug}:${marketCode}`);
+    // Record the empty basket for today. Returning without a write left the
+    // last aggregated day as the newest one, and the overview republished
+    // those indices as current.
+    await writeComputedIndex(basketId, null, null, 'coverage_pct', 0);
+    logger.warn(`No fresh matched products for ${basketSlug}:${marketCode} — coverage recorded as 0`);
     return;
   }
 
