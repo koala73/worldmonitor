@@ -97,6 +97,12 @@ it('records zero coverage when the freshness window leaves the basket empty', as
   const writes = query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO computed_indices'));
   expect(writes).toHaveLength(1);
   expect(writes[0][1]).toEqual(expect.arrayContaining(['basket', 'coverage_pct', 0]));
+  // An earlier run the same day may have written indices; they must not outlive the empty basket.
+  const sqls = query.mock.calls.map(([sql]) => String(sql));
+  const clear = sqls.findIndex((sql) => /DELETE FROM computed_indices\s+WHERE basket_id = \$1 AND metric_date = NOW\(\)::date/.test(sql));
+  expect(clear).toBeGreaterThan(-1);
+  expect(clear).toBeLessThan(sqls.findIndex((sql) => sql.includes('INSERT INTO computed_indices')));
+  expect(query.mock.calls[clear][1]).toEqual(['basket']);
 });
 it('releases its own hold once the item has no fresh peer left to disagree with', async () => {
   query.mockResolvedValueOnce({ rows: [row('held', 61, 'review', 'validate-job')] });

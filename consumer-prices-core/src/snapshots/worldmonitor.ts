@@ -279,7 +279,9 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
   // Aggregate records zero coverage on a day no fresh product priced the
   // basket. Its newest index is then the last covered day's, so publishing it
   // under a current asOf would present an expired price level as today's.
-  if (!((metrics.coverage_pct ?? 0) > 0)) {
+  // Covered rows with no current-methodology index (no item has a baseline)
+  // are equally unpublishable: the fallback would present 100 as a measurement.
+  if (!((metrics.coverage_pct ?? 0) > 0) || metrics.essentials_index == null) {
     return {
       marketCode,
       asOf: String(now),

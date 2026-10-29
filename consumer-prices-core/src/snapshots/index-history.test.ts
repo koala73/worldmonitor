@@ -56,10 +56,12 @@ it('compares against version-2 history once it exists', async () => {
 it('keeps non-index metrics from version-1 rows', async () => {
   overviewDb([
     { period: 'today', metric_key: 'essentials_index', metric_value: '100', methodology_version: '1' },
+    { period: 'today', metric_key: 'essentials_index', metric_value: '103', methodology_version: '2' },
     { period: 'today', metric_key: 'coverage_pct', metric_value: '75', methodology_version: '1' },
   ]);
   const o = await buildOverviewSnapshot('ae');
   expect(o.coveragePct).toBe(75);
+  expect(o.essentialsIndex).toBe(103);
 });
 
 it('series reads only current-methodology index points', async () => {

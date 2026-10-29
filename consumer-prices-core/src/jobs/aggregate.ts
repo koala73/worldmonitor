@@ -218,7 +218,11 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
   if (rows.length === 0) {
     // Record the empty basket for today. Returning without a write left the
     // last aggregated day as the newest one, and the overview republished
-    // those indices as current.
+    // those indices as current. An earlier run today may already have written
+    // indices, spreads and category rows; clear them so the series cannot
+    // show a price level for a day with no coverage.
+    await query(`DELETE FROM computed_indices
+     WHERE basket_id = $1 AND metric_date = NOW()::date`, [basketId]);
     await writeComputedIndex(basketId, null, null, 'coverage_pct', 0);
     logger.warn(`No fresh matched products for ${basketSlug}:${marketCode} — coverage recorded as 0`);
     return;
