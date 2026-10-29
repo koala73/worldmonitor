@@ -3,7 +3,7 @@
  * Runs as an independent Railway cron service (02:15-05:15 UTC, hourly) after each scrape tick.
  * Produces Fixed Basket Index and Value Basket Index per methodology.
  */
-import { query, closePool } from '../db/client.js';
+import { query, closePool, withTransaction, type QueryExecutor } from '../db/client.js';
 import { loadAllBasketConfigs } from '../config/loader.js';
 import { validateAll } from './validate.js';
 import { FX_RATES_TO_USD } from '../fx/rates.js';
@@ -168,12 +168,13 @@ async function writeComputedIndex(
   category: string | null,
   metricKey: string,
   metricValue: number,
+  execute: QueryExecutor = query,
 ) {
   // ON CONFLICT must reference the exact partial index predicate matching the row being inserted.
   // The original constraint fires only when both retailer_id and category are NOT NULL.
   // Partial indices (005_computed_indices_null_idx) handle the two NULL cases.
   if (retailerId === null && category === null) {
-    await query(
+    await execute(
       `INSERT INTO computed_indices (basket_id, retailer_id, category, metric_date, metric_key, metric_value, methodology_version)
        VALUES ($1, NULL, NULL, NOW()::date, $2, $3, $4)
        ON CONFLICT (basket_id, metric_date, metric_key) WHERE retailer_id IS NULL AND category IS NULL
@@ -181,7 +182,7 @@ async function writeComputedIndex(
       [basketId, metricKey, metricValue, INDEX_METHODOLOGY_VERSION],
     );
   } else if (retailerId === null) {
-    await query(
+    await execute(
       `INSERT INTO computed_indices (basket_id, retailer_id, category, metric_date, metric_key, metric_value, methodology_version)
        VALUES ($1, NULL, $2, NOW()::date, $3, $4, $5)
        ON CONFLICT (basket_id, category, metric_date, metric_key) WHERE retailer_id IS NULL AND category IS NOT NULL
@@ -189,7 +190,7 @@ async function writeComputedIndex(
       [basketId, category, metricKey, metricValue, INDEX_METHODOLOGY_VERSION],
     );
   } else {
-    await query(
+    await execute(
       `INSERT INTO computed_indices (basket_id, retailer_id, category, metric_date, metric_key, metric_value, methodology_version)
        VALUES ($1, $2, $3, NOW()::date, $4, $5, $6)
        ON CONFLICT (basket_id, retailer_id, category, metric_date, metric_key)
@@ -221,9 +222,14 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
     // those indices as current. An earlier run today may already have written
     // indices, spreads and category rows; clear them so the series cannot
     // show a price level for a day with no coverage.
-    await query(`DELETE FROM computed_indices
-     WHERE basket_id = $1 AND metric_date = NOW()::date`, [basketId]);
-    await writeComputedIndex(basketId, null, null, 'coverage_pct', 0);
+    // One transaction: a failed coverage write must not leave the day's
+    // indices deleted with nothing in their place, or the overview would fall
+    // back to an older covered day.
+    await withTransaction(async (execute) => {
+      await execute(`DELETE FROM computed_indices
+       WHERE basket_id = $1 AND metric_date = NOW()::date`, [basketId]);
+      await writeComputedIndex(basketId, null, null, 'coverage_pct', 0, execute);
+    });
     logger.warn(`No fresh matched products for ${basketSlug}:${marketCode} — coverage recorded as 0`);
     return;
   }

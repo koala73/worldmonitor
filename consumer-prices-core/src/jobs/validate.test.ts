@@ -1,6 +1,8 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-const { query } = vi.hoisted(() => ({ query: vi.fn() }));
-vi.mock('../db/client.js', () => ({ query, closePool: vi.fn() }));
+const { query, tx } = vi.hoisted(() => ({ query: vi.fn(), tx: vi.fn() }));
+vi.mock('../db/client.js', () => ({
+  query, closePool: vi.fn(), withTransaction: (work: (execute: typeof tx) => unknown) => work(tx),
+}));
 vi.mock('../config/loader.js', () => ({ loadAllBasketConfigs: () => [{ slug: 'test', marketCode: 'AE' }] }));
 const { validateAll } = await import('./validate.js');
 const { aggregateBasket } = await import('./aggregate.js');
@@ -11,7 +13,10 @@ function row(id: string, price: number, status = 'auto', owner: string | null = 
     observation_id: `observation-${id}`, admitted,
     validator: admitted === null ? null : { ok: admitted, score: admitted ? 0.9 : 0.7, reasons: [], signals: {} } };
 }
-beforeEach(() => query.mockReset().mockResolvedValue({ rows: [], rowCount: 1 }));
+beforeEach(() => {
+  query.mockReset().mockResolvedValue({ rows: [], rowCount: 1 });
+  tx.mockReset().mockResolvedValue({ rows: [], rowCount: 1 });
+});
 it('holds both sides of a two-retailer disagreement', async () => {
   query.mockResolvedValueOnce({ rows: [row('honest', 10), row('attacker', 100)] });
   await validateAll();
@@ -94,15 +99,18 @@ it.each([
 it('records zero coverage when the freshness window leaves the basket empty', async () => {
   query.mockResolvedValueOnce({ rows: [{ id: 'basket' }] }).mockResolvedValueOnce({ rows: [] });
   await aggregateBasket('test', 'AE');
-  const writes = query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO computed_indices'));
+  // Both statements run in one transaction: a failed coverage write must not
+  // leave the day's indices deleted with nothing in their place.
+  expect(query.mock.calls.some(([sql]) => /computed_indices/.test(String(sql)))).toBe(false);
+  const sqls = tx.mock.calls.map(([sql]) => String(sql));
+  const writes = tx.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO computed_indices'));
   expect(writes).toHaveLength(1);
   expect(writes[0][1]).toEqual(expect.arrayContaining(['basket', 'coverage_pct', 0]));
   // An earlier run the same day may have written indices; they must not outlive the empty basket.
-  const sqls = query.mock.calls.map(([sql]) => String(sql));
   const clear = sqls.findIndex((sql) => /DELETE FROM computed_indices\s+WHERE basket_id = \$1 AND metric_date = NOW\(\)::date/.test(sql));
   expect(clear).toBeGreaterThan(-1);
   expect(clear).toBeLessThan(sqls.findIndex((sql) => sql.includes('INSERT INTO computed_indices')));
-  expect(query.mock.calls[clear][1]).toEqual(['basket']);
+  expect(tx.mock.calls[clear][1]).toEqual(['basket']);
 });
 it('releases its own hold once the item has no fresh peer left to disagree with', async () => {
   query.mockResolvedValueOnce({ rows: [row('held', 61, 'review', 'validate-job')] });
