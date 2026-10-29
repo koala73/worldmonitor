@@ -1238,24 +1238,35 @@ describe('prepareOilPublish refuses an older vintage than the published one', ()
     }
   });
 
-  it('reads the previous vintage strictly: a failed read stops the run, a missing key does not', async () => {
+  it('reads the previous vintage strictly: a failed read stops the run, a missing key does not', async (t) => {
+    const previousDelay = process.env.WM_SEED_RETRY_DELAY_MS;
+    process.env.WM_SEED_RETRY_DELAY_MS = '1';
+    t.after(() => {
+      if (previousDelay === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
+      else process.env.WM_SEED_RETRY_DELAY_MS = previousDelay;
+    });
+
     const calls = [];
-    const read = (failure, value = null) => async (key, options) => {
+    // Fails the first `failures` reads, then returns `value`.
+    const read = (failures, value = null) => async (key, options) => {
       calls.push({ key, options });
-      if (failure) throw failure;
+      if (calls.length <= failures) throw new Error('Redis snapshot read failed: HTTP 503');
       return value;
     };
 
     await assert.rejects(
-      readPreviousOilMeta(read(new Error('Redis snapshot read failed: HTTP 503'))),
+      readPreviousOilMeta(read(Infinity)),
       /HTTP 503/,
       'a read failure must not pass as "no previous vintage"',
     );
-    assert.equal(await readPreviousOilMeta(read(null, null)), null, 'a missing key is a first publish');
-    assert.deepEqual(
-      await readPreviousOilMeta(read(null, { newestItemAt: 1 })),
-      { newestItemAt: 1 },
-    );
+    assert.equal(calls.length, 3, 'a persistent failure is retried twice, then stops the run');
+
+    calls.length = 0;
+    assert.deepEqual(await readPreviousOilMeta(read(1, { newestItemAt: 1 })), { newestItemAt: 1 }, 'a transient failure is retried');
+
+    calls.length = 0;
+    assert.equal(await readPreviousOilMeta(read(0, null)), null, 'a missing key is a first publish');
+    assert.equal(calls.length, 1);
     assert.ok(calls.every(({ key, options }) => key === 'seed-meta:energy:jodi-oil' && options?.strict === true));
   });
 

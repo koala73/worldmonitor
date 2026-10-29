@@ -801,10 +801,10 @@ function formatVintageRegressionReason(newestItemAt, publishedNewestItemAt) {
 /**
  * The published seed-meta, read strictly. The vintage check above treats a
  * missing record as a first publish, so a failed read must not look like one:
- * it throws, and main() stops before writing anything.
+ * after two retries it throws, and main() stops before writing anything.
  */
 export function readPreviousOilMeta(read = readSeedSnapshot) {
-  return read(META_KEY, { strict: true });
+  return withRetry(() => read(META_KEY, { strict: true }), 2, 1000);
 }
 
 /**
