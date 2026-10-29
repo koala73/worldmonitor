@@ -31,7 +31,6 @@ export interface RunNewsLoadPassOptions<TFeeds, TDigest, TItem> {
   digestPromise: Promise<TDigest | null>;
   fallbackDigest?: TDigest | null;
   digestGraceMs: number;
-  hasDigestCategory: (digest: TDigest, key: string) => boolean;
   loadCategory: (
     category: NewsCategorySpec<TFeeds>,
     digest: TDigest | null,

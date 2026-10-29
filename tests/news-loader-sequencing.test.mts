@@ -173,7 +173,6 @@ describe('news loader digest sequencing', () => {
       categoryConcurrency: 1,
       digestPromise,
       digestGraceMs: 0,
-      hasDigestCategory: (digestSnapshot, key) => key in digestSnapshot.categories,
       loadCategory: async (category, digestSnapshot, options) => {
         events.push(`${category.key}:${digestSnapshot ? 'digest' : 'fallback'}`);
         if (!digestSnapshot) {
@@ -227,7 +226,6 @@ describe('news loader digest sequencing', () => {
       digestPromise: digest.promise,
       fallbackDigest: cachedDigest,
       digestGraceMs: 0,
-      hasDigestCategory: (digestSnapshot, key) => key in digestSnapshot.categories,
       loadCategory: async (category, digestSnapshot, options) => {
         events.push(`${category.key}:${digestSnapshot?.label ?? 'none'}:${options.recordBaselineSample}`);
         assert.ok(digestSnapshot);
@@ -278,7 +276,6 @@ describe('news loader digest sequencing', () => {
       categoryConcurrency: 3,
       digestPromise: digest.promise,
       digestGraceMs: 0,
-      hasDigestCategory: (digestSnapshot, key) => key in digestSnapshot.categories,
       loadCategory: async (category, digestSnapshot, options) => {
         assert.equal(digestSnapshot, null);
         events.push(`${category.key}:${options.digestPending ? 'pending' : 'settled'}`);
@@ -325,7 +322,6 @@ describe('news loader digest sequencing', () => {
       categoryConcurrency: 2,
       digestPromise: digest.promise,
       digestGraceMs: 0,
-      hasDigestCategory: (digestSnapshot, key) => key in digestSnapshot.categories,
       loadCategory: async (category, digestSnapshot, options) => {
         events.push(`${category.key}:${digestSnapshot ? 'digest' : 'none'}:${options.digestPending ? 'pending' : 'settled'}`);
         categoryStarted.resolve();
