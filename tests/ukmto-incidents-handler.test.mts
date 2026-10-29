@@ -17,20 +17,20 @@ test('fresh empty results differ from unavailable snapshots', () => {
 });
 
 test('freshness follows retrieval time and expires retained data', () => {
-  assert.equal(readUkmtoSnapshot(snapshot, now + 15 * 60000).stale, false);
-  assert.equal(readUkmtoSnapshot(snapshot, now + 15 * 60000 + 1).stale, true);
+  assert.equal(readUkmtoSnapshot(snapshot, now + 75 * 60000).stale, false);
+  assert.equal(readUkmtoSnapshot(snapshot, now + 75 * 60000 + 1).stale, true);
   assert.equal(readUkmtoSnapshot(snapshot, now + 86400001).dataAvailable, false);
   assert.equal(readUkmtoSnapshot(snapshot, now - 300001).dataAvailable, false);
   assert.equal(readUkmtoSnapshot({ ...snapshot, fetchedAt: 'today' }, now).dataAvailable, false);
 });
 
 test('producer records survive the reader without promoting claims or incident dates', () => {
-  const incidents = normalizeIncidents([{
-    sitecoreId: 'a5b33f9d-6c8e-43fc-9af0-3936d61bf55d', incidentNumber: 143,
-    utcDateCreated: '2026-09-29T10:28:14Z', utcDateOfIncident: '2026-09-28T23:00:00Z',
-    locationLatitude: 26.43, locationLongitude: 56.48,
-    incidentTypeName: 'Suspicious Activity', place: 'Hormuz', otherDetails: '<img src=x> suspected',
-  }]);
+  const incidents = normalizeIncidents({
+    v: 1,
+    t: { c: ['id', 'type', 'lat', 'lon', 'ts', 'place', 'text'], k: [0, 1, 5, 6], r: [[0, 1, 26.43, 56.48, 1790636400, 2, 3]] },
+    s: ['UKMTO-143', 'Suspicious Activity', 'Hormuz', '<img src=x> suspected'],
+  });
+  assert.equal(incidents[0].reportedAt, 0);
   const result = readUkmtoSnapshot({ ...snapshot, incidents }, now);
   assert.equal(result.dataAvailable, true);
   assert.equal(result.stale, false);
@@ -53,7 +53,8 @@ test('health is pending before activation and strict after it, including valid e
   assert.equal(classify(false, false).status, 'EMPTY_ON_DEMAND');
   assert.equal(classify(false, true).status, 'EMPTY');
   assert.equal(classify(true, true).status, 'OK');
-  assert.equal(classify(true, true, 16).status, 'STALE_SEED');
+  assert.equal(classify(true, true, 60).status, 'OK');
+  assert.equal(classify(true, true, 76).status, 'STALE_SEED');
 });
 
 test('RPC unwraps the producer envelope from the bare key without fetching the publisher', async () => {

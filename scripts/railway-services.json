@@ -2442,7 +2442,7 @@
     "deployMode": "nixpacks-root-repo",
     "lifecycle": "planned",
     "service": "seed-ukmto-incidents",
-    "cronSchedule": "*/5 * * * *",
+    "cronSchedule": "*/30 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#ukmto-incidents"
   }
 ]

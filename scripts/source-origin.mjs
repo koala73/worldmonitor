@@ -158,6 +158,8 @@ const HOST_ORIGINS = Object.freeze({
   'zerkalo.io': 'BY',
   'acleddata.com': 'US',
   'adsb.lol': 'NL',
+  // Republishes UK Maritime Trade Operations reports; the catalog origin is the reporting authority.
+  'hormuz.data-tracking.net': 'GB',
   'api.adsb.lol': 'NL',
   'aerotime.aero': 'LT',
   'agentskills.io': 'US',

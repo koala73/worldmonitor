@@ -5088,6 +5088,20 @@
       ]
     },
     {
+      "host": "hormuz.data-tracking.net",
+      "provider": "hormuz.data-tracking.net",
+      "kind": "structured",
+      "observed": true,
+      "license": "Documented public API, no key (https://hormuz.data-tracking.net/api-docs, reviewed 2026-10-29): data reusable including commercially under CC BY 4.0 with attribution to hormuz.data-tracking.net; republished UKMTO incident reports stay under the Open Government Licence v3.0. The publisher refreshes every 30 minutes and asks clients not to poll faster.",
+      "attribution": "UK Maritime Trade Operations (https://www.ukmto.org/recent-incidents), contains public sector information licensed under the Open Government Licence v3.0; republished by hormuz.data-tracking.net (CC BY 4.0).",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-ukmto-incidents.mjs"
+        }
+      ]
+    },
+    {
       "host": "hromadske.ua",
       "provider": "hromadske.ua",
       "kind": "feed",
@@ -8267,15 +8281,10 @@
       "host": "sccd.royalnavy.mod.uk",
       "provider": "sccd.royalnavy.mod.uk",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "UKMTO terms sections 20-23 permit reuse under the Open Government Licence v3.0, subject to excluded third-party rights. Website JSON backend; no verified external developer support contract.",
       "attribution": "UK Maritime Trade Operations. Link https://www.ukmto.org/recent-incidents and https://www.ukmto.org/terms-and-conditions. Contains public sector information licensed under the Open Government Licence v3.0.",
-      "status": "reviewed",
-      "references": [
-        {
-          "path": "scripts/seed-ukmto-incidents.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "schema.org",

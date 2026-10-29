@@ -768,7 +768,7 @@ const FIVE_FACTOR_SCORECARD_READ_MODEL_KEY = 'scorecard:five-factor:v1:read-mode
 
 const SEED_META = {
   ukmtoIncidents: {
-    key: 'seed-meta:maritime:ukmto-incidents', maxStaleMin: 15,
+    key: 'seed-meta:maritime:ukmto-incidents', maxStaleMin: 75,
     activationKey: 'seed-activated:maritime:ukmto-incidents',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9831, activationKey: 'seed-activated:maritime:ukmto-incidents' },
   },
