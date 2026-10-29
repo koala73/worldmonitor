@@ -709,6 +709,15 @@ export default defineSchema({
       v.literal("lapsed"),
     )),
     renewalVerificationAttemptAt: v.optional(v.number()),
+    // Billing address the user set through payments/billing:updateBillingEmail,
+    // as Dodo reported it back, with the time of that read. Lifecycle
+    // webhooks replace rawPayload, so a delayed event generated before the
+    // repair would restore the bounced address; resolveBillingRecipient
+    // prefers this while observedAt is newer than updatedAt.
+    billingEmailOverride: v.optional(v.object({
+      email: v.string(),
+      observedAt: v.number(),
+    })),
   })
     .index("by_userId", ["userId"])
     .index("by_userId_status_currentPeriodEnd", ["userId", "status", "currentPeriodEnd"])

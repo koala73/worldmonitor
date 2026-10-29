@@ -3828,18 +3828,15 @@ function customerIdOfSubscription(sub: Doc<"subscriptions">): string | null {
  * Every refusal the email change can hit before Dodo is touched, plus the
  * distinct Dodo customers the user owns. Each candidate goes through the same
  * exclusivity check as the portal: a customer another Clerk user is linked to
- * must not have its address rewritten by this one.
+ * must not have its address rewritten by this one. Ownership is settled
+ * before the suppression lookup so a caller with nothing to repair cannot
+ * use this as an oracle for which addresses are suppressed.
  */
 export const getBillingEmailUpdateTarget = internalQuery({
   args: { userId: v.string(), email: v.string() },
   handler: async (ctx, args): Promise<{ customerIds: string[] }> => {
     if (await isAccountDeleting(ctx, args.userId)) {
       throw new ConvexError({ kind: "ACCOUNT_DELETION_IN_PROGRESS" });
-    }
-    const suppression = await findEmailSuppression(ctx, args.email);
-    // unsubscribe only withdraws broadcasts; billing mail still delivers there.
-    if (suppression && suppression.reason !== "unsubscribe") {
-      throw new ConvexError({ kind: "EMAIL_SUPPRESSED", reason: suppression.reason });
     }
 
     const subs = await ctx.db
@@ -3864,31 +3861,47 @@ export const getBillingEmailUpdateTarget = internalQuery({
     for (const customerId of customerIds) {
       await requireExclusivePortalCustomer(ctx, args.userId, customerId);
     }
+
+    const suppression = await findEmailSuppression(ctx, args.email);
+    // unsubscribe only withdraws broadcasts; billing mail still delivers there.
+    if (suppression && suppression.reason !== "unsubscribe") {
+      throw new ConvexError({ kind: "EMAIL_SUPPRESSED" });
+    }
     return { customerIds: [...customerIds] };
   },
 });
 
 /**
- * Local mirror of a Dodo customer email change that already succeeded: the
- * user's customers rows and every subscription payload, so the reactive query
- * drops the bounce flag and dunning resolves the new address. The old address
- * keeps its suppression row. Subscription `updatedAt` is left alone because
- * it anchors the dunning episode.
+ * Local mirror of one Dodo customer's email as read back after the update:
+ * the user's customers rows for that customer and the subscriptions linked to
+ * it (plus, with `includeUnlinked`, subscriptions that name no customer), so
+ * the reactive query drops the bounce flag and dunning resolves the new
+ * address. A row whose recorded observation is at least as new is left alone,
+ * so two tabs applying out of order converge on the later read. The old
+ * address keeps its suppression row. Subscription `updatedAt` is left alone
+ * because it anchors the dunning episode; `billingEmailOverride` carries the
+ * repair past delayed webhooks instead.
  */
 export const applyBillingEmailUpdate = internalMutation({
-  args: { userId: v.string(), email: v.string() },
+  args: {
+    userId: v.string(),
+    customerId: v.string(),
+    email: v.string(),
+    observedAt: v.number(),
+    includeUnlinked: v.boolean(),
+  },
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
-    const now = Date.now();
     const customers = await ctx.db
       .query("customers")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .take(10);
     for (const customer of customers) {
+      if (customer.dodoCustomerId !== args.customerId || customer.updatedAt >= args.observedAt) continue;
       await ctx.db.patch(customer._id, {
         email: args.email,
         normalizedEmail: args.email.toLowerCase(),
-        updatedAt: now,
+        updatedAt: args.observedAt,
       });
     }
     const subs = await ctx.db
@@ -3896,12 +3909,18 @@ export const applyBillingEmailUpdate = internalMutation({
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .take(50);
     for (const sub of subs) {
+      const linkedId = customerIdOfSubscription(sub);
+      const linked = linkedId === args.customerId || (linkedId === null && args.includeUnlinked);
+      if (!linked || (sub.billingEmailOverride?.observedAt ?? 0) >= args.observedAt) continue;
       const payload = sub.rawPayload;
-      if (!payload || typeof payload !== "object" || Array.isArray(payload)) continue;
-      const customer = (payload as { customer?: unknown }).customer;
+      const customer = (payload as { customer?: unknown } | null)?.customer;
       const priorCustomer = customer && typeof customer === "object" ? customer : {};
+      const patchablePayload = payload && typeof payload === "object" && !Array.isArray(payload);
       await ctx.db.patch(sub._id, {
-        rawPayload: { ...payload, customer: { ...priorCustomer, email: args.email } },
+        ...(patchablePayload
+          ? { rawPayload: { ...payload, customer: { ...priorCustomer, email: args.email } } }
+          : {}),
+        billingEmailOverride: { email: args.email, observedAt: args.observedAt },
       });
     }
   },
@@ -3910,7 +3929,10 @@ export const applyBillingEmailUpdate = internalMutation({
 /**
  * Change the signed-in user's billing email at Dodo and locally. Dodo first:
  * a local change without the provider would hide the bounce while Dodo's own
- * receipts and dunning kept going to the dead address.
+ * receipts and dunning kept going to the dead address. Each customer is
+ * mirrored locally as soon as its update succeeds, with the address Dodo
+ * reads back (a concurrent change elsewhere may already have won there), so
+ * a later customer failing never discards what Dodo already changed.
  */
 export const updateBillingEmail = action({
   args: { email: v.string() },
@@ -3923,23 +3945,41 @@ export const updateBillingEmail = action({
     );
 
     const client = getDodoClient();
+    const describe = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+    let appliedEmail: string | null = null;
+    let failures = 0;
     for (const customerId of customerIds) {
       try {
         await client.customers.update(customerId, { email });
       } catch (err) {
-        // Structured so the browser gets a kind instead of the masked
-        // `[Request ID: X] Server Error`; the provider message stays in logs.
-        console.error(
-          `[billing/updateBillingEmail] Dodo customer update failed for ${customerId}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-        throw new ConvexError({ kind: "DODO_CUSTOMER_UPDATE_ERROR" });
+        console.error(`[billing/updateBillingEmail] Dodo customer update failed for ${customerId}: ${describe(err)}`);
+        failures += 1;
+        continue;
       }
+      let held = email;
+      try {
+        const customer = await client.customers.retrieve(customerId);
+        if (typeof customer.email === "string" && customer.email.includes("@")) held = customer.email.trim();
+      } catch (err) {
+        console.warn(`[billing/updateBillingEmail] Dodo customer read-back failed for ${customerId}: ${describe(err)}`);
+      }
+      // Stamped after the read so the guard orders applies by what Dodo held.
+      const observedAt = Date.now();
+      await ctx.runMutation(internal.payments.billing.applyBillingEmailUpdate, {
+        userId,
+        customerId,
+        email: held,
+        observedAt,
+        includeUnlinked: appliedEmail === null,
+      });
+      appliedEmail ??= held;
     }
-
-    await ctx.runMutation(internal.payments.billing.applyBillingEmailUpdate, { userId, email });
-    return { email };
+    if (failures > 0) {
+      // Structured so the browser gets a kind instead of the masked
+      // `[Request ID: X] Server Error`; the provider message stays in logs.
+      throw new ConvexError({ kind: "DODO_CUSTOMER_UPDATE_ERROR" });
+    }
+    return { email: appliedEmail ?? email };
   },
 });
 

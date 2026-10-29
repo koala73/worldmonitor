@@ -411,7 +411,11 @@ describe("updateBillingEmail", () => {
         .withIdentity(IDENTITY)
         .action(api.payments.billing.updateBillingEmail, { email: FIXED })
         .then(() => null, (err: unknown) => err as { data?: unknown });
-      expect(error?.data).toEqual({ kind: "EMAIL_SUPPRESSED" });
+      // convex-test serializes error data once per function boundary crossed
+      // (internal query -> action -> caller).
+      let data = error?.data;
+      while (typeof data === "string") data = JSON.parse(data);
+      expect(data).toEqual({ kind: "EMAIL_SUPPRESSED" });
       expect(dodoCustomerUpdateMock).not.toHaveBeenCalled();
     },
   );
