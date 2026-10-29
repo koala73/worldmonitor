@@ -1,20 +1,22 @@
 #!/usr/bin/env node
 import { runBundle, DAY } from './_bundle-runner.mjs';
+import { claimBundleTurn, acknowledgeBundleTurn } from './_bundle-turn.mjs';
+import { orderEnergySections } from './_energy-bundle-order.mjs';
 import { OWID_SOURCE_VERSION } from './seed-owid-energy-mix.mjs';
 import { JODI_OIL_SOURCE_VERSION } from './seed-jodi-oil.mjs';
 
-await runBundle('energy-sources', [
+const SECTIONS = [
   { label: 'GIE-Gas-Storage', script: 'seed-gie-gas-storage.mjs', seedMetaKey: 'economic:eu-gas-storage', canonicalKey: 'economic:eu-gas-storage:v1', intervalMs: DAY, timeoutMs: 180_000 },
-  { label: 'Gas-Storage-Countries', script: 'seed-gas-storage-countries.mjs', seedMetaKey: 'energy:gas-storage-countries', intervalMs: DAY, timeoutMs: 600_000 },
-  { label: 'JODI-Gas', script: 'seed-jodi-gas.mjs', seedMetaKey: 'energy:jodi-gas', canonicalKey: 'energy:jodi-gas:v1:_countries', completionMetaKey: 'seed-completion:energy:jodi-gas', intervalMs: 15 * DAY, timeoutMs: 600_000 },
+  { label: 'Gas-Storage-Countries', script: 'seed-gas-storage-countries.mjs', seedMetaKey: 'energy:gas-storage-countries', intervalMs: DAY, timeoutMs: 530_000 },
+  { label: 'JODI-Gas', script: 'seed-jodi-gas.mjs', seedMetaKey: 'energy:jodi-gas', canonicalKey: 'energy:jodi-gas:v1:_countries', completionMetaKey: 'seed-completion:energy:jodi-gas', intervalMs: 15 * DAY, timeoutMs: 530_000 },
   // 15 days, like JODI-Gas, so a new monthly file lands within about two
   // weeks; the source version reseeds right after a payload-changing deploy.
-  { label: 'JODI-Oil', script: 'seed-jodi-oil.mjs', seedMetaKey: 'energy:jodi-oil', canonicalKey: 'energy:jodi-oil:v1:_countries', expectedSourceVersion: JODI_OIL_SOURCE_VERSION, intervalMs: 15 * DAY, timeoutMs: 600_000 },
+  { label: 'JODI-Oil', script: 'seed-jodi-oil.mjs', seedMetaKey: 'energy:jodi-oil', canonicalKey: 'energy:jodi-oil:v1:_countries', expectedSourceVersion: JODI_OIL_SOURCE_VERSION, intervalMs: 15 * DAY, timeoutMs: 530_000 },
   // Monthly production/export series per exporter (EIA STEO, JODI history,
   // Comtrade mirror imports, PortWatch AIS). Weekly so EIA's monthly STEO
   // release and buyers' late Comtrade filings land within days.
-  { label: 'Oil-Trade-Series', script: 'seed-oil-trade-series.mjs', seedMetaKey: 'energy:oil-trade-series', canonicalKey: 'energy:oil-trade-series:v1', completionMetaKey: 'seed-completion:energy:oil-trade-series', intervalMs: 7 * DAY, timeoutMs: 600_000 },
-  { label: 'OWID-Energy-Mix', script: 'seed-owid-energy-mix.mjs', seedMetaKey: 'economic:owid-energy-mix', expectedSourceVersion: OWID_SOURCE_VERSION, intervalMs: 35 * DAY, timeoutMs: 600_000 },
+  { label: 'Oil-Trade-Series', script: 'seed-oil-trade-series.mjs', seedMetaKey: 'energy:oil-trade-series', canonicalKey: 'energy:oil-trade-series:v1', completionMetaKey: 'seed-completion:energy:oil-trade-series', intervalMs: 7 * DAY, timeoutMs: 530_000 },
+  { label: 'OWID-Energy-Mix', script: 'seed-owid-energy-mix.mjs', seedMetaKey: 'economic:owid-energy-mix', expectedSourceVersion: OWID_SOURCE_VERSION, intervalMs: 35 * DAY, timeoutMs: 530_000 },
   { label: 'IEA-Oil-Stocks', script: 'seed-iea-oil-stocks.mjs', seedMetaKey: 'energy:iea-oil-stocks', canonicalKey: 'energy:iea-oil-stocks:v1:index', completionMetaKey: 'seed-completion:energy:iea-oil-stocks', intervalMs: 40 * DAY, timeoutMs: 300_000 },
   { label: 'EIA-Petroleum', script: 'seed-eia-petroleum.mjs', seedMetaKey: 'energy:eia-petroleum', canonicalKey: 'energy:eia-petroleum:v1', intervalMs: DAY, timeoutMs: 90_000 },
   { label: 'IEA-Crisis-Policies', script: 'seed-energy-crisis-policies.mjs', seedMetaKey: 'energy:crisis-policies', canonicalKey: 'energy:crisis-policies:v1', intervalMs: 7 * DAY, timeoutMs: 120_000 },
@@ -45,4 +47,25 @@ await runBundle('energy-sources', [
   // because curated events are mostly historical; classifier extends daily
   // post-launch.
   { label: 'Energy-Disruptions', script: 'seed-energy-disruptions.mjs', seedMetaKey: 'energy:disruptions', canonicalKey: 'energy:disruptions:v1', intervalMs: 7 * DAY, timeoutMs: 60_000 },
-]);
+  { label: 'Regional-Energy-pgcb', script: 'seed-regional-energy-pgcb.mjs', seedMetaKey: 'energy:regional-pgcb', canonicalKey: 'energy:regional:pgcb:v1', completionMetaKey: 'seed-completion:energy:regional-pgcb', expectedSourceVersion: 'regional-energy-pgcb-v1', intervalMs: 3600000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-petrobangla', script: 'seed-regional-energy-petrobangla.mjs', seedMetaKey: 'energy:regional-petrobangla', canonicalKey: 'energy:regional:petrobangla:v1', completionMetaKey: 'seed-completion:energy:regional-petrobangla', expectedSourceVersion: 'regional-energy-petrobangla-v1', intervalMs: 86400000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-niso', script: 'seed-regional-energy-niso.mjs', seedMetaKey: 'energy:regional-niso', canonicalKey: 'energy:regional:niso:v1', completionMetaKey: 'seed-completion:energy:regional-niso', expectedSourceVersion: 'regional-energy-niso-v1', intervalMs: 21600000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-eskom', script: 'seed-regional-energy-eskom.mjs', seedMetaKey: 'energy:regional-eskom', canonicalKey: 'energy:regional:eskom:v1', completionMetaKey: 'seed-completion:energy:regional-eskom', expectedSourceVersion: 'regional-energy-eskom-v1', intervalMs: 86400000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-cammesa', script: 'seed-regional-energy-cammesa.mjs', seedMetaKey: 'energy:regional-cammesa', canonicalKey: 'energy:regional:cammesa:v1', completionMetaKey: 'seed-completion:energy:regional-cammesa', expectedSourceVersion: 'regional-energy-cammesa-v1', intervalMs: 3600000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-gse', script: 'seed-regional-energy-gse.mjs', seedMetaKey: 'energy:regional-gse', canonicalKey: 'energy:regional:gse:v1', completionMetaKey: 'seed-completion:energy:regional-gse', expectedSourceVersion: 'regional-energy-gse-v1', intervalMs: 86400000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-ons', script: 'seed-regional-energy-ons.mjs', seedMetaKey: 'energy:regional-ons', canonicalKey: 'energy:regional:ons:v1', completionMetaKey: 'seed-completion:energy:regional-ons', expectedSourceVersion: 'regional-energy-ons-v1', intervalMs: 43200000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-anp', script: 'seed-regional-energy-anp.mjs', seedMetaKey: 'energy:regional-anp', canonicalKey: 'energy:regional:anp:v1', completionMetaKey: 'seed-completion:energy:regional-anp', expectedSourceVersion: 'regional-energy-anp-v1', intervalMs: 86400000, timeoutMs: 120_000 },
+];
+
+const claim = await claimBundleTurn('energy-sources');
+if (!claim) {
+  console.log('[Bundle:energy-sources] scheduler lease held or Redis unavailable; deferring this tick.');
+  process.exit(0);
+}
+await runBundle('energy-sources', orderEnergySections(SECTIONS, claim.turn), {
+  maxBundleMs: 570_000,
+  prefetchFreshness: true,
+  onTerminalComplete: async () => {
+    if (!await acknowledgeBundleTurn('energy-sources', claim)) throw new Error('Could not advance energy scheduler turn');
+  },
+});

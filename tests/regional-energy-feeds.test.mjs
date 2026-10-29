@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { X509Certificate } from 'node:crypto';
 import { rootCertificates } from 'node:tls';
 import { execFileSync } from 'node:child_process';
+import { orderEnergySections } from '../scripts/_energy-bundle-order.mjs';
+import { claimBundleTurn, acknowledgeBundleTurn } from '../scripts/_bundle-turn.mjs';
 import { extractBundleSections } from './helpers/bundle-section-parser.mjs';
 import { sectionWorstCaseMs, BUNDLE_PREFLIGHT_HEADROOM_MS } from '../scripts/_bundle-runner.mjs';
 import { fetchRegionalEnergyFeed, regionalEnergySeedOptions } from '../scripts/_regional-energy-source.mjs';
@@ -33,20 +35,54 @@ describe('regional energy source observations', () => {
     `], { cwd: new URL('../', import.meta.url), timeout: 5000 });
   });
 
-  it('reserves a turn for every regional feed even when all earlier feeds time out', () => {
-    const ids = [];
-    for (const group of ['grid', 'reports']) {
-      const source = readFileSync(new URL(`../scripts/seed-bundle-regional-energy-${group}.mjs`, import.meta.url), 'utf8');
-      const sections = extractBundleSections(source);
-      assert.equal(sections.length, 4);
-      assert.match(source, /maxBundleMs: 570_000, prefetchFreshness: true/);
-      const worstCase = sections.reduce((total, section) => total + sectionWorstCaseMs({ timeoutMs: Number(section.timeoutMsExpr.replaceAll('_', '')) }), BUNDLE_PREFLIGHT_HEADROOM_MS);
-      assert.ok(worstCase <= 550_000, `all sections must fit together: ${worstCase}`);
-      ids.push(...sections.map(section => section.label.replace('Regional-Energy-', '')));
+  it('gives every source a turn in the existing service even after persistent timeouts', () => {
+    const source = readFileSync(new URL('../scripts/seed-bundle-energy-sources.mjs', import.meta.url), 'utf8');
+    const sections = extractBundleSections(source).map(section => ({ ...section, timeoutMs: Number(section.timeoutMsExpr.replaceAll('_', '')) }));
+    const regional = sections.filter(section => section.label.startsWith('Regional-Energy-'));
+    const legacy = sections.filter(section => !section.label.startsWith('Regional-Energy-'));
+    assert.deepEqual(regional.map(section => section.label.replace('Regional-Energy-', '')).sort(), feeds.map(feed => feed.id).sort());
+    assert.match(source, /maxBundleMs: 570_000/);
+    assert.match(source, /prefetchFreshness: true/);
+    assert.match(source, /onTerminalComplete:[\s\S]*acknowledgeBundleTurn/);
+    const registry = JSON.parse(readFileSync(new URL('../scripts/railway-services.json', import.meta.url), 'utf8'));
+    assert.equal(registry.some(service => service.service.startsWith('seed-bundle-regional-energy-')), false);
+    assert.equal(registry.find(service => service.service === 'seed-bundle-energy-sources').cronSchedule, '*/10 * * * *');
+    const offered = new Set();
+    let cycleRegional = new Set();
+    for (let turn = 0; turn < 3 * legacy.length; turn++) {
+      const ordered = orderEnergySections(sections, turn);
+      assert.equal(new Set(ordered).size, sections.length);
+      const priority = ordered.slice(0, turn % 3 === 2 ? 1 : 4);
+      const worstCase = priority.reduce((total, section) => total + sectionWorstCaseMs(section), BUNDLE_PREFLIGHT_HEADROOM_MS);
+      assert.ok(worstCase <= 560_000, `priority work must fit together: ${worstCase}`);
+      priority.forEach(section => offered.add(section.label));
+      if (turn % 3 !== 2) {
+        assert.ok(priority.every(section => section.label.startsWith('Regional-Energy-')));
+        priority.forEach(section => cycleRegional.add(section.label));
+      } else {
+        assert.equal(cycleRegional.size, 8, 'every regional feed must lead within three completed ticks');
+        cycleRegional = new Set();
+      }
     }
-    assert.deepEqual(ids.sort(), feeds.map(feed => feed.id).sort());
-    const legacy = readFileSync(new URL('../scripts/seed-bundle-energy-sources.mjs', import.meta.url), 'utf8');
-    assert.doesNotMatch(legacy, /Regional-Energy-/);
+    assert.deepEqual([...offered].sort(), sections.map(section => section.label).sort());
+  });
+
+  it('uses a separate durable energy turn and advances it only on terminal acknowledgement', async () => {
+    const commands = [];
+    const options = {
+      credentials: { restUrl: 'https://redis.example', token: 'fixture' },
+      token: 'energy-turn',
+      fetchImpl: async (_url, init) => {
+        commands.push(JSON.parse(init.body));
+        return Response.json({ result: commands.length === 1 ? [1, '2'] : 1 });
+      },
+    };
+    const claim = await claimBundleTurn('energy-sources', options);
+    assert.deepEqual(claim, { turn: 2, token: 'energy-turn' });
+    assert.equal(commands.length, 1);
+    assert.deepEqual(commands[0].slice(3, 5), ['bundle:turn:energy-sources', 'bundle:turn:energy-sources:lease']);
+    assert.equal(await acknowledgeBundleTurn('energy-sources', claim, options), true);
+    assert.deepEqual(commands[1].slice(3, 5), commands[0].slice(3, 5));
   });
 
   it('reads PGCB fuel columns without hidden demand or load-shedding cells', () => {

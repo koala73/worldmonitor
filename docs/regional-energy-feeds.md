@@ -56,17 +56,29 @@ missing or stale data stays strict, even after its cache TTL expires.
 The MCP headline energy tool does not yet expose the regional series; the
 omission is recorded in its parity exclusions.
 
-Two isolated bundles own the writers. `seed-bundle-regional-energy-grid` runs
-PGCB, NISO, CAMMESA and ONS. `seed-bundle-regional-energy-reports` runs
-Petrobangla, Eskom, GSE and ANP. Both registry targets are hourly at minute 30;
-members retain their individual interval gates. Each bundle has a 570-second
-budget and four 120-second child deadlines. Including the runner's ten-second
-termination grace per child and twenty-second preflight, all four fit in 540
-seconds, even when every source times out. The child fetch phase has an
-80-second deadline, leaving forty seconds for publication and cleanup.
-Slow or failed sources retain last-good data without blocking later feeds. After
-an authorized rollout, confirm the actual Railway schedule and image commit,
-then observe two natural hourly runs and at least one daily run. Check logs for
+The existing `seed-bundle-energy-sources` service owns all eight writers.
+Its registry target is every ten minutes; each feed keeps its own interval gate.
+A durable leased turn rotates first priority between four grid feeds (PGCB,
+NISO, CAMMESA, ONS), four report feeds (Petrobangla, Eskom, GSE, ANP), and the
+existing energy members. Each regional group gets first priority every three
+completed ticks, normally thirty minutes. The legacy lead rotates within its
+group, so all fifteen legacy members get a first-priority slot within forty-five
+completed ticks, normally seven and a half hours. Successful recent members are
+skipped by their existing freshness gates.
+
+Every tick has a 570-second budget. Each regional child has a 120-second
+lifecycle deadline, including an 80-second fetch deadline and forty-second
+publish/cleanup reserve. Four timeout-plus-grace reservations and concurrent
+freshness preflight total 540 seconds, so every member of the priority regional
+group can run even when all four time out. The longest existing child deadlines
+are 530 seconds, leaving room for termination and preflight when legacy work
+leads. A failed completed tick still advances the turn. An interrupted tick keeps
+its turn for replay after the fifteen-minute lease expires. Redis outages or an
+already-held scheduler lease defer the tick without advancing its turn.
+
+This adds no Railway service. Slow or failed sources retain last-good data.
+After an authorized rollout, confirm the actual Railway schedule and image commit,
+then observe two natural scheduling rotations and at least one daily run. Check logs for
 `Regional-Energy-` and `regional-`, health metadata/record counts, and the profile
 for each of BD, NG, ZA, AR, GE and BR. Require source-dated values and valid
 attribution; do not count a green build or a fresh fetch alone as acceptance.
@@ -74,8 +86,7 @@ Monthly feeds need a later natural publication to prove report rollover.
 
 On repeated HTTP/parser failures or non-advancing observations, retain last-good
 data, inspect the linked provider artifact, and mark the rollout unaccepted.
-The deploying operator owns validation. Roll back the regional bundle images
-and schedules if their publication fails. Do not clear caches to conceal failures.
+The deploying operator owns validation. Roll back the existing bundle image and schedule together if publication fails. Do not clear caches to conceal failures.
 
 ## Bangladesh certificate chains
 

@@ -114,13 +114,8 @@ for (const gate of [
 ]) test(`energy-sources wires the ${gate.label} freshness gate to the producer version`, () => {
   const bundlePath = join(SCRIPTS_DIR, 'seed-bundle-energy-sources.mjs');
   const rawSource = readFileSync(bundlePath, 'utf8');
-  const sectionSource = extractRunBundleSectionSource(rawSource, 'energy-sources');
-  assert.notEqual(
-    sectionSource,
-    null,
-    'energy-sources must pass a literal section array to one runBundle call',
-  );
-  const source = stripLineComments(sectionSource);
+  const source = stripLineComments(rawSource);
+  assert.match(source, /runBundle\('energy-sources', orderEnergySections\(SECTIONS, claim\.turn\)/);
   const sections = extractBundleSections(source);
   const gateSections = sections.filter((section) => section.label === gate.label);
 

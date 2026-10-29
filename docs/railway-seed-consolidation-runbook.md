@@ -1326,17 +1326,17 @@ Recovery is accepted only when:
 |---|---|
 | **Service name** | `seed-bundle-energy-sources` |
 | **Start command** | `node scripts/seed-bundle-energy-sources.mjs` |
-| **Cron schedule** | `30 7 * * *` (daily 07:30 UTC) |
+| **Cron schedule** | `*/10 * * * *` (every ten minutes; registry target) |
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 6 services |
 | **Net savings** | 5 slots |
-| **Members** | GIE Gas Storage, Gas Storage Countries, JODI Gas/Oil, Oil-Trade-Series, OWID Energy Mix, IEA Oil Stocks, EIA Petroleum, crisis/SPR policies, pipelines/storage registries, fuel shortages/disruptions. Each member retains its own interval gate. |
+| **Members** | GIE Gas Storage, Gas Storage Countries, JODI Gas/Oil, Oil-Trade-Series, OWID Energy Mix, IEA Oil Stocks, EIA Petroleum, crisis/SPR policies, pipelines/storage registries, fuel shortages/disruptions; PGCB, Petrobangla, NISO, Eskom, CAMMESA, GSE, ONS and ANP. Each member retains its own interval gate. |
 | **Required env** | `COMTRADE_API_KEYS` for the weekly Oil-Trade-Series Comtrade mirror lane. Without it, the other oil sources can publish while all mirrors report `unavailable`. |
 
-Regional feeds run in two separate bounded hourly bundles. See
-[regional energy feeds](regional-energy-feeds.md) for their membership, budgets,
-source contracts and activation checks. Confirm live schedules only after an
-authorized rollout.
+The existing service uses a 570-second budget and durable rotating first
+priority. No new service is required. See [regional energy feeds](regional-energy-feeds.md)
+for the scheduling bounds, source contracts and activation checks. Confirm the
+live schedule only after an authorized rollout.
 
 #### Activate the oil-trade mirror lane
 
