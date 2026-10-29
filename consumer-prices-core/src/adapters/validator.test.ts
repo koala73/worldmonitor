@@ -607,6 +607,8 @@ describe('validateSearchHit — India multipacks and wrong products', () => {
     ['White Sugar 1kg', 'Annprash White Sugar - 1 kg (Pack of 2)', '1 kg', 2000],
     ['Sunflower Oil 1L', 'Fortune Sunflower Oil 2 x 1L (Pack of 2)', '1 L', 2000],
     ['Sunflower Oil 1L', 'Fortune Sunflower Oil 2 x 1 L', '1 L', 2000],
+    // A count size in the title must not displace the content size the window measures.
+    ['White Sandwich Bread 400g', 'White Sandwich Bread 6 pcs (Pack of 2, 400g each)', '400 g', 800],
   ])('rejects %s matched to the multipack "%s"', (canonicalName, productName, sizeText, total) => {
     const r = check(canonicalName, productName, sizeText);
     expect(r.ok).toBe(false);

@@ -186,10 +186,14 @@ function titleMultipackSize(
   const titleSizes = [...productName.replace(match[0], ' ').matchAll(TITLE_SIZE)]
     .map((m) => parseSize(m[0]))
     .filter((size): size is ParsedSize => size !== null);
-  const unit = titleSizes.length
-    ? titleSizes
-        .filter((size) => size.baseUnit === titleSizes[0].baseUnit)
-        .reduce((min, size) => (size.baseQuantity < min.baseQuantity ? size : min))
+  // Sizes in the unit the window measures come first: "6 pcs (Pack of 2, 400g
+  // each)" is 2 x 400 g, not 12 pieces.
+  const inItemUnit = titleSizes.filter((size) => size.baseUnit === item.baseUnit);
+  const candidates = inItemUnit.length
+    ? inItemUnit
+    : titleSizes.filter((size) => size.baseUnit === titleSizes[0].baseUnit);
+  const unit = candidates.length
+    ? candidates.reduce((min, size) => (size.baseQuantity < min.baseQuantity ? size : min))
     : parseSize(sizeText);
   if (!unit || unit.packCount !== 1) return null;
   return `${count} x ${unit.sizeValue} ${unit.sizeUnit}`;
