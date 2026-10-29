@@ -88,10 +88,7 @@
     "uniqueVisitors": "Benzersiz ziyaretçiler",
     "peakDailyUsers": "Günlük kullanıcı (zirve)",
     "countriesReached": "Ulaşılan ülke",
-    "liveDataSources": "Canlı veri kaynakları",
-    "quote": "Piyasalar, para politikası, jeopolitik, enerji — her şey şimdi birlikte hareket ediyor. Bu kuvvetlerin gerçek zamanlı olarak nasıl bağlandığını gösteren bir şeye ihtiyacım vardı; sadece manşetler değil, altta yatan itici güçler.",
-    "ceo": "CEO'su",
-    "asToldTo": "anlatıldığı kişi"
+    "liveDataSources": "Canlı veri kaynakları"
   },
   "audience": {
     "title": "World Monitor kimlere yönelik olarak tasarlanmıştır?",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "Bir ülkenin değişiminin ardındaki siyasi, güvenlik, ekonomik ve dayanıklılık sinyallerini izleyin; dayanıklılık {{resilienceRanked}} ülke için sıralandı.",
       "open": "Kanıt görüntüle",
       "workflow": "Adım adım iş akışı"
+    },
+    "voices": {
+      "eyebrow": "Kendi sözleriyle",
+      "title": "İnsanlar World Monitor hakkında ne diyor",
+      "sub": "{{countries}} ülkede {{users}} kişi World Monitor’ü kullandı. İşte basının ve bazılarının söyledikleri.",
+      "translatedJa": "Japoncadan çevrildi"
     }
   },
   "whatsNew": {

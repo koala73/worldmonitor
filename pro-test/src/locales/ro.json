@@ -88,10 +88,7 @@
     "uniqueVisitors": "Vizitatori unici",
     "peakDailyUsers": "Utilizatori zilnici (vârf)",
     "countriesReached": "Țări atinse",
-    "liveDataSources": "Surse de date live",
-    "quote": "Piețe, politică monetară, geopolitică, energie — totul se mișcă împreună acum. Aveam nevoie de ceva care să arate cum aceste forțe se conectează în timp real, nu doar titlurile, ci motoarele de dedesubt.",
-    "ceo": "CEO al",
-    "asToldTo": "povestit către"
+    "liveDataSources": "Surse de date live"
   },
   "audience": {
     "title": "Pentru cine este World Monitor?",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "Urmărește semnalele politice, de securitate, economice și de reziliență din spatele schimbării unei țări, cu reziliență clasificată pentru {{resilienceRanked}} de țări.",
       "open": "Deschideți dovezi",
       "workflow": "Flux de lucru pas cu pas"
+    },
+    "voices": {
+      "eyebrow": "În cuvintele lor",
+      "title": "Ce spun oamenii despre World Monitor",
+      "sub": "{{users}} de oameni din {{countries}} de țări au folosit World Monitor. Iată ce au spus presa și unii dintre ei.",
+      "translatedJa": "Tradus din japoneză"
     }
   },
   "whatsNew": {

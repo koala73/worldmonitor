@@ -88,10 +88,7 @@
     "uniqueVisitors": "순 방문자",
     "peakDailyUsers": "일일 사용자 (최고치)",
     "countriesReached": "도달한 국가",
-    "liveDataSources": "실시간 데이터 소스",
-    "quote": "시장, 통화 정책, 지정학, 에너지 — 이제 모든 것이 함께 움직입니다. 이러한 힘들이 실시간으로 어떻게 연결되는지 보여주는 것이 필요했습니다. 헤드라인이 아니라 근저의 동인을.",
-    "ceo": "CEO",
-    "asToldTo": "전해진 대상"
+    "liveDataSources": "실시간 데이터 소스"
   },
   "audience": {
     "title": "World Monitor는 누구를 위해 만들어졌나요?",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "국가의 변화를 주도하는 정치, 보안, 경제, 회복력 신호를 추적합니다. {{resilienceRanked}}개국의 회복력 순위가 산출됩니다.",
       "open": "증거 보기",
       "workflow": "단계별 워크플로"
+    },
+    "voices": {
+      "eyebrow": "그들의 말",
+      "title": "사람들이 말하는 World Monitor",
+      "sub": "{{countries}}개국 {{users}}명이 World Monitor를 사용했습니다. 언론과 일부 사용자의 이야기를 소개합니다.",
+      "translatedJa": "일본어에서 번역"
     }
   },
   "whatsNew": {

@@ -88,10 +88,7 @@
     "uniqueVisitors": "Khách truy cập duy nhất",
     "peakDailyUsers": "Người dùng hàng ngày (đỉnh)",
     "countriesReached": "Quốc gia đã tiếp cận",
-    "liveDataSources": "Nguồn dữ liệu trực tiếp",
-    "quote": "Thị trường, chính sách tiền tệ, địa chính trị, năng lượng — bây giờ tất cả chuyển động cùng nhau. Tôi cần một thứ gì đó cho thấy các lực lượng này liên kết như thế nào theo thời gian thực, không chỉ các tiêu đề mà cả động lực ẩn sau.",
-    "ceo": "CEO của",
-    "asToldTo": "kể cho"
+    "liveDataSources": "Nguồn dữ liệu trực tiếp"
   },
   "audience": {
     "title": "World Monitor được xây dựng cho ai?",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "Theo dõi các tín hiệu chính trị, an ninh, kinh tế và khả năng phục hồi đằng sau thay đổi của một quốc gia, với khả năng phục hồi được xếp hạng cho {{resilienceRanked}} quốc gia.",
       "open": "Mở chứng cứ",
       "workflow": "Quy trình từng bước"
+    },
+    "voices": {
+      "eyebrow": "Bằng lời của họ",
+      "title": "Mọi người nói gì về World Monitor",
+      "sub": "{{users}} người tại {{countries}} quốc gia đã dùng World Monitor. Đây là những gì báo chí và một số người dùng đã nói.",
+      "translatedJa": "Dịch từ tiếng Nhật"
     }
   },
   "whatsNew": {

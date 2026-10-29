@@ -12,7 +12,7 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const footer = read('pro-test/src/components/Footer.tsx');
 const logo = read('pro-test/src/components/Logo.tsx');
 const nav = read('pro-test/src/welcome/Nav.tsx');
-const pressNav = read('pro-test/src/components/PressFooterNav.tsx');
+const pressNav = read('pro-test/src/components/PressNav.tsx');
 const app = read('pro-test/src/App.tsx');
 const blogBase = read('blog-site/src/layouts/Base.astro');
 

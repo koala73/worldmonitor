@@ -88,10 +88,7 @@
     "uniqueVisitors": "Egyedi látogatók",
     "peakDailyUsers": "Napi csúcsfelhasználók",
     "countriesReached": "Elért országok",
-    "liveDataSources": "Élő adatforrások",
-    "quote": "Piacok, monetáris politika, geopolitika, energia — most már minden együtt mozog. Olyan eszközre volt szükségem, amely valós időben mutatja meg, hogyan kapcsolódnak ezek az erők, nem csak a címeket, hanem a mögöttes mozgatókat is.",
-    "ceo": "CEO,",
-    "asToldTo": "elmondva"
+    "liveDataSources": "Élő adatforrások"
   },
   "audience": {
     "title": "Kinek készült a World Monitor?",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "Nyomon követheti az országok politikai, biztonsági, gazdasági és rugalmassági jeleit, {{resilienceRanked}} ország rugalmassági besorolásával.",
       "open": "Bizonyítékok megnyitása",
       "workflow": "Lépésről lépésre munkafolyamat"
+    },
+    "voices": {
+      "eyebrow": "Az ő szavaikkal",
+      "title": "Mit mondanak az emberek a World Monitorról",
+      "sub": "{{users}} ember {{countries}} országban használta a World Monitort. Ezt mondta róla a sajtó és néhányuk.",
+      "translatedJa": "Japánból fordítva"
     }
   },
   "whatsNew": {

@@ -88,10 +88,7 @@
     "uniqueVisitors": "Unikátní návštěvníci",
     "peakDailyUsers": "Denní uživatelé (vrchol)",
     "countriesReached": "Dosažené země",
-    "liveDataSources": "Živé datové zdroje",
-    "quote": "Trhy, měnová politika, geopolitika, energie — vše se teď hýbe společně. Potřeboval jsem něco, co ukazuje, jak se tyto síly propojují v reálném čase, nejen titulky, ale skryté hybatele.",
-    "ceo": "CEO",
-    "asToldTo": "sděleno"
+    "liveDataSources": "Živé datové zdroje"
   },
   "audience": {
     "title": "Pro koho je World Monitor určen?",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "Sledujte politické, bezpečnostní, ekonomické a odolnostní signály za změnami v jednotlivých zemích, s odolností hodnocenou pro {{resilienceRanked}} zemí.",
       "open": "Otevřít důkazy",
       "workflow": "Postup krok za krokem"
+    },
+    "voices": {
+      "eyebrow": "Jejich slovy",
+      "title": "Co lidé říkají o World Monitor",
+      "sub": "{{users}} lidí ve {{countries}} zemích používalo World Monitor. Tohle o něm řekl tisk a někteří z nich.",
+      "translatedJa": "Přeloženo z japonštiny"
     }
   },
   "whatsNew": {

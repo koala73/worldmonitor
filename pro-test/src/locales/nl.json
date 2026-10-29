@@ -88,10 +88,7 @@
     "uniqueVisitors": "Unieke bezoekers",
     "peakDailyUsers": "Piek dagelijkse gebruikers",
     "countriesReached": "Bereikte landen",
-    "liveDataSources": "Live databronnen",
-    "quote": "Markten, monetair beleid, geopolitiek, energie — alles beweegt nu samen. Ik had iets nodig dat toont hoe deze krachten in realtime verbonden zijn, niet alleen de koppen maar de onderliggende drijvers.",
-    "ceo": "CEO van",
-    "asToldTo": "verteld aan"
+    "liveDataSources": "Live databronnen"
   },
   "audience": {
     "title": "Voor wie is World Monitor gebouwd?",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "Volg de politieke, veiligheids-, economische en veerkrachtsignalen achter veranderingen in een land; veerkracht gerangschikt voor {{resilienceRanked}} landen.",
       "open": "Open bewijs",
       "workflow": "Stapsgewijze werkwijze"
+    },
+    "voices": {
+      "eyebrow": "In hun woorden",
+      "title": "Wat mensen zeggen over World Monitor",
+      "sub": "{{users}} mensen in {{countries}} landen hebben World Monitor gebruikt. Dit zeiden de pers en sommigen van hen.",
+      "translatedJa": "Vertaald uit het Japans"
     }
   },
   "whatsNew": {

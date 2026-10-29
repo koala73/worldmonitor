@@ -88,10 +88,7 @@
     "uniqueVisitors": "Visitatori unici",
     "peakDailyUsers": "Utenti giornalieri (picco)",
     "countriesReached": "Paesi raggiunti",
-    "liveDataSources": "Fonti dati live",
-    "quote": "Mercati, politica monetaria, geopolitica, energia — ora tutto si muove insieme. Mi serviva qualcosa che mostrasse come queste forze si collegano in tempo reale, non solo i titoli ma i motori sottostanti.",
-    "ceo": "CEO di",
-    "asToldTo": "raccontato a"
+    "liveDataSources": "Fonti dati live"
   },
   "audience": {
     "title": "Per chi è stato creato World Monitor?",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "Traccia i segnali politici, di sicurezza, economici e di resilienza dietro i cambiamenti di un paese, con resilienza valutata per {{resilienceRanked}} paesi.",
       "open": "Apri prove",
       "workflow": "Procedura passo passo"
+    },
+    "voices": {
+      "eyebrow": "Con le loro parole",
+      "title": "Cosa dicono le persone di World Monitor",
+      "sub": "{{users}} persone in {{countries}} paesi hanno usato World Monitor. Ecco cosa hanno detto la stampa e alcune di loro.",
+      "translatedJa": "Tradotto dal giapponese"
     }
   },
   "whatsNew": {

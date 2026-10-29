@@ -88,10 +88,7 @@
     "uniqueVisitors": "अद्वितीय आगंतुक",
     "peakDailyUsers": "सर्वाधिक दैनिक उपयोगकर्ता",
     "countriesReached": "पहुँचे हुए देश",
-    "liveDataSources": "लाइव डेटा स्रोत",
-    "quote": "Markets, monetary policy, geopolitics, energy — अब सब साथ चलते हैं। मुझे ऐसा tool चाहिए था जो real time में दिखाए कि ये forces कैसे जुड़ती हैं, सिर्फ़ headlines नहीं बल्कि underlying drivers भी।",
-    "ceo": "सीईओ,",
-    "asToldTo": "जैसा बताया गया"
+    "liveDataSources": "लाइव डेटा स्रोत"
   },
   "audience": {
     "title": "World Monitor किसके लिए बनाया गया है?",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "किसी देश के परिवर्तन के पीछे की राजनीतिक, सुरक्षा, आर्थिक और लचीलापन संकेतों को ट्रेस करें, {{resilienceRanked}} देशों के लिए लचीलापन रैंक किया गया है।",
       "open": "साक्ष्य खोलें",
       "workflow": "चरण-दर-चरण वर्कफ़्लो"
+    },
+    "voices": {
+      "eyebrow": "उनके शब्दों में",
+      "title": "लोग World Monitor के बारे में क्या कहते हैं",
+      "sub": "{{countries}} देशों में {{users}} लोगों ने World Monitor का उपयोग किया है। प्रेस और उनमें से कुछ ने यह कहा।",
+      "translatedJa": "जापानी से अनूदित"
     }
   },
   "whatsNew": {
