@@ -1,5 +1,5 @@
-// /pro names the buyer jobs before the feature lists: each job card links a
-// published use-case workflow and a dashboard view the URL parser accepts.
+// /pro names its buyers before the feature lists: one grid of six buyers, each
+// with its job, what Pro adds, and a published use-case workflow.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -14,55 +14,48 @@ const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8')
 
 const app = read('pro-test/src/App.tsx');
 const overview = read('pro-test/index.html');
-const layerKeys = new Set(
-  [...read('src/config/map-layer-definitions.ts').matchAll(/^\s+(\w+):\s+def\(/gm)].map((m) => m[1]),
-);
+const en = JSON.parse(read('pro-test/src/locales/en.json'));
 const useCasePaths = new Set(USE_CASE_PAGES.map((page) => page.path));
 
-const proJobsBlock = app.match(/const PRO_JOBS = \[([\s\S]*?)\] as const;/)?.[1];
+const buyersBlock = app.match(/const PRO_BUYERS = \[([\s\S]*?)\] as const;/)?.[1];
+const buyers = [...(buyersBlock ?? '').matchAll(/key: '(\w+)'[^\n]*workflowHref: '([^']+)'/g)]
+  .map((m) => ({ key: m[1], href: m[2] }));
 
-describe('/pro job section', () => {
-  it('renders before the feature pillars', () => {
-    assert.ok(proJobsBlock, 'PRO_JOBS must be defined in App.tsx');
+describe('/pro buyer section', () => {
+  it('renders one buyer grid before the feature pillars, with no second persona section', () => {
+    assert.ok(buyersBlock, 'PRO_BUYERS must be defined in App.tsx');
     assert.match(app, /<SourceMarquee \/>\s*<ProJobs \/>\s*<Pillars \/>/);
+    assert.doesNotMatch(app, /AudiencePersonas/, 'the generic persona grid duplicated the buyer grid');
   });
 
-  it('links each job to a published use-case workflow', () => {
-    const hrefs = [...proJobsBlock.matchAll(/workflowHref: '([^']+)'/g)].map((m) => m[1]);
-    assert.deepEqual(hrefs, ['/use-cases/monitor-supply-chain-disruptions/', '/use-cases/verify-breaking-news/']);
-    for (const href of hrefs) assert.ok(useCasePaths.has(href), `${href} must be a published use case`);
-  });
-
-  it('opens dashboard views with layers the dashboard accepts', () => {
-    const mapPaths = [...proJobsBlock.matchAll(/mapPath: `\$\{DASHBOARD_URL\}\?([^`]+)`/g)].map((m) => m[1]);
-    assert.equal(mapPaths.length, 2);
-    for (const query of mapPaths) {
-      const params = new URLSearchParams(query);
-      const layers = params.get('layers')?.split(',') ?? [];
-      assert.ok(layers.length > 0, `${query} must name layers`);
-      for (const layer of layers) assert.ok(layerKeys.has(layer), `unknown layer ${layer}`);
-      assert.ok(['1h', '6h', '24h', '48h', '7d', 'all'].includes(params.get('timeRange')), `${query} timeRange`);
+  it('covers six buyers, each with a job, a Pro line and a distinct published workflow', () => {
+    assert.deepEqual(buyers.map((b) => b.key), ['investors', 'traders', 'researchers', 'journalists', 'gov', 'teams']);
+    assert.equal(new Set(buyers.map((b) => b.href)).size, buyers.length, 'each buyer links its own guide');
+    for (const { key, href } of buyers) {
+      assert.ok(useCasePaths.has(href), `${href} must be a published use case`);
+      assert.ok(en.audience[`${key}Title`], `audience.${key}Title`);
+      assert.ok(en.proJobs[`${key}Job`], `proJobs.${key}Job`);
+      assert.ok(en.proJobs[`${key}Pro`], `proJobs.${key}Pro`);
     }
   });
 
-  it('names each card link after its job so screen-reader link lists can tell them apart', () => {
+  it('names each card link after its buyer so screen-reader link lists can tell them apart', () => {
     const component = app.match(/const ProJobs = \(\) => \(([\s\S]*?)\n\);/)?.[1];
     assert.ok(component, 'ProJobs must be defined in App.tsx');
-    assert.match(component, /<h3 id=\{`job-\$\{job\.key\}-title`\}/);
-    assert.match(component, /<span id=\{`job-\$\{job\.key\}-workflow`\}>/);
-    assert.match(component, /<span id=\{`job-\$\{job\.key\}-map`\}>/);
-    const links = [...component.matchAll(/<a href=[^>]*>/g)].map((m) => m[0]);
-    assert.equal(links.length, 2);
-    assert.match(links[0], /aria-labelledby=\{`job-\$\{job\.key\}-workflow job-\$\{job\.key\}-title`\}/);
-    assert.match(links[1], /aria-labelledby=\{`job-\$\{job\.key\}-map job-\$\{job\.key\}-title`\}/);
+    assert.match(component, /<h3 id=\{`job-\$\{buyer\.key\}-title`\}/);
+    assert.match(component, /<span id=\{`job-\$\{buyer\.key\}-workflow`\}>/);
+    const cardLinks = [...component.matchAll(/<a href=\{buyer\.workflowHref\}[^>]*>/g)].map((m) => m[0]);
+    assert.equal(cardLinks.length, 1);
+    assert.match(cardLinks[0], /aria-labelledby=\{`job-\$\{buyer\.key\}-workflow job-\$\{buyer\.key\}-title`\}/);
+    assert.match(component, /<a href="\/use-cases\/"/, 'the grid ends with a link to every workflow');
   });
 
-  it('puts the jobs in the crawlable overview ahead of the feature lists', () => {
-    const jobs = overview.indexOf('<h2>What can you get done with World Monitor Pro?</h2>');
+  it('puts the buyers in the crawlable overview ahead of the feature lists', () => {
+    const jobs = overview.indexOf(`<h2>${en.audience.title}</h2>`);
     const features = overview.indexOf('<h2>What does World Monitor Pro include?</h2>');
-    assert.ok(jobs > 0 && jobs < features, 'job section must precede the feature list');
+    assert.ok(jobs > 0 && jobs < features, 'buyer section must precede the feature list');
     const section = overview.slice(jobs, features);
-    for (const href of ['/use-cases/monitor-supply-chain-disruptions/', '/use-cases/verify-breaking-news/', '/use-cases/']) {
+    for (const href of [...buyers.map((b) => b.href), '/use-cases/']) {
       assert.ok(section.includes(`href="${href}"`), `overview must link ${href}`);
     }
   });
