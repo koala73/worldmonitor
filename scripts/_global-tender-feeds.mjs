@@ -58,13 +58,19 @@ function urlWithParams(base, params) {
 }
 
 function ocdsRecords(releases, { source, countryCode, region, noticeUrl }) {
-  return releases.flatMap((release) => {
-    requireRow(text(release?.ocid) && text(release?.tender?.title) && text(String(release?.tender?.id ?? '')), source);
+  const latest = new Map();
+  for (const release of releases) {
+    requireRow(text(release?.ocid) && Number.isFinite(Date.parse(release?.date)), source);
+    const previous = latest.get(release.ocid);
+    if (!previous || Date.parse(release.date) >= Date.parse(previous.date)) latest.set(release.ocid, release);
+  }
+  return [...latest.values()].flatMap((release) => {
     const tender = release.tender;
-    if (tender.status && tender.status !== 'active') return [];
-    if (!tender.status && (release.awards?.length || release.contracts?.length)) return [];
+    if (tender?.status && tender.status !== 'active') return [];
+    if (!tender?.status && (release.awards?.length || release.contracts?.length)) return [];
+    requireRow(text(tender?.title) && text(String(tender?.id ?? '')), source);
     const lots = Array.isArray(tender.lots) && tender.lots.length ? tender.lots : [null];
-    return lots.map((lot) => normalizePublicTender({
+    return lots.filter((lot) => !lot?.status || lot.status === 'active').map((lot) => normalizePublicTender({
       source, sourceNoticeId: `${release.ocid}${lot ? `:${lot.id}` : ''}`, countryCode, region,
       officialUrl: noticeUrl(release), title: text(lot?.title) || tender.title,
       description: text(lot?.description) || tender.description, buyer: text(release.buyer?.name) || tender.procuringEntity?.name,

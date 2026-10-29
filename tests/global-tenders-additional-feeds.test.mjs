@@ -65,6 +65,27 @@ test('South Africa reads OCDS and excludes expired and cancelled notices', async
   assert.match(result.records[0].officialUrl, /^https:\/\/www.etenders.gov.za\//);
 });
 
+test('a later OCDS cancellation suppresses an earlier active process in either response order', async () => {
+  const active = release();
+  const cancelled = { ocid: active.ocid, date: '2026-10-29T11:00:00Z', tender: { status: 'cancelled' } };
+  for (const releases of [[active, cancelled], [cancelled, active]]) {
+    const result = await fetchSouthAfrica({ now: NOW, fetchJsonFn: async () => ({ releases }) });
+    assert.equal(result.records.length, 0);
+    assert.equal(result.status.state, 'ok');
+  }
+});
+
+test('an active OCDS tender cannot reopen its cancelled or unsuccessful lots', async () => {
+  const result = await fetchBulgaria({ now: NOW,
+    fetchTextFn: async () => '<ListBucketResult><Contents><Key>OCDS.json</Key></Contents></ListBucketResult>',
+    fetchJsonFn: async () => ({ releases: [release({ tender: { ...release().tender, lots: [
+      { id: 'open', status: 'active' }, { id: 'cancelled', status: 'cancelled' },
+      { id: 'unsuccessful', status: 'unsuccessful' },
+    ] } })] }),
+  });
+  assert.deepEqual(result.records.map((record) => record.sourceNoticeId), ['ocds-test-1:open']);
+});
+
 test('source publication activates health without a TTL only after both status writes succeed', async (t) => {
   const originalFetch = globalThis.fetch;
   const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
