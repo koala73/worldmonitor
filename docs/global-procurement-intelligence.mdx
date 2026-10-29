@@ -36,6 +36,8 @@ These are samples of upstream catalogues, not exhaustive national coverage. Each
 
 The added sources use the same source, country, buyer, category, value, date and technology-relevance filters in the panel, RPC and MCP tool. No new credentials are required.
 
+Each added source writes a durable `seed-activated:economic:global-tenders:<source>` marker after its first successful canonical publication and source-status writes, including a valid empty result. Before that publication, a missing key reports `EMPTY_ON_DEMAND`. After activation, a missing or stale key is a health fault even after the source metadata expires. Failed attempts never activate a source.
+
 The Railway seeder runs hourly and stores a canonical snapshot at `economic:global-tenders:v1`. Its TTL is three hours so the prior successful snapshot survives a missed run. If one adapter fails, healthy-source results remain available, that source's last-good records are retained, and the response reports `availability: "partial"`. If every adapter fails, the previous records remain available with `availability: "stale"`.
 
 `availability` has five meanings:

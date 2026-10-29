@@ -6,6 +6,7 @@ import {
   ADDITIONAL_TENDER_ADAPTERS,
 } from '../scripts/_global-tender-feeds.mjs';
 import { mergeTenderSourceResults, safeOfficialUrl } from '../scripts/_global-tenders.mjs';
+import { __testing__ as seeder } from '../scripts/seed-global-tenders.mjs';
 
 const NOW = Date.parse('2026-10-29T12:00:00Z');
 const END = '2026-11-09T10:00:00Z';
@@ -53,7 +54,7 @@ test('Kenya requests one active page without 429 retries and drops staff and bid
   assert.doesNotMatch(JSON.stringify(result), /private-/);
 });
 
-test('South Africa reads OCDS, keeps zero values, and excludes expired and cancelled notices', async () => {
+test('South Africa reads OCDS and excludes expired and cancelled notices', async () => {
   const result = await fetchSouthAfrica({ now: NOW, fetchJsonFn: async () => ({ releases: [
     release(), release({ ocid: 'cancelled', tender: { ...release().tender, status: 'cancelled' } }),
     release({ ocid: 'expired', tender: { ...release().tender, tenderPeriod: { endDate: '2026-10-01T00:00:00Z' } } }),
@@ -62,6 +63,43 @@ test('South Africa reads OCDS, keeps zero values, and excludes expired and cance
   assert.equal(result.records[0].countryCode, 'ZA');
   assert.equal(result.records[0].sourceNoticeId, 'ocds-test-1');
   assert.match(result.records[0].officialUrl, /^https:\/\/www.etenders.gov.za\//);
+});
+
+test('source publication activates health without a TTL only after both status writes succeed', async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+    else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
+    if (originalToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
+  });
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  const commands = [];
+  globalThis.fetch = async (url, options) => {
+    assert.equal(String(url), 'https://redis.example.test');
+    commands.push(JSON.parse(options.body));
+    return Response.json({ result: 'OK' });
+  };
+  await seeder.writeSourceStatus({ source: 'kenya-ppip', state: 'ok', recordCount: 0,
+    fetchedAt: new Date(NOW).toISOString(), lastSuccessfulAt: new Date(NOW).toISOString() });
+  assert.equal(commands.length, 3);
+  assert.match(commands[0][1], /:source:kenya-ppip$/);
+  assert.match(commands[1][1], /^seed-meta:/);
+  assert.deepEqual(commands[2], ['SET', 'seed-activated:economic:global-tenders:kenya-ppip', '1']);
+  commands.length = 0;
+  await seeder.writeSourceStatus({ source: 'kenya-ppip', state: 'error', recordCount: 0 });
+  assert.equal(commands.length, 2, 'a failed source cannot activate health');
+  commands.length = 0;
+  globalThis.fetch = async (_url, options) => {
+    commands.push(JSON.parse(options.body));
+    return commands.length === 1 ? Response.json({ result: 'OK' }) : new Response('denied', { status: 403 });
+  };
+  await assert.rejects(seeder.writeSourceStatus({ source: 'kenya-ppip', state: 'ok', recordCount: 0 }), /403/);
+  assert.equal(commands.length, 2, 'a failed metadata write cannot activate health');
 });
 
 test('Chile follows only the fixed official detail API and rejects incomplete detail windows', async () => {

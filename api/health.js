@@ -1314,16 +1314,56 @@ const SEED_META = {
   globalTendersCanadaBuys:      { key: 'seed-meta:economic:global-tenders:canada-buys',      maxStaleMin: 180 },
   globalTendersGets:            { key: 'seed-meta:economic:global-tenders:gets',             maxStaleMin: 180 },
   globalTendersWorldBank:       { key: 'seed-meta:economic:global-tenders:world-bank',       maxStaleMin: 180 },
-  globalTendersColombiaSecop:   { key: 'seed-meta:economic:global-tenders:colombia-secop', maxStaleMin: 180 },
-  globalTendersKenyaPpip:       { key: 'seed-meta:economic:global-tenders:kenya-ppip', maxStaleMin: 180 },
-  globalTendersSouthAfricaEtenders: { key: 'seed-meta:economic:global-tenders:south-africa-etenders', maxStaleMin: 180 },
-  globalTendersChileMercadoPublico: { key: 'seed-meta:economic:global-tenders:chile-mercado-publico', maxStaleMin: 180 },
-  globalTendersBrazilPncp:      { key: 'seed-meta:economic:global-tenders:brazil-pncp', maxStaleMin: 180 },
-  globalTendersUkraineProzorro: { key: 'seed-meta:economic:global-tenders:ukraine-prozorro', maxStaleMin: 180 },
-  globalTendersBulgariaEop:     { key: 'seed-meta:economic:global-tenders:bulgaria-eop', maxStaleMin: 180 },
-  globalTendersLatviaIub:       { key: 'seed-meta:economic:global-tenders:latvia-iub', maxStaleMin: 180 },
-  globalTendersPolandBzp:       { key: 'seed-meta:economic:global-tenders:poland-bzp', maxStaleMin: 180 },
-  globalTendersPakistanPpra:    { key: 'seed-meta:economic:global-tenders:pakistan-ppra', maxStaleMin: 180 },
+  globalTendersColombiaSecop: {
+    key: 'seed-meta:economic:global-tenders:colombia-secop', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:colombia-secop',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:colombia-secop' },
+  },
+  globalTendersKenyaPpip: {
+    key: 'seed-meta:economic:global-tenders:kenya-ppip', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:kenya-ppip',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:kenya-ppip' },
+  },
+  globalTendersSouthAfricaEtenders: {
+    key: 'seed-meta:economic:global-tenders:south-africa-etenders', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:south-africa-etenders',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:south-africa-etenders' },
+  },
+  globalTendersChileMercadoPublico: {
+    key: 'seed-meta:economic:global-tenders:chile-mercado-publico', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:chile-mercado-publico',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:chile-mercado-publico' },
+  },
+  globalTendersBrazilPncp: {
+    key: 'seed-meta:economic:global-tenders:brazil-pncp', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:brazil-pncp',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:brazil-pncp' },
+  },
+  globalTendersUkraineProzorro: {
+    key: 'seed-meta:economic:global-tenders:ukraine-prozorro', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:ukraine-prozorro',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:ukraine-prozorro' },
+  },
+  globalTendersBulgariaEop: {
+    key: 'seed-meta:economic:global-tenders:bulgaria-eop', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:bulgaria-eop',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:bulgaria-eop' },
+  },
+  globalTendersLatviaIub: {
+    key: 'seed-meta:economic:global-tenders:latvia-iub', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:latvia-iub',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:latvia-iub' },
+  },
+  globalTendersPolandBzp: {
+    key: 'seed-meta:economic:global-tenders:poland-bzp', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:poland-bzp',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:poland-bzp' },
+  },
+  globalTendersPakistanPpra: {
+    key: 'seed-meta:economic:global-tenders:pakistan-ppra', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:pakistan-ppra',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:pakistan-ppra' },
+  },
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
   techEventsSeeder: {
     key: 'seed-meta:research:tech-events:seeder',
@@ -2275,6 +2315,16 @@ if (!IRAN_EVENTS_ENABLED) {
 // chronic outage went undetected until a user noticed the panel was stuck on
 // "Loading...". Removed marketImplications below.
 const ON_DEMAND_KEYS = new Set([
+  'globalTendersColombiaSecop',
+  'globalTendersKenyaPpip',
+  'globalTendersSouthAfricaEtenders',
+  'globalTendersChileMercadoPublico',
+  'globalTendersBrazilPncp',
+  'globalTendersUkraineProzorro',
+  'globalTendersBulgariaEop',
+  'globalTendersLatviaIub',
+  'globalTendersPolandBzp',
+  'globalTendersPakistanPpra',
   'ukmtoIncidents',
   // Deployment-order bridge: Vercel can ship this reader before Railway's
   // hourly bundle publishes the first summary. The seeder writes a durable
@@ -2457,6 +2507,16 @@ const ON_DEMAND_KEYS = new Set([
 // publish; when the marker exists the key leaves ON_DEMAND softening and
 // normal EMPTY/STALE_SEED rules apply.
 const ACTIVATION_MARKERS = {
+  globalTendersColombiaSecop: SEED_META.globalTendersColombiaSecop.activationKey,
+  globalTendersKenyaPpip: SEED_META.globalTendersKenyaPpip.activationKey,
+  globalTendersSouthAfricaEtenders: SEED_META.globalTendersSouthAfricaEtenders.activationKey,
+  globalTendersChileMercadoPublico: SEED_META.globalTendersChileMercadoPublico.activationKey,
+  globalTendersBrazilPncp: SEED_META.globalTendersBrazilPncp.activationKey,
+  globalTendersUkraineProzorro: SEED_META.globalTendersUkraineProzorro.activationKey,
+  globalTendersBulgariaEop: SEED_META.globalTendersBulgariaEop.activationKey,
+  globalTendersLatviaIub: SEED_META.globalTendersLatviaIub.activationKey,
+  globalTendersPolandBzp: SEED_META.globalTendersPolandBzp.activationKey,
+  globalTendersPakistanPpra: SEED_META.globalTendersPakistanPpra.activationKey,
   ukmtoIncidents: 'seed-activated:maritime:ukmto-incidents',
   chinaCoverage: 'seed-activated:health:china-coverage',
   // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).

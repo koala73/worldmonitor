@@ -8,6 +8,7 @@ import Papa from 'papaparse';
 
 import { decodeHtmlEntities } from './_html-entities.mjs';
 import { ADDITIONAL_TENDER_ADAPTERS } from './_global-tender-feeds.mjs';
+import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { loadEnvFile, CHROME_UA, httpRetryError, readCanonicalValue, runSeed, withRetry, writeExtraKey } from './_seed-utils.mjs';
 import {
   GLOBAL_TENDER_KEY,
@@ -115,7 +116,7 @@ function createSamFetchJson(httpsGetFn = httpsGet) {
   return async (url, options = {}) => (await fetchResponse(url, options, transport)).json();
 }
 
-export const __testing__ = { createSamFetchJson };
+export const __testing__ = { createSamFetchJson, writeSourceStatus };
 
 async function fetchText(url, options = {}) {
   return (await fetchResponse(url, { ...options, headers: { Accept: 'application/rss+xml, application/xml, text/xml', ...(options.headers || {}) } })).text();
@@ -473,6 +474,10 @@ async function writeSourceStatus(status) {
   const metaKey = `seed-meta:economic:global-tenders:${status.source}`;
   await writeExtraKey(key, status, SOURCE_STATUS_TTL_SECONDS);
   await writeExtraKey(metaKey, sourceHealthMeta(status), SOURCE_STATUS_TTL_SECONDS);
+  if (status.state === 'ok' && ADDITIONAL_TENDER_ADAPTERS.some(([source]) => source === status.source)) {
+    const creds = getOptionalUpstashCreds();
+    if (creds) await upstashCommand(creds, ['SET', `seed-activated:economic:global-tenders:${status.source}`, '1']);
+  }
 }
 
 export async function main({ adapters, now } = {}) {
