@@ -179,6 +179,32 @@ describe('payment-failure banner: bounced billing email', () => {
       .toBe(`components.billingState.billingEmailBouncedMessage[${BOUNCED}]`);
   });
 
+  it('a changed bounced address re-renders the text and the fix handler reads the new one', () => {
+    state.sub = subscription();
+    teardown = initPaymentFailureBanner();
+
+    setSubscription(subscription({ billingEmail: 'second@example.com' }));
+    expect(banner()!.querySelector('#pf-message')?.textContent)
+      .toBe('components.billingState.billingEmailBouncedMessage[second@example.com]');
+
+    state.signedInEmail = 'SECOND@example.com';
+    banner()!.querySelector<HTMLButtonElement>('#pf-fix-email-btn')!.click();
+    // Prefill is empty only when the handler compared against the current address.
+    expect(document.querySelector<HTMLInputElement>('#pf-email-input')!.value).toBe('');
+  });
+
+  it('an address change while the repair form is open leaves the form alone', () => {
+    state.sub = subscription();
+    teardown = initPaymentFailureBanner();
+    banner()!.querySelector<HTMLButtonElement>('#pf-fix-email-btn')!.click();
+    const input = document.querySelector<HTMLInputElement>('#pf-email-input')!;
+    input.value = 'typed@example.com';
+
+    setSubscription(subscription({ billingEmail: 'second@example.com' }));
+    expect(document.querySelector<HTMLInputElement>('#pf-email-input')).toBe(input);
+    expect(input.value).toBe('typed@example.com');
+  });
+
   it('dismissal is scoped to the bounce banner key and cleared on recovery', () => {
     state.sub = subscription();
     teardown = initPaymentFailureBanner();
