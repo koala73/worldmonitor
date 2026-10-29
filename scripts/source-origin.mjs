@@ -67,6 +67,7 @@ const INTERNATIONAL_HOST_SUFFIXES = [
 // Host → ISO 3166-1 alpha-2, 'EU', or null (international).
 // Only hosts that cannot be inferred from a real ccTLD or government suffix.
 const HOST_ORIGINS = Object.freeze({
+  'www.datos.gov.co': 'CO',
   // Editorial hosts used by site-scoped news searches. These are catalogued
   // as publishers in their own right; the shared search endpoint is a
   // separate provider.

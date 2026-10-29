@@ -549,6 +549,16 @@ const STANDALONE_KEYS = {
   globalTendersCanadaBuys:      'economic:global-tenders:v1:source:canada-buys',
   globalTendersGets:            'economic:global-tenders:v1:source:gets',
   globalTendersWorldBank:       'economic:global-tenders:v1:source:world-bank',
+  globalTendersColombiaSecop:   'economic:global-tenders:v1:source:colombia-secop',
+  globalTendersKenyaPpip:       'economic:global-tenders:v1:source:kenya-ppip',
+  globalTendersSouthAfricaEtenders: 'economic:global-tenders:v1:source:south-africa-etenders',
+  globalTendersChileMercadoPublico: 'economic:global-tenders:v1:source:chile-mercado-publico',
+  globalTendersBrazilPncp:      'economic:global-tenders:v1:source:brazil-pncp',
+  globalTendersUkraineProzorro: 'economic:global-tenders:v1:source:ukraine-prozorro',
+  globalTendersBulgariaEop:     'economic:global-tenders:v1:source:bulgaria-eop',
+  globalTendersLatviaIub:       'economic:global-tenders:v1:source:latvia-iub',
+  globalTendersPolandBzp:       'economic:global-tenders:v1:source:poland-bzp',
+  globalTendersPakistanPpra:    'economic:global-tenders:v1:source:pakistan-ppra',
   crossStraitActivityTaiwanMnd: 'military:cross-strait-activity:v1:source:taiwan-mnd',
   crossStraitActivityJapanMod:  'military:cross-strait-activity:v1:source:japan-mod',
   defensePatents:        'patents:defense:latest',
@@ -1304,6 +1314,16 @@ const SEED_META = {
   globalTendersCanadaBuys:      { key: 'seed-meta:economic:global-tenders:canada-buys',      maxStaleMin: 180 },
   globalTendersGets:            { key: 'seed-meta:economic:global-tenders:gets',             maxStaleMin: 180 },
   globalTendersWorldBank:       { key: 'seed-meta:economic:global-tenders:world-bank',       maxStaleMin: 180 },
+  globalTendersColombiaSecop:   { key: 'seed-meta:economic:global-tenders:colombia-secop', maxStaleMin: 180 },
+  globalTendersKenyaPpip:       { key: 'seed-meta:economic:global-tenders:kenya-ppip', maxStaleMin: 180 },
+  globalTendersSouthAfricaEtenders: { key: 'seed-meta:economic:global-tenders:south-africa-etenders', maxStaleMin: 180 },
+  globalTendersChileMercadoPublico: { key: 'seed-meta:economic:global-tenders:chile-mercado-publico', maxStaleMin: 180 },
+  globalTendersBrazilPncp:      { key: 'seed-meta:economic:global-tenders:brazil-pncp', maxStaleMin: 180 },
+  globalTendersUkraineProzorro: { key: 'seed-meta:economic:global-tenders:ukraine-prozorro', maxStaleMin: 180 },
+  globalTendersBulgariaEop:     { key: 'seed-meta:economic:global-tenders:bulgaria-eop', maxStaleMin: 180 },
+  globalTendersLatviaIub:       { key: 'seed-meta:economic:global-tenders:latvia-iub', maxStaleMin: 180 },
+  globalTendersPolandBzp:       { key: 'seed-meta:economic:global-tenders:poland-bzp', maxStaleMin: 180 },
+  globalTendersPakistanPpra:    { key: 'seed-meta:economic:global-tenders:pakistan-ppra', maxStaleMin: 180 },
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
   techEventsSeeder: {
     key: 'seed-meta:research:tech-events:seeder',
@@ -2899,6 +2919,9 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   // reads EMPTY (absence is not peaceful).
   'aisGaps',
   'globalTendersSam', 'globalTendersTed', 'globalTendersContractsFinder', 'globalTendersCanadaBuys', 'globalTendersGets', 'globalTendersWorldBank',
+  'globalTendersColombiaSecop', 'globalTendersKenyaPpip', 'globalTendersSouthAfricaEtenders',
+  'globalTendersChileMercadoPublico', 'globalTendersBrazilPncp', 'globalTendersUkraineProzorro',
+  'globalTendersBulgariaEop', 'globalTendersLatviaIub', 'globalTendersPolandBzp', 'globalTendersPakistanPpra',
   // retailer-spread is SUPPRESSED to an explicit 0 by the aggregate job when a
   // market's retailers share < MIN_SPREAD_ITEMS (4) common basket items —
   // consumer-prices-core/src/jobs/aggregate.ts writes `retailer_spread_pct: 0`

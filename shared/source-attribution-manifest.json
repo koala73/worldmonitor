@@ -971,6 +971,20 @@
       ]
     },
     {
+      "host": "api.mercadopublico.cl",
+      "provider": "api.mercadopublico.cl",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit api.mercadopublico.cl and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "api.open511.gov.bc.ca",
       "provider": "BC Open511",
       "kind": "structured",
@@ -3865,6 +3879,20 @@
       ]
     },
     {
+      "host": "epms.ppra.gov.pk",
+      "provider": "epms.ppra.gov.pk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit epms.ppra.gov.pk and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "ert-ucdn.broadpeak-aas.com",
       "provider": "ert-ucdn.broadpeak-aas.com",
       "kind": "feed",
@@ -4006,6 +4034,20 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "ezamowienia.gov.pl",
+      "provider": "ezamowienia.gov.pl",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit ezamowienia.gov.pl and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
         }
       ]
     },
@@ -6942,6 +6984,20 @@
       ]
     },
     {
+      "host": "ocds-api.etenders.gov.za",
+      "provider": "ocds-api.etenders.gov.za",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit ocds-api.etenders.gov.za and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "oecd.org",
       "provider": "oecd.org",
       "kind": "feed",
@@ -7067,6 +7123,20 @@
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit open.alberta.ca and link to the original upstream API/dataset.",
       "status": "excluded"
+    },
+    {
+      "host": "open.iub.gov.lv",
+      "provider": "open.iub.gov.lv",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit open.iub.gov.lv and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
     },
     {
       "host": "open.toronto.ca",
@@ -7383,6 +7453,20 @@
       ]
     },
     {
+      "host": "pncp.gov.br",
+      "provider": "pncp.gov.br",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit pncp.gov.br and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "polityka.pl",
       "provider": "Polityka",
       "kind": "feed",
@@ -7576,6 +7660,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "public-api.prozorro.gov.ua",
+      "provider": "public-api.prozorro.gov.ua",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit public-api.prozorro.gov.ua and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
         }
       ]
     },
@@ -8987,6 +9085,20 @@
       ]
     },
     {
+      "host": "storage.eop.bg",
+      "provider": "storage.eop.bg",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit storage.eop.bg and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "storage.googleapis.com",
       "provider": "Ember electricity data",
       "kind": "structured",
@@ -9300,6 +9412,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "tenders.go.ke",
+      "provider": "tenders.go.ke",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit tenders.go.ke and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
         }
       ]
     },
@@ -11491,6 +11617,20 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.datos.gov.co",
+      "provider": "www.datos.gov.co",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.datos.gov.co and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
         }
       ]
     },
