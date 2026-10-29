@@ -777,7 +777,8 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     }
 
     requestAnimationFrame(() => {
-      modal.querySelector<HTMLElement>('.pro-activation-primary')?.focus();
+      // Keep the freshly rendered step at the top even when its CTA is below the fold.
+      modal.querySelector<HTMLElement>('.pro-activation-primary')?.focus({ preventScroll: true });
     });
   }
 
