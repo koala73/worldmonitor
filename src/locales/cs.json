@@ -2597,7 +2597,15 @@
       "renewalFailedDesc": "Nepodařilo se nám ověřit obnovení vašeho předplatného. Spravujte fakturaci nebo kontaktujte podporu, pokud problém přetrvává.",
       "manageBilling": "Spravovat fakturaci",
       "lapsedDesc": "Vaše předplatné Pro skončilo. Předplaťte si znovu pro obnovení prémiového přístupu.",
-      "resubscribe": "Znovu předplatit"
+      "resubscribe": "Znovu předplatit",
+      "billingEmailBouncedMessage": "Fakturační e-maily na adresu {{email}} se vracejí. Aktualizujte fakturační e-mail, abyste dostávali účtenky a upozornění na platby.",
+      "fixBillingEmail": "Opravit fakturační e-mail",
+      "billingEmailLabel": "Nový fakturační e-mail",
+      "save": "Uložit",
+      "billingEmailUpdated": "Fakturační e-mail byl změněn na {{email}}. Účtenky a upozornění na platby budou od nynějška chodit tam.",
+      "billingEmailInvalid": "Zadejte platnou e-mailovou adresu.",
+      "billingEmailSuppressed": "Ani na tuto adresu nemůžeme doručovat. Zkuste jinou.",
+      "billingEmailUpdateFailed": "Fakturační e-mail se nepodařilo aktualizovat. Zkuste to znovu, nebo kontaktujte podporu, pokud problém přetrvává."
     },
     "checkoutFailureBanner": {
       "message": "Platbu se nepodařilo dokončit. Nebyl proveden žádný poplatek.",
