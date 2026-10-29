@@ -726,13 +726,13 @@
     "title": "Có gì mới trong WorldMonitor",
     "subtitle": "Tính năng mới từ 30 ngày qua — sửa chữa và hạ tầng không được tính.",
     "proTag": "PRO",
-    "m1": "Chỉ số sự phân kỳ phí bảo hiểm vật lý — SGE so với COMEX, có lịch sử",
-    "m2": "Xếp hạng lỗ hổng cung ứng hàng hóa — quạt phân kỳ phụ thuộc điểm tắc nghẽn",
-    "m3": "Tập trung sản xuất khoáng sản & cơ sở công nghiệp quốc phòng",
-    "m4": "Thẻ điểm kiên cường năm yếu tố với điểm cấp chỉ báo",
-    "m5": "Danh sách theo dõi kênh Telegram tùy chỉnh",
-    "m6": "Đăng nhập bằng Passkey",
-    "m7": "Các tác nhân AI có thể điều khiển bảng điều khiển — các bảng, tab, lớp bản đồ & nhiệm vụ",
-    "m8": "Các trang kiên cường quốc gia phong phú hơn"
+    "m1": "Góc nhìn truyền thông — báo chí từng nước đưa tin về bất kỳ quốc gia nào ra sao, cho tác tử AI và API",
+    "m2": "/verify — thẻ bằng chứng cho mọi tuyên bố, trích dẫn các bài kiểm chứng đã công bố",
+    "m3": "Số nguồn xác nhận trên cảnh báo, bản tin tổng hợp và cửa sổ bản đồ, cùng trang /trust công khai",
+    "m4": "Theo dõi tấn công tự động — rủi ro quốc gia tăng khi bị tấn công và giảm khi các cuộc tấn công dừng",
+    "m5": "Đóng cửa không phận từ NOTAM của FAA và lớp bản đồ các sự cố khẩn cấp máy bay được báo cáo",
+    "m6": "Bản đồ hoạt động công nghiệp từ dữ liệu NO2 của vệ tinh Sentinel-5P",
+    "m7": "Dòng vốn của 230 nền kinh tế và mọi cặp quốc gia, cho tác tử AI và API",
+    "m8": "Bảng điều khiển trong terminal và bản đồ CLI phóng to được — brew install worldmonitor"
   }
 }

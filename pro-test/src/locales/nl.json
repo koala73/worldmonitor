@@ -726,13 +726,13 @@
     "title": "Wat is er nieuw in WorldMonitor",
     "subtitle": "Nieuwe functies van de afgelopen 30 dagen — correcties en onderhoud niet inbegrepen.",
     "proTag": "PRO",
-    "m1": "Fysieke premiumafwijkingsindex — SGE versus COMEX, met geschiedenis",
-    "m2": "Rankings grondstoffentoevoergebonden kwetsbaarheid — chokepoint-afhankelijkheid uitwaaier",
-    "m3": "Concentratie van mineraalproductie en de defensie-industriële basis",
-    "m4": "Vijf-factorveerkracht scorecards met scores op indicatorniveau",
-    "m5": "Aangepaste Telegram-kanaalwachtlijsten",
-    "m6": "Passkey-aanmelding",
-    "m7": "AI-agenten kunnen het dashboard aansturen — panelen, tabbladen, kaartlagen en missies",
-    "m8": "Rijkere pagina's voor landveerkracht"
+    "m1": "Mediaperspectief — hoe media uit elk land over elk land berichten, voor AI-agents en de API",
+    "m2": "/verify — een bewijskaart voor elke bewering, met gepubliceerde factchecks",
+    "m3": "Aantal bevestigende bronnen bij meldingen, digests en kaartpop-ups, plus een openbare /trust-pagina",
+    "m4": "Automatische aanvalsregistratie — het landrisico stijgt onder aanval en herstelt zodra de aanvallen stoppen",
+    "m5": "Luchtruimsluitingen uit FAA-NOTAM's en een kaartlaag met gemelde noodsituaties van vliegtuigen",
+    "m6": "Kaart van industriële activiteit uit NO2-satellietdata van Sentinel-5P",
+    "m7": "Kapitaalstromen voor 230 economieën en elk landenpaar, voor AI-agents en de API",
+    "m8": "Terminaldashboard en zoombare CLI-kaart — brew install worldmonitor"
   }
 }

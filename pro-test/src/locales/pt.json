@@ -726,13 +726,13 @@
     "title": "Novidades no WorldMonitor",
     "subtitle": "Novos recursos dos últimos 30 dias — correções e infraestrutura não incluídas.",
     "proTag": "PRO",
-    "m1": "Índice de divergência de prêmio físico — SGE vs COMEX, com histórico",
-    "m2": "Classificações de vulnerabilidade de suprimento de commodities — expansão de dependência de gargalo",
-    "m3": "Concentração de produção mineral e a base industrial de defesa",
-    "m4": "Scorecards de resiliência de cinco fatores com pontuações de nível de indicador",
-    "m5": "Listas de monitoramento de canal Telegram customizadas",
-    "m6": "Sign-in por Passkey",
-    "m7": "Agentes AI podem dirigir o dashboard — painéis, abas, camadas de mapa e missões",
-    "m8": "Páginas de resiliência de país mais ricas"
+    "m1": "Perspectiva da mídia — como os veículos de cada país cobrem qualquer país, para agentes de IA e a API",
+    "m2": "/verify — um cartão de evidências para qualquer alegação, citando checagens de fatos publicadas",
+    "m3": "Contagem de fontes que corroboram em alertas, resumos e pop-ups do mapa, além de uma página pública /trust",
+    "m4": "Rastreamento automático de ataques — o risco de um país sobe sob ataque e se recupera quando os ataques param",
+    "m5": "Fechamentos de espaço aéreo a partir de NOTAMs da FAA e uma camada de mapa de emergências aéreas relatadas",
+    "m6": "Mapa de atividade industrial a partir de dados de NO2 do satélite Sentinel-5P",
+    "m7": "Fluxos de capital para 230 economias e qualquer par de países, para agentes de IA e a API",
+    "m8": "Painel no terminal e mapa CLI com zoom — brew install worldmonitor"
   }
 }

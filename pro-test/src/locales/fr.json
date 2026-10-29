@@ -726,13 +726,13 @@
     "title": "Quoi de neuf dans WorldMonitor",
     "subtitle": "Nouvelles fonctionnalités des 30 derniers jours — correctifs et maintenance exclus.",
     "proTag": "PRO",
-    "m1": "Indice de divergence prime physique — SGE vs COMEX, avec historique",
-    "m2": "Classements de vulnérabilité d'approvisionnement en matières premières — ventilation de dépendance aux points d'étranglement",
-    "m3": "Concentration de la production minérale et la base industrielle de défense",
-    "m4": "Fiches de résilience à cinq facteurs avec scores au niveau des indicateurs",
-    "m5": "Listes de surveillance sur canal Telegram personnalisé",
-    "m6": "Connexion par clé d'accès",
-    "m7": "Les agents IA peuvent piloter le dashboard — panneaux, onglets, couches de carte et missions",
-    "m8": "Pages de résilience pays enrichies"
+    "m1": "Perspective médiatique — comment les médias de chaque pays couvrent n'importe quel pays, pour les agents IA et l'API",
+    "m2": "/verify — une fiche de preuves pour toute affirmation, citant les vérifications publiées",
+    "m3": "Nombre de sources concordantes sur les alertes, les synthèses et les infobulles de la carte, plus une page publique /trust",
+    "m4": "Suivi automatique des frappes — le risque d'un pays monte sous les attaques et retombe quand elles cessent",
+    "m5": "Fermetures d'espace aérien issues des NOTAM de la FAA et une couche de carte des urgences aériennes signalées",
+    "m6": "Carte de l'activité industrielle à partir des données satellite NO2 de Sentinel-5P",
+    "m7": "Flux de capitaux pour 230 économies et toute paire de pays, pour les agents IA et l'API",
+    "m8": "Tableau de bord dans le terminal et carte CLI zoomable — brew install worldmonitor"
   }
 }

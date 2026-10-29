@@ -726,13 +726,13 @@
     "title": "Ce e nou în WorldMonitor",
     "subtitle": "Funcții noi din ultimele 30 de zile — corecții și lucrări de infrastructură nu incluse.",
     "proTag": "PRO",
-    "m1": "Index divergență primă fizică — SGE vs COMEX, cu istoric",
-    "m2": "Clasificări vulnerabilitate aprovizionare mărfuri — despicarea dependenței de puncte de strangulare",
-    "m3": "Concentrație producție minerale și baza industrială de apărare",
-    "m4": "Fișe de reziență cu cinci factori și scoruri la nivel indicator",
-    "m5": "Liste de monitorizare personalizate pe canal Telegram",
-    "m6": "Autentificare cu parolă de acces",
-    "m7": "Agenți AI pot gestiona dashboard-ul — panouri, file, straturi hartă și misiuni",
-    "m8": "Pagini de reziență țări mai bogate"
+    "m1": "Perspectiva media — cum relatează presa din fiecare țară despre orice țară, pentru agenți AI și API",
+    "m2": "/verify — o fișă de dovezi pentru orice afirmație, cu verificări de fapte publicate",
+    "m3": "Numărul surselor care confirmă în alerte, rezumate și ferestrele hărții, plus o pagină publică /trust",
+    "m4": "Urmărire automată a atacurilor — riscul unei țări crește sub atac și scade când atacurile încetează",
+    "m5": "Închideri ale spațiului aerian din NOTAM-urile FAA și un strat de hartă cu urgențele aeriene raportate",
+    "m6": "Hartă a activității industriale din datele satelitare NO2 Sentinel-5P",
+    "m7": "Fluxuri de capital pentru 230 de economii și orice pereche de țări, pentru agenți AI și API",
+    "m8": "Panou în terminal și hartă CLI cu zoom — brew install worldmonitor"
   }
 }

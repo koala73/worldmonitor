@@ -726,13 +726,13 @@
     "title": "Novità in World Monitor",
     "subtitle": "Nuove funzionalità degli ultimi 30 giorni — fix e ottimizzazioni esclusi.",
     "proTag": "PRO",
-    "m1": "Indice divergenza premio fisico — SGE vs COMEX, con cronologia",
-    "m2": "Ranking vulnerabilità fornitura commodities — fan-out dipendenza colli di bottiglia",
-    "m3": "Concentrazione produzione minerali e industrial base della difesa",
-    "m4": "Scorecard resilienza a cinque fattori con punteggi a livello di indicatore",
-    "m5": "Watchlist canale Telegram personalizzati",
-    "m6": "Accesso con Passkey",
-    "m7": "Gli agenti AI possono guidare il dashboard — pannelli, tab, layer mappa e missioni",
-    "m8": "Pagine resilienza paese più ricche"
+    "m1": "Prospettiva mediatica — come i media di ogni paese raccontano qualsiasi paese, per agenti IA e API",
+    "m2": "/verify — una scheda di prove per qualsiasi affermazione, con i fact-check pubblicati",
+    "m3": "Numero di fonti concordanti su avvisi, riepiloghi e popup della mappa, più una pagina pubblica /trust",
+    "m4": "Monitoraggio automatico degli attacchi — il rischio di un paese sale sotto attacco e rientra quando gli attacchi cessano",
+    "m5": "Chiusure dello spazio aereo dai NOTAM della FAA e un livello mappa delle emergenze aeree segnalate",
+    "m6": "Mappa dell'attività industriale dai dati satellitari NO2 di Sentinel-5P",
+    "m7": "Flussi di capitale per 230 economie e qualsiasi coppia di paesi, per agenti IA e API",
+    "m8": "Dashboard nel terminale e mappa CLI con zoom — brew install worldmonitor"
   }
 }
