@@ -700,6 +700,54 @@ export interface FaoFoodPricePoint {
   sugar: number;
 }
 
+export interface GetFoodPricesRequest {
+}
+
+export interface GetFoodPricesResponse {
+  sources: FoodPriceSource[];
+  unavailable: boolean;
+}
+
+export interface FoodPriceSource {
+  id: string;
+  name: string;
+  country: string;
+  countryCode: string;
+  url: string;
+  cadence: string;
+  contextOnly: boolean;
+  fetchedAt: string;
+  latestReportDate: string;
+  status: string;
+  prices: FoodMarketPrice[];
+  contexts: FoodSecurityContext[];
+}
+
+export interface FoodMarketPrice {
+  item: string;
+  market: string;
+  marketType: string;
+  origin: string;
+  unit: string;
+  currency: string;
+  date: string;
+  price: number;
+  wowAvailable: boolean;
+  wowPct: number;
+  previousDate: string;
+  previousPrice: number;
+}
+
+export interface FoodSecurityContext {
+  countryCode: string;
+  country: string;
+  referenceDate: string;
+  title: string;
+  url: string;
+  fetchedAt: string;
+  status: string;
+}
+
 export interface GetOilStocksAnalysisRequest {
 }
 
@@ -1918,6 +1966,29 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetFaoFoodPriceIndexResponse;
+  }
+
+  async getFoodPrices(_req: GetFoodPricesRequest, options?: EconomicServiceCallOptions): Promise<GetFoodPricesResponse> {
+    let path = "/api/economic/v1/get-food-prices";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetFoodPricesResponse;
   }
 
   async getOilStocksAnalysis(_req: GetOilStocksAnalysisRequest, options?: EconomicServiceCallOptions): Promise<GetOilStocksAnalysisResponse> {

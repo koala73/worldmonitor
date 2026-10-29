@@ -110,6 +110,12 @@ const SOURCE_DOMAIN_MATCHERS = [
 // Keep ambiguous structured providers explicit so a new unmatched provider
 // fails the build instead of silently becoming "geopolitics".
 const SOURCE_DOMAIN_OVERRIDES = new Map([
+  ['www.bi.go.id', 'finance'],
+  ['www.cbsl.gov.lk', 'finance'],
+  ['www.da.gov.ph', 'finance'],
+  ['www.economia-sniim.gob.mx', 'finance'],
+  ['www.onagri.nat.tn', 'finance'],
+  ['www.pbs.gov.pk', 'finance'],
   ['sccd.royalnavy.mod.uk', 'infrastructure'],
   ['Alberta Emergency Alert', 'environment'],
   ['B.C. Evacuation Orders and Alerts', 'environment'],
@@ -379,6 +385,12 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['urlhaus-api.abuse.ch', 'URLhaus'],
   ['wabi-europe-north-b-api.analysis.windows.net', 'Microsoft Power BI'],
   ['web.archive.org', 'Internet Archive'],
+  ['www.bi.go.id', 'Bank Indonesia PIHPS'],
+  ['www.cbsl.gov.lk', 'Central Bank of Sri Lanka'],
+  ['www.da.gov.ph', 'Philippines Department of Agriculture'],
+  ['www.economia-sniim.gob.mx', 'Mexico SNIIM'],
+  ['www.onagri.nat.tn', 'Tunisia ONAGRI'],
+  ['www.pbs.gov.pk', 'Pakistan Bureau of Statistics'],
   ['www.cbr.ru', 'Bank of Russia'],
   ['www.contractsfinder.service.gov.uk', 'UK Contracts Finder'],
   ['www.cidrap.umn.edu', 'Center for Infectious Disease Research and Policy (CIDRAP)'],

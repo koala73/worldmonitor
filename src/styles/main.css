@@ -28968,3 +28968,21 @@ body.map-width-resizing {
   align-self: flex-start;
 }
 .pro-preview__reopen:hover, .pro-preview__reopen:focus-visible { opacity: 1; }
+
+/* Official local food prices share the existing FAO panel. */
+.food-prices-card, .fao-monthly-context { padding: 10px 12px; }
+.food-prices-card h3, .fao-monthly-context h3 { margin: 0 0 8px; font-size: 1em; }
+.food-prices-note, .food-prices-source { font-size: .85em; color: var(--text-dim); line-height: 1.5; }
+.food-prices-source a, .food-prices-context a { color: var(--accent); overflow-wrap: anywhere; }
+.food-prices-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.food-prices-filter { display: flex; flex: 1 1 140px; min-width: 0; flex-direction: column; gap: 4px; font-size: .85em; }
+.food-prices-filter select { width: 100%; min-width: 0; padding: 6px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
+.food-prices-table-wrap { overflow-x: auto; max-width: 100%; }
+.food-prices-table { width: 100%; border-collapse: collapse; font-size: .85em; }
+.food-prices-table th, .food-prices-table td { padding: 8px 4px; border-bottom: 1px solid var(--border); vertical-align: top; text-align: left; overflow-wrap: anywhere; }
+.food-prices-table th:first-child { width: 42%; font-weight: 500; }
+.food-prices-table thead th { font-weight: 600; color: var(--text-dim); }
+.food-prices-card small { display: block; margin-top: 3px; color: var(--text-dim); font-size: .9em; }
+.food-prices-context { margin-top: 14px; }
+.food-prices-context summary { cursor: pointer; font-size: .9em; }
+.fao-monthly-context { border-top: 1px solid var(--border); }

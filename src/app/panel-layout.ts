@@ -275,6 +275,7 @@ export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, Deferred
   'consumer-prices': { rowSpan: 2 },
   displacement: { rowSpan: 2 },
   economic: { rowSpan: 2 },
+  'fao-food-price-index': { rowSpan: 3 },
   'global-procurement': { rowSpan: 2 },
   'energy-complex': { rowSpan: 2 },
   'energy-crisis': { rowSpan: 2 },

@@ -11027,6 +11027,20 @@
       ]
     },
     {
+      "host": "www.bi.go.id",
+      "provider": "www.bi.go.id",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.bi.go.id and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-fetch.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.bild.de",
       "provider": "www.bild.de",
       "kind": "feed",
@@ -11178,6 +11192,20 @@
       "references": [
         {
           "path": "scripts/seed-cbr-rates.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.cbsl.gov.lk",
+      "provider": "www.cbsl.gov.lk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.cbsl.gov.lk and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices.mjs"
         }
       ]
     },
@@ -11436,6 +11464,20 @@
       ]
     },
     {
+      "host": "www.da.gov.ph",
+      "provider": "www.da.gov.ph",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.da.gov.ph and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.dabangasudan.org",
       "provider": "www.dabangasudan.org",
       "kind": "feed",
@@ -11652,6 +11694,20 @@
       ]
     },
     {
+      "host": "www.economia-sniim.gob.mx",
+      "provider": "www.economia-sniim.gob.mx",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.economia-sniim.gob.mx and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-fetch.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.egyptindependent.com",
       "provider": "Egypt Independent",
       "kind": "feed",
@@ -11826,6 +11882,12 @@
       "attribution": "Credit www.fao.org and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "scripts/lib/food-prices-fetch.mjs"
+        },
+        {
+          "path": "scripts/lib/food-prices.mjs"
+        },
         {
           "path": "scripts/seed-fao-food-price-index.mjs"
         },
@@ -12987,6 +13049,20 @@
       ]
     },
     {
+      "host": "www.onagri.nat.tn",
+      "provider": "www.onagri.nat.tn",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.onagri.nat.tn and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.opec.org",
       "provider": "www.opec.org",
       "kind": "structured",
@@ -13053,6 +13129,20 @@
       "references": [
         {
           "path": "scripts/china-macro/source-contracts.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.pbs.gov.pk",
+      "provider": "www.pbs.gov.pk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.pbs.gov.pk and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices.mjs"
         }
       ]
     },

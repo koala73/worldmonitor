@@ -30,6 +30,7 @@ import "worldmonitor/economic/v1/get_eu_yield_curve.proto";
 import "worldmonitor/economic/v1/get_eu_fsi.proto";
 import "worldmonitor/economic/v1/get_economic_stress.proto";
 import "worldmonitor/economic/v1/get_fao_food_price_index.proto";
+import "worldmonitor/economic/v1/get_food_prices.proto";
 import "worldmonitor/economic/v1/get_oil_stocks_analysis.proto";
 import "worldmonitor/economic/v1/get_oil_inventories.proto";
 import "worldmonitor/economic/v1/get_energy_crisis_policies.proto";
@@ -180,6 +181,11 @@ service EconomicService {
   // GetFaoFoodPriceIndex retrieves the FAO Food Price Index for the past 12 months.
   rpc GetFaoFoodPriceIndex(GetFaoFoodPriceIndexRequest) returns (GetFaoFoodPriceIndexResponse) {
     option (sebuf.http.config) = {path: "/get-fao-food-price-index", method: HTTP_METHOD_GET};
+  }
+
+  // GetFoodPrices returns local-currency market prices with exact prior-week comparisons, plus dated GIEWS and Tunisia context. Missing comparisons are explicitly unavailable. Market, market type, product, origin, unit and currency must match; levels are not comparable across countries.
+  rpc GetFoodPrices(GetFoodPricesRequest) returns (GetFoodPricesResponse) {
+    option (sebuf.http.config) = {path: "/get-food-prices", method: HTTP_METHOD_GET};
   }
 
   // GetOilStocksAnalysis retrieves the IEA oil stocks days-of-cover ranking and regional summary.

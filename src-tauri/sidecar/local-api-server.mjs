@@ -944,6 +944,7 @@ const cloudPreferredExact = new Set([
   '/api/economic/v1/get-eu-yield-curve',
   '/api/economic/v1/get-eurostat-country-data',
   '/api/economic/v1/get-fao-food-price-index',
+  '/api/economic/v1/get-food-prices',
   '/api/economic/v1/get-fred-series',
   '/api/economic/v1/get-fred-series-batch',
   '/api/economic/v1/get-government-yield-curve',

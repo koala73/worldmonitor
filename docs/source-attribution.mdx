@@ -12,7 +12,7 @@ The inventory is **generated, not hand-written**: `scripts/source-attribution.mj
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **795 active source hosts** representing **780 active providers** (**358 structured/API**, **468 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **801 active source hosts** representing **786 active providers** (**364 structured/API**, **468 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -771,6 +771,7 @@ This generated inventory covers **795 active source hosts** representing **780 a
 | www.aviationpros.com (www.aviationpros.com) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/list-aviation-news.ts |
 | www.aviationweek.com (www.aviationweek.com) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/list-aviation-news.ts |
 | www.bankofengland.co.uk (www.bankofengland.co.uk) | structured — scripts/seed-yield-curve-gb.mjs |
+| www.bi.go.id (www.bi.go.id) | structured — scripts/lib/food-prices-fetch.mjs |
 | www.bild.de (www.bild.de) | feed — shared/news-catalog.json |
 | www.bing.com (www.bing.com) | Excluded / candidate — No current fetch observed |
 | www.brasilparalelo.com.br (www.brasilparalelo.com.br) | feed — shared/news-catalog.json |
@@ -780,6 +781,7 @@ This generated inventory covers **795 active source hosts** representing **780 a
 | www.cbinsights.com (www.cbinsights.com) | feed+structured — shared/news-catalog.json, src/config/variants/tech.ts |
 | www.cbp.gov (www.cbp.gov) | structured — scripts/lib/border-route-sources.mjs, server/worldmonitor/displacement/v1/cross-border-data.ts |
 | www.cbr.ru (www.cbr.ru) | structured — scripts/seed-cbr-rates.mjs |
+| www.cbsl.gov.lk (www.cbsl.gov.lk) | structured — scripts/lib/food-prices.mjs |
 | www.cbsnews.com (www.cbsnews.com) | feed — shared/news-catalog.json |
 | www.channelnewsasia.com (www.channelnewsasia.com) | feed — shared/news-catalog.json |
 | www.channelstv.com (www.channelstv.com) | feed — shared/news-catalog.json |
@@ -797,6 +799,7 @@ This generated inventory covers **795 active source hosts** representing **780 a
 | www.corriere.it (www.corriere.it) | Excluded / candidate — No current fetch observed |
 | www.crisisgroup.org (www.crisisgroup.org) | feed — shared/news-catalog.json |
 | www.csis.org (www.csis.org) | feed — shared/news-catalog.json |
+| www.da.gov.ph (www.da.gov.ph) | structured — scripts/lib/food-prices.mjs |
 | www.dabangasudan.org (www.dabangasudan.org) | feed — shared/news-catalog.json |
 | www.dailygood.org (www.dailygood.org) | feed — shared/news-catalog.json |
 | www.dailysabah.com (www.dailysabah.com) | feed — shared/news-catalog.json |
@@ -811,6 +814,7 @@ This generated inventory covers **795 active source hosts** representing **780 a
 | www.dr.dk (www.dr.dk) | feed — shared/news-catalog.json |
 | www.ecb.europa.eu (www.ecb.europa.eu) | structured — scripts/seed-economic-calendar.mjs |
 | www.ecdc.europa.eu (www.ecdc.europa.eu) | structured — scripts/seed-disease-outbreaks.mjs, scripts/seed-security-advisories.mjs |
+| www.economia-sniim.gob.mx (www.economia-sniim.gob.mx) | structured — scripts/lib/food-prices-fetch.mjs |
 | www.eia.gov (www.eia.gov) | feed+structured — scripts/seed-oil-trade-series.mjs, shared/news-catalog.json |
 | www.eltiempo.com (www.eltiempo.com) | feed — shared/news-catalog.json |
 | www.eluniverso.com (www.eluniverso.com) | feed — shared/news-catalog.json |
@@ -821,7 +825,7 @@ This generated inventory covers **795 active source hosts** representing **780 a
 | www.euronews.com (www.euronews.com) | feed+structured — shared/news-catalog.json, src/main.ts |
 | www.facebook.com (www.facebook.com) | structured — src/services/story-share.ts |
 | www.factal.com (www.factal.com) | structured — scripts/comparison-shortlist.mjs |
-| www.fao.org (www.fao.org) | feed+structured — scripts/seed-fao-food-price-index.mjs, shared/news-catalog.json |
+| www.fao.org (www.fao.org) | feed+structured — scripts/lib/food-prices-fetch.mjs, scripts/lib/food-prices.mjs, scripts/seed-fao-food-price-index.mjs, shared/news-catalog.json |
 | www.federalreserve.gov (www.federalreserve.gov) | feed+structured — scripts/seed-economic-calendar.mjs, scripts/seed-regulatory-actions.mjs, shared/news-catalog.json, src/config/variants/finance.ts |
 | www.flightglobal.com (www.flightglobal.com) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/list-aviation-news.ts |
 | www.foreignaffairs.com (www.foreignaffairs.com) | feed — shared/news-catalog.json |
@@ -893,11 +897,13 @@ This generated inventory covers **795 active source hosts** representing **780 a
 | www.nrk.no (www.nrk.no) | feed — shared/news-catalog.json |
 | www.occrp.org (www.occrp.org) | feed — shared/news-catalog.json |
 | www.omanobserver.om (www.omanobserver.om) | feed — shared/news-catalog.json |
+| www.onagri.nat.tn (www.onagri.nat.tn) | structured — scripts/lib/food-prices.mjs |
 | www.opec.org (www.opec.org) | structured — scripts/seed-energy-intelligence.mjs |
 | www.optimistdaily.com (www.optimistdaily.com) | feed — shared/news-catalog.json |
 | www.oref.org.il (www.oref.org.il) | structured — scripts/ais-relay.cjs |
 | www.oryxspioenkop.com (www.oryxspioenkop.com) | feed — shared/news-catalog.json |
 | www.pbc.gov.cn (www.pbc.gov.cn) | structured — scripts/china-macro/source-contracts.mjs |
+| www.pbs.gov.pk (www.pbs.gov.pk) | structured — scripts/lib/food-prices.mjs |
 | www.pbs.org (www.pbs.org) | feed — shared/news-catalog.json |
 | www.pizzint.watch (www.pizzint.watch) | structured — scripts/ais-relay.cjs, scripts/seed-conflict-intel.mjs |
 | www.polsatnews.pl (www.polsatnews.pl) | feed — shared/news-catalog.json |
