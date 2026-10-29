@@ -7,12 +7,13 @@ import { PRODUCT_CATALOG } from "../config/productCatalog";
 
 // The action must reach Dodo through the SDK's customer update and nothing
 // else; the queries and mutations under test run through production code.
-const { dodoCustomerUpdateMock } = vi.hoisted(() => ({
+const { dodoCustomerUpdateMock, dodoCustomerRetrieveMock } = vi.hoisted(() => ({
   dodoCustomerUpdateMock: vi.fn(),
+  dodoCustomerRetrieveMock: vi.fn(),
 }));
 vi.mock("dodopayments", () => ({
   DodoPayments: class {
-    customers = { update: dodoCustomerUpdateMock };
+    customers = { update: dodoCustomerUpdateMock, retrieve: dodoCustomerRetrieveMock };
   },
 }));
 
@@ -29,8 +30,27 @@ type SuppressionReason = "bounce" | "complaint" | "manual" | "unsubscribe";
 
 afterEach(() => {
   dodoCustomerUpdateMock.mockReset();
+  dodoCustomerRetrieveMock.mockReset();
+  vi.useRealTimers();
   delete process.env.DODO_API_KEY;
 });
+
+/** Dodo answers every update and every retrieve with the address it was given. */
+function dodoAcceptsUpdates(): void {
+  process.env.DODO_API_KEY = "test_dodo_key";
+  dodoCustomerUpdateMock.mockImplementation(async (customerId: string, body: { email: string }) => ({
+    customer_id: customerId,
+    email: body.email,
+  }));
+  dodoCustomerRetrieveMock.mockImplementation(async (customerId: string) => {
+    const lastUpdate = [...dodoCustomerUpdateMock.mock.calls].reverse().find((call) => call[0] === customerId);
+    return { customer_id: customerId, email: lastUpdate?.[1]?.email ?? BOUNCED };
+  });
+}
+
+function rawEmail(sub: { rawPayload: unknown }): string | undefined {
+  return (sub.rawPayload as { customer?: { email?: string } }).customer?.email;
+}
 
 async function seedSubscription(
   t: ReturnType<typeof convexTest>,
@@ -194,8 +214,7 @@ describe("getSubscriptionForUser billing email bounce", () => {
 
 describe("updateBillingEmail", () => {
   test("updates Dodo first, then the customers row and every subscription payload", async () => {
-    process.env.DODO_API_KEY = "test_dodo_key";
-    dodoCustomerUpdateMock.mockResolvedValue({ customer_id: CUSTOMER_ID, email: FIXED });
+    dodoAcceptsUpdates();
     const t = convexTest(schema, modules);
     await seedSubscription(t);
     await seedSubscription(t, { suffix: "old", status: "cancelled", currentPeriodEnd: NOW - 40 * DAY_MS });
@@ -220,6 +239,8 @@ describe("updateBillingEmail", () => {
         .toEqual({ customer_id: CUSTOMER_ID, email: FIXED });
       // Not a lifecycle event: the dunning episode anchor must not move.
       expect(sub.updatedAt).toBe(NOW);
+      expect(sub.billingEmailOverride?.email).toBe(FIXED);
+      expect(sub.billingEmailOverride!.observedAt).toBeGreaterThan(NOW);
     }
     // The old address stays suppressed; only the recipient changed.
     expect(rows.suppressions).toHaveLength(1);
@@ -233,8 +254,7 @@ describe("updateBillingEmail", () => {
   });
 
   test("updates each distinct Dodo customer the user owns, once", async () => {
-    process.env.DODO_API_KEY = "test_dodo_key";
-    dodoCustomerUpdateMock.mockResolvedValue({});
+    dodoAcceptsUpdates();
     const t = convexTest(schema, modules);
     await seedSubscription(t, { suffix: "a", dodoCustomerId: "cus_a" });
     await seedSubscription(t, { suffix: "b", dodoCustomerId: "cus_b", status: "cancelled", currentPeriodEnd: NOW - DAY_MS });
@@ -264,24 +284,150 @@ describe("updateBillingEmail", () => {
     expect((await readSubscription(t))?.billingEmailBounced).toBe(true);
   });
 
+  test("a later customer failing keeps what Dodo already changed for earlier ones", async () => {
+    process.env.DODO_API_KEY = "test_dodo_key";
+    dodoCustomerUpdateMock.mockImplementation(async (customerId: string) => {
+      if (customerId === "cus_b") throw new Error("502 upstream");
+      return { customer_id: customerId, email: FIXED };
+    });
+    dodoCustomerRetrieveMock.mockResolvedValue({ customer_id: "cus_a", email: FIXED });
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, { suffix: "a", dodoCustomerId: "cus_a" });
+    await seedSubscription(t, { suffix: "b", dodoCustomerId: "cus_b" });
+    await seedCustomer(t, { dodoCustomerId: "cus_a" });
+
+    await expect(
+      t.withIdentity(IDENTITY).action(api.payments.billing.updateBillingEmail, { email: FIXED }),
+    ).rejects.toThrow("DODO_CUSTOMER_UPDATE_ERROR");
+
+    const rows = await snapshotBillingRows(t);
+    const subA = rows.subscriptions.find((sub) => sub.dodoCustomerId === "cus_a")!;
+    const subB = rows.subscriptions.find((sub) => sub.dodoCustomerId === "cus_b")!;
+    expect(rawEmail(subA)).toBe(FIXED);
+    expect(subA.billingEmailOverride?.email).toBe(FIXED);
+    expect(rawEmail(subB)).toBe(BOUNCED);
+    expect(subB.billingEmailOverride).toBeUndefined();
+    expect(rows.customers[0]).toMatchObject({ dodoCustomerId: "cus_a", email: FIXED });
+  });
+
+  test("applies the address Dodo reports after the update, not the one requested", async () => {
+    process.env.DODO_API_KEY = "test_dodo_key";
+    dodoCustomerUpdateMock.mockResolvedValue({ customer_id: CUSTOMER_ID, email: FIXED });
+    // Another tab's later update already won at Dodo.
+    dodoCustomerRetrieveMock.mockResolvedValue({ customer_id: CUSTOMER_ID, email: "winner@example.com" });
+    const t = convexTest(schema, modules);
+    await seedSubscription(t);
+    await seedCustomer(t);
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .action(api.payments.billing.updateBillingEmail, { email: FIXED });
+    expect(result).toEqual({ email: "winner@example.com" });
+    const rows = await snapshotBillingRows(t);
+    expect(rawEmail(rows.subscriptions[0]!)).toBe("winner@example.com");
+    expect(rows.customers[0]!.email).toBe("winner@example.com");
+  });
+
+  test("falls back to the requested address when the read-back fails", async () => {
+    process.env.DODO_API_KEY = "test_dodo_key";
+    dodoCustomerUpdateMock.mockResolvedValue({ customer_id: CUSTOMER_ID, email: FIXED });
+    dodoCustomerRetrieveMock.mockRejectedValue(new Error("timeout"));
+    const t = convexTest(schema, modules);
+    await seedSubscription(t);
+
+    await expect(
+      t.withIdentity(IDENTITY).action(api.payments.billing.updateBillingEmail, { email: FIXED }),
+    ).resolves.toEqual({ email: FIXED });
+    expect(rawEmail((await snapshotBillingRows(t)).subscriptions[0]!)).toBe(FIXED);
+  });
+
+  test("a delayed webhook carrying the old address cannot undo the repair", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW + 60_000);
+    dodoAcceptsUpdates();
+    const t = convexTest(schema, modules);
+    await seedSubscription(t);
+    await suppress(t, BOUNCED, "bounce");
+    await t.withIdentity(IDENTITY).action(api.payments.billing.updateBillingEmail, { email: FIXED });
+
+    // Generated before the repair (timestamp between the row's updatedAt and
+    // observedAt), delivered after it, still naming the typo.
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_delayed_old_email",
+      eventType: "subscription.on_hold",
+      rawPayload: { data: { subscription_id: "sub_billing_email_main", customer: { customer_id: CUSTOMER_ID, email: BOUNCED } } },
+      timestamp: NOW + 30_000,
+    });
+    const stale = (await snapshotBillingRows(t)).subscriptions[0]!;
+    expect(rawEmail(stale)).toBe(BOUNCED);
+    expect(stale.updatedAt).toBe(NOW + 30_000);
+    expect(await readSubscription(t)).toMatchObject({ status: "on_hold", billingEmail: FIXED, billingEmailBounced: false });
+    const dunning = await t.query(internal.payments.subscriptionEmails.getDunningContext, {
+      dodoSubscriptionId: "sub_billing_email_main",
+    });
+    expect(dunning?.email).toBe(FIXED);
+
+    // Generated after the repair: Dodo's current address wins again.
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_after_repair",
+      eventType: "subscription.on_hold",
+      rawPayload: { data: { subscription_id: "sub_billing_email_main", customer: { customer_id: CUSTOMER_ID, email: "newer@example.com" } } },
+      timestamp: NOW + 90_000,
+    });
+    expect((await readSubscription(t))?.billingEmail).toBe("newer@example.com");
+  });
+
+  test("an older observation applied after a newer one is a no-op", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t);
+    await seedCustomer(t);
+    const apply = (email: string, observedAt: number) =>
+      t.mutation(internal.payments.billing.applyBillingEmailUpdate, {
+        userId: USER_ID,
+        customerId: CUSTOMER_ID,
+        email,
+        observedAt,
+        includeUnlinked: true,
+      });
+
+    await apply("second@example.com", NOW + 20);
+    await apply("first@example.com", NOW + 10);
+
+    const rows = await snapshotBillingRows(t);
+    expect(rows.subscriptions[0]!.billingEmailOverride).toEqual({ email: "second@example.com", observedAt: NOW + 20 });
+    expect(rawEmail(rows.subscriptions[0]!)).toBe("second@example.com");
+    expect(rows.customers[0]!.email).toBe("second@example.com");
+  });
+
   test.each<SuppressionReason>(["bounce", "complaint", "manual"])(
-    "refuses a new address that is itself suppressed (%s) before touching Dodo",
+    "refuses a new address that is itself suppressed (%s) before touching Dodo, without naming why",
     async (reason) => {
       process.env.DODO_API_KEY = "test_dodo_key";
       const t = convexTest(schema, modules);
       await seedSubscription(t);
       await suppress(t, FIXED, reason);
 
-      await expect(
-        t.withIdentity(IDENTITY).action(api.payments.billing.updateBillingEmail, { email: FIXED }),
-      ).rejects.toThrow("EMAIL_SUPPRESSED");
+      const error = await t
+        .withIdentity(IDENTITY)
+        .action(api.payments.billing.updateBillingEmail, { email: FIXED })
+        .then(() => null, (err: unknown) => err as { data?: unknown });
+      expect(error?.data).toEqual({ kind: "EMAIL_SUPPRESSED" });
       expect(dodoCustomerUpdateMock).not.toHaveBeenCalled();
     },
   );
 
-  test("a broadcast unsubscribe on the new address does not block billing mail", async () => {
+  test("a user with no Dodo customer learns nothing about a suppressed address", async () => {
     process.env.DODO_API_KEY = "test_dodo_key";
-    dodoCustomerUpdateMock.mockResolvedValue({});
+    const t = convexTest(schema, modules);
+    await suppress(t, FIXED, "bounce");
+
+    await expect(
+      t.withIdentity(IDENTITY).action(api.payments.billing.updateBillingEmail, { email: FIXED }),
+    ).rejects.toThrow("NO_CUSTOMER");
+  });
+
+  test("a broadcast unsubscribe on the new address does not block billing mail", async () => {
+    dodoAcceptsUpdates();
     const t = convexTest(schema, modules);
     await seedSubscription(t);
     await suppress(t, FIXED, "unsubscribe");
