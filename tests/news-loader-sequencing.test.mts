@@ -264,7 +264,55 @@ describe('news loader digest sequencing', () => {
     assert.equal(result.finalDigest, liveDigest);
   });
 
-  it('preserves fallback results when a pending digest resolves null', async () => {
+  it('settles every preset category and Intel once a pending digest resolves null', async () => {
+    const digest = deferred<TestDigest | null>();
+    const categoryStarted = deferred<void>();
+    const events: string[] = [];
+
+    const runPromise = runNewsLoadPass<string[], TestDigest, string>({
+      categories: [
+        { key: 'politics', feeds: ['Reuters'] },
+        { key: 'energy', feeds: ['Oil Monitor'] },
+        { key: 'startups', feeds: ['Crunchbase News'], isCustom: true },
+      ],
+      categoryConcurrency: 3,
+      digestPromise: digest.promise,
+      digestGraceMs: 0,
+      hasDigestCategory: (digestSnapshot, key) => key in digestSnapshot.categories,
+      loadCategory: async (category, digestSnapshot, options) => {
+        assert.equal(digestSnapshot, null);
+        events.push(`${category.key}:${options.digestPending ? 'pending' : 'settled'}`);
+        categoryStarted.resolve();
+        return options.digestPending ? [] : [`${category.key}-settled`];
+      },
+      loadIntel: async (digestSnapshot, options) => {
+        assert.equal(digestSnapshot, null);
+        events.push(`intel:${options.digestPending ? 'pending' : 'settled'}`);
+        return options.digestPending ? [] : ['intel-settled'];
+      },
+    });
+
+    await categoryStarted.promise;
+    digest.resolve(null);
+    const result = await runPromise;
+
+    // Cross-edition panels never read the home digest, so they are not re-run.
+    assert.deepEqual(events, [
+      'politics:pending',
+      'energy:pending',
+      'startups:pending',
+      'intel:pending',
+      'politics:settled',
+      'energy:settled',
+      'intel:settled',
+    ]);
+    assert.deepEqual(result.categoryItemsByKey.get('politics'), ['politics-settled']);
+    assert.deepEqual(result.categoryItemsByKey.get('energy'), ['energy-settled']);
+    assert.deepEqual(result.intelItems, ['intel-settled']);
+    assert.equal(result.finalDigest, null);
+  });
+
+  it('settles a preset category the late digest does not carry', async () => {
     const digest = deferred<TestDigest | null>();
     const categoryStarted = deferred<void>();
     const events: string[] = [];
@@ -279,34 +327,22 @@ describe('news loader digest sequencing', () => {
       digestGraceMs: 0,
       hasDigestCategory: (digestSnapshot, key) => key in digestSnapshot.categories,
       loadCategory: async (category, digestSnapshot, options) => {
-        events.push(`${category.key}:${digestSnapshot ? 'digest' : 'fallback'}`);
-        assert.equal(digestSnapshot, null);
-        assert.equal(options.recordBaselineSample, false);
+        events.push(`${category.key}:${digestSnapshot ? 'digest' : 'none'}:${options.digestPending ? 'pending' : 'settled'}`);
         categoryStarted.resolve();
-        return [`${category.key}-fallback`];
-      },
-      loadIntel: async (digestSnapshot, options) => {
-        events.push(`intel:${digestSnapshot ? 'digest' : 'fallback'}`);
-        assert.equal(digestSnapshot, null);
-        assert.equal(options.recordBaselineSample, false);
-        return ['intel-fallback'];
+        return [];
       },
     });
 
     await categoryStarted.promise;
-    digest.resolve(null);
-    const result = await runPromise;
+    digest.resolve({ categories: { politics: {} } });
+    await runPromise;
 
     assert.deepEqual(events, [
-      'politics:fallback',
-      'energy:fallback',
-      'intel:fallback',
+      'politics:none:pending',
+      'energy:none:pending',
+      'politics:digest:settled',
+      'energy:digest:settled',
     ]);
-    assert.deepEqual(result.categoryItemsByKey.get('politics'), ['politics-fallback']);
-    assert.deepEqual(result.categoryItemsByKey.get('energy'), ['energy-fallback']);
-    assert.deepEqual(result.intelItems, ['intel-fallback']);
-    assert.equal(result.initialDigest.pending, true);
-    assert.equal(result.finalDigest, null);
   });
 });
 
