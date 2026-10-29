@@ -501,7 +501,7 @@
     "marketBreadth": "اتساع السوق",
     "climateNews": "أخبار المناخ",
     "fx": "أسعار الصرف الأجنبي",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "حوادث UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -4243,12 +4243,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
-    "occurred": "Incident",
-    "reported": "Published"
+    "unavailable": "بيانات UKMTO غير متاحة.",
+    "empty": "لم تُرجع UKMTO أي حوادث.",
+    "stale": "بيانات المصدر قديمة. آخر تحقق",
+    "current": "تم التحقق من المصدر",
+    "reportedClaims": "تقارير الناشر. قد تظل الادعاءات قيد التحقيق.",
+    "occurred": "الحادث",
+    "reported": "النشر"
   }
 }

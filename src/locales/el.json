@@ -493,7 +493,7 @@
     "marketBreadth": "Market Breadth",
     "climateNews": "Ειδήσεις για το Κλίμα",
     "fx": "Ισοτιμίες συναλλάγματος",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "Συμβάντα UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -4163,12 +4163,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
-    "occurred": "Incident",
-    "reported": "Published"
+    "unavailable": "Τα δεδομένα UKMTO δεν είναι διαθέσιμα.",
+    "empty": "Το UKMTO δεν επέστρεψε συμβάντα.",
+    "stale": "Παρωχημένα δεδομένα. Τελευταίος έλεγχος",
+    "current": "Η πηγή ελέγχθηκε",
+    "reportedClaims": "Αναφορές του εκδότη. Οι ισχυρισμοί ενδέχεται να παραμένουν υπό διερεύνηση.",
+    "occurred": "Συμβάν",
+    "reported": "Δημοσίευση"
   }
 }

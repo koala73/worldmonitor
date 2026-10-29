@@ -84,6 +84,7 @@ const HTTP_METHODS = new Set([
 // -----------------------------------------------------------------------------
 
 const EXCLUDED_FROM_MCP_PARITY = new Map([
+  ['GET /api/maritime/v1/list-ukmto-incidents', 'deferred-to-future-tool: UKMTO publisher reports await activation and source-aware MCP composition (#9831)'],
 
   // === mutating (20) ===
   ["GET /api/aviation/v1/list-airport-delays",

@@ -562,7 +562,7 @@
     "marketBreadth": "Piaci szélesség",
     "climateNews": "Klíma hírek",
     "fx": "Devizaárfolyamok",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "UKMTO-események"
   },
   "commands": {
     "prefixes": {
@@ -4163,12 +4163,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
-    "occurred": "Incident",
-    "reported": "Published"
+    "unavailable": "Az UKMTO adatai nem érhetők el.",
+    "empty": "Az UKMTO nem adott vissza eseményeket.",
+    "stale": "Elavult forrásadatok. Utolsó ellenőrzés",
+    "current": "Forrás ellenőrizve",
+    "reportedClaims": "A kiadó jelentései. Az állítások vizsgálata még folyamatban lehet.",
+    "occurred": "Esemény",
+    "reported": "Közzétéve"
   }
 }

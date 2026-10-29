@@ -562,7 +562,7 @@
     "marketBreadth": "Upana wa Soko",
     "climateNews": "Habari za Hali ya Hewa",
     "fx": "Kiwango cha ubadilishaji wa fedha za kigeni",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "Matukio ya UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -4163,12 +4163,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
-    "occurred": "Incident",
-    "reported": "Published"
+    "unavailable": "Data za UKMTO hazipatikani.",
+    "empty": "UKMTO haikurudisha matukio.",
+    "stale": "Data za chanzo zimepitwa na wakati. Ukaguzi wa mwisho",
+    "current": "Chanzo kimekaguliwa",
+    "reportedClaims": "Ripoti za mchapishaji. Madai yanaweza kuwa bado yanachunguzwa.",
+    "occurred": "Tukio",
+    "reported": "Imechapishwa"
   }
 }

@@ -6,13 +6,20 @@ import { isMainModule } from './lib/main-module.mjs';
 const SOURCE_URL = 'https://sccd.royalnavy.mod.uk/api/ukmto/all';
 export const canonicalKey = 'maritime:ukmto-incidents:v1';
 
+function parseUtcDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?Z$/.test(value)) return NaN;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString().slice(0, 19) !== value.slice(0, 19)) return NaN;
+  return parsed;
+}
+
 export function normalizeIncidents(value) {
   if (!Array.isArray(value) || value.length > 2000) throw new Error('Invalid UKMTO snapshot');
   const incidents = new Map();
   for (const row of value) {
     if (!row || typeof row !== 'object') throw new Error('Invalid UKMTO incident');
-    const occurredAt = typeof row.utcDateOfIncident === 'string' ? Date.parse(row.utcDateOfIncident) : NaN;
-    const reportedAt = typeof row.utcDateCreated === 'string' ? Date.parse(row.utcDateCreated) : NaN;
+    const occurredAt = parseUtcDate(row.utcDateOfIncident);
+    const reportedAt = parseUtcDate(row.utcDateCreated);
     if (typeof row.sitecoreId !== 'string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(row.sitecoreId)
       || !Number.isInteger(row.incidentNumber) || row.incidentNumber < 1
       || !Number.isFinite(occurredAt) || occurredAt <= 0 || !Number.isFinite(reportedAt) || reportedAt <= 0
@@ -34,7 +41,7 @@ export function normalizeIncidents(value) {
   return [...incidents.values()].sort((a, b) => b.occurredAt - a.occurredAt || a.id.localeCompare(b.id));
 }
 
-export async function fetchUkmtoIncidents(fetchFn = fetch) {
+export async function fetchUkmtoIncidents(_context, fetchFn = fetch) {
   const response = await fetchFn(SOURCE_URL, {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(15000),

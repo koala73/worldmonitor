@@ -497,7 +497,7 @@
     "marketBreadth": "Ширина рынка",
     "climateNews": "Новости климата",
     "fx": "Валютные курсы",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "Инциденты UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -4203,12 +4203,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
-    "occurred": "Incident",
-    "reported": "Published"
+    "unavailable": "Данные UKMTO недоступны.",
+    "empty": "UKMTO не вернуло инцидентов.",
+    "stale": "Данные источника устарели. Последняя проверка",
+    "current": "Источник проверен",
+    "reportedClaims": "Сообщения издателя. Утверждения могут ещё проверяться.",
+    "occurred": "Инцидент",
+    "reported": "Опубликовано"
   }
 }

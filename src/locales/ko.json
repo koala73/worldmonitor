@@ -491,7 +491,7 @@
     "marketBreadth": "시장 폭",
     "climateNews": "기후 뉴스",
     "fx": "외환 환율",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "UKMTO 사건"
   },
   "commands": {
     "prefixes": {
@@ -4143,12 +4143,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
-    "occurred": "Incident",
-    "reported": "Published"
+    "unavailable": "UKMTO 데이터를 사용할 수 없습니다.",
+    "empty": "UKMTO에서 반환한 사건이 없습니다.",
+    "stale": "출처 데이터가 오래되었습니다. 마지막 확인",
+    "current": "출처 확인",
+    "reportedClaims": "발행자의 보고입니다. 주장은 아직 조사 중일 수 있습니다.",
+    "occurred": "사건",
+    "reported": "게시"
   }
 }

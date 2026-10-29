@@ -493,7 +493,7 @@
     "marketBreadth": "Пазарна Ширина",
     "climateNews": "Климатски Вести",
     "fx": "Валутни курсове",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "Инциденти на UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -4163,12 +4163,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
-    "occurred": "Incident",
-    "reported": "Published"
+    "unavailable": "Данните на UKMTO не са налични.",
+    "empty": "UKMTO не върна инциденти.",
+    "stale": "Остарели данни. Последна проверка",
+    "current": "Източникът е проверен",
+    "reportedClaims": "Доклади на издателя. Твърденията може още да се разследват.",
+    "occurred": "Инцидент",
+    "reported": "Публикувано"
   }
 }

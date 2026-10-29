@@ -491,7 +491,7 @@
     "marketBreadth": "市場の広がり",
     "climateNews": "気候ニュース",
     "fx": "外国為替レート",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "UKMTO事案"
   },
   "commands": {
     "prefixes": {
@@ -4143,12 +4143,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
-    "occurred": "Incident",
-    "reported": "Published"
+    "unavailable": "UKMTOデータを利用できません。",
+    "empty": "UKMTOから事案が返されませんでした。",
+    "stale": "情報源のデータが古くなっています。最終確認",
+    "current": "情報源確認済み",
+    "reportedClaims": "発行元の報告です。主張は調査中の場合があります。",
+    "occurred": "発生",
+    "reported": "公開"
   }
 }

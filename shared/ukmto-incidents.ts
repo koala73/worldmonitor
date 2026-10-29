@@ -25,7 +25,7 @@ export function readUkmtoSnapshot(value: unknown, now = Date.now()): ListUkmtoIn
   const unavailable = { incidents: [], fetchedAt: 0, dataAvailable: false, stale: false };
   if (!value || typeof value !== 'object') return unavailable;
   const data = value as Partial<ListUkmtoIncidentsResponse>;
-  if (data.dataAvailable === false || typeof data.fetchedAt !== 'number' || !Number.isFinite(data.fetchedAt) || data.fetchedAt <= 0
+  if (data.dataAvailable !== true || typeof data.fetchedAt !== 'number' || !Number.isFinite(data.fetchedAt) || data.fetchedAt <= 0
     || now - data.fetchedAt > UKMTO_RETENTION_MS || data.fetchedAt - now > 300_000
     || !Array.isArray(data.incidents) || data.incidents.length > 2000 || !data.incidents.every(isIncident)) return unavailable;
   return {

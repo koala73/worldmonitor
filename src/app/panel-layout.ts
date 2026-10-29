@@ -2973,7 +2973,10 @@ export class PanelLayoutManager implements AppModule {
 
     this.lazyImportedPanel('ukmto-incidents', () => import('@/components/UkmtoIncidentsPanel'), 'UkmtoIncidentsPanel', (UkmtoIncidentsPanel) => {
       const panel = new UkmtoIncidentsPanel();
-      panel.setLocationClickHandler((lat: number, lon: number) => { this.ctx.map?.setCenter(lat, lon, 6); });
+      panel.setLocationClickHandler((lat: number, lon: number) => {
+        if (this.ctx.isMobile) this.revealMobileMap();
+        this.ctx.map?.setCenter(lat, lon, 6);
+      });
       return panel;
     });
 

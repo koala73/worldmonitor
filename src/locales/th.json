@@ -491,7 +491,7 @@
     "marketBreadth": "ความกว้างของตลาด",
     "climateNews": "ข่าวสภาพอากาศ",
     "fx": "อัตราแลกเปลี่ยนเงินตราต่างประเทศ",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "เหตุการณ์ UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -4143,12 +4143,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
-    "occurred": "Incident",
-    "reported": "Published"
+    "unavailable": "ไม่สามารถใช้ข้อมูล UKMTO ได้",
+    "empty": "UKMTO ไม่ได้ส่งคืนเหตุการณ์",
+    "stale": "ข้อมูลแหล่งที่มาล้าสมัย ตรวจสอบล่าสุด",
+    "current": "ตรวจสอบแหล่งที่มาแล้ว",
+    "reportedClaims": "รายงานจากผู้เผยแพร่ ข้อกล่าวอ้างอาจยังอยู่ระหว่างการสอบสวน",
+    "occurred": "เหตุการณ์",
+    "reported": "เผยแพร่"
   }
 }

@@ -493,7 +493,7 @@
     "marketBreadth": "Pazar Genişliği",
     "climateNews": "İklim Haberleri",
     "fx": "Döviz kurları",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "UKMTO olayları"
   },
   "commands": {
     "prefixes": {
@@ -4163,12 +4163,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
-    "occurred": "Incident",
-    "reported": "Published"
+    "unavailable": "UKMTO verileri kullanılamıyor.",
+    "empty": "UKMTO herhangi bir olay döndürmedi.",
+    "stale": "Kaynak verileri güncel değil. Son kontrol",
+    "current": "Kaynak kontrol edildi",
+    "reportedClaims": "Yayıncı raporları. İddialar hâlâ araştırılıyor olabilir.",
+    "occurred": "Olay",
+    "reported": "Yayımlandı"
   }
 }

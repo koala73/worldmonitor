@@ -562,7 +562,7 @@
     "marketBreadth": "बाजार की पहुंच",
     "climateNews": "जलवायु समाचार",
     "fx": "विदेशी मुद्रा दरें",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "UKMTO घटनाएँ"
   },
   "commands": {
     "prefixes": {
@@ -4163,12 +4163,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
-    "occurred": "Incident",
-    "reported": "Published"
+    "unavailable": "UKMTO डेटा उपलब्ध नहीं है।",
+    "empty": "UKMTO ने कोई घटना नहीं लौटाई।",
+    "stale": "स्रोत डेटा पुराना है। अंतिम जाँच",
+    "current": "स्रोत की जाँच की गई",
+    "reportedClaims": "प्रकाशक की रिपोर्ट। दावों की जाँच अभी जारी हो सकती है।",
+    "occurred": "घटना",
+    "reported": "प्रकाशित"
   }
 }

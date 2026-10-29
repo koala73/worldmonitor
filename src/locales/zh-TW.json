@@ -491,7 +491,7 @@
     "marketBreadth": "市場廣度",
     "climateNews": "氣候新聞",
     "fx": "外匯匯率",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "UKMTO事件"
   },
   "commands": {
     "prefixes": {
@@ -4143,12 +4143,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
-    "occurred": "Incident",
-    "reported": "Published"
+    "unavailable": "UKMTO資料不可用。",
+    "empty": "UKMTO未返回任何事件。",
+    "stale": "來源資料已過時。上次檢查",
+    "current": "來源已檢查",
+    "reportedClaims": "釋出方報告。相關說法可能仍在調查中。",
+    "occurred": "事件",
+    "reported": "釋出"
   }
 }

@@ -5,7 +5,7 @@ import { fetchUkmtoIncidents } from '@/services/ukmto-incidents';
 
 it('retains and ages the last good snapshot when the bootstrap source is unavailable', async () => {
   const now = Date.now();
-  upstream.value = { incidents: [], fetchedAt: now };
+  upstream.value = { incidents: [], fetchedAt: now, dataAvailable: true };
   expect((await fetchUkmtoIncidents()).dataAvailable).toBe(true);
   upstream.value = undefined;
   vi.spyOn(Date, 'now').mockReturnValue(now + 16 * 60000);

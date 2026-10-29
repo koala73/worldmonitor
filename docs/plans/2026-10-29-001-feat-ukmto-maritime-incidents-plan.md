@@ -54,7 +54,7 @@ Automated incident verification and historical revision archives are deferred to
 - KTD2. Add a dedicated incident RPC and seed-owned key. Extending NGA warnings would leak incident semantics into cable analysis and change the existing availability contract.
 - KTD3. Normalize one typed incident model at the upstream boundary. Reject malformed records and conflicting duplicate IDs as a failed snapshot. Accept unknown type names as text. Do not invent severity from pin color or absent coordinates.
 - KTD4. Keep one last-valid snapshot for 24 hours and grade freshness from its original fetchedAt. Run-seed metadata describes polling health independently. Do not use incident age to decide feed health because incidents are irregular.
-- KTD5. Load through the on-demand bootstrap path when the optional list or ship layer needs it. Use the maritime RPC on bootstrap miss. Both return the same fields and retrieval timestamp.
+- KTD5. Load through the on-demand bootstrap path when the optional list or ship layer needs it. Retain and age the last valid browser snapshot on bootstrap miss; retrying the RPC would read the same Redis key. The RPC independently serves API clients without CDN caching.
 - KTD6. Add renderer-specific markers under the existing ship-traffic layer, separate from AIS disruption objects. Do not mark AIS healthy because UKMTO has data.
 
 ### High-Level Technical Design
@@ -124,7 +124,7 @@ A separate seed and RPC isolates failures and reuses the repository's producer/r
 
 **Files:** `src/services/ukmto-incidents.ts`, `src/components/UkmtoIncidentsPanel.ts`, `src/config/panels.ts`, `src/app/panel-layout.ts`, `src/app/data-loader.ts`, `src/App.ts`, `src/components/MapContainer.ts`, `src/components/DeckGLMap.ts`, `src/components/Map.ts`, `src/components/GlobeMap.ts`, relevant locale/style files, `tests/ukmto-incidents-service.test.mts`, `tests/dom/ukmto-incidents-panel.test.ts`, `e2e/ukmto-incidents.spec.ts`.
 
-**Approach:** Optional full-variant panel using existing lazy-panel registration. Refresh only when the panel or ship layer is enabled. Render narrative as escaped text with a fixed UKMTO source link. Cache the dataset in MapContainer for renderer changes. Markers expose location/type, while the panel provides the full report and source age. Keep AIS readiness independent.
+**Approach:** Optional panel using existing lazy-panel registration, loadable on any variant where users enable it. UKMTO map loading remains tied to the full dashboard Ships layer. Refresh only when the panel or ship layer is enabled. Render narrative as escaped text with a fixed UKMTO source link. Cache the dataset in MapContainer for renderer changes. Markers expose location/type, while the panel provides the full report and source age. Keep AIS readiness independent.
 
 **Patterns:** `ClimateAnomalyPanel`, `MapContainer.setAisData`, existing map marker methods and refresh registrations.
 

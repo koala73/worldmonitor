@@ -565,7 +565,7 @@
     "marketBreadth": "Širina Tržišta",
     "climateNews": "Klimatske Vijesti",
     "fx": "Tečajevi deviza",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "Incidenti UKMTO-a"
   },
   "commands": {
     "prefixes": {
@@ -4194,12 +4194,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
+    "unavailable": "Podaci UKMTO-a nisu dostupni.",
+    "empty": "UKMTO nije vratio incidente.",
+    "stale": "Zastarjeli izvorni podaci. Zadnja provjera",
+    "current": "Izvor provjeren",
+    "reportedClaims": "Izvješća izdavača. Tvrdnje mogu još biti pod istragom.",
     "occurred": "Incident",
-    "reported": "Published"
+    "reported": "Objavljeno"
   }
 }

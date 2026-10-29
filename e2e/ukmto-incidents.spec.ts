@@ -93,3 +93,32 @@ test('UKMTO markers follow the Ships toggle in each renderer', async ({ page }) 
     expect(result, result.path).toMatchObject({ enabled: 1, disabled: 0, reenabled: 1, outsideTimeRange: 0 });
   }
 });
+
+test('UKMTO map status distinguishes empty and unavailable with the report panel absent', async ({ page }, testInfo) => {
+  await page.route('**/api/**', route => route.fulfill({ json: {} }));
+  await page.goto('/tests/map-harness.html');
+  await page.evaluate(async () => {
+    const modulePath = '/src/components/MapContainer.ts';
+    const i18nPath = '/src/services/i18n.ts';
+    await (await import(/* @vite-ignore */ i18nPath)).initI18n({ waitForFullTranslation: true });
+    const { MapContainer } = await import(/* @vite-ignore */ modulePath);
+    const host = document.createElement('div');
+    host.id = 'ukmto-map-proof';
+    host.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:9999';
+    document.body.append(host);
+    const map = new MapContainer(host, { view: 'global', layers: { ais: true }, timeRange: 'all', zoom: 2, pan: { x: 0, y: 0 } });
+    (window as any).__ukmtoMap = map;
+    map.setUkmtoSnapshot({ incidents: [], fetchedAt: Date.now(), dataAvailable: true, stale: false });
+  });
+  const status = page.locator('#ukmto-map-proof .ukmto-map-status');
+  await expect(page.locator('#ukmto-map-proof')).not.toHaveAttribute('aria-busy', 'true', { timeout: 20000 });
+  await expect(status).toContainText('No incidents');
+  await page.evaluate(() => (window as any).__ukmtoMap.setUkmtoSnapshot({ incidents: [], fetchedAt: 0, dataAvailable: false, stale: false }));
+  await expect(status).toContainText('unavailable');
+  await page.locator('#ukmto-map-proof').screenshot({ path: testInfo.outputPath('ukmto-map-unavailable.png') });
+  await page.evaluate(() => (window as any).__ukmtoMap.setLayers({ ais: false }));
+  await expect(status).toHaveCount(0);
+  await page.evaluate(() => (window as any).__ukmtoMap.setLayers({ ais: true }));
+  await expect(status).toContainText('unavailable');
+  await page.evaluate(() => (window as any).__ukmtoMap.destroy());
+});

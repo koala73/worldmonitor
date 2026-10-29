@@ -239,6 +239,7 @@ export function trimResponseExampleLists(spec) {
  * and still callable: only this one artifact omits it. Every entry names why.
  */
 export const SCANNER_BUNDLE_EXCLUDED_OPERATIONS = Object.freeze({
+  '/api/maritime/v1/list-ukmto-incidents': 'Budget: the optional UKMTO dashboard dataset puts the scanner bundle 2,045 bytes over its cap. The endpoint remains served and fully documented in the MaritimeService spec and YAML bundle; worker activation is tracked in #9831.',
   '/api/intelligence/v1/get-country-signal-observations': 'Internal country panel observation carrier; documented in the IntelligenceService spec and YAML bundle.',
   '/api/news/v1/list-label-changes': 'Label history read by the /trust page (#9093); documented in the NewsService spec.',
   '/api/news/v1/submit-error-report': 'The /trust page "Report an error" form (#9093); documented in the NewsService spec.',

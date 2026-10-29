@@ -491,7 +491,7 @@
     "marketBreadth": "Độ rộng Thị trường",
     "climateNews": "Tin tức về Khí hậu",
     "fx": "Tỷ giá ngoại hối",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "Sự cố UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -4143,12 +4143,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
-    "occurred": "Incident",
-    "reported": "Published"
+    "unavailable": "Không có dữ liệu UKMTO.",
+    "empty": "UKMTO không trả về sự cố nào.",
+    "stale": "Dữ liệu nguồn đã cũ. Kiểm tra lần cuối",
+    "current": "Đã kiểm tra nguồn",
+    "reportedClaims": "Báo cáo của bên xuất bản. Các tuyên bố có thể vẫn đang được điều tra.",
+    "occurred": "Sự cố",
+    "reported": "Đã xuất bản"
   }
 }

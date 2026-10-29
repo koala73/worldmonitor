@@ -11,6 +11,7 @@ const snapshot = { incidents: [], fetchedAt: now, dataAvailable: true, stale: fa
 test('fresh empty results differ from unavailable snapshots', () => {
   assert.deepEqual(readUkmtoSnapshot(snapshot, now), snapshot);
   assert.equal(readUkmtoSnapshot(null, now).dataAvailable, false);
+  assert.equal(readUkmtoSnapshot({ ...snapshot, dataAvailable: undefined }, now).dataAvailable, false);
   assert.equal(readUkmtoSnapshot({ ...snapshot, incidents: [null] }, now).dataAvailable, false);
   assert.equal(readUkmtoSnapshot({ ...snapshot, dataAvailable: false }, now).dataAvailable, false);
 });

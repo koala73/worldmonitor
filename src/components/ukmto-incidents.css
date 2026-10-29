@@ -1,4 +1,5 @@
 .ukmto-status, .ukmto-attribution, .ukmto-dates { color: var(--text-dim); font-size: 11px; }
+.ukmto-map-status { position: absolute; top: 52px; left: 10px; z-index: 1001; max-width: calc(100% - 20px); padding: 4px 8px; background: var(--bg); color: var(--text); font-size: 11px; pointer-events: none; }
 .ukmto-status { padding: 8px 10px 0; }
 .ukmto-attribution { padding: 0 10px; }
 .ukmto-attribution a { color: var(--accent); }

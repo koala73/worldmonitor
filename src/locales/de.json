@@ -493,7 +493,7 @@
     "marketBreadth": "Marktbreite",
     "climateNews": "Klimanachrichten",
     "fx": "Devisenkurse",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "UKMTO-Vorfälle"
   },
   "commands": {
     "prefixes": {
@@ -4163,12 +4163,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
-    "occurred": "Incident",
-    "reported": "Published"
+    "unavailable": "UKMTO-Daten nicht verfügbar.",
+    "empty": "UKMTO hat keine Vorfälle zurückgegeben.",
+    "stale": "Veraltete Quelldaten. Zuletzt geprüft",
+    "current": "Quelle geprüft",
+    "reportedClaims": "Meldungen des Herausgebers. Angaben werden möglicherweise noch untersucht.",
+    "occurred": "Vorfall",
+    "reported": "Veröffentlicht"
   }
 }

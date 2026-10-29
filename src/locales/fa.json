@@ -562,7 +562,7 @@
     "marketBreadth": "Market Breadth",
     "climateNews": "Climate News",
     "fx": "نرخ تبادل ارز",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "رویدادهای UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -4163,12 +4163,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
-    "occurred": "Incident",
-    "reported": "Published"
+    "unavailable": "داده‌های UKMTO در دسترس نیست.",
+    "empty": "UKMTO هیچ رویدادی برنگرداند.",
+    "stale": "داده‌های منبع قدیمی است. آخرین بررسی",
+    "current": "منبع بررسی شد",
+    "reportedClaims": "گزارش‌های ناشر. ادعاها ممکن است همچنان در دست بررسی باشند.",
+    "occurred": "رویداد",
+    "reported": "انتشار"
   }
 }

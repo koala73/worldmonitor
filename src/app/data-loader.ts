@@ -1291,7 +1291,7 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.storageFacilities) tasks.push({ name: 'storageFacilities', task: () => runGuarded('storageFacilities', () => this.loadStorageFacilities()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.canadaAlerts) tasks.push({ name: 'canadaAlerts', task: () => runGuarded('canadaAlerts', () => this.loadCanadaAlerts()) });
     if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && this.ctx.mapLayers.ais) tasks.push({ name: 'ais', task: () => runGuarded('ais', () => this.loadAisSignals()) });
-    if (SITE_VARIANT === 'full' && (this.ctx.mapLayers.ais || (this.ctx.panelSettings['ukmto-incidents']?.enabled && shouldLoad('ukmto-incidents')))) {
+    if ((SITE_VARIANT === 'full' && this.ctx.mapLayers.ais) || (this.ctx.panelSettings['ukmto-incidents']?.enabled && shouldLoad('ukmto-incidents'))) {
       tasks.push({ name: 'ukmtoIncidents', task: () => runGuarded('ukmtoIncidents', () => this.loadUkmtoIncidents()) });
     }
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cables', task: () => runGuarded('cables', () => this.loadCableActivity()) });
@@ -4109,11 +4109,11 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadUkmtoIncidents(): Promise<void> {
-    if (SITE_VARIANT !== 'full') return;
+    if (SITE_VARIANT !== 'full' && !this.ctx.panelSettings['ukmto-incidents']?.enabled) return;
     const snapshot = await fetchUkmtoIncidents();
     if (this.ctx.isDestroyed) return;
     this.callPanel('ukmto-incidents', 'setData', snapshot);
-    this.ctx.map?.setUkmtoIncidents(snapshot.incidents.map(item => ({ ...item, stale: snapshot.stale })));
+    this.ctx.map?.setUkmtoSnapshot(snapshot);
   }
 
   waitForAisData(): void {

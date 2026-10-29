@@ -36,13 +36,16 @@ test('accepts a valid empty snapshot and unknown incident types', () => {
 test('rejects malformed snapshots without manufacturing positions or dates', () => {
   for (const value of [null, {}, [null], [{ ...report, locationLatitude: null }],
     [{ ...report, locationLongitude: 181 }], [{ ...report, utcDateCreated: '' }],
+    [{ ...report, utcDateCreated: '2026-02-30T10:00:00Z' }],
+    [{ ...report, utcDateOfIncident: '2026-10-29T24:00:00Z' }],
+    [{ ...report, utcDateCreated: '10/29/2026' }],
     [{ ...report, sitecoreId: '' }], [{ ...report, otherDetails: null }]]) {
     assert.throws(() => normalizeIncidents(value));
   }
 });
 
 test('fetch uses a bounded request and rejects upstream failure', async () => {
-  const snapshot = await fetchUkmtoIncidents(async (url, options) => {
+  const snapshot = await fetchUkmtoIncidents({ runStartedAtMs: Date.now(), fetchDeadlineAtMs: Date.now() + 30000 }, async (url, options) => {
     assert.equal(new URL(url).hostname, 'sccd.royalnavy.mod.uk');
     assert.ok(options.headers['User-Agent']);
     assert.ok(options.signal);
@@ -50,7 +53,7 @@ test('fetch uses a bounded request and rejects upstream failure', async () => {
   });
   assert.equal(snapshot.incidents.length, 1);
   assert.ok(snapshot.fetchedAt > 0);
-  await assert.rejects(fetchUkmtoIncidents(async () => new Response('', { status: 403 })), /UKMTO HTTP 403/);
-  await assert.rejects(fetchUkmtoIncidents(async () => new Response('', { status: 503 })));
-  await assert.rejects(fetchUkmtoIncidents(async () => { throw new Error('timeout'); }));
+  await assert.rejects(fetchUkmtoIncidents({ runStartedAtMs: Date.now(), fetchDeadlineAtMs: Date.now() + 30000 }, async () => new Response('', { status: 403 })), /UKMTO HTTP 403/);
+  await assert.rejects(fetchUkmtoIncidents({ runStartedAtMs: Date.now(), fetchDeadlineAtMs: Date.now() + 30000 }, async () => new Response('', { status: 503 })));
+  await assert.rejects(fetchUkmtoIncidents({ runStartedAtMs: Date.now(), fetchDeadlineAtMs: Date.now() + 30000 }, async () => { throw new Error('timeout'); }));
 });

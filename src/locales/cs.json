@@ -497,7 +497,7 @@
     "marketBreadth": "Šíře trhu",
     "climateNews": "Zprávy o klimatu",
     "fx": "Kurzy zahraniční měny",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "Incidenty UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -4203,12 +4203,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
+    "unavailable": "Data UKMTO nejsou dostupná.",
+    "empty": "UKMTO nevrátilo žádné incidenty.",
+    "stale": "Zastaralá data zdroje. Poslední kontrola",
+    "current": "Zdroj zkontrolován",
+    "reportedClaims": "Zprávy vydavatele. Tvrzení mohou být stále vyšetřována.",
     "occurred": "Incident",
-    "reported": "Published"
+    "reported": "Zveřejněno"
   }
 }

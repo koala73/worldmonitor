@@ -1852,7 +1852,7 @@ pending before this marker and becomes strict after it. Do not remove the marker
 to hide a failed source. UKMTO health remains independent of AIS and NGA.
 
 After approved deployment, change the service lifecycle to `active`, then observe
-at least three scheduled runs. Confirm terminal deployment, fresh seed metadata,
+at least three scheduled runs over at least 15 minutes. Confirm terminal deployment, fresh seed metadata,
 `ukmtoIncidents` health, the RPC response and the rendered panel. Search worker
 logs for `UKMTO seed failed`, invalid-field errors and non-200 responses. Repeated
 failures or a stale retrieval time require investigation of the upstream contract.

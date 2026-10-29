@@ -495,7 +495,7 @@
     "marketBreadth": "Amploarea pieței",
     "climateNews": "Știri despre climă",
     "fx": "Cursuri de schimb valutar",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "Incidente UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -4183,12 +4183,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
+    "unavailable": "Datele UKMTO nu sunt disponibile.",
+    "empty": "UKMTO nu a returnat incidente.",
+    "stale": "Date sursă învechite. Ultima verificare",
+    "current": "Sursă verificată",
+    "reportedClaims": "Rapoarte ale editorului. Afirmațiile pot fi încă investigate.",
     "occurred": "Incident",
-    "reported": "Published"
+    "reported": "Publicat"
   }
 }

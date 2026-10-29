@@ -920,6 +920,7 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
 // generated route tables and fails when an entry is not a real RPC path, when
 // its handler reaches an upstream itself, or when a seed-only route is missing.
 const cloudPreferredExact = new Set([
+  '/api/maritime/v1/list-ukmto-incidents',
   '/api/bootstrap',
   '/api/aviation/v1/get-airport-ops-summary',
   '/api/displacement/v1/get-displacement-summary',

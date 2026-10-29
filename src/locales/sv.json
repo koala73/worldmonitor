@@ -109,7 +109,7 @@
     "marketBreadth": "Marknadsbredd",
     "climateNews": "Klimatnyheter",
     "fx": "Valutakurser",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmto-incidents": "UKMTO-incidenter"
   },
   "commands": {
     "prefixes": {
@@ -4163,12 +4163,12 @@
     }
   },
   "ukmto": {
-    "unavailable": "UKMTO data unavailable.",
-    "empty": "No incidents returned by UKMTO.",
-    "stale": "Stale source data. Last checked",
-    "current": "Source checked",
-    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
+    "unavailable": "UKMTO-data är inte tillgängliga.",
+    "empty": "UKMTO returnerade inga incidenter.",
+    "stale": "Inaktuella källdata. Senast kontrollerad",
+    "current": "Källa kontrollerad",
+    "reportedClaims": "Utgivarens rapporter. Påståenden kan fortfarande utredas.",
     "occurred": "Incident",
-    "reported": "Published"
+    "reported": "Publicerad"
   }
 }
