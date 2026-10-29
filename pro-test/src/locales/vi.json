@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor: bảng tình báo địa chính trị thời gian thực. Bản đồ trực tiếp miễn phí: xung đột, hàng hải, chuyến bay, thị trường, an ninh mạng; có API và MCP."
     },
     "nav": {
-      "useCases": "Tương quan",
+      "useCases": "Trường hợp sử dụng",
       "firstFive": "5 phút đầu",
       "depth": "Chi tiết",
       "pricing": "Giá cả",

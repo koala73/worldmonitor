@@ -747,6 +747,28 @@ function absoluteUrl(baseUrl, pathname) {
   return `${normalizeBaseUrl(baseUrl)}${pathname}`;
 }
 
+// The dashboard view each audience hub hands off to, with that job's layers on.
+// Layer keys must exist in src/config/map-layer-definitions.ts (the corpus test checks).
+const HUB_DASHBOARD_VIEWS = {
+  crises: {
+    path: '/dashboard?layers=conflicts,hotspots,military,outages,natural&timeRange=7d',
+    label: 'Open conflict and crisis layers on the live map →',
+  },
+  chokepoints: {
+    path: '/dashboard?layers=ais,waterways,tradeRoutes,hotspots,sanctions,cables&timeRange=24h',
+    label: 'Open shipping and chokepoint layers on the live map →',
+  },
+  countries: {
+    path: '/dashboard?layers=ciiChoropleth,hotspots,conflicts&timeRange=7d',
+    label: 'Open the country instability map →',
+  },
+};
+
+function hubDashboardCta(hub, baseUrl) {
+  const view = HUB_DASHBOARD_VIEWS[hub];
+  return `<a class="cta" data-dashboard-link href="${escapeHtml(absoluteUrl(baseUrl, view.path))}">${escapeHtml(view.label)}</a>`;
+}
+
 function dataCatalogId(baseUrl) {
   return `${normalizeBaseUrl(baseUrl)}/${DATA_CATALOG_FRAGMENT}`;
 }
@@ -2763,6 +2785,7 @@ function renderCountriesIndex({ countries, ciiRanking, resilienceCoverage, baseU
       <p class="lede">${escapeHtml(description)}</p>
       <p><a href="/country-instability-index/">Live Country Instability Index rankings</a> · <a href="#country-resilience-ranking">Country Resilience Index ranking</a></p>
       <p>For the evergreen monitoring procedure that uses these pages as evidence, see <a href="/use-cases/monitor-country-risk/">Monitor country risk</a>.</p>
+      <p>${hubDashboardCta('countries', baseUrl)}</p>
 ${hubFaqs.map((faq) => `      <h2>${escapeHtml(faq.question)}</h2>
       <p>${escapeHtml(faq.answer)}</p>`).join('\n')}
       <div class="table-scroll" id="country-resilience-ranking"><table data-country-ranking>
@@ -4437,6 +4460,8 @@ function renderChokepointsIndex({ chokepoints, chokepointHubRows, livePulse, bas
   const body = `      <p class="eyebrow">Maritime corpus</p>
       <h1>Chokepoints and waterways</h1>
       <p class="lede">${escapeHtml(description)}</p>
+      <p>For the step-by-step monitoring procedure, see <a href="/use-cases/monitor-supply-chain-disruptions/">Monitor supply chain disruptions</a>.</p>
+      <p>${hubDashboardCta('chokepoints', baseUrl)}</p>
 ${hubFaqs.map((faq) => `      <h2 data-chokepoint-hub-faq>${escapeHtml(faq.question)}</h2>
       <p>${escapeHtml(faq.answer)}</p>`).join('\n')}
       <div class="table-scroll"><table data-chokepoint-status>
@@ -4830,6 +4855,8 @@ function renderCrisesIndex({ crises, baseUrl, lastmod }) {
       <h1>Current crisis trackers</h1>
       <p class="lede">${escapeHtml(lede)}</p>
       <p>Each tracker has a fixed, reviewable geographic boundary. The static page explains that boundary and ships a dated maintained-month pulse; JavaScript can refresh newer values and fails closed when a country summary is unavailable.</p>
+      <p>For the step-by-step verification procedure, see <a href="/use-cases/verify-breaking-news/">Verify breaking news</a>.</p>
+      <p>${hubDashboardCta('crises', baseUrl)}</p>
       <div class="grid">
 ${crises.map((crisis) => `        <a class="card" href="/crises/${escapeHtml(crisis.slug)}/"><strong>${escapeHtml(crisis.shortTitle)}</strong><br><span>${escapeHtml(crisis.coverage.map((country) => country.name).join(', '))}</span></a>`).join('\n')}
       </div>

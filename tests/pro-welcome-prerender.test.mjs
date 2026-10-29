@@ -381,6 +381,9 @@ test('built welcome root hides no SSR content and links every primary reference 
 test('built welcome page exposes a banner landmark and names every footer link', { skip }, () => {
   const { content: rootContent } = welcomeRoot();
   assert.match(rootContent, /<header><nav data-wm-nav="primary"/, 'the fixed nav should sit in a <header> banner landmark');
+  // The audience guides are reachable from the primary nav, not only from the task cards.
+  const nav = rootContent.slice(rootContent.indexOf('<nav data-wm-nav="primary"'), rootContent.indexOf('</nav>'));
+  assert.match(nav, /<a\b[^>]*href="\/use-cases\/"[^>]*>Use cases<\/a>/);
   assert.match(rootContent, /href="https:\/\/x\.com\/worldmonitorai"[^>]*>X \(Twitter\)<\/a>/);
   assert.doesNotMatch(rootContent, />X<\/a>/, 'a bare "X" link text is not descriptive');
 });

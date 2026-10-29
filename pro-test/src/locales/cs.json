@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor: geopolitický zpravodajský dashboard v reálném čase. Bezplatná živá mapa konfliktů, lodní dopravy, letů, trhů a kybernetiky, s API a MCP serverem."
     },
     "nav": {
-      "useCases": "Korelace",
+      "useCases": "Případy použití",
       "firstFive": "Prvních 5 minut",
       "depth": "Hloubka",
       "pricing": "Ceny",

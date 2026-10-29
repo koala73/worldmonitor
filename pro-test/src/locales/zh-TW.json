@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor：即時地緣政治情報儀表板。免費即時地圖，涵蓋衝突、海運、航班、市場和網路安全，提供 API 和 MCP 伺服器。"
     },
     "nav": {
-      "useCases": "關聯\t",
+      "useCases": "使用場景",
       "firstFive": "前 5 分鐘\t",
       "depth": "深度\t",
       "pricing": "定價\t",

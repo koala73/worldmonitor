@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor : tableau de bord géopolitique en temps réel. Carte en direct gratuite des conflits, navires, vols, marchés et cyber, avec API et serveur MCP."
     },
     "nav": {
-      "useCases": "Corrélations",
+      "useCases": "Cas d'usage",
       "firstFive": "Premières 5 min",
       "depth": "Profondeur",
       "pricing": "Tarification",

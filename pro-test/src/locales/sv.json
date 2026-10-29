@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor: panel för geopolitisk underrättelse i realtid. En gratis livekarta över konflikter, sjöfart, flyg, marknader och cyber, med API och MCP-server."
     },
     "nav": {
-      "useCases": "Korrelationer",
+      "useCases": "Användningsfall",
       "firstFive": "Första 5 min",
       "depth": "Djup",
       "pricing": "Prissättning",

@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor: dashboard di intelligence geopolitica in tempo reale. Mappa live gratuita di conflitti, navi, voli, mercati e cyber, con API e server MCP."
     },
     "nav": {
-      "useCases": "Correlazioni",
+      "useCases": "Casi d'uso",
       "firstFive": "Primi 5 min",
       "depth": "Approfondimento",
       "pricing": "Prezzi",

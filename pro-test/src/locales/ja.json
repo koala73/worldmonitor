@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor: リアルタイム地政学インテリジェンスダッシュボード。紛争、海運、航空便、市場、サイバーのライブマップが無料で利用でき、API と MCP サーバーも備えています。"
     },
     "nav": {
-      "useCases": "相関分析",
+      "useCases": "ユースケース",
       "firstFive": "最初の 5 分",
       "depth": "詳細解説",
       "pricing": "料金",

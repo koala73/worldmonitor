@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor: valós idejű geopolitikai hírszerzési irányítópult. Ingyenes élő térkép: konfliktusok, hajózás, járatok, piacok és kiber, API-val és MCP-vel."
     },
     "nav": {
-      "useCases": "Korrelációk",
+      "useCases": "Felhasználási esetek",
       "firstFive": "Első 5 perc",
       "depth": "Mélység",
       "pricing": "Díjszabás",

@@ -2670,6 +2670,31 @@ describe('crawlable corpus generator', () => {
       assertDataCatalogPresent(read(outDir, 'crises/index.html'), '/crises/');
       assertDataCatalogPresent(read(outDir, 'research/index.html'), '/research/');
 
+      // Each audience hub hands its reader to a dashboard view with that job's
+      // layers on, and to the monitoring workflow written for the same job.
+      const knownLayers = new Set(
+        [...readFileSync(resolve(repoRoot, 'src/config/map-layer-definitions.ts'), 'utf8')
+          .matchAll(/^\s+(\w+):\s+def\(/gm)].map((match) => match[1]),
+      );
+      for (const [route, useCase, expectedLayers] of [
+        ['crises', 'verify-breaking-news', ['conflicts', 'hotspots']],
+        ['chokepoints', 'monitor-supply-chain-disruptions', ['ais', 'waterways', 'tradeRoutes']],
+        ['countries', 'monitor-country-risk', ['ciiChoropleth']],
+      ]) {
+        const hub = htmlDocument(read(outDir, `${route}/index.html`), `https://www.worldmonitor.app/${route}/`);
+        const cta = hub.querySelector('a.cta[data-dashboard-link]');
+        assert.ok(cta, `/${route}/ needs a dashboard CTA`);
+        const target = new URL(cta.getAttribute('href'));
+        assert.equal(target.pathname, '/dashboard', `/${route}/ CTA must open the dashboard`);
+        const layers = (target.searchParams.get('layers') ?? '').split(',').filter(Boolean);
+        for (const layer of expectedLayers) assert.ok(layers.includes(layer), `/${route}/ CTA missing ${layer}`);
+        for (const layer of layers) assert.ok(knownLayers.has(layer), `/${route}/ CTA names unknown layer ${layer}`);
+        assert.ok(
+          hub.querySelector(`a[href="/use-cases/${useCase}/"]`),
+          `/${route}/ must link /use-cases/${useCase}/`,
+        );
+      }
+
       const datasetTemplateContracts = [
         {
           name: 'CII hub',

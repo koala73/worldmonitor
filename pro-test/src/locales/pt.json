@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor: painel de inteligência geopolítica em tempo real. Mapa gratuito ao vivo de conflitos, navios, voos, mercados e ciber, com API e servidor MCP."
     },
     "nav": {
-      "useCases": "Correlações",
+      "useCases": "Casos de uso",
       "firstFive": "Primeiros 5 min",
       "depth": "Profundidade",
       "pricing": "Preços",

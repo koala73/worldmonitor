@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor: 실시간 지정학 인텔리전스 대시보드. 분쟁, 해운, 항공, 시장 및 사이버를 다루는 무료 라이브 맵(API 및 MCP 서버 포함)."
     },
     "nav": {
-      "useCases": "상관관계",
+      "useCases": "활용 사례",
       "firstFive": "첫 5분",
       "depth": "깊이 분석",
       "pricing": "가격",
