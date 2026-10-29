@@ -51,11 +51,14 @@ describe('payment-failure-banner billing-state wiring (#4771)', () => {
     // A pending→failed transition must remove the old element and rebuild;
     // a same-variant event must not stack a duplicate. Dropping either half
     // ships stacked/stale banners invisibly (no jsdom in this suite).
+    // A changed bounced address must rebuild too, unless the repair form is
+    // open; the element carries both identities.
     assert.match(
       src,
-      /if \(existing\) \{\s*\n\s*if \(existingVariant === variant\.dismissKey\) return;\s*\n\s*existing\.remove\(\);\s*\n\s*\}/,
+      /if \(existing\) \{\s*\n\s*if \(existingVariant === variant\.dismissKey\s*\n\s*&& \(existing\.dataset\.email === billingEmail \|\| existing\.querySelector\('#pf-email-form'\)\)\) return;\s*\n\s*existing\.remove\(\);\s*\n\s*\}/,
     );
     assert.match(src, /banner\.dataset\.variant = variant\.dismissKey;/);
+    assert.match(src, /banner\.dataset\.email = billingEmail;/);
   });
 
   it('every banner variant key resolves in en.json, and on_hold copy is byte-identical to the pre-#4771 banner', async () => {

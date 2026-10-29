@@ -171,10 +171,12 @@ export function initPaymentFailureBanner(): () => void {
       }
     } catch { /* noop */ }
 
-    // Don't duplicate; rebuild only when the state changed. An open repair
-    // form survives unrelated subscription updates for the same reason.
+    // Don't duplicate; rebuild only when the state or the named address
+    // changed. An open repair form survives either, so a webhook landing
+    // mid-typing cannot wipe the input.
     if (existing) {
-      if (existingVariant === variant.dismissKey) return;
+      if (existingVariant === variant.dismissKey
+        && (existing.dataset.email === billingEmail || existing.querySelector('#pf-email-form'))) return;
       existing.remove();
     }
 
@@ -184,6 +186,7 @@ export function initPaymentFailureBanner(): () => void {
     const banner = document.createElement('div');
     banner.id = BANNER_ID;
     banner.dataset.variant = variant.dismissKey;
+    banner.dataset.email = billingEmail;
     Object.assign(banner.style, {
       position: 'fixed',
       top: '0',
@@ -228,7 +231,7 @@ export function initPaymentFailureBanner(): () => void {
     // Attach event listeners directly (avoid debounced setContent per project memory)
     const handlers: Record<BillingBannerAction['kind'], () => void> = {
       'billing-portal': openPortal,
-      'fix-billing-email': () => showBillingEmailForm(banner, accent, billingEmail, () => {
+      'fix-billing-email': () => showBillingEmailForm(banner, accent, banner.dataset.email ?? '', () => {
         banner.remove();
         render();
       }),
