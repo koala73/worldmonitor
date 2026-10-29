@@ -12,7 +12,7 @@
  * make graduated decisions (auto vs candidate) instead of the legacy 1.0 shortcut.
  * Reasons are returned so shadow mode and evidence_json can be human-readable.
  */
-import { parseSize } from '../normalizers/size.js';
+import { parseSize, type ParsedSize } from '../normalizers/size.js';
 import type { BasketItem } from '../config/types.js';
 
 /**
@@ -114,14 +114,16 @@ function computeTokenOverlap(canonicalName: string, productName: string): number
 function findNegativeToken(productName: string, negativeTokens: readonly string[] | undefined): string | null {
   if (!negativeTokens || negativeTokens.length === 0) return null;
   const titleTokens = new Set(tokens(productName));
-  const lowered = productName.toLowerCase();
+  const spaced = productName.toLowerCase().replace(/[\s-]+/g, ' ');
   for (const raw of negativeTokens) {
     const t = raw.toLowerCase().trim();
     if (!t) continue;
-    // Multi-word entries (e.g. "plant-based") are substring-matched; single
-    // words use whole-token match so "pastelaria" never matches "past".
+    // Multi-word entries (e.g. "plant-based") are substring-matched with
+    // hyphens and spaces treated alike, because URL path words arrive with
+    // hyphens turned into spaces. Single words use whole-token match so
+    // "pastelaria" never matches "past".
     if (t.includes(' ') || t.includes('-')) {
-      if (lowered.includes(t)) return raw;
+      if (spaced.includes(t.replace(/[\s-]+/g, ' '))) return raw;
     } else if (titleTokens.has(t)) {
       return raw;
     }
@@ -147,15 +149,18 @@ function urlPathWords(productUrl: string | undefined): string {
 // "Pack of 4", "(PACK OF 20 - 20 KG)", "set of 2". The `N x 500g` and
 // `N pack` forms are already read by parseSize.
 const PACK_OF = /\b(?:pack|set|combo)\s+of\s+(\d+)\b/i;
+const TITLE_SIZE = /(?<!\d)\d+(?:\.\d+)?\s*[a-z]+/gi;
 
 /**
  * The total size of a "pack of N" title, as `N x <unit size>`, or null.
  *
  * Extractors report the size printed for ONE unit ("1 L") while the multipack
  * appears only in the title ("Vishwai sunflower oil pack of 4", ₹2,120), so
- * the window alone admitted 4 L as the 1 L item. The unit size comes from the
- * title when it carries one, else from the extracted size. Count items are
- * skipped: for them "pack of 12" is the quantity itself.
+ * the window alone admitted 4 L as the 1 L item. The unit size is the
+ * smallest size the title states, else the extracted size: a title can state
+ * both the unit and the total ("1 KG (PACK OF 20 - 20 KG)", "400g (Pack of 2,
+ * 200g each)"), and multiplying the total would count it twice. Count items
+ * are skipped: for them "pack of 12" is the quantity itself.
  */
 function titleMultipackSize(
   productName: string,
@@ -166,7 +171,14 @@ function titleMultipackSize(
   const match = PACK_OF.exec(productName);
   const count = match ? Number(match[1]) : 0;
   if (!match || count <= 1) return null;
-  const unit = parseSize(productName.replace(match[0], ' ')) ?? parseSize(sizeText);
+  const titleSizes = [...productName.replace(match[0], ' ').matchAll(TITLE_SIZE)]
+    .map((m) => parseSize(m[0]))
+    .filter((size): size is ParsedSize => size !== null);
+  const unit = titleSizes.length
+    ? titleSizes
+        .filter((size) => size.baseUnit === titleSizes[0].baseUnit)
+        .reduce((min, size) => (size.baseQuantity < min.baseQuantity ? size : min))
+    : parseSize(sizeText);
   if (!unit || unit.packCount !== 1) return null;
   return `${count} x ${unit.sizeValue} ${unit.sizeUnit}`;
 }

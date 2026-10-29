@@ -618,6 +618,8 @@ describe('validateSearchHit — India multipacks and wrong products', () => {
     ['Fresh Paneer 200g', 'Amul Fresh Paneer 200 g (Pack)', '200 g'],
     ['Onions 1kg', 'Onion (Approx. 900 g - 1000 g)', '900 g'],
     ['Fresh Eggs 12 Pack', 'Farm Fresh White Eggs, Pack of 12', '12 pcs'],
+    // The title states both the total and the per-unit size; the total must not be multiplied again.
+    ['Plain Curd Yogurt 400g', 'Plain Curd Yogurt 400g (Pack of 2, 200g each)', '400g'],
   ])('still admits %s as "%s"', (canonicalName, productName, sizeText) => {
     expect(check(canonicalName, productName, sizeText).ok).toBe(true);
   });
@@ -633,6 +635,13 @@ describe('validateSearchHit — India multipacks and wrong products', () => {
       'https://www.jiomart.com/product/surya-1kg-tomato-pickle-authentic-taste-flavour-home-made-mq1234-5678');
     expect(r.ok).toBe(false);
     expect(r.reasons).toContain('negative-token:pickle');
+  });
+
+  it('matches a hyphenated negative token against the URL path', () => {
+    const r = check('Plain Curd Yogurt 400g', 'Plain Curd Yogurt 400g', '400 g',
+      'https://www.jiomart.com/product/epigamia-plant-based-curd-400-g-mx1abc-123456');
+    expect(r.ok).toBe(false);
+    expect(r.reasons).toContain('negative-token:plant-based');
   });
 
   it('reads negative tokens from the URL path only, not the host', () => {
