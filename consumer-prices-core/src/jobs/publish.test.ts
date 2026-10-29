@@ -183,7 +183,8 @@ const redisCli = process.env.REDIS_CLI_BIN || 'redis-cli';
 const redisServer = process.env.REDIS_SERVER_BIN || 'redis-server';
 const hasRedis = spawnSync(redisCli, ['--version']).status === 0 && spawnSync(redisServer, ['--version']).status === 0;
 
-it.skipIf(!hasRedis)('reconciles recovered and empty category counts without renewing retained clocks or expiry (real Redis)', async () => {
+it.skipIf(!hasRedis && !process.env.CI)('reconciles recovered and empty category counts without renewing retained clocks or expiry (real Redis)', async () => {
+  expect(hasRedis, 'CI requires redis-server and redis-cli for publisher expiry/concurrency proof').toBe(true);
   const dir = mkdtempSync('/tmp/consumer-publish-');
   const socket = join(dir, 'redis.sock');
   const started = spawnSync(redisServer, ['--port', '0', '--unixsocket', socket, '--save', '', '--appendonly', 'no',

@@ -649,6 +649,7 @@ jobs:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: consumer-prices-core/package-lock.json
+      - uses: ./.github/actions/install-redis
       - run: npm ci --prefix consumer-prices-core
       - run: npm test --prefix consumer-prices-core
 
