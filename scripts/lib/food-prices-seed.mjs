@@ -1,4 +1,4 @@
-import sources from '../../shared/food-price-sources.json' with { type: 'json' };
+import sources from '../shared/food-price-sources.json' with { type: 'json' };
 import { loadEnvFile, readSeedSnapshot, runSeed } from '../_seed-utils.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from '../_upstash-rest.mjs';
 import { tokensToContentMeta, DAY_MIN } from '../_content-age-helpers.mjs';

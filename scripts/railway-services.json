@@ -981,6 +981,7 @@
       "scripts/seed-world-cpi-imf.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
+      "scripts/shared/food-price-sources.json",
       "scripts/shared/iso2-to-iso3.json",
       "scripts/shared/iso3-to-iso2.json",
       "scripts/shared/physical-divergence-contract.js",

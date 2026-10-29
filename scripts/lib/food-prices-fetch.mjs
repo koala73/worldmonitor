@@ -1,6 +1,6 @@
 import { Agent, Dispatcher1Wrapper } from 'undici';
 import { setTimeout as delay } from 'node:timers/promises';
-import sources from '../../shared/food-price-sources.json' with { type: 'json' };
+import sources from '../shared/food-price-sources.json' with { type: 'json' };
 import { CHROME_UA } from '../_seed-utils.mjs';
 import { decodeHtmlEntities } from '../_html-entities.mjs';
 import {
