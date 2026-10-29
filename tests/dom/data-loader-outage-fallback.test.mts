@@ -42,14 +42,15 @@ interface LoaderInternals {
     feeds: FeedLike[],
     digest: Selection,
     isCustom: boolean,
-    options: { recordBaselineSample: boolean },
+    options: { recordBaselineSample: boolean; digestPending: boolean },
     generation?: number,
     recordSelectedFreshness?: (servedStale: boolean) => void,
   ): Promise<NewsItemLike[]>;
-  loadIntelNews(digest: Selection, options: { recordBaselineSample: boolean }): Promise<NewsItemLike[]>;
+  loadIntelNews(digest: Selection, options: { recordBaselineSample: boolean; digestPending: boolean }): Promise<NewsItemLike[]>;
 }
 
-const OPTIONS = { recordBaselineSample: false };
+const OPTIONS = { recordBaselineSample: false, digestPending: false };
+const PENDING = { recordBaselineSample: false, digestPending: true };
 const feeds = (names: string[]): FeedLike[] => names.map(name => ({ name, url: `https://feeds.example/${encodeURIComponent(name)}` }));
 
 function digestOf(category: string, sources: string[]): Selection {
@@ -75,12 +76,15 @@ function digestOf(category: string, sources: string[]): Selection {
 
 async function makeLoader() {
   const statusPanel = { updateDigestCoverage: vi.fn(), updateFeed: vi.fn(), updateApi: vi.fn() };
+  const panels = {
+    politics: { renderNews: vi.fn(), renderFilteredEmpty: vi.fn(), setRefreshDegraded: vi.fn() },
+  };
   const ctx = {
     statusPanel,
     disabledSources: new Set<string>(),
     newsCategoryPanelKeys: new Map<string, string>(),
-    newsPanels: {},
-    panels: {},
+    newsPanels: panels,
+    panels,
     newsByCategory: {},
     currentTimeRange: 'all',
     allNews: [],
@@ -88,7 +92,7 @@ async function makeLoader() {
   } as unknown as AppContext;
   const { DataLoaderManager } = await import('@/app/data-loader');
   const loader = new DataLoaderManager(ctx, { renderCriticalBanner: () => undefined, refreshOpenCountryBrief: () => undefined });
-  return { loader: loader as unknown as LoaderInternals, ctx, statusPanel };
+  return { loader: loader as unknown as LoaderInternals, ctx, statusPanel, panels };
 }
 
 const fetchedNames = () => (mocks.fetchCategoryFeeds.mock.calls[0]![0] as FeedLike[]).map(f => f.name);
@@ -152,8 +156,20 @@ describe('desktop outage fallback', () => {
     expect(fetchedNames()).toEqual(['Finance Wire', 'Commodity Desk']);
   });
 
-  it('shows the panel\'s last items instead of fetching while it has any', async () => {
-    const { loader } = await makeLoader();
+  it('waits for a pending digest instead of fetching, then falls back once it settles empty', async () => {
+    const { loader, statusPanel } = await makeLoader();
+
+    expect(await loader.loadNewsCategory('politics', feeds(['A', 'B']), null, false, PENDING)).toEqual([]);
+    expect(await loader.loadIntelNews(null, PENDING)).toEqual([]);
+    expect(mocks.fetchCategoryFeeds).not.toHaveBeenCalled();
+    expect(statusPanel.updateFeed).not.toHaveBeenCalled();
+
+    await loader.loadNewsCategory('politics', feeds(['A', 'B']), null, false, OPTIONS);
+    expect(fetchedNames()).toEqual(['A', 'B']);
+  });
+
+  it('shows the panel\'s last items instead of fetching while it has any, marked cached', async () => {
+    const { loader, panels } = await makeLoader();
     const shown = await loader.loadNewsCategory('politics', feeds(['A', 'B']), digestOf('politics', ['A', 'B']), false, OPTIONS);
     const recorded: boolean[] = [];
 
@@ -163,6 +179,7 @@ describe('desktop outage fallback', () => {
     expect(items.map(i => i.title).sort()).toEqual(shown.map(i => i.title).sort());
     expect(recorded).toEqual([true]);
     expect(mocks.fetchCategoryFeeds).not.toHaveBeenCalled();
+    expect(panels.politics.setRefreshDegraded).toHaveBeenLastCalledWith(true);
   });
 
   it('turning the switch off stops the fetch and reports the digest unavailable', async () => {
@@ -191,6 +208,15 @@ describe('desktop outage fallback', () => {
 });
 
 describe('web makes no direct feed requests', () => {
+  it('leaves a preset panel loading, not empty, while the digest is pending', async () => {
+    const { loader, statusPanel, panels } = await makeLoader();
+
+    await loader.loadNewsCategory('politics', feeds(['A', 'B']), null, false, PENDING);
+
+    expect(panels.politics.renderNews).not.toHaveBeenCalled();
+    expect(statusPanel.updateFeed).not.toHaveBeenCalled();
+  });
+
   it('leaves a preset panel empty when no digest carries its category (AE5)', async () => {
     const { loader, statusPanel } = await makeLoader();
 

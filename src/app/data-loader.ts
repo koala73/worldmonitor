@@ -1602,7 +1602,7 @@ export class DataLoaderManager implements AppModule {
     feeds: typeof FEEDS.politics,
     digestSelection: SelectedNewsDigest | null,
     isCustom = false,
-    options: NewsCategoryLoadOptions = { recordBaselineSample: true },
+    options: NewsCategoryLoadOptions = { recordBaselineSample: true, digestPending: false },
     generation = this.newsLoadGeneration,
     recordSelectedFreshness: (servedStale: boolean) => void = () => undefined,
   ): Promise<NewsItem[]> {
@@ -1734,6 +1734,7 @@ export class DataLoaderManager implements AppModule {
       if (staleItems.length > 0) {
         recordSelectedFreshness(true);
         console.warn(`[News] Digest missing for "${category}", serving stale headlines (${staleItems.length})`);
+        this.setNewsRefreshDegraded(category, true);
         this.renderNewsForCategory(category, staleItems);
         this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
           status: 'ok',
@@ -1741,6 +1742,10 @@ export class DataLoaderManager implements AppModule {
         });
         return staleItems;
       }
+
+      // The home digest is still in flight: leave the panel loading. The load
+      // pass reloads this category once it settles.
+      if (options.digestPending && !isCustom) return [];
 
       recordSelectedFreshness(false);
       if (!this.isNewsOutageFallbackEnabled()) {
@@ -1863,7 +1868,7 @@ export class DataLoaderManager implements AppModule {
 
   private async loadIntelNews(
     digestSelection: SelectedNewsDigest | null,
-    options: NewsIntelLoadOptions = { recordBaselineSample: true },
+    options: NewsIntelLoadOptions = { recordBaselineSample: true, digestPending: false },
     generation = this.newsLoadGeneration,
     recordSelectedFreshness: (servedStale: boolean) => void = () => undefined,
   ): Promise<NewsItem[]> {
@@ -1882,6 +1887,7 @@ export class DataLoaderManager implements AppModule {
 
     if (digest?.categories && 'intel' in digest.categories) {
       recordSelectedFreshness(digestServedStale);
+      this.setNewsRefreshDegraded('intel', false);
       // Digest branch for intel
       const intel = (digest.categories['intel']?.items ?? [])
         .map(protoItemToNewsItem)
@@ -1915,6 +1921,7 @@ export class DataLoaderManager implements AppModule {
     if (staleIntel.length > 0) {
       recordSelectedFreshness(true);
       console.warn(`[News] Intel digest missing, serving stale headlines (${staleIntel.length})`);
+      this.setNewsRefreshDegraded('intel', true);
       this.renderNewsForCategory('intel', staleIntel);
       if (intelPanel && options.recordBaselineSample) {
         try {
@@ -1926,6 +1933,8 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: staleIntel.length });
       return staleIntel;
     }
+
+    if (options.digestPending) return [];
 
     if (!this.isNewsOutageFallbackEnabled()) {
       recordSelectedFreshness(false);
