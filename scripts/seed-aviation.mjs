@@ -45,7 +45,7 @@ import notificationDedup from './shared/notification-dedup.cjs';
 import countryNameMap from './shared/country-name-to-iso2.cjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { airportNotifyLocation } from './lib/airport-notify-location.mjs';
-import { NMS_ACTIVATION_KEY, NMS_CLOSURES_KEY, isFreshNmsClosures, mergeClosureSources } from './lib/nms-notam.mjs';
+import { NARROW_CLOSURE_TEXT, NMS_ACTIVATION_KEY, NMS_CLOSURES_KEY, isFreshNmsClosures, mergeClosureSources } from './lib/nms-notam.mjs';
 
 const {
   buildDedupMaterial,
@@ -748,7 +748,7 @@ function faaSeverityFromAvg(avgDelay) {
   return 'normal';
 }
 
-function parseFaaXml(text) {
+export function parseFaaXml(text) {
   const delays = new Map();
   const parseTag = (xml, tag) => {
     const re = new RegExp(`<${tag}>(.*?)</${tag}>`, 'gs');
@@ -787,6 +787,9 @@ function parseFaaXml(text) {
   }
   for (const ac of parseTag(text, 'Airport')) {
     const arpt = getVal(ac, 'ARPT');
+    // The FAA lists LAX, SAN and LAS here all year for a NOTAM that only
+    // closes them to non-scheduled transient GA. Airline service runs.
+    if (NARROW_CLOSURE_TEXT.test(getVal(ac, 'Reason').toUpperCase())) continue;
     if (arpt && FAA_LIST.includes(arpt)) {
       delays.set(arpt, { airport: arpt, reason: 'Airport closure', avgDelay: 120, type: 'ground_stop' });
     }
