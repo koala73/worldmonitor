@@ -74,3 +74,14 @@ it('preserves the three-decimal precision of Tunisian dinar prices', () => {
   new FoodPricesCard(host).update([source({ id: 'onagri', country: 'Tunisia', contextOnly: true, prices: [{ ...row, price: 0.574, currency: 'TND' }] })]);
   expect(host.textContent).toContain('0.574 TND');
 });
+
+it('restores focus to the Tunisia table rather than the weekly table after refresh', () => {
+  const card = new FoodPricesCard(host);
+  const sources = [source(), source({ id: 'onagri', country: 'Tunisia', contextOnly: true })];
+  card.update(sources);
+  host.querySelector('details')!.open = true;
+  host.querySelector<HTMLElement>('details [role="region"]')!.focus();
+  card.update(sources);
+  expect(document.activeElement).toBe(host.querySelector('details [role="region"]'));
+  expect(host.querySelector('details')!.open).toBe(true);
+});

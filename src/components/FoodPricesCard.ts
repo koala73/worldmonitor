@@ -44,7 +44,7 @@ export class FoodPricesCard {
 
   private table(prices: FoodMarketPrice[], contextOnly: boolean): HTMLElement {
     const format = new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 });
-    return h('div', { className: 'food-prices-table-wrap', tabIndex: 0, role: 'region', 'aria-label': label('prices') },
+    return h('div', { className: 'food-prices-table-wrap', tabIndex: 0, role: 'region', 'aria-label': label('prices'), 'data-price-table': contextOnly ? 'context' : 'weekly' },
       h('table', { className: 'food-prices-table' },
         h('thead', {}, h('tr', {}, ...[label('product'), label('price'), ...(contextOnly ? [] : [label('weekly')])].map(text => h('th', { scope: 'col' }, text)))),
         h('tbody', {}, ...prices.map(price => h('tr', {},
@@ -59,6 +59,7 @@ export class FoodPricesCard {
     const wasOpen = this.host.querySelector('details')?.open ?? false;
     const active = document.activeElement;
     const focusLabel = active && this.host.contains(active) ? active.getAttribute('aria-label') : null;
+    const focusTable = active && this.host.contains(active) ? active.getAttribute('data-price-table') : null;
     const summaryFocused = active === this.host.querySelector('summary');
     const sections: HTMLElement[] = [];
     const weekly = this.sources.filter(source => !source.contextOnly);
@@ -102,6 +103,7 @@ export class FoodPricesCard {
     sections.push(context);
     this.host.replaceChildren(...sections);
     if (summaryFocused) context.querySelector('summary')?.focus({ preventScroll: true });
+    else if (focusTable) Array.from(this.host.querySelectorAll<HTMLElement>('[data-price-table]')).find(element => element.getAttribute('data-price-table') === focusTable)?.focus({ preventScroll: true });
     else if (focusLabel) Array.from(this.host.querySelectorAll<HTMLElement>('[aria-label]')).find(element => element.getAttribute('aria-label') === focusLabel)?.focus({ preventScroll: true });
   }
 

@@ -65,3 +65,29 @@ for (const failure of ['http', 'empty']) {
     await expect(panel.locator('.food-prices-table').first()).toContainText('PHP');
   });
 }
+
+for (const degraded of [{ sources: [] }, { unavailable: true, sources: fixture.sources }]) {
+  test(`food prices: local ${degraded.unavailable ? 'unavailable' : 'empty'} response offers recovery`, async ({ page }) => {
+    let failed = true;
+    await page.route('**/api/**', route => route.fulfill({ json: {} }));
+    await page.route('**/api/economic/v1/get-food-prices*', route => route.fulfill({ json: failed ? degraded : fixture }));
+    await page.addInitScript(() => {
+      localStorage.setItem('wm-layer-warning-dismissed', 'true');
+      localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
+      localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+      localStorage.setItem('wm-pro-key', 'wm-test-food-prices');
+      localStorage.setItem('worldmonitor-panels', JSON.stringify({ 'fao-food-price-index': { name: 'Food prices', enabled: true, priority: 0 } }));
+    });
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
+    const panel = page.locator('[data-panel="fao-food-price-index"]');
+    await panel.scrollIntoViewIfNeeded();
+    const card = panel.locator('.food-prices-card');
+    await expect(card.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+    failed = false;
+    await card.getByRole('button', { name: 'Retry', exact: true }).click();
+    await card.getByLabel('Country', { exact: true }).selectOption('da');
+    await expect(card.locator('.food-prices-table').first()).toContainText('PHP');
+    await expect(card.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
+  });
+}

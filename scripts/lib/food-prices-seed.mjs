@@ -37,7 +37,8 @@ export function runFoodPriceSource(id, moduleUrl) {
     validateFn: data => count(data) > 0,
     recordCount: count, declareRecords: count,
     ttlSeconds: Math.max(45, source.maxContentAgeDays + 14) * 86400,
-    lockTtlMs: source.fetchBudgetMs + 40_000, fetchPhaseTimeoutMs: source.fetchBudgetMs + 15_000,
+    // Cover retried staging/canonical/cleanup and freshness writes after the fetch deadline.
+    lockTtlMs: source.fetchBudgetMs + 600_000, fetchPhaseTimeoutMs: source.fetchBudgetMs + 15_000,
     sourceVersion: `food-prices-${id}-v1`, schemaVersion: 1,
     maxStaleMin: source.maxFetchAgeDays * DAY_MIN,
     contentMeta: data => tokensToContentMeta([...data.observations.map(row => row.date), ...data.contexts.map(context => context.referenceDate)]),

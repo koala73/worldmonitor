@@ -115,7 +115,11 @@ export class FaoFoodPriceIndexPanel extends Panel {
   private async fetchLocal(): Promise<void> {
     try {
       const data = await getEconomicClient().getFoodPrices({});
-      if (this.element.isConnected) this.foodPrices.update(data.sources ?? []);
+      if (this.element.isConnected) {
+        const sources = data.sources ?? [];
+        if (data.unavailable || sources.length === 0) this.foodPrices.showError(() => void this.fetchLocal());
+        else this.foodPrices.update(sources);
+      }
     } catch {
       if (this.element.isConnected) this.foodPrices.showError(() => void this.fetchLocal());
     }
