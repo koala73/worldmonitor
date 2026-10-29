@@ -2,7 +2,6 @@
 import { runBundle, DAY } from './_bundle-runner.mjs';
 import { OWID_SOURCE_VERSION } from './seed-owid-energy-mix.mjs';
 import { JODI_OIL_SOURCE_VERSION } from './seed-jodi-oil.mjs';
-import regionalEnergyFeeds from './shared/regional-energy-feeds.json' with { type: 'json' };
 
 await runBundle('energy-sources', [
   { label: 'GIE-Gas-Storage', script: 'seed-gie-gas-storage.mjs', seedMetaKey: 'economic:eu-gas-storage', canonicalKey: 'economic:eu-gas-storage:v1', intervalMs: DAY, timeoutMs: 180_000 },
@@ -46,26 +45,12 @@ await runBundle('energy-sources', [
   // because curated events are mostly historical; classifier extends daily
   // post-launch.
   { label: 'Energy-Disruptions', script: 'seed-energy-disruptions.mjs', seedMetaKey: 'energy:disruptions', canonicalKey: 'energy:disruptions:v1', intervalMs: 7 * DAY, timeoutMs: 60_000 },
-  ...[
-    { script: 'seed-regional-energy-pgcb.mjs' },
-    { script: 'seed-regional-energy-petrobangla.mjs' },
-    { script: 'seed-regional-energy-niso.mjs' },
-    { script: 'seed-regional-energy-eskom.mjs' },
-    { script: 'seed-regional-energy-cammesa.mjs' },
-    { script: 'seed-regional-energy-gse.mjs' },
-    { script: 'seed-regional-energy-ons.mjs' },
-    { script: 'seed-regional-energy-anp.mjs' },
-  ].map(({ script }) => {
-    const feed = regionalEnergyFeeds.find(feed => feed.script === script);
-    if (!feed) throw new Error(`Unregistered regional energy script ${script}`);
-    return {
-      label: `Regional-Energy-${feed.id}`,
-      script,
-      seedMetaKey: `energy:regional-${feed.id}`,
-      canonicalKey: `energy:regional:${feed.id}:v1`,
-      expectedSourceVersion: `regional-energy-${feed.id}-v1`,
-      intervalMs: feed.intervalMin * 60_000,
-      timeoutMs: 300_000,
-    };
-  }),
+  { label: 'Regional-Energy-pgcb', script: 'seed-regional-energy-pgcb.mjs', seedMetaKey: 'energy:regional-pgcb', canonicalKey: 'energy:regional:pgcb:v1', expectedSourceVersion: 'regional-energy-pgcb-v1', intervalMs: 3600000, timeoutMs: 300_000 },
+  { label: 'Regional-Energy-petrobangla', script: 'seed-regional-energy-petrobangla.mjs', seedMetaKey: 'energy:regional-petrobangla', canonicalKey: 'energy:regional:petrobangla:v1', expectedSourceVersion: 'regional-energy-petrobangla-v1', intervalMs: 86400000, timeoutMs: 300_000 },
+  { label: 'Regional-Energy-niso', script: 'seed-regional-energy-niso.mjs', seedMetaKey: 'energy:regional-niso', canonicalKey: 'energy:regional:niso:v1', expectedSourceVersion: 'regional-energy-niso-v1', intervalMs: 21600000, timeoutMs: 300_000 },
+  { label: 'Regional-Energy-eskom', script: 'seed-regional-energy-eskom.mjs', seedMetaKey: 'energy:regional-eskom', canonicalKey: 'energy:regional:eskom:v1', expectedSourceVersion: 'regional-energy-eskom-v1', intervalMs: 86400000, timeoutMs: 300_000 },
+  { label: 'Regional-Energy-cammesa', script: 'seed-regional-energy-cammesa.mjs', seedMetaKey: 'energy:regional-cammesa', canonicalKey: 'energy:regional:cammesa:v1', expectedSourceVersion: 'regional-energy-cammesa-v1', intervalMs: 3600000, timeoutMs: 300_000 },
+  { label: 'Regional-Energy-gse', script: 'seed-regional-energy-gse.mjs', seedMetaKey: 'energy:regional-gse', canonicalKey: 'energy:regional:gse:v1', expectedSourceVersion: 'regional-energy-gse-v1', intervalMs: 86400000, timeoutMs: 300_000 },
+  { label: 'Regional-Energy-ons', script: 'seed-regional-energy-ons.mjs', seedMetaKey: 'energy:regional-ons', canonicalKey: 'energy:regional:ons:v1', expectedSourceVersion: 'regional-energy-ons-v1', intervalMs: 43200000, timeoutMs: 300_000 },
+  { label: 'Regional-Energy-anp', script: 'seed-regional-energy-anp.mjs', seedMetaKey: 'energy:regional-anp', canonicalKey: 'energy:regional:anp:v1', expectedSourceVersion: 'regional-energy-anp-v1', intervalMs: 86400000, timeoutMs: 300_000 },
 ]);
