@@ -773,6 +773,10 @@ const USE_CASE_RENDERERS = {
   'monitor-supply-chain-disruptions': renderSupplyChainDisruptionsUseCase,
 };
 
+/**
+ * Render a USE_CASE_WORKFLOWS record as a crawlable page with matching structured data.
+ * Reject invalid descriptions and unknown related slugs before publishing the page.
+ */
 function renderMonitoringWorkflow({ page, tpl, baseUrl, lastmod }) {
   const { escapeHtml: esc, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = `/use-cases/${page.slug}/`;
