@@ -862,11 +862,12 @@ describe('OpenAPI curated example values', () => {
     assert.deepEqual(outOfRange, []);
   });
 
-  it('uses an ISO datetime example for webcam lastUpdated', () => {
+  it('uses an ISO datetime and supported media type in the webcam example', () => {
     const spec = JSON.parse(readFileSync(resolve(apiDir, 'WebcamService.openapi.json'), 'utf8'));
     const example = spec.paths?.['/api/webcam/v1/get-webcam-image']?.get
-      ?.responses?.['200']?.content?.[JSON_MEDIA]?.example?.lastUpdated;
-    assert.equal(example, '2026-01-15T12:00:00.000Z');
+      ?.responses?.['200']?.content?.[JSON_MEDIA]?.example;
+    assert.equal(example?.lastUpdated, '2026-01-15T12:00:00.000Z');
+    assert.equal(example?.mediaType, 'snapshot');
   });
 
   it('uses an ISO3 country and a real DTM operation for GetInternalDisplacement', () => {

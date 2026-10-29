@@ -223,6 +223,7 @@ function isCuratedOmission(key, context = {}) {
 function overrideStringExample(key, context = {}) {
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
   if (key === 'jmespath') return 'keys(@)';
+  if (key === 'mediatype' && (where.includes('getwebcamimage') || where.includes('get-webcam-image'))) return 'snapshot';
   // Shipping v2 webhooks: eventType is a registry key (shared/event-triggers.json)
   // and countries holds monitored ISO2 codes; the heuristic's "all" / "example"
   // are rejected by registerWebhook.
