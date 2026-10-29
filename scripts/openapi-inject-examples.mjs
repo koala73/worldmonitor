@@ -223,7 +223,6 @@ function isCuratedOmission(key, context = {}) {
 function overrideStringExample(key, context = {}) {
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
   if (key === 'jmespath') return 'keys(@)';
-  if (key === 'mediatype' && (where.includes('getwebcamimage') || where.includes('get-webcam-image'))) return 'snapshot';
   // Shipping v2 webhooks: eventType is a registry key (shared/event-triggers.json)
   // and countries holds monitored ISO2 codes; the heuristic's "all" / "example"
   // are rejected by registerWebhook.
@@ -1134,6 +1133,19 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
   schema = resolveRef(schema, spec);
+  if (depth === 0 && context.operationId === 'GetWebcamImage'
+    && context.exampleSurface === 'response') {
+    return {
+      thumbnailUrl: 'https://example.com/cam.jpg',
+      playerUrl: '',
+      title: 'Port camera',
+      windyUrl: 'https://www.windy.com/webcams/123',
+      lastUpdated: '2026-01-15T12:00:00.000Z',
+      resolvedAt: 1768478460000,
+      mediaType: 'snapshot',
+      error: '',
+    };
+  }
   if (depth === 0 && context.operationId === 'GetCountrySignalObservations'
     && context.exampleSurface === 'response') {
     return {

@@ -36315,11 +36315,14 @@ paths:
                     content:
                         application/json:
                             example:
-                                "error": "example"
+                                "error": ""
                                 "lastUpdated": "2026-01-15T12:00:00.000Z"
                                 "mediaType": "snapshot"
-                                "playerUrl": "https://example.com/worldmonitor"
-                                "resolvedAt": 1717200000000
+                                "playerUrl": ""
+                                "resolvedAt": 1768478460000
+                                "thumbnailUrl": "https://example.com/cam.jpg"
+                                "title": "Port camera"
+                                "windyUrl": "https://www.windy.com/webcams/123"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_webcam_v1_GetWebcamImageResponse'
                 "400":
