@@ -27,6 +27,11 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     action: "delete",
     notes: "Prefs write counters",
   },
+  {
+    target: "billingEmailUpdateAttempts",
+    action: "delete",
+    notes: "Billing email change cooldown",
+  },
   { target: "notificationChannels", action: "delete", notes: "Contact endpoints" },
   { target: "alertRules", action: "delete", notes: "Alert config" },
   { target: "telegramPairingTokens", action: "delete", notes: "Telegram pairing" },

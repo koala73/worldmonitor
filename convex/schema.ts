@@ -709,6 +709,15 @@ export default defineSchema({
       v.literal("lapsed"),
     )),
     renewalVerificationAttemptAt: v.optional(v.number()),
+    // Billing address the user set through payments/billing:updateBillingEmail,
+    // as Dodo reported it back, with the time of that read. Lifecycle
+    // webhooks replace rawPayload, so a delayed event generated before the
+    // repair would restore the bounced address; resolveBillingRecipient
+    // prefers this while observedAt is newer than updatedAt.
+    billingEmailOverride: v.optional(v.object({
+      email: v.string(),
+      observedAt: v.number(),
+    })),
   })
     .index("by_userId", ["userId"])
     .index("by_userId_status_currentPeriodEnd", ["userId", "status", "currentPeriodEnd"])
@@ -807,6 +816,13 @@ export default defineSchema({
   // payment-failure episode legitimately re-sends the sequence while webhook
   // replays and overlapping cron ticks stay idempotent. Growth is bounded by
   // real billing events (≤4 rows per episode), so no prune cron is needed.
+  // Last payments/billing:updateBillingEmail attempt per user. Every attempt
+  // calls Dodo on the shared API key, so one row per user carries the cooldown.
+  billingEmailUpdateAttempts: defineTable({
+    userId: v.string(),
+    attemptedAt: v.number(),
+  }).index("by_userId", ["userId"]),
+
   dunningEmails: defineTable({
     dodoSubscriptionId: v.string(),
     step: v.union(

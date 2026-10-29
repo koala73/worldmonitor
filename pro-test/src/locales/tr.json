@@ -714,7 +714,8 @@
       "chokepointDesc": "{{chokepoints}} kritik deniz dar geçidinde kesinti durumunu, gemi akışlarını ve riski inceleyin.",
       "countryRiskTitle": "Bir ülke riski hareketini açıklayın",
       "countryRiskDesc": "Bir ülkenin değişiminin ardındaki siyasi, güvenlik, ekonomik ve dayanıklılık sinyallerini izleyin; dayanıklılık {{resilienceRanked}} ülke için sıralandı.",
-      "open": "Kanıt görüntüle"
+      "open": "Kanıt görüntüle",
+      "workflow": "Adım adım iş akışı"
     }
   },
   "whatsNew": {

@@ -2162,6 +2162,7 @@ export async function loadCorpusData({
   const useCasesLastmod = laterDate(
     USE_CASES_CONTENT_VERSION,
     gitFileLastmod(rootDir, 'scripts/build-use-cases.mjs'),
+    gitFileLastmod(rootDir, 'scripts/data/use-case-workflows.mjs'),
   );
   const coverageCatalog = await loadCoverageCatalog({
     importModule: (relativePath) => importRepoModule(rootDir, relativePath),
@@ -2782,7 +2783,7 @@ function renderCountriesIndex({ countries, ciiRanking, resilienceCoverage, baseU
       },
     };
   });
-  const body = `      <p class="eyebrow">Country corpus</p>
+  const body = `      <p class="eyebrow">For country-risk analysts</p>
       <h1>Country risk, instability and resilience by country</h1>
       <p class="lede">${escapeHtml(description)}</p>
       <p><a href="/country-instability-index/">Live Country Instability Index rankings</a> · <a href="#country-resilience-ranking">Country Resilience Index ranking</a></p>
@@ -4459,7 +4460,7 @@ function renderChokepointsIndex({ chokepoints, chokepointHubRows, livePulse, bas
       },
     };
   });
-  const body = `      <p class="eyebrow">Maritime corpus</p>
+  const body = `      <p class="eyebrow">For supply-chain risk teams</p>
       <h1>Chokepoints and waterways</h1>
       <p class="lede">${escapeHtml(description)}</p>
       <p>For the step-by-step monitoring procedure, see <a href="/use-cases/monitor-supply-chain-disruptions/">Monitor supply chain disruptions</a>.</p>

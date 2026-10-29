@@ -714,7 +714,8 @@
       "chokepointDesc": "Controleer verstoringstatus, scheepsstromen en risico's over {{chokepoints}} kritieke zeepassages.",
       "countryRiskTitle": "Leg een landenrisico-beweging uit",
       "countryRiskDesc": "Volg de politieke, veiligheids-, economische en veerkrachtsignalen achter veranderingen in een land; veerkracht gerangschikt voor {{resilienceRanked}} landen.",
-      "open": "Open bewijs"
+      "open": "Open bewijs",
+      "workflow": "Stapsgewijze werkwijze"
     }
   },
   "whatsNew": {

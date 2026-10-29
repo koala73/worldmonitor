@@ -500,7 +500,8 @@
       "chokepointDesc": "Inspect disruption status, vessel flows, and risk across {{chokepoints}} critical maritime passages.",
       "countryRiskTitle": "Explain a country-risk move",
       "countryRiskDesc": "Trace the political, security, economic, and resilience signals behind a country's change, with resilience ranked for {{resilienceRanked}} countries.",
-      "open": "Open evidence"
+      "open": "Open evidence",
+      "workflow": "Step-by-step workflow"
     },
     "live": {
       "eyebrow": "Live right now",

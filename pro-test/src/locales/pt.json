@@ -714,7 +714,8 @@
       "chokepointDesc": "Inspecione o status de interrupções, fluxos de navios e riscos em {{chokepoints}} passagens marítimas críticas.",
       "countryRiskTitle": "Explicar uma mudança de risco país",
       "countryRiskDesc": "Rastreie sinais políticos, de segurança, econômicos e de resiliência por trás da mudança em um país, com resiliência classificada para {{resilienceRanked}} países.",
-      "open": "Abrir evidências"
+      "open": "Abrir evidências",
+      "workflow": "Fluxo de trabalho passo a passo"
     }
   },
   "whatsNew": {

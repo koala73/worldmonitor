@@ -2331,7 +2331,7 @@ describe('crawlable corpus generator', () => {
       );
       assert.equal(manifest.sections.tools.count, 3 + LIVE_TOPIC_PAGES.length);
       assert.equal(manifest.sections.research.count, 1);
-      assert.equal(manifest.sections.useCases.count, 3);
+      assert.equal(manifest.sections.useCases.count, 12);
       assert.equal(manifest.sections.accuracy.count, 1);
       assert.equal(manifest.sections.situation.count, 1);
       assert.equal(manifest.sections.situation.index, '/monitor-the-situation/');
@@ -3336,6 +3336,8 @@ describe('crawlable corpus generator', () => {
 
       const countriesIndex = read(outDir, 'countries/index.html');
       const countriesDocument = htmlDocument(countriesIndex, 'https://www.worldmonitor.app/countries/');
+      // The hub eyebrow names its reader, not the internal "corpus" build term.
+      assert.equal(countriesDocument.querySelector('.eyebrow')?.textContent, 'For country-risk analysts');
       const rankingRows = countriesDocument.querySelectorAll('table[data-country-ranking] tbody tr');
       assert.equal(rankingRows.length, corpusData.countries.length);
       assert.equal(
@@ -4100,6 +4102,7 @@ describe('crawlable corpus generator', () => {
         chokepointsIndex,
         'https://www.worldmonitor.app/chokepoints/',
       );
+      assert.equal(chokepointsDocument.querySelector('.eyebrow')?.textContent, 'For supply-chain risk teams');
       const chokepointRows = [...chokepointsDocument.querySelectorAll(
         'table[data-chokepoint-status] tbody tr',
       )];
@@ -6101,7 +6104,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
             pageFor(manifest.sections.research.index),
           ]],
           ['useCases', [
-            laterDate(USE_CASES_CONTENT_VERSION, gitFileLastmod(repoRoot, data.sources.useCases)),
+            laterDate(USE_CASES_CONTENT_VERSION, gitFileLastmod(repoRoot, data.sources.useCases), gitFileLastmod(repoRoot, 'scripts/data/use-case-workflows.mjs')),
             pageFor(manifest.sections.useCases.index),
           ]],
           ['coverage', [

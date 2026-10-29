@@ -714,7 +714,8 @@
       "chokepointDesc": "Ellenőrizze a zavarok állapotát, a hajóáramlásokat és a kockázatokat {{chokepoints}} kritikus tengeri passzuson.",
       "countryRiskTitle": "Országkockázati lépés magyarázata",
       "countryRiskDesc": "Nyomon követheti az országok politikai, biztonsági, gazdasági és rugalmassági jeleit, {{resilienceRanked}} ország rugalmassági besorolásával.",
-      "open": "Bizonyítékok megnyitása"
+      "open": "Bizonyítékok megnyitása",
+      "workflow": "Lépésről lépésre munkafolyamat"
     }
   },
   "whatsNew": {

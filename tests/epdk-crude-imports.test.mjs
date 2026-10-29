@@ -7,6 +7,8 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 
@@ -44,6 +46,17 @@ async function xlsx(sheets) {
     for (const r of rows) ws.addRow(r);
   }
   return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+// Hand-written SpreadsheetML, for the parts of the format ExcelJS never
+// writes on its own (inline strings, merges, self-closing rows, sheet order).
+async function rawXlsx({ sheets, sharedStrings = [] }) {
+  const zip = new JSZip();
+  zip.file('xl/workbook.xml', `<?xml version="1.0"?><workbook xmlns:r="r"><sheets>${sheets.map((s, i) => `<sheet name="${s.name}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`);
+  zip.file('xl/_rels/workbook.xml.rels', `<?xml version="1.0"?><Relationships>${sheets.map((s, i) => `<Relationship Id="rId${i + 1}" Type="worksheet" Target="${s.target}"/>`).join('')}</Relationships>`);
+  zip.file('xl/sharedStrings.xml', `<?xml version="1.0"?><sst>${sharedStrings.map((s) => `<si>${s}</si>`).join('')}</sst>`);
+  for (const s of sheets) zip.file(`xl/${s.target.replace(/^\/?xl\//, '')}`, `<?xml version="1.0"?><worksheet><sheetData>${s.rows}</sheetData>${s.tail ?? ''}</worksheet>`);
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
 const DEC_2025_DOCX = () => docx([
@@ -242,6 +255,68 @@ describe('EPDK crude import tables', () => {
     assert.equal(entry.totalT, 3400);
     const janCumulative = { title: 'Tablo 2: Ülkelere Göre Kümülatif Petrol İthalatı (Ocak 2026)', rows: [HEADER, ['Irak', 5, 0, 5, 100], ['Toplam', 5, 0, 5, 100]] };
     assert.deepEqual({ ...crudeImportsFromTable(janCumulative), rows: undefined }, { month: '2026-01', cumulative: true, totalT: 5, rows: undefined });
+  });
+
+  it('reads cell values the way the annexes store them', async () => {
+    const buf = await rawXlsx({
+      sharedStrings: [
+        '<t>Tablo 2: Ocak 2026 Dönemi Ülkelere Göre Petrol İthalatı</t>',
+        '<t>Ülke</t>',
+        '<r><t>Ham </t></r><r><rPr><b/></rPr><t xml:space="preserve">Petrol</t></r>',
+        '<t>Irak &amp; Körfez</t>',
+      ],
+      sheets: [
+        // Workbook order, not file names, orders the sheets: this one is
+        // listed first but stored as sheet2.xml.
+        {
+          name: 'Tablo 1',
+          target: 'worksheets/sheet2.xml',
+          rows: '<row r="1"><c r="A1" t="inlineStr"><is><t>Tablo 1: Özet</t></is></c></row>'
+            + '<row r="2"><c r="A2" t="inlineStr"><is><r><t>Ham </t></r><r><t>Petrol</t></r></is></c><c r="B2"><v>7</v></c></row>',
+        },
+        {
+          name: 'Tablo 2',
+          target: '/xl/worksheets/sheet1.xml',
+          rows: [
+            '<row r="1" spans="1:3"/>',
+            '<row r="2"><c r="B2" t="s"><v>0</v></c></row>',
+            '<row r="3"><c r="B3" t="s"><v>1</v></c><c r="C3" t="s"><v>2</v></c><c r="D3" s="4"/></row>',
+            '<row r="4"><c r="B4" t="s"><v>3</v></c><c r="C4"><f>SUM(X1:X2)</f><v>600.5</v></c></row>',
+            '<row r="5"><c r="B5" t="str"><f>"Top"&amp;"lam"</f><v>Toplam</v></c><c r="C5" s="2"><v>600.5</v></c></row>',
+          ].join(''),
+          tail: '<mergeCells count="1"><mergeCell ref="B4:B5"/></mergeCells>',
+        },
+      ],
+    });
+    // A merged cell reads as its range's top-left value, an empty styled cell
+    // as nothing, and a formula as its cached result.
+    // Inline strings join their runs like shared ones.
+    const tables = await tablesFromXlsx(buf);
+    assert.deepEqual(tables.map((t) => t.title), ['Tablo 1: Özet', 'Tablo 2: Ocak 2026 Dönemi Ülkelere Göre Petrol İthalatı']);
+    assert.deepEqual(tables[0].rows, [['Ham Petrol', 7]]);
+    assert.deepEqual(tables[1].rows.map((r) => Array.from(r, (c) => c ?? '')), [
+      ['', 'Ülke', 'Ham Petrol'],
+      ['', 'Irak & Körfez', 600.5],
+      ['', 'Irak & Körfez', 600.5],
+    ]);
+  });
+
+  it('parses a real 2026 Excel annex inside a 128 MB heap', () => {
+    // The 2026-08 annex: ~80k cells and ~2,100 merged ranges in 514 KB.
+    // ExcelJS could not load it in a 256 MB heap; with the bundle's 8 GB heap
+    // ceiling it pushed the 1 GB Railway container into a SIGKILL (2026-10-29).
+    const file = fileURLToPath(new URL('./fixtures/epdk-2026-08-annex.xlsx', import.meta.url));
+    const moduleUrl = new URL('../scripts/_epdk-crude-imports.mjs', import.meta.url).href;
+    const script = `import { readFileSync } from 'node:fs';
+      const m = await import(${JSON.stringify(moduleUrl)});
+      const tables = await m.tablesFromXlsx(readFileSync(${JSON.stringify(file)}));
+      process.stdout.write(JSON.stringify(tables.map(m.crudeImportsFromTable).filter(Boolean)));`;
+    const child = spawnSync(process.execPath, ['--max-old-space-size=128', '--input-type=module', '-e', script], { encoding: 'utf8', timeout: 60_000 });
+    assert.equal(child.status, 0, child.stderr.slice(-400));
+    const entries = JSON.parse(child.stdout);
+    assert.deepEqual(entries.map((e) => ({ month: e.month, cumulative: e.cumulative, totalT: e.totalT, rows: e.rows.length })), [
+      { month: '2026-08', cumulative: true, totalT: 21744885.293, rows: 43 },
+    ]);
   });
 
   it('names the origins EPDK uses, including every Gulf exporter', () => {

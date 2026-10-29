@@ -714,7 +714,8 @@
       "chokepointDesc": "Inspectează starea perturbării, fluxurile de nave și riscul pe {{chokepoints}} pasaje maritime critice.",
       "countryRiskTitle": "Explicați o mișcare de risc-țară",
       "countryRiskDesc": "Urmărește semnalele politice, de securitate, economice și de reziliență din spatele schimbării unei țări, cu reziliență clasificată pentru {{resilienceRanked}} de țări.",
-      "open": "Deschideți dovezi"
+      "open": "Deschideți dovezi",
+      "workflow": "Flux de lucru pas cu pas"
     }
   },
   "whatsNew": {

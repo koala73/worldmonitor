@@ -110,7 +110,8 @@ function splitCsvLine(line) {
   return fields;
 }
 
-export function parseCsv(text) {
+/** Rows of a JODI CSV; with `keep`, only the rows it accepts are kept. */
+export function parseCsv(text, keep = null) {
   const lines = text.split('\n');
   if (!lines.length) return [];
   const header = splitCsvLine(lines[0]);
@@ -123,7 +124,7 @@ export function parseCsv(text) {
     for (let j = 0; j < header.length; j++) {
       row[header[j]] = parts[j] ?? '';
     }
-    rows.push(row);
+    if (!keep || keep(row)) rows.push(row);
   }
   return rows;
 }
@@ -571,21 +572,58 @@ export function assessChinaOilCoverage(countries, now = new Date()) {
   return assessChinaJodiCoverage(countries, now, hasOilMeasurements);
 }
 
-async function fetchCsv(url) {
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'text/csv,text/plain,*/*' },
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!resp.ok) {
-    const err = new Error(`JODI CSV fetch failed: HTTP ${resp.status} for ${url}`);
-    // A missing static file does not appear during a 2s backoff, and this
-    // seeder now tries two naming conventions per year — retrying each 404
-    // three times would spend ~12s of the bundle's wall-clock budget just to
-    // rediscover that a year is not published under that name.
-    if (resp.status === 404) err.nonRetryable = true;
-    throw err;
+// The year files are 7-26 MB and jodidata.org serves about 1 MB/s per
+// connection, so a whole-request timeout cuts healthy downloads (30 s did,
+// for every 2026 file, on 2026-10-29). Abort when bytes stop arriving, or
+// past a budget that leaves the bundle section (600 s) room for one retry.
+const JODI_STALL_MS = 30_000;
+const JODI_DOWNLOAD_BUDGET_MS = 180_000;
+
+export async function fetchCsv(url, {
+  fetchImpl = (...args) => globalThis.fetch(...args),
+  stallMs = JODI_STALL_MS,
+  budgetMs = JODI_DOWNLOAD_BUDGET_MS,
+} = {}) {
+  const controller = new AbortController();
+  const budget = setTimeout(() => {
+    const err = new Error(`JODI CSV download exceeded ${budgetMs / 1000}s for ${url}`);
+    // A steady but slow transfer will not finish faster on a retry.
+    err.nonRetryable = true;
+    controller.abort(err);
+  }, budgetMs);
+  let stall = null;
+  const armStall = () => {
+    clearTimeout(stall);
+    stall = setTimeout(() => controller.abort(new Error(`JODI CSV download stalled ${stallMs / 1000}s for ${url}`)), stallMs);
+  };
+  try {
+    armStall();
+    const resp = await fetchImpl(url, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'text/csv,text/plain,*/*' },
+      signal: controller.signal,
+    });
+    if (!resp.ok) {
+      await resp.body?.cancel().catch(() => {});
+      const err = new Error(`JODI CSV fetch failed: HTTP ${resp.status} for ${url}`);
+      // A missing static file does not appear during a 2s backoff, and this
+      // seeder now tries two naming conventions per year — retrying each 404
+      // three times would spend ~12s of the bundle's wall-clock budget just to
+      // rediscover that a year is not published under that name.
+      if (resp.status === 404) err.nonRetryable = true;
+      throw err;
+    }
+    const chunks = [];
+    for await (const chunk of resp.body ?? []) {
+      armStall();
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks).toString('utf8');
+  } catch (err) {
+    throw controller.signal.aborted ? controller.signal.reason : err;
+  } finally {
+    clearTimeout(budget);
+    clearTimeout(stall);
   }
-  return resp.text();
 }
 
 export function mergeSourceRows(
@@ -599,16 +637,12 @@ export function mergeSourceRows(
   if (!secondaryCurrent && !secondaryPrior) {
     throw new Error('Both secondary JODI CSV files failed to download; product-level data unavailable');
   }
-  const allRows = [
-    ...(primaryCurrent ? parseCsv(primaryCurrent) : []),
-    ...(primaryPrior ? parseCsv(primaryPrior) : []),
-    ...(secondaryCurrent ? parseCsv(secondaryCurrent) : []),
-    ...(secondaryPrior ? parseCsv(secondaryPrior) : []),
-    ...(secondaryLookback ? parseCsv(secondaryLookback) : []),
-    ...(primaryLookback ? parseCsv(primaryLookback) : []),
-  ];
-  // Flows are kb/d; closing stocks are the one KBBL measure kept.
-  return allRows.filter(r => r.UNIT_MEASURE === 'KBD' || isStockRow(r));
+  // Flows are kb/d; closing stocks are the one KBBL measure kept. Filtering
+  // while parsing keeps ~1 row in 5: building all six files' rows first held
+  // ~640 MB of heap, past the bundle's 1 GB container with its other costs.
+  const keep = r => r.UNIT_MEASURE === 'KBD' || isStockRow(r);
+  return [primaryCurrent, primaryPrior, secondaryCurrent, secondaryPrior, secondaryLookback, primaryLookback]
+    .flatMap(text => (text ? parseCsv(text, keep) : []));
 }
 
 /**

@@ -15,8 +15,9 @@ const read = (path: string) => readFile(new URL(`../${path}`, import.meta.url), 
 describe('payment-failure-banner billing-state wiring (#4771)', () => {
   it('derives the banner from the shared billing UX state, not raw on_hold checks', async () => {
     const src = await read('src/components/payment-failure-banner.ts');
-    assert.match(src, /deriveBillingUxState\(getSubscription\(\), getEntitlementState\(\), Date\.now\(\)\)/);
-    assert.match(src, /getBillingBannerVariant\(/);
+    assert.match(src, /const sub = getSubscription\(\);/);
+    assert.match(src, /deriveBillingUxState\(sub, getEntitlementState\(\), Date\.now\(\)\)/);
+    assert.match(src, /getBillingBannerVariant\(state, sub\?\.billingEmailBounced === true\)/);
     assert.doesNotMatch(
       src,
       /sub\.status !== 'on_hold'/,
@@ -39,8 +40,10 @@ describe('payment-failure-banner billing-state wiring (#4771)', () => {
 
   it('resolves banner copy through i18n with the variant keys', async () => {
     const src = await read('src/components/payment-failure-banner.ts');
-    assert.match(src, /t\(variant\.messageKey\)/);
-    assert.match(src, /t\(variant\.actionLabelKey\)/);
+    // The message carries the bounced address, so it is set as text, never
+    // interpolated into the trusted template.
+    assert.match(src, /message\.textContent = t\(variant\.messageKey, \{ email: billingEmail \}\)/);
+    assert.match(src, /t\(action\.labelKey\)/);
   });
 
   it('tears down a stale banner on variant switch and short-circuits same-variant re-renders', async () => {
@@ -48,11 +51,14 @@ describe('payment-failure-banner billing-state wiring (#4771)', () => {
     // A pending→failed transition must remove the old element and rebuild;
     // a same-variant event must not stack a duplicate. Dropping either half
     // ships stacked/stale banners invisibly (no jsdom in this suite).
+    // A changed bounced address must rebuild too, unless the repair form is
+    // open; the element carries both identities.
     assert.match(
       src,
-      /if \(existing\) \{\s*\n\s*if \(existingVariant === variant\.dismissKey\) return;\s*\n\s*existing\.remove\(\);\s*\n\s*\}/,
+      /if \(existing\) \{\s*\n\s*if \(existingVariant === variant\.dismissKey\s*\n\s*&& \(existing\.dataset\.email === billingEmail \|\| existing\.querySelector\('#pf-email-form'\)\)\) return;\s*\n\s*existing\.remove\(\);\s*\n\s*\}/,
     );
     assert.match(src, /banner\.dataset\.variant = variant\.dismissKey;/);
+    assert.match(src, /banner\.dataset\.email = billingEmail;/);
   });
 
   it('every banner variant key resolves in en.json, and on_hold copy is byte-identical to the pre-#4771 banner', async () => {
@@ -63,11 +69,12 @@ describe('payment-failure-banner billing-state wiring (#4771)', () => {
     };
     const billingState = en.components.billingState;
     const { getBillingBannerVariant } = await import('../src/services/billing-state.ts');
-    for (const state of ['on_hold', 'renewal_verification_pending', 'renewal_verification_failed'] as const) {
-      const v = getBillingBannerVariant(state);
-      assert.ok(v);
-      for (const key of [v.messageKey, v.actionLabelKey]) {
-        if (key === null) continue;
+    const variants = (['on_hold', 'renewal_verification_pending', 'renewal_verification_failed', 'active'] as const)
+      .flatMap((state) => [getBillingBannerVariant(state), getBillingBannerVariant(state, true)])
+      .filter((v) => v !== null);
+    assert.equal(variants.length, 7);
+    for (const v of variants) {
+      for (const key of [v.messageKey, ...v.actions.map((a) => a.labelKey)]) {
         const leaf = key.replace('components.billingState.', '');
         assert.equal(typeof billingState[leaf], 'string', `${key} must exist in en.json`);
       }

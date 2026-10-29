@@ -714,7 +714,8 @@
       "chokepointDesc": "查看{{chokepoints}}条关键海运通道的中断状态、船舶流向和风险。",
       "countryRiskTitle": "解释国家风险变动",
       "countryRiskDesc": "追踪国家变化背后的政治、安全、经济和韧性信号，涵盖{{resilienceRanked}}个国家的韧性排名。",
-      "open": "打开证据"
+      "open": "打开证据",
+      "workflow": "分步工作流程"
     }
   },
   "whatsNew": {
