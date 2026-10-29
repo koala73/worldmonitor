@@ -284,6 +284,40 @@ describe("updateBillingEmail", () => {
     expect((await readSubscription(t))?.billingEmailBounced).toBe(true);
   });
 
+  test("a second attempt inside the cooldown is refused before Dodo, and allowed after it", async () => {
+    dodoAcceptsUpdates();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW + 1000);
+    const t = convexTest(schema, modules);
+    await seedSubscription(t);
+    await suppress(t, BOUNCED, "bounce");
+
+    await t.withIdentity(IDENTITY).action(api.payments.billing.updateBillingEmail, { email: FIXED });
+    expect(dodoCustomerUpdateMock).toHaveBeenCalledTimes(1);
+
+    await expect(
+      t.withIdentity(IDENTITY).action(api.payments.billing.updateBillingEmail, { email: "other@example.com" }),
+    ).rejects.toThrow("BILLING_EMAIL_RATE_LIMITED");
+    expect(dodoCustomerUpdateMock).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(NOW + 1000 + 11_000);
+    await t.withIdentity(IDENTITY).action(api.payments.billing.updateBillingEmail, { email: "other@example.com" });
+    expect(dodoCustomerUpdateMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("the address already on file returns without calling Dodo", async () => {
+    dodoAcceptsUpdates();
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, { email: FIXED });
+    await seedCustomer(t, { email: FIXED });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .action(api.payments.billing.updateBillingEmail, { email: FIXED.toUpperCase() });
+    expect(result).toEqual({ email: FIXED });
+    expect(dodoCustomerUpdateMock).not.toHaveBeenCalled();
+  });
+
   test("a later customer failing keeps what Dodo already changed for earlier ones", async () => {
     process.env.DODO_API_KEY = "test_dodo_key";
     dodoCustomerUpdateMock.mockImplementation(async (customerId: string) => {

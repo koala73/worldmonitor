@@ -3801,6 +3801,8 @@ const BILLING_EMAIL_MAX_LENGTH = 254;
 // Shape only; Dodo and Resend judge deliverability. Catches what a checkout
 // typo looks like (whitespace, no domain) without rejecting unusual mailboxes.
 const BILLING_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Room to correct a typo, not to loop Dodo customer updates.
+const BILLING_EMAIL_UPDATE_COOLDOWN_MS = 10_000;
 
 /** Trimmed address, or a structured INVALID_EMAIL throw the client can show. */
 export function parseBillingEmail(raw: string): string {
@@ -3830,11 +3832,14 @@ function customerIdOfSubscription(sub: Doc<"subscriptions">): string | null {
  * exclusivity check as the portal: a customer another Clerk user is linked to
  * must not have its address rewritten by this one. Ownership is settled
  * before the suppression lookup so a caller with nothing to repair cannot
- * use this as an oracle for which addresses are suppressed.
+ * use this as an oracle for which addresses are suppressed. A mutation so the
+ * per-user cooldown is claimed atomically: each attempt spends Dodo calls on
+ * the shared API key. An address already on file returns no customers, so
+ * the action skips Dodo entirely.
  */
-export const getBillingEmailUpdateTarget = internalQuery({
+export const claimBillingEmailUpdate = internalMutation({
   args: { userId: v.string(), email: v.string() },
-  handler: async (ctx, args): Promise<{ customerIds: string[] }> => {
+  handler: async (ctx, args): Promise<{ customerIds: string[]; onFile?: string }> => {
     if (await isAccountDeleting(ctx, args.userId)) {
       throw new ConvexError({ kind: "ACCOUNT_DELETION_IN_PROGRESS" });
     }
@@ -3867,6 +3872,24 @@ export const getBillingEmailUpdateTarget = internalQuery({
     if (suppression && suppression.reason !== "unsubscribe") {
       throw new ConvexError({ kind: "EMAIL_SUPPRESSED" });
     }
+
+    const requested = args.email.toLowerCase();
+    const onFile = await Promise.all(subs.map((sub) => resolveBillingRecipient(ctx, sub)));
+    const unchanged =
+      customers.every((customer) => customer.email.trim().toLowerCase() === requested) &&
+      onFile.every((email) => email.toLowerCase() === requested);
+    if (unchanged) return { customerIds: [], onFile: onFile[0] || customers[0]?.email.trim() };
+
+    const now = Date.now();
+    const attempt = await ctx.db
+      .query("billingEmailUpdateAttempts")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    if (attempt && now - attempt.attemptedAt < BILLING_EMAIL_UPDATE_COOLDOWN_MS) {
+      throw new ConvexError({ kind: "BILLING_EMAIL_RATE_LIMITED" });
+    }
+    if (attempt) await ctx.db.patch(attempt._id, { attemptedAt: now });
+    else await ctx.db.insert("billingEmailUpdateAttempts", { userId: args.userId, attemptedAt: now });
     return { customerIds: [...customerIds] };
   },
 });
@@ -3939,10 +3962,11 @@ export const updateBillingEmail = action({
   handler: async (ctx, args): Promise<{ email: string }> => {
     const userId = await requireUserId(ctx);
     const email = parseBillingEmail(args.email);
-    const { customerIds } = await ctx.runQuery(
-      internal.payments.billing.getBillingEmailUpdateTarget,
+    const { customerIds, onFile } = await ctx.runMutation(
+      internal.payments.billing.claimBillingEmailUpdate,
       { userId, email },
     );
+    if (customerIds.length === 0) return { email: onFile ?? email };
 
     const client = getDodoClient();
     const describe = (err: unknown): string => (err instanceof Error ? err.message : String(err));

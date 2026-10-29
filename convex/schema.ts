@@ -816,6 +816,13 @@ export default defineSchema({
   // payment-failure episode legitimately re-sends the sequence while webhook
   // replays and overlapping cron ticks stay idempotent. Growth is bounded by
   // real billing events (≤4 rows per episode), so no prune cron is needed.
+  // Last payments/billing:updateBillingEmail attempt per user. Every attempt
+  // calls Dodo on the shared API key, so one row per user carries the cooldown.
+  billingEmailUpdateAttempts: defineTable({
+    userId: v.string(),
+    attemptedAt: v.number(),
+  }).index("by_userId", ["userId"]),
+
   dunningEmails: defineTable({
     dodoSubscriptionId: v.string(),
     step: v.union(

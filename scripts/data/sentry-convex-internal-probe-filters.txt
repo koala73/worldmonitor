@@ -200,6 +200,7 @@
 *Could not find public function for 'payments/billing:applyDodoSubscriptionReconciliation'*
 *Could not find public function for 'payments/billing:backfillMissingCustomers'*
 *Could not find public function for 'payments/billing:backfillSubscriptionDodoCustomerId'*
+*Could not find public function for 'payments/billing:claimBillingEmailUpdate'*
 *Could not find public function for 'payments/billing:claimRecentlyStaleSubscriptionForVerification'*
 *Could not find public function for 'payments/billing:claimStuckPaymentReconciliation'*
 *Could not find public function for 'payments/billing:deleteSubscriptionByDodoId'*
@@ -208,7 +209,6 @@
 *Could not find public function for 'payments/billing:finalizeRecentlyStaleSubscriptionVerification'*
 *Could not find public function for 'payments/billing:finalizeStuckPaymentReconciliation'*
 *Could not find public function for 'payments/billing:getActiveSubscription'*
-*Could not find public function for 'payments/billing:getBillingEmailUpdateTarget'*
 *Could not find public function for 'payments/billing:getBlockingPendingPayment'*
 *Could not find public function for 'payments/billing:getCheckoutBlockingSubscription'*
 *Could not find public function for 'payments/billing:getCustomerByUserId'*
