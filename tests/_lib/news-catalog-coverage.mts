@@ -48,18 +48,38 @@ export function browserPlacedNames(feeds: CoverageFeed[]): Set<string> {
   return new Set(feeds.filter((f) => f.placements.some((p) => p.browserOrder !== undefined)).map((f) => f.name));
 }
 
-/**
- * Referenced names that no served digest fetches and that are not pending
- * migration. Sorted, so a failure names every gap.
- */
+/** Referenced names that no served digest fetches. Sorted, so a failure names every gap. */
 export function uncoveredSources(
   referenced: Iterable<string>,
   feeds: CoverageFeed[],
   served: ServedLayout,
-  pending: ReadonlySet<string>,
 ): string[] {
   const covered = serverPlacedNames(feeds, served);
-  return [...new Set(referenced)].filter((name) => !covered.has(name) && !pending.has(name)).sort();
+  return [...new Set(referenced)].filter((name) => !covered.has(name)).sort();
+}
+
+/**
+ * Browser placements whose own entry no digest fetches for that panel. Panels
+ * read only digests, so such a placement would show nothing. The entry must
+ * have a served placement in the same category and edition; an on-demand panel
+ * reads whichever digest carries its category, so any edition serves it.
+ * Checked per entry, not per name: a second entry with the same name but
+ * another URL is a different feed the digest does not fetch.
+ */
+export function undigestedBrowserPlacements(feeds: CoverageFeed[], served: ServedLayout, onDemandEdition: string): string[] {
+  const out: string[] = [];
+  for (const feed of feeds) {
+    for (const p of feed.placements) {
+      if (p.browserOrder === undefined) continue;
+      const digested = feed.placements.some((q) =>
+        q.serverOrder !== undefined
+        && q.category === p.category
+        && (q.edition === p.edition || p.edition === onDemandEdition)
+        && isServed(served, q.edition, q.category));
+      if (!digested) out.push(`${feed.name} → ${p.edition}/${p.category}`);
+    }
+  }
+  return out.sort();
 }
 
 /** Server placements in an edition/category no digest fetches. */

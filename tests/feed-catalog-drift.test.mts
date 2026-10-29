@@ -406,11 +406,10 @@ describe('feed catalog drift', () => {
     );
   });
 
-  it('every default-enabled source is fetched by a served digest, or pending migration', () => {
+  it('every default-enabled source is fetched by a served digest', () => {
     const catalog = JSON.parse(readFileSync(join(repoRoot, 'shared/news-catalog.json'), 'utf8'));
-    const pending = new Set<string>(JSON.parse(readFileSync(join(repoRoot, 'shared/news-catalog-pending-migration.json'), 'utf8')).names);
     const served = servedLayout(catalog.layout.server, VALID_VARIANTS, INTEL_EDITION);
-    const gaps = uncoveredSources(feeds.getAllDefaultEnabledSources(), catalog.feeds, served, pending);
+    const gaps = uncoveredSources(feeds.getAllDefaultEnabledSources(), catalog.feeds, served);
     assert.deepEqual(gaps, [], `default-enabled sources no digest fetches: ${gaps.join(', ')}`);
   });
 
