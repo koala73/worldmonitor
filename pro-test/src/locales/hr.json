@@ -714,7 +714,8 @@
       "chokepointDesc": "Inspekcirajte status prekida, tokove brodova i rizik kroz {{chokepoints}} kritičnih pomorskih prolaza.",
       "countryRiskTitle": "Objasni politički rizik zemlje",
       "countryRiskDesc": "Pratite političke, sigurnosne, ekonomske i signale otpornosti iza promjene zemlje, s otpornosti rangiranom za {{resilienceRanked}} zemalja.",
-      "open": "Otvori dokaze"
+      "open": "Otvori dokaze",
+      "workflow": "Postupak korak po korak"
     }
   },
   "whatsNew": {

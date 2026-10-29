@@ -714,7 +714,8 @@
       "chokepointDesc": "{{chokepoints}}개 주요 해상 교통로의 해운 차질 상황, 선박 흐름, 위험도를 점검합니다.",
       "countryRiskTitle": "국가 위험 변화 설명",
       "countryRiskDesc": "국가의 변화를 주도하는 정치, 보안, 경제, 회복력 신호를 추적합니다. {{resilienceRanked}}개국의 회복력 순위가 산출됩니다.",
-      "open": "증거 보기"
+      "open": "증거 보기",
+      "workflow": "단계별 워크플로"
     }
   },
   "whatsNew": {

@@ -714,7 +714,8 @@
       "chokepointDesc": "Chunguza hali ya usumbufu, mtiririko wa vyombo, na hatari katika {{chokepoints}} njia muhimu za bahari.",
       "countryRiskTitle": "Eleza harakati ya hatari ya nchi",
       "countryRiskDesc": "Fuata alama za kisiasa, usalama, uchumi, na ustahimilivu zilizo nyuma ya mabadiliko ya nchi, huku ustahimilivu ukiwa umeorodheshwa kwa nchi {{resilienceRanked}}.",
-      "open": "Fungua ushahidi"
+      "open": "Fungua ushahidi",
+      "workflow": "Mtiririko wa kazi hatua kwa hatua"
     }
   },
   "whatsNew": {

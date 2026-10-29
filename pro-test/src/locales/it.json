@@ -714,7 +714,8 @@
       "chokepointDesc": "Ispeziona lo stato dei disagi, i flussi di navi e i rischi attraverso {{chokepoints}} passaggi marittimi critici.",
       "countryRiskTitle": "Spiega una mossa di rischio paese",
       "countryRiskDesc": "Traccia i segnali politici, di sicurezza, economici e di resilienza dietro i cambiamenti di un paese, con resilienza valutata per {{resilienceRanked}} paesi.",
-      "open": "Apri prove"
+      "open": "Apri prove",
+      "workflow": "Procedura passo passo"
     }
   },
   "whatsNew": {

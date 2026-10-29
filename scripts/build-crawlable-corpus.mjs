@@ -2758,7 +2758,7 @@ function renderCountriesIndex({ countries, ciiRanking, resilienceCoverage, baseU
       },
     };
   });
-  const body = `      <p class="eyebrow">Country corpus</p>
+  const body = `      <p class="eyebrow">For country-risk analysts</p>
       <h1>Country risk, instability and resilience by country</h1>
       <p class="lede">${escapeHtml(description)}</p>
       <p><a href="/country-instability-index/">Live Country Instability Index rankings</a> · <a href="#country-resilience-ranking">Country Resilience Index ranking</a></p>
@@ -4434,7 +4434,7 @@ function renderChokepointsIndex({ chokepoints, chokepointHubRows, livePulse, bas
       },
     };
   });
-  const body = `      <p class="eyebrow">Maritime corpus</p>
+  const body = `      <p class="eyebrow">For supply-chain risk teams</p>
       <h1>Chokepoints and waterways</h1>
       <p class="lede">${escapeHtml(description)}</p>
 ${hubFaqs.map((faq) => `      <h2 data-chokepoint-hub-faq>${escapeHtml(faq.question)}</h2>

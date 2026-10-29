@@ -408,6 +408,25 @@ test('built welcome page prerenders task routes and agent discovery links', { sk
   }
   assert.doesNotMatch(rootContent, /href="\/(?:crises|chokepoints|countries)\/\?/);
 
+  // Each trail also links the monitoring workflow written for that job, so a
+  // reader who picked the question can reach its audience page from the homepage.
+  const workflowLinks = [
+    ['verify-breaking-news', 'welcome-task-verify-workflow'],
+    ['monitor-supply-chain-disruptions', 'welcome-task-chokepoint-workflow'],
+    ['monitor-country-risk', 'welcome-task-country-risk-workflow'],
+  ];
+  for (const [slug, target] of workflowLinks) {
+    assert.match(
+      rootContent,
+      new RegExp(`href="/use-cases/${slug}/"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="${target}"`),
+    );
+  }
+  // A card is not one big anchor any more; nested anchors are invalid HTML and
+  // the parser would split them, so the workflow link must sit outside the
+  // evidence link.
+  const taskSection = rootContent.slice(taskIndex, liveIndex);
+  assert.doesNotMatch(taskSection, /<a\b(?:(?!<\/a>)[\s\S])*<a\b/);
+
   // #8603 replaced the utm_content tag on these with an Umami attribute. The
   // noise-key 308 is bot-gated (middleware.ts), so a human always kept the
   // param and the analytics cost of dropping it falls entirely on human

@@ -3311,6 +3311,8 @@ describe('crawlable corpus generator', () => {
 
       const countriesIndex = read(outDir, 'countries/index.html');
       const countriesDocument = htmlDocument(countriesIndex, 'https://www.worldmonitor.app/countries/');
+      // The hub eyebrow names its reader, not the internal "corpus" build term.
+      assert.equal(countriesDocument.querySelector('.eyebrow')?.textContent, 'For country-risk analysts');
       const rankingRows = countriesDocument.querySelectorAll('table[data-country-ranking] tbody tr');
       assert.equal(rankingRows.length, corpusData.countries.length);
       assert.equal(
@@ -4075,6 +4077,7 @@ describe('crawlable corpus generator', () => {
         chokepointsIndex,
         'https://www.worldmonitor.app/chokepoints/',
       );
+      assert.equal(chokepointsDocument.querySelector('.eyebrow')?.textContent, 'For supply-chain risk teams');
       const chokepointRows = [...chokepointsDocument.querySelectorAll(
         'table[data-chokepoint-status] tbody tr',
       )];

@@ -714,7 +714,8 @@
       "chokepointDesc": "Inspektera störningsstatus, fartygsflöden och risk över {{chokepoints}} kritiska sjövägspassager.",
       "countryRiskTitle": "Förklara ett landrisksteg",
       "countryRiskDesc": "Spåra politiska, säkerhets-, ekonomiska och motståndskraftssignaler bakom ett lands förändring, med motståndskraft rankad för {{resilienceRanked}} länder.",
-      "open": "Öppna bevis"
+      "open": "Öppna bevis",
+      "workflow": "Arbetsflöde steg för steg"
     }
   },
   "whatsNew": {

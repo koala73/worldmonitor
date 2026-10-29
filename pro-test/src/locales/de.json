@@ -714,7 +714,8 @@
       "chokepointDesc": "Überprüfe Störungsstatus, Schiffsströme und Risiken über {{chokepoints}} kritische Meerespassagen hinweg.",
       "countryRiskTitle": "Eine Länderrisiko-Bewegung erklären",
       "countryRiskDesc": "Verfolge die politischen, sicherheitsbezogenen, wirtschaftlichen und Resilienz-Signale hinter einer Länderveränderung, mit Resilienz-Ranking für {{resilienceRanked}} Länder.",
-      "open": "Belege öffnen"
+      "open": "Belege öffnen",
+      "workflow": "Schritt-für-Schritt-Ablauf"
     }
   },
   "whatsNew": {
