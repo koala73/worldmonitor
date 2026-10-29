@@ -8264,6 +8264,20 @@
       ]
     },
     {
+      "host": "sccd.royalnavy.mod.uk",
+      "provider": "sccd.royalnavy.mod.uk",
+      "kind": "structured",
+      "observed": true,
+      "license": "UKMTO terms sections 20-23 permit reuse under the Open Government Licence v3.0, subject to excluded third-party rights. Website JSON backend; no verified external developer support contract.",
+      "attribution": "UK Maritime Trade Operations. Link https://www.ukmto.org/recent-incidents and https://www.ukmto.org/terms-and-conditions. Contains public sector information licensed under the Open Government Licence v3.0.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-ukmto-incidents.mjs"
+        }
+      ]
+    },
+    {
       "host": "schema.org",
       "provider": "schema.org",
       "kind": "structured",

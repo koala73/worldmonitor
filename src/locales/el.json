@@ -492,7 +492,8 @@
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
     "climateNews": "Ειδήσεις για το Κλίμα",
-    "fx": "Ισοτιμίες συναλλάγματος"
+    "fx": "Ισοτιμίες συναλλάγματος",
+    "ukmto-incidents": "UKMTO Incidents"
   },
   "commands": {
     "prefixes": {
@@ -4160,5 +4161,14 @@
         "0": "Οδηγός Επιπέδων"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO data unavailable.",
+    "empty": "No incidents returned by UKMTO.",
+    "stale": "Stale source data. Last checked",
+    "current": "Source checked",
+    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
+    "occurred": "Incident",
+    "reported": "Published"
   }
 }

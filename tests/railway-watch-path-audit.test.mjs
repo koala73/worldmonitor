@@ -1010,6 +1010,7 @@ describe('planned Railway service lifecycle', () => {
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',
+      'seed-ukmto-incidents',
       'seed-weather-alerts',
       // seed-notam-nms (#9637) is deliberately ABSENT now: it landed planned
       // until FAA granted production NMS-API access, and service

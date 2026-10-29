@@ -490,7 +490,8 @@
     "fearGreed": "ความกลัวและความโลภ",
     "marketBreadth": "ความกว้างของตลาด",
     "climateNews": "ข่าวสภาพอากาศ",
-    "fx": "อัตราแลกเปลี่ยนเงินตราต่างประเทศ"
+    "fx": "อัตราแลกเปลี่ยนเงินตราต่างประเทศ",
+    "ukmto-incidents": "UKMTO Incidents"
   },
   "commands": {
     "prefixes": {
@@ -4140,5 +4141,14 @@
         "0": "คู่มือเลเยอร์"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO data unavailable.",
+    "empty": "No incidents returned by UKMTO.",
+    "stale": "Stale source data. Last checked",
+    "current": "Source checked",
+    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
+    "occurred": "Incident",
+    "reported": "Published"
   }
 }

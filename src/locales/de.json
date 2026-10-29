@@ -492,7 +492,8 @@
     "fearGreed": "Angst & Gier",
     "marketBreadth": "Marktbreite",
     "climateNews": "Klimanachrichten",
-    "fx": "Devisenkurse"
+    "fx": "Devisenkurse",
+    "ukmto-incidents": "UKMTO Incidents"
   },
   "commands": {
     "prefixes": {
@@ -4160,5 +4161,14 @@
         "0": "Ebenenleitfaden"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO data unavailable.",
+    "empty": "No incidents returned by UKMTO.",
+    "stale": "Stale source data. Last checked",
+    "current": "Source checked",
+    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
+    "occurred": "Incident",
+    "reported": "Published"
   }
 }

@@ -1828,3 +1828,33 @@ IMPORT_HHI_VERIFY_REDIS_ONLY=1 node scripts/verify-import-hhi-coverage.mjs
 ```
 
 Redis-only verification is not sufficient to close #3979; it only confirms that the seeder recovered the canonical payload before score warmup.
+
+## UKMTO incidents
+
+`seed-ukmto-incidents` is registered as `planned`. This registration does not
+provision or deploy a worker. Production activation requires separate approval.
+
+Use the repository-root Nixpacks deployment with start command
+`node scripts/seed-ukmto-incidents.mjs`, cron `*/5 * * * *`, Node.js 24 and the
+existing Upstash REST URL/token credentials. No UKMTO credential is required.
+Confirm the official website backend's access and reuse terms before activation.
+Five minutes is our initial polling choice, not a published provider allowance.
+
+The collector validates the complete response before publishing
+`maritime:ukmto-incidents:v1` and `seed-meta:maritime:ukmto-incidents`. A successful
+empty response is valid. Invalid rows, HTTP errors and timeouts preserve the
+previous snapshot without advancing its retrieval time. Consumers mark it stale
+after 15 minutes and hide it after 24 hours.
+
+After the first successful publish, the collector sets the permanent marker
+`seed-activated:maritime:ukmto-incidents`. The `ukmtoIncidents` health probe stays
+pending before this marker and becomes strict after it. Do not remove the marker
+to hide a failed source. UKMTO health remains independent of AIS and NGA.
+
+After approved deployment, change the service lifecycle to `active`, then observe
+at least three scheduled runs. Confirm terminal deployment, fresh seed metadata,
+`ukmtoIncidents` health, the RPC response and the rendered panel. Search worker
+logs for `UKMTO seed failed`, invalid-field errors and non-200 responses. Repeated
+failures or a stale retrieval time require investigation of the upstream contract.
+Stop the worker if it causes load or repeated access errors at the publisher.
+Last-good data must retain its original age during recovery.

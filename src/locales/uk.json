@@ -565,7 +565,8 @@
     "fearGreed": "Страх і жадібність",
     "marketBreadth": "Ширина ринку",
     "climateNews": "Новини про клімат",
-    "fx": "Курси іноземних валют"
+    "fx": "Курси іноземних валют",
+    "ukmto-incidents": "UKMTO Incidents"
   },
   "commands": {
     "prefixes": {
@@ -4200,5 +4201,14 @@
         "0": "Путівник шарів"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO data unavailable.",
+    "empty": "No incidents returned by UKMTO.",
+    "stale": "Stale source data. Last checked",
+    "current": "Source checked",
+    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
+    "occurred": "Incident",
+    "reported": "Published"
   }
 }

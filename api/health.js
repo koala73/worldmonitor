@@ -410,6 +410,7 @@ const BOOTSTRAP_KEYS = {
 // aggregate is cleanly absent. Include both fallback keys in the same health
 // sweep so the canadaAlerts probe grades the data clients actually receive.
 const STANDALONE_KEYS = {
+  ukmtoIncidents: 'maritime:ukmto-incidents:v1',
   sanctionsChanges: 'sanctions:changes:v1',
   predictionCountryMarkets: 'prediction:markets-country-index:v1',
   // US HTS chapter 99 duty index (catalog; coverage shards are versioned by
@@ -766,6 +767,11 @@ const STANDALONE_KEYS = {
 const FIVE_FACTOR_SCORECARD_READ_MODEL_KEY = 'scorecard:five-factor:v1:read-model';
 
 const SEED_META = {
+  ukmtoIncidents: {
+    key: 'seed-meta:maritime:ukmto-incidents', maxStaleMin: 15,
+    activationKey: 'seed-activated:maritime:ukmto-incidents',
+    cutover: { mode: 'activation-marker', fromKey: null, activationKey: 'seed-activated:maritime:ukmto-incidents' },
+  },
   // scripts/seed-conflict-intel.mjs cron runs every 15min, while HAPI is gated
   // to one bulk refresh every 2h. Bounded above by
   // HAPI_TTL (360min / 6h) — the per-country data key's own Redis TTL — not
@@ -2247,6 +2253,7 @@ if (!IRAN_EVENTS_ENABLED) {
 // chronic outage went undetected until a user noticed the panel was stuck on
 // "Loading...". Removed marketImplications below.
 const ON_DEMAND_KEYS = new Set([
+  'ukmtoIncidents',
   // Deployment-order bridge: Vercel can ship this reader before Railway's
   // hourly bundle publishes the first summary. The seeder writes a durable
   // activation marker after its first successful publish; after that, a
@@ -2428,6 +2435,7 @@ const ON_DEMAND_KEYS = new Set([
 // publish; when the marker exists the key leaves ON_DEMAND softening and
 // normal EMPTY/STALE_SEED rules apply.
 const ACTIVATION_MARKERS = {
+  ukmtoIncidents: 'seed-activated:maritime:ukmto-incidents',
   chinaCoverage: 'seed-activated:health:china-coverage',
   // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).
   pizzintHistory: SEED_META.pizzintHistory.activationKey,
@@ -2862,6 +2870,7 @@ const MISSING_DATA_IS_FAILURE_KEYS = new Set([
 // Keys where a present payload with meta recordCount=0 is valid, but the data
 // key itself must still exist. Do not use this set in the missing-key branch.
 const ZERO_RECORD_DATA_OK_KEYS = new Set([
+  'ukmtoIncidents',
   ...EMPTY_DATA_OK_KEYS,
   'sanctionsChanges',
   'forecastArchive',

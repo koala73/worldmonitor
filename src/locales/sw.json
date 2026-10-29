@@ -561,7 +561,8 @@
     "fearGreed": "Hofu & Uchoyo",
     "marketBreadth": "Upana wa Soko",
     "climateNews": "Habari za Hali ya Hewa",
-    "fx": "Kiwango cha ubadilishaji wa fedha za kigeni"
+    "fx": "Kiwango cha ubadilishaji wa fedha za kigeni",
+    "ukmto-incidents": "UKMTO Incidents"
   },
   "commands": {
     "prefixes": {
@@ -4160,5 +4161,14 @@
         "0": "Mwongozo wa Tabaka"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO data unavailable.",
+    "empty": "No incidents returned by UKMTO.",
+    "stale": "Stale source data. Last checked",
+    "current": "Source checked",
+    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
+    "occurred": "Incident",
+    "reported": "Published"
   }
 }

@@ -496,7 +496,8 @@
     "fearGreed": "Strach a chamtivost",
     "marketBreadth": "Šíře trhu",
     "climateNews": "Zprávy o klimatu",
-    "fx": "Kurzy zahraniční měny"
+    "fx": "Kurzy zahraniční měny",
+    "ukmto-incidents": "UKMTO Incidents"
   },
   "commands": {
     "prefixes": {
@@ -4200,5 +4201,14 @@
         "0": "Průvodce vrstvami"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO data unavailable.",
+    "empty": "No incidents returned by UKMTO.",
+    "stale": "Stale source data. Last checked",
+    "current": "Source checked",
+    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
+    "occurred": "Incident",
+    "reported": "Published"
   }
 }

@@ -561,7 +561,8 @@
     "fearGreed": "Félelem és mohóság",
     "marketBreadth": "Piaci szélesség",
     "climateNews": "Klíma hírek",
-    "fx": "Devizaárfolyamok"
+    "fx": "Devizaárfolyamok",
+    "ukmto-incidents": "UKMTO Incidents"
   },
   "commands": {
     "prefixes": {
@@ -4160,5 +4161,14 @@
         "0": "Réteg útmutató"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO data unavailable.",
+    "empty": "No incidents returned by UKMTO.",
+    "stale": "Stale source data. Last checked",
+    "current": "Source checked",
+    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
+    "occurred": "Incident",
+    "reported": "Published"
   }
 }

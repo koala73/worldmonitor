@@ -492,7 +492,8 @@
     "fearGreed": "Страв & Алчност",
     "marketBreadth": "Пазарна Ширина",
     "climateNews": "Климатски Вести",
-    "fx": "Валутни курсове"
+    "fx": "Валутни курсове",
+    "ukmto-incidents": "UKMTO Incidents"
   },
   "commands": {
     "prefixes": {
@@ -4160,5 +4161,14 @@
         "0": "Ръководство на слои"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO data unavailable.",
+    "empty": "No incidents returned by UKMTO.",
+    "stale": "Stale source data. Last checked",
+    "current": "Source checked",
+    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
+    "occurred": "Incident",
+    "reported": "Published"
   }
 }

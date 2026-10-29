@@ -490,7 +490,8 @@
     "fearGreed": "Sợ hãi & Tham lam",
     "marketBreadth": "Độ rộng Thị trường",
     "climateNews": "Tin tức về Khí hậu",
-    "fx": "Tỷ giá ngoại hối"
+    "fx": "Tỷ giá ngoại hối",
+    "ukmto-incidents": "UKMTO Incidents"
   },
   "commands": {
     "prefixes": {
@@ -4140,5 +4141,14 @@
         "0": "Hướng dẫn Lớp"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO data unavailable.",
+    "empty": "No incidents returned by UKMTO.",
+    "stale": "Stale source data. Last checked",
+    "current": "Source checked",
+    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
+    "occurred": "Incident",
+    "reported": "Published"
   }
 }

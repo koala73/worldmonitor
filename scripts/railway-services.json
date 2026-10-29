@@ -2436,5 +2436,13 @@
     ],
     "cronSchedule": null,
     "documentedAt": "demos/verification-desk/README.md#run-it-from-any-computer-hosted-with-a-login"
+  },
+  {
+    "entry": "scripts/seed-ukmto-incidents.mjs",
+    "deployMode": "nixpacks-root-repo",
+    "lifecycle": "planned",
+    "service": "seed-ukmto-incidents",
+    "cronSchedule": "*/5 * * * *",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#ukmto-incidents"
   }
 ]

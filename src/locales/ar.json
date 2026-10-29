@@ -500,7 +500,8 @@
     "consumerPrices": "أسعار المستهلك",
     "marketBreadth": "اتساع السوق",
     "climateNews": "أخبار المناخ",
-    "fx": "أسعار الصرف الأجنبي"
+    "fx": "أسعار الصرف الأجنبي",
+    "ukmto-incidents": "UKMTO Incidents"
   },
   "commands": {
     "prefixes": {
@@ -4240,5 +4241,14 @@
         "0": "دليل الطبقات"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO data unavailable.",
+    "empty": "No incidents returned by UKMTO.",
+    "stale": "Stale source data. Last checked",
+    "current": "Source checked",
+    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
+    "occurred": "Incident",
+    "reported": "Published"
   }
 }
