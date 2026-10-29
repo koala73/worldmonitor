@@ -410,21 +410,35 @@ test('built welcome page prerenders task routes and agent discovery links', { sk
 
   // Each trail also links the monitoring workflow written for that job, so a
   // reader who picked the question can reach its audience page from the homepage.
+  // Scoped per card: the workflow link must sit in the card of its own evidence route.
+  const taskSection = rootContent.slice(taskIndex, liveIndex);
   const workflowLinks = [
-    ['verify-breaking-news', 'welcome-task-verify-workflow'],
-    ['monitor-supply-chain-disruptions', 'welcome-task-chokepoint-workflow'],
-    ['monitor-country-risk', 'welcome-task-country-risk-workflow'],
+    ['crises', 'verify-breaking-news', 'welcome-task-verify-workflow'],
+    ['chokepoints', 'monitor-supply-chain-disruptions', 'welcome-task-chokepoint-workflow'],
+    ['countries', 'monitor-country-risk', 'welcome-task-country-risk-workflow'],
   ];
-  for (const [slug, target] of workflowLinks) {
-    assert.match(
-      rootContent,
-      new RegExp(`href="/use-cases/${slug}/"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="${target}"`),
-    );
-  }
+  const cardStarts = workflowLinks.map(([route]) => taskSection.indexOf(`href="/${route}/"`));
+  workflowLinks.forEach(([route, slug, target], index) => {
+    assert.ok(cardStarts[index] >= 0, `task card for /${route}/ should be prerendered`);
+    const card = taskSection.slice(cardStarts[index], cardStarts[index + 1] ?? taskSection.length);
+    const workflowTag = card.match(new RegExp(`<a\\b[^>]*href="/use-cases/${slug}/"[^>]*>`))?.[0];
+    assert.ok(workflowTag, `the /${route}/ card should link /use-cases/${slug}/`);
+    assert.match(workflowTag, /data-umami-event="welcome-cta"/);
+    assert.match(workflowTag, new RegExp(`data-umami-event-target="${target}"`));
+    // Three links share the visible label, so each accessible name must include its card title.
+    const labelledBy = /aria-labelledby="([^"]+)"/.exec(workflowTag)?.[1]?.split(/\s+/) ?? [];
+    assert.equal(labelledBy.length, 2, `/${slug}/ link should be named by its label and its card title`);
+    const [labelText, titleText] = labelledBy.map((id) => {
+      const text = new RegExp(`id="${id}"[^>]*>([^<]+)<`).exec(card)?.[1]?.trim();
+      assert.ok(text, `#${id} should exist with text inside the /${route}/ card`);
+      return text;
+    });
+    assert.equal(labelText, 'Step-by-step workflow');
+    assert.match(card, new RegExp(`<h3\\b[^>]*id="${labelledBy[1]}"[^>]*>${titleText}</h3>`));
+  });
   // A card is not one big anchor any more; nested anchors are invalid HTML and
   // the parser would split them, so the workflow link must sit outside the
   // evidence link.
-  const taskSection = rootContent.slice(taskIndex, liveIndex);
   assert.doesNotMatch(taskSection, /<a\b(?:(?!<\/a>)[\s\S])*<a\b/);
 
   // #8603 replaced the utm_content tag on these with an Umami attribute. The

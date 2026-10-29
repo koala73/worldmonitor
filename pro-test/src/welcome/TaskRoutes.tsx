@@ -62,7 +62,7 @@ export const TaskRoutes = () => (
                   {String(index + 1).padStart(2, '0')}
                 </span>
               </div>
-              <h3 className="font-display text-xl font-bold leading-tight text-wm-text">
+              <h3 id={`task-${key}-title`} className="font-display text-xl font-bold leading-tight text-wm-text">
                 {t(`welcome.tasks.${key}Title`)}
               </h3>
               <p className="mt-3 text-sm leading-relaxed text-wm-muted">
@@ -77,9 +77,11 @@ export const TaskRoutes = () => (
               href={workflowHref}
               data-umami-event="welcome-cta"
               data-umami-event-target={`${eventTarget}-workflow`}
+              // All three share the visible label; the card title makes each name unique.
+              aria-labelledby={`task-${key}-workflow task-${key}-title`}
               className={`group inline-flex items-center gap-1.5 self-start px-5 pb-5 pt-3 font-mono text-xs uppercase tracking-wider text-wm-muted transition-colors hover:text-wm-text ${cardLinkFocusRing} sm:px-6 sm:pb-6`}
             >
-              {t('welcome.tasks.workflow')}
+              <span id={`task-${key}-workflow`}>{t('welcome.tasks.workflow')}</span>
               <CardLinkArrow />
             </a>
           </div>
