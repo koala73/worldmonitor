@@ -196,6 +196,7 @@
 *Could not find public function for 'notificationChannels:stagePairingToken'*
 *Could not find public function for 'payments/backfillCustomerNormalizedEmail:backfill'*
 *Could not find public function for 'payments/backfillCustomerNormalizedEmail:countPending'*
+*Could not find public function for 'payments/billing:applyBillingEmailUpdate'*
 *Could not find public function for 'payments/billing:applyDodoSubscriptionReconciliation'*
 *Could not find public function for 'payments/billing:backfillMissingCustomers'*
 *Could not find public function for 'payments/billing:backfillSubscriptionDodoCustomerId'*
@@ -207,6 +208,7 @@
 *Could not find public function for 'payments/billing:finalizeRecentlyStaleSubscriptionVerification'*
 *Could not find public function for 'payments/billing:finalizeStuckPaymentReconciliation'*
 *Could not find public function for 'payments/billing:getActiveSubscription'*
+*Could not find public function for 'payments/billing:getBillingEmailUpdateTarget'*
 *Could not find public function for 'payments/billing:getBlockingPendingPayment'*
 *Could not find public function for 'payments/billing:getCheckoutBlockingSubscription'*
 *Could not find public function for 'payments/billing:getCustomerByUserId'*
