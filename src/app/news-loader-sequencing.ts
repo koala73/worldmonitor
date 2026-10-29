@@ -10,7 +10,6 @@ export interface NewsCategorySpec<TFeeds> {
 }
 
 export interface NewsCategoryLoadOptions {
-  allowDigestPendingFallback: boolean;
   recordBaselineSample: boolean;
 }
 
@@ -29,7 +28,6 @@ export interface RunNewsLoadPassOptions<TFeeds, TDigest, TItem> {
   digestPromise: Promise<TDigest | null>;
   fallbackDigest?: TDigest | null;
   digestGraceMs: number;
-  allowPendingPerFeedFallback?: boolean;
   hasDigestCategory: (digest: TDigest, key: string) => boolean;
   loadCategory: (
     category: NewsCategorySpec<TFeeds>,
@@ -38,7 +36,6 @@ export interface RunNewsLoadPassOptions<TFeeds, TDigest, TItem> {
   ) => Promise<TItem[]>;
   loadIntel?: (
     digest: TDigest | null,
-    allowDigestPendingFallback: boolean,
     options: NewsIntelLoadOptions,
   ) => Promise<TItem[]>;
   onCategoryError?: (key: string | undefined, reason: unknown) => void;
@@ -126,11 +123,9 @@ export async function loadNewsCategoryBatches<TFeeds, TDigest, TItem>(
     digest: TDigest | null,
     options: NewsCategoryLoadOptions,
   ) => Promise<TItem[]>,
-  allowPendingPerFeedFallback = true,
 ): Promise<Array<PromiseSettledResult<NewsCategoryLoadResult<TItem>>>> {
   const concurrency = Math.max(1, Math.min(categoryConcurrency, Math.max(1, categories.length)));
   const results: Array<PromiseSettledResult<NewsCategoryLoadResult<TItem>>> = [];
-  const allowDigestPendingFallback = allowPendingPerFeedFallback && digestSnapshot.pending && digestSnapshot.digest === null;
   const recordBaselineSample = !digestSnapshot.pending;
 
   for (let i = 0; i < categories.length; i += concurrency) {
@@ -138,10 +133,7 @@ export async function loadNewsCategoryBatches<TFeeds, TDigest, TItem>(
     const chunkResults = await Promise.allSettled(
       chunk.map(async category => ({
         key: category.key,
-        items: await loadCategory(category, digestSnapshot.digest, {
-          allowDigestPendingFallback,
-          recordBaselineSample,
-        }),
+        items: await loadCategory(category, digestSnapshot.digest, { recordBaselineSample }),
       })),
     );
     results.push(...chunkResults);
@@ -154,7 +146,6 @@ export async function runNewsLoadPass<TFeeds, TDigest, TItem>(
   options: RunNewsLoadPassOptions<TFeeds, TDigest, TItem>,
 ): Promise<RunNewsLoadPassResult<TDigest, TItem>> {
   const digestPromise = options.digestPromise.catch(() => null);
-  const allowPendingPerFeedFallback = options.allowPendingPerFeedFallback ?? true;
   const initialDigest = await resolveInitialNewsDigest(
     digestPromise,
     options.digestGraceMs,
@@ -166,7 +157,6 @@ export async function runNewsLoadPass<TFeeds, TDigest, TItem>(
     options.categoryConcurrency,
     initialDigest,
     options.loadCategory,
-    allowPendingPerFeedFallback,
   );
   const categoryItemsByKey = new Map<string, TItem[]>();
   categoryResults.forEach((result, idx) => {
@@ -178,11 +168,7 @@ export async function runNewsLoadPass<TFeeds, TDigest, TItem>(
   });
 
   let intelItems = options.loadIntel
-    ? await options.loadIntel(
-      initialDigest.digest,
-      allowPendingPerFeedFallback && initialDigest.pending && initialDigest.digest === null,
-      { recordBaselineSample: !initialDigest.pending },
-    )
+    ? await options.loadIntel(initialDigest.digest, { recordBaselineSample: !initialDigest.pending })
     : [];
   let finalDigest = initialDigest.digest;
 
@@ -198,7 +184,6 @@ export async function runNewsLoadPass<TFeeds, TDigest, TItem>(
         options.categoryConcurrency,
         { digest: latestDigest, pending: false },
         options.loadCategory,
-        allowPendingPerFeedFallback,
       );
       digestResults.forEach((result, idx) => {
         if (result.status === 'fulfilled') {
@@ -209,7 +194,7 @@ export async function runNewsLoadPass<TFeeds, TDigest, TItem>(
       });
 
       if (options.loadIntel && options.hasDigestCategory(latestDigest, 'intel')) {
-        intelItems = await options.loadIntel(latestDigest, false, { recordBaselineSample: true });
+        intelItems = await options.loadIntel(latestDigest, { recordBaselineSample: true });
       }
     }
   }

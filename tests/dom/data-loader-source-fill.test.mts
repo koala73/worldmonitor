@@ -29,7 +29,7 @@ vi.mock('@/services/trending-keywords', async (importOriginal) => ({
 }));
 
 interface NewsItemLike { source: string; title: string }
-type FeedLike = { name: string; url: string; browserOnly?: true; digestLang?: string; lang?: string };
+type FeedLike = { name: string; url: string; digestLang?: string; lang?: string };
 
 interface LoaderInternals {
   loadNewsCategory(
@@ -37,12 +37,11 @@ interface LoaderInternals {
     feeds: FeedLike[],
     digest: { digest: ListFeedDigestResponse; servedStale: boolean } | null,
     isCustom: boolean,
-    options: { allowDigestPendingFallback: boolean; recordBaselineSample: boolean },
+    options: { recordBaselineSample: boolean },
   ): Promise<NewsItemLike[]>;
   beginNewsLoad(): number;
   loadIntelNews(
     digest: { digest: ListFeedDigestResponse; servedStale: boolean } | null,
-    allowDigestPendingFallback: boolean,
     options: { recordBaselineSample: boolean },
   ): Promise<NewsItemLike[]>;
   committedNewsGeneration: number;
@@ -116,7 +115,7 @@ async function makeLoader(disabled: string[] = []): Promise<Harness> {
   return { loader: loader as unknown as LoaderInternals, ctx };
 }
 
-const OPTIONS = { allowDigestPendingFallback: false, recordBaselineSample: false };
+const OPTIONS = { recordBaselineSample: false };
 const feeds = (names: string[]): FeedLike[] => names.map(name => ({ name, url: `https://feeds.example/${encodeURIComponent(name)}` }));
 const fresh = (digest: ListFeedDigestResponse) => ({ digest, servedStale: false });
 
@@ -257,7 +256,7 @@ describe('a fill reaches the committed news set and never overwrites a newer ren
     const { loader, ctx } = await makeLoader(INTEL_SOURCES.map(feed => feed.name).filter(name => !enabled.has(name)));
     const digest = digestOf('intel', [...protoItems(kept!.name, 1), ...protoItems(off!.name, 1)]);
 
-    await loader.loadIntelNews(fresh(digest), false, { recordBaselineSample: false });
+    await loader.loadIntelNews(fresh(digest), { recordBaselineSample: false });
     const items = await shownAfterFill(ctx, 'intel', 2);
 
     const url = new URL(String(fetchMock.mock.calls[0]![0]), 'https://x.test');
@@ -311,50 +310,5 @@ describe('cross-edition panels fill from sources no carrying digest includes', (
     const url = new URL(String(rows.mock.calls[0]![0]), 'https://x.test');
     expect(url.searchParams.getAll('sources')).toEqual(['Desk Français']);
     expect(items.some(i => i.source === 'Desk Français')).toBe(true);
-  });
-
-  it('fills from source rows on a panel that also fetches a source directly', async () => {
-    const rows = sourceRowsFetch({ 'Niche Desk': protoItems('Niche Desk', 1) });
-    vi.stubGlobal('fetch', crossEditionFetch(rows));
-    const direct = { source: 'Browser Desk', title: 'Browser Desk 0', link: 'https://example.com/browser/0', pubDate: new Date() };
-    mocks.fetchCategoryFeeds.mockResolvedValue([direct]);
-    const { loader, ctx } = await makeLoader();
-
-    const items = await loader.loadNewsCategory('markets', [
-      ...feeds(['Finance Wire', 'Commodity Desk', 'Niche Desk']),
-      { name: 'Browser Desk', url: 'https://feeds.example/browser', browserOnly: true },
-    ], null, true, OPTIONS);
-
-    expect(mocks.fetchCategoryFeeds).toHaveBeenCalledTimes(1);
-    const url = new URL(String(rows.mock.calls[0]![0]), 'https://x.test');
-    expect(url.searchParams.getAll('sources')).toEqual(['Niche Desk']);
-    expect(new Set(items.map(i => i.source))).toEqual(new Set(['Finance Wire', 'Commodity Desk', 'Niche Desk', 'Browser Desk']));
-    expect(ctx.newsByCategory.markets).toEqual(items);
-  });
-
-  it('does not render a mixed panel after a newer load started while it waited for the rows', async () => {
-    const { fetchMock: gated, release } = gatedRows({ 'Niche Desk': protoItems('Niche Desk', 1) });
-    const digests = crossEditionFetch(sourceRowsFetch({}));
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) =>
-      String(input).includes('/list-source-items') ? gated(input) : digests(input)));
-    mocks.fetchCategoryFeeds.mockResolvedValue([
-      { source: 'Browser Desk', title: 'Browser Desk 0', link: 'https://example.com/browser/0', pubDate: new Date() },
-    ]);
-    const { loader, ctx } = await makeLoader();
-
-    const pending = loader.loadNewsCategory('markets', [
-      ...feeds(['Finance Wire', 'Commodity Desk', 'Niche Desk']),
-      { name: 'Browser Desk', url: 'https://feeds.example/browser', browserOnly: true },
-    ], null, true, OPTIONS);
-    await vi.waitFor(() => expect(gated).toHaveBeenCalledTimes(1));
-    await vi.waitFor(() => expect(mocks.fetchCategoryFeeds).toHaveBeenCalled());
-    const newer = [{ source: 'Newer', title: 'Newer 0', link: 'https://example.com/newer' }];
-    loader.beginNewsLoad();
-    ctx.newsByCategory.markets = newer as never[];
-    release();
-    await pending;
-    await settle();
-
-    expect(ctx.newsByCategory.markets).toBe(newer);
   });
 });

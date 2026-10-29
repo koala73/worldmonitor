@@ -1,6 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
 import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-loss-diagnostics';
-import { BROWSER_NEWS_CATALOG } from '../src/config/news-catalog.browser.generated';
 
 // Request budget for the news load on a default anonymous dashboard load (#5376).
 //
@@ -25,15 +24,12 @@ import { BROWSER_NEWS_CATALOG } from '../src/config/news-catalog.browser.generat
 //     App.ts's bootstrap fan-out). Every trigger re-fetched the digest even
 //     though nothing about the news load is viewport-gated.
 //
-// This spec is the budget guard for both: one digest request, zero rss-proxy
-// requests, and none of the `Custom category …` warnings.
+// This spec is the budget guard for both: one digest request and zero rss-proxy
+// requests.
 //
-// Note on the "zero rss-proxy" assertion: preset categories missing from the
-// digest do NOT fall back to per-feed fetching on web — that path is gated off
-// by the `newsPerFeedFallback` runtime flag (default false). Custom categories
-// bypassed that gate entirely, which is why the trio showed up as raw proxy
-// traffic. So a non-zero count here means a category is being resolved that has
-// no business being fetched client-side.
+// Note on the "zero rss-proxy" assertion: web panels read only digests. The one
+// direct feed fetch left, the outage fallback, is desktop-only (unified news
+// catalog plan, KTD9), so ANY rss-proxy request from a web page is a regression.
 
 const DIGEST_GLOB = '**/api/news/v1/list-feed-digest*';
 const RSS_PROXY_GLOB = '**/api/rss-proxy*';
@@ -55,29 +51,11 @@ async function settleAfterInitialFanout(page: Page): Promise<void> {
   await page.waitForTimeout(POST_FANOUT_QUIET_MS);
 }
 
-// src/app/data-loader.ts `perFeedFallbackCategoryFeedLimit`. Every per-feed
-// fallback is capped at this many feeds per category, custom categories included.
-//
-// The cap bounds a SINGLE LOAD, and since #5873 that is the whole of what it
-// bounds: a custom category now rotates its window by the cap on each refresh
-// cycle (fixed prefixes made feeds 4..N unreachable forever), so N loads reach
-// up to N × cap distinct feeds over time. This spec seeds a fresh anonymous
-// profile, so the persisted rotation cycle starts at 0 and the window is the
-// leading prefix — exactly the pre-rotation feed set.
-//
-// That makes the assertion below transitively a single-load guard too: a second
-// news load in one page load would advance the rotation and fetch 6 distinct
-// feeds instead of 3. It fails alongside the explicit `digestUrls.length === 1`
-// assertion rather than instead of it.
-const PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT = 3;
-
 // A Tech news panel customized into a `full` session: absent from FULL_FEEDS, so
-// it resolves as a CUSTOM category. It reads the tech digest first and falls back
-// to a capped direct fetch only when that digest does not carry it. Priority 1
-// keeps it inside the 40-panel free-tier cap (FULL_PANELS enables 39 priority-1
-// panels), and its 10 TECH_FEEDS entries are well past the per-category cap.
+// it resolves as a CUSTOM category and reads the tech digest. Priority 1 keeps
+// it inside the 40-panel free-tier cap (FULL_PANELS enables 39 priority-1
+// panels).
 const CUSTOM_CATEGORY_KEY = 'startups';
-const CUSTOM_CATEGORY_FEED_COUNT = 10;
 
 // A full-variant preset news panel that sits below the fold, so it mounts after the
 // news load rather than during it. The digest stub carries no bucket for it.
@@ -361,12 +339,6 @@ async function installNewsRequestAccounting(
 
 test.describe('dashboard news request budget (#5376)', () => {
   test('a default anonymous load issues one digest and zero rss-proxy requests', async ({ page }) => {
-    const customCategoryWarnings: string[] = [];
-    page.on('console', (message) => {
-      const text = message.text();
-      if (text.includes('[News] Custom category')) customCategoryWarnings.push(text);
-    });
-
     await seedFreshAnonymousFullVariant(page);
     const log = await installNewsRequestAccounting(page);
 
@@ -398,11 +370,6 @@ test.describe('dashboard news request budget (#5376)', () => {
     ).toEqual([]);
 
     expect(
-      customCategoryWarnings,
-      'no default-visible category may be treated as a custom (digest-exempt) category',
-    ).toEqual([]);
-
-    expect(
       log.digestUrls.length,
       `one page load must issue exactly one list-feed-digest request, got ${log.digestUrls.length}: ` +
         `${log.digestUrls.join(', ')}. More than one means loadAllData() re-ran the whole news load.`,
@@ -410,17 +377,11 @@ test.describe('dashboard news request budget (#5376)', () => {
   });
 
   // The other half of the fix: a category that legitimately STAYS custom — a
-  // cross-variant panel the user enabled on purpose — must still load (that is
-  // #3687, the bug panel-driven resolution was introduced to fix) and must be
-  // capped like every other per-feed fallback. Custom categories used to be
-  // exempt from the cap on the theory that there were only ever a handful.
-  test('a deliberately customized category still loads, capped at the per-category feed limit', async ({ page }) => {
-    const capWarnings: string[] = [];
-    page.on('console', (message) => {
-      const text = message.text();
-      if (text.includes('[News] Custom category')) capWarnings.push(text);
-    });
-
+  // cross-variant panel the user enabled on purpose — reads the digest of the
+  // edition that places it (#3687 made resolution panel-driven). When that
+  // digest does not carry the category, web shows nothing rather than fetching
+  // feeds directly.
+  test('a cross-edition panel whose edition digest lacks its category makes zero direct feed requests', async ({ page }) => {
     await seedFreshAnonymousFullVariant(page, {
       [CUSTOM_CATEGORY_KEY]: { name: 'Startups & VC', enabled: true, priority: 1 },
     });
@@ -443,55 +404,14 @@ test.describe('dashboard news request budget (#5376)', () => {
     }
     await settleAfterInitialFanout(page);
 
-    const feeds = distinctProxiedFeeds(log.rssProxyUrls);
-
     expect(
-      feeds.length,
-      `an enabled cross-variant news panel must still have its feeds fetched — a custom ` +
-        `category is never in the per-variant digest, so direct fetch is its only path (#3687)`,
-    ).toBeGreaterThan(0);
-
-    // Exactly the cap, not merely under it. `toBeLessThanOrEqual` alone would pass
-    // with the uncapped code restored the moment the category's feed list shrank to
-    // the cap — the assertion has to have a floor as well as a ceiling.
-    expect(
-      feeds.length,
-      `a custom category must fetch exactly perFeedFallbackCategoryFeedLimit ` +
-        `(${PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT}) feeds; "${CUSTOM_CATEGORY_KEY}" fetched ` +
-        `${feeds.length}: ${feeds.join(', ')}`,
-    ).toBe(PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT);
-
-    // ...and the category must actually HAVE more sources than the cap, or the
-    // assertion above proves nothing. The warning carries the real ratio.
-    const ratio = capWarnings.join(' ').match(/fetching (\d+)\/(\d+) feeds directly/);
-    expect(ratio, `expected a "[News] Custom category" warning naming the N/M feed ratio, got: ${capWarnings.join(' | ')}`).not.toBeNull();
-    expect(
-      Number(ratio?.[2]),
-      `"${CUSTOM_CATEGORY_KEY}" must declare more than ${PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT} sources ` +
-        `for the cap assertion to mean anything (expected ~${CUSTOM_CATEGORY_FEED_COUNT})`,
-    ).toBeGreaterThan(PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT);
-
-    // The window is ROTATING, not a fixed prefix (#5873) — and on a freshly
-    // seeded profile it must start at cycle 0, which is what makes the exact
-    // feed-set assertion above deterministic. A missing cycle in the warning
-    // means the rotation was never wired; a non-zero one means the persisted
-    // cycle leaked in from another test's profile and this spec is no longer
-    // measuring a first load.
-    const cycle = capWarnings.join(' ').match(/rotation cycle (\d+)/);
-    expect(
-      cycle,
-      `expected the "[News] Custom category" warning to name its rotation cycle, got: ${capWarnings.join(' | ')}`,
-    ).not.toBeNull();
-    expect(
-      Number(cycle?.[1]),
-      'a freshly seeded anonymous profile has no persisted rotation state, so the first load is cycle 0',
-    ).toBe(0);
+      distinctProxiedFeeds(log.rssProxyUrls),
+      'web panels read only digests; the outage fallback is desktop-only',
+    ).toEqual([]);
 
     // The only extra request a cross-edition panel may add is ONE digest read
-    // for the edition that places its category (tech, for `startups`). Here
-    // that digest does not carry the category, so the panel falls back to the
-    // capped direct fetch above. A second full-edition digest would mean the
-    // whole news load re-ran.
+    // for the edition that places its category (tech, for `startups`). A second
+    // full-edition digest would mean the whole news load re-ran.
     const editions = log.digestUrls.map((url) => new URL(url).searchParams.get('variant') ?? 'full');
     expect(
       editions.filter((edition) => edition === 'full').length,
@@ -541,18 +461,7 @@ test.describe('dashboard news request budget (#5376)', () => {
       startupsPanel.getByText(headline).first(),
       'the item the edition digest carries must render in the panel',
     ).toBeAttached();
-    // Sources the tech digest carries come from it; only the ones no digest
-    // carries yet (browserOnly, still pending migration) are fetched directly,
-    // within the per-category window.
-    const startupsFeeds = BROWSER_NEWS_CATALOG.editions.tech?.startups ?? [];
-    const browserOnlyUrls = new Set(startupsFeeds.filter((f) => f.browserOnly).map((f) => f.url));
-    const direct = distinctProxiedFeeds(log.rssProxyUrls);
-    expect(direct.length, 'direct fetches stay within the per-category window')
-      .toBeLessThanOrEqual(PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT);
-    expect(
-      direct.filter((url) => !browserOnlyUrls.has(url)),
-      'a source the edition digest carries must not be fetched feed by feed',
-    ).toEqual([]);
+    expect(distinctProxiedFeeds(log.rssProxyUrls), 'no source is fetched feed by feed').toEqual([]);
     const editions = log.digestUrls.map((url) => new URL(url).searchParams.get('variant') ?? 'full');
     expect(editions.filter((edition) => edition === 'full').length).toBe(1);
     expect(editions.filter((edition) => edition !== 'full')).toEqual(['tech']);
@@ -866,7 +775,7 @@ test.describe('dashboard news request budget (#5376)', () => {
   });
 
   // The gate must not turn a transient digest outage into a stuck-empty dashboard.
-  // When the digest is down, `newsPerFeedFallback` is off on web, so every preset
+  // When the digest is down, web has no outage fallback, so every preset
   // category renders empty and the load lands NOTHING. Recording the work-list for
   // that run would make the gate treat an empty dashboard as "already loaded" and
   // suppress every retry until RefreshScheduler's 20-minute tick — losing the
