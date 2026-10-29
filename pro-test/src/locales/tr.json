@@ -70,6 +70,16 @@
     "buildOnIt": "Üzerine inşa edin",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) ve Claude, GPT, kendi LLM'leriniz için MCP."
   },
+  "proJobs": {
+    "title": "Neyi halletmeniz gerekiyor?",
+    "intro": "Ücretsiz pano ilk bakışı karşılar. Pro’nun her iş için ekledikleri şunlar.",
+    "proAdds": "Pro ekler",
+    "openMap": "Harita görünümünü aç",
+    "chokepointFree": "Canlı haritada boğazlar, gemi trafiği, ticaret rotaları, yaptırımlar ve denizaltı kabloları.",
+    "chokepointPro": "Maliyet şoku modellemesi ve tedarik zinciri stres testleri, bir boğazdaki değişikliği Slack’e, e-postaya veya bir webhook’a gönderen uyarı kuralları ve kurallarınıza göre sıralanan zamanlanmış özet.",
+    "verifyFree": "Her haberin kaynağına bağlandığı bir haber akışı ve bir iddiayı karşılaştırmak için çatışma, kesinti ve doğal tehlike katmanları.",
+    "verifyPro": "Geçmiş haberlerde arama yapmak ve benzer önceki olayları bulmak için istihbarat belleği, canlı servisler genelinde WM Analyst sohbeti ve takip için uyarı kuralları."
+  },
   "deliveryDesk": {
     "eyebrow": "TESLİM MASASI",
     "title": "Kişisel istihbarat masası nedir?",

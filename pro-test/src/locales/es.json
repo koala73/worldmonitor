@@ -70,6 +70,16 @@
     "buildOnIt": "Construye sobre ella",
     "buildOnItDesc": "Constructor de widgets personalizados (HTML/CSS/JS + IA) y MCP para Claude, GPT, LLMs personalizados."
   },
+  "proJobs": {
+    "title": "¿Qué necesitas hacer?",
+    "intro": "El panel gratuito cubre el primer vistazo. Esto es lo que Pro añade para cada tarea.",
+    "proAdds": "Pro añade",
+    "openMap": "Abrir la vista del mapa",
+    "chokepointFree": "Estrechos, tráfico marítimo, rutas comerciales, sanciones y cables submarinos en el mapa en vivo.",
+    "chokepointPro": "Modelización de shocks de costes y pruebas de estrés de cadenas de suministro, reglas de alerta que envían un cambio en un estrecho a Slack, correo electrónico o un webhook, y un resumen programado ordenado según tus reglas.",
+    "verifyFree": "Un feed de noticias con cada historia atribuida a su fuente, además de capas de conflictos, cortes y riesgos naturales para contrastar una afirmación.",
+    "verifyPro": "Memoria de inteligencia para buscar en la cobertura anterior y encontrar eventos similares previos, chat con WM Analyst sobre los servicios en vivo y reglas de alerta para el seguimiento."
+  },
   "deliveryDesk": {
     "eyebrow": "MESA DE ENTREGA",
     "title": "¿Qué es el escritorio de inteligencia personal?",

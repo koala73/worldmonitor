@@ -70,6 +70,16 @@
     "buildOnIt": "Bauen Sie darauf auf",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + KI) und MCP für Claude, GPT, eigene LLMs."
   },
+  "proJobs": {
+    "title": "Was müssen Sie erledigen?",
+    "intro": "Das kostenlose Dashboard deckt den ersten Blick ab. Das fügt Pro für jede Aufgabe hinzu.",
+    "proAdds": "Pro ergänzt",
+    "openMap": "Kartenansicht öffnen",
+    "chokepointFree": "Meerengen, Schiffsverkehr, Handelsrouten, Sanktionen und Unterseekabel auf der Live-Karte.",
+    "chokepointPro": "Kostenschock-Modellierung und Stresstests für Lieferketten, Alarmregeln, die eine Änderung an einer Meerenge an Slack, E-Mail oder einen Webhook senden, und ein geplanter Digest, sortiert nach Ihren Regeln.",
+    "verifyFree": "Ein Newsfeed, in dem jede Meldung ihrer Quelle zugeordnet ist, dazu Ebenen für Konflikte, Ausfälle und Naturgefahren, um eine Behauptung zu prüfen.",
+    "verifyPro": "Intel-Gedächtnis, um frühere Berichterstattung zu durchsuchen und ähnliche frühere Ereignisse zu finden, WM-Analyst-Chat über die Live-Dienste und Alarmregeln für die Nachverfolgung."
+  },
   "deliveryDesk": {
     "eyebrow": "LIEFERPULT",
     "title": "Was ist der persönliche Intelligence Desk?",

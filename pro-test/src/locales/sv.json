@@ -70,6 +70,16 @@
     "buildOnIt": "Bygg på det",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) och MCP för Claude, GPT, egna LLM:er."
   },
+  "proJobs": {
+    "title": "Vad behöver du få gjort?",
+    "intro": "Den kostnadsfria instrumentpanelen täcker den första överblicken. Så här kompletterar Pro varje uppgift.",
+    "proAdds": "Pro lägger till",
+    "openMap": "Öppna kartvyn",
+    "chokepointFree": "Sund, fartygstrafik, handelsrutter, sanktioner och undervattenskablar på livekartan.",
+    "chokepointPro": "Modellering av kostnadschocker och stresstester av leveranskedjor, larmregler som skickar en förändring vid ett sund till Slack, e-post eller en webhook, och en schemalagd sammanfattning rangordnad efter dina regler.",
+    "verifyFree": "Ett nyhetsflöde där varje nyhet är kopplad till sin källa, plus lager för konflikter, avbrott och naturrisker att pröva ett påstående mot.",
+    "verifyPro": "Underrättelseminne för att söka i tidigare bevakning och hitta liknande tidigare händelser, WM Analyst-chatt över livetjänsterna och larmregler för uppföljning."
+  },
   "deliveryDesk": {
     "eyebrow": "LEVERANSSKRIVBORD",
     "title": "Vad är det personliga intelligensskribordet?",

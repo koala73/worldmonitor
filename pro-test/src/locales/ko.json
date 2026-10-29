@@ -70,6 +70,16 @@
     "buildOnIt": "그 위에 쌓기",
     "buildOnItDesc": "커스텀 위젯 빌더 (HTML/CSS/JS + AI)와 Claude, GPT, 자체 LLM용 MCP."
   },
+  "proJobs": {
+    "title": "무엇을 해내야 하나요?",
+    "intro": "무료 대시보드로 첫 확인을 할 수 있습니다. 각 작업에 Pro가 더하는 것은 다음과 같습니다.",
+    "proAdds": "Pro 추가 기능",
+    "openMap": "지도 보기 열기",
+    "chokepointFree": "실시간 지도의 초크포인트, 선박 통행, 무역 경로, 제재, 해저 케이블.",
+    "chokepointPro": "비용 충격 모델링과 공급망 스트레스 테스트, 초크포인트 변화를 Slack·이메일·webhook으로 보내는 알림 규칙, 그리고 내 규칙에 따라 순위를 매긴 예약 다이제스트.",
+    "verifyFree": "모든 기사가 출처와 연결된 뉴스 피드와, 주장을 대조해 볼 수 있는 분쟁·장애·자연재해 레이어.",
+    "verifyPro": "과거 보도를 검색하고 비슷한 이전 사건을 찾는 인텔 메모리, 실시간 서비스 전반을 다루는 WM Analyst 채팅, 후속 추적을 위한 알림 규칙."
+  },
   "deliveryDesk": {
     "eyebrow": "딜리버리 데스크",
     "title": "개인 인텔리전스 데스크란 무엇인가요?",
