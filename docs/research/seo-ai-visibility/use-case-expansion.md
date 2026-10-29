@@ -24,7 +24,7 @@ Each target phrase is an intent hypothesis. The page title and route express the
 
 ## Historical search baseline
 
-The [October 27 Search Console snapshot](../research/seo-ai-visibility/gsc/2026-10-27.md) reports all four existing use-case URLs indexed, including the hub. For September 29 through October 26, their page rows total 215 impressions, 99 non-brand impressions, and 2 clicks. The individual impression counts are 88 for supply-chain disruptions, 77 for country risk, 28 for the hub, and 22 for breaking-news verification. These are historical page-row metrics, not market keyword volumes or a current production check.
+The [October 27 Search Console snapshot](gsc/2026-10-27.md) reports all four existing use-case URLs indexed, including the hub. For September 29 through October 26, their page rows total 215 impressions, 99 non-brand impressions, and 2 clicks. The individual impression counts are 88 for supply-chain disruptions, 77 for country risk, 28 for the hub, and 22 for breaking-news verification. These are historical page-row metrics, not market keyword volumes or a current production check.
 
 This supports expanding useful task coverage while measuring whether the new pages attract qualified visits. It does not establish demand for any specific new title.
 

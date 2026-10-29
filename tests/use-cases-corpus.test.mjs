@@ -473,6 +473,7 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
       assert.equal(faq.mainEntity[0].acceptedAnswer.text, page.answer);
       assert.ok(html.includes(page.question));
       assert.match(html, /Illustrative scenario:/);
+      assert.match(html, /class="cta"[^>]*data-use-case-handoff/);
       assert.match(html, /data-umami-event="use-case-product-cta-click"/);
       const href = html.match(/href="([^"]+)"[^>]*data-use-case-handoff/)?.[1].replaceAll('&amp;', '&');
       const handoff = new URL(href, 'https://www.worldmonitor.app');

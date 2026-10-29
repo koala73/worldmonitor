@@ -788,7 +788,7 @@ function renderMonitoringWorkflow({ page, tpl, baseUrl, lastmod }) {
   const body = `<p class="eyebrow">Use cases</p>
       <h1>${esc(page.title)}</h1>
       <p class="lede">${esc(page.description)}</p>
-      <p><a class="button" href="${esc(withContentAttribution(page.dashboard, handoff))}" ${handoffAttributes(handoff, esc)}>Open this monitoring view</a></p>
+      <p><a class="cta" href="${esc(withContentAttribution(page.dashboard, handoff))}" ${handoffAttributes(handoff, esc)}>Open this monitoring view</a></p>
       <h2>Who this workflow helps</h2><p>${esc(page.audience)}</p>
       <h2>When to start</h2><p>${esc(page.trigger)}</p>
       <h2>What you will produce</h2><p>${esc(page.output)}</p>
