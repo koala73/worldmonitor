@@ -49,11 +49,12 @@ describe('/pro job section', () => {
     const component = app.match(/const ProJobs = \(\) => \(([\s\S]*?)\n\);/)?.[1];
     assert.ok(component, 'ProJobs must be defined in App.tsx');
     assert.match(component, /<h3 id=\{`job-\$\{job\.key\}-title`\}/);
+    assert.match(component, /<span id=\{`job-\$\{job\.key\}-workflow`\}>/);
+    assert.match(component, /<span id=\{`job-\$\{job\.key\}-map`\}>/);
     const links = [...component.matchAll(/<a href=[^>]*>/g)].map((m) => m[0]);
     assert.equal(links.length, 2);
-    for (const link of links) {
-      assert.match(link, /aria-labelledby=\{`job-\$\{job\.key\}-\w+ job-\$\{job\.key\}-title`\}/, link);
-    }
+    assert.match(links[0], /aria-labelledby=\{`job-\$\{job\.key\}-workflow job-\$\{job\.key\}-title`\}/);
+    assert.match(links[1], /aria-labelledby=\{`job-\$\{job\.key\}-map job-\$\{job\.key\}-title`\}/);
   });
 
   it('puts the jobs in the crawlable overview ahead of the feature lists', () => {
