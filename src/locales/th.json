@@ -491,7 +491,7 @@
     "marketBreadth": "ความกว้างของตลาด",
     "climateNews": "ข่าวสภาพอากาศ",
     "fx": "อัตราแลกเปลี่ยนเงินตราต่างประเทศ",
-    "ukmto-incidents": "เหตุการณ์ UKMTO"
+    "ukmtoIncidents": "เหตุการณ์ UKMTO"
   },
   "commands": {
     "prefixes": {

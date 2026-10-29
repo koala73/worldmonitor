@@ -566,7 +566,7 @@
     "marketBreadth": "Ширина ринку",
     "climateNews": "Новини про клімат",
     "fx": "Курси іноземних валют",
-    "ukmto-incidents": "Інциденти UKMTO"
+    "ukmtoIncidents": "Інциденти UKMTO"
   },
   "commands": {
     "prefixes": {

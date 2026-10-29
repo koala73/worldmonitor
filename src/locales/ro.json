@@ -495,7 +495,7 @@
     "marketBreadth": "Amploarea pieței",
     "climateNews": "Știri despre climă",
     "fx": "Cursuri de schimb valutar",
-    "ukmto-incidents": "Incidente UKMTO"
+    "ukmtoIncidents": "Incidente UKMTO"
   },
   "commands": {
     "prefixes": {

@@ -497,7 +497,7 @@
     "marketBreadth": "Szerokość Rynku",
     "climateNews": "Wiadomości Klimatyczne",
     "fx": "Kursy walutowe",
-    "ukmto-incidents": "Incydenty UKMTO"
+    "ukmtoIncidents": "Incydenty UKMTO"
   },
   "commands": {
     "prefixes": {

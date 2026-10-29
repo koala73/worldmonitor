@@ -1,13 +1,22 @@
 import { afterEach, expect, it, vi } from 'vitest';
+import french from '@/locales/fr.json';
 vi.mock('@/components/Panel', () => ({ Panel: class {
   content = document.body.appendChild(document.createElement('div'));
   setCount() {}
   setSafeContent(value: unknown) { this.content.innerHTML = String(value); }
 } }));
-vi.mock('@/services/i18n', () => ({ t: (key: string) => key }));
+vi.mock('@/services/i18n', () => ({ t: (key: string) =>
+  key.startsWith('panels.') ? Reflect.get(french.panels, key.slice(7)) ?? key : key,
+}));
 import { UkmtoIncidentsPanel } from '@/components/UkmtoIncidentsPanel';
+import { PanelLayoutManager } from '@/app/panel-layout';
 
 afterEach(() => { document.body.replaceChildren(); });
+
+it('resolves the translated UKMTO name for Settings search', () => {
+  expect(PanelLayoutManager.prototype.getLocalizedPanelName('ukmto-incidents', 'UKMTO Incidents'))
+    .toBe('Incidents UKMTO');
+});
 
 it('separates unavailable, empty and stale states and escapes report text', () => {
   const panel = new UkmtoIncidentsPanel();

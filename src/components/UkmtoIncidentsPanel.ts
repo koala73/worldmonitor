@@ -10,7 +10,7 @@ export class UkmtoIncidentsPanel extends Panel {
   private onLocationClick?: (lat: number, lon: number) => void;
 
   constructor() {
-    super({ id: 'ukmto-incidents', title: t('panels.ukmto-incidents'), showCount: true });
+    super({ id: 'ukmto-incidents', title: t('panels.ukmtoIncidents'), showCount: true });
     this.content.addEventListener('click', event => {
       const target = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-id]');
       const incident = this.snapshot.incidents.find(item => item.id === target?.dataset.id);

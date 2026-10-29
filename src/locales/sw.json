@@ -562,7 +562,7 @@
     "marketBreadth": "Upana wa Soko",
     "climateNews": "Habari za Hali ya Hewa",
     "fx": "Kiwango cha ubadilishaji wa fedha za kigeni",
-    "ukmto-incidents": "Matukio ya UKMTO"
+    "ukmtoIncidents": "Matukio ya UKMTO"
   },
   "commands": {
     "prefixes": {

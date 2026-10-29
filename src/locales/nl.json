@@ -109,7 +109,7 @@
     "marketBreadth": "Marktbreedte",
     "climateNews": "Klimaatnieuws",
     "fx": "Wisselkoersen",
-    "ukmto-incidents": "UKMTO-incidenten"
+    "ukmtoIncidents": "UKMTO-incidenten"
   },
   "commands": {
     "prefixes": {

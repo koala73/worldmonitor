@@ -497,7 +497,7 @@
     "marketBreadth": "Šíře trhu",
     "climateNews": "Zprávy o klimatu",
     "fx": "Kurzy zahraniční měny",
-    "ukmto-incidents": "Incidenty UKMTO"
+    "ukmtoIncidents": "Incidenty UKMTO"
   },
   "commands": {
     "prefixes": {

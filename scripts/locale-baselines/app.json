@@ -3244,7 +3244,7 @@
   "layerExplanation.layers.no2Activity.limitations.1": "NO2 tracks combustion, so cleaner generation or cleaner vehicles read as weakening activity.",
   "layerExplanation.layers.no2Activity.related.0": "China activity nowcast",
   "layerExplanation.layers.no2Activity.related.1": "Country brief",
-  "panels.ukmto-incidents": "UKMTO Incidents",
+  "panels.ukmtoIncidents": "UKMTO Incidents",
   "ukmto.unavailable": "UKMTO data unavailable.",
   "ukmto.empty": "No incidents returned by UKMTO.",
   "ukmto.stale": "Stale source data. Last checked",

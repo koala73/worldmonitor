@@ -501,7 +501,7 @@
     "marketBreadth": "اتساع السوق",
     "climateNews": "أخبار المناخ",
     "fx": "أسعار الصرف الأجنبي",
-    "ukmto-incidents": "حوادث UKMTO"
+    "ukmtoIncidents": "حوادث UKMTO"
   },
   "commands": {
     "prefixes": {

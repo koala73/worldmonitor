@@ -491,7 +491,7 @@
     "marketBreadth": "市場の広がり",
     "climateNews": "気候ニュース",
     "fx": "外国為替レート",
-    "ukmto-incidents": "UKMTO事案"
+    "ukmtoIncidents": "UKMTO事案"
   },
   "commands": {
     "prefixes": {

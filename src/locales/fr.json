@@ -495,7 +495,7 @@
     "marketBreadth": "Étendue du marché",
     "climateNews": "Actualités climatiques",
     "fx": "Taux de change",
-    "ukmto-incidents": "Incidents UKMTO"
+    "ukmtoIncidents": "Incidents UKMTO"
   },
   "commands": {
     "prefixes": {

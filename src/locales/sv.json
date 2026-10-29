@@ -109,7 +109,7 @@
     "marketBreadth": "Marknadsbredd",
     "climateNews": "Klimatnyheter",
     "fx": "Valutakurser",
-    "ukmto-incidents": "UKMTO-incidenter"
+    "ukmtoIncidents": "UKMTO-incidenter"
   },
   "commands": {
     "prefixes": {

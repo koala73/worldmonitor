@@ -491,7 +491,7 @@
     "marketBreadth": "市場廣度",
     "climateNews": "氣候新聞",
     "fx": "外匯匯率",
-    "ukmto-incidents": "UKMTO事件"
+    "ukmtoIncidents": "UKMTO事件"
   },
   "commands": {
     "prefixes": {

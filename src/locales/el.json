@@ -493,7 +493,7 @@
     "marketBreadth": "Market Breadth",
     "climateNews": "Ειδήσεις για το Κλίμα",
     "fx": "Ισοτιμίες συναλλάγματος",
-    "ukmto-incidents": "Συμβάντα UKMTO"
+    "ukmtoIncidents": "Συμβάντα UKMTO"
   },
   "commands": {
     "prefixes": {

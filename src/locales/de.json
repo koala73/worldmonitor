@@ -493,7 +493,7 @@
     "marketBreadth": "Marktbreite",
     "climateNews": "Klimanachrichten",
     "fx": "Devisenkurse",
-    "ukmto-incidents": "UKMTO-Vorfälle"
+    "ukmtoIncidents": "UKMTO-Vorfälle"
   },
   "commands": {
     "prefixes": {

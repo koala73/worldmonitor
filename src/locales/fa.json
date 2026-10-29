@@ -562,7 +562,7 @@
     "marketBreadth": "Market Breadth",
     "climateNews": "Climate News",
     "fx": "نرخ تبادل ارز",
-    "ukmto-incidents": "رویدادهای UKMTO"
+    "ukmtoIncidents": "رویدادهای UKMTO"
   },
   "commands": {
     "prefixes": {

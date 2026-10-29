@@ -1,6 +1,24 @@
 import { test, expect } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
 
+test('UKMTO Settings search uses the translated panel label', async ({ page }, testInfo) => {
+  await seedAnonymousDashboard(page, 'full', {
+    initializeOnce: {
+      sessionKey: '__ukmto_locale_test__', clearStorage: true,
+      localStorage: { 'wm-locale-explicit': 'fr' },
+    },
+  });
+  await page.route('**/api/**', route => route.fulfill({ json: {} }));
+  await page.goto('/');
+  await page.locator('#unifiedSettingsBtn').click();
+  await page.locator('#us-tab-panels').click();
+  await page.locator('.panels-search input').fill('Incidents UKMTO');
+  const toggle = page.locator('#usPanelToggles [data-panel="ukmto-incidents"]');
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toContainText('Incidents UKMTO');
+  await page.locator('#us-tab-panel-panels').screenshot({ path: testInfo.outputPath('ukmto-french-settings.png') });
+});
+
 for (const state of ['fresh', 'stale', 'empty', 'unavailable'] as const) {
   test(`UKMTO panel shows ${state} source state`, async ({ page }, testInfo) => {
     await seedAnonymousDashboard(page, 'full', {

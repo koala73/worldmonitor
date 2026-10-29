@@ -584,7 +584,7 @@
     "marketBreadth": "Market Breadth",
     "climateNews": "Climate News",
     "fx": "Foreign exchange rates",
-    "ukmto-incidents": "UKMTO Incidents"
+    "ukmtoIncidents": "UKMTO Incidents"
   },
   "commands": {
     "prefixes": {

@@ -565,7 +565,7 @@
     "marketBreadth": "Širina Tržišta",
     "climateNews": "Klimatske Vijesti",
     "fx": "Tečajevi deviza",
-    "ukmto-incidents": "Incidenti UKMTO-a"
+    "ukmtoIncidents": "Incidenti UKMTO-a"
   },
   "commands": {
     "prefixes": {

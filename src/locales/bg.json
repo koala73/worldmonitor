@@ -493,7 +493,7 @@
     "marketBreadth": "Пазарна Ширина",
     "climateNews": "Климатски Вести",
     "fx": "Валутни курсове",
-    "ukmto-incidents": "Инциденти на UKMTO"
+    "ukmtoIncidents": "Инциденти на UKMTO"
   },
   "commands": {
     "prefixes": {

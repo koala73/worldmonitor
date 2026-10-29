@@ -491,7 +491,7 @@
     "marketBreadth": "Độ rộng Thị trường",
     "climateNews": "Tin tức về Khí hậu",
     "fx": "Tỷ giá ngoại hối",
-    "ukmto-incidents": "Sự cố UKMTO"
+    "ukmtoIncidents": "Sự cố UKMTO"
   },
   "commands": {
     "prefixes": {

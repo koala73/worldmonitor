@@ -493,7 +493,7 @@
     "marketBreadth": "Pazar Genişliği",
     "climateNews": "İklim Haberleri",
     "fx": "Döviz kurları",
-    "ukmto-incidents": "UKMTO olayları"
+    "ukmtoIncidents": "UKMTO olayları"
   },
   "commands": {
     "prefixes": {

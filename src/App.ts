@@ -3938,7 +3938,14 @@ export class App {
       );
     });
 
-    // Happy variant only refreshes news -- skip all geopolitical/financial/military refreshes
+    this.refreshScheduler.scheduleRefresh(
+      'ukmtoIncidents',
+      () => this.dataLoader.loadUkmtoIncidents(),
+      60_000,
+      () => (SITE_VARIANT === 'full' && this.state.mapLayers.ais) || this.state.panelSettings['ukmto-incidents']?.enabled === true,
+    );
+
+    // Other geopolitical, financial and military refreshes exclude Happy.
     if (SITE_VARIANT !== 'happy') {
       this.refreshScheduler.registerAll([
         {
@@ -3976,7 +3983,6 @@ export class App {
         // firms call sites one-flight the guard-less loadFirmsData (#6770).
         { name: 'fires', fn: () => this.dataLoader.loadFirmsData(), intervalMs: REFRESH_INTERVALS.firms, condition: () => this.shouldRefreshFirms() },
         { name: 'ais', fn: () => this.dataLoader.loadAisSignals(), intervalMs: REFRESH_INTERVALS.ais, condition: () => this.state.mapLayers.ais },
-        { name: 'ukmtoIncidents', fn: () => this.dataLoader.loadUkmtoIncidents(), intervalMs: 60_000, condition: () => (SITE_VARIANT === 'full' && this.state.mapLayers.ais) || this.state.panelSettings['ukmto-incidents']?.enabled === true },
         { name: 'cables', fn: () => this.dataLoader.loadCableActivity(), intervalMs: REFRESH_INTERVALS.cables, condition: () => this.state.mapLayers.cables },
         { name: 'cableHealth', fn: () => this.dataLoader.loadCableHealth(), intervalMs: REFRESH_INTERVALS.cableHealth, condition: () => this.state.mapLayers.cables },
         { name: 'flights', fn: () => this.dataLoader.loadFlightDelays(), intervalMs: REFRESH_INTERVALS.flights, condition: () => this.state.mapLayers.flights },

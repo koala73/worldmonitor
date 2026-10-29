@@ -562,7 +562,7 @@
     "marketBreadth": "Piaci szélesség",
     "climateNews": "Klíma hírek",
     "fx": "Devizaárfolyamok",
-    "ukmto-incidents": "UKMTO-események"
+    "ukmtoIncidents": "UKMTO-események"
   },
   "commands": {
     "prefixes": {
