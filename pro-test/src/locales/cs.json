@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor: geopolitický zpravodajský dashboard v reálném čase. Bezplatná živá mapa konfliktů, lodní dopravy, letů, trhů a kybernetiky, s API a MCP serverem."
     },
     "nav": {
-      "useCases": "Korelace",
+      "useCases": "Případy použití",
       "firstFive": "Prvních 5 minut",
       "depth": "Hloubka",
       "pricing": "Ceny",
@@ -714,7 +714,8 @@
       "chokepointDesc": "Prověřte stav poruch, toky lodí a rizika v {{chokepoints}} kritických námořních průsmycích.",
       "countryRiskTitle": "Vysvětlit posun v riziku země",
       "countryRiskDesc": "Sledujte politické, bezpečnostní, ekonomické a odolnostní signály za změnami v jednotlivých zemích, s odolností hodnocenou pro {{resilienceRanked}} zemí.",
-      "open": "Otevřít důkazy"
+      "open": "Otevřít důkazy",
+      "workflow": "Postup krok za krokem"
     }
   },
   "whatsNew": {

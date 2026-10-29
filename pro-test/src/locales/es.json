@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor: panel de inteligencia geopolítica en tiempo real. Mapa gratuito en vivo de conflictos, buques, vuelos, mercados y ciber, con API y servidor MCP."
     },
     "nav": {
-      "useCases": "Correlaciones",
+      "useCases": "Casos de uso",
       "firstFive": "Primeros 5 min",
       "depth": "Profundidad",
       "pricing": "Precios",
@@ -714,7 +714,8 @@
       "chokepointDesc": "Inspecciona el estado de las disrupciones, flujos de embarcaciones y riesgo a través de {{chokepoints}} pasos marítimos críticos.",
       "countryRiskTitle": "Explicar un movimiento de riesgo país",
       "countryRiskDesc": "Rastrea las señales políticas, de seguridad, económicas y de resiliencia detrás del cambio de un país, con resiliencia clasificada para {{resilienceRanked}} países.",
-      "open": "Abrir evidencia"
+      "open": "Abrir evidencia",
+      "workflow": "Flujo de trabajo paso a paso"
     }
   },
   "whatsNew": {

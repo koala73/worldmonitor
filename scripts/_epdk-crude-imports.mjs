@@ -11,7 +11,6 @@
 
 import { createRequire } from 'node:module';
 import { inflateRawSync } from 'node:zlib';
-import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 
 export const EPDK_LISTING_URL = 'https://www.epdk.gov.tr/Detay/Icerik/3-0-104/aylik-sektor-raporu';
@@ -89,39 +88,129 @@ export function parseEpdkListing(html) {
   return reports;
 }
 
-const cellText = (v) => {
-  if (v == null) return '';
-  if (typeof v === 'object') {
-    if (Array.isArray(v.richText)) return v.richText.map((r) => r.text).join('');
-    if ('result' in v) return v.result ?? '';
-    if ('text' in v) return v.text;
-    return '';
-  }
-  return v;
-};
-
 const TABLE_TITLE = /^Tablo\s*\d+(?:\.\d+)*\s*[:.]/;
+
+// Elements named `name` (`<c` matches `<c>` and `<c r=..>`, not `<col`), as
+// their attribute text and inner XML (null when self-closing). indexOf only,
+// for the same linear-time reason as elementSpans below.
+function* xmlElements(xml, name) {
+  const open = `<${name}`;
+  const close = `</${name}>`;
+  let at = 0;
+  for (;;) {
+    const start = xml.indexOf(open, at);
+    if (start < 0) return;
+    if (/[\w:-]/.test(xml[start + open.length] ?? '')) {
+      at = start + open.length;
+      continue;
+    }
+    const tagEnd = xml.indexOf('>', start);
+    if (tagEnd < 0) return;
+    const attrs = xml.slice(start + open.length, tagEnd);
+    if (attrs.endsWith('/')) {
+      yield { attrs: attrs.slice(0, -1), body: null };
+      at = tagEnd + 1;
+      continue;
+    }
+    const end = xml.indexOf(close, tagEnd);
+    if (end < 0) return;
+    yield { attrs, body: xml.slice(tagEnd + 1, end) };
+    at = end + close.length;
+  }
+}
+
+const xmlAttr = (attrs, name) => attrs.match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`))?.[1] ?? null;
+
+// Text of an <si> or <is>: its <t> runs joined, phonetic (<rPh>) runs dropped.
+const runText = (xml) => decodeEntities(
+  [...String(xml).replace(/<rPh\b[\s\S]*?<\/rPh>/g, '').matchAll(/<t(?:\s[^>]*)?>([^<]*)<\/t>/g)].map((m) => m[1]).join(''),
+);
+
+// "AB12" -> { col: 28, row: 12 }
+function cellRef(ref) {
+  const m = /^([A-Z]+)(\d+)$/.exec(ref ?? '');
+  if (!m) return null;
+  let col = 0;
+  for (const ch of m[1]) col = col * 26 + ch.charCodeAt(0) - 64;
+  return { col, row: Number(m[2]) };
+}
+
+function cellValue(attrs, body, sharedStrings) {
+  if (body === null) return undefined;
+  const type = xmlAttr(attrs, 't');
+  if (type === 'inlineStr') return runText(body.match(/<is>([\s\S]*?)<\/is>/)?.[1] ?? '');
+  const v = body.match(/<v>([^<]*)<\/v>/)?.[1];
+  if (v === undefined) return undefined;
+  if (type === 's') return sharedStrings[Number(v)] ?? '';
+  if (type === 'str') return decodeEntities(v);
+  if (type === 'b') return v === '1';
+  if (type === 'e') return decodeEntities(v);
+  const n = Number(v);
+  return Number.isFinite(n) ? n : decodeEntities(v);
+}
+
+/**
+ * Rows of every worksheet in workbook order, each a sparse array indexed
+ * from column A at 0. A merged range's cells all read as its top-left value.
+ * Reads only cell values: a full workbook model (ExcelJS) needed ~480 MB for
+ * a 514 KB annex with ~2,100 merged ranges.
+ */
+async function xlsxSheetRows(buffer) {
+  const zip = await JSZip.loadAsync(buffer);
+  const read = (path) => zip.file(path)?.async('string') ?? Promise.resolve(null);
+  const sstXml = await read('xl/sharedStrings.xml');
+  const sharedStrings = sstXml ? [...xmlElements(sstXml, 'si')].map((si) => runText(si.body ?? '')) : [];
+  const relsXml = await read('xl/_rels/workbook.xml.rels') ?? '';
+  const targets = new Map([...xmlElements(relsXml, 'Relationship')].map((r) => [xmlAttr(r.attrs, 'Id'), xmlAttr(r.attrs, 'Target')]));
+  const sheets = [];
+  for (const sheet of xmlElements(await read('xl/workbook.xml') ?? '', 'sheet')) {
+    const target = targets.get(xmlAttr(sheet.attrs, 'r:id'));
+    if (!target) continue;
+    const xml = await read(target.startsWith('/') ? target.slice(1) : `xl/${target}`);
+    if (!xml) continue;
+    const rows = new Map();
+    for (const row of xmlElements(xml, 'row')) {
+      if (row.body === null) continue;
+      const rowNumber = Number(xmlAttr(row.attrs, 'r'));
+      const cells = [];
+      for (const c of xmlElements(row.body, 'c')) {
+        const ref = cellRef(xmlAttr(c.attrs, 'r'));
+        const value = cellValue(c.attrs, c.body, sharedStrings);
+        if (ref && value !== undefined) cells[ref.col - 1] = value;
+      }
+      if (Number.isInteger(rowNumber)) rows.set(rowNumber, cells);
+    }
+    for (const merge of xmlElements(xml, 'mergeCell')) {
+      const [from, to] = (xmlAttr(merge.attrs, 'ref') ?? '').split(':').map(cellRef);
+      if (!from || !to) continue;
+      const master = rows.get(from.row)?.[from.col - 1];
+      if (master === undefined) continue;
+      for (let r = from.row; r <= to.row; r++) {
+        if (!rows.has(r)) rows.set(r, []);
+        for (let col = from.col; col <= to.col; col++) rows.get(r)[col - 1] = master;
+      }
+    }
+    sheets.push([...rows.entries()].sort((a, b) => a[0] - b[0]).map(([, cells]) => cells));
+  }
+  return sheets;
+}
 
 /** Tables of an .xlsx, each titled by the nearest "Tablo N:" row above it. */
 export async function tablesFromXlsx(buffer) {
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(buffer);
   const tables = [];
-  for (const ws of wb.worksheets) {
+  for (const rows of await xlsxSheetRows(buffer)) {
     let current = null;
-    ws.eachRow({ includeEmpty: false }, (row) => {
-      const cells = row.values.slice(1).map((v) => {
-        const t = cellText(v);
-        return typeof t === 'string' ? t.trim() : t;
-      });
+    for (const row of rows) {
+      if (!row.some((v) => v !== undefined)) continue;
+      const cells = row.map((v) => (typeof v === 'string' ? v.trim() : v));
       const title = cells.find((c) => typeof c === 'string' && TABLE_TITLE.test(c));
       if (title) {
         current = { title, rows: [] };
         tables.push(current);
-        return;
+        continue;
       }
       if (current) current.rows.push(cells);
-    });
+    }
   }
   return tables;
 }
@@ -359,7 +448,7 @@ export const EPDK_MAX_INFLATED_BYTES = 200 * 1024 * 1024;
 /**
  * Throws unless every entry of the ZIP inflates to at most `maxBytes` in
  * total. Entries are inflated with a bounded output, so the sizes the archive
- * declares are not trusted. Run before JSZip or ExcelJS inflate anything.
+ * declares are not trusted. Run before JSZip inflates anything.
  */
 export function assertZipExpansionWithin(buf, maxBytes) {
   const bad = (why) => new Error(`not a readable ZIP (${why})`);

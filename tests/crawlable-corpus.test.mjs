@@ -2331,7 +2331,7 @@ describe('crawlable corpus generator', () => {
       );
       assert.equal(manifest.sections.tools.count, 3 + LIVE_TOPIC_PAGES.length);
       assert.equal(manifest.sections.research.count, 1);
-      assert.equal(manifest.sections.useCases.count, 3);
+      assert.equal(manifest.sections.useCases.count, 12);
       assert.equal(manifest.sections.accuracy.count, 1);
       assert.equal(manifest.sections.situation.count, 1);
       assert.equal(manifest.sections.situation.index, '/monitor-the-situation/');
@@ -2669,6 +2669,31 @@ describe('crawlable corpus generator', () => {
       assertDataCatalogPresent(read(outDir, 'chokepoints/index.html'), '/chokepoints/');
       assertDataCatalogPresent(read(outDir, 'crises/index.html'), '/crises/');
       assertDataCatalogPresent(read(outDir, 'research/index.html'), '/research/');
+
+      // Each audience hub hands its reader to a dashboard view with that job's
+      // layers on, and to the monitoring workflow written for the same job.
+      const knownLayers = new Set(
+        [...readFileSync(resolve(repoRoot, 'src/config/map-layer-definitions.ts'), 'utf8')
+          .matchAll(/^\s+(\w+):\s+def\(/gm)].map((match) => match[1]),
+      );
+      for (const [route, useCase, expectedLayers] of [
+        ['crises', 'verify-breaking-news', ['conflicts', 'hotspots']],
+        ['chokepoints', 'monitor-supply-chain-disruptions', ['ais', 'waterways', 'tradeRoutes']],
+        ['countries', 'monitor-country-risk', ['ciiChoropleth']],
+      ]) {
+        const hub = htmlDocument(read(outDir, `${route}/index.html`), `https://www.worldmonitor.app/${route}/`);
+        const cta = hub.querySelector('a.cta[data-dashboard-link]');
+        assert.ok(cta, `/${route}/ needs a dashboard CTA`);
+        const target = new URL(cta.getAttribute('href'));
+        assert.equal(target.pathname, '/dashboard', `/${route}/ CTA must open the dashboard`);
+        const layers = (target.searchParams.get('layers') ?? '').split(',').filter(Boolean);
+        for (const layer of expectedLayers) assert.ok(layers.includes(layer), `/${route}/ CTA missing ${layer}`);
+        for (const layer of layers) assert.ok(knownLayers.has(layer), `/${route}/ CTA names unknown layer ${layer}`);
+        assert.ok(
+          hub.querySelector(`a[href="/use-cases/${useCase}/"]`),
+          `/${route}/ must link /use-cases/${useCase}/`,
+        );
+      }
 
       const datasetTemplateContracts = [
         {
@@ -3311,6 +3336,8 @@ describe('crawlable corpus generator', () => {
 
       const countriesIndex = read(outDir, 'countries/index.html');
       const countriesDocument = htmlDocument(countriesIndex, 'https://www.worldmonitor.app/countries/');
+      // The hub eyebrow names its reader, not the internal "corpus" build term.
+      assert.equal(countriesDocument.querySelector('.eyebrow')?.textContent, 'For country-risk analysts');
       const rankingRows = countriesDocument.querySelectorAll('table[data-country-ranking] tbody tr');
       assert.equal(rankingRows.length, corpusData.countries.length);
       assert.equal(
@@ -4075,6 +4102,7 @@ describe('crawlable corpus generator', () => {
         chokepointsIndex,
         'https://www.worldmonitor.app/chokepoints/',
       );
+      assert.equal(chokepointsDocument.querySelector('.eyebrow')?.textContent, 'For supply-chain risk teams');
       const chokepointRows = [...chokepointsDocument.querySelectorAll(
         'table[data-chokepoint-status] tbody tr',
       )];
@@ -5660,6 +5688,97 @@ describe('crawlable corpus generator', () => {
     assert.ok(data.changelog.every((entry) => entry.bullets.length > 0 && entry.bullets.length <= 8));
     assert.match(data.lastmod.chokepoints, /^\d{4}-\d{2}-\d{2}$/);
   });
+
+  it('keeps source category titles within 60 characters and unique', async () => {
+    const { outDir, manifest } = await defaultCorpusBuild();
+    const titles = new Map();
+    const seen = new Map();
+    for (const route of manifest.sections.sources.routes) {
+      const window = new Window();
+      try {
+        window.document.write(read(outDir, `${route.slice(1)}index.html`));
+        const title = window.document.querySelector('title')?.textContent ?? '';
+        const ogTitle = window.document.querySelector('meta[property="og:title"]')?.getAttribute('content');
+        const twitterTitle = window.document.querySelector('meta[name="twitter:title"]')?.getAttribute('content');
+        assert.equal(ogTitle, title, route);
+        assert.equal(twitterTitle, title, route);
+        assert.ok([...title].length <= 60, `${route} title is ${[...title].length} code points`);
+        assert.ok(!seen.has(title), `${route} repeats the title of ${seen.get(title)}`);
+        seen.set(title, route);
+        titles.set(route, title);
+      } finally {
+        window.close();
+      }
+    }
+    assert.equal(titles.get('/sources/energy/'), 'Energy & Commodities Data Sources | World Monitor');
+    assert.equal(titles.get('/sources/china/'), 'China Coverage: Data Sources and Providers | World Monitor');
+
+    const sourcesHtml = read(outDir, 'sources/index.html');
+    const sourcesWindow = new Window();
+    try {
+      sourcesWindow.document.write(sourcesHtml);
+      const sourcesTitle = sourcesWindow.document.querySelector('title')?.textContent ?? '';
+      assert.equal(sourcesWindow.document.querySelector('meta[property="og:title"]')?.getAttribute('content'), sourcesTitle);
+      assert.equal(sourcesWindow.document.querySelector('meta[name="twitter:title"]')?.getAttribute('content'), sourcesTitle);
+      assert.equal(sourcesTitle, 'Global Data Sources: OSINT, Markets, Energy | World Monitor');
+    } finally {
+      sourcesWindow.close();
+    }
+    assert.equal(
+      jsonLdObjects(sourcesHtml).find((node) => node['@type'] === 'CollectionPage')?.name,
+      'World Monitor data source catalog',
+    );
+
+    const toolsWindow = new Window();
+    try {
+      toolsWindow.document.write(read(outDir, 'tools/index.html'));
+      const toolsTitle = toolsWindow.document.querySelector('title')?.textContent ?? '';
+      assert.equal(toolsWindow.document.querySelector('meta[property="og:title"]')?.getAttribute('content'), toolsTitle);
+      assert.equal(toolsWindow.document.querySelector('meta[name="twitter:title"]')?.getAttribute('content'), toolsTitle);
+      assert.equal(toolsTitle, 'Live Tools: Outages, Fear & Greed, Oil, Debt | World Monitor');
+      for (const href of [
+        '/tools/internet-outages/',
+        '/tools/fear-and-greed-index/',
+        '/tools/crude-oil-inventories/',
+        '/tools/national-debt-clock/',
+      ]) {
+        assert.ok(toolsWindow.document.querySelector(`a[href="${href}"]`), href);
+      }
+      const toolsDescription = toolsWindow.document.querySelector('meta[name="description"]')?.getAttribute('content') ?? '';
+      assert.ok(toolsDescription.startsWith('Check hazards, airspace, shipping, outages'), toolsDescription);
+    } finally {
+      toolsWindow.close();
+    }
+
+    const compareWindow = new Window();
+    try {
+      compareWindow.document.write(read(outDir, 'compare/chokepoint-monitoring-tools/index.html'));
+      const compareTitle = compareWindow.document.querySelector('title')?.textContent ?? '';
+      assert.equal(compareWindow.document.querySelector('meta[property="og:title"]')?.getAttribute('content'), compareTitle);
+      assert.equal(compareWindow.document.querySelector('meta[name="twitter:title"]')?.getAttribute('content'), compareTitle);
+      assert.equal(compareTitle, 'Chokepoint Monitoring Tools: Hormuz, Suez | World Monitor');
+      const compareDescription = compareWindow.document.querySelector('meta[name="description"]')?.getAttribute('content') ?? '';
+      assert.ok(compareDescription.startsWith('Compare chokepoint monitoring tools for Hormuz, Suez, and Malacca'), compareDescription);
+    } finally {
+      compareWindow.close();
+    }
+
+    const ciiWindow = new Window();
+    try {
+      ciiWindow.document.write(read(outDir, 'country-instability-index/index.html'));
+      const description = ciiWindow.document.querySelector('meta[name="description"]')?.getAttribute('content') ?? '';
+      const phrase = description.match(/available 24-hour comparison-window movement|available 24-hour movement/)?.[0];
+      const count = description.match(/(\d+) Tier-1 countries/)?.[1];
+      assert.ok(phrase, description);
+      assert.ok(count, description);
+      const expected = `Live Country Instability Index rankings: scores, ${phrase}, severity and update times for ${count} Tier-1 countries.`;
+      assert.equal(description, expected);
+      const shortVariant = `Live Country Instability Index rankings: scores, available 24-hour movement, severity and update times for ${count} Tier-1 countries.`;
+      assert.ok([...shortVariant].length >= 120, `${[...shortVariant].length} code points`);
+    } finally {
+      ciiWindow.close();
+    }
+  });
 });
 
 describe('live-pulse snapshot injection (#7533)', () => {
@@ -6076,7 +6195,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
             pageFor(manifest.sections.research.index),
           ]],
           ['useCases', [
-            laterDate(USE_CASES_CONTENT_VERSION, gitFileLastmod(repoRoot, data.sources.useCases)),
+            laterDate(USE_CASES_CONTENT_VERSION, gitFileLastmod(repoRoot, data.sources.useCases), gitFileLastmod(repoRoot, 'scripts/data/use-case-workflows.mjs')),
             pageFor(manifest.sections.useCases.index),
           ]],
           ['coverage', [

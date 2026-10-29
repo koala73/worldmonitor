@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor: tablou de bord de informații geopolitice în timp real. Hartă live gratuită: conflicte, transport maritim, zboruri, piețe și cyber, cu API și MCP."
     },
     "nav": {
-      "useCases": "Corelații",
+      "useCases": "Cazuri de utilizare",
       "firstFive": "Primele 5 min",
       "depth": "Adâncime",
       "pricing": "Prețuri",
@@ -714,7 +714,8 @@
       "chokepointDesc": "Inspectează starea perturbării, fluxurile de nave și riscul pe {{chokepoints}} pasaje maritime critice.",
       "countryRiskTitle": "Explicați o mișcare de risc-țară",
       "countryRiskDesc": "Urmărește semnalele politice, de securitate, economice și de reziliență din spatele schimbării unei țări, cu reziliență clasificată pentru {{resilienceRanked}} de țări.",
-      "open": "Deschideți dovezi"
+      "open": "Deschideți dovezi",
+      "workflow": "Flux de lucru pas cu pas"
     }
   },
   "whatsNew": {

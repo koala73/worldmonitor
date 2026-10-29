@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor: リアルタイム地政学インテリジェンスダッシュボード。紛争、海運、航空便、市場、サイバーのライブマップが無料で利用でき、API と MCP サーバーも備えています。"
     },
     "nav": {
-      "useCases": "相関分析",
+      "useCases": "ユースケース",
       "firstFive": "最初の 5 分",
       "depth": "詳細解説",
       "pricing": "料金",
@@ -714,7 +714,8 @@
       "chokepointDesc": "{{chokepoints}} の重要海峡の混乱状況、船舶フロー、リスクを検査します。",
       "countryRiskTitle": "国別リスク変動の背景を説明",
       "countryRiskDesc": "国の変化の背景にある政治、セキュリティ、経済、レジリエンス信号をトレース。{{resilienceRanked}} 国についてレジリエンスランク付け。",
-      "open": "証拠を開く"
+      "open": "証拠を開く",
+      "workflow": "ステップごとのワークフロー"
     }
   },
   "whatsNew": {

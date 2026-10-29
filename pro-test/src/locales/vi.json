@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor: bảng tình báo địa chính trị thời gian thực. Bản đồ trực tiếp miễn phí: xung đột, hàng hải, chuyến bay, thị trường, an ninh mạng; có API và MCP."
     },
     "nav": {
-      "useCases": "Tương quan",
+      "useCases": "Trường hợp sử dụng",
       "firstFive": "5 phút đầu",
       "depth": "Chi tiết",
       "pricing": "Giá cả",
@@ -714,7 +714,8 @@
       "chokepointDesc": "Kiểm tra trạng thái gián đoạn, dòng chảy tàu và rủi ro trên {{chokepoints}} tuyến đường hàng hải quan trọng.",
       "countryRiskTitle": "Giải thích một bước ngoặt rủi ro quốc gia",
       "countryRiskDesc": "Theo dõi các tín hiệu chính trị, an ninh, kinh tế và khả năng phục hồi đằng sau thay đổi của một quốc gia, với khả năng phục hồi được xếp hạng cho {{resilienceRanked}} quốc gia.",
-      "open": "Mở chứng cứ"
+      "open": "Mở chứng cứ",
+      "workflow": "Quy trình từng bước"
     }
   },
   "whatsNew": {

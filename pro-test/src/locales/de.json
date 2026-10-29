@@ -459,7 +459,7 @@
       "ogDescription": "World Monitor: geopolitisches Lagebild-Dashboard in Echtzeit. Kostenlose Live-Karte: Konflikte, Schifffahrt, Flüge, Märkte und Cyber, mit API und MCP-Server."
     },
     "nav": {
-      "useCases": "Korrelationen",
+      "useCases": "Anwendungsfälle",
       "firstFive": "Erste 5 Min",
       "depth": "Tiefe",
       "pricing": "Preisgestaltung",
@@ -714,7 +714,8 @@
       "chokepointDesc": "Überprüfe Störungsstatus, Schiffsströme und Risiken über {{chokepoints}} kritische Meerespassagen hinweg.",
       "countryRiskTitle": "Eine Länderrisiko-Bewegung erklären",
       "countryRiskDesc": "Verfolge die politischen, sicherheitsbezogenen, wirtschaftlichen und Resilienz-Signale hinter einer Länderveränderung, mit Resilienz-Ranking für {{resilienceRanked}} Länder.",
-      "open": "Belege öffnen"
+      "open": "Belege öffnen",
+      "workflow": "Schritt-für-Schritt-Ablauf"
     }
   },
   "whatsNew": {
