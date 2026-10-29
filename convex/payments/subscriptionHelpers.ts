@@ -74,6 +74,27 @@ interface DodoPaymentData {
   status?: string;
 }
 
+/**
+ * The address a subscription's billing mail goes to, trimmed, or "" when
+ * nothing is known. Trust order mirrors the portal's: the sub's own
+ * rawPayload email first (per-Clerk-userId by construction), then the
+ * customers row for the SAME userId (customers rows can race across Clerk
+ * accounts, so never a cross-user lookup). Dunning and the billing UI's
+ * bounce flag must name the same recipient, so both read it here.
+ */
+export async function resolveBillingRecipient(
+  ctx: MutationCtx | QueryCtx,
+  sub: Pick<Doc<"subscriptions">, "userId" | "rawPayload">,
+): Promise<string> {
+  const rawEmail = (sub.rawPayload as { customer?: { email?: unknown } } | null)?.customer?.email;
+  if (typeof rawEmail === "string" && rawEmail.includes("@")) return rawEmail.trim();
+  const customer = await ctx.db
+    .query("customers")
+    .withIndex("by_userId", (q) => q.eq("userId", sub.userId))
+    .first();
+  return customer?.email.trim() ?? "";
+}
+
 export async function billingDeletionForUser(ctx: MutationCtx | QueryCtx, userId: string) {
   return userId.startsWith("deleted:")
     ? ctx.db.query("accountDeletions")

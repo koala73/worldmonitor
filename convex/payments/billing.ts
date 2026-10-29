@@ -9,7 +9,7 @@
  * - claimSubscription: mutation to migrate entitlements from anon ID to authed user
  */
 
-import { assertAccountWritable } from "../accountDeletion/guard";
+import { assertAccountWritable, isAccountDeleting } from "../accountDeletion/guard";
 import { redactBillingPayload, tombstoneUserId } from "../accountDeletion/registry";
 import { ConvexError, v } from "convex/values";
 import { action, mutation, query, internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx, type QueryCtx } from "../_generated/server";
@@ -21,6 +21,7 @@ import { resolveUserId, requireUserId } from "../lib/auth";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import { ANON_ID_V4_REGEX, verifyAnonClaimToken } from "../lib/identitySigning";
 import { ResendSendError, sendResendEmail } from "../lib/resendEmail";
+import { findEmailSuppression } from "../emailSuppressions";
 import { PLAN_PRECEDENCE, PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
 import { proActivationStepIdValidator } from "../constants";
 import {
@@ -29,6 +30,7 @@ import {
   isCoveringAt,
   isNewerEvent,
   recomputeEntitlementFromAllSubs,
+  resolveBillingRecipient,
   resolvePlanKey,
   revokeBusinessProGrantsForSubscription,
   type SubscriptionStatus,
@@ -677,6 +679,14 @@ export const getSubscriptionForUser = query({
     const activationOnboardingEligible =
       firstProBillingCycle &&
       !(await hasConfirmedActivationPresentation(ctx, subscription._id));
+    const billingEmail = await resolveBillingRecipient(ctx, subscription);
+    // Only a hard bounce, and only while the row still gets billing mail. A
+    // complaint or manual suppression is not something a new address repairs,
+    // and an ended subscription has no receipts or payment alerts to lose.
+    const billingEmailBounced =
+      (subscription.status === "active" || subscription.status === "on_hold") &&
+      billingEmail !== "" &&
+      (await findEmailSuppression(ctx, billingEmail))?.reason === "bounce";
 
     return {
       // Purpose-built opaque identity for Pro Activation fire-once keying.
@@ -700,6 +710,12 @@ export const getSubscriptionForUser = query({
       // Upgrade CTA when local paid evidence goes stale. Normalized to null
       // (not undefined) for a stable wire shape.
       renewalVerificationState: subscription.renewalVerificationState ?? null,
+      // The address dunning would mail (same resolution), so the banner can
+      // name it, and whether Resend hard-bounced it. The welcome email bounces
+      // within seconds of a typo'd checkout, so this is known before any
+      // renewal fails.
+      billingEmail: billingEmail || null,
+      billingEmailBounced,
     };
   },
 });
@@ -3774,6 +3790,156 @@ export const internalGetCustomerPortalUrl = internalAction({
       throw new ConvexError({ kind: "USER_ID_REQUIRED" });
     }
     return createCustomerPortalUrlForUser(ctx, args.userId);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Billing email repair
+// ---------------------------------------------------------------------------
+
+const BILLING_EMAIL_MAX_LENGTH = 254;
+// Shape only; Dodo and Resend judge deliverability. Catches what a checkout
+// typo looks like (whitespace, no domain) without rejecting unusual mailboxes.
+const BILLING_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Trimmed address, or a structured INVALID_EMAIL throw the client can show. */
+export function parseBillingEmail(raw: string): string {
+  const email = raw.trim();
+  if (
+    email.length === 0 ||
+    email.length > BILLING_EMAIL_MAX_LENGTH ||
+    !BILLING_EMAIL_PATTERN.test(email)
+  ) {
+    throw new ConvexError({ kind: "INVALID_EMAIL" });
+  }
+  return email;
+}
+
+function customerIdOfSubscription(sub: Doc<"subscriptions">): string | null {
+  if (typeof sub.dodoCustomerId === "string" && sub.dodoCustomerId.length > 0) {
+    return sub.dodoCustomerId;
+  }
+  const id = (sub.rawPayload as { customer?: { customer_id?: unknown } } | null)
+    ?.customer?.customer_id;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+/**
+ * Every refusal the email change can hit before Dodo is touched, plus the
+ * distinct Dodo customers the user owns. Each candidate goes through the same
+ * exclusivity check as the portal: a customer another Clerk user is linked to
+ * must not have its address rewritten by this one.
+ */
+export const getBillingEmailUpdateTarget = internalQuery({
+  args: { userId: v.string(), email: v.string() },
+  handler: async (ctx, args): Promise<{ customerIds: string[] }> => {
+    if (await isAccountDeleting(ctx, args.userId)) {
+      throw new ConvexError({ kind: "ACCOUNT_DELETION_IN_PROGRESS" });
+    }
+    const suppression = await findEmailSuppression(ctx, args.email);
+    // unsubscribe only withdraws broadcasts; billing mail still delivers there.
+    if (suppression && suppression.reason !== "unsubscribe") {
+      throw new ConvexError({ kind: "EMAIL_SUPPRESSED", reason: suppression.reason });
+    }
+
+    const subs = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .take(50);
+    const customers = await ctx.db
+      .query("customers")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .take(10);
+    const customerIds = new Set<string>();
+    for (const sub of subs) {
+      const id = customerIdOfSubscription(sub);
+      if (id) customerIds.add(id);
+    }
+    for (const customer of customers) {
+      if (customer.dodoCustomerId) customerIds.add(customer.dodoCustomerId);
+    }
+    if (customerIds.size === 0) {
+      throw new ConvexError({ kind: "NO_CUSTOMER" });
+    }
+    for (const customerId of customerIds) {
+      await requireExclusivePortalCustomer(ctx, args.userId, customerId);
+    }
+    return { customerIds: [...customerIds] };
+  },
+});
+
+/**
+ * Local mirror of a Dodo customer email change that already succeeded: the
+ * user's customers rows and every subscription payload, so the reactive query
+ * drops the bounce flag and dunning resolves the new address. The old address
+ * keeps its suppression row. Subscription `updatedAt` is left alone because
+ * it anchors the dunning episode.
+ */
+export const applyBillingEmailUpdate = internalMutation({
+  args: { userId: v.string(), email: v.string() },
+  handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
+    const now = Date.now();
+    const customers = await ctx.db
+      .query("customers")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .take(10);
+    for (const customer of customers) {
+      await ctx.db.patch(customer._id, {
+        email: args.email,
+        normalizedEmail: args.email.toLowerCase(),
+        updatedAt: now,
+      });
+    }
+    const subs = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .take(50);
+    for (const sub of subs) {
+      const payload = sub.rawPayload;
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) continue;
+      const customer = (payload as { customer?: unknown }).customer;
+      const priorCustomer = customer && typeof customer === "object" ? customer : {};
+      await ctx.db.patch(sub._id, {
+        rawPayload: { ...payload, customer: { ...priorCustomer, email: args.email } },
+      });
+    }
+  },
+});
+
+/**
+ * Change the signed-in user's billing email at Dodo and locally. Dodo first:
+ * a local change without the provider would hide the bounce while Dodo's own
+ * receipts and dunning kept going to the dead address.
+ */
+export const updateBillingEmail = action({
+  args: { email: v.string() },
+  handler: async (ctx, args): Promise<{ email: string }> => {
+    const userId = await requireUserId(ctx);
+    const email = parseBillingEmail(args.email);
+    const { customerIds } = await ctx.runQuery(
+      internal.payments.billing.getBillingEmailUpdateTarget,
+      { userId, email },
+    );
+
+    const client = getDodoClient();
+    for (const customerId of customerIds) {
+      try {
+        await client.customers.update(customerId, { email });
+      } catch (err) {
+        // Structured so the browser gets a kind instead of the masked
+        // `[Request ID: X] Server Error`; the provider message stays in logs.
+        console.error(
+          `[billing/updateBillingEmail] Dodo customer update failed for ${customerId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        throw new ConvexError({ kind: "DODO_CUSTOMER_UPDATE_ERROR" });
+      }
+    }
+
+    await ctx.runMutation(internal.payments.billing.applyBillingEmailUpdate, { userId, email });
+    return { email };
   },
 });
 
