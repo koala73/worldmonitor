@@ -9849,6 +9849,9 @@ components:
                 demandKbd:
                     type: number
                     format: double
+                    description: |-
+                        JODI demand; with none in the window or latest month, national annual final
+                         consumption 0-3 years before the flow month (a "Product demand for" limitation).
                 deficitPct:
                     type: number
                     format: double

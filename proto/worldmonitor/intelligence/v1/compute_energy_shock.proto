@@ -17,6 +17,8 @@ message ComputeEnergyShockScenarioRequest {
 message ProductImpact {
   string product         = 1;
   double output_loss_kbd = 2;
+  // JODI demand; with none in the window or latest month, national annual final
+  // consumption 0-3 years before the flow month (a "Product demand for" limitation).
   double demand_kbd      = 3;
   double deficit_pct     = 4;
 }

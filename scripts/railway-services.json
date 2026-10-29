@@ -791,6 +791,7 @@
       "scripts/_bundle-runner.mjs",
       "scripts/_content-age-helpers.mjs",
       "scripts/_country-resolver.mjs",
+      "scripts/_dosm-product-demand.mjs",
       "scripts/_energy-disruption-registry.mjs",
       "scripts/_epdk-crude-imports.mjs",
       "scripts/_env-file.mjs",

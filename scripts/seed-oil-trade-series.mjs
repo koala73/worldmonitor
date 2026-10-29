@@ -30,6 +30,10 @@
 // crude imports to Comtrade from their own national statistics, in tonnes:
 // Turkey from the EPDK monthly petroleum market reports (_epdk-crude-imports.mjs).
 //
+// `productDemandNational` gives refined-product demand, kb/d, for importers
+// JODI carries without any: Malaysia from DOSM annual final consumption
+// (_dosm-product-demand.mjs).
+//
 // No source is turned into a modelled export estimate. A month a source does
 // not cover is null, never zero, and every source carries its newest observed
 // month and a status (ok, stale, not_reported, unavailable).
@@ -39,6 +43,7 @@ import { DAY_MIN } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { fetchYearCsv, parseObsValue } from './seed-jodi-oil.mjs';
 import { fetchEpdkCrudeImports, epdkImporterColumns, isEpdkUrl } from './_epdk-crude-imports.mjs';
+import { DOSM_ENERGY_CONSUMPTION_URL, dosmProductDemand } from './_dosm-product-demand.mjs';
 import {
   compactCountry,
   lastCompleteMonth,
@@ -739,6 +744,42 @@ async function fetchCrudeImportOriginNational(nowMs, previous, runDeadlineAtMs =
   }
 }
 
+const DOSM_SOURCE = 'DOSM (Department of Statistics Malaysia) open data, energy_consumption_commodity: annual final energy consumption by commodity, ktoe, converted to kb/d at IEA default net calorific values';
+
+/**
+ * The published `productDemandNational` section: refined-product demand,
+ * kb/d, from national statistics for importers JODI carries without any.
+ * An empty or failed fetch keeps the previous section, carried forward.
+ */
+export function productDemandNationalSection({ rows, fetchedAt, error, previous }) {
+  const my = error ? null : dosmProductDemand(rows);
+  if (my) {
+    return { status: 'ok', fetchedAt, source: DOSM_SOURCE, unit: 'kbd', countries: { MY: { source: 'DOSM', ...my } } };
+  }
+  if (previous?.countries && Object.keys(previous.countries).length > 0) {
+    return { ...previous, status: 'unavailable', carriedForward: true };
+  }
+  return { status: 'unavailable', fetchedAt, source: DOSM_SOURCE, unit: 'kbd', countries: {} };
+}
+
+async function fetchProductDemandNational(nowMs, previous) {
+  const fetchedAt = new Date(nowMs).toISOString();
+  try {
+    const rows = await withRetry(async () => {
+      const resp = await fetch(DOSM_ENERGY_CONSUMPTION_URL, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(30_000) });
+      if (!resp.ok) throw new Error(`DOSM HTTP ${resp.status}`);
+      return resp.json();
+    }, 2, 5000);
+    const section = productDemandNationalSection({ rows, fetchedAt, previous });
+    const my = section.countries.MY;
+    console.log(`  National product demand: MY ${my ? `${my.year} (${section.status}${section.carriedForward ? ', carried forward' : ''})` : 'none'}`);
+    return section;
+  } catch (err) {
+    console.warn(`  National product demand unavailable: ${err.message}`);
+    return productDemandNationalSection({ error: err, fetchedAt, previous });
+  }
+}
+
 // ── PortWatch AIS ───────────────────────────────────────────────────────────
 
 const PORTWATCH_PORTS_URL =
@@ -931,6 +972,7 @@ export async function fetchOilTradeSeries({ nowMs = Date.now(), fetchDeadlineAtM
   const previous = await readSeedSnapshot(OIL_TRADE_CANONICAL_KEY).catch(() => null);
   // EPDK is a different host from every other source: start it now, on its own budget.
   const nationalOrigin = fetchCrudeImportOriginNational(nowMs, previous?.crudeImportOriginNational, fetchDeadlineAtMs);
+  const nationalDemand = fetchProductDemandNational(nowMs, previous?.productDemandNational);
   const failed = { production: false, jodi: false };
   let eia = new Map();
   let jodi = new Map();
@@ -1002,6 +1044,7 @@ export async function fetchOilTradeSeries({ nowMs = Date.now(), fetchDeadlineAtM
   // Two more keyed Comtrade calls, after the per-country lanes have drained.
   const crudeImportOrigin = await fetchCrudeImportOrigin(nowMs, previous?.crudeImportOrigin);
   const crudeImportOriginNational = await nationalOrigin;
+  const productDemandNational = await nationalDemand;
 
   return {
     generatedAt: new Date(nowMs).toISOString(),
@@ -1011,6 +1054,7 @@ export async function fetchOilTradeSeries({ nowMs = Date.now(), fetchDeadlineAtM
     countries: ordered,
     crudeImportOrigin,
     crudeImportOriginNational,
+    productDemandNational,
   };
 }
 

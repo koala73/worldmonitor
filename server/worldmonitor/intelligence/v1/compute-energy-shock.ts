@@ -43,6 +43,8 @@ import {
   resolveRefineryYields,
   computeMonthlyGulfShares,
   nationalOriginAsShares,
+  parseNationalProductDemand,
+  NATIONAL_DEMAND_MAX_AGE_YEARS,
   MIN_PRE_CRISIS_MONTHS,
   computeProductBalance,
   parseProductTradeWindow,
@@ -50,6 +52,7 @@ import {
 import type {
   CrudeImportOriginLike,
   NationalCrudeOriginLike,
+  NationalProductDemandLike,
   GulfShareMeasurement,
   JodiRefineryYieldsLike,
   LngOriginForCountry,
@@ -288,6 +291,8 @@ export async function computeEnergyShockScenario(
     : null;
   const liveFlowRatio: number | null = rawFlowRatio !== null ? clamp(rawFlowRatio, 0, 1.5) : null;
 
+  // Oil v17: product demand from national statistics (Malaysia, DOSM) for
+  // products JODI reports no demand for.
   // Oil v16: Turkey's crude origin from EPDK national statistics (basis
   // national_monthly) where Comtrade has no partner filings.
   // Oil v15: IEA days converted to barrels with JODI net oil imports (crude
@@ -297,7 +302,7 @@ export async function computeEnergyShockScenario(
   // v12 report no cover for them; v11 count every Gulf barrel as lost.
   // Gas g2: the Hormuz LNG route share is the importer's measured Qatar + UAE
   // share, not a flat 30%.
-  const cacheVersion = `${needsOil ? 'v16' : 'v4'}${needsGas ? '-g2' : ''}`;
+  const cacheVersion = `${needsOil ? 'v17' : 'v4'}${needsGas ? '-g2' : ''}`;
   const cacheKey = `energy:shock:${cacheVersion}:${code}:${chokepointId}:${disruptionPct}:${degraded ? 'd' : 'l'}:${fuelMode}`;
   const cached = await getCachedJson(cacheKey);
   if (cached) return cached as ComputeEnergyShockScenarioResponse;
@@ -322,7 +327,11 @@ export async function computeEnergyShockScenario(
   const ieaStocks = ieaStocksResult.status === 'fulfilled' ? (ieaStocksResult.value as IeaStocks | null) : null;
   const annualShare: GulfShareMeasurement = gulfShareResult.status === 'fulfilled' ? gulfShareResult.value : NO_GULF_SHARE;
   const oilTrade = oilTradeResult.status === 'fulfilled'
-    ? (oilTradeResult.value as { crudeImportOrigin?: CrudeImportOriginLike; crudeImportOriginNational?: NationalCrudeOriginLike } | null)
+    ? (oilTradeResult.value as {
+      crudeImportOrigin?: CrudeImportOriginLike;
+      crudeImportOriginNational?: NationalCrudeOriginLike;
+      productDemandNational?: NationalProductDemandLike;
+    } | null)
     : null;
   const comtradeOrigin = oilTrade?.crudeImportOrigin ?? null;
   const comtradeComputed = computeMonthlyGulfShares(comtradeOrigin, code);
@@ -551,6 +560,17 @@ export async function computeEnergyShockScenario(
   });
   const hasDemand = (flows: ProductTradeFlows | null | undefined): flows is ProductTradeFlows & { demandKbd: number } =>
     flows?.demandKbd != null && flows.demandKbd > 0;
+  // A product JODI gives no demand for, in the window or the latest month,
+  // takes its demand from national statistics when the year is recent
+  // enough; its trade still comes from JODI.
+  const nationalDemandRaw = needsOil ? parseNationalProductDemand(oilTrade?.productDemandNational, code, jodiOil?.dataMonth) : null;
+  const nationalDemand = nationalDemandRaw?.usable ? nationalDemandRaw : null;
+  const jodiHasDemand = (key: RefineryProductKey) => hasDemand(preCrisisTrade?.products[key]) || hasDemand(latestFlows(key));
+  const withNationalDemand = (key: RefineryProductKey, flows: ProductTradeFlows | null | undefined): ProductTradeFlows | null | undefined => {
+    const demandKbd = nationalDemand?.products[key];
+    if (flows == null || demandKbd == null || hasDemand(flows) || jodiHasDemand(key)) return flows;
+    return { ...flows, demandKbd };
+  };
   const balanceRows = (flowsFor: (key: RefineryProductKey) => ProductTradeFlows | null | undefined, lossKbd = crudeLossKbd): ProductBalanceRow[] =>
     REFINERY_PRODUCTS.flatMap(({ key, name, label }) => {
       const flows = flowsFor(key);
@@ -565,10 +585,23 @@ export async function computeEnergyShockScenario(
       });
       return [{ key, name, label, flows, balance }];
     });
-  const fromWindow = (key: RefineryProductKey) => hasDemand(preCrisisTrade?.products[key]);
+  // National demand fills a window entry only when JODI reported its trade;
+  // an entry the seeder left all-null would otherwise outrank the latest
+  // month's observed imports and exports.
+  const hasTrade = (flows: ProductTradeFlows | null | undefined) => flows?.importsKbd != null || flows?.exportsKbd != null;
+  const fromWindow = (key: RefineryProductKey) => {
+    const entry = preCrisisTrade?.products[key];
+    return hasDemand(entry) || (hasTrade(entry) && hasDemand(withNationalDemand(key, entry)));
+  };
   const primaryRows = oilModeled
-    ? balanceRows((key) => (fromWindow(key) ? preCrisisTrade?.products[key] : latestFlows(key)))
+    ? balanceRows((key) => withNationalDemand(key, fromWindow(key) ? preCrisisTrade?.products[key] : latestFlows(key)))
     : [];
+
+  if (nationalDemandRaw && !nationalDemandRaw.usable && oilModeled) {
+    const flowMonth = typeof jodiOil?.dataMonth === 'string' ? jodiOil.dataMonth : 'unknown';
+    const when = nationalDemandRaw.year > Number(flowMonth.slice(0, 4)) ? 'after' : `more than ${NATIONAL_DEMAND_MAX_AGE_YEARS} years before`;
+    limitations.push(`${nationalDemandRaw.source} product demand for ${code} is for ${nationalDemandRaw.year}, ${when} the ${flowMonth} JODI flow month; not used.`);
+  }
 
   const products: ProductImpact[] = primaryRows.map((row) => ({
     product: row.name,
@@ -594,10 +627,14 @@ export async function computeEnergyShockScenario(
       // Current product trade nets the current-flows crude loss when that Gulf share is measured.
       const currentLoss = currentFlows ? currentFlows.crudeLossKbd : crudeLossKbd;
       const lossLabel = currentFlows ? `crude loss at the current-flows Gulf share, ${currentFlows.crudeLossKbd} kbd` : 'crude loss as in the headline';
-      const currentRows = currentTrade ? balanceRows((key) => currentTrade.products[key], currentLoss) : [];
+      const currentRows = currentTrade ? balanceRows((key) => withNationalDemand(key, currentTrade.products[key]), currentLoss) : [];
       limitations.push(currentTrade && currentRows.length > 0
         ? `product balance, current flows (${currentTrade.startMonth}–${currentTrade.endMonth}, ${currentTrade.months} month${currentTrade.months === 1 ? '' : 's'}; ${lossLabel}): ${currentRows.map((row) => `${row.label} ${row.balance.deficitPct.toFixed(1)}%`).join(', ')}.`
         : `product balance, current flows: unavailable for ${code} in this JODI row.`);
+    }
+    const nationalLabels = nationalDemand ? primaryRows.filter((row) => !jodiHasDemand(row.key)).map((row) => row.label) : [];
+    if (nationalDemand && nationalLabels.length > 0) {
+      limitations.push(`Product demand for ${code}: ${nationalDemand.source} ${nationalDemand.year} annual final consumption for ${nationalLabels.join(', ')}, converted to kb/d; JODI reports no demand for them in the pre-crisis window or the latest month. Final consumption excludes fuel burned for power generation and refinery own use.`);
     }
     if (gulfImportLossFactor != null) {
       const year = gulfProductShare.year != null ? ` ${gulfProductShare.year}` : '';

@@ -325,6 +325,57 @@ export function nationalOriginAsShares(section: NationalCrudeOriginLike | null |
   return { ...section, importers };
 }
 
+/**
+ * `productDemandNational` in the same key: refined-product demand, kb/d,
+ * from national statistics for importers JODI carries without any
+ * (Malaysia from DOSM annual final consumption).
+ */
+export interface NationalProductDemandLike {
+  status?: string;
+  carriedForward?: boolean;
+  fetchedAt?: string;
+  countries?: Record<string, {
+    source?: string;
+    year?: unknown;
+    products?: Record<string, unknown> | null;
+  } | undefined> | null;
+}
+
+/** Oldest national demand year still used, in years before the JODI flow month. */
+export const NATIONAL_DEMAND_MAX_AGE_YEARS = 3;
+
+export interface NationalProductDemand {
+  source: string;
+  year: number;
+  products: Partial<Record<RefineryProductKey, number>>;
+  /** False when the year is after the flow month's or more than NATIONAL_DEMAND_MAX_AGE_YEARS before it. */
+  usable: boolean;
+}
+
+/** One country's national product demand, or null when the section has none. */
+export function parseNationalProductDemand(
+  section: NationalProductDemandLike | null | undefined,
+  iso2: string,
+  flowMonth: unknown,
+): NationalProductDemand | null {
+  const entry = section?.countries?.[iso2];
+  const year = entry?.year;
+  if (!entry || typeof year !== 'number' || !Number.isInteger(year) || !entry.products) return null;
+  const products: Partial<Record<RefineryProductKey, number>> = {};
+  for (const { key } of REFINERY_PRODUCTS) {
+    const kbd = entry.products[key];
+    if (typeof kbd === 'number' && Number.isFinite(kbd) && kbd > 0) products[key] = kbd;
+  }
+  if (Object.keys(products).length === 0) return null;
+  const flowYear = typeof flowMonth === 'string' && MONTH_RE.test(flowMonth) ? Number(flowMonth.slice(0, 4)) : null;
+  return {
+    source: typeof entry.source === 'string' && entry.source ? entry.source : 'national statistics',
+    year,
+    products,
+    usable: flowYear != null && flowYear - year >= 0 && flowYear - year <= NATIONAL_DEMAND_MAX_AGE_YEARS,
+  };
+}
+
 export interface MonthlyGulfShare {
   share: number;
   fromMonth: string;
