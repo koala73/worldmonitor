@@ -63,8 +63,12 @@ test('access and schema failures wait for the next run instead of retrying immed
   const failure = async (response) => fetchUkmtoIncidents(context, async () => response).catch(error => error);
   assert.equal((await failure(new Response('', { status: 403 }))).nonRetryable, true);
   assert.equal((await failure(new Response(JSON.stringify([{ ...report, place: null }])))).nonRetryable, true);
+  assert.equal((await failure(new Response('{"truncated'))).nonRetryable, true);
+  assert.equal((await failure(new Response('', { status: 408 }))).nonRetryable, undefined);
   assert.equal((await failure(new Response('', { status: 429 }))).nonRetryable, undefined);
   assert.equal((await failure(new Response('', { status: 503 }))).nonRetryable, undefined);
+  const interrupted = new Response(new ReadableStream({ start(controller) { controller.error(new Error('socket reset')); } }));
+  assert.equal((await failure(interrupted)).nonRetryable, undefined);
 });
 
 test('orders reports newest first with a stable tie-break and caps the snapshot', () => {

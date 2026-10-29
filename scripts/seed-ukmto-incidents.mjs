@@ -49,13 +49,14 @@ export async function fetchUkmtoIncidents(_context, fetchFn = fetch) {
   if (!response.ok) {
     const error = new Error(`UKMTO HTTP ${response.status}`);
     // Access and schema failures repeat on an immediate retry; the next cron run retries them.
-    if (response.status >= 400 && response.status < 500 && response.status !== 429) error.nonRetryable = true;
+    if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) error.nonRetryable = true;
     throw error;
   }
-  const body = await response.json();
+  // An interrupted read stays retryable; a body that arrived but does not parse would arrive the same way again.
+  const text = await response.text();
   let incidents;
   try {
-    incidents = normalizeIncidents(body);
+    incidents = normalizeIncidents(JSON.parse(text));
   } catch (error) {
     error.nonRetryable = true;
     throw error;
