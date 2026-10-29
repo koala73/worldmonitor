@@ -827,7 +827,8 @@ test.describe('Pro activation — step scroll position (#5731)', () => {
       await expect(page.locator(PROGRESS)).toContainText('3 of 3');
       // Wait for the scheduled autofocus before measuring; visibility alone
       // does not catch content clipped by a scrolled modal body.
-      await expect(page.locator(ADVANCE_SKIP_BTN)).toBeFocused();
+      await expect(page.locator(viewport.height < 600 ? '.pro-activation-close' : ADVANCE_SKIP_BTN)).toBeFocused();
+      await expect(page.locator(':focus')).toBeInViewport({ ratio: 1 });
       await page.screenshot({ path: testInfo.outputPath('toolkit.png') });
       expect(await body.evaluate((element) => element.scrollTop)).toBe(0);
       await expect(page.locator('.pro-activation-status')).toBeInViewport({ ratio: 1 });
@@ -838,6 +839,11 @@ test.describe('Pro activation — step scroll position (#5731)', () => {
 
       // Only automatic focus suppresses scrolling. Keyboard traversal must
       // still reveal the focused control and wrap within the dialog.
+      if (viewport.height < 600) {
+        await page.keyboard.press('Shift+Tab');
+        await expect(page.locator(ADVANCE_SKIP_BTN)).toBeFocused();
+        await expect(page.locator(ADVANCE_SKIP_BTN)).toBeInViewport({ ratio: 1 });
+      }
       await page.keyboard.press('Tab');
       await expect(page.locator('.pro-activation-close')).toBeFocused();
       await page.keyboard.press('Shift+Tab');
