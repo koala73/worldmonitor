@@ -16,7 +16,7 @@ Three days is how long it took for UKMTO’s *public warning* to appear. It is n
 
 **At 21:00 UTC on Friday, October 23, World Monitor recorded a report of the IRGC’s claim that two supertankers had struck naval mines in the Strait of Hormuz. By 21:13 it had ranked the item for importance, and by 22:01 it had linked the reporting into its conflict records.**
 
-That was 60 hours before the UKMTO post that started Monday’s conversation. The measured gap is between World Monitor’s Friday record of the claim and UKMTO’s Monday public post. It does not establish when official confirmation first became available, or that both reports concern the same vessel. A claim is not a confirmation. But the signal was in World Monitor, ranked, on Friday night.
+That was about 60 hours (60 hours and 25 minutes) before the UKMTO post that started Monday’s conversation. The measured gap is between World Monitor’s Friday record of the claim and UKMTO’s Monday public post. It does not establish when official confirmation first became available, or that both reports concern the same vessel. A claim is not a confirmation. But the signal was in World Monitor, ranked, on Friday night.
 
 ## Friday evening, already in the record
 
@@ -85,7 +85,7 @@ It measures the time from World Monitor’s earliest retained collection record 
 
 **Does World Monitor only collect RSS feeds?**
 
-No. News feeds are one input among hundreds of providers, alongside live AIS ship tracking, ADS-B flight data, NGA navigation warnings, GPS-jamming maps, satellite fire detection, conflict-event datasets, prediction markets and reviewed Telegram channels. It then ranks, baselines and cross-correlates that data. The full list is in the source catalog at worldmonitor.app/sources.
+No. News feeds are one input among hundreds of providers, alongside live AIS ship tracking, ADS-B flight data, NGA navigation warnings, GPS-jamming maps, satellite fire detection, conflict-event datasets, prediction markets and reviewed Telegram channels. It then ranks, baselines and cross-correlates that data. The full list is in the [source catalog](/sources/).
 
 ---
 
