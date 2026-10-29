@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { rootCertificates } from 'node:tls';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import {
   parsePgcb, parseNiso, parseCammesa, parseEskom, parseOns, parseAnpTrade,
   parseAnpPriceRows, parsePetrobangla, parseGse, pdfItems, periodEnd,
@@ -146,7 +147,13 @@ export async function runRegionalEnergyFeed(id, moduleUrl) {
     return;
   }
   loadEnvFile(moduleUrl);
-  await runSeed('energy', `regional-${id}`, regionalEnergyKey(id), () => fetchRegionalEnergyFeed(id), {
+  await runSeed('energy', `regional-${id}`, regionalEnergyKey(id), () => fetchRegionalEnergyFeed(id), regionalEnergySeedOptions(id));
+}
+
+export function regionalEnergySeedOptions(id) {
+  const feed = feeds.find(f => f.id === id);
+  if (!feed) throw new Error('Unknown regional energy feed');
+  return {
     ttlSeconds: 14 * 86400,
     sourceVersion: `regional-energy-${id}-v1`,
     schemaVersion: 1,
@@ -159,5 +166,10 @@ export async function runRegionalEnergyFeed(id, moduleUrl) {
     maxContentAgeMin: feed.maxContentAgeMin,
     lockTtlMs: 300000,
     fetchPhaseTimeoutMs: 240000,
-  });
+    afterFreshness: async () => {
+      const creds = getOptionalUpstashCreds();
+      if (!creds) throw new Error('Missing regional energy activation credentials');
+      await upstashCommand(creds, ['SET', `seed-activated:energy:regional-${id}`, '1']);
+    },
+  };
 }

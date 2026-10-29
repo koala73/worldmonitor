@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { X509Certificate } from 'node:crypto';
 import { rootCertificates } from 'node:tls';
-import { fetchRegionalEnergyFeed } from '../scripts/_regional-energy-source.mjs';
+import { fetchRegionalEnergyFeed, regionalEnergySeedOptions } from '../scripts/_regional-energy-source.mjs';
+import feeds from '../scripts/shared/regional-energy-feeds.json' with { type: 'json' };
+import { __testing__ as health } from '../api/health.js';
 import {
   parsePgcb, parseNiso, parseCammesa, parseEskom, parseOns,
   parseAnpTrade, parseAnpPriceRows, parsePetrobangla, parseGse,
@@ -106,6 +108,37 @@ describe('regional energy source observations', () => {
 });
 
 describe('source discovery and publication boundary', () => {
+  it('activates each health probe only after publication and freshness writes', async t => {
+    const savedEnv = { ...process.env }, savedFetch = globalThis.fetch;
+    t.after(() => {
+      globalThis.fetch = savedFetch;
+      for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key];
+      Object.assign(process.env, savedEnv);
+    });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    const calls = [];
+    globalThis.fetch = async (_url, options) => {
+      calls.push(JSON.parse(options.body));
+      return Response.json({ result: 'OK' });
+    };
+    for (const feed of feeds) {
+      const name = 'regionalEnergy' + feed.id[0].toUpperCase() + feed.id.slice(1);
+      const config = health.SEED_META[name];
+      assert.equal(health.STANDALONE_KEYS[name], `energy:regional:${feed.id}:v1`);
+      assert.ok(health.ON_DEMAND_KEYS.has(name));
+      assert.equal(health.ACTIVATION_MARKERS[name], config.activationKey);
+      assert.equal(config.maxStaleMin, feed.intervalMin * 3);
+      assert.equal(config.maxContentAgeMin, feed.maxContentAgeMin);
+      assert.equal(config.cutover.activationKey, config.activationKey);
+      assert.equal(config.cutover.issue, 9842);
+      const options = regionalEnergySeedOptions(feed.id);
+      assert.equal(options.afterPublish, undefined);
+      assert.equal(calls.length, feeds.indexOf(feed));
+      await options.afterFreshness();
+      assert.deepEqual(calls.at(-1), ['SET', config.activationKey, '1']);
+    }
+  });
   it('rejects unapproved redirects and provider failures before parsing', async () => {
     for (const response of [new Response('', { status: 503 }), new Response('', {
       status: 302, headers: { location: 'http://127.0.0.1/private' },

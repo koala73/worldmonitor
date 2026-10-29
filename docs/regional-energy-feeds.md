@@ -47,6 +47,10 @@ parses public sources without loading credentials or writing Redis. Normal runs
 use the standard seed envelope, content metadata, lock and last-good retention
 under `energy:regional:<id>:v1`, with metadata
 `seed-meta:energy:regional-<id>`. Health registers these as standalone keys.
+After canonical data and freshness metadata publish, the worker sets a durable
+`seed-activated:energy:regional-<id>` marker without a TTL. Before that first
+publication, health treats the absent key as on-demand. After activation,
+missing or stale data stays strict, even after its cache TTL expires.
 The MCP headline energy tool does not yet expose the regional series; the
 omission is recorded in its parity exclusions.
 
