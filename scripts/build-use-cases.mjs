@@ -787,9 +787,9 @@ function renderMonitoringWorkflow({ page, tpl, baseUrl, lastmod }) {
   const related = page.related.map((slug) => {
     const sibling = USE_CASE_PAGES.find((candidate) => candidate.slug === slug);
     if (!sibling) throw new Error(`Unknown related use case: ${slug}`);
-    return `<li><a href="${esc(sibling.path)}">${esc(sibling.title)}</a></li>`;
+    return `        <li><a href="${esc(sibling.path)}">${esc(sibling.title)}</a></li>`;
   }).join('\n');
-  const body = `<p class="eyebrow">Use cases</p>
+  const body = `      <p class="eyebrow">Use cases</p>
       <h1>${esc(page.title)}</h1>
       <p class="lede">${esc(page.description)}</p>
       <p><a class="cta" href="${esc(withContentAttribution(page.dashboard, handoff))}" ${handoffAttributes(handoff, esc)}>Open this monitoring view</a></p>
@@ -797,13 +797,20 @@ function renderMonitoringWorkflow({ page, tpl, baseUrl, lastmod }) {
       <h2>When to start</h2><p>${esc(page.trigger)}</p>
       <h2>What you will produce</h2><p>${esc(page.output)}</p>
       <h2>End-to-end workflow</h2>
-      <ol>${steps.map(({ name, text }) => `<li id="${stepSlug(name)}"><strong>${esc(name)}</strong><p>${esc(text)}</p></li>`).join('\n')}</ol>
+      <ol>
+${steps.map(({ name, text }) => `        <li id="${stepSlug(name)}"><strong>${esc(name)}</strong><p>${esc(text)}</p></li>`).join('\n')}
+      </ol>
       <h2>Worked example</h2><p>${esc(page.example)}</p>
       <h2>Provenance, freshness, and limits</h2><p>${esc(page.limits)}</p>
       <p>Check the observation time and original source before each decision. This guide describes a repeatable procedure, not a live incident report. Data availability depends on provider coverage and the selected product view.</p>
-      <ul>${page.sources.map(([href, label]) => `<li><a href="${esc(href)}">${esc(label)}</a></li>`).join('\n')}</ul>
+      <ul>
+${page.sources.map(([href, label]) => `        <li><a href="${esc(href)}">${esc(label)}</a></li>`).join('\n')}
+      </ul>
       <h2>Common question</h2><h3>${esc(page.question)}</h3><p>${esc(page.answer)}</p>
-      <h2>Related workflows</h2><ul>${related}</ul>
+      <h2>Related workflows</h2>
+      <ul>
+${related}
+      </ul>
       <p><a href="/use-cases/">Browse all monitoring workflows</a></p>`;
   return pageDocument({
     baseUrl, path, title: `${page.title} | World Monitor`, description: page.description,
