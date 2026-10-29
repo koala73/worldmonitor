@@ -1831,12 +1831,11 @@ Redis-only verification is not sufficient to close #3979; it only confirms that 
 
 ## UKMTO incidents
 
-`seed-ukmto-incidents` is registered as `planned`. This registration does not
-provision or deploy a worker. Production activation requires separate approval.
-
-Use the repository-root Nixpacks deployment with start command
-`node scripts/seed-ukmto-incidents.mjs`, cron `*/30 * * * *`, Node.js 24 and the
-existing Upstash REST URL/token credentials. No source credential or proxy is required.
+`seed-ukmto-incidents` (service `fa702bee-b70c-44de-9aca-9cea889e89fb`,
+provisioned 2026-10-29) runs from `scripts/` with Railpack, start command
+`node seed-ukmto-incidents.mjs`, cron `*/30 * * * *`, restart policy `NEVER`, and
+`UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` referenced from the shared
+variables. No source credential or proxy is required.
 The collector reads `https://hormuz.data-tracking.net/api/incidents`, a documented
 public API that republishes UKMTO reports (CC BY 4.0; UKMTO reports under the Open
 Government Licence v3.0). UKMTO's own backend at `sccd.royalnavy.mod.uk` returns a
@@ -1855,8 +1854,8 @@ After the first successful publish, the collector sets the permanent marker
 pending before this marker and becomes strict after it. Do not remove the marker
 to hide a failed source. UKMTO health remains independent of AIS and NGA.
 
-After approved deployment, change the service lifecycle to `active`, then observe
-at least three scheduled runs over at least 60 minutes. Confirm terminal deployment, fresh seed metadata,
+After a deployment or source change, observe at least three scheduled runs over
+at least 60 minutes. Confirm terminal deployment, fresh seed metadata,
 `ukmtoIncidents` health, the RPC response and the rendered panel. Search worker
 logs for `UKMTO seed failed`, invalid-field errors and non-200 responses. Repeated
 failures or a stale retrieval time require investigation of the upstream contract.

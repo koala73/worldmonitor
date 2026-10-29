@@ -2441,9 +2441,30 @@
   },
   {
     "entry": "scripts/seed-ukmto-incidents.mjs",
-    "deployMode": "nixpacks-root-repo",
-    "lifecycle": "planned",
+    "deployMode": "nixpacks-root-scripts",
     "service": "seed-ukmto-incidents",
+    "startCommand": "node seed-ukmto-incidents.mjs",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
+    ],
+    "watchPatterns": [
+      "scripts/_env-file.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-payload-codec.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/_upstash-rest.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/main-module.mjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/railpack.json",
+      "scripts/seed-ukmto-incidents.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
+    ],
     "cronSchedule": "*/30 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#ukmto-incidents"
   }
