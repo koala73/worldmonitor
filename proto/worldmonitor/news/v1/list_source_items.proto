@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package worldmonitor.news.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/news/v1/news_item.proto";
+
+message ListSourceItemsRequest {
+  // Digest editions to look for each source in, in order, e.g. full, tech.
+  // Empty means full.
+  repeated string editions = 1 [
+    (sebuf.http.query) = { name: "editions" },
+    (buf.validate.field).repeated.max_items = 8
+  ];
+  // One category key within the selected editions.
+  string category = 2 [
+    (sebuf.http.query) = { name: "category", required: true },
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 32
+  ];
+  // Catalog source names, at most 24, each at most 120 characters. Order and
+  // duplicates do not matter.
+  repeated string sources = 3 [
+    (sebuf.http.query) = { name: "sources", required: true },
+    (buf.validate.field).repeated.min_items = 1,
+    (buf.validate.field).repeated.max_items = 24
+  ];
+  // ISO 639-1 language code of a supported digest language (en, fr, ar, etc.);
+  // empty means en. Unsupported codes are rejected with 400. Only sources this
+  // language's digest fetches are read.
+  string lang = 4 [
+    (sebuf.http.query) = { name: "lang" },
+    (buf.validate.field).string.max_len = 8
+  ];
+}
+
+message ListSourceItemsResponse {
+  // Up to three newest items per found source, newest first.
+  repeated NewsItem items = 1 [(buf.validate.field).repeated.max_items = 72];
+  // One per requested source, in the canonical (sorted) order.
+  repeated SourceItemsState sources = 2 [(buf.validate.field).repeated.max_items = 24];
+  string generated_at = 3;
+}
+
+message SourceItemsState {
+  string source = 1;
+  // found (a cached parse), missing (no healthy cached parse), or unplaced
+  // (no requested edition's digest in this language fetches the source in
+  // the category).
+  string state = 2;
+  // Edition whose cached parse was read; empty unless found.
+  string edition = 3;
+  int32 items = 4;
+}

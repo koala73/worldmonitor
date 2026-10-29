@@ -206,6 +206,26 @@ export interface NewsPoolCell {
   generatedAt: string;
 }
 
+export interface ListSourceItemsRequest {
+  editions: string[];
+  category: string;
+  sources: string[];
+  lang: string;
+}
+
+export interface ListSourceItemsResponse {
+  items: NewsItem[];
+  sources: SourceItemsState[];
+  generatedAt: string;
+}
+
+export interface SourceItemsState {
+  source: string;
+  state: string;
+  edition: string;
+  items: number;
+}
+
 export interface ListLabelChangesRequest {
   storyId: string;
   limit: number;
@@ -390,6 +410,7 @@ export interface NewsServiceHandler {
   listCountryHeadlines(ctx: ServerContext, req: ListCountryHeadlinesRequest): Promise<ListCountryHeadlinesResponse>;
   listMediaPerspective(ctx: ServerContext, req: ListMediaPerspectiveRequest): Promise<ListMediaPerspectiveResponse>;
   listNewsPool(ctx: ServerContext, req: ListNewsPoolRequest): Promise<ListNewsPoolResponse>;
+  listSourceItems(ctx: ServerContext, req: ListSourceItemsRequest): Promise<ListSourceItemsResponse>;
   listLabelChanges(ctx: ServerContext, req: ListLabelChangesRequest): Promise<ListLabelChangesResponse>;
   submitErrorReport(ctx: ServerContext, req: SubmitErrorReportRequest): Promise<SubmitErrorReportResponse>;
   listErrorReports(ctx: ServerContext, req: ListErrorReportsRequest): Promise<ListErrorReportsResponse>;
@@ -667,6 +688,56 @@ export function createNewsServiceRoutes(
 
           const result = await handler.listNewsPool(ctx, body);
           return new Response(JSON.stringify(result as ListNewsPoolResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/list-source-items",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListSourceItemsRequest = {
+            editions: params.getAll("editions"),
+            category: params.get("category") ?? "",
+            sources: params.getAll("sources"),
+            lang: params.get("lang") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listSourceItems", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listSourceItems(ctx, body);
+          return new Response(JSON.stringify(result as ListSourceItemsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

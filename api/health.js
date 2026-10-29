@@ -2007,7 +2007,7 @@ const SEED_META = {
   // later as a generic STALE_SEED. Content age is producer-declared
   // (newestItemAt/maxContentAgeMin in seed-meta) — a frozen upstream file
   // reads STALE_CONTENT rather than passing as fresh.
-  jodiOil:              { key: 'seed-meta:energy:jodi-oil',               maxStaleMin: 60 * 24 * 40, chinaRow: true }, // monthly 35d cadence; 40d = cadence + 5d late-publisher grace. Data/meta TTL is 70d (2× cadence) so last-good outlives this gate and one missed monthly publish.
+  jodiOil:              { key: 'seed-meta:energy:jodi-oil',               maxStaleMin: 60 * 24 * 40, chinaRow: true }, // 15d bundle interval (monthly publisher); 40d allows missed runs plus a late publish. Data/meta TTL is 70d so last-good outlives this gate and one missed monthly publish.
   // Weekly bundle tick (seed-bundle-energy-sources); 14d = two missed runs. minRecordCount
   // mirrors MIN_COUNTRIES_WITH_PRODUCTION in scripts/seed-oil-trade-series.mjs. Content age is
   // the newest EIA STEO month (newestItemAt/maxContentAgeMin in seed-meta).

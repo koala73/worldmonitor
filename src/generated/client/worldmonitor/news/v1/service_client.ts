@@ -206,6 +206,26 @@ export interface NewsPoolCell {
   generatedAt: string;
 }
 
+export interface ListSourceItemsRequest {
+  editions: string[];
+  category: string;
+  sources: string[];
+  lang: string;
+}
+
+export interface ListSourceItemsResponse {
+  items: NewsItem[];
+  sources: SourceItemsState[];
+  generatedAt: string;
+}
+
+export interface SourceItemsState {
+  source: string;
+  state: string;
+  edition: string;
+  items: number;
+}
+
 export interface ListLabelChangesRequest {
   storyId: string;
   limit: number;
@@ -541,6 +561,34 @@ export class NewsServiceClient {
     }
 
     return await resp.json() as ListNewsPoolResponse;
+  }
+
+  async listSourceItems(req: ListSourceItemsRequest, options?: NewsServiceCallOptions): Promise<ListSourceItemsResponse> {
+    let path = "/api/news/v1/list-source-items";
+    const params = new URLSearchParams();
+    if (req.editions && req.editions.length > 0) req.editions.forEach(v => params.append("editions", v));
+    if (req.category != null && req.category !== "") params.set("category", String(req.category));
+    if (req.sources && req.sources.length > 0) req.sources.forEach(v => params.append("sources", v));
+    if (req.lang != null && req.lang !== "") params.set("lang", String(req.lang));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListSourceItemsResponse;
   }
 
   async listLabelChanges(req: ListLabelChangesRequest, options?: NewsServiceCallOptions): Promise<ListLabelChangesResponse> {

@@ -8,7 +8,7 @@ import { ViewportHydrationLedger, type LoadAllDataTrigger } from '@/app/viewport
 import { yieldToMain } from '@/utils/after-paint';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
 import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
-import type { ClusteredEvent, NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
+import type { ClusteredEvent, Feed, NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
 import type { MarketData } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
 import {
@@ -229,6 +229,8 @@ import type { TechHubsPanel } from '@/components/TechHubsPanel';
 import { EconomicServiceClient, MarketServiceClient, ResearchServiceClient } from '@/services/generated-rpc-clients';
 
 import { protoItemToNewsItem } from '@/services/news-digest-items';
+import { fetchSourceItems, fillFreeSlots, sourcesBelowCap } from '@/app/news-source-fill';
+import { digestCarriesFeed } from '../../shared/news-catalog-browser';
 import { normalizeStockSymbol } from '../../shared/stock-symbol';
 
 type PhysicalPremiumFetcher = typeof import('@/services/market')['fetchPhysicalPremiums'];
@@ -727,6 +729,54 @@ export class DataLoaderManager implements AppModule {
    * the missing edition's sources, so the caller falls back to fetching the
    * full reachable feed set instead.
    */
+  /**
+   * Cached rows of the enabled sources in `feeds` that this language's digest
+   * fetches but that have no item in `delivered` (#9796). Never rejects.
+   */
+  private async sourceRowsBelowCap(
+    category: string,
+    editions: readonly string[],
+    delivered: readonly NewsItem[],
+    feeds: readonly Feed[],
+  ): Promise<NewsItem[]> {
+    // A source the language's digest skips still has a cached row; reading it
+    // would show this panel items it never had.
+    const language = getCurrentLanguage();
+    const missing = sourcesBelowCap(delivered, feeds.filter(feed => digestCarriesFeed(feed, language)).map(feed => feed.name));
+    if (missing.length === 0) return [];
+    const wanted = new Set(missing);
+    return (await fetchSourceItems(editions, category, missing, language)).filter(item => wanted.has(item.source));
+  }
+
+  /**
+   * Re-renders the already painted `items` with `rows` in their free slots, up
+   * to `limit`. The panel never waits on it. A fill is dropped once a newer
+   * load started or another render replaced `items` (a fallback digest
+   * followed by the live one in the same load). The added rows also reach
+   * `ctx.allNews`: before this load commits, through `items`, which the
+   * load returned and commits; after, by appending to the committed set.
+   */
+  private fillAfterRender(category: string, generation: number, items: NewsItem[], rows: Promise<NewsItem[]>, limit: number): void {
+    void rows.then((found) => {
+      if (!this.isCurrentNewsLoad(generation) || this.ctx.newsByCategory[category] !== items) return;
+      const filled = fillFreeSlots(items, found, limit);
+      if (filled.length === items.length) return;
+      const shown = new Set(items);
+      const added = filled.filter(item => !shown.has(item));
+      this.renderNewsForCategory(category, filled);
+      this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
+        status: 'ok',
+        itemCount: filled.length,
+      });
+      if (this.committedNewsGeneration === generation) {
+        this.ctx.allNews = [...this.ctx.allNews, ...added];
+        this.updateMonitorResults();
+      } else {
+        items.push(...added);
+      }
+    });
+  }
+
   private async crossEditionCategoryItems(category: string): Promise<{ items: NewsItem[]; servedStale: boolean } | null> {
     const editions = digestEditionsFor(category).filter(edition => edition !== SITE_VARIANT);
     if (editions.length === 0) return null;
@@ -1678,9 +1728,8 @@ export class DataLoaderManager implements AppModule {
         // load left behind.
         this.clearNewsSourceCoverage(category);
         this.setNewsRefreshDegraded(category, false);
-        const items = (digest.categories[category]?.items ?? [])
-          .map(protoItemToNewsItem)
-          .filter(i => enabledNames.has(i.source));
+        const delivered = (digest.categories[category]?.items ?? []).map(protoItemToNewsItem);
+        const items = delivered.filter(i => enabledNames.has(i.source));
 
         void ingestTrendingHeadlines(items.map(i => ({
           title: i.title,
@@ -1709,6 +1758,14 @@ export class DataLoaderManager implements AppModule {
         }
         this.flashMapForNews(items);
         this.renderNewsForCategory(category, items);
+        // #9796: the enabled-source filter dropped digest items, so the panel
+        // has free slots. Fill them, after the digest items are on screen,
+        // from the cached rows of enabled sources the category's top items
+        // left out. A user who turned nothing off never makes this request.
+        if (items.length < delivered.length) {
+          this.fillAfterRender(category, generation, items,
+            this.sourceRowsBelowCap(category, [SITE_VARIANT], delivered, enabledFeeds), delivered.length);
+        }
 
         this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
           status: 'ok',
@@ -1731,6 +1788,7 @@ export class DataLoaderManager implements AppModule {
       // Sources no digest carries yet (`browserOnly`, still on the migration
       // list) keep the rotating direct fetch below, merged onto these items.
       let crossEditionCarry: NewsItem[] | null = null;
+      let crossEditionFill: Promise<NewsItem[]> | null = null;
       let crossEditionServedStale = false;
       let rotationFeeds = reachableFeeds;
       if (isCustom) {
@@ -1758,17 +1816,29 @@ export class DataLoaderManager implements AppModule {
           // it: a server-side language restriction (`digestLang`) can exclude
           // a source the browser still reaches.
           const digestLanguage = getCurrentLanguage();
-          const directFeeds = reachableFeeds.filter(f =>
-            f.browserOnly || (f.digestLang !== undefined && f.digestLang !== digestLanguage));
+          const directFeeds = reachableFeeds.filter(f => !digestCarriesFeed(f, digestLanguage));
+          const items = mergeRotatedNewsItems([], digestItems, {
+            maxItems: this.customCategoryMergedItemLimit,
+            enabledSources: enabledNames,
+          });
+          // #9796: the cached rows of digest-served sources no carrying
+          // edition's top items include, for the panel's free slots. Directly
+          // fetched sources are not digest-served, so the two never overlap.
+          // Read from every enabled source, as the digest items above are: a
+          // source the browser limits to another language can still be in
+          // this language's digest.
+          if (items.length < this.customCategoryMergedItemLimit) {
+            const editions = digestEditionsFor(category).filter(edition => edition !== SITE_VARIANT);
+            crossEditionFill = this.sourceRowsBelowCap(category, editions, crossEdition.items, enabledFeeds);
+          }
           if (directFeeds.length === 0) {
             // Every reachable source is digest-served, so there is no partial
             // source coverage to disclose on the badge.
             this.clearNewsSourceCoverage(category);
-            const items = mergeRotatedNewsItems([], digestItems, {
-              maxItems: this.customCategoryMergedItemLimit,
-              enabledSources: enabledNames,
-            });
             this.renderNewsForCategory(category, items);
+            if (crossEditionFill) {
+              this.fillAfterRender(category, generation, items, crossEditionFill, this.customCategoryMergedItemLimit);
+            }
             this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
               status: 'ok',
               itemCount: items.length,
@@ -1944,8 +2014,16 @@ export class DataLoaderManager implements AppModule {
       // the value that lands in ctx.allNews — reads the MERGED set, because for
       // a custom category that is what the panel actually shows. Using the raw
       // fetch would report this cycle's three sources as the whole category and
-      // hand clustering a set the user isn't looking at.
-      const items = mergeForRender(fetchedItems);
+      // hand clustering a set the user isn't looking at. The #9796 source rows,
+      // requested alongside the direct fetch, take only the slots left free.
+      const merged = mergeForRender(fetchedItems);
+      const fillRows = crossEditionFill ? await crossEditionFill : [];
+      // A newer load may have rendered while this one waited for the rows.
+      if (crossEditionFill && !this.isCurrentNewsLoad(generation)) {
+        if (renderTimeout) clearTimeout(renderTimeout);
+        return merged;
+      }
+      const items = fillRows.length > 0 ? fillFreeSlots(merged, fillRows, this.customCategoryMergedItemLimit) : merged;
       const failures = getFeedFailures();
       const failedFeeds = fallbackFeeds.filter(f => failures.has(f.name));
       const windowFailed = fallbackFeeds.length > 0 && failedFeeds.length === fallbackFeeds.length;
@@ -2055,6 +2133,13 @@ export class DataLoaderManager implements AppModule {
         checkBatchForBreakingAlerts(intel);
       }
       this.renderNewsForCategory('intel', intel);
+      // #9796: as for the category digest above. The server reads intel
+      // sources from the full edition.
+      if (intel.length < (digest.categories['intel']?.items ?? []).length) {
+        const delivered = (digest.categories['intel']?.items ?? []).map(protoItemToNewsItem);
+        this.fillAfterRender('intel', generation, intel,
+          this.sourceRowsBelowCap('intel', ['full'], delivered, enabledIntelSources), delivered.length);
+      }
       if (intelPanel && options.recordBaselineSample) {
         try {
           const baseline = await updateBaseline('news:intel', intel.length);

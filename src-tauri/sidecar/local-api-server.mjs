@@ -1008,6 +1008,7 @@ const cloudPreferredExact = new Set([
   '/api/military/v1/get-usni-fleet-report',
   '/api/military/v1/list-defense-patents',
   '/api/news/v1/list-news-pool',
+  '/api/news/v1/list-source-items',
   '/api/news/v1/summarize-article-cache',
   '/api/research/v1/list-arxiv-papers',
   '/api/research/v1/list-hackernews-items',

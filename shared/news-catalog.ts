@@ -149,7 +149,7 @@ export function projectBrowserCatalog(catalog: NewsCatalog = NEWS_CATALOG): Brow
         if (lang !== undefined) browserFeed.lang = lang;
         const strategicDefault = browserField(feed, 'strategicDefault');
         if (strategicDefault !== undefined) browserFeed.strategicDefault = strategicDefault;
-        if (feed.lang !== undefined && !feed.strategicDefault && feed.lang !== lang) browserFeed.digestLang = feed.lang;
+        if (feed.lang !== undefined && !feed.strategicDefault) browserFeed.digestLang = feed.lang;
       }
       let placedFeed = placement.type === undefined ? browserFeed : { ...browserFeed, type: placement.type };
       const digestServed = feed.placements.some((p) =>

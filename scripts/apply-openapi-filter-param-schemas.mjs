@@ -50,6 +50,31 @@ export const OPENAPI_FILTER_PARAM_SCHEMA_OVERRIDES = [
     name: 'category',
     schema: { type: 'string', maxLength: 32 },
   },
+  // ListSourceItems: the request validator caps these (list_source_items.proto).
+  {
+    path: '/api/news/v1/list-source-items',
+    method: 'get',
+    name: 'editions',
+    schema: { type: 'array', maxItems: 8, items: { type: 'string' } },
+  },
+  {
+    path: '/api/news/v1/list-source-items',
+    method: 'get',
+    name: 'category',
+    schema: { type: 'string', minLength: 1, maxLength: 32 },
+  },
+  {
+    path: '/api/news/v1/list-source-items',
+    method: 'get',
+    name: 'sources',
+    schema: { type: 'array', minItems: 1, maxItems: 24, items: { type: 'string', maxLength: 120 } },
+  },
+  {
+    path: '/api/news/v1/list-source-items',
+    method: 'get',
+    name: 'lang',
+    schema: { type: 'string', maxLength: 8 },
+  },
   {
     path: '/api/infrastructure/v1/get-bootstrap-data',
     method: 'get',

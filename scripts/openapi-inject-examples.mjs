@@ -264,6 +264,14 @@ function overrideStringExample(key, context = {}) {
     if (key === 'language') return 'fr';
     if (key === 'state') return 'complete';
   }
+  // ListSourceItems: editions, category and sources must name catalog
+  // placements, or the example request is answered `unplaced`.
+  if (where.includes('listsourceitems') || where.includes('list-source-items') || where.includes('sourceitemsstate')) {
+    if (key === 'editions' || key === 'edition') return 'full';
+    if (key === 'category') return 'europe';
+    if (key === 'sources' || key === 'source') return 'France 24';
+    if (key === 'state') return 'found';
+  }
   if (where.includes('listvulnerabilityrankings') || where.includes('list-vulnerability-rankings')) {
     if (key === 'commodityid') return 'crude_oil';
     if (key === 'band') return 'high';

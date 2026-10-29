@@ -39,7 +39,10 @@ const JODI_MEASUREMENT_FIELDS = require('./shared/jodi-measurement-fields.json')
 
 export const CANONICAL_KEY = 'energy:jodi-oil:v1:_countries';
 export const COUNTRY_KEY_PREFIX = 'energy:jodi-oil:v1:';
-export const JODI_TTL = 70 * 24 * 3600; // 70 days: 2× 35d cadence so one missed monthly publish still serves last-good through the 40d STALE_SEED window (#7273)
+export const JODI_TTL = 70 * 24 * 3600; // 70 days: one missed monthly publish still serves last-good through the 40d STALE_SEED window (#7273)
+// Bump when the country payload changes shape: the energy-sources bundle
+// reseeds on the first tick after a deploy whose seed-meta lacks this version.
+export const JODI_OIL_SOURCE_VERSION = 'jodi-oil-v2';
 const META_KEY = 'seed-meta:energy:jodi-oil';
 const LOCK_DOMAIN = 'energy:jodi-oil';
 const LOCK_TTL_MS = 10 * 60 * 1000;
@@ -779,6 +782,7 @@ export function prepareOilPublish({ allRows, previousMeta = null, now = new Date
     metaPayload: {
       fetchedAt: now.getTime(),
       recordCount: countries.length,
+      sourceVersion: JODI_OIL_SOURCE_VERSION,
       chinaDataMonth: chinaCoverage.dataMonth,
       chinaRow: buildChinaRowDiagnostic(
         chinaCoverage,

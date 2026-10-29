@@ -251,6 +251,17 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
     assert.equal(metaPayload.maxContentAgeMin, MAX_JODI_CONTENT_AGE_MIN);
   });
 
+  it('oil: stamps seed-meta with the source version the bundle gates on', () => {
+    const { metaPayload } = oilModule.prepareOilPublish({
+      allRows: oilRowsWithChinaUnreported(45),
+      previousMeta: null,
+      now: NOW,
+    });
+
+    assert.equal(metaPayload.sourceVersion, oilModule.JODI_OIL_SOURCE_VERSION);
+    assert.match(oilModule.JODI_OIL_SOURCE_VERSION, /^jodi-oil-v\d+$/);
+  });
+
   it('the country floor counts countries that carry a measurement, not rows that parsed', () => {
     // 45 countries reach the file, but only 39 report a usable value. Before
     // #6395 an unusable China row was the incidental canary for this; the floor

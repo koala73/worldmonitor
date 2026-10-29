@@ -20,12 +20,21 @@ export interface BrowserCatalogFeed {
    */
   browserOnly?: true;
   /**
-   * The only digest language that carries this source, set when the server
-   * restricts it to a language the browser does not (e.g. BBC Persian is `fa`
-   * on the server but unrestricted in the browser). A digest in any other
-   * language omits it, so a digest-reading panel must fetch it directly there.
+   * The only digest language that carries this source, set whenever the
+   * server restricts it to one language. It can differ from `lang`: BBC
+   * Persian is `fa` on the server but unrestricted in the browser, and The
+   * Hindu is browser-`en` but in every digest. Absent means every digest
+   * language carries it. See digestCarriesFeed.
    */
   digestLang?: string;
+}
+
+/**
+ * Whether the `language` digest carries this source in its placements: the
+ * server's isServerFeedReachableForLanguage, read from the browser catalog.
+ */
+export function digestCarriesFeed(feed: Pick<BrowserCatalogFeed, 'browserOnly' | 'digestLang'>, language: string): boolean {
+  return !feed.browserOnly && (feed.digestLang === undefined || feed.digestLang === language);
 }
 
 export interface BrowserCatalog {

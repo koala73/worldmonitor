@@ -131,7 +131,7 @@ function feedReads(query: PoolQuery): FeedRead[] {
 }
 
 /** A cached parse; a fetch that failed is cached as `items: []` with `attempt.failure` set. */
-function healthyRow(value: unknown): ParsedItem[] | null {
+export function healthyRow(value: unknown): ParsedItem[] | null {
   if (!value || typeof value !== 'object' || !('items' in value) || !Array.isArray(value.items)) return null;
   const attempt = 'attempt' in value ? value.attempt : null;
   if (attempt && typeof attempt === 'object' && 'failure' in attempt && attempt.failure) return null;
@@ -143,7 +143,7 @@ function healthyRow(value: unknown): ParsedItem[] | null {
  * feed. Score the item the same way, counting only the corroboration the row
  * itself recorded, since this read never sees the other feeds.
  */
-function scoredRowItem(value: ParsedItem): NewsItem {
+export function scoredRowItem(value: ParsedItem): NewsItem {
   const corroboration = Math.max(value.corroborationCount ?? 1, value.entityCorroborationCount ?? 0);
   return toProtoItem({
     ...value,
