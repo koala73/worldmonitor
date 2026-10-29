@@ -2099,15 +2099,10 @@
       "host": "bothsidesofthetable.com",
       "provider": "bothsidesofthetable.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit bothsidesofthetable.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "breakingdefense.com",
@@ -2380,7 +2375,7 @@
     {
       "host": "changelog.com",
       "provider": "changelog.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit changelog.com and link to the original feed publisher.",
@@ -2388,9 +2383,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -2602,7 +2594,7 @@
     {
       "host": "cointelegraph.com",
       "provider": "cointelegraph.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit cointelegraph.com and link to the original feed publisher.",
@@ -2610,9 +2602,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
         }
       ]
     },
@@ -2706,15 +2695,10 @@
       "host": "contxto.com",
       "provider": "contxto.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit contxto.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "correctiv.org",
@@ -3253,16 +3237,13 @@
         },
         {
           "path": "server/worldmonitor/research/v1/list-tech-events.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
     {
       "host": "dev.to",
       "provider": "dev.to",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit dev.to and link to the original feed publisher.",
@@ -3270,16 +3251,13 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
     {
       "host": "devops.com",
       "provider": "devops.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit devops.com and link to the original feed publisher.",
@@ -3287,9 +3265,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -3382,15 +3357,10 @@
       "host": "disrupt-africa.com",
       "provider": "disrupt-africa.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit disrupt-africa.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "dlnews.com",
@@ -4107,9 +4077,6 @@
         },
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -4228,7 +4195,7 @@
     {
       "host": "feed.infoq.com",
       "provider": "feed.infoq.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit feed.infoq.com and link to the original feed publisher.",
@@ -4236,9 +4203,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -4259,7 +4223,7 @@
     {
       "host": "feeds.arstechnica.com",
       "provider": "feeds.arstechnica.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit feeds.arstechnica.com and link to the original feed publisher.",
@@ -4267,9 +4231,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -4318,7 +4279,7 @@
     {
       "host": "feeds.feedburner.com",
       "provider": "feeds.feedburner.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit feeds.feedburner.com and link to the original feed publisher.",
@@ -4326,9 +4287,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ],
       "role": "transport"
@@ -4488,7 +4446,7 @@
     {
       "host": "finance.yahoo.com",
       "provider": "finance.yahoo.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit finance.yahoo.com and link to the original feed publisher.",
@@ -4496,12 +4454,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -5194,7 +5146,7 @@
     {
       "host": "hnrss.org",
       "provider": "hnrss.org",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit hnrss.org and link to the original feed publisher.",
@@ -5202,9 +5154,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -5388,7 +5337,7 @@
     {
       "host": "inc42.com",
       "provider": "inc42.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit inc42.com and link to the original feed publisher.",
@@ -5396,9 +5345,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -5830,7 +5776,7 @@
     {
       "host": "kr-asia.com",
       "provider": "kr-asia.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit kr-asia.com and link to the original upstream API/dataset.",
@@ -5838,16 +5784,13 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
     {
       "host": "krebsonsecurity.com",
       "provider": "krebsonsecurity.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit krebsonsecurity.com and link to the original feed publisher.",
@@ -5855,9 +5798,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -5879,15 +5819,10 @@
       "host": "lavca.org",
       "provider": "lavca.org",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit lavca.org and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "lefaso.net",
@@ -6183,7 +6118,7 @@
     {
       "host": "lobste.rs",
       "provider": "lobste.rs",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit lobste.rs and link to the original feed publisher.",
@@ -6191,9 +6126,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -6740,7 +6672,7 @@
     {
       "host": "news.crunchbase.com",
       "provider": "news.crunchbase.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit news.crunchbase.com and link to the original feed publisher.",
@@ -6748,9 +6680,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -6790,12 +6719,6 @@
           "path": "shared/news-catalog.json"
         },
         {
-          "path": "src/config/variants/finance.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
-        },
-        {
           "path": "src/services/country-coverage.ts"
         }
       ],
@@ -6804,7 +6727,7 @@
     {
       "host": "news.mit.edu",
       "provider": "news.mit.edu",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit news.mit.edu and link to the original feed publisher.",
@@ -6812,9 +6735,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -6894,7 +6814,7 @@
     {
       "host": "news.ycombinator.com",
       "provider": "news.ycombinator.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit news.ycombinator.com and link to the original feed publisher.",
@@ -6902,9 +6822,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -7557,7 +7474,7 @@
     {
       "host": "pitchbook.com",
       "provider": "pitchbook.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit pitchbook.com and link to the original upstream API/dataset.",
@@ -7565,9 +7482,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -8228,7 +8142,7 @@
     {
       "host": "review.firstround.com",
       "provider": "review.firstround.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit review.firstround.com and link to the original feed publisher.",
@@ -8236,9 +8150,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -8343,7 +8254,7 @@
     {
       "host": "rss.politico.com",
       "provider": "rss.politico.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit rss.politico.com and link to the original feed publisher.",
@@ -8351,9 +8262,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -8736,7 +8644,7 @@
     {
       "host": "seekingalpha.com",
       "provider": "seekingalpha.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit seekingalpha.com and link to the original feed publisher.",
@@ -8744,12 +8652,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -8900,7 +8802,7 @@
     {
       "host": "sifted.eu",
       "provider": "sifted.eu",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit sifted.eu and link to the original feed publisher.",
@@ -8908,9 +8810,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -9280,7 +9179,7 @@
     {
       "host": "stratechery.com",
       "provider": "stratechery.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit stratechery.com and link to the original feed publisher.",
@@ -9288,9 +9187,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -9467,7 +9363,7 @@
     {
       "host": "tech.eu",
       "provider": "tech.eu",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit tech.eu and link to the original feed publisher.",
@@ -9475,9 +9371,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -9501,7 +9394,7 @@
     {
       "host": "techcabal.com",
       "provider": "techcabal.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit techcabal.com and link to the original feed publisher.",
@@ -9509,16 +9402,13 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
     {
       "host": "techcrunch.com",
       "provider": "techcrunch.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit techcrunch.com and link to the original feed publisher.",
@@ -9526,9 +9416,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -9804,7 +9691,7 @@
     {
       "host": "thenewstack.io",
       "provider": "thenewstack.io",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit thenewstack.io and link to the original feed publisher.",
@@ -9812,9 +9699,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -10361,7 +10245,7 @@
     {
       "host": "venturebeat.com",
       "provider": "venturebeat.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit venturebeat.com and link to the original feed publisher.",
@@ -10369,9 +10253,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -10665,9 +10546,6 @@
           "path": "api/ask.ts"
         },
         {
-          "path": "api/fwdstart.js"
-        },
-        {
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
@@ -10901,7 +10779,7 @@
     {
       "host": "www.a16z.news",
       "provider": "www.a16z.news",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.a16z.news and link to the original feed publisher.",
@@ -10909,9 +10787,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -10950,15 +10825,10 @@
       "host": "www.aaronsw.com",
       "provider": "www.aaronsw.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.aaronsw.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.abc.net.au",
@@ -11421,7 +11291,7 @@
     {
       "host": "www.cbinsights.com",
       "provider": "www.cbinsights.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.cbinsights.com and link to the original feed publisher.",
@@ -11429,9 +11299,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -11567,7 +11434,7 @@
     {
       "host": "www.cisa.gov",
       "provider": "www.cisa.gov",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.cisa.gov and link to the original feed publisher.",
@@ -11575,9 +11442,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -11626,7 +11490,7 @@
     {
       "host": "www.cnbc.com",
       "provider": "www.cnbc.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.cnbc.com and link to the original feed publisher.",
@@ -11634,12 +11498,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -11672,7 +11530,7 @@
     {
       "host": "www.coindesk.com",
       "provider": "www.coindesk.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.coindesk.com and link to the original feed publisher.",
@@ -11680,9 +11538,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
         }
       ]
     },
@@ -11782,7 +11637,7 @@
     {
       "host": "www.darkreading.com",
       "provider": "www.darkreading.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.darkreading.com and link to the original feed publisher.",
@@ -11790,9 +11645,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -12029,7 +11881,7 @@
     {
       "host": "www.engadget.com",
       "provider": "www.engadget.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.engadget.com and link to the original feed publisher.",
@@ -12037,9 +11889,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -12088,7 +11937,7 @@
     {
       "host": "www.eu-startups.com",
       "provider": "www.eu-startups.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.eu-startups.com and link to the original feed publisher.",
@@ -12096,9 +11945,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -12195,9 +12041,6 @@
         },
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
         }
       ]
     },
@@ -12290,15 +12133,10 @@
       "host": "www.fwdstart.me",
       "provider": "www.fwdstart.me",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.fwdstart.me and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "api/fwdstart.js"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.g4media.ro",
@@ -12860,7 +12698,7 @@
     {
       "host": "www.lennysnewsletter.com",
       "provider": "www.lennysnewsletter.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.lennysnewsletter.com and link to the original feed publisher.",
@@ -12868,9 +12706,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -13228,15 +13063,10 @@
       "host": "www.nfx.com",
       "provider": "www.nfx.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.nfx.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.niggrid.org",
@@ -13496,7 +13326,7 @@
     {
       "host": "www.producthunt.com",
       "provider": "www.producthunt.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.producthunt.com and link to the original feed publisher.",
@@ -13504,9 +13334,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -13699,7 +13526,7 @@
     {
       "host": "www.saastr.com",
       "provider": "www.saastr.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.saastr.com and link to the original feed publisher.",
@@ -13707,9 +13534,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -13744,7 +13568,7 @@
     {
       "host": "www.schneier.com",
       "provider": "www.schneier.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.schneier.com and link to the original feed publisher.",
@@ -13752,9 +13576,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -13826,16 +13647,13 @@
         },
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
         }
       ]
     },
     {
       "host": "www.semianalysis.com",
       "provider": "www.semianalysis.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.semianalysis.com and link to the original feed publisher.",
@@ -13843,9 +13661,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -13853,15 +13668,10 @@
       "host": "www.sequoiacap.com",
       "provider": "www.sequoiacap.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.sequoiacap.com and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.seznamzpravy.cz",
@@ -14127,7 +13937,7 @@
     {
       "host": "www.techinasia.com",
       "provider": "www.techinasia.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.techinasia.com and link to the original feed publisher.",
@@ -14135,9 +13945,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -14161,16 +13968,13 @@
         },
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
     {
       "host": "www.technologyreview.com",
       "provider": "www.technologyreview.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.technologyreview.com and link to the original feed publisher.",
@@ -14178,9 +13982,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -14188,15 +13989,10 @@
       "host": "www.techstars.com",
       "provider": "www.techstars.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.techstars.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.telegraph.co.uk",
@@ -14330,7 +14126,7 @@
     {
       "host": "www.theverge.com",
       "provider": "www.theverge.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.theverge.com and link to the original feed publisher.",
@@ -14338,9 +14134,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -14370,7 +14163,7 @@
     {
       "host": "www.tomshardware.com",
       "provider": "www.tomshardware.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.tomshardware.com and link to the original feed publisher.",
@@ -14378,9 +14171,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -14547,9 +14337,6 @@
       "attribution": "Excluded from the provider count: standards reference, not an ingested source.",
       "status": "excluded",
       "references": [
-        {
-          "path": "api/fwdstart.js"
-        },
         {
           "path": "src/embed/panels/fear-greed.ts"
         }
@@ -14863,7 +14650,7 @@
     {
       "host": "www.ycombinator.com",
       "provider": "www.ycombinator.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.ycombinator.com and link to the original feed publisher.",
@@ -14871,9 +14658,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -14968,7 +14752,7 @@
     {
       "host": "www.zdnet.com",
       "provider": "www.zdnet.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.zdnet.com and link to the original feed publisher.",
@@ -14976,9 +14760,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -15132,7 +14913,7 @@
     {
       "host": "yourstory.com",
       "provider": "yourstory.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit yourstory.com and link to the original feed publisher.",
@@ -15140,9 +14921,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },

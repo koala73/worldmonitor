@@ -799,8 +799,6 @@
   "tests/fuel-shortage-registry-store.test.mts": 43,
   "tests/fuel-shortages-registry.test.mts": 73,
   "tests/funnel-analytics-policy.test.mjs": 48,
-  "tests/fwdstart-cache.test.mjs": 120,
-  "tests/fwdstart-cdata.test.mjs": 105,
   "tests/fx-panel-rows.test.mjs": 87,
   "tests/fx-rates-seed.test.mjs": 2593,
   "tests/gas-storage-countries-seed.test.mjs": 4910,
