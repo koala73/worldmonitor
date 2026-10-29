@@ -18,6 +18,7 @@ import {
   validateCoverage,
   mergeSourceRows,
   prepareOilPublish,
+  readPreviousOilMeta,
   CANONICAL_KEY,
   COUNTRY_KEY_PREFIX,
   JODI_TTL,
@@ -1235,6 +1236,27 @@ describe('prepareOilPublish refuses an older vintage than the published one', ()
       const { refusalReason } = prepareOilPublish({ allRows: rowsFor('2025-12'), previousMeta, now: NOW });
       assert.equal(refusalReason, null, JSON.stringify(previousMeta));
     }
+  });
+
+  it('reads the previous vintage strictly: a failed read stops the run, a missing key does not', async () => {
+    const calls = [];
+    const read = (failure, value = null) => async (key, options) => {
+      calls.push({ key, options });
+      if (failure) throw failure;
+      return value;
+    };
+
+    await assert.rejects(
+      readPreviousOilMeta(read(new Error('Redis snapshot read failed: HTTP 503'))),
+      /HTTP 503/,
+      'a read failure must not pass as "no previous vintage"',
+    );
+    assert.equal(await readPreviousOilMeta(read(null, null)), null, 'a missing key is a first publish');
+    assert.deepEqual(
+      await readPreviousOilMeta(read(null, { newestItemAt: 1 })),
+      { newestItemAt: 1 },
+    );
+    assert.ok(calls.every(({ key, options }) => key === 'seed-meta:energy:jodi-oil' && options?.strict === true));
   });
 
   it('keeps the country-floor reason when both gates fail', () => {

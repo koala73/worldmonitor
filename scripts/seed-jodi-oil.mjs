@@ -13,7 +13,6 @@ import {
   logSeedResult,
   withRetry,
   readSeedSnapshot,
-  readExistingSeedMeta,
 } from './_seed-utils.mjs';
 import {
   MAX_JODI_CONTENT_AGE_MIN,
@@ -800,6 +799,15 @@ function formatVintageRegressionReason(newestItemAt, publishedNewestItemAt) {
 }
 
 /**
+ * The published seed-meta, read strictly. The vintage check above treats a
+ * missing record as a first publish, so a failed read must not look like one:
+ * it throws, and main() stops before writing anything.
+ */
+export function readPreviousOilMeta(read = readSeedSnapshot) {
+  return read(META_KEY, { strict: true });
+}
+
+/**
  * Everything main() decides about a parsed snapshot, in one testable place:
  * whether it may publish, what China looks like, and the seed-meta record that
  * carries both to /api/health.
@@ -870,12 +878,12 @@ async function main() {
 
     console.log(`  Parsed ${allRows.length} KBD rows`);
 
-    const previousMeta = await readExistingSeedMeta('energy', 'jodi-oil');
+    const previousMeta = await readPreviousOilMeta();
     if (previousMeta?.chinaRow == null) {
-      // readExistingSeedMeta collapses "no prior record" and "read failed" into
-      // one null, so an ongoing gap re-dates to this run. Say so, or the reset
-      // is indistinguishable from a genuine new outage in the log.
-      console.warn('  China oil row: no previous record readable — dating any gap from this run');
+      // A missing record (or one written before chinaRow existed) re-dates an
+      // ongoing gap to this run. Say so, or the reset is indistinguishable from
+      // a genuine new outage in the log.
+      console.warn('  China oil row: no previous record — dating any gap from this run');
     }
     const { countries, parsedCount, chinaCoverage, refusalReason, metaPayload } = prepareOilPublish({
       allRows,
