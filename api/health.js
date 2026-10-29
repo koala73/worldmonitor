@@ -770,7 +770,7 @@ const SEED_META = {
   ukmtoIncidents: {
     key: 'seed-meta:maritime:ukmto-incidents', maxStaleMin: 15,
     activationKey: 'seed-activated:maritime:ukmto-incidents',
-    cutover: { mode: 'activation-marker', fromKey: null, activationKey: 'seed-activated:maritime:ukmto-incidents' },
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9831, activationKey: 'seed-activated:maritime:ukmto-incidents' },
   },
   // scripts/seed-conflict-intel.mjs cron runs every 15min, while HAPI is gated
   // to one bulk refresh every 2h. Bounded above by
