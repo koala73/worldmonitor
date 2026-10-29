@@ -463,6 +463,20 @@ describe('page identity gate', () => {
     expect(err?.failures).toContainEqual({ provider: 'firecrawl', reason: 'title-mismatch', detail: 'page: none' });
   });
 
+  it('rejects a carousel variant of the same product in another size', async () => {
+    const { err } = await extractWith('Meadows White Sandwich Bread 600g');
+    expect(err?.failures).toContainEqual({
+      provider: 'firecrawl',
+      reason: 'title-mismatch',
+      detail: 'page: Meadows White Sandwich Bread 600g',
+    });
+  });
+
+  it('accepts when only one side states a size', async () => {
+    const { products } = await extractWith('Meadows White Sandwich Bread');
+    expect(products[0]?.price).toBe(4.6);
+  });
+
   it('leaves retailers that do not opt in unchanged', async () => {
     const { products } = await extractWith(undefined, { requirePageTitleMatch: false });
     expect(products[0]?.price).toBe(4.6);

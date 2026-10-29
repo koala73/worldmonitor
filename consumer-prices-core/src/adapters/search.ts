@@ -70,9 +70,22 @@ function titleWords(title: string): string[] {
   return title.toLowerCase().match(/\p{L}{3,}/gu) ?? [];
 }
 
-/** True when the extracted product shares at least half of the words in the page's own declared title. */
-export function pageDeclaresProduct(pageTitle: string | undefined, productName: string | undefined): boolean {
+/**
+ * True when the extracted product shares at least half of the words in the
+ * page's own declared title and does not state a different quantity in the
+ * same unit (a carousel's 1L variant on a 500ml page).
+ */
+export function pageDeclaresProduct(
+  pageTitle: string | undefined,
+  productName: string | undefined,
+  sizeText?: string,
+): boolean {
   if (!pageTitle || !productName) return false;
+  const pageSize = parseSize(pageTitle);
+  const productSize = parseSize(sizeText) ?? parseSize(productName);
+  if (pageSize && productSize && pageSize.baseUnit === productSize.baseUnit && pageSize.baseQuantity !== productSize.baseQuantity) {
+    return false;
+  }
   const pageWords = titleWords(pageTitle);
   if (pageWords.length === 0) return false;
   const productWords = new Set(titleWords(productName));
@@ -609,7 +622,7 @@ export class SearchAdapter implements RetailerAdapter {
         continue;
       }
 
-      if (ctx.config.searchConfig?.requirePageTitleMatch && !pageDeclaresProduct(pageTitle, data.productName)) {
+      if (ctx.config.searchConfig?.requirePageTitleMatch && !pageDeclaresProduct(pageTitle, data.productName, data.sizeText)) {
         failures.push({ provider, reason: 'title-mismatch', detail: `page: ${pageTitle ?? 'none'}` });
         // The page itself is not this product; another extractor reads the same page.
         break;
