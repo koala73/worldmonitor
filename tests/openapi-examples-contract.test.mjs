@@ -862,12 +862,24 @@ describe('OpenAPI curated example values', () => {
     assert.deepEqual(outOfRange, []);
   });
 
-  it('uses an ISO datetime and supported media type in the webcam example', () => {
-    const spec = JSON.parse(readFileSync(resolve(apiDir, 'WebcamService.openapi.json'), 'utf8'));
-    const example = spec.paths?.['/api/webcam/v1/get-webcam-image']?.get
-      ?.responses?.['200']?.content?.[JSON_MEDIA]?.example;
-    assert.equal(example?.lastUpdated, '2026-01-15T12:00:00.000Z');
-    assert.equal(example?.mediaType, 'snapshot');
+  it('publishes a consistent successful webcam snapshot example', () => {
+    const specs = [
+      ['WebcamService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'WebcamService.openapi.json'), 'utf8'))],
+      ['WebcamService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'WebcamService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadUnifiedOpenApiSpec()],
+    ];
+    for (const [label, spec] of specs) {
+      const example = spec.paths?.['/api/webcam/v1/get-webcam-image']?.get
+        ?.responses?.['200']?.content?.[JSON_MEDIA]?.example;
+      assert.equal(example?.mediaType, 'snapshot', `${label}: media type`);
+      assert.equal(example?.playerUrl, '', `${label}: snapshot has no player`);
+      assert.equal(example?.error, '', `${label}: successful response has no error`);
+      assert.match(example?.thumbnailUrl, /^https:\/\//, `${label}: snapshot image`);
+      assert.match(example?.windyUrl, /^https:\/\/www\.windy\.com\/webcams\/\d+$/, `${label}: provider link`);
+      assert.equal(example?.lastUpdated, '2026-01-15T12:00:00.000Z', `${label}: capture time`);
+      assert.ok(Number.isFinite(example?.resolvedAt), `${label}: resolution timestamp`);
+      assert.ok(example.resolvedAt >= Date.parse(example.lastUpdated), `${label}: resolution follows capture`);
+    }
   });
 
   it('uses an ISO3 country and a real DTM operation for GetInternalDisplacement', () => {
