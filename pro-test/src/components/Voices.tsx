@@ -17,6 +17,12 @@ export interface Voice {
 
 export const VOICES: ReadonlyArray<Voice> = [
   {
+    quote: 'World Monitor, a website that turns any browser into a makeshift situation room, and I love it.',
+    name: 'The Atlantic',
+    role: 'Charlie Warzel',
+    href: 'https://www.theatlantic.com/technology/2026/03/world-monitor-situation-meme/686389/',
+  },
+  {
     quote: '…an open-source dashboard people around the world were using to track the war in real time.',
     name: 'WIRED',
     role: 'Feature by Lilian Wagdy',
@@ -46,12 +52,6 @@ export const VOICES: ReadonlyArray<Voice> = [
     name: 'Bilawal Sidhu',
     role: 'Spatial-tech creator',
     href: 'https://x.com/bilawalsidhu/status/2025702618895360204',
-  },
-  {
-    quote: 'This is how you monitor the situation.',
-    name: 'Didier Lopes',
-    role: 'Founded OpenBB',
-    href: 'https://x.com/didier_lopes/status/2025977905889554522',
   },
 ];
 
