@@ -82,7 +82,7 @@ export class FoodPricesCard {
     const giews = this.sources.find(source => source.id === 'giews');
     const tunisia = this.sources.find(source => source.id === 'onagri');
     const context = h('details', { className: 'food-prices-context' }, h('summary', {}, label('context')));
-    context.open = wasOpen;
+    if (wasOpen) context.setAttribute('open', '');
     context.append(h('p', { className: 'food-prices-note' }, label('contextNote')));
     if (giews) {
       if (!giews.contexts.some(brief => brief.countryCode === this.country)) this.country = giews.contexts[0]?.countryCode ?? '';
