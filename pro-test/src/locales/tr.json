@@ -71,14 +71,21 @@
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) ve Claude, GPT, kendi LLM'leriniz için MCP."
   },
   "proJobs": {
-    "title": "Neyi halletmeniz gerekiyor?",
     "intro": "Ücretsiz pano ilk bakışı karşılar. Pro’nun her iş için ekledikleri şunlar.",
     "proAdds": "Pro ekler",
-    "openMap": "Harita görünümünü aç",
-    "chokepointFree": "Canlı haritada boğazlar, gemi trafiği, ticaret rotaları, yaptırımlar ve denizaltı kabloları.",
-    "chokepointPro": "Maliyet şoku modellemesi ve tedarik zinciri stres testleri, bir boğazdaki değişikliği Slack’e, e-postaya veya bir webhook’a gönderen uyarı kuralları ve kurallarınıza göre sıralanan zamanlanmış özet.",
-    "verifyFree": "Her haberin kaynağına bağlandığı bir haber akışı ve bir iddiayı karşılaştırmak için çatışma, kesinti ve doğal tehlike katmanları.",
-    "verifyPro": "Geçmiş haberlerde arama yapmak ve benzer önceki olayları bulmak için istihbarat belleği, canlı servisler genelinde WM Analyst sohbeti ve takip için uyarı kuralları."
+    "investorsJob": "Bir savaşın, yaptırımın veya arz şokunun pozisyonlarınıza nasıl ulaştığını görün.",
+    "investorsPro": "Yapay zekâ ile hisse analizi ve geriye dönük test, makro ve merkez bankası takibi içeren piyasa izleme listesi ve her olayın piyasa etkileri.",
+    "tradersJob": "Bir boğaz, boru hattı veya limandaki aksamayı fiyat oynamadan önce yakalayın.",
+    "tradersPro": "Maliyet şoku modellemesi, tedarik zinciri stres testleri ve bir boğazdaki değişikliği Slack’e, e-postaya veya bir webhook’a gönderen uyarı kuralları.",
+    "researchersJob": "Bir ülkenin riskinin neden değiştiğini, her kaynağı belirterek açıklayın.",
+    "researchersPro": "Geçmiş haberleri ve benzer olayları aramak için istihbarat belleği, devlet borcu ve maden verileri ve canlı servisler genelinde WM Analyst sohbeti.",
+    "journalistsJob": "Yayımlamadan önce son dakika bir iddiayı kaynağı belirtilmiş bilgilerle doğrulayın.",
+    "journalistsPro": "Zaman çizelgeleri ve benzer önceki olaylar için istihbarat belleği, WM Analyst sohbeti ve takip için uyarı kuralları.",
+    "govJob": "Takip ettiğiniz bölgelerde çatışmaların tırmanmasını ve huzursuzluğu izleyin.",
+    "govPro": "Uyarı kurallarınıza göre sıralanan zamanlanmış yapay zekâ özeti, günlük, günde iki kez veya haftalık, ayrıca kritik olaylar için gerçek zamanlı uyarılar.",
+    "teamsJob": "Kuruluşunuzun bağlı olduğu tesisleri, rotaları ve tedarikçileri izleyin.",
+    "teamsPro": "Pro Business, Pro’yu iş kullanımı için lisanslar; CSV, JSON ve PDF dışa aktarma içerir. API planları REST erişimi ve webhook’lar ekler.",
+    "allWorkflows": "Tüm izleme iş akışlarına göz atın"
   },
   "deliveryDesk": {
     "eyebrow": "TESLİM MASASI",
@@ -106,17 +113,11 @@
   "audience": {
     "title": "World Monitor kimlere yönelik olarak tasarlanmıştır?",
     "investorsTitle": "Yatırımcılar ve portföy yöneticileri",
-    "investorsDesc": "Küresel hisseleri, analist hedeflerini, değerleme metriklerini ve makro göstergeleri jeopolitik risk sinyalleriyle birlikte takip edin.",
     "tradersTitle": "Enerji ve emtia yatırımcıları",
-    "tradersDesc": "Gemi hareketlerini, yük çıkarımını, tedarik zinciri aksamalarını ve piyasaları hareket ettiren jeopolitik sinyalleri takip edin.",
     "researchersTitle": "Araştırmacılar ve analistler",
-    "researchersDesc": "Daha derin analiz ve raporlama için equity research, ekonomik analiz ve jeopolitik çerçeveler.",
     "journalistsTitle": "Gazeteciler ve medya",
-    "journalistsDesc": "Kaynakları elle birleştirmeden piyasalar ve bölgeler arasındaki hızlı gelişmeleri takip edin.",
     "govTitle": "Hükümet ve kurumlar",
-    "govDesc": "Jeopolitik ve altyapı sinyalleri üzerinden makro politika takibi, merkez bankası izleme ve durum farkındalığı.",
-    "teamsTitle": "Ekipler ve organizasyonlar",
-    "teamsDesc": "Bireysel kullanımdan paylaşılan iş akışlarına, API erişimine, TV uygulamalarına ve yönetilen deployment'lara geçin."
+    "teamsTitle": "Ekipler ve organizasyonlar"
   },
   "dataCoverage": {
     "title": "World Monitor neleri takip eder?",

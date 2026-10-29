@@ -71,14 +71,21 @@
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) a MCP pro Claude, GPT, vlastní LLM."
   },
   "proJobs": {
-    "title": "Co potřebujete udělat?",
     "intro": "Bezplatný dashboard pokryje první pohled. Tady je, co Pro přidává ke každému úkolu.",
     "proAdds": "Pro přidává",
-    "openMap": "Otevřít zobrazení mapy",
-    "chokepointFree": "Úžiny, lodní provoz, obchodní trasy, sankce a podmořské kabely na živé mapě.",
-    "chokepointPro": "Modelování cenových šoků a zátěžové testy dodavatelských řetězců, pravidla upozornění, která pošlou změnu v úžině do Slacku, e-mailu nebo na webhook, a plánovaný přehled seřazený podle vašich pravidel.",
-    "verifyFree": "Zpravodajský kanál, kde je každá zpráva přiřazena ke svému zdroji, plus vrstvy konfliktů, výpadků a přírodních rizik, se kterými můžete ověřit tvrzení.",
-    "verifyPro": "Zpravodajská paměť pro hledání v dřívějším zpravodajství a nalezení podobných dřívějších událostí, chat WM Analyst nad živými službami a pravidla upozornění pro další sledování."
+    "investorsJob": "Zjistěte, jak válka, sankce nebo šok v dodávkách zasáhne vaše pozice.",
+    "investorsPro": "AI analýza akcií a backtesting, sledovaný seznam trhů s makrem a centrálními bankami a AI dopady každé události na trhy.",
+    "tradersJob": "Zachyťte narušení v úžině, ropovodu nebo přístavu dřív, než pohne cenou.",
+    "tradersPro": "Modelování cenových šoků, zátěžové testy dodavatelských řetězců a pravidla upozornění, která pošlou změnu v úžině do Slacku, e-mailu nebo na webhook.",
+    "researchersJob": "Vysvětlete, proč se změnilo riziko země, s citací každého zdroje.",
+    "researchersPro": "Zpravodajská paměť pro hledání v dřívějším zpravodajství a podobných událostech, data o státním dluhu a nerostech a chat WM Analyst nad živými službami.",
+    "journalistsJob": "Ověřte aktuální tvrzení podle přiřazených zdrojů, než ho zveřejníte.",
+    "journalistsPro": "Zpravodajská paměť pro časové osy a podobné dřívější události, chat WM Analyst a pravidla upozornění pro další sledování.",
+    "govJob": "Sledujte eskalaci konfliktů a nepokoje v regionech, které pokrýváte.",
+    "govPro": "Plánovaný AI přehled seřazený podle vašich pravidel upozornění, denně, dvakrát denně nebo týdně, plus upozornění v reálném čase na kritické události.",
+    "teamsJob": "Sledujte místa, trasy a dodavatele, na kterých vaše organizace závisí.",
+    "teamsPro": "Pro Business licencuje Pro pro pracovní použití s exportem do CSV, JSON a PDF. Plány API přidávají přístup přes REST a webhooky.",
+    "allWorkflows": "Procházet všechny monitorovací postupy"
   },
   "deliveryDesk": {
     "eyebrow": "DORUČOVACÍ PULT",
@@ -106,17 +113,11 @@
   "audience": {
     "title": "Pro koho je World Monitor určen?",
     "investorsTitle": "Investoři a správci portfolií",
-    "investorsDesc": "Sledujte globální akcie, cíle analytiků, oceňovací metriky a makro ukazatele spolu s geopolitickými rizikovými signály.",
     "tradersTitle": "Obchodníci s energií a komoditami",
-    "tradersDesc": "Sledujte pohyby lodí, odvozování nákladu, narušení dodavatelských řetězců a geopolitické signály hýbající trhy.",
     "researchersTitle": "Výzkumníci a analytici",
-    "researchersDesc": "Equity research, ekonomická analytika a geopolitické rámce pro hlubší analýzu a reporting.",
     "journalistsTitle": "Novináři a média",
-    "journalistsDesc": "Sledujte rychlý vývoj napříč trhy a regiony bez ručního spojování zdrojů.",
     "govTitle": "Vláda a instituce",
-    "govDesc": "Sledování makro politiky, monitoring centrálních bank a situační povědomí napříč geopolitickými a infrastrukturními signály.",
-    "teamsTitle": "Týmy a organizace",
-    "teamsDesc": "Přejděte od individuálního použití ke sdíleným workflow, API přístupu, TV aplikacím a řízeným nasazením."
+    "teamsTitle": "Týmy a organizace"
   },
   "dataCoverage": {
     "title": "Co World Monitor sleduje?",

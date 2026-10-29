@@ -71,14 +71,21 @@
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + IA) e MCP per Claude, GPT, LLM personalizzati."
   },
   "proJobs": {
-    "title": "Che cosa devi portare a termine?",
     "intro": "La dashboard gratuita copre il primo sguardo. Ecco cosa aggiunge Pro per ogni attività.",
     "proAdds": "Pro aggiunge",
-    "openMap": "Apri la vista mappa",
-    "chokepointFree": "Stretti, traffico navale, rotte commerciali, sanzioni e cavi sottomarini sulla mappa in tempo reale.",
-    "chokepointPro": "Modellazione degli shock di costo e stress test delle catene di approvvigionamento, regole di avviso che inviano un cambiamento su uno stretto a Slack, email o un webhook, e un digest programmato ordinato secondo le tue regole.",
-    "verifyFree": "Un feed di notizie con ogni articolo attribuito alla sua fonte, più livelli su conflitti, interruzioni e rischi naturali per verificare un’affermazione.",
-    "verifyPro": "Memoria di intelligence per cercare nella copertura passata e trovare eventi precedenti simili, chat WM Analyst sui servizi in tempo reale e regole di avviso per il monitoraggio successivo."
+    "investorsJob": "Scopri come una guerra, una sanzione o uno shock di fornitura arriva alle tue posizioni.",
+    "investorsPro": "Analisi azionaria e backtesting con IA, una watchlist di mercato con macro e banche centrali, e implicazioni di mercato di ogni evento con IA.",
+    "tradersJob": "Cogli un’interruzione in uno stretto, un oleodotto o un porto prima che muova il prezzo.",
+    "tradersPro": "Modellazione degli shock di costo, stress test delle catene di approvvigionamento e regole di avviso che inviano un cambiamento su uno stretto a Slack, email o un webhook.",
+    "researchersJob": "Spiega perché il rischio di un paese è cambiato, con ogni fonte citata.",
+    "researchersPro": "Memoria di intelligence per cercare la copertura passata ed eventi simili, dati su debito sovrano e minerali, e chat WM Analyst sui servizi in tempo reale.",
+    "journalistsJob": "Verifica un’affermazione dell’ultima ora con fonti attribuite prima di pubblicare.",
+    "journalistsPro": "Memoria di intelligence per cronologie ed eventi precedenti simili, chat WM Analyst e regole di avviso per il seguito.",
+    "govJob": "Segui l’escalation dei conflitti e i disordini nelle regioni che copri.",
+    "govPro": "Un digest IA programmato, ordinato secondo le tue regole di avviso, giornaliero, due volte al giorno o settimanale, più avvisi in tempo reale per eventi critici.",
+    "teamsJob": "Tieni d’occhio sedi, rotte e fornitori da cui dipende la tua organizzazione.",
+    "teamsPro": "Pro Business concede Pro in licenza per uso lavorativo, con esportazione in CSV, JSON e PDF. I piani API aggiungono accesso REST e webhook.",
+    "allWorkflows": "Sfoglia tutti i flussi di monitoraggio"
   },
   "deliveryDesk": {
     "eyebrow": "SCRIVANIA DI CONSEGNA",
@@ -106,17 +113,11 @@
   "audience": {
     "title": "Per chi è stato creato World Monitor?",
     "investorsTitle": "Investitori e gestori di portafoglio",
-    "investorsDesc": "Segui azioni globali, target degli analisti, metriche di valutazione e indicatori macro insieme ai segnali di rischio geopolitico.",
     "tradersTitle": "Trader energia e materie prime",
-    "tradersDesc": "Segui movimenti di navi, inferenza cargo, interruzioni della catena di fornitura e segnali geopolitici che muovono i mercati.",
     "researchersTitle": "Ricercatori e analisti",
-    "researchersDesc": "Equity research, analitica economica e framework geopolitici per analisi e reporting più approfonditi.",
     "journalistsTitle": "Giornalisti e media",
-    "journalistsDesc": "Segui sviluppi rapidi su mercati e regioni senza unire le fonti manualmente.",
     "govTitle": "Governo e istituzioni",
-    "govDesc": "Tracciamento di politica macro, monitoraggio delle banche centrali e consapevolezza situazionale su segnali geopolitici e infrastrutturali.",
-    "teamsTitle": "Team e organizzazioni",
-    "teamsDesc": "Passa dall'uso individuale a flussi condivisi, accesso API, app TV e deployment gestiti."
+    "teamsTitle": "Team e organizzazioni"
   },
   "dataCoverage": {
     "title": "Cosa monitora World Monitor?",

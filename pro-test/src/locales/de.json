@@ -71,14 +71,21 @@
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + KI) und MCP für Claude, GPT, eigene LLMs."
   },
   "proJobs": {
-    "title": "Was müssen Sie erledigen?",
     "intro": "Das kostenlose Dashboard deckt den ersten Blick ab. Das fügt Pro für jede Aufgabe hinzu.",
     "proAdds": "Pro ergänzt",
-    "openMap": "Kartenansicht öffnen",
-    "chokepointFree": "Meerengen, Schiffsverkehr, Handelsrouten, Sanktionen und Unterseekabel auf der Live-Karte.",
-    "chokepointPro": "Kostenschock-Modellierung und Stresstests für Lieferketten, Alarmregeln, die eine Änderung an einer Meerenge an Slack, E-Mail oder einen Webhook senden, und ein geplanter Digest, sortiert nach Ihren Regeln.",
-    "verifyFree": "Ein Newsfeed, in dem jede Meldung ihrer Quelle zugeordnet ist, dazu Ebenen für Konflikte, Ausfälle und Naturgefahren, um eine Behauptung zu prüfen.",
-    "verifyPro": "Intel-Gedächtnis, um frühere Berichterstattung zu durchsuchen und ähnliche frühere Ereignisse zu finden, WM-Analyst-Chat über die Live-Dienste und Alarmregeln für die Nachverfolgung."
+    "investorsJob": "Sehen Sie, wie ein Krieg, eine Sanktion oder ein Lieferschock Ihre Positionen erreicht.",
+    "investorsPro": "KI-Aktienanalyse und Backtesting, eine Markt-Watchlist mit Makro- und Notenbank-Tracking und KI-Marktfolgen für jedes Ereignis.",
+    "tradersJob": "Erkennen Sie eine Störung an Meerenge, Pipeline oder Hafen, bevor sie den Preis bewegt.",
+    "tradersPro": "Kostenschock-Modellierung, Stresstests für Lieferketten und Alarmregeln, die eine Änderung an einer Meerenge an Slack, E-Mail oder einen Webhook senden.",
+    "researchersJob": "Erklären Sie, warum sich das Risiko eines Landes verändert hat, mit jeder Quelle belegt.",
+    "researchersPro": "Intel-Gedächtnis für frühere Berichterstattung und ähnliche Ereignisse, Daten zu Staatsschulden und Rohstoffen sowie WM-Analyst-Chat über die Live-Dienste.",
+    "journalistsJob": "Prüfen Sie eine Eilmeldung anhand zugeordneter Quellen, bevor Sie veröffentlichen.",
+    "journalistsPro": "Intel-Gedächtnis für Zeitleisten und ähnliche frühere Ereignisse, WM-Analyst-Chat und Alarmregeln für die Nachverfolgung.",
+    "govJob": "Verfolgen Sie Konflikteskalation und Unruhen in den Regionen, die Sie abdecken.",
+    "govPro": "Ein geplanter KI-Digest, sortiert nach Ihren Alarmregeln, täglich, zweimal täglich oder wöchentlich, dazu Echtzeit-Alarme bei kritischen Ereignissen.",
+    "teamsJob": "Behalten Sie Standorte, Routen und Lieferanten im Blick, von denen Ihre Organisation abhängt.",
+    "teamsPro": "Pro Business lizenziert Pro für die Arbeit, mit Export als CSV, JSON und PDF. API-Pläne ergänzen REST-Zugriff und Webhooks.",
+    "allWorkflows": "Alle Monitoring-Workflows ansehen"
   },
   "deliveryDesk": {
     "eyebrow": "LIEFERPULT",
@@ -106,17 +113,11 @@
   "audience": {
     "title": "Für wen ist World Monitor entwickelt?",
     "investorsTitle": "Investoren & Portfolio-Manager",
-    "investorsDesc": "Verfolgen Sie globale Aktien, Analystenziele, Bewertungsmetriken und Makroindikatoren neben geopolitischen Risiko-Signalen.",
     "tradersTitle": "Energie- & Rohstoff-Trader",
-    "tradersDesc": "Verfolgen Sie Schiffsbewegungen, Cargo-Inferenz, Lieferketten-Störungen und marktbewegende geopolitische Signale.",
     "researchersTitle": "Researcher & Analysten",
-    "researchersDesc": "Equity Research, Wirtschaftsanalytik und geopolitische Frameworks für tiefere Analyse und Reporting.",
     "journalistsTitle": "Journalisten & Medien",
-    "journalistsDesc": "Folgen Sie schnellen Entwicklungen über Märkte und Regionen hinweg, ohne Quellen manuell zusammenzufügen.",
     "govTitle": "Regierung & Institutionen",
-    "govDesc": "Makropolitik-Tracking, Zentralbank-Monitoring und Lageerfassung über geopolitische und Infrastruktur-Signale hinweg.",
-    "teamsTitle": "Teams & Organisationen",
-    "teamsDesc": "Von individueller Nutzung zu geteilten Workflows, API-Zugang, TV-Apps und gemanagten Deployments."
+    "teamsTitle": "Teams & Organisationen"
   },
   "dataCoverage": {
     "title": "Was überwacht World Monitor?",

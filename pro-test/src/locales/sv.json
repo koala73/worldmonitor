@@ -71,14 +71,21 @@
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) och MCP för Claude, GPT, egna LLM:er."
   },
   "proJobs": {
-    "title": "Vad behöver du få gjort?",
     "intro": "Den kostnadsfria instrumentpanelen täcker den första överblicken. Så här kompletterar Pro varje uppgift.",
     "proAdds": "Pro lägger till",
-    "openMap": "Öppna kartvyn",
-    "chokepointFree": "Sund, fartygstrafik, handelsrutter, sanktioner och undervattenskablar på livekartan.",
-    "chokepointPro": "Modellering av kostnadschocker och stresstester av leveranskedjor, larmregler som skickar en förändring vid ett sund till Slack, e-post eller en webhook, och en schemalagd sammanfattning rangordnad efter dina regler.",
-    "verifyFree": "Ett nyhetsflöde där varje nyhet är kopplad till sin källa, plus lager för konflikter, avbrott och naturrisker att pröva ett påstående mot.",
-    "verifyPro": "Underrättelseminne för att söka i tidigare bevakning och hitta liknande tidigare händelser, WM Analyst-chatt över livetjänsterna och larmregler för uppföljning."
+    "investorsJob": "Se hur ett krig, en sanktion eller en leveranschock når dina positioner.",
+    "investorsPro": "AI-aktieanalys och backtestning, en marknadsbevakningslista med makro och centralbanker, och AI-bedömning av varje händelses marknadseffekter.",
+    "tradersJob": "Fånga en störning vid ett sund, en pipeline eller en hamn innan den rör priset.",
+    "tradersPro": "Modellering av kostnadschocker, stresstester av leveranskedjor och larmregler som skickar en förändring vid ett sund till Slack, e-post eller en webhook.",
+    "researchersJob": "Förklara varför ett lands risk har ändrats, med varje källa angiven.",
+    "researchersPro": "Underrättelseminne för att söka i tidigare bevakning och liknande händelser, data om statsskuld och mineraler, och WM Analyst-chatt över livetjänsterna.",
+    "journalistsJob": "Kontrollera ett nytt påstående mot angivna källor innan du publicerar.",
+    "journalistsPro": "Underrättelseminne för tidslinjer och liknande tidigare händelser, WM Analyst-chatt och larmregler för uppföljning.",
+    "govJob": "Följ konflikteskalering och oroligheter i de regioner du bevakar.",
+    "govPro": "En schemalagd AI-sammanfattning rangordnad efter dina larmregler, dagligen, två gånger om dagen eller veckovis, plus larm i realtid vid kritiska händelser.",
+    "teamsJob": "Bevaka de anläggningar, rutter och leverantörer som din organisation är beroende av.",
+    "teamsPro": "Pro Business licensierar Pro för arbete, med export till CSV, JSON och PDF. API-planer lägger till REST-åtkomst och webhooks.",
+    "allWorkflows": "Bläddra bland alla bevakningsflöden"
   },
   "deliveryDesk": {
     "eyebrow": "LEVERANSSKRIVBORD",
@@ -106,17 +113,11 @@
   "audience": {
     "title": "Vem är World Monitor utformat för?",
     "investorsTitle": "Investerare och portföljförvaltare",
-    "investorsDesc": "Följ globala aktier, analytikermål, värderingsmått och makroindikatorer tillsammans med geopolitiska risksignaler.",
     "tradersTitle": "Energi- och råvaruhandlare",
-    "tradersDesc": "Följ fartygsrörelser, last-inferens, störningar i leveranskedjan och geopolitiska signaler som rör marknader.",
     "researchersTitle": "Forskare och analytiker",
-    "researchersDesc": "Equity research, ekonomisk analys och geopolitiska ramverk för djupare analys och rapportering.",
     "journalistsTitle": "Journalister och media",
-    "journalistsDesc": "Följ snabba utvecklingar över marknader och regioner utan att manuellt sammanfoga källor.",
     "govTitle": "Myndigheter och institutioner",
-    "govDesc": "Makropolicy-spårning, centralbanksövervakning och lägesbild över geopolitiska och infrastruktursignaler.",
-    "teamsTitle": "Team och organisationer",
-    "teamsDesc": "Gå från individuellt bruk till delade flöden, API-åtkomst, TV-appar och hanterade deployments."
+    "teamsTitle": "Team och organisationer"
   },
   "dataCoverage": {
     "title": "Vad spårar World Monitor?",

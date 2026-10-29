@@ -754,53 +754,45 @@ const SourceMarquee = () => {
   );
 };
 
-/* ─── Jobs: what the free dashboard covers and what Pro adds, per buyer job ─── */
-// Titles reuse the homepage task-card keys so both pages name the same jobs.
-// Country risk joins once the five-factor scorecard's Free/Pro split settles (#9826).
-const PRO_JOBS = [
-  {
-    key: 'chokepoint',
-    icon: <Ship className="w-6 h-6" aria-hidden="true" />,
-    workflowHref: '/use-cases/monitor-supply-chain-disruptions/',
-    mapPath: `${DASHBOARD_URL}?layers=ais,waterways,tradeRoutes,hotspots,sanctions,cables&timeRange=24h`,
-  },
-  {
-    key: 'verify',
-    icon: <Search className="w-6 h-6" aria-hidden="true" />,
-    workflowHref: '/use-cases/verify-breaking-news/',
-    mapPath: `${DASHBOARD_URL}?layers=conflicts,hotspots,military,outages,natural&timeRange=7d`,
-  },
+/* ─── Who it is for: each buyer's job, what Pro adds, and its workflow guide ─── */
+// One grid for every buyer, near the top, in place of a generic persona list.
+// Each guide is a published /use-cases/ page; tests/pro-jobs-section.test.mjs
+// checks the paths against USE_CASE_PAGES.
+const PRO_BUYERS = [
+  { key: 'investors', icon: <LineChart className="w-6 h-6" aria-hidden="true" />, workflowHref: '/use-cases/monitor-supply-chain-disruptions/' },
+  { key: 'traders', icon: <Fuel className="w-6 h-6" aria-hidden="true" />, workflowHref: '/use-cases/monitor-energy-infrastructure-risk/' },
+  { key: 'researchers', icon: <Search className="w-6 h-6" aria-hidden="true" />, workflowHref: '/use-cases/monitor-country-risk/' },
+  { key: 'journalists', icon: <Globe className="w-6 h-6" aria-hidden="true" />, workflowHref: '/use-cases/verify-breaking-news/' },
+  { key: 'gov', icon: <Landmark className="w-6 h-6" aria-hidden="true" />, workflowHref: '/use-cases/monitor-conflict-escalation/' },
+  { key: 'teams', icon: <Building2 className="w-6 h-6" aria-hidden="true" />, workflowHref: '/use-cases/monitor-civil-unrest/' },
 ] as const;
 
 const ProJobs = () => (
   <section id="jobs" className="py-24 px-6 border-t border-wm-border">
-    <div className="max-w-5xl mx-auto">
-      <h2 className="text-3xl md:text-5xl font-display font-bold mb-4 text-center">{t('proJobs.title')}</h2>
+    <div className="max-w-6xl mx-auto">
+      <h2 className="text-3xl md:text-5xl font-display font-bold mb-4 text-center">{t('audience.title')}</h2>
       <p className="text-lg text-wm-muted text-center max-w-2xl mx-auto">{t('proJobs.intro')}</p>
-      <div className="grid md:grid-cols-2 gap-6 mt-12">
-        {PRO_JOBS.map((job) => (
-          <div key={job.key} className="bg-wm-card border border-wm-border p-6 flex flex-col">
-            <div className="text-wm-green mb-4">{job.icon}</div>
-            <h3 id={`job-${job.key}-title`} className="font-display text-xl font-bold mb-4">{t(`welcome.tasks.${job.key}Title`)}</h3>
-            <p className="text-sm text-wm-muted leading-relaxed mb-3">
-              <strong className="font-mono text-xs uppercase tracking-wider text-wm-text">{t('tiers.free')}</strong>{' '}
-              {t(`proJobs.${job.key}Free`)}
-            </p>
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mt-12">
+        {PRO_BUYERS.map((buyer) => (
+          <div key={buyer.key} className="bg-wm-card border border-wm-border p-6 flex flex-col">
+            <div className="text-wm-green mb-4">{buyer.icon}</div>
+            <h3 id={`job-${buyer.key}-title`} className="font-display text-lg font-bold mb-2">{t(`audience.${buyer.key}Title`)}</h3>
+            <p className="text-sm text-wm-text leading-relaxed mb-3">{t(`proJobs.${buyer.key}Job`)}</p>
             <p className="text-sm text-wm-muted leading-relaxed">
               <strong className="font-mono text-xs uppercase tracking-wider text-wm-green">{t('proJobs.proAdds')}</strong>{' '}
-              {t(`proJobs.${job.key}Pro`)}
+              {t(`proJobs.${buyer.key}Pro`)}
             </p>
-            <div className="mt-auto pt-6 flex flex-wrap gap-x-6 gap-y-2 font-mono text-xs">
-              <a href={job.workflowHref} aria-labelledby={`job-${job.key}-workflow job-${job.key}-title`} className="text-wm-green hover:text-green-300 transition-colors inline-flex items-center gap-1">
-                <span id={`job-${job.key}-workflow`}>{t('welcome.tasks.workflow')}</span> <ArrowRight className="w-3 h-3" aria-hidden="true" />
-              </a>
-              <a href={appendRefToUrl(job.mapPath, getRefCode())} aria-labelledby={`job-${job.key}-map job-${job.key}-title`} className="text-wm-muted hover:text-wm-text transition-colors inline-flex items-center gap-1">
-                <span id={`job-${job.key}-map`}>{t('proJobs.openMap')}</span> <ArrowRight className="w-3 h-3" aria-hidden="true" />
-              </a>
-            </div>
+            <a href={buyer.workflowHref} aria-labelledby={`job-${buyer.key}-workflow job-${buyer.key}-title`} className="mt-auto pt-6 font-mono text-xs text-wm-green hover:text-green-300 transition-colors inline-flex items-center gap-1">
+              <span id={`job-${buyer.key}-workflow`}>{t('welcome.tasks.workflow')}</span> <ArrowRight className="w-3 h-3" aria-hidden="true" />
+            </a>
           </div>
         ))}
       </div>
+      <p className="text-center mt-10">
+        <a href="/use-cases/" className="font-mono text-sm text-wm-green hover:text-green-300 transition-colors inline-flex items-center gap-1">
+          {t('proJobs.allWorkflows')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
+        </a>
+      </p>
     </div>
   </section>
 );
@@ -934,35 +926,6 @@ const ProShowcase = () => (
     </div>
   </section>
 );
-
-/* ─── 8. Audience Personas (new — from draft) ─── */
-const AudiencePersonas = () => {
-  const personas = [
-    { icon: <LineChart className="w-6 h-6" aria-hidden="true" />, title: t('audience.investorsTitle'), desc: t('audience.investorsDesc') },
-    { icon: <Fuel className="w-6 h-6" aria-hidden="true" />, title: t('audience.tradersTitle'), desc: t('audience.tradersDesc') },
-    { icon: <Search className="w-6 h-6" aria-hidden="true" />, title: t('audience.researchersTitle'), desc: t('audience.researchersDesc') },
-    { icon: <Globe className="w-6 h-6" aria-hidden="true" />, title: t('audience.journalistsTitle'), desc: t('audience.journalistsDesc') },
-    { icon: <Landmark className="w-6 h-6" aria-hidden="true" />, title: t('audience.govTitle'), desc: t('audience.govDesc') },
-    { icon: <Building2 className="w-6 h-6" aria-hidden="true" />, title: t('audience.teamsTitle'), desc: t('audience.teamsDesc') },
-  ];
-
-  return (
-    <section className="py-24 px-6">
-      <div className="max-w-5xl mx-auto">
-        <h2 className="text-3xl md:text-5xl font-display font-bold mb-16 text-center">{t('audience.title')}</h2>
-        <div className="grid md:grid-cols-3 gap-6">
-          {personas.map((p, i) => (
-            <div key={i} className="bg-wm-card border border-wm-border p-6 hover:border-wm-green/30 transition-colors">
-              <div className="text-wm-green mb-4">{p.icon}</div>
-              <h3 className="font-bold mb-2">{p.title}</h3>
-              <p className="text-sm text-wm-muted">{p.desc}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-};
 
 /* ─── 9. API Section (current) ─── */
 const ApiSection = () => (
@@ -1528,7 +1491,6 @@ export default function App() {
         <TwoPathSplit />
         <ProShowcase />
         <DeliveryDesk />
-        <AudiencePersonas />
         <SocialProof />
         <LivePreview />
         <WhatsNew />

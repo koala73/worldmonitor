@@ -71,14 +71,21 @@
     "buildOnItDesc": "Constructor de widgets personalizados (HTML/CSS/JS + IA) y MCP para Claude, GPT, LLMs personalizados."
   },
   "proJobs": {
-    "title": "¿Qué necesitas hacer?",
     "intro": "El panel gratuito cubre el primer vistazo. Esto es lo que Pro añade para cada tarea.",
     "proAdds": "Pro añade",
-    "openMap": "Abrir la vista del mapa",
-    "chokepointFree": "Estrechos, tráfico marítimo, rutas comerciales, sanciones y cables submarinos en el mapa en vivo.",
-    "chokepointPro": "Modelización de shocks de costes y pruebas de estrés de cadenas de suministro, reglas de alerta que envían un cambio en un estrecho a Slack, correo electrónico o un webhook, y un resumen programado ordenado según tus reglas.",
-    "verifyFree": "Un feed de noticias con cada historia atribuida a su fuente, además de capas de conflictos, cortes y riesgos naturales para contrastar una afirmación.",
-    "verifyPro": "Memoria de inteligencia para buscar en la cobertura anterior y encontrar eventos similares previos, chat con WM Analyst sobre los servicios en vivo y reglas de alerta para el seguimiento."
+    "investorsJob": "Mira cómo una guerra, una sanción o un shock de suministro llega a tus posiciones.",
+    "investorsPro": "Análisis de acciones y backtesting con IA, una lista de seguimiento de mercados con macro y bancos centrales, e implicaciones de mercado de cada evento con IA.",
+    "tradersJob": "Detecta una interrupción en un estrecho, oleoducto o puerto antes de que mueva el precio.",
+    "tradersPro": "Modelización de shocks de costes, pruebas de estrés de la cadena de suministro y reglas de alerta que envían un cambio en un estrecho a Slack, correo o un webhook.",
+    "researchersJob": "Explica por qué cambió el riesgo de un país, con cada fuente citada.",
+    "researchersPro": "Memoria de inteligencia para buscar cobertura anterior y eventos similares, datos de deuda soberana y minerales, y chat con WM Analyst sobre los servicios en vivo.",
+    "journalistsJob": "Contrasta una afirmación de última hora con fuentes atribuidas antes de publicar.",
+    "journalistsPro": "Memoria de inteligencia para cronologías y eventos anteriores similares, chat con WM Analyst y reglas de alerta para el seguimiento.",
+    "govJob": "Sigue la escalada de conflictos y los disturbios en las regiones que cubres.",
+    "govPro": "Un resumen programado con IA ordenado por tus reglas de alerta, diario, dos veces al día o semanal, más alertas en tiempo real para eventos críticos.",
+    "teamsJob": "Vigila las sedes, rutas y proveedores de los que depende tu organización.",
+    "teamsPro": "Pro Business licencia Pro para uso profesional, con exportación a CSV, JSON y PDF. Los planes API añaden acceso REST y webhooks.",
+    "allWorkflows": "Ver todos los flujos de monitoreo"
   },
   "deliveryDesk": {
     "eyebrow": "MESA DE ENTREGA",
@@ -106,17 +113,11 @@
   "audience": {
     "title": "¿Para quién está diseñado World Monitor?",
     "investorsTitle": "Inversores y gestores de cartera",
-    "investorsDesc": "Sigue renta variable global, objetivos de analistas, métricas de valoración e indicadores macro junto a señales de riesgo geopolítico.",
     "tradersTitle": "Traders de energía y materias primas",
-    "tradersDesc": "Sigue movimientos de buques, inferencia de carga, disrupciones de cadena de suministro y señales geopolíticas que mueven mercados.",
     "researchersTitle": "Investigadores y analistas",
-    "researchersDesc": "Investigación bursátil, analítica económica y marcos geopolíticos para análisis e informes más profundos.",
     "journalistsTitle": "Periodistas y medios",
-    "journalistsDesc": "Sigue acontecimientos rápidos en mercados y regiones sin unir fuentes manualmente.",
     "govTitle": "Gobierno e instituciones",
-    "govDesc": "Seguimiento de política macro, monitoreo de bancos centrales y conciencia situacional en señales geopolíticas e infraestructura.",
-    "teamsTitle": "Equipos y organizaciones",
-    "teamsDesc": "Pasa del uso individual a flujos compartidos, acceso API, apps de TV y despliegues gestionados."
+    "teamsTitle": "Equipos y organizaciones"
   },
   "dataCoverage": {
     "title": "¿Qué monitorea World Monitor?",

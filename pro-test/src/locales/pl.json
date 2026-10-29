@@ -71,14 +71,21 @@
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) i MCP dla Claude, GPT, własnych LLM-ów."
   },
   "proJobs": {
-    "title": "Co musisz zrobić?",
     "intro": "Darmowy pulpit wystarczy na pierwsze spojrzenie. Oto, co Pro dodaje do każdego zadania.",
     "proAdds": "Pro dodaje",
-    "openMap": "Otwórz widok mapy",
-    "chokepointFree": "Cieśniny, ruch statków, szlaki handlowe, sankcje i kable podmorskie na mapie na żywo.",
-    "chokepointPro": "Modelowanie szoków kosztowych i testy warunków skrajnych łańcuchów dostaw, reguły alertów, które wysyłają zmianę w cieśninie do Slacka, na e-mail lub webhook, oraz zaplanowany przegląd uszeregowany według Twoich reguł.",
-    "verifyFree": "Kanał wiadomości, w którym każda informacja jest przypisana do źródła, oraz warstwy konfliktów, awarii i zagrożeń naturalnych do weryfikacji twierdzeń.",
-    "verifyPro": "Pamięć wywiadowcza do przeszukiwania wcześniejszych relacji i znajdowania podobnych wcześniejszych zdarzeń, czat WM Analyst obejmujący usługi na żywo oraz reguły alertów do dalszego śledzenia."
+    "investorsJob": "Zobacz, jak wojna, sankcje czy szok podażowy docierają do Twoich pozycji.",
+    "investorsPro": "Analiza akcji i backtesting z AI, lista obserwowanych rynków z danymi makro i bankami centralnymi oraz skutki każdego wydarzenia dla rynków według AI.",
+    "tradersJob": "Wychwyć zakłócenie w cieśninie, rurociągu lub porcie, zanim ruszy cena.",
+    "tradersPro": "Modelowanie szoków kosztowych, testy warunków skrajnych łańcuchów dostaw i reguły alertów, które wysyłają zmianę w cieśninie do Slacka, na e-mail lub webhook.",
+    "researchersJob": "Wyjaśnij, dlaczego zmieniło się ryzyko kraju, z podaniem każdego źródła.",
+    "researchersPro": "Pamięć wywiadowcza do przeszukiwania wcześniejszych relacji i podobnych zdarzeń, dane o długu publicznym i surowcach oraz czat WM Analyst obejmujący usługi na żywo.",
+    "journalistsJob": "Sprawdź pilne twierdzenie w przypisanych źródłach, zanim je opublikujesz.",
+    "journalistsPro": "Pamięć wywiadowcza do osi czasu i podobnych wcześniejszych zdarzeń, czat WM Analyst oraz reguły alertów do dalszego śledzenia.",
+    "govJob": "Śledź eskalację konfliktów i niepokoje w regionach, które obejmujesz.",
+    "govPro": "Zaplanowany przegląd AI uszeregowany według Twoich reguł alertów, codziennie, dwa razy dziennie lub co tydzień, plus alerty w czasie rzeczywistym o krytycznych zdarzeniach.",
+    "teamsJob": "Obserwuj obiekty, trasy i dostawców, od których zależy Twoja organizacja.",
+    "teamsPro": "Pro Business licencjonuje Pro do pracy, z eksportem do CSV, JSON i PDF. Plany API dodają dostęp REST i webhooki.",
+    "allWorkflows": "Przeglądaj wszystkie procedury monitorowania"
   },
   "deliveryDesk": {
     "eyebrow": "STANOWISKO DOSTAW",
@@ -106,17 +113,11 @@
   "audience": {
     "title": "Dla kogo przeznaczony jest World Monitor?",
     "investorsTitle": "Inwestorzy i zarządzający portfelem",
-    "investorsDesc": "Śledź globalne akcje, cele analityków, wskaźniki wyceny i wskaźniki makro obok sygnałów ryzyka geopolitycznego.",
     "tradersTitle": "Traderzy energii i surowców",
-    "tradersDesc": "Śledź ruchy statków, wnioskowanie o ładunkach, zakłócenia łańcucha dostaw i sygnały geopolityczne poruszające rynki.",
     "researchersTitle": "Badacze i analitycy",
-    "researchersDesc": "Equity research, analiza ekonomiczna i ramy geopolityczne do głębszych analiz i raportowania.",
     "journalistsTitle": "Dziennikarze i media",
-    "journalistsDesc": "Śledź szybkie wydarzenia na rynkach i w regionach bez ręcznego łączenia źródeł.",
     "govTitle": "Rząd i instytucje",
-    "govDesc": "Śledzenie polityki makro, monitoring banków centralnych i świadomość sytuacyjna w sygnałach geopolitycznych i infrastrukturalnych.",
-    "teamsTitle": "Zespoły i organizacje",
-    "teamsDesc": "Przejdź od użytku indywidualnego do wspólnych przepływów, dostępu API, aplikacji TV i zarządzanych wdrożeń."
+    "teamsTitle": "Zespoły i organizacje"
   },
   "dataCoverage": {
     "title": "Co monitoruje World Monitor?",

@@ -71,14 +71,21 @@
     "buildOnItDesc": "自訂小工具構建器(HTML/CSS/JS + AI)與 MCP,適用於 Claude、GPT 與自訂 LLM。"
   },
   "proJobs": {
-    "title": "你需要完成什麼工作？",
     "intro": "免費儀表板可滿足初步檢視。以下是 Pro 為每項工作增加的功能。",
     "proAdds": "Pro 增加",
-    "openMap": "開啟地圖檢視",
-    "chokepointFree": "即時地圖上的咽喉要道、船舶交通、貿易航線、制裁和海底電纜。",
-    "chokepointPro": "成本衝擊建模和供應鏈壓力測試，可將咽喉要道變化傳送到 Slack、電子郵件或 webhook 的警報規則，以及按你的規則排序的定時摘要。",
-    "verifyFree": "每條新聞都標註來源的新聞流，以及用於核對說法的衝突、中斷和自然災害圖層。",
-    "verifyPro": "用於搜尋過往報道並查詢類似早期事件的情報記憶、覆蓋即時服務的 WM Analyst 對話，以及用於後續跟進的警報規則。"
+    "investorsJob": "看清戰爭、制裁或供應衝擊如何傳導到你的持倉。",
+    "investorsPro": "AI 股票分析與回測，涵蓋宏觀和央行動態的市場觀察列表，以及每個事件的 AI 市場影響分析。",
+    "tradersJob": "在價格變動之前，捕捉咽喉要道、管道或港口的中斷。",
+    "tradersPro": "成本衝擊建模、供應鏈壓力測試，以及將咽喉要道變化傳送到 Slack、電子郵件或 webhook 的警報規則。",
+    "researchersJob": "解釋某個國家的風險為何變化，並註明每一個來源。",
+    "researchersPro": "用於搜尋過往報道和類似事件的情報記憶、主權債務與礦產資料，以及覆蓋即時服務的 WM Analyst 對話。",
+    "journalistsJob": "釋出前，用標註來源的資訊核對突發說法。",
+    "journalistsPro": "用於時間線和類似早期事件的情報記憶、WM Analyst 對話，以及用於後續跟進的警報規則。",
+    "govJob": "追蹤你所關注地區的衝突升級和動盪。",
+    "govPro": "按你的警報規則排序的定時 AI 摘要，每天、每天兩次或每週傳送，並對關鍵事件即時提醒。",
+    "teamsJob": "監控你的組織所依賴的站點、路線和供應商。",
+    "teamsPro": "Pro Business 將 Pro 授權用於工作，支援 CSV、JSON 和 PDF 匯出。API 套餐增加 REST 存取和 webhook。",
+    "allWorkflows": "瀏覽全部監測工作流"
   },
   "deliveryDesk": {
     "eyebrow": "交付工作臺",
@@ -106,17 +113,11 @@
   "audience": {
     "title": "World Monitor 為誰而構建？",
     "investorsTitle": "投資者與投資組合經理",
-    "investorsDesc": "追蹤全球股票、分析師目標、估值指標和宏觀指標,並與地緣政治風險訊號並置。",
     "tradersTitle": "能源與大宗商品交易員",
-    "tradersDesc": "追蹤船舶動向、貨物推斷、供應鏈擾動,以及驅動市場的地緣政治訊號。",
     "researchersTitle": "研究人員與分析師",
-    "researchersDesc": "面向更深入的分析與報告的股票研究、經濟分析與地緣政治框架。",
     "journalistsTitle": "記者與媒體",
-    "journalistsDesc": "跨市場與區域追蹤快速演進的事件,無需手動拼接來源。",
     "govTitle": "政府與機構",
-    "govDesc": "跨地緣政治與基礎設施訊號的宏觀政策追蹤、央行監測與態勢感知。",
-    "teamsTitle": "團隊與組織",
-    "teamsDesc": "從個人使用邁向共享工作流、API 存取、TV 應用與託管部署。"
+    "teamsTitle": "團隊與組織"
   },
   "dataCoverage": {
     "title": "World Monitor 監控什麼？",
