@@ -786,6 +786,20 @@ export function formatCoverageFailureReason({ countryCount }) {
 }
 
 /**
+ * JODI files only grow, so a run whose newest month is older than the one
+ * already published lost its current-year files. On 2026-10-29 every 2026
+ * download timed out and the run replaced an August 2026 snapshot with
+ * December 2025, which emptied every country's crude imports. Refuse, so the
+ * coverage-gate path keeps the last-good snapshot.
+ */
+function formatVintageRegressionReason(newestItemAt, publishedNewestItemAt) {
+  if (!Number.isFinite(newestItemAt) || !Number.isFinite(publishedNewestItemAt)) return null;
+  if (newestItemAt >= publishedNewestItemAt) return null;
+  const month = (ms) => new Date(ms).toISOString().slice(0, 7);
+  return `newest month ${month(newestItemAt)} is older than the published ${month(publishedNewestItemAt)}`;
+}
+
+/**
  * Everything main() decides about a parsed snapshot, in one testable place:
  * whether it may publish, what China looks like, and the seed-meta record that
  * carries both to /api/health.
@@ -803,11 +817,10 @@ export function prepareOilPublish({ allRows, previousMeta = null, now = new Date
   // published. It also stops a null-only month from overwriting a country's
   // last-good record — the key simply is not rewritten and ages out instead.
   const countries = parsed.filter(hasOilMeasurements);
-  const refusalReason = validateCoverage(countries)
-    ? null
-    : formatCoverageFailureReason({ countryCount: countries.length });
-
   const contentMeta = jodiDatasetContentMeta(countries, hasOilMeasurements, now);
+  const refusalReason = validateCoverage(countries)
+    ? formatVintageRegressionReason(contentMeta?.newestItemAt, previousMeta?.newestItemAt)
+    : formatCoverageFailureReason({ countryCount: countries.length });
   return {
     parsedCount: parsed.length,
     countries,
