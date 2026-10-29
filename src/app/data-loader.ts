@@ -2154,7 +2154,6 @@ export class DataLoaderManager implements AppModule {
         digestPromise,
         fallbackDigest: fallbackSelection,
         digestGraceMs: this.digestFirstPaintGraceMs,
-        hasDigestCategory: (selection, key) => Boolean(selection.digest.categories && key in selection.digest.categories),
         loadCategory: ({ key, feeds, isCustom }, selection, options) => (
           this.loadNewsCategory(
             key,
