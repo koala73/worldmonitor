@@ -835,7 +835,7 @@ export class MapContainer {
     if (this.cachedOutages) this.setOutages(this.cachedOutages);
     if (this.cachedAisDisruptions != null && this.cachedAisDensity != null) this.setAisData(this.cachedAisDisruptions, this.cachedAisDensity);
     if (this.cachedUkmtoIncidents != null) this.setUkmtoIncidents(this.cachedUkmtoIncidents);
-    this.renderUkmtoStatus();
+    if (this.cachedUkmtoSnapshot != null) this.renderUkmtoStatus();
     if (this.cachedCableAdvisories != null && this.cachedRepairShips != null) this.setCableActivity(this.cachedCableAdvisories, this.cachedRepairShips);
     if (this.cachedCableHealth) this.setCableHealth(this.cachedCableHealth);
     if (this.cachedProtests) this.setProtests(this.cachedProtests);
