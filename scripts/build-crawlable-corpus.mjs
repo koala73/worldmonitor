@@ -2138,6 +2138,7 @@ export async function loadCorpusData({
   const useCasesLastmod = laterDate(
     USE_CASES_CONTENT_VERSION,
     gitFileLastmod(rootDir, 'scripts/build-use-cases.mjs'),
+    gitFileLastmod(rootDir, 'scripts/data/use-case-workflows.mjs'),
   );
   const coverageCatalog = await loadCoverageCatalog({
     importModule: (relativePath) => importRepoModule(rootDir, relativePath),

@@ -2331,7 +2331,7 @@ describe('crawlable corpus generator', () => {
       );
       assert.equal(manifest.sections.tools.count, 3 + LIVE_TOPIC_PAGES.length);
       assert.equal(manifest.sections.research.count, 1);
-      assert.equal(manifest.sections.useCases.count, 3);
+      assert.equal(manifest.sections.useCases.count, 12);
       assert.equal(manifest.sections.accuracy.count, 1);
       assert.equal(manifest.sections.situation.count, 1);
       assert.equal(manifest.sections.situation.index, '/monitor-the-situation/');
@@ -6076,7 +6076,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
             pageFor(manifest.sections.research.index),
           ]],
           ['useCases', [
-            laterDate(USE_CASES_CONTENT_VERSION, gitFileLastmod(repoRoot, data.sources.useCases)),
+            laterDate(USE_CASES_CONTENT_VERSION, gitFileLastmod(repoRoot, data.sources.useCases), gitFileLastmod(repoRoot, 'scripts/data/use-case-workflows.mjs')),
             pageFor(manifest.sections.useCases.index),
           ]],
           ['coverage', [
