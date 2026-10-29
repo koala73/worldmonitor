@@ -9,6 +9,7 @@ import jodiMeasurementFields from '../../../../scripts/shared/jodi-measurement-f
 import { getRawJson } from '../../../_shared/redis';
 import { setResponseHeader } from '../../../_shared/response-headers';
 import { ENERGY_SPINE_KEY_PREFIX, EMBER_ELECTRICITY_KEY_PREFIX, SPR_POLICIES_KEY } from '../../../_shared/cache-keys';
+import { readRegionalEnergyFeeds } from './_regional-energy-feeds';
 import {
   resolveEnergyImportDependency,
   UNAVAILABLE_ENERGY_IMPORT_DEPENDENCY,
@@ -190,6 +191,7 @@ const EMPTY: GetCountryEnergyProfileResponse = {
   sprAvailable: false,
   jodiOilObservedMeasurements: [],
   jodiGasObservedMeasurements: [],
+  regionalEnergyFeeds: [],
 };
 
 function n(v: number | null | undefined): number {
@@ -328,6 +330,7 @@ export function buildResponseFromSpine(
     : emberData;
 
   return {
+    regionalEnergyFeeds: [],
     mixAvailable: cov.hasMix === true,
     mixYear: n(src.mixYear),
     coalShare: n(mix.coalShare),
@@ -421,6 +424,7 @@ export async function getCountryEnergyProfile(
 
   const sprPolicy = sprRegistry?.policies?.[code] ?? null;
   const importDependency = resolveEnergyImportDependency(staticRecord);
+  const regionalEnergyFeeds = await readRegionalEnergyFeeds(code, getRawJson);
 
   if (spine != null && typeof spine === 'object' && spine.coverage != null) {
     let emberFallback: EmberData | null = null;
@@ -430,7 +434,7 @@ export async function getCountryEnergyProfile(
         emberFallback = directEmber as EmberData;
       }
     }
-    return buildResponseFromSpine(spine, gasStorage, electricity, emberFallback, sprPolicy, importDependency);
+    return { ...buildResponseFromSpine(spine, gasStorage, electricity, emberFallback, sprPolicy, importDependency), regionalEnergyFeeds };
   }
 
   const [mix, jodiOil, jodiGas, ieaStocks, emberData] =
@@ -445,6 +449,7 @@ export async function getCountryEnergyProfile(
   const electricityAvailable = electricity != null && electricity.priceMwhEur != null;
 
   return {
+    regionalEnergyFeeds,
     mixAvailable: mix != null,
     mixYear: n(mix?.year),
     coalShare: n(mix?.coalShare),

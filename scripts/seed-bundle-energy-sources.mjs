@@ -2,6 +2,7 @@
 import { runBundle, DAY } from './_bundle-runner.mjs';
 import { OWID_SOURCE_VERSION } from './seed-owid-energy-mix.mjs';
 import { JODI_OIL_SOURCE_VERSION } from './seed-jodi-oil.mjs';
+import regionalEnergyFeeds from './shared/regional-energy-feeds.json' with { type: 'json' };
 
 await runBundle('energy-sources', [
   { label: 'GIE-Gas-Storage', script: 'seed-gie-gas-storage.mjs', seedMetaKey: 'economic:eu-gas-storage', canonicalKey: 'economic:eu-gas-storage:v1', intervalMs: DAY, timeoutMs: 180_000 },
@@ -45,4 +46,26 @@ await runBundle('energy-sources', [
   // because curated events are mostly historical; classifier extends daily
   // post-launch.
   { label: 'Energy-Disruptions', script: 'seed-energy-disruptions.mjs', seedMetaKey: 'energy:disruptions', canonicalKey: 'energy:disruptions:v1', intervalMs: 7 * DAY, timeoutMs: 60_000 },
+  ...[
+    { script: 'seed-regional-energy-pgcb.mjs' },
+    { script: 'seed-regional-energy-petrobangla.mjs' },
+    { script: 'seed-regional-energy-niso.mjs' },
+    { script: 'seed-regional-energy-eskom.mjs' },
+    { script: 'seed-regional-energy-cammesa.mjs' },
+    { script: 'seed-regional-energy-gse.mjs' },
+    { script: 'seed-regional-energy-ons.mjs' },
+    { script: 'seed-regional-energy-anp.mjs' },
+  ].map(({ script }) => {
+    const feed = regionalEnergyFeeds.find(feed => feed.script === script);
+    if (!feed) throw new Error(`Unregistered regional energy script ${script}`);
+    return {
+      label: `Regional-Energy-${feed.id}`,
+      script,
+      seedMetaKey: `energy:regional-${feed.id}`,
+      canonicalKey: `energy:regional:${feed.id}:v1`,
+      expectedSourceVersion: `regional-energy-${feed.id}-v1`,
+      intervalMs: feed.intervalMin * 60_000,
+      timeoutMs: 300_000,
+    };
+  }),
 ]);
