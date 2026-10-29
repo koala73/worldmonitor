@@ -3418,6 +3418,125 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-food-prices:
+        get:
+            tags:
+                - EconomicService
+            summary: GetFoodPrices
+            description: GetFoodPrices returns local-currency market prices with exact prior-week comparisons, plus dated GIEWS and Tunisia context. Missing comparisons are explicitly unavailable. Market, product, origin, unit and currency must match; levels are not comparable across countries.
+            operationId: GetFoodPrices
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "sources":
+                                    - "cadence": "example"
+                                      "contextOnly": true
+                                      "contexts":
+                                          - "country": "US"
+                                            "countryCode": "US"
+                                            "fetchedAt": "2026-01-15T12:00:00Z"
+                                            "referenceDate": "2026-01-15"
+                                            "status": "example"
+                                      "country": "US"
+                                      "countryCode": "US"
+                                "unavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetFoodPricesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/economic/v1/get-oil-stocks-analysis:
         get:
             tags:
@@ -6790,6 +6909,97 @@ components:
                 sugar:
                     type: number
                     format: double
+        GetFoodPricesRequest:
+            type: object
+        GetFoodPricesResponse:
+            type: object
+            properties:
+                sources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FoodPriceSource'
+                unavailable:
+                    type: boolean
+        FoodPriceSource:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                country:
+                    type: string
+                countryCode:
+                    type: string
+                url:
+                    type: string
+                cadence:
+                    type: string
+                contextOnly:
+                    type: boolean
+                fetchedAt:
+                    type: string
+                latestReportDate:
+                    type: string
+                status:
+                    type: string
+                    description: current, partial, stale, or unavailable. A successful fetch does not reset the report date.
+                prices:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FoodMarketPrice'
+                contexts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FoodSecurityContext'
+        FoodMarketPrice:
+            type: object
+            properties:
+                item:
+                    type: string
+                market:
+                    type: string
+                marketType:
+                    type: string
+                origin:
+                    type: string
+                unit:
+                    type: string
+                currency:
+                    type: string
+                date:
+                    type: string
+                price:
+                    type: number
+                    format: double
+                wowAvailable:
+                    type: boolean
+                wowPct:
+                    type: number
+                    format: double
+                previousDate:
+                    type: string
+                previousPrice:
+                    type: number
+                    format: double
+        FoodSecurityContext:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                country:
+                    type: string
+                referenceDate:
+                    type: string
+                title:
+                    type: string
+                url:
+                    type: string
+                fetchedAt:
+                    type: string
+                status:
+                    type: string
+                    description: current, stale, or unavailable, independently for each country brief.
         GetOilStocksAnalysisRequest:
             type: object
             description: GetOilStocksAnalysisRequest is empty — returns the latest global analysis snapshot.

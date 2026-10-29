@@ -1,0 +1,86 @@
+[
+  {
+    "id": "pihps",
+    "name": "Bank Indonesia PIHPS",
+    "country": "Indonesia",
+    "countryCode": "ID",
+    "url": "https://www.bi.go.id/hargapangan",
+    "cadence": "daily",
+    "contextOnly": false,
+    "maxFetchAgeDays": 3,
+    "maxContentAgeDays": 7,
+    "fetchBudgetMs": 90000
+  },
+  {
+    "id": "pbs",
+    "name": "Pakistan PBS SPI",
+    "country": "Pakistan",
+    "countryCode": "PK",
+    "url": "https://www.pbs.gov.pk/price-statistics/",
+    "cadence": "weekly",
+    "contextOnly": false,
+    "maxFetchAgeDays": 10,
+    "maxContentAgeDays": 21,
+    "fetchBudgetMs": 60000
+  },
+  {
+    "id": "da",
+    "name": "Philippines DA Bantay Presyo",
+    "country": "Philippines",
+    "countryCode": "PH",
+    "url": "https://www.da.gov.ph/price-monitoring/",
+    "cadence": "daily",
+    "contextOnly": false,
+    "maxFetchAgeDays": 3,
+    "maxContentAgeDays": 7,
+    "fetchBudgetMs": 60000
+  },
+  {
+    "id": "cbsl",
+    "name": "Sri Lanka CBSL",
+    "country": "Sri Lanka",
+    "countryCode": "LK",
+    "url": "https://www.cbsl.gov.lk/en/statistics/economic-indicators/price-report",
+    "cadence": "daily",
+    "contextOnly": false,
+    "maxFetchAgeDays": 3,
+    "maxContentAgeDays": 7,
+    "fetchBudgetMs": 60000
+  },
+  {
+    "id": "sniim",
+    "name": "Mexico SNIIM",
+    "country": "Mexico",
+    "countryCode": "MX",
+    "url": "https://www.economia-sniim.gob.mx/nuevo/",
+    "cadence": "daily",
+    "contextOnly": false,
+    "maxFetchAgeDays": 3,
+    "maxContentAgeDays": 7,
+    "fetchBudgetMs": 90000
+  },
+  {
+    "id": "giews",
+    "name": "FAO GIEWS country briefs",
+    "country": "Global",
+    "countryCode": "",
+    "url": "https://www.fao.org/giews/countrybrief/country.jsp?code=BGD&lang=en",
+    "cadence": "irregular",
+    "contextOnly": true,
+    "maxFetchAgeDays": 14,
+    "maxContentAgeDays": 365,
+    "fetchBudgetMs": 230000
+  },
+  {
+    "id": "onagri",
+    "name": "Tunisia ONAGRI",
+    "country": "Tunisia",
+    "countryCode": "TN",
+    "url": "https://www.onagri.nat.tn/Marche-de-gros-bir-el-kasaa/fr/62",
+    "cadence": "monthly",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 180,
+    "fetchBudgetMs": 30000
+  }
+]

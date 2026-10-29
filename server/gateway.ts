@@ -382,6 +382,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/list-bigmac-prices': 'daily',
   '/api/economic/v1/list-fuel-prices': 'daily',
   '/api/economic/v1/get-fao-food-price-index': 'daily',
+  '/api/economic/v1/get-food-prices': 'slow',
   '/api/economic/v1/get-crude-inventories': 'daily',
   '/api/economic/v1/get-nat-gas-storage': 'daily',
   '/api/economic/v1/get-eu-yield-curve': 'daily',

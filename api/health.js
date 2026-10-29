@@ -582,6 +582,14 @@ const STANDALONE_KEYS = {
   // #8538. One probe per worldwide CPI source. The canonical keys are 115 KB –
   // 1 MB and the read path pipelines four of them, so health reads the
   // seed-meta keys instead of paying for the full payloads.
+  // Food-price history is read on demand by GetFoodPrices.
+  foodPricesPihps: 'seed-meta:economic:food-prices-pihps',
+  foodPricesPbs: 'seed-meta:economic:food-prices-pbs',
+  foodPricesDa: 'seed-meta:economic:food-prices-da',
+  foodPricesCbsl: 'seed-meta:economic:food-prices-cbsl',
+  foodPricesSniim: 'seed-meta:economic:food-prices-sniim',
+  foodPricesGiews: 'seed-meta:economic:food-prices-giews',
+  foodPricesOnagri: 'seed-meta:economic:food-prices-onagri',
   worldCpiImf:           'seed-meta:economic:world-cpi-imf',
   worldCpiEurostat:      'seed-meta:economic:world-cpi-eurostat',
   worldCpiEstat:         'seed-meta:economic:world-cpi-estat',
@@ -1775,6 +1783,49 @@ const SEED_META = {
   // daily interval, so 72h covers one missed tick; content age is the tighter
   // clock and is declared per seeder (IMF 120d, Eurostat 120d,
   // e-Stat 120d, ABS 400d) because their publication lags differ structurally.
+  // Food prices: source payloads include history, so probe metadata.
+  foodPricesPihps: {
+    key: 'seed-meta:economic:food-prices-pihps',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:food-prices-pihps',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9841, activationKey: 'seed-activated:economic:food-prices-pihps' },
+  },
+  foodPricesPbs: {
+    key: 'seed-meta:economic:food-prices-pbs',
+    maxStaleMin: 14400,
+    activationKey: 'seed-activated:economic:food-prices-pbs',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9841, activationKey: 'seed-activated:economic:food-prices-pbs' },
+  },
+  foodPricesDa: {
+    key: 'seed-meta:economic:food-prices-da',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:food-prices-da',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9841, activationKey: 'seed-activated:economic:food-prices-da' },
+  },
+  foodPricesCbsl: {
+    key: 'seed-meta:economic:food-prices-cbsl',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:food-prices-cbsl',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9841, activationKey: 'seed-activated:economic:food-prices-cbsl' },
+  },
+  foodPricesSniim: {
+    key: 'seed-meta:economic:food-prices-sniim',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:food-prices-sniim',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9841, activationKey: 'seed-activated:economic:food-prices-sniim' },
+  },
+  foodPricesGiews: {
+    key: 'seed-meta:economic:food-prices-giews',
+    maxStaleMin: 20160,
+    activationKey: 'seed-activated:economic:food-prices-giews',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9841, activationKey: 'seed-activated:economic:food-prices-giews' },
+  },
+  foodPricesOnagri: {
+    key: 'seed-meta:economic:food-prices-onagri',
+    maxStaleMin: 64800,
+    activationKey: 'seed-activated:economic:food-prices-onagri',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9841, activationKey: 'seed-activated:economic:food-prices-onagri' },
+  },
   worldCpiImf: {
     key: 'seed-meta:economic:world-cpi-imf',
     maxStaleMin: 4320,
@@ -2477,6 +2528,14 @@ const ACTIVATION_MARKERS = {
   worldCpiEurostat: SEED_META.worldCpiEurostat.activationKey,
   worldCpiEstat: SEED_META.worldCpiEstat.activationKey,
   worldCpiAbs: SEED_META.worldCpiAbs.activationKey,
+  foodPricesPihps: SEED_META.foodPricesPihps.activationKey,
+  foodPricesPbs: SEED_META.foodPricesPbs.activationKey,
+  foodPricesDa: SEED_META.foodPricesDa.activationKey,
+  foodPricesCbsl: SEED_META.foodPricesCbsl.activationKey,
+  foodPricesSniim: SEED_META.foodPricesSniim.activationKey,
+  foodPricesGiews: SEED_META.foodPricesGiews.activationKey,
+  foodPricesOnagri: SEED_META.foodPricesOnagri.activationKey,
+
   torontoTfs: SEED_META.torontoTfs.activationKey,
   torontoTps: SEED_META.torontoTps.activationKey,
   predictionCountryMarkets: SEED_META.predictionCountryMarkets.activationKey,

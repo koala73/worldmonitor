@@ -3023,6 +3023,33 @@
       "rosterPublishers_one": "{{count}} medio",
       "rosterPublishers_many": "{{count}} medios",
       "rosterPublishers_other": "{{count}} medios"
+    },
+    "foodPrices": {
+      "title": "Local food prices",
+      "method": "Weekly change compares the same product, market, origin and unit with its price exactly seven days earlier. Countries use different baskets and currencies.",
+      "loading": "Loading food prices…",
+      "unavailable": "Unavailable",
+      "retry": "Retry",
+      "country": "Country",
+      "market": "Market",
+      "retail": "Retail",
+      "wholesale": "Wholesale",
+      "prices": "Food prices",
+      "product": "Product",
+      "price": "Price / unit",
+      "weekly": "Week over week",
+      "origin": "Origin",
+      "versus": "vs",
+      "noBaseline": "Prior week unavailable",
+      "context": "Food security and monthly context",
+      "contextNote": "These reports provide dated context. They do not provide weekly price changes. Tunisia reports can lag by several months.",
+      "briefCountry": "Country brief",
+      "report": "Report date",
+      "checked": "Last checked",
+      "current": "Current",
+      "partial": "Some reports unavailable or old",
+      "stale": "Older data",
+      "global": "FAO global monthly index"
     }
   },
   "popups": {

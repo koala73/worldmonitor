@@ -700,6 +700,54 @@ export interface FaoFoodPricePoint {
   sugar: number;
 }
 
+export interface GetFoodPricesRequest {
+}
+
+export interface GetFoodPricesResponse {
+  sources: FoodPriceSource[];
+  unavailable: boolean;
+}
+
+export interface FoodPriceSource {
+  id: string;
+  name: string;
+  country: string;
+  countryCode: string;
+  url: string;
+  cadence: string;
+  contextOnly: boolean;
+  fetchedAt: string;
+  latestReportDate: string;
+  status: string;
+  prices: FoodMarketPrice[];
+  contexts: FoodSecurityContext[];
+}
+
+export interface FoodMarketPrice {
+  item: string;
+  market: string;
+  marketType: string;
+  origin: string;
+  unit: string;
+  currency: string;
+  date: string;
+  price: number;
+  wowAvailable: boolean;
+  wowPct: number;
+  previousDate: string;
+  previousPrice: number;
+}
+
+export interface FoodSecurityContext {
+  countryCode: string;
+  country: string;
+  referenceDate: string;
+  title: string;
+  url: string;
+  fetchedAt: string;
+  status: string;
+}
+
 export interface GetOilStocksAnalysisRequest {
 }
 
@@ -1298,6 +1346,7 @@ export interface EconomicServiceHandler {
   getEuFsi(ctx: ServerContext, req: GetEuFsiRequest): Promise<GetEuFsiResponse>;
   getEconomicStress(ctx: ServerContext, req: GetEconomicStressRequest): Promise<GetEconomicStressResponse>;
   getFaoFoodPriceIndex(ctx: ServerContext, req: GetFaoFoodPriceIndexRequest): Promise<GetFaoFoodPriceIndexResponse>;
+  getFoodPrices(ctx: ServerContext, req: GetFoodPricesRequest): Promise<GetFoodPricesResponse>;
   getOilStocksAnalysis(ctx: ServerContext, req: GetOilStocksAnalysisRequest): Promise<GetOilStocksAnalysisResponse>;
   getOilInventories(ctx: ServerContext, req: GetOilInventoriesRequest): Promise<GetOilInventoriesResponse>;
   getEnergyCrisisPolicies(ctx: ServerContext, req: GetEnergyCrisisPoliciesRequest): Promise<GetEnergyCrisisPoliciesResponse>;
@@ -2379,6 +2428,43 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getFaoFoodPriceIndex(ctx, body);
           return new Response(JSON.stringify(result as GetFaoFoodPriceIndexResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-food-prices",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetFoodPricesRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getFoodPrices(ctx, body);
+          return new Response(JSON.stringify(result as GetFoodPricesResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

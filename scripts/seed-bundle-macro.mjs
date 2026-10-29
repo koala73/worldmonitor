@@ -78,6 +78,15 @@ const MACRO_SECTIONS = [
   { label: 'World-CPI-Eurostat', script: 'seed-world-cpi-eurostat.mjs', seedMetaKey: 'economic:world-cpi-eurostat', canonicalKey: 'economic:world-cpi:eurostat:v1', completionMetaKey: 'seed-completion:economic:world-cpi-eurostat', intervalMs: DAY, timeoutMs: 180_000 },
   { label: 'World-CPI-JP', script: 'seed-world-cpi-estat.mjs', requiredEnv: ['ESTAT_APPID'], seedMetaKey: 'economic:world-cpi-estat', canonicalKey: 'economic:world-cpi:estat:v1', completionMetaKey: 'seed-completion:economic:world-cpi-estat', intervalMs: DAY, timeoutMs: 120_000 },
   { label: 'World-CPI-AU', script: 'seed-world-cpi-abs.mjs', seedMetaKey: 'economic:world-cpi-abs', canonicalKey: 'economic:world-cpi:abs:v1', completionMetaKey: 'seed-completion:economic:world-cpi-abs', intervalMs: DAY, timeoutMs: 120_000 },
+  // #9841: independent source jobs retain last-good data on report failures.
+  { label: 'Food-PIHPS', script: 'seed-food-prices-pihps.mjs', seedMetaKey: 'economic:food-prices-pihps', canonicalKey: 'economic:food-prices:pihps:v1', completionMetaKey: 'seed-completion:economic:food-prices-pihps', intervalMs: DAY, timeoutMs: 130000 },
+  { label: 'Food-PBS', script: 'seed-food-prices-pbs.mjs', seedMetaKey: 'economic:food-prices-pbs', canonicalKey: 'economic:food-prices:pbs:v1', completionMetaKey: 'seed-completion:economic:food-prices-pbs', intervalMs: DAY, timeoutMs: 100000 },
+  { label: 'Food-DA', script: 'seed-food-prices-da.mjs', seedMetaKey: 'economic:food-prices-da', canonicalKey: 'economic:food-prices:da:v1', completionMetaKey: 'seed-completion:economic:food-prices-da', intervalMs: DAY, timeoutMs: 100000 },
+  { label: 'Food-CBSL', script: 'seed-food-prices-cbsl.mjs', seedMetaKey: 'economic:food-prices-cbsl', canonicalKey: 'economic:food-prices:cbsl:v1', completionMetaKey: 'seed-completion:economic:food-prices-cbsl', intervalMs: DAY, timeoutMs: 100000 },
+  { label: 'Food-SNIIM', script: 'seed-food-prices-sniim.mjs', seedMetaKey: 'economic:food-prices-sniim', canonicalKey: 'economic:food-prices:sniim:v1', completionMetaKey: 'seed-completion:economic:food-prices-sniim', intervalMs: DAY, timeoutMs: 130000 },
+  { label: 'Food-GIEWS', script: 'seed-food-prices-giews.mjs', seedMetaKey: 'economic:food-prices-giews', canonicalKey: 'economic:food-prices:giews:v1', completionMetaKey: 'seed-completion:economic:food-prices-giews', intervalMs: DAY, timeoutMs: 270000 },
+  { label: 'Food-ONAGRI', script: 'seed-food-prices-onagri.mjs', seedMetaKey: 'economic:food-prices-onagri', canonicalKey: 'economic:food-prices:onagri:v1', completionMetaKey: 'seed-completion:economic:food-prices-onagri', intervalMs: DAY, timeoutMs: 70000 },
+
 ];
 
 // Education is normally last so a persistent failure in the new flag-dark

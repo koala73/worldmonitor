@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+message FoodMarketPrice {
+  string item = 1;
+  string market = 2;
+  string market_type = 3;
+  string origin = 4;
+  string unit = 5;
+  string currency = 6;
+  string date = 7;
+  double price = 8;
+  bool wow_available = 9;
+  double wow_pct = 10;
+  string previous_date = 11;
+  double previous_price = 12;
+}
+
+message FoodSecurityContext {
+  string country_code = 1;
+  string country = 2;
+  string reference_date = 3;
+  string title = 4;
+  string url = 5;
+  string fetched_at = 6;
+  // current, stale, or unavailable, independently for each country brief.
+  string status = 7;
+}
+
+message FoodPriceSource {
+  string id = 1;
+  string name = 2;
+  string country = 3;
+  string country_code = 4;
+  string url = 5;
+  string cadence = 6;
+  bool context_only = 7;
+  string fetched_at = 8;
+  string latest_report_date = 9;
+  // current, partial, stale, or unavailable. A successful fetch does not reset the report date.
+  string status = 10;
+  repeated FoodMarketPrice prices = 11;
+  repeated FoodSecurityContext contexts = 12;
+}
+
+message GetFoodPricesRequest {}
+
+message GetFoodPricesResponse {
+  repeated FoodPriceSource sources = 1;
+  bool unavailable = 2;
+}
