@@ -88,10 +88,7 @@
     "uniqueVisitors": "Jedinstveni posjetitelji",
     "peakDailyUsers": "Najviši dnevni broj korisnika",
     "countriesReached": "Dosegnute zemlje",
-    "liveDataSources": "Izvori podataka uživo",
-    "quote": "Tržišta, monetarna politika, geopolitika, energija — sada se sve kreće zajedno. Trebao mi je alat koji pokazuje kako se te sile povezuju u stvarnom vremenu, ne samo naslove nego i temeljne pokretače.",
-    "ceo": "CEO tvrtke",
-    "asToldTo": "kako je ispričano"
+    "liveDataSources": "Izvori podataka uživo"
   },
   "audience": {
     "title": "Za koga je World Monitor napravljen?",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "Pratite političke, sigurnosne, ekonomske i signale otpornosti iza promjene zemlje, s otpornosti rangiranom za {{resilienceRanked}} zemalja.",
       "open": "Otvori dokaze",
       "workflow": "Postupak korak po korak"
+    },
+    "voices": {
+      "eyebrow": "Njihovim riječima",
+      "title": "Što ljudi kažu o World Monitoru",
+      "sub": "{{users}} ljudi u {{countries}} zemalja koristilo je World Monitor. Evo što su rekli mediji i neki od njih.",
+      "translatedJa": "Prevedeno s japanskog"
     }
   },
   "whatsNew": {

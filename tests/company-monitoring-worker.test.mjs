@@ -67,10 +67,9 @@ describe('company-monitoring classifier rollout gate', () => {
 });
 
 describe('company-monitoring X budget wiring', () => {
-  it('installs the curated daily hold before the worker can reserve X Posts', () => {
+  it('installs the shared daily hold before the worker can reserve X Posts', () => {
     const source = readFileSync(new URL('../scripts/company-monitoring-worker.mjs', import.meta.url), 'utf8');
-    assert.match(source, /DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS/);
-    assert.match(source, /createXPostBudget\(\{[\s\S]*dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,[\s\S]*\}\)/);
+    assert.match(source, /createXPostBudget\(\{[\s\S]*\.\.\.X_SHARED_COVERAGE_MODEL,[\s\S]*\}\)/);
   });
 
   it('keeps the Convex X result cap equal to the provider returned-Post ceiling', () => {

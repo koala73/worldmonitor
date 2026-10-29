@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import xPostBudget from '../scripts/lib/x-post-budget.cjs';
-import { parseJapanXPosts, fetchJapanXOutcome, JAPAN_X_ACCOUNT_ID, JAPAN_X_POLL_MS } from '../scripts/cross-strait-activity/japan-x.mjs';
+import { parseJapanXPosts, fetchJapanXOutcome, JAPAN_X_ACCOUNT_ID, JAPAN_X_SLOT_MS } from '../scripts/cross-strait-activity/japan-x.mjs';
 import { fetchCrossStraitActivitySnapshot, buildCrossStraitActivitySnapshot, parseTaiwanMndDetail, validateCrossStraitActivitySnapshot } from '../scripts/cross-strait-activity/adapters.mjs';
 import { isCrossStraitActivitySnapshot } from '../src/components/cross-strait-activity-summary.ts';
 import { projectCrossStraitActivityBootstrap } from '../scripts/seed-cross-strait-activity.mjs';
@@ -18,7 +18,7 @@ const payload = () => ({
 });
 function budget() {
   let calls = 0;
-  return xPostBudget.createXPostBudget({ now: () => now, idFactory: () => 'japan-test',
+  return xPostBudget.createXPostBudget({ ...xPostBudget.X_SHARED_COVERAGE_MODEL, now: () => now, idFactory: () => 'japan-test',
     evalCommand: async () => ++calls % 2 === 1 ? [1, 50, 50, 0, 0] : [1, 1, 1, 50, 1, 0] });
 }
 const fetchOutcome = (options = {}) => fetchJapanXOutcome({ token: 'test-only', now,
@@ -82,7 +82,7 @@ test('cache avoids another request and preserves acquisition time through snapsh
   assert.equal(publicSource.xDiscovery, undefined);
 });
 
-test('failure preserves previous candidates and acquisition time; failed checks also wait six hours', async () => {
+test('failure preserves previous candidates and acquisition time; failed checks wait for the next UTC slot', async () => {
   const previousSource = { candidates: parseJapanXPosts(payload()), lastSuccessAt: '2026-10-23T12:00:00.000Z' };
   const failed = await fetchOutcome({ previousSource, fetchFn: async () => Response.json({ title: 'Unauthorized' }, { status: 401 }) });
   assert.equal(failed.ok, false);
@@ -90,9 +90,28 @@ test('failure preserves previous candidates and acquisition time; failed checks 
   assert.equal(failed.acquiredAt, previousSource.lastSuccessAt);
   assert.deepEqual(failed.candidates, previousSource.candidates);
   const cached = await fetchOutcome({ previousSource: { ...previousSource, xDiscovery: failed.xDiscovery },
-    now: now + JAPAN_X_POLL_MS - 1, fetchFn: () => assert.fail('failure cooldown must not fetch') });
+    now: now + JAPAN_X_SLOT_MS - 1, fetchFn: () => assert.fail('failure cooldown must not fetch') });
   assert.equal(cached.ok, false);
   assert.equal(cached.requestCount, 0);
+  const retried = await fetchOutcome({ previousSource: { ...previousSource, xDiscovery: failed.xDiscovery },
+    now: now + JAPAN_X_SLOT_MS });
+  assert.equal(retried.ok, true);
+  assert.equal(retried.requestCount, 1);
+});
+
+test('spends the reserved read for the current 12-hour UTC slot', async () => {
+  const requests = [];
+  const recording = { withReturnedPosts: (request) => { requests.push(request); return budget().withReturnedPosts(request); } };
+  for (const at of ['2026-10-24T11:59:59Z', '2026-10-24T12:00:00Z']) {
+    const outcome = await fetchOutcome({ now: Date.parse(at), budget: recording });
+    assert.equal(outcome.ok, true, at);
+  }
+  assert.deepEqual(requests.map(({ coverageId, coverageUnitPosts, requestedPosts, previousModelCoverageUnit }) =>
+    ({ coverageId, coverageUnitPosts, requestedPosts, previousModelCoverageUnit })), [
+    { coverageId: 'japan-mod:slot-0', coverageUnitPosts: 25, requestedPosts: 25, previousModelCoverageUnit: false },
+    { coverageId: 'japan-mod:slot-1', coverageUnitPosts: 25, requestedPosts: 25, previousModelCoverageUnit: false },
+  ]);
+  assert.equal(xPostBudget.JAPAN_MOD_X_SLOT_POSTS, 25);
 });
 
 test('valid empty recent window succeeds but pagination and API partial errors fail', async () => {
@@ -106,13 +125,13 @@ test('valid empty recent window succeeds but pagination and API partial errors f
 });
 
 test('budget denial and failed settlement cannot publish success', async () => {
-  const denied = await fetchOutcome({ budget: xPostBudget.createXPostBudget({ evalCommand: async () => null }),
+  const denied = await fetchOutcome({ budget: xPostBudget.createXPostBudget({ ...xPostBudget.X_SHARED_COVERAGE_MODEL, evalCommand: async () => null }),
     fetchFn: () => assert.fail('budget denial must not fetch') });
   assert.equal(denied.ok, false);
   assert.equal(denied.requestCount, 0);
   assert.deepEqual(denied.errorCodes, ['JMOD_X_BUDGET_UNAVAILABLE']);
   let calls = 0;
-  const unsettled = await fetchOutcome({ budget: xPostBudget.createXPostBudget({
+  const unsettled = await fetchOutcome({ budget: xPostBudget.createXPostBudget({ ...xPostBudget.X_SHARED_COVERAGE_MODEL,
     evalCommand: async () => ++calls === 1 ? [1, 50, 50, 0, 0] : null }) });
   assert.equal(unsettled.ok, false);
   assert.deepEqual(unsettled.errorCodes, ['JMOD_X_BUDGET_UNSETTLED']);
@@ -142,7 +161,7 @@ test('captured official aircraft post retains all three types and four images', 
 
 test('expired cache fetches once, bounds the candidate queue, and rejects oversized responses', async () => {
   const previousSource = { lastSuccessAt: '2026-10-23T12:00:00.000Z',
-    xDiscovery: { checkedAt: new Date(now - JAPAN_X_POLL_MS).toISOString(), ok: true },
+    xDiscovery: { checkedAt: new Date(now - JAPAN_X_SLOT_MS).toISOString(), ok: true },
     candidates: [{ sourceUrl: 'https://x.com/jointstaffpa/status/1', publicationDay: '2026-10-22' }] };
   const refreshed = await fetchOutcome({ previousSource, maxCandidates: 1 });
   assert.equal(refreshed.requestCount, 1);

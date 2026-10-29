@@ -88,10 +88,7 @@
     "uniqueVisitors": "独立访客",
     "peakDailyUsers": "日用户峰值",
     "countriesReached": "覆盖国家",
-    "liveDataSources": "实时数据源",
-    "quote": "市场、货币政策、地缘政治、能源 — 如今一切同步联动。我需要一个工具,能实时展示这些力量如何交织,不止是头条,而是其背后的驱动因素。",
-    "ceo": "CEO",
-    "asToldTo": "转述对象"
+    "liveDataSources": "实时数据源"
   },
   "audience": {
     "title": "World Monitor 为谁而构建？",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "追踪国家变化背后的政治、安全、经济和韧性信号，涵盖{{resilienceRanked}}个国家的韧性排名。",
       "open": "打开证据",
       "workflow": "分步工作流程"
+    },
+    "voices": {
+      "eyebrow": "用户怎么说",
+      "title": "大家如何评价 World Monitor",
+      "sub": "{{countries}} 个国家的 {{users}} 人使用过 World Monitor。以下是媒体和部分用户的评价。",
+      "translatedJa": "译自日语"
     }
   },
   "whatsNew": {

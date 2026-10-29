@@ -88,10 +88,7 @@
     "uniqueVisitors": "Visitantes únicos",
     "peakDailyUsers": "Utilizadores diários (pico)",
     "countriesReached": "Países alcançados",
-    "liveDataSources": "Fontes de dados ao vivo",
-    "quote": "Mercados, política monetária, geopolítica, energia — agora tudo se move em conjunto. Precisava de algo que mostrasse como estas forças se conectam em tempo real, não só as manchetes, mas os motores subjacentes.",
-    "ceo": "CEO de",
-    "asToldTo": "contado a"
+    "liveDataSources": "Fontes de dados ao vivo"
   },
   "audience": {
     "title": "Para quem o World Monitor foi desenvolvido?",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "Rastreie sinais políticos, de segurança, econômicos e de resiliência por trás da mudança em um país, com resiliência classificada para {{resilienceRanked}} países.",
       "open": "Abrir evidências",
       "workflow": "Fluxo de trabalho passo a passo"
+    },
+    "voices": {
+      "eyebrow": "Nas palavras deles",
+      "title": "O que as pessoas dizem sobre o World Monitor",
+      "sub": "{{users}} pessoas em {{countries}} países já usaram o World Monitor. Veja o que disseram a imprensa e algumas delas.",
+      "translatedJa": "Traduzido do japonês"
     }
   },
   "whatsNew": {

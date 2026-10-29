@@ -88,10 +88,7 @@
     "uniqueVisitors": "Unika besökare",
     "peakDailyUsers": "Dagliga användare (topp)",
     "countriesReached": "Länder nådda",
-    "liveDataSources": "Live-datakällor",
-    "quote": "Marknader, penningpolitik, geopolitik, energi — allt rör sig tillsammans nu. Jag behövde något som visade hur dessa krafter kopplas ihop i realtid, inte bara rubrikerna utan de underliggande drivkrafterna.",
-    "ceo": "VD för",
-    "asToldTo": "berättat för"
+    "liveDataSources": "Live-datakällor"
   },
   "audience": {
     "title": "Vem är World Monitor utformat för?",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "Spåra politiska, säkerhets-, ekonomiska och motståndskraftssignaler bakom ett lands förändring, med motståndskraft rankad för {{resilienceRanked}} länder.",
       "open": "Öppna bevis",
       "workflow": "Arbetsflöde steg för steg"
+    },
+    "voices": {
+      "eyebrow": "Med deras ord",
+      "title": "Vad folk säger om World Monitor",
+      "sub": "{{users}} personer i {{countries}} länder har använt World Monitor. Så här sa pressen och några av dem.",
+      "translatedJa": "Översatt från japanska"
     }
   },
   "whatsNew": {

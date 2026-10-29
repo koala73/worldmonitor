@@ -209,10 +209,7 @@
     "uniqueVisitors": "Unique visitors",
     "peakDailyUsers": "Peak daily users",
     "countriesReached": "Countries reached",
-    "liveDataSources": "Live data sources",
-    "quote": "Markets, monetary policy, geopolitics, energy — everything moves together now. I needed something that showed me how these forces connect in real time, not just the headlines but the underlying drivers.",
-    "ceo": "CEO of",
-    "asToldTo": "as told to"
+    "liveDataSources": "Live data sources"
   },
   "audience": {
     "title": "Who is World Monitor built for?",
@@ -716,6 +713,12 @@
       "button": "Find it first",
       "note": "Free · No signup · Loads in seconds",
       "secondary": "Or see Pro plans →"
+    },
+    "voices": {
+      "eyebrow": "In their words",
+      "title": "What people say about World Monitor",
+      "sub": "{{users}} people in {{countries}} countries have used World Monitor. Here is what the press and some of them said.",
+      "translatedJa": "Translated from Japanese"
     }
   },
   "whatsNew": {

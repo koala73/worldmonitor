@@ -74,7 +74,7 @@ const {
 } = require('./lib/occurrence-events.cjs');
 const {
   createXPostBudget,
-  DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  X_SHARED_COVERAGE_MODEL,
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
@@ -2330,7 +2330,7 @@ const X_FEED_POLL_LOCK_TTL_SECONDS = 120;
 const X_POLL_STUCK_AFTER_MS = 60_000;
 const xPostBudget = createXPostBudget({
   evalCommand: upstashEval,
-  dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  ...X_SHARED_COVERAGE_MODEL,
 });
 
 const xState = {

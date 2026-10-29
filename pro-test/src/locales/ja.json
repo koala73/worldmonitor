@@ -88,10 +88,7 @@
     "uniqueVisitors": "ユニーク訪問者",
     "peakDailyUsers": "日次ユーザー(ピーク)",
     "countriesReached": "到達国数",
-    "liveDataSources": "ライブデータソース",
-    "quote": "市場、金融政策、地政学、エネルギー — いまやすべてが連動して動く。見出しだけでなく、その背後にある駆動力をリアルタイムで示すものが必要だった。",
-    "ceo": "CEO",
-    "asToldTo": "談話相手"
+    "liveDataSources": "ライブデータソース"
   },
   "audience": {
     "title": "World Monitor は誰向けですか?",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "国の変化の背景にある政治、セキュリティ、経済、レジリエンス信号をトレース。{{resilienceRanked}} 国についてレジリエンスランク付け。",
       "open": "証拠を開く",
       "workflow": "ステップごとのワークフロー"
+    },
+    "voices": {
+      "eyebrow": "ユーザーの声",
+      "title": "World Monitor についての声",
+      "sub": "{{countries}}か国の{{users}}人が World Monitor を利用しています。報道機関と利用者の声を紹介します。",
+      "translatedJa": "日本語からの翻訳"
     }
   },
   "whatsNew": {

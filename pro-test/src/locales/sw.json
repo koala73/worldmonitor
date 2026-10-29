@@ -209,10 +209,7 @@
     "uniqueVisitors": "Wageni wa kipekee",
     "peakDailyUsers": "Watumiaji wa juu zaidi kila siku",
     "countriesReached": "Nchi zilizofikiwa",
-    "liveDataSources": "Vyanzo vya data vya moja kwa moja",
-    "quote": "Soko, sera ya pesa, kisiasa, nishati — kila kitu kinasonga sasa. Nilichotaka kitu ambacho kingeniumbuza jinsi nguvu hizi zinahusiana kwa wakati halisi, si manukuu tu lakini viendeshaji vya msingi.",
-    "ceo": "Mkurugenzi Mtendaji wa",
-    "asToldTo": "kama ilivyoelezwa kwa"
+    "liveDataSources": "Vyanzo vya data vya moja kwa moja"
   },
   "audience": {
     "title": "World Monitor imejengwa kwa nani?",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "Fuata alama za kisiasa, usalama, uchumi, na ustahimilivu zilizo nyuma ya mabadiliko ya nchi, huku ustahimilivu ukiwa umeorodheshwa kwa nchi {{resilienceRanked}}.",
       "open": "Fungua ushahidi",
       "workflow": "Mtiririko wa kazi hatua kwa hatua"
+    },
+    "voices": {
+      "eyebrow": "Kwa maneno yao",
+      "title": "Watu wanasema nini kuhusu World Monitor",
+      "sub": "Watu {{users}} katika nchi {{countries}} wametumia World Monitor. Haya ndiyo yaliyosemwa na vyombo vya habari na baadhi yao.",
+      "translatedJa": "Imetafsiriwa kutoka Kijapani"
     }
   },
   "whatsNew": {

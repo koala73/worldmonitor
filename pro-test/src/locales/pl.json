@@ -88,10 +88,7 @@
     "uniqueVisitors": "Unikalni odwiedzający",
     "peakDailyUsers": "Dzienni użytkownicy (szczyt)",
     "countriesReached": "Osiągnięte kraje",
-    "liveDataSources": "Źródła danych na żywo",
-    "quote": "Rynki, polityka monetarna, geopolityka, energia — teraz wszystko porusza się razem. Potrzebowałem czegoś, co pokazuje, jak te siły łączą się w czasie rzeczywistym, nie tylko nagłówki, ale leżące u podstaw czynniki.",
-    "ceo": "CEO",
-    "asToldTo": "w rozmowie z"
+    "liveDataSources": "Źródła danych na żywo"
   },
   "audience": {
     "title": "Dla kogo przeznaczony jest World Monitor?",
@@ -716,6 +713,12 @@
       "countryRiskDesc": "Prześledzaj sygnały polityczne, bezpieczeństwa, gospodarcze i odporności za zmianami w kraju — odporność rankingowana dla {{resilienceRanked}} krajów.",
       "open": "Otwórz dowody",
       "workflow": "Procedura krok po kroku"
+    },
+    "voices": {
+      "eyebrow": "Ich słowami",
+      "title": "Co ludzie mówią o World Monitor",
+      "sub": "{{users}} osób w {{countries}} krajach korzystało z World Monitor. Oto co powiedziały media i niektórzy z nich.",
+      "translatedJa": "Przetłumaczono z japońskiego"
     }
   },
   "whatsNew": {
