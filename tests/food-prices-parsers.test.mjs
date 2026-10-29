@@ -90,7 +90,8 @@ test('history merges idempotently and retains different markets and origins', ()
   const next = { ...row, date: '2026-10-29', price: 55 };
   const rows = mergeHistory([row, { ...row, date: '2025-01-01' }], [next, { ...next, origin: 'Imported' }]);
   assert.equal(rows.length, 3);
-  assert.deepEqual(mergeHistory(rows, [next]), rows);
+  assert.deepEqual(mergeHistory(rows, [next, { ...next, origin: 'Imported' }]), rows);
+  assert.deepEqual(mergeHistory(rows, [next]), [row, next]);
   assert.ok(!rows.some(r => r.date === '2025-01-01'));
 });
 
@@ -98,6 +99,8 @@ test('PBS archive discovers real annex URLs independently of inaccurate post slu
   const reports = discoverReports('annexureExcel: "wp-content/uploads/2026/10/Annex_15.10.2026.xlsx"', 'pbs');
   assert.equal(reports[0].date, '2026-10-15');
   assert.equal(reports[0].url, 'https://www.pbs.gov.pk/wp-content/uploads/2026/10/Annex_15.10.2026.xlsx');
+  const mixed = discoverReports('annexureExcel: "wp-content/uploads/2026/10/Annex_22.10.2026.xlsx" <a href="/weekly-sensitive-price-indicator-23-10-2026/">newer post</a>', 'pbs');
+  assert.deepEqual(mixed.map(report => report.date), ['2026-10-22']);
 });
 
 test('SNIIM single-day tables omit date cells, and paginated responses cannot silently truncate', () => {
@@ -126,4 +129,15 @@ test('DA accepts both publisher date layouts without accepting a different repor
   for (const page of pages) for (const item of page) item.text = item.text.replace('Thursday, October 29, 2026', 'Thursday, 29 October 2026');
   assert.ok(parseDa(pages, '2026-10-29').length > 0);
   assert.throws(() => parseDa(pages, '2026-10-22'), /date mismatch/);
+});
+
+test('PDF parsers reject reordered or shifted price-column headers', () => {
+  const da = JSON.parse(fixture('da.json'));
+  const tomato = da[1].find(item => item.text === 'Tomato');
+  const cabbage = da[1].find(item => item.text === 'Cabbage');
+  [tomato.x, cabbage.x] = [cabbage.x, tomato.x];
+  assert.throws(() => parseDa(da, '2026-10-29'), /column layout changed/);
+  const cbsl = JSON.parse(fixture('cbsl.json'));
+  cbsl[0].filter(item => item.text === 'Today').forEach(item => { item.x -= 40; });
+  assert.throws(() => parseCbsl(cbsl, '2026-10-29'), /column layout changed/);
 });

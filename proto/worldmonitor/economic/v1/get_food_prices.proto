@@ -48,5 +48,6 @@ message GetFoodPricesRequest {}
 
 message GetFoodPricesResponse {
   repeated FoodPriceSource sources = 1;
+  // True when all source caches are unavailable; missing prices are not zero.
   bool unavailable = 2;
 }

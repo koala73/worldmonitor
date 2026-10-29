@@ -6920,6 +6920,7 @@ components:
                         $ref: '#/components/schemas/FoodPriceSource'
                 unavailable:
                     type: boolean
+                    description: True when all source caches are unavailable; missing prices are not zero.
         FoodPriceSource:
             type: object
             properties:

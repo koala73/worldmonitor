@@ -45778,6 +45778,7 @@ components:
                         $ref: '#/components/schemas/worldmonitor_economic_v1_FoodPriceSource'
                 unavailable:
                     type: boolean
+                    description: True when all source caches are unavailable; missing prices are not zero.
         worldmonitor_economic_v1_FoodPriceSource:
             type: object
             properties:

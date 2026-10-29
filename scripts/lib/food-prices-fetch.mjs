@@ -98,6 +98,7 @@ export async function collectFoodSource(id, { now = new Date(), fetchFn = (...ar
   };
   try {
     let observations = [];
+    const refreshedReports = [];
     let contexts = [];
     let reportUrl = source.url;
     if (id === 'pihps') {
@@ -148,6 +149,7 @@ export async function collectFoodSource(id, { now = new Date(), fetchFn = (...ar
           }
           if (!rows.length || rows.some(row => row.date !== report.date)) throw new Error(`${id} report date/price mismatch`);
           observations.push(...rows);
+          refreshedReports.push({ date: report.date });
         } catch (error) {
           if (report === latest) throw error;
           console.warn(`${id} prior-week report unavailable: ${error.message}`);
@@ -157,18 +159,27 @@ export async function collectFoodSource(id, { now = new Date(), fetchFn = (...ar
       const form = await get(SNIIM_QUERY);
       const all = selectOptions(form, 'ddlProducto');
       const basket = [/^Cebolla Bola - Primera$/, /^Cebolla Morada - Primera$/, /^Chile Jalapeño - Primera$/, /^Tomate Saladette - Primera$/, /^Papa Alpha - Primera$/];
-      for (const pattern of basket) {
+      const products = basket.map(pattern => {
         const product = all.find(product => pattern.test(product.name));
         if (!product) throw new Error('SNIIM basket product missing');
-        const latest = new Date(`${dated(now, -1)}T00:00:00Z`);
-        while ([0, 6].includes(latest.getUTCDay())) latest.setUTCDate(latest.getUTCDate() - 1);
-        for (const offset of [0, -7]) {
+        return product;
+      });
+      const latest = new Date(`${dated(now, -1)}T00:00:00Z`);
+      while ([0, 6].includes(latest.getUTCDay())) latest.setUTCDate(latest.getUTCDate() - 1);
+      for (const offset of [0, -7]) {
+        for (const product of products) {
           const date = dated(latest, offset);
           const query = new URLSearchParams({ fechaInicio: dmy(date), fechaFinal: dmy(date), ProductoId: product.id, OrigenId: '-1', Origen: 'Todos', DestinoId: '-1', Destino: 'Todos', PreciosPorId: '2', RegistrosPorPagina: '500' });
           const url = new URL(`ResultadosConsultaFechaFrutasYHortalizas.aspx?${query}`, SNIIM_QUERY).href;
-          const rows = parseSniim(await get(url), product.name, date);
-          if (rows.some(row => row.date !== date)) throw new Error('SNIIM report date mismatch');
-          observations.push(...rows);
+          try {
+            const rows = parseSniim(await get(url), product.name, date);
+            if (rows.some(row => row.date !== date)) throw new Error('SNIIM report date mismatch');
+            observations.push(...rows);
+            refreshedReports.push({ date, item: product.name });
+          } catch (error) {
+            if (offset === 0) throw error;
+            console.warn(`SNIIM prior-week report unavailable: ${error.message}`);
+          }
         }
       }
     } else if (id === 'giews') {
@@ -194,6 +205,6 @@ export async function collectFoodSource(id, { now = new Date(), fetchFn = (...ar
     }
     if (id === 'giews' ? !contexts.some(context => context.referenceDate) : !observations.length) throw new Error(`${id} has no dated records`);
     if (observations.some(row => !isoDate(...row.date.split('-')) || row.date > dated(now, 0))) throw new Error('invalid or future food observation');
-    return { observations, contexts, reportUrl, fetchedAt: now.toISOString() };
+    return { observations, contexts, reportUrl, fetchedAt: now.toISOString(), ...(refreshedReports.length ? { refreshedReports } : {}) };
   } finally { await agent.close(); }
 }

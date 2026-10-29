@@ -48,3 +48,27 @@ test('a missing prior-week annex does not suppress current prices', async () => 
   assert.ok(result.observations.length > 0);
   assert.ok(result.observations.every(row => row.date === '2026-10-22'));
 });
+
+test('a refreshed report removes withdrawn quotes and retains unfetched reports', () => {
+  const rice = { date: '2026-10-29', item: 'Rice', market: 'A', marketType: 'retail', unit: 'kg', currency: 'PHP', price: 50 };
+  const beans = { ...rice, item: 'Beans', price: 60 };
+  const prior = { ...rice, date: '2026-10-22' };
+  const next = mergeFoodSnapshot({ observations: [rice, beans, prior] }, { observations: [beans], contexts: [], refreshedReports: [{ date: rice.date }] });
+  assert.deepEqual(next.observations.map(row => [row.item, row.date]), [['Rice', prior.date], ['Beans', beans.date]]);
+  const partial = mergeFoodSnapshot({ observations: [rice, beans, prior] }, { observations: [beans], contexts: [], refreshedReports: [{ date: rice.date, item: 'Beans' }] });
+  assert.equal(partial.observations.length, 3);
+});
+
+test('SNIIM prior-week HTTP failures do not block the current basket', async () => {
+  const names = ['Cebolla Bola - Primera', 'Cebolla Morada - Primera', 'Chile Jalapeño - Primera', 'Tomate Saladette - Primera', 'Papa Alpha - Primera'];
+  const result = await collectFoodSource('sniim', {
+    now: new Date('2026-10-29T12:00:00Z'), pause: async () => {},
+    fetchFn: async url => {
+      if (!url.includes('ResultadosConsulta')) return new Response(`<select name="ddlProducto">${names.map((name, index) => `<option value="${index + 1}">${name}</option>`).join('')}</select>`);
+      if (url.includes('21%2F10%2F2026')) return new Response('unavailable', { status: 503 });
+      return new Response('Registros del 28/10/2026 al 28/10/2026<table><tr><td>Kilogramo</td><td>Origin</td><td>Market</td><td>10</td><td>30</td><td>20</td></tr></table>');
+    },
+  });
+  assert.equal(result.observations.length, 5);
+  assert.ok(result.observations.every(row => row.date === '2026-10-28'));
+});

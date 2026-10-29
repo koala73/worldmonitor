@@ -74,6 +74,11 @@ const DA_COLUMNS = [
   ['Eggplant', 'Tomato', 'Cabbage', 'Carrots (Local)', 'Chayote', 'Pechay Baguio', 'White Potato (Local)', 'Red Onion (Local)', 'White Onion (Local)'],
   ['Chili (Green)', 'Red Chili (Local)', 'Calamansi', 'Sugar (Refined)', 'Fresh Pork (Kasim, Local)', 'Fresh Pork (Kasim, Imported)', 'Fresh Pork Liempo (Local)', 'Fresh Pork Liempo (Imported)', 'Fresh Whole Chicken'],
 ];
+const DA_HEADER_X = [
+  [189.9, 245.4, 308.9, 364.7, 421.6, 485.9, 545.1, 588.1, 656.3, 723.6],
+  [228.1, 289, 345.8, 397.7, 468.2, 517.9, 572.6, 636, 702.6],
+  [220.7, 274.9, 342.5, 392, 446.2, 507.7, 569.1, 629.5, 698.4],
+];
 
 export function parseDa(pages, date) {
   const result = [];
@@ -84,6 +89,14 @@ export function parseDa(pages, date) {
     const text = items?.map(item => item.text).join(' ') ?? '';
     if (!printedDates.some(printed => text.toLowerCase().replace(/\s*,\s*/g, ',').includes(printed))) throw new Error('DA report date mismatch');
     if (!text.includes('COMMODITY (PHP/KG)') || !text.includes(columns[0]) || !text.includes('MARKET')) throw new Error('DA food PDF format changed');
+    const headerY = items.find(item => item.text === 'COMMODITY (PHP/KG)').y;
+    const normalize = text => text.toLowerCase().replace(/[^a-z]/g, '');
+    for (const [index, column] of columns.entries()) {
+      const parts = items.filter(item => item.y >= headerY - 25 && item.y < headerY - 5
+        && item.x >= DA_HEADER_X[page][index] - 5 && item.x < (DA_HEADER_X[page][index + 1] ?? 800) - 5)
+        .sort((a, b) => b.y - a.y || a.x - b.x);
+      if (normalize(parts.map(item => item.text).join('')) !== normalize(column)) throw new Error('DA food PDF column layout changed');
+    }
     for (const row of pdfRows(items)) {
       const cells = row.items.filter(item => item.x > 180 && /^(?:\d+(?:\.\d+)?|NOT AVAILABLE)$/.test(item.text));
       const market = row.items.filter(item => item.x < 180).map(item => item.text).join('').trim();
@@ -107,6 +120,14 @@ export function parseCbsl(pages, date) {
     ['Pettah', 'wholesale', 200, 240], ['Dambulla', 'wholesale', 280, 325],
     ['Pettah', 'retail', 365, 405], ['Dambulla', 'retail', 450, 490], ['Narahenpita', 'retail', 532, 575],
   ];
+  for (const [market, , left, right] of columns) {
+    const today = items.find(item => item.text === 'Today' && item.x >= left && item.x < right);
+    const marketHeader = items.find(item => item.text === market && item.x >= left - 32 && item.x < right && item.y > (today?.y ?? Infinity));
+    if (!today || !marketHeader || marketHeader.y - today.y > 25) throw new Error('CBSL food PDF column layout changed');
+  }
+  for (const [text, left, right] of [['Wholesale Prices', 185, 215], ['Retail Prices', 405, 435]]) {
+    if (!items.some(item => item.text === text && item.x >= left && item.x < right)) throw new Error('CBSL food PDF market layout changed');
+  }
   return pdfRows(items).flatMap(row => {
     const item = row.items.filter(item => item.x < 110).map(item => item.text).join(' ').trim();
     const unit = row.items.find(item => item.x >= 110 && item.x < 150 && /^Rs\.\//.test(item.text))?.text.replace(/^Rs\.\//, '');
@@ -186,6 +207,7 @@ export function discoverReports(html, source) {
       if (date && url.hostname === new URL(base).hostname && url.protocol === 'https:') reports.set(date, { date, url: url.href });
     }
   }
+  const hasAnnexReports = reports.size > 0;
   for (const match of html.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
     let url;
     try { url = new URL(decodeHtmlEntities(match[1]), base); } catch { continue; }
@@ -197,7 +219,7 @@ export function discoverReports(html, source) {
     } else if (source === 'cbsl') {
       const parts = /price_report_(\d{4})(\d{2})(\d{2})_e\.pdf$/i.exec(url.pathname);
       if (parts) date = isoDate(parts[1], parts[2], parts[3]);
-    } else if (source === 'pbs') {
+    } else if (source === 'pbs' && !hasAnnexReports) {
       const parts = /weekly-sensitive-price-indicator.*?(\d{2})-(\d{2})-(\d{4})\/?$/i.exec(url.pathname);
       if (parts) date = isoDate(parts[3], parts[2], parts[1]);
     } else {
@@ -213,12 +235,13 @@ export function seriesKey(row) {
   return JSON.stringify([row.market, row.marketType, row.item, row.unit, row.currency, row.origin ?? '']);
 }
 
-export function mergeHistory(previous, incoming) {
+export function mergeHistory(previous, incoming, refreshedReports = [...new Set(incoming.map(row => row.date))].map(date => ({ date }))) {
   const rows = new Map();
   const newest = incoming.map(row => row.date).sort().at(-1);
   if (!newest) throw new Error('no dated food prices');
   const cutoff = new Date(Date.parse(newest) - 14 * 86400000).toISOString().slice(0, 10);
-  for (const row of [...previous, ...incoming]) {
+  const retained = previous.filter(row => !refreshedReports.some(report => report.date === row.date && (!report.item || report.item === row.item)));
+  for (const row of [...retained, ...incoming]) {
     if (row.date >= cutoff && row.date <= newest && Number.isFinite(row.price) && row.price > 0) rows.set(`${seriesKey(row)}|${row.date}`, row);
   }
   return [...rows.values()].sort((a, b) => a.date.localeCompare(b.date) || seriesKey(a).localeCompare(seriesKey(b)));

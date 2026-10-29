@@ -54,3 +54,18 @@ describe('official food prices card', () => {
     expect(host.textContent).toContain('55 PHP');
   });
 });
+
+it('keeps the context disclosure and keyboard focus through updates', () => {
+  const card = new FoodPricesCard(host);
+  const sources = [source(), source({ id: 'cbsl', country: 'Sri Lanka' })];
+  card.update(sources);
+  host.querySelector('details')!.open = true;
+  const country = host.querySelector('select')!;
+  country.focus();
+  card.update(sources);
+  expect(host.querySelector('details')!.open).toBe(true);
+  expect(document.activeElement?.getAttribute('aria-label')).toBe('Country');
+  const select = host.querySelector('select')!;
+  select.value = 'cbsl'; select.dispatchEvent(new Event('change'));
+  expect(host.querySelector('details')!.open).toBe(true);
+});

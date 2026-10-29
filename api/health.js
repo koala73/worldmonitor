@@ -2304,6 +2304,8 @@ if (!IRAN_EVENTS_ENABLED) {
 // chronic outage went undetected until a user noticed the panel was stuck on
 // "Loading...". Removed marketImplications below.
 const ON_DEMAND_KEYS = new Set([
+  'foodPricesPihps', 'foodPricesPbs', 'foodPricesDa', 'foodPricesCbsl',
+  'foodPricesSniim', 'foodPricesGiews', 'foodPricesOnagri',
   'ukmtoIncidents',
   // Deployment-order bridge: Vercel can ship this reader before Railway's
   // hourly bundle publishes the first summary. The seeder writes a durable

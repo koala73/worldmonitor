@@ -56,6 +56,10 @@ export class FoodPricesCard {
   }
 
   private render(): void {
+    const wasOpen = this.host.querySelector('details')?.open ?? false;
+    const active = document.activeElement;
+    const focusLabel = active && this.host.contains(active) ? active.getAttribute('aria-label') : null;
+    const summaryFocused = active === this.host.querySelector('summary');
     const sections: HTMLElement[] = [];
     const weekly = this.sources.filter(source => !source.contextOnly);
     const source = weekly.find(source => source.id === this.selected);
@@ -78,14 +82,14 @@ export class FoodPricesCard {
     const giews = this.sources.find(source => source.id === 'giews');
     const tunisia = this.sources.find(source => source.id === 'onagri');
     const context = h('details', { className: 'food-prices-context' }, h('summary', {}, label('context')));
+    context.open = wasOpen;
     context.append(h('p', { className: 'food-prices-note' }, label('contextNote')));
     if (giews) {
       if (!giews.contexts.some(brief => brief.countryCode === this.country)) this.country = giews.contexts[0]?.countryCode ?? '';
       context.append(h('h4', {}, giews.name));
       if (giews.contexts.length) {
-        // Keep the disclosure open when a country selection re-renders its contents.
         context.append(this.selector(label('briefCountry'), giews.contexts.map(brief => ({ value: brief.countryCode, text: brief.country })), this.country, value => {
-          this.country = value; this.render(); this.host.querySelector('details')?.setAttribute('open', '');
+          this.country = value; this.render();
         }));
         const brief = giews.contexts.find(brief => brief.countryCode === this.country)!;
         context.append(h('p', {}, sourceLink(brief.url, brief.title), h('small', {}, `${label(brief.status)} · ${label('report')}: ${brief.referenceDate || label('unavailable')}`)));
@@ -97,6 +101,8 @@ export class FoodPricesCard {
     }
     sections.push(context);
     this.host.replaceChildren(...sections);
+    if (summaryFocused) context.querySelector('summary')?.focus({ preventScroll: true });
+    else if (focusLabel) Array.from(this.host.querySelectorAll<HTMLElement>('[aria-label]')).find(element => element.getAttribute('aria-label') === focusLabel)?.focus({ preventScroll: true });
   }
 
   private sourceNote(source: FoodPriceSource): HTMLElement {

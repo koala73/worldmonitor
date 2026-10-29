@@ -84,6 +84,7 @@ const HTTP_METHODS = new Set([
 // -----------------------------------------------------------------------------
 
 const EXCLUDED_FROM_MCP_PARITY = new Map([
+  ['GET /api/economic/v1/get-food-prices', 'deferred-to-future-tool: source-specific food prices and dated food-security context are served to the dashboard (#9841)'],
   ['GET /api/maritime/v1/list-ukmto-incidents', 'deferred-to-future-tool: UKMTO publisher reports await activation and source-aware MCP composition (#9831)'],
 
   // === mutating (20) ===

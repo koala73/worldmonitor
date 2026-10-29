@@ -14,7 +14,7 @@ export function mergeFoodSnapshot(previous, incoming) {
   const oldContexts = new Map((previous?.contexts ?? []).map(context => [context.countryCode, context]));
   return {
     ...incoming,
-    observations: incoming.observations.length ? mergeHistory(previous?.observations ?? [], incoming.observations) : [],
+    observations: incoming.observations.length ? mergeHistory(previous?.observations ?? [], incoming.observations, incoming.refreshedReports) : [],
     contexts: incoming.contexts.map(context => context.fetchFailed && oldContexts.get(context.countryCode)?.referenceDate
       ? { ...oldContexts.get(context.countryCode), fetchFailed: true } : context),
   };
