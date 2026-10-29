@@ -26,7 +26,7 @@ function deferred<T>() {
 const neverDelay = () => new Promise<void>(() => {});
 
 describe('news loader digest sequencing', () => {
-  it('starts category work with pending-fallback permission before a slow digest settles', async () => {
+  it('starts category work before a slow digest settles', async () => {
     const digest = deferred<TestDigest | null>();
     let digestSettled = false;
     const digestPromise = digest.promise.then(value => {
@@ -52,16 +52,15 @@ describe('news loader digest sequencing', () => {
       1,
       initialDigest,
       async (category, digestSnapshot, options) => {
-        starts.push(`${category.key}:${options.allowDigestPendingFallback}`);
+        starts.push(category.key);
         assert.equal(digestSnapshot, null);
-        assert.equal(options.allowDigestPendingFallback, true);
         assert.equal(options.recordBaselineSample, false);
         assert.equal(digestSettled, false);
         return [`${category.key}-item`];
       },
     );
 
-    assert.deepEqual(starts, ['politics:true', 'energy:true']);
+    assert.deepEqual(starts, ['politics', 'energy']);
     assert.deepEqual(
       results.map(result => result.status === 'fulfilled' ? result.value : result),
       [
@@ -92,7 +91,6 @@ describe('news loader digest sequencing', () => {
       initialDigest,
       async (_category, digestSnapshot, options) => {
         assert.equal(digestSnapshot, digest);
-        assert.equal(options.allowDigestPendingFallback, false);
         assert.equal(options.recordBaselineSample, true);
         return ['digest-item'];
       },
@@ -120,7 +118,6 @@ describe('news loader digest sequencing', () => {
       initialDigest,
       async (_category, digestSnapshot, options) => {
         assert.equal(digestSnapshot, null);
-        assert.equal(options.allowDigestPendingFallback, false);
         assert.equal(options.recordBaselineSample, true);
         return [];
       },
@@ -142,7 +139,6 @@ describe('news loader digest sequencing', () => {
       initialDigest,
       async (_category, digestSnapshot, options) => {
         assert.equal(digestSnapshot, null);
-        assert.equal(options.allowDigestPendingFallback, false);
         assert.equal(options.recordBaselineSample, true);
         return [];
       },
@@ -159,23 +155,6 @@ describe('news loader digest sequencing', () => {
     );
 
     assert.deepEqual(initialDigest, { digest: fallbackDigest, pending: false });
-  });
-
-  it('does not bypass the per-feed fallback switch while a digest is pending', async () => {
-    const results = await loadNewsCategoryBatches(
-      [{ key: 'politics', feeds: ['Reuters'] }],
-      1,
-      { digest: null, pending: true },
-      async (_category, digestSnapshot, options) => {
-        assert.equal(digestSnapshot, null);
-        assert.equal(options.allowDigestPendingFallback, false);
-        assert.equal(options.recordBaselineSample, false);
-        return [];
-      },
-      false,
-    );
-
-    assert.equal(results[0]?.status, 'fulfilled');
   });
 
   it('orchestrates slow-digest fallback, late digest refresh, and Intel refresh', async () => {
@@ -196,21 +175,19 @@ describe('news loader digest sequencing', () => {
       digestGraceMs: 0,
       hasDigestCategory: (digestSnapshot, key) => key in digestSnapshot.categories,
       loadCategory: async (category, digestSnapshot, options) => {
-        events.push(`${category.key}:${digestSnapshot ? 'digest' : 'fallback'}:${options.allowDigestPendingFallback}`);
+        events.push(`${category.key}:${digestSnapshot ? 'digest' : 'fallback'}`);
         if (!digestSnapshot) {
           categoryStarted.resolve();
           await releaseInitialCategory.promise;
-          assert.equal(options.allowDigestPendingFallback, true);
           assert.equal(options.recordBaselineSample, false);
           assert.equal(digestSettled, false);
           return [`${category.key}-fallback`];
         }
-        assert.equal(options.allowDigestPendingFallback, false);
         assert.equal(options.recordBaselineSample, true);
         return [`${category.key}-digest`];
       },
-      loadIntel: async (digestSnapshot, allowDigestPendingFallback, options) => {
-        events.push(`intel:${digestSnapshot ? 'digest' : 'fallback'}:${allowDigestPendingFallback}`);
+      loadIntel: async (digestSnapshot, options) => {
+        events.push(`intel:${digestSnapshot ? 'digest' : 'fallback'}`);
         assert.equal(options.recordBaselineSample, Boolean(digestSnapshot));
         return [digestSnapshot ? 'intel-digest' : 'intel-fallback'];
       },
@@ -226,10 +203,10 @@ describe('news loader digest sequencing', () => {
     const result = await runPromise;
 
     assert.deepEqual(events, [
-      'politics:fallback:true',
-      'intel:fallback:true',
-      'politics:digest:false',
-      'intel:digest:false',
+      'politics:fallback',
+      'intel:fallback',
+      'politics:digest',
+      'intel:digest',
     ]);
     assert.deepEqual(result.categoryItemsByKey.get('politics'), ['politics-digest']);
     assert.deepEqual(result.intelItems, ['intel-digest']);
@@ -250,25 +227,21 @@ describe('news loader digest sequencing', () => {
       digestPromise: digest.promise,
       fallbackDigest: cachedDigest,
       digestGraceMs: 0,
-      allowPendingPerFeedFallback: false,
       hasDigestCategory: (digestSnapshot, key) => key in digestSnapshot.categories,
       loadCategory: async (category, digestSnapshot, options) => {
-        events.push(`${category.key}:${digestSnapshot?.label ?? 'none'}:${options.allowDigestPendingFallback}:${options.recordBaselineSample}`);
+        events.push(`${category.key}:${digestSnapshot?.label ?? 'none'}:${options.recordBaselineSample}`);
         assert.ok(digestSnapshot);
         if (digestSnapshot.label === 'cached') {
-          assert.equal(options.allowDigestPendingFallback, false);
           assert.equal(options.recordBaselineSample, false);
           initialCategoryLoaded.resolve();
         } else {
-          assert.equal(options.allowDigestPendingFallback, false);
           assert.equal(options.recordBaselineSample, true);
         }
         return [`${category.key}-${digestSnapshot.label}`];
       },
-      loadIntel: async (digestSnapshot, allowDigestPendingFallback, options) => {
-        events.push(`intel:${digestSnapshot?.label ?? 'none'}:${allowDigestPendingFallback}:${options.recordBaselineSample}`);
+      loadIntel: async (digestSnapshot, options) => {
+        events.push(`intel:${digestSnapshot?.label ?? 'none'}:${options.recordBaselineSample}`);
         assert.ok(digestSnapshot);
-        assert.equal(allowDigestPendingFallback, false);
         assert.equal(options.recordBaselineSample, digestSnapshot.label === 'live');
         return [`intel-${digestSnapshot.label}`];
       },
@@ -279,10 +252,10 @@ describe('news loader digest sequencing', () => {
     const result = await runPromise;
 
     assert.deepEqual(events, [
-      'politics:cached:false:false',
-      'intel:cached:false:false',
-      'politics:live:false:true',
-      'intel:live:false:true',
+      'politics:cached:false',
+      'intel:cached:false',
+      'politics:live:true',
+      'intel:live:true',
     ]);
     assert.deepEqual(result.categoryItemsByKey.get('politics'), ['politics-live']);
     assert.deepEqual(result.intelItems, ['intel-live']);
@@ -306,17 +279,15 @@ describe('news loader digest sequencing', () => {
       digestGraceMs: 0,
       hasDigestCategory: (digestSnapshot, key) => key in digestSnapshot.categories,
       loadCategory: async (category, digestSnapshot, options) => {
-        events.push(`${category.key}:${digestSnapshot ? 'digest' : 'fallback'}:${options.allowDigestPendingFallback}`);
+        events.push(`${category.key}:${digestSnapshot ? 'digest' : 'fallback'}`);
         assert.equal(digestSnapshot, null);
-        assert.equal(options.allowDigestPendingFallback, true);
         assert.equal(options.recordBaselineSample, false);
         categoryStarted.resolve();
         return [`${category.key}-fallback`];
       },
-      loadIntel: async (digestSnapshot, allowDigestPendingFallback, options) => {
-        events.push(`intel:${digestSnapshot ? 'digest' : 'fallback'}:${allowDigestPendingFallback}`);
+      loadIntel: async (digestSnapshot, options) => {
+        events.push(`intel:${digestSnapshot ? 'digest' : 'fallback'}`);
         assert.equal(digestSnapshot, null);
-        assert.equal(allowDigestPendingFallback, true);
         assert.equal(options.recordBaselineSample, false);
         return ['intel-fallback'];
       },
@@ -327,9 +298,9 @@ describe('news loader digest sequencing', () => {
     const result = await runPromise;
 
     assert.deepEqual(events, [
-      'politics:fallback:true',
-      'energy:fallback:true',
-      'intel:fallback:true',
+      'politics:fallback',
+      'energy:fallback',
+      'intel:fallback',
     ]);
     assert.deepEqual(result.categoryItemsByKey.get('politics'), ['politics-fallback']);
     assert.deepEqual(result.categoryItemsByKey.get('energy'), ['energy-fallback']);
