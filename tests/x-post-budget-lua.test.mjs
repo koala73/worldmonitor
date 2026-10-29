@@ -846,6 +846,24 @@ describe('X Post budget key scope', () => {
     assert.equal(redis.store.get(COVERAGE_MODEL_KEY), `fixed-slots-v1:${DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS}`);
   });
 
+  it('projects an unreserved Japan read on a previous-model day the way reserve admits it', async () => {
+    const nowMs = Date.parse('2026-09-02T12:00:00.000Z');
+    const exactDayUsed = DEFAULT_X_POST_DAILY_LIMIT - JAPAN_MOD_X_SLOT_POSTS - 165;
+    for (const [dayUsed, admissible] of [[exactDayUsed, true], [exactDayUsed + 1, false]]) {
+      const redis = makeRedis({
+        [DAY_KEY]: dayUsed,
+        [MONTH_KEY]: 9000,
+        [COVERAGE_HOLD_KEY]: 165,
+        [COVERAGE_MODEL_KEY]: `fixed-slots-v1:${DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS}`,
+      }, nowMs);
+      const budget = sharedModelBudget(redis, nowMs);
+      const status = await budget.status(japanRead(0));
+      assert.equal(status.nextRequestDailyProjected, dayUsed + JAPAN_MOD_X_SLOT_POSTS + 165, `day ${dayUsed}`);
+      assert.equal(status.nextRequestAdmissible, admissible, `day ${dayUsed}`);
+      assert.equal((await budget.reserve(japanRead(0))).allowed, admissible, `day ${dayUsed}`);
+    }
+  });
+
   it('rejects a previous model that is not smaller than the current one', () => {
     assert.throws(() => createXPostBudget({
       evalCommand: async () => null,

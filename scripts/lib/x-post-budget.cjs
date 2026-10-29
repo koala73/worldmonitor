@@ -818,16 +818,18 @@ function createXPostBudget(options = {}) {
       coverageUnitPosts: unitPosts,
       dailyLimit,
     });
+    let projectedUnitPosts = coverageUnitPosts;
     let projection = requestedPosts > 0
       ? project(dailyCoveragePosts, coverageUnitPosts)
       : { coverageHeld: dailyCoverageHeld, blockedReason: null };
     if (projection.blockedReason && previousDailyCoveragePosts) {
-      const previousUnitPosts = nextRequest.previousModelCoverageUnit === false ? 0 : coverageUnitPosts;
-      projection = project(previousDailyCoveragePosts, previousUnitPosts);
+      // Mirror reserve(): a unit without a previous-model slot reads from spare.
+      if (nextRequest.previousModelCoverageUnit === false) projectedUnitPosts = 0;
+      projection = project(previousDailyCoveragePosts, projectedUnitPosts);
     }
     return toStatus(period, dailyUsed, monthlyUsed, projection.coverageHeld, true, {
       requestedPosts,
-      coverageUnitPosts,
+      coverageUnitPosts: projectedUnitPosts,
       blockedReason: projection.blockedReason,
     });
   }
