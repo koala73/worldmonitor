@@ -3952,6 +3952,8 @@ export const updateBillingEmail = action({
       try {
         await client.customers.update(customerId, { email });
       } catch (err) {
+        // sentry-coverage-ok: Convex auto-Sentry captures console.error; the
+        // action still throws DODO_CUSTOMER_UPDATE_ERROR after the loop.
         console.error(`[billing/updateBillingEmail] Dodo customer update failed for ${customerId}: ${describe(err)}`);
         failures += 1;
         continue;
@@ -3961,7 +3963,9 @@ export const updateBillingEmail = action({
         const customer = await client.customers.retrieve(customerId);
         if (typeof customer.email === "string" && customer.email.includes("@")) held = customer.email.trim();
       } catch (err) {
-        console.warn(`[billing/updateBillingEmail] Dodo customer read-back failed for ${customerId}: ${describe(err)}`);
+        // sentry-coverage-ok: Convex auto-Sentry captures console.error; the
+        // requested address is applied instead.
+        console.error(`[billing/updateBillingEmail] Dodo customer read-back failed for ${customerId}: ${describe(err)}`);
       }
       // Stamped after the read so the guard orders applies by what Dodo held.
       const observedAt = Date.now();
