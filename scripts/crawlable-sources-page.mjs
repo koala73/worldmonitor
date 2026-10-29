@@ -819,6 +819,17 @@ export function buildSourcePages(sourceCatalog) {
   });
 }
 
+function sourceCategoryDocumentTitle(name) {
+  const longTitle = `${name}: Data Sources and Providers | World Monitor`;
+  const title = [...longTitle].length > 60
+    ? `${name} Data Sources | World Monitor`
+    : longTitle;
+  if ([...title].length > 60) {
+    throw new Error(`${name} document title is ${[...title].length} characters: ${title}`);
+  }
+  return title;
+}
+
 export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets = [], baseUrl, lastmod, helpers, directoryPages = null, sourcePage = null, catalogAnchors = sourceCardAnchors(sourceCatalog), siblingPages = [] }) {
   const { absoluteUrl, breadcrumbLd, dataCatalogLd, escapeHtml, pageDocument } = helpers;
   const path = sourcePage?.path || '/sources/';
@@ -1168,7 +1179,7 @@ ${providerCards}
   return pageDocument({
     baseUrl,
     path,
-    title: sourcePage ? `${sourcePage.name}: Data Sources and Providers | World Monitor` : 'Data Source Catalog | World Monitor',
+    title: sourcePage ? sourceCategoryDocumentTitle(sourcePage.name) : 'Global Data Sources: OSINT, Markets, Energy | World Monitor',
     description,
     lastmod,
     jsonLd: [
