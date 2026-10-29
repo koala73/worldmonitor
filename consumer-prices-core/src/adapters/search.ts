@@ -620,6 +620,7 @@ export class SearchAdapter implements RetailerAdapter {
         canonicalName,
         productName: data.productName,
         sizeText: data.sizeText,
+        productUrl: url,
         item: validationConstraints,
         marketCode: ctx.config.marketCode,
       });

@@ -2,10 +2,11 @@
  * Structured search-hit validator — deterministic post-extraction gate that
  * replaces the boolean `isTitlePlausible` check for scoring and candidate
  * triage. Evaluates:
- *   1. class-error rejects (basket item's negativeTokens present in title)
+ *   1. class-error rejects (basket item's negativeTokens present in title or URL path)
  *   2. non-food indicator rejects (shared with legacy gate)
  *   3. token-overlap score (identity tokens from canonicalName vs productName)
- *   4. quantity-window conformance (minBaseQty <= extractedBase <= maxBaseQty)
+ *   4. quantity-window conformance (minBaseQty <= extractedBase <= maxBaseQty),
+ *      counting a "pack of N" in the title
  *
  * Score is a 0..1 float combining the three positive signals so callers can
  * make graduated decisions (auto vs candidate) instead of the legacy 1.0 shortcut.
@@ -46,6 +47,8 @@ export interface ValidatorInput {
   canonicalName: string;
   productName: string | undefined;
   sizeText: string | undefined;
+  /** Page the hit came from. Its path slug is the retailer's own product name. */
+  productUrl?: string;
   marketCode?: string;
   item: Pick<BasketItem, 'baseUnit' | 'minBaseQty' | 'maxBaseQty' | 'negativeTokens'>;
 }
@@ -126,6 +129,48 @@ function findNegativeToken(productName: string, negativeTokens: readonly string[
   return null;
 }
 
+/**
+ * Words of the URL path. A retailer's slug names the product independently of
+ * the extractor, which can echo the requested canonical name as the title: a
+ * JioMart tomato-pickle page came back titled "Tomatoes Fresh 1kg". The host is
+ * excluded because it names the retailer, not the product.
+ */
+function urlPathWords(productUrl: string | undefined): string {
+  if (!productUrl) return '';
+  try {
+    return new URL(productUrl).pathname.replace(/[-_/.]+/g, ' ');
+  } catch {
+    return '';
+  }
+}
+
+// "Pack of 4", "(PACK OF 20 - 20 KG)", "set of 2". The `N x 500g` and
+// `N pack` forms are already read by parseSize.
+const PACK_OF = /\b(?:pack|set|combo)\s+of\s+(\d+)\b/i;
+
+/**
+ * The total size of a "pack of N" title, as `N x <unit size>`, or null.
+ *
+ * Extractors report the size printed for ONE unit ("1 L") while the multipack
+ * appears only in the title ("Vishwai sunflower oil pack of 4", ₹2,120), so
+ * the window alone admitted 4 L as the 1 L item. The unit size comes from the
+ * title when it carries one, else from the extracted size. Count items are
+ * skipped: for them "pack of 12" is the quantity itself.
+ */
+function titleMultipackSize(
+  productName: string,
+  sizeText: string | undefined,
+  item: ValidatorInput['item'],
+): string | null {
+  if (item.baseUnit === 'ct') return null;
+  const match = PACK_OF.exec(productName);
+  const count = match ? Number(match[1]) : 0;
+  if (!match || count <= 1) return null;
+  const unit = parseSize(productName.replace(match[0], ' ')) ?? parseSize(sizeText);
+  if (!unit || unit.packCount !== 1) return null;
+  return `${count} x ${unit.sizeValue} ${unit.sizeUnit}`;
+}
+
 function findNonFoodIndicator(productName: string): string | null {
   for (const w of tokens(productName)) {
     if (NON_FOOD_INDICATORS.has(w)) return w;
@@ -196,7 +241,7 @@ export function validateSearchHit(input: ValidatorInput): ValidatorResult {
   signals.nonFoodIndicatorHit = nonFood;
   if (nonFood) reasons.push(`non-food-indicator:${nonFood}`);
 
-  const negHit = findNegativeToken(input.productName, input.item.negativeTokens);
+  const negHit = findNegativeToken(`${input.productName} ${urlPathWords(input.productUrl)}`, input.item.negativeTokens);
   signals.negativeTokenHit = negHit;
   if (negHit) reasons.push(`negative-token:${negHit}`);
 
@@ -205,7 +250,9 @@ export function validateSearchHit(input: ValidatorInput): ValidatorResult {
   const overlapFloor = 0.4;
   if (overlap < overlapFloor) reasons.push(`low-token-overlap:${overlap.toFixed(2)}`);
 
-  const sizeEval = evaluateSizeWindow(input.sizeText?.trim() || input.productName, input.item, input.marketCode);
+  const sizeSource =
+    titleMultipackSize(input.productName, input.sizeText, input.item) ?? (input.sizeText?.trim() || input.productName);
+  const sizeEval = evaluateSizeWindow(sizeSource, input.item, input.marketCode);
   signals.sizeWindow = sizeEval.status;
   signals.extractedBaseQty = sizeEval.baseQty;
   signals.extractedBaseUnit = sizeEval.baseUnit;
