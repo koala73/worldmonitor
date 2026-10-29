@@ -266,11 +266,17 @@ describe('EPDK crude import tables', () => {
         '<t>Irak &amp; Körfez</t>',
       ],
       sheets: [
-        // Workbook order, not file names, orders the sheets.
-        { name: 'Second', target: 'worksheets/sheet1.xml', rows: '<row r="1"><c r="A1" t="inlineStr"><is><t>later</t></is></c></row>' },
+        // Workbook order, not file names, orders the sheets: this one is
+        // listed first but stored as sheet2.xml.
         {
-          name: 'First',
-          target: '/xl/worksheets/sheet2.xml',
+          name: 'Tablo 1',
+          target: 'worksheets/sheet2.xml',
+          rows: '<row r="1"><c r="A1" t="inlineStr"><is><t>Tablo 1: Özet</t></is></c></row>'
+            + '<row r="2"><c r="A2" t="inlineStr"><is><r><t>Ham </t></r><r><t>Petrol</t></r></is></c><c r="B2"><v>7</v></c></row>',
+        },
+        {
+          name: 'Tablo 2',
+          target: '/xl/worksheets/sheet1.xml',
           rows: [
             '<row r="1" spans="1:3"/>',
             '<row r="2"><c r="B2" t="s"><v>0</v></c></row>',
@@ -284,10 +290,11 @@ describe('EPDK crude import tables', () => {
     });
     // A merged cell reads as its range's top-left value, an empty styled cell
     // as nothing, and a formula as its cached result.
+    // Inline strings join their runs like shared ones.
     const tables = await tablesFromXlsx(buf);
-    assert.equal(tables.length, 1);
-    assert.equal(tables[0].title, 'Tablo 2: Ocak 2026 Dönemi Ülkelere Göre Petrol İthalatı');
-    assert.deepEqual(tables[0].rows.map((r) => Array.from(r, (c) => c ?? '')), [
+    assert.deepEqual(tables.map((t) => t.title), ['Tablo 1: Özet', 'Tablo 2: Ocak 2026 Dönemi Ülkelere Göre Petrol İthalatı']);
+    assert.deepEqual(tables[0].rows, [['Ham Petrol', 7]]);
+    assert.deepEqual(tables[1].rows.map((r) => Array.from(r, (c) => c ?? '')), [
       ['', 'Ülke', 'Ham Petrol'],
       ['', 'Irak & Körfez', 600.5],
       ['', 'Irak & Körfez', 600.5],
