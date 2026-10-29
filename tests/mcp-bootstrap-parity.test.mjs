@@ -69,6 +69,11 @@ const EXCLUDED_FROM_MCP = new Map([
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:world-bank',
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
+  ...['colombia-secop', 'kenya-ppip', 'south-africa-etenders', 'chile-mercado-publico', 'brazil-pncp',
+    'ukraine-prozorro', 'bulgaria-eop', 'latvia-iub', 'poland-bzp', 'pakistan-ppra'].map((source) => [
+    `economic:global-tenders:v1:source:${source}`,
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.',
+  ]),
   ['military:cross-strait-activity:v1:source:taiwan-mnd',
     'operational: Taiwan MND transport status, errors, and last-success time consumed by api/health.js; #5580 owns final MCP composition for the separately attributed official activity records.'],
   ['maritime:ais-gaps:v1',
