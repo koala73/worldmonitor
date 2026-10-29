@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { t } from '../i18n';
+
+// Inline rather than lucide-react: the dom-tests CI job installs root deps only,
+// and its arrow test renders this component.
+const Chevron = ({ pointsLeft }: { pointsLeft: boolean }) => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d={pointsLeft ? 'm15 18-6-6 6-6' : 'm9 18 6-6-6-6'} />
+  </svg>
+);
 
 /**
  * What the press and notable people said about World Monitor, quoted verbatim.
@@ -91,8 +98,6 @@ export const VoiceCards = () => {
     const row = rowRef.current;
     if (row) row.scrollBy({ left: (isRtl(row) ? -1 : 1) * direction * row.clientWidth * 0.9, behavior: 'smooth' });
   };
-  const Back = edges.rtl ? ChevronRight : ChevronLeft;
-  const Forward = edges.rtl ? ChevronLeft : ChevronRight;
 
   const arrowClass = 'flex items-center justify-center w-10 h-10 border border-wm-border bg-wm-card text-wm-text hover:border-wm-green disabled:opacity-30 disabled:hover:border-wm-border transition-colors';
 
@@ -101,10 +106,10 @@ export const VoiceCards = () => {
       <VoiceRow rowRef={rowRef} />
       <div className="flex justify-end gap-2 mt-2">
         <button type="button" className={arrowClass} onClick={() => page(-1)} disabled={edges.atStart} aria-label={t('welcome.voices.prev')}>
-          <Back className="w-5 h-5" aria-hidden="true" />
+          <Chevron pointsLeft={!edges.rtl} />
         </button>
         <button type="button" className={arrowClass} onClick={() => page(1)} disabled={edges.atEnd} aria-label={t('welcome.voices.next')}>
-          <Forward className="w-5 h-5" aria-hidden="true" />
+          <Chevron pointsLeft={edges.rtl} />
         </button>
       </div>
     </div>
