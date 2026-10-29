@@ -781,7 +781,7 @@ const ProJobs = () => (
         {PRO_JOBS.map((job) => (
           <div key={job.key} className="bg-wm-card border border-wm-border p-6 flex flex-col">
             <div className="text-wm-green mb-4">{job.icon}</div>
-            <h3 className="font-display text-xl font-bold mb-4">{t(`welcome.tasks.${job.key}Title`)}</h3>
+            <h3 id={`job-${job.key}-title`} className="font-display text-xl font-bold mb-4">{t(`welcome.tasks.${job.key}Title`)}</h3>
             <p className="text-sm text-wm-muted leading-relaxed mb-3">
               <strong className="font-mono text-xs uppercase tracking-wider text-wm-text">{t('tiers.free')}</strong>{' '}
               {t(`proJobs.${job.key}Free`)}
@@ -791,11 +791,11 @@ const ProJobs = () => (
               {t(`proJobs.${job.key}Pro`)}
             </p>
             <div className="mt-auto pt-6 flex flex-wrap gap-x-6 gap-y-2 font-mono text-xs">
-              <a href={job.workflowHref} className="text-wm-green hover:text-green-300 transition-colors inline-flex items-center gap-1">
-                {t('welcome.tasks.workflow')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
+              <a href={job.workflowHref} aria-labelledby={`job-${job.key}-workflow job-${job.key}-title`} className="text-wm-green hover:text-green-300 transition-colors inline-flex items-center gap-1">
+                <span id={`job-${job.key}-workflow`}>{t('welcome.tasks.workflow')}</span> <ArrowRight className="w-3 h-3" aria-hidden="true" />
               </a>
-              <a href={appendRefToUrl(job.mapPath, getRefCode())} className="text-wm-muted hover:text-wm-text transition-colors inline-flex items-center gap-1">
-                {t('proJobs.openMap')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
+              <a href={appendRefToUrl(job.mapPath, getRefCode())} aria-labelledby={`job-${job.key}-map job-${job.key}-title`} className="text-wm-muted hover:text-wm-text transition-colors inline-flex items-center gap-1">
+                <span id={`job-${job.key}-map`}>{t('proJobs.openMap')}</span> <ArrowRight className="w-3 h-3" aria-hidden="true" />
               </a>
             </div>
           </div>
