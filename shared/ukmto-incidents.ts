@@ -21,12 +21,13 @@ function isIncident(value: unknown): value is UkmtoIncident {
     && typeof row.location?.longitude === 'number' && Number.isFinite(row.location.longitude) && Math.abs(row.location.longitude) <= 180;
 }
 
-export function readUkmtoSnapshot(value: unknown, now = Date.now()): ListUkmtoIncidentsResponse {
+// Browsers pass maxFutureMs = Infinity: a client clock behind the producer must not hide fresh data.
+export function readUkmtoSnapshot(value: unknown, now = Date.now(), maxFutureMs = 300_000): ListUkmtoIncidentsResponse {
   const unavailable = { incidents: [], fetchedAt: 0, dataAvailable: false, stale: false };
   if (!value || typeof value !== 'object') return unavailable;
   const data = value as Partial<ListUkmtoIncidentsResponse>;
   if (data.dataAvailable !== true || typeof data.fetchedAt !== 'number' || !Number.isFinite(data.fetchedAt) || data.fetchedAt <= 0
-    || now - data.fetchedAt > UKMTO_RETENTION_MS || data.fetchedAt - now > 300_000
+    || now - data.fetchedAt > UKMTO_RETENTION_MS || data.fetchedAt - now > maxFutureMs
     || !Array.isArray(data.incidents) || data.incidents.length > 2000 || !data.incidents.every(isIncident)) return unavailable;
   return {
     incidents: data.incidents, fetchedAt: data.fetchedAt,

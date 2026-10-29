@@ -15,3 +15,11 @@ it('retains and ages the last good snapshot when the bootstrap source is unavail
   expect(upstream.fetch).toHaveBeenCalledWith('ukmtoIncidents');
   vi.restoreAllMocks();
 });
+
+it('keeps a fresh snapshot available when the browser clock runs behind the producer', async () => {
+  const now = Date.now();
+  upstream.value = { incidents: [], fetchedAt: now + 10 * 60000, dataAvailable: true };
+  vi.spyOn(Date, 'now').mockReturnValue(now);
+  expect(await fetchUkmtoIncidents()).toMatchObject({ fetchedAt: now + 10 * 60000, dataAvailable: true, stale: false });
+  vi.restoreAllMocks();
+});

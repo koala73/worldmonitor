@@ -46,8 +46,20 @@ export async function fetchUkmtoIncidents(_context, fetchFn = fetch) {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(15000),
   });
-  if (!response.ok) throw new Error(`UKMTO HTTP ${response.status}`);
-  const incidents = normalizeIncidents(await response.json());
+  if (!response.ok) {
+    const error = new Error(`UKMTO HTTP ${response.status}`);
+    // Access and schema failures repeat on an immediate retry; the next cron run retries them.
+    if (response.status >= 400 && response.status < 500 && response.status !== 429) error.nonRetryable = true;
+    throw error;
+  }
+  const body = await response.json();
+  let incidents;
+  try {
+    incidents = normalizeIncidents(body);
+  } catch (error) {
+    error.nonRetryable = true;
+    throw error;
+  }
   return { incidents, fetchedAt: Date.now(), dataAvailable: true, stale: false };
 }
 

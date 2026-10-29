@@ -57,3 +57,41 @@ test('fetch uses a bounded request and rejects upstream failure', async () => {
   await assert.rejects(fetchUkmtoIncidents({ runStartedAtMs: Date.now(), fetchDeadlineAtMs: Date.now() + 30000 }, async () => new Response('', { status: 503 })));
   await assert.rejects(fetchUkmtoIncidents({ runStartedAtMs: Date.now(), fetchDeadlineAtMs: Date.now() + 30000 }, async () => { throw new Error('timeout'); }));
 });
+
+test('access and schema failures wait for the next run instead of retrying immediately', async () => {
+  const context = { runStartedAtMs: Date.now(), fetchDeadlineAtMs: Date.now() + 30000 };
+  const failure = async (response) => fetchUkmtoIncidents(context, async () => response).catch(error => error);
+  assert.equal((await failure(new Response('', { status: 403 }))).nonRetryable, true);
+  assert.equal((await failure(new Response(JSON.stringify([{ ...report, place: null }])))).nonRetryable, true);
+  assert.equal((await failure(new Response('', { status: 429 }))).nonRetryable, undefined);
+  assert.equal((await failure(new Response('', { status: 503 }))).nonRetryable, undefined);
+});
+
+test('orders reports newest first with a stable tie-break and caps the snapshot', () => {
+  const older = { ...report, sitecoreId: 'b5b33f9d-6c8e-43fc-9af0-3936d61bf55d', utcDateOfIncident: '2026-09-01T00:00:00Z' };
+  const tie = { ...report, sitecoreId: '05b33f9d-6c8e-43fc-9af0-3936d61bf55d' };
+  assert.deepEqual(normalizeIncidents([older, report, tie]).map(item => item.id), [tie.sitecoreId, report.sitecoreId, older.sitecoreId]);
+  assert.throws(() => normalizeIncidents(Array.from({ length: 2001 }, () => report)));
+  assert.throws(() => normalizeIncidents([{ ...report, otherDetails: 'x'.repeat(20001) }]));
+});
+
+test('marks the producer active only after a publish with Redis credentials', async () => {
+  const saved = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN, fetch: globalThis.fetch };
+  const calls = [];
+  globalThis.fetch = async (_url, options) => { calls.push(JSON.parse(options.body)); return new Response(JSON.stringify({ result: 'OK' })); };
+  try {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    await seedOptions.afterPublish();
+    assert.equal(calls.length, 0);
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    await seedOptions.afterPublish();
+    assert.deepEqual(calls, [['SET', 'seed-activated:maritime:ukmto-incidents', '1']]);
+  } finally {
+    globalThis.fetch = saved.fetch;
+    for (const [name, value] of [['UPSTASH_REDIS_REST_URL', saved.url], ['UPSTASH_REDIS_REST_TOKEN', saved.token]]) {
+      if (value === undefined) delete process.env[name]; else process.env[name] = value;
+    }
+  }
+});
