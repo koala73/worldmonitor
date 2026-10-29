@@ -30,12 +30,15 @@ function decodeRows(value) {
   });
 }
 
+// The reader drops a whole snapshot when any incident date is not a representable Date.
+const isRepresentableTime = ms => typeof ms === 'number' && Number.isSafeInteger(ms) && ms > 0 && Number.isFinite(new Date(ms).getTime());
+
 export function normalizeIncidents(value) {
   const incidents = new Map();
   for (const row of decodeRows(value)) {
     const number = /^UKMTO-([1-9]\d{0,9})$/.exec(typeof row.id === 'string' ? row.id : '')?.[1];
     if (!number || Number(number) > 2 ** 31 - 1
-      || !Number.isInteger(row.ts) || row.ts <= 0
+      || !Number.isInteger(row.ts) || !isRepresentableTime(row.ts * 1000)
       || typeof row.lat !== 'number' || !Number.isFinite(row.lat) || Math.abs(row.lat) > 90
       || typeof row.lon !== 'number' || !Number.isFinite(row.lon) || Math.abs(row.lon) > 180
       || typeof row.type !== 'string' || !row.type.trim()
@@ -87,7 +90,8 @@ export async function fetchUkmtoIncidents(_context, fetchFn = fetch) {
 }
 
 export const seedOptions = {
-  validateFn: data => Boolean(data && Array.isArray(data.incidents) && Number.isFinite(data.fetchedAt) && data.fetchedAt > 0),
+  validateFn: data => Boolean(data && Array.isArray(data.incidents) && Number.isFinite(data.fetchedAt) && data.fetchedAt > 0
+    && data.incidents.every(item => isRepresentableTime(item?.occurredAt))),
   declareRecords: data => data.incidents.length,
   ttlSeconds: 86400,
   maxStaleMin: 75,

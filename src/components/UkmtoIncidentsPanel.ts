@@ -5,6 +5,9 @@ import { UKMTO_REPUBLISHER_URL, UKMTO_SOURCE_URL } from '../../shared/ukmto-inci
 import type { ListUkmtoIncidentsResponse } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 import './ukmto-incidents.css';
 
+const OGL_V3_URL = 'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/';
+const CC_BY_4_URL = 'https://creativecommons.org/licenses/by/4.0/';
+
 export class UkmtoIncidentsPanel extends Panel {
   private snapshot: ListUkmtoIncidentsResponse = { incidents: [], fetchedAt: 0, dataAvailable: false, stale: false };
   private onLocationClick?: (lat: number, lon: number) => void;
@@ -29,7 +32,7 @@ export class UkmtoIncidentsPanel extends Panel {
     this.setSafeContent(safeHtml`
       <div class="ukmto-status" role="status">${!snapshot.dataAvailable ? t('ukmto.unavailable') : snapshot.stale ? t('ukmto.stale') : t('ukmto.current')}
         ${snapshot.fetchedAt ? date(snapshot.fetchedAt) : ''}</div>
-      <p class="ukmto-attribution"><a href="${UKMTO_SOURCE_URL}" target="_blank" rel="noopener noreferrer">UKMTO</a> (OGL v3.0) via <a href="${UKMTO_REPUBLISHER_URL}" target="_blank" rel="noopener noreferrer">hormuz.data-tracking.net</a> · ${t('ukmto.reportedClaims')}</p>
+      <p class="ukmto-attribution"><a href="${UKMTO_SOURCE_URL}" target="_blank" rel="noopener noreferrer">UKMTO</a> (<a href="${OGL_V3_URL}" target="_blank" rel="noopener noreferrer license">OGL v3.0</a>) via <a href="${UKMTO_REPUBLISHER_URL}" target="_blank" rel="noopener noreferrer">hormuz.data-tracking.net</a> (<a href="${CC_BY_4_URL}" target="_blank" rel="noopener noreferrer license">CC BY 4.0</a>) · ${t('ukmto.reportedClaims')}</p>
       ${snapshot.dataAvailable && snapshot.incidents.length === 0 ? safeHtml`<div class="panel-empty">${t('ukmto.empty')}</div>` : ''}
       <div class="ukmto-list">${joinSafeHtml(snapshot.incidents.map(item => safeHtml`
         <article class="ukmto-incident">

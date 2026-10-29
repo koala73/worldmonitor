@@ -62,6 +62,14 @@ test('accepts a valid empty snapshot and unknown incident types', () => {
   assert.equal(seedOptions.validateFn({ incidents: [], fetchedAt: Date.now() }), true);
 });
 
+test('never publishes a snapshot whose incident dates its reader would reject', () => {
+  const [incident] = normalizeIncidents(table([report]));
+  assert.equal(seedOptions.validateFn({ incidents: [incident], fetchedAt: Date.now() }), true);
+  for (const occurredAt of [8640000000001000, 1e308, Infinity, 0, -1, '1790636400000']) {
+    assert.equal(seedOptions.validateFn({ incidents: [{ ...incident, occurredAt }], fetchedAt: Date.now() }), false, String(occurredAt));
+  }
+});
+
 test('rejects malformed snapshots without manufacturing positions or dates', () => {
   const valid = table([report]);
   for (const value of [
@@ -72,6 +80,8 @@ test('rejects malformed snapshots without manufacturing positions or dates', () 
     table([{ ...report, id: '143' }]), table([{ ...report, id: 'UKMTO-0' }]),
     table([{ ...report, lat: null }]), table([{ ...report, lon: 181 }]),
     table([{ ...report, ts: 1790636400.5 }]), table([{ ...report, ts: 0 }]),
+    // Seconds whose millisecond value is not a representable Date would publish a snapshot the reader rejects.
+    table([{ ...report, ts: 8640000000001 }]), table([{ ...report, ts: 1793300400000000 }]), table([{ ...report, ts: 1e308 }]),
     table([{ ...report, type: ' ' }]), table([{ ...report, text: 'x'.repeat(20001) }]),
   ]) {
     assert.throws(() => normalizeIncidents(value));

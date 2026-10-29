@@ -45,5 +45,10 @@ it('credits both publishers and omits a publication time the source does not car
   expect(document.body.textContent).not.toContain('ukmto.reported:');
   expect(document.body.textContent).not.toContain('1970');
   const links = [...document.querySelectorAll<HTMLAnchorElement>('.ukmto-attribution a')].map(link => link.href);
-  expect(links).toEqual(['https://www.ukmto.org/recent-incidents', 'https://hormuz.data-tracking.net/']);
+  expect(links).toEqual([
+    'https://www.ukmto.org/recent-incidents',
+    'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/',
+    'https://hormuz.data-tracking.net/',
+    'https://creativecommons.org/licenses/by/4.0/',
+  ]);
 });
