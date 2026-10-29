@@ -130,6 +130,7 @@ before(async () => {
     define: { 'import.meta.env': '{"DEV":false,"PROD":true,"VITE_VARIANT":"full"}' },
     format: 'esm',
     logLevel: 'silent',
+    loader: { '.css': 'empty' },
     platform: 'node',
     plugins: [lifecycleOnlyStubs],
     target: 'node20',
