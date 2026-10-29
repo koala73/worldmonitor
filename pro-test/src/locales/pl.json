@@ -717,7 +717,7 @@
     "voices": {
       "eyebrow": "Ich słowami",
       "title": "Co ludzie mówią o World Monitor",
-      "sub": "Z World Monitor skorzystało {{users}} osób w {{countries}} krajach. Oto co niektórzy z nich napisali we własnych wpisach.",
+      "sub": "{{users}} osób w {{countries}} krajach korzystało z World Monitor. Oto co powiedziały media i niektórzy z nich.",
       "translatedJa": "Przetłumaczono z japońskiego"
     }
   },

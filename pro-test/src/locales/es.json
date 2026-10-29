@@ -717,7 +717,7 @@
     "voices": {
       "eyebrow": "En sus palabras",
       "title": "Lo que dice la gente sobre World Monitor",
-      "sub": "{{users}} personas en {{countries}} países han usado World Monitor. Esto es lo que algunas dijeron en sus propias publicaciones.",
+      "sub": "{{users}} personas en {{countries}} países han usado World Monitor. Esto es lo que dijeron la prensa y algunas de ellas.",
       "translatedJa": "Traducido del japonés"
     }
   },

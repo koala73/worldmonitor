@@ -717,7 +717,7 @@
     "voices": {
       "eyebrow": "Kwa maneno yao",
       "title": "Watu wanasema nini kuhusu World Monitor",
-      "sub": "Watu {{users}} katika nchi {{countries}} wametumia World Monitor. Hiki ndicho baadhi yao walisema katika machapisho yao.",
+      "sub": "Watu {{users}} katika nchi {{countries}} wametumia World Monitor. Haya ndiyo yaliyosemwa na vyombo vya habari na baadhi yao.",
       "translatedJa": "Imetafsiriwa kutoka Kijapani"
     }
   },

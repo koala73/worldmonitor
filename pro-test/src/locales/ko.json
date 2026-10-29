@@ -717,7 +717,7 @@
     "voices": {
       "eyebrow": "그들의 말",
       "title": "사람들이 말하는 World Monitor",
-      "sub": "{{countries}}개국 {{users}}명이 World Monitor를 사용했습니다. 그중 일부가 직접 올린 글에서 한 말입니다.",
+      "sub": "{{countries}}개국 {{users}}명이 World Monitor를 사용했습니다. 언론과 일부 사용자의 이야기를 소개합니다.",
       "translatedJa": "일본어에서 번역"
     }
   },

@@ -1,6 +1,6 @@
-// The homepage and /pro quote people who vouched for World Monitor, high on
-// the page, and only people who gave permission. Press stays a linked row
-// beside the quotes rather than repeated as press quotes.
+// The homepage and /pro quote the press and people who vouched for World
+// Monitor, high on the page, in one sideways-scrolling row. X authors appear
+// only with permission, and every card opens the article or the exact post.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -18,14 +18,12 @@ const voices = [...voicesSource.matchAll(/\{\s*quote: '((?:[^'\\]|\\.)*)',\s*nam
 // X authors who gave permission on 2026-10-29. A new X voice needs the
 // author's go-ahead first, then an entry here.
 const PERMITTED_X_HANDLES = new Set(['ihteshamali', 'didier_lopes', 'bilawalsidhu', 'heynavtoor', 'AkinUnver', 'ntv_rd', 'MarioNawfal']);
-const PRESS_HOSTS = new Set(
-  [...read('shared/press.ts').matchAll(/'(https:\/\/[^']+)'/g)].map((m) => new URL(m[1]).hostname),
-);
+const PRESS_URLS = new Set([...read('shared/press.ts').matchAll(/'(https:\/\/[^']+)'/g)].map((m) => m[1]));
 
 describe('homepage and /pro voices', () => {
-  it('quotes only people who gave permission, each linked to their own post', () => {
+  it('quotes press articles and permitted X authors, each linked to the source', () => {
     assert.equal(voices.length, (voicesSource.match(/\bquote: '/g) ?? []).length, 'every VOICES entry must parse');
-    assert.ok(voices.length >= 6);
+    assert.ok(voices.length >= 4 && voices.length <= 6, `keep the row short, got ${voices.length}`);
     for (const { name, href } of voices) {
       const url = new URL(href);
       assert.equal(url.protocol, 'https:', `${name} link must be https`);
@@ -33,9 +31,21 @@ describe('homepage and /pro voices', () => {
         const handle = url.pathname.split('/')[1];
         assert.ok(PERMITTED_X_HANDLES.has(handle), `${name} (@${handle}) has no recorded permission`);
         assert.match(url.pathname, /^\/\w+\/status\/\d+$/, `${name} must link the exact post`);
+      } else {
+        assert.ok(PRESS_URLS.has(href), `${name} must link an article listed in shared/press.ts`);
       }
-      assert.ok(!PRESS_HOSTS.has(url.hostname), `${name}: press belongs in the press row, not the quotes`);
     }
+    const firstX = voices.findIndex((v) => new URL(v.href).hostname === 'x.com');
+    assert.ok(firstX > 0, 'press quotes lead the row');
+    assert.ok(voices.slice(firstX).every((v) => new URL(v.href).hostname === 'x.com'), 'press quotes come before X posts');
+  });
+
+  it('makes each whole card the link, in one row that scrolls sideways', () => {
+    const cards = voicesSource.match(/export const VoiceCards = \(\) => \(([\s\S]*?)\n\);/)?.[1];
+    assert.ok(cards, 'VoiceCards must be defined');
+    assert.match(cards, /<ul className="[^"]*\bflex\b[^"]*\boverflow-x-auto\b[^"]*\bsnap-x\b/);
+    assert.match(cards, /<li [^>]*>\s*<a\s+href=\{voice\.href\}[^>]*>\s*<blockquote/);
+    assert.doesNotMatch(cards, /columns-\d/);
   });
 
   it('labels translated quotes', () => {

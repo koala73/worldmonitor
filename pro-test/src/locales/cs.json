@@ -717,7 +717,7 @@
     "voices": {
       "eyebrow": "Jejich slovy",
       "title": "Co lidé říkají o World Monitor",
-      "sub": "World Monitor použilo {{users}} lidí ve {{countries}} zemích. Tady je, co někteří z nich napsali ve svých příspěvcích.",
+      "sub": "{{users}} lidí ve {{countries}} zemích používalo World Monitor. Tohle o něm řekl tisk a někteří z nich.",
       "translatedJa": "Přeloženo z japonštiny"
     }
   },

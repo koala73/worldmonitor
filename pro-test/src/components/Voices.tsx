@@ -1,10 +1,11 @@
 import { t } from '../i18n';
 
 /**
- * What people said about World Monitor, quoted verbatim from their own posts.
- * Every X author below gave permission (2026-10-29); add a voice only with the
- * author's go-ahead. Press stays in the footer "In the press" row, not here.
- * `translatedFrom` marks an English rendering of a non-English original.
+ * What the press and notable people said about World Monitor, quoted verbatim.
+ * Press quotes were checked word for word against the article. Every X author
+ * gave permission (2026-10-29); add an X voice only with the author's go-ahead.
+ * Each card opens the article or the exact post. `translatedFrom` marks an
+ * English rendering of a non-English original.
  */
 export interface Voice {
   quote: string;
@@ -16,34 +17,22 @@ export interface Voice {
 
 export const VOICES: ReadonlyArray<Voice> = [
   {
-    quote: 'Palantir sells governments a war room that costs millions a year. So, a guy named Elie just rebuilt it, put it on GitHub, and gave it away.',
-    name: 'Ihtesham Ali',
-    role: 'Founder and writer',
-    href: 'https://x.com/ihteshamali/status/2079156922406875492',
+    quote: '…an open-source dashboard people around the world were using to track the war in real time.',
+    name: 'WIRED',
+    role: 'Feature by Lilian Wagdy',
+    href: 'https://www.wired.com/story/world-monitor-elie-habib/',
   },
   {
-    quote: 'This is how you monitor the situation.',
-    name: 'Didier Lopes',
-    role: 'Founded OpenBB',
-    href: 'https://x.com/didier_lopes/status/2025977905889554522',
+    quote: '…a platform that users would go on to label as ‘a Bloomberg Terminal for geopolitics.’',
+    name: 'Entrepreneur Middle East',
+    role: 'Cover story',
+    href: 'https://mena.entrepreneur.com/business-news/how-elie-habib-built-world-monitor-to-track-global-events-in-real-time',
   },
   {
-    quote: '…feels like Palantir meets Bloomberg Terminal. Very nice build and Tauri app!',
-    name: 'Bilawal Sidhu',
-    role: 'Spatial-tech creator',
-    href: 'https://x.com/bilawalsidhu/status/2025702618895360204',
-  },
-  {
-    quote: 'Think of it as a CNN war room meets Bloomberg Terminal for geopolitics but anyone can use it.',
-    name: 'Nav Toor',
-    role: 'AI educator',
-    href: 'https://x.com/heynavtoor/status/2025533164454846629',
-  },
-  {
-    quote: 'Hard at work monitoring the sit through @eliehabib \'s worldmonitor app',
-    name: 'Prof. Akin Unver',
-    role: 'Ozyegin University',
-    href: 'https://x.com/AkinUnver/status/2027787008035205152',
+    quote: 'Think Palantir for everyone.',
+    name: 'Mario Nawfal',
+    role: 'News host',
+    href: 'https://x.com/MarioNawfal/status/2079427397942927655',
   },
   {
     quote: 'We put that trending CIA-like thing up on a 300-inch LED screen. Nice.',
@@ -53,34 +42,40 @@ export const VOICES: ReadonlyArray<Voice> = [
     translatedFrom: 'ja',
   },
   {
-    quote: 'Think Palantir for everyone.',
-    name: 'Mario Nawfal',
-    role: 'News host',
-    href: 'https://x.com/MarioNawfal/status/2079427397942927655',
+    quote: '…feels like Palantir meets Bloomberg Terminal. Very nice build and Tauri app!',
+    name: 'Bilawal Sidhu',
+    role: 'Spatial-tech creator',
+    href: 'https://x.com/bilawalsidhu/status/2025702618895360204',
   },
   {
-    quote: 'Breadth of coverage is unmatched at zero cost.',
-    name: 'OSINTBench',
-    role: 'Independent tool review',
-    href: 'https://osintbench.com/tools/worldmonitor/',
+    quote: 'This is how you monitor the situation.',
+    name: 'Didier Lopes',
+    role: 'Founded OpenBB',
+    href: 'https://x.com/didier_lopes/status/2025977905889554522',
   },
 ];
 
+// One row that scrolls sideways, so the quotes cost one card of height.
 export const VoiceCards = () => (
-  <div className="columns-1 md:columns-2 lg:columns-3 gap-6">
+  <ul className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4">
     {VOICES.map((voice) => (
-      <figure key={voice.href} className="break-inside-avoid mb-6 bg-wm-card border border-wm-border p-6">
-        <blockquote className="text-wm-text leading-relaxed">“{voice.quote}”</blockquote>
-        <figcaption className="mt-4 text-sm">
-          <a href={voice.href} target="_blank" rel="noopener noreferrer" className="font-bold text-wm-text hover:text-wm-green transition-colors">
-            {voice.name}
-          </a>
-          <span className="text-wm-muted"> · {voice.role}</span>
-          {voice.translatedFrom === 'ja' && (
-            <span className="block mt-1 font-mono text-xs text-wm-muted">{t('welcome.voices.translatedJa')}</span>
-          )}
-        </figcaption>
-      </figure>
+      <li key={voice.href} className="snap-start shrink-0 w-[85%] sm:w-[22rem] flex">
+        <a
+          href={voice.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex flex-col w-full bg-wm-card border border-wm-border p-6 hover:border-wm-green transition-colors"
+        >
+          <blockquote className="text-wm-text leading-relaxed flex-1">“{voice.quote}”</blockquote>
+          <span className="block mt-4 text-sm">
+            <span className="font-bold text-wm-text">{voice.name}</span>
+            <span className="text-wm-muted"> · {voice.role}</span>
+            {voice.translatedFrom === 'ja' && (
+              <span className="block mt-1 font-mono text-xs text-wm-muted">{t('welcome.voices.translatedJa')}</span>
+            )}
+          </span>
+        </a>
+      </li>
     ))}
-  </div>
+  </ul>
 );
