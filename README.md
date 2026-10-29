@@ -94,6 +94,8 @@ Issues filed against any of the above are triaged from the same backlog — see 
 
 ## Quick Start
 
+Requires Node.js 24, the version pinned in `.nvmrc`. Distribution packages are often older. Debian 12 and Raspberry Pi OS ship Node.js 18 with npm 9.2.0, where `npm install` stops with `Invalid comparator: file:vendor/braces`. Install Node.js 24 with [nvm](https://github.com/nvm-sh/nvm) (`nvm install` inside the checkout reads `.nvmrc`) or from [nodejs.org](https://nodejs.org/en/download).
+
 ```bash
 git clone https://github.com/koala73/worldmonitor.git
 cd worldmonitor
