@@ -70,6 +70,16 @@
     "buildOnIt": "Construiește deasupra",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + IA) și MCP pentru Claude, GPT, LLM-uri proprii."
   },
+  "proJobs": {
+    "title": "Ce trebuie să duceți la bun sfârșit?",
+    "intro": "Panoul gratuit acoperă prima privire. Iată ce adaugă Pro pentru fiecare sarcină.",
+    "proAdds": "Pro adaugă",
+    "openMap": "Deschideți vizualizarea hărții",
+    "chokepointFree": "Strâmtori, trafic naval, rute comerciale, sancțiuni și cabluri submarine pe harta live.",
+    "chokepointPro": "Modelarea șocurilor de cost și teste de stres pentru lanțurile de aprovizionare, reguli de alertă care trimit o schimbare la o strâmtoare către Slack, e-mail sau un webhook, și un rezumat programat ordonat după regulile dumneavoastră.",
+    "verifyFree": "Un flux de știri în care fiecare articol este atribuit sursei sale, plus straturi de conflicte, întreruperi și riscuri naturale pentru a verifica o afirmație.",
+    "verifyPro": "Memorie de informații pentru căutarea în relatările anterioare și găsirea unor evenimente anterioare similare, chat WM Analyst peste serviciile live și reguli de alertă pentru urmărire."
+  },
   "deliveryDesk": {
     "eyebrow": "BIROU DE LIVRARE",
     "title": "Ce este biroul de intelligence personal?",

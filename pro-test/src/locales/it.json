@@ -70,6 +70,16 @@
     "buildOnIt": "Costruisci sopra",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + IA) e MCP per Claude, GPT, LLM personalizzati."
   },
+  "proJobs": {
+    "title": "Che cosa devi portare a termine?",
+    "intro": "La dashboard gratuita copre il primo sguardo. Ecco cosa aggiunge Pro per ogni attività.",
+    "proAdds": "Pro aggiunge",
+    "openMap": "Apri la vista mappa",
+    "chokepointFree": "Stretti, traffico navale, rotte commerciali, sanzioni e cavi sottomarini sulla mappa in tempo reale.",
+    "chokepointPro": "Modellazione degli shock di costo e stress test delle catene di approvvigionamento, regole di avviso che inviano un cambiamento su uno stretto a Slack, email o un webhook, e un digest programmato ordinato secondo le tue regole.",
+    "verifyFree": "Un feed di notizie con ogni articolo attribuito alla sua fonte, più livelli su conflitti, interruzioni e rischi naturali per verificare un’affermazione.",
+    "verifyPro": "Memoria di intelligence per cercare nella copertura passata e trovare eventi precedenti simili, chat WM Analyst sui servizi in tempo reale e regole di avviso per il monitoraggio successivo."
+  },
   "deliveryDesk": {
     "eyebrow": "SCRIVANIA DI CONSEGNA",
     "title": "Cos'è la personal intelligence desk?",

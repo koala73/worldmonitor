@@ -70,6 +70,16 @@
     "buildOnIt": "Bouw erop voort",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) en MCP voor Claude, GPT, eigen LLM's."
   },
+  "proJobs": {
+    "title": "Wat moet u gedaan krijgen?",
+    "intro": "Het gratis dashboard dekt de eerste blik. Dit voegt Pro toe voor elke taak.",
+    "proAdds": "Pro voegt toe",
+    "openMap": "Kaartweergave openen",
+    "chokepointFree": "Zee-engtes, scheepvaartverkeer, handelsroutes, sancties en onderzeese kabels op de live kaart.",
+    "chokepointPro": "Kostenschokmodellering en stresstests voor toeleveringsketens, waarschuwingsregels die een wijziging bij een zee-engte naar Slack, e-mail of een webhook sturen, en een geplande digest gerangschikt volgens uw regels.",
+    "verifyFree": "Een nieuwsfeed waarin elk bericht aan zijn bron is toegeschreven, plus lagen voor conflicten, storingen en natuurrisico’s om een bewering te toetsen.",
+    "verifyPro": "Intel-geheugen om eerdere berichtgeving te doorzoeken en vergelijkbare eerdere gebeurtenissen te vinden, WM Analyst-chat over de live diensten en waarschuwingsregels voor opvolging."
+  },
   "deliveryDesk": {
     "eyebrow": "AFLEVERBALIE",
     "title": "Wat is het persoonlijke inlichtingenburo?",

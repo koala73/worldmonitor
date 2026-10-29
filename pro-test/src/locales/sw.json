@@ -191,6 +191,16 @@
     "buildOnIt": "Jenga juu yake",
     "buildOnItDesc": "Jeneza la Widget la Kawaida (HTML/CSS/JS + AI) na MCP kwa Claude, GPT, LLM za kawaida."
   },
+  "proJobs": {
+    "title": "Unahitaji kukamilisha nini?",
+    "intro": "Dashibodi ya bure inashughulikia mtazamo wa kwanza. Hiki ndicho Pro inaongeza kwa kila kazi.",
+    "proAdds": "Pro inaongeza",
+    "openMap": "Fungua mwonekano wa ramani",
+    "chokepointFree": "Njia nyembamba za bahari, trafiki ya meli, njia za biashara, vikwazo na nyaya za chini ya bahari kwenye ramani hai.",
+    "chokepointPro": "Uundaji wa mifano ya mishtuko ya gharama na majaribio ya mkazo ya minyororo ya ugavi, kanuni za arifa zinazotuma mabadiliko kwenye njia nyembamba ya bahari kwa Slack, barua pepe au webhook, na muhtasari uliopangwa kwa ratiba ulioorodheshwa kwa kanuni zako.",
+    "verifyFree": "Mlisho wa habari ambapo kila habari imehusishwa na chanzo chake, pamoja na tabaka za migogoro, kukatika kwa huduma na hatari za asili ili kukagua dai.",
+    "verifyPro": "Kumbukumbu ya kiintelijensia ya kutafuta habari za awali na kupata matukio yanayofanana ya zamani, gumzo la WM Analyst kwenye huduma hai, na kanuni za arifa za ufuatiliaji."
+  },
   "deliveryDesk": {
     "eyebrow": "MEZA YA UTOAJI",
     "title": "Meza ya akili binafsi ni nini?",

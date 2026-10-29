@@ -191,6 +191,16 @@
     "buildOnIt": "Build on it",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) and MCP for Claude, GPT, custom LLMs."
   },
+  "proJobs": {
+    "title": "What do you need to get done?",
+    "intro": "The free dashboard covers the first look. Here is what Pro adds for each job.",
+    "proAdds": "Pro adds",
+    "openMap": "Open the map view",
+    "chokepointFree": "Chokepoints, ship traffic, trade routes, sanctions and undersea cables on the live map.",
+    "chokepointPro": "Cost-shock modelling and supply-chain stress tests, alert rules that send a chokepoint change to Slack, email or a webhook, and a scheduled digest ranked by your rules.",
+    "verifyFree": "A news feed with every story attributed to its source, plus conflict, outage and natural-hazard layers to check a claim against.",
+    "verifyPro": "Intel memory to search past coverage and find similar earlier events, WM Analyst chat across the live services, and alert rules for follow-up."
+  },
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
     "title": "What is the personal intelligence desk?",

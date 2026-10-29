@@ -70,6 +70,16 @@
     "buildOnIt": "Construisez dessus",
     "buildOnItDesc": "Constructeur de widgets personnalisés (HTML/CSS/JS + IA) et MCP pour Claude, GPT, LLMs personnalisés."
   },
+  "proJobs": {
+    "title": "Que devez-vous accomplir ?",
+    "intro": "Le tableau de bord gratuit couvre le premier coup d’œil. Voici ce que Pro ajoute pour chaque tâche.",
+    "proAdds": "Pro ajoute",
+    "openMap": "Ouvrir la vue carte",
+    "chokepointFree": "Détroits, trafic maritime, routes commerciales, sanctions et câbles sous-marins sur la carte en direct.",
+    "chokepointPro": "Modélisation des chocs de coûts et tests de résistance des chaînes d’approvisionnement, règles d’alerte qui envoient un changement sur un détroit vers Slack, e-mail ou un webhook, et un digest programmé classé selon vos règles.",
+    "verifyFree": "Un fil d’actualités où chaque article est attribué à sa source, avec des couches conflits, coupures et risques naturels pour vérifier une affirmation.",
+    "verifyPro": "Mémoire de renseignement pour fouiller la couverture passée et trouver des événements antérieurs similaires, chat WM Analyst sur les services en direct, et règles d’alerte pour le suivi."
+  },
   "deliveryDesk": {
     "eyebrow": "BUREAU DE LIVRAISON",
     "title": "Qu'est-ce que le bureau d'intelligence personnalisé ?",

@@ -70,6 +70,16 @@
     "buildOnIt": "在其上構建",
     "buildOnItDesc": "自訂小工具構建器(HTML/CSS/JS + AI)與 MCP,適用於 Claude、GPT 與自訂 LLM。"
   },
+  "proJobs": {
+    "title": "你需要完成什麼工作？",
+    "intro": "免費儀表板可滿足初步檢視。以下是 Pro 為每項工作增加的功能。",
+    "proAdds": "Pro 增加",
+    "openMap": "開啟地圖檢視",
+    "chokepointFree": "即時地圖上的咽喉要道、船舶交通、貿易航線、制裁和海底電纜。",
+    "chokepointPro": "成本衝擊建模和供應鏈壓力測試，可將咽喉要道變化傳送到 Slack、電子郵件或 webhook 的警報規則，以及按你的規則排序的定時摘要。",
+    "verifyFree": "每條新聞都標註來源的新聞流，以及用於核對說法的衝突、中斷和自然災害圖層。",
+    "verifyPro": "用於搜尋過往報道並查詢類似早期事件的情報記憶、覆蓋即時服務的 WM Analyst 對話，以及用於後續跟進的警報規則。"
+  },
   "deliveryDesk": {
     "eyebrow": "交付工作臺",
     "title": "什麼是個人情報桌面？",

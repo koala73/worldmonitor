@@ -70,6 +70,16 @@
     "buildOnIt": "Stavte na tom",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) a MCP pro Claude, GPT, vlastní LLM."
   },
+  "proJobs": {
+    "title": "Co potřebujete udělat?",
+    "intro": "Bezplatný dashboard pokryje první pohled. Tady je, co Pro přidává ke každému úkolu.",
+    "proAdds": "Pro přidává",
+    "openMap": "Otevřít zobrazení mapy",
+    "chokepointFree": "Úžiny, lodní provoz, obchodní trasy, sankce a podmořské kabely na živé mapě.",
+    "chokepointPro": "Modelování cenových šoků a zátěžové testy dodavatelských řetězců, pravidla upozornění, která pošlou změnu v úžině do Slacku, e-mailu nebo na webhook, a plánovaný přehled seřazený podle vašich pravidel.",
+    "verifyFree": "Zpravodajský kanál, kde je každá zpráva přiřazena ke svému zdroji, plus vrstvy konfliktů, výpadků a přírodních rizik, se kterými můžete ověřit tvrzení.",
+    "verifyPro": "Zpravodajská paměť pro hledání v dřívějším zpravodajství a nalezení podobných dřívějších událostí, chat WM Analyst nad živými službami a pravidla upozornění pro další sledování."
+  },
   "deliveryDesk": {
     "eyebrow": "DORUČOVACÍ PULT",
     "title": "Co je osobní intelligence desk?",

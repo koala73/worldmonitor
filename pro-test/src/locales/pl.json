@@ -70,6 +70,16 @@
     "buildOnIt": "Buduj na tym",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) i MCP dla Claude, GPT, własnych LLM-ów."
   },
+  "proJobs": {
+    "title": "Co musisz zrobić?",
+    "intro": "Darmowy pulpit wystarczy na pierwsze spojrzenie. Oto, co Pro dodaje do każdego zadania.",
+    "proAdds": "Pro dodaje",
+    "openMap": "Otwórz widok mapy",
+    "chokepointFree": "Cieśniny, ruch statków, szlaki handlowe, sankcje i kable podmorskie na mapie na żywo.",
+    "chokepointPro": "Modelowanie szoków kosztowych i testy warunków skrajnych łańcuchów dostaw, reguły alertów, które wysyłają zmianę w cieśninie do Slacka, na e-mail lub webhook, oraz zaplanowany przegląd uszeregowany według Twoich reguł.",
+    "verifyFree": "Kanał wiadomości, w którym każda informacja jest przypisana do źródła, oraz warstwy konfliktów, awarii i zagrożeń naturalnych do weryfikacji twierdzeń.",
+    "verifyPro": "Pamięć wywiadowcza do przeszukiwania wcześniejszych relacji i znajdowania podobnych wcześniejszych zdarzeń, czat WM Analyst obejmujący usługi na żywo oraz reguły alertów do dalszego śledzenia."
+  },
   "deliveryDesk": {
     "eyebrow": "STANOWISKO DOSTAW",
     "title": "Co to jest osobiste biuro wywiadu?",

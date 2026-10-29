@@ -70,6 +70,16 @@
     "buildOnIt": "Gradite na njemu",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) i MCP za Claude, GPT i vlastite LLM-ove."
   },
+  "proJobs": {
+    "title": "Što trebate obaviti?",
+    "intro": "Besplatna nadzorna ploča pokriva prvi pogled. Evo što Pro dodaje za svaki zadatak.",
+    "proAdds": "Pro dodaje",
+    "openMap": "Otvori prikaz karte",
+    "chokepointFree": "Tjesnaci, pomorski promet, trgovačke rute, sankcije i podmorski kabeli na karti uživo.",
+    "chokepointPro": "Modeliranje troškovnih šokova i testovi otpornosti opskrbnih lanaca, pravila upozorenja koja promjenu na tjesnacu šalju na Slack, e-poštu ili webhook, te zakazani sažetak poredan prema vašim pravilima.",
+    "verifyFree": "Feed vijesti u kojem je svaka vijest pripisana svom izvoru, uz slojeve sukoba, prekida i prirodnih opasnosti za provjeru tvrdnje.",
+    "verifyPro": "Obavještajna memorija za pretraživanje ranijeg izvještavanja i pronalaženje sličnih ranijih događaja, chat s WM Analystom nad uslugama uživo i pravila upozorenja za praćenje."
+  },
   "deliveryDesk": {
     "eyebrow": "DOSTAVNI PULT",
     "title": "Što je osobni obavještajni stol?",

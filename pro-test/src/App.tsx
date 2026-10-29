@@ -754,6 +754,57 @@ const SourceMarquee = () => {
   );
 };
 
+/* ─── Jobs: what the free dashboard covers and what Pro adds, per buyer job ─── */
+// Titles reuse the homepage task-card keys so both pages name the same jobs.
+// Country risk joins once the five-factor scorecard's Free/Pro split settles (#9826).
+const PRO_JOBS = [
+  {
+    key: 'chokepoint',
+    icon: <Ship className="w-6 h-6" aria-hidden="true" />,
+    workflowHref: '/use-cases/monitor-supply-chain-disruptions/',
+    mapPath: `${DASHBOARD_URL}?layers=ais,waterways,tradeRoutes,hotspots,sanctions,cables&timeRange=24h`,
+  },
+  {
+    key: 'verify',
+    icon: <Search className="w-6 h-6" aria-hidden="true" />,
+    workflowHref: '/use-cases/verify-breaking-news/',
+    mapPath: `${DASHBOARD_URL}?layers=conflicts,hotspots,military,outages,natural&timeRange=7d`,
+  },
+] as const;
+
+const ProJobs = () => (
+  <section id="jobs" className="py-24 px-6 border-t border-wm-border">
+    <div className="max-w-5xl mx-auto">
+      <h2 className="text-3xl md:text-5xl font-display font-bold mb-4 text-center">{t('proJobs.title')}</h2>
+      <p className="text-lg text-wm-muted text-center max-w-2xl mx-auto">{t('proJobs.intro')}</p>
+      <div className="grid md:grid-cols-2 gap-6 mt-12">
+        {PRO_JOBS.map((job) => (
+          <div key={job.key} className="bg-wm-card border border-wm-border p-6 flex flex-col">
+            <div className="text-wm-green mb-4">{job.icon}</div>
+            <h3 className="font-display text-xl font-bold mb-4">{t(`welcome.tasks.${job.key}Title`)}</h3>
+            <p className="text-sm text-wm-muted leading-relaxed mb-3">
+              <strong className="font-mono text-xs uppercase tracking-wider text-wm-text">{t('tiers.free')}</strong>{' '}
+              {t(`proJobs.${job.key}Free`)}
+            </p>
+            <p className="text-sm text-wm-muted leading-relaxed">
+              <strong className="font-mono text-xs uppercase tracking-wider text-wm-green">{t('proJobs.proAdds')}</strong>{' '}
+              {t(`proJobs.${job.key}Pro`)}
+            </p>
+            <div className="mt-auto pt-6 flex flex-wrap gap-x-6 gap-y-2 font-mono text-xs">
+              <a href={job.workflowHref} className="text-wm-green hover:text-green-300 transition-colors inline-flex items-center gap-1">
+                {t('welcome.tasks.workflow')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
+              </a>
+              <a href={appendRefToUrl(job.mapPath, getRefCode())} className="text-wm-muted hover:text-wm-text transition-colors inline-flex items-center gap-1">
+                {t('proJobs.openMap')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
+              </a>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+);
+
 /* ─── 7. Pro Showcase + Slack Mock (current) ─── */
 const ProShowcase = () => (
   <section className="py-24 px-6 border-t border-wm-border bg-wm-card/30" id="pro">
@@ -1471,6 +1522,7 @@ export default function App() {
     <ProEntitlementProvider>
       <ProHomeShell footer={<Footer />}>
         <SourceMarquee />
+        <ProJobs />
         <Pillars />
         <WhyUpgrade />
         <TwoPathSplit />

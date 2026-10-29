@@ -70,6 +70,16 @@
     "buildOnIt": "Építsen rá",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) és MCP Claude-hoz, GPT-hez, saját LLM-ekhez."
   },
+  "proJobs": {
+    "title": "Mit kell elvégeznie?",
+    "intro": "Az ingyenes irányítópult az első rápillantást fedi le. Ezt adja hozzá a Pro az egyes feladatokhoz.",
+    "proAdds": "A Pro hozzáadja",
+    "openMap": "Térképnézet megnyitása",
+    "chokepointFree": "Szorosok, hajóforgalom, kereskedelmi útvonalak, szankciók és tenger alatti kábelek az élő térképen.",
+    "chokepointPro": "Költségsokk-modellezés és ellátásilánc-stressztesztek, riasztási szabályok, amelyek egy szoros változását Slackre, e-mailbe vagy webhookra küldik, és ütemezett összefoglaló az Ön szabályai szerint rangsorolva.",
+    "verifyFree": "Hírfolyam, amelyben minden hír a forrásához van rendelve, valamint konfliktus-, kimaradás- és természeti veszély-rétegek egy állítás ellenőrzéséhez.",
+    "verifyPro": "Hírszerzési memória a korábbi tudósítások kereséséhez és hasonló korábbi események megtalálásához, WM Analyst csevegés az élő szolgáltatásokon, és riasztási szabályok a nyomon követéshez."
+  },
   "deliveryDesk": {
     "eyebrow": "KÉZBESÍTŐPULT",
     "title": "Mi az a személyes intelligence desk?",

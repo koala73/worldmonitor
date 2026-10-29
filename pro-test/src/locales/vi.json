@@ -70,6 +70,16 @@
     "buildOnIt": "Xây dựng trên đó",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) và MCP cho Claude, GPT, LLM tùy chỉnh."
   },
+  "proJobs": {
+    "title": "Bạn cần hoàn thành việc gì?",
+    "intro": "Bảng điều khiển miễn phí đáp ứng cái nhìn đầu tiên. Đây là những gì Pro bổ sung cho từng công việc.",
+    "proAdds": "Pro bổ sung",
+    "openMap": "Mở chế độ xem bản đồ",
+    "chokepointFree": "Eo biển, lưu lượng tàu, tuyến thương mại, lệnh trừng phạt và cáp ngầm trên bản đồ trực tiếp.",
+    "chokepointPro": "Mô hình hóa cú sốc chi phí và kiểm tra sức chịu đựng của chuỗi cung ứng, quy tắc cảnh báo gửi thay đổi tại eo biển tới Slack, email hoặc webhook, và bản tóm tắt định kỳ được xếp hạng theo quy tắc của bạn.",
+    "verifyFree": "Nguồn tin trong đó mỗi bài đều ghi nguồn, cùng các lớp xung đột, gián đoạn và thiên tai để đối chiếu một tuyên bố.",
+    "verifyPro": "Bộ nhớ tình báo để tìm kiếm tin tức trước đây và tìm các sự kiện tương tự trước đó, trò chuyện WM Analyst trên các dịch vụ trực tiếp, và quy tắc cảnh báo để theo dõi tiếp."
+  },
   "deliveryDesk": {
     "eyebrow": "BÀN GIAO HÀNG",
     "title": "Bàn làm việc tình báo cá nhân là gì?",
