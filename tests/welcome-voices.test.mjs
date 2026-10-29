@@ -44,7 +44,9 @@ describe('homepage and /pro voices', () => {
     const cards = voicesSource.match(/export const VoiceCards = \(\) => \(([\s\S]*?)\n\);/)?.[1];
     assert.ok(cards, 'VoiceCards must be defined');
     assert.match(cards, /<ul className="[^"]*\bflex\b[^"]*\boverflow-x-auto\b[^"]*\bsnap-x\b/);
-    assert.match(cards, /<li [^>]*>\s*<a\s+href=\{voice\.href\}[^>]*>\s*<blockquote/);
+    assert.match(cards, /<li [^>]*>\s*<a\s+href=\{voice\.href\}[^>]*>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<blockquote/);
+    // The quotes are English on every locale, so screen readers must not voice them as the page language.
+    assert.match(cards, /<blockquote lang="en"/);
     assert.doesNotMatch(cards, /columns-\d/);
   });
 

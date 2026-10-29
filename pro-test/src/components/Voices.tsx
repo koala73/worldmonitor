@@ -66,7 +66,8 @@ export const VoiceCards = () => (
           rel="noopener noreferrer"
           className="flex flex-col w-full bg-wm-card border border-wm-border p-6 hover:border-wm-green transition-colors"
         >
-          <blockquote className="text-wm-text leading-relaxed flex-1">“{voice.quote}”</blockquote>
+          {/* Quotes stay verbatim in English on every locale; say so for screen readers. */}
+          <blockquote lang="en" className="text-wm-text leading-relaxed flex-1">“{voice.quote}”</blockquote>
           <span className="block mt-4 text-sm">
             <span className="font-bold text-wm-text">{voice.name}</span>
             <span className="text-wm-muted"> · {voice.role}</span>
