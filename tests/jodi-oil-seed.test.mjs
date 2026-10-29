@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +13,7 @@ import {
   computeOilDemandChange,
   jodiSourceYears,
   jodiCsvCandidates,
+  fetchCsv,
   fetchYearCsv,
   validateCoverage,
   mergeSourceRows,
@@ -820,6 +822,26 @@ describe('mergeSourceRows', () => {
     );
   });
 
+  it('keeps only kb/d and closing-stock rows, with a year file the size of JODI\'s inside a 128 MB heap', () => {
+    // A secondary year file is ~637k rows across five units, of which only
+    // KBD and KBBL closing stocks are read. Building every row first held
+    // ~640 MB of heap for the six files and, once the 2026 files downloaded,
+    // pushed JODI-Oil past the 1 GB Railway container (measured 2026-10-29).
+    const moduleUrl = new URL('../scripts/seed-jodi-oil.mjs', import.meta.url).href;
+    const script = `const m = await import(${JSON.stringify(moduleUrl)});
+      // 2,124 copies of a 300-row block: 637,200 rows, five units in equal shares.
+      const units = ['CONVBBL', 'KBBL', 'KBD', 'KL', 'KTONS'];
+      const flows = ['TOTDEMO', 'CLOSTLV', 'REFGROUT', 'TOTEXPSB', 'TOTIMPSB'];
+      const block = Array.from({ length: 300 }, (_, i) => 'A' + (i % 90) + ',2025-' + String((i % 12) + 1).padStart(2, '0') + ',GASDIES,' + flows[Math.floor(i / 5) % 5] + ',' + units[i % 5] + ',' + (i % 997) + '.125,1\\n').join('');
+      const text = 'REF_AREA,TIME_PERIOD,ENERGY_PRODUCT,FLOW_BREAKDOWN,UNIT_MEASURE,OBS_VALUE,ASSESSMENT_CODE\\n' + block.repeat(2124);
+      const rows = m.mergeSourceRows('', '', text, '');
+      process.stdout.write(JSON.stringify({ rows: rows.length, units: [...new Set(rows.map((r) => r.UNIT_MEASURE))].sort() }));`;
+    const child = spawnSync(process.execPath, ['--max-old-space-size=128', '--input-type=module', '-e', script], { encoding: 'utf8', timeout: 60_000 });
+    assert.equal(child.status, 0, child.stderr.slice(-400));
+    // Per block: 60 KBD rows plus 12 KBBL rows on the CLOSTLV flow.
+    assert.deepEqual(JSON.parse(child.stdout), { rows: 72 * 2124, units: ['KBBL', 'KBD'] });
+  });
+
   it('proceeds when current-year secondary succeeds but prior-year fails', () => {
     const primaryCsv = makeCsv([makeRow({ ENERGY_PRODUCT: 'CRUDEOIL' })]);
     const secondaryCsv = makeCsv([makeRow({ ENERGY_PRODUCT: 'GASDIES' })]);
@@ -994,6 +1016,54 @@ describe('JODI current-year source resolution (#6799)', () => {
     assert.equal(result.text, '');
     assert.match(result.error, /404/);
     assert.deepEqual(result.attempted, jodiCsvCandidates('primary', 2026));
+  });
+});
+
+// The year files are 7-26 MB and jodidata.org serves them at about 1 MB/s per
+// connection, so a fixed 30 s request timeout aborted every 2026 download on
+// Railway (2026-10-29). A download is cut only when it stops moving or runs
+// past its whole budget.
+describe('JODI CSV download timeouts', () => {
+  // A body that yields `chunks` pieces `gapMs` apart and errors on abort.
+  const trickle = (chunks, gapMs) => async (_url, { signal }) => {
+    const body = new ReadableStream({
+      async start(controller) {
+        signal.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+        for (let i = 0; i < chunks; i++) {
+          await new Promise((r) => setTimeout(r, gapMs));
+          if (signal.aborted) return;
+          controller.enqueue(new TextEncoder().encode(i === 0 ? 'REF_AREA,TIME_PERIOD\n' : `DE,2026-0${i}\n`));
+        }
+        controller.close();
+      },
+    });
+    return new Response(body, { status: 200 });
+  };
+
+  it('keeps a slow download that never stalls, past the per-chunk limit in total', async () => {
+    const text = await fetchCsv('https://jodi.test/a.csv', { fetchImpl: trickle(6, 40), stallMs: 100, budgetMs: 2000 });
+    assert.equal(text, 'REF_AREA,TIME_PERIOD\nDE,2026-01\nDE,2026-02\nDE,2026-03\nDE,2026-04\nDE,2026-05\n');
+  });
+
+  it('aborts a download that stops sending', async () => {
+    const started = Date.now();
+    await assert.rejects(
+      fetchCsv('https://jodi.test/a.csv', { fetchImpl: trickle(3, 400), stallMs: 100, budgetMs: 5000 }),
+      /stalled/,
+    );
+    assert.ok(Date.now() - started < 1000, `took ${Date.now() - started} ms`);
+  });
+
+  it('aborts a download past its whole budget, and does not retry it', async () => {
+    const err = await fetchCsv('https://jodi.test/a.csv', { fetchImpl: trickle(50, 30), stallMs: 200, budgetMs: 300 }).catch((e) => e);
+    assert.match(err?.message ?? '', /exceeded/);
+    assert.equal(err.nonRetryable, true, 'a steady but slow transfer will not finish faster on a retry');
+  });
+
+  it('keeps a 404 non-retryable', async () => {
+    const err = await fetchCsv('https://jodi.test/2026.csv', { fetchImpl: async () => new Response('missing', { status: 404 }) }).catch((e) => e);
+    assert.match(err.message, /HTTP 404/);
+    assert.equal(err.nonRetryable, true);
   });
 });
 
