@@ -45,6 +45,17 @@ describe('/pro job section', () => {
     }
   });
 
+  it('names each card link after its job so screen-reader link lists can tell them apart', () => {
+    const component = app.match(/const ProJobs = \(\) => \(([\s\S]*?)\n\);/)?.[1];
+    assert.ok(component, 'ProJobs must be defined in App.tsx');
+    assert.match(component, /<h3 id=\{`job-\$\{job\.key\}-title`\}/);
+    const links = [...component.matchAll(/<a href=[^>]*>/g)].map((m) => m[0]);
+    assert.equal(links.length, 2);
+    for (const link of links) {
+      assert.match(link, /aria-labelledby=\{`job-\$\{job\.key\}-\w+ job-\$\{job\.key\}-title`\}/, link);
+    }
+  });
+
   it('puts the jobs in the crawlable overview ahead of the feature lists', () => {
     const jobs = overview.indexOf('<h2>What can you get done with World Monitor Pro?</h2>');
     const features = overview.indexOf('<h2>What does World Monitor Pro include?</h2>');
