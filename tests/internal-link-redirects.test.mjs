@@ -656,7 +656,7 @@ describe('internal links never redirect or 404 (#8603)', () => {
     const sectionFiles = readdirSync(welcomeDir).filter((file) => file.endsWith('.tsx'));
     assert.ok(sectionFiles.length > 0, 'expected welcome section sources to scan');
     // WelcomeApp renders Footer and LegalFooterNav outside pro-test/src/welcome.
-    // PressFooterNav is third-party press URLs and stays out.
+    // PressNav is third-party press URLs and stays out.
     const files = [
       ...sectionFiles.map((file) => `pro-test/src/welcome/${file}`),
       'pro-test/src/components/Footer.tsx',
