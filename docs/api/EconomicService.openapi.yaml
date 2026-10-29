@@ -3423,7 +3423,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetFoodPrices
-            description: GetFoodPrices returns local-currency market prices with exact prior-week comparisons, plus dated GIEWS and Tunisia context. Missing comparisons are explicitly unavailable. Market, product, origin, unit and currency must match; levels are not comparable across countries.
+            description: GetFoodPrices returns local-currency market prices with exact prior-week comparisons, plus dated GIEWS and Tunisia context. Missing comparisons are explicitly unavailable. Market, market type, product, origin, unit and currency must match; levels are not comparable across countries.
             operationId: GetFoodPrices
             parameters:
                 - name: jmespath

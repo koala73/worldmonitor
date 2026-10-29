@@ -139,13 +139,18 @@ export class FaoFoodPriceIndexPanel extends Panel {
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
-      this.monthly.replaceChildren(h('p', {}, t('common.failedMarketData')));
+      this.showMonthlyError();
     }
+  }
+
+  private showMonthlyError(): void {
+    this.monthly.replaceChildren(h('p', {}, t('common.failedMarketData')),
+      h('button', { type: 'button', onclick: () => void this.fetchMonthly() }, t('common.retry')));
   }
 
   private renderChart(data: GetFaoFoodPriceIndexResponse): void {
     if (!data.points?.length) {
-      this.monthly.replaceChildren(h('p', {}, t('common.failedMarketData')));
+      this.showMonthlyError();
       return;
     }
 

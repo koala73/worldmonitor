@@ -69,3 +69,8 @@ it('keeps the context disclosure and keyboard focus through updates', () => {
   select.value = 'cbsl'; select.dispatchEvent(new Event('change'));
   expect(host.querySelector('details')!.open).toBe(true);
 });
+
+it('preserves the three-decimal precision of Tunisian dinar prices', () => {
+  new FoodPricesCard(host).update([source({ id: 'onagri', country: 'Tunisia', contextOnly: true, prices: [{ ...row, price: 0.574, currency: 'TND' }] })]);
+  expect(host.textContent).toContain('0.574 TND');
+});

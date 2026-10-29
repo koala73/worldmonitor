@@ -35,3 +35,33 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     expect(overflow).toEqual({ panel: 0, document: 0 });
   });
 }
+
+for (const failure of ['http', 'empty']) {
+  test(`food prices: monthly ${failure} recovery keeps local prices`, async ({ page }) => {
+    let failed = true;
+    await page.route('**/api/**', route => route.fulfill({ json: {} }));
+    await page.route('**/api/economic/v1/get-food-prices*', route => route.fulfill({ json: fixture }));
+    await page.route('**/api/economic/v1/get-fao-food-price-index*', route => failed
+      ? route.fulfill({ status: failure === 'http' ? 503 : 200, json: {} })
+      : route.fulfill({ json: { points: [{ date: '2026-09', ffpi: 126 }], currentFfpi: 126, momPct: 0.8, yoyPct: 2.1 } }));
+    await page.addInitScript(() => {
+      localStorage.setItem('wm-layer-warning-dismissed', 'true');
+      localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
+      localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+      localStorage.setItem('wm-pro-key', 'wm-test-food-prices');
+      localStorage.setItem('worldmonitor-panels', JSON.stringify({ 'fao-food-price-index': { name: 'Food prices', enabled: true, priority: 0 } }));
+    });
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
+    const panel = page.locator('[data-panel="fao-food-price-index"]');
+    await panel.scrollIntoViewIfNeeded();
+    await panel.getByLabel('Country', { exact: true }).selectOption('da');
+    await expect(panel.locator('.food-prices-table').first()).toContainText('PHP');
+    const monthly = panel.locator('.fao-monthly-context');
+    await expect(monthly.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+    failed = false;
+    await monthly.getByRole('button', { name: 'Retry', exact: true }).click();
+    await expect(monthly.locator('.fao-index-value')).toHaveText('126.0');
+    await expect(panel.locator('.food-prices-table').first()).toContainText('PHP');
+  });
+}

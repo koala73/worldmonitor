@@ -43,7 +43,7 @@ export class FoodPricesCard {
   }
 
   private table(prices: FoodMarketPrice[], contextOnly: boolean): HTMLElement {
-    const format = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+    const format = new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 });
     return h('div', { className: 'food-prices-table-wrap', tabIndex: 0, role: 'region', 'aria-label': label('prices') },
       h('table', { className: 'food-prices-table' },
         h('thead', {}, h('tr', {}, ...[label('product'), label('price'), ...(contextOnly ? [] : [label('weekly')])].map(text => h('th', { scope: 'col' }, text)))),

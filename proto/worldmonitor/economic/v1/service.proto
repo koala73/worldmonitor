@@ -183,7 +183,7 @@ service EconomicService {
     option (sebuf.http.config) = {path: "/get-fao-food-price-index", method: HTTP_METHOD_GET};
   }
 
-  // GetFoodPrices returns local-currency market prices with exact prior-week comparisons, plus dated GIEWS and Tunisia context. Missing comparisons are explicitly unavailable. Market, product, origin, unit and currency must match; levels are not comparable across countries.
+  // GetFoodPrices returns local-currency market prices with exact prior-week comparisons, plus dated GIEWS and Tunisia context. Missing comparisons are explicitly unavailable. Market, market type, product, origin, unit and currency must match; levels are not comparable across countries.
   rpc GetFoodPrices(GetFoodPricesRequest) returns (GetFoodPricesResponse) {
     option (sebuf.http.config) = {path: "/get-food-prices", method: HTTP_METHOD_GET};
   }
