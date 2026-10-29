@@ -70,6 +70,23 @@
     "buildOnIt": "Construiește deasupra",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + IA) și MCP pentru Claude, GPT, LLM-uri proprii."
   },
+  "proJobs": {
+    "intro": "Panoul gratuit acoperă prima privire. Iată ce adaugă Pro pentru fiecare sarcină.",
+    "proAdds": "Pro adaugă",
+    "investorsJob": "Vedeți cum un război, o sancțiune sau un șoc de aprovizionare ajunge la pozițiile dumneavoastră.",
+    "investorsPro": "Analiză de acțiuni și backtesting cu AI, o listă de urmărire a piețelor cu date macro și bănci centrale, și implicațiile de piață ale fiecărui eveniment cu AI.",
+    "tradersJob": "Surprindeți o perturbare la o strâmtoare, conductă sau port înainte să miște prețul.",
+    "tradersPro": "Modelarea șocurilor de cost, teste de stres pentru lanțurile de aprovizionare și reguli de alertă care trimit o schimbare la o strâmtoare către Slack, e-mail sau un webhook.",
+    "researchersJob": "Explicați de ce s-a schimbat riscul unei țări, cu fiecare sursă citată.",
+    "researchersPro": "Memorie de informații pentru căutarea relatărilor anterioare și a evenimentelor similare, date despre datoria suverană și minerale, și chat WM Analyst peste serviciile live.",
+    "journalistsJob": "Verificați o afirmație de ultimă oră cu surse atribuite înainte de publicare.",
+    "journalistsPro": "Memorie de informații pentru cronologii și evenimente anterioare similare, chat WM Analyst și reguli de alertă pentru urmărire.",
+    "govJob": "Urmăriți escaladarea conflictelor și tulburările din regiunile pe care le acoperiți.",
+    "govPro": "Un rezumat AI programat, ordonat după regulile dumneavoastră de alertă, zilnic, de două ori pe zi sau săptămânal, plus alerte în timp real pentru evenimente critice.",
+    "teamsJob": "Urmăriți locațiile, rutele și furnizorii de care depinde organizația dumneavoastră.",
+    "teamsPro": "Pro Business licențiază Pro pentru uz profesional, cu export CSV, JSON și PDF. Planurile API adaugă acces REST și webhook-uri.",
+    "allWorkflows": "Toate fluxurile de monitorizare"
+  },
   "deliveryDesk": {
     "eyebrow": "BIROU DE LIVRARE",
     "title": "Ce este biroul de intelligence personal?",
@@ -96,17 +113,11 @@
   "audience": {
     "title": "Pentru cine este World Monitor?",
     "investorsTitle": "Investitori și manageri de portofoliu",
-    "investorsDesc": "Urmărește acțiuni globale, ținte de analiști, metrici de evaluare și indicatori macro alături de semnale de risc geopolitic.",
     "tradersTitle": "Traderi energie și mărfuri",
-    "tradersDesc": "Urmărește mișcări de nave, inferență de încărcătură, perturbări de lanț de aprovizionare și semnale geopolitice care mișcă piețele.",
     "researchersTitle": "Cercetători și analiști",
-    "researchersDesc": "Equity research, analitică economică și cadre geopolitice pentru analiză și raportare mai profundă.",
     "journalistsTitle": "Jurnaliști și media",
-    "journalistsDesc": "Urmărește evoluții rapide pe piețe și regiuni fără să cusuți surse manual.",
     "govTitle": "Guvern și instituții",
-    "govDesc": "Urmărire politică macro, monitoring bănci centrale și conștientizare situațională pe semnale geopolitice și de infrastructură.",
-    "teamsTitle": "Echipe și organizații",
-    "teamsDesc": "Treci de la uz individual la fluxuri partajate, acces API, aplicații TV și deployment gestionat."
+    "teamsTitle": "Echipe și organizații"
   },
   "dataCoverage": {
     "title": "Ce monitorizează World Monitor?",

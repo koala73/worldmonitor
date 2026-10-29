@@ -70,6 +70,23 @@
     "buildOnIt": "Bouw erop voort",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) en MCP voor Claude, GPT, eigen LLM's."
   },
+  "proJobs": {
+    "intro": "Het gratis dashboard dekt de eerste blik. Dit voegt Pro toe voor elke taak.",
+    "proAdds": "Pro voegt toe",
+    "investorsJob": "Zie hoe een oorlog, sanctie of leveringsschok uw posities raakt.",
+    "investorsPro": "AI-aandelenanalyse en backtesting, een markt-watchlist met macro- en centralebanktracking, en AI-marktgevolgen per gebeurtenis.",
+    "tradersJob": "Signaleer een verstoring bij een zee-engte, pijpleiding of haven voordat die de prijs beweegt.",
+    "tradersPro": "Kostenschokmodellering, stresstests voor toeleveringsketens en waarschuwingsregels die een wijziging bij een zee-engte naar Slack, e-mail of een webhook sturen.",
+    "researchersJob": "Leg uit waarom het risico van een land is veranderd, met elke bron vermeld.",
+    "researchersPro": "Intel-geheugen om eerdere berichtgeving en vergelijkbare gebeurtenissen te doorzoeken, gegevens over staatsschuld en mineralen, en WM Analyst-chat over de live diensten.",
+    "journalistsJob": "Toets een breaking claim aan toegeschreven bronnen voordat u publiceert.",
+    "journalistsPro": "Intel-geheugen voor tijdlijnen en vergelijkbare eerdere gebeurtenissen, WM Analyst-chat en waarschuwingsregels voor opvolging.",
+    "govJob": "Volg conflictescalatie en onrust in de regio’s die u volgt.",
+    "govPro": "Een geplande AI-digest gerangschikt volgens uw waarschuwingsregels, dagelijks, twee keer per dag of wekelijks, plus realtime waarschuwingen bij kritieke gebeurtenissen.",
+    "teamsJob": "Houd de locaties, routes en leveranciers in de gaten waarvan uw organisatie afhankelijk is.",
+    "teamsPro": "Pro Business licentieert Pro voor zakelijk gebruik, met export naar CSV, JSON en PDF. API-abonnementen voegen REST-toegang en webhooks toe.",
+    "allWorkflows": "Alle monitoringworkflows bekijken"
+  },
   "deliveryDesk": {
     "eyebrow": "AFLEVERBALIE",
     "title": "Wat is het persoonlijke inlichtingenburo?",
@@ -96,17 +113,11 @@
   "audience": {
     "title": "Voor wie is World Monitor gebouwd?",
     "investorsTitle": "Beleggers en portefeuillemanagers",
-    "investorsDesc": "Volg wereldwijde aandelen, analistenkoersen, waarderingsmetrics en macro-indicatoren samen met geopolitieke risicosignalen.",
     "tradersTitle": "Energie- en grondstoffentraders",
-    "tradersDesc": "Volg scheepsbewegingen, cargo-inferentie, verstoringen in de toeleveringsketen en geopolitieke signalen die markten bewegen.",
     "researchersTitle": "Onderzoekers en analisten",
-    "researchersDesc": "Equity research, economische analytics en geopolitieke frameworks voor diepere analyse en rapportage.",
     "journalistsTitle": "Journalisten en media",
-    "journalistsDesc": "Volg snelle ontwikkelingen over markten en regio's zonder bronnen handmatig aan elkaar te knopen.",
     "govTitle": "Overheid en instellingen",
-    "govDesc": "Macrobeleids-tracking, monitoring van centrale banken en situationeel bewustzijn over geopolitieke en infrastructuursignalen.",
-    "teamsTitle": "Teams en organisaties",
-    "teamsDesc": "Ga van individueel gebruik naar gedeelde workflows, API-toegang, TV-apps en beheerde deployments."
+    "teamsTitle": "Teams en organisaties"
   },
   "dataCoverage": {
     "title": "Wat volgt World Monitor?",

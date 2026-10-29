@@ -70,6 +70,23 @@
     "buildOnIt": "Gradite na njemu",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) i MCP za Claude, GPT i vlastite LLM-ove."
   },
+  "proJobs": {
+    "intro": "Besplatna nadzorna ploča pokriva prvi pogled. Evo što Pro dodaje za svaki zadatak.",
+    "proAdds": "Pro dodaje",
+    "investorsJob": "Pogledajte kako rat, sankcija ili šok u opskrbi dolazi do vaših pozicija.",
+    "investorsPro": "AI analiza dionica i backtesting, popis praćenja tržišta s makroekonomijom i središnjim bankama te AI tržišne posljedice svakog događaja.",
+    "tradersJob": "Uočite poremećaj na tjesnacu, naftovodu ili luci prije nego što pomakne cijenu.",
+    "tradersPro": "Modeliranje troškovnih šokova, testovi otpornosti opskrbnih lanaca i pravila upozorenja koja promjenu na tjesnacu šalju na Slack, e-poštu ili webhook.",
+    "researchersJob": "Objasnite zašto se rizik zemlje promijenio, uz navedeni svaki izvor.",
+    "researchersPro": "Obavještajna memorija za pretraživanje ranijeg izvještavanja i sličnih događaja, podaci o državnom dugu i mineralima te chat s WM Analystom nad uslugama uživo.",
+    "journalistsJob": "Provjerite hitnu tvrdnju prema pripisanim izvorima prije objave.",
+    "journalistsPro": "Obavještajna memorija za vremenske crte i slične ranije događaje, chat s WM Analystom i pravila upozorenja za praćenje.",
+    "govJob": "Pratite eskalaciju sukoba i nemire u regijama koje pokrivate.",
+    "govPro": "Zakazani AI sažetak poredan prema vašim pravilima upozorenja, dnevno, dvaput dnevno ili tjedno, uz upozorenja u stvarnom vremenu za kritične događaje.",
+    "teamsJob": "Pratite lokacije, rute i dobavljače o kojima ovisi vaša organizacija.",
+    "teamsPro": "Pro Business licencira Pro za poslovnu upotrebu, uz izvoz u CSV, JSON i PDF. API planovi dodaju REST pristup i webhookove.",
+    "allWorkflows": "Pregledaj sve postupke praćenja"
+  },
   "deliveryDesk": {
     "eyebrow": "DOSTAVNI PULT",
     "title": "Što je osobni obavještajni stol?",
@@ -96,17 +113,11 @@
   "audience": {
     "title": "Za koga je World Monitor napravljen?",
     "investorsTitle": "Investitori i upravitelji portfelja",
-    "investorsDesc": "Pratite globalne dionice, ciljne cijene analitičara, metrike vrednovanja i makro pokazatelje uz signale geopolitičkog rizika.",
     "tradersTitle": "Trgovci energijom i robama",
-    "tradersDesc": "Pratite kretanja brodova, inferenciju tereta, poremećaje opskrbnog lanca i geopolitičke signale koji pokreću tržišta.",
     "researchersTitle": "Istraživači i analitičari",
-    "researchersDesc": "Istraživanje dionica, ekonomska analitika i geopolitički okviri za dublju analizu i izvještavanje.",
     "journalistsTitle": "Novinari i mediji",
-    "journalistsDesc": "Pratite brze događaje kroz tržišta i regije bez ručnog spajanja izvora.",
     "govTitle": "Vlada i institucije",
-    "govDesc": "Praćenje makro politika, monitoring središnjih banaka i situacijska svijest kroz geopolitičke i infrastrukturne signale.",
-    "teamsTitle": "Timovi i organizacije",
-    "teamsDesc": "Prijeđite s individualnog korištenja na zajedničke radne tokove, API pristup, TV aplikacije i upravljane implementacije."
+    "teamsTitle": "Timovi i organizacije"
   },
   "dataCoverage": {
     "title": "Što World Monitor prati?",

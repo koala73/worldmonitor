@@ -191,6 +191,23 @@
     "buildOnIt": "Build on it",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) and MCP for Claude, GPT, custom LLMs."
   },
+  "proJobs": {
+    "intro": "The free dashboard covers the first look. Here is what Pro adds for each job.",
+    "proAdds": "Pro adds",
+    "investorsJob": "See how a war, sanction or supply shock reaches your positions.",
+    "investorsPro": "AI stock analysis and backtesting, a market watchlist with macro and central-bank tracking, and AI market implications for each event.",
+    "tradersJob": "Catch a chokepoint, pipeline or port disruption before it moves the price.",
+    "tradersPro": "Cost-shock modelling, supply-chain stress tests, and alert rules that send a chokepoint change to Slack, email or a webhook.",
+    "researchersJob": "Explain why a country’s risk moved, with every source cited.",
+    "researchersPro": "Intel memory to search past coverage and similar earlier events, sovereign-debt and minerals data, and WM Analyst chat across the live services.",
+    "journalistsJob": "Check a breaking claim against attributed sources before you publish.",
+    "journalistsPro": "Intel memory for timelines and similar earlier events, WM Analyst chat, and alert rules for follow-up.",
+    "govJob": "Track conflict escalation and unrest across the regions you cover.",
+    "govPro": "A scheduled AI digest ranked by your alert rules, daily, twice daily or weekly, plus real-time alerts for critical events.",
+    "teamsJob": "Watch the sites, routes and suppliers your organization depends on.",
+    "teamsPro": "Pro Business licenses Pro for work, with CSV, JSON and PDF export. API plans add REST access and webhooks.",
+    "allWorkflows": "Browse all monitoring workflows"
+  },
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
     "title": "What is the personal intelligence desk?",
@@ -217,17 +234,11 @@
   "audience": {
     "title": "Who is World Monitor built for?",
     "investorsTitle": "Investors & portfolio managers",
-    "investorsDesc": "Track global equities, analyst targets, valuation metrics, and macro indicators alongside geopolitical risk signals.",
     "tradersTitle": "Energy & commodities traders",
-    "tradersDesc": "Track vessel movements, cargo inference, supply chain disruptions, and market-moving geopolitical signals.",
     "researchersTitle": "Researchers & analysts",
-    "researchersDesc": "Equity research, economy analytics, and geopolitical frameworks for deeper analysis and reporting.",
     "journalistsTitle": "Journalists & media",
-    "journalistsDesc": "Follow fast-moving developments across markets and regions without stitching sources together manually.",
     "govTitle": "Government & institutions",
-    "govDesc": "Macro policy tracking, central bank monitoring, and situational awareness across geopolitical and infrastructure signals.",
-    "teamsTitle": "Teams & organizations",
-    "teamsDesc": "Move from individual use to shared workflows, API access, TV apps, and managed deployments."
+    "teamsTitle": "Teams & organizations"
   },
   "dataCoverage": {
     "title": "What does World Monitor track?",

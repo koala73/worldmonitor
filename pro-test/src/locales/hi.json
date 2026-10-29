@@ -70,6 +70,23 @@
     "buildOnIt": "इस पर निर्माण करें",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) और Claude, GPT, custom LLMs के लिए MCP."
   },
+  "proJobs": {
+    "intro": "मुफ़्त डैशबोर्ड पहली नज़र देता है। हर काम के लिए Pro यह जोड़ता है।",
+    "proAdds": "Pro जोड़ता है",
+    "investorsJob": "देखें कि कोई युद्ध, प्रतिबंध या आपूर्ति का झटका आपकी पोज़ीशन तक कैसे पहुँचता है।",
+    "investorsPro": "AI स्टॉक विश्लेषण और बैकटेस्टिंग, मैक्रो और केंद्रीय बैंक ट्रैकिंग के साथ मार्केट वॉचलिस्ट, और हर घटना के बाज़ार पर AI प्रभाव।",
+    "tradersJob": "किसी चोकपॉइंट, पाइपलाइन या बंदरगाह की रुकावट को कीमत हिलने से पहले पकड़ें।",
+    "tradersPro": "लागत-झटके का मॉडल, सप्लाई-चेन स्ट्रेस टेस्ट, और अलर्ट नियम जो चोकपॉइंट में बदलाव को Slack, ईमेल या webhook पर भेजते हैं।",
+    "researchersJob": "समझाएँ कि किसी देश का जोखिम क्यों बदला, हर स्रोत के हवाले के साथ।",
+    "researchersPro": "पिछली कवरेज और मिलती-जुलती घटनाएँ खोजने के लिए इंटेल मेमोरी, सरकारी कर्ज़ और खनिज डेटा, और लाइव सेवाओं पर WM Analyst चैट।",
+    "journalistsJob": "प्रकाशित करने से पहले किसी ताज़ा दावे को स्रोत-सहित सूचनाओं से जाँचें।",
+    "journalistsPro": "टाइमलाइन और पुरानी मिलती-जुलती घटनाओं के लिए इंटेल मेमोरी, WM Analyst चैट, और आगे की निगरानी के लिए अलर्ट नियम।",
+    "govJob": "जिन क्षेत्रों को आप कवर करते हैं, वहाँ संघर्ष के बढ़ने और अशांति पर नज़र रखें।",
+    "govPro": "आपके अलर्ट नियमों के अनुसार क्रमबद्ध निर्धारित AI डाइजेस्ट, रोज़, दिन में दो बार या साप्ताहिक, और गंभीर घटनाओं के लिए रियल-टाइम अलर्ट।",
+    "teamsJob": "उन साइटों, मार्गों और आपूर्तिकर्ताओं पर नज़र रखें जिन पर आपका संगठन निर्भर है।",
+    "teamsPro": "Pro Business काम के लिए Pro का लाइसेंस देता है, CSV, JSON और PDF एक्सपोर्ट के साथ। API प्लान REST एक्सेस और webhooks जोड़ते हैं।",
+    "allWorkflows": "सभी मॉनिटरिंग वर्कफ़्लो देखें"
+  },
   "deliveryDesk": {
     "eyebrow": "डिलीवरी डेस्क",
     "title": "व्यक्तिगत इंटेलिजेंस डेस्क क्या है?",
@@ -96,17 +113,11 @@
   "audience": {
     "title": "World Monitor किसके लिए बनाया गया है?",
     "investorsTitle": "Investors और portfolio managers",
-    "investorsDesc": "Global equities, analyst targets, valuation metrics और macro indicators को geopolitical risk signals के साथ track करें।",
     "tradersTitle": "Energy और commodities traders",
-    "tradersDesc": "Vessel movements, cargo inference, supply chain disruptions और market-moving geopolitical signals track करें।",
     "researchersTitle": "Researchers और analysts",
-    "researchersDesc": "गहरी analysis और reporting के लिए equity research, economy analytics और geopolitical frameworks।",
     "journalistsTitle": "Journalists और media",
-    "journalistsDesc": "Sources को manually जोड़ने के बिना markets और regions में तेज़ी से बदलती developments follow करें।",
     "govTitle": "Government और institutions",
-    "govDesc": "Macro policy tracking, central bank monitoring और geopolitical व infrastructure signals पर situational awareness।",
-    "teamsTitle": "Teams और organizations",
-    "teamsDesc": "Individual use से shared workflows, API access, TV apps और managed deployments तक जाएँ।"
+    "teamsTitle": "Teams और organizations"
   },
   "dataCoverage": {
     "title": "World Monitor क्या ट्रैक करता है?",

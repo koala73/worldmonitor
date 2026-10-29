@@ -70,6 +70,23 @@
     "buildOnIt": "그 위에 쌓기",
     "buildOnItDesc": "커스텀 위젯 빌더 (HTML/CSS/JS + AI)와 Claude, GPT, 자체 LLM용 MCP."
   },
+  "proJobs": {
+    "intro": "무료 대시보드로 첫 확인을 할 수 있습니다. 각 작업에 Pro가 더하는 것은 다음과 같습니다.",
+    "proAdds": "Pro 추가 기능",
+    "investorsJob": "전쟁, 제재, 공급 충격이 내 포지션에 어떻게 닿는지 확인하세요.",
+    "investorsPro": "AI 주식 분석과 백테스팅, 거시 지표와 중앙은행을 추적하는 시장 관심 목록, 사건별 AI 시장 영향 분석.",
+    "tradersJob": "초크포인트, 파이프라인, 항만의 차질을 가격이 움직이기 전에 포착하세요.",
+    "tradersPro": "비용 충격 모델링, 공급망 스트레스 테스트, 초크포인트 변화를 Slack·이메일·webhook으로 보내는 알림 규칙.",
+    "researchersJob": "한 국가의 위험이 왜 움직였는지 모든 출처를 밝혀 설명하세요.",
+    "researchersPro": "과거 보도와 비슷한 사건을 찾는 인텔 메모리, 국가 부채와 광물 데이터, 실시간 서비스 전반의 WM Analyst 채팅.",
+    "journalistsJob": "게시하기 전에 속보 주장을 출처가 밝혀진 자료와 대조하세요.",
+    "journalistsPro": "타임라인과 비슷한 이전 사건을 위한 인텔 메모리, WM Analyst 채팅, 후속 추적용 알림 규칙.",
+    "govJob": "담당 지역의 분쟁 격화와 소요를 추적하세요.",
+    "govPro": "알림 규칙에 따라 순위를 매긴 AI 다이제스트를 매일, 하루 두 번 또는 매주 받고, 중대한 사건은 실시간으로 알림.",
+    "teamsJob": "조직이 의존하는 사업장, 경로, 공급업체를 지켜보세요.",
+    "teamsPro": "Pro Business는 Pro를 업무용으로 라이선스하며 CSV, JSON, PDF 내보내기를 제공합니다. API 플랜은 REST 접근과 webhook을 추가합니다.",
+    "allWorkflows": "모든 모니터링 워크플로 보기"
+  },
   "deliveryDesk": {
     "eyebrow": "딜리버리 데스크",
     "title": "개인 인텔리전스 데스크란 무엇인가요?",
@@ -96,17 +113,11 @@
   "audience": {
     "title": "World Monitor는 누구를 위해 만들어졌나요?",
     "investorsTitle": "투자자와 포트폴리오 매니저",
-    "investorsDesc": "글로벌 주식, 애널리스트 목표, 평가 지표, 매크로 지표를 지정학 리스크 시그널과 함께 추적.",
     "tradersTitle": "에너지 및 원자재 트레이더",
-    "tradersDesc": "선박 이동, 화물 추론, 공급망 교란, 시장을 움직이는 지정학 시그널을 추적.",
     "researchersTitle": "연구자와 애널리스트",
-    "researchersDesc": "더 깊은 분석과 리포팅을 위한 Equity research, 경제 분석, 지정학 프레임워크.",
     "journalistsTitle": "저널리스트와 미디어",
-    "journalistsDesc": "소스를 수작업으로 잇지 않고도 시장과 지역 전반의 빠른 전개를 추적.",
     "govTitle": "정부와 기관",
-    "govDesc": "지정학과 인프라 시그널 전반의 매크로 정책 추적, 중앙은행 모니터링, 상황 인식.",
-    "teamsTitle": "팀과 조직",
-    "teamsDesc": "개인 사용에서 공유 워크플로, API 접근, TV 앱, 관리형 배포로 이동."
+    "teamsTitle": "팀과 조직"
   },
   "dataCoverage": {
     "title": "World Monitor는 무엇을 추적하나요?",

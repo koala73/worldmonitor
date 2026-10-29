@@ -70,6 +70,23 @@
     "buildOnIt": "Construisez dessus",
     "buildOnItDesc": "Constructeur de widgets personnalisés (HTML/CSS/JS + IA) et MCP pour Claude, GPT, LLMs personnalisés."
   },
+  "proJobs": {
+    "intro": "Le tableau de bord gratuit couvre le premier coup d’œil. Voici ce que Pro ajoute pour chaque tâche.",
+    "proAdds": "Pro ajoute",
+    "investorsJob": "Voyez comment une guerre, une sanction ou un choc d’approvisionnement atteint vos positions.",
+    "investorsPro": "Analyse d’actions et backtesting par IA, une liste de suivi des marchés avec macro et banques centrales, et les implications de marché de chaque événement par IA.",
+    "tradersJob": "Repérez une perturbation sur un détroit, un oléoduc ou un port avant qu’elle ne fasse bouger le prix.",
+    "tradersPro": "Modélisation des chocs de coûts, tests de résistance des chaînes d’approvisionnement et règles d’alerte qui envoient un changement sur un détroit vers Slack, e-mail ou un webhook.",
+    "researchersJob": "Expliquez pourquoi le risque d’un pays a bougé, chaque source citée.",
+    "researchersPro": "Mémoire de renseignement pour fouiller la couverture passée et les événements similaires, données de dette souveraine et de minerais, et chat WM Analyst sur les services en direct.",
+    "journalistsJob": "Vérifiez une affirmation de dernière minute à l’aide de sources attribuées avant de publier.",
+    "journalistsPro": "Mémoire de renseignement pour les chronologies et les événements antérieurs similaires, chat WM Analyst et règles d’alerte pour le suivi.",
+    "govJob": "Suivez l’escalade des conflits et les troubles dans les régions que vous couvrez.",
+    "govPro": "Un digest IA programmé, classé selon vos règles d’alerte, quotidien, biquotidien ou hebdomadaire, plus des alertes en temps réel pour les événements critiques.",
+    "teamsJob": "Surveillez les sites, les itinéraires et les fournisseurs dont dépend votre organisation.",
+    "teamsPro": "Pro Business licencie Pro pour un usage professionnel, avec export CSV, JSON et PDF. Les offres API ajoutent l’accès REST et les webhooks.",
+    "allWorkflows": "Parcourir tous les workflows de veille"
+  },
   "deliveryDesk": {
     "eyebrow": "BUREAU DE LIVRAISON",
     "title": "Qu'est-ce que le bureau d'intelligence personnalisé ?",
@@ -96,17 +113,11 @@
   "audience": {
     "title": "Pour qui World Monitor est-il conçu ?",
     "investorsTitle": "Investisseurs et gestionnaires de portefeuille",
-    "investorsDesc": "Suivez actions globales, objectifs d'analystes, métriques de valorisation et indicateurs macro aux côtés des signaux de risque géopolitique.",
     "tradersTitle": "Traders énergie et matières premières",
-    "tradersDesc": "Suivez mouvements de navires, inférence de cargaison, disruptions de chaîne d'approvisionnement et signaux géopolitiques qui font bouger les marchés.",
     "researchersTitle": "Chercheurs et analystes",
-    "researchersDesc": "Recherche actions, analytique économique et cadres géopolitiques pour analyse et reporting plus approfondis.",
     "journalistsTitle": "Journalistes et médias",
-    "journalistsDesc": "Suivez des événements rapides à travers marchés et régions sans agréger les sources manuellement.",
     "govTitle": "Gouvernement et institutions",
-    "govDesc": "Suivi de politique macro, monitoring des banques centrales et conscience situationnelle sur signaux géopolitiques et infrastructures.",
-    "teamsTitle": "Équipes et organisations",
-    "teamsDesc": "Passez de l'usage individuel à des workflows partagés, accès API, apps TV et déploiements gérés."
+    "teamsTitle": "Équipes et organisations"
   },
   "dataCoverage": {
     "title": "Que surveille World Monitor ?",

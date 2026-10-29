@@ -70,6 +70,23 @@
     "buildOnIt": "Xây dựng trên đó",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) và MCP cho Claude, GPT, LLM tùy chỉnh."
   },
+  "proJobs": {
+    "intro": "Bảng điều khiển miễn phí đáp ứng cái nhìn đầu tiên. Đây là những gì Pro bổ sung cho từng công việc.",
+    "proAdds": "Pro bổ sung",
+    "investorsJob": "Xem một cuộc chiến, lệnh trừng phạt hay cú sốc nguồn cung tác động tới vị thế của bạn thế nào.",
+    "investorsPro": "Phân tích cổ phiếu và backtest bằng AI, danh sách theo dõi thị trường kèm vĩ mô và ngân hàng trung ương, và tác động thị trường của từng sự kiện bằng AI.",
+    "tradersJob": "Phát hiện gián đoạn tại eo biển, đường ống hay cảng trước khi giá biến động.",
+    "tradersPro": "Mô hình hóa cú sốc chi phí, kiểm tra sức chịu đựng chuỗi cung ứng, và quy tắc cảnh báo gửi thay đổi tại eo biển tới Slack, email hoặc webhook.",
+    "researchersJob": "Giải thích vì sao rủi ro của một quốc gia thay đổi, kèm trích dẫn mọi nguồn.",
+    "researchersPro": "Bộ nhớ tình báo để tìm tin tức trước đây và sự kiện tương tự, dữ liệu nợ công và khoáng sản, và trò chuyện WM Analyst trên các dịch vụ trực tiếp.",
+    "journalistsJob": "Đối chiếu một tuyên bố nóng với các nguồn có ghi rõ trước khi đăng.",
+    "journalistsPro": "Bộ nhớ tình báo cho dòng thời gian và sự kiện tương tự trước đây, trò chuyện WM Analyst, và quy tắc cảnh báo để theo dõi tiếp.",
+    "govJob": "Theo dõi xung đột leo thang và bất ổn tại các khu vực bạn phụ trách.",
+    "govPro": "Bản tóm tắt AI theo lịch, xếp hạng theo quy tắc cảnh báo của bạn, hằng ngày, hai lần mỗi ngày hoặc hằng tuần, cùng cảnh báo thời gian thực cho sự kiện nghiêm trọng.",
+    "teamsJob": "Theo dõi các địa điểm, tuyến đường và nhà cung cấp mà tổ chức của bạn phụ thuộc.",
+    "teamsPro": "Pro Business cấp phép Pro cho công việc, kèm xuất CSV, JSON và PDF. Các gói API bổ sung truy cập REST và webhook.",
+    "allWorkflows": "Xem tất cả quy trình giám sát"
+  },
   "deliveryDesk": {
     "eyebrow": "BÀN GIAO HÀNG",
     "title": "Bàn làm việc tình báo cá nhân là gì?",
@@ -96,17 +113,11 @@
   "audience": {
     "title": "World Monitor được xây dựng cho ai?",
     "investorsTitle": "Nhà đầu tư và quản lý danh mục",
-    "investorsDesc": "Theo dõi cổ phiếu toàn cầu, mục tiêu của nhà phân tích, các chỉ số định giá và chỉ số vĩ mô cùng với tín hiệu rủi ro địa chính trị.",
     "tradersTitle": "Thương nhân năng lượng và hàng hóa",
-    "tradersDesc": "Theo dõi chuyển động tàu, suy luận hàng hóa, gián đoạn chuỗi cung ứng và tín hiệu địa chính trị di chuyển thị trường.",
     "researchersTitle": "Nhà nghiên cứu và nhà phân tích",
-    "researchersDesc": "Equity research, phân tích kinh tế và các khung địa chính trị để phân tích và báo cáo sâu hơn.",
     "journalistsTitle": "Nhà báo và truyền thông",
-    "journalistsDesc": "Theo dõi các diễn biến nhanh trên các thị trường và khu vực mà không cần khâu các nguồn thủ công.",
     "govTitle": "Chính phủ và các tổ chức",
-    "govDesc": "Theo dõi chính sách vĩ mô, giám sát ngân hàng trung ương và nhận thức tình huống trên các tín hiệu địa chính trị và cơ sở hạ tầng.",
-    "teamsTitle": "Nhóm và tổ chức",
-    "teamsDesc": "Chuyển từ sử dụng cá nhân sang quy trình làm việc được chia sẻ, truy cập API, ứng dụng TV và triển khai được quản lý."
+    "teamsTitle": "Nhóm và tổ chức"
   },
   "dataCoverage": {
     "title": "World Monitor theo dõi những gì?",

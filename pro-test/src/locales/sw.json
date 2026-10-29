@@ -191,6 +191,23 @@
     "buildOnIt": "Jenga juu yake",
     "buildOnItDesc": "Jeneza la Widget la Kawaida (HTML/CSS/JS + AI) na MCP kwa Claude, GPT, LLM za kawaida."
   },
+  "proJobs": {
+    "intro": "Dashibodi ya bure inashughulikia mtazamo wa kwanza. Hiki ndicho Pro inaongeza kwa kila kazi.",
+    "proAdds": "Pro inaongeza",
+    "investorsJob": "Ona jinsi vita, vikwazo au mshtuko wa ugavi unavyofikia uwekezaji wako.",
+    "investorsPro": "Uchambuzi wa hisa na majaribio ya kihistoria kwa AI, orodha ya kufuatilia masoko yenye uchumi mkuu na benki kuu, na athari za kila tukio kwenye masoko kwa AI.",
+    "tradersJob": "Gundua usumbufu kwenye njia nyembamba ya bahari, bomba au bandari kabla haujabadilisha bei.",
+    "tradersPro": "Uundaji wa mifano ya mishtuko ya gharama, majaribio ya mkazo ya minyororo ya ugavi, na kanuni za arifa zinazotuma mabadiliko ya njia nyembamba ya bahari kwa Slack, barua pepe au webhook.",
+    "researchersJob": "Eleza kwa nini hatari ya nchi imebadilika, ukitaja kila chanzo.",
+    "researchersPro": "Kumbukumbu ya kiintelijensia ya kutafuta habari za awali na matukio yanayofanana, data ya madeni ya serikali na madini, na gumzo la WM Analyst kwenye huduma hai.",
+    "journalistsJob": "Kagua dai la habari za dharura dhidi ya vyanzo vilivyotajwa kabla ya kuchapisha.",
+    "journalistsPro": "Kumbukumbu ya kiintelijensia kwa ratiba za matukio na matukio yanayofanana ya awali, gumzo la WM Analyst, na kanuni za arifa za ufuatiliaji.",
+    "govJob": "Fuatilia kuongezeka kwa migogoro na machafuko katika maeneo unayoyashughulikia.",
+    "govPro": "Muhtasari wa AI uliopangwa kwa ratiba na kuorodheshwa kwa kanuni zako za arifa, kila siku, mara mbili kwa siku au kila wiki, pamoja na arifa za papo hapo kwa matukio muhimu.",
+    "teamsJob": "Fuatilia maeneo, njia na wasambazaji ambao shirika lako linawategemea.",
+    "teamsPro": "Pro Business inatoa leseni ya Pro kwa kazi, pamoja na kuhamisha data kwa CSV, JSON na PDF. Mipango ya API inaongeza ufikiaji wa REST na webhooks.",
+    "allWorkflows": "Vinjari mitiririko yote ya ufuatiliaji"
+  },
   "deliveryDesk": {
     "eyebrow": "MEZA YA UTOAJI",
     "title": "Meza ya akili binafsi ni nini?",
@@ -217,17 +234,11 @@
   "audience": {
     "title": "World Monitor imejengwa kwa nani?",
     "investorsTitle": "Wawekezaji & wasimamizi wa kwingingi",
-    "investorsDesc": "Fuatilia sehemu za ulimwengu, shabaha za mtahlili, viashiria vya uthamini, na viashiria vya makro pamoja na ishara za hatari za kisiasa.",
     "tradersTitle": "Wafanya biashara wa nishati na bidhaa",
-    "tradersDesc": "Fuatilia harakati za vyombo, tathmini ya mizigo, vurugu katika mnyororo wa upatikanaji, na ishara za kisiasa zinazosogeza soko.",
     "researchersTitle": "Watafiti na wachanganuzi",
-    "researchersDesc": "Utafiti wa hisa, uchambuzi wa uchumi, na mifumo ya kisiasa kwa uchambuzi na ripoti ya kina.",
     "journalistsTitle": "Wanahabari na vyombo vya habari",
-    "journalistsDesc": "Fuatilia maendeleo yanayosogea haraka katika masoko na mikoa bila kuunganisha vyanzo kwa mikono.",
     "govTitle": "Serikali na taasisi",
-    "govDesc": "Ufuataji wa sera ya makro, ufuatiliaji wa benki kuu, na ufahamu wa hali katika ishara za kisiasa na miundombinu.",
-    "teamsTitle": "Timu na mashirika",
-    "teamsDesc": "Hama kutoka kwa matumizi ya mtu binafsi hadi mtiririko wa kazi ulioshirikiwa, API access, programu za TV, na imani iliyodhibitwa."
+    "teamsTitle": "Timu na mashirika"
   },
   "dataCoverage": {
     "title": "World Monitor inafuatilia nini?",

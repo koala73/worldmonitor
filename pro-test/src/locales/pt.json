@@ -70,6 +70,23 @@
     "buildOnIt": "Construa sobre ela",
     "buildOnItDesc": "Construtor de widgets personalizados (HTML/CSS/JS + IA) e MCP para Claude, GPT, LLMs personalizados."
   },
+  "proJobs": {
+    "intro": "O painel gratuito cobre a primeira olhada. Veja o que o Pro acrescenta a cada tarefa.",
+    "proAdds": "O Pro acrescenta",
+    "investorsJob": "Veja como uma guerra, sanção ou choque de oferta chega às suas posições.",
+    "investorsPro": "Análise de ações e backtesting com IA, uma lista de acompanhamento de mercados com macro e bancos centrais, e implicações de mercado de cada evento com IA.",
+    "tradersJob": "Identifique uma interrupção num estreito, oleoduto ou porto antes que ela mexa no preço.",
+    "tradersPro": "Modelagem de choques de custo, testes de estresse da cadeia de suprimentos e regras de alerta que enviam uma mudança num estreito para Slack, e-mail ou webhook.",
+    "researchersJob": "Explique por que o risco de um país mudou, com cada fonte citada.",
+    "researchersPro": "Memória de inteligência para pesquisar cobertura anterior e eventos semelhantes, dados de dívida soberana e minerais, e chat do WM Analyst sobre os serviços ao vivo.",
+    "journalistsJob": "Confira uma alegação de última hora com fontes atribuídas antes de publicar.",
+    "journalistsPro": "Memória de inteligência para linhas do tempo e eventos anteriores semelhantes, chat do WM Analyst e regras de alerta para acompanhamento.",
+    "govJob": "Acompanhe a escalada de conflitos e a agitação nas regiões que você cobre.",
+    "govPro": "Um resumo de IA programado e ordenado pelas suas regras de alerta, diário, duas vezes ao dia ou semanal, além de alertas em tempo real para eventos críticos.",
+    "teamsJob": "Monitore as instalações, rotas e fornecedores dos quais sua organização depende.",
+    "teamsPro": "O Pro Business licencia o Pro para uso profissional, com exportação em CSV, JSON e PDF. Os planos de API adicionam acesso REST e webhooks.",
+    "allWorkflows": "Ver todos os fluxos de monitoramento"
+  },
   "deliveryDesk": {
     "eyebrow": "MESA DE ENTREGA",
     "title": "O que é a personal intelligence desk?",
@@ -96,17 +113,11 @@
   "audience": {
     "title": "Para quem o World Monitor foi desenvolvido?",
     "investorsTitle": "Investidores e gestores de carteira",
-    "investorsDesc": "Siga ações globais, alvos de analistas, métricas de avaliação e indicadores macro juntamente com sinais de risco geopolítico.",
     "tradersTitle": "Traders de energia e matérias-primas",
-    "tradersDesc": "Siga movimentos de navios, inferência de carga, disrupções da cadeia de abastecimento e sinais geopolíticos que movem mercados.",
     "researchersTitle": "Investigadores e analistas",
-    "researchersDesc": "Equity research, analítica económica e frameworks geopolíticos para análise e reporte mais aprofundados.",
     "journalistsTitle": "Jornalistas e media",
-    "journalistsDesc": "Siga desenvolvimentos rápidos em mercados e regiões sem costurar fontes manualmente.",
     "govTitle": "Governo e instituições",
-    "govDesc": "Seguimento de política macro, monitorização de bancos centrais e consciência situacional em sinais geopolíticos e de infraestrutura.",
-    "teamsTitle": "Equipas e organizações",
-    "teamsDesc": "Passe do uso individual para fluxos partilhados, acesso API, apps TV e deployments geridos."
+    "teamsTitle": "Equipas e organizações"
   },
   "dataCoverage": {
     "title": "O que o World Monitor monitora?",

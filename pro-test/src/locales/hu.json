@@ -70,6 +70,23 @@
     "buildOnIt": "Építsen rá",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) és MCP Claude-hoz, GPT-hez, saját LLM-ekhez."
   },
+  "proJobs": {
+    "intro": "Az ingyenes irányítópult az első rápillantást fedi le. Ezt adja hozzá a Pro az egyes feladatokhoz.",
+    "proAdds": "A Pro hozzáadja",
+    "investorsJob": "Nézze meg, hogyan ér el egy háború, szankció vagy ellátási sokk a pozícióihoz.",
+    "investorsPro": "MI-alapú részvényelemzés és backtesting, piaci figyelőlista makro- és jegybankkövetéssel, valamint minden esemény piaci hatása MI-vel.",
+    "tradersJob": "Vegye észre egy szoros, csővezeték vagy kikötő zavarát, mielőtt az árat megmozdítja.",
+    "tradersPro": "Költségsokk-modellezés, ellátásilánc-stressztesztek és riasztási szabályok, amelyek egy szoros változását Slackre, e-mailbe vagy webhookra küldik.",
+    "researchersJob": "Magyarázza el, miért változott egy ország kockázata, minden forrás megjelölésével.",
+    "researchersPro": "Hírszerzési memória a korábbi tudósítások és hasonló események kereséséhez, államadósság- és ásványkincs-adatok, valamint WM Analyst csevegés az élő szolgáltatásokon.",
+    "journalistsJob": "Ellenőrizzen egy friss állítást megjelölt forrásokkal, mielőtt közzéteszi.",
+    "journalistsPro": "Hírszerzési memória idővonalakhoz és hasonló korábbi eseményekhez, WM Analyst csevegés és riasztási szabályok a nyomon követéshez.",
+    "govJob": "Kövesse a konfliktusok eszkalációját és a zavargásokat az Ön által lefedett régiókban.",
+    "govPro": "Ütemezett MI-összefoglaló a riasztási szabályai szerint rangsorolva, naponta, naponta kétszer vagy hetente, valamint valós idejű riasztások kritikus eseményekről.",
+    "teamsJob": "Figyelje a telephelyeket, útvonalakat és beszállítókat, amelyektől szervezete függ.",
+    "teamsPro": "A Pro Business munkára licenceli a Pro-t, CSV-, JSON- és PDF-exporttal. Az API-csomagok REST-hozzáférést és webhookokat adnak.",
+    "allWorkflows": "Az összes figyelési munkafolyamat"
+  },
   "deliveryDesk": {
     "eyebrow": "KÉZBESÍTŐPULT",
     "title": "Mi az a személyes intelligence desk?",
@@ -96,17 +113,11 @@
   "audience": {
     "title": "Kinek készült a World Monitor?",
     "investorsTitle": "Befektetők és portfóliókezelők",
-    "investorsDesc": "Kövesse a globális részvényeket, elemzői célárakat, értékelési mutatókat és makróindikátorokat a geopolitikai kockázati jelekkel együtt.",
     "tradersTitle": "Energia- és árupiaci kereskedők",
-    "tradersDesc": "Kövesse a hajómozgásokat, rakománykövetkeztetést, ellátásilánc-zavarokat és piacmozgató geopolitikai jeleket.",
     "researchersTitle": "Kutatók és elemzők",
-    "researchersDesc": "Részvénykutatás, gazdasági analitika és geopolitikai keretrendszerek mélyebb elemzéshez és jelentéskészítéshez.",
     "journalistsTitle": "Újságírók és média",
-    "journalistsDesc": "Kövesse a gyorsan változó eseményeket piacokon és régiókon át anélkül, hogy kézzel kellene összefűznie a forrásokat.",
     "govTitle": "Kormányzat és intézmények",
-    "govDesc": "Makropolitikai követés, jegybanki monitoring és helyzetkép geopolitikai és infrastrukturális jeleken keresztül.",
-    "teamsTitle": "Csapatok és szervezetek",
-    "teamsDesc": "Lépjen túl az egyéni használaton: közös munkafolyamatok, API-hozzáférés, TV-appok és menedzselt telepítések."
+    "teamsTitle": "Csapatok és szervezetek"
   },
   "dataCoverage": {
     "title": "Mit követ nyomon a World Monitor?",
