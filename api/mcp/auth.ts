@@ -1,3 +1,4 @@
+import { wwwAuthHeader } from '../_www-authenticate';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 // @ts-expect-error — JS module, no declaration file
@@ -219,10 +220,7 @@ export const PRODUCTION_DEPS: McpHandlerDeps = {
 // handler stays under the cognitive-complexity threshold).
 // ---------------------------------------------------------------------------
 
-export function wwwAuthHeader(resourceMetadataUrl: string, errorParam = ''): string {
-  const errSegment = errorParam ? `, error="${errorParam}"` : '';
-  return `Bearer realm="worldmonitor"${errSegment}, resource_metadata="${resourceMetadataUrl}"`;
-}
+export { wwwAuthHeader };
 
 /**
  * JSON-RPC denial with machine-readable reason + upgrade URL (#6716).
