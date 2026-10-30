@@ -16,6 +16,7 @@ import {
   isSameStory,
   clusterTexts,
   setStoryVectorProvider,
+  CANDIDATE_STOPWORDS,
 } from '../shared/story-identity.js';
 
 afterEach(() => setStoryVectorProvider(null));
@@ -135,6 +136,17 @@ describe('storyVector / cosineSimilarity', () => {
 });
 
 describe('clusterTexts', () => {
+  it('still merges the labeled positives after stopwords leave the candidate index', () => {
+    const texts = POSITIVE_PAIRS.flat();
+    const clusters = clusterTexts(texts);
+    for (let i = 0; i < POSITIVE_PAIRS.length; i++) {
+      const a = i * 2;
+      const cluster = clusters.find((members) => members.includes(a));
+      assert.ok(cluster?.includes(a + 1), `positive pair ${i} must share a cluster: ${POSITIVE_PAIRS[i][0]}`);
+    }
+  });
+
+
   it('groups edit variants and keeps distinct events apart', () => {
     const texts = [
       'Iran threatens to close Strait of Hormuz if US blockade continues',
@@ -178,6 +190,34 @@ describe('candidateTokens / normalizeStoryText', () => {
 
   it('normalizeStoryText strips punctuation and collapses whitespace', () => {
     assert.equal(normalizeStoryText('  Fed — holds,  rates!  '), 'fed holds rates');
+  });
+
+  it('drops connector stopwords from the index keys but not from the vector (#4925 item 4)', () => {
+    const toks = candidateTokens('Iran says it will close the Strait of Hormuz after new sanctions');
+    for (const word of ['says', 'will', 'the', 'after', 'new']) {
+      assert.ok(CANDIDATE_STOPWORDS.has(word), `${word} is a listed stopword`);
+      assert.ok(!toks.has(word), `${word} must not become an index key`);
+    }
+    for (const word of ['iran', 'close', 'strait', 'hormuz', 'sanctions']) {
+      assert.ok(toks.has(word), `${word} must stay an index key`);
+    }
+    // Removing connector words changes the vector, even though the index drops them.
+    const a = storyVector('Iran says it will close the Strait of Hormuz');
+    const b = storyVector('Iran close Strait Hormuz');
+    assert.ok(a && b && cosineSimilarity(a, b) < 0.99);
+  });
+
+  it('two headlines that share only connector words produce no shared index key', () => {
+    const a = candidateTokens('The Fed says it will hold rates after the meeting');
+    const b = candidateTokens('The Senate says it will vote after the recess');
+    const shared = [...a].filter((t) => b.has(t));
+    assert.deepEqual(shared, []);
+  });
+
+  it('every stopword is ASCII, lowercase, at least three characters and unique', () => {
+    for (const word of CANDIDATE_STOPWORDS) {
+      assert.match(word, /^[a-z]{3,}$/, `${word} must be a lowercase ASCII token of 3+ chars (shorter ones are already dropped)`);
+    }
   });
 });
 
@@ -763,4 +803,25 @@ describe('story key TTL ordering (#4924 external review P2)', () => {
       'a track outside the digest freshness floor must not be adopted — it is ageing out and the story would re-fork',
     );
   });
+});
+
+
+it('clusters connector-only headline edits through bounded fallback keys', () => {
+  const titles = ['WHO says US must do more', 'WHO says US must do more now'];
+  assert.ok(storySimilarity(...titles) >= STORY_SIMILARITY_THRESHOLD);
+  assert.ok(candidateTokens(titles[0]).size > 0);
+  assert.deepEqual(clusterTexts(titles), [[0, 1]]);
+});
+
+
+it('clusters fallback and keyful headline edits in either input order', () => {
+  const titles = ['WHO says US must do more', 'WHO says US must do more on mpox'];
+  assert.ok(storySimilarity(...titles) >= STORY_SIMILARITY_THRESHOLD);
+  assert.deepEqual(clusterTexts(titles), [[0, 1]]);
+  assert.deepEqual(clusterTexts([...titles].reverse()), [[0, 1]]);
+});
+
+it('caps secondary candidate buckets for hot connector-only headlines', () => {
+  const titles = ['WHO says US must do more', ...Array.from({ length: 251 }, (_, i) => `WHO says US must do more on topic${i}`)];
+  assert.equal(clusterTexts(titles).length, titles.length);
 });

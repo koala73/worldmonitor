@@ -96,17 +96,39 @@ function isNonAscii(token) {
   return false;
 }
 
+// Connector words that survive the 3-char floor but carry no story
+// identity (#4925 item 4). They are INDEX keys only: every headline shares
+// "the"/"and"/"after", so their buckets hold the whole batch and either hit
+// MAX_CANDIDATE_BUCKET (no pairs scored through them) or, below the cap,
+// score every pair in the batch, which is the O(n²) scan the inverted index
+// exists to avoid. The vector still sees these tokens; only candidate
+// generation ignores them. Keyless headlines retain their original candidate
+// tokens; the existing bucket cap still bounds pair scoring.
+export const CANDIDATE_STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'from', 'that', 'this', 'into', 'over',
+  'after', 'amid', 'amidst', 'about', 'than', 'then', 'what', 'when', 'where',
+  'while', 'who', 'why', 'how', 'its', 'his', 'her', 'their', 'our', 'your',
+  'are', 'was', 'were', 'been', 'being', 'has', 'have', 'had', 'will', 'would',
+  'could', 'should', 'can', 'may', 'might', 'must', 'does', 'did', 'not',
+  'but', 'out', 'off', 'onto', 'via', 'per', 'says', 'said', 'say', 'new',
+  'more', 'most', 'some', 'any', 'all', 'one', 'two', 'also', 'just', 'now',
+  'here', 'there', 'they', 'them', 'you', 'she', 'him', 'these', 'those',
+  'live', 'update', 'updates', 'latest', 'news', 'report', 'reports',
+]);
+
 /**
  * Tokens used for inverted-index candidate generation by clustering
  * callers (cheap pre-filter: only pairs sharing ≥1 token are scored).
- * ASCII tokens shorter than 3 chars are dropped (stopword-weight noise);
- * non-ASCII tokens are kept whole AND as char bigrams so unsegmented
- * scripts still produce index keys.
+ * ASCII tokens shorter than 3 chars and the CANDIDATE_STOPWORDS connector
+ * words are dropped (stopword-weight noise); non-ASCII tokens are kept
+ * whole AND as char bigrams so unsegmented scripts still produce index
+ * keys. If none remain, retain the original keys under the same bucket cap.
  * @param {string} text
- * @returns {Set<string>}
+ * @returns {{ primary: Set<string>; fallback: Set<string> }}
  */
-export function candidateTokens(text) {
+function candidateTokenSets(text) {
   const out = new Set();
+  const fallback = new Set();
   const clamped = stripAttributionSuffix(text).slice(0, MAX_IDENTITY_CHARS);
   for (const tok of normalizeStoryText(clamped).split(' ')) {
     if (!tok) continue;
@@ -114,10 +136,16 @@ export function candidateTokens(text) {
       out.add(tok);
       for (let i = 0; i + 2 <= tok.length; i++) out.add(tok.slice(i, i + 2));
     } else if (tok.length >= 3) {
-      out.add(tok);
+      fallback.add(tok);
+      if (!CANDIDATE_STOPWORDS.has(tok)) out.add(tok);
     }
   }
-  return out;
+  return { primary: out, fallback };
+}
+
+export function candidateTokens(text) {
+  const { primary, fallback } = candidateTokenSets(text);
+  return primary.size ? primary : fallback;
 }
 
 // Trailing source-attribution suffixes ("… - Reuters", "… - example.com")
@@ -450,7 +478,9 @@ const MAX_CANDIDATE_BUCKET = 250;
 export function clusterTexts(texts, opts = {}) {
   const threshold = typeof opts.threshold === 'number' ? opts.threshold : STORY_SIMILARITY_THRESHOLD;
   const vectors = texts.map((t) => storyVector(t));
-  const tokenSets = texts.map((t) => candidateTokens(t));
+  const tokenViews = texts.map((t) => candidateTokenSets(t));
+  const tokenSets = tokenViews.map(({ primary, fallback }) => primary.size ? primary : fallback);
+  const needsFallback = tokenViews.some(({ primary }) => primary.size === 0);
 
   // Exact-duplicate pre-union (#4924 external review): identical
   // normalized texts union unconditionally BEFORE the candidate scan.
@@ -461,11 +491,19 @@ export function clusterTexts(texts, opts = {}) {
   const byExactText = new Map();
 
   const invertedIndex = new Map();
+  const fallbackIndex = new Map();
   for (let i = 0; i < texts.length; i++) {
     for (const token of tokenSets[i]) {
       const bucket = invertedIndex.get(token);
       if (bucket) bucket.push(i);
       else invertedIndex.set(token, [i]);
+    }
+    if (needsFallback) {
+      for (const token of tokenViews[i].fallback) {
+        const bucket = fallbackIndex.get(token);
+        if (bucket) bucket.push(i);
+        else fallbackIndex.set(token, [i]);
+      }
     }
   }
 
@@ -507,6 +545,15 @@ export function clusterTexts(texts, opts = {}) {
       if (!bucket || bucket.length > MAX_CANDIDATE_BUCKET) continue;
       for (const idx of bucket) {
         if (idx > i) candidates.add(idx);
+      }
+    }
+    if (tokenViews[i].primary.size === 0) {
+      for (const token of tokenViews[i].fallback) {
+        const bucket = fallbackIndex.get(token);
+        if (!bucket || bucket.length > MAX_CANDIDATE_BUCKET) continue;
+        for (const idx of bucket) {
+          if (idx !== i) candidates.add(idx);
+        }
       }
     }
     for (const j of candidates) {
