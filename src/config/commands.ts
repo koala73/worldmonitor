@@ -151,6 +151,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:hormuz-tracker', keywords: ['hormuz', 'strait of hormuz', 'shipping', 'crude oil', 'lng', 'fertilizer', 'tanker', 'wto'], label: 'Panel: Hormuz Trade Tracker', icon: '\u{1F6A2}', category: 'panels' },
   { id: 'panel:etf-flows', keywords: ['etf', 'etf flows', 'fund flows'], label: 'Panel: BTC ETF Tracker', icon: '\u{1F4B9}', category: 'panels' },
   { id: 'panel:stablecoins', keywords: ['stablecoins', 'usdt', 'usdc'], label: 'Panel: Stablecoins', icon: '\u{1FA99}', category: 'panels' },
+  { id: 'panel:ukmto-incidents', keywords: ['ukmto', 'maritime', 'incidents'], label: 'Panel: UKMTO Incidents', icon: '⚓', category: 'panels' },
   { id: 'panel:monitors', keywords: ['monitors', 'my monitors', 'watchlist'], label: 'Panel: My Monitors', icon: '\u{1F4CB}', category: 'panels' },
   { id: 'panel:map', keywords: ['map', 'globe', 'global map'], label: 'Panel: Global Map', icon: '\u{1F5FA}\uFE0F', category: 'panels' },
   { id: 'panel:live-webcams', keywords: ['webcams', 'live cameras', 'cctv'], label: 'Panel: Live Webcams', icon: '\u{1F4F7}', category: 'panels' },

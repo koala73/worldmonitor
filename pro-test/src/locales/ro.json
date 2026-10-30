@@ -88,10 +88,7 @@
     "uniqueVisitors": "Vizitatori unici",
     "peakDailyUsers": "Utilizatori zilnici (vârf)",
     "countriesReached": "Țări atinse",
-    "liveDataSources": "Surse de date live",
-    "quote": "Piețe, politică monetară, geopolitică, energie — totul se mișcă împreună acum. Aveam nevoie de ceva care să arate cum aceste forțe se conectează în timp real, nu doar titlurile, ci motoarele de dedesubt.",
-    "ceo": "CEO al",
-    "asToldTo": "povestit către"
+    "liveDataSources": "Surse de date live"
   },
   "audience": {
     "title": "Pentru cine este World Monitor?",
@@ -459,7 +456,7 @@
       "ogDescription": "World Monitor: tablou de bord de informații geopolitice în timp real. Hartă live gratuită: conflicte, transport maritim, zboruri, piețe și cyber, cu API și MCP."
     },
     "nav": {
-      "useCases": "Corelații",
+      "useCases": "Cazuri de utilizare",
       "firstFive": "Primele 5 min",
       "depth": "Adâncime",
       "pricing": "Prețuri",
@@ -714,7 +711,16 @@
       "chokepointDesc": "Inspectează starea perturbării, fluxurile de nave și riscul pe {{chokepoints}} pasaje maritime critice.",
       "countryRiskTitle": "Explicați o mișcare de risc-țară",
       "countryRiskDesc": "Urmărește semnalele politice, de securitate, economice și de reziliență din spatele schimbării unei țări, cu reziliență clasificată pentru {{resilienceRanked}} de țări.",
-      "open": "Deschideți dovezi"
+      "open": "Deschideți dovezi",
+      "workflow": "Flux de lucru pas cu pas"
+    },
+    "voices": {
+      "eyebrow": "În cuvintele lor",
+      "title": "Ce spun oamenii despre World Monitor",
+      "sub": "{{users}} de oameni din {{countries}} de țări au folosit World Monitor. Iată ce au spus presa și unii dintre ei.",
+      "translatedJa": "Tradus din japoneză",
+      "prev": "Citatele anterioare",
+      "next": "Mai multe citate"
     }
   },
   "whatsNew": {
@@ -722,13 +728,13 @@
     "title": "Ce e nou în WorldMonitor",
     "subtitle": "Funcții noi din ultimele 30 de zile — corecții și lucrări de infrastructură nu incluse.",
     "proTag": "PRO",
-    "m1": "Index divergență primă fizică — SGE vs COMEX, cu istoric",
-    "m2": "Clasificări vulnerabilitate aprovizionare mărfuri — despicarea dependenței de puncte de strangulare",
-    "m3": "Concentrație producție minerale și baza industrială de apărare",
-    "m4": "Fișe de reziență cu cinci factori și scoruri la nivel indicator",
-    "m5": "Liste de monitorizare personalizate pe canal Telegram",
-    "m6": "Autentificare cu parolă de acces",
-    "m7": "Agenți AI pot gestiona dashboard-ul — panouri, file, straturi hartă și misiuni",
-    "m8": "Pagini de reziență țări mai bogate"
+    "m1": "Perspectiva media — cum relatează presa din fiecare țară despre orice țară, pentru agenți AI și API",
+    "m2": "/verify — o fișă de dovezi pentru orice afirmație, cu verificări de fapte publicate",
+    "m3": "Numărul surselor care confirmă în alerte, rezumate și ferestrele hărții, plus o pagină publică /trust",
+    "m4": "Urmărire automată a atacurilor — riscul unei țări crește sub atac și scade când atacurile încetează",
+    "m5": "Închideri ale spațiului aerian din NOTAM-urile FAA și un strat de hartă cu urgențele aeriene raportate",
+    "m6": "Hartă a activității industriale din datele satelitare NO2 Sentinel-5P",
+    "m7": "Fluxuri de capital pentru 230 de economii și orice pereche de țări, pentru agenți AI și API",
+    "m8": "Panou în terminal și hartă CLI cu zoom — brew install worldmonitor"
   }
 }

@@ -561,7 +561,8 @@
     "fearGreed": "Félelem és mohóság",
     "marketBreadth": "Piaci szélesség",
     "climateNews": "Klíma hírek",
-    "fx": "Devizaárfolyamok"
+    "fx": "Devizaárfolyamok",
+    "ukmtoIncidents": "UKMTO-események"
   },
   "commands": {
     "prefixes": {
@@ -2646,7 +2647,15 @@
       "renewalFailedDesc": "Nem sikerült ellenőrizni előfizetése megújítását. Kezelje a számlázást, vagy lépjen kapcsolatba az ügyfélszolgálattal, ha a probléma továbbra is fennáll.",
       "manageBilling": "Számlázás kezelése",
       "lapsedDesc": "Pro előfizetése lejárt. Fizessen elő újra a prémium hozzáférés visszaszerzéséhez.",
-      "resubscribe": "Újra előfizetek"
+      "resubscribe": "Újra előfizetek",
+      "billingEmailBouncedMessage": "A(z) {{email}} címre küldött számlázási e-mailek visszapattannak. Frissítse számlázási e-mail-címét, hogy megkapja a nyugtákat és a fizetési értesítéseket.",
+      "fixBillingEmail": "Számlázási e-mail javítása",
+      "billingEmailLabel": "Új számlázási e-mail-cím",
+      "save": "Mentés",
+      "billingEmailUpdated": "A számlázási e-mail-cím mostantól {{email}}. A nyugták és a fizetési értesítések ezentúl oda érkeznek.",
+      "billingEmailInvalid": "Adjon meg egy érvényes e-mail-címet.",
+      "billingEmailSuppressed": "Erre a címre sem tudunk kézbesíteni. Próbáljon meg egy másikat.",
+      "billingEmailUpdateFailed": "Nem sikerült frissíteni a számlázási e-mail-címét. Próbálja újra, vagy forduljon az ügyfélszolgálathoz, ha a hiba továbbra is fennáll."
     },
     "checkoutFailureBanner": {
       "message": "A fizetés nem fejeződött be. Nem történt költség.",
@@ -4160,5 +4169,14 @@
         "0": "Réteg útmutató"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "Az UKMTO adatai nem érhetők el.",
+    "empty": "Az UKMTO nem adott vissza eseményeket.",
+    "stale": "Elavult forrásadatok. Utolsó ellenőrzés",
+    "current": "Forrás ellenőrizve",
+    "reportedClaims": "A kiadó jelentései. Az állítások vizsgálata még folyamatban lehet.",
+    "occurred": "Esemény",
+    "reported": "Közzétéve"
   }
 }

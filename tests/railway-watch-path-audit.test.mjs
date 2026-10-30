@@ -1010,6 +1010,11 @@ describe('planned Railway service lifecycle', () => {
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',
+      // seed-ukmto-incidents (#9832) is deliberately ABSENT now: service
+      // fa702bee-b70c-44de-9aca-9cea889e89fb runs
+      // `node seed-ukmto-incidents.mjs` on cron */30 * * * * against the
+      // hormuz.data-tracking.net republication (#9858). Leaving it planned
+      // would exempt a live cron from the watch-path and deploy-drift checks.
       'seed-weather-alerts',
       // seed-notam-nms (#9637) is deliberately ABSENT now: it landed planned
       // until FAA granted production NMS-API access, and service

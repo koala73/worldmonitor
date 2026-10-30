@@ -490,7 +490,8 @@
     "fearGreed": "恐怖と貪欲",
     "marketBreadth": "市場の広がり",
     "climateNews": "気候ニュース",
-    "fx": "外国為替レート"
+    "fx": "外国為替レート",
+    "ukmtoIncidents": "UKMTO事案"
   },
   "commands": {
     "prefixes": {
@@ -2567,7 +2568,15 @@
       "renewalFailedDesc": "サブスクリプションの更新を確認できませんでした。問題が続く場合は、請求を管理するかサポートにお問い合わせください。",
       "manageBilling": "請求を管理",
       "lapsedDesc": "Proサブスクリプションが終了しました。プレミアムアクセスを取り戻すには再登録してください。",
-      "resubscribe": "再登録"
+      "resubscribe": "再登録",
+      "billingEmailBouncedMessage": "{{email}} 宛ての請求メールが届かずに返送されています。領収書や支払いに関する通知を受け取れるよう、請求先メールアドレスを更新してください。",
+      "fixBillingEmail": "請求先メールを修正",
+      "billingEmailLabel": "新しい請求先メールアドレス",
+      "save": "保存",
+      "billingEmailUpdated": "請求先メールアドレスを {{email}} に更新しました。今後、領収書と支払いに関する通知はこのアドレスに送信されます。",
+      "billingEmailInvalid": "有効なメールアドレスを入力してください。",
+      "billingEmailSuppressed": "このアドレスにも配信できません。別のアドレスをお試しください。",
+      "billingEmailUpdateFailed": "請求先メールアドレスを更新できませんでした。もう一度お試しいただくか、繰り返し失敗する場合はサポートにお問い合わせください。"
     },
     "checkoutFailureBanner": {
       "message": "お支払いが完了できませんでした。請求はされていません。",
@@ -4140,5 +4149,14 @@
         "0": "レイヤーガイド"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTOデータを利用できません。",
+    "empty": "UKMTOから事案が返されませんでした。",
+    "stale": "情報源のデータが古くなっています。最終確認",
+    "current": "情報源確認済み",
+    "reportedClaims": "発行元の報告です。主張は調査中の場合があります。",
+    "occurred": "発生",
+    "reported": "公開"
   }
 }

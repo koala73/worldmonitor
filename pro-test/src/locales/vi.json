@@ -88,10 +88,7 @@
     "uniqueVisitors": "Khách truy cập duy nhất",
     "peakDailyUsers": "Người dùng hàng ngày (đỉnh)",
     "countriesReached": "Quốc gia đã tiếp cận",
-    "liveDataSources": "Nguồn dữ liệu trực tiếp",
-    "quote": "Thị trường, chính sách tiền tệ, địa chính trị, năng lượng — bây giờ tất cả chuyển động cùng nhau. Tôi cần một thứ gì đó cho thấy các lực lượng này liên kết như thế nào theo thời gian thực, không chỉ các tiêu đề mà cả động lực ẩn sau.",
-    "ceo": "CEO của",
-    "asToldTo": "kể cho"
+    "liveDataSources": "Nguồn dữ liệu trực tiếp"
   },
   "audience": {
     "title": "World Monitor được xây dựng cho ai?",
@@ -459,7 +456,7 @@
       "ogDescription": "World Monitor: bảng tình báo địa chính trị thời gian thực. Bản đồ trực tiếp miễn phí: xung đột, hàng hải, chuyến bay, thị trường, an ninh mạng; có API và MCP."
     },
     "nav": {
-      "useCases": "Tương quan",
+      "useCases": "Trường hợp sử dụng",
       "firstFive": "5 phút đầu",
       "depth": "Chi tiết",
       "pricing": "Giá cả",
@@ -714,7 +711,16 @@
       "chokepointDesc": "Kiểm tra trạng thái gián đoạn, dòng chảy tàu và rủi ro trên {{chokepoints}} tuyến đường hàng hải quan trọng.",
       "countryRiskTitle": "Giải thích một bước ngoặt rủi ro quốc gia",
       "countryRiskDesc": "Theo dõi các tín hiệu chính trị, an ninh, kinh tế và khả năng phục hồi đằng sau thay đổi của một quốc gia, với khả năng phục hồi được xếp hạng cho {{resilienceRanked}} quốc gia.",
-      "open": "Mở chứng cứ"
+      "open": "Mở chứng cứ",
+      "workflow": "Quy trình từng bước"
+    },
+    "voices": {
+      "eyebrow": "Bằng lời của họ",
+      "title": "Mọi người nói gì về World Monitor",
+      "sub": "{{users}} người tại {{countries}} quốc gia đã dùng World Monitor. Đây là những gì báo chí và một số người dùng đã nói.",
+      "translatedJa": "Dịch từ tiếng Nhật",
+      "prev": "Trích dẫn trước",
+      "next": "Thêm trích dẫn"
     }
   },
   "whatsNew": {
@@ -722,13 +728,13 @@
     "title": "Có gì mới trong WorldMonitor",
     "subtitle": "Tính năng mới từ 30 ngày qua — sửa chữa và hạ tầng không được tính.",
     "proTag": "PRO",
-    "m1": "Chỉ số sự phân kỳ phí bảo hiểm vật lý — SGE so với COMEX, có lịch sử",
-    "m2": "Xếp hạng lỗ hổng cung ứng hàng hóa — quạt phân kỳ phụ thuộc điểm tắc nghẽn",
-    "m3": "Tập trung sản xuất khoáng sản & cơ sở công nghiệp quốc phòng",
-    "m4": "Thẻ điểm kiên cường năm yếu tố với điểm cấp chỉ báo",
-    "m5": "Danh sách theo dõi kênh Telegram tùy chỉnh",
-    "m6": "Đăng nhập bằng Passkey",
-    "m7": "Các tác nhân AI có thể điều khiển bảng điều khiển — các bảng, tab, lớp bản đồ & nhiệm vụ",
-    "m8": "Các trang kiên cường quốc gia phong phú hơn"
+    "m1": "Góc nhìn truyền thông — báo chí từng nước đưa tin về bất kỳ quốc gia nào ra sao, cho tác tử AI và API",
+    "m2": "/verify — thẻ bằng chứng cho mọi tuyên bố, trích dẫn các bài kiểm chứng đã công bố",
+    "m3": "Số nguồn xác nhận trên cảnh báo, bản tin tổng hợp và cửa sổ bản đồ, cùng trang /trust công khai",
+    "m4": "Theo dõi tấn công tự động — rủi ro quốc gia tăng khi bị tấn công và giảm khi các cuộc tấn công dừng",
+    "m5": "Đóng cửa không phận từ NOTAM của FAA và lớp bản đồ các sự cố khẩn cấp máy bay được báo cáo",
+    "m6": "Bản đồ hoạt động công nghiệp từ dữ liệu NO2 của vệ tinh Sentinel-5P",
+    "m7": "Dòng vốn của 230 nền kinh tế và mọi cặp quốc gia, cho tác tử AI và API",
+    "m8": "Bảng điều khiển trong terminal và bản đồ CLI phóng to được — brew install worldmonitor"
   }
 }

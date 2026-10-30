@@ -201,7 +201,6 @@ async function runMarkerlessFlowHarness(
     };
     w.__proOutcomeCalls = [];
     w.__proOutcomeAttempts = 0;
-    let ownerChecks = 0;
     let claimCalls = 0;
     let confirmCalls = 0;
     const context = {
@@ -226,10 +225,7 @@ async function runMarkerlessFlowHarness(
         onlyIfUnactivated: true,
         expectedActivationKey: 'opaque-subscription',
         activationClaimNonce: 'tab-nonce',
-        isAccountCurrent: () => {
-          ownerChecks += 1;
-          return !(scenario.switchAfterClaim && ownerChecks >= 3);
-        },
+        isAccountCurrent: () => !(scenario.switchAfterClaim && claimCalls > 0),
       },
       {
         readContext: async () => {
@@ -775,6 +771,93 @@ test.describe('Pro activation flow — day-0 outcome rows (#5621)', () => {
       expect(await readOutcomeAttempts(page)).toBe(0);
     });
   });
+});
+
+test.describe('Pro activation — step scroll position (#5731)', () => {
+  for (const viewport of [
+    { width: 1280, height: 900 },
+    { width: 1280, height: 540 },
+    { width: 320, height: 568 },
+  ]) {
+    test(`toolkit opens at the top at ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
+      await page.setViewportSize(viewport);
+      await gotoHarness(page);
+      await page.evaluate(async () => {
+        await import('/src/styles/main.css');
+        const { initI18n } = await import('/src/services/i18n.ts');
+        await initI18n();
+        const { openProActivationFlow } = await import('/src/components/ProActivationInterstitial.ts');
+        await openProActivationFlow({
+          accountUserId: 'scroll-test-user',
+          accountEmail: 'scroll-test@worldmonitor.app',
+          isAccountCurrent: () => true,
+          openSearch: () => {},
+          openWidgetBuilder: () => {},
+          openAiAnalyst: () => {},
+          openMcpClients: () => {},
+          openChannelSettings: () => {},
+        }, {
+          readContext: async () => ({
+            config: {
+              hasVerifiedEmailChannel: false,
+              hasEmailDelivery: false,
+              hasEnabledDigestRule: false,
+              hasTunedDigestHour: false,
+              hasWebPushChannel: false,
+              hasWebPushDelivery: false,
+              hasUsedPowerFeature: false,
+            },
+            capabilities: { webPushSupported: true, pushPermission: 'default' },
+            channels: [],
+            channelsKnown: true,
+            hasEnabledRule: false,
+          }),
+        });
+      });
+
+      const body = page.locator('.pro-activation-body');
+      await expect(page.locator(PROGRESS)).toContainText('1 of 3');
+      await expect(page.locator(CONFIRM_BTN)).toBeFocused();
+      expect(await body.evaluate((element) => element.scrollTop)).toBe(0);
+      await page.locator(SKIP_BTN).click();
+      await expect(page.locator(PROGRESS)).toContainText('2 of 3');
+      await expect(page.locator(CONFIRM_BTN)).toBeFocused();
+      expect(await body.evaluate((element) => element.scrollTop)).toBe(0);
+      await page.locator(SKIP_BTN).click();
+      await expect(page.locator(PROGRESS)).toContainText('3 of 3');
+      // Wait for the scheduled autofocus before measuring; visibility alone
+      // does not catch content clipped by a scrolled modal body.
+      await expect(page.locator(viewport.height < 600 ? '.pro-activation-close' : ADVANCE_SKIP_BTN)).toBeFocused();
+      await expect(page.locator(':focus')).toBeInViewport({ ratio: 1 });
+      await page.screenshot({ path: testInfo.outputPath('toolkit.png') });
+      expect(await body.evaluate((element) => element.scrollTop)).toBe(0);
+      await expect(page.locator('.pro-activation-status')).toBeInViewport({ ratio: 1 });
+      await expect(page.locator('.pro-activation-heading')).toBeInViewport({ ratio: 1 });
+      if (viewport.height < 600) {
+        expect(await body.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeGreaterThan(0);
+      }
+
+      // Only automatic focus suppresses scrolling. Keyboard traversal must
+      // still reveal the focused control and wrap within the dialog.
+      if (viewport.height < 600) {
+        await page.keyboard.press('Shift+Tab');
+        await expect(page.locator(ADVANCE_SKIP_BTN)).toBeFocused();
+        await expect(page.locator(ADVANCE_SKIP_BTN)).toBeInViewport({ ratio: 1 });
+      }
+      await page.keyboard.press('Tab');
+      await expect(page.locator('.pro-activation-close')).toBeFocused();
+      await page.keyboard.press('Shift+Tab');
+      await expect(page.locator(ADVANCE_SKIP_BTN)).toBeFocused();
+      await expect(page.locator(ADVANCE_SKIP_BTN)).toBeInViewport({ ratio: 1 });
+      await page.keyboard.press('Enter');
+      await expect(page.locator(SUMMARY)).toBeVisible();
+      await expect(page.locator(FINISH_BTN)).toBeFocused();
+      expect(await body.evaluate((element) => element.scrollTop)).toBe(0);
+      await expect(page.locator('.pro-activation-heading')).toBeInViewport({ ratio: 1 });
+      await page.keyboard.press('Escape');
+      await expect(page.locator(OVERLAY)).toHaveCount(0);
+    });
+  }
 });
 
 test.describe('Pro activation interstitial — shell step flow', () => {

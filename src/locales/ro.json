@@ -494,7 +494,8 @@
     "fearGreed": "Frică și lacómie",
     "marketBreadth": "Amploarea pieței",
     "climateNews": "Știri despre climă",
-    "fx": "Cursuri de schimb valutar"
+    "fx": "Cursuri de schimb valutar",
+    "ukmtoIncidents": "Incidente UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -2587,7 +2588,15 @@
       "renewalFailedDesc": "Nu am putut verifica reînnoirea abonamentului tău. Gestionează facturarea sau contactează asistența dacă problema persistă.",
       "manageBilling": "Gestionează facturarea",
       "lapsedDesc": "Abonamentul tău Pro s-a încheiat. Reabonează-te pentru a recâștiga accesul premium.",
-      "resubscribe": "Reabonare"
+      "resubscribe": "Reabonare",
+      "billingEmailBouncedMessage": "E-mailurile de facturare către {{email}} sunt respinse. Actualizează adresa de e-mail pentru facturare ca să primești chitanțe și alerte de plată.",
+      "fixBillingEmail": "Corectează e-mailul de facturare",
+      "billingEmailLabel": "E-mail de facturare nou",
+      "save": "Salvează",
+      "billingEmailUpdated": "E-mailul de facturare a fost schimbat în {{email}}. De acum, chitanțele și alertele de plată vor ajunge acolo.",
+      "billingEmailInvalid": "Introdu o adresă de e-mail validă.",
+      "billingEmailSuppressed": "Nu putem livra nici la această adresă. Încearcă alta.",
+      "billingEmailUpdateFailed": "Nu am putut actualiza e-mailul de facturare. Încearcă din nou sau contactează asistența dacă problema persistă."
     },
     "checkoutFailureBanner": {
       "message": "Plata nu a putut fi finalizată. Nu a fost făcută nicio încărcare.",
@@ -4180,5 +4189,14 @@
         "0": "Ghid de straturi"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "Datele UKMTO nu sunt disponibile.",
+    "empty": "UKMTO nu a returnat incidente.",
+    "stale": "Date sursă învechite. Ultima verificare",
+    "current": "Sursă verificată",
+    "reportedClaims": "Rapoarte ale editorului. Afirmațiile pot fi încă investigate.",
+    "occurred": "Incident",
+    "reported": "Publicat"
   }
 }

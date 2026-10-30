@@ -3938,7 +3938,14 @@ export class App {
       );
     });
 
-    // Happy variant only refreshes news -- skip all geopolitical/financial/military refreshes
+    this.refreshScheduler.scheduleRefresh(
+      'ukmtoIncidents',
+      () => this.dataLoader.loadUkmtoIncidents(),
+      60_000,
+      () => (SITE_VARIANT === 'full' && this.state.mapLayers.ais) || this.state.panelSettings['ukmto-incidents']?.enabled === true,
+    );
+
+    // Other geopolitical, financial and military refreshes exclude Happy.
     if (SITE_VARIANT !== 'happy') {
       this.refreshScheduler.registerAll([
         {

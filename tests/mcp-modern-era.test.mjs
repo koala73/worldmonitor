@@ -962,8 +962,12 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       assert.equal(modern.json.error.data.reason, 'upgrade-required');
     });
 
-    it('remaps a daily-quota -32029 to -31029 with the same 429, Retry-After and data', async () => {
+    it('remaps a daily-quota -32029 to -31029 with the same 429, Retry-After and data', async (t) => {
       await boot('on', { pipelineOpts: { initialCount: 1_000_000 } });
+      // Retry-After counts whole seconds to UTC midnight from each request's own clock read.
+      // Two requests in a row can straddle a second boundary (CI saw 15958 vs 15959), so
+      // freeze the clock: this compares the two eras, not the seconds between the calls.
+      t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
       const params = { name: 'get_market_data', arguments: {} };
       const legacy = await invoke({ jsonrpc: '2.0', id: 71, method: 'tools/call', params }, baseHeaders(JSON_ONLY));
       const modern = await invoke(modernBody(71, 'tools/call', params), modernHeaders('tools/call', { 'Mcp-Name': params.name, ...JSON_ONLY }));

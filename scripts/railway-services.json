@@ -1209,6 +1209,7 @@
       "scripts/_bundle-runner.mjs",
       "scripts/_climate-news-helpers.mjs",
       "scripts/_env-file.mjs",
+      "scripts/_global-tender-feeds.mjs",
       "scripts/_global-tenders.mjs",
       "scripts/_html-entities.mjs",
       "scripts/_proxy-utils.cjs",
@@ -1217,6 +1218,7 @@
       "scripts/_seed-payload-codec.mjs",
       "scripts/_seed-utils.mjs",
       "scripts/_ucdp-dashboard.mjs",
+      "scripts/_upstash-rest.mjs",
       "scripts/_wb-tech-readiness-projection.cjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/nixpacks.toml",
@@ -2436,5 +2438,34 @@
     ],
     "cronSchedule": null,
     "documentedAt": "demos/verification-desk/README.md#run-it-from-any-computer-hosted-with-a-login"
+  },
+  {
+    "entry": "scripts/seed-ukmto-incidents.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-ukmto-incidents",
+    "startCommand": "node seed-ukmto-incidents.mjs",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
+    ],
+    "watchPatterns": [
+      "scripts/_env-file.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-payload-codec.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/_upstash-rest.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/main-module.mjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/railpack.json",
+      "scripts/seed-ukmto-incidents.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
+    ],
+    "cronSchedule": "*/30 * * * *",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#ukmto-incidents"
   }
 ]

@@ -108,7 +108,8 @@
     "fearGreed": "Angst & Hebzucht",
     "marketBreadth": "Marktbreedte",
     "climateNews": "Klimaatnieuws",
-    "fx": "Wisselkoersen"
+    "fx": "Wisselkoersen",
+    "ukmtoIncidents": "UKMTO-incidenten"
   },
   "commands": {
     "prefixes": {
@@ -2193,7 +2194,15 @@
       "renewalFailedDesc": "We konden de verlenging van je abonnement niet verifiëren. Beheer je facturering of neem contact op met support als het probleem aanhoudt.",
       "manageBilling": "Facturering beheren",
       "lapsedDesc": "Je Pro-abonnement is beëindigd. Abonneer je opnieuw om premium toegang terug te krijgen.",
-      "resubscribe": "Opnieuw abonneren"
+      "resubscribe": "Opnieuw abonneren",
+      "billingEmailBouncedMessage": "Factuur-e-mails naar {{email}} komen terug als onbestelbaar. Werk je factuur-e-mailadres bij zodat je bonnetjes en betaalmeldingen ontvangt.",
+      "fixBillingEmail": "Factuur-e-mail corrigeren",
+      "billingEmailLabel": "Nieuw factuur-e-mailadres",
+      "save": "Opslaan",
+      "billingEmailUpdated": "Factuur-e-mailadres gewijzigd in {{email}}. Bonnetjes en betaalmeldingen gaan vanaf nu daarheen.",
+      "billingEmailInvalid": "Voer een geldig e-mailadres in.",
+      "billingEmailSuppressed": "Ook op dat adres kunnen we niet bezorgen. Probeer een ander adres.",
+      "billingEmailUpdateFailed": "We konden je factuur-e-mailadres niet bijwerken. Probeer het opnieuw of neem contact op met support als het blijft mislukken."
     },
     "checkoutFailureBanner": {
       "message": "Betaling kon niet worden voltooid. Er is geen bedrag in rekening gebracht.",
@@ -4160,5 +4169,14 @@
         "0": "Lagengids"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO-gegevens niet beschikbaar.",
+    "empty": "UKMTO heeft geen incidenten teruggegeven.",
+    "stale": "Verouderde brongegevens. Laatst gecontroleerd",
+    "current": "Bron gecontroleerd",
+    "reportedClaims": "Meldingen van de uitgever. Beweringen worden mogelijk nog onderzocht.",
+    "occurred": "Incident",
+    "reported": "Gepubliceerd"
   }
 }

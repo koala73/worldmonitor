@@ -88,10 +88,7 @@
     "uniqueVisitors": "Benzersiz ziyaretçiler",
     "peakDailyUsers": "Günlük kullanıcı (zirve)",
     "countriesReached": "Ulaşılan ülke",
-    "liveDataSources": "Canlı veri kaynakları",
-    "quote": "Piyasalar, para politikası, jeopolitik, enerji — her şey şimdi birlikte hareket ediyor. Bu kuvvetlerin gerçek zamanlı olarak nasıl bağlandığını gösteren bir şeye ihtiyacım vardı; sadece manşetler değil, altta yatan itici güçler.",
-    "ceo": "CEO'su",
-    "asToldTo": "anlatıldığı kişi"
+    "liveDataSources": "Canlı veri kaynakları"
   },
   "audience": {
     "title": "World Monitor kimlere yönelik olarak tasarlanmıştır?",
@@ -459,7 +456,7 @@
       "ogDescription": "World Monitor: gerçek zamanlı jeopolitik istihbarat panosu. Çatışmalar, gemiler, uçuşlar, piyasalar ve siber için ücretsiz canlı harita; API ve MCP ile."
     },
     "nav": {
-      "useCases": "Korelasyonlar",
+      "useCases": "Kullanım örnekleri",
       "firstFive": "İlk 5 dakika",
       "depth": "Derinlik",
       "pricing": "Fiyatlandırma",
@@ -714,7 +711,16 @@
       "chokepointDesc": "{{chokepoints}} kritik deniz dar geçidinde kesinti durumunu, gemi akışlarını ve riski inceleyin.",
       "countryRiskTitle": "Bir ülke riski hareketini açıklayın",
       "countryRiskDesc": "Bir ülkenin değişiminin ardındaki siyasi, güvenlik, ekonomik ve dayanıklılık sinyallerini izleyin; dayanıklılık {{resilienceRanked}} ülke için sıralandı.",
-      "open": "Kanıt görüntüle"
+      "open": "Kanıt görüntüle",
+      "workflow": "Adım adım iş akışı"
+    },
+    "voices": {
+      "eyebrow": "Kendi sözleriyle",
+      "title": "İnsanlar World Monitor hakkında ne diyor",
+      "sub": "{{countries}} ülkede {{users}} kişi World Monitor’ü kullandı. İşte basının ve bazılarının söyledikleri.",
+      "translatedJa": "Japoncadan çevrildi",
+      "prev": "Önceki alıntılar",
+      "next": "Daha fazla alıntı"
     }
   },
   "whatsNew": {
@@ -722,13 +728,13 @@
     "title": "WorldMonitor'daki yenilikler",
     "subtitle": "Son 30 gündeki yeni özellikler — düzeltmeler ve altyapı güncellemeleri dahil değil.",
     "proTag": "PRO",
-    "m1": "Fiziksel premium farklılaşma endeksi — SGE vs COMEX, geçmiş verileriyle birlikte",
-    "m2": "Emtia tedarik kırılganlığı sıralaması — darboğaz bağımlılığı yayılımı",
-    "m3": "Mineral üretim konsantrasyonu ve savunma endüstrisi temeli",
-    "m4": "Beş faktörlü dayanıklılık karne sistemleri gösterge düzeyinde puanlarla",
-    "m5": "Özel Telegram kanal izleme listeleri",
-    "m6": "Şifre anahtarı ile oturum açma",
-    "m7": "AI ajanları panoyu yönlendirebilir — paneller, sekmeler, harita katmanları ve görevler",
-    "m8": "Daha zengin ülke dayanıklılığı sayfaları"
+    "m1": "Medya perspektifi — her ülkenin medyasının herhangi bir ülkeyi nasıl haberleştirdiği, yapay zekâ ajanları ve API için",
+    "m2": "/verify — her iddia için yayımlanmış doğruluk kontrollerine atıf yapan bir kanıt kartı",
+    "m3": "Uyarılarda, özetlerde ve harita açılır pencerelerinde doğrulayan kaynak sayısı, ayrıca herkese açık /trust sayfası",
+    "m4": "Otomatik saldırı takibi — ülke riski saldırı altında yükselir, saldırılar durunca toparlanır",
+    "m5": "FAA NOTAM'larından hava sahası kapanışları ve bildirilen uçak acil durumları için bir harita katmanı",
+    "m6": "Sentinel-5P uydusunun NO2 verilerinden sanayi faaliyeti haritası",
+    "m7": "230 ekonomi ve her ülke çifti için sermaye akışları, yapay zekâ ajanları ve API için",
+    "m8": "Terminal panosu ve yakınlaştırılabilir CLI haritası — brew install worldmonitor"
   }
 }

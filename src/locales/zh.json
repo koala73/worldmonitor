@@ -490,7 +490,8 @@
     "consumerPrices": "消费者价格",
     "marketBreadth": "市场广度",
     "climateNews": "气候新闻",
-    "fx": "外汇汇率"
+    "fx": "外汇汇率",
+    "ukmtoIncidents": "UKMTO事件"
   },
   "commands": {
     "prefixes": {
@@ -2567,7 +2568,15 @@
       "renewalFailedDesc": "我们无法核实您的订阅续订。请管理账单，如问题持续请联系支持。",
       "manageBilling": "管理账单",
       "lapsedDesc": "您的 Pro 订阅已结束。重新订阅以恢复高级访问权限。",
-      "resubscribe": "重新订阅"
+      "resubscribe": "重新订阅",
+      "billingEmailBouncedMessage": "发送至 {{email}} 的账单邮件被退回。请更新您的账单邮箱，以便收到收据和付款提醒。",
+      "fixBillingEmail": "修正账单邮箱",
+      "billingEmailLabel": "新的账单邮箱",
+      "save": "保存",
+      "billingEmailUpdated": "账单邮箱已更新为 {{email}}。此后收据和付款提醒将发送至该邮箱。",
+      "billingEmailInvalid": "请输入有效的电子邮箱地址。",
+      "billingEmailSuppressed": "我们也无法向该地址送达邮件。请换一个地址。",
+      "billingEmailUpdateFailed": "无法更新您的账单邮箱。请重试，如果仍然失败，请联系支持团队。"
     },
     "checkoutFailureBanner": {
       "message": "支付无法完成。未进行任何扣款。",
@@ -4140,5 +4149,14 @@
         "0": "图层指南"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO数据不可用。",
+    "empty": "UKMTO未返回任何事件。",
+    "stale": "来源数据已过时。上次检查",
+    "current": "来源已检查",
+    "reportedClaims": "发布方报告。相关说法可能仍在调查中。",
+    "occurred": "事件",
+    "reported": "发布"
   }
 }

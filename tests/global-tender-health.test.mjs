@@ -3,9 +3,34 @@ import assert from 'node:assert/strict';
 
 import { __testing__ } from '../api/health.js';
 
+test('new tender sources become strict after their first successful publication', () => {
+  const { classifyKey, SEED_META, STANDALONE_KEYS, ACTIVATION_MARKERS } = __testing__;
+  const sources = ['ColombiaSecop', 'KenyaPpip', 'SouthAfricaEtenders', 'ChileMercadoPublico', 'BrazilPncp',
+    'UkraineProzorro', 'BulgariaEop', 'LatviaIub', 'PolandBzp', 'PakistanPpra'];
+  const now = Date.parse('2026-10-29T12:00:00Z');
+  for (const source of sources) {
+    const name = `globalTenders${source}`;
+    const key = STANDALONE_KEYS[name];
+    assert.equal(ACTIVATION_MARKERS[name], SEED_META[name].activationKey);
+    const classify = (active, present, ageMinutes = 1) => classifyKey(name, key, { allowOnDemand: true }, {
+      now, activationStates: new Map([[name, active]]), keyErrors: new Map(), keyMetaErrors: new Map(),
+      keyStrens: new Map(present ? [[key, 100]] : []),
+      keyMetaValues: new Map(present ? [[SEED_META[name].key, JSON.stringify({
+        fetchedAt: now - ageMinutes * 60_000, recordCount: 0, sourceState: 'ok',
+      })]] : []),
+    });
+    assert.equal(classify(false, false).status, 'EMPTY_ON_DEMAND', name);
+    assert.equal(classify(true, false).status, 'EMPTY', name);
+    assert.equal(classify(true, true).status, 'OK', name);
+    assert.equal(classify(true, true, 181).status, 'STALE_SEED', name);
+  }
+});
+
 test('health registers and classifies per-source global tender freshness', () => {
   const { classifyKey, SEED_META, STANDALONE_KEYS, ZERO_RECORD_DATA_OK_KEYS } = __testing__;
-  const sources = ['Sam', 'Ted', 'ContractsFinder', 'CanadaBuys', 'Gets', 'WorldBank'];
+  const sources = ['Sam', 'Ted', 'ContractsFinder', 'CanadaBuys', 'Gets', 'WorldBank',
+    'ColombiaSecop', 'KenyaPpip', 'SouthAfricaEtenders', 'ChileMercadoPublico', 'BrazilPncp',
+    'UkraineProzorro', 'BulgariaEop', 'LatviaIub', 'PolandBzp', 'PakistanPpra'];
 
   for (const source of sources) {
     const name = `globalTenders${source}`;

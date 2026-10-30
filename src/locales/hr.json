@@ -564,7 +564,8 @@
     "fearGreed": "Strah & Pohlepa",
     "marketBreadth": "Širina Tržišta",
     "climateNews": "Klimatske Vijesti",
-    "fx": "Tečajevi deviza"
+    "fx": "Tečajevi deviza",
+    "ukmtoIncidents": "Incidenti UKMTO-a"
   },
   "commands": {
     "prefixes": {
@@ -2663,7 +2664,15 @@
       "renewalFailedDesc": "Nismo mogli provjeriti obnovu vaše pretplate. Upravljajte naplatom ili kontaktirajte podršku ako se problem nastavi.",
       "manageBilling": "Upravljanje naplatom",
       "lapsedDesc": "Vaša Pro pretplata je istekla. Pretplatite se ponovno kako biste vratili premium pristup.",
-      "resubscribe": "Ponovno se pretplati"
+      "resubscribe": "Ponovno se pretplati",
+      "billingEmailBouncedMessage": "E-poruke za naplatu na {{email}} vraćaju se kao neisporučene. Ažurirajte e-adresu za naplatu kako biste primali račune i obavijesti o plaćanju.",
+      "fixBillingEmail": "Ispravi e-adresu za naplatu",
+      "billingEmailLabel": "Nova e-adresa za naplatu",
+      "save": "Spremi",
+      "billingEmailUpdated": "E-adresa za naplatu promijenjena je u {{email}}. Računi i obavijesti o plaćanju od sada će stizati onamo.",
+      "billingEmailInvalid": "Unesite valjanu e-adresu.",
+      "billingEmailSuppressed": "Ni na tu adresu ne možemo isporučiti poruke. Pokušajte s drugom.",
+      "billingEmailUpdateFailed": "Nismo uspjeli ažurirati vašu e-adresu za naplatu. Pokušajte ponovno ili se obratite podršci ako se problem nastavi."
     },
     "checkoutFailureBanner": {
       "message": "Plaćanje nije moglo biti dovršeno. Nije izvršena nikakva naplata.",
@@ -4191,5 +4200,14 @@
         "0": "Vodič slojeva"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "Podaci UKMTO-a nisu dostupni.",
+    "empty": "UKMTO nije vratio incidente.",
+    "stale": "Zastarjeli izvorni podaci. Zadnja provjera",
+    "current": "Izvor provjeren",
+    "reportedClaims": "Izvješća izdavača. Tvrdnje mogu još biti pod istragom.",
+    "occurred": "Incident",
+    "reported": "Objavljeno"
   }
 }

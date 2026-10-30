@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,9 +13,12 @@ import {
   computeOilDemandChange,
   jodiSourceYears,
   jodiCsvCandidates,
+  fetchCsv,
   fetchYearCsv,
   validateCoverage,
   mergeSourceRows,
+  prepareOilPublish,
+  readPreviousOilMeta,
   CANONICAL_KEY,
   COUNTRY_KEY_PREFIX,
   JODI_TTL,
@@ -820,6 +824,26 @@ describe('mergeSourceRows', () => {
     );
   });
 
+  it('keeps only kb/d and closing-stock rows, with a year file the size of JODI\'s inside a 128 MB heap', () => {
+    // A secondary year file is ~637k rows across five units, of which only
+    // KBD and KBBL closing stocks are read. Building every row first held
+    // ~640 MB of heap for the six files and, once the 2026 files downloaded,
+    // pushed JODI-Oil past the 1 GB Railway container (measured 2026-10-29).
+    const moduleUrl = new URL('../scripts/seed-jodi-oil.mjs', import.meta.url).href;
+    const script = `const m = await import(${JSON.stringify(moduleUrl)});
+      // 2,124 copies of a 300-row block: 637,200 rows, five units in equal shares.
+      const units = ['CONVBBL', 'KBBL', 'KBD', 'KL', 'KTONS'];
+      const flows = ['TOTDEMO', 'CLOSTLV', 'REFGROUT', 'TOTEXPSB', 'TOTIMPSB'];
+      const block = Array.from({ length: 300 }, (_, i) => 'A' + (i % 90) + ',2025-' + String((i % 12) + 1).padStart(2, '0') + ',GASDIES,' + flows[Math.floor(i / 5) % 5] + ',' + units[i % 5] + ',' + (i % 997) + '.125,1\\n').join('');
+      const text = 'REF_AREA,TIME_PERIOD,ENERGY_PRODUCT,FLOW_BREAKDOWN,UNIT_MEASURE,OBS_VALUE,ASSESSMENT_CODE\\n' + block.repeat(2124);
+      const rows = m.mergeSourceRows('', '', text, '');
+      process.stdout.write(JSON.stringify({ rows: rows.length, units: [...new Set(rows.map((r) => r.UNIT_MEASURE))].sort() }));`;
+    const child = spawnSync(process.execPath, ['--max-old-space-size=128', '--input-type=module', '-e', script], { encoding: 'utf8', timeout: 60_000 });
+    assert.equal(child.status, 0, child.stderr.slice(-400));
+    // Per block: 60 KBD rows plus 12 KBBL rows on the CLOSTLV flow.
+    assert.deepEqual(JSON.parse(child.stdout), { rows: 72 * 2124, units: ['KBBL', 'KBD'] });
+  });
+
   it('proceeds when current-year secondary succeeds but prior-year fails', () => {
     const primaryCsv = makeCsv([makeRow({ ENERGY_PRODUCT: 'CRUDEOIL' })]);
     const secondaryCsv = makeCsv([makeRow({ ENERGY_PRODUCT: 'GASDIES' })]);
@@ -997,6 +1021,54 @@ describe('JODI current-year source resolution (#6799)', () => {
   });
 });
 
+// The year files are 7-26 MB and jodidata.org serves them at about 1 MB/s per
+// connection, so a fixed 30 s request timeout aborted every 2026 download on
+// Railway (2026-10-29). A download is cut only when it stops moving or runs
+// past its whole budget.
+describe('JODI CSV download timeouts', () => {
+  // A body that yields `chunks` pieces `gapMs` apart and errors on abort.
+  const trickle = (chunks, gapMs) => async (_url, { signal }) => {
+    const body = new ReadableStream({
+      async start(controller) {
+        signal.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+        for (let i = 0; i < chunks; i++) {
+          await new Promise((r) => setTimeout(r, gapMs));
+          if (signal.aborted) return;
+          controller.enqueue(new TextEncoder().encode(i === 0 ? 'REF_AREA,TIME_PERIOD\n' : `DE,2026-0${i}\n`));
+        }
+        controller.close();
+      },
+    });
+    return new Response(body, { status: 200 });
+  };
+
+  it('keeps a slow download that never stalls, past the per-chunk limit in total', async () => {
+    const text = await fetchCsv('https://jodi.test/a.csv', { fetchImpl: trickle(6, 40), stallMs: 100, budgetMs: 2000 });
+    assert.equal(text, 'REF_AREA,TIME_PERIOD\nDE,2026-01\nDE,2026-02\nDE,2026-03\nDE,2026-04\nDE,2026-05\n');
+  });
+
+  it('aborts a download that stops sending', async () => {
+    const started = Date.now();
+    await assert.rejects(
+      fetchCsv('https://jodi.test/a.csv', { fetchImpl: trickle(3, 400), stallMs: 100, budgetMs: 5000 }),
+      /stalled/,
+    );
+    assert.ok(Date.now() - started < 1000, `took ${Date.now() - started} ms`);
+  });
+
+  it('aborts a download past its whole budget, and does not retry it', async () => {
+    const err = await fetchCsv('https://jodi.test/a.csv', { fetchImpl: trickle(50, 30), stallMs: 200, budgetMs: 300 }).catch((e) => e);
+    assert.match(err?.message ?? '', /exceeded/);
+    assert.equal(err.nonRetryable, true, 'a steady but slow transfer will not finish faster on a retry');
+  });
+
+  it('keeps a 404 non-retryable', async () => {
+    const err = await fetchCsv('https://jodi.test/2026.csv', { fetchImpl: async () => new Response('missing', { status: 404 }) }).catch((e) => e);
+    assert.match(err.message, /HTTP 404/);
+    assert.equal(err.nonRetryable, true);
+  });
+});
+
 // JODI files carry month-end closing stocks (CLOSTLV, thousand barrels) beside
 // the kb/d flows. They are the only recurring stock observation for importers
 // outside the IEA (India, Taiwan, Thailand, Philippines...).
@@ -1112,5 +1184,98 @@ describe('net oil imports (IEA days basis)', () => {
     const csv = makeCsv([makeRow({ REF_AREA: 'AU', TIME_PERIOD: '2024-05', ENERGY_PRODUCT: 'TOTCRUDE', FLOW_BREAKDOWN: 'TOTIMPSB', OBS_VALUE: '150' })]);
     const rows = mergeSourceRows('', '', makeCsv([makeRow({})]), '', '', csv);
     assert.ok(rows.some((r) => r.TIME_PERIOD === '2024-05' && r.ENERGY_PRODUCT === 'TOTCRUDE'));
+  });
+});
+
+describe('prepareOilPublish refuses an older vintage than the published one', () => {
+  const NOW = new Date('2026-10-29T07:32:00.000Z');
+
+  /** Diesel demand for `count` countries, all in `month`. */
+  function rowsFor(month, count = 45) {
+    const rows = [];
+    for (let index = 0; index < count; index++) {
+      rows.push({
+        REF_AREA: `X${String(index).padStart(2, '0')}`,
+        TIME_PERIOD: month,
+        ENERGY_PRODUCT: 'GASDIES',
+        FLOW_BREAKDOWN: 'TOTDEMO',
+        UNIT_MEASURE: 'KBD',
+        OBS_VALUE: '894.4',
+        ASSESSMENT_CODE: '1',
+      });
+    }
+    return rows;
+  }
+
+  const publishedThrough = (month) => ({ newestItemAt: Date.parse(monthPeriodEnd(month)) });
+
+  it('refuses a run whose newest month is older than the snapshot it would replace', () => {
+    // 2026-10-29: every 2026 file timed out, so the run built December 2025
+    // and overwrote a snapshot dated August 2026.
+    const { refusalReason } = prepareOilPublish({
+      allRows: rowsFor('2025-12'),
+      previousMeta: publishedThrough('2026-08'),
+      now: NOW,
+    });
+    assert.match(refusalReason ?? '', /newest month 2025-12 is older than the published 2026-08/);
+  });
+
+  it('publishes the same or a newer vintage', () => {
+    for (const month of ['2026-08', '2026-09']) {
+      const { refusalReason } = prepareOilPublish({
+        allRows: rowsFor(month),
+        previousMeta: publishedThrough('2026-08'),
+        now: NOW,
+      });
+      assert.equal(refusalReason, null, month);
+    }
+  });
+
+  it('publishes when no previous vintage is recorded', () => {
+    for (const previousMeta of [null, {}, { newestItemAt: null }, { newestItemAt: 'not a time' }]) {
+      const { refusalReason } = prepareOilPublish({ allRows: rowsFor('2025-12'), previousMeta, now: NOW });
+      assert.equal(refusalReason, null, JSON.stringify(previousMeta));
+    }
+  });
+
+  it('reads the previous vintage strictly: a failed read stops the run, a missing key does not', async (t) => {
+    const previousDelay = process.env.WM_SEED_RETRY_DELAY_MS;
+    process.env.WM_SEED_RETRY_DELAY_MS = '1';
+    t.after(() => {
+      if (previousDelay === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
+      else process.env.WM_SEED_RETRY_DELAY_MS = previousDelay;
+    });
+
+    const calls = [];
+    // Fails the first `failures` reads, then returns `value`.
+    const read = (failures, value = null) => async (key, options) => {
+      calls.push({ key, options });
+      if (calls.length <= failures) throw new Error('Redis snapshot read failed: HTTP 503');
+      return value;
+    };
+
+    await assert.rejects(
+      readPreviousOilMeta(read(Infinity)),
+      /HTTP 503/,
+      'a read failure must not pass as "no previous vintage"',
+    );
+    assert.equal(calls.length, 3, 'a persistent failure is retried twice, then stops the run');
+
+    calls.length = 0;
+    assert.deepEqual(await readPreviousOilMeta(read(1, { newestItemAt: 1 })), { newestItemAt: 1 }, 'a transient failure is retried');
+
+    calls.length = 0;
+    assert.equal(await readPreviousOilMeta(read(0, null)), null, 'a missing key is a first publish');
+    assert.equal(calls.length, 1);
+    assert.ok(calls.every(({ key, options }) => key === 'seed-meta:energy:jodi-oil' && options?.strict === true));
+  });
+
+  it('keeps the country-floor reason when both gates fail', () => {
+    const { refusalReason } = prepareOilPublish({
+      allRows: rowsFor('2025-12', 39),
+      previousMeta: publishedThrough('2026-08'),
+      now: NOW,
+    });
+    assert.match(refusalReason ?? '', /only 39 countries/);
   });
 });

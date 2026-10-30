@@ -561,7 +561,8 @@
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
     "climateNews": "Climate News",
-    "fx": "نرخ تبادل ارز"
+    "fx": "نرخ تبادل ارز",
+    "ukmtoIncidents": "رویدادهای UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -2649,7 +2650,15 @@
       "renewalFailedDesc": "تمدید اشتراک شما تأیید نشد. صورتحساب را مدیریت کنید یا در صورت ادامه مشکل با پشتیبانی تماس بگیرید.",
       "manageBilling": "مدیریت صورتحساب",
       "lapsedDesc": "اشتراک Pro شما به پایان رسیده است. برای بازیابی دسترسی ویژه دوباره مشترک شوید.",
-      "resubscribe": "اشتراک مجدد"
+      "resubscribe": "اشتراک مجدد",
+      "billingEmailBouncedMessage": "ایمیل‌های صورت‌حساب به {{email}} برگشت می‌خورند. ایمیل صورت‌حساب خود را به‌روزرسانی کنید تا رسیدها و هشدارهای پرداخت را دریافت کنید.",
+      "fixBillingEmail": "اصلاح ایمیل صورت‌حساب",
+      "billingEmailLabel": "ایمیل صورت‌حساب جدید",
+      "save": "ذخیره",
+      "billingEmailUpdated": "ایمیل صورت‌حساب به {{email}} تغییر کرد. از این پس رسیدها و هشدارهای پرداخت به آنجا ارسال می‌شوند.",
+      "billingEmailInvalid": "یک آدرس ایمیل معتبر وارد کنید.",
+      "billingEmailSuppressed": "به این آدرس هم نمی‌توانیم ایمیل تحویل دهیم. آدرس دیگری را امتحان کنید.",
+      "billingEmailUpdateFailed": "به‌روزرسانی ایمیل صورت‌حساب ممکن نشد. دوباره تلاش کنید یا در صورت تکرار مشکل با پشتیبانی تماس بگیرید."
     },
     "checkoutFailureBanner": {
       "message": "Payment couldn't be completed. No charge was made.",
@@ -4160,5 +4169,14 @@
         "0": "راهنمای لایه"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "داده‌های UKMTO در دسترس نیست.",
+    "empty": "UKMTO هیچ رویدادی برنگرداند.",
+    "stale": "داده‌های منبع قدیمی است. آخرین بررسی",
+    "current": "منبع بررسی شد",
+    "reportedClaims": "گزارش‌های ناشر. ادعاها ممکن است همچنان در دست بررسی باشند.",
+    "occurred": "رویداد",
+    "reported": "انتشار"
   }
 }

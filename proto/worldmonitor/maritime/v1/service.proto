@@ -5,10 +5,16 @@ package worldmonitor.maritime.v1;
 import "sebuf/http/annotations.proto";
 import "worldmonitor/maritime/v1/get_vessel_snapshot.proto";
 import "worldmonitor/maritime/v1/list_navigational_warnings.proto";
+import "worldmonitor/maritime/v1/list_ukmto_incidents.proto";
 
 // MaritimeService provides APIs for civilian AIS vessel data and NGA navigational warnings.
 service MaritimeService {
   option (sebuf.http.service_config) = {base_path: "/api/maritime/v1"};
+
+  // ListUkmtoIncidents returns UKMTO maritime incident reports and source freshness.
+  rpc ListUkmtoIncidents(ListUkmtoIncidentsRequest) returns (ListUkmtoIncidentsResponse) {
+    option (sebuf.http.config) = {path: "/list-ukmto-incidents", method: HTTP_METHOD_GET};
+  }
 
   // GetVesselSnapshot retrieves a point-in-time view of AIS vessel traffic and disruptions.
   // Empty/absent snapshot with fetched_at=0 or data_available=false means the

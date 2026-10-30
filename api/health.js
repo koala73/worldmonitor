@@ -410,6 +410,7 @@ const BOOTSTRAP_KEYS = {
 // aggregate is cleanly absent. Include both fallback keys in the same health
 // sweep so the canadaAlerts probe grades the data clients actually receive.
 const STANDALONE_KEYS = {
+  ukmtoIncidents: 'maritime:ukmto-incidents:v1',
   sanctionsChanges: 'sanctions:changes:v1',
   predictionCountryMarkets: 'prediction:markets-country-index:v1',
   // US HTS chapter 99 duty index (catalog; coverage shards are versioned by
@@ -548,6 +549,16 @@ const STANDALONE_KEYS = {
   globalTendersCanadaBuys:      'economic:global-tenders:v1:source:canada-buys',
   globalTendersGets:            'economic:global-tenders:v1:source:gets',
   globalTendersWorldBank:       'economic:global-tenders:v1:source:world-bank',
+  globalTendersColombiaSecop:   'economic:global-tenders:v1:source:colombia-secop',
+  globalTendersKenyaPpip:       'economic:global-tenders:v1:source:kenya-ppip',
+  globalTendersSouthAfricaEtenders: 'economic:global-tenders:v1:source:south-africa-etenders',
+  globalTendersChileMercadoPublico: 'economic:global-tenders:v1:source:chile-mercado-publico',
+  globalTendersBrazilPncp:      'economic:global-tenders:v1:source:brazil-pncp',
+  globalTendersUkraineProzorro: 'economic:global-tenders:v1:source:ukraine-prozorro',
+  globalTendersBulgariaEop:     'economic:global-tenders:v1:source:bulgaria-eop',
+  globalTendersLatviaIub:       'economic:global-tenders:v1:source:latvia-iub',
+  globalTendersPolandBzp:       'economic:global-tenders:v1:source:poland-bzp',
+  globalTendersPakistanPpra:    'economic:global-tenders:v1:source:pakistan-ppra',
   crossStraitActivityTaiwanMnd: 'military:cross-strait-activity:v1:source:taiwan-mnd',
   crossStraitActivityJapanMod:  'military:cross-strait-activity:v1:source:japan-mod',
   defensePatents:        'patents:defense:latest',
@@ -766,6 +777,11 @@ const STANDALONE_KEYS = {
 const FIVE_FACTOR_SCORECARD_READ_MODEL_KEY = 'scorecard:five-factor:v1:read-model';
 
 const SEED_META = {
+  ukmtoIncidents: {
+    key: 'seed-meta:maritime:ukmto-incidents', maxStaleMin: 75,
+    activationKey: 'seed-activated:maritime:ukmto-incidents',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9831, activationKey: 'seed-activated:maritime:ukmto-incidents' },
+  },
   // scripts/seed-conflict-intel.mjs cron runs every 15min, while HAPI is gated
   // to one bulk refresh every 2h. Bounded above by
   // HAPI_TTL (360min / 6h) — the per-country data key's own Redis TTL — not
@@ -1017,7 +1033,9 @@ const SEED_META = {
       failureCodePattern: /^MND_[A-Z0-9_]{1,60}$/,
     },
   },
-  crossStraitActivityJapanMod:  { key: 'seed-meta:military:cross-strait-activity:japan-mod', maxStaleMin: 720 },
+  // One X read per 12-hour UTC slot, run by a 3-hour bundle: a healthy read can
+  // be 15h old, so 18h tolerates bundle lag but not a missed slot.
+  crossStraitActivityJapanMod:  { key: 'seed-meta:military:cross-strait-activity:japan-mod', maxStaleMin: 1080 },
   chinaPolicyEvents: { key: 'seed-meta:china:policy-events', maxStaleMin: 2_160 },
   // decisionGroups (#6060): the seeder's afterPublish diagnostics name which
   // groups are quiet, stale, or unavailable, so a shortfall is actionable
@@ -1296,6 +1314,56 @@ const SEED_META = {
   globalTendersCanadaBuys:      { key: 'seed-meta:economic:global-tenders:canada-buys',      maxStaleMin: 180 },
   globalTendersGets:            { key: 'seed-meta:economic:global-tenders:gets',             maxStaleMin: 180 },
   globalTendersWorldBank:       { key: 'seed-meta:economic:global-tenders:world-bank',       maxStaleMin: 180 },
+  globalTendersColombiaSecop: {
+    key: 'seed-meta:economic:global-tenders:colombia-secop', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:colombia-secop',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:colombia-secop' },
+  },
+  globalTendersKenyaPpip: {
+    key: 'seed-meta:economic:global-tenders:kenya-ppip', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:kenya-ppip',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:kenya-ppip' },
+  },
+  globalTendersSouthAfricaEtenders: {
+    key: 'seed-meta:economic:global-tenders:south-africa-etenders', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:south-africa-etenders',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:south-africa-etenders' },
+  },
+  globalTendersChileMercadoPublico: {
+    key: 'seed-meta:economic:global-tenders:chile-mercado-publico', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:chile-mercado-publico',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:chile-mercado-publico' },
+  },
+  globalTendersBrazilPncp: {
+    key: 'seed-meta:economic:global-tenders:brazil-pncp', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:brazil-pncp',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:brazil-pncp' },
+  },
+  globalTendersUkraineProzorro: {
+    key: 'seed-meta:economic:global-tenders:ukraine-prozorro', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:ukraine-prozorro',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:ukraine-prozorro' },
+  },
+  globalTendersBulgariaEop: {
+    key: 'seed-meta:economic:global-tenders:bulgaria-eop', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:bulgaria-eop',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:bulgaria-eop' },
+  },
+  globalTendersLatviaIub: {
+    key: 'seed-meta:economic:global-tenders:latvia-iub', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:latvia-iub',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:latvia-iub' },
+  },
+  globalTendersPolandBzp: {
+    key: 'seed-meta:economic:global-tenders:poland-bzp', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:poland-bzp',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:poland-bzp' },
+  },
+  globalTendersPakistanPpra: {
+    key: 'seed-meta:economic:global-tenders:pakistan-ppra', maxStaleMin: 180,
+    activationKey: 'seed-activated:economic:global-tenders:pakistan-ppra',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:pakistan-ppra' },
+  },
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
   techEventsSeeder: {
     key: 'seed-meta:research:tech-events:seeder',
@@ -2247,6 +2315,17 @@ if (!IRAN_EVENTS_ENABLED) {
 // chronic outage went undetected until a user noticed the panel was stuck on
 // "Loading...". Removed marketImplications below.
 const ON_DEMAND_KEYS = new Set([
+  'globalTendersColombiaSecop',
+  'globalTendersKenyaPpip',
+  'globalTendersSouthAfricaEtenders',
+  'globalTendersChileMercadoPublico',
+  'globalTendersBrazilPncp',
+  'globalTendersUkraineProzorro',
+  'globalTendersBulgariaEop',
+  'globalTendersLatviaIub',
+  'globalTendersPolandBzp',
+  'globalTendersPakistanPpra',
+  'ukmtoIncidents',
   // Deployment-order bridge: Vercel can ship this reader before Railway's
   // hourly bundle publishes the first summary. The seeder writes a durable
   // activation marker after its first successful publish; after that, a
@@ -2428,6 +2507,17 @@ const ON_DEMAND_KEYS = new Set([
 // publish; when the marker exists the key leaves ON_DEMAND softening and
 // normal EMPTY/STALE_SEED rules apply.
 const ACTIVATION_MARKERS = {
+  globalTendersColombiaSecop: SEED_META.globalTendersColombiaSecop.activationKey,
+  globalTendersKenyaPpip: SEED_META.globalTendersKenyaPpip.activationKey,
+  globalTendersSouthAfricaEtenders: SEED_META.globalTendersSouthAfricaEtenders.activationKey,
+  globalTendersChileMercadoPublico: SEED_META.globalTendersChileMercadoPublico.activationKey,
+  globalTendersBrazilPncp: SEED_META.globalTendersBrazilPncp.activationKey,
+  globalTendersUkraineProzorro: SEED_META.globalTendersUkraineProzorro.activationKey,
+  globalTendersBulgariaEop: SEED_META.globalTendersBulgariaEop.activationKey,
+  globalTendersLatviaIub: SEED_META.globalTendersLatviaIub.activationKey,
+  globalTendersPolandBzp: SEED_META.globalTendersPolandBzp.activationKey,
+  globalTendersPakistanPpra: SEED_META.globalTendersPakistanPpra.activationKey,
+  ukmtoIncidents: 'seed-activated:maritime:ukmto-incidents',
   chinaCoverage: 'seed-activated:health:china-coverage',
   // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).
   pizzintHistory: SEED_META.pizzintHistory.activationKey,
@@ -2862,6 +2952,7 @@ const MISSING_DATA_IS_FAILURE_KEYS = new Set([
 // Keys where a present payload with meta recordCount=0 is valid, but the data
 // key itself must still exist. Do not use this set in the missing-key branch.
 const ZERO_RECORD_DATA_OK_KEYS = new Set([
+  'ukmtoIncidents',
   ...EMPTY_DATA_OK_KEYS,
   'sanctionsChanges',
   'forecastArchive',
@@ -2888,6 +2979,9 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   // reads EMPTY (absence is not peaceful).
   'aisGaps',
   'globalTendersSam', 'globalTendersTed', 'globalTendersContractsFinder', 'globalTendersCanadaBuys', 'globalTendersGets', 'globalTendersWorldBank',
+  'globalTendersColombiaSecop', 'globalTendersKenyaPpip', 'globalTendersSouthAfricaEtenders',
+  'globalTendersChileMercadoPublico', 'globalTendersBrazilPncp', 'globalTendersUkraineProzorro',
+  'globalTendersBulgariaEop', 'globalTendersLatviaIub', 'globalTendersPolandBzp', 'globalTendersPakistanPpra',
   // retailer-spread is SUPPRESSED to an explicit 0 by the aggregate job when a
   // market's retailers share < MIN_SPREAD_ITEMS (4) common basket items —
   // consumer-prices-core/src/jobs/aggregate.ts writes `retailer_spread_pct: 0`

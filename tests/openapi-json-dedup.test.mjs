@@ -1001,7 +1001,7 @@ describe('public OpenAPI dedupe (real bundle)', () => {
     // #9093 adds two POST operations to the YAML bundle; only submit carries
     // the 2 idempotency headers (review is exempt from replay).
     assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 41 });
-    assert.equal(int64Stats.replacedRefs, 51);
+    assert.equal(int64Stats.replacedRefs, 53);
     // Described int64 fields (own comment + generated warning) keep their
     // comment beside the shared $ref; a regression to zero would silently give
     // back ~4 KB of the scanner budget.

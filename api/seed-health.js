@@ -55,6 +55,7 @@ const CHINA_DECISION_SIGNAL_STATES = new Set([
 // scripts/seed-china-decision-signals.mjs.
 const CHINA_DECISION_HEALTHY_QUIET_CAUSE = 'healthy_quiet_window';
 const SEED_DOMAINS = {
+  'maritime:ukmto-incidents': { key: 'seed-meta:maritime:ukmto-incidents', intervalMin: 37.5, activationKey: 'seed-activated:maritime:ukmto-incidents' }, // 2x matches the 75-minute reader and health budget
   'health:china-coverage':    { key: 'seed-meta:health:china-coverage',    intervalMin: 60, activationKey: 'seed-activated:health:china-coverage' },
   // Phase 1 — Snapshot endpoints
   'seismology:earthquakes':   { key: 'seed-meta:seismology:earthquakes',   intervalMin: 15 },

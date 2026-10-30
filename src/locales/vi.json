@@ -490,7 +490,8 @@
     "fearGreed": "Sợ hãi & Tham lam",
     "marketBreadth": "Độ rộng Thị trường",
     "climateNews": "Tin tức về Khí hậu",
-    "fx": "Tỷ giá ngoại hối"
+    "fx": "Tỷ giá ngoại hối",
+    "ukmtoIncidents": "Sự cố UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -2567,7 +2568,15 @@
       "renewalFailedDesc": "Chúng tôi không thể xác minh việc gia hạn gói đăng ký của bạn. Quản lý thanh toán hoặc liên hệ hỗ trợ nếu sự cố vẫn tiếp diễn.",
       "manageBilling": "Quản lý thanh toán",
       "lapsedDesc": "Gói đăng ký Pro của bạn đã kết thúc. Đăng ký lại để lấy lại quyền truy cập cao cấp.",
-      "resubscribe": "Đăng ký lại"
+      "resubscribe": "Đăng ký lại",
+      "billingEmailBouncedMessage": "Email thanh toán gửi tới {{email}} đang bị trả lại. Hãy cập nhật email thanh toán để nhận biên lai và cảnh báo thanh toán.",
+      "fixBillingEmail": "Sửa email thanh toán",
+      "billingEmailLabel": "Email thanh toán mới",
+      "save": "Lưu",
+      "billingEmailUpdated": "Email thanh toán đã được đổi thành {{email}}. Từ giờ, biên lai và cảnh báo thanh toán sẽ được gửi tới đó.",
+      "billingEmailInvalid": "Nhập một địa chỉ email hợp lệ.",
+      "billingEmailSuppressed": "Chúng tôi cũng không thể gửi tới địa chỉ đó. Hãy thử một địa chỉ khác.",
+      "billingEmailUpdateFailed": "Chúng tôi không thể cập nhật email thanh toán của bạn. Hãy thử lại, hoặc liên hệ bộ phận hỗ trợ nếu vẫn không thành công."
     },
     "checkoutFailureBanner": {
       "message": "Không thể hoàn tất thanh toán. Không có khoản phí nào được tính.",
@@ -4140,5 +4149,14 @@
         "0": "Hướng dẫn Lớp"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "Không có dữ liệu UKMTO.",
+    "empty": "UKMTO không trả về sự cố nào.",
+    "stale": "Dữ liệu nguồn đã cũ. Kiểm tra lần cuối",
+    "current": "Đã kiểm tra nguồn",
+    "reportedClaims": "Báo cáo của bên xuất bản. Các tuyên bố có thể vẫn đang được điều tra.",
+    "occurred": "Sự cố",
+    "reported": "Đã xuất bản"
   }
 }

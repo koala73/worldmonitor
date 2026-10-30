@@ -494,7 +494,8 @@
     "consumerPrices": "Precios al Consumidor",
     "marketBreadth": "Amplitud de Mercado",
     "climateNews": "Noticias de Clima",
-    "fx": "Tipos de cambio"
+    "fx": "Tipos de cambio",
+    "ukmtoIncidents": "Incidentes de UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -2587,7 +2588,15 @@
       "renewalFailedDesc": "No pudimos verificar la renovación de tu suscripción. Gestiona la facturación o contacta con soporte si el problema persiste.",
       "manageBilling": "Gestionar facturación",
       "lapsedDesc": "Tu suscripción Pro ha finalizado. Vuelve a suscribirte para recuperar el acceso premium.",
-      "resubscribe": "Volver a suscribirse"
+      "resubscribe": "Volver a suscribirse",
+      "billingEmailBouncedMessage": "Los correos de facturación a {{email}} están rebotando. Actualiza tu correo de facturación para recibir recibos y avisos de pago.",
+      "fixBillingEmail": "Corregir correo de facturación",
+      "billingEmailLabel": "Nuevo correo de facturación",
+      "save": "Guardar",
+      "billingEmailUpdated": "Correo de facturación actualizado a {{email}}. A partir de ahora los recibos y avisos de pago llegarán allí.",
+      "billingEmailInvalid": "Introduce una dirección de correo válida.",
+      "billingEmailSuppressed": "Tampoco podemos entregar en esa dirección. Prueba con otra.",
+      "billingEmailUpdateFailed": "No pudimos actualizar tu correo de facturación. Inténtalo de nuevo o contacta con soporte si sigue fallando."
     },
     "checkoutFailureBanner": {
       "message": "No se pudo completar el pago. No se realizó ningún cargo.",
@@ -4180,5 +4189,14 @@
         "0": "Guía de capas"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "Datos de UKMTO no disponibles.",
+    "empty": "UKMTO no devolvió incidentes.",
+    "stale": "Datos de origen desactualizados. Última comprobación",
+    "current": "Fuente comprobada",
+    "reportedClaims": "Informes del editor. Las afirmaciones pueden seguir bajo investigación.",
+    "occurred": "Incidente",
+    "reported": "Publicado"
   }
 }

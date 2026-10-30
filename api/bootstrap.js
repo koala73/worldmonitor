@@ -98,6 +98,10 @@ const TIER_CDN_CACHE = {
 // budget guarantees the shield outlives a complete seed cycle.
 // tests/bootstrap-on-demand-cache-budget.test.mts enforces the ceiling.
 const ON_DEMAND_CACHE_PROFILES = {
+  ukmtoIncidents: {
+    browser: 'max-age=60, stale-while-revalidate=60, stale-if-error=60',
+    cdn: 'public, s-maxage=60, stale-while-revalidate=60, stale-if-error=60',
+  },
   // Correlation cards publish every 5 minutes and have a 30-minute health
   // budget. The conservative complete CDN window is 11m.
   correlationCards: {

@@ -1194,6 +1194,16 @@ describe('CI workflow coverage', () => {
     assert.equal(save.if, download.if);
   });
 
+  it('requires real Redis before the consumer-prices publisher regressions', () => {
+    const steps = YAML.parse(testWorkflow).jobs['consumer-prices'].steps;
+    const installIndex = steps.findIndex((step: { uses?: string }) => step.uses === './.github/actions/install-redis');
+    const testIndex = steps.findIndex((step: { run?: string }) => step.run === 'npm test --prefix consumer-prices-core');
+    assert.ok(installIndex >= 0 && installIndex < testIndex, 'consumer-prices must install Redis before its tests');
+    assert.equal(steps[installIndex].if, undefined, 'Redis must be installed on every consumer-prices run');
+    assert.equal(steps[installIndex]['continue-on-error'], undefined, 'Redis installation failure must fail CI');
+    assert.equal(steps[testIndex]['continue-on-error'], undefined, 'publisher regression failure must fail CI');
+  });
+
   it('installs the locale font subset from a package cache in every browser job', () => {
     const action = YAML.parse(read(resolve(root, '.github/actions/install-browser-fonts/action.yml')));
     const steps = action.runs.steps;

@@ -108,7 +108,8 @@
     "fearGreed": "Rädsla & Girighet",
     "marketBreadth": "Marknadsbredd",
     "climateNews": "Klimatnyheter",
-    "fx": "Valutakurser"
+    "fx": "Valutakurser",
+    "ukmtoIncidents": "UKMTO-incidenter"
   },
   "commands": {
     "prefixes": {
@@ -2193,7 +2194,15 @@
       "renewalFailedDesc": "Vi kunde inte verifiera förnyelsen av din prenumeration. Hantera fakturering eller kontakta supporten om problemet kvarstår.",
       "manageBilling": "Hantera fakturering",
       "lapsedDesc": "Din Pro-prenumeration har upphört. Prenumerera igen för att återfå premiumåtkomsten.",
-      "resubscribe": "Prenumerera igen"
+      "resubscribe": "Prenumerera igen",
+      "billingEmailBouncedMessage": "Faktureringsmejl till {{email}} studsar. Uppdatera din faktureringsadress så att du får kvitton och betalningsaviseringar.",
+      "fixBillingEmail": "Rätta faktureringsmejl",
+      "billingEmailLabel": "Ny e-postadress för fakturering",
+      "save": "Spara",
+      "billingEmailUpdated": "E-postadressen för fakturering är nu {{email}}. Kvitton och betalningsaviseringar skickas dit från och med nu.",
+      "billingEmailInvalid": "Ange en giltig e-postadress.",
+      "billingEmailSuppressed": "Vi kan inte leverera till den adressen heller. Prova en annan.",
+      "billingEmailUpdateFailed": "Vi kunde inte uppdatera din e-postadress för fakturering. Försök igen eller kontakta supporten om det fortsätter att misslyckas."
     },
     "checkoutFailureBanner": {
       "message": "Betalningen kunde inte genomföras. Ingen debitering gjordes.",
@@ -4160,5 +4169,14 @@
         "0": "Lagerguide"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO-data är inte tillgängliga.",
+    "empty": "UKMTO returnerade inga incidenter.",
+    "stale": "Inaktuella källdata. Senast kontrollerad",
+    "current": "Källa kontrollerad",
+    "reportedClaims": "Utgivarens rapporter. Påståenden kan fortfarande utredas.",
+    "occurred": "Incident",
+    "reported": "Publicerad"
   }
 }

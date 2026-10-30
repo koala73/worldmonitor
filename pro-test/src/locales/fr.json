@@ -88,10 +88,7 @@
     "uniqueVisitors": "Visiteurs uniques",
     "peakDailyUsers": "Utilisateurs quotidiens (pic)",
     "countriesReached": "Pays touchés",
-    "liveDataSources": "Sources de données en direct",
-    "quote": "Marchés, politique monétaire, géopolitique, énergie — tout bouge ensemble maintenant. Il me fallait un outil qui montre comment ces forces se connectent en temps réel, pas juste les gros titres mais les moteurs sous-jacents.",
-    "ceo": "CEO de",
-    "asToldTo": "rapporté à"
+    "liveDataSources": "Sources de données en direct"
   },
   "audience": {
     "title": "Pour qui World Monitor est-il conçu ?",
@@ -459,7 +456,7 @@
       "ogDescription": "World Monitor : tableau de bord géopolitique en temps réel. Carte en direct gratuite des conflits, navires, vols, marchés et cyber, avec API et serveur MCP."
     },
     "nav": {
-      "useCases": "Corrélations",
+      "useCases": "Cas d'usage",
       "firstFive": "Premières 5 min",
       "depth": "Profondeur",
       "pricing": "Tarification",
@@ -714,7 +711,16 @@
       "chokepointDesc": "Inspectez l'état des perturbations, les flux de navires et les risques dans {{chokepoints}} passages maritimes critiques.",
       "countryRiskTitle": "Expliquer un mouvement de risque-pays",
       "countryRiskDesc": "Tracez les signaux politiques, sécuritaires, économiques et de résilience derrière l'évolution d'un pays, avec la résilience classée pour {{resilienceRanked}} pays.",
-      "open": "Ouvrir les preuves"
+      "open": "Ouvrir les preuves",
+      "workflow": "Méthode pas à pas"
+    },
+    "voices": {
+      "eyebrow": "Dans leurs mots",
+      "title": "Ce que l’on dit de World Monitor",
+      "sub": "{{users}} personnes dans {{countries}} pays ont utilisé World Monitor. Voici ce qu’en ont dit la presse et certaines d’entre elles.",
+      "translatedJa": "Traduit du japonais",
+      "prev": "Citations précédentes",
+      "next": "Plus de citations"
     }
   },
   "whatsNew": {
@@ -722,13 +728,13 @@
     "title": "Quoi de neuf dans WorldMonitor",
     "subtitle": "Nouvelles fonctionnalités des 30 derniers jours — correctifs et maintenance exclus.",
     "proTag": "PRO",
-    "m1": "Indice de divergence prime physique — SGE vs COMEX, avec historique",
-    "m2": "Classements de vulnérabilité d'approvisionnement en matières premières — ventilation de dépendance aux points d'étranglement",
-    "m3": "Concentration de la production minérale et la base industrielle de défense",
-    "m4": "Fiches de résilience à cinq facteurs avec scores au niveau des indicateurs",
-    "m5": "Listes de surveillance sur canal Telegram personnalisé",
-    "m6": "Connexion par clé d'accès",
-    "m7": "Les agents IA peuvent piloter le dashboard — panneaux, onglets, couches de carte et missions",
-    "m8": "Pages de résilience pays enrichies"
+    "m1": "Perspective médiatique — comment les médias de chaque pays couvrent n'importe quel pays, pour les agents IA et l'API",
+    "m2": "/verify — une fiche de preuves pour toute affirmation, citant les vérifications publiées",
+    "m3": "Nombre de sources concordantes sur les alertes, les synthèses et les infobulles de la carte, plus une page publique /trust",
+    "m4": "Suivi automatique des frappes — le risque d'un pays monte sous les attaques et retombe quand elles cessent",
+    "m5": "Fermetures d'espace aérien issues des NOTAM de la FAA et une couche de carte des urgences aériennes signalées",
+    "m6": "Carte de l'activité industrielle à partir des données satellite NO2 de Sentinel-5P",
+    "m7": "Flux de capitaux pour 230 économies et toute paire de pays, pour les agents IA et l'API",
+    "m8": "Tableau de bord dans le terminal et carte CLI zoomable — brew install worldmonitor"
   }
 }

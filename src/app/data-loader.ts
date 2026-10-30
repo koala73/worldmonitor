@@ -1,4 +1,5 @@
 import type { AppContext, AppModule } from '@/app/app-context';
+import { fetchUkmtoIncidents } from '@/services/ukmto-incidents';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { isReportableCanadaRoad } from '@/services/canada-road-report';
 import { enqueuePanelCall, invokePanelMethod } from '@/app/pending-panel-data';
@@ -1290,6 +1291,9 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.storageFacilities) tasks.push({ name: 'storageFacilities', task: () => runGuarded('storageFacilities', () => this.loadStorageFacilities()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.canadaAlerts) tasks.push({ name: 'canadaAlerts', task: () => runGuarded('canadaAlerts', () => this.loadCanadaAlerts()) });
     if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && this.ctx.mapLayers.ais) tasks.push({ name: 'ais', task: () => runGuarded('ais', () => this.loadAisSignals()) });
+    if ((SITE_VARIANT === 'full' && this.ctx.mapLayers.ais) || (this.ctx.panelSettings['ukmto-incidents']?.enabled && shouldLoad('ukmto-incidents'))) {
+      tasks.push({ name: 'ukmtoIncidents', task: () => runGuarded('ukmtoIncidents', () => this.loadUkmtoIncidents()) });
+    }
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cables', task: () => runGuarded('cables', () => this.loadCableActivity()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cableHealth', task: () => runGuarded('cableHealth', () => this.loadCableHealth()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.flights) tasks.push({ name: 'flights', task: () => runGuarded('flights', () => this.loadFlightDelays()) });
@@ -1395,7 +1399,7 @@ export class DataLoaderManager implements AppModule {
           await this.loadCyberThreats();
           break;
         case 'ais':
-          await this.loadAisSignals();
+          await Promise.all([this.loadAisSignals(), this.loadUkmtoIncidents()]);
           break;
         case 'cables':
           await Promise.all([this.loadCableActivity(), this.loadCableHealth()]);
@@ -4102,6 +4106,14 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateApi('AISStream', { status: 'error' });
       dataFreshness.recordError('ais', String(error));
     }
+  }
+
+  async loadUkmtoIncidents(): Promise<void> {
+    if (SITE_VARIANT !== 'full' && !this.ctx.panelSettings['ukmto-incidents']?.enabled) return;
+    const snapshot = await fetchUkmtoIncidents();
+    if (this.ctx.isDestroyed) return;
+    this.callPanel('ukmto-incidents', 'setData', snapshot);
+    this.ctx.map?.setUkmtoSnapshot(snapshot);
   }
 
   waitForAisData(): void {

@@ -561,7 +561,8 @@
     "fearGreed": "Hofu & Uchoyo",
     "marketBreadth": "Upana wa Soko",
     "climateNews": "Habari za Hali ya Hewa",
-    "fx": "Kiwango cha ubadilishaji wa fedha za kigeni"
+    "fx": "Kiwango cha ubadilishaji wa fedha za kigeni",
+    "ukmtoIncidents": "Matukio ya UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -2872,7 +2873,15 @@
       "renewalFailedDesc": "We couldn't verify your subscription renewal. Manage billing or contact support if this persists.",
       "manageBilling": "Manage Billing",
       "lapsedDesc": "Your Pro subscription has ended. Resubscribe to regain premium access.",
-      "resubscribe": "Resubscribe"
+      "resubscribe": "Resubscribe",
+      "billingEmailBouncedMessage": "Barua pepe za malipo kwa {{email}} zinarudishwa. Sasisha barua pepe yako ya malipo ili upokee risiti na arifa za malipo.",
+      "fixBillingEmail": "Rekebisha barua pepe ya malipo",
+      "billingEmailLabel": "Barua pepe mpya ya malipo",
+      "save": "Hifadhi",
+      "billingEmailUpdated": "Barua pepe ya malipo imebadilishwa kuwa {{email}}. Kuanzia sasa risiti na arifa za malipo zitatumwa huko.",
+      "billingEmailInvalid": "Weka anwani halali ya barua pepe.",
+      "billingEmailSuppressed": "Hatuwezi kutuma kwa anwani hiyo pia. Jaribu anwani nyingine.",
+      "billingEmailUpdateFailed": "Hatukuweza kusasisha barua pepe yako ya malipo. Jaribu tena, au wasiliana na usaidizi ikiwa tatizo linaendelea."
     },
     "exportGate": {
       "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
@@ -4160,5 +4169,14 @@
         "0": "Mwongozo wa Tabaka"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "Data za UKMTO hazipatikani.",
+    "empty": "UKMTO haikurudisha matukio.",
+    "stale": "Data za chanzo zimepitwa na wakati. Ukaguzi wa mwisho",
+    "current": "Chanzo kimekaguliwa",
+    "reportedClaims": "Ripoti za mchapishaji. Madai yanaweza kuwa bado yanachunguzwa.",
+    "occurred": "Tukio",
+    "reported": "Imechapishwa"
   }
 }

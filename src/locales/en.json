@@ -583,7 +583,8 @@
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
     "climateNews": "Climate News",
-    "fx": "Foreign exchange rates"
+    "fx": "Foreign exchange rates",
+    "ukmtoIncidents": "UKMTO Incidents"
   },
   "commands": {
     "prefixes": {
@@ -2701,7 +2702,15 @@
       "renewalFailedDesc": "We couldn't verify your subscription renewal. Manage billing or contact support if this persists.",
       "manageBilling": "Manage Billing",
       "lapsedDesc": "Your Pro subscription has ended. Resubscribe to regain premium access.",
-      "resubscribe": "Resubscribe"
+      "resubscribe": "Resubscribe",
+      "billingEmailBouncedMessage": "Billing emails to {{email}} are bouncing. Update your billing email so you get receipts and payment alerts.",
+      "fixBillingEmail": "Fix billing email",
+      "billingEmailLabel": "New billing email",
+      "save": "Save",
+      "billingEmailUpdated": "Billing email updated to {{email}}. Receipts and payment alerts will go there from now on.",
+      "billingEmailInvalid": "Enter a valid email address.",
+      "billingEmailSuppressed": "We can't deliver to that address either. Try a different one.",
+      "billingEmailUpdateFailed": "We couldn't update your billing email. Try again, or contact support if it keeps failing."
     },
     "exportGate": {
       "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
@@ -4159,5 +4168,14 @@
         "0": "Layer guide"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO data unavailable.",
+    "empty": "No incidents returned by UKMTO.",
+    "stale": "Stale source data. Last checked",
+    "current": "Source checked",
+    "reportedClaims": "Publisher reports. Claims may remain under investigation.",
+    "occurred": "Incident",
+    "reported": "Published"
   }
 }

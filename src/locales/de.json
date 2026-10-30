@@ -492,7 +492,8 @@
     "fearGreed": "Angst & Gier",
     "marketBreadth": "Marktbreite",
     "climateNews": "Klimanachrichten",
-    "fx": "Devisenkurse"
+    "fx": "Devisenkurse",
+    "ukmtoIncidents": "UKMTO-Vorfälle"
   },
   "commands": {
     "prefixes": {
@@ -2577,7 +2578,15 @@
       "renewalFailedDesc": "Die Verlängerung Ihres Abonnements konnte nicht überprüft werden. Verwalten Sie Ihre Abrechnung oder kontaktieren Sie den Support, falls das Problem weiterhin besteht.",
       "manageBilling": "Abrechnung verwalten",
       "lapsedDesc": "Ihr Pro-Abonnement ist abgelaufen. Abonnieren Sie erneut, um den Premium-Zugriff wiederzuerlangen.",
-      "resubscribe": "Erneut abonnieren"
+      "resubscribe": "Erneut abonnieren",
+      "billingEmailBouncedMessage": "Abrechnungs-E-Mails an {{email}} kommen als unzustellbar zurück. Aktualisieren Sie Ihre Rechnungs-E-Mail-Adresse, damit Sie Belege und Zahlungshinweise erhalten.",
+      "fixBillingEmail": "Rechnungs-E-Mail korrigieren",
+      "billingEmailLabel": "Neue Rechnungs-E-Mail-Adresse",
+      "save": "Speichern",
+      "billingEmailUpdated": "Rechnungs-E-Mail-Adresse auf {{email}} geändert. Belege und Zahlungshinweise gehen ab jetzt dorthin.",
+      "billingEmailInvalid": "Geben Sie eine gültige E-Mail-Adresse ein.",
+      "billingEmailSuppressed": "An diese Adresse können wir ebenfalls nicht zustellen. Versuchen Sie eine andere.",
+      "billingEmailUpdateFailed": "Ihre Rechnungs-E-Mail-Adresse konnte nicht aktualisiert werden. Versuchen Sie es erneut oder kontaktieren Sie den Support, falls es weiterhin fehlschlägt."
     },
     "checkoutFailureBanner": {
       "message": "Zahlung konnte nicht abgeschlossen werden. Es wurde keine Gebühr eingezogen.",
@@ -4160,5 +4169,14 @@
         "0": "Ebenenleitfaden"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO-Daten nicht verfügbar.",
+    "empty": "UKMTO hat keine Vorfälle zurückgegeben.",
+    "stale": "Veraltete Quelldaten. Zuletzt geprüft",
+    "current": "Quelle geprüft",
+    "reportedClaims": "Meldungen des Herausgebers. Angaben werden möglicherweise noch untersucht.",
+    "occurred": "Vorfall",
+    "reported": "Veröffentlicht"
   }
 }

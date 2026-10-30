@@ -108,7 +108,8 @@
     "fearGreed": "Medo e Ganância",
     "marketBreadth": "Amplitude de Mercado",
     "climateNews": "Notícias Climáticas",
-    "fx": "Taxas de câmbio"
+    "fx": "Taxas de câmbio",
+    "ukmtoIncidents": "Incidentes UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -2201,7 +2202,15 @@
       "renewalFailedDesc": "Não foi possível verificar a renovação da sua assinatura. Gerencie a cobrança ou entre em contato com o suporte se o problema persistir.",
       "manageBilling": "Gerenciar cobrança",
       "lapsedDesc": "Sua assinatura Pro terminou. Assine novamente para recuperar o acesso premium.",
-      "resubscribe": "Assinar novamente"
+      "resubscribe": "Assinar novamente",
+      "billingEmailBouncedMessage": "Os e-mails de cobrança enviados para {{email}} estão sendo devolvidos. Atualize seu e-mail de cobrança para receber recibos e alertas de pagamento.",
+      "fixBillingEmail": "Corrigir e-mail de cobrança",
+      "billingEmailLabel": "Novo e-mail de cobrança",
+      "save": "Salvar",
+      "billingEmailUpdated": "E-mail de cobrança atualizado para {{email}}. A partir de agora, recibos e alertas de pagamento serão enviados para lá.",
+      "billingEmailInvalid": "Digite um endereço de e-mail válido.",
+      "billingEmailSuppressed": "Também não conseguimos entregar nesse endereço. Tente outro.",
+      "billingEmailUpdateFailed": "Não foi possível atualizar seu e-mail de cobrança. Tente novamente ou fale com o suporte se continuar falhando."
     },
     "checkoutFailureBanner": {
       "message": "O pagamento não pôde ser concluído. Nenhuma cobrança foi realizada.",
@@ -4180,5 +4189,14 @@
         "0": "Guia de camadas"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "Dados UKMTO indisponíveis.",
+    "empty": "O UKMTO não retornou incidentes.",
+    "stale": "Dados da fonte desatualizados. Última verificação",
+    "current": "Fonte verificada",
+    "reportedClaims": "Relatos do editor. As alegações podem continuar sob investigação.",
+    "occurred": "Incidente",
+    "reported": "Publicado"
   }
 }

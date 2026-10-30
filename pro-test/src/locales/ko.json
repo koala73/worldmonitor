@@ -88,10 +88,7 @@
     "uniqueVisitors": "순 방문자",
     "peakDailyUsers": "일일 사용자 (최고치)",
     "countriesReached": "도달한 국가",
-    "liveDataSources": "실시간 데이터 소스",
-    "quote": "시장, 통화 정책, 지정학, 에너지 — 이제 모든 것이 함께 움직입니다. 이러한 힘들이 실시간으로 어떻게 연결되는지 보여주는 것이 필요했습니다. 헤드라인이 아니라 근저의 동인을.",
-    "ceo": "CEO",
-    "asToldTo": "전해진 대상"
+    "liveDataSources": "실시간 데이터 소스"
   },
   "audience": {
     "title": "World Monitor는 누구를 위해 만들어졌나요?",
@@ -459,7 +456,7 @@
       "ogDescription": "World Monitor: 실시간 지정학 인텔리전스 대시보드. 분쟁, 해운, 항공, 시장 및 사이버를 다루는 무료 라이브 맵(API 및 MCP 서버 포함)."
     },
     "nav": {
-      "useCases": "상관관계",
+      "useCases": "활용 사례",
       "firstFive": "첫 5분",
       "depth": "깊이 분석",
       "pricing": "가격",
@@ -714,7 +711,16 @@
       "chokepointDesc": "{{chokepoints}}개 주요 해상 교통로의 해운 차질 상황, 선박 흐름, 위험도를 점검합니다.",
       "countryRiskTitle": "국가 위험 변화 설명",
       "countryRiskDesc": "국가의 변화를 주도하는 정치, 보안, 경제, 회복력 신호를 추적합니다. {{resilienceRanked}}개국의 회복력 순위가 산출됩니다.",
-      "open": "증거 보기"
+      "open": "증거 보기",
+      "workflow": "단계별 워크플로"
+    },
+    "voices": {
+      "eyebrow": "그들의 말",
+      "title": "사람들이 말하는 World Monitor",
+      "sub": "{{countries}}개국 {{users}}명이 World Monitor를 사용했습니다. 언론과 일부 사용자의 이야기를 소개합니다.",
+      "translatedJa": "일본어에서 번역",
+      "prev": "이전 인용문",
+      "next": "더 많은 인용문"
     }
   },
   "whatsNew": {
@@ -722,13 +728,13 @@
     "title": "World Monitor의 새로운 기능",
     "subtitle": "지난 30일 동안의 새로운 기능 — 버그 수정 및 기술 개선사항은 제외됩니다.",
     "proTag": "PRO",
-    "m1": "물리적 프리미엄 괴리 지수 — SGE vs COMEX, 과거 데이터 포함",
-    "m2": "상품 공급 취약성 순위 — 병목 의존성 분산도",
-    "m3": "광물 생산 집중도 및 방위산업기지",
-    "m4": "5개 요소 탄력성 스코어카드(지표 수준 점수 포함)",
-    "m5": "커스텀 Telegram 채널 감시 목록",
-    "m6": "Passkey 로그인",
-    "m7": "AI 에이전트가 대시보드를 조종할 수 있음 — 패널, 탭, 지도 레이어 및 미션",
-    "m8": "더 풍부한 국가 탄력성 페이지"
+    "m1": "미디어 관점 — 각국 언론이 특정 국가를 어떻게 보도하는지, AI 에이전트와 API용",
+    "m2": "/verify — 모든 주장에 대한 증거 카드, 공개된 팩트체크 인용",
+    "m3": "알림, 다이제스트, 지도 팝업에 교차 확인 출처 수 표시, 공개 /trust 페이지 추가",
+    "m4": "공격 자동 추적 — 공격을 받으면 국가 위험도가 오르고 공격이 멈추면 회복",
+    "m5": "FAA NOTAM 기반 공역 폐쇄와 보고된 항공기 비상 상황 지도 레이어",
+    "m6": "Sentinel-5P 위성 NO2 데이터 기반 산업 활동 지도",
+    "m7": "230개 경제권과 모든 국가 쌍의 자본 흐름, AI 에이전트와 API용",
+    "m8": "터미널 대시보드와 확대 가능한 CLI 지도 — brew install worldmonitor"
   }
 }

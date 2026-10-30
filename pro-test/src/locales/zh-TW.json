@@ -88,10 +88,7 @@
     "uniqueVisitors": "獨立訪客",
     "peakDailyUsers": "日使用者峰值",
     "countriesReached": "覆蓋國家",
-    "liveDataSources": "即時資料來源",
-    "quote": "市場、貨幣政策、地緣政治、能源 — 如今一切同步聯動。我需要一個工具,能即時展示這些力量如何交織,不止是頭條,而是其背後的驅動因素。",
-    "ceo": "CEO",
-    "asToldTo": "轉述物件"
+    "liveDataSources": "即時資料來源"
   },
   "audience": {
     "title": "World Monitor 為誰而構建？",
@@ -459,7 +456,7 @@
       "ogDescription": "World Monitor：即時地緣政治情報儀表板。免費即時地圖，涵蓋衝突、海運、航班、市場和網路安全，提供 API 和 MCP 伺服器。"
     },
     "nav": {
-      "useCases": "關聯\t",
+      "useCases": "使用場景",
       "firstFive": "前 5 分鐘\t",
       "depth": "深度\t",
       "pricing": "定價\t",
@@ -714,7 +711,16 @@
       "chokepointDesc": "檢視{{chokepoints}}條關鍵海運通道的中斷狀態、船舶流向和風險。",
       "countryRiskTitle": "解釋國家風險變動",
       "countryRiskDesc": "追蹤國家變化背後的政治、安全、經濟和韌性訊號，涵蓋{{resilienceRanked}}個國家的韌性排名。",
-      "open": "開啟證據"
+      "open": "開啟證據",
+      "workflow": "分步工作流程"
+    },
+    "voices": {
+      "eyebrow": "使用者怎麼說",
+      "title": "大家如何評價 World Monitor",
+      "sub": "{{countries}} 個國家的 {{users}} 人使用過 World Monitor。以下是媒體和部分使用者的評價。",
+      "translatedJa": "譯自日語",
+      "prev": "上一組引語",
+      "next": "更多引語"
     }
   },
   "whatsNew": {
@@ -722,13 +728,13 @@
     "title": "World Monitor 有什麼新內容",
     "subtitle": "過去 30 天的新功能 — 不包括修復和底層最佳化。",
     "proTag": "PRO",
-    "m1": "現貨溢價差異指數 — 上期所 vs COMEX，含歷史資料",
-    "m2": "商品供應脆弱性排名 — 瓶頸依賴度展開圖",
-    "m3": "礦物生產濃度與國防工業基礎",
-    "m4": "五因子韌性記分卡及指標級得分",
-    "m5": "自訂 Telegram 頻道監測列表",
-    "m6": "通行金鑰登入",
-    "m7": "AI 智慧體可驅動儀表板 — 面板、標籤頁、地圖圖層和任務",
-    "m8": "更豐富的國家韌性頁面"
+    "m1": "媒體視角 — 各國媒體如何報道任一國家，面向 AI 智慧體和 API",
+    "m2": "/verify — 為任何說法生成證據卡，引用已釋出的事實核查",
+    "m3": "警報、摘要和地圖彈窗顯示佐證來源數量，另有公開的 /trust 頁面",
+    "m4": "自動追蹤打擊 — 國家遭受攻擊時風險上升，打擊停止後回落",
+    "m5": "來自 FAA NOTAM 的空域關閉資訊，以及已報告航空器緊急情況的地圖圖層",
+    "m6": "基於 Sentinel-5P 衛星 NO2 資料的工業活動地圖",
+    "m7": "230 個經濟體及任意國家對之間的資本流動，面向 AI 智慧體和 API",
+    "m8": "終端儀表盤和可縮放的 CLI 地圖 — brew install worldmonitor"
   }
 }

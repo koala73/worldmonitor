@@ -461,7 +461,7 @@ jobs:
         with:
           # setup-node restores the npm cache for this job's other install.
           npm-cache: 'false'
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
       - name: zh-TW catalogues reproduce from their Simplified source (#6555)
@@ -649,6 +649,7 @@ jobs:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: consumer-prices-core/package-lock.json
+      - uses: ./.github/actions/install-redis
       - run: npm ci --prefix consumer-prices-core
       - run: npm test --prefix consumer-prices-core
 
@@ -815,7 +816,7 @@ jobs:
         with:
           toolchain: 1.99.1
       - name: Rust cache
-        uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           workspaces: './src-tauri -> target'
           cache-on-failure: true

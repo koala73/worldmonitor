@@ -88,10 +88,7 @@
     "uniqueVisitors": "独立访客",
     "peakDailyUsers": "日用户峰值",
     "countriesReached": "覆盖国家",
-    "liveDataSources": "实时数据源",
-    "quote": "市场、货币政策、地缘政治、能源 — 如今一切同步联动。我需要一个工具,能实时展示这些力量如何交织,不止是头条,而是其背后的驱动因素。",
-    "ceo": "CEO",
-    "asToldTo": "转述对象"
+    "liveDataSources": "实时数据源"
   },
   "audience": {
     "title": "World Monitor 为谁而构建？",
@@ -459,7 +456,7 @@
       "ogDescription": "World Monitor：实时地缘政治情报仪表板。免费实时地图，涵盖冲突、海运、航班、市场和网络安全，提供 API 和 MCP 服务器。"
     },
     "nav": {
-      "useCases": "关联\t",
+      "useCases": "使用场景",
       "firstFive": "前 5 分钟\t",
       "depth": "深度\t",
       "pricing": "定价\t",
@@ -714,7 +711,16 @@
       "chokepointDesc": "查看{{chokepoints}}条关键海运通道的中断状态、船舶流向和风险。",
       "countryRiskTitle": "解释国家风险变动",
       "countryRiskDesc": "追踪国家变化背后的政治、安全、经济和韧性信号，涵盖{{resilienceRanked}}个国家的韧性排名。",
-      "open": "打开证据"
+      "open": "打开证据",
+      "workflow": "分步工作流程"
+    },
+    "voices": {
+      "eyebrow": "用户怎么说",
+      "title": "大家如何评价 World Monitor",
+      "sub": "{{countries}} 个国家的 {{users}} 人使用过 World Monitor。以下是媒体和部分用户的评价。",
+      "translatedJa": "译自日语",
+      "prev": "上一组引语",
+      "next": "更多引语"
     }
   },
   "whatsNew": {
@@ -722,13 +728,13 @@
     "title": "World Monitor 有什么新内容",
     "subtitle": "过去 30 天的新功能 — 不包括修复和底层优化。",
     "proTag": "PRO",
-    "m1": "现货溢价差异指数 — 上期所 vs COMEX，含历史数据",
-    "m2": "商品供应脆弱性排名 — 瓶颈依赖度展开图",
-    "m3": "矿物生产浓度与国防工业基础",
-    "m4": "五因子韧性记分卡及指标级得分",
-    "m5": "自定义 Telegram 频道监测列表",
-    "m6": "通行密钥登录",
-    "m7": "AI 智能体可驱动仪表板 — 面板、标签页、地图图层和任务",
-    "m8": "更丰富的国家韧性页面"
+    "m1": "媒体视角 — 各国媒体如何报道任一国家，面向 AI 智能体和 API",
+    "m2": "/verify — 为任何说法生成证据卡，引用已发布的事实核查",
+    "m3": "警报、摘要和地图弹窗显示佐证来源数量，另有公开的 /trust 页面",
+    "m4": "自动追踪打击 — 国家遭受攻击时风险上升，打击停止后回落",
+    "m5": "来自 FAA NOTAM 的空域关闭信息，以及已报告航空器紧急情况的地图图层",
+    "m6": "基于 Sentinel-5P 卫星 NO2 数据的工业活动地图",
+    "m7": "230 个经济体及任意国家对之间的资本流动，面向 AI 智能体和 API",
+    "m8": "终端仪表盘和可缩放的 CLI 地图 — brew install worldmonitor"
   }
 }

@@ -166,28 +166,42 @@ export function deriveBillingUxState(
 const ON_HOLD_DISMISS_KEY = 'pf-banner-dismissed';
 const RENEWAL_PENDING_DISMISS_KEY = 'pf-banner-dismissed-renewal-pending';
 const RENEWAL_FAILED_DISMISS_KEY = 'pf-banner-dismissed-renewal-failed';
+const BILLING_EMAIL_BOUNCED_DISMISS_KEY = 'pf-banner-dismissed-billing-email-bounced';
+// A bounce arriving mid-episode must re-surface a banner the user already
+// dismissed, once: the combined banner gets its own key.
+const BOUNCED_DISMISS_SUFFIX = '-bounced';
 
-/** Every dismissal key, for clearing when billing state recovers. */
-export const BILLING_BANNER_DISMISS_KEYS: readonly string[] = [
-  ON_HOLD_DISMISS_KEY,
-  RENEWAL_PENDING_DISMISS_KEY,
-  RENEWAL_FAILED_DISMISS_KEY,
-];
+export interface BillingBannerAction {
+  /** i18n key (components.billingState.*) for the button label. */
+  labelKey: string;
+  kind: 'billing-portal' | 'fix-billing-email';
+}
 
 export interface BillingBannerVariant {
   tone: 'error' | 'warning';
   /** i18n key (components.billingState.*) for the banner message. */
   messageKey: string;
-  /** i18n key for the action button label; null renders no action button. */
-  actionLabelKey: string | null;
-  /** What the action button does. Only present when actionLabelKey is set. */
-  action?: 'billing-portal';
-  /** sessionStorage key scoping manual dismissal to this state. */
+  /** Buttons in render order; empty renders none. */
+  actions: readonly BillingBannerAction[];
+  /** sessionStorage key scoping manual dismissal to this banner. */
   dismissKey: string;
 }
 
+const UPDATE_PAYMENT: BillingBannerAction = {
+  labelKey: 'components.billingState.updatePayment',
+  kind: 'billing-portal',
+};
+const MANAGE_BILLING: BillingBannerAction = {
+  labelKey: 'components.billingState.manageBilling',
+  kind: 'billing-portal',
+};
+const FIX_BILLING_EMAIL: BillingBannerAction = {
+  labelKey: 'components.billingState.fixBillingEmail',
+  kind: 'fix-billing-email',
+};
+
 /**
- * Top-of-page banner content per state, as i18n keys — the same
+ * Top-of-page banner per state, as i18n keys — the same
  * components.billingState.* strings the panel CTA uses, so the two surfaces
  * cannot drift and the banner localizes. `on_hold` must stay compatible with
  * the pre-#4771 payment-failure banner (issue #4771 requires it intact):
@@ -197,34 +211,86 @@ export interface BillingBannerVariant {
  * message, and a permanent banner for long-lapsed users would just be
  * nagware.
  */
-export function getBillingBannerVariant(state: BillingUxState): BillingBannerVariant | null {
-  switch (state) {
-    case 'on_hold':
-      return {
-        tone: 'error',
-        messageKey: 'components.billingState.onHoldBannerMessage',
-        actionLabelKey: 'components.billingState.updatePayment',
-        action: 'billing-portal',
-        dismissKey: ON_HOLD_DISMISS_KEY,
-      };
-    case 'renewal_verification_pending':
-      return {
-        tone: 'warning',
-        messageKey: 'components.billingState.renewalPendingDesc',
-        actionLabelKey: null,
-        dismissKey: RENEWAL_PENDING_DISMISS_KEY,
-      };
-    case 'renewal_verification_failed':
-      return {
-        tone: 'error',
-        messageKey: 'components.billingState.renewalFailedDesc',
-        actionLabelKey: 'components.billingState.manageBilling',
-        action: 'billing-portal',
-        dismissKey: RENEWAL_FAILED_DISMISS_KEY,
-      };
-    default:
-      return null;
+const STATE_BANNERS: Partial<Record<BillingUxState, BillingBannerVariant>> = {
+  on_hold: {
+    tone: 'error',
+    messageKey: 'components.billingState.onHoldBannerMessage',
+    actions: [UPDATE_PAYMENT],
+    dismissKey: ON_HOLD_DISMISS_KEY,
+  },
+  renewal_verification_pending: {
+    tone: 'warning',
+    messageKey: 'components.billingState.renewalPendingDesc',
+    actions: [],
+    dismissKey: RENEWAL_PENDING_DISMISS_KEY,
+  },
+  renewal_verification_failed: {
+    tone: 'error',
+    messageKey: 'components.billingState.renewalFailedDesc',
+    actions: [MANAGE_BILLING],
+    dismissKey: RENEWAL_FAILED_DISMISS_KEY,
+  },
+};
+
+/** The message interpolates `{{email}}`; the component sets it as text. */
+const BILLING_EMAIL_BOUNCED_BANNER: BillingBannerVariant = {
+  tone: 'warning',
+  messageKey: 'components.billingState.billingEmailBouncedMessage',
+  actions: [FIX_BILLING_EMAIL],
+  dismissKey: BILLING_EMAIL_BOUNCED_DISMISS_KEY,
+};
+
+/** Every dismissal key, for clearing when billing state recovers. */
+export const BILLING_BANNER_DISMISS_KEYS: readonly string[] = [
+  ...Object.values(STATE_BANNERS).flatMap((banner) => [
+    banner.dismissKey,
+    banner.dismissKey + BOUNCED_DISMISS_SUFFIX,
+  ]),
+  BILLING_EMAIL_BOUNCED_DISMISS_KEY,
+];
+
+/**
+ * A hard-bounced billing address rides along on whatever banner the state
+ * already shows (on_hold keeps its red banner and gains "Fix billing email"),
+ * and gets its own amber banner for a plain `active` subscriber, who would
+ * otherwise never learn their receipts and payment alerts go nowhere.
+ */
+export function getBillingBannerVariant(
+  state: BillingUxState,
+  billingEmailBounced = false,
+): BillingBannerVariant | null {
+  const base = STATE_BANNERS[state] ?? null;
+  if (!billingEmailBounced) return base;
+  if (base) {
+    return {
+      ...base,
+      actions: [...base.actions, FIX_BILLING_EMAIL],
+      dismissKey: base.dismissKey + BOUNCED_DISMISS_SUFFIX,
+    };
   }
+  return state === 'active' ? BILLING_EMAIL_BOUNCED_BANNER : null;
+}
+
+const BILLING_EMAIL_ERROR_KEYS: ReadonlyMap<string, string> = new Map([
+  ['INVALID_EMAIL', 'components.billingState.billingEmailInvalid'],
+  ['EMAIL_SUPPRESSED', 'components.billingState.billingEmailSuppressed'],
+]);
+
+/** Inline error copy for a failed billing-email save, by the action's structured error kind. */
+export function getBillingEmailErrorKey(kind: string | null): string {
+  return (kind !== null && BILLING_EMAIL_ERROR_KEYS.get(kind))
+    || 'components.billingState.billingEmailUpdateFailed';
+}
+
+/**
+ * Prefill for the repair form: the signed-in account's address when it is a
+ * different mailbox from the one bouncing, otherwise nothing (offering the
+ * dead address back would just re-submit the typo).
+ */
+export function suggestBillingEmail(bouncedEmail: string, signedInEmail: string): string {
+  const suggestion = signedInEmail.trim();
+  if (suggestion === '') return '';
+  return suggestion.toLowerCase() === bouncedEmail.trim().toLowerCase() ? '' : suggestion;
 }
 
 export type BillingGateOverride =

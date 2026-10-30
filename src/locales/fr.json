@@ -494,7 +494,8 @@
     "fearGreed": "Peur & Avidité",
     "marketBreadth": "Étendue du marché",
     "climateNews": "Actualités climatiques",
-    "fx": "Taux de change"
+    "fx": "Taux de change",
+    "ukmtoIncidents": "Incidents UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -2587,7 +2588,15 @@
       "renewalFailedDesc": "Impossible de vérifier le renouvellement de votre abonnement. Gérez votre facturation ou contactez l'assistance si le problème persiste.",
       "manageBilling": "Gérer la facturation",
       "lapsedDesc": "Votre abonnement Pro a pris fin. Réabonnez-vous pour retrouver l'accès premium.",
-      "resubscribe": "Se réabonner"
+      "resubscribe": "Se réabonner",
+      "billingEmailBouncedMessage": "Les e-mails de facturation envoyés à {{email}} sont renvoyés. Mettez à jour votre e-mail de facturation pour recevoir vos reçus et alertes de paiement.",
+      "fixBillingEmail": "Corriger l’e-mail de facturation",
+      "billingEmailLabel": "Nouvel e-mail de facturation",
+      "save": "Enregistrer",
+      "billingEmailUpdated": "E-mail de facturation remplacé par {{email}}. Les reçus et alertes de paiement y seront envoyés désormais.",
+      "billingEmailInvalid": "Saisissez une adresse e-mail valide.",
+      "billingEmailSuppressed": "Nous ne pouvons pas non plus livrer à cette adresse. Essayez-en une autre.",
+      "billingEmailUpdateFailed": "Impossible de mettre à jour votre e-mail de facturation. Réessayez ou contactez le support si le problème persiste."
     },
     "checkoutFailureBanner": {
       "message": "Le paiement n'a pas pu être complété. Aucun frais n'a été prélevé.",
@@ -4180,5 +4189,14 @@
         "0": "Guide des calques"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "Données UKMTO indisponibles.",
+    "empty": "UKMTO n’a renvoyé aucun incident.",
+    "stale": "Données de source périmées. Dernière vérification",
+    "current": "Source vérifiée",
+    "reportedClaims": "Rapports de l’éditeur. Les affirmations peuvent encore faire l’objet d’une enquête.",
+    "occurred": "Incident",
+    "reported": "Publié"
   }
 }

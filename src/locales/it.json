@@ -494,7 +494,8 @@
     "fearGreed": "Paura e Avidità",
     "marketBreadth": "Ampiezza di Mercato",
     "climateNews": "Notizie Clima",
-    "fx": "Tassi di cambio"
+    "fx": "Tassi di cambio",
+    "ukmtoIncidents": "Incidenti UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -2587,7 +2588,15 @@
       "renewalFailedDesc": "Non siamo riusciti a verificare il rinnovo del tuo abbonamento. Gestisci la fatturazione o contatta l'assistenza se il problema persiste.",
       "manageBilling": "Gestisci fatturazione",
       "lapsedDesc": "Il tuo abbonamento Pro è terminato. Riabbonati per riottenere l'accesso premium.",
-      "resubscribe": "Riabbonati"
+      "resubscribe": "Riabbonati",
+      "billingEmailBouncedMessage": "Le email di fatturazione inviate a {{email}} vengono respinte. Aggiorna la tua email di fatturazione per ricevere ricevute e avvisi di pagamento.",
+      "fixBillingEmail": "Correggi email di fatturazione",
+      "billingEmailLabel": "Nuova email di fatturazione",
+      "save": "Salva",
+      "billingEmailUpdated": "Email di fatturazione aggiornata a {{email}}. D’ora in poi ricevute e avvisi di pagamento arriveranno lì.",
+      "billingEmailInvalid": "Inserisci un indirizzo email valido.",
+      "billingEmailSuppressed": "Non possiamo recapitare nemmeno a questo indirizzo. Provane un altro.",
+      "billingEmailUpdateFailed": "Non siamo riusciti ad aggiornare la tua email di fatturazione. Riprova o contatta l’assistenza se il problema persiste."
     },
     "checkoutFailureBanner": {
       "message": "Il pagamento non è stato completato. Nessuna addebito è stato effettuato.",
@@ -4180,5 +4189,14 @@
         "0": "Guida ai livelli"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "Dati UKMTO non disponibili.",
+    "empty": "UKMTO non ha restituito incidenti.",
+    "stale": "Dati della fonte obsoleti. Ultimo controllo",
+    "current": "Fonte controllata",
+    "reportedClaims": "Rapporti dell’editore. Le affermazioni potrebbero essere ancora oggetto di indagine.",
+    "occurred": "Incidente",
+    "reported": "Pubblicato"
   }
 }

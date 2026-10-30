@@ -492,7 +492,8 @@
     "fearGreed": "Korku & Açgözlülük",
     "marketBreadth": "Pazar Genişliği",
     "climateNews": "İklim Haberleri",
-    "fx": "Döviz kurları"
+    "fx": "Döviz kurları",
+    "ukmtoIncidents": "UKMTO olayları"
   },
   "commands": {
     "prefixes": {
@@ -2577,7 +2578,15 @@
       "renewalFailedDesc": "Aboneliğinizin yenilenmesini doğrulayamadık. Sorun devam ederse faturalandırmayı yönetin veya destekle iletişime geçin.",
       "manageBilling": "Faturalandırmayı Yönet",
       "lapsedDesc": "Pro aboneliğiniz sona erdi. Premium erişimi yeniden kazanmak için tekrar abone olun.",
-      "resubscribe": "Tekrar Abone Ol"
+      "resubscribe": "Tekrar Abone Ol",
+      "billingEmailBouncedMessage": "{{email}} adresine gönderilen fatura e-postaları geri dönüyor. Makbuzları ve ödeme uyarılarını alabilmek için fatura e-postanızı güncelleyin.",
+      "fixBillingEmail": "Fatura e-postasını düzelt",
+      "billingEmailLabel": "Yeni fatura e-postası",
+      "save": "Kaydet",
+      "billingEmailUpdated": "Fatura e-postası {{email}} olarak güncellendi. Makbuzlar ve ödeme uyarıları artık bu adrese gönderilecek.",
+      "billingEmailInvalid": "Geçerli bir e-posta adresi girin.",
+      "billingEmailSuppressed": "Bu adrese de teslimat yapamıyoruz. Farklı bir adres deneyin.",
+      "billingEmailUpdateFailed": "Fatura e-postanız güncellenemedi. Tekrar deneyin veya sorun devam ederse destekle iletişime geçin."
     },
     "checkoutFailureBanner": {
       "message": "Ödeme tamamlanamadı. Herhangi bir ücret alınmadı.",
@@ -4160,5 +4169,14 @@
         "0": "Katman Rehberi"
       }
     }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO verileri kullanılamıyor.",
+    "empty": "UKMTO herhangi bir olay döndürmedi.",
+    "stale": "Kaynak verileri güncel değil. Son kontrol",
+    "current": "Kaynak kontrol edildi",
+    "reportedClaims": "Yayıncı raporları. İddialar hâlâ araştırılıyor olabilir.",
+    "occurred": "Olay",
+    "reported": "Yayımlandı"
   }
 }
