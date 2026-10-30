@@ -13,10 +13,15 @@ describe('health-probe cutover enforcement', () => {
     tariffTrendsUs: { key: 'seed-meta:economic:tariff-trends-us' },
     unchanged: { key: 'seed-meta:unchanged', maxStaleMin: 60 },
   };
+  const wiring = {
+    activationMarkers: { physicalPremiums: 'seed-activated:market:physical-premium' },
+    onDemandKeys: new Set(['physicalPremiums']),
+  };
 
   it('fails a new or repointed probe without machine-readable cutover evidence', () => {
     assert.throws(
       () => validateHealthProbeCutovers({
+          ...wiring,
         baseSeedMeta,
         headSeedMeta: { ...baseSeedMeta, tariffTrendsUs: { key: 'seed-meta:trade:tariffs' } },
       }),
@@ -45,22 +50,23 @@ describe('health-probe cutover enforcement', () => {
     });
 
     assert.deepEqual(
-      validateHealthProbeCutovers({ baseSeedMeta, headSeedMeta }),
+      validateHealthProbeCutovers({ ...wiring, baseSeedMeta, headSeedMeta }),
       [{ name: 'tariffTrendsUs', fromKey: cutover.fromKey, toKey: 'seed-meta:trade:tariffs', mode: 'preseed' }],
     );
     assert.throws(
       () => validateHealthProbeCutovers({
+          ...wiring,
         baseSeedMeta: { ...baseSeedMeta, tariffTrendsUs: { key: 'seed-meta:another-old-key' } },
         headSeedMeta,
       }),
       /fromKey.*seed-meta:another-old-key/i,
     );
     assert.throws(
-      () => validateHealthProbeCutovers({ baseSeedMeta, headSeedMeta: withCutover({ verifiedAt: 'August 10, 2026' }) }),
+      () => validateHealthProbeCutovers({ ...wiring, baseSeedMeta, headSeedMeta: withCutover({ verifiedAt: 'August 10, 2026' }) }),
       /verifiedAt/i,
     );
     assert.throws(
-      () => validateHealthProbeCutovers({ baseSeedMeta, headSeedMeta: withCutover({ issue: 'n/a' }) }),
+      () => validateHealthProbeCutovers({ ...wiring, baseSeedMeta, headSeedMeta: withCutover({ issue: 'n/a' }) }),
       /owner issue/i,
     );
     for (const evidence of [
@@ -72,7 +78,7 @@ describe('health-probe cutover enforcement', () => {
       { ...cutover.evidence, reference: 'http://example.com/evidence' },
     ]) {
       assert.throws(
-        () => validateHealthProbeCutovers({ baseSeedMeta, headSeedMeta: withCutover({ evidence }) }),
+        () => validateHealthProbeCutovers({ ...wiring, baseSeedMeta, headSeedMeta: withCutover({ evidence }) }),
         /Railway.*service.*probe.*compact health OK.*HTTPS/i,
       );
     }
@@ -89,10 +95,11 @@ describe('health-probe cutover enforcement', () => {
       },
     };
 
-    assert.doesNotThrow(() => validateHealthProbeCutovers({ baseSeedMeta, headSeedMeta }));
+    assert.doesNotThrow(() => validateHealthProbeCutovers({ ...wiring, baseSeedMeta, headSeedMeta }));
     for (const badActivationKey of ['', 'market:physical-premium', 'seed-activated:market:other']) {
       assert.throws(
         () => validateHealthProbeCutovers({
+          ...wiring,
           baseSeedMeta,
           headSeedMeta: {
             ...headSeedMeta,
@@ -105,11 +112,24 @@ describe('health-probe cutover enforcement', () => {
         /activation-marker.*config\.activationKey.*seed-activated/i,
       );
     }
+    for (const [label, unwired] of [
+      ['no marker registration', { ...wiring, activationMarkers: {} }],
+      ['a different registered marker', { ...wiring, activationMarkers: { physicalPremiums: 'seed-activated:market:other' } }],
+      ['not on-demand', { ...wiring, onDemandKeys: new Set() }],
+      ['no wiring passed', { activationMarkers: undefined, onDemandKeys: undefined }],
+    ]) {
+      assert.throws(
+        () => validateHealthProbeCutovers({ baseSeedMeta, headSeedMeta, ...unwired }),
+        /ACTIVATION_MARKERS\.physicalPremiums.*ON_DEMAND_KEYS/,
+        label,
+      );
+    }
   });
 
   it('rejects the retired expiring-acknowledgement mode', () => {
     assert.throws(
       () => validateHealthProbeCutovers({
+          ...wiring,
         baseSeedMeta,
         headSeedMeta: {
           ...baseSeedMeta,
@@ -124,7 +144,7 @@ describe('health-probe cutover enforcement', () => {
   });
 
   it('ignores probes whose key did not change', () => {
-    assert.deepEqual(validateHealthProbeCutovers({ baseSeedMeta, headSeedMeta: baseSeedMeta }), []);
+    assert.deepEqual(validateHealthProbeCutovers({ ...wiring, baseSeedMeta, headSeedMeta: baseSeedMeta }), []);
   });
 
   it('accepts only real ISO calendar instants with an explicit timezone', () => {

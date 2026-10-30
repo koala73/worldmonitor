@@ -712,11 +712,12 @@ availability verdict uptime monitors read; `dataStatus` (`OK`, `DEGRADED`,
 `CRITICAL`) is the strict verdict, so a contained source warning is never
 invisible at the top level.
 
-Each sweep compares its actionable `source:status` set with the previous
-incident signature. A source that joins the set opens or regresses one Sentry
-issue (level `warning`, tags `health_source` and `health_status`, grouped by
-source and status). An unchanged incident does not re-alert; a recovered
-source that breaks again does. `?history=1` lists the incident log.
+Each actionable `source:status` pair opens or regresses one Sentry issue
+(level `warning`, tags `health_source` and `health_status`, grouped by source
+and status) until Sentry accepts it; `health:incident-alerts` records accepted
+pairs, so a failed delivery is retried by the next sweep. An unchanged incident
+does not re-alert; a recovered source that breaks again does. `?history=1`
+lists the incident log.
 
 ### MCP preset liveness
 

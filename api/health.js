@@ -5297,17 +5297,21 @@ function buildFailureLogPersistencePlan({
 const HEALTH_INCIDENT_ALERTS_KEY = 'health:incident-alerts';
 const HEALTH_INCIDENT_ALERTS_TTL_SECONDS = 86400 * 7;
 
+// null (no record yet) is an empty record; anything else that is not an array
+// of strings is unreadable and returns null, so a corrupt record can neither
+// re-alert accepted incidents nor be overwritten.
 function parseAlertedIncidents(raw) {
+  if (raw === null || raw === undefined) return [];
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((key) => typeof key === 'string') : [];
+    return Array.isArray(parsed) && parsed.every((key) => typeof key === 'string') ? parsed : null;
   } catch {
-    return [];
+    return null;
   }
 }
 
 function pendingIncidentKeys(alertedRaw, sigKeys) {
-  const alerted = new Set(parseAlertedIncidents(alertedRaw));
+  const alerted = new Set(parseAlertedIncidents(alertedRaw) ?? []);
   return sigKeys.filter((key) => !alerted.has(key));
 }
 
@@ -5315,7 +5319,7 @@ function pendingIncidentKeys(alertedRaw, sigKeys) {
 // accepted this sweep. Recovered and undelivered incidents are left out.
 function nextAlertedIncidents(alertedRaw, sigKeys, delivered) {
   const active = new Set(sigKeys);
-  const kept = parseAlertedIncidents(alertedRaw).filter((key) => active.has(key));
+  const kept = (parseAlertedIncidents(alertedRaw) ?? []).filter((key) => active.has(key));
   return [...new Set([...kept, ...delivered])].sort();
 }
 
@@ -6048,8 +6052,9 @@ export async function handleHealth(req, ctx, options = {}) {
       previousSignature = result?.[0]?.error ? '' : (result?.[0]?.result ?? '');
       // An unreadable alert record cannot tell a new incident from one already
       // reported, so this sweep opens none and leaves the record for the next.
-      if (Array.isArray(result) && result[1] && !result[1].error) {
-        const alertedRaw = result[1].result ?? '[]';
+      if (Array.isArray(result) && result[1] && !result[1].error
+        && parseAlertedIncidents(result[1].result) !== null) {
+        const alertedRaw = result[1].result ?? null;
         const pending = pendingIncidentKeys(alertedRaw, diagnostics.sigKeys);
         const outcomes = await Promise.all(pending.map((key) => (
           reportSourceIncident(key, checks, ctx, options.captureIncident).catch(() => false)

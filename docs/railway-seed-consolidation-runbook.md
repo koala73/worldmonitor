@@ -592,15 +592,15 @@ last-good data is a contained warning and leaves it `HEALTHY` (#7939).
 values never contain the word `HEALTHY`, so it cannot satisfy an uptime keyword
 check by accident. The compact `problems` map names each source.
 
-Health alerts on transitions itself. The sweep keeps an incident signature of
-every actionable `source:status` pair (`health:failure-log-sig`). When a pair
-joins the set, it opens or regresses one Sentry issue at level `warning`,
-grouped by `health-source-incident`, source and status, and tagged
-`health_source` and `health_status`. A continuing incident never re-alerts
-because the signature changes only when the set does. A recovered source drops
-out of the next signature, so a recurrence alerts again. An unreadable
-signature opens nothing rather than re-alerting every active problem.
-`?history=1` keeps the incident log.
+Health alerts on transitions itself. Each actionable `source:status` pair
+opens or regresses one Sentry issue at level `warning`, grouped by
+`health-source-incident`, source and status, and tagged `health_source` and
+`health_status`. `health:incident-alerts` records only the pairs Sentry
+accepted, so a failed delivery stays pending and the next sweep retries it. A
+continuing incident never re-alerts. A recovered source leaves the record, so a
+recurrence alerts again. An unreadable or corrupt record opens nothing and is
+left for the next sweep. `?history=1` keeps the incident log, deduplicated by
+its own signature (`health:failure-log-sig`).
 
 Statuses ending in `_ON_DEMAND`, content-age pre-warnings, and entries inside a
 bounded grace window (`pending`) are not actionable and stay out of both

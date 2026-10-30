@@ -1093,7 +1093,7 @@ test('pendingIncidentKeys and nextAlertedIncidents keep only accepted, still-act
   assert.deepEqual(pendingIncidentKeys(null, current), current, 'nothing reported yet');
   assert.deepEqual(pendingIncidentKeys('["a:STALE_SEED","b:SEED_ERROR"]', current), [], 'a reported incident is quiet');
   assert.deepEqual(pendingIncidentKeys('["a:SEED_ERROR"]', current), current, 'a changed status is a new incident');
-  assert.deepEqual(pendingIncidentKeys('not json', current), current);
+  assert.deepEqual(pendingIncidentKeys('not json', current), current, 'callers gate corrupt records first');
   assert.deepEqual(
     nextAlertedIncidents('["a:STALE_SEED","gone:EMPTY"]', current, []),
     ['a:STALE_SEED'],
@@ -1145,6 +1145,11 @@ test('handleHealth reports each incident until Sentry accepts it, then stays qui
   const unreadable = await sweep(INCIDENT_ALERTS_UNREADABLE);
   assert.equal(unreadable.captures.length, 0, 'an unreadable record cannot prove anything is new');
   assert.equal(unreadable.record, undefined, 'and must not be overwritten');
+  for (const corrupt of ['not json', '{"a":1}', '[1,2]']) {
+    const result = await sweep(corrupt);
+    assert.equal(result.captures.length, 0, `a corrupt record (${corrupt}) must not re-alert accepted incidents`);
+    assert.equal(result.record, undefined, 'and must not be overwritten');
+  }
 
   const withoutSource = JSON.stringify(alerted.filter((key) => key !== `${source}:${status}`));
   const failed = await sweep(withoutSource, (name) => name !== source);

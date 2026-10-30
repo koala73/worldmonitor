@@ -10,6 +10,10 @@ type JsonRecord = Record<string, unknown>;
 export interface CutoverValidationInput {
   baseSeedMeta: unknown;
   headSeedMeta: unknown;
+  // Runtime wiring the marker proof depends on: health grants pre-activation
+  // grace only to a probe that is on-demand AND whose marker it EXISTS-probes.
+  activationMarkers: unknown;
+  onDemandKeys: unknown;
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -57,11 +61,15 @@ function isHttpsUrl(value: unknown): boolean {
  *
  * Both proofs live beside the changed probe, so they are bound to the exact
  * fromKey transition: pre-seed evidence that the key already published, or a
- * durable activation marker that health reads before alarming on absence.
+ * durable activation marker that health reads before alarming on absence. The
+ * marker counts only when health is wired to read it (ACTIVATION_MARKERS) and
+ * to soften the probe until it does (ON_DEMAND_KEYS).
  */
 export function validateHealthProbeCutovers({
   baseSeedMeta,
   headSeedMeta,
+  activationMarkers,
+  onDemandKeys,
 }: CutoverValidationInput) {
   if (!isRecord(baseSeedMeta)) {
     throw new Error('Base SEED_META must be an object');
@@ -127,6 +135,16 @@ export function validateHealthProbeCutovers({
           `Health probe ${name} activation-marker cutover must bind config.activationKey to an exact seed-activated:* key`,
         );
       }
+      if (
+        !isRecord(activationMarkers)
+        || activationMarkers[name] !== cutover.activationKey
+        || !(onDemandKeys instanceof Set)
+        || !onDemandKeys.has(name)
+      ) {
+        throw new Error(
+          `Health probe ${name} activation-marker cutover needs ACTIVATION_MARKERS.${name} = ${cutover.activationKey} and an ON_DEMAND_KEYS entry, or health never grants the pre-activation grace`,
+        );
+      }
     } else {
       throw new Error(`Health probe ${name} cutover mode must be preseed or activation-marker`);
     }
@@ -176,6 +194,8 @@ async function main() {
   const changed = validateHealthProbeCutovers({
     baseSeedMeta,
     headSeedMeta: headModule.__testing__.SEED_META,
+    activationMarkers: headModule.__testing__.ACTIVATION_MARKERS,
+    onDemandKeys: headModule.__testing__.ON_DEMAND_KEYS,
   });
   if (changed.length === 0) {
     console.log(`Health-probe cutover check passed: no new or repointed probes since ${commit}.`);

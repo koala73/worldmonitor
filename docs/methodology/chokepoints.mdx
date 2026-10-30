@@ -102,8 +102,9 @@ There is no claim that AIS coverage is permanently unavailable there.
 The `chokepointTransits` health check counts canonical waterways with observed
 crossings, out of 13. Its floor is five, the coverage in the September 9, 2026
 published pulse. Fewer than five produces `COVERAGE_PARTIAL`; zero produces
-`EMPTY_DATA`. Health reports either as `dataStatus` and opens one Sentry
-incident when the status first appears. A fresh write of 13 empty rows cannot satisfy
+`EMPTY_DATA`. Either status appears in `checks.chokepointTransits.status` (and
+the compact `problems` entry), turns the top-level `dataStatus` to `DEGRADED`
+or `CRITICAL`, and opens one Sentry incident when it first appears. A fresh write of 13 empty rows cannot satisfy
 this coverage check. The raw cache and seed metadata include the missing ids.
 
 ## Live Flow
