@@ -168,6 +168,7 @@
 *Could not find public function for 'followedCountries:listFollowersPage'*
 *Could not find public function for 'intelHistory:_seedAppendLock'*
 *Could not find public function for 'intelHistory:append'*
+*Could not find public function for 'intelHistory:embeddingModelInventory'*
 *Could not find public function for 'intelHistory:getByIds'*
 *Could not find public function for 'intelHistory:listRetractions'*
 *Could not find public function for 'intelHistory:prune'*
