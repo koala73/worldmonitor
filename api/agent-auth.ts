@@ -22,6 +22,7 @@
  * api/mcp/auth.ts byte-for-byte so both surfaces present one identical challenge.
  */
 
+import { wwwAuthHeader } from './_www-authenticate';
 import { authSkillUrl, resolveMetadataOrigin } from './_agent-metadata';
 
 export const config = { runtime: 'edge' };
@@ -57,7 +58,7 @@ export default function handler(req: Request): Response {
     headers: {
       ...cors,
       'Content-Type': 'application/json',
-      'WWW-Authenticate': `Bearer realm="worldmonitor", resource_metadata="${resourceMetadataUrl}"`,
+      'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl),
       'Cache-Control': 'no-store',
       // Body varies by Host (resource_metadata derived from it). Belt-and-braces
       // against a downstream cache keying on path alone.
