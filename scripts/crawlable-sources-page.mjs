@@ -118,6 +118,8 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['Barchart', 'finance'],
   ['TradingView', 'finance'],
   ['api.rainviewer.com', 'environment'],
+  // #6153: Moscow Exchange ISS serves the RU country stock index (scripts/_country-stock-index-moex.mjs).
+  ['iss.moex.com', 'finance'],
   // #9094: locates published fact-checks for /verify and verify_claim.
   ['factchecktools.googleapis.com', 'news'],
   // BestTime live busyness is the fallback feed for the PizzINT (Pentagon pizza) panel.

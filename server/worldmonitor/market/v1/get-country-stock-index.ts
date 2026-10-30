@@ -29,6 +29,12 @@ interface CountryIndexDefinition {
    * Yahoo request, and the seeder skips it. `checked` dates the evidence.
    */
   unavailable?: { checked: string; reason: string };
+  /**
+   * Set when a provider other than Yahoo serves the index (#6153: `moex-iss`
+   * for RU). Railway seeds it from that provider; the Yahoo live fallback
+   * below cannot help, so a missing seed row answers `available: false`.
+   */
+  source?: string;
 }
 
 const COUNTRY_INDEX = filterParamContracts.marketCountryStockIndexes as Record<string, CountryIndexDefinition>;
@@ -101,6 +107,14 @@ export async function getCountryStockIndex(
   if (isAvailableCountryStockIndex(railwaySnapshot, code)) {
     stockIndexCache[code] = { data: railwaySnapshot, ts: Date.now() };
     return railwaySnapshot;
+  }
+  // A non-Yahoo index has no live fallback here: the seeder is its only
+  // writer, so a missed seed answers honestly instead of spending a Yahoo
+  // request that returns nothing for this symbol.
+  if (index.source && index.source !== 'yahoo') {
+    const cachedNonYahoo = stockIndexCache[code];
+    return cachedNonYahoo && Date.now() - cachedNonYahoo.ts < STOCK_INDEX_CACHE_TTL
+      ? cachedNonYahoo.data : notAvailable;
   }
 
   const cached = stockIndexCache[code];

@@ -4,6 +4,7 @@ import { loadEnvFile, loadSharedConfig, sleep, runSeed, parseYahooChart, writeEx
 import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { buildCountryStockIndexSnapshot, countryStockIndexKey } from './_country-stock-index.mjs';
 import { loadCountryStockIndexes } from './_country-stock-index-registry.mjs';
+import { MOEX_SOURCE, fetchMoexCountryStockIndexSnapshot } from './_country-stock-index-moex.mjs';
 import { getUsEquitySession, isMultiMarketEquityTradingDay } from './shared/market-hours.cjs';
 import { mergeLastGoodQuotes, resolveMergedQuotesAsOf } from './shared/market-quote-refresh.cjs';
 import { countCatalogFreshQuotes, loadMarketSeedUniverse } from './shared/market-seed-universe.cjs';
@@ -179,13 +180,19 @@ async function writeCountryStockIndexes() {
   for (const index of COUNTRY_STOCK_INDEXES) {
     const key = countryStockIndexKey(index.code);
     try {
-      await sleep(YAHOO_DELAY_MS);
-      const chart = await fetchYahooJson(
-        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(index.symbol)}?range=1mo&interval=1d`,
-        { label: `${index.code} country index` },
-      );
-      const snapshot = buildCountryStockIndexSnapshot(chart, undefined, index);
-      if (!snapshot) throw new Error('insufficient closes');
+      let snapshot;
+      if (index.source === MOEX_SOURCE) {
+        // #6153: the Moscow Exchange's own API; no Yahoo gate to respect.
+        snapshot = await fetchMoexCountryStockIndexSnapshot(index);
+      } else {
+        await sleep(YAHOO_DELAY_MS);
+        const chart = await fetchYahooJson(
+          `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(index.symbol)}?range=1mo&interval=1d`,
+          { label: `${index.code} country index` },
+        );
+        snapshot = buildCountryStockIndexSnapshot(chart, undefined, index);
+        if (!snapshot) throw new Error('insufficient closes');
+      }
       await writeExtraKey(key, snapshot, CACHE_TTL);
     } catch (err) {
       // Preserve last-good long enough for the audit's content-age budget to
