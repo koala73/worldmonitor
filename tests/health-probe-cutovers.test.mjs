@@ -16,6 +16,7 @@ describe('health-probe cutover enforcement', () => {
   const wiring = {
     activationMarkers: { physicalPremiums: 'seed-activated:market:physical-premium' },
     onDemandKeys: new Set(['physicalPremiums']),
+    standaloneKeys: { physicalPremiums: 'market:physical-premium:v1' },
   };
 
   it('fails a new or repointed probe without machine-readable cutover evidence', () => {
@@ -116,11 +117,12 @@ describe('health-probe cutover enforcement', () => {
       ['no marker registration', { ...wiring, activationMarkers: {} }],
       ['a different registered marker', { ...wiring, activationMarkers: { physicalPremiums: 'seed-activated:market:other' } }],
       ['not on-demand', { ...wiring, onDemandKeys: new Set() }],
-      ['no wiring passed', { activationMarkers: undefined, onDemandKeys: undefined }],
+      ['a bootstrap probe', { ...wiring, standaloneKeys: {} }],
+      ['no wiring passed', { activationMarkers: undefined, onDemandKeys: undefined, standaloneKeys: undefined }],
     ]) {
       assert.throws(
         () => validateHealthProbeCutovers({ baseSeedMeta, headSeedMeta, ...unwired }),
-        /ACTIVATION_MARKERS\.physicalPremiums.*ON_DEMAND_KEYS/,
+        /ACTIVATION_MARKERS\.physicalPremiums.*ON_DEMAND_KEYS.*STANDALONE_KEYS/,
         label,
       );
     }

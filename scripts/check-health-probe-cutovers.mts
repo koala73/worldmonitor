@@ -11,9 +11,11 @@ export interface CutoverValidationInput {
   baseSeedMeta: unknown;
   headSeedMeta: unknown;
   // Runtime wiring the marker proof depends on: health grants pre-activation
-  // grace only to a probe that is on-demand AND whose marker it EXISTS-probes.
+  // grace only to a STANDALONE_KEYS probe (the bootstrap walk passes
+  // allowOnDemand: false) that is on-demand AND whose marker it EXISTS-probes.
   activationMarkers: unknown;
   onDemandKeys: unknown;
+  standaloneKeys: unknown;
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -63,13 +65,14 @@ function isHttpsUrl(value: unknown): boolean {
  * fromKey transition: pre-seed evidence that the key already published, or a
  * durable activation marker that health reads before alarming on absence. The
  * marker counts only when health is wired to read it (ACTIVATION_MARKERS) and
- * to soften the probe until it does (ON_DEMAND_KEYS).
+ * to soften the probe until it does (ON_DEMAND_KEYS on a STANDALONE_KEYS probe).
  */
 export function validateHealthProbeCutovers({
   baseSeedMeta,
   headSeedMeta,
   activationMarkers,
   onDemandKeys,
+  standaloneKeys,
 }: CutoverValidationInput) {
   if (!isRecord(baseSeedMeta)) {
     throw new Error('Base SEED_META must be an object');
@@ -140,9 +143,11 @@ export function validateHealthProbeCutovers({
         || activationMarkers[name] !== cutover.activationKey
         || !(onDemandKeys instanceof Set)
         || !onDemandKeys.has(name)
+        || !isRecord(standaloneKeys)
+        || !Object.hasOwn(standaloneKeys, name)
       ) {
         throw new Error(
-          `Health probe ${name} activation-marker cutover needs ACTIVATION_MARKERS.${name} = ${cutover.activationKey} and an ON_DEMAND_KEYS entry, or health never grants the pre-activation grace`,
+          `Health probe ${name} activation-marker cutover needs ACTIVATION_MARKERS.${name} = ${cutover.activationKey}, an ON_DEMAND_KEYS entry, and a STANDALONE_KEYS probe (bootstrap probes get no on-demand grace; use pre-seed evidence), or health never grants the pre-activation grace`,
         );
       }
     } else {
@@ -196,6 +201,7 @@ async function main() {
     headSeedMeta: headModule.__testing__.SEED_META,
     activationMarkers: headModule.__testing__.ACTIVATION_MARKERS,
     onDemandKeys: headModule.__testing__.ON_DEMAND_KEYS,
+    standaloneKeys: headModule.__testing__.STANDALONE_KEYS,
   });
   if (changed.length === 0) {
     console.log(`Health-probe cutover check passed: no new or repointed probes since ${commit}.`);
