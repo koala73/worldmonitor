@@ -383,7 +383,10 @@ export const SERVER_NAME = 'worldmonitor';
 // Bumped 1.43.0 → 1.44.0 when get_energy_storage and get_internet_activity
 // merged into get_energy_intelligence and get_infrastructure_status (97 → 95
 // tools); both old names stay callable as aliases.
-export const SERVER_VERSION = '1.44.0';
+// Bumped 1.44.0 → 1.45.0 for get_media_perspective (95 → 96 tools).
+// Bumped 1.45.0 → 1.46.0 for get_no2_activity (96 → 97 tools, #9722).
+// Bumped 1.46.0 → 1.47.0 for webcam discovery and recent media (97 → 99 tools, #5704).
+export const SERVER_VERSION = '1.47.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
@@ -438,11 +441,13 @@ export { MAX_JSON_RPC_BODY_BYTES };
 // can quote it without a temporal-dead-zone error.
 export const TOOL_DESCRIPTION_MAX_BYTES = 1024;
 
-// Total budget for every tools/list description together. 64 KiB is about
-// 16k tokens, roughly a sixth of the tools/list envelope (the input and output
-// schemas are the rest), and leaves headroom for a few more tools at the
-// per-tool cap above the ~57 KB the registry uses today. Test-enforced only.
-export const TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES = 65536;
+// Total budget for every tools/list description together. 68 KiB is about
+// 17k tokens, roughly a sixth of the tools/list envelope (the input and output
+// schemas are the rest). The 64 KiB cap was set at ~57 KB (#9302) to leave
+// headroom for a few more tools; the #9357 depth work spent that headroom on
+// existing descriptions, and get_no2_activity (#9722) reached ~66 KB, so the
+// cap moves once to restore room for two more tools. Test-enforced only.
+export const TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES = 69632;
 
 // Session-level discovery instructions. Per MCP 2025-03-26 lifecycle spec,
 // servers MAY return an `instructions` string in the `initialize` result;
@@ -464,11 +469,13 @@ type InstructionDenialCodes = { allowanceExhausted: number; entitlement: number 
 
 function buildServerInstructions({ allowanceExhausted, entitlement }: InstructionDenialCodes): string {
   return [
+    'For webcam visual context, discover a viewport with find_webcams, then resolve one returned ID with get_webcam_media. Results are recent visual context, not confirmation of live conditions. Check lastUpdated separately from catalog freshness and URL resolvedAt. Keep Windy courtesy and link displayed images to windyUrl or playerUrl.',
+    '',
     'Call get_mcp_allowance({}) to read the current verified account allowance, including used, limit, remaining, resetsAt, requestWindows and sharedWithRestApi. It returns the same snapshot as worldmonitor://account/mcp-allowance for hosts without resources/read. Only user-bound OAuth or wm_… credentials are accepted. No account selector or panel_request is accepted. Status spends no daily allowance, including at the daily cap, but uses the shared 192/minute protocol bucket. Unreadable counters return an error, never a zero snapshot. Shared API usage also includes REST traffic and does not identify individual callers.',
     '',
     `Every tool accepts optional \`jmespath\`. Server-side projection is applied AFTER per-tool filter/summary. Typical 80-95% token reduction. A projected response from a tool whose data is licensed for reuse with attribution comes back as {data, _attribution} — keep the _attribution block with the values if you redistribute them. Grammar: ${JMESPATH_SPEC_URL}. Guide + 12 worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.`,
     '',
-    `Limits: request body ≤ ${MAX_JSON_RPC_BODY_BYTES}B (over-cap POSTs are rejected before parsing with HTTP 413 + -32600 and error.data.reason 'body-too-large'; shrink the payload, do not retry it), expr ≤ ${JMESPATH_MAX_EXPR_BYTES}B, output ≤ ${JMESPATH_MAX_OUTPUT_BYTES}B. Bad expressions soft-fail via {_jmespath_error, original_keys} envelope (consumes one daily quota unit on retry when that quota path applies — self-correct from original_keys). Full envelope reference: https://www.worldmonitor.app/docs/mcp-error-catalog.`,
+    `Limits: request body ≤ ${MAX_JSON_RPC_BODY_BYTES}B (over-cap POSTs are rejected before parsing with HTTP 413 + -32600 and error.data.reason 'body-too-large'; shrink the payload, do not retry it), expr ≤ ${JMESPATH_MAX_EXPR_BYTES}B, output ≤ ${JMESPATH_MAX_OUTPUT_BYTES}B. Bad expressions, and projections that select nothing, soft-fail via {_jmespath_error, original_keys} envelope (consumes one daily quota unit on retry when that quota path applies — self-correct from original_keys; empty_projection names the unknown_fields and adds key_paths with the nested field names). Full envelope reference: https://www.worldmonitor.app/docs/mcp-error-catalog.`,
     '',
     `tools/list ships each tool's complete description (≤${TOOL_DESCRIPTION_MAX_BYTES}B per tool) with its input and output schema. describe_tool({tool_name}) returns that same definition for one tool, for re-reading a single tool without re-listing all of them — quota-exempt (still counts toward the 60/min rate limit). describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct. Full reference: https://www.worldmonitor.app/docs/mcp-tools-reference.`,
     '',
@@ -483,7 +490,7 @@ function buildServerInstructions({ allowanceExhausted, entitlement }: Instructio
     // Which tool fits which question. Tool descriptions describe only their own
     // tool: the Claude Connectors Directory forbids descriptions that name other
     // tools or direct the model (tests/mcp-tool-description-policy.test.mjs).
-    'Choosing between tools: open_country_brief for country brief requests and topic navigation; get_country_brief only for a text-only assessment. get_country_coverage for a country\'s deduplicated incident timeline rather than rebuilding it from the news tools. Tariffs: get_us_import_duty for current US duties including Section 301 and 232; get_tariff_averages for any reporter\'s average over time, a partner or a product group; get_bilateral_tariff for one HS product between two countries. Forecasts: get_forecast_predictions reads the published forecasts from the cache and get_forecast_case one of their cases; no tool starts a new forecast run. list_five_factor_scorecards for the overview, get_five_factor_scorecard for one country\'s provenance and raw observations. get_mineral_production for who mines and refines; get_commodity_geo for site locations. search_intel_history for a short query; get_similar_events for a described situation. Before relying on a result, check its availability flags (upstreamUnavailable, hasScore, underAudit, unavailable, coverage and degraded fields): they separate unknown from zero.',
+    'Choosing between tools: open_country_brief for country brief requests and topic navigation; get_country_brief only for a text-only assessment. get_country_coverage for a country\'s deduplicated incident timeline rather than rebuilding it from the news tools. get_news_intelligence story filters (country, query, category) search every scored story of the latest run; get_country_coverage adds a country\'s 7-day timeline and get_news_clusters regroups the live digest with source provenance. Tariffs: get_us_import_duty for current US duties including Section 301 and 232; get_tariff_averages for any reporter\'s average over time, a partner or a product group; get_bilateral_tariff for one HS product between two countries. Forecasts: get_forecast_predictions reads the published forecasts from the cache and get_forecast_case one of their cases; no tool starts a new forecast run. list_five_factor_scorecards for the overview, get_five_factor_scorecard for one country\'s provenance and raw observations. get_mineral_production for who mines and refines; get_commodity_geo for site locations. search_intel_history for a short query; get_similar_events for a described situation. Before relying on a result, check its availability flags (upstreamUnavailable, hasScore, underAudit, unavailable, coverage and degraded fields): they separate unknown from zero.',
     '',
     // Content safety (#5743). This stanza is the ONLY delivery channel that
     // reliably reaches the model: hosts compress the tool description to its

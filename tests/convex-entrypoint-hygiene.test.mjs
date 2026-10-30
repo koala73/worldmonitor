@@ -1,3 +1,7 @@
+// Import-boundary guard by design (#8690, section 2): this suite mirrors
+// Convex entry-point selection and rejects unsupported imports and paths.
+// Runtime unit tests do not exercise the deploy's module-selection rules.
+//
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, parse, relative, resolve, sep } from 'node:path';

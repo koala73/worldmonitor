@@ -5,13 +5,25 @@ retailer:
   currencyCode: CHF
   adapter: search
   baseUrl: https://www.coop.ch
-  # disabled 2026-03: Exa returns competitor domain URLs (domain bleed) for CH queries; 0/12 every run.
-  enabled: false
+  enabled: true
 
   searchConfig:
-    numResults: 5
-    urlPathContains: /de/lebensmittel/
+    # Coop product URLs end in `/p/<id>` under a per-language category tree
+    # (/de/lebensmittel/, /fr/nourriture/, /it/prodotti-alimentari/,
+    # /en/food/). The old `/de/lebensmittel/` filter dropped the other
+    # languages, and neural search filled the results with corporate pages,
+    # so only 4/12 essentials-ch items reached a product page (2026-10-29).
+    # Keyword search with `/p/` reached a product page for 12/12. Search
+    # wide, extract from at most 4.
+    numResults: 10
+    searchType: keyword
+    maxExtractionCandidates: 4
+    urlPathContains: /p/
     queryTemplate: "{canonicalName} Lebensmittel {market} {currency} Preis"
+    allowedHosts:
+      - www.coop.ch
+    requireStrictValidator: true
+    requirePageTitleMatch: true
 
   rateLimit:
     requestsPerMinute: 10

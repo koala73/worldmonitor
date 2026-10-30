@@ -571,13 +571,15 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     getClientRateLimitKey(request);
 
   try {
-    const { success, limit, reset } = await limitWithFallback(
+    const { success, limit, reset, reason } = await limitWithFallback(
       rl,
       identifier,
       `rl:fw:${identifier}`,
       GLOBAL_RATE_LIMIT,
       GLOBAL_RATE_WINDOW_SECONDS,
     );
+
+    if (reason === 'timeout') throw new Error('rate-limit decision timed out');
 
     if (!success) {
       return tooManyRequestsResponse(limit, reset, corsHeaders, GLOBAL_RATE_WINDOW_SECONDS);

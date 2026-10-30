@@ -423,6 +423,7 @@ describe('digest cron Teams dispatch', () => {
       stripSourceSuffix: (title) => title.replace(/ - Reuters$/, ''),
       sendTeamsPayload: async (url, payload) => { sends.push({ url, payload }); return { ok: status < 300, status, gone: status === 404 }; },
       parseDigestOnlyUser: () => ({ kind: 'unset' }),
+      fetchBriefOnlyUserIds: async () => [], buildBriefOnlyRules: () => [],
       composeBriefsForRun: async () => ({ briefByUser: new Map(), composeSuccess: 0, composeFailed: 0 }),
       readCooldownConfig: () => ({ invalidRaw: null, mode: 'off' }),
       getLastSentAt: async () => 0, isDue: () => true, isUserPro: async () => true,

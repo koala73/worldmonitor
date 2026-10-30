@@ -52,6 +52,18 @@ export const COMPANY_MONITORING_ROLLOUT_FLAGS = {
  */
 export const SHARED_API_BUDGET = "shared-api-budget";
 
+/**
+ * Per-account daily ceiling on desktop-key traffic (KTD6), shared by Pro and
+ * Pro Business. Counted per owner userId and UTC date across every route, so
+ * revoking and recreating keys cannot reset it.
+ */
+// Desktop-key daily ceiling per account: 3x the p99 daily request count of
+// desktop-like clients (Axiom wm_api_usage, 2026-10-25), rounded up. Sized to
+// a dashboard, not to scripted API traffic, so a key cannot back another app.
+export const DESKTOP_KEY_DAILY_CEILING = 7_500;
+/** Per-minute burst for desktop keys; covers startup bursts (p99.9 ~200/IP). */
+export const DESKTOP_KEY_BURST_PER_MINUTE = 120;
+
 export type PlanLimits = {
   /**
    * Daily REST/gateway request allowance. `null` means unlimited for plans
@@ -86,6 +98,15 @@ export type PlanLimits = {
    * telemetry is durable enough to scan.
    */
   mcpBurstRequestsPerMinute: number | null;
+  /**
+   * Per-account daily ceiling on desktop-key requests, across every route
+   * (plan 2026-10-25-001, KTD6). `0` on plans without `desktopKeyAccess`.
+   * Plan structure: the catalog value wins over a stored row in
+   * `mergeEntitlementFeatures`, so a ceiling change reaches existing rows.
+   */
+  desktopKeyRequestsPerDay: number;
+  /** Per-account per-minute burst on desktop-key requests. Catalog wins, as above. */
+  desktopKeyBurstPerMinute: number;
 };
 
 export type PlanLimitDimension =
@@ -144,6 +165,25 @@ export type PlanFeatures = {
    * field explicitly.
    */
   embedAccess?: boolean;
+  /**
+   * Desktop-key issuance and use (plan 2026-10-25-001) — a `wm_` key for the
+   * official desktop app or a self-built desktop copy, scoped to what a
+   * signed-in Pro session reaches minus the API-only surfaces. True for Pro
+   * and Pro Business only; deliberately not `apiAccess`.
+   * `shared/desktop-key-access.js` holds the single predicate that reads it.
+   *
+   * Optional for the same reason as `embedAccess`: rows written before the
+   * field existed omit it, the read-time catalog merge supplies the plan
+   * default, and consumers treat `undefined` as false (fail-closed). Catalog
+   * entries below ALWAYS set the field explicitly.
+   */
+  desktopKeyAccess?: boolean;
+  /**
+   * Most active desktop keys one account may hold (R5). `0` where
+   * `desktopKeyAccess` is false. Plan structure: catalog wins in
+   * `mergeEntitlementFeatures`. Optional only because legacy rows omit it.
+   */
+  maxDesktopKeys?: number;
   /**
    * Per-account daily REST request allowance (the "included" number). Read by
    * the per-account rate-limit layer (#3199): the daily usage meter counts but
@@ -226,11 +266,15 @@ const FREE_FEATURES: PlanFeatures = {
     mcpCallsPerDay: 0,
     dashboardAiCallsPerDay: 0,
     mcpBurstRequestsPerMinute: 0,
+    desktopKeyRequestsPerDay: 0,
+    desktopKeyBurstPerMinute: 0,
   },
   prioritySupport: false,
   exportFormats: [],
   mcpAccess: false,
   embedAccess: false,
+  desktopKeyAccess: false,
+  maxDesktopKeys: 0,
   dataExport: false,
 };
 
@@ -247,11 +291,15 @@ const PRO_FEATURES: PlanFeatures = {
     mcpCallsPerDay: 50,
     dashboardAiCallsPerDay: 500,
     mcpBurstRequestsPerMinute: 60,
+    desktopKeyRequestsPerDay: DESKTOP_KEY_DAILY_CEILING,
+    desktopKeyBurstPerMinute: DESKTOP_KEY_BURST_PER_MINUTE,
   },
   prioritySupport: false,
   exportFormats: [],
   mcpAccess: true,
   embedAccess: true,
+  desktopKeyAccess: true,
+  maxDesktopKeys: 2,
   dataExport: false,
 };
 
@@ -279,11 +327,15 @@ const PRO_BUSINESS_FEATURES: PlanFeatures = {
     mcpCallsPerDay: 250,
     dashboardAiCallsPerDay: 2_500,
     mcpBurstRequestsPerMinute: 60,
+    desktopKeyRequestsPerDay: DESKTOP_KEY_DAILY_CEILING,
+    desktopKeyBurstPerMinute: DESKTOP_KEY_BURST_PER_MINUTE,
   },
   prioritySupport: true,
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
   embedAccess: true,
+  desktopKeyAccess: true,
+  maxDesktopKeys: 3,
   dataExport: true,
 };
 
@@ -300,11 +352,15 @@ const API_STARTER_FEATURES: PlanFeatures = {
     mcpCallsPerDay: SHARED_API_BUDGET,
     dashboardAiCallsPerDay: 1_000,
     mcpBurstRequestsPerMinute: 60,
+    desktopKeyRequestsPerDay: 0,
+    desktopKeyBurstPerMinute: 0,
   },
   prioritySupport: false,
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
   embedAccess: true,
+  desktopKeyAccess: false,
+  maxDesktopKeys: 0,
   dataExport: true,
 };
 
@@ -321,12 +377,16 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
     mcpCallsPerDay: SHARED_API_BUDGET,
     dashboardAiCallsPerDay: 10_000,
     mcpBurstRequestsPerMinute: 300,
+    desktopKeyRequestsPerDay: 0,
+    desktopKeyBurstPerMinute: 0,
   },
   prioritySupport: true,
   // xlsx removed (#4974): no XLSX exporter exists anywhere in the product.
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
   embedAccess: true,
+  desktopKeyAccess: false,
+  maxDesktopKeys: 0,
   dataExport: true,
 };
 
@@ -350,6 +410,8 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
     mcpCallsPerDay: 25_000,
     dashboardAiCallsPerDay: 25_000,
     mcpBurstRequestsPerMinute: 1000,
+    desktopKeyRequestsPerDay: 0,
+    desktopKeyBurstPerMinute: 0,
   },
   prioritySupport: true,
   // xlsx + api-stream removed for the same reason xlsx left API Business
@@ -357,6 +419,8 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
   embedAccess: true,
+  desktopKeyAccess: false,
+  maxDesktopKeys: 0,
   dataExport: true,
 };
 
@@ -402,6 +466,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "Scheduled AI digest + alert rules engine",
       "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
       "Custom widgets & 10 dashboards (vs 3)",
+      "Desktop key for the desktop app (2 keys)",
     ],
     highlightFeatures: ["Personal license", "1 named user"],
     selfServe: true,
@@ -443,6 +508,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "Data export — CSV, JSON & PDF reports",
       "25 custom dashboards (vs 10)",
       "MCP + SDK: 250 calls/day (vs 50)",
+      "Desktop key for the desktop app (3 keys)",
       "Priority support",
     ],
     highlightFeatures: ["Commercial license included", "1 named user — not a shared login"],

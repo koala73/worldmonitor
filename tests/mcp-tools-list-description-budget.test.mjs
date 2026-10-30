@@ -49,8 +49,8 @@ describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
       assert.equal(TOOL_DESCRIPTION_MAX_BYTES, 1024);
     });
 
-    it('TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES === 64 KiB and exceeds the per-tool cap times a few tools', () => {
-      assert.equal(TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES, 65536);
+    it('TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES === 68 KiB and exceeds the per-tool cap times a few tools', () => {
+      assert.equal(TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES, 69632);
       assert.ok(TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES > TOOL_DESCRIPTION_MAX_BYTES * 8);
     });
 

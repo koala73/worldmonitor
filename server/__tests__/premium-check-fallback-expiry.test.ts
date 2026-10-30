@@ -14,11 +14,12 @@ vi.mock("../../api/_api-key.js", () => ({
   validateApiKey: vi.fn().mockResolvedValue({ valid: false, required: true }),
 }));
 vi.mock("../auth-session", () => ({ validateBearerToken: vi.fn() }));
-vi.mock("../_shared/user-api-key", () => ({ validateUserApiKey: vi.fn() }));
+// The premium resolver reads the desktop-aware principal (plan 2026-10-25-001 U4).
+vi.mock("../_shared/user-api-key", () => ({ validateUserApiKeyPrincipal: vi.fn() }));
 
 import { getCachedJson, setCachedJson } from "../_shared/redis";
 import { validateBearerToken } from "../auth-session";
-import { validateUserApiKey } from "../_shared/user-api-key";
+import { validateUserApiKeyPrincipal } from "../_shared/user-api-key";
 import {
   __resetEntitlementNegativeCacheForTests,
   getEntitlements,
@@ -64,7 +65,7 @@ beforeEach(() => {
   cache.clear();
   vi.clearAllMocks();
   vi.mocked(validateBearerToken).mockResolvedValue({ valid: true, role: "free", userId: USER });
-  vi.mocked(validateUserApiKey).mockResolvedValue({ userId: USER });
+  vi.mocked(validateUserApiKeyPrincipal).mockResolvedValue({ userId: USER, keyId: "k1", keyKind: "api", keyHash: "h".repeat(64), activeKeyRank: 0 });
   vi.mocked(getCachedJson).mockImplementation(async (key) => {
     const entry = cache.get(key);
     return entry && entry.expiresAt > Date.now() ? structuredClone(entry.value) : null;

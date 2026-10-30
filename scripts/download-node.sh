@@ -204,7 +204,13 @@ fi
 
 curl -fsSL "${SHASUMS_URL}" -o "${TMP_DIR}/SHASUMS256.txt"
 curl -fsSL "${SHASUMS_URL}.sig" -o "${TMP_DIR}/SHASUMS256.txt.sig"
-mkdir -m 700 "${TMP_DIR}/gnupg"
+mkdir "${TMP_DIR}/gnupg"
+# Git Bash on Windows cannot set POSIX modes on its temp directory, so a
+# mode change there fails the script. Only POSIX hosts lock the homedir down.
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*) ;;
+  *) chmod 700 "${TMP_DIR}/gnupg" ;;
+esac
 gpg --no-options --homedir "${TMP_DIR}/gnupg" --batch --no-default-keyring \
   --keyring "${TMP_DIR}/release-keys.kbx" --no-auto-key-retrieve \
   --verify "${TMP_DIR}/SHASUMS256.txt.sig" "${TMP_DIR}/SHASUMS256.txt"

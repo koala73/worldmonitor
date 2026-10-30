@@ -1,3 +1,9 @@
+// Cross-file source check by design (#8690, section 2): this suite compares
+// freshness declarations in api/seed-health.js and api/health.js and pins
+// relay warm-ping ownership of health metadata.
+// A runtime handler result does not expose those freshness declarations,
+// and importing the relay starts its server and background loops.
+//
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

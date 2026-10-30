@@ -112,7 +112,7 @@ describe('issue #7377 GEO content credibility', () => {
     const identity = read('public/world-monitor.md');
     const hero = read('pro-test/src/welcome/Hero.tsx');
     const footer = read('pro-test/src/components/Footer.tsx');
-    const pressNav = read('pro-test/src/components/PressFooterNav.tsx');
+    const pressNav = read('pro-test/src/components/PressNav.tsx');
     const pressModule = read('shared/press.ts');
 
     assert.ok(identity.includes(WIRED_FEATURE_URL));
@@ -134,7 +134,11 @@ describe('issue #7377 GEO content credibility', () => {
       footer.includes('ABOUT_DOCS_PATH') || footer.includes(ABOUT_DOCS_PATH),
       'welcome footer must link /docs/about',
     );
-    assert.match(footer, /<PressFooterNav\s*\/>/);
+    // The press row sits beside the quotes near the top of the homepage and
+    // /pro, once per page, not in the footer where readers miss it.
+    assert.doesNotMatch(footer, /PressNav/);
+    assert.match(read('pro-test/src/welcome/Voices.tsx'), /<PressNav\b/);
+    assert.match(read('pro-test/src/App.tsx').match(/const SocialProof = \(\) => \(([\s\S]*?)\n\);/)?.[1] ?? '', /<PressNav\b/);
     assert.match(pressNav, /PRESS_LINKS/);
     assert.match(pressNav, /In the press/);
   });

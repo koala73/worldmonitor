@@ -278,6 +278,14 @@ required gates. Run focused checks first and heavy checks sequentially. Keep use
 regression coverage. Remove a check only with evidence that its protection is
 obsolete, redundant, or ineffective.
 
+For PWA changes, build with `VITE_VARIANT=full npx vite build`, then run
+`node --import tsx --test tests/pwa-precache.test.mjs tests/pwa-recovery.test.mjs tests/deploy-config.test.mjs`.
+The generated worker precaches the dashboard entry's static JavaScript/CSS
+dependencies and the fixed offline/install assets, with a 32-file, 2 MiB budget
+checked against `dist/sw.js`. Other app chunks are cached when requested.
+Navigation still falls back to the self-contained offline page. Verify the built
+worker in a browser; the development server does not register it.
+
 For Railway registry changes, use `npm run test:railway-registry` during the edit
 loop. It exercises the real CLI, runner, workflow and registry contracts without
 the unrelated health-status publisher fixtures. Run the expanded source-health
@@ -307,18 +315,13 @@ PR readiness, merge, deployment, production observation, and acceptance separate
 
 ### CodeQL scan schedule and setup handover
 
-`.github/workflows/codeql.yml` scans languages affected by a PR, including both
-sides of renames and relevant dependency manifests. An incomplete or failed PR
-file lookup runs all six languages. Changes to the CodeQL workflow or configuration
-also run all six. These filters select jobs; each selected job scans the repository,
-not only the changed files.
-
-JavaScript/TypeScript runs daily at 03:23 UTC. Sunday's run also scans Actions, Go,
-Python, Ruby and Rust. Manual dispatch scans all six for recovery. New commits
-cancel older scans of the same PR; scheduled and manual scans are never cancelled
-by PR activity. Pushes to `main` scan all six only when the CodeQL workflow itself
-changes, so default-branch findings can lag by one day for JS/TS and one week for
-the other languages, plus runner delays.
+`.github/workflows/codeql.yml` does not run on pull requests or pushes. CodeQL
+does not gate merges, and a full scan costs about 30 runner-minutes, so it runs
+once a day at 03:23 UTC across all six languages. Findings for a change appear
+in **Security > Code scanning** when the first scan after it reaches `main`
+completes, which can be more than 24 hours later; dispatch **CodeQL** on `main`
+to scan sooner. Scheduled and manual runs use separate
+concurrency groups, and neither cancels a running scan.
 
 After each default-branch scan, the `prune-overlay-bases` job deletes every CodeQL
 overlay-base cache except the newest per workflow/job/language group, because
@@ -330,13 +333,11 @@ The repository owner must coordinate activation with the approved merge:
    uploads can be rejected while default setup is enabled; this is not a passing
    CodeQL validation result.
 2. At the approved handover, disable default setup in **Settings > Code security >
-   CodeQL analysis**, then merge the workflow. The merge changes
-   `.github/workflows/codeql.yml`, so its push to `main` scans all six languages;
-   dispatch **CodeQL** on `main` only if that run did not start. GitHub documents the [switch to advanced setup](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/configure-code-scanning/configuring-advanced-setup-for-code-scanning).
+   CodeQL analysis**, then merge the workflow and dispatch **CodeQL** on `main`. GitHub documents the [switch to advanced setup](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/configure-code-scanning/configuring-advanced-setup-for-code-scanning).
 3. Confirm all six `Analyze (<language>)` jobs succeed and publish fresh results
    for the merged commit in **Security > Code scanning**. Check any required
    code-scanning rules still accept the new workflow; do not treat skipped jobs
-   as proof of analysis. Confirm the next daily and Sunday runs, and compare
+   as proof of analysis. Confirm the next daily run, and compare
    runner-minutes after seven days before claiming savings.
 4. If analysis or uploads fail, restore default setup and disable the advanced
    workflow until repaired. Avoid leaving both disabled or allowing both to run
@@ -345,8 +346,8 @@ The repository owner must coordinate activation with the approved merge:
    disabled, restore default setup immediately. An interrupted handover is not
    complete; do not leave main without an active scan configuration.
 
-Run `node --test tests/codeql-workflow.test.mjs` for local selection and workflow
-contract checks. These tests do not execute CodeQL or prove SARIF upload access.
+Run `node --test tests/codeql-workflow.test.mjs` for local workflow contract
+checks. These tests do not execute CodeQL or prove SARIF upload access.
 
 ## How to Contribute
 
@@ -498,6 +499,10 @@ make install-plugins   # Install sebuf protoc-gen plugins (requires Go)
 ```
 
 The pinned sebuf version is set by `SEBUF_VERSION` in the `Makefile` (currently **v0.11.1**). All three plugins — `protoc-gen-ts-client`, `protoc-gen-ts-server`, `protoc-gen-openapiv3` — must be installed from the same sebuf release. If you see codegen drift after pulling, rerun `make install-plugins` to resync.
+
+### Derived Files
+
+Product facts, `llms.txt`, the AI search briefing, source attribution, catalogs, locales and legal digests are committed outputs of generators in `scripts/`. Run `npm run generate` after changing anything they read; it runs each generator's `--check` and rewrites only what is stale, in dependency order. `npm run generate:check` reports without writing. The pre-push hook regenerates stale files and stops the push so you can commit them, and the always-on `docs-stats` CI job runs the check. Proto output is separate (`make generate`, below). App translations, internal links, the sitemap and docs page dates are not covered; see the header of `scripts/generate-derived.mjs`.
 
 ### Generated Artifacts in Pull Requests
 

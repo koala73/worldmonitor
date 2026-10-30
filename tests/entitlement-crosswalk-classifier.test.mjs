@@ -98,6 +98,8 @@ describe('entitlement crosswalk classifier', () => {
       'tier', 'hasPremiumAccess', 'isProUser', 'apiAccess',
       'mcpAccess', 'dataExport', 'embedAccess', 'isCallerPremium', 'resolvePremiumCallerIdentity',
       'requiresPremium', 'other',
+      // Plan 2026-10-25-001 (U1 added the kind to the generator; U4 classified its sites).
+      'desktopKeyAccess',
     ]);
     for (const [re, v] of SITE_MAP) {
       for (const p of v.preds ?? []) {

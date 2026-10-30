@@ -16,7 +16,7 @@ const SITUATION_SECTIONS = situationSections(CHOKEPOINT_REGISTRY);
 export { SITUATION_PAGE_PATH };
 
 /** Bump when the page copy changes so its lastmod advances without touching every sibling. */
-export const SITUATION_CONTENT_VERSION = '2026-10-24';
+export const SITUATION_CONTENT_VERSION = '2026-10-28';
 
 /** Every file whose change alters this page's HTML, for its lastmod clock. */
 export const SITUATION_PAGE_INPUT_PATHS = Object.freeze([
@@ -42,8 +42,8 @@ export const CRISIS_REGIONS = Object.freeze([
 export const CRISIS_REGION_IDS = Object.freeze(CRISIS_REGIONS.map((region) => region.id));
 
 const H1 = 'Monitor the situation';
-const TITLE = 'Monitor the Situation: Live World Board | World Monitor';
-const DESCRIPTION = 'A free live board of what is happening in the world now: breaking headlines, 14 crisis trackers by region, shipping chokepoint status and internet outages, each with the time it was last read.';
+export const TITLE = 'Monitor the Situation: Live World Board | World Monitor';
+export const DESCRIPTION = 'A free live board of the world right now: breaking headlines, crisis trackers by region, shipping chokepoint status and internet outages, all timestamped.';
 
 const OBSERVATION_PERIOD_RE = /^\d{4}-\d{2}(-\d{2})?$/;
 const MONTH_FORMAT = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });

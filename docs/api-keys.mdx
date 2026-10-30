@@ -6,7 +6,7 @@ description: "Where to create the wm_ key requested by the desktop app or API, w
 World Monitor calls this value a **license key** in some desktop screens and an **API key** elsewhere. They refer to the same user-created value, which starts with `wm_`.
 
 <Info>
-Checkout does not create a reusable key for you. **API Starter and API Business** subscribers create their own keys after signing in. **Dashboard Pro and Pro Business do not include manual API keys**; those subscribers can use the signed-in web dashboard and connect supported MCP clients with OAuth instead.
+Checkout does not create a reusable key for you. **API Starter and API Business** subscribers create their own keys after signing in. **Dashboard Pro and Pro Business do not include API keys**; they include [desktop keys](#desktop-keys) instead, which work in the desktop app but not on the API. Pro subscribers can also use the signed-in web dashboard and connect supported MCP clients with OAuth.
 </Info>
 
 ## Create a key
@@ -37,9 +37,29 @@ For API requests, send the same value in the `X-WorldMonitor-Key` header. See th
 
 A key from either API plan can call the Pro-gated REST routes, such as `list-comtrade-flows`, `get-tariff-trends`, `get-bilateral-tariff`, `get-us-import-duty`, `get-country-products`, and `get-route-impact`. You do not need a separate Pro subscription for them. See [Authentication & Usage](/usage-auth).
 
+## Desktop keys
+
+A desktop key is a `wm_` key for the desktop app. It unlocks the same Pro data as signing in to the dashboard, so a self-built desktop copy can load Pro cloud data without a browser sign-in. It uses the same `wm_` format as an API key; the server records that it is a desktop key when you create it.
+
+**Who gets one.** Pro includes 2 desktop keys and Pro Business includes 3. Free accounts cannot create them. The key is for the subscriber only: one named user, on that person's own desktop copies. Shared or public deployments need an [API plan](/pricing).
+
+**Where it works.** The official desktop app and desktop builds you compile yourself. The key lives in the desktop app's OS keychain. Docker self-host copies run on their own data and never call the World Monitor cloud, so a desktop key does nothing there. API Starter and API Business keys also work in the desktop app.
+
+**Limits.** Each account has a ceiling of 7,500 desktop-key requests per day and 120 per minute, shared across all of its desktop keys. Past the ceiling, requests return a rate-limit response until the next UTC day. Revoking and recreating a key does not reset the count.
+
+**What it cannot reach.** A desktop key does not work on `/api/v2/` paths, shipping webhooks, the MCP endpoint, or OAuth key grants. Those need an API Starter or API Business key.
+
+**Create one.** Sign in at [worldmonitor.app](https://www.worldmonitor.app), open **Settings → API Keys**, enter a name such as `desktop`, and select **Create desktop key**. Copy the full value at once; it is shown only one time. Creating a key past your plan's limit shows a message with the cap.
+
+**Use it.** In the desktop app, open **Settings → Overview**, paste the key into **Desktop key**, then select **Save & Close**. You do not need to sign in to the dashboard.
+
+**If your subscription lapses.** Desktop keys are denied while the subscription is not active, the same way a lapsed API key is. Nothing is revoked: when you renew, the same keys work again.
+
+**Revoke.** Revoke a key from the same tab. Revocation is permanent, and the desktop app using it stops loading Pro data.
+
 ## If the API Keys tab asks you to upgrade
 
-Manual keys require an active **API Starter** or **API Business** subscription. A Dashboard Pro or Pro Business subscription unlocks dashboard and MCP features, but it does not include manual API-key creation.
+API keys require an active **API Starter** or **API Business** subscription. A Dashboard Pro or Pro Business subscription unlocks dashboard and MCP features and includes [desktop keys](#desktop-keys), but it does not include API-key creation.
 
 If you already bought an API plan, confirm that you signed in with the account that owns the subscription. If the plan is still not recognized, email [support@worldmonitor.app](mailto:support@worldmonitor.app) from the purchase email address. Include the plan name and, if available, only the short key prefix—**never send a complete key**.
 

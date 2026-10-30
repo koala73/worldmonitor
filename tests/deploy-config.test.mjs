@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { tmpdir } from 'node:os';
 import { MACHINE_READABLE_URLS } from '../scripts/build-sitemap.mjs';
 import { nonDefaultLandingLocales } from '../shared/indexable-landing-locales.ts';
@@ -681,6 +682,7 @@ describe('crawlable content corpus deployment contracts', () => {
       'scripts/comparison-shortlist.mjs',
       'scripts/unranked-country-inventory.mjs',
       'scripts/build-use-cases.mjs',
+      'scripts/data/use-case-workflows.mjs',
       'scripts/build-accuracy-page.mjs',
       'scripts/build-situation-page.mjs',
       'scripts/situation-page/',
@@ -722,6 +724,7 @@ describe('crawlable content corpus deployment contracts', () => {
       'scripts/comparison-shortlist.mjs',
         'scripts/unranked-country-inventory.mjs',
         'scripts/build-use-cases.mjs',
+        'scripts/data/use-case-workflows.mjs',
         'scripts/build-accuracy-page.mjs',
         'scripts/build-situation-page.mjs',
         'scripts/situation-page/sections.mjs',
@@ -931,6 +934,14 @@ describe('crawlable content corpus deployment contracts', () => {
   // pointing at these files, and a disallowed URL is a claim Google is
   // forbidden to verify (#7660).
   it('marks the machine-readable data surface noindex without touching corpus HTML or the AI-citation surface (#8608)', () => {
+    const dataHeaderRules = vercelConfig.headers
+      .filter(({ source }) => /\.(?:json|ya?ml)$/i.test(source))
+      .filter(({ source }) => !source.replaceAll('\\', '').startsWith('/.well-known/'));
+    for (const { source, headers } of dataHeaderRules) {
+      const robotsTag = headers.find(({ key }) => key.toLowerCase() === 'x-robots-tag');
+      assert.equal(robotsTag?.value ?? null, 'noindex, follow', source);
+    }
+
     const dataFiles = [
       // Corpus dataset downloads - scripts/build-crawlable-corpus.mjs.
       '/country-instability-index/cii-ranking.json',
@@ -1381,11 +1392,12 @@ describe('deploy/cache configuration guardrails', () => {
   });
 
   it('keeps PWA precache glob free of HTML files', () => {
+    assert.match(viteConfigSource, /includeManifestIcons:\s*false/);
     assert.match(
       viteConfigSource,
-      /globPatterns:\s*\['\*\*\/\*\.\{js,css,ico,png,svg,woff2\}'\]/
+      /globPatterns:\s*\['assets\/\*\*\/\*\.\{js,css\}'\]/
     );
-    assert.doesNotMatch(viteConfigSource, /globPatterns:\s*\['\*\*\/\*\.\{js,css,html/);
+    assert.match(viteConfigSource, /manifestTransforms:\s*\[dashboardPrecache\.manifestTransform\]/);
   });
 
   it('emits public sourcemaps for preview attribution while production stays opt-in (#7382)', () => {
@@ -1397,36 +1409,98 @@ describe('deploy/cache configuration guardrails', () => {
   });
 
 
-  it('keeps off-page public assets out of the PWA precache', () => {
-    const assertGlobIgnore = (pattern) => {
-      assert.match(
-        viteConfigSource,
-        new RegExp(`globIgnores:\\s*\\[[\\s\\S]*'${escapeRegExp(pattern)}'[\\s\\S]*\\]`)
-      );
-    };
-
-    assert.match(viteConfigSource, /includeManifestIcons:\s*false/);
-    assert.doesNotMatch(
-      viteConfigSource,
-      /globIgnores:[\s\S]*'assets\/\*\*'/
-    );
-    assertGlobIgnore('pro/**');
-    assertGlobIgnore('favico/**');
-    assertGlobIgnore('textures/**');
-    assertGlobIgnore('**/*.woff2');
-    // #4891: blog OG covers exist only in prod builds (blog generated at
-    // deploy), so a local dist/sw.js never exposes the regression — guard the
-    // config directly. Without this ignore, every first dashboard visit
-    // precached ~40 blog PNGs (~700KB) through the service worker.
-    assertGlobIgnore('blog/**');
-  });
-
-  it('keeps the lazy Clerk SDK out of the PWA precache', () => {
-    assert.match(viteConfigSource, /globIgnores:\s*\[[^\]]*'\*\*\/clerk-\*\.js'[^\]]*\]/s);
+  it('assigns a stable chunk name to the Clerk SDK', () => {
     assert.match(
       viteConfigSource,
       /if\s*\(\s*id\.includes\('\/@clerk\/clerk-js\/'\)\s*\)\s*\{[^{}]*\breturn 'clerk';\s*\}/
     );
+  });
+
+  const swPath = resolve(__dirname, '../dist/sw.js');
+  guardBuiltOutput(swPath);
+  function readPwaWorker() {
+    let manifest;
+    let appChunkCache;
+    function workboxStub() {} // Used as both a constructor and an ordinary helper.
+    const workbox = new Proxy({
+      precacheAndRoute(entries) { manifest = entries; },
+      ExpirationPlugin: class {
+        constructor(options) { Object.assign(this, options); }
+      },
+      StaleWhileRevalidate: class {
+        constructor(options) {
+          if (options.cacheName === 'app-chunks') appChunkCache = options;
+        }
+      },
+    }, { get: (target, name) => target[name] ?? workboxStub });
+    const define = (_dependencies, factory) => factory(workbox);
+    runInNewContext(readFileSync(swPath, 'utf8'), {
+      define,
+      self: { define, skipWaiting() {}, addEventListener() {} },
+      importScripts() {},
+    }, { timeout: 5_000 });
+    assert.ok(Array.isArray(manifest) && manifest.length > 0, 'generated SW must register a precache');
+    return { manifest, appChunkCache };
+  }
+
+  function assertPwaPrecache(manifest) {
+    const urls = Array.from(manifest, ({ url }) => url);
+    assert.ok(urls.length <= 32, `PWA precache has ${urls.length} entries; budget is 32`);
+    let totalBytes = 0;
+    const dist = dirname(swPath);
+    for (const url of urls) {
+      const path = resolve(dist, url);
+      assert.ok(path.startsWith(`${dist}${sep}`), `precache URL escapes dist: ${url}`);
+      totalBytes += statSync(path).size;
+      assert.doesNotMatch(url, /^(?:pro|blog|textures|trust|research-assets)\//);
+      if (!url.startsWith('favico/')) assert.doesNotMatch(url, /\.(?:woff2?|png|svg)$/i);
+      assert.doesNotMatch(url, /(?:^|\/)(?:App-|MapContainer-|GlobeMap-|maplibre-|protomaps-|deck-stack-|h3-js-|UnifiedSettings-|settings-window-|checkout-|rpc-client-|panel-support-|panels-(?:economy|markets|risk|energy|defense|news|intel)-)/, `Optional chunk must stay out of precache: ${url}`);
+      if (/\.html$/.test(url)) assert.equal(url, 'offline.html');
+    }
+    assert.ok(totalBytes <= 2 * 1024 * 1024, `PWA precache is ${totalBytes} bytes; budget is 2 MiB`);
+    for (const url of ['offline.html', 'manifest.webmanifest', 'favico/favicon.ico', 'favico/apple-touch-icon.png', 'favico/favicon-32x32.png']) {
+      assert.ok(urls.includes(url), `missing required precache file: ${url}`);
+    }
+    assert.ok(urls.some((url) => /^assets\/main-.*\.js$/.test(url)), 'dashboard entry is missing');
+  }
+
+  it('bounds the generated PWA precache and excludes optional/off-page assets (#5373)', {
+    skip: shouldSkipBuiltOutput(swPath),
+  }, () => {
+    assertPwaPrecache(readPwaWorker().manifest);
+  });
+
+  it('keeps enough runtime-cache capacity for the emitted JS/CSS build (#5373)', {
+    skip: shouldSkipBuiltOutput(swPath),
+  }, () => {
+    const { appChunkCache } = readPwaWorker();
+    assert.ok(appChunkCache, 'generated SW must register the app chunk runtime cache');
+    const expiration = appChunkCache.plugins.find((plugin) => Number.isFinite(plugin.maxEntries));
+    assert.ok(expiration, 'app chunk runtime cache must have bounded capacity');
+    // Counting every chunk is conservative: shell and locale routes own some of them.
+    const assets = readdirSync(resolve(dirname(swPath), 'assets')).filter((name) => /\.(?:js|css)$/i.test(name));
+    assert.ok(expiration.maxEntries >= assets.length,
+      `Runtime cache holds ${expiration.maxEntries} entries but the build emits ${assets.length} JS/CSS files; normal use can evict the app entry`);
+  });
+
+  it('rejects forbidden map and panel chunks even when they fit the precache budgets (#5373)', {
+    skip: shouldSkipBuiltOutput(swPath),
+  }, () => {
+    const { manifest } = readPwaWorker();
+    const dist = dirname(swPath);
+    const assets = readdirSync(resolve(dist, 'assets'));
+    for (const prefix of [
+      'protomaps-', 'h3-js-', 'UnifiedSettings-', 'settings-window-', 'checkout-',
+      'panel-support-', 'panels-news-', 'panels-intel-',
+    ]) {
+      const asset = assets.find((name) => name.startsWith(prefix) && name.endsWith('.js'));
+      assert.ok(asset, `missing built chunk for negative test: ${prefix}`);
+      const polluted = [...manifest, { url: `assets/${asset}`, revision: null }];
+      assert.ok(polluted.length <= 32, 'negative test must stay within the entry budget');
+      const bytes = polluted.reduce((sum, { url }) => sum + statSync(resolve(dist, url)).size, 0);
+      assert.ok(bytes <= 2 * 1024 * 1024, 'negative test must stay within the byte budget');
+      assert.throws(() => assertPwaPrecache(polluted), /Optional chunk must stay out of precache/);
+    }
   });
 
   it('explicitly disables navigateFallback when HTML is not precached', () => {
@@ -4363,8 +4437,9 @@ describe('vercel.json functions config (none expected after carousel moved to ed
 // header advertising every well-known resource. Each rel is either
 // an IANA-registered token (api-catalog, service-desc, service-doc,
 // status) or the full IANA URI form (RFC 9728 OAuth rels). The MCP
-// card rel carries anchor="/mcp" because the server card describes
-// the /mcp endpoint, not the document URL being fetched.
+// card rel carries an absolute apex anchor because the server card
+// describes the apex /mcp endpoint, not the document URL being fetched; a
+// relative anchor resolves against the www page and names the 410 alias (#9722).
 describe('agent readiness: public document Link headers', () => {
   const vercel = JSON.parse(readFileSync(resolve(__dirname, '../vercel.json'), 'utf-8'));
 
@@ -4398,11 +4473,10 @@ describe('agent readiness: public document Link headers', () => {
         );
       }
 
-      // MCP card rel must carry anchor="/mcp" (server card describes /mcp, not homepage)
       assert.match(
         linkHeader.value,
-        /<\/\.well-known\/mcp\/server-card\.json>[^,]*anchor="\/mcp"/,
-        'mcp-server-card rel must carry anchor="/mcp"'
+        /<\/\.well-known\/mcp\/server-card\.json>[^,]*anchor="https:\/\/worldmonitor\.app\/mcp"/,
+        'mcp-server-card rel must carry the absolute canonical anchor; anchor="/mcp" resolves to www/mcp, which answers 410'
       );
 
       // The docs MCP server (#4958) is advertised in the Link header directly —
@@ -5201,10 +5275,6 @@ describe('agent readiness: registry branding + ARD catalog', () => {
 });
 
 describe('variant subdomain dashboard SEO (#4996)', () => {
-  // No hardcoded variant list: every set is extracted from its real source
-  // and compared BIDIRECTIONALLY, so adding a variant to any one surface
-  // (middleware host map, generator, vercel.json rewrites) without the
-  // others fails here instead of shipping a subdomain with full-brand meta.
   const dashboardRewrites = vercelConfig.rewrites.filter((r) => r.source === '/dashboard');
 
   const rewriteVariants = dashboardRewrites
@@ -5215,10 +5285,6 @@ describe('variant subdomain dashboard SEO (#4996)', () => {
     })
     .sort();
 
-  const middlewareVariants = [...middlewareSource.matchAll(/'([a-z]+)\.worldmonitor\.app': '([a-z]+)'/g)]
-    .map((m) => m[2])
-    .sort();
-
   const variantHtmlSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
   const generatorArrayMatch = variantHtmlSource.match(/WEB_DASHBOARD_VARIANTS = \[([^\]]+)\]/);
   const generatorVariants = (generatorArrayMatch?.[1] ?? '')
@@ -5227,14 +5293,12 @@ describe('variant subdomain dashboard SEO (#4996)', () => {
     .filter(Boolean)
     .sort();
 
-  it('extracted all three variant sets (extraction regressions fail loudly)', () => {
+  it('extracts both the rewrite and generator variant sets', () => {
     assert.ok(rewriteVariants.length > 0, 'no host-conditioned /dashboard rewrites found in vercel.json');
-    assert.ok(middlewareVariants.length > 0, 'VARIANT_HOST_MAP extraction from middleware.ts found nothing');
     assert.ok(generatorVariants.length > 0, 'WEB_DASHBOARD_VARIANTS extraction from variant-dashboard-html.ts found nothing');
   });
 
-  it('vercel.json rewrites, middleware host map, and the generator cover the SAME variant set (bidirectional)', () => {
-    assert.deepEqual(rewriteVariants, middlewareVariants, 'vercel.json /dashboard host rewrites vs middleware VARIANT_HOST_MAP diverged');
+  it('vercel.json rewrites and the generator cover the same variant set', () => {
     assert.deepEqual(rewriteVariants, generatorVariants, 'vercel.json /dashboard host rewrites vs WEB_DASHBOARD_VARIANTS diverged');
   });
 

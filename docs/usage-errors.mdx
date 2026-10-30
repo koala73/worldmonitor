@@ -46,7 +46,7 @@ Before any handler runs, the edge middleware refuses `/api/*` requests whose `Us
 The middleware also has narrowly scoped bypass categories:
 
 - Exact bot-gate bypass paths: intentionally public `/api/version`, `/api/health`, `/api/llms.txt`, `/api/product-catalog`, and `/api/download.md`; authenticated machine routes `/api/seed-contract-probe` (requires `x-probe-secret: $RELAY_SHARED_SECRET`) and `/api/internal/brief-why-matters` (requires `Authorization: Bearer $RELAY_SHARED_SECRET`) also bypass only this User-Agent filter.
-- Method-aware `GET`/`HEAD` API markdown twins: valid requests for `/api/**/*.md` bypass the gate; other methods do not inherit that exception.
+- Method-aware `GET`/`HEAD` API markdown twins: `/api/**/*.md` bypasses the gate for declared AI crawlers (GPTBot, ClaudeBot, anthropic-ai, Claude-User, ChatGPT-User, OAI-SearchBot, PerplexityBot, Google-Extended, Applebot-Extended, CCBot) and for twins of the exact bypass paths above. Any other client meets the same gate as the twin's sibling route, and other methods do not inherit the exception.
 - Recognized social preview UAs may fetch `/api/story` and `/api/og-story`; recognized social image UAs may fetch `.png` paths and valid signed brief-carousel route shapes.
 
 Other `/api/*` paths — including anonymous public reads like `GET /api/bootstrap?public=1` — remain behind the gate. That is why a bare `curl` of a documented anonymous endpoint can return 403 while the same URL works from a browser.
@@ -70,7 +70,11 @@ Generated RPC handlers preserve the same billing decision in their native error 
 | `invalid_payload` | Body failed schema validation. |
 | `invalid_date_shape` | Date param not `YYYY-MM-DD`. |
 | `brief_not_found` | No composed brief for the requested `{userId, issueSlot}`. |
-| `Too many requests` | 429 fired; honor `Retry-After`. |
+| `Too many requests` | 429 fired; honor `Retry-After`. For a [desktop key](/api-keys#desktop-keys) the body also carries `limit_type: "per_minute"` — the account's burst limit (120 requests a minute). |
+| `Daily request limit reached` | 429 for a [desktop key](/api-keys#desktop-keys): the account used its daily allowance (7,500 requests, shared by all its desktop keys and counted per UTC day). The body carries `limit_type: "daily"` and `reset`; `Retry-After` is the seconds to the next UTC midnight. Revoking and recreating a key does not reset it. |
+| `Rate-limit service temporarily unavailable` | 503 with `X-RateLimit-Mode: degraded` and `Retry-After: 5`: the desktop-key counter could not be read, so the request was refused rather than served unmetered. Retry. |
+| `Desktop key limit reached for this account` | 403: the account has more working keys than its plan allows desktop keys (Pro 2, Pro Business 3) — typically an API-plan owner who moved to Pro. The oldest keys keep working; revoke one to free a slot. |
+| `This endpoint requires an API plan` | 403 from the gateway when a desktop key reaches a gateway-served `/api/v2/` path. The other API-only surfaces — the shipping webhook routes, the MCP endpoint and OAuth authorize — are served by their own edges, whose validators accept only API keys: a desktop key there is `401 Invalid API key` (OAuth authorize renders it as `invalid_key`). Use an API key from an API plan. |
 | `Service temporarily unavailable` | Upstash or another hard dependency missing at request time. |
 | `service_unavailable` | Signing secret / required env not configured. |
 | `Failed to enqueue scenario job` | Redis pipeline failure on `/api/scenario/v1/run-scenario`. |

@@ -20,7 +20,7 @@ Every route below requires **tier 1 (Pro) or higher**. There is no anonymous or 
 REST and SDK callers use the HTTP envelope. An unauthenticated call returns `401` with `{"error":"Pro authentication required"}`. A signed-in free account returns `403` with a top-level payload such as `{"error":"Upgrade required","requiredTier":1,"currentTier":0,"planKey":"pro"}`. MCP callers use the JSON-RPC envelope instead: the same entitlement denial appears under `error.data.reason = "upgrade-required"` and can include an `upgradeUrl`. Both denial types are final answers, not transient failures — do not retry them. A `503` carrying `X-Billing-Verification` *is* retryable; honor `Retry-After`. See [Usage errors](/usage-errors).
 
 <Note>
-One narrow exception, deliberate: the `get_market_data` MCP tool is a cache-backed bundle available to signed-in free accounts within their small daily allowance, and two of its datasets (`physical-premium`, `physical-divergence`) overlap the metals routes below. The dedicated REST routes and every tool in this page's tables stay Pro-only.
+The `get_market_data` MCP tool is a cache-backed bundle open to signed-in free accounts within their small daily allowance. Two of its datasets (`physical-premium`, `physical-divergence`) are the metals data below, so a free account receives them as `locked`, with an `upgradeUrl`, and only subscribers receive the data. The dedicated REST routes and every tool in this page's tables stay Pro-only.
 </Note>
 
 ## Physical vs paper precious metals

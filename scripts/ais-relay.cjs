@@ -74,7 +74,7 @@ const {
 } = require('./lib/occurrence-events.cjs');
 const {
   createXPostBudget,
-  DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  X_SHARED_COVERAGE_MODEL,
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
@@ -87,6 +87,16 @@ const {
   CLASSIFY_DIGEST_RETRY_DELAYS_MS,
   classifyDigestRetryDecision,
 } = require('./lib/classify-digest-request.cjs');
+const {
+  DIGEST_WARM_ACTIVATION_KEY,
+  DIGEST_WARM_HEARTBEAT_KEY,
+  DIGEST_WARM_HEARTBEAT_TTL_SECONDS,
+  DIGEST_WARM_INTERVAL_MS,
+  fetchDigestWarmCell,
+  runDigestWarmCycle,
+  shouldPublishDigestWarmHeartbeat,
+  summarizeDigestWarmCycle,
+} = require('./lib/news-digest-warm.cjs');
 const {
   YahooQuoteSummaryClient,
   buildSectorSeedMeta,
@@ -1227,6 +1237,14 @@ const telegramState = {
   startedAt: Date.now(),
 };
 
+// The feed lives in process memory and a new container waits
+// TELEGRAM_STARTUP_DELAY_MS before polling, so every deploy served an empty
+// feed for minutes and blanked the panel for every open dashboard. Each good
+// poll snapshots the items; a starting container serves that snapshot until
+// its own first poll. The TTL bounds how old a restored feed can be.
+const TELEGRAM_ITEMS_SNAPSHOT_KEY = 'intelligence:telegram-feed:items:v1';
+const TELEGRAM_ITEMS_SNAPSHOT_TTL_SECONDS = 1800;
+
 const TELEGRAM_RESOLVE_CACHE_TTL_MS = 60 * 60 * 1000;
 const TELEGRAM_CHANNEL_CACHE_TTL_MS = 30_000;
 const TELEGRAM_LOOKUP_CACHE_MAX_ENTRIES = 512;
@@ -2202,6 +2220,10 @@ async function pollTelegramOnce() {
 
   if (channelsPolled > 0) {
     const rc = telegramState.items.length;
+    upstashSet(TELEGRAM_ITEMS_SNAPSHOT_KEY, {
+      savedAt: new Date(telegramState.lastPollAt).toISOString(),
+      items: telegramState.items,
+    }, TELEGRAM_ITEMS_SNAPSHOT_TTL_SECONDS).catch(() => {});
     // Data key TTL must outlive maxStaleMin (10 min = 600s) by enough
     // buffer so health sees hasData=true + stale seed-meta → STALE_SEED.
     // If both keys expire together, health jumps straight to EMPTY and
@@ -2240,9 +2262,28 @@ function guardedTelegramPoll() {
     });
 }
 
+async function restoreTelegramSnapshot() {
+  const snapshot = await upstashGet(TELEGRAM_ITEMS_SNAPSHOT_KEY);
+  const savedAt = Date.parse(snapshot?.savedAt);
+  // Keep only feed-item shapes: the topic/channel filters and the poll merge
+  // read fields on every entry, and a bad one would sit there until TTL.
+  const items = Array.isArray(snapshot?.items)
+    ? snapshot.items.filter(item => item && typeof item === 'object' && typeof item.id === 'string' && item.id)
+    : [];
+  if (!items.length || !Number.isFinite(savedAt)) return;
+  // A poll that finished first holds fresher items; never overwrite it.
+  if (telegramState.lastPollAt || telegramState.items.length) return;
+  telegramState.items = items.slice(0, TELEGRAM_MAX_FEED_ITEMS);
+  // updatedAt reports when these posts were polled. lastSuccessfulPollAt stays
+  // 0: it gates the strike feed's freshness and no poll has run here yet.
+  telegramState.lastPollAt = savedAt;
+  console.log(`[Relay] Telegram feed restored ${telegramState.items.length} items from snapshot saved ${snapshot.savedAt}`);
+}
+
 function startTelegramPollLoop() {
   if (!TELEGRAM_ENABLED) return;
   loadTelegramChannels();
+  restoreTelegramSnapshot().catch((e) => console.warn('[Relay] Telegram snapshot restore failed:', e?.message || e));
   if (TELEGRAM_STARTUP_DELAY_MS > 0) {
     console.log(`[Relay] Telegram connect delayed ${TELEGRAM_STARTUP_DELAY_MS}ms (waiting for old container to disconnect)`);
     setTimeout(() => {
@@ -2289,7 +2330,7 @@ const X_FEED_POLL_LOCK_TTL_SECONDS = 120;
 const X_POLL_STUCK_AFTER_MS = 60_000;
 const xPostBudget = createXPostBudget({
   evalCommand: upstashEval,
-  dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  ...X_SHARED_COVERAGE_MODEL,
 });
 
 const xState = {
@@ -4713,10 +4754,20 @@ const CLASSIFY_SEED_INTERVAL_MS = 15 * 60 * 1000;
 const CLASSIFY_CACHE_TTL = 86400;
 const CLASSIFY_SKIP_TTL = 1800;
 const CLASSIFY_BATCH_SIZE = 50;
-const CLASSIFY_VARIANTS = ['full', 'tech', 'finance', 'happy', 'commodity'];
-// Zero under RELAY_TEST_MODE so the /__test/seed-classify seam runs a full
-// five-variant cycle in milliseconds instead of twelve minutes.
-const CLASSIFY_VARIANT_STAGGER_MS = RELAY_TEST_MODE ? 0 : 3 * 60 * 1000;
+// Every edition the news digest serves, generated from shared/news-catalog.json
+// (scripts/generate-browser-news-catalog.mjs), so a new edition is classified
+// without a relay edit.
+const CLASSIFY_VARIANTS = requireShared('news-digest-editions.json');
+// The waits between editions total CLASSIFY_STAGGER_TOTAL_MS whatever the
+// edition count, leaving the rest of the 15-minute interval for classify work;
+// a fixed per-edition wait would overrun the interval as editions are added and
+// the in-flight guard would then skip every other cycle. Zero under
+// RELAY_TEST_MODE so the /__test/seed-classify seam runs a full cycle in
+// milliseconds.
+const CLASSIFY_STAGGER_TOTAL_MS = 12 * 60 * 1000;
+const CLASSIFY_VARIANT_STAGGER_MS = RELAY_TEST_MODE
+  ? 0
+  : Math.floor(CLASSIFY_STAGGER_TOTAL_MS / Math.max(1, CLASSIFY_VARIANTS.length - 1));
 
 // Relay gates — active only when RELAY_GATES_READY=1 (see Appendix E of docs/internal/news-alerts-enhancements-from-trendradar.md).
 // When the flag is set the relay becomes the sole authoritative source of rss_alert events and
@@ -5075,7 +5126,7 @@ const CLASSIFY_LLM_PROVIDERS = [
       if (apiKey) h.Authorization = `Bearer ${apiKey}`;
       return h;
     },
-    extraBody: { think: false },
+    extraBody: { reasoning_effort: 'none' },
     timeout: 30000,
   },
   {
@@ -5526,6 +5577,52 @@ async function startClassifySeedLoop() {
   const activeProviders = CLASSIFY_LLM_PROVIDERS.filter((p) => !!process.env[p.envKey]).map((p) => p.name);
   console.log(`[Classify] Seed loop starting (interval ${CLASSIFY_SEED_INTERVAL_MS / 1000 / 60}min, providers:${activeProviders.length ? activeProviders.join(',') : 'none'})`);
   startBootSeedLoop('Classify', 'seed-meta:classify', CLASSIFY_SEED_INTERVAL_MS, seedClassify, (e) => console.warn('[Classify] Initial seed error:', e?.message || e), (e) => console.warn('[Classify] Seed error:', e?.message || e));
+}
+
+// ─────────────────────────────────────────────────────────────
+// News digest warm cycle — requests every (edition, language) digest the
+// catalog places a feed in, so every catalog feed is fetched whether or not a
+// reader requests its language (scripts/lib/news-digest-warm.cjs).
+// ─────────────────────────────────────────────────────────────
+const DIGEST_WARM_CELLS = requireShared('news-digest-warm-cells.json');
+let digestWarmInFlight = false;
+
+async function seedDigestWarm() {
+  if (digestWarmInFlight) {
+    console.log('[DigestWarm] Previous cycle still running, skipping');
+    return;
+  }
+  digestWarmInFlight = true;
+  const startedAt = Date.now();
+  try {
+    const results = await runDigestWarmCycle(DIGEST_WARM_CELLS, {
+      fetchCell: (cell) => fetchDigestWarmCell(cell, { userAgent: CHROME_UA, relayKey: RELAY_API_KEY }),
+    });
+    const summary = summarizeDigestWarmCycle(results, { fetchedAt: Date.now(), durMs: Date.now() - startedAt });
+    console.log(
+      `[DigestWarm] ${summary.cells} cells: ${summary.fresh} fresh, ${summary.stale} stale, ${summary.failed} failed ` +
+        `in ${Math.round(summary.durMs / 1000)}s${summary.failures.length ? ` (${summary.failures.join(', ')})` : ''}`,
+    );
+    if (!shouldPublishDigestWarmHeartbeat(summary)) {
+      console.warn(`[DigestWarm] Fewer than half the cells served news${RELAY_API_KEY ? '' : ' (WORLDMONITOR_RELAY_KEY not set)'} — heartbeat not written`);
+      return;
+    }
+    if (!await upstashSet(DIGEST_WARM_HEARTBEAT_KEY, summary, DIGEST_WARM_HEARTBEAT_TTL_SECONDS)) return;
+    // Durable, no TTL: health reads the probe as pending until the first
+    // healthy cycle and strict afterwards (api/health.js ACTIVATION_MARKERS).
+    await upstashEval("return redis.call('SET', KEYS[1], ARGV[1])", [DIGEST_WARM_ACTIVATION_KEY], [String(summary.fetchedAt)]);
+  } finally {
+    digestWarmInFlight = false;
+  }
+}
+
+function startDigestWarmLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[DigestWarm] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[DigestWarm] Warm loop starting (${DIGEST_WARM_CELLS.length} cells, interval ${DIGEST_WARM_INTERVAL_MS / 1000 / 60}min)`);
+  startBootSeedLoop('DigestWarm', DIGEST_WARM_HEARTBEAT_KEY, DIGEST_WARM_INTERVAL_MS, seedDigestWarm, (e) => console.warn('[DigestWarm] Initial cycle error:', e?.message || e), (e) => console.warn('[DigestWarm] Cycle error:', e?.message || e));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -12061,7 +12158,8 @@ function handlePolymarketRequest(req, res) {
     polymarketInflight.set(cacheKey, inflight);
   }
 
-  inflight.then((data) => {
+  // Returned so a throw while serving reaches the router's catch instead of going unhandled.
+  return inflight.then((data) => {
     if (data) {
       sendCompressed(req, res, 200, {
         'Content-Type': 'application/json',
@@ -12518,7 +12616,24 @@ function getCorsOrigin(req) {
   return '';
 }
 
-const server = http.createServer(async (req, res) => {
+// A throw that escapes a request (the router's own awaits, or an async route
+// handler) would otherwise be an unhandled rejection, which exits the relay on
+// Node 24 and takes every route and the AIS stream down with it. Route handlers
+// are dispatched with `return` so this one catch covers them.
+const server = http.createServer((req, res) => handleRelayRequest(req, res)
+  .catch((err) => handleRelayRequestFailure(res, err)));
+
+function handleRelayRequestFailure(res, err) {
+  console.error('[Relay] request handler failed:', err?.name || 'Error', err?.message || '');
+  // A half-written body must not be ended as if complete: cut the socket so the client sees the failure.
+  if (res.headersSent) {
+    if (!res.writableEnded) res.destroy();
+    return;
+  }
+  safeEnd(res, 500, {}, '');
+}
+
+async function handleRelayRequest(req, res) {
   const pathname = (req.url || '/').split('?')[0];
   const corsOrigin = getCorsOrigin(req);
   // Always emit Vary: Origin on /rss (browser-direct via CDN) to prevent
@@ -13476,38 +13591,38 @@ const server = http.createServer(async (req, res) => {
       }));
     }
   } else if (pathname.startsWith('/ucdp-events')) {
-    handleUcdpEventsRequest(req, res);
+    return handleUcdpEventsRequest(req, res);
   } else if (pathname.startsWith('/wingbits/track')) {
-    handleWingbitsTrackRequest(req, res);
+    return handleWingbitsTrackRequest(req, res);
   } else if (pathname.startsWith('/opensky')) {
-    handleOpenSkyRequest(req, res, PORT);
+    return handleOpenSkyRequest(req, res, PORT);
   } else if (pathname.startsWith('/worldbank')) {
-    handleWorldBankRequest(req, res);
+    return handleWorldBankRequest(req, res);
   } else if (pathname === '/wits') {
     return handleWitsRequest(req, res);
   } else if (pathname.startsWith('/polymarket')) {
-    handlePolymarketRequest(req, res);
+    return handlePolymarketRequest(req, res);
   } else if (pathname === '/yahoo-chart') {
-    handleYahooChartRequest(req, res);
+    return handleYahooChartRequest(req, res);
   } else if (pathname === '/crypto-quotes') {
-    handleCryptoQuotesRequest(req, res);
+    return handleCryptoQuotesRequest(req, res);
   } else if (pathname === '/notam') {
-    handleNotamProxyRequest(req, res);
+    return handleNotamProxyRequest(req, res);
   } else if (pathname === '/aviationstack') {
-    handleAviationStackRequest(req, res);
+    return handleAviationStackRequest(req, res);
   } else if (pathname === '/google-flights/search') {
-    handleGoogleFlightsSearch(req, res);
+    return handleGoogleFlightsSearch(req, res);
   } else if (pathname === '/google-flights/search-dates') {
-    handleGoogleFlightsDates(req, res);
+    return handleGoogleFlightsDates(req, res);
   } else if (pathname === '/widget-agent/health' && req.method === 'GET') {
-    handleWidgetAgentHealthRequest(req, res);
+    return handleWidgetAgentHealthRequest(req, res);
   } else if (pathname === '/widget-agent' && req.method === 'POST') {
-    handleWidgetAgentRequest(req, res);
+    return handleWidgetAgentRequest(req, res);
   } else {
     res.writeHead(404);
     res.end();
   }
-});
+}
 
 // ─── Google Flights ───────────────────────────────────────────────────────────
 //
@@ -14556,6 +14671,10 @@ async function handleWidgetAgentRequest(req, res) {
   } catch {
     return safeEnd(res, 400, {}, '');
   }
+  // Valid JSON need not be an object: reading .tier off null throws.
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return safeEnd(res, 400, {}, '');
+  }
 
   const rawTier = body.tier;
   if (rawTier !== undefined && rawTier !== 'basic' && rawTier !== 'pro') {
@@ -15507,6 +15626,7 @@ server.listen(PORT, () => {
   startChokepointWarmPingLoop();
   startCableHealthWarmPingLoop();
   startClassifySeedLoop();
+  startDigestWarmLoop();
   startMiddleEastStrikesLoop();
   startServiceStatusesSeedLoop();
   startTheaterPostureSeedLoop();

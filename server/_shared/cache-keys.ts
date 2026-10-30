@@ -98,8 +98,11 @@ export const CHINA_MACRO_KEY = BOOTSTRAP_CACHE_KEYS.chinaMacro;
 export const CHINA_RELEASE_CALENDAR_KEY = BOOTSTRAP_CACHE_KEYS.chinaReleaseCalendar;
 export const CHINA_CORRIDOR_CONTROL_TOWERS_KEY =
   'supply_chain:china-corridor-control-towers:v1';
+// v2: the atmosphere family (#9722) changed the contribution count the wire
+// validator pins, so a v1 response cached across the deploy would fail every
+// client parse for its 15-minute TTL.
 export const CHINA_ACTIVITY_NOWCAST_KEY =
-  'economic:china:activity-nowcast:v1';
+  'economic:china:activity-nowcast:v2';
 export const CHINA_CORRIDOR_DIRECTIONAL_HISTORY_KEY =
   'economic:china:corridor-directional-history:v1';
 

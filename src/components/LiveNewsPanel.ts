@@ -10,7 +10,7 @@ import { getLiveStreamsAlwaysOn, subscribeLiveStreamsAlwaysOnChange } from '@/se
 import { subscribeLiveMediaIdle } from '@/services/live-media-idle';
 import { sourceListsChannel, type LiveVideoSource, type OfflineReason } from '@/services/live-video/model';
 import { withResolvedLiveVideos } from '@/services/live-video/resolved';
-import { createFailureMemory, openLiveVideo, type LiveVideoSession, type LiveVideoState } from '@/services/live-video/session';
+import { createFailureMemory, openLiveVideo, type AudioAvailability, type LiveVideoSession, type LiveVideoState } from '@/services/live-video/session';
 import { track } from '@/services/analytics';
 import { createLiveMediaIdleNotice, trackLiveMediaIdleStop } from './live-media-idle-notice';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -67,6 +67,8 @@ export class LiveNewsPanel extends Panel {
   private isPlaying = false;
   private idleStoppedAfterMs: number | null = null;
   private muteBtn: HTMLButtonElement | null = null;
+  private audioAvailability: AudioAvailability = 'unknown';
+  private audioStatus: HTMLSpanElement | null = null;
   private fullscreenBtn: HTMLButtonElement | null = null;
   private isFullscreen = false;
   private liveBtn: HTMLButtonElement | null = null;
@@ -356,6 +358,9 @@ export class LiveNewsPanel extends Panel {
     this.pendingMount = false;
     this.videoSession?.destroy();
     this.videoSession = null;
+    this.audioAvailability = 'unknown';
+    this.updateMuteIcon();
+    this.audioStatus = null;
     this.videoPhase = null;
     this.playerContainer = null;
   }
@@ -447,10 +452,19 @@ export class LiveNewsPanel extends Panel {
 
   private updateMuteIcon(): void {
     if (!this.muteBtn) return;
-    setTrustedHtml(this.muteBtn, trustedHtml(this.isMuted
+    const unavailable = this.audioAvailability === 'unavailable';
+    const label = unavailable ? t('components.liveNews.audioUnavailable') : 'Toggle sound';
+    this.muteBtn.disabled = unavailable;
+    this.muteBtn.title = label;
+    this.muteBtn.setAttribute('aria-label', label);
+    if (this.audioStatus) {
+      this.audioStatus.hidden = !unavailable;
+      this.audioStatus.textContent = unavailable ? label : '';
+    }
+    setTrustedHtml(this.muteBtn, trustedHtml(this.isMuted || unavailable
       ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>'
       : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>', "legacy direct innerHTML migration"));
-    this.muteBtn.classList.toggle('unmuted', !this.isMuted);
+    this.muteBtn.classList.toggle('unmuted', !this.isMuted && !unavailable);
   }
 
   private toggleMute(): void {
@@ -786,6 +800,11 @@ export class LiveNewsPanel extends Panel {
         this.isMuted = muted;
         this.updateMuteIcon();
       },
+      onAudioAvailabilityChange: (availability) => {
+        if (!isCurrent()) return;
+        this.audioAvailability = availability;
+        this.updateMuteIcon();
+      },
       onPlayingChange: (playing) => {
         // The viewer paused or resumed from the player's own controls; the idle stop leaves a paused stream alone.
         if (!isCurrent() || this.isPlaying === playing) return;
@@ -802,6 +821,11 @@ export class LiveNewsPanel extends Panel {
     this.deferredInit = true;
     const container = document.createElement('div');
     container.className = 'live-news-player';
+    this.audioStatus = document.createElement('span');
+    this.audioStatus.className = 'live-audio-status';
+    this.audioStatus.hidden = true;
+    this.audioStatus.setAttribute('role', 'status');
+    container.appendChild(this.audioStatus);
     this.playerContainer = container;
     this.setContentNodes(container);
     return container;

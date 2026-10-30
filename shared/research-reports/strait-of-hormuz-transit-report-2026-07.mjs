@@ -26,7 +26,7 @@ export const REPORT = {
   // markup) so the meta description, JSON-LD, and lede can never disagree
   // with the data the way hand-written numbers can.
   description:
-    'Strait of Hormuz transits are down {{m:declinePct}} since the March 2026 closure — {{m:disruptionDailyAvg}} ships/day since March 1 versus {{m:sameWindow2025DailyAvg}} in the same 2025 window — with July at about {{m:julVsFebShare}} of the February baseline, from IMF PortWatch daily data.',
+    'Strait of Hormuz ship traffic is down {{m:declinePct}} since the March 2026 closure: {{m:disruptionDailyAvg}} transits/day vs {{m:sameWindow2025DailyAvg}} in the same 2025 window, from IMF PortWatch daily data.',
   disruptionStart: '2026-03-01',
   author: {
     name: 'World Monitor Research',

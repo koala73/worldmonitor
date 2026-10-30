@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LIVE_VIDEO_TIMING } from '@/services/live-video/model';
-import { openLiveVideo, type LiveVideoSession, type LiveVideoState } from '@/services/live-video/session';
+import { openLiveVideo, type AudioAvailability, type LiveVideoSession, type LiveVideoState } from '@/services/live-video/session';
 
 const hlsjs = vi.hoisted(() => {
   type Listener = (event: string, data: unknown) => void;
@@ -9,7 +9,7 @@ const hlsjs = vi.hoisted(() => {
 
   /** Stands in for hls.js: the test plays the part of the playlist loader. */
   class FakeHls {
-    static readonly Events = { LEVEL_LOADED: 'hlsLevelLoaded', ERROR: 'hlsError' } as const;
+    static readonly Events = { LEVEL_LOADED: 'hlsLevelLoaded', ERROR: 'hlsError', BUFFER_CREATED: 'hlsBufferCreated' } as const;
     static isSupported(): boolean {
       return true;
     }
@@ -17,7 +17,7 @@ const hlsjs = vi.hoisted(() => {
     readonly listeners = new Map<string, Listener>();
     destroyed = false;
 
-    constructor() {
+    constructor(readonly config: Partial<import('hls.js').HlsConfig>) {
       instances.push(this);
     }
 
@@ -59,7 +59,7 @@ interface HlsTile {
 
 let session: LiveVideoSession | undefined;
 
-function openHlsTile(onPlayingChange?: (playing: boolean) => void, onMutedChange?: (muted: boolean) => void): HlsTile {
+function openHlsTile(onPlayingChange?: (playing: boolean) => void, onMutedChange?: (muted: boolean) => void, onAudioAvailabilityChange?: (availability: AudioAvailability) => void): HlsTile {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const states: LiveVideoState[] = [];
@@ -71,6 +71,7 @@ function openHlsTile(onPlayingChange?: (playing: boolean) => void, onMutedChange
     onState: (state) => states.push(state),
     onPlayingChange,
     onMutedChange,
+    onAudioAvailabilityChange,
   });
   const video = container.querySelector('video');
   if (!video) throw new Error('no video element mounted');
@@ -119,6 +120,82 @@ afterEach(() => {
 });
 
 describe('live video HLS transport', () => {
+  it('allows hls.js to lower quality when video frames are dropped', async () => {
+    await openLivePlaylistTile();
+
+    expect(hlsjs.instances[0]?.config.capLevelOnFPSDrop).toBe(true);
+  });
+
+  it('uses created buffers for audio inventory and ignores retired buffer events', async () => {
+    const audio = vi.fn();
+    openHlsTile(undefined, undefined, audio);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(audio.mock.calls).toEqual([['unknown']]);
+    const hls = hlsjs.instances[hlsjs.instances.length - 1]!;
+    const emit = (tracks: object) => hls.listeners.get('hlsBufferCreated')?.('hlsBufferCreated', { tracks });
+    emit({ video: {} });
+    expect(audio).toHaveBeenLastCalledWith('unavailable');
+    emit({ video: {}, audio: {} });
+    expect(audio).toHaveBeenLastCalledWith('available');
+    emit({ audiovideo: {} });
+    expect(audio).toHaveBeenLastCalledWith('unknown');
+    session?.destroy();
+    audio.mockClear();
+    emit({ video: {} });
+    expect(audio).not.toHaveBeenCalled();
+  });
+
+  it('uses hls.js when native HLS has no audio inventory', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('maybe');
+    const audio = vi.fn();
+    const { video } = openHlsTile(undefined, undefined, audio);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hlsjs.instances).toHaveLength(1);
+    expect(video.getAttribute('src')).toBeNull();
+    Object.defineProperty(video, 'readyState', { value: 1 });
+    video.dispatchEvent(new Event('loadedmetadata'));
+    expect(audio.mock.calls).toEqual([['unknown']]);
+  });
+
+  it('retains native playback with unknown audio when Media Source is unsupported', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('maybe');
+    vi.spyOn(hlsjs.FakeHls, 'isSupported').mockReturnValue(false);
+    const audio = vi.fn();
+    const { video } = openHlsTile(undefined, undefined, audio);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(video.getAttribute('src')).toBe(STREAM);
+    expect(hlsjs.instances).toHaveLength(0);
+    expect(audio.mock.calls).toEqual([['unknown']]);
+  });
+
+  it('reads native audio tracks after metadata, follows track changes, and removes listeners on destroy', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('maybe');
+    const tracks = Object.assign(new EventTarget(), { length: 0 });
+    Object.defineProperty(HTMLVideoElement.prototype, 'audioTracks', { configurable: true, get: () => tracks });
+    const audio = vi.fn();
+    try {
+      const { video } = openHlsTile(undefined, undefined, audio);
+      tracks.dispatchEvent(new Event('removetrack'));
+      expect(audio.mock.calls).toEqual([['unknown']]);
+      Object.defineProperty(video, 'readyState', { value: 1 });
+      video.dispatchEvent(new Event('loadedmetadata'));
+      expect(audio).toHaveBeenLastCalledWith('unavailable');
+      tracks.length = 1;
+      tracks.dispatchEvent(new Event('addtrack'));
+      expect(audio).toHaveBeenLastCalledWith('available');
+      tracks.length = 0;
+      tracks.dispatchEvent(new Event('removetrack'));
+      expect(audio).toHaveBeenLastCalledWith('unavailable');
+      session?.destroy();
+      audio.mockClear();
+      tracks.dispatchEvent(new Event('addtrack'));
+      video.dispatchEvent(new Event('loadedmetadata'));
+      expect(audio).not.toHaveBeenCalled();
+    } finally {
+      delete (HTMLVideoElement.prototype as HTMLVideoElement & { audioTracks?: unknown }).audioTracks;
+    }
+  });
+
   it('never shows a live playlist that sits on a stalled frame as live, and fails it as not started at the deadline', async () => {
     const tile = await openLivePlaylistTile();
     expect(tile.video.paused).toBe(false);

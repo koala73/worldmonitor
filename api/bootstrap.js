@@ -21,10 +21,11 @@ import {
 import { jsonResponse } from './_json-response.js';
 import { checkRateLimit } from './_rate-limit.js';
 import {
+  checkBootstrapDesktopKeyBudget,
   checkBootstrapUserApiKeyRateLimit,
   isCanonicalUserApiKey,
-  validateBootstrapUserApiAccess,
-  validateBootstrapUserApiKey,
+  resolveBootstrapUserKeyAccess,
+  validateBootstrapUserApiKeyPrincipal,
 } from './_user-api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline } from './_upstash-json.js';
@@ -97,6 +98,10 @@ const TIER_CDN_CACHE = {
 // budget guarantees the shield outlives a complete seed cycle.
 // tests/bootstrap-on-demand-cache-budget.test.mts enforces the ceiling.
 const ON_DEMAND_CACHE_PROFILES = {
+  ukmtoIncidents: {
+    browser: 'max-age=60, stale-while-revalidate=60, stale-if-error=60',
+    cdn: 'public, s-maxage=60, stale-while-revalidate=60, stale-if-error=60',
+  },
   // Correlation cards publish every 5 minutes and have a 30-minute health
   // budget. The conservative complete CDN window is 11m.
   correlationCards: {
@@ -391,7 +396,13 @@ async function validateBootstrapAuth(req, cors) {
     // leak-free strings) rather than hardcoding 401/403: a Convex outage surfaces
     // as a retryable 503 + Retry-After (status 503, unavailable:true) instead of
     // a misleading "Invalid API key" 401, mirroring the rate-limit path above.
-    const userKeyResult = await validateBootstrapUserApiKey(headerKey);
+    //
+    // Desktop-aware (plan 2026-10-25-001, KTD3): the principal carries its
+    // kind, and resolveBootstrapUserKeyAccess decides whether the owner's
+    // API plan (today's path) or the desktop entitlement admits it. Bootstrap
+    // serves one payload to every credentialed caller, so a desktop principal
+    // gets what a signed-in Pro session gets here — under the desktop meter.
+    const userKeyResult = await validateBootstrapUserApiKeyPrincipal(headerKey);
     if (!userKeyResult.ok) {
       return {
         ok: false,
@@ -404,7 +415,7 @@ async function validateBootstrapAuth(req, cors) {
       };
     }
 
-    const entitlementResult = await validateBootstrapUserApiAccess(userKeyResult.userId);
+    const entitlementResult = await resolveBootstrapUserKeyAccess(userKeyResult);
     if (!entitlementResult.ok) {
       return {
         ok: false,
@@ -423,6 +434,16 @@ async function validateBootstrapAuth(req, cors) {
           entitlementResult.headers,
         ),
       };
+    }
+
+    if (entitlementResult.scope === 'desktop') {
+      const budget = await checkBootstrapDesktopKeyBudget(userKeyResult.userId, entitlementResult.entitlement);
+      if (!budget.ok) {
+        return {
+          ok: false,
+          response: authFailure(budget.body ?? { error: budget.error }, budget.status, cors, budget.headers),
+        };
+      }
     }
 
     return { ok: true, kind: 'user' };

@@ -60,6 +60,9 @@ const BASE_CLIENT_DATA = {
   last_used: FIXED_NOW - 5000,
 };
 
+// The locally verified bearer identity handed to mintGrantHandler (no Clerk call).
+const PRO_SESSION = { userId: "user_pro_123", orgId: null, role: "pro", sessionId: "sess_pro_123" };
+
 const PRO_ENT = {
   features: { tier: 1, mcpAccess: true },
   validUntil: FIXED_NOW + 86_400_000,
@@ -98,7 +101,9 @@ function makeMintDeps(overrides = {}) {
   const setNxExCalls = [];
 
   const deps = {
-    resolveUserId: async () => 'user_pro_123',
+    resolveSession: async () => PRO_SESSION,
+    rateLimit: async () => null,
+    verifySession: async () => "active",
     redisGet: async (key) => redis.get(key) ?? null,
     redisSetEx: async (key, value, ttl) => {
       setExCalls.push({ key, value, ttl });
@@ -294,7 +299,7 @@ describe('mintGrantHandler', () => {
   });
 
   it('returns 401 UNAUTHENTICATED when Clerk session resolves null', async () => {
-    const { deps } = makeMintDeps({ resolveUserId: async () => null });
+    const { deps } = makeMintDeps({ resolveSession: async () => null });
     const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
     assert.equal(res.status, 401);
     assert.equal(res.headers.get('Cache-Control'), 'no-store');
@@ -499,7 +504,7 @@ describe('mintGrantHandler', () => {
   it('all error paths set Cache-Control: no-store', async () => {
     // Quick spot-check across several branches (Cache-Control is load-bearing for OAuth flows).
     const cases = [
-      makeMintDeps({ resolveUserId: async () => null }),
+      makeMintDeps({ resolveSession: async () => null }),
       makeMintDeps({ redisGet: async () => null }),
       makeMintDeps({ getEntitlements: async () => FREE_ENT }),
       makeMintDeps({
@@ -541,7 +546,7 @@ describe('mintGrantHandler', () => {
     const sharedRedis = depsA.redisGetSharedStore?.();
     // Build a deps that points at the same store via depsA's redis impl.
     const { deps: depsB } = makeMintDeps({
-      resolveUserId: async () => 'user_attacker_999',
+      resolveSession: async () => ({ ...PRO_SESSION, userId: 'user_attacker_999' }),
       // Reuse depsA's underlying store by going through its redisGet which
       // already reads from the closure'd Map.
       redisGet: depsA.redisGet,
@@ -943,5 +948,77 @@ describe('grant handshake billing-verification denials (#5622)', () => {
     });
     const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
     assert.equal(res.status, 200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Live-session gate (Strix 2026-10-27): the grant outlives the bearer, so the
+// token's Clerk session must still be live — checked after the per-user
+// limiter, so a limited caller never spends the shared Clerk quota.
+// ---------------------------------------------------------------------------
+
+describe('mintGrantHandler live-session gate', () => {
+  it('refuses a bearer without a session id before the limiter or Clerk', async () => {
+    let limited = 0;
+    let checks = 0;
+    const { deps, setNxExCalls } = makeMintDeps({
+      resolveSession: async () => ({ ...PRO_SESSION, sessionId: null }),
+      rateLimit: async () => { limited += 1; return null; },
+      verifySession: async () => { checks += 1; return 'active'; },
+    });
+    const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
+    assert.equal(res.status, 401);
+    assert.equal((await res.json()).error, 'UNAUTHENTICATED');
+    assert.equal(limited, 0);
+    assert.equal(checks, 0);
+    assert.equal(setNxExCalls.length, 0);
+  });
+
+  it('applies the per-user rate limit before the Clerk session check', async () => {
+    let checks = 0;
+    let nonceReads = 0;
+    const { deps } = makeMintDeps({
+      rateLimit: async () => new Response('{}', { status: 429 }),
+      verifySession: async () => { checks += 1; return 'active'; },
+      redisGet: async () => { nonceReads += 1; return null; },
+    });
+    const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
+    assert.equal(res.status, 429);
+    assert.equal(checks, 0, 'a limited caller never spends the Clerk quota');
+    assert.equal(nonceReads, 0);
+  });
+
+  it('refuses a session Clerk reports inactive before reading the nonce', async () => {
+    const checks = [];
+    let nonceReads = 0;
+    const { deps, setNxExCalls } = makeMintDeps({
+      verifySession: async (sessionId, userId) => { checks.push([sessionId, userId]); return 'inactive'; },
+      redisGet: async () => { nonceReads += 1; return null; },
+    });
+    const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
+    assert.equal(res.status, 401);
+    assert.equal((await res.json()).error, 'UNAUTHENTICATED');
+    assert.deepEqual(checks, [['sess_pro_123', 'user_pro_123']]);
+    assert.equal(nonceReads, 0);
+    assert.equal(setNxExCalls.length, 0);
+  });
+
+  it('fails closed with a retryable 503 when Clerk cannot confirm the session', async () => {
+    const { deps, setNxExCalls } = makeMintDeps({ verifySession: async () => 'unavailable' });
+    const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
+    assert.equal(res.status, 503);
+    assert.equal((await res.json()).error, 'SERVICE_UNAVAILABLE');
+    assert.ok(res.headers.get('Retry-After'));
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(setNxExCalls.length, 0);
+  });
+
+  it('a live session proceeds to the nonce lookup and mints', async () => {
+    let checks = 0;
+    const { deps, setNxExCalls } = makeMintDeps({ verifySession: async () => { checks += 1; return 'active'; } });
+    const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
+    assert.equal(res.status, 200);
+    assert.equal(checks, 1);
+    assert.equal(setNxExCalls.length, 1);
   });
 });

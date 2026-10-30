@@ -145,11 +145,13 @@ jobs:
               'shared/checkout-errors.ts' \
               'shared/chokepoint-alert-ids.ts' \
               'shared/cloud-preferences-contract.ts' \
+              'shared/alert-rule-shape.ts' \
               'shared/pinned-webcams.ts' \
               'shared/mcp-attribution.ts' \
               'shared/company-monitoring-contract.ts' \
               'shared/company-monitoring-evidence.ts' \
               'shared/embed-access.ts' \
+              'shared/desktop-key-access.js' \
               'shared/legal.ts' \
               'shared/agent-client-source.js' \
               'shared/acquisition-source.ts' \

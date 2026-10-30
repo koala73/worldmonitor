@@ -84,7 +84,7 @@ const INSTRUCTIONS = [
   '- Use `monitor-supply-chain-stress` when the user asks whether container shipping or carrier-market indicators show current supply-chain pressure.',
   '- Use `trace-trade-flows` when the user asks who trades a strategic commodity, whether flows changed sharply, or which reporter/partner pairs look anomalous (Pro-gated).',
   '- Use `track-unrest-events` when the user asks about protests, riots, strikes, demonstrations, or civil unrest in a country or time window.',
-  '- Use `monitor-webcams` when the user asks for live visual context near a location, route, border, port, airport, or city.',
+  '- Use `monitor-webcams` when the user asks for recent visual context near a location, route, border, port, airport, or city.',
   '- Use `track-climate-hazards` when the user asks about floods, cyclones, droughts, heatwaves, wildfires, climate anomalies, or climate disruption headlines.',
   '- Use `monitor-health-alerts` when the user asks about disease outbreaks or PM2.5 air-quality health warnings.',
   '- Use `check-forecast-signals` when the user asks what World Monitor is forecasting, how probabilities shifted, or how calibrated the forecasts are.',

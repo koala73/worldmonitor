@@ -188,3 +188,50 @@ describe('feed cache background refresh', () => {
     assert.equal(upstreamCalls.length, 1);
   });
 });
+
+describe('deadline-aborted fetches', () => {
+  it('does not cache an empty row when the global deadline aborted the fetch', async () => {
+    const deadline = new AbortController();
+    install(() => {
+      deadline.abort();
+      throw new DOMException('The operation was aborted.', 'AbortError');
+    });
+    const result = await fetchAndParseRss(FEED, VARIANT, deadline.signal);
+    assert.equal(result.items.length, 0);
+    assert.equal(result.attempt?.failure, 'deadline-abort');
+    // The next build must fetch the feed again, not serve a 5-minute empty row
+    // that the old batch barrier would never have started.
+    assert.equal(redis.redis.get(KEY), undefined);
+  });
+
+  it('does not start the relay fallback once the deadline has aborted', async () => {
+    process.env.WS_RELAY_URL = 'https://relay.example';
+    const deadline = new AbortController();
+    install(() => {
+      deadline.abort();
+      throw new DOMException('The operation was aborted.', 'AbortError');
+    });
+    const relayCalls: string[] = [];
+    const feedFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const href = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (new URL(href).host === 'relay.example') {
+        relayCalls.push(href);
+        // A relay request that ignores the deadline runs its own 8 s timeout.
+        return new Response(rss(['Late relay story']), { status: 200 });
+      }
+      return feedFetch(input, init);
+    }) as typeof fetch;
+    const result = await fetchAndParseRss(FEED, VARIANT, deadline.signal);
+    assert.deepEqual(relayCalls, [], 'an expired deadline must not start another request');
+    assert.equal(result.items.length, 0);
+    assert.equal(result.attempt?.failure, 'deadline-abort');
+  });
+
+  it('still caches an empty row for an upstream failure', async () => {
+    install(() => new Response('nope', { status: 503 }));
+    const result = await fetchAndParseRss(FEED, VARIANT, new AbortController().signal);
+    assert.equal(result.items.length, 0);
+    assert.notEqual(redis.redis.get(KEY), undefined);
+  });
+});

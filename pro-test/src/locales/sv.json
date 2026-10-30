@@ -81,17 +81,14 @@
     "windowTitle": "worldmonitor.app — Live-dashboard",
     "openFullScreen": "Öppna helskärm",
     "tryLiveDashboard": "Prova live-dashboarden",
-    "iframeTitle": "World Monitor — Live Intelligence Dashboard",
+    "iframeTitle": "World Monitor — Live-dashboard för underrättelser",
     "description": "3D WebGL-globs · interaktiva kartlager · realtids marknads-, makro-, geopolitiska, energi- och infrastrukturdata"
   },
   "socialProof": {
     "uniqueVisitors": "Unika besökare",
     "peakDailyUsers": "Dagliga användare (topp)",
     "countriesReached": "Länder nådda",
-    "liveDataSources": "Live-datakällor",
-    "quote": "Marknader, penningpolitik, geopolitik, energi — allt rör sig tillsammans nu. Jag behövde något som visade hur dessa krafter kopplas ihop i realtid, inte bara rubrikerna utan de underliggande drivkrafterna.",
-    "ceo": "VD för",
-    "asToldTo": "berättat för"
+    "liveDataSources": "Live-datakällor"
   },
   "audience": {
     "title": "Vem är World Monitor utformat för?",
@@ -161,7 +158,7 @@
     "oneKey": "Live-tjänster, 1 nyckel",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky och fler — alla aktiva, inga separata registreringar.",
     "deliveryLabel": "Välj hur intelligence hittar dig",
-    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLab": "Stresstestlabb för leveranskedjan",
     "supplyChainLabDesc": "Modellera en kostnadschock över länder och sektorer. Rangordna råvaruöversälj efter beroende av flaskhalsar. Spåra koncentration från gruva till raffin och SGE–COMEX-premiumskillnaden — serien som rör sig före rubrikerna.",
     "roadmapNote": "På vägkartan: orbitövervakning, längre historik, premiumkartlager."
   },
@@ -244,7 +241,7 @@
     "infraLayers": "Infrastrukturlager",
     "satellite": "Orbital övervakning",
     "connectorsRow": "Konnektorer",
-    "deployment": "Deployment",
+    "deployment": "Driftsättning",
     "securityRow": "Säkerhet",
     "f5_15min": "5-15 minuter",
     "fLt60s": "<60 sekunder",
@@ -331,7 +328,7 @@
   },
   "soonBadge": "Snart",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | AI-underrättelser och MCP",
     "description": "World Monitor Pro lägger till en AI-analytiker, schemalagda intelligenssammanfattningar, anpassade widgetar, marknadsundersökningar och MCP-åtkomst till live-data för geopolitik och finans.",
     "ogTitle": "World Monitor Pro | Geopolitisk AI",
     "ogDescription": "Fråga den, prenumerera på den, bygg på den. WM Analyst chat, en AI-sammandrag enligt ditt schema (dagligen, två gånger dagligen eller veckovis), anpassad widgetbyggare och MCP för Claude/GPT — över live-tjänster under en nyckel."
@@ -372,7 +369,8 @@
           "Data om fysisk metallskillnad, mineralkoncentration och statsskuld",
           "Schemalagd AI-sammanfattning och varningsregelmotor",
           "MCP + SDK-åtkomst för Claude Desktop och andra AI-klienter (50 samtal/dag)",
-          "Anpassade widgetar och 10 instrumentpaneler (mot 3)"
+          "Anpassade widgetar och 10 instrumentpaneler (mot 3)",
+          "Skrivbordsnyckel för skrivbordsappen (2 nycklar)"
         ],
         "highlightFeatures": [
           "Personlig licens",
@@ -432,6 +430,7 @@
           "Dataexport — CSV, JSON & PDF-rapporter",
           "25 anpassade instrumentpaneler (mot 10)",
           "MCP + SDK: 250 samtal/dag (mot 50)",
+          "Skrivbordsnyckel för skrivbordsappen (3 nycklar)",
           "Prioriterad support"
         ],
         "highlightFeatures": [
@@ -457,7 +456,7 @@
       "ogDescription": "World Monitor: panel för geopolitisk underrättelse i realtid. En gratis livekarta över konflikter, sjöfart, flyg, marknader och cyber, med API och MCP-server."
     },
     "nav": {
-      "useCases": "Korrelationer",
+      "useCases": "Användningsfall",
       "firstFive": "Första 5 min",
       "depth": "Djup",
       "pricing": "Prissättning",
@@ -599,7 +598,7 @@
       "s5l": "Instabilitetsindex · direkt",
       "s6l": "Resilienserbjudanden",
       "s7l": "Undersjöiska kablar",
-      "s8l": "Pipelines & LNG",
+      "s8l": "Rörledningar och LNG",
       "s9l": "AI-datacenter kartlagda",
       "s10l": "Bedömda hotspots",
       "s11l": "Börser & tillgångar",
@@ -686,7 +685,7 @@
       "q8": "Behöver jag ett konto?",
       "a8": "Nej. Instrumentbrädan fungerar omedelbar utan registrering. Ett konto spelar endast roll när du uppgraderar till Pro eller vill synkronisera inställningar mellan enheter.",
       "q9": "Är det öppen källkod?",
-      "a9": "Ja — öppen källkod under AGPL-3.0 på GitHub: läs koden, själv-host den, eller bygg vidare på den. Interna skrivbordsprogram för Windows, macOS och Linux är också tillgängliga, plus en Android TV-app för väggdisplajer.",
+      "a9": "Ja — öppen källkod under AGPL-3.0 på GitHub: läs koden, själv-host eller bygg vidare på den. Pro och Pro Business inkluderar skrivbordsnycklar, så din egen skrivbordsbuild kan ladda Pro-molndata; Docker-kopior körs på egen data. Inbyggda skrivbordsappar för Windows, macOS och Linux är också tillgängliga, plus en Android TV-app för väggdisplayer.",
       "q10": "Varför är World Monitor inte Palantir?",
       "a10": "Palantir gör en institutions egna data operationell inom den institutionen. World Monitor börjar från andra änden: det samlar, normaliserar, korrelerar och övervakar offentlig världsdata, och publicerar sedan det intelligensskiktet genom en gratis instrumentpanel och öppen källkod. Olika uppgift, olika produkt.",
       "q11": "Vilken World Monitor-licens behöver jag?",
@@ -712,7 +711,16 @@
       "chokepointDesc": "Inspektera störningsstatus, fartygsflöden och risk över {{chokepoints}} kritiska sjövägspassager.",
       "countryRiskTitle": "Förklara ett landrisksteg",
       "countryRiskDesc": "Spåra politiska, säkerhets-, ekonomiska och motståndskraftssignaler bakom ett lands förändring, med motståndskraft rankad för {{resilienceRanked}} länder.",
-      "open": "Öppna bevis"
+      "open": "Öppna bevis",
+      "workflow": "Arbetsflöde steg för steg"
+    },
+    "voices": {
+      "eyebrow": "Med deras ord",
+      "title": "Vad folk säger om World Monitor",
+      "sub": "{{users}} personer i {{countries}} länder har använt World Monitor. Så här sa pressen och några av dem.",
+      "translatedJa": "Översatt från japanska",
+      "prev": "Föregående citat",
+      "next": "Fler citat"
     }
   },
   "whatsNew": {
@@ -720,13 +728,13 @@
     "title": "Vad är nytt i WorldMonitor",
     "subtitle": "Nya funktioner från de senaste 30 dagarna — felrättningar och inte inkluderad.",
     "proTag": "PRO",
-    "m1": "Index för fysisk premiumskillnad — SGE mot COMEX, med historik",
-    "m2": "Rangordning av råvarutillgångssårbarhet — beroendespridning för flaskhalsar",
-    "m3": "Mineralproduktionskoncentration och försvarets industriell bas",
-    "m4": "Femfaktorers motståndskraftskort med poäng på indikatornivå",
-    "m5": "Anpassade Telegram-kanalövervakarlistor",
-    "m6": "Passkey-inloggning",
-    "m7": "AI-agenter kan styra instrumentpanelen — paneler, flikar, kartlager och uppdrag",
-    "m8": "Rikare landsöversidor för motståndskraft"
+    "m1": "Medieperspektiv — hur medier från varje land bevakar vilket land som helst, för AI-agenter och API:t",
+    "m2": "/verify — ett beviskort för alla påståenden, med publicerade faktagranskningar",
+    "m3": "Antal bekräftande källor i aviseringar, sammanfattningar och kartans popup-fönster, plus en offentlig /trust-sida",
+    "m4": "Automatisk spårning av attacker — ett lands risk stiger under angrepp och återhämtar sig när attackerna upphör",
+    "m5": "Luftrumsstängningar från FAA:s NOTAM och ett kartlager med rapporterade nödlägen för flygplan",
+    "m6": "Karta över industriell aktivitet från NO2-satellitdata från Sentinel-5P",
+    "m7": "Kapitalflöden för 230 ekonomier och alla landspar, för AI-agenter och API:t",
+    "m8": "Terminalpanel och zoombar CLI-karta — brew install worldmonitor"
   }
 }

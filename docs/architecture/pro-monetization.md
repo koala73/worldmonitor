@@ -24,6 +24,7 @@ Products are served at runtime from `https://api.worldmonitor.app/api/product-ca
 - **Free** — `price: 0`, no productId, card links to dashboard.
 - **Pro Monthly** — `pdt_0Nbtt71uObulf7fGXhQup` ($39.99/mo).
 - **Pro Annual** — `pdt_0NbttMIfjLWC10jHQWYgJ` ($399.99/yr, ~17% discount).
+- **Desktop keys** — Pro includes 2 and Pro Business 3 (same `wm_` format; kind stored server-side). They give the subscriber a signed-in Pro session's access from the desktop app, up to 7,500 requests/day and 120/minute per account, and are denied on `/api/v2/`, shipping webhooks, MCP via key and OAuth key grants. They are denied, not revoked, when coverage lapses.
 - **API Starter** — `pdt_0NbttVmG1SERrxhygbbUq` ($99.99/mo, 1k req/day).
 - **API Annual** — `pdt_0Nbu2lawHYE3dv2THgSEV` ($999/yr).
 - **API Business** — `pdt_0Nbttg7NuOJrhbyBGCius` ($299.99/mo, 10k req/day, commercial-use license + 5 bundled Pro seats (any corporate email domain); monthly-only, published in #4945; Starter→Business upgrades ride the Dodo collection/portal path).
@@ -82,6 +83,7 @@ Both surfaces take the same path since #4449: a top-level redirect to Dodo's hos
 - **Client-side**: `src/services/billing.ts:openBillingPortal()` fetches the portal URL via Convex action and opens in a new tab. Falls back to `https://customer.dodopayments.com` (generic portal) on any failure.
 - **/pro parallel**: `pro-test/src/services/checkout.ts:openBillingPortal()` is triggered when a `/pro`-origin checkout hits `ACTIVE_SUBSCRIPTION_EXISTS`; currently redirects via `window.location.assign()` (same-tab).
 - **Payment failures**: `src/components/payment-failure-banner.ts` renders a persistent red banner when subscription status is `on_hold`; auto-hides on return to `active`.
+- **Bounced billing email**: `getSubscriptionForUser` also returns `billingEmail` (resolved exactly as dunning resolves its recipient) and `billingEmailBounced` (a Resend hard-bounce suppression on that address, `active`/`on_hold` only). The same banner shows an amber notice naming the address, or adds "Fix billing email" to the on_hold banner, with an inline form that calls `payments/billing:updateBillingEmail` (Dodo customer update first, then the local `customers` row and subscription payloads).
 
 ## Referral attribution
 
@@ -124,7 +126,7 @@ convex/payments/
 ├── checkout.ts               # internalCreateCheckout (relay-only)
 ├── subscriptionHelpers.ts    # Webhook → subscription lifecycle
 ├── webhookMutations.ts       # Idempotent webhook event processing
-└── billing.ts                # getSubscriptionForUser + getCustomerPortalUrl
+└── billing.ts                # getSubscriptionForUser + getCustomerPortalUrl + updateBillingEmail
 
 api/
 ├── create-checkout.ts        # Edge gateway → Convex relay

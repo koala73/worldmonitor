@@ -56,10 +56,15 @@ const nameToIso2 = new Map<string, string>();
 const codeToName = new Map<string, string>();
 let sortedCountryNames: Array<{ name: string; code: string; regex: RegExp }> = [];
 
-/** Map political / non-ISO2 country stamps onto the ISO 3166-1 alpha-2 code APIs accept. */
+/**
+ * Map political / non-ISO2 country stamps onto the ISO 3166-1 alpha-2 code APIs accept.
+ * Placeholder stamps with no country (Natural Earth's `-99` on Somaliland,
+ * Northern Cyprus, Bir Tawil, ...) return `''`, the map's "no country" value.
+ */
 export function canonicalizeCountryCode(code: string): string {
   const trimmed = code.trim().toUpperCase();
-  return POLITICAL_OVERRIDES[trimmed] ?? trimmed;
+  const canonical = POLITICAL_OVERRIDES[trimmed] ?? trimmed;
+  return /^[A-Z]{2}$/.test(canonical) ? canonical : '';
 }
 
 function rewritePoliticalIso2Properties(properties: GeoJsonProperties | null | undefined): void {

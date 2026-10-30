@@ -1,7 +1,6 @@
 import { DASHBOARD_PATH } from '../routes';
 import { ABOUT_DOCS_PATH } from '../../../shared/press';
 import { LegalFooterNav } from './LegalFooterNav';
-import { PressFooterNav } from './PressFooterNav';
 
 export const Footer = () => (
   <footer className="border-t border-wm-border bg-[#020202] pt-8 pb-12 px-6 text-center">
@@ -30,7 +29,6 @@ export const Footer = () => (
         <a href="/blog/authors/elie-habib/" className="hover:text-wm-text transition-colors">Elie Habib</a>
       </span>
     </div>
-    <PressFooterNav />
     <LegalFooterNav />
   </footer>
 );

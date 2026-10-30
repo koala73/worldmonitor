@@ -212,7 +212,8 @@ const COMPARISON_PAGE_SEEDS = [
   {
     slug: 'worldmonitor-vs-acled',
     path: '/compare/worldmonitor-vs-acled/',
-    title: 'ACLED Alternative | World Monitor vs ACLED | World Monitor',
+    title: 'ACLED Alternative | World Monitor vs ACLED',
+    metaDescription: 'World Monitor vs ACLED: no-signup live conflict monitoring next to ACLED\'s coded-event data, compared on access tiers, latency, API and licensing.',
     h1: 'World Monitor vs ACLED',
     competitors: ['ACLED', 'myACLED'],
     claim: 'Latency and open access',
@@ -237,6 +238,7 @@ const COMPARISON_PAGE_SEEDS = [
     slug: 'worldmonitor-vs-gdelt',
     path: '/compare/worldmonitor-vs-gdelt/',
     title: 'World Monitor vs GDELT | World Monitor',
+    metaDescription: 'Compare World Monitor and GDELT: curated indices versus raw news events, with update speed, archive depth, API access and where the GDELT Project still wins.',
     h1: 'World Monitor vs GDELT',
     competitors: ['GDELT', 'war-dashboard-data', 'world-intel-mcp'],
     claim: 'Curation over firehose',
@@ -259,7 +261,8 @@ const COMPARISON_PAGE_SEEDS = [
   {
     slug: 'worldmonitor-vs-dataminr',
     path: '/compare/worldmonitor-vs-dataminr/',
-    title: 'Dataminr Alternatives | World Monitor vs Dataminr | World Monitor',
+    title: 'Dataminr Alternatives | World Monitor vs Dataminr',
+    metaDescription: 'A Dataminr alternative with published prices: World Monitor vs Dataminr on alert latency, data domains, API access and cost, and where Dataminr wins.',
     h1: 'World Monitor vs Dataminr',
     competitors: ['Dataminr'],
     claim: 'Price at comparable alert latency',
@@ -283,7 +286,8 @@ const COMPARISON_PAGE_SEEDS = [
   {
     slug: 'worldmonitor-vs-recorded-future',
     path: '/compare/worldmonitor-vs-recorded-future/',
-    title: 'Recorded Future Alternatives | World Monitor vs Recorded Future | World Monitor',
+    title: 'Recorded Future Alternatives Compared | World Monitor',
+    metaDescription: 'Recorded Future alternatives compared: World Monitor, Flare and MISP on price transparency, public access, domains covered and open-source licensing.',
     h1: 'World Monitor vs Recorded Future',
     competitors: ['Recorded Future', 'Flare', 'MISP'],
     claim: 'Public access and price transparency',
@@ -312,6 +316,7 @@ const COMPARISON_PAGE_SEEDS = [
     slug: 'worldmonitor-vs-deepstatemap',
     path: '/compare/worldmonitor-vs-deepstatemap/',
     title: 'World Monitor vs Deep State Map | World Monitor',
+    metaDescription: 'World Monitor vs Deep State Map: global multi-domain coverage against a Ukraine frontline map, compared on scope, update method, API access and archive.',
     h1: 'World Monitor vs Deep State Map',
     competitors: ['Deep State Map'],
     claim: 'Global multi-domain vs single-theatre',
@@ -370,7 +375,8 @@ const COMPARISON_PAGE_SEEDS = [
     slug: 'chokepoint-monitoring-tools',
     categoryList: true,
     path: '/compare/chokepoint-monitoring-tools/',
-    title: 'Chokepoint Monitoring Tools | World Monitor',
+    title: 'Chokepoint Monitoring Tools: Hormuz, Suez | World Monitor',
+    metaDescription: 'Compare chokepoint monitoring tools for Hormuz, Suez, and Malacca, with chokepoint status fused with AIS, conflict, aviation, market, and climate context.',
     h1: 'Chokepoint Monitoring Tools',
     competitors: ['IMF PortWatch', 'MarineTraffic', 'Kpler', "Lloyd's List Intelligence", 'Windward', 'SENTINEL GIP', 'straits.live'],
     claim: 'Fused chokepoint awareness',
@@ -405,13 +411,14 @@ const COMPARISON_PAGE_SEEDS = [
     categoryList: true,
     path: '/compare/free-geopolitical-risk-dashboards/',
     title: 'Free Geopolitical Risk Dashboards | World Monitor',
+    metaDescription: 'Compare free geopolitical risk dashboards with no signup: country risk, conflict, maritime, markets, tariffs, cyber, and multi-domain coverage side by side.',
     h1: 'Free Geopolitical Risk Dashboards',
     competitors: ['OrreryX', 'the-world-now.com', 'Sentinel (Axonia)', 'ConflictZone.io', 'BlackRock', 'Deep State Map', 'ICG CrisisWatch'],
     claim: 'Free without signup',
     summary: 'Which geopolitical risk dashboards are free without signup: World Monitor against OrreryX, the-world-now.com, Sentinel, ConflictZone.io, BlackRock, Deep State Map and ICG CrisisWatch on gating, latency and domains.',
     heading: 'Free geopolitical risk dashboards',
     matrixRows: [
-      ['World Monitor', '$0 dashboard; API from $99.99/mo (1,000 req/day); MCP from $39.99/mo (Pro)', WORLD_MONITOR_UPDATE_CADENCE, 'Conflict, maritime, aviation, markets, cyber, climate', 'No', 'From $99.99/mo (API Starter)', 'From $39.99/mo (Pro)', 'AGPL-3.0', WORLD_MONITOR_SOURCE_COUNT_CELL, 'Live + rolling published snapshots', 'Free multi-domain watch without signup'],
+      ['World Monitor', '$0 dashboard; API from $99.99/mo (1,000 req/day); MCP from $39.99/mo (Pro)', WORLD_MONITOR_UPDATE_CADENCE, 'Conflict, maritime, aviation, markets, tariffs, cyber, climate', 'No', 'From $99.99/mo (API Starter)', 'From $39.99/mo (Pro)', 'AGPL-3.0', WORLD_MONITOR_SOURCE_COUNT_CELL, 'Live + rolling published snapshots', 'Free multi-domain watch without signup'],
       ['OrreryX', 'From $1.99/mo (published tiers to $34.99/mo)', 'Periodic updates', 'Geopolitical risk', 'Yes', 'Unknown', MCP_UNVERIFIED, 'Proprietary', 'Analyst research', 'Unknown', 'Consultative risk analysis with a published price ladder'],
       ['the-world-now.com', 'Free', 'Near-real-time events', 'Global events', 'No', 'No', MCP_UNVERIFIED, 'Proprietary', 'Curated feeds', 'Rolling archive', 'Free global event browsing'],
       ['Sentinel (Axonia)', 'From $3.99/mo', 'Periodic updates', 'Risk monitoring', 'Yes', 'Unknown', MCP_UNVERIFIED, 'Proprietary', 'Analyst research', 'Unknown', 'Budget-priced risk monitoring'],
@@ -620,6 +627,7 @@ function renderMeasurement(slug, snapshotDate, escapeHtml) {
 }
 
 function renderComparePage(page, { tpl, baseUrl, lastmod, snapshotDate, relatedReading = [] }) {
+  assertTitle(page.title, page.slug);
   if (page.layout === SHORTLIST_LAYOUT) {
     return renderShortlistPage(page, {
       tpl,
@@ -754,6 +762,13 @@ function assertMetaDescription(description, label) {
   }
 }
 
+function assertTitle(title, label) {
+  const length = [...title].length;
+  if (length > 60) {
+    throw new Error(label + ' title must be at most 60 characters (got ' + length + ')');
+  }
+}
+
 /**
  * One `[title](url): description` entry per /compare/ route for llms.txt and
  * llms-full.txt (#7746). Titles are the page h1 — the query the page answers,
@@ -779,7 +794,9 @@ function renderCompareHub({ tpl, baseUrl, lastmod, snapshotDate }) {
   const { escapeHtml, breadcrumbLd, pageDocument } = tpl;
   const path = COMPARE_HUB_PATH;
   const description = COMPARE_HUB_DESCRIPTION;
+  const title = 'Compare World Monitor vs Liveuamap, ACLED, GDELT and More';
   assertMetaDescription(description, 'compare hub');
+  assertTitle(title, 'compare hub');
   const cards = COMPARISON_PAGES
     .map((page) => '        <a class="card" href="' + escapeHtml(page.path) + '"><strong>' + escapeHtml(page.h1) + '</strong><br><span>' + escapeHtml(page.claim) + '</span></a>')
     .join('\n');
@@ -825,7 +842,7 @@ function renderCompareHub({ tpl, baseUrl, lastmod, snapshotDate }) {
   return pageDocument({
     baseUrl,
     path,
-    title: 'Compare World Monitor | World Monitor',
+    title,
     description,
     lastmod,
     ogType: 'website',

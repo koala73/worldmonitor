@@ -628,6 +628,39 @@ export async function validateProMcpAuthorization(
   return { ok: true };
 }
 
+/** Current apiAccess on an entitlement read: the flag AND unexpired coverage. */
+function hasCurrentApiAccess(ent: Awaited<ReturnType<McpHandlerDeps['getEntitlements']>>): boolean {
+  if (!ent || typeof ent !== 'object' || !ent.features || typeof ent.features !== 'object') return false;
+  const validUntil = Number((ent as { validUntil?: unknown }).validUntil ?? 0);
+  return (ent.features as { apiAccess?: unknown }).apiAccess === true
+    && Number.isFinite(validUntil)
+    && validUntil >= Date.now();
+}
+
+/**
+ * A covered tier>=1 owner whose row does not prove an API plan: the KTD5
+ * downgrade case (Pro, Pro Business — `desktopKeyAccess: true`), read
+ * fail-closed. An entitlement entry written before the catalog carried the
+ * flag has it `undefined`, not `false`; reading that as "not a desktop-key
+ * plan" let a downgraded owner keep MCP through a key for as long as the
+ * legacy entry stayed warm. Every merged row carries the flag, so only a
+ * legacy cache entry or a row from a backend predating the catalog change
+ * lands here with it absent, and neither is evidence of an API plan — the
+ * same fail-closed posture `mcpAccess` has in this file. Tier 0
+ * is excluded so the #6716 free-account allowance is untouched.
+ */
+function lacksProvenApiPlan(ent: Awaited<ReturnType<McpHandlerDeps['getEntitlements']>>): boolean {
+  if (!ent || typeof ent !== 'object' || !ent.features || typeof ent.features !== 'object') return false;
+  const validUntil = Number((ent as { validUntil?: unknown }).validUntil ?? 0);
+  if (!(ent.features.tier >= 1) || !Number.isFinite(validUntil) || validUntil < Date.now()) return false;
+  const features = ent.features as { desktopKeyAccess?: unknown; apiAccess?: unknown };
+  if (features.desktopKeyAccess === true) return true;
+  // A legacy entry (flag absent) is a desktop-key plan when it explicitly
+  // says it is not an API plan; `apiAccess` is a required catalog boolean,
+  // so every real Pro row written before the flag carries `apiAccess: false`.
+  return features.desktopKeyAccess === undefined && features.apiAccess === false;
+}
+
 /**
  * Shared mcpAccess entitlement gate for identity-resolved contexts (pro AND
  * user_key). Fail-closed per memory `entitlement-signal-server-outlier-sweep`.
@@ -656,6 +689,7 @@ async function checkMcpEntitlementGate(
   sentryStep: string,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
   id: unknown = null,
+  options: { requireApiAccess?: boolean } = {},
 ): Promise<McpPreCheckResult> {
   /**
    * Availability failure, not a billing verdict. Mirrors the retryable shape
@@ -703,6 +737,28 @@ async function checkMcpEntitlementGate(
   const gate = checkProMcpAccess(ent, Date.now(), {
     backendConfigured: isEntitlementBackendConfigured(),
   });
+  // Plan 2026-10-25-001 KTD5 / R4: MCP via a `wm_` key is an API-plan
+  // surface. The shared gate above still decides Pro/free/billing exactly as
+  // for OAuth, so the two doors cannot disagree about those; on top of it,
+  // a key whose owner is on a desktop-key plan (Pro, Pro Business) without
+  // current apiAccess — a downgraded API customer — is refused here. A free
+  // owner's key keeps the #6716 free-account allowance; the plan does not
+  // change that. Billing-verification states keep their retryable 503 below.
+  if (
+    options.requireApiAccess &&
+    gate?.kind !== 'billing_verification' &&
+    lacksProvenApiPlan(ent) &&
+    !hasCurrentApiAccess(ent)
+  ) {
+    return {
+      ok: false,
+      response: mcpStructuredDenialResponse('upgrade-required', resourceMetadataUrl, corsHeaders, id, {
+        code: -32002,
+        status: 403,
+        message: 'API access subscription required. MCP with an API key needs an active API plan; a desktop key or a Pro-only account cannot use it. Upgrade at https://worldmonitor.app/pricing.',
+      }),
+    };
+  }
   if (!gate) {
     return passed();
   }
@@ -780,7 +836,10 @@ export async function runUserKeyPreChecks(
     ) };
   }
 
-  const gate = await checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx, id);
+  const gate = await checkMcpEntitlementGate(
+    context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx, id,
+    { requireApiAccess: true },
+  );
   // The budget now passes through verbatim. KTD6 dropped it here so a `user_key`
   // caller fell back to the hardcoded 50/day while the same subscriber's OAuth
   // token would have resolved the catalog's 1,000 — the asymmetry the exception

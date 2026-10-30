@@ -30,6 +30,7 @@ import {
 import { resolveLocalApiPort, startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
 import { proxyLocalApiRequest, tryInvokeTauri } from '@/services/tauri-bridge';
 import { openExternalUrl } from '@/services/external-navigation';
+import { hasDesktopCloudAccessHint } from '@/services/desktop-cloud-access-hint';
 import { escapeHtml } from '@/utils/sanitize';
 import { initI18n, t } from '@/services/i18n';
 import { applyStoredTheme } from '@/utils/theme-manager';
@@ -195,9 +196,14 @@ function renderOverview(area: HTMLElement): void {
   const dashOffset = circumference - (pct / 100) * circumference;
   const ringColor = ready === total ? 'var(--settings-green)' : ready > 0 ? 'var(--settings-blue)' : 'var(--settings-yellow)';
 
+  // Pro on desktop works through sign-in, so a missing key is never a warning:
+  // signed in with a paid plan it is not needed, otherwise it is optional. This
+  // window has no Clerk session, so "signed in" is the main window's last
+  // verified answer (same origin, shared storage).
   const wmState = getSecretState('WORLDMONITOR_API_KEY');
-  const wmStatusText = wmState.present ? 'Active' : 'Not set';
-  const wmStatusClass = wmState.present ? 'ok' : 'warn';
+  const paidSignedIn = hasDesktopCloudAccessHint();
+  const wmStatusText = wmState.present ? 'Active' : paidSignedIn ? 'Not needed' : 'Optional';
+  const wmStatusClass = wmState.present || paidSignedIn ? 'ok' : 'neutral';
   const catCards = SETTINGS_CATEGORIES.map(cat => {
     const { ready: catReady, total: catTotal } = getFeatureStatusCounts(cat);
     const cls = catReady === catTotal ? 'ov-cat-ok' : catReady > 0 ? 'ov-cat-partial' : 'ov-cat-warn';
@@ -226,6 +232,13 @@ function renderOverview(area: HTMLElement): void {
 
     <div class="settings-ov-license">
       <section class="wm-section">
+        <h2 class="wm-section-title">${t('modals.settingsWindow.worldMonitor.signIn.title')}</h2>
+        <p class="wm-section-desc">${t('modals.settingsWindow.worldMonitor.signIn.description')}</p>
+      </section>
+
+      <div class="wm-divider"><span>${t('modals.settingsWindow.worldMonitor.dividerOr')}</span></div>
+
+      <section class="wm-section">
         <h2 class="wm-section-title">${t('modals.settingsWindow.worldMonitor.apiKey.title')}</h2>
         <p class="wm-section-desc">${t('modals.settingsWindow.worldMonitor.apiKey.description')}</p>
         <div class="wm-key-row">
@@ -238,13 +251,6 @@ function renderOverview(area: HTMLElement): void {
           </div>
           <span class="wm-badge ${wmStatusClass}">${wmStatusText}</span>
         </div>
-      </section>
-
-      <div class="wm-divider"><span>${t('modals.settingsWindow.worldMonitor.dividerOr')}</span></div>
-
-      <section class="wm-section">
-        <h2 class="wm-section-title">${t('modals.settingsWindow.worldMonitor.register.title')}</h2>
-        <p class="wm-section-desc">${t('modals.settingsWindow.worldMonitor.register.description')}</p>
         <div class="wm-register-row">
           <button type="button" class="wm-submit-btn" data-wm-open-pro>
             ${t('modals.settingsWindow.worldMonitor.register.submitBtn')}

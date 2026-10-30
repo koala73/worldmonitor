@@ -165,11 +165,10 @@ describe('LiveNewsPanel instantiation guard', () => {
 
 describe("live-news must not be shadowed by a generic NewsPanel (regression #4382)", () => {
   it("CANONICAL_FEEDS defines a 'live-news' key (the latent landmine)", () => {
-    const feeds = src('src/config/feeds.ts');
-    assert.match(
-      feeds,
-      /['"]live-news['"]\s*:/,
-      "expected a 'live-news' entry in feeds.ts (energy headlines) — this is what lets the CANONICAL_FEEDS loop spawn a NewsPanel that shadows the video panel",
+    const catalog = JSON.parse(src('shared/news-catalog.json'));
+    assert.ok(
+      Object.values(catalog.layout.browser).some((categories) => (categories as string[]).includes('live-news')),
+      "expected a 'live-news' category in the news catalog (energy headlines) — this is what lets the CANONICAL_FEEDS loop spawn a NewsPanel that shadows the video panel",
     );
   });
 

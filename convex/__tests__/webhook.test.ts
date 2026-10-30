@@ -2587,19 +2587,29 @@ describe("webhook processWebhookEvent", () => {
     expect(rows.entitlement?.planKey).toBe("pro_monthly");
   });
 
-  test("dispute.lost expires only the disputed subscription when another active subscription covers the user", async () => {
+  test.each([
+    { inlineSubscriptionId: true, reusedCustomer: false },
+    { inlineSubscriptionId: false, reusedCustomer: false },
+    { inlineSubscriptionId: false, reusedCustomer: true },
+  ])("dispute.lost resolves the disputed subscription ($inlineSubscriptionId, reused customer: $reusedCustomer)", async ({ inlineSubscriptionId, reusedCustomer }) => {
     const t = convexTest(schema, modules);
     const userId = "user_dispute_multi";
 
     await t.run(async (ctx) => {
       await ctx.db.insert("customers", {
-        userId,
+        userId: reusedCustomer ? 'deleted:old-customer-owner' : userId,
         dodoCustomerId: "cust_dispute_multi",
         email: "multi@example.com",
         normalizedEmail: "multi@example.com",
         createdAt: BASE_TIMESTAMP - 1000,
         updatedAt: BASE_TIMESTAMP - 1000,
       });
+      if (reusedCustomer) {
+        await ctx.db.insert('accountDeletions', {
+          userId: 'old-customer-owner', userIdHash: 'old-customer-owner', source: 'self',
+          status: 'complete', step: 'complete', startedAt: BASE_TIMESTAMP - 2000, updatedAt: BASE_TIMESTAMP - 1000,
+        });
+      }
       await ctx.db.insert("subscriptions", {
         userId,
         dodoSubscriptionId: "sub_disputed_multi",
@@ -2633,15 +2643,20 @@ describe("webhook processWebhookEvent", () => {
       });
     });
 
+    await t.run(async ctx => {
+      await ctx.db.insert('paymentEvents', { userId, dodoPaymentId: 'pay_dispute_multi',
+        type: 'charge', amount: 1000, currency: 'USD', status: 'succeeded',
+        dodoSubscriptionId: 'sub_disputed_multi', rawPayload: {}, occurredAt: BASE_TIMESTAMP });
+    });
+    const payload = makePaymentPayload("payment.succeeded", {
+      payment_id: "pay_dispute_multi", subscription_id: "sub_disputed_multi",
+      customer: { customer_id: "cust_dispute_multi", email: "multi@example.com" },
+    });
+    if (!inlineSubscriptionId) delete (payload.data as Record<string, unknown>).subscription_id;
     await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
       webhookId: "wh_dispute_multi",
       eventType: "dispute.lost",
-      rawPayload: makePaymentPayload("payment.succeeded", {
-        payment_id: "pay_dispute_multi",
-        subscription_id: "sub_disputed_multi",
-        customer: { customer_id: "cust_dispute_multi", email: "multi@example.com" },
-        metadata: { wm_user_id: userId },
-      }),
+      rawPayload: payload,
       timestamp: BASE_TIMESTAMP + 1000,
     });
 
@@ -2650,16 +2665,18 @@ describe("webhook processWebhookEvent", () => {
         ctx.db.query("subscriptions").withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", "sub_disputed_multi")).unique(),
         ctx.db.query("subscriptions").withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", "sub_cover_multi")).unique(),
         ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", userId)).first(),
-        ctx.db.query("paymentEvents").withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", "pay_dispute_multi")).first(),
+        ctx.db.query("paymentEvents").withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", "pay_dispute_multi")).order('desc').first(),
       ]);
       return { disputed, cover, entitlement, paymentEvent };
     });
     expect(rows.disputed?.status).toBe("expired");
+    expect(rows.disputed?.userId).toBe(userId);
     expect(rows.cover?.status).toBe("active");
     expect(rows.entitlement?.planKey).toBe("api_starter");
     expect(rows.entitlement?.validUntil).toBe(BASE_TIMESTAMP + 45 * 86400000);
     expect(rows.entitlement?.features.tier).toBe(getFeaturesForPlan("api_starter").tier);
     expect(rows.paymentEvent?.status).toBe("dispute_lost");
+    expect(rows.paymentEvent?.userId).toBe(userId);
   });
 
   test("dispute.lost preserves a future complimentary entitlement floor", async () => {

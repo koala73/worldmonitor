@@ -11,10 +11,10 @@ test.describe('China activity nowcast panel', () => {
     await expect(panel).toBeVisible();
     await expect(panel).toContainText('Official and proxies agree');
     await expect(panel).toContainText('90-day comparison window');
-    await expect(panel).toContainText('4/7 proxy families eligible');
+    await expect(panel).toContainText('4/8 proxy families eligible');
     await expect(panel).toContainText('nbs_industrial_value_added_yoy:2026-06:r1');
-    await expect(panel.locator('.china-nowcast-contribution')).toHaveCount(7);
-    await expect(panel.locator('.china-nowcast-contribution--excluded')).toHaveCount(3);
+    await expect(panel.locator('.china-nowcast-contribution')).toHaveCount(8);
+    await expect(panel.locator('.china-nowcast-contribution--excluded')).toHaveCount(4);
     await expect(panel).toContainText('<script>unsafe official label</script>');
     await expect(panel.locator('script')).toHaveCount(0);
     await expect(panel.locator('img')).toHaveCount(0);

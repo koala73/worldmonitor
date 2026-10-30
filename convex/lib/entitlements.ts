@@ -63,6 +63,14 @@ export function mergeEntitlementFeatures(
       }
     }
   }
+  // The desktop-key limits are plan structure too (plan 2026-10-25-001, KTD1):
+  // the cap and the per-account ceilings are set from measurement and change
+  // with the catalog, so a stored row's grant-time copy must never outlive a
+  // catalog change. Nothing writes per-user overrides for them.
+  if (planLimits && catalogDefaults.planLimits) {
+    planLimits.desktopKeyRequestsPerDay = catalogDefaults.planLimits.desktopKeyRequestsPerDay;
+    planLimits.desktopKeyBurstPerMinute = catalogDefaults.planLimits.desktopKeyBurstPerMinute;
+  }
   const apiDailyAllowance =
     storedFeatures.apiDailyAllowance === -1 && (catalogDefaults.apiDailyAllowance ?? -1) >= 0
       ? catalogDefaults.apiDailyAllowance
@@ -71,6 +79,9 @@ export function mergeEntitlementFeatures(
     ...catalogDefaults,
     ...storedFeatures,
     ...(apiDailyAllowance !== undefined ? { apiDailyAllowance } : {}),
+    ...(catalogDefaults.maxDesktopKeys !== undefined
+      ? { maxDesktopKeys: catalogDefaults.maxDesktopKeys }
+      : {}),
     planLimits,
   };
 }

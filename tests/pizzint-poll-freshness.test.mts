@@ -18,6 +18,7 @@ const RELAY_POLL_MS = 15 * 60 * 1000;
 type Status = { locationsOpen: number };
 type Harness = {
   fetchPizzIntStatus: () => Promise<Status>;
+  fetchGdeltTensions: () => Promise<Array<{ id: string; evidence?: unknown[] }>>;
   setHydrated: (value: unknown) => void;
 };
 
@@ -45,7 +46,7 @@ const stubBrowserSeams = {
 before(async () => {
   const result = await build({
     stdin: {
-      contents: "export { fetchPizzIntStatus } from './src/services/pizzint.ts'; export { setHydrated } from './src/services/bootstrap';",
+      contents: "export { fetchPizzIntStatus, fetchGdeltTensions } from './src/services/pizzint.ts'; export { setHydrated } from './src/services/bootstrap';",
       loader: 'ts',
       resolveDir: root,
       sourcefile: 'pizzint-poll-freshness-entry.ts',
@@ -130,5 +131,25 @@ describe('get-pizzint-status shared cache', () => {
     );
     assert.ok(worstCaseMs <= RELAY_POLL_MS / 3,
       `tier ${tier} can serve a ${worstCaseMs / 60000}-minute-old body; keep it under ${RELAY_POLL_MS / 3 / 60000} minutes`);
+  });
+});
+
+describe('tension evidence mapping', () => {
+  it('keeps each reading, with no usual level as null, and reads an older response as no evidence', async () => {
+    const row = { id: 'usa_iran', countries: ['US', 'IR'], label: 'US–Iran', score: 60,
+      trend: 'TREND_DIRECTION_RISING', changePercent: 12, region: 'middle_east' };
+    mock.method(globalThis, 'fetch', async () => Response.json({ tensionPairs: [
+      { ...row, evidence: [
+        { channel: 'military_aircraft', value: 9, baseline: 2.21, countries: ['US'], airports: [], observedAt: 1 },
+        { channel: 'airports', value: 1, countries: [], airports: [{ name: 'Tehran Imam Khomeini', status: 'closed' }], observedAt: 2 },
+      ] },
+      { ...row, id: 'usa_china', countries: ['US', 'CN'] },
+    ] }));
+    const [iran, china] = await harness.fetchGdeltTensions();
+    assert.deepEqual(iran?.evidence, [
+      { channel: 'military_aircraft', value: 9, baseline: 2.21, countries: ['US'], airports: [] },
+      { channel: 'airports', value: 1, baseline: null, countries: [], airports: [{ name: 'Tehran Imam Khomeini', status: 'closed' }] },
+    ]);
+    assert.deepEqual(china?.evidence, []);
   });
 });

@@ -88,16 +88,58 @@ test('notamAirspaceTooltip escapes every upstream field', () => {
     text: '<svg onload=alert(2)>',
   }, text);
   assert.doesNotMatch(html, /<(img|script|svg|b)\b/i);
-  assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.match(html, /&lt;b&gt;N&lt;\/b&gt;/);
   assert.match(html, /Danger area/);
-  assert.match(html, /SFC – FL050/);
-  assert.match(html, /2 NM/);
-  assert.match(html, /Active 2026-10-24 08:00Z → 2026-10-24 18:00Z/);
 });
 
-test('notamAirspaceTooltip labels permanent and upcoming NOTAMs', () => {
-  const html = notamAirspaceTooltip({ ...ROW, upcoming: true, endsAt: null }, text);
-  assert.match(html, /Starts 2026-10-24 08:00Z → PERM/);
+test('notamAirspaceTooltip reads as plain language, not a raw NOTAM', () => {
+  const html = notamAirspaceTooltip({
+    ...ROW,
+    kind: 'reserved',
+    number: 'W1177/26',
+    location: 'OEJD',
+    lower: 'SFC',
+    upper: 'FL250',
+    startsAt: Date.UTC(2026, 8, 19),
+    endsAt: Date.UTC(2026, 9, 28, 23, 59),
+    radiusNm: 92,
+    text: 'AIRSPACE RESERVATION WILL TAKE PLACE WI FLW COORD: 245200N0475200E 240000N0485900E',
+  }, text, Date.UTC(2026, 9, 25, 12));
+  assert.match(html, /Airspace reservation/);
+  assert.match(html, /Ground to 25,000 ft/);
+  assert.match(html, /Until 28 Oct/);
+  assert.match(html, /FAA NOTAM W1177\/26/);
+  // The shape is on the map; codes, coordinates and the raw text are not for most readers.
+  for (const gone of [/COORD/, /245200N/, /OEJD/, /92 NM/, /FL250/, /SFC/, /\d{2}:\d{2}Z/]) assert.doesNotMatch(html, gone);
+});
+
+test('notamAirspaceTooltip spells out every altitude format the feed sends', () => {
+  const band = (lower: string | undefined, upper: string | undefined) =>
+    notamAirspaceTooltip({ ...ROW, lower, upper }, text, ROW.startsAt! + 1);
+  assert.match(band('GND', '5000FT AMSL'), /Ground to 5,000 ft</);
+  assert.match(band('FL100', 'FL245'), /10,000 to 24,500 ft</);
+  assert.match(band('5000FT AMSL', 'UNL'), /5,000 ft and higher/);
+  assert.match(band('SFC', 'UNL)'), /Any altitude/);
+  assert.match(band('SFC', '3000M AMSL'), /Ground to 9,800 ft</);
+  assert.match(band('SFC', '400 FT AGL'), /Up to 400 ft above ground/);
+  assert.match(band('FL250', 'FL250'), /At 25,000 ft</);
+  // Heights above the ground keep that reference, and mixed references are not compared.
+  assert.match(band('1500FT AGL', 'UNL'), /1,500 ft above ground and higher/);
+  assert.match(band('SFC', '120M AGL)\r\r\nDUPE'), /Up to 390 ft above ground/);
+  assert.match(band('500FT AGL', '2000FT AGL'), /500 to 2,000 ft above ground/);
+  assert.match(band('3000FT AGL', '2000FT AMSL'), /3,000 ft above ground to 2,000 ft</);
+  // An unreadable limit drops the line rather than showing a code.
+  assert.doesNotMatch(band('GNG', 'XYZ'), /XYZ|GNG/);
+  assert.doesNotMatch(band(undefined, undefined), / ft/);
+});
+
+test('notamAirspaceTooltip says when in plain terms', () => {
+  const at = (row: Partial<NotamAirspaceRestriction>, now: number) => notamAirspaceTooltip({ ...ROW, ...row }, text, now);
+  const now = Date.UTC(2026, 9, 24, 9, 0);
+  assert.match(at({}, now), /Until 18:00 UTC today/);
+  assert.match(at({ endsAt: null }, now), /Permanent/);
+  assert.match(at({ upcoming: true, startsAt: Date.UTC(2026, 9, 25, 6, 30) }, now), /Starts 25 Oct, 06:30 UTC/);
+  assert.match(at({ schedule: 'DAILY 0800-1600', endsAt: Date.UTC(2026, 10, 3) }, now), /At set times until 3 Nov/);
 });
 
 const DECK_SOURCE = new URL('../src/components/DeckGLMap.ts', import.meta.url);

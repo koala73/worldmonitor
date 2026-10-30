@@ -159,10 +159,13 @@ test('valid user key validation posts only a SHA-256 hash to Convex', async () =
     assert.ok(cacheWrite);
     assert.match(cacheWrite.body, /user-api-key:[a-f0-9]{64}/);
     assert.doesNotMatch(cacheWrite.body, new RegExp(USER_KEY));
-    // Caches the full gateway-shared shape so the gateway never reads back
-    // keyId/name as undefined when bootstrap won the cache race.
+    // Caches the full gateway-shared shape (versioned, kind explicit) so the
+    // gateway never reads back keyId/name as undefined when bootstrap won the
+    // cache race.
     const setCommand = JSON.parse(cacheWrite.body).find((cmd) => cmd[0] === 'SET');
-    assert.deepEqual(JSON.parse(setCommand[2]), { userId: 'user_api_owner', keyId: 'key_1', name: 'pipeline' });
+    assert.deepEqual(JSON.parse(setCommand[2]), {
+      v: 2, userId: 'user_api_owner', keyId: 'key_1', name: 'pipeline', keyKind: 'api',
+    });
   });
 });
 
@@ -187,9 +190,11 @@ test('fresh Company Monitoring key is denied generically but cached with its exa
     assert.ok(cacheWrite);
     const setCommand = JSON.parse(cacheWrite.body).find((cmd) => cmd[0] === 'SET');
     assert.deepEqual(JSON.parse(setCommand[2]), {
+      v: 2,
       userId: binding.userId,
       keyId: binding.id,
       name: binding.name,
+      keyKind: 'api',
       scopes: binding.scopes,
       companyMonitoringAccountId: binding.companyMonitoringAccountId,
     });
@@ -200,9 +205,11 @@ test('warm cached Company Monitoring principal is denied without Convex or negat
   const scopedKey = uniqueUserKey();
   const keyHash = await sha256HexForTest(scopedKey);
   const cachedPrincipal = {
+    v: 2,
     userId: 'user_company_monitoring',
     keyId: 'key_company_monitoring',
     name: 'monitoring',
+    keyKind: 'api',
     scopes: ['company_monitoring:read', 'company_monitoring:write'],
     companyMonitoringAccountId: 'cm_account_01K1A2B3C4D5E6F7G8H9J0K1M2',
   };
@@ -248,7 +255,7 @@ test('valid user key validation uses cached hash result without Convex', async (
     assert.equal(result.ok, true);
     assert.deepEqual(result, { ok: true, userId: 'cached_owner' });
     assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), false);
-  }, { redisCache: { [`user-api-key:${keyHash}`]: { userId: 'cached_owner' } } });
+  }, { redisCache: { [`user-api-key:${keyHash}`]: { v: 2, userId: 'cached_owner', keyId: 'key_cached', keyKind: 'api' } } });
 });
 
 test('preview deploy user-key cache matches the server Redis namespace', async () => {
@@ -402,7 +409,7 @@ test('control: a well-formed cached user-key entry does authenticate without Con
 
     assert.deepEqual(result, { ok: true, userId: 'user_abc' });
     assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), false);
-  }, { redisCache: { [`user-api-key:${keyHash}`]: { userId: 'user_abc' } } });
+  }, { redisCache: { [`user-api-key:${keyHash}`]: { v: 2, userId: 'user_abc', keyId: 'key_abc', keyKind: 'api' } } });
 });
 
 // --- Request coalescing collapses a burst onto one Convex round-trip ---

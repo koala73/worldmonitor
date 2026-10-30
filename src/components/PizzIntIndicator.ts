@@ -1,5 +1,5 @@
-import type { PizzIntLocation, PizzIntStatus, GdeltTensionPair } from '@/types';
-import { t } from '@/services/i18n';
+import type { PizzIntLocation, PizzIntStatus, GdeltTensionPair, TensionEvidence } from '@/types';
+import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import tensionPairs from '../../shared/gdelt-tension-pairs.json';
 
@@ -9,6 +9,15 @@ const DEFCON_COLORS: Record<number, string> = {
   3: '#ffaa00',
   4: '#00aaff',
   5: '#2d8a6e',
+};
+
+const MAX_EVIDENCE = 3;
+// More airports than this read as a count.
+const MAX_NAMED_AIRPORTS = 2;
+const AIRPORT_STATUS_KEYS: Record<string, string> = {
+  closed: 'components.pizzint.evidenceAirportClosed',
+  halted: 'components.pizzint.evidenceAirportHalted',
+  restricted: 'components.pizzint.evidenceAirportRestricted',
 };
 
 export class PizzIntIndicator {
@@ -122,23 +131,65 @@ export class PizzIntIndicator {
     if (!listEl) return;
 
     replaceChildren(listEl,
-      ...tensionPairs.map(config => {
+      ...tensionPairs.flatMap(config => {
         const tp = this.tensions.find(pair => pair.id === config.id);
-        if (!tp) return h('div', { className: 'pizzint-tension-row' },
+        if (!tp) return [h('div', { className: 'pizzint-tension-row' },
           h('span', { className: 'pizzint-tension-label' }, config.label),
           h('span', { className: 'pizzint-tension-score' }, t('components.pizzint.insufficientData')),
-        );
+        )];
         const trendIcon = tp.trend === 'rising' ? '↑' : tp.trend === 'falling' ? '↓' : '→';
         const changeText = tp.changePercent > 0 ? `+${tp.changePercent}%` : `${tp.changePercent}%`;
-        return h('div', { className: 'pizzint-tension-row' },
-          h('span', { className: 'pizzint-tension-label' }, tp.label),
-          h('span', { className: 'pizzint-tension-score' },
-            h('span', { className: 'pizzint-tension-value' }, tp.score.toFixed(1)),
-            h('span', { className: `pizzint-tension-trend ${tp.trend}` }, `${trendIcon} ${changeText}`),
+        const evidence = this.describeEvidence(tp.evidence ?? []);
+        return [
+          h('div', { className: 'pizzint-tension-row' },
+            h('span', { className: 'pizzint-tension-label' }, tp.label),
+            h('span', { className: 'pizzint-tension-score' },
+              h('span', { className: 'pizzint-tension-value' }, tp.score.toFixed(1)),
+              h('span', { className: `pizzint-tension-trend ${tp.trend}` }, `${trendIcon} ${changeText}`),
+            ),
           ),
-        );
+          ...(evidence ? [h('div', { className: 'pizzint-tension-evidence' }, evidence)] : []),
+        ];
       }),
     );
+  }
+
+  private describeEvidence(items: TensionEvidence[]): string {
+    if (items.length === 0) return '';
+    const lang = getCurrentLanguageTag();
+    const count = (n: number) => new Intl.NumberFormat(lang, { maximumFractionDigits: n < 10 ? 1 : 0 }).format(n);
+    let regions: Intl.DisplayNames | null = null;
+    try { regions = new Intl.DisplayNames([lang], { type: 'region' }); } catch { /* runtime without region names */ }
+    const country = (code: string) => regions?.of(code) ?? code;
+    const countries = (codes: string[]) => codes.map(country).join(', ');
+    const usual = (item: TensionEvidence) => item.baseline == null
+      ? '' : ` ${t('components.pizzint.evidenceUsual', { value: count(item.baseline) })}`;
+    const describe = (item: TensionEvidence): string => {
+      const value = count(item.value);
+      switch (item.channel) {
+        case 'strikes':
+          return t('components.pizzint.evidenceStrikes', { countries: countries(item.countries), value }) + usual(item);
+        case 'airports':
+          if (item.baseline == null && item.airports.length > 0 && item.airports.length <= MAX_NAMED_AIRPORTS) {
+            return item.airports
+              .map(airport => AIRPORT_STATUS_KEYS[airport.status] ? t(AIRPORT_STATUS_KEYS[airport.status]!, { name: airport.name }) : '')
+              .filter(Boolean)
+              .join(', ');
+          }
+          return t('components.pizzint.evidenceAirports', { value }) + usual(item);
+        case 'military_aircraft':
+          return t('components.pizzint.evidenceMilitaryAircraft', { country: countries(item.countries), value }) + usual(item);
+        case 'pla_aircraft':
+          return t('components.pizzint.evidencePlaAircraft', { value }) + usual(item);
+        case 'pla_ships':
+          return t('components.pizzint.evidencePlaShips', { value }) + usual(item);
+        case 'sanctions':
+          return t('components.pizzint.evidenceSanctions', { country: countries(item.countries), value }) + usual(item);
+        default:
+          return '';
+      }
+    };
+    return items.map(describe).filter(Boolean).slice(0, MAX_EVIDENCE).join(' · ');
   }
 
   private getStatusClass(loc: PizzIntLocation): string {

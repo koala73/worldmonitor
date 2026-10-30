@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 import { runBundle, DAY } from './_bundle-runner.mjs';
 import { OWID_SOURCE_VERSION } from './seed-owid-energy-mix.mjs';
+import { JODI_OIL_SOURCE_VERSION } from './seed-jodi-oil.mjs';
 
 await runBundle('energy-sources', [
   { label: 'GIE-Gas-Storage', script: 'seed-gie-gas-storage.mjs', seedMetaKey: 'economic:eu-gas-storage', canonicalKey: 'economic:eu-gas-storage:v1', intervalMs: DAY, timeoutMs: 180_000 },
   { label: 'Gas-Storage-Countries', script: 'seed-gas-storage-countries.mjs', seedMetaKey: 'energy:gas-storage-countries', intervalMs: DAY, timeoutMs: 600_000 },
   { label: 'JODI-Gas', script: 'seed-jodi-gas.mjs', seedMetaKey: 'energy:jodi-gas', canonicalKey: 'energy:jodi-gas:v1:_countries', completionMetaKey: 'seed-completion:energy:jodi-gas', intervalMs: 15 * DAY, timeoutMs: 600_000 },
-  { label: 'JODI-Oil', script: 'seed-jodi-oil.mjs', seedMetaKey: 'energy:jodi-oil', canonicalKey: 'energy:jodi-oil:v1:_countries', intervalMs: 35 * DAY, timeoutMs: 600_000 },
+  // 15 days, like JODI-Gas, so a new monthly file lands within about two
+  // weeks; the source version reseeds right after a payload-changing deploy.
+  { label: 'JODI-Oil', script: 'seed-jodi-oil.mjs', seedMetaKey: 'energy:jodi-oil', canonicalKey: 'energy:jodi-oil:v1:_countries', expectedSourceVersion: JODI_OIL_SOURCE_VERSION, intervalMs: 15 * DAY, timeoutMs: 600_000 },
   // Monthly production/export series per exporter (EIA STEO, JODI history,
   // Comtrade mirror imports, PortWatch AIS). Weekly so EIA's monthly STEO
   // release and buyers' late Comtrade filings land within days.

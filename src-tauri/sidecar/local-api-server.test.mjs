@@ -2029,6 +2029,72 @@ test('allows Docker LLM origins and only the configured Ollama origin on desktop
   }
 });
 
+test('a silent Ollama completion outlasts the upstream idle timeout but not the Ollama one', async () => {
+  const envSnapshot = {
+    LOCAL_API_MODE: process.env.LOCAL_API_MODE,
+    OLLAMA_API_URL: process.env.OLLAMA_API_URL,
+  };
+  const ollama = createServer(async (_req, res) => {
+    await sleep(300);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const ollamaPort = await listen(ollama);
+  const localApi = await setupApiDir({
+    'ollama-probe.js': `
+      export default async function handler() {
+        const upstream = await fetch(new URL('/v1/chat/completions', process.env.OLLAMA_API_URL), {
+          method: 'POST',
+          body: '{}',
+        });
+        return new Response(await upstream.text(), { status: upstream.status });
+      }
+    `,
+  });
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  process.env.OLLAMA_API_URL = `http://127.0.0.1:${ollamaPort}`;
+  __testing__.setUpstreamIdleTimeoutMs(50);
+  __testing__.setOllamaIdleTimeoutMs(2000);
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    mode: 'tauri-sidecar',
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+  // The test's own fetch runs through the patched one, so it would idle out
+  // waiting on the sidecar.
+  const probe = () => new Promise((resolve, reject) => {
+    httpRequest(`http://127.0.0.1:${port}/api/ollama-probe`, {
+      headers: { Authorization: `Bearer ${TEST_LOCAL_API_TOKEN}` },
+    }, (res) => {
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(body) }));
+    }).on('error', reject).end();
+  });
+  try {
+    const completed = await probe();
+    assert.equal(completed.status, 200);
+    assert.deepEqual(completed.body, { ok: true });
+
+    __testing__.setOllamaIdleTimeoutMs(100);
+    const hung = await probe();
+    assert.equal(hung.status, 502);
+    assert.match(hung.body.reason, /idle-timed out/);
+  } finally {
+    __testing__.setUpstreamIdleTimeoutMs(12000);
+    __testing__.setOllamaIdleTimeoutMs(90000);
+    await app.close();
+    for (const [key, value] of Object.entries(envSnapshot)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => ollama.close((error) => (error ? reject(error) : resolve())));
+  }
+});
+
 test('blocks handler global fetches to non-global IPv4 special ranges', async () => {
   const originalHttpRequest = http.request;
   const blockedUrls = [
@@ -3538,6 +3604,123 @@ test('rss-proxy blocks IPv4-mapped IPv6 literals and DNS answers before transpor
     dns.resolve4 = originalResolve4;
     dns.resolve6 = originalResolve6;
     https.request = originalHttpsRequest;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy escapes control characters from the blocked url before logging it', async () => {
+  const localApi = await setupApiDir({});
+  const warnings = [];
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn(...args) { warnings.push(args.join(' ')); }, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const feedUrl = 'http://127.0.0.1/\n[local-api] forged\r\u001b[2J';
+    const response = await authFetch(
+      `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`,
+    );
+    assert.equal(response.status, 403);
+    const blocked = warnings.filter((line) => line.includes('rss-proxy SSRF blocked'));
+    assert.equal(blocked.length, 1, JSON.stringify(warnings));
+    for (const line of warnings) {
+      assert.doesNotMatch(line, /[\r\n\u001b]/, JSON.stringify(line));
+    }
+    assert.ok(blocked[0].includes(JSON.stringify(feedUrl)), blocked[0]);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('a malformed request-target gets a 400 and the sidecar keeps serving', async () => {
+  const localApi = await setupApiDir({
+    'ping.js': `
+      export default async function handler() {
+        return new Response('pong', { status: 200 });
+      }
+    `,
+  });
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  const rawRequest = (target) => new Promise((resolve, reject) => {
+    const socket = net.connect(port, '127.0.0.1', () => {
+      socket.write(`GET ${target} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`);
+    });
+    let data = '';
+    socket.setEncoding('utf8');
+    socket.on('data', (chunk) => { data += chunk; });
+    socket.on('end', () => resolve(data));
+    socket.on('error', reject);
+    socket.setTimeout(5000, () => { socket.destroy(); reject(new Error(`no response for ${target}`)); });
+  });
+
+  try {
+    const raw = await rawRequest('//');
+    assert.match(raw.split('\r\n')[0], /^HTTP\/1\.1 400 /);
+
+    const response = await authFetch(`http://127.0.0.1:${port}/api/ping`);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'pong');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('a throw that escapes the request handler gets a 500 and the sidecar keeps serving', async () => {
+  const localApi = await setupApiDir({
+    'boom.js': `
+      export default async function handler() {
+        // dispatch() returns this Response; reading its body then throws
+        // inside the request handler's own try.
+        return new Response(new ReadableStream({
+          start(controller) { controller.error(new Error('body failed')); },
+        }));
+      }
+    `,
+    'ping.js': `
+      export default async function handler() {
+        return new Response('pong', { status: 200 });
+      }
+    `,
+  });
+  const errors = [];
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: {
+      log() {},
+      warn() {},
+      error(message) {
+        errors.push(message);
+        // A failing logger inside the handler's own catch is the throw that
+        // escapes handleRequest.
+        if (message === '[local-api] fatal') throw new Error('logger failed');
+      },
+    },
+  });
+  const { port } = await app.start();
+
+  try {
+    const failed = await authFetch(`http://127.0.0.1:${port}/api/boom`);
+    assert.equal(failed.status, 500);
+    assert.deepEqual(await failed.json(), { error: 'Internal server error' });
+    assert.ok(errors.includes('[local-api] unhandled request error'), JSON.stringify(errors));
+
+    const response = await authFetch(`http://127.0.0.1:${port}/api/ping`);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'pong');
+  } finally {
     await app.close();
     await localApi.cleanup();
   }

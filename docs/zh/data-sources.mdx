@@ -199,7 +199,7 @@ GPS 干扰和欺骗 — 在冲突区域越来越多地被用作电子战 — 通
 
 `listFeedDigest` RPC 端点将所有源在服务端聚合成单个分类响应，而不是让每个客户端浏览器通过单独的边缘函数调用独立获取数十个 RSS 源。
 
-下面的公开服务端摘要源清单以 `server/worldmonitor/news/v1/_feeds.ts` 为来源依据；该代码文件仍是精确 URL、Google News 查询封装和特定区域 URL 参数的权威来源。源选择在此刻意可见，以便区域覆盖、官方来源纳入以及诸如 `Trump - Truth Social` 等政治敏感纳入项可供审阅，而非隐藏在一个通用的"RSS"标签之后。按语言限定的源以其语言代码标记，仅当请求语言匹配时才纳入。`full` 变体还在 `intel` 类别下追加 `INTEL_SOURCES`。
+下面的公开服务端摘要源清单以 `shared/news-catalog.json`（各信息源的服务端放置）为来源依据；该目录是精确 URL、Google News 查询封装和特定区域 URL 参数的权威来源。源选择在此刻意可见，以便区域覆盖、官方来源纳入以及诸如 `Trump - Truth Social` 等政治敏感纳入项可供审阅，而非隐藏在一个通用的"RSS"标签之后。按语言限定的源以其语言代码标记，仅当请求语言匹配时才纳入。`full` 变体还在 `intel` 类别下追加 `INTEL_SOURCES`。
 
 | 变体 | 类别 | 服务端源 |
 | --- | --- | --- |
@@ -511,6 +511,7 @@ IOC 分为四种类型（`c2_server`、`malware_host`、`phishing`、`malicious_
 | USGS Earthquake Hazards | 全球地震活动 | [earthquake.usgs.gov](https://earthquake.usgs.gov) |
 | Earthquakes Canada (NRCan) | 加拿大国家地震公报（Atom） | [earthquakescanada.nrcan.gc.ca](https://www.earthquakescanada.nrcan.gc.ca/index-en.php?tpl_region=canada) |
 | NASA FIRMS | 近实时野火/火灾探测（VIIRS） | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov) |
+| Copernicus Sentinel-5P TROPOMI | 对流层 NO2 柱浓度，按日聚合到 167 个国家与 32 个工业集群，作为同比活动方向（Sentinel Hub Statistical API）。包含经修改的 Copernicus Sentinel 数据。 | [dataspace.copernicus.eu](https://dataspace.copernicus.eu) |
 | NASA EONET | 自然事件 — 风暴、火山、洪水 | [eonet.gsfc.nasa.gov](https://eonet.gsfc.nasa.gov) |
 | GDACS | 联合国协调的全球灾害警报 | [gdacs.org](https://www.gdacs.org) |
 | 香港天文台 | 本地热带气旋警告信号 | [data.weather.gov.hk](https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en) |
@@ -593,7 +594,7 @@ GDACS 事件带有彩色编码的警报级别（红色 = 严重，橙色 = 高�
 
 两个键的健康预算均为 20 分钟。Railway 服务 `seed-notam-nms` 每 5 分钟针对 FAA 生产主机运行一次。种子任务对任何非生产主机都只做试运行，因为预发布环境提供的是 FAA 测试 NOTAM。设置 `NMS_ALLOW_NONPROD_WRITE=1` 后，非生产运行也只发布地图图层，不发布关闭数据或激活标记。
 
-**严重性阈值**：平均延误 ≥15 分钟或 ≥15% 航班延误 = 轻微；≥30 分钟/30% = 中度；≥45 分钟/45% = 重大；≥60 分钟/60% = 严重。取消率 ≥80% 且航班 ≥10 = 关闭。所有结果在 Redis 中缓存 30 分钟。当未配置 AviationStack API key 时，系统会生成概率性模拟延误以供演示 — 高峰时段和高流量机场获得更高的延误概率。
+**严重性阈值**：平均延误 ≥15 分钟或 ≥15% 航班延误 = 轻微；≥30 分钟/30% = 中度；≥45 分钟/45% = 重大；≥60 分钟/60% = 严重。取消率 ≥80% 且航班 ≥10 = 关闭。AviationStack 的取消率中每个实际执行的航班只计一次（代码共享记录计入它所指的执行航班，该航班已有记录时不重复计算），起飞时间按机场当地时区读取。已到起飞时间（计划起飞时间已过或已起飞）的航班至少有 10 个时，只按这些航班计算；不足时，返回的是当天较晚的航班，只能判定关闭（至少 80% 取消），不给出更低的取消等级，因为提前取消的后续航班属于时刻调整，不是运营中断。所有结果在 Redis 中缓存 30 分钟。当未配置 AviationStack API key 时，系统会生成概率性模拟延误以供演示 — 高峰时段和高流量机场获得更高的延误概率。
 
 ### 航空情报面板
 

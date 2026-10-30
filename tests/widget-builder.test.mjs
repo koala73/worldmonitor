@@ -1258,8 +1258,9 @@ describe('widget-agent relay — security', () => {
   it('auth 403 response is sent before any processing on bad key', () => {
     const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
     assert.ok(handlerStart !== -1, 'handleWidgetAgentRequest not found');
-    // Use 4000 chars to cover the full auth/setup section including SSE headers
-    const handlerBody = relay.slice(handlerStart, handlerStart + 4000);
+    // Slice to the handler's closing brace, not a fixed length, so an added
+    // input guard cannot push the SSE header out of the window.
+    const handlerBody = relay.slice(handlerStart, relay.indexOf('\n}\n', handlerStart));
     const authCheckIdx = handlerBody.indexOf('requireWidgetAgentAccess(req, res)');
     const sseHeaderIdx = handlerBody.indexOf("text/event-stream");
     assert.ok(authCheckIdx !== -1, 'Auth helper call not found in handler start');
@@ -2689,7 +2690,7 @@ describe('PRO widget — store and sanitizer', () => {
     const script = sandbox.match(/<script>\r?\n([\s\S]*?)\r?\n<\/script>/)?.[1];
     assert.ok(script, 'sandbox inline script not found');
 
-    function runSandboxAt(selfHostname, referrer) {
+    function runSandboxAt(selfHostname, referrer, selfOrigin = `${new URL(referrer).protocol}//${selfHostname}:5173`) {
       const readyMessages = [];
       const writes = [];
       const listeners = new Map();
@@ -2705,7 +2706,7 @@ describe('PRO widget — store and sanitizer', () => {
       function FakeEvent() {}
       FakeEvent.prototype.stopImmediatePropagation = () => {};
       const sandboxWindow = new FakeEventTarget();
-      sandboxWindow.location = { hash: '#id=wm-1&token=test-token', hostname: selfHostname };
+      sandboxWindow.location = { hash: '#id=wm-1&token=test-token', hostname: selfHostname, origin: selfOrigin };
       sandboxWindow.parent = parent;
       const context = {
         URL,
@@ -2756,6 +2757,11 @@ describe('PRO widget — store and sanitizer', () => {
     // Legitimate local dev: both the sandbox page itself and the embedding
     // page run on localhost (e.g. `npm run dev`). This must keep working.
     const devSandbox = runSandboxAt('localhost', 'http://localhost:5173/dashboard');
+    const foreignPort = runSandboxAt('localhost', 'http://localhost:4000/attack', 'http://localhost:5173');
+    assert.deepEqual(foreignPort.readyMessages, []);
+    foreignPort.message({ source: foreignPort.parent, origin: 'http://localhost:4000',
+      data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<script>attack()</script>' } });
+    assert.deepEqual(foreignPort.writes, []);
     assert.equal(devSandbox.readyMessages.length, 1, 'dev sandbox on localhost must still trust a localhost parent');
     assert.equal(devSandbox.readyMessages[0].targetOrigin, 'http://localhost:5173');
     devSandbox.message({

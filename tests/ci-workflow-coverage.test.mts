@@ -251,6 +251,7 @@ const REQUIRED_TEST_JOBS = [
   'variant-smoke-full',
   'resilience-validation-smoke',
   'desktop-config',
+  'desktop-node-windows',
   'desktop-rust',
 ] as const;
 
@@ -263,6 +264,7 @@ const TIMEOUT_CAPPED_TEST_JOBS = [
   'variant-smoke-full',
   'resilience-validation-smoke',
   'desktop-config',
+  'desktop-node-windows',
   'desktop-rust',
 ] as const;
 
@@ -319,6 +321,7 @@ const REQUIRED_DESKTOP_CONFIG_INPUTS = [
   'scripts/sync-desktop-version.mjs',
   'scripts/check-desktop-build-env.mjs',
   'scripts/check-rust-security-floors.mjs',
+  'scripts/download-node.sh',
 ] as const;
 
 const REQUIRED_DESKTOP_RUST_INPUTS = [
@@ -1189,6 +1192,16 @@ describe('CI workflow coverage', () => {
     assert.equal(install['continue-on-error'], undefined);
     const save = steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/cache/save@'));
     assert.equal(save.if, download.if);
+  });
+
+  it('requires real Redis before the consumer-prices publisher regressions', () => {
+    const steps = YAML.parse(testWorkflow).jobs['consumer-prices'].steps;
+    const installIndex = steps.findIndex((step: { uses?: string }) => step.uses === './.github/actions/install-redis');
+    const testIndex = steps.findIndex((step: { run?: string }) => step.run === 'npm test --prefix consumer-prices-core');
+    assert.ok(installIndex >= 0 && installIndex < testIndex, 'consumer-prices must install Redis before its tests');
+    assert.equal(steps[installIndex].if, undefined, 'Redis must be installed on every consumer-prices run');
+    assert.equal(steps[installIndex]['continue-on-error'], undefined, 'Redis installation failure must fail CI');
+    assert.equal(steps[testIndex]['continue-on-error'], undefined, 'publisher regression failure must fail CI');
   });
 
   it('installs the locale font subset from a package cache in every browser job', () => {
@@ -2664,103 +2677,32 @@ describe('docker-publish conditions', () => {
   it('keeps the triggers the ARCHITECTURE row promises', () => {
     const on = dockerPublish.on as { release?: { types?: string[] }; schedule?: { cron: string }[]; workflow_dispatch?: unknown };
     assert.deepEqual(on.release?.types, ['published']);
-    assert.deepEqual(on.schedule, [{ cron: '19 2 * * 3' }], 'the backstop is weekly; a per-minute cron would queue a multi-arch build every minute');
+    assert.deepEqual(on.schedule, [{ cron: '19 2 * * *' }], 'one daily rebuild; a per-minute cron would queue a multi-arch build every minute');
     assert.ok('workflow_dispatch' in on, 'the repair path for a failed rebuild is a manual dispatch');
   });
 
-  it('republishes on a push to main unless it only touches build-irrelevant paths', () => {
+  it('republishes on a push to main only when the image definition changes', () => {
     // `on.push` rather than a job-level `if:` -- docker-publish.yml publishes
     // no gate-required check, so the "never gate on a workflow's paths:"
     // convention (docs/solutions/conventions/…) does not apply here.
     const push = (dockerPublish as { on: { push?: { branches?: string[]; paths?: string[]; 'paths-ignore'?: string[] } } }).on.push;
     assert.ok(push, 'docker-publish.yml must trigger on push');
     assert.deepEqual(push.branches, ['main']);
-    assert.equal(push['paths-ignore'], undefined, 'paths-ignore cannot re-include a build input; use paths with negations');
-    // Match-everything-then-exclude, not an allow-list (#7808 review,
-    // CodeRabbit): docker/Dockerfile's builder stage runs `COPY . .` then
-    // `npx tsc && npx vite build`, so nearly every path NOT excluded here can
-    // reach the built image -- an allow-list of "files the Dockerfile
-    // references directly" previously missed src/, vite.config.ts, and most
-    // of scripts/, silently falling back to the cron's up-to-a-week bound for
-    // ordinary application changes.
-    const paths = push.paths ?? [];
-    assert.equal(paths[0], '**', 'the filter must start from every path');
-    assert.deepEqual(
-      paths.filter((path) => path.startsWith('!')).sort(),
-      [
-        '!*.md',
-        '!.agents/**',
-        '!.claude/**',
-        '!.factory/**',
-        '!.github/**',
-        '!.planning/**',
-        '!.windsurf/**',
-        '!docs/**',
-        '!e2e/**',
-        '!src-tauri/**',
-        '!tests/**',
-      ].sort(),
-    );
-    // build:crawlable-corpus renders CHANGELOG.md and docs/snapshots/ into the
-    // image, inside two excluded globs. In `paths` a later pattern overrides an
-    // earlier one, so each re-inclusion must come after every exclusion.
-    const lastExclusion = paths.map((path) => path.startsWith('!')).lastIndexOf(true);
-    for (const buildInput of ['CHANGELOG.md', 'docs/snapshots/**']) {
-      assert.ok(paths.indexOf(buildInput) > lastExclusion, `${buildInput} must be re-included after the exclusions`);
-    }
-    const corpusScript = read(resolve(root, 'scripts/build-crawlable-corpus.mjs'));
-    assert.match(corpusScript, /CHANGELOG_PATH = 'CHANGELOG\.md'/);
-    assert.match(corpusScript, /RESILIENCE_SNAPSHOT_DIR = 'docs\/snapshots'/);
-    // Nested Markdown is image content, not documentation: vite copies public/
-    // into dist/ untouched, and the corpus script lists the blog directory to
-    // choose which blog links its pages render. Excluding `**/*.md` hid both
-    // (found in review), so Markdown is excluded at the repository root only,
-    // which is also all `.dockerignore`'s `*.md` removes from the build context.
-    assert.doesNotMatch(read(resolve(root, 'vite.config.ts')), /publicDir/, 'public/ is vite\'s default publicDir, so it is copied into dist/ as it is');
-    assert.match(corpusScript, /readdirSync\(join\(rootDir, 'blog-site\/src\/content\/blog'\)/);
-
-    // Evaluate the real list the way GitHub does: patterns run in order for each
-    // changed file, the last one that matches decides (a `!` pattern switches
-    // the file off again), `*` stops at `/` and `**` does not, and the workflow
-    // runs when any changed file ends up on. `**` is taken to match dot-prefixed
-    // names as well.
-    const escapeRegExp = (text: string) => text.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-    const globToRegExp = (glob: string) =>
-      new RegExp(`^${glob.split('**').map((part) => part.split('*').map(escapeRegExp).join('[^/]*')).join('.*')}$`);
-    const isOn = (file: string) => {
-      let on = false;
-      for (const pattern of paths) {
-        const negated = pattern.startsWith('!');
-        if (globToRegExp(negated ? pattern.slice(1) : pattern).test(file)) on = !negated;
-      }
-      return on;
-    };
-    const triggers = (files: string[]) => files.some(isOn);
-    for (const [files, expected, why] of [
-      [['src/App.ts'], true, 'application source is bundled into the image'],
-      [['docker/Dockerfile'], true, 'the Dockerfile itself'],
-      [['docker/nginx.conf.template'], true, 'a sibling config the Dockerfile COPYs'],
-      [['package-lock.json'], true, 'the npm ci input'],
-      [['.dockerignore'], true, 'the build-context policy'],
-      [['scripts/build-sitemap.mjs'], true, 'run by build:sitemap'],
-      [['public/pricing.md'], true, 'served verbatim from dist/'],
-      [['public/.well-known/agent-skills/track-flights/SKILL.md'], true, 'served verbatim from dist/'],
-      [['blog-site/src/content/blog/a-new-post.md'], true, 'its file name feeds the crawlable pages'],
-      [['CHANGELOG.md'], true, 'rendered into the changelog pages'],
-      [['docs/snapshots/live-pulse.json'], true, 'rendered into the live-pulse and resilience pages'],
-      [['docs/guide.md', 'src/App.ts'], true, 'one relevant file in a mixed push is enough'],
-      [['README.md'], false, 'root Markdown never enters the image'],
-      [['ARCHITECTURE.md', 'AGENTS.md'], false, 'root Markdown never enters the image'],
-      [['docs/api/WorldmonitorService.openapi.yaml'], false, 'only reaches the unserved stats'],
-      [['docs/methodology/index.mdx'], false, 'documentation'],
-      [['tests/ci-workflow-coverage.test.mts'], false, 'tests are not in the build context'],
-      [['e2e/map.spec.ts'], false, 'e2e is not in the build context'],
-      [['.github/workflows/test.yml', '.github/dependabot.yml'], false, 'CI files are not served'],
-      [['src-tauri/tauri.conf.json'], false, 'the desktop app is a different artifact'],
-      [['.claude/settings.json'], false, 'agent metadata'],
-    ] as [string[], boolean, string][]) {
-      assert.equal(triggers(files), expected, `${files.join(', ')}: ${why}`);
-    }
+    assert.equal(push['paths-ignore'], undefined);
+    // Application changes are built before merge by Test's unit-built-output
+    // job and reach the image through the daily cron; a push rebuild is only
+    // for the files nothing else builds.
+    assert.deepEqual(push.paths, ['docker/**', '.dockerignore', '.github/workflows/docker-publish.yml']);
+    // Every repo file the Dockerfile COPYs by name must sit under a push path,
+    // or a change to it waits for the cron.
+    const dockerfile = read(resolve(root, 'docker/Dockerfile'));
+    const copied = Array.from(dockerfile.matchAll(/^COPY\s+(?!--from)(?:--\S+\s+)*(.+?)\s+\S+$/gm))
+      .flatMap((match) => match[1].split(/\s+/))
+      .filter((source) => source !== '.');
+    assert.ok(copied.length > 0, 'the Dockerfile must still COPY its configs from docker/');
+    for (const source of copied) assert.match(source, /^docker\//, `${source} is COPYed into the image but outside docker/**`);
+    const testWorkflow = read(resolve(workflowsDir, 'test.yml'));
+    assert.match(testWorkflow, /\n {2}unit-built-output:\n/, 'the pre-merge build that covers application changes');
   });
 
   it('keeps everything that is not main out of the pending slot main rebuilds evict', () => {
@@ -2934,8 +2876,8 @@ exit 0`);
         github: { event_name, repository },
         needs: { docker: { result } },
       });
-    // The push trigger runs on every docker-relevant merge; its failures land
-    // after the PR merged, where nobody is looking.
+    // A push run's failure lands after the PR merged, and a cron run's
+    // overnight, where nobody is looking.
     for (const event_name of ['push', 'schedule']) {
       assert.equal(fires(event_name, 'failure'), true, `${event_name} + failure must alarm`);
       assert.equal(fires(event_name, 'cancelled'), true, `${event_name} + a timeout (cancelled) must alarm too`);

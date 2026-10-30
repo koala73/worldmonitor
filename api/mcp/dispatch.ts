@@ -33,6 +33,7 @@ import { chokepointPanelViewSchema, conflictPanelViewSchema, disasterPanelViewSc
 import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
+import { MCP_UPGRADE_URL } from '../../shared/mcp-attribution';
 import {
   checkoutProductIdForPlan,
   MCP_CHECKOUT_PLANS,
@@ -73,6 +74,8 @@ type CacheToolValue = {
   freshnessUnknown?: true;
   unreadable?: string[];
   contentFreshnessPendingUntil?: string;
+  locked?: string[];
+  upgradeUrl?: string;
   data: Record<string, unknown>;
 };
 
@@ -133,12 +136,19 @@ async function executeCacheTool(
     : key.includes('displacement:idmc-idu') ? 'events' : key.includes('displacement:dtm') ? 'regions' : 'movements';
   const movementMode = displacementView && selectedView === 'movements';
   const selectedKeys = displacementView ? tool._cacheKeys.filter(key => viewOfKey(key) === selectedView) : tool._cacheKeys;
-  const cacheKeys = tool.name === 'get_sanctions_data'
-    ? tool._cacheKeys.filter(key => (key === 'sanctions:changes:v1') === historyMode) : selectedKeys;
+  // A free account never reads a subscription dataset or its seed-meta (#7433
+  // exception closed); the withheld sections are named in `locked` below.
+  const subscriptionKeys = execution?.freeAccountAllowance === true ? tool._subscriptionCacheKeys : undefined;
+  const lockedKeys = subscriptionKeys ? tool._cacheKeys.filter(key => Object.prototype.hasOwnProperty.call(subscriptionKeys, key)) : [];
+  const lockedFreshnessKeys = new Set(lockedKeys.map(key => `seed-meta:${key.replace(/:v\d+$/, '')}`));
+  const cacheKeys = (tool.name === 'get_sanctions_data'
+    ? tool._cacheKeys.filter(key => (key === 'sanctions:changes:v1') === historyMode) : selectedKeys)
+    .filter(key => !lockedKeys.includes(key));
   const reads = cacheKeys.map((k) => settleRead((panel !== undefined || movementMode ? readRawJsonFromUpstash : readJsonFromUpstash)(k, 3_000, !isAppOwnedRedisKey(k))));
   const selectedChecks = displacementView ? tool._freshnessChecks.filter(check => viewOfKey(check.key) === selectedView) : tool._freshnessChecks;
-  const freshnessChecks = tool.name === 'get_sanctions_data'
-    ? tool._freshnessChecks.filter(check => (check.key === 'seed-meta:sanctions:changes') === historyMode) : selectedChecks;
+  const freshnessChecks = (tool.name === 'get_sanctions_data'
+    ? tool._freshnessChecks.filter(check => (check.key === 'seed-meta:sanctions:changes') === historyMode) : selectedChecks)
+    .filter(check => !lockedFreshnessKeys.has(check.key));
   const metaReads = freshnessChecks.map((check) => settleRead(readJsonFromUpstash(check.key, 3_000, !isAppOwnedRedisKey(check.key))));
   // #6080 deployment-order grace. Only checks declaring a content contract pay
   // for this read, so it is one extra command on get_chokepoint_status and
@@ -334,6 +344,7 @@ async function executeCacheTool(
     ...(freshnessUnknown || intelligenceFreshness?.freshnessUnknown || chokepointPolicy?.freshnessUnknown ? { freshnessUnknown: true } : {}),
     ...(unreadable.length > 0 ? { unreadable } : {}),
     ...(contentFreshnessPendingUntil === undefined ? {} : { contentFreshnessPendingUntil }),
+    ...(lockedKeys.length > 0 ? { locked: lockedKeys.map(key => cacheKeyLabel(tool, key)), upgradeUrl: MCP_UPGRADE_URL } : {}),
     data: result,
   } };
 }
@@ -973,6 +984,7 @@ export async function dispatchToolsCall(
       result = disasterRead.value;
     } else {
       execution = createMcpToolExecutionContext(req.url);
+      if (freeAccountAllowance) execution.freeAccountAllowance = true;
       execution.panelRequest = panelRequest;
       if (tool.name === 'get_country_brief_section' && panelRead && /^[A-Z]{2}$/.test(panelRead.panel)) execution.countryPanelCode = panelRead.panel;
       if (tool.name === 'get_mcp_allowance' && (context.kind === 'pro' || context.kind === 'user_key')) {

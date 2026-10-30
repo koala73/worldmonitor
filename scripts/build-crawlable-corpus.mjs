@@ -747,6 +747,30 @@ function absoluteUrl(baseUrl, pathname) {
   return `${normalizeBaseUrl(baseUrl)}${pathname}`;
 }
 
+// The dashboard view each audience hub hands off to, with that job's layers on.
+// Layer keys must exist in src/config/map-layer-definitions.ts (the corpus test checks).
+const HUB_DASHBOARD_VIEWS = {
+  crises: {
+    path: '/dashboard?layers=conflicts,hotspots,military,outages,natural&timeRange=7d',
+    label: 'Open conflict and crisis layers on the live map →',
+  },
+  chokepoints: {
+    path: '/dashboard?layers=ais,waterways,tradeRoutes,hotspots,sanctions,cables&timeRange=24h',
+    label: 'Open shipping and chokepoint layers on the live map →',
+  },
+  // ciiChoropleth shades countries on desktop only (the mobile SVG map skips it);
+  // the label promises country risk, which every renderer gives via the country brief.
+  countries: {
+    path: '/dashboard?layers=ciiChoropleth,hotspots,conflicts&timeRange=7d',
+    label: 'Open country risk on the live map →',
+  },
+};
+
+function hubDashboardCta(hub, baseUrl) {
+  const view = HUB_DASHBOARD_VIEWS[hub];
+  return `<a class="cta" data-dashboard-link href="${escapeHtml(absoluteUrl(baseUrl, view.path))}">${escapeHtml(view.label)}</a>`;
+}
+
 function dataCatalogId(baseUrl) {
   return `${normalizeBaseUrl(baseUrl)}/${DATA_CATALOG_FRAGMENT}`;
 }
@@ -2138,6 +2162,7 @@ export async function loadCorpusData({
   const useCasesLastmod = laterDate(
     USE_CASES_CONTENT_VERSION,
     gitFileLastmod(rootDir, 'scripts/build-use-cases.mjs'),
+    gitFileLastmod(rootDir, 'scripts/data/use-case-workflows.mjs'),
   );
   const coverageCatalog = await loadCoverageCatalog({
     importModule: (relativePath) => importRepoModule(rootDir, relativePath),
@@ -2585,7 +2610,7 @@ function renderCountryInstabilityIndexPage({
   const path = '/country-instability-index/';
   const movementClaim = ciiRanking.movementClaim
     ?? livePulseMovementClaim(livePulseSnapshotAgeDays(capturedAt));
-  const description = `See World Monitor's live Country Instability Index rankings, with current scores, ${movementClaim.availableMovement}, severity levels, and update times for ${ciiRanking.entries.length} Tier-1 countries.`;
+  const description = `Live Country Instability Index rankings: scores, ${movementClaim.availableMovement}, severity and update times for ${ciiRanking.entries.length} Tier-1 countries.`;
   const datasetId = `${absoluteUrl(baseUrl, path)}#dataset`;
   const rankingId = `${absoluteUrl(baseUrl, path)}#ranking`;
   const versionLabel = `CII ${ciiRanking.methodologyVersion}`;
@@ -2758,11 +2783,12 @@ function renderCountriesIndex({ countries, ciiRanking, resilienceCoverage, baseU
       },
     };
   });
-  const body = `      <p class="eyebrow">Country corpus</p>
+  const body = `      <p class="eyebrow">For country-risk analysts</p>
       <h1>Country risk, instability and resilience by country</h1>
       <p class="lede">${escapeHtml(description)}</p>
       <p><a href="/country-instability-index/">Live Country Instability Index rankings</a> · <a href="#country-resilience-ranking">Country Resilience Index ranking</a></p>
       <p>For the evergreen monitoring procedure that uses these pages as evidence, see <a href="/use-cases/monitor-country-risk/">Monitor country risk</a>.</p>
+      <p>${hubDashboardCta('countries', baseUrl)}</p>
 ${hubFaqs.map((faq) => `      <h2>${escapeHtml(faq.question)}</h2>
       <p>${escapeHtml(faq.answer)}</p>`).join('\n')}
       <div class="table-scroll" id="country-resilience-ranking"><table data-country-ranking>
@@ -2782,7 +2808,7 @@ ${countries.map((country) => {
   return pageDocument({
     baseUrl,
     path,
-    title: 'Country Risk by Country: Instability & Resilience | World Monitor',
+    title: 'Country Risk Scores and Rankings by Country | World Monitor',
     description,
     lastmod,
     jsonLd: [
@@ -4371,7 +4397,7 @@ export function buildChokepointHubRows(chokepoints, livePulse) {
 
 function renderChokepointsIndex({ chokepoints, chokepointHubRows, livePulse, baseUrl, lastmod, snapshotPath }) {
   const path = '/chokepoints/';
-  const description = `Track current disruption scores, status, AIS congestion, and update times for the ${chokepoints.length} maritime chokepoints in the World Monitor public status snapshot.`;
+  const description = `Live status of the ${chokepoints.length} maritime chokepoints, from Hormuz, Suez and Bab el-Mandeb to Malacca and Panama: disruption scores, AIS congestion and last-update times.`;
   const updatedAt = chokepointHubRows
     .map((row) => row.asOf)
     .sort((left, right) => Date.parse(left) - Date.parse(right))
@@ -4434,9 +4460,11 @@ function renderChokepointsIndex({ chokepoints, chokepointHubRows, livePulse, bas
       },
     };
   });
-  const body = `      <p class="eyebrow">Maritime corpus</p>
+  const body = `      <p class="eyebrow">For supply-chain risk teams</p>
       <h1>Chokepoints and waterways</h1>
       <p class="lede">${escapeHtml(description)}</p>
+      <p>For the step-by-step monitoring procedure, see <a href="/use-cases/monitor-supply-chain-disruptions/">Monitor supply chain disruptions</a>.</p>
+      <p>${hubDashboardCta('chokepoints', baseUrl)}</p>
 ${hubFaqs.map((faq) => `      <h2 data-chokepoint-hub-faq>${escapeHtml(faq.question)}</h2>
       <p>${escapeHtml(faq.answer)}</p>`).join('\n')}
       <div class="table-scroll"><table data-chokepoint-status>
@@ -4474,7 +4502,7 @@ ${chokepointHubRows.map((row) => {
   return pageDocument({
     baseUrl,
     path,
-    title: 'Maritime Chokepoints | World Monitor',
+    title: 'Maritime Chokepoints: Live Shipping Lane Status | World Monitor',
     description,
     lastmod,
     jsonLd: [
@@ -4644,7 +4672,7 @@ function renderChokepointPage({
   const content = CHOKEPOINT_CONTENT[chokepoint.id] || {};
   const blurb = content.blurb
     || `${chokepoint.displayName} is one of the 13 canonical maritime chokepoints tracked by World Monitor.`;
-  const description = chokepointMetaDescription(chokepoint.displayName);
+  const description = content.metaDescription ?? chokepointMetaDescription(chokepoint.displayName);
   const mapUrl = absoluteUrl(baseUrl, `/dashboard?chokepoint=${encodeURIComponent(chokepoint.id)}`);
 
   const routes = chokepoint.routeIds
@@ -4769,7 +4797,7 @@ ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
   return pageDocument({
     baseUrl,
     path,
-    title: `${chokepoint.displayName} Chokepoint Status | World Monitor`,
+    title: content.metaTitle ?? `${chokepoint.displayName} Chokepoint Status | World Monitor`,
     description,
     lastmod,
     extraStyles: `
@@ -4819,11 +4847,19 @@ function countrySelectOptions(countryBounds, { includeWorldwide = false, default
 
 function renderCrisesIndex({ crises, baseUrl, lastmod }) {
   const path = '/crises/';
-  const description = 'Curated, bounded crisis trackers that combine stable coverage definitions with World Monitor’s maintained country-level humanitarian summaries.';
+  for (const needle of ['ukraine', 'sudan', 'myanmar', 'palestine', 'red-sea']) {
+    if (!crises.some((crisis) => String(crisis.slug).includes(needle))) {
+      throw new Error('crisis index requires a registry slug containing "' + needle + '"');
+    }
+  }
+  const lede = 'Curated, bounded crisis trackers that combine stable coverage definitions with World Monitor’s maintained country-level humanitarian summaries.';
+  const description = `Monthly conflict trackers for ${crises.length} crises, including Ukraine, Sudan, Myanmar, Palestine and the Red Sea, built from UN OCHA HDX HAPI event and fatality data.`;
   const body = `      <p class="eyebrow">Bounded trackers</p>
       <h1>Current crisis trackers</h1>
-      <p class="lede">${escapeHtml(description)}</p>
+      <p class="lede">${escapeHtml(lede)}</p>
       <p>Each tracker has a fixed, reviewable geographic boundary. The static page explains that boundary and ships a dated maintained-month pulse; JavaScript can refresh newer values and fails closed when a country summary is unavailable.</p>
+      <p>For the step-by-step verification procedure, see <a href="/use-cases/verify-breaking-news/">Verify breaking news</a>.</p>
+      <p>${hubDashboardCta('crises', baseUrl)}</p>
       <div class="grid">
 ${crises.map((crisis) => `        <a class="card" href="/crises/${escapeHtml(crisis.slug)}/"><strong>${escapeHtml(crisis.shortTitle)}</strong><br><span>${escapeHtml(crisis.coverage.map((country) => country.name).join(', '))}</span></a>`).join('\n')}
       </div>
@@ -4835,7 +4871,7 @@ ${crises.map((crisis) => `        <a class="card" href="/crises/${escapeHtml(cri
   return pageDocument({
     baseUrl,
     path,
-    title: 'Current Crisis Trackers | World Monitor',
+    title: 'Crisis Trackers: Ukraine, Sudan, Red Sea | World Monitor',
     description,
     lastmod,
     jsonLd: [
@@ -5199,7 +5235,7 @@ ${renderRelatedReading(relatedReading, escapeHtml)}
 // claim about the corpus rather than as prose.
 function renderToolsIndex({ baseUrl, lastmod, crisisCount, chokepointCount }) {
   const path = '/tools/';
-  const description = 'Focused World Monitor tools for current natural hazards, country-level airspace disruption, and geographic signal convergence, backed by maintained first-party data contracts.';
+  const description = 'Check hazards, airspace, shipping, outages, markets and economic indicators with live World Monitor tools, named sources, update times and coverage limits.';
   const body = `      <p class="eyebrow">Live intelligence tools</p>
       <h1>Check a current operational signal</h1>
       <p class="lede">${escapeHtml(description)}</p>
@@ -5220,7 +5256,7 @@ ${LIVE_TOPIC_PAGES.map((page) => `        <a class="card" href="${escapeHtml(pag
   return pageDocument({
     baseUrl,
     path,
-    title: 'Live Intelligence Tools | World Monitor',
+    title: 'Live Tools: Outages, Fear & Greed, Oil, Debt | World Monitor',
     description,
     lastmod,
     jsonLd: {

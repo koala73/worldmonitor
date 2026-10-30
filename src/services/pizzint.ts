@@ -95,6 +95,13 @@ function toTensionPair(proto: ProtoTensionPair): GdeltTensionPair {
     trend: TREND_REVERSE[proto.trend] || 'stable',
     changePercent: proto.changePercent,
     region: proto.region,
+    evidence: (proto.evidence ?? []).map(item => ({
+      channel: item.channel,
+      value: item.value,
+      baseline: typeof item.baseline === 'number' ? item.baseline : null,
+      countries: item.countries ?? [],
+      airports: item.airports ?? [],
+    })),
   };
 }
 

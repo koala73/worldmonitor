@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-loss-diagnostics';
+import { BROWSER_NEWS_CATALOG } from '../src/config/news-catalog.browser.generated';
 
 // Request budget for the news load on a default anonymous dashboard load (#5376).
 //
@@ -71,7 +72,8 @@ async function settleAfterInitialFanout(page: Page): Promise<void> {
 const PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT = 3;
 
 // A Tech news panel customized into a `full` session: absent from FULL_FEEDS, so
-// it resolves as a CUSTOM category and direct fetch is its only path. Priority 1
+// it resolves as a CUSTOM category. It reads the tech digest first and falls back
+// to a capped direct fetch only when that digest does not carry it. Priority 1
 // keeps it inside the 40-panel free-tier cap (FULL_PANELS enables 39 priority-1
 // panels), and its 10 TECH_FEEDS entries are well past the per-category cap.
 const CUSTOM_CATEGORY_KEY = 'startups';
@@ -227,22 +229,33 @@ const HEALTHY_DIGEST_CATEGORIES = ['politics', 'intel'];
 const HEALTHY_POLITICS_HEADLINE = 'Healthy last-good politics headline';
 const PARTIAL_POLITICS_HEADLINE = 'Fresh partial politics headline';
 
-function digestBody(categoryKeys: readonly string[], politicsHeadline?: string): string {
+function digestBody(
+  categoryKeys: readonly string[],
+  politicsHeadline?: string,
+  headlines: Readonly<Record<string, { source: string; title: string }>> = {},
+): string {
+  const headlineFor = (key: string): { source: string; title: string } | undefined =>
+    headlines[key] ?? (key === 'politics' && politicsHeadline
+      ? { source: 'BBC World', title: politicsHeadline }
+      : undefined);
   return JSON.stringify({
-    categories: Object.fromEntries(categoryKeys.map((key) => [
-      key,
-      {
-        items: key === 'politics' && politicsHeadline
-          ? [{
-              source: 'BBC World',
-              title: politicsHeadline,
-              link: `https://example.com/${encodeURIComponent(politicsHeadline)}`,
-              publishedAt: Date.now(),
-              isAlert: false,
-            }]
-          : [],
-      },
-    ])),
+    categories: Object.fromEntries(categoryKeys.map((key) => {
+      const headline = headlineFor(key);
+      return [
+        key,
+        {
+          items: headline
+            ? [{
+                source: headline.source,
+                title: headline.title,
+                link: `https://example.com/${encodeURIComponent(headline.title)}`,
+                publishedAt: Date.now(),
+                isAlert: false,
+              }]
+            : [],
+        },
+      ];
+    })),
     feedStatuses: {},
     generatedAt: new Date(0).toISOString(),
   });
@@ -265,6 +278,16 @@ async function installNewsRequestAccounting(
     healthyPoliticsHeadline?: string;
     degradedPoliticsHeadline?: string;
     failDigestLanguages?: readonly string[];
+    /**
+     * Bodies for OTHER editions' digests, keyed by `variant`. A cross-edition
+     * panel reads the digest of the edition that places its category; an
+     * edition absent here gets the healthy full-edition body, which carries
+     * none of that edition's categories.
+     */
+    editionDigests?: Readonly<Record<string, {
+      categories: readonly string[];
+      headlines?: Readonly<Record<string, { source: string; title: string }>>;
+    }>>;
   } = {},
 ): Promise<NewsRequestLog> {
   const log: NewsRequestLog = { digestUrls: [], rssProxyUrls: [] };
@@ -280,7 +303,17 @@ async function installNewsRequestAccounting(
   // bearing bucket would exercise rendering, not the request budget.
   await page.route(DIGEST_GLOB, async (route) => {
     log.digestUrls.push(route.request().url());
-    const requestLanguage = new URL(route.request().url()).searchParams.get('lang') ?? 'en';
+    const requestUrl = new URL(route.request().url());
+    const requestLanguage = requestUrl.searchParams.get('lang') ?? 'en';
+    const edition = options.editionDigests?.[requestUrl.searchParams.get('variant') ?? 'full'];
+    if (edition) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: digestBody(edition.categories, undefined, edition.headlines),
+      });
+      return;
+    }
     if (options.failDigestLanguages?.includes(requestLanguage)) {
       await route.fulfill({ status: 503, contentType: 'text/plain', body: 'digest unavailable' });
       return;
@@ -454,10 +487,75 @@ test.describe('dashboard news request budget (#5376)', () => {
       'a freshly seeded anonymous profile has no persisted rotation state, so the first load is cycle 0',
     ).toBe(0);
 
+    // The only extra request a cross-edition panel may add is ONE digest read
+    // for the edition that places its category (tech, for `startups`). Here
+    // that digest does not carry the category, so the panel falls back to the
+    // capped direct fetch above. A second full-edition digest would mean the
+    // whole news load re-ran.
+    const editions = log.digestUrls.map((url) => new URL(url).searchParams.get('variant') ?? 'full');
     expect(
-      log.digestUrls.length,
-      'customizing a category must not add a second news load either',
+      editions.filter((edition) => edition === 'full').length,
+      `customizing a category must not add a second news load either, got: ${log.digestUrls.join(', ')}`,
     ).toBe(1);
+    expect(
+      editions.filter((edition) => edition !== 'full'),
+      'a cross-edition panel reads exactly one digest of the edition that places its category',
+    ).toEqual(['tech']);
+  });
+
+  // The intended path since every category became digest-served: a
+  // cross-edition panel reads the digest of the edition that places it, and
+  // makes no direct feed requests at all.
+  test('a cross-edition panel is served by its edition digest with zero direct feed fetches', async ({ page }) => {
+    const headline = 'Cross-edition startups headline from the tech digest';
+    await seedFreshAnonymousFullVariant(page, {
+      [CUSTOM_CATEGORY_KEY]: { name: 'Startups & VC', enabled: true, priority: 1 },
+    });
+    const log = await installNewsRequestAccounting(page, {
+      editionDigests: {
+        tech: {
+          categories: [CUSTOM_CATEGORY_KEY],
+          headlines: { [CUSTOM_CATEGORY_KEY]: { source: 'TechCrunch Startups', title: headline } },
+        },
+      },
+    });
+
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget cross-edition boot',
+    );
+    try {
+      const firstDigest = page.waitForRequest(DIGEST_GLOB);
+      await page.goto('/');
+      await page.waitForFunction(
+        () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+      );
+      await firstDigest;
+    } finally {
+      lossWatch.dispose();
+    }
+    await settleAfterInitialFanout(page);
+
+    const startupsPanel = await mountDeferredPanel(page, CUSTOM_CATEGORY_KEY);
+    await expect(
+      startupsPanel.getByText(headline).first(),
+      'the item the edition digest carries must render in the panel',
+    ).toBeAttached();
+    // Sources the tech digest carries come from it; only the ones no digest
+    // carries yet (browserOnly, still pending migration) are fetched directly,
+    // within the per-category window.
+    const startupsFeeds = BROWSER_NEWS_CATALOG.editions.tech?.startups ?? [];
+    const browserOnlyUrls = new Set(startupsFeeds.filter((f) => f.browserOnly).map((f) => f.url));
+    const direct = distinctProxiedFeeds(log.rssProxyUrls);
+    expect(direct.length, 'direct fetches stay within the per-category window')
+      .toBeLessThanOrEqual(PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT);
+    expect(
+      direct.filter((url) => !browserOnlyUrls.has(url)),
+      'a source the edition digest carries must not be fetched feed by feed',
+    ).toEqual([]);
+    const editions = log.digestUrls.map((url) => new URL(url).searchParams.get('variant') ?? 'full');
+    expect(editions.filter((edition) => edition === 'full').length).toBe(1);
+    expect(editions.filter((edition) => edition !== 'full')).toEqual(['tech']);
   });
 
   // The other outage shape, and the one that actually happens: the digest answers

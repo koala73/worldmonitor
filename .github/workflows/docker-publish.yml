@@ -4,13 +4,14 @@ name: Publish Docker image
 #
 # Two kinds of run. A release tag (a release a person publishes, or the dispatch
 # build-desktop.yml sends for the one it publishes itself) cuts the version tags
-# and, unless it is a pre-release, moves `latest`. A push to main, the weekly
+# and, unless it is a pre-release, moves `latest`. A push to main, the daily
 # cron and a dispatch against main publish `sha-<commit>` alone and never move
 # `latest` — see the tag block below.
 #
 # The main-side runs exist so that a change to docker/Dockerfile, or a base
-# image bump, is built, smoke-tested and published within minutes of merging
-# instead of surfacing at the next release. Before either trigger existed, the
+# image bump, is built, smoke-tested and published within minutes of merging,
+# and anything else that breaks the image at the next daily run, instead of surfacing
+# at the next release. Before either trigger existed, the
 # workflow ran on `release: published` and manual dispatch only, so the first
 # execution of a Dockerfile change was whatever release came next.
 #
@@ -27,94 +28,48 @@ name: Publish Docker image
 # enough — they prove files are non-empty, not that the server serves them —
 # and this workflow is the only place docker/Dockerfile is built at all, so
 # before the push trigger below existed a scheduled run was the first
-# execution of any change to it -- up to a week after it merged.
+# execution of any change to it.
 #
 # /!\ Like every scheduled workflow, this one runs on the default branch only,
 # and GitHub disables scheduled workflows in a public repository after 60 days
 # without repository activity; they then have to be re-enabled by hand from the
 # Actions tab. A run that never happens raises no alarm on its own, which is
 # what the failure issue below is a partial answer to. The push trigger is
-# immune to that 60-day disablement, so it is what actually keeps the main-side
-# runs going in practice; the schedule is the backstop for whatever the push
-# trigger misses — a workflow-dispatch of the wrong ref, a webhook delivery
-# outage.
+# immune to that 60-day disablement, but it fires only for Docker files; the
+# daily schedule is what rebuilds main after an application change.
 
 on:
   release:
     types: [published]
   push:
     branches: [main]
-    # "Does this change affect the built image" -- an ignore-list, not an
-    # allow-list, because docker/Dockerfile's builder stage runs `COPY . .`
-    # then `npx tsc && npx vite build` (#7808 review, CodeRabbit): nearly
-    # everything not excluded by .dockerignore reaches the built image,
-    # including src/, public/, api/, server/, proto/, most of scripts/ (several
-    # of its files run via npm aliases like build:crawlable-corpus and
-    # build:sitemap, not just generate-inventory-facts.mjs), vite.config.ts,
-    # and every tsconfig*.json. An earlier allow-list here named only the files
-    # docker/Dockerfile references directly and missed all of that -- it would
-    # have silently fallen back to the cron's up-to-a-week bound for ordinary
-    # application changes, the opposite of what this trigger exists for.
+    # Only the files that define the image: the Dockerfile, the nginx configs
+    # and entrypoint it COPYs, the build-context policy, and this workflow.
+    # These are built nowhere else, so a change to them is built,
+    # smoke-tested and published within minutes of merging. A Dependabot
+    # base-image bump edits docker/Dockerfile, so it is covered too.
     #
-    # The list below matches everything, then excludes only what plainly
-    # cannot reach the served output: tests, e2e, docs, desktop (src-tauri),
-    # agent/editor metadata directories, CI workflow files, and Markdown at the
-    # repository root. A future top-level directory that is genuinely
-    # build-irrelevant needs an exclusion added here to stay quiet; one that IS
-    # build-relevant needs no entry at all, which is the safer direction for a
-    # filter to fail in.
-    #
-    # Markdown is excluded at the root ONLY, never as `**/*.md`: nested
-    # Markdown is not necessarily documentation. vite copies public/ into
-    # dist/ and nginx serves it as it is, so the root pages the sitemap lists
-    # (public/pricing.md, support.md, mcp-server.md, ...) and
-    # public/.well-known/**/SKILL.md are the image's content, and
-    # build:crawlable-corpus lists blog-site/src/content/blog/ to decide which
-    # blog links its pages render. .dockerignore's `*.md` has the same
-    # root-only reach, and the build reads no root Markdown other than
-    # CHANGELOG.md, which is re-included below.
-    #
-    # `paths` with negations rather than `paths-ignore`, because two inputs
-    # inside the excluded globs are rendered into the image and must win them
-    # back: build:crawlable-corpus reads CHANGELOG.md for the changelog pages
-    # and docs/snapshots/ for the live-pulse and resilience pages (and throws
-    # once the live-pulse snapshot is 10 days old, so the snapshot refresh is
-    # also what turns a red rebuild green). .dockerignore keeps both in the
-    # build context for the same reason. In `paths`, a later pattern overrides
-    # an earlier one, so the re-inclusions must stay last.
-    #
-    # This is what makes the schedule below a backstop rather than the primary
-    # mechanism: a Dependabot base-image bump or an ordinary application change
-    # now builds, smoke-tests and publishes its `sha-*` image within minutes of
-    # merging, not up to a week later. `latest` itself moves with the next
-    # release. Action bumps live under .github/ and do not trigger it; they
-    # reach the image with the next rebuild.
+    # Application changes do not trigger it. The builder stage runs `COPY . .`
+    # and nearly every path reaches the image, so a wide filter rebuilt the
+    # multi-arch image on almost every merge (#7808 chose that). Test's
+    # unit-built-output job already runs build:pro and the vite build before
+    # merge, so what an application merge can still break here is the
+    # image-only part (build:crawlable-corpus, build:sitemap, the smoke test),
+    # and the next daily run finds that. No consumer needs a
+    # `sha-*` tag per merge; `latest` moves only with a release.
     paths:
-      - '**'
-      - '!*.md'
-      - '!.github/**'
-      - '!.agents/**'
-      - '!.claude/**'
-      - '!.factory/**'
-      - '!.planning/**'
-      - '!.windsurf/**'
-      - '!docs/**'
-      - '!e2e/**'
-      - '!src-tauri/**'
-      - '!tests/**'
-      - 'CHANGELOG.md'
-      - 'docs/snapshots/**'
+      - 'docker/**'
+      - '.dockerignore'
+      - '.github/workflows/docker-publish.yml'
   schedule:
-    # Wednesdays at 02:19 UTC. Off the hour because GitHub runs the scheduled
+    # Daily at 02:19 UTC. Off the hour because GitHub runs the scheduled
     # queue late when it is loaded and that load peaks on the hour, and outside
     # the 03:00–05:00 UTC band the other crons in this directory already share.
-    # No longer the primary freshness mechanism -- the push trigger above
-    # republishes on every relevant merge -- so this is what still catches a
-    # base image whose digest moved with no corresponding file diff to trigger
-    # on (none exist today; every FROM line here is pinned in-repo), and
+    # This is what rebuilds main after application changes, CHANGELOG.md and
+    # docs/snapshots/ refreshes (build:crawlable-corpus renders both), and
     # whatever a push trigger can silently miss (a delayed or dropped webhook
     # delivery).
-    - cron: '19 2 * * 3'
+    - cron: '19 2 * * *'
   workflow_dispatch:
 
 # Only main's own triggers (push, schedule, a dispatch run against main) share
@@ -173,7 +128,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -195,7 +150,7 @@ jobs:
           flavor: latest=false
           # `latest` follows a release tag, whether it arrives as a release event
           # or as the dispatch build-desktop.yml sends (its publish raises none).
-          # A push, the weekly cron or a dispatch against main publishes its
+          # A push, the daily cron or a dispatch against main publishes its
           # `sha-*` tag alone: only a non-prerelease v* tag ref moves `latest`
           # (any tag ref cuts its version tag, a pre-release its full
           # pre-release version), so a rebuild of main can never re-point what
@@ -323,14 +278,12 @@ jobs:
       issues: write
     steps:
       # Nobody watches an unattended rebuild. A push-triggered run fails after
-      # its PR has already merged, and a scheduled one on a seven-day cadence;
+      # its PR has already merged, and a scheduled one overnight;
       # either is invisible until someone opens the Actions tab, and the whole
       # point of both triggers is that a Dockerfile that stopped building is
-      # caught when it merges rather than at the next release -- so a rebuild
-      # of main that stopped working has to say so somewhere durable. The push
-      # trigger runs on every relevant merge, so its failures are the ones most
-      # worth reporting. One open issue,
-      # re-commented rather than duplicated, in the manner of
+      # caught by the next daily run rather than at the next release -- so a rebuild
+      # of main that stopped working has to say so somewhere durable. One open
+      # issue, re-commented rather than duplicated, in the manner of
       # orphaned-stacked-merge-monitor.yml.
       - name: Report a failed rebuild of main
         env:
@@ -349,7 +302,7 @@ jobs:
           Run: ${RUN_URL}
           Commit: ${GITHUB_SHA}
 
-          Once the cause is fixed on \`main\`, dispatch this workflow from \`main\` to rebuild without waiting for the next relevant merge or the Wednesday cron."
+          Once the cause is fixed on \`main\`, dispatch this workflow from \`main\` to rebuild without waiting for the next Docker change or the daily cron."
 
           existing="$(gh issue list --state open --search "\"${TITLE}\" in:title" --json number,title \
             --jq "[.[] | select(.title == \"${TITLE}\")] | first | .number // empty")"

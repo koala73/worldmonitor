@@ -34,7 +34,7 @@ import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { ROUTE_EXPLORER_LANE_KEY } from '../../../_shared/cache-keys';
 import { CHOKEPOINT_STATUS_KEY } from '../../../_shared/cache-keys';
 import { CHOKEPOINT_REGISTRY } from '../../../_shared/chokepoint-registry';
-import { BYPASS_CORRIDORS_BY_CHOKEPOINT } from '../../../_shared/bypass-corridors';
+import { BYPASS_CORRIDORS_BY_CHOKEPOINT, corridorServesOrigin } from '../../../_shared/bypass-corridors';
 import type { BypassCorridor, CargoType } from '../../../_shared/bypass-corridors';
 import { TIER_RANK } from './_insurance-tier';
 import COUNTRY_PORT_CLUSTERS from '../../../../scripts/shared/country-port-clusters.json';
@@ -273,7 +273,8 @@ export async function computeLane(
         .filter((c) => {
           if (PLACEHOLDER_CORRIDOR_IDS.has(c.id)) return false;
           if (c.suitableCargoTypes.length > 0 && !c.suitableCargoTypes.includes(cargoType as CargoType)) return false;
-          return true;
+          // A pipeline for one exporter's crude is no route for anyone else's cargo.
+          return corridorServesOrigin(c, fromIso2);
         })
         .slice(0, 5)
         .map((c) => buildBypassOption(c, primaryChokepoint.chokepointId, statusMap))

@@ -30,7 +30,7 @@ const add = (source, id, detail) => rules.push({ rule: `${source}:${id}`, source
 // 1. productCatalog — every (plan × gating field) pair
 {
   const s = R('convex/config/productCatalog.ts');
-  const FIELDS = ['tier','maxDashboards','apiRateLimit','prioritySupport','mcpAccess','dataExport','apiAccess','embedAccess','apiRequestsPerDay','apiBurstRequestsPerMinute','mcpCallsPerDay','mcpBurstRequestsPerMinute','apiDailyAllowance','exportFormats','historyDays'];
+  const FIELDS = ['tier','maxDashboards','apiRateLimit','prioritySupport','mcpAccess','dataExport','apiAccess','embedAccess','desktopKeyAccess','maxDesktopKeys','desktopKeyRequestsPerDay','desktopKeyBurstPerMinute','apiRequestsPerDay','apiBurstRequestsPerMinute','mcpCallsPerDay','mcpBurstRequestsPerMinute','apiDailyAllowance','exportFormats','historyDays'];
   for (const m of s.matchAll(/const (FREE|PRO|PRO_BUSINESS|API_STARTER|API_BUSINESS|ENTERPRISE)_FEATURES[^=]*=\s*\{([\s\S]*?)\n\};/g)) {
     const [, plan, body] = m;
     for (const f of FIELDS) {
@@ -72,7 +72,7 @@ for (const f of ['src/config/panels.ts','convex/constants.ts','src/services/gate
 
 
 // ------------------------------------------------------- code-site gates
-const PAT = "features\\.tier\\s*[<>=]|tier\\s*[<>]=?\\s*1|!hasPremiumAccess\\(\\)|features\\.apiAccess|features\\.mcpAccess|features\\.dataExport|requiresPremium|isCallerPremium\\(|has(Account)?EmbedAccess\\(|resolvePremiumCallerIdentity\\(|!isProUser\\(\\)";
+const PAT = "features\\.tier\\s*[<>=]|tier\\s*[<>]=?\\s*1|!hasPremiumAccess\\(\\)|features\\.apiAccess|features\\.mcpAccess|features\\.dataExport|requiresPremium|isCallerPremium\\(|has(Account)?EmbedAccess\\(|hasDesktopKeyAccess\\(|admitsDesktopKeyPrincipal\\(|resolvePremiumCallerIdentity\\(|!isProUser\\(\\)";
 const out = execSync(`grep -rnE "${PAT}" --include="*.ts" --include="*.js" src api convex server 2>/dev/null || true`, { encoding: 'utf8', maxBuffer: 1 << 26 });
 const sites = [];
 for (const ln of out.split('\n')) {
@@ -91,6 +91,7 @@ for (const ln of out.split('\n')) {
     : /features\.mcpAccess/.test(t)  ? 'mcpAccess'
     : /features\.dataExport/.test(t) ? 'dataExport'
     : /has(?:Account)?EmbedAccess\(/.test(t) ? 'embedAccess'
+    : /hasDesktopKeyAccess\(|admitsDesktopKeyPrincipal\(/.test(t) ? 'desktopKeyAccess'
     : /requiresPremium/.test(t)      ? 'requiresPremium'
     : /isCallerPremium\(/.test(t)    ? 'isCallerPremium'
     : /resolvePremiumCallerIdentity\(/.test(t) ? 'resolvePremiumCallerIdentity'
@@ -111,6 +112,10 @@ const MAP = [
   [/^catalog:\w+\.dataExport$/,              { cap: 'export.data' }],
   [/^catalog:\w+\.apiAccess$/,               { cap: 'api.keys' }],
   [/^catalog:\w+\.embedAccess$/,             { cap: 'embed.panels', note: 'wme_ key issuance' }],
+  [/^catalog:\w+\.desktopKeyAccess$/,        { cap: 'desktop.keys', note: 'desktop wm_ key issuance and use' }],
+  [/^catalog:\w+\.maxDesktopKeys$/,          { cap: 'desktop.keys', note: 'active desktop keys per account' }],
+  [/^catalog:\w+\.desktopKeyRequestsPerDay$/,{ cap: 'desktop.keys', note: 'per-account daily ceiling' }],
+  [/^catalog:\w+\.desktopKeyBurstPerMinute$/,{ cap: 'desktop.keys', note: 'per-account burst ceiling' }],
   [/^catalog:\w+\.apiRequestsPerDay$/,       { cap: 'api.rest' }],
   [/^catalog:\w+\.apiRateLimit$/,            { cap: 'api.rest', note: 'rate ceiling' }],
   [/^catalog:\w+\.apiBurstRequestsPerMinute$/,{ cap: 'api.rest', note: 'burst ceiling' }],
@@ -142,6 +147,8 @@ const MAP = [
   // WSB scanner RPC (#8043): same premium surface as panel wsb-ticker-scanner.
   [/:\/api\/intelligence\/v1\/list-wsb-tickers$/, { cap: 'markets.wsb' }],
   [/:\/api\/intelligence\/v1\/classify-event$/,           { cap: 'news.classification' }],
+  [/:\/api\/news\/v1\/list-media-perspective$/,          { cap: 'news.media_perspective' }],
+  [/:\/api\/news\/v1\/list-news-pool$/,                   { cap: 'news.pool' }],
   [/:\/api\/intelligence\/v1\/deduct-situation$/,         { cap: 'intel.deduction' }],
   [/:\/api\/intelligence\/v1\/(search-intel-history|get-intel-timeline|get-similar-events)$/, { cap: 'intel.memory' }],
   // get-country-coverage (#7526) is the agent-facing sibling of the country
@@ -235,6 +242,12 @@ const SITE_MAP = [
   [/api\/widget-agent\.ts/,                   { cap: 'widgets.custom' , preds: ['tier'] }],
   [/summarize-article\.ts/,                   { cap: 'news.summarization' , preds: ['requiresPremium','resolvePremiumCallerIdentity'] }],
   [/gates\/playback/,                         { cap: 'playback.historical' }], // NOTE: matches no current gate
+  // --- desktop keys (plan 2026-10-25-001): issuance in Convex, admission at the edge ---
+  [/convex\/apiKeys\.ts/,                     { cap: 'desktop.keys', note: 'desktop wm_ key issuance — tier>=1 + desktopKeyAccess on the merged features, capped by maxDesktopKeys' , preds: ['desktopKeyAccess'] }],
+  [/server\/_shared\/desktop-key-principal\.ts/, { cap: 'desktop.keys', note: 'scope of a validated wm_ principal: api (owner has apiAccess) vs desktop (desktopKeyAccess or apiAccess, oldest keys up to maxDesktopKeys) — read by the gateway and premium-check; the tier/apiAccess reads in needsDesktopKeyShape only decide whether a pre-deploy cache entry must be refetched for that verdict' , preds: ['apiAccess','desktopKeyAccess','tier'] }],
+  [/api\/_user-api-key\.js/,                  { cap: 'desktop.keys', note: 'bootstrap admission of a desktop principal through the shared predicate' , preds: ['desktopKeyAccess'] }],
+  [/api\/mcp\/auth\.ts/,                    { cap: 'desktop.keys', note: 'MCP via wm_ key refuses an owner on a desktop-key plan without current apiAccess (KTD5 downgrade case); free owners keep the #6716 allowance' , preds: ['apiAccess'] }],
+  [/UnifiedSettings/,                         { cap: 'desktop.keys', note: 'settings chooses the desktop-key box for owners the predicate admits' , preds: ['desktopKeyAccess'] }],
   [/convex\/apiKeys\.ts/,                     { cap: 'api.keys' , preds: ['apiAccess'] }],
   [/convex\/embedKeys\.ts/,                   { cap: 'embed.panels', note: 'wme_ key issuance — tier>=1 + embedAccess, deliberately not apiAccess' , preds: ['embedAccess'] }],
   [/src\/services\/entitlements\.ts/,        { cap: 'embed.panels', note: 'browser account-level embed access predicate' , preds: ['embedAccess'] }],
@@ -310,8 +323,11 @@ export function diffSiteCounts(actual, baseline = SITE_BASELINE) {
 // watching the sweep stay green. Pinning the expected count closes it: any
 // added or removed gate changes a count and must be re-baselined deliberately.
 const SITE_BASELINE = {
+  "api/_user-api-key.js::desktopKeyAccess": 1,
   "api/chat-analyst.ts::resolvePremiumCallerIdentity": 1,
   "api/mcp-proxy.ts::resolvePremiumCallerIdentity": 1,
+  "api/mcp/auth.ts::apiAccess": 1,
+  "api/mcp/auth.ts::tier": 1,
   "api/mcp/skill-extension/generated.ts::tier": 1,
   "api/mcp/ui/news-intelligence-app.ts::tier": 1,
   "api/me/entitlement.ts::isCallerPremium": 1,
@@ -320,7 +336,8 @@ const SITE_BASELINE = {
   "api/v2/shipping/webhooks/[subscriberId]/[action].ts::resolvePremiumCallerIdentity": 1,
   "api/widget-agent.ts::tier": 2,
   "convex/alertRules.ts::tier": 1,
-  "convex/apiKeys.ts::apiAccess": 1,
+  "convex/apiKeys.ts::apiAccess": 2,
+  "convex/apiKeys.ts::desktopKeyAccess": 1,
   "convex/apiPlanLimitUsage.ts::apiAccess": 1,
   "convex/apiPlanLimitUsage.ts::mcpAccess": 1,
   "convex/apiPlanLimitUsage.ts::tier": 2,
@@ -335,19 +352,21 @@ const SITE_BASELINE = {
   "convex/notificationChannels.ts::tier": 1,
   "convex/payments/billing.ts::tier": 1,
   "server/_shared/country-history-access.ts::tier": 1,
+  "server/_shared/desktop-key-principal.ts::apiAccess": 2,
+  "server/_shared/desktop-key-principal.ts::desktopKeyAccess": 1,
+  "server/_shared/desktop-key-principal.ts::tier": 1,
   "server/_shared/direct-llm-quota.ts::tier": 1,
   "server/_shared/embed-entitlement.ts::embedAccess": 2,
   "server/_shared/embed-session.ts::embedAccess": 2,
   "server/_shared/entitlement-check.ts::apiAccess": 1,
-  "server/_shared/entitlement-check.ts::tier": 2,
-  "server/_shared/premium-check.ts::apiAccess": 1,
+  "server/_shared/entitlement-check.ts::tier": 3,
   "server/_shared/premium-check.ts::isCallerPremium": 1,
   "server/_shared/premium-check.ts::resolvePremiumCallerIdentity": 3,
-  "server/_shared/premium-check.ts::tier": 4,
+  "server/_shared/premium-check.ts::tier": 5,
   "server/_shared/pro-entitlement.ts::tier": 1,
   "server/_shared/pro-mcp-gate.ts::mcpAccess": 2,
   "server/_shared/pro-mcp-gate.ts::tier": 1,
-  "server/gateway.ts::apiAccess": 3,
+  "server/gateway.ts::apiAccess": 1,
   "server/gateway.ts::embedAccess": 1,
   "server/gateway.ts::tier": 5,
   "server/worldmonitor/intelligence/v1/deduct-situation.ts::isCallerPremium": 1,
@@ -372,6 +391,7 @@ const SITE_BASELINE = {
   "src/app/panel-layout.ts::hasPremiumAccess": 1,
   "src/components/RegionalIntelligenceBoard.ts::hasPremiumAccess": 1,
   "src/components/TelegramIntelPanel.ts::hasPremiumAccess": 1,
+  "src/components/UnifiedSettings.ts::desktopKeyAccess": 1,
   "src/components/UnifiedSettings.ts::isProUser": 1,
   "src/services/analysis-framework-store.ts::hasPremiumAccess": 1,
   "src/services/correlation-engine/engine.ts::hasPremiumAccess": 1,

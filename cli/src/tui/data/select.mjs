@@ -242,7 +242,9 @@ export function streamCandidates(sources, resolved, now = Date.now()) {
     if (channelId) {
       const r = channels[channelId];
       const at = r?.resolvedAt ? Date.parse(r.resolvedAt) : 0;
-      if (r?.videoId && now - at < 36 * 3600 * 1000) {
+      // videoId comes from a bootstrap payload; only a bare 11-char YouTube id
+      // may reach the URL, label and the terminal banner.
+      if (typeof r?.videoId === 'string' && /^[\w-]{11}$/.test(r.videoId) && now - at < 36 * 3600 * 1000) {
         add({ kind: 'youtube', url: `https://www.youtube.com/watch?v=${r.videoId}`, label: `resolved live ${r.videoId}` });
       }
       add({ kind: 'youtube-channel', url: `https://www.youtube.com/channel/${channelId}/live`, label: `channel live` });

@@ -162,7 +162,7 @@ const RELAY_INVENTORY_BUILD_INPUTS = Object.freeze([
   'shared/source-attribution-manifest.json',
   'public/.well-known/mcp/server-card.json',
   'src/components/**/*.ts',
-  'src/config/feeds.ts',
+  'shared/news-catalog.json',
   'src/config/map-layer-definitions.ts',
   'src/config/variants/*.ts',
   'src/locales/*.json',
@@ -1003,9 +1003,18 @@ describe('planned Railway service lifecycle', () => {
       // `node seed-live-video-resolved.mjs` on cron 0 */6 * * * and has
       // published once. Leaving it planned would exempt a live cron from the
       // watch-path and deploy-drift checks.
+      // seed-no2-activity (#9722) is deliberately ABSENT: service
+      // 359e5bd7-4160-41d6-8792-f4aff20a3006 runs `node seed-no2-activity.mjs`
+      // on cron 20 6 * * * with the CDSE credentials. Leaving it planned would
+      // exempt a live cron from the watch-path and deploy-drift checks.
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',
+      // seed-ukmto-incidents (#9832) is deliberately ABSENT now: service
+      // fa702bee-b70c-44de-9aca-9cea889e89fb runs
+      // `node seed-ukmto-incidents.mjs` on cron */30 * * * * against the
+      // hormuz.data-tracking.net republication (#9858). Leaving it planned
+      // would exempt a live cron from the watch-path and deploy-drift checks.
       'seed-weather-alerts',
       // seed-notam-nms (#9637) is deliberately ABSENT now: it landed planned
       // until FAA granted production NMS-API access, and service

@@ -432,6 +432,27 @@ describe('listMarketQuotes seed-first resolution', () => {
     assert.deepEqual(lines.filter((line) => line.includes('gap-fetch cutoffs')), []);
   });
 
+  it('does not negative-cache a malformed HTTP-200 quote and recovers on retry', async () => {
+    const h = installHarness({
+      seed: seedPayload(['AAPL']),
+      provider: { RIVN: { status: 200, body: {} } },
+    });
+
+    const first = await listMarketQuotes(CTX, { symbols: ['AAPL', 'RIVN'] });
+
+    assert.equal(reasonFor(first, 'RIVN'), 'MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_ERROR');
+    assert.ok(!h.redisSets.some((s) => s.key === 'market:custom-quote:v1:RIVN'));
+
+    h.provider.set('RIVN', okQuote(12.5, 2));
+    // Simulate expiry of the intentional three-second local error backoff.
+    __clearLocalUnavailableBackoffForTests();
+    const second = await listMarketQuotes(CTX, { symbols: ['AAPL', 'RIVN'] });
+
+    assert.deepEqual(symbolsOf(second), ['AAPL', 'RIVN']);
+    assert.deepEqual(h.finnhubCalls, ['RIVN', 'RIVN']);
+    assert.equal(second.quotes.find((q) => q.symbol === 'RIVN')?.price, 12.5);
+  });
+
   it('surfaces a provider rate limit on both the symbol and the response flag', async () => {
     installHarness({ seed: seedPayload(['AAPL']), provider: { AFRM: { status: 429 } } });
     const lines: string[] = [];

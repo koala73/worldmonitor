@@ -777,7 +777,15 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     }
 
     requestAnimationFrame(() => {
-      modal.querySelector<HTMLElement>('.pro-activation-primary')?.focus();
+      const primary = modal.querySelector<HTMLElement>('.pro-activation-primary');
+      const body = modal.querySelector<HTMLElement>('.pro-activation-body');
+      if (!primary || !body) return;
+      const actionBounds = primary.getBoundingClientRect();
+      const bodyBounds = body.getBoundingClientRect();
+      const target = actionBounds.top >= bodyBounds.top && actionBounds.bottom <= bodyBounds.bottom
+        ? primary
+        : modal.querySelector<HTMLElement>('.pro-activation-close');
+      target?.focus({ preventScroll: true });
     });
   }
 

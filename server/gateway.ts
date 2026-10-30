@@ -92,6 +92,15 @@ import {
   rateLimitHeaders,
   ENTERPRISE_API_RATE_LIMIT,
 } from './_shared/api-key-rate-limit';
+import { isApiOnlyPath } from './_shared/api-only-paths';
+import {
+  DESKTOP_KEY_API_ONLY_ERROR,
+  DESKTOP_KEY_LIMIT_ERROR,
+  resolveUserKeyEntitlement,
+  resolveUserKeyScope,
+} from './_shared/desktop-key-principal';
+import { chargeDesktopKeyBudget } from './_shared/desktop-key-meter';
+import type { UserKeyPrincipal } from './_shared/user-api-key';
 import {
   DIRECT_LLM_DAILY_QUOTA_LIMIT,
   DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
@@ -314,6 +323,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/natural/v1/list-natural-events': 'slow',
   '/api/wildfire/v1/list-fire-detections': 'static',
   '/api/maritime/v1/list-navigational-warnings': 'static',
+  '/api/maritime/v1/list-ukmto-incidents': 'no-store',
   '/api/supply-chain/v1/get-china-corridor-control-towers': 'medium',
   '/api/supply-chain/v1/get-shipping-rates': 'daily',
   '/api/supply-chain/v1/list-pipelines': 'static',
@@ -427,6 +437,10 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   // holding one body for an hour made the CDN the freshness floor.
   '/api/news/v1/list-feed-digest': 'fast',
   '/api/news/v1/list-country-headlines': 'fast',
+  '/api/news/v1/list-media-perspective': 'fast',
+  '/api/news/v1/list-news-pool': 'fast',
+  // #9796: cached feed rows for a panel's enabled sources below the category cap.
+  '/api/news/v1/list-source-items': 'fast',
   '/api/news/v1/list-label-changes': 'fast',
   // #9093 operator queue: never cached, it is gated by a secret header.
   '/api/news/v1/list-error-reports': 'no-store',
@@ -474,6 +488,8 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-economic-calendar': 'slow',
   '/api/economic/v1/get-china-macro-snapshot': 'slow',
   '/api/economic/v1/get-china-activity-nowcast': 'medium',
+  // Daily seed (#9722); the CDN key carries the country_code, region_id and kind filters.
+  '/api/economic/v1/get-no2-activity': 'slow',
   '/api/intelligence/v1/list-market-implications': 'slow',
   '/api/intelligence/v1/list-wsb-tickers': 'no-store',
   '/api/economic/v1/get-ecb-fx-rates': 'slow',
@@ -1007,6 +1023,18 @@ export const CREDENTIAL_BEARING_HEADERS = [
   'Cookie',
 ] as const;
 
+// The only caller headers a `.md` twin's in-process sibling request carries:
+// the network identity the rate limiters and usage telemetry key on, and the
+// Origin the CORS allowlist checks. Credentials (CREDENTIAL_BEARING_HEADERS)
+// and gateway-internal markers are deliberately absent.
+const MARKDOWN_TWIN_CALLER_HEADERS = [
+  'x-real-ip',
+  'x-vercel-forwarded-for',
+  'cf-connecting-ip',
+  'x-wm-edge-proof',
+  'origin',
+] as const;
+
 export function hasCredentialBearingHeader(request: Request): boolean {
   return CREDENTIAL_BEARING_HEADERS.some((header) => Boolean(request.headers.get(header)));
 }
@@ -1063,16 +1091,17 @@ export function createDomainGateway(
 
     // Vercel resolves versioned API paths such as
     // `/api/forecast/v1/get-forecast-scorecard.md` to the more-specific
-    // `api/<domain>/v1/[rpc].ts` function before the root API catch-all. Handle
-    // markdown probes here, before auth and RPC dispatch, so every dynamic
-    // domain gateway follows the same site-wide `.md` twin contract without a
-    // broad rewrite that would shadow the real endpoints (#4724).
+    // `api/<domain>/v1/[rpc].ts` function before the root API catch-all, so
+    // every dynamic domain gateway serves the site-wide `.md` twin contract
+    // here without a broad rewrite that would shadow the real endpoints
+    // (#4724). The sibling is dispatched back through this gateway in-process,
+    // so origin, auth and both rate limiters run exactly as on a direct call.
     if (
       originalPathname.startsWith('/api/') &&
       isMarkdownTwinPath(originalPathname) &&
       (originalRequest.method === 'GET' || originalRequest.method === 'HEAD')
     ) {
-      return buildMarkdownTwinResponse(originalRequest, originalPathname);
+      return serveMarkdownTwin(originalRequest, originalPathname, ctx);
     }
 
     let request = stripClientTrustedHeaders(originalRequest);
@@ -1615,6 +1644,9 @@ export function createDomainGateway(
     // wm_ key is still an explicit authenticating credential and its owner must
     // pass the #4611 apiAccess gate.
     let isUserApiKey = false;
+    // The validated wm_ principal with its kind (plan 2026-10-25-001). Set
+    // together with isUserApiKey; the #4611 gate below reads the kind.
+    let userKeyPrincipal: UserKeyPrincipal | null = null;
     const wmKey = getHeaderApiKey(request);
     const dockerSelfHostSessionAuthorized =
       isDockerSelfHostCountryBrief &&
@@ -1645,15 +1677,21 @@ export function createDomainGateway(
         return validationGuardResponse;
       }
 
-      // Only destructure validateUserApiKey: several gateway unit tests mock this
-      // module with a partial surface. Requiring isUserApiKeyUnavailableError at
-      // import time breaks those mocks (vitest throws "No export is defined").
-      // Classify unavailability by the stable `code` field instead.
-      const { validateUserApiKey } = await import('./_shared/user-api-key');
+      // Only destructure validateUserApiKeyPrincipal: several gateway unit tests
+      // mock this module with a partial surface. Requiring
+      // isUserApiKeyUnavailableError at import time breaks those mocks (vitest
+      // throws "No export is defined"). Classify unavailability by the stable
+      // `code` field instead.
+      //
+      // The desktop-aware variant (KTD3): it returns `api` AND `desktop` keys
+      // with their kind, and the #4611 gate below decides what the kind may
+      // reach. The generic validator would answer 401 for every desktop key.
+      const { validateUserApiKeyPrincipal } = await import('./_shared/user-api-key');
       try {
-        const userKeyResult = await validateUserApiKey(wmKey);
+        const userKeyResult = await validateUserApiKeyPrincipal(wmKey);
         if (userKeyResult) {
           isUserApiKey = true;
+          userKeyPrincipal = userKeyResult;
           usage.isUserApiKey = true;
           usage.userApiKeyCustomerRef = userKeyResult.userId;
           keyCheck = { valid: true, required: true };
@@ -1832,17 +1870,29 @@ export function createDomainGateway(
     //     negative cache, ahead of any rate limit) for no revenue gain — public
     //     data is not the paid product — and would wrongly gate the
     //     intentionally-anonymous lead-capture forms.
+    //
+    // Kind routes before plan (plan 2026-10-25-001, KTD4/KTD5): a `desktop`
+    // key never enters the apiAccess branch. It — or a downgraded owner's
+    // `api` key within `maxDesktopKeys` — is admitted when the owner is
+    // covered and holds desktopKeyAccess (or apiAccess, the R8 upgrade case),
+    // then gets exactly the checks a signed-in Pro session gets below
+    // (checkEntitlementDetailed on the owner's tier, the legacy Pro bearer
+    // gate already satisfied by the key), the owner as rate-limit principal,
+    // the desktop meter instead of the #3199 REST meter, and a 403 on every
+    // path in the API-only set (KTD7). An `api` key whose owner has apiAccess
+    // keeps today's behaviour exactly.
     let userKeyEntitlement: CachedEntitlements | null | undefined;
-    if (isUserApiKey && sessionUserId) {
-      userKeyEntitlement = await getEntitlements(sessionUserId);
+    let isDesktopPrincipal = false;
+    if (isUserApiKey && sessionUserId && userKeyPrincipal) {
+      // One cached read; a pre-deploy entry that cannot answer the desktop
+      // decision is refetched through Convex (desktop-key-principal.ts).
+      userKeyEntitlement = await resolveUserKeyEntitlement(sessionUserId, userKeyPrincipal);
       recordUsageEntitlement(userKeyEntitlement);
-      const apiAccessCovered = !!userKeyEntitlement &&
-        userKeyEntitlement.features.apiAccess &&
-        hasCurrentEntitlementCoverage(userKeyEntitlement);
+      const keyScope = resolveUserKeyScope(userKeyPrincipal, userKeyEntitlement);
       const billingDenial = denyForBillingVerification(
         userKeyEntitlement,
         corsHeaders,
-        apiAccessCovered,
+        keyScope.scope !== 'denied',
       );
       if (billingDenial) return billingDenial;
       // Key ownership does not prove paid access. Missing configuration and
@@ -1865,16 +1915,25 @@ export function createDomainGateway(
             },
           },
         );
-      } else if (
-        !userKeyEntitlement.features.apiAccess ||
-        !hasCurrentEntitlementCoverage(userKeyEntitlement)
-      ) {
+      } else if (keyScope.scope === 'denied') {
         emitRequest(403, 'tier_403', null);
         return createGatewayAuthErrorResponse(
           403,
-          'API access requires an active subscription',
+          keyScope.reason === 'over_cap'
+            ? DESKTOP_KEY_LIMIT_ERROR
+            : userKeyPrincipal.keyKind === 'desktop'
+              ? 'Pro subscription required'
+              : 'API access requires an active subscription',
           corsHeaders,
         );
+      } else if (keyScope.scope === 'desktop') {
+        if (isApiOnlyPath(pathname)) {
+          emitRequest(403, 'tier_403', null);
+          return createGatewayAuthErrorResponse(403, DESKTOP_KEY_API_ONLY_ERROR, corsHeaders);
+        }
+        // Pro-session treatment from here on, attributed to the owner.
+        isDesktopPrincipal = true;
+        rateLimitPrincipalUserId = sessionUserId;
       } else {
         // A validated user key plus active apiAccess is a trusted paid
         // principal even on routes without an endpoint tier policy.
@@ -1988,6 +2047,16 @@ export function createDomainGateway(
       && Boolean(enterpriseCredential)
       && !isUserApiKey
       && keyCheck.kind === 'enterprise';
+    if (requiresDirectLlmQuota && isEnterpriseAuth && enterpriseCredential !== wmKey) {
+      const origin = request.headers.get('Origin');
+      const hasRequestIntent = origin
+        ? isAllowedOrigin(origin)
+        : request.headers.get('Sec-Fetch-Site') === 'same-origin';
+      if (!hasRequestIntent) {
+        emitRequest(403, 'auth_403', null);
+        return createGatewayAuthErrorResponse(403, 'Request intent required for cookie-authorized AI work', corsHeaders);
+      }
+    }
     if (
       !dockerSelfHostSessionAuthorized &&
       !isEnterpriseAuth &&
@@ -2143,7 +2212,9 @@ export function createDomainGateway(
     const hasIdempotencyKey = request.method === 'POST'
       && request.headers.has(IDEMPOTENCY_HEADER)
       && !IDEMPOTENCY_EXEMPT_RPC_PATHS.has(pathname);
-    const idScope = identityForScope.principal_id ?? identityForScope.customer_id;
+    const idScope = isUserApiKey && pathname === '/api/v2/shipping/webhooks'
+      ? userKeyPrincipal?.keyHash ?? null
+      : identityForScope.principal_id ?? identityForScope.customer_id;
     const idempotencyScope = idScope ? `${identityForScope.auth_kind}:${idScope}` : null;
 
     // Look up an existing idempotency record before rate-limit/quota counters.
@@ -2252,7 +2323,35 @@ export function createDomainGateway(
       // carry no entitlement and use hardcoded limits.
       let governedByApiKeyLayer = false;
       let rollbackDailyMeter: (() => Promise<void>) | undefined;
-      if (keyCheck.valid && (isUserApiKey || isEnterpriseAuth)) {
+
+      // ── Per-account desktop-key meter (plan 2026-10-25-001, KTD6) ────────
+      // One counter per OWNER per UTC day plus a per-minute burst bucket, so
+      // two keys share one allowance and revoke-and-recreate cannot reset it.
+      // Replaces the #3199 REST meter for desktop principals (they are Pro
+      // subscribers, not API customers) and runs on every route, sub-requests
+      // included, like the account meters above. Fails CLOSED: a Redis error
+      // is the same rate-limit-degraded 503 the sub-request admission emits.
+      if (isDesktopPrincipal && sessionUserId) {
+        const budget = await chargeDesktopKeyBudget({
+          userId: sessionUserId,
+          entitlement: userKeyEntitlement,
+          pipeline: (cmds) => runRedisPipeline(cmds),
+        });
+        if (!budget.ok) {
+          emitRequest(
+            budget.status,
+            budget.reason === 'unavailable' ? 'rate_limit_degraded' : budget.reason === 'daily' ? 'rl_ceiling_429' : 'rl_min_429',
+            null,
+          );
+          return new Response(JSON.stringify(budget.body), {
+            status: budget.status,
+            headers: { 'Content-Type': 'application/json', ...budget.headers, ...corsHeaders },
+          });
+        }
+        rollbackDailyMeter = budget.rollback;
+      }
+
+      if (keyCheck.valid && (isUserApiKey || isEnterpriseAuth) && !isDesktopPrincipal) {
         const enforce = process.env.API_RATE_LIMIT_ENFORCE === 'true';
         let perMinute = 0;
         let allowance = -1;
@@ -2837,7 +2936,47 @@ export function createDomainGateway(
     });
   }
 
-  return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
+  // A `.md` twin of an API route. The sibling request never leaves this
+  // isolate: an HTTP self-fetch reaches the gateway from the platform egress
+  // address with no caller headers, so every per-IP limiter charged one bucket
+  // shared by all twin readers and the caller was never charged at all.
+  //
+  // The sibling carries only the caller's network identity and Origin. Never a
+  // credential: a twin is an anonymous rendering, and its body is cached by
+  // the sibling's rules. The identity headers arrive from the platform exactly
+  // as on the twin request itself, and the gateway re-derives trust from them
+  // (edge proof, Origin allowlist) the same way it does for a direct call.
+  async function serveMarkdownTwin(caller: Request, markdownPath: string, ctx?: GatewayCtx): Promise<Response> {
+    let corsHeaders: Record<string, string>;
+    try {
+      corsHeaders = isDisallowedOrigin(caller) ? getOriginDeniedCorsHeaders(caller) : getCorsHeaders(caller);
+    } catch {
+      // Fail closed: no CORS headers means a browser blocks any cross-origin
+      // read. The sibling dispatch reports the same failure as its own 500.
+      corsHeaders = {};
+    }
+    const callerOrigin = new URL(caller.url).origin;
+    const dispatchSibling = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      // Only a route this gateway serves; never a network fetch. A redirect
+      // onto any other path ends as a plain 404.
+      if (url.origin !== callerOrigin || router.allowedMethods(stripTrailingSlashes(url.pathname)).length === 0) {
+        return new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } });
+      }
+      const headers = new Headers(init?.headers);
+      for (const name of MARKDOWN_TWIN_CALLER_HEADERS) {
+        const value = caller.headers.get(name);
+        if (value) headers.set(name, value);
+      }
+      return gatewayHandler(new Request(url, { method: init?.method ?? 'GET', headers, signal: init?.signal }), ctx);
+    }) as typeof fetch;
+    return buildMarkdownTwinResponse(caller, markdownPath, dispatchSibling, {
+      corsHeaders,
+      inheritSiblingCacheControl: true,
+    });
+  }
+
+  const gatewayHandler = async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
     let response: Response;
     try {
       response = await dispatch(originalRequest, ctx);
@@ -2854,4 +2993,5 @@ export function createDomainGateway(
     pendingDirectLlmReservations.delete(originalRequest);
     return originalRequest.method === 'HEAD' ? toHeadResponse(response) : response;
   };
+  return gatewayHandler;
 }

@@ -197,11 +197,14 @@ paths:
                     content:
                         application/json:
                             example:
-                                "error": "example"
+                                "error": ""
                                 "lastUpdated": "2026-01-15T12:00:00.000Z"
-                                "playerUrl": "https://example.com/worldmonitor"
-                                "thumbnailUrl": "https://example.com/worldmonitor"
-                                "title": "example"
+                                "mediaType": "snapshot"
+                                "playerUrl": ""
+                                "resolvedAt": 1768478460000
+                                "thumbnailUrl": "https://example.com/cam.jpg"
+                                "title": "Port camera"
+                                "windyUrl": "https://www.windy.com/webcams/123"
                             schema:
                                 $ref: '#/components/schemas/GetWebcamImageResponse'
                 "400":
@@ -520,10 +523,13 @@ components:
                     type: string
                 lastUpdated:
                     type: string
-                    description: |-
-                        ISO-8601 datetime string of the webcam's most recent update
-                         (e.g. "2026-07-03T12:00:00.000Z"); empty string when unknown or unavailable.
-                         String (not int64): the handler emits new Date(...).toISOString(), so the
-                         field carries a datetime string, never epoch milliseconds.
+                    description: Latest image update as an ISO-8601 string; empty if unknown or unavailable.
                 error:
                     type: string
+                resolvedAt:
+                    type: integer
+                    format: int64
+                    description: 'URL resolution time in Unix milliseconds, not image capture time.. Warning: Values > 2^53 may lose precision in JavaScript'
+                mediaType:
+                    type: string
+                    description: snapshot, timelapse or live. A live URL does not confirm the camera is online.

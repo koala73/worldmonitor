@@ -52,6 +52,7 @@ const BANNED_URLS = [
   'https://mcp-fetch.cloudflare.com/mcp',        // wrong — old Browser Fetch URL
   'https://server.smithery.ai/@amadevs/mcp-server-overpass/mcp', // 404 on Smithery
   'https://weatherforensics.dev/mcp/free', // vendor backend unavailable; replaced by Open-Meteo
+  'https://radar.mcp.cloudflare.com/sse',        // 410 since 2026-10; Cloudflare moved Radar to /mcp
 ];
 
 // Private/RFC1918 host patterns (SSRF risk)
@@ -190,10 +191,19 @@ describe('MCP Presets — static validation', () => {
     assert.equal(lc.defaultTool, 'Cryptocurrencies');
   });
 
-  it('Cloudflare Radar serverUrl points to radar.mcp.cloudflare.com/sse', () => {
+  it('Cloudflare Radar serverUrl points to radar.mcp.cloudflare.com/mcp', () => {
     const cf = presets.find(p => p.name === 'Cloudflare Radar');
     assert.ok(cf, 'Cloudflare Radar preset not found');
-    assert.equal(cf.serverUrl, 'https://radar.mcp.cloudflare.com/sse');
+    assert.equal(cf.serverUrl, 'https://radar.mcp.cloudflare.com/mcp');
+  });
+
+  it('Cloudflare Radar defaultTool exists upstream and sends a required date range', () => {
+    const cf = presets.find(p => p.name === 'Cloudflare Radar');
+    assert.ok(cf, 'Cloudflare Radar preset not found');
+    // get_summary_attacks is not in the Radar server's tools/list; traffic anomalies 400 without range or dates.
+    assert.equal(cf.defaultTool, 'get_traffic_anomalies');
+    const block = storeSource.slice(storeSource.indexOf("name: 'Cloudflare Radar'"));
+    assert.match(block.slice(0, block.indexOf('},\n  {')), /defaultArgs: \{ limit: 10, dateRange: '7d' \}/);
   });
 });
 

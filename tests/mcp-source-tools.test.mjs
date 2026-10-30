@@ -304,3 +304,34 @@ describe('get_sources — input handling', () => {
     assertOutputSchema(result);
   });
 });
+
+describe('get_sources — outlet profile', () => {
+  it('places BBC Persian in London writing for a diaspora, and IRNA in Iran writing for foreigners', () => {
+    const bbcPersian = outletRecord('BBC Persian').provenance;
+    assert.equal(bbcPersian.homeCountry, 'GB');
+    assert.equal(bbcPersian.audience, 'diaspora');
+    assert.equal(bbcPersian.language, 'fa');
+    const irna = outletRecord('IRNA').provenance;
+    assert.equal(irna.homeCountry, 'IR');
+    assert.equal(irna.audience, 'international');
+    assert.equal(irna.ownershipClass, 'state');
+  });
+
+  it('reports null profile fields for a name with no reviewed profile', () => {
+    const { provenance } = outletRecord('No Such Outlet');
+    assert.deepEqual(
+      [provenance.homeCountry, provenance.audience, provenance.language, provenance.ownershipClass],
+      [null, null, null, null],
+    );
+    assert.equal('summary' in provenance, false);
+  });
+
+  it('profiles every outlet the outlets view enumerates', async () => {
+    const result = await run({ view: 'outlets', limit: 200 });
+    assertOutputSchema(result);
+    assert.ok(result.outlets.length > 0);
+    for (const outlet of result.outlets) {
+      assert.notEqual(outlet.provenance.homeCountry, null, `${outlet.name} has no outlet profile`);
+    }
+  });
+});

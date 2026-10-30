@@ -7,6 +7,8 @@ import { XMLParser } from 'fast-xml-parser';
 import Papa from 'papaparse';
 
 import { decodeHtmlEntities } from './_html-entities.mjs';
+import { ADDITIONAL_TENDER_ADAPTERS } from './_global-tender-feeds.mjs';
+import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { loadEnvFile, CHROME_UA, httpRetryError, readCanonicalValue, runSeed, withRetry, writeExtraKey } from './_seed-utils.mjs';
 import {
   GLOBAL_TENDER_KEY,
@@ -18,6 +20,7 @@ import {
   normalizeCanadaBuysNotice,
   normalizeGetsNotice,
   normalizeWorldBankNotice,
+  tracksTenderFreshness,
 } from './_global-tenders.mjs';
 
 const CACHE_TTL_SECONDS = 10_800; // 3h, safely beyond the hourly Railway cadence.
@@ -113,7 +116,7 @@ function createSamFetchJson(httpsGetFn = httpsGet) {
   return async (url, options = {}) => (await fetchResponse(url, options, transport)).json();
 }
 
-export const __testing__ = { createSamFetchJson };
+export const __testing__ = { createSamFetchJson, writeSourceStatus };
 
 async function fetchText(url, options = {}) {
   return (await fetchResponse(url, { ...options, headers: { Accept: 'application/rss+xml, application/xml, text/xml', ...(options.headers || {}) } })).text();
@@ -412,6 +415,8 @@ const SOURCE_ADAPTERS = [
   ['canada-buys', fetchCanadaBuys],
   ['gets', fetchGets],
   ['world-bank', fetchWorldBank],
+  ...ADDITIONAL_TENDER_ADAPTERS.map(([source, fetchSource]) => [source,
+    (options) => fetchSource({ ...options, fetchJsonFn: fetchJson, fetchTextFn: fetchText })]),
 ];
 
 export async function fetchGlobalTenders({ previousSnapshot = null, adapters = SOURCE_ADAPTERS, now = Date.now() } = {}) {
@@ -444,7 +449,7 @@ async function recordUnavailableSourceHealth(snapshot) {
 }
 
 export function sourceHealthMeta(status) {
-  const trackedSource = ['contracts-finder', 'world-bank'].includes(status.source);
+  const trackedSource = tracksTenderFreshness(status.source);
   const successTime = status.lastSuccessfulAt || ((!trackedSource || status.state === 'ok') ? status.fetchedAt : '');
   const successfulAt = Date.parse(successTime || '');
   const failed = status.state !== 'ok';
@@ -469,6 +474,10 @@ async function writeSourceStatus(status) {
   const metaKey = `seed-meta:economic:global-tenders:${status.source}`;
   await writeExtraKey(key, status, SOURCE_STATUS_TTL_SECONDS);
   await writeExtraKey(metaKey, sourceHealthMeta(status), SOURCE_STATUS_TTL_SECONDS);
+  if (status.state === 'ok' && ADDITIONAL_TENDER_ADAPTERS.some(([source]) => source === status.source)) {
+    const creds = getOptionalUpstashCreds();
+    if (creds) await upstashCommand(creds, ['SET', `seed-activated:economic:global-tenders:${status.source}`, '1']);
+  }
 }
 
 export async function main({ adapters, now } = {}) {
@@ -486,7 +495,7 @@ export async function main({ adapters, now } = {}) {
     validateFn: validate,
     ttlSeconds: CACHE_TTL_SECONDS,
     declareRecords,
-    sourceVersion: 'sam-ted-contractsfinder-canadabuys-gets-worldbank-v2',
+    sourceVersion: 'global-tenders-16-sources-v3',
     schemaVersion: 1,
     maxStaleMin: 180,
     zeroIsValid: true,

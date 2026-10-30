@@ -259,6 +259,7 @@ jobs:
             /^scripts\/check-desktop-build-env\.mjs$/ { count++; next }
             /^scripts\/sync-desktop-version\.mjs$/ { count++; next }
             /^scripts\/check-rust-security-floors\.mjs$/ { count++; next }
+            /^scripts\/download-node\.sh$/ { count++; next }
             /^\.github\/workflows\/.*\.ya?ml$/ { count++ }
             END { print count + 0 }
           ')
@@ -327,19 +328,14 @@ jobs:
         run: node --test tests/docs-i18n-parity.test.mjs
       - name: Published internal links resolve without redirects
         run: node --import tsx --test tests/internal-link-redirects.test.mjs
-      - name: Source attribution inventory is current
-        run: node scripts/source-attribution.mjs --check
-      - name: Homepage teaser strip matches the committed pulse snapshot
-        # Belongs in this always-on job, not `unit`: a PR that touches only
-        # docs/snapshots/ sets changes.code=false and skips `unit` entirely, so
-        # the snapshot could move out from under the generated teaser strip
-        # without any gate running. Pure Node builtins, no install required.
-        run: node scripts/build-welcome-teasers.mjs --check
-      - name: Every entitlement gate is classified
-        # Fails when a new free-vs-paid gate ships without a capability id or a
-        # documented exclusion (exit 1), or when the tree is missing a source the
-        # sweep expects (exit 2) — a partial sweep must never certify as complete.
-        run: node scripts/generate-entitlement-crosswalk.mjs --check
+      - name: Derived files are current (npm run generate)
+        # Every committed generated file with a freshness check: product facts,
+        # llms.txt, AI search, source attribution, the homepage teaser strip,
+        # the entitlement crosswalk (exit 2 there means a missing source, and
+        # its output is printed), catalogs and notices. Always-on because a
+        # docs-only PR skips `unit`, yet docs feed several of these. zh-TW is
+        # skipped here (no OpenCC) and checked in unit-built-output.
+        run: node scripts/generate-derived.mjs --check
 
   unit-shards:
     name: unit-shard (${{ matrix.shard }})
@@ -449,7 +445,10 @@ jobs:
         with:
           # The health-probe cutover gate compares the exact PR base with the
           # candidate tree. A shallow checkout would make that gate vacuous.
+          # Blobless like the unit shards: the gate reads one blob
+          # (api/health.js at the base), fetched on demand.
           fetch-depth: 0
+          filter: blob:none
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
@@ -462,7 +461,7 @@ jobs:
         with:
           # setup-node restores the npm cache for this job's other install.
           npm-cache: 'false'
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
       - name: zh-TW catalogues reproduce from their Simplified source (#6555)
@@ -650,6 +649,7 @@ jobs:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: consumer-prices-core/package-lock.json
+      - uses: ./.github/actions/install-redis
       - run: npm ci --prefix consumer-prices-core
       - run: npm test --prefix consumer-prices-core
 
@@ -788,6 +788,22 @@ jobs:
         # advisory.
         run: node scripts/check-rust-security-floors.mjs
 
+  # The release build bundles Node on Windows through Git Bash, which the
+  # Linux sidecar job never runs. v2.11.5's Windows build failed there first.
+  desktop-node-windows:
+    needs: changes
+    if: needs.changes.outputs.desktop_config == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Bundle the shipped Windows Node.js runtime
+        shell: bash
+        run: bash scripts/download-node.sh --target x86_64-pc-windows-msvc
+      - name: Run the bundled Windows Node.js runtime
+        shell: bash
+        run: src-tauri/sidecar/node/node.exe --version
+
   desktop-rust:
     needs: changes
     if: needs.changes.outputs.desktop_rust == 'true'
@@ -800,7 +816,7 @@ jobs:
         with:
           toolchain: 1.99.1
       - name: Rust cache
-        uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           workspaces: './src-tauri -> target'
           cache-on-failure: true

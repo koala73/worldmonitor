@@ -232,6 +232,28 @@ function makeCtx({ strens = {}, errors = {}, metaValues = {}, metaErrors = {}, a
 }
 
 const seedMeta = (over = {}) => JSON.stringify({ fetchedAt: NOW - ONE_MIN_MS, recordCount: 5, ...over });
+
+test('NO2 publication evidence revokes activation grace and zero eligible regions remains valid', () => {
+  const name = 'no2Activity';
+  const key = STANDALONE_KEYS[name];
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+    activationStates: { [name]: false },
+    metaValues: { [SEED_META[name].key]: seedMeta() },
+  })).status, 'EMPTY');
+  for (const [age, status] of [[0, 'OK'], [4321, 'STALE_SEED']]) {
+    assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+      activationStates: { [name]: true },
+      strens: { [key]: 1024 },
+      metaValues: { [SEED_META[name].key]: seedMeta({ fetchedAt: NOW - age * ONE_MIN_MS, recordCount: 0 }) },
+    })).status, status);
+  }
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+    activationStates: { [name]: false },
+  })).status, 'EMPTY_ON_DEMAND');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+    activationStates: { [name]: true },
+  })).status, 'EMPTY');
+});
 const classifyNewsInsights = (over = {}) => classifyKey(
   'newsInsights',
   BOOTSTRAP_KEYS.newsInsights,

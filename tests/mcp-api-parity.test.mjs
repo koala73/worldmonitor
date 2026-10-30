@@ -84,6 +84,7 @@ const HTTP_METHODS = new Set([
 // -----------------------------------------------------------------------------
 
 const EXCLUDED_FROM_MCP_PARITY = new Map([
+  ['GET /api/maritime/v1/list-ukmto-incidents', 'deferred-to-future-tool: UKMTO publisher reports await activation and source-aware MCP composition (#9831)'],
 
   // === mutating (20) ===
   ["GET /api/aviation/v1/list-airport-delays",
@@ -95,8 +96,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["GET /api/resilience/v1/get-resilience-ranking",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/v2/shipping/webhooks",
-    "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
-  ["GET /api/webcam/v1/list-webcams",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["POST /api/infrastructure/v1/record-baseline-snapshot",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
@@ -180,8 +179,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["GET /api/supply-chain/v1/get-route-impact",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
-  ["GET /api/webcam/v1/get-webcam-image",
-    "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["POST /api/conflict/v1/get-humanitarian-summary-batch",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["POST /api/military/v1/get-aircraft-details-batch",
@@ -240,6 +237,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: country snapshot capture reads existing full RSS caches; a future country_headlines tool can expose this uncapped country pool"],
   ["GET /api/news/v1/list-error-reports",
     "deferred-to-future-tool: operator review queue (#9093) is secret-gated and holds private reader contacts; no MCP surface by design"],
+  ["GET /api/news/v1/list-source-items",
+    "deferred-to-future-tool: cached rows for a dashboard panel's enabled sources below the digest category cap (#9796); agents read whole categories through list-news-pool"],
   ["GET /api/news/v1/list-label-changes",
     "deferred-to-future-tool: label history (#9093) is read by the /trust page; a future trust tool can expose recent label changes"],
   ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",

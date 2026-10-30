@@ -168,7 +168,6 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /contentWindow\.postMessage/,
       /Could not compile vertex shader/,
       /objectStoreNames/,
-      /Unexpected identifier 'https'/,
       /Can't find variable: _0x/,
       // The Chromium/Gecko half of the entry above. javascript-obfuscator names
       // its identifiers `_0x<hex>`, and a userscript or extension bundle that
@@ -401,7 +400,6 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /literal not terminated before end of script/,
       /'' is not a valid selector/,
       /frappe is not defined/,
-      /Unexpected identifier 'does'/,
       /Failed reading data from the file system/,
       /^UnavailableError(:.*)?$/,
       /null is not an object \(evaluating '\w{1,3}\.indexOf'\)/,
@@ -437,7 +435,6 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Cannot set properties of undefined \(setting 'bodyTouched'\)/, // Quark browser (Alibaba mobile) touch-tracking script injection (WORLDMONITOR-N1)
       /Cannot read properties of \w+ \(reading '[^']*[^\x00-\x7F][^']*'\)/, // Non-ASCII property name in message = mojibake/corrupted identifier from injected extension; our bundle emits ASCII-only identifiers (WORLDMONITOR-NS)
       /Octal literals are not allowed in strict mode/, // Runtime SyntaxError from injected extension script; our TS bundle never emits octal literals and doesn't eval (WORLDMONITOR-NV)
-      /Unexpected identifier 'm'/, // Foreign script injection on Opera; pre-compiled bundle can't parse-fail at runtime (WORLDMONITOR-NT)
       /PlayerControlsInterface\.\w+ is not a function/, // Android Chrome WebView native bridge injection (Bilibili/UC/QQ-style host) — never emitted by our code (WORLDMONITOR-P2)
       /github\.com\/styled-components\/styled-components\/blob/, // styled-components runtime error (errors.md#N URL); we don't depend on styled-components, so it can only be a browser extension (Grammarly et al.) injecting its own bundle — WORLDMONITOR-SE
       // The Umami tracker's beacon POST failed at the network layer and the
@@ -710,6 +707,11 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       if (excType === 'TypeError' && frames.some(f => /sortedTrackListForMenu/.test(f.function ?? ''))) return null;
       // Suppress TypeErrors from anonymous/injected scripts (no real source files or only inline page URL)
       if ((excType === 'TypeError' || /^TypeError:/.test(msg)) && frames.length > 0 && frames.every(f => !f.filename || f.filename === '<anonymous>' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
+      // Suppress ReferenceErrors whose every frame is `<anonymous>` (WORLDMONITOR-1A2:
+      // `Clerk is not defined` from an injected script or console snippet). Nothing
+      // we ship evaluates code at runtime, so our own ReferenceErrors always carry a
+      // bundle or page-URL frame; stricter than the TypeError gate above on purpose.
+      if (excType === 'ReferenceError' && frames.length > 0 && frames.every(f => f.filename === '<anonymous>')) return null;
       // Suppress errors thrown by an injected browser-automation harness driving
       // the page (e.g. Floot's agent). Its selector-resolution helpers throw
       // `Element not found: <sel>`, `No element found: <sel>`, and
@@ -1152,6 +1154,15 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // token gate below misses this zero-frame variant (WORLDMONITOR-??:
           // Unexpected token 'else' / 'for', 2026-07-18).
           || /^(?:SyntaxError: )?Unexpected token '(?:else|for)'$/.test(msg)
+          // `Unexpected identifier '<name>'` from a script injected into the
+          // page: no stack at all via window.onerror (Sentry WORLDMONITOR-19G,
+          // Chrome 155 / Windows), or only `<anonymous>` / extension frames
+          // (WORLDMONITOR-NT, Opera). A parse failure in one of our hashed
+          // chunks reports that chunk's URL as its frame (hasFirstParty →
+          // preserved). Matches any identifier, and WebKit's trailing
+          // `. Expected ...` clause, so this replaces the per-identifier
+          // ignoreErrors entries that could not see frames.
+          || /^(?:SyntaxError: )?Unexpected identifier '[^']+'/.test(msg)
           // Firefox's wording for a failed `fetch()` — the engine-emitted
           // equivalent of Chrome's bare `Failed to fetch` (above) and Safari's
           // `Load failed`. Surfaces via `onunhandledrejection` with zero captured

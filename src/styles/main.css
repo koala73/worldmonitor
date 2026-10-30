@@ -1946,7 +1946,9 @@ canvas,
   bottom: 0;
   left: 0;
   right: 0;
-  height: 20px;
+  /* Stays inside .panel-content's 8px padding, with room for subpixel hit-test rounding,
+     so the strip never covers content (#9729). */
+  height: 6px;
   cursor: ns-resize;
   background: linear-gradient(to top, rgba(68, 136, 255, 0.15), transparent);
   z-index: 100;
@@ -1964,13 +1966,14 @@ canvas,
 .panel-resize-handle::after {
   content: '⋯';
   position: absolute;
-  bottom: 2px;
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   font-size: calc(16px * var(--wm-panel-effective-scale, 1));
-  letter-spacing: 2px;
+  line-height: 1;
   color: var(--text-dim);
   transition: color 0.2s;
+  pointer-events: none;
 }
 
 .panel-resize-handle:hover::after {
@@ -1983,7 +1986,7 @@ canvas,
   top: 0;
   right: 0;
   bottom: 0;
-  width: 20px;
+  width: 6px;
   cursor: ew-resize;
   background: linear-gradient(to left, rgba(68, 136, 255, 0.15), transparent);
   z-index: 100;
@@ -2001,13 +2004,14 @@ canvas,
 .panel-col-resize-handle::after {
   content: '⋮';
   position: absolute;
-  right: 3px;
   top: 50%;
-  transform: translateY(-50%);
+  left: 50%;
+  transform: translate(-50%, -50%);
   font-size: calc(16px * var(--wm-panel-effective-scale, 1));
-  letter-spacing: 2px;
+  line-height: 1;
   color: var(--text-dim);
   transition: color 0.2s;
+  pointer-events: none;
 }
 
 .panel-col-resize-handle:hover::after {
@@ -3711,6 +3715,25 @@ body.panel-resize-active iframe {
 
 .live-mute-btn.unmuted {
   color: var(--green);
+}
+
+.live-mute-btn:disabled {
+  color: var(--text-dim);
+  cursor: default;
+  opacity: 0.5;
+}
+
+.live-audio-status {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  left: 8px;
+  max-width: calc(100% - 16px);
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.72);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
 .live-news-fullscreen {
@@ -12252,6 +12275,10 @@ a.prediction-link:hover {
   .global-procurement-input:first-child {
     grid-column: 1 / -1;
   }
+
+  .global-procurement-toggle {
+    grid-column: 1 / -1;
+  }
 }
 
 /* Trade Policy Panel */
@@ -14531,7 +14558,11 @@ a.prediction-link:hover {
   background: var(--bg);
   border: 1px solid var(--overlay-heavy);
   border-radius: 12px;
-  overflow: hidden;
+  /* Evidence lines can make the panel taller than a short window, and the
+     page itself does not scroll. */
+  max-height: calc(100vh - 72px);
+  overflow-x: hidden;
+  overflow-y: auto;
   box-shadow: 0 8px 32px var(--shadow-color);
 }
 
@@ -14697,6 +14728,14 @@ a.prediction-link:hover {
 
 .pizzint-tension-trend.stable {
   color: var(--text-dim);
+}
+
+.pizzint-tension-evidence {
+  padding: 0 0 4px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.35;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
 }
 
 .pizzint-footer {
@@ -26377,7 +26416,7 @@ body.map-width-resizing {
   border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .chat-msg-error { color: var(--yellow) !important; }
-.chat-msg-streaming .chat-msg-body { opacity: 0.75; white-space: pre-wrap; }
+.chat-msg-streaming .chat-msg-body { opacity: 0.75; }
 .chat-streaming-dot {
   display: inline-block;
   width: 6px;
@@ -26917,6 +26956,30 @@ body.map-width-resizing {
 .embed-keys-item-revoked-badge {
   color: var(--semantic-critical);
   font-weight: 600;
+}
+
+.api-keys-item-kind-badge {
+  align-self: flex-start;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+}
+
+.desktop-keys-count {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  margin: -8px 0 12px;
+}
+
+.desktop-keys-count:empty {
+  display: none;
+}
+
+.desktop-keys-count.at-limit {
+  color: var(--text);
 }
 
 .api-keys-revoke-btn,

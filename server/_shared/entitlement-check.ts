@@ -88,6 +88,15 @@ export interface CachedEntitlements {
      */
     embedAccess?: boolean;
     /**
+     * Desktop-key issuance and admission (plan 2026-10-25-001). Mirrors the
+     * catalog field the Convex read-time merge puts on the wire; like
+     * `embedAccess`, `undefined` is **fail-CLOSED** — the shared predicate in
+     * `shared/desktop-key-access.js` reads it and treats absence as false.
+     */
+    desktopKeyAccess?: boolean;
+    /** Most active desktop keys one account may hold (R5); `0` without access. */
+    maxDesktopKeys?: number;
+    /**
      * Catalog plan limits, mirrored verbatim from `PlanFeatures.planLimits`
      * (convex/config/productCatalog.ts). Optional because legacy rows predate
      * it and because the Convex read path only merges what the catalog holds.
@@ -106,6 +115,13 @@ export interface CachedEntitlements {
       mcpCallsPerDay?: number | null | 'shared-api-budget';
       mcpBurstRequestsPerMinute?: number | null;
       dashboardAiCallsPerDay?: number | null;
+      /**
+       * Per-account desktop-key limits (KTD6). `0` on plans that sell no
+       * desktop keys; consumers fall back to the catalog constants for an
+       * owner admitted through `apiAccess` (R8), never to "unlimited".
+       */
+      desktopKeyRequestsPerDay?: number;
+      desktopKeyBurstPerMinute?: number;
     };
   };
   validUntil: number;
@@ -213,6 +229,8 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/supply-chain/v1/get-country-vulnerabilities': 1,
   '/api/supply-chain/v1/get-chokepoint-dependencies': 1,
   '/api/supply-chain/v1/list-vulnerability-rankings': 1,
+  '/api/news/v1/list-media-perspective': 1,
+  '/api/news/v1/list-news-pool': 1,
 };
 
 const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';
@@ -483,7 +501,24 @@ export const TIER_GATED_PATHS: ReadonlySet<string> = new Set(Object.keys(ENDPOIN
  * Uses request coalescing to prevent cache stampede: concurrent requests for
  * the same userId share a single in-flight promise.
  */
-export async function getEntitlements(userId: string): Promise<CachedEntitlements | null> {
+export interface GetEntitlementsOptions {
+  /**
+   * Plan 2026-10-25-001: the caller is deciding a desktop-key question. A
+   * cached entry written before the catalog carried `desktopKeyAccess` (a
+   * current tier>=1 row with the field absent) is then a cache MISS and is
+   * refetched through Convex, whose read-time merge rewrites it with the flag.
+   * Off by default so the api-access decision — which never reads the field —
+   * keeps serving such entries until they age out; see
+   * `resolveUserKeyEntitlement` in desktop-key-principal.ts for the one place
+   * that turns it on.
+   */
+  requireDesktopKeyShape?: boolean;
+}
+
+export async function getEntitlements(
+  userId: string,
+  options: GetEntitlementsOptions = {},
+): Promise<CachedEntitlements | null> {
   // Negative cache first: a transient failure recorded moments ago is reused
   // rather than re-paying the backend's 3s budget. Only the synthesized
   // verificationUnavailable answer is cached here — never a confirmed row and
@@ -496,11 +531,14 @@ export async function getEntitlements(userId: string): Promise<CachedEntitlement
     _unavailableUntil.delete(userId);
   }
 
-  const existing = _inFlight.get(userId);
+  // Coalesced per (user, shape requirement): a desktop-shape read must not be
+  // satisfied by a concurrent ordinary read that could return a legacy entry.
+  const inFlightKey = options.requireDesktopKeyShape ? `${userId}\u0000desktop-key-shape` : userId;
+  const existing = _inFlight.get(inFlightKey);
   if (existing) return existing;
 
-  const promise = _getEntitlementsImpl(userId);
-  _inFlight.set(userId, promise);
+  const promise = _getEntitlementsImpl(userId, options);
+  _inFlight.set(inFlightKey, promise);
   try {
     const result = await promise;
     if (result?.verificationUnavailable) {
@@ -508,8 +546,17 @@ export async function getEntitlements(userId: string): Promise<CachedEntitlement
     }
     return result;
   } finally {
-    _inFlight.delete(userId);
+    _inFlight.delete(inFlightKey);
   }
+}
+
+/**
+ * A cached entry the desktop decision can read: tier 0 rows never qualify for
+ * desktop keys, so only a current tier>=1 entry must carry the flag.
+ */
+function hasDesktopKeyShape(ent: CachedEntitlements): boolean {
+  if (ent.features.tier < 1) return true;
+  return typeof ent.features.desktopKeyAccess === 'boolean';
 }
 
 // Free-shaped deny-side value for transient lookup failures. Grants nothing
@@ -551,7 +598,10 @@ function parseRetryAfterSeconds(header: string | null): number | undefined {
   return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
 }
 
-async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements | null> {
+async function _getEntitlementsImpl(
+  userId: string,
+  options: GetEntitlementsOptions,
+): Promise<CachedEntitlements | null> {
   try {
     // Redis cache check (raw=true: entitlements use user-scoped keys, no deployment prefix)
     const cached = await getCachedJson(`entitlements:${ENV_PREFIX}:${userId}`, true);
@@ -601,12 +651,19 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
       const legacySharedBudgetShape = ent.features.apiAccess === true
         && ent.features.tier < 3
         && typeof ent.features.planLimits?.mcpCallsPerDay === 'number';
+      // Fourth instance, opt-in (plan 2026-10-25-001): a Pro entry written
+      // before `desktopKeyAccess` existed satisfies every check above, and the
+      // desktop-key predicate reads its absence as false — a paying Pro owner's
+      // new desktop key would be denied until the entry aged out. Only the
+      // desktop decision asks for this (`requireDesktopKeyShape`); the
+      // api-access decision never reads the field and keeps the entry.
       if (
         ent.validUntil >= Date.now() &&
         typeof (ent.features as { mcpAccess?: boolean }).mcpAccess === 'boolean' &&
         hasCurrentEmbedAccessShape &&
         ent.features.planLimits?.dashboardAiCallsPerDay !== undefined &&
-        !legacySharedBudgetShape
+        !legacySharedBudgetShape &&
+        (!options.requireDesktopKeyShape || hasDesktopKeyShape(ent))
       ) {
         return ent;
       }

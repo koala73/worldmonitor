@@ -28,7 +28,7 @@ test('notification GET and POST relay failures deliver distinct Sentry fingerpri
     notification.__setNotificationChannelsDepsForTests({
       checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-123' }),
-      getEntitlements: async () => ({ features: { tier: 1 } }),
+      getEntitlements: async () => ({ features: { tier: 1 }, validUntil: Date.now() + 60_000 }),
       fetch: async () => { throw relayFailure; },
     });
 
@@ -103,7 +103,7 @@ test('notification GET and POST timeout captures are downgraded to warning', asy
           notification.__setNotificationChannelsDepsForTests({
             checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
             validateBearerToken: async () => ({ valid: true, userId: 'user-timeout' }),
-            getEntitlements: async () => ({ features: { tier: 1 } }),
+            getEntitlements: async () => ({ features: { tier: 1 }, validUntil: Date.now() + 60_000 }),
             fetch: async () => {
               throw new DOMException('The operation was aborted', errorName);
             },

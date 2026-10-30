@@ -41,7 +41,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 500,
-      "description": "Everything in Free — panels, sources & followed countries uncapped, WM Analyst chat + AI stock analysis & backtesting, Cost-shock modelling & supply-chain stress tests, Intel memory — historical search, timelines & similar events, Physical metals divergence, minerals concentration & sovereign debt data, Scheduled AI digest + alert rules engine, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Custom widgets & 10 dashboards (vs 3), Personal license, 1 named user"
+      "description": "Everything in Free — panels, sources & followed countries uncapped, WM Analyst chat + AI stock analysis & backtesting, Cost-shock modelling & supply-chain stress tests, Intel memory — historical search, timelines & similar events, Physical metals divergence, minerals concentration & sovereign debt data, Scheduled AI digest + alert rules engine, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Custom widgets & 10 dashboards (vs 3), Desktop key for the desktop app (2 keys), Personal license, 1 named user"
     },
     {
       "planKey": "pro_annual",
@@ -71,7 +71,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 2500,
-      "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Priority support, Commercial license included, 1 named user — not a shared login"
+      "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Desktop key for the desktop app (3 keys), Priority support, Commercial license included, 1 named user — not a shared login"
     },
     {
       "planKey": "pro_business_annual",
@@ -165,15 +165,15 @@ export const PUBLIC_PRODUCT_FACTS = {
     }
   ],
   "heroProofStats": {
-    "mapLayers": 58,
-    "feeds": 469,
-    "providers": 775,
+    "mapLayers": 59,
+    "feeds": 468,
+    "providers": 790,
     "alertOrigins": 5
   },
   "depthProofStats": {
-    "mapLayers": 58,
-    "feeds": 469,
-    "providers": 775,
+    "mapLayers": 59,
+    "feeds": 468,
+    "providers": 790,
     "alertOrigins": 5,
     "chokepoints": 13,
     "instabilityCountries": 31,
@@ -183,8 +183,8 @@ export const PUBLIC_PRODUCT_FACTS = {
     "aiDatacenters": 313,
     "hotspots": 29,
     "stockExchanges": 29,
-    "mcpTools": 95,
-    "commands": 621,
+    "mcpTools": 99,
+    "commands": 623,
     "languages": 28
   },
   "resilienceCoverage": {
@@ -259,6 +259,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 0,
       "dashboardAiCallsPerDay": 0,
       "mcpBurstRequestsPerMinute": 0,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": false
     },
     "cta": "Get Started",
@@ -277,7 +279,8 @@ export const TIER_CONFIG = {
       "Physical metals divergence, minerals concentration & sovereign debt data",
       "Scheduled AI digest + alert rules engine",
       "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
-      "Custom widgets & 10 dashboards (vs 3)"
+      "Custom widgets & 10 dashboards (vs 3)",
+      "Desktop key for the desktop app (2 keys)"
     ],
     "highlightFeatures": [
       "Personal license",
@@ -289,6 +292,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 50,
       "dashboardAiCallsPerDay": 500,
       "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 7500,
+      "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
     "highlighted": true
@@ -303,6 +308,7 @@ export const TIER_CONFIG = {
       "Data export — CSV, JSON & PDF reports",
       "25 custom dashboards (vs 10)",
       "MCP + SDK: 250 calls/day (vs 50)",
+      "Desktop key for the desktop app (3 keys)",
       "Priority support"
     ],
     "highlightFeatures": [
@@ -315,6 +321,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 250,
       "dashboardAiCallsPerDay": 2500,
       "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 7500,
+      "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
     "highlighted": false
@@ -340,6 +348,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 1000,
       "dashboardAiCallsPerDay": 1000,
       "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
     "highlighted": false
@@ -365,6 +375,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 10000,
       "dashboardAiCallsPerDay": 10000,
       "mcpBurstRequestsPerMinute": 300,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
     "highlighted": false
@@ -392,6 +404,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 25000,
       "dashboardAiCallsPerDay": 25000,
       "mcpBurstRequestsPerMinute": 1000,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": false
     },
     "cta": "Contact Sales",
