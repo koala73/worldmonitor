@@ -22,6 +22,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer, type IncomingHttpHeaders } from 'node:http';
 import {
   postCreateCheckout,
   createDefaultCheckoutTransportDeps,
@@ -79,6 +80,49 @@ function headerOf(init: RequestInit, name: string): string | undefined {
 }
 
 describe('postCreateCheckout transport', () => {
+  it('recovers from a real HTTP 502 with the same authenticated JSON request', async (t) => {
+    const requests: Array<{ method: string | undefined; body: string; headers: IncomingHttpHeaders }> = [];
+    const body = JSON.stringify({ checkout_url: 'https://checkout.example/recovered' });
+    const server = createServer(async (req, res) => {
+      let data = '';
+      for await (const chunk of req) data += chunk;
+      requests.push({ method: req.method, body: data, headers: req.headers });
+      if (requests.length === 1) {
+        res.writeHead(502, { 'Content-Type': 'text/html' });
+        res.end('<html>Bad gateway</html>');
+      } else {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'X-Checkout-Session': 'recovered' });
+        res.end(body);
+      }
+    });
+    t.after(() => { server.closeAllConnections(); server.close(); });
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    const delays: number[] = [];
+    const response = await postCreateCheckout({
+      ...createDefaultCheckoutTransportDeps(),
+      delay: async (ms) => { delays.push(ms); },
+    }, { ...ARGS, url: `http://127.0.0.1:${address.port}/api/create-checkout` });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('X-Checkout-Session'), 'recovered');
+    assert.equal(await response.text(), body);
+    assert.deepEqual(delays, [1_500]);
+    assert.equal(requests.length, 2);
+    for (const request of requests) {
+      assert.equal(request.method, 'POST');
+      assert.equal(request.body, JSON.stringify(ARGS.payload));
+      assert.equal(request.headers.authorization, `Bearer ${ARGS.token}`);
+      assert.equal(request.headers['content-type'], 'application/json');
+      assert.ok(request.headers['idempotency-key']);
+    }
+    assert.deepEqual(requests[1], requests[0]);
+  });
+
   it('sends Idempotency-Key, bearer token, and JSON body on a plain success', async () => {
     const ok = new Response('{"checkout_url":"https://x"}', { status: 200 });
     const { deps, calls, delays } = makeDeps([{ response: ok }]);
@@ -98,7 +142,10 @@ describe('postCreateCheckout transport', () => {
 
   it('retries once on 502 with the SAME idempotency key, after a delay', async () => {
     const bad = new Response('<html>cloudflare 502</html>', { status: 502 });
-    const good = new Response('{"checkout_url":"https://x"}', { status: 200 });
+    const good = new Response('{"checkout_url":"https://x"}', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-Checkout-Session': 'recovered' },
+    });
     const { deps, calls, delays, keyCalls } = makeDeps([{ response: bad }, { response: good }]);
 
     const resp = await postCreateCheckout(deps, ARGS);
@@ -120,16 +167,23 @@ describe('postCreateCheckout transport', () => {
     assert.equal(String(calls[1].init.body), String(calls[0].init.body));
     // And the caller must receive the FINAL attempt's Response object.
     assert.equal(resp, good, 'must resolve with the retry attempt\'s Response identity');
+    assert.equal(resp.headers.get('Content-Type'), 'application/json');
+    assert.equal(resp.headers.get('X-Checkout-Session'), 'recovered');
+    assert.equal(resp.bodyUsed, false, 'transport must leave the final body for its caller');
     assert.equal(await resp.text(), '{"checkout_url":"https://x"}');
   });
 
   it('returns the second failure as-is when the retry also fails', async () => {
     const bad = new Response('bad gateway', { status: 502 });
-    const { deps, calls } = makeDeps([{ response: bad }, { response: bad }]);
+    const final = new Response('still unavailable', { status: 503, headers: { 'Retry-After': '7' } });
+    const { deps, calls } = makeDeps([{ response: bad }, { response: final }]);
 
     const resp = await postCreateCheckout(deps, ARGS);
 
-    assert.equal(resp.status, 502);
+    assert.equal(resp, final);
+    assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('Retry-After'), '7');
+    assert.equal(await resp.text(), 'still unavailable');
     assert.equal(calls.length, 2);
   });
 
@@ -174,8 +228,8 @@ describe('postCreateCheckout transport', () => {
     }
   });
 
-  it('treats every status in RETRYABLE_CHECKOUT_STATUSES as retryable', async () => {
-    for (const status of RETRYABLE_CHECKOUT_STATUSES) {
+  it('retries every contracted transient status', async () => {
+    for (const status of [502, 503, 504, 520, 521, 522, 523, 525]) {
       const bad = new Response('transient', { status });
       const good = new Response('{}', { status: 200 });
       const { deps, calls } = makeDeps([{ response: bad }, { response: good }]);

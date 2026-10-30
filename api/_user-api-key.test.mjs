@@ -372,12 +372,12 @@ test('revoked key served from bootstrap negative sentinel cache returns 401 with
 // has to fall through to the negative-cache / Convex path instead.
 const UNTRUSTWORTHY_CACHED_USER_KEY_ENTRIES = [
   // Kills the `userId.length > 0` conjunct: an empty userId is a valid string.
-  ['an empty userId', { userId: '' }],
+  ['an empty userId', { v: 2, userId: '', keyId: 'key_abc', keyKind: 'api' }],
   // Kills the `typeof userId === "string"` conjunct: an array is truthy, is an
   // object, and has a length > 0, so only the typeof check rejects it.
-  ['an array userId', { userId: ['user_evil'] }],
-  ['a numeric userId', { userId: 123 }],
-  ['a null userId', { userId: null }],
+  ['an array userId', { v: 2, userId: ['user_evil'], keyId: 'key_abc', keyKind: 'api' }],
+  ['a numeric userId', { v: 2, userId: 123, keyId: 'key_abc', keyKind: 'api' }],
+  ['a null userId', { v: 2, userId: null, keyId: 'key_abc', keyKind: 'api' }],
   // Kills the `cached.value &&` conjunct: typeof null === 'object', so the
   // truthiness check is the only thing standing between us and a TypeError.
   ['a null entry', null],

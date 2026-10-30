@@ -214,7 +214,7 @@
     "desktop:package:macos:sign": "node scripts/desktop-package.mjs --os macos --sign",
     "desktop:package:windows:sign": "node scripts/desktop-package.mjs --os windows --sign",
     "desktop:package": "node scripts/desktop-package.mjs",
-    "test:convex": "vitest run --config vitest.config.mts",
+    "test:convex": "vitest run --config vitest.config.mts --reporter=tap",
     "test:dom": "vitest run --config vitest.dom.config.mts",
     "typecheck:dom-tests": "tsc --noEmit -p tsconfig.dom-tests.json",
     "typecheck:contract-tests": "tsc --noEmit -p tsconfig.contract-tests.json",
