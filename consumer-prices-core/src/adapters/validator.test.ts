@@ -361,7 +361,7 @@ describe('validateSearchHit — absent vs unverified size (#6868)', () => {
   });
 
   it('demotes other common unparseable unit tokens the same way', () => {
-    for (const sizeText of ['12 unidades', '2 pint', '6 count', '1 litro']) {
+    for (const sizeText of ['12 unidades', '2 pint', '6 count']) {
       const r = validateSearchHit({
         canonicalName: 'Full Fat Fresh Milk 1L',
         productName: 'Full Fat Fresh Milk',
@@ -371,6 +371,29 @@ describe('validateSearchHit — absent vs unverified size (#6868)', () => {
       expect(r.signals.sizeWindow, sizeText).toBe('unverified');
       expect(r.score, sizeText).toBeLessThan(AUTO_MATCH_THRESHOLD);
     }
+  });
+
+  // #5445: `litro`/`litros` now parse (with the comma decimal), so the BR
+  // bottle reaches the quantity window instead of skipping it: 1 L passes,
+  // and "1,5 Litros" is the 1.5 L product, hard-rejected for a 1 L item
+  // rather than published as it.
+  it('runs the quantity window for litro sizes now that they parse', () => {
+    const milk = item({ baseUnit: 'ml', minBaseQty: 900, maxBaseQty: 1100 });
+    const one = validateSearchHit({
+      canonicalName: 'Full Fat Fresh Milk 1L',
+      productName: 'Full Fat Fresh Milk',
+      sizeText: '1 litro',
+      item: milk,
+    });
+    expect(one.signals.sizeWindow).toBe('pass');
+    const bottle = validateSearchHit({
+      canonicalName: 'Full Fat Fresh Milk 1L',
+      productName: 'Full Fat Fresh Milk',
+      sizeText: '1,5 Litros',
+      item: milk,
+    });
+    expect(bottle.signals.sizeWindow).not.toBe('pass');
+    expect(bottle.signals.sizeWindow).not.toBe('unverified');
   });
 
   // Deliberate carve-outs (count packaging weight, density-reconcilable
@@ -651,5 +674,23 @@ describe('validateSearchHit — India multipacks and wrong products', () => {
   it('reads negative tokens from the URL path only, not the host', () => {
     const r = check('Tomatoes Fresh 1kg', 'Tomato Local 1 kg', '1 kg', 'https://pickle.example.com/product/tomato-local-1-kg');
     expect(r.ok).toBe(true);
+  });
+});
+
+
+describe('comma-decimal title multipacks', () => {
+  it.each([
+    ['Full Fat Fresh Milk 2 x 1,5 Litros', '1,5 Litros', 1400, 1600, 3000, false],
+    ['Full Fat Fresh Milk 0,5 Litros (Pack of 2)', '0,5 Litros', 900, 1100, 1000, true],
+    ['Full Fat Fresh Milk 0,500 litro (Pack of 2)', '0,500 litro', 900, 1100, 1000, true],
+  ])('uses the total quantity from %s', (productName, sizeText, minBaseQty, maxBaseQty, total, accepted) => {
+    const canonicalName = 'Full Fat Fresh Milk';
+    const result = validateSearchHit({
+      canonicalName, productName, sizeText, marketCode: 'br',
+      item: item({ canonicalName, baseUnit: 'ml', minBaseQty, maxBaseQty }),
+    });
+    expect(result.ok).toBe(accepted);
+    expect(result.signals.extractedBaseQty).toBe(total);
+    expect(result.signals.sizeWindow).toBe(accepted ? 'pass' : 'fail');
   });
 });

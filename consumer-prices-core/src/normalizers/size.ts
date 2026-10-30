@@ -40,6 +40,9 @@ const UNIT_MAP = new Map<string, { base: string; factor: number }>([
   ['ltr', { base: 'ml', factor: 1000 }],
   ['litre', { base: 'ml', factor: 1000 }],
   ['liter', { base: 'ml', factor: 1000 }],
+  // BR/PT storefronts write "1,5 Litros"; `litros` resolves through the
+  // plural strip in normalizeUnit (#5445).
+  ['litro', { base: 'ml', factor: 1000 }],
   ['ml', { base: 'ml', factor: 1 }],
   ['millilitre', { base: 'ml', factor: 1 }],
   ['milliliter', { base: 'ml', factor: 1 }],
@@ -123,10 +126,18 @@ function matchPack(text: string): { count: string; rest: string } | null {
   return null;
 }
 
+/** Normalize numeric separators before either size or title matching. */
+export function normalizeDecimalSeparators(text: string): string {
+  return text
+    .replace(/(?<!\d)0,(\d+)/g, '0.$1')
+    .replace(/(\d),(\d{3})(?!\d)/g, '$1$2')
+    .replace(/(\d),(\d{1,2})(?!\d)/g, '$1.$2');
+}
+
 export function parseSize(raw: string | null | undefined, context?: SizeContext): ParsedSize | null {
   if (!raw) return null;
 
-  const text = raw.trim().toLowerCase();
+  const text = normalizeDecimalSeparators(raw.trim().toLowerCase());
 
   const contextualUnit = context?.baseUnit === 'ct'
     ? { pattern: /^(\d+)\s*(pack)$/, base: 'ct', factor: 1 }
