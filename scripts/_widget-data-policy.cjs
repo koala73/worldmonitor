@@ -201,6 +201,7 @@ const RPCS = [
 
 // Every other registry key and GET route, with the reason the widget does not use it.
 const EXCLUDED_BOOTSTRAP_KEYS = {
+  ukmtoIncidents: 'Publisher claims requiring source attribution and freshness; use the UKMTO panel',
   iranEvents: "Disabled in production (IRAN_EVENTS_ENABLED off); returns nothing",
   liveVideoResolved: "Internal: live-video channel to video-ID map",
   sharedFxRates: "Internal FX conversion table used by other panels",
@@ -220,6 +221,7 @@ const EXCLUDED_BOOTSTRAP_KEYS = {
 };
 
 const EXCLUDED_RPC_ROUTES = {
+  '/api/maritime/v1/list-ukmto-incidents': 'Publisher claims requiring source attribution and freshness; use the UKMTO panel',
   "/api/displacement/v1/get-cross-border-movements": "Requires source attribution and per-source freshness; use the cross-border displacement panel",
   "/api/intelligence/v1/get-country-history": "Daily archive is planned and activation-gated; use the country history panel after activation",
   "/api/intelligence/v1/get-country-signal-observations": "Requires an authenticated country panel; unavailable to the anonymous widget session",

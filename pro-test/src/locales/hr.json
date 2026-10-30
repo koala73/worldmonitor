@@ -88,10 +88,7 @@
     "uniqueVisitors": "Jedinstveni posjetitelji",
     "peakDailyUsers": "Najviši dnevni broj korisnika",
     "countriesReached": "Dosegnute zemlje",
-    "liveDataSources": "Izvori podataka uživo",
-    "quote": "Tržišta, monetarna politika, geopolitika, energija — sada se sve kreće zajedno. Trebao mi je alat koji pokazuje kako se te sile povezuju u stvarnom vremenu, ne samo naslove nego i temeljne pokretače.",
-    "ceo": "CEO tvrtke",
-    "asToldTo": "kako je ispričano"
+    "liveDataSources": "Izvori podataka uživo"
   },
   "audience": {
     "title": "Za koga je World Monitor napravljen?",
@@ -459,7 +456,7 @@
       "ogDescription": "World Monitor: geopolitička obavještajna ploča u stvarnom vremenu. Besplatna karta uživo: sukobi, pomorstvo, letovi, tržišta i kibernetika, s API-jem i MCP-om."
     },
     "nav": {
-      "useCases": "Korelacije",
+      "useCases": "Primjeri upotrebe",
       "firstFive": "Prvih 5 min",
       "depth": "Dubina",
       "pricing": "Cijene",
@@ -714,7 +711,16 @@
       "chokepointDesc": "Inspekcirajte status prekida, tokove brodova i rizik kroz {{chokepoints}} kritičnih pomorskih prolaza.",
       "countryRiskTitle": "Objasni politički rizik zemlje",
       "countryRiskDesc": "Pratite političke, sigurnosne, ekonomske i signale otpornosti iza promjene zemlje, s otpornosti rangiranom za {{resilienceRanked}} zemalja.",
-      "open": "Otvori dokaze"
+      "open": "Otvori dokaze",
+      "workflow": "Postupak korak po korak"
+    },
+    "voices": {
+      "eyebrow": "Njihovim riječima",
+      "title": "Što ljudi kažu o World Monitoru",
+      "sub": "{{users}} ljudi u {{countries}} zemalja koristilo je World Monitor. Evo što su rekli mediji i neki od njih.",
+      "translatedJa": "Prevedeno s japanskog",
+      "prev": "Prethodni citati",
+      "next": "Još citata"
     }
   },
   "whatsNew": {
@@ -722,13 +728,13 @@
     "title": "Što je novo u WorldMonitoru",
     "subtitle": "Nove funkcije iz posljednjih 30 dana — ispravke i tehnički rad nisu uključeni.",
     "proTag": "PRO",
-    "m1": "Indeks divergencije fizičke premije — SGE vs COMEX, s historijom",
-    "m2": "Rangiranje ranjivosti opskrbe robom — razvoj ovisnosti o uskim grlima",
-    "m3": "Koncentracija proizvodnje minerala i industrijska baza obrane",
-    "m4": "Izvještaji otpornosti s pet čimbenika s ocjenama na razini pokazatelja",
-    "m5": "Prilagođene liste praćenja Telegram kanala",
-    "m6": "Prijava putem ključa",
-    "m7": "AI agenti mogu upravljati panelima — paneli, kartice, slojevi karte i misije",
-    "m8": "Bogatije stranice otpornosti zemlje"
+    "m1": "Medijska perspektiva — kako mediji iz svake zemlje izvještavaju o bilo kojoj zemlji, za AI agente i API",
+    "m2": "/verify — kartica dokaza za bilo koju tvrdnju, s objavljenim provjerama činjenica",
+    "m3": "Broj potvrđujućih izvora u upozorenjima, sažecima i skočnim prozorima karte, uz javnu stranicu /trust",
+    "m4": "Automatsko praćenje napada — rizik zemlje raste pod napadom i oporavlja se kad napadi prestanu",
+    "m5": "Zatvaranja zračnog prostora iz FAA NOTAM-ova i sloj karte s prijavljenim izvanrednim situacijama zrakoplova",
+    "m6": "Karta industrijske aktivnosti iz satelitskih podataka o NO2 sa Sentinel-5P",
+    "m7": "Tokovi kapitala za 230 gospodarstava i bilo koji par zemalja, za AI agente i API",
+    "m8": "Nadzorna ploča u terminalu i CLI karta sa zumiranjem — brew install worldmonitor"
   }
 }

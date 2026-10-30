@@ -3,10 +3,12 @@
  * Runs as an independent Railway cron service (02:15-05:15 UTC, hourly) after each scrape tick.
  * Produces Fixed Basket Index and Value Basket Index per methodology.
  */
-import { query, closePool } from '../db/client.js';
+import { query, closePool, withTransaction, type QueryExecutor } from '../db/client.js';
 import { loadAllBasketConfigs } from '../config/loader.js';
 import { validateAll } from './validate.js';
 import { FX_RATES_TO_USD } from '../fx/rates.js';
+import { MAX_OBSERVATION_AGE_DAYS } from '../observation-freshness.js';
+import { INDEX_METHODOLOGY_VERSION } from '../index-methodology.js';
 
 const logger = {
   info: (msg: string, ...args: unknown[]) => console.log(`[aggregate] ${msg}`, ...args),
@@ -58,8 +60,9 @@ async function getBasketRows(basketSlug: string, marketCode: string): Promise<Ba
        WHERE retailer_product_id = rp.id
        ORDER BY observed_at DESC, id DESC LIMIT 1
      ) po ON po.in_stock = true
+       AND rp.last_seen_at >= NOW() - make_interval(days => $3)
      WHERE b.slug = $1`,
-    [basketSlug, marketCode],
+    [basketSlug, marketCode, MAX_OBSERVATION_AGE_DAYS],
   );
 
   return result.rows.map((r) => ({
@@ -75,17 +78,28 @@ async function getBasketRows(basketSlug: string, marketCode: string): Promise<Ba
   }));
 }
 
+// Baseline per item = average price on the first day it was observed on or after
+// baseDate. A single fixed day leaves every item observed later without a
+// baseline, which is how every basket sat at a fallback 100 for seven months.
 async function getBaselinePrices(basketItemIds: string[], baseDate: string): Promise<Map<string, number>> {
   const result = await query<{ basket_item_id: string; price: string }>(
-    `SELECT pm.basket_item_id, AVG(po.price)::numeric(12,2) AS price
-     FROM price_observations po
-     JOIN product_matches pm ON pm.retailer_product_id = po.retailer_product_id
-     WHERE pm.basket_item_id = ANY($1)
-       AND pm.match_status IN ('auto', 'approved')
-       AND pm.pin_disabled_at IS NULL
-       AND po.in_stock = true
-       AND DATE_TRUNC('day', po.observed_at) = $2::date
-     GROUP BY pm.basket_item_id`,
+    `WITH obs AS (
+       SELECT pm.basket_item_id, po.price, DATE_TRUNC('day', po.observed_at) AS day
+       FROM price_observations po
+       JOIN product_matches pm ON pm.retailer_product_id = po.retailer_product_id
+       WHERE pm.basket_item_id = ANY($1)
+         AND pm.match_status IN ('auto', 'approved')
+         AND pm.pin_disabled_at IS NULL
+         AND po.in_stock = true
+         AND po.observed_at >= $2::date
+     ),
+     first_day AS (
+       SELECT basket_item_id, MIN(day) AS day FROM obs GROUP BY basket_item_id
+     )
+     SELECT obs.basket_item_id, AVG(obs.price)::numeric(12,2) AS price
+     FROM obs
+     JOIN first_day ON first_day.basket_item_id = obs.basket_item_id AND first_day.day = obs.day
+     GROUP BY obs.basket_item_id`,
     [basketItemIds, baseDate],
   );
   const map = new Map<string, number>();
@@ -95,7 +109,8 @@ async function getBaselinePrices(basketItemIds: string[], baseDate: string): Pro
   return map;
 }
 
-function computeFixedIndex(rows: BasketRow[], baselines: Map<string, number>): number {
+// Null when no item has a baseline: an index of 100 there would claim "no change".
+function computeFixedIndex(rows: BasketRow[], baselines: Map<string, number>): number | null {
   let weightedSum = 0;
   let totalWeight = 0;
 
@@ -116,11 +131,11 @@ function computeFixedIndex(rows: BasketRow[], baselines: Map<string, number>): n
     totalWeight += weight;
   }
 
-  if (totalWeight === 0) return 100;
+  if (totalWeight === 0) return null;
   return 100 * (weightedSum / totalWeight);
 }
 
-function computeValueIndex(rows: BasketRow[], baselines: Map<string, number>): number {
+function computeValueIndex(rows: BasketRow[], baselines: Map<string, number>): number | null {
   // Value index: same as fixed index but using the cheapest available price
   // per basket item (floor price across retailers), not the average.
   const byItem = new Map<string, BasketRow[]>();
@@ -143,7 +158,7 @@ function computeValueIndex(rows: BasketRow[], baselines: Map<string, number>): n
     totalWeight += weight;
   }
 
-  if (totalWeight === 0) return 100;
+  if (totalWeight === 0) return null;
   return 100 * (weightedSum / totalWeight);
 }
 
@@ -153,33 +168,34 @@ async function writeComputedIndex(
   category: string | null,
   metricKey: string,
   metricValue: number,
+  execute: QueryExecutor = query,
 ) {
   // ON CONFLICT must reference the exact partial index predicate matching the row being inserted.
   // The original constraint fires only when both retailer_id and category are NOT NULL.
   // Partial indices (005_computed_indices_null_idx) handle the two NULL cases.
   if (retailerId === null && category === null) {
-    await query(
+    await execute(
       `INSERT INTO computed_indices (basket_id, retailer_id, category, metric_date, metric_key, metric_value, methodology_version)
-       VALUES ($1, NULL, NULL, NOW()::date, $2, $3, '1')
+       VALUES ($1, NULL, NULL, NOW()::date, $2, $3, $4)
        ON CONFLICT (basket_id, metric_date, metric_key) WHERE retailer_id IS NULL AND category IS NULL
        DO UPDATE SET metric_value = EXCLUDED.metric_value, methodology_version = EXCLUDED.methodology_version`,
-      [basketId, metricKey, metricValue],
+      [basketId, metricKey, metricValue, INDEX_METHODOLOGY_VERSION],
     );
   } else if (retailerId === null) {
-    await query(
+    await execute(
       `INSERT INTO computed_indices (basket_id, retailer_id, category, metric_date, metric_key, metric_value, methodology_version)
-       VALUES ($1, NULL, $2, NOW()::date, $3, $4, '1')
+       VALUES ($1, NULL, $2, NOW()::date, $3, $4, $5)
        ON CONFLICT (basket_id, category, metric_date, metric_key) WHERE retailer_id IS NULL AND category IS NOT NULL
        DO UPDATE SET metric_value = EXCLUDED.metric_value, methodology_version = EXCLUDED.methodology_version`,
-      [basketId, category, metricKey, metricValue],
+      [basketId, category, metricKey, metricValue, INDEX_METHODOLOGY_VERSION],
     );
   } else {
-    await query(
+    await execute(
       `INSERT INTO computed_indices (basket_id, retailer_id, category, metric_date, metric_key, metric_value, methodology_version)
-       VALUES ($1, $2, $3, NOW()::date, $4, $5, '1')
+       VALUES ($1, $2, $3, NOW()::date, $4, $5, $6)
        ON CONFLICT (basket_id, retailer_id, category, metric_date, metric_key)
        DO UPDATE SET metric_value = EXCLUDED.metric_value, methodology_version = EXCLUDED.methodology_version`,
-      [basketId, retailerId, category, metricKey, metricValue],
+      [basketId, retailerId, category, metricKey, metricValue, INDEX_METHODOLOGY_VERSION],
     );
   }
 }
@@ -201,7 +217,20 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
 
   const rows = await getBasketRows(basketSlug, marketCode);
   if (rows.length === 0) {
-    logger.warn(`No matched products for ${basketSlug}:${marketCode}`);
+    // Record the empty basket for today. Returning without a write left the
+    // last aggregated day as the newest one, and the overview republished
+    // those indices as current. An earlier run today may already have written
+    // indices, spreads and category rows; clear them so the series cannot
+    // show a price level for a day with no coverage.
+    // One transaction: a failed coverage write must not leave the day's
+    // indices deleted with nothing in their place, or the overview would fall
+    // back to an older covered day.
+    await withTransaction(async (execute) => {
+      await execute(`DELETE FROM computed_indices
+       WHERE basket_id = $1 AND metric_date = NOW()::date`, [basketId]);
+      await writeComputedIndex(basketId, null, null, 'coverage_pct', 0, execute);
+    });
+    logger.warn(`No fresh matched products for ${basketSlug}:${marketCode} — coverage recorded as 0`);
     return;
   }
 
@@ -215,8 +244,8 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
   const totalItems = basketConfig.items.length;
   const coveragePct = (coverageCount / totalItems) * 100;
 
-  await writeComputedIndex(basketId, null, null, 'essentials_index', essentialsIndex);
-  await writeComputedIndex(basketId, null, null, 'value_index', valueIndex);
+  if (essentialsIndex !== null) await writeComputedIndex(basketId, null, null, 'essentials_index', essentialsIndex);
+  if (valueIndex !== null) await writeComputedIndex(basketId, null, null, 'value_index', valueIndex);
   await writeComputedIndex(basketId, null, null, 'coverage_pct', coveragePct);
 
   // Retailer spread: (most expensive basket - cheapest basket) / cheapest × 100
@@ -263,7 +292,7 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
       (new Set(catRows.map((r) => r.basketItemId)).size /
         Math.max(1, basketConfig.items.filter((i) => i.category === category).length)) *
       100;
-    await writeComputedIndex(basketId, null, category, 'essentials_index', catEssentials);
+    if (catEssentials !== null) await writeComputedIndex(basketId, null, category, 'essentials_index', catEssentials);
     await writeComputedIndex(basketId, null, category, 'coverage_pct', catCoverage);
   }
 
@@ -283,7 +312,7 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
     await writeComputedIndex(basketId, null, null, 'basket_total_usd', Math.round(basketTotalLocal * fxRate * 100) / 100);
   }
 
-  logger.info(`${basketSlug}:${marketCode} essentials=${essentialsIndex.toFixed(2)} value=${valueIndex.toFixed(2)} coverage=${coveragePct.toFixed(1)}%`);
+  logger.info(`${basketSlug}:${marketCode} essentials=${essentialsIndex?.toFixed(2) ?? 'no-baseline'} value=${valueIndex?.toFixed(2) ?? 'no-baseline'} baselines=${baselines.size}/${uniqueItemIds.length} coverage=${coveragePct.toFixed(1)}%`);
 }
 
 export async function aggregateAll() {

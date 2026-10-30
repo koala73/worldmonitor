@@ -85,6 +85,7 @@ import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
 import { createIdleAwareFrameProvider } from '@/utils/idle-aware-frame-provider';
 import { isInputPending, scheduleYield } from '@/utils/after-paint';
 import { showLayerWarning } from '@/utils/layer-warning';
+import { ukmtoIncidentLabel, type UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import { localizeMapLabels } from '@/utils/map-locale';
 import {
   createCountryHoverQueryController,
@@ -643,6 +644,7 @@ export class DeckGLMap {
   private satelliteImageryLayerFailed = false;
   private iranEvents: IranEvent[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
+  private ukmtoIncidents: UkmtoMapIncident[] = [];
   private aisDensity: AisDensityZone[] = [];
   private liveTankers: Array<{ mmsi: string; lat: number; lon: number; speed: number; shipType: number; name: string }> = [];
   private liveTankersAbort: AbortController | null = null;
@@ -2250,6 +2252,16 @@ export class DeckGLMap {
     // AIS disruptions layer (spoofing/jamming)
     if (mapLayers.ais && this.aisDisruptions.length > 0) {
       layers.push(this.createAisDisruptionsLayer());
+    }
+    if (mapLayers.ais && this.ukmtoIncidents.length > 0) {
+      layers.push(new ScatterplotLayer<UkmtoMapIncident>({
+        id: 'ukmto-incidents-layer',
+        data: this.filterByTimeCached(this.ukmtoIncidents, item => new Date(item.occurredAt)),
+        getPosition: item => [item.location!.longitude, item.location!.latitude],
+        getRadius: 12000, radiusMinPixels: 7, radiusMaxPixels: 14,
+        getFillColor: item => item.stale ? [135, 145, 155, 180] : [120, 180, 255, 220],
+        stroked: true, getLineColor: [255, 255, 255, 200], lineWidthMinPixels: 1, pickable: true,
+      }));
     }
 
     // GPS/GNSS jamming layer
@@ -5342,6 +5354,8 @@ export class DeckGLMap {
       }
       case 'ais-disruptions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || t('components.deckgl.tooltip.disruption'))}</strong><br/>${text(obj.severity)} ${t('popups.severity')}<br/>${text(obj.description)}</div>` };
+      case 'ukmto-incidents-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(ukmtoIncidentLabel(obj))}</strong><br/>${text(obj.description)}</div>` };
       case 'cross-border-deaths-layer':
       case 'cross-border-points-layer': {
         const change = obj.change !== null && obj.change !== 0
@@ -7447,6 +7461,11 @@ export class DeckGLMap {
   public setCableActivity(advisories: CableAdvisory[], repairShips: RepairShip[]): void {
     this.cableAdvisories = advisories;
     this.repairShips = repairShips;
+    this.render();
+  }
+
+  public setUkmtoIncidents(incidents: UkmtoMapIncident[]): void {
+    this.ukmtoIncidents = incidents;
     this.render();
   }
 

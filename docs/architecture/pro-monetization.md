@@ -83,6 +83,7 @@ Both surfaces take the same path since #4449: a top-level redirect to Dodo's hos
 - **Client-side**: `src/services/billing.ts:openBillingPortal()` fetches the portal URL via Convex action and opens in a new tab. Falls back to `https://customer.dodopayments.com` (generic portal) on any failure.
 - **/pro parallel**: `pro-test/src/services/checkout.ts:openBillingPortal()` is triggered when a `/pro`-origin checkout hits `ACTIVE_SUBSCRIPTION_EXISTS`; currently redirects via `window.location.assign()` (same-tab).
 - **Payment failures**: `src/components/payment-failure-banner.ts` renders a persistent red banner when subscription status is `on_hold`; auto-hides on return to `active`.
+- **Bounced billing email**: `getSubscriptionForUser` also returns `billingEmail` (resolved exactly as dunning resolves its recipient) and `billingEmailBounced` (a Resend hard-bounce suppression on that address, `active`/`on_hold` only). The same banner shows an amber notice naming the address, or adds "Fix billing email" to the on_hold banner, with an inline form that calls `payments/billing:updateBillingEmail` (Dodo customer update first, then the local `customers` row and subscription payloads).
 
 ## Referral attribution
 
@@ -125,7 +126,7 @@ convex/payments/
 ├── checkout.ts               # internalCreateCheckout (relay-only)
 ├── subscriptionHelpers.ts    # Webhook → subscription lifecycle
 ├── webhookMutations.ts       # Idempotent webhook event processing
-└── billing.ts                # getSubscriptionForUser + getCustomerPortalUrl
+└── billing.ts                # getSubscriptionForUser + getCustomerPortalUrl + updateBillingEmail
 
 api/
 ├── create-checkout.ts        # Edge gateway → Convex relay

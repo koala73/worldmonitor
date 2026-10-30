@@ -110,6 +110,7 @@ const SOURCE_DOMAIN_MATCHERS = [
 // Keep ambiguous structured providers explicit so a new unmatched provider
 // fails the build instead of silently becoming "geopolitics".
 const SOURCE_DOMAIN_OVERRIDES = new Map([
+  ['hormuz.data-tracking.net', 'infrastructure'],
   ['Alberta Emergency Alert', 'environment'],
   ['B.C. Evacuation Orders and Alerts', 'environment'],
   ['SaskAlert', 'environment'],
@@ -200,6 +201,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
 // Keep the hostname as the traceability link, but never make it do double duty
 // as the visible provider title.
 const SOURCE_NAME_OVERRIDES = new Map([
+  ['hormuz.data-tracking.net', 'UK Maritime Trade Operations (UKMTO) via hormuz.data-tracking.net'],
   ['acleddata.com', 'ACLED'],
   ['factchecktools.googleapis.com', 'Google Fact Check Tools API'],
   ['adsb.lol', 'ADSB.lol'],
@@ -819,6 +821,17 @@ export function buildSourcePages(sourceCatalog) {
   });
 }
 
+function sourceCategoryDocumentTitle(name) {
+  const longTitle = `${name}: Data Sources and Providers | World Monitor`;
+  const title = [...longTitle].length > 60
+    ? `${name} Data Sources | World Monitor`
+    : longTitle;
+  if ([...title].length > 60) {
+    throw new Error(`${name} document title is ${[...title].length} characters: ${title}`);
+  }
+  return title;
+}
+
 export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets = [], baseUrl, lastmod, helpers, directoryPages = null, sourcePage = null, catalogAnchors = sourceCardAnchors(sourceCatalog), siblingPages = [] }) {
   const { absoluteUrl, breadcrumbLd, dataCatalogLd, escapeHtml, pageDocument } = helpers;
   const path = sourcePage?.path || '/sources/';
@@ -1168,7 +1181,7 @@ ${providerCards}
   return pageDocument({
     baseUrl,
     path,
-    title: sourcePage ? `${sourcePage.name}: Data Sources and Providers | World Monitor` : 'Data Source Catalog | World Monitor',
+    title: sourcePage ? sourceCategoryDocumentTitle(sourcePage.name) : 'Global Data Sources: OSINT, Markets, Energy | World Monitor',
     description,
     lastmod,
     jsonLd: [

@@ -88,10 +88,7 @@
     "uniqueVisitors": "Unikátní návštěvníci",
     "peakDailyUsers": "Denní uživatelé (vrchol)",
     "countriesReached": "Dosažené země",
-    "liveDataSources": "Živé datové zdroje",
-    "quote": "Trhy, měnová politika, geopolitika, energie — vše se teď hýbe společně. Potřeboval jsem něco, co ukazuje, jak se tyto síly propojují v reálném čase, nejen titulky, ale skryté hybatele.",
-    "ceo": "CEO",
-    "asToldTo": "sděleno"
+    "liveDataSources": "Živé datové zdroje"
   },
   "audience": {
     "title": "Pro koho je World Monitor určen?",
@@ -459,7 +456,7 @@
       "ogDescription": "World Monitor: geopolitický zpravodajský dashboard v reálném čase. Bezplatná živá mapa konfliktů, lodní dopravy, letů, trhů a kybernetiky, s API a MCP serverem."
     },
     "nav": {
-      "useCases": "Korelace",
+      "useCases": "Případy použití",
       "firstFive": "Prvních 5 minut",
       "depth": "Hloubka",
       "pricing": "Ceny",
@@ -714,7 +711,16 @@
       "chokepointDesc": "Prověřte stav poruch, toky lodí a rizika v {{chokepoints}} kritických námořních průsmycích.",
       "countryRiskTitle": "Vysvětlit posun v riziku země",
       "countryRiskDesc": "Sledujte politické, bezpečnostní, ekonomické a odolnostní signály za změnami v jednotlivých zemích, s odolností hodnocenou pro {{resilienceRanked}} zemí.",
-      "open": "Otevřít důkazy"
+      "open": "Otevřít důkazy",
+      "workflow": "Postup krok za krokem"
+    },
+    "voices": {
+      "eyebrow": "Jejich slovy",
+      "title": "Co lidé říkají o World Monitor",
+      "sub": "{{users}} lidí ve {{countries}} zemích používalo World Monitor. Tohle o něm řekl tisk a někteří z nich.",
+      "translatedJa": "Přeloženo z japonštiny",
+      "prev": "Předchozí citace",
+      "next": "Další citace"
     }
   },
   "whatsNew": {
@@ -722,13 +728,13 @@
     "title": "Co je nového ve World Monitor",
     "subtitle": "Nové funkce z posledních 30 dní — opravy a údržba nejsou součástí seznamu.",
     "proTag": "PRO",
-    "m1": "Index divergence fyzické prémie — SGE vs COMEX, s historií",
-    "m2": "Hodnocení zranitelnosti nabídky komodit — rozprostření závislosti na kritických místech",
-    "m3": "Koncentrace těžby minerálů a obranná průmyslová báze",
-    "m4": "Pětifaktorové karty odolnosti s skóre na úrovni jednotlivých indikátorů",
-    "m5": "Vlastní seznamy sledování Telegram kanálů",
-    "m6": "Přihlášení pomocí hesla",
-    "m7": "AI agenti mohou ovládat dashboard — panely, záložky, vrstvy map a mise",
-    "m8": "Bohatší stránky odolnosti zemí"
+    "m1": "Mediální perspektiva — jak média z jednotlivých zemí informují o kterékoli zemi, pro AI agenty a API",
+    "m2": "/verify — karta důkazů pro jakékoli tvrzení s odkazy na zveřejněné ověření faktů",
+    "m3": "Počty potvrzujících zdrojů v upozorněních, přehledech a vyskakovacích oknech mapy a veřejná stránka /trust",
+    "m4": "Automatické sledování úderů — riziko země roste při útoku a klesá, jakmile údery ustanou",
+    "m5": "Uzavírky vzdušného prostoru z NOTAM FAA a mapová vrstva hlášených nouzových situací letadel",
+    "m6": "Mapa průmyslové aktivity ze satelitních dat NO2 ze Sentinel-5P",
+    "m7": "Kapitálové toky pro 230 ekonomik a libovolnou dvojici zemí, pro AI agenty a API",
+    "m8": "Dashboard v terminálu a přibližovatelná CLI mapa — brew install worldmonitor"
   }
 }

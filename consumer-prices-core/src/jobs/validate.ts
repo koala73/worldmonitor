@@ -15,6 +15,7 @@ import { query, closePool } from '../db/client.js';
 import { loadAllBasketConfigs } from '../config/loader.js';
 import { classifyMatchAdmission } from './scrape-coverage.js';
 import type { ValidatorResult } from '../adapters/validator.js';
+import { MAX_OBSERVATION_AGE_DAYS } from '../observation-freshness.js';
 
 const logger = {
   info: (msg: string, ...args: unknown[]) => console.log(`[validate] ${msg}`, ...args),
@@ -73,9 +74,10 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
        WHERE retailer_product_id = rp.id
        ORDER BY observed_at DESC, id DESC LIMIT 1
      ) po ON po.in_stock = true
+       AND rp.last_seen_at >= NOW() - make_interval(days => $3)
      WHERE pm.match_status IN ('auto', 'approved', 'review')
        AND pm.pin_disabled_at IS NULL`,
-    [basketSlug, marketCode],
+    [basketSlug, marketCode, MAX_OBSERVATION_AGE_DAYS],
   );
 
   const rows: MatchRow[] = result.rows.map((r) => ({
@@ -98,28 +100,56 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
     byItem.get(r.basketItemId)!.push(r);
   }
 
+  // Retailers a scrape saw within the window, per item, whatever their stock.
+  // The priced query above also drops a retailer whose latest observation is
+  // out of stock; that says nothing about this item's price, so releasing a
+  // hold then would publish a price this job flagged. A hold is released only
+  // when no other retailer has been seen at all. Loaded once, on first need.
+  let seenRetailers: Map<string, number> | null = null;
+  const othersSeen = async (basketItemId: string): Promise<boolean> => {
+    if (!seenRetailers) {
+      const seen = await query<{ basket_item_id: string; retailers: number }>(
+        `SELECT pm.basket_item_id, COUNT(DISTINCT r.id)::int AS retailers
+         FROM product_matches pm
+         JOIN retailer_products rp ON rp.id = pm.retailer_product_id
+         JOIN retailers r ON r.id = rp.retailer_id AND r.market_code = $2 AND r.active = true
+         JOIN basket_items bi ON bi.id = pm.basket_item_id AND bi.active = true
+         JOIN baskets b ON b.id = bi.basket_id AND b.slug = $1
+         WHERE pm.match_status <> 'rejected'
+           AND rp.last_seen_at >= NOW() - make_interval(days => $3)
+         GROUP BY pm.basket_item_id`,
+        [basketSlug, marketCode, MAX_OBSERVATION_AGE_DAYS],
+      );
+      seenRetailers = new Map(seen.rows.map((r) => [r.basket_item_id, Number(r.retailers)]));
+    }
+    return (seenRetailers.get(basketItemId) ?? 0) > 1;
+  };
+
   let flagged = 0;
   let restored = 0;
 
-  for (const [, itemRows] of byItem) {
+  for (const [basketItemId, itemRows] of byItem) {
     // Need >= 2 retailers to compute a meaningful cross-retailer median.
-    // Single-retailer items cannot be sanity-checked — skip.
+    // Single-retailer items cannot be sanity-checked, so nothing is flagged —
+    // but a hold this job placed while a peer existed is released once no
+    // scrape has seen that peer within the window, or the item stays held
+    // forever.
     const pricesByRetailer = new Map<string, number[]>();
     for (const row of itemRows) {
       const prices = pricesByRetailer.get(row.retailerSlug) ?? [];
       prices.push(row.price);
       pricesByRetailer.set(row.retailerSlug, prices);
     }
-    if (pricesByRetailer.size < 2) continue;
+    const peered = pricesByRetailer.size >= 2;
     const peerPrices = [...pricesByRetailer.values()].map(prices => median(prices));
-    const med = median(peerPrices);
-    if (med === 0) continue;
+    const med = peered ? median(peerPrices) : 0;
+    if (peered && med === 0) continue;
     const disputedPair = peerPrices.length === 2 &&
       Math.max(...peerPrices) / Math.min(...peerPrices) > UPPER_RATIO;
 
     for (const row of itemRows) {
-      const ratio = row.price / med;
-      const isOutlier = disputedPair || ratio > UPPER_RATIO || ratio < LOWER_RATIO;
+      const ratio = peered ? row.price / med : 1;
+      const isOutlier = peered && (disputedPair || ratio > UPPER_RATIO || ratio < LOWER_RATIO);
       const wasReview = row.matchStatus === 'review';
 
       if (isOutlier && !wasReview) {
@@ -147,7 +177,10 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
           `${(row.currencyCode ?? "").padEnd(3)}${row.price.toFixed(2).padStart(7)}  (median=${med.toFixed(2)}, ratio=${ratio.toFixed(2)}x)`,
         );
         flagged++;
-      } else if (!isOutlier && wasReview && row.reviewedBy === 'validate-job' && row.admitted) {
+      } else if (
+        !isOutlier && wasReview && row.reviewedBy === 'validate-job' && row.admitted &&
+        (peered || !(await othersSeen(basketItemId)))
+      ) {
         // Price returned to normal range — restore so it flows into aggregate again.
         await query(
           `UPDATE product_matches
@@ -160,17 +193,21 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
              AND $3 = (SELECT id::text FROM price_observations
                        WHERE retailer_product_id = product_matches.retailer_product_id
                        ORDER BY observed_at DESC, id DESC LIMIT 1)`,
-          [row.matchId, JSON.stringify({
+          [row.matchId, JSON.stringify(peered ? {
             restoredAt: new Date().toISOString(),
             reason: 'price_within_range',
             price: row.price,
             medianPrice: Math.round(med * 100) / 100,
             ratio: Math.round(ratio * 100) / 100,
+          } : {
+            restoredAt: new Date().toISOString(),
+            reason: 'no_fresh_peer',
+            price: row.price,
           }), row.observationId],
         );
         logger.info(
           `  RESTORED ${row.canonicalName.padEnd(30)} ${row.retailerSlug.padEnd(20)}` +
-          `${(row.currencyCode ?? "").padEnd(3)}${row.price.toFixed(2).padStart(7)}  now within range`,
+          `${(row.currencyCode ?? "").padEnd(3)}${row.price.toFixed(2).padStart(7)}  ${peered ? 'now within range' : 'no fresh peer'}`,
         );
         restored++;
       }

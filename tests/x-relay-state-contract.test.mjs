@@ -33,8 +33,8 @@ describe('X relay wiring contract', () => {
     // the executable tests in x-poll-cycle.test.mjs would be exercising a module
     // production never actually wires up.
     assert.match(relay, /const \{ createXPollCycle, xPollSlot \} = require\('\.\/lib\/x-poll-cycle\.cjs'\)/);
-    assert.match(relay, /createXPostBudget,[\s\S]*DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,[\s\S]*require\('\.\/lib\/x-post-budget\.cjs'\)/);
-    assert.match(relay, /createXPostBudget\(\{[\s\S]*dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,[\s\S]*\}\)/);
+    assert.match(relay, /createXPostBudget,[\s\S]*X_SHARED_COVERAGE_MODEL,[\s\S]*require\('\.\/lib\/x-post-budget\.cjs'\)/);
+    assert.match(relay, /createXPostBudget\(\{[\s\S]*\.\.\.X_SHARED_COVERAGE_MODEL,[\s\S]*\}\)/);
     assert.match(relay, /const xPollCycle = createXPollCycle\(\{/);
     for (const dep of [
       'xState', 'xNewsAccounts', 'xPostBudget', 'loadXAccounts',

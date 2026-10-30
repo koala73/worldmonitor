@@ -88,10 +88,7 @@
     "uniqueVisitors": "Einzelne Besucher",
     "peakDailyUsers": "Tägliche Nutzer (Peak)",
     "countriesReached": "Erreichte Länder",
-    "liveDataSources": "Live-Datenquellen",
-    "quote": "Märkte, Geldpolitik, Geopolitik, Energie — alles bewegt sich jetzt gemeinsam. Ich brauchte etwas, das zeigt, wie diese Kräfte in Echtzeit zusammenhängen — nicht nur die Schlagzeilen, sondern die zugrundeliegenden Treiber.",
-    "ceo": "CEO von",
-    "asToldTo": "erzählt gegenüber"
+    "liveDataSources": "Live-Datenquellen"
   },
   "audience": {
     "title": "Für wen ist World Monitor entwickelt?",
@@ -459,7 +456,7 @@
       "ogDescription": "World Monitor: geopolitisches Lagebild-Dashboard in Echtzeit. Kostenlose Live-Karte: Konflikte, Schifffahrt, Flüge, Märkte und Cyber, mit API und MCP-Server."
     },
     "nav": {
-      "useCases": "Korrelationen",
+      "useCases": "Anwendungsfälle",
       "firstFive": "Erste 5 Min",
       "depth": "Tiefe",
       "pricing": "Preisgestaltung",
@@ -714,7 +711,16 @@
       "chokepointDesc": "Überprüfe Störungsstatus, Schiffsströme und Risiken über {{chokepoints}} kritische Meerespassagen hinweg.",
       "countryRiskTitle": "Eine Länderrisiko-Bewegung erklären",
       "countryRiskDesc": "Verfolge die politischen, sicherheitsbezogenen, wirtschaftlichen und Resilienz-Signale hinter einer Länderveränderung, mit Resilienz-Ranking für {{resilienceRanked}} Länder.",
-      "open": "Belege öffnen"
+      "open": "Belege öffnen",
+      "workflow": "Schritt-für-Schritt-Ablauf"
+    },
+    "voices": {
+      "eyebrow": "In ihren Worten",
+      "title": "Was Menschen über World Monitor sagen",
+      "sub": "{{users}} Menschen in {{countries}} Ländern haben World Monitor genutzt. Das sagen die Presse und einige von ihnen.",
+      "translatedJa": "Aus dem Japanischen übersetzt",
+      "prev": "Vorherige Zitate",
+      "next": "Weitere Zitate"
     }
   },
   "whatsNew": {
@@ -722,13 +728,13 @@
     "title": "Neuigkeiten in World Monitor",
     "subtitle": "Neue Funktionen der letzten 30 Tage — Fehlerbehebungen und technische Details nicht inbegriffen.",
     "proTag": "PRO",
-    "m1": "Physik-Premium-Divergenz-Index — SGE vs. COMEX, mit Historie",
-    "m2": "Rohstoff-Versorgungsvulnerabilitäts-Rankings — Engpass-Abhängigkeit Fächerung",
-    "m3": "Mineralienproduktions-Konzentration und die Rüstungsindustriebasis",
-    "m4": "Fünf-Faktor-Resilienz-Scorecards mit Indikator-Level-Scores",
-    "m5": "Benutzerdefinierte Telegram-Kanal-Beobachtungslisten",
-    "m6": "Passkey-Anmeldung",
-    "m7": "KI-Agenten können das Dashboard steuern — Panels, Reiter, Kartenschichten und Missionen",
-    "m8": "Umfangreichere Länder-Resilienz-Seiten"
+    "m1": "Medienperspektive — wie Medien aus jedem Land über jedes Land berichten, für KI-Agenten und die API",
+    "m2": "/verify — eine Beleg-Karte für jede Behauptung, mit veröffentlichten Faktenchecks",
+    "m3": "Anzahl bestätigender Quellen in Alarmen, Digests und Karten-Popups, dazu eine öffentliche /trust-Seite",
+    "m4": "Automatische Angriffsverfolgung — das Länderrisiko steigt unter Beschuss und erholt sich, sobald die Angriffe enden",
+    "m5": "Luftraumsperrungen aus FAA-NOTAMs und eine Kartenebene für gemeldete Flugzeugnotfälle",
+    "m6": "Karte der Industrieaktivität aus NO2-Satellitendaten von Sentinel-5P",
+    "m7": "Kapitalströme für 230 Volkswirtschaften und jedes Länderpaar, für KI-Agenten und die API",
+    "m8": "Terminal-Dashboard und zoombare CLI-Karte — brew install worldmonitor"
   }
 }

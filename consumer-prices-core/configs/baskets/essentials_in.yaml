@@ -72,7 +72,7 @@ basket:
       substitutionGroup: tomatoes
       minBaseQty: 800
       maxBaseQty: 1200
-      negativeTokens: ["chopped", "peeled", "sauce", "paste", "canned", "puree", "sundried"]
+      negativeTokens: ["chopped", "peeled", "sauce", "paste", "canned", "puree", "sundried", "pickle", "ketchup"]
 
     - id: onions_1kg
       category: onions
@@ -82,7 +82,7 @@ basket:
       substitutionGroup: onions
       minBaseQty: 800
       maxBaseQty: 1200
-      negativeTokens: ["powder", "flakes", "rings", "pickled", "seeds", "sets"]
+      negativeTokens: ["powder", "flakes", "rings", "pickled", "seeds", "sets", "fried"]
 
     - id: water_1l
       category: water

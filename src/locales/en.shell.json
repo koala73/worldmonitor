@@ -195,7 +195,8 @@
     "consumerPrices": "Consumer Prices",
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
-    "climateNews": "Climate News"
+    "climateNews": "Climate News",
+    "ukmtoIncidents": "UKMTO Incidents"
   },
   "common": {
     "dismiss": "Dismiss",
@@ -902,15 +903,8 @@
     "gpsJamming": {
       "title": "Satellite navigation interference"
     },
-    "pipeline": {
-      "title": "PIPELINE"
-    },
-    "militaryFlight": {
-      "climbRate": "CLIMB RATE",
-      "manufacturer": "MANUFACTURER",
-      "owner": "OWNER",
-      "builtYear": "YEAR BUILT"
-    },
+    "pipeline":{"title":"PIPELINE"},
+    "militaryFlight":{"climbRate":"CLIMB RATE","manufacturer":"MANUFACTURER","owner":"OWNER","builtYear":"YEAR BUILT"},
     "militaryCluster": {
       "showLess": "Show less"
     }

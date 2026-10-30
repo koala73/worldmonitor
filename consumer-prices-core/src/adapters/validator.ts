@@ -2,16 +2,17 @@
  * Structured search-hit validator — deterministic post-extraction gate that
  * replaces the boolean `isTitlePlausible` check for scoring and candidate
  * triage. Evaluates:
- *   1. class-error rejects (basket item's negativeTokens present in title)
+ *   1. class-error rejects (basket item's negativeTokens present in title or URL path)
  *   2. non-food indicator rejects (shared with legacy gate)
  *   3. token-overlap score (identity tokens from canonicalName vs productName)
- *   4. quantity-window conformance (minBaseQty <= extractedBase <= maxBaseQty)
+ *   4. quantity-window conformance (minBaseQty <= extractedBase <= maxBaseQty),
+ *      counting a "pack of N" in the title
  *
  * Score is a 0..1 float combining the three positive signals so callers can
  * make graduated decisions (auto vs candidate) instead of the legacy 1.0 shortcut.
  * Reasons are returned so shadow mode and evidence_json can be human-readable.
  */
-import { parseSize } from '../normalizers/size.js';
+import { parseSize, type ParsedSize } from '../normalizers/size.js';
 import type { BasketItem } from '../config/types.js';
 
 /**
@@ -46,6 +47,8 @@ export interface ValidatorInput {
   canonicalName: string;
   productName: string | undefined;
   sizeText: string | undefined;
+  /** Page the hit came from. Its path slug is the retailer's own product name. */
+  productUrl?: string;
   marketCode?: string;
   item: Pick<BasketItem, 'baseUnit' | 'minBaseQty' | 'maxBaseQty' | 'negativeTokens'>;
 }
@@ -111,19 +114,89 @@ function computeTokenOverlap(canonicalName: string, productName: string): number
 function findNegativeToken(productName: string, negativeTokens: readonly string[] | undefined): string | null {
   if (!negativeTokens || negativeTokens.length === 0) return null;
   const titleTokens = new Set(tokens(productName));
-  const lowered = productName.toLowerCase();
+  const spaced = productName.toLowerCase().replace(/[\s-]+/g, ' ');
   for (const raw of negativeTokens) {
     const t = raw.toLowerCase().trim();
     if (!t) continue;
-    // Multi-word entries (e.g. "plant-based") are substring-matched; single
-    // words use whole-token match so "pastelaria" never matches "past".
+    // Multi-word entries (e.g. "plant-based") are substring-matched with
+    // hyphens and spaces treated alike, because URL path words arrive with
+    // hyphens turned into spaces. Single words use whole-token match so
+    // "pastelaria" never matches "past".
     if (t.includes(' ') || t.includes('-')) {
-      if (lowered.includes(t)) return raw;
+      if (spaced.includes(t.replace(/[\s-]+/g, ' '))) return raw;
     } else if (titleTokens.has(t)) {
       return raw;
     }
   }
   return null;
+}
+
+/**
+ * Words of the URL path. A retailer's slug names the product independently of
+ * the extractor, which can echo the requested canonical name as the title: a
+ * JioMart tomato-pickle page came back titled "Tomatoes Fresh 1kg". The host is
+ * excluded because it names the retailer, not the product.
+ */
+function urlPathWords(productUrl: string | undefined): string {
+  if (!productUrl) return '';
+  try {
+    return new URL(productUrl).pathname.replace(/[-_/.]+/g, ' ');
+  } catch {
+    return '';
+  }
+}
+
+// "Pack of 4", "(PACK OF 20 - 20 KG)", "set of 2". The `N x 500g` and
+// `N pack` forms are already read by parseSize.
+const PACK_OF = /\b(?:pack|set|combo)\s+of\s+(\d+)\b/i;
+const TITLE_SIZE = /(?<!\d)\d+(?:\.\d+)?\s*[a-z]+/gi;
+// "2 x 1L" in a title. Stricter than parseSize's pack prefix, which would read
+// "1121 XXXL Basmati" (a rice variety) as 1121 packs.
+const TITLE_N_X_SIZE = /(?<![\d.])(\d+)\s*[x×]\s*(\d+(?:\.\d+)?\s*[a-z]+)/i;
+
+/**
+ * The total size of a "pack of N" title, as `N x <unit size>`, or null.
+ *
+ * Extractors report the size printed for ONE unit ("1 L") while the multipack
+ * appears only in the title, as "pack of N" or "N x <size>" ("Vishwai sunflower oil pack of 4", ₹2,120), so
+ * the window alone admitted 4 L as the 1 L item. The unit size is the
+ * smallest size the title states, else the extracted size: a title can state
+ * both the unit and the total ("1 KG (PACK OF 20 - 20 KG)", "400g (Pack of 2,
+ * 200g each)"), and multiplying the total would count it twice. Count items
+ * are skipped: for them "pack of 12" is the quantity itself.
+ */
+function titleMultipackSize(
+  productName: string,
+  sizeText: string | undefined,
+  item: ValidatorInput['item'],
+): string | null {
+  if (item.baseUnit === 'ct') return null;
+  const match = PACK_OF.exec(productName);
+  const count = match ? Number(match[1]) : 0;
+  if (!match || count <= 1) {
+    // Only fills a multiplier the extractor dropped: sizeText must read as ONE
+    // unit of the same dimension. An unparseable or cross-dimension sizeText
+    // keeps its own verdict.
+    const nx = TITLE_N_X_SIZE.exec(productName);
+    const total = nx && Number(nx[1]) > 1 ? parseSize(`${nx[1]} x ${nx[2]}`) : null;
+    const extracted = parseSize(sizeText);
+    const dropped = total && extracted && extracted.packCount === 1 && extracted.baseUnit === total.baseUnit;
+    return dropped ? total.rawText : null;
+  }
+  const titleSizes = [...productName.replace(match[0], ' ').matchAll(TITLE_SIZE)]
+    .map((m) => parseSize(m[0]))
+    .filter((size): size is ParsedSize => size !== null);
+  // Sizes in the unit the window measures come first: "6 pcs (Pack of 2, 400g
+  // each)" is 2 x 400 g, not 12 pieces.
+  const inItemUnit = titleSizes.filter((size) => size.baseUnit === item.baseUnit);
+  const candidates = inItemUnit.length
+    ? inItemUnit
+    : titleSizes.filter((size) => size.baseUnit === titleSizes[0].baseUnit);
+  const unit = candidates.length
+    ? candidates.reduce((min, size) => (size.baseQuantity < min.baseQuantity ? size : min))
+    : parseSize(sizeText);
+  if (!unit || unit.packCount !== 1) return null;
+  return `${count} x ${unit.sizeValue} ${unit.sizeUnit}`;
 }
 
 function findNonFoodIndicator(productName: string): string | null {
@@ -196,7 +269,7 @@ export function validateSearchHit(input: ValidatorInput): ValidatorResult {
   signals.nonFoodIndicatorHit = nonFood;
   if (nonFood) reasons.push(`non-food-indicator:${nonFood}`);
 
-  const negHit = findNegativeToken(input.productName, input.item.negativeTokens);
+  const negHit = findNegativeToken(`${input.productName} ${urlPathWords(input.productUrl)}`, input.item.negativeTokens);
   signals.negativeTokenHit = negHit;
   if (negHit) reasons.push(`negative-token:${negHit}`);
 
@@ -205,7 +278,9 @@ export function validateSearchHit(input: ValidatorInput): ValidatorResult {
   const overlapFloor = 0.4;
   if (overlap < overlapFloor) reasons.push(`low-token-overlap:${overlap.toFixed(2)}`);
 
-  const sizeEval = evaluateSizeWindow(input.sizeText?.trim() || input.productName, input.item, input.marketCode);
+  const sizeSource =
+    titleMultipackSize(input.productName, input.sizeText, input.item) ?? (input.sizeText?.trim() || input.productName);
+  const sizeEval = evaluateSizeWindow(sizeSource, input.item, input.marketCode);
   signals.sizeWindow = sizeEval.status;
   signals.extractedBaseQty = sizeEval.baseQty;
   signals.extractedBaseUnit = sizeEval.baseUnit;

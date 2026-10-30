@@ -419,3 +419,66 @@ describe('renderWaitMs plumbing', () => {
     expect((firecrawl.extract as ReturnType<typeof vi.fn>).mock.calls[0]?.[2]).toMatchObject({ waitFor: 8000 });
   });
 });
+
+// Live 2026-10-29: Naivas category pages (`/dairy/fresh-milk`) and a Coop
+// cervelas page carrying an egg carousel both passed every gate above, because
+// the price was on the page and the carousel product fit the basket item.
+// Product identity is (retailer, source URL), so a category page would later
+// price whichever product it lists first under the same identity.
+describe('page identity gate', () => {
+  async function extractWith(pageTitle: string | undefined, overrides: Partial<RetailerConfig['searchConfig']> = {}) {
+    const exa = { search: vi.fn().mockResolvedValue([{ url: PRODUCT_URL }]) } as unknown as ExaProvider;
+    const firecrawl = {
+      extract: vi.fn().mockResolvedValue({
+        data: goodExtract,
+        pageContent: 'Meadows White Sandwich Bread 400g\n\n$4.60',
+        ...(pageTitle ? { pageTitle } : {}),
+      }),
+    } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const context = makeContext(makeConfig({ requirePageTitleMatch: true, ...overrides }));
+    return adapter.fetchTarget(context, makeTarget()).then(
+      async (result) => ({ products: await adapter.parseListing(context, result), err: null }),
+      (err: unknown) => ({ products: [], err: err as SearchTargetError }),
+    );
+  }
+
+  it('accepts the product the page declares itself to be', async () => {
+    const { products } = await extractWith('Meadows White Sandwich Bread 400g');
+    expect(products[0]?.price).toBe(4.6);
+  });
+
+  it('rejects a carousel product priced on another product page', async () => {
+    const { err } = await extractWith('Cervelas Sausages 75% Less Fat');
+    expect(err).toBeInstanceOf(SearchTargetError);
+    expect(err?.failures).toContainEqual({
+      provider: 'firecrawl',
+      reason: 'title-mismatch',
+      detail: 'page: Cervelas Sausages 75% Less Fat',
+    });
+  });
+
+  it('rejects a page that declares no product, such as a category listing', async () => {
+    const { err } = await extractWith(undefined);
+    expect(err?.failures).toContainEqual({ provider: 'firecrawl', reason: 'title-mismatch', detail: 'page: none' });
+  });
+
+  it('rejects a carousel variant of the same product in another size', async () => {
+    const { err } = await extractWith('Meadows White Sandwich Bread 600g');
+    expect(err?.failures).toContainEqual({
+      provider: 'firecrawl',
+      reason: 'title-mismatch',
+      detail: 'page: Meadows White Sandwich Bread 600g',
+    });
+  });
+
+  it('accepts when only one side states a size', async () => {
+    const { products } = await extractWith('Meadows White Sandwich Bread');
+    expect(products[0]?.price).toBe(4.6);
+  });
+
+  it('leaves retailers that do not opt in unchanged', async () => {
+    const { products } = await extractWith(undefined, { requirePageTitleMatch: false });
+    expect(products[0]?.price).toBe(4.6);
+  });
+});

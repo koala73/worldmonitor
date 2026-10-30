@@ -28,6 +28,7 @@ import {
 export const PERSONAL_DELETE_TABLES = [
   "userPreferences",
   "userPreferenceWriteRateLimits",
+  "billingEmailUpdateAttempts",
   "notificationChannels",
   "alertRules",
   "telegramPairingTokens",
@@ -78,6 +79,11 @@ async function takePersonalRows(
       return ctx.db
         .query("userPreferenceWriteRateLimits")
         .withIndex("by_user_window", (q) => q.eq("userId", userId))
+        .take(limit);
+    case "billingEmailUpdateAttempts":
+      return ctx.db
+        .query("billingEmailUpdateAttempts")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
         .take(limit);
     case "notificationChannels":
       return ctx.db

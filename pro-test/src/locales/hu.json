@@ -88,10 +88,7 @@
     "uniqueVisitors": "Egyedi látogatók",
     "peakDailyUsers": "Napi csúcsfelhasználók",
     "countriesReached": "Elért országok",
-    "liveDataSources": "Élő adatforrások",
-    "quote": "Piacok, monetáris politika, geopolitika, energia — most már minden együtt mozog. Olyan eszközre volt szükségem, amely valós időben mutatja meg, hogyan kapcsolódnak ezek az erők, nem csak a címeket, hanem a mögöttes mozgatókat is.",
-    "ceo": "CEO,",
-    "asToldTo": "elmondva"
+    "liveDataSources": "Élő adatforrások"
   },
   "audience": {
     "title": "Kinek készült a World Monitor?",
@@ -459,7 +456,7 @@
       "ogDescription": "World Monitor: valós idejű geopolitikai hírszerzési irányítópult. Ingyenes élő térkép: konfliktusok, hajózás, járatok, piacok és kiber, API-val és MCP-vel."
     },
     "nav": {
-      "useCases": "Korrelációk",
+      "useCases": "Felhasználási esetek",
       "firstFive": "Első 5 perc",
       "depth": "Mélység",
       "pricing": "Díjszabás",
@@ -714,7 +711,16 @@
       "chokepointDesc": "Ellenőrizze a zavarok állapotát, a hajóáramlásokat és a kockázatokat {{chokepoints}} kritikus tengeri passzuson.",
       "countryRiskTitle": "Országkockázati lépés magyarázata",
       "countryRiskDesc": "Nyomon követheti az országok politikai, biztonsági, gazdasági és rugalmassági jeleit, {{resilienceRanked}} ország rugalmassági besorolásával.",
-      "open": "Bizonyítékok megnyitása"
+      "open": "Bizonyítékok megnyitása",
+      "workflow": "Lépésről lépésre munkafolyamat"
+    },
+    "voices": {
+      "eyebrow": "Az ő szavaikkal",
+      "title": "Mit mondanak az emberek a World Monitorról",
+      "sub": "{{users}} ember {{countries}} országban használta a World Monitort. Ezt mondta róla a sajtó és néhányuk.",
+      "translatedJa": "Japánból fordítva",
+      "prev": "Előző idézetek",
+      "next": "További idézetek"
     }
   },
   "whatsNew": {
@@ -722,13 +728,13 @@
     "title": "Újdonságok a WorldMonitorban",
     "subtitle": "Az elmúlt 30 nap új funkciói — hibajavítások és mérnöki munkák nélkül.",
     "proTag": "PRO",
-    "m1": "Fizikai prémium divergencia index — SGE vs COMEX, történelemmel",
-    "m2": "Árucikk-ellátási sérülékenységi rangsorok — szűk keresztmetszetek függőségi felbontása",
-    "m3": "Ásványi anyag termeléskoncentrációja és a védelmi ipari bázis",
-    "m4": "Öt faktoros ellenálló képességi scorecardok mutatószintű pontszámokkal",
-    "m5": "Egyéni Telegram csatorna megfigyelési listák",
-    "m6": "Jelkulcs alapú bejelentkezés",
-    "m7": "Az AI ügynökök irányíthatják a dashboardot — panelek, lapok, térképrétegek és missions",
-    "m8": "Gazdagabb ország-ellenálló képességi oldalak"
+    "m1": "Médiaperspektíva — hogyan tudósítanak az egyes országok médiumai bármely országról, AI-ügynököknek és az API-hoz",
+    "m2": "/verify — bizonyítékkártya bármely állításhoz, publikált tényellenőrzésekre hivatkozva",
+    "m3": "Megerősítő források száma a riasztásokban, összefoglalókban és a térkép felugró ablakaiban, valamint nyilvános /trust oldal",
+    "m4": "Automatikus csapáskövetés — az ország kockázata támadás alatt nő, és a csapások megszűnése után csökken",
+    "m5": "Légtérlezárások az FAA NOTAM-jaiból és térképréteg a bejelentett légi vészhelyzetekhez",
+    "m6": "Ipari aktivitás térképe a Sentinel-5P műhold NO2-adataiból",
+    "m7": "Tőkeáramlások 230 gazdaságra és bármely országpárra, AI-ügynököknek és az API-hoz",
+    "m8": "Terminálos irányítópult és nagyítható CLI-térkép — brew install worldmonitor"
   }
 }

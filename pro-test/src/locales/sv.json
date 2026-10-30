@@ -88,10 +88,7 @@
     "uniqueVisitors": "Unika besökare",
     "peakDailyUsers": "Dagliga användare (topp)",
     "countriesReached": "Länder nådda",
-    "liveDataSources": "Live-datakällor",
-    "quote": "Marknader, penningpolitik, geopolitik, energi — allt rör sig tillsammans nu. Jag behövde något som visade hur dessa krafter kopplas ihop i realtid, inte bara rubrikerna utan de underliggande drivkrafterna.",
-    "ceo": "VD för",
-    "asToldTo": "berättat för"
+    "liveDataSources": "Live-datakällor"
   },
   "audience": {
     "title": "Vem är World Monitor utformat för?",
@@ -459,7 +456,7 @@
       "ogDescription": "World Monitor: panel för geopolitisk underrättelse i realtid. En gratis livekarta över konflikter, sjöfart, flyg, marknader och cyber, med API och MCP-server."
     },
     "nav": {
-      "useCases": "Korrelationer",
+      "useCases": "Användningsfall",
       "firstFive": "Första 5 min",
       "depth": "Djup",
       "pricing": "Prissättning",
@@ -714,7 +711,16 @@
       "chokepointDesc": "Inspektera störningsstatus, fartygsflöden och risk över {{chokepoints}} kritiska sjövägspassager.",
       "countryRiskTitle": "Förklara ett landrisksteg",
       "countryRiskDesc": "Spåra politiska, säkerhets-, ekonomiska och motståndskraftssignaler bakom ett lands förändring, med motståndskraft rankad för {{resilienceRanked}} länder.",
-      "open": "Öppna bevis"
+      "open": "Öppna bevis",
+      "workflow": "Arbetsflöde steg för steg"
+    },
+    "voices": {
+      "eyebrow": "Med deras ord",
+      "title": "Vad folk säger om World Monitor",
+      "sub": "{{users}} personer i {{countries}} länder har använt World Monitor. Så här sa pressen och några av dem.",
+      "translatedJa": "Översatt från japanska",
+      "prev": "Föregående citat",
+      "next": "Fler citat"
     }
   },
   "whatsNew": {
@@ -722,13 +728,13 @@
     "title": "Vad är nytt i WorldMonitor",
     "subtitle": "Nya funktioner från de senaste 30 dagarna — felrättningar och inte inkluderad.",
     "proTag": "PRO",
-    "m1": "Index för fysisk premiumskillnad — SGE mot COMEX, med historik",
-    "m2": "Rangordning av råvarutillgångssårbarhet — beroendespridning för flaskhalsar",
-    "m3": "Mineralproduktionskoncentration och försvarets industriell bas",
-    "m4": "Femfaktorers motståndskraftskort med poäng på indikatornivå",
-    "m5": "Anpassade Telegram-kanalövervakarlistor",
-    "m6": "Passkey-inloggning",
-    "m7": "AI-agenter kan styra instrumentpanelen — paneler, flikar, kartlager och uppdrag",
-    "m8": "Rikare landsöversidor för motståndskraft"
+    "m1": "Medieperspektiv — hur medier från varje land bevakar vilket land som helst, för AI-agenter och API:t",
+    "m2": "/verify — ett beviskort för alla påståenden, med publicerade faktagranskningar",
+    "m3": "Antal bekräftande källor i aviseringar, sammanfattningar och kartans popup-fönster, plus en offentlig /trust-sida",
+    "m4": "Automatisk spårning av attacker — ett lands risk stiger under angrepp och återhämtar sig när attackerna upphör",
+    "m5": "Luftrumsstängningar från FAA:s NOTAM och ett kartlager med rapporterade nödlägen för flygplan",
+    "m6": "Karta över industriell aktivitet från NO2-satellitdata från Sentinel-5P",
+    "m7": "Kapitalflöden för 230 ekonomier och alla landspar, för AI-agenter och API:t",
+    "m8": "Terminalpanel och zoombar CLI-karta — brew install worldmonitor"
   }
 }

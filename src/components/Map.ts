@@ -1,4 +1,5 @@
 import * as d3 from 'd3';
+import { UKMTO_SOURCE_URL, ukmtoIncidentLabel, type UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import * as topojson from 'topojson-client';
 import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
@@ -202,6 +203,7 @@ export class MapComponent {
   private radiationObservations: RadiationObservation[] = [];
   private outages: InternetOutage[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
+  private ukmtoIncidents: UkmtoMapIncident[] = [];
   private aisDensity: AisDensityZone[] = [];
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
@@ -1954,6 +1956,7 @@ export class MapComponent {
     if (layers.waterways) add('waterways', STRATEGIC_WATERWAYS);
     if (layers.ais) {
       add('ais', this.aisDisruptions);
+      add('ais', this.filterByTime(this.ukmtoIncidents, item => item.occurredAt));
       add('ais', PORTS);
     }
     if (layers.cyberThreats && SITE_VARIANT !== 'tech') add('cyberThreats', this.aptGroups);
@@ -2276,6 +2279,22 @@ export class MapComponent {
     if (this.state.layers.ais) {
       this.renderAisDisruptions(projection);
       this.renderPorts(projection);
+      this.filterByTime(this.ukmtoIncidents, item => item.occurredAt).forEach(item => {
+        if (!item.location || this.isOverlayMarkerCut(item)) return;
+        const pos = projection([item.location.longitude, item.location.latitude]);
+        if (!pos) return;
+        const marker = document.createElement('a');
+        marker.className = 'ais-disruption-marker ukmto-marker';
+        marker.style.left = `${pos[0]}px`;
+        marker.style.top = `${pos[1]}px`;
+        marker.textContent = '⚓';
+        marker.title = `${ukmtoIncidentLabel(item)}\n${item.description}`;
+        marker.setAttribute('aria-label', ukmtoIncidentLabel(item));
+        marker.href = UKMTO_SOURCE_URL;
+        marker.target = '_blank';
+        marker.rel = 'noopener noreferrer';
+        this.appendOverlay(marker);
+      });
     }
 
     // APT groups — rendered only when cyberThreats layer is active, loaded lazily
@@ -5082,6 +5101,11 @@ export class MapComponent {
   public setAisData(disruptions: AisDisruptionEvent[], density: AisDensityZone[]): void {
     this.aisDisruptions = disruptions;
     this.aisDensity = density;
+    this.render();
+  }
+
+  public setUkmtoIncidents(incidents: UkmtoMapIncident[]): void {
+    this.ukmtoIncidents = incidents;
     this.render();
   }
 

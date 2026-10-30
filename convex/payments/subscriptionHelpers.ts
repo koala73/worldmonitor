@@ -74,6 +74,32 @@ interface DodoPaymentData {
   status?: string;
 }
 
+/**
+ * The address a subscription's billing mail goes to, trimmed, or "" when
+ * nothing is known. A user repair (`billingEmailOverride`) wins while it is
+ * newer than the row's last webhook; a webhook generated after the repair
+ * carries Dodo's current address and takes over again. Otherwise the trust
+ * order mirrors the portal's: the sub's own rawPayload email first
+ * (per-Clerk-userId by construction), then the customers row for the SAME
+ * userId (customers rows can race across Clerk accounts, so never a
+ * cross-user lookup). Dunning and the billing UI's bounce flag must name the
+ * same recipient, so both read it here.
+ */
+export async function resolveBillingRecipient(
+  ctx: MutationCtx | QueryCtx,
+  sub: Pick<Doc<"subscriptions">, "userId" | "rawPayload" | "updatedAt" | "billingEmailOverride">,
+): Promise<string> {
+  const override = sub.billingEmailOverride;
+  if (override && override.observedAt > sub.updatedAt) return override.email.trim();
+  const rawEmail = (sub.rawPayload as { customer?: { email?: unknown } } | null)?.customer?.email;
+  if (typeof rawEmail === "string" && rawEmail.includes("@")) return rawEmail.trim();
+  const customer = await ctx.db
+    .query("customers")
+    .withIndex("by_userId", (q) => q.eq("userId", sub.userId))
+    .first();
+  return customer?.email.trim() ?? "";
+}
+
 export async function billingDeletionForUser(ctx: MutationCtx | QueryCtx, userId: string) {
   return userId.startsWith("deleted:")
     ? ctx.db.query("accountDeletions")

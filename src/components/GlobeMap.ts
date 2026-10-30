@@ -15,6 +15,7 @@
  */
 
 import Globe from 'globe.gl';
+import { ukmtoIncidentLabel, type UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import { isDesktopRuntime } from '@/services/runtime';
 import type { NewsLocationMarker as NewsLocationInput } from '@/types';
 import type { GlobeInstance, ConfigOptions } from 'globe.gl';
@@ -413,6 +414,11 @@ interface AisDisruptionMarker extends BaseMarker {
   severity: AisDisruptionEvent['severity'];
   description: string;
 }
+interface UkmtoMarker extends BaseMarker {
+  _kind: 'ukmtoIncident';
+  id: string;
+  incident: UkmtoMapIncident;
+}
 interface SatelliteMarker extends BaseMarker {
   _kind: 'satellite';
   id: string;
@@ -475,6 +481,7 @@ interface GlobePolygon {
   previewUrl?: string;
 }
 type GlobeMarker =
+  | UkmtoMarker
   | ConflictMarker | HotspotMarker | FlightMarker | VesselMarker | ClusterMarker
   | WeatherMarker | NaturalMarker | IranMarker | OutageMarker | TrafficAnomalyMarker | DdosHitMarker
   | CyberMarker | FireMarker | ProtestMarker
@@ -581,6 +588,7 @@ export class GlobeMap {
   private cableAdvisoryMarkers: CableAdvisoryMarker[] = [];
   private repairShipMarkers: RepairShipMarker[] = [];
   private aisMarkers: AisDisruptionMarker[] = [];
+  private ukmtoMarkers: UkmtoMarker[] = [];
   private satelliteMarkers: SatelliteMarker[] = [];
   private satelliteTrailPaths: GlobePath[] = [];
   private stormTrackPaths: GlobePath[] = [];
@@ -1329,6 +1337,10 @@ export class GlobeMap {
           <div style="position:absolute;inset:-5px;border-radius:50%;background:${tc}22;${this.pulseStyle('1.8s')}"></div>
         </div>`, "legacy direct innerHTML migration"));
       el.title = d.title;
+    } else if (d._kind === 'ukmtoIncident') {
+      el.textContent = '⚓';
+      el.title = ukmtoIncidentLabel(d.incident);
+      el.setAttribute('aria-label', el.title);
     } else if (d._kind === 'aisDisruption') {
       const sc = d.severity === 'high' ? '#ff2020' : d.severity === 'elevated' ? '#ff8800' : '#44aaff';
       setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:${sc};text-shadow:0 0 4px ${sc}88;">⛴</div>`), "legacy direct innerHTML migration"));
@@ -1708,6 +1720,8 @@ export class GlobeMap {
       html = `<span style="color:${sc};font-weight:bold;">⛴ ${esc(typeLabel)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.name)}</span>` +
              `<br><span style="opacity:.5;">${esc(d.severity)} · ${esc(d.description.slice(0, 60))}</span>`;
+    } else if (d._kind === 'ukmtoIncident') {
+      html = `<strong>${esc(ukmtoIncidentLabel(d.incident))}</strong><br>${esc(d.incident.description)}`;
     } else if (d._kind === 'newsLocation') {
       const tc = d.threatLevel === 'critical' ? '#ff2020' : d.threatLevel === 'high' ? '#ff6600' : (d.threatLevel === 'elevated' || d.threatLevel === 'medium') ? '#ffaa00' : '#44aaff';
       const coverage = corroborationLabelHtml(d.corroboration);
@@ -2265,6 +2279,11 @@ export class GlobeMap {
       add('flights', this.notamRingMarkers);
     }
     if (this.layers.ais) add('ais', this.aisMarkers);
+    if (this.layers.ais) {
+      const hours = { '1h': 1, '6h': 6, '24h': 24, '48h': 48, '7d': 168, all: Infinity }[this.timeRange];
+      const cutoff = Date.now() - hours * 3600000;
+      add('ais', this.ukmtoMarkers.filter(marker => marker.incident.occurredAt >= cutoff));
+    }
     if (this.layers.iranAttacks) add('iranAttacks', this.iranMarkers);
     if (this.layers.outages) {
       add('outages', this.outageMarkers);
@@ -3205,6 +3224,7 @@ export class GlobeMap {
 
   public setTimeRange(range: TimeRange): void {
     this.timeRange = range;
+    this.flushMarkers();
   }
 
   public getTimeRange(): TimeRange {
@@ -3535,6 +3555,13 @@ export class GlobeMap {
         severity: d.severity,
         description: d.description ?? '',
       }));
+    this.flushMarkers();
+  }
+  public setUkmtoIncidents(incidents: UkmtoMapIncident[]): void {
+    this.ukmtoMarkers = incidents.filter(item => item.location).map(item => ({
+      _kind: 'ukmtoIncident', _lat: item.location!.latitude, _lng: item.location!.longitude,
+      id: item.id, incident: item,
+    }));
     this.flushMarkers();
   }
   public setCableActivity(advisories: CableAdvisory[], repairShips: RepairShip[]): void {

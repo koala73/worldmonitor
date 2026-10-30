@@ -11,7 +11,7 @@ Pro users can search titles and descriptions, filter by buyer, two-letter countr
 
 ## Coverage and freshness
 
-The initial adapters read official public procurement sources:
+The adapters read official public procurement sources:
 
 | Source | Coverage | Notes |
 | --- | --- | --- |
@@ -21,6 +21,22 @@ The initial adapters read official public procurement sources:
 | CanadaBuys | Canada | Official federal open-tender CSV, refreshed daily by CanadaBuys. |
 | GETS | New Zealand / Oceania | Current open tenders from the official public GETS RSS feed. |
 | World Bank Procurement Notices | Multilateral / global | World Bank-financed opportunity notices across borrower countries. |
+| Colombia SECOP II (`colombia-secop`) | Colombia | Up to 100 distinct published processes with a future response deadline. Uses the processes dataset, not awarded contracts. |
+| Kenya PPIP (`kenya-ppip`) | Kenya | One active-tenders page, up to 100 records. No in-run retries, including HTTP 429. Staff, contact, team and bidder objects are not copied. |
+| South Africa eTenders (`south-africa-etenders`) | South Africa | Up to 20 OCDS releases from the previous day through today. |
+| Chile Mercado Público (`chile-mercado-publico`) | Chile | A bounded sample of 20 current-month OCDS entries, with official tender-detail reads. |
+| Brazil PNCP (`brazil-pncp`) | Brazil | Up to 10 active proposals with a closing date within 30 days, across procurement modalities. |
+| Ukraine Prozorro (`ukraine-prozorro`) | Ukraine | Details for up to 20 recently modified tenders. Only `active.tendering` is accepted; qualification and award stages are excluded. |
+| Bulgaria EOP (`bulgaria-eop`) | Bulgaria | Previous day's official OCDS archive. Each lot keeps its own closing date and value. |
+| Latvia IUB (`latvia-iub`) | Latvia | Previous day's JSON file. Competition lots with a closing date, closing time and permitted official procurement link. |
+| Poland BZP (`poland-bzp`) | Poland | Up to 100 current contract notices from the previous day through today; outdated notices are excluded. |
+| Pakistan PPRA (`pakistan-ppra`) | Pakistan | One public active-tenders HTML page, up to 100 rows. Each accepted row needs a published status, official detail link, closing date and time. |
+
+These are samples of upstream catalogues, not exhaustive national coverage. Each added source has a 75-second request budget, no in-run retries and at most four concurrent detail reads. Most requests have a 15-second timeout; PNCP has 30 seconds. The hourly Railway schedule limits Kenya to one request per run. Bulgaria and Latvia use the previous day's archive to allow publication time. Local closing times are converted using the publisher's time zone. Missing closing dates or times are not inferred. Raw staff, contact-point, supplier and bidder objects are never stored in the canonical snapshot.
+
+The added sources use the same source, country, buyer, category, value, date and technology-relevance filters in the panel, RPC and MCP tool. No new credentials are required.
+
+Each added source writes a durable `seed-activated:economic:global-tenders:<source>` marker after its first successful canonical publication and source-status writes, including a valid empty result. Before that publication, a missing key reports `EMPTY_ON_DEMAND`. After activation, a missing or stale key is a health fault even after the source metadata expires. Failed attempts never activate a source.
 
 The Railway seeder runs hourly and stores a canonical snapshot at `economic:global-tenders:v1`. Its TTL is three hours so the prior successful snapshot survives a missed run. If one adapter fails, healthy-source results remain available, that source's last-good records are retained, and the response reports `availability: "partial"`. If every adapter fails, the previous records remain available with `availability: "stale"`.
 
@@ -36,7 +52,33 @@ Per-source state, record counts, retrieval-attempt time, last-success time, and 
 
 World Bank requests cover a sample of up to 100 notices, not the full upstream catalogue. Each request can make three attempts, including response-body reading, with a 20-second attempt timeout and 5- and 10-second retry delays. All attempts and `Retry-After` waits share a 75-second budget. A failed body read can retry; missing or malformed notices and incomplete declared result windows cannot become an empty success.
 
-World Bank and Contracts Finder retain usable open notices only within three hours of the source's last success. Failed attempts and successful aggregate publications do not renew that source clock. A valid empty response clears prior records; a failed request remains a source error, including when the last successful result was empty. If the seeder cannot read the previous canonical snapshot, it preserves the existing publication instead of treating the read failure as missing data. Aggregate completion is not proof that every source succeeded; failed sources remain visible in health and are attempted on the normal hourly cadence.
+World Bank, Contracts Finder and the ten added sources retain usable open notices only within three hours of the source's last success. Failed attempts and successful aggregate publications do not renew that source clock. A valid empty response clears prior records; a failed request remains a source error, including when the last successful result was empty. If the seeder cannot read the previous canonical snapshot, it preserves the existing publication instead of treating the read failure as missing data. Aggregate completion is not proof that every source succeeded; failed sources remain visible in health and are attempted on the normal hourly cadence.
+
+### Remaining sources from issue #9840
+
+The [source proposal](https://github.com/koala73/worldmonitor/issues/9840) includes archives and portals that need separate adapters. They are not advertised as covered, and country filters for unobserved countries remain `unknown`. Read-only checks on 2026-10-29 found the following limits; these are single-run observations, not long-term availability claims.
+
+| Source | Current limit |
+| --- | --- |
+| Lithuania CVP IS | The linked API instructions returned HTTP 403. The POST schema and published public-key mechanism still need verification. |
+| Moldova MTender | The linked `/tenders/` endpoint returned an empty HTTP 200 body; the attempted `/api/0.2/tenders` route returned 404. A current list/detail contract is required. |
+| Romania SEAP | The linked quarterly XLSX/ODS exports describe purchases and awards. An open-opportunity interface with future closing dates is required. |
+| Czech contracts register | XML contract dumps describe executed contracts, not invitations to bid. Keep them separate from open opportunities. |
+| Turkey EKAP | The linked search endpoint failed its TLS handshake from this environment. Its undocumented POST contract is unverified. |
+| Peru OECE | The linked monthly-file API returned HTTP 403 with a browser User-Agent. |
+| Uzbekistan xarid plans | Planned purchases must not be classified as open tenders. A separate planning data contract is needed. |
+| Uzbekistan UzEx e-tender | The linked page returned an application shell. The lot/deal POST contract needs verification before use. |
+| Qatar Monaqasat | The linked endpoint closed the TLS connection during the check. |
+| Oman Tender Board | Public HTML was reachable. Its row/detail parser and closing-time contract are not implemented. |
+| Bahrain Tender Board | Public HTML was reachable. Its row/detail parser and closing-time contract are not implemented. |
+| Kuwait CAPT | The linked endpoint returned HTTP 403. |
+| Jordan JONEPS | Public HTML was reachable. Its row/detail parser and closing-time contract are not implemented. |
+| Mexico Postor / ComprasMX | The third-party index exposes NDJSON bulk lots. A bounded current-opportunity import with official notice provenance is still required. |
+| Nigeria NOCOPO via OCP | Third-party annual/all-time JSONL archives need a bounded import and official notice-link verification. |
+| Bangkok BMA via OCP | Third-party annual/all-time JSONL archives need a bounded import and official notice-link verification. |
+| OCP Data Registry | A catalogue of datasets, not one independent national opportunity feed. Individual publishers need their own adapters. |
+
+TED and World Bank were already integrated. Supplier debarment lists are not tender opportunities and are not imported here. Weekly map aggregates are outside the panel/API extension.
 
 ## Deployment configuration
 
