@@ -812,3 +812,16 @@ it('clusters connector-only headline edits through bounded fallback keys', () =>
   assert.ok(candidateTokens(titles[0]).size > 0);
   assert.deepEqual(clusterTexts(titles), [[0, 1]]);
 });
+
+
+it('clusters fallback and keyful headline edits in either input order', () => {
+  const titles = ['WHO says US must do more', 'WHO says US must do more on mpox'];
+  assert.ok(storySimilarity(...titles) >= STORY_SIMILARITY_THRESHOLD);
+  assert.deepEqual(clusterTexts(titles), [[0, 1]]);
+  assert.deepEqual(clusterTexts([...titles].reverse()), [[0, 1]]);
+});
+
+it('caps secondary candidate buckets for hot connector-only headlines', () => {
+  const titles = ['WHO says US must do more', ...Array.from({ length: 251 }, (_, i) => `WHO says US must do more on topic${i}`)];
+  assert.equal(clusterTexts(titles).length, titles.length);
+});
