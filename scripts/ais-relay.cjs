@@ -8705,7 +8705,10 @@ async function pollPizzintBestTimeVenue(apiKey, venue) {
     });
     if (!resp.ok) {
       try { await resp.body?.cancel(); } catch { /* Keep the HTTP outcome if cleanup fails. */ }
-      return { outcome: 'http' };
+      // The status is the only diagnostic worth keeping: a 400/401 means the
+      // key is wrong, a 429 means the plan budget is spent, a 5xx is BestTime
+      // itself. The body is dropped unread (it can echo the key).
+      return { outcome: 'http', status: resp.status };
     }
     let reply;
     try {
@@ -8748,12 +8751,14 @@ function pizzintBestTimePlaceholder(venue, reply) {
 async function fetchPizzintBestTimeLocations(apiKey) {
   const polls = await Promise.all(PIZZINT_BESTTIME_VENUES.map(venue => pollPizzintBestTimeVenue(apiKey, venue)));
   const counts = { accepted: 0, unavailable: 0, invalid: 0, http: 0, timeout: 0, transport: 0, json: 0 };
+  const httpStatuses = new Map();
   const locations = [];
   const published = [];
   const historyLocations = [];
   PIZZINT_BESTTIME_VENUES.forEach((venue, i) => {
-    const { outcome, location, reply } = polls[i];
+    const { outcome, location, reply, status } = polls[i];
     counts[outcome]++;
+    if (outcome === 'http') httpStatuses.set(status, (httpStatuses.get(status) || 0) + 1);
     if (location) {
       locations.push(location);
       published.push(location);
@@ -8773,7 +8778,13 @@ async function fetchPizzintBestTimeLocations(apiKey) {
       noLiveSignal: true,
     });
   });
-  const summary = Object.entries(counts).map(([category, count]) => `${category}=${count}`).join(' ');
+  // http=3 alone cannot tell a bad key (400/401) from a spent plan budget
+  // (429) or a BestTime outage (5xx); the status histogram can.
+  const summary = Object.entries(counts).map(([category, count]) => (
+    category === 'http' && count > 0
+      ? `http=${count}(${[...httpStatuses].sort(([a], [b]) => a - b).map(([code, n]) => `${code}x${n}`).join(',')})`
+      : `${category}=${count}`
+  )).join(' ');
   // Every venue answered cleanly; with no accepted reading, all reported unavailable.
   const answered = counts.accepted + counts.unavailable === PIZZINT_BESTTIME_VENUES.length;
   if (locations.length === 0) {
