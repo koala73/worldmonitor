@@ -10,12 +10,14 @@ export interface NewsCategorySpec<TFeeds> {
 }
 
 export interface NewsCategoryLoadOptions {
-  allowDigestPendingFallback: boolean;
   recordBaselineSample: boolean;
+  /** A fresher digest is still in flight; the pass reloads once it settles. */
+  digestPending: boolean;
 }
 
 export interface NewsIntelLoadOptions {
   recordBaselineSample: boolean;
+  digestPending: boolean;
 }
 
 export interface NewsCategoryLoadResult<TItem> {
@@ -29,8 +31,6 @@ export interface RunNewsLoadPassOptions<TFeeds, TDigest, TItem> {
   digestPromise: Promise<TDigest | null>;
   fallbackDigest?: TDigest | null;
   digestGraceMs: number;
-  allowPendingPerFeedFallback?: boolean;
-  hasDigestCategory: (digest: TDigest, key: string) => boolean;
   loadCategory: (
     category: NewsCategorySpec<TFeeds>,
     digest: TDigest | null,
@@ -38,7 +38,6 @@ export interface RunNewsLoadPassOptions<TFeeds, TDigest, TItem> {
   ) => Promise<TItem[]>;
   loadIntel?: (
     digest: TDigest | null,
-    allowDigestPendingFallback: boolean,
     options: NewsIntelLoadOptions,
   ) => Promise<TItem[]>;
   onCategoryError?: (key: string | undefined, reason: unknown) => void;
@@ -126,22 +125,18 @@ export async function loadNewsCategoryBatches<TFeeds, TDigest, TItem>(
     digest: TDigest | null,
     options: NewsCategoryLoadOptions,
   ) => Promise<TItem[]>,
-  allowPendingPerFeedFallback = true,
 ): Promise<Array<PromiseSettledResult<NewsCategoryLoadResult<TItem>>>> {
   const concurrency = Math.max(1, Math.min(categoryConcurrency, Math.max(1, categories.length)));
   const results: Array<PromiseSettledResult<NewsCategoryLoadResult<TItem>>> = [];
-  const allowDigestPendingFallback = allowPendingPerFeedFallback && digestSnapshot.pending && digestSnapshot.digest === null;
   const recordBaselineSample = !digestSnapshot.pending;
+  const digestPending = digestSnapshot.pending;
 
   for (let i = 0; i < categories.length; i += concurrency) {
     const chunk = categories.slice(i, i + concurrency);
     const chunkResults = await Promise.allSettled(
       chunk.map(async category => ({
         key: category.key,
-        items: await loadCategory(category, digestSnapshot.digest, {
-          allowDigestPendingFallback,
-          recordBaselineSample,
-        }),
+        items: await loadCategory(category, digestSnapshot.digest, { recordBaselineSample, digestPending }),
       })),
     );
     results.push(...chunkResults);
@@ -154,7 +149,6 @@ export async function runNewsLoadPass<TFeeds, TDigest, TItem>(
   options: RunNewsLoadPassOptions<TFeeds, TDigest, TItem>,
 ): Promise<RunNewsLoadPassResult<TDigest, TItem>> {
   const digestPromise = options.digestPromise.catch(() => null);
-  const allowPendingPerFeedFallback = options.allowPendingPerFeedFallback ?? true;
   const initialDigest = await resolveInitialNewsDigest(
     digestPromise,
     options.digestGraceMs,
@@ -166,7 +160,6 @@ export async function runNewsLoadPass<TFeeds, TDigest, TItem>(
     options.categoryConcurrency,
     initialDigest,
     options.loadCategory,
-    allowPendingPerFeedFallback,
   );
   const categoryItemsByKey = new Map<string, TItem[]>();
   categoryResults.forEach((result, idx) => {
@@ -178,39 +171,36 @@ export async function runNewsLoadPass<TFeeds, TDigest, TItem>(
   });
 
   let intelItems = options.loadIntel
-    ? await options.loadIntel(
-      initialDigest.digest,
-      allowPendingPerFeedFallback && initialDigest.pending && initialDigest.digest === null,
-      { recordBaselineSample: !initialDigest.pending },
-    )
+    ? await options.loadIntel(initialDigest.digest, {
+      recordBaselineSample: !initialDigest.pending,
+      digestPending: initialDigest.pending,
+    })
     : [];
   let finalDigest = initialDigest.digest;
 
   if (initialDigest.pending) {
+    // Settle every preset category against the digest this load ended with:
+    // the ones it carries render from it, and the ones it does not (every one,
+    // when it never arrived) take the stale or outage path they waited on.
+    // Cross-edition panels read other editions' digests, not this one.
     finalDigest = await digestPromise;
-    if (finalDigest) {
-      const latestDigest = finalDigest;
-      const digestCategories = options.categories.filter(
-        ({ key, isCustom }) => !isCustom && options.hasDigestCategory(latestDigest, key),
-      );
-      const digestResults = await loadNewsCategoryBatches(
-        digestCategories,
-        options.categoryConcurrency,
-        { digest: latestDigest, pending: false },
-        options.loadCategory,
-        allowPendingPerFeedFallback,
-      );
-      digestResults.forEach((result, idx) => {
-        if (result.status === 'fulfilled') {
-          categoryItemsByKey.set(result.value.key, result.value.items);
-        } else {
-          options.onDigestRefreshError?.(digestCategories[idx]?.key, result.reason);
-        }
-      });
-
-      if (options.loadIntel && options.hasDigestCategory(latestDigest, 'intel')) {
-        intelItems = await options.loadIntel(latestDigest, false, { recordBaselineSample: true });
+    const digestCategories = options.categories.filter(({ isCustom }) => !isCustom);
+    const digestResults = await loadNewsCategoryBatches(
+      digestCategories,
+      options.categoryConcurrency,
+      { digest: finalDigest, pending: false },
+      options.loadCategory,
+    );
+    digestResults.forEach((result, idx) => {
+      if (result.status === 'fulfilled') {
+        categoryItemsByKey.set(result.value.key, result.value.items);
+      } else {
+        options.onDigestRefreshError?.(digestCategories[idx]?.key, result.reason);
       }
+    });
+
+    if (options.loadIntel) {
+      intelItems = await options.loadIntel(finalDigest, { recordBaselineSample: true, digestPending: false });
     }
   }
 

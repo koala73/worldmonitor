@@ -1821,8 +1821,6 @@
       "summaryFailed": "摘要失敗",
       "sources": "{{count}}個來源",
       "relatedAssetsNear": "{{location}}附近的相關資產",
-      "sourceCoverage": "{{covered}}/{{total}} 個來源",
-      "sourceCoverageHint": "已顯示 {{total}} 個已啟用來源中的 {{covered}} 個 — 該面板每次重新整理會輪換抓取不同來源",
       "sortBy": "排序方式",
       "sortNewest": "最新",
       "sortRelevance": "相關性",

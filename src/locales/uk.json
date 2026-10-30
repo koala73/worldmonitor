@@ -1977,8 +1977,6 @@
       "summaryFailed": "Резюме не вдалося",
       "sources": "{{count}} джерел",
       "relatedAssetsNear": "Пов'язані об'єкти інфраструктури поблизу {{location}}",
-      "sourceCoverage": "{{covered}}/{{total}} джерел",
-      "sourceCoverageHint": "Показано {{covered}} з {{total}} увімкнених джерел — цей панель чергує джерела при кожному оновленні",
       "sortBy": "Сортувати за",
       "sortNewest": "Новіші",
       "sortRelevance": "Релевантність",

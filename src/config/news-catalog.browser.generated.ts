@@ -1769,8 +1769,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
       "ai": [
         {
           "name": "AI News",
-          "url": "https://news.google.com/rss/search?q=(OpenAI+OR+Anthropic+OR+Google+AI+OR+\"large+language+model\"+OR+ChatGPT+OR+Claude+OR+\"AI+model\")+when:2d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(OpenAI%20OR%20Anthropic%20OR%20Google%20AI%20OR%20%22large%20language%20model%22%20OR%20ChatGPT)%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "VentureBeat AI",
@@ -2462,8 +2461,7 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
       "commodities": [
         {
           "name": "Oil & Gas",
-          "url": "https://news.google.com/rss/search?q=(oil+price+OR+OPEC+OR+\"natural+gas\"+OR+\"crude+oil\"+OR+WTI+OR+Brent)+when:1d&hl=en-US&gl=US&ceid=US:en",
-          "browserOnly": true
+          "url": "https://news.google.com/rss/search?q=(oil%20price%20OR%20OPEC%20OR%20%22natural%20gas%22%20OR%20pipeline%20OR%20LNG)%20when%3A2d&hl=en-US&gl=US&ceid=US:en"
         },
         {
           "name": "Gold & Metals",

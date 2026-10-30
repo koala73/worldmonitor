@@ -1148,8 +1148,6 @@
   "components.newsPanel.sortBy": "Sort by",
   "components.newsPanel.sortNewest": "Newest",
   "components.newsPanel.sortRelevance": "Relevance",
-  "components.newsPanel.sourceCoverage": "{{covered}}/{{total}} sources",
-  "components.newsPanel.sourceCoverageHint": "Showing {{covered}} of {{total}} enabled sources — this panel rotates through its sources on each refresh",
   "components.newsPanel.sources": "{{count}} sources",
   "components.newsPanel.summarize": "Summarize this panel",
   "components.newsPanel.summaryError": "Could not generate summary",

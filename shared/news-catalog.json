@@ -2493,17 +2493,7 @@
         {
           "edition": "tech",
           "category": "ai",
-          "serverOrder": 0
-        }
-      ]
-    },
-    {
-      "name": "AI News",
-      "url": "https://news.google.com/rss/search?q=(OpenAI+OR+Anthropic+OR+Google+AI+OR+\"large+language+model\"+OR+ChatGPT+OR+Claude+OR+\"AI+model\")+when:2d&hl=en-US&gl=US&ceid=US:en",
-      "placements": [
-        {
-          "edition": "tech",
-          "category": "ai",
+          "serverOrder": 0,
           "browserOrder": 0
         }
       ]
@@ -2869,17 +2859,7 @@
         {
           "edition": "finance",
           "category": "commodities",
-          "serverOrder": 0
-        }
-      ]
-    },
-    {
-      "name": "Oil & Gas",
-      "url": "https://news.google.com/rss/search?q=(oil+price+OR+OPEC+OR+\"natural+gas\"+OR+\"crude+oil\"+OR+WTI+OR+Brent)+when:1d&hl=en-US&gl=US&ceid=US:en",
-      "placements": [
-        {
-          "edition": "finance",
-          "category": "commodities",
+          "serverOrder": 0,
           "browserOrder": 0
         }
       ]
