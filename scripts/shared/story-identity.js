@@ -96,12 +96,33 @@ function isNonAscii(token) {
   return false;
 }
 
+// Connector words that survive the 3-char floor but carry no story
+// identity (#4925 item 4). They are INDEX keys only: every headline shares
+// "the"/"and"/"after", so their buckets hold the whole batch and either hit
+// MAX_CANDIDATE_BUCKET (no pairs scored through them) or, below the cap,
+// score every pair in the batch, which is the O(n²) scan the inverted index
+// exists to avoid. The vector still sees these tokens; only candidate
+// generation ignores them, so a pair that shares nothing else was never
+// going to clear the similarity threshold anyway.
+export const CANDIDATE_STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'from', 'that', 'this', 'into', 'over',
+  'after', 'amid', 'amidst', 'about', 'than', 'then', 'what', 'when', 'where',
+  'while', 'who', 'why', 'how', 'its', 'his', 'her', 'their', 'our', 'your',
+  'are', 'was', 'were', 'been', 'being', 'has', 'have', 'had', 'will', 'would',
+  'could', 'should', 'can', 'may', 'might', 'must', 'does', 'did', 'not',
+  'but', 'out', 'off', 'onto', 'via', 'per', 'says', 'said', 'say', 'new',
+  'more', 'most', 'some', 'any', 'all', 'one', 'two', 'also', 'just', 'now',
+  'here', 'there', 'they', 'them', 'you', 'she', 'him', 'these', 'those',
+  'live', 'update', 'updates', 'latest', 'news', 'report', 'reports',
+]);
+
 /**
  * Tokens used for inverted-index candidate generation by clustering
  * callers (cheap pre-filter: only pairs sharing ≥1 token are scored).
- * ASCII tokens shorter than 3 chars are dropped (stopword-weight noise);
- * non-ASCII tokens are kept whole AND as char bigrams so unsegmented
- * scripts still produce index keys.
+ * ASCII tokens shorter than 3 chars and the CANDIDATE_STOPWORDS connector
+ * words are dropped (stopword-weight noise); non-ASCII tokens are kept
+ * whole AND as char bigrams so unsegmented scripts still produce index
+ * keys.
  * @param {string} text
  * @returns {Set<string>}
  */
@@ -113,7 +134,7 @@ export function candidateTokens(text) {
     if (isNonAscii(tok)) {
       out.add(tok);
       for (let i = 0; i + 2 <= tok.length; i++) out.add(tok.slice(i, i + 2));
-    } else if (tok.length >= 3) {
+    } else if (tok.length >= 3 && !CANDIDATE_STOPWORDS.has(tok)) {
       out.add(tok);
     }
   }
