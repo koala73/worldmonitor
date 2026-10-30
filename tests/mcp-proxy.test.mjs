@@ -754,6 +754,7 @@ describe('api/mcp-proxy', () => {
         headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': ENTERPRISE_KEY },
       }));
       assert.equal(res.status, 405);
+      assert.equal(res.headers.get('allow'), 'GET, POST, OPTIONS');
       assertNoStore(res, 'DELETE method guard');
     });
 
@@ -764,6 +765,7 @@ describe('api/mcp-proxy', () => {
         body: '{}',
       }));
       assert.equal(res.status, 405);
+      assert.equal(res.headers.get('allow'), 'GET, POST, OPTIONS');
     });
   });
 

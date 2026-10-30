@@ -471,7 +471,7 @@ export default async function handler(req, ctx) {
     'Cache-Control': 'no-store',
   };
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-  if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405, cors);
+  if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405, { ...cors, Allow: 'POST, OPTIONS' });
 
   const limited = await checkRateLimit(req, cors, {
     failClosed: true,

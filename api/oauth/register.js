@@ -108,7 +108,7 @@ export default async function handler(req, ctx) {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
   if (req.method !== 'POST') {
-    return jsonResp({ error: 'method_not_allowed' }, 405);
+    return jsonResponse({ error: 'method_not_allowed' }, 405, { ...corsHeaders, Allow: 'POST, OPTIONS' });
   }
 
   let admission;

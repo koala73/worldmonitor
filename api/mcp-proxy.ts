@@ -1095,7 +1095,7 @@ export async function handler(req, ctx) {
     } else if (req.method === 'POST') {
       response = await handleCallTool(req, cors, meta);
     } else {
-      response = jsonResponse({ error: 'Method not allowed' }, 405, cors);
+      response = jsonResponse({ error: 'Method not allowed' }, 405, { ...cors, Allow: 'GET, POST, OPTIONS' });
     }
   } catch (err) {
     const msg = err instanceof McpProxyUpstreamError
