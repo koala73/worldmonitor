@@ -30,9 +30,12 @@ crons.hourly(
 // support running the runbook. The mutation only re-arms rows already staler
 // than PENDING_STALE_AFTER_MS, so a live retry backoff is never doubled, and
 // re-running a step is a no-op because every stepper re-queries its leftovers.
-crons.hourly(
+// Every 5 minutes, not hourly: worst-case recovery is the stale window plus one
+// period, and an hourly tick stretched that to ~70 minutes of anonymized-but-
+// billing account (#8495). An idle tick is one empty indexed range read.
+crons.interval(
   "account-deletion-stalled-reaper",
-  { minuteUTC: 7 },
+  { minutes: 5 },
   internal.accountDeletion.batches.reapStalledDeletions,
   {},
 );
