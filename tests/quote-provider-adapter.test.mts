@@ -79,6 +79,20 @@ describe('FinnhubQuoteProvider', () => {
     assert.equal(out.status, 'not_found');
   });
 
+  for (const [label, body] of [
+    ['missing price', {}],
+    ['provider error', { error: 'Temporary upstream failure' }],
+    ['null price', { c: null }],
+    ['string price', { c: '190.5' }],
+    ['negative price', { c: -1 }],
+  ] as const) {
+    it(`keeps a Finnhub ${label} as an error, not a cacheable missing ticker`, async () => {
+      globalThis.fetch = (async () => jsonResponse(body)) as typeof fetch;
+      const out = await new FinnhubQuoteProvider('k').fetchQuote('AAPL');
+      assert.equal(out.status, 'error');
+    });
+  }
+
   it('maps malformed JSON to error', async () => {
     globalThis.fetch = (async () =>
       new Response('not-json{', {
@@ -129,6 +143,21 @@ describe('AlphaVantageQuoteProvider', () => {
     const out = await new AlphaVantageQuoteProvider('av-key').fetchQuote('NOPE');
     assert.equal(out.status, 'not_found');
   });
+
+  for (const [label, body] of [
+    ['missing envelope', {}],
+    ['null envelope', { 'Global Quote': null }],
+    ['array envelope', { 'Global Quote': [] }],
+    ['missing price', { 'Global Quote': { '01. symbol': 'MSFT' } }],
+    ['invalid price', { 'Global Quote': { '05. price': 'not-a-price' } }],
+    ['zero price', { 'Global Quote': { '05. price': '0' } }],
+  ] as const) {
+    it(`keeps an Alpha Vantage ${label} as an error, not a cacheable missing ticker`, async () => {
+      globalThis.fetch = (async () => jsonResponse(body)) as typeof fetch;
+      const out = await new AlphaVantageQuoteProvider('k').fetchQuote('MSFT');
+      assert.equal(out.status, 'error');
+    });
+  }
 
   it('does not classify a bare invalid-call Error Message as not_found', async () => {
     globalThis.fetch = (async () =>
