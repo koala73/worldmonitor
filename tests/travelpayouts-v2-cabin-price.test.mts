@@ -74,7 +74,6 @@ describe('Travelpayouts v2 cabin and month-matrix price', () => {
     ['CABIN_CLASS_ECONOMY', '0'],
     ['CABIN_CLASS_BUSINESS', '1'],
     ['CABIN_CLASS_FIRST', '2'],
-    // v2 documents 0 economy, 1 business, 2 first, and no premium-economy code.
     ['CABIN_CLASS_PREMIUM_ECONOMY', '0'],
   ] as const) {
     it(`sends trip_class=${tripClass} for ${cabin} on v2/latest`, async () => {
