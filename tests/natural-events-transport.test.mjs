@@ -455,6 +455,36 @@ test('native fetch covers header and body stalls and exhausts within the source 
   assert.ok(elapsed >= 29_000, `elapsed ${elapsed}ms`);
 });
 
+// GDACS's DR (2.9 MB) and TC (0.8 MB) feeds routinely take 17-32 s end to
+// end, with the first byte alone at 6-11 s. A 15 s cap failed them on healthy
+// days and published naturalEvents as SEED_ERROR (GDACS_TYPE_COVERAGE_INCOMPLETE).
+test('a slow but healthy GDACS feed completes inside its own per-attempt limit', { timeout: 10_000 }, async t => {
+  compressTime(t);
+  let drRequests = 0;
+  const drought = {
+    type: 'Feature', geometry: { type: 'Point', coordinates: [12, 8] },
+    properties: { eventtype: 'DR', eventid: 7, alertlevel: 'Orange', name: 'Drought', fromdate: new Date(NOW).toISOString() },
+  };
+  const server = createServer((req, res) => {
+    drRequests++;
+    setTimeout(() => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.write('{"type":"FeatureCollection",');
+      setTimeout(() => res.end(`"features":${JSON.stringify([drought])}}`), 18_000);
+    }, 11_000);
+  });
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const transport = fixture((source, _attempt, options) => {
+    if (source === 'gdacs:DR') return fetch(`${origin}/dr`, options);
+  });
+  const result = await run(transport);
+  assert.equal(drRequests, 1);
+  assert.deepEqual(naturalEventsAfterPublish(result).freshnessMetaPatch.failedSources ?? [], []);
+});
+
 test('Retry-After is honored and an elapsed deadline prevents a late retry', async t => {
   const originalDelay = process.env.WM_SEED_RETRY_DELAY_MS;
   delete process.env.WM_SEED_RETRY_DELAY_MS;
