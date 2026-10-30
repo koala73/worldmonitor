@@ -36,13 +36,14 @@ On a cache miss, only the Redis lease owner performs the registry sweep. Other r
 
 Expired snapshots and snapshots past a grace deadline are not served as current health. A failed owner releases only its token; a lost owner can be replaced after the 30-second lease expires. Expired owners cannot overwrite a successor's verdict snapshot. HTTP-only monitors see a temporary unavailable response only during a cold refresh with no retained verdict.
 
-The top-level `status` describes user-visible platform availability, not perfect data-source health. `HEALTHY` can therefore coexist with warnings in `summary` and `problems` when those warnings are contained by usable last-good data.
+The top-level `status` describes user-visible platform availability, not perfect data-source health. `HEALTHY` can therefore coexist with warnings in `summary` and `problems` when those warnings are contained by usable last-good data. `dataStatus` is the strict ingestion verdict over the same summary: `OK`, `DEGRADED` when any actionable warning exists (contained or not), or `CRITICAL` when any check is critical.
 
 ### Response Body
 
 ```json
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
+  "dataStatus": "OK | DEGRADED | CRITICAL",
   "summary": {
     "total": 349,
     "ok": 348,
@@ -113,7 +114,7 @@ The seeder validates every page before it replaces the snapshot. A verified empt
 
 ### Bundle tick heartbeats
 
-`_bundle-runner.mjs` writes `bundle:heartbeat:<label>` on every container start, including skip-all ticks. Member seed-meta cannot see a daily cron that never fires when its sections are weekly or monthly. `/api/health` probes `staticRefBundleTick` (`bundle:heartbeat:static-ref`) and, as of #6806, `staticRefHeavyBundleTick` (`bundle:heartbeat:static-ref-heavy`) — one heartbeat for the consolidated heavy bundle carrying Arms-Suppliers, Military-Bases and Mineral-Production. A 48h silence is `STALE_SEED`. Missing keys before the first tick are `EMPTY` under an expiring acknowledgement, not a page-out.
+`_bundle-runner.mjs` writes `bundle:heartbeat:<label>` on every container start, including skip-all ticks. Member seed-meta cannot see a daily cron that never fires when its sections are weekly or monthly. `/api/health` probes `staticRefBundleTick` (`bundle:heartbeat:static-ref`) and, as of #6806, `staticRefHeavyBundleTick` (`bundle:heartbeat:static-ref-heavy`) — one heartbeat for the consolidated heavy bundle carrying Arms-Suppliers, Military-Bases and Mineral-Production. A 48h silence is `STALE_SEED`. Missing keys before the first tick were `EMPTY` under a since-retired expiring acknowledgement, not a page-out.
 
 ### Consumer-price source coverage
 

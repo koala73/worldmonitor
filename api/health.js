@@ -5287,20 +5287,39 @@ function buildFailureLogPersistencePlan({
   };
 }
 
-// Health is the only source of truth for ingestion incidents. Each source that
-// joins the actionable problem set (collectFailureLogProblems) opens, or
-// regresses, one Sentry issue grouped by source and status. A continuing
-// incident never re-fires because the signature changes only when the set does;
-// recovery leaves the source out of the next signature, so a recurrence alerts.
-function newIncidentKeys(previousSignature, sigKeys) {
-  const separator = previousSignature.indexOf('|');
-  const previous = new Set(
-    separator === -1 ? [] : previousSignature.slice(separator + 1).split(',').filter(Boolean),
-  );
-  return sigKeys.filter((key) => !previous.has(key));
+// Health is the only source of truth for ingestion incidents. Each
+// `source:status` in the actionable problem set (collectFailureLogProblems)
+// opens, or regresses, one Sentry issue grouped by source and status.
+// HEALTH_INCIDENT_ALERTS_KEY records only incidents Sentry ACCEPTED, separately
+// from the failure-log signature, so a failed delivery stays pending and is
+// retried by the next sweep instead of being suppressed as already reported.
+// A source that recovers leaves the record, so a recurrence alerts again.
+const HEALTH_INCIDENT_ALERTS_KEY = 'health:incident-alerts';
+const HEALTH_INCIDENT_ALERTS_TTL_SECONDS = 86400 * 7;
+
+function parseAlertedIncidents(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((key) => typeof key === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
-function reportSourceIncident(key, checks, ctx, capture = captureSilentError) {
+function pendingIncidentKeys(alertedRaw, sigKeys) {
+  const alerted = new Set(parseAlertedIncidents(alertedRaw));
+  return sigKeys.filter((key) => !alerted.has(key));
+}
+
+// The next record: still-active incidents already accepted, plus the ones
+// accepted this sweep. Recovered and undelivered incidents are left out.
+function nextAlertedIncidents(alertedRaw, sigKeys, delivered) {
+  const active = new Set(sigKeys);
+  const kept = parseAlertedIncidents(alertedRaw).filter((key) => active.has(key));
+  return [...new Set([...kept, ...delivered])].sort();
+}
+
+async function reportSourceIncident(key, checks, ctx, capture = captureSilentError) {
   const separator = key.lastIndexOf(':');
   const name = key.slice(0, separator);
   const status = key.slice(separator + 1);
@@ -5309,13 +5328,13 @@ function reportSourceIncident(key, checks, ctx, capture = captureSilentError) {
   for (const field of ['records', 'seedAgeMin', 'maxStaleMin', 'contentAgeMin', 'maxContentAgeMin', 'errorCode']) {
     if (check[field] !== undefined) extra[field] = check[field];
   }
-  capture(new Error(`Health source incident: ${name} ${status}`), {
+  return await capture(new Error(`Health source incident: ${name} ${status}`), {
     level: 'warning',
     fingerprint: ['health-source-incident', name, status],
     tags: { health_source: name, health_status: status },
     extra,
     ctx,
-  });
+  }) === true;
 }
 
 // `status` is platform availability, the verdict uptime monitors keyword-match;
@@ -6020,17 +6039,28 @@ export async function handleHealth(req, ctx, options = {}) {
   }
   const persistFailureLog = async () => {
     let previousSignature = '';
+    const alertCommands = [];
     if (problemKeys.length > 0) {
-      const result = await redisPipeline([['GET', 'health:failure-log-sig']], 4_000).catch(() => null);
-      const read = Array.isArray(result) && !result[0]?.error;
-      previousSignature = read ? (result[0]?.result ?? '') : '';
-      // An unreadable signature cannot tell a new incident from a continuing
-      // one, so it opens none rather than re-alerting every active problem.
-      if (read) {
-        for (const key of newIncidentKeys(previousSignature, diagnostics.sigKeys)) {
-          reportSourceIncident(key, checks, ctx, options.captureIncident);
-        }
+      const result = await redisPipeline([
+        ['GET', 'health:failure-log-sig'],
+        ['GET', HEALTH_INCIDENT_ALERTS_KEY],
+      ], 4_000).catch(() => null);
+      previousSignature = result?.[0]?.error ? '' : (result?.[0]?.result ?? '');
+      // An unreadable alert record cannot tell a new incident from one already
+      // reported, so this sweep opens none and leaves the record for the next.
+      if (Array.isArray(result) && result[1] && !result[1].error) {
+        const alertedRaw = result[1].result ?? '[]';
+        const pending = pendingIncidentKeys(alertedRaw, diagnostics.sigKeys);
+        const outcomes = await Promise.all(pending.map((key) => (
+          reportSourceIncident(key, checks, ctx, options.captureIncident).catch(() => false)
+        )));
+        const delivered = pending.filter((_, index) => outcomes[index]);
+        alertCommands.push(['SET', HEALTH_INCIDENT_ALERTS_KEY,
+          JSON.stringify(nextAlertedIncidents(alertedRaw, diagnostics.sigKeys, delivered)),
+          'EX', HEALTH_INCIDENT_ALERTS_TTL_SECONDS]);
       }
+    } else {
+      alertCommands.push(['DEL', HEALTH_INCIDENT_ALERTS_KEY]);
     }
     const persistencePlan = buildFailureLogPersistencePlan({
       verdict: { overall, diagnosticOverall, realWarnCount, critCount },
@@ -6039,7 +6069,8 @@ export async function handleHealth(req, ctx, options = {}) {
       previousSignature,
       now: evaluationNow,
     });
-    const commands = persistencePlan.commands.map(([op, key, ...args]) => [op, applyRedisKeyPrefix(key), ...args]);
+    const commands = [...persistencePlan.commands, ...alertCommands]
+      .map(([op, key, ...args]) => [op, applyRedisKeyPrefix(key), ...args]);
     await redisPipeline(fenceHealthMutations(commands, refreshLockToken), 4_000, true).catch(() => {});
   };
   ownedBackgroundWrites.push(persistFailureLog().catch(() => {}));
@@ -6157,7 +6188,9 @@ export const __testing__ = {
   classifyKey,
   healthResponseBody,
   collectFailureLogProblems,
-  newIncidentKeys,
+  pendingIncidentKeys,
+  nextAlertedIncidents,
+  HEALTH_INCIDENT_ALERTS_KEY,
   dataStatusFromSummary,
   buildFailureLogPersistencePlan,
   ACTIVATION_MARKERS,

@@ -668,7 +668,7 @@ function sweepFetch({
   failGraceClaim = false,
   chinaCoverageSummary,
   chinaDecisionMeta,
-  failureLogSig = null,
+  incidentAlerts = null,
 } = {}) {
   return async (_url, init) => {
     const { commands, encodeResults } = decodeHealthPipeline(init.body);
@@ -691,8 +691,9 @@ function sweepFetch({
       if (op === 'HGET') return { result: graceStore.get(field) ?? null };
       if (op === 'HDEL') return { result: 1 };
       if (op === 'PEXPIRE') return { result: 1 };
-      if (op === 'GET' && String(key).endsWith('health:failure-log-sig')) {
-        return failureLogSig === FAILURE_LOG_SIG_UNREADABLE ? { error: 'ERR unreachable' } : { result: failureLogSig };
+      if (op === 'GET' && String(key).endsWith('health:failure-log-sig')) return { result: null };
+      if (op === 'GET' && String(key).endsWith(__testing__.HEALTH_INCIDENT_ALERTS_KEY)) {
+        return incidentAlerts === INCIDENT_ALERTS_UNREADABLE ? { error: 'ERR unreachable' } : { result: incidentAlerts };
       }
       if (op === 'GET' && key === TEMPORAL_META_KEY) {
         return {
@@ -721,7 +722,7 @@ function sweepFetch({
   };
 }
 
-const FAILURE_LOG_SIG_UNREADABLE = Symbol('unreadable');
+const INCIDENT_ALERTS_UNREADABLE = Symbol('unreadable');
 
 async function sweepCompactBody(fetchImpl) {
   globalThis.fetch = fetchImpl;
@@ -1086,55 +1087,70 @@ test('a contained warning keeps availability HEALTHY but reports dataStatus DEGR
   assert.equal(body.problems.ttcAlerts.status, 'STALE_SEED');
 });
 
-test('newIncidentKeys reports only sources that joined or changed status', () => {
-  const { newIncidentKeys } = __testing__;
+test('pendingIncidentKeys and nextAlertedIncidents keep only accepted, still-active incidents', () => {
+  const { pendingIncidentKeys, nextAlertedIncidents } = __testing__;
   const current = ['a:STALE_SEED', 'b:SEED_ERROR'];
-  assert.deepEqual(newIncidentKeys('', current), current, 'after a recovery every problem is new');
-  assert.deepEqual(newIncidentKeys('WARNING|a:STALE_SEED,b:SEED_ERROR', current), [], 'a continuing incident is quiet');
-  assert.deepEqual(newIncidentKeys('WARNING|a:STALE_SEED', current), ['b:SEED_ERROR']);
-  assert.deepEqual(newIncidentKeys('WARNING|a:SEED_ERROR,b:SEED_ERROR', current), ['a:STALE_SEED'], 'a changed status is a new incident');
+  assert.deepEqual(pendingIncidentKeys(null, current), current, 'nothing reported yet');
+  assert.deepEqual(pendingIncidentKeys('["a:STALE_SEED","b:SEED_ERROR"]', current), [], 'a reported incident is quiet');
+  assert.deepEqual(pendingIncidentKeys('["a:SEED_ERROR"]', current), current, 'a changed status is a new incident');
+  assert.deepEqual(pendingIncidentKeys('not json', current), current);
+  assert.deepEqual(
+    nextAlertedIncidents('["a:STALE_SEED","gone:EMPTY"]', current, []),
+    ['a:STALE_SEED'],
+    'a recovered source leaves the record so a recurrence alerts again',
+  );
+  assert.deepEqual(nextAlertedIncidents('[]', current, ['b:SEED_ERROR']), ['b:SEED_ERROR'], 'only accepted deliveries are recorded');
 });
 
-test('handleHealth opens one Sentry incident per new source and stays quiet on repeats', async () => {
-  const sweep = async (failureLogSig) => {
+test('handleHealth reports each incident until Sentry accepts it, then stays quiet', async () => {
+  const sweep = async (incidentAlerts, accepted = () => true) => {
     const captures = [];
-    let written = null;
+    let record;
     globalThis.fetch = sweepFetch({
-      failureLogSig,
+      incidentAlerts,
       onCommands: (commands) => {
         for (const [op, key, value] of commands) {
-          if (op === 'SET' && String(key).endsWith('health:failure-log-sig')) written = value;
+          if (op === 'SET' && String(key).endsWith(__testing__.HEALTH_INCIDENT_ALERTS_KEY)) record = value;
         }
       },
     });
     const response = await handleHealth(
       new Request('https://api.worldmonitor.app/api/health?compact=1'),
       undefined,
-      { captureIncident: (error, opts) => captures.push({ message: error.message, ...opts }) },
+      {
+        captureIncident: async (error, opts) => {
+          captures.push({ message: error.message, ...opts });
+          return accepted(opts.tags.health_source);
+        },
+      },
     );
-    return { body: await response.json(), captures, written };
+    return { body: await response.json(), captures, record };
   };
 
   const first = await sweep(null);
   assert.notEqual(first.body.dataStatus, 'OK');
-  assert.ok(first.written, 'the sweep must persist an incident signature');
-  const problemKeys = first.written.slice(first.written.indexOf('|') + 1).split(',');
-  assert.equal(first.captures.length, problemKeys.length, 'every problem is new after a recovery');
+  const alerted = JSON.parse(first.record);
+  assert.ok(alerted.length > 0);
+  assert.equal(first.captures.length, alerted.length, 'every active problem is reported once');
   const [incident] = first.captures;
   const { health_source: source, health_status: status } = incident.tags;
-  assert.ok(problemKeys.includes(`${source}:${status}`));
+  assert.ok(alerted.includes(`${source}:${status}`));
   assert.equal(incident.level, 'warning');
   assert.deepEqual(incident.fingerprint, ['health-source-incident', source, status]);
   assert.equal(incident.message, `Health source incident: ${source} ${status}`);
 
-  const repeat = await sweep(first.written);
-  assert.equal(repeat.captures.length, 0, 'an unchanged incident must not re-alert');
+  const repeat = await sweep(first.record);
+  assert.equal(repeat.captures.length, 0, 'an accepted incident must not re-alert');
 
-  const unreadable = await sweep(FAILURE_LOG_SIG_UNREADABLE);
-  assert.equal(unreadable.captures.length, 0, 'an unreadable signature cannot prove anything is new');
+  const unreadable = await sweep(INCIDENT_ALERTS_UNREADABLE);
+  assert.equal(unreadable.captures.length, 0, 'an unreadable record cannot prove anything is new');
+  assert.equal(unreadable.record, undefined, 'and must not be overwritten');
 
-  const prefix = first.written.slice(0, first.written.indexOf('|') + 1);
-  const withoutSource = prefix + problemKeys.filter((key) => key !== `${source}:${status}`).join(',');
-  const recurrence = await sweep(withoutSource);
-  assert.deepEqual(recurrence.captures.map((capture) => capture.tags.health_source), [source], 'a recurrence alerts again');
+  const withoutSource = JSON.stringify(alerted.filter((key) => key !== `${source}:${status}`));
+  const failed = await sweep(withoutSource, (name) => name !== source);
+  assert.deepEqual(failed.captures.map((capture) => capture.tags.health_source), [source]);
+  assert.equal(JSON.parse(failed.record).includes(`${source}:${status}`), false, 'an undelivered incident stays pending');
+  const retried = await sweep(failed.record);
+  assert.deepEqual(retried.captures.map((capture) => capture.tags.health_source), [source], 'the next sweep retries it');
+  assert.ok(JSON.parse(retried.record).includes(`${source}:${status}`));
 });

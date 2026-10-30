@@ -304,8 +304,8 @@ actually reached production is the separate
 The six-hourly `Railway Native Deploy Health` workflow performs this audit in
 deployment-only mode and runs the deployment-history check from the same
 Viewer projection. `Railway Registry Sync` reuses the same environment and
-Viewer token only for its final independent read. `Seed Freshness Monitor` owns
-ingestion acceptance only.
+Viewer token only for its final independent read. Ingestion health belongs to
+`/api/health`.
 Create the dedicated GitHub Actions environment
 `ingestion-acceptance-production`, restrict its deployment branch policy to
 `main`, and configure:
