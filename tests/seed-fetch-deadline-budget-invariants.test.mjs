@@ -57,12 +57,18 @@ describe('seed fetch-phase deadline & TTL invariants (issue #4864)', () => {
     );
   });
 
-  it('grocery-basket: lock/deadline covers its ~600s degraded serial runtime (24 serial countries)', () => {
+  it('grocery-basket: lock/deadline covers its worst-case runtime (countries in bounded-concurrency waves)', async () => {
+    // seed-grocery-basket is import-safe (runSeed is argv-guarded).
+    const { COUNTRIES, COUNTRY_CONCURRENCY } = await import('../scripts/seed-grocery-basket.mjs');
     const src = read('seed-grocery-basket.mjs');
     const lock = optValue(src, 'lockTtlMs');
-    assert.ok(lock, 'grocery-basket runSeed must set lockTtlMs (default 120s → 240s deadline is below its serial runtime)');
-    // Degraded run ≈ 600s (24 countries × ~25s critical path). Deadline must clear it.
-    assert.ok(deadlineFromLock(lock) >= 600_000, `deadline ${deadlineFromLock(lock)}ms must cover the ~600s degraded runtime`);
+    assert.ok(lock, 'grocery-basket runSeed must set lockTtlMs (default 120s → 240s deadline is below its runtime)');
+    // Per-country critical path: 8s direct fetch + 0.5s + 30s Firecrawl + 15s EXA
+    // + 2×30s Firecrawl ≈ 115s. The serial loop measured ~42s/country × 24 ≈ 1000s
+    // and crashed at the 840s deadline (2026-10-30).
+    const PER_COUNTRY_WORST_MS = 115_000;
+    const worst = Math.ceil(COUNTRIES.length / COUNTRY_CONCURRENCY) * PER_COUNTRY_WORST_MS;
+    assert.ok(deadlineFromLock(lock) >= worst, `deadline ${deadlineFromLock(lock)}ms must cover the ${worst}ms worst case`);
   });
 
   it('supply-chain-trade: lock/deadline covers the WTO ~10min budget so runs complete + republish', () => {
