@@ -37,6 +37,7 @@ import {
 } from './_content-freshness.js';
 import { assessContentAge } from './_content-age.js';
 import { readHumanitarianRetention } from './_humanitarian-retention.js';
+import { captureSilentError } from './_sentry-edge.js';
 
 export const config = { runtime: 'edge' };
 
@@ -138,11 +139,6 @@ function healthVerdictRedisKey(baseKey, vercelEnv, commitSha) {
 // publisher that is merely late, and is short next to the per-source
 // `maxContentAgeMin` budgets it defers — those budgets, not this constant, are
 // what detect a genuine upstream freeze (issue #3845).
-//
-// The scheduled monitor enforces its own ceiling on the deadlines this mints
-// (MAX_STALE_CONTENT_GRACE_MS in scripts/check-seed-freshness.mjs, which adds
-// clock-skew slack on top). tests/seed-freshness-monitor.test.mjs pins the two
-// together so neither can drift.
 const STALE_CONTENT_GRACE_MS = 3 * 60 * 60 * 1_000;
 const STALE_CONTENT_GRACE_STATE_KEY = healthVerdictRedisKey(
   'health:stale-content-grace:v1',
@@ -3622,8 +3618,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   //   3. It is not free, and the cost is bounded rather than absent. For a key
   //      whose marker is ALREADY present, an unreadable marker re-enters the
   //      softening and downgrades EMPTY (crit — #4927's "ran once and died"
-  //      alarm) to EMPTY_ON_DEMAND, which scripts/check-seed-freshness.mjs then
-  //      excuses. That lasts only as long as the marker is unreadable, and
+  //      alarm) to EMPTY_ON_DEMAND, which health does not alert on. That lasts only as long as the marker is unreadable, and
   //      `entry.activationUnknown` marks every entry softened on unknown state
   //      so the window is visible instead of silent.
   // The content-freshness grace below has none of those bounds, which is why it
@@ -3933,18 +3928,16 @@ function classifyKey(name, redisKey, opts, ctx) {
   // (`EMPTY_ON_DEMAND`) cannot carry that, because it only covers the
   // absent/zero-record branches — an on-demand key that HAS data and goes stale
   // falls through to plain STALE_SEED. Emitted for every status so a consumer
-  // can combine source and status; deciding WHICH statuses the marker excuses is
-  // the consumer's call, and scripts/check-seed-freshness.mjs deliberately
-  // excuses only the empty/absent ones (see ON_DEMAND_SOFT_STATUSES there —
-  // softening SEED_ERROR/STALE_SEED is the marketImplications blind spot the
-  // ON_DEMAND_KEYS policy block above exists to prevent).
+  // can combine source and status. The marker excuses nothing by itself: only
+  // EMPTY_ON_DEMAND is left out of the data-problem set, because softening
+  // SEED_ERROR/STALE_SEED is the marketImplications blind spot the
+  // ON_DEMAND_KEYS policy block above exists to prevent.
   if (isOnDemand) entry.onDemand = true;
   // See the activationUnknown derivation above. Never softens or hardens
   // anything by itself — it only says which evidence the verdict rests on.
   if (activationUnknown) entry.activationUnknown = true;
   // Publish the deadline with the state so the softening is auditable from the
-  // payload alone — an operator (and scripts/check-seed-freshness.mjs) can see
-  // exactly when this key stops being excused without reading api/health.js.
+  // payload alone — an operator can see exactly when this key stops being excused without reading api/health.js.
   if (status === 'ROLLOUT_PENDING') entry.rolloutPendingUntil = new Date(rolloutPendingUntil).toISOString();
   if (contentFreshnessActivationWindow) {
     entry.contentFreshnessPendingUntil = new Date(contentFreshnessActivationWindow.untilMs).toISOString();
@@ -4748,8 +4741,8 @@ function snapshotTtlSeconds(snapshot, now) {
 // invariant (`ok + warn + onDemandWarn + crit == total`) holds; the published
 // examples stay pinned to the registry size by the docs-stats gate and the
 // docs state that a production build reports one more. Its verdict lands in
-// compact `problems`, which is what the 15-minute seed-freshness monitor
-// fails on (scripts/check-seed-freshness.mjs findOperationalProblems).
+// compact `problems`, the same set `dataStatus` and source incidents use
+// (collectFailureLogProblems).
 const RELAY_GATEWAY_GATE_CHECK_NAME = 'relayGatewayGate';
 const RELAY_GATEWAY_GATE_ROUTE = '/relay/create-checkout';
 const RELAY_GATEWAY_GATE_TIMEOUT_MS = 4_000;
@@ -4795,16 +4788,16 @@ const RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS = HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS
 // PLUS the freshness window (freshness is judged on `evaluatedAt`, not the
 // Redis TTL) so the streak survives between windows.
 const RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS = 3 * 60 * 1_000;
-// The streak must survive at least one operational-monitor interval with NO
-// other traffic: `seed-freshness-monitor.yml` polls every 15 minutes, and if
-// the previous verdict had already expired by then, every run would see a
+// The streak must survive the slowest external health poll with NO other
+// traffic. 15 minutes bounds the uptime monitors' cadence; if the previous
+// verdict had already expired by the next poll, every poll would see a
 // "first sighting", mint a fresh grace and park a dead relay in `pending`
-// forever. Retention = freshness window + grace + one monitor interval +
-// slack; freshness itself is still judged on `evaluatedAt`.
-const SEED_FRESHNESS_MONITOR_INTERVAL_MS = 15 * 60 * 1_000;
+// forever. Retention = freshness window + grace + one poll interval + slack;
+// freshness itself is still judged on `evaluatedAt`.
+const HEALTH_POLL_INTERVAL_MS = 15 * 60 * 1_000;
 const RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS =
   RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS
-  + (RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS + SEED_FRESHNESS_MONITOR_INTERVAL_MS + 60_000) / 1_000;
+  + (RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS + HEALTH_POLL_INTERVAL_MS + 60_000) / 1_000;
 
 /** The previous verdict regardless of freshness, for streak continuity. */
 function parsePreviousRelayGatewayGate(raw) {
@@ -5294,9 +5287,51 @@ function buildFailureLogPersistencePlan({
   };
 }
 
+// Health is the only source of truth for ingestion incidents. Each source that
+// joins the actionable problem set (collectFailureLogProblems) opens, or
+// regresses, one Sentry issue grouped by source and status. A continuing
+// incident never re-fires because the signature changes only when the set does;
+// recovery leaves the source out of the next signature, so a recurrence alerts.
+function newIncidentKeys(previousSignature, sigKeys) {
+  const separator = previousSignature.indexOf('|');
+  const previous = new Set(
+    separator === -1 ? [] : previousSignature.slice(separator + 1).split(',').filter(Boolean),
+  );
+  return sigKeys.filter((key) => !previous.has(key));
+}
+
+function reportSourceIncident(key, checks, ctx, capture = captureSilentError) {
+  const separator = key.lastIndexOf(':');
+  const name = key.slice(0, separator);
+  const status = key.slice(separator + 1);
+  const check = checks[name] ?? {};
+  const extra = {};
+  for (const field of ['records', 'seedAgeMin', 'maxStaleMin', 'contentAgeMin', 'maxContentAgeMin', 'errorCode']) {
+    if (check[field] !== undefined) extra[field] = check[field];
+  }
+  capture(new Error(`Health source incident: ${name} ${status}`), {
+    level: 'warning',
+    fingerprint: ['health-source-incident', name, status],
+    tags: { health_source: name, health_status: status },
+    extra,
+    ctx,
+  });
+}
+
+// `status` is platform availability, the verdict uptime monitors keyword-match;
+// a contained source warning leaves it HEALTHY (#7939). `dataStatus` is the
+// strict ingestion verdict over the same summary, so no source defect is ever
+// invisible at the top level. Its values never contain the word HEALTHY.
+function dataStatusFromSummary(summary) {
+  if (summary?.crit > 0) return 'CRITICAL';
+  if (summary?.warn > 0) return 'DEGRADED';
+  return 'OK';
+}
+
 function healthResponseBody(snapshot, compact) {
   const body = {
     status: snapshot.status,
+    dataStatus: dataStatusFromSummary(snapshot.summary),
     summary: snapshot.summary,
     checkedAt: snapshot.checkedAt,
   };
@@ -5987,7 +6022,15 @@ export async function handleHealth(req, ctx, options = {}) {
     let previousSignature = '';
     if (problemKeys.length > 0) {
       const result = await redisPipeline([['GET', 'health:failure-log-sig']], 4_000).catch(() => null);
-      previousSignature = result?.[0]?.result ?? '';
+      const read = Array.isArray(result) && !result[0]?.error;
+      previousSignature = read ? (result[0]?.result ?? '') : '';
+      // An unreadable signature cannot tell a new incident from a continuing
+      // one, so it opens none rather than re-alerting every active problem.
+      if (read) {
+        for (const key of newIncidentKeys(previousSignature, diagnostics.sigKeys)) {
+          reportSourceIncident(key, checks, ctx, options.captureIncident);
+        }
+      }
     }
     const persistencePlan = buildFailureLogPersistencePlan({
       verdict: { overall, diagnosticOverall, realWarnCount, critCount },
@@ -6114,6 +6157,8 @@ export const __testing__ = {
   classifyKey,
   healthResponseBody,
   collectFailureLogProblems,
+  newIncidentKeys,
+  dataStatusFromSummary,
   buildFailureLogPersistencePlan,
   ACTIVATION_MARKERS,
   CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
@@ -6160,7 +6205,7 @@ export const __testing__ = {
   RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS,
   RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS,
   RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS,
-  SEED_FRESHNESS_MONITOR_INTERVAL_MS,
+  HEALTH_POLL_INTERVAL_MS,
   withTransportGrace,
   probeRelayGatewayGate,
   parseCachedRelayGatewayGate,

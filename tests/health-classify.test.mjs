@@ -17,7 +17,9 @@ import { readFileSync } from 'node:fs';
 
 import { __testing__ } from '../api/health.js';
 import { BUNDLE_HEARTBEAT_TTL_SECONDS, bundleHeartbeatKey } from '../scripts/_bundle-runner.mjs';
-import { isOnDemandProblem, findOperationalProblems } from '../scripts/check-seed-freshness.mjs';
+
+// The actionable data-problem set health alerts on and reports as `dataStatus`.
+const dataProblems = (checks) => __testing__.collectFailureLogProblems(checks, NOW).sigKeys;
 import { BOOTSTRAP_KEY as AVIATION_BOOTSTRAP_KEY, BOOTSTRAP_META_KEY as AVIATION_BOOTSTRAP_META_KEY } from '../scripts/seed-aviation.mjs';
 
 const {
@@ -88,11 +90,7 @@ test('transit coverage alerts below five measured canonical waterways despite a 
       metaValues: { [SEED_META.chokepointTransits.key]: { fetchedAt: NOW, recordCount } },
     }));
     assert.equal(result.status, status, `${recordCount}/13 measured waterways`);
-    const problems = findOperationalProblems({
-      status: status === 'OK' ? 'HEALTHY' : 'UNHEALTHY',
-      problems: status === 'OK' ? {} : { chokepointTransits: result },
-    });
-    assert.equal(problems.length, recordCount < 5 ? 1 : 0, 'the scheduled monitor must report the coverage fault');
+    assert.equal(dataProblems({ chokepointTransits: result }).length, recordCount < 5 ? 1 : 0, 'health must report the coverage fault');
   }
 });
 
@@ -2847,8 +2845,8 @@ test('classifyKey: an unobserved on-demand adapter reads EMPTY_ON_DEMAND, not ST
   );
   assert.equal(entry.status, 'EMPTY_ON_DEMAND');
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
-  assert.ok(isOnDemandProblem({ status: entry.status, onDemand: true }),
-    'the freshness monitor must excuse it — that is the point of the change');
+  assert.deepEqual(dataProblems({ imdCycloneMarine: entry }), [],
+    'health must not alert on it — that is the point of the change');
 });
 
 test('classifyKey: marker absence does not excuse an absent payload with stale seed metadata', () => {
@@ -2864,7 +2862,7 @@ test('classifyKey: marker absence does not excuse an absent payload with stale s
     }),
   );
   assert.equal(entry.status, 'STALE_SEED');
-  assert.ok(!isOnDemandProblem({ status: entry.status, onDemand: true }));
+  assert.equal(dataProblems({ imdCycloneMarine: entry }).length, 1);
 });
 
 test('classifyKey: marker absence preserves normal fresh and stale zero-record outcomes', () => {
@@ -2893,9 +2891,10 @@ test('classifyKey: once ACTIVATED, the same adapter is strict again', () => {
     makeCtx({ activationStates: { imdCycloneMarine: true } }),
   );
   assert.equal(entry.status, 'STALE_SEED', 'an activated adapter that goes absent is stale, as before');
-  assert.ok(
-    !isOnDemandProblem({ status: entry.status, onDemand: true }),
-    'and the freshness monitor must NOT excuse it — that is the outage this change must not hide',
+  assert.equal(
+    dataProblems({ imdCycloneMarine: entry }).length,
+    1,
+    'and health must alert on it — that is the outage this change must not hide',
   );
 });
 
@@ -2968,7 +2967,7 @@ test('calibration map uses its declared activation marker before the first resol
   assert.equal(entry.status, 'EMPTY_ON_DEMAND');
   assert.equal(__testing__.ACTIVATION_MARKERS[name], SEED_META[name].activationKey);
   assert.ok(ON_DEMAND_KEYS.has(name));
-  assert.equal(findOperationalProblems({ problems: { [name]: entry } }).length, 0);
+  assert.equal(dataProblems({ [name]: entry }).length, 0);
 });
 
 test('calibration activation does not hide missing data, stale publications, errors, or unknown markers', () => {
@@ -2991,7 +2990,7 @@ test('calibration activation does not hide missing data, stale publications, err
   for (const [state, status] of cases) {
     const entry = classifyKey(name, key, { allowOnDemand: true }, makeCtx(state));
     assert.equal(entry.status, status);
-    assert.equal(findOperationalProblems({ problems: { [name]: entry } }).length, 1);
+    assert.equal(dataProblems({ [name]: entry }).length, 1);
   }
   const fresh = classifyKey(name, key, { allowOnDemand: true }, makeCtx({
     activationStates: { [name]: true }, strens: { [key]: 128 },

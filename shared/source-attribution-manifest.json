@@ -1508,9 +1508,6 @@
           "path": "scripts/capture-seed-recovery.mjs"
         },
         {
-          "path": "scripts/check-seed-freshness.mjs"
-        },
-        {
           "path": "scripts/freeze-resilience-ranking.mjs"
         },
         {

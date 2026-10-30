@@ -69,11 +69,12 @@ description: "World Monitor 平台基础设施端点完整参考：涵盖引导�
 
 除 `REDIS_DOWN` 外的所有状态均返回 HTTP 200。`REDIS_DOWN` 返回 HTTP 503,因为 Redis 不可达且端点无法评估 seed 状态。响应不被缓存(`private, no-store, max-age=0` 加上 `CDN-Cache-Control: no-store`)。
 
-通过 UptimeRobot / Better Stack 并使用 `?compact=1` 监控可用性 —— 任何非 `HEALTHY` 状态都应触发告警。严格的数据质量监控还必须检查 `summary.warn` 和 `problems`，因为受控警告仍会显示在这些字段中。完整的详细视图需要 operator/enterprise API 密钥,因为它包含规范的缓存键名和新鲜度阈值。
+通过 UptimeRobot / Better Stack 并使用 `?compact=1` 监控可用性 —— 任何非 `HEALTHY` 状态都应触发告警。`dataStatus` 是基于同一摘要的严格数据判定：`OK`、`DEGRADED`（存在任何可操作警告，包括受控警告）或 `CRITICAL`；其取值从不包含 `HEALTHY`，因此不会意外满足可用性关键字检查。`problems` 列出每个受影响的数据源。完整的详细视图需要 operator/enterprise API 密钥,因为它包含规范的缓存键名和新鲜度阈值。
 
 ```json
 {
   "status": "HEALTHY",
+  "dataStatus": "OK",
   "checkedAt": "2026-08-07T12:00:00Z",
   "summary": {
     "total": 349,

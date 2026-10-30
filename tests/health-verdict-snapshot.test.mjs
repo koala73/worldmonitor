@@ -8,7 +8,6 @@ process.env.WORLDMONITOR_VALID_KEYS = 'test-health-admin-key';
 
 const { default: handler, handleHealth, __testing__ } = await import('../api/health.js');
 const { nextChinaDecisionCoverageFailure } = await import('../scripts/seed-china-decision-signals.mjs');
-const { findOperationalProblems, findPendingDiagnostics } = await import('../scripts/check-seed-freshness.mjs');
 
 const {
   HEALTH_VERDICT_SNAPSHOT_KEY: HEALTH_SNAPSHOT_KEY,
@@ -669,6 +668,7 @@ function sweepFetch({
   failGraceClaim = false,
   chinaCoverageSummary,
   chinaDecisionMeta,
+  failureLogSig = null,
 } = {}) {
   return async (_url, init) => {
     const { commands, encodeResults } = decodeHealthPipeline(init.body);
@@ -691,6 +691,9 @@ function sweepFetch({
       if (op === 'HGET') return { result: graceStore.get(field) ?? null };
       if (op === 'HDEL') return { result: 1 };
       if (op === 'PEXPIRE') return { result: 1 };
+      if (op === 'GET' && String(key).endsWith('health:failure-log-sig')) {
+        return failureLogSig === FAILURE_LOG_SIG_UNREADABLE ? { error: 'ERR unreachable' } : { result: failureLogSig };
+      }
       if (op === 'GET' && key === TEMPORAL_META_KEY) {
         return {
           result: JSON.stringify({
@@ -717,6 +720,8 @@ function sweepFetch({
     return new Response(JSON.stringify(encodeResults(results)), { status: 200 });
   };
 }
+
+const FAILURE_LOG_SIG_UNREADABLE = Symbol('unreadable');
 
 async function sweepCompactBody(fetchImpl) {
   globalThis.fetch = fetchImpl;
@@ -830,7 +835,7 @@ function chinaHealthyCoverageSummary(now) {
   };
 }
 
-test('producer evidence stays non-blocking through health and the monitor until the three-hour boundary', async () => {
+test('producer evidence stays non-blocking through health until the three-hour boundary', async () => {
   const lastSuccessAt = Date.parse('2026-09-08T12:00:00.000Z');
   const failureAt = lastSuccessAt + 15 * 60_000;
   const deadline = lastSuccessAt + CHINA_DECISION_SIGNALS_PENDING_MS;
@@ -862,21 +867,16 @@ test('producer evidence stays non-blocking through health and the monitor until 
     chinaCoverageSummary: chinaHealthyCoverageSummary(deadline - 1),
     chinaDecisionMeta: seedMeta,
   }));
-  assert.ok(findPendingDiagnostics(pendingBody, deadline - 1).some(
-    ({ name }) => name === 'chinaDecisionSignals',
-  ));
-  assert.ok(!findOperationalProblems(pendingBody, deadline - 1).some(
-    ({ name }) => name === 'chinaDecisionSignals',
-  ));
+  assert.ok(pendingBody.pending?.chinaDecisionSignals);
+  assert.equal(pendingBody.problems?.chinaDecisionSignals, undefined);
 
   Date.now = () => deadline;
   const warningBody = await sweepCompactBody(sweepFetch({
     chinaCoverageSummary: chinaHealthyCoverageSummary(deadline),
     chinaDecisionMeta: seedMeta,
   }));
-  assert.ok(findOperationalProblems(warningBody, deadline).some(
-    ({ name, status }) => name === 'chinaDecisionSignals' && status === 'COVERAGE_PARTIAL',
-  ));
+  assert.equal(warningBody.problems?.chinaDecisionSignals?.status, 'COVERAGE_PARTIAL');
+  assert.notEqual(warningBody.dataStatus, 'OK');
 });
 
 test('handleHealth keeps repeated producer-owned China failures pending for three hours', async () => {
@@ -1062,4 +1062,79 @@ test('handleHealth serves a graced snapshot until its deadline, then sweeps agai
   graced.pending.temporalAnomalies.staleContentGraceUntil = new Date(now).toISOString();
   await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'));
   assert.equal(sweeps, 1, 'an expired grace must force a fresh sweep, not serve a stale ok');
+});
+
+// ── Health is the only source of ingestion truth (dataStatus + incidents) ──
+
+test('dataStatus is the strict data verdict and never contains the uptime keyword', () => {
+  const { dataStatusFromSummary } = __testing__;
+  assert.equal(dataStatusFromSummary({ warn: 0, crit: 0 }), 'OK');
+  assert.equal(dataStatusFromSummary({ warn: 2, crit: 0 }), 'DEGRADED');
+  assert.equal(dataStatusFromSummary({ warn: 2, crit: 1 }), 'CRITICAL');
+  for (const value of ['OK', 'DEGRADED', 'CRITICAL']) assert.doesNotMatch(value, /HEALTHY/);
+});
+
+test('a contained warning keeps availability HEALTHY but reports dataStatus DEGRADED', () => {
+  const body = __testing__.healthResponseBody({
+    status: 'HEALTHY',
+    summary: { total: 100, ok: 99, warn: 1, containedWarn: 1, onDemandWarn: 0, crit: 0 },
+    checkedAt: new Date(0).toISOString(),
+    checks: { ttcAlerts: { status: 'STALE_SEED', records: 68, seedAgeMin: 160, maxStaleMin: 30 } },
+  }, true);
+  assert.equal(body.status, 'HEALTHY');
+  assert.equal(body.dataStatus, 'DEGRADED');
+  assert.equal(body.problems.ttcAlerts.status, 'STALE_SEED');
+});
+
+test('newIncidentKeys reports only sources that joined or changed status', () => {
+  const { newIncidentKeys } = __testing__;
+  const current = ['a:STALE_SEED', 'b:SEED_ERROR'];
+  assert.deepEqual(newIncidentKeys('', current), current, 'after a recovery every problem is new');
+  assert.deepEqual(newIncidentKeys('WARNING|a:STALE_SEED,b:SEED_ERROR', current), [], 'a continuing incident is quiet');
+  assert.deepEqual(newIncidentKeys('WARNING|a:STALE_SEED', current), ['b:SEED_ERROR']);
+  assert.deepEqual(newIncidentKeys('WARNING|a:SEED_ERROR,b:SEED_ERROR', current), ['a:STALE_SEED'], 'a changed status is a new incident');
+});
+
+test('handleHealth opens one Sentry incident per new source and stays quiet on repeats', async () => {
+  const sweep = async (failureLogSig) => {
+    const captures = [];
+    let written = null;
+    globalThis.fetch = sweepFetch({
+      failureLogSig,
+      onCommands: (commands) => {
+        for (const [op, key, value] of commands) {
+          if (op === 'SET' && String(key).endsWith('health:failure-log-sig')) written = value;
+        }
+      },
+    });
+    const response = await handleHealth(
+      new Request('https://api.worldmonitor.app/api/health?compact=1'),
+      undefined,
+      { captureIncident: (error, opts) => captures.push({ message: error.message, ...opts }) },
+    );
+    return { body: await response.json(), captures, written };
+  };
+
+  const first = await sweep(null);
+  assert.notEqual(first.body.dataStatus, 'OK');
+  assert.ok(first.written, 'the sweep must persist an incident signature');
+  const problemKeys = first.written.slice(first.written.indexOf('|') + 1).split(',');
+  assert.equal(first.captures.length, problemKeys.length, 'every problem is new after a recovery');
+  const [incident] = first.captures;
+  const { health_source: source, health_status: status } = incident.tags;
+  assert.ok(problemKeys.includes(`${source}:${status}`));
+  assert.equal(incident.level, 'warning');
+  assert.deepEqual(incident.fingerprint, ['health-source-incident', source, status]);
+  assert.equal(incident.message, `Health source incident: ${source} ${status}`);
+
+  const repeat = await sweep(first.written);
+  assert.equal(repeat.captures.length, 0, 'an unchanged incident must not re-alert');
+
+  const unreadable = await sweep(FAILURE_LOG_SIG_UNREADABLE);
+  assert.equal(unreadable.captures.length, 0, 'an unreadable signature cannot prove anything is new');
+
+  const prefix = first.written.slice(0, first.written.indexOf('|') + 1);
+  const withoutSource = prefix + problemKeys.filter((key) => key !== `${source}:${status}`).join(',');
+  const recurrence = await sweep(withoutSource);
+  assert.deepEqual(recurrence.captures.map((capture) => capture.tags.health_source), [source], 'a recurrence alerts again');
 });
