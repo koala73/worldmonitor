@@ -203,8 +203,8 @@ describe('candidateTokens / normalizeStoryText', () => {
     }
     // The vector still sees the connector words: identity is unchanged.
     const a = storyVector('Iran says it will close the Strait of Hormuz');
-    const b = storyVector('Iran says it will close the Strait of Hormuz');
-    assert.ok(a && b && Math.abs(cosineSimilarity(a, b) - 1) < 1e-9);
+    const b = storyVector('Iran close Strait Hormuz');
+    assert.ok(a && b && cosineSimilarity(a, b) < 0.99);
   });
 
   it('two headlines that share only connector words produce no shared index key', () => {
@@ -803,4 +803,12 @@ describe('story key TTL ordering (#4924 external review P2)', () => {
       'a track outside the digest freshness floor must not be adopted — it is ageing out and the story would re-fork',
     );
   });
+});
+
+
+it('clusters connector-only headline edits through bounded fallback keys', () => {
+  const titles = ['WHO says US must do more', 'WHO says US must do more now'];
+  assert.ok(storySimilarity(...titles) >= STORY_SIMILARITY_THRESHOLD);
+  assert.ok(candidateTokens(titles[0]).size > 0);
+  assert.deepEqual(clusterTexts(titles), [[0, 1]]);
 });
