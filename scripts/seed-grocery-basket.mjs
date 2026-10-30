@@ -95,15 +95,17 @@ async function scrapeFirecrawl(url, expectedCurrency) {
     }
     const data = await resp.json();
     const ex = data?.data?.extract;
-    if (!ex?.price || ex.price <= 0) return null;
+    // The LLM extract can return price as a string ("1.50"); coerce so callers get a number.
+    const price = Number(ex?.price);
+    if (!Number.isFinite(price) || price <= 0) return null;
     const ccy = (ex.currency || '').toUpperCase().trim();
     if (ccy !== expectedCurrency) {
       console.warn(`    [Firecrawl] currency mismatch: got ${ccy}, expected ${expectedCurrency}`);
       return null;
     }
     const minPrice = CURRENCY_MIN[expectedCurrency] ?? 0;
-    if (ex.price <= minPrice || ex.price >= 100000) return null;
-    return { price: ex.price, currency: expectedCurrency, source: url };
+    if (price <= minPrice || price >= 100000) return null;
+    return { price, currency: expectedCurrency, source: url };
   } catch (err) {
     console.warn(`    [Firecrawl] error: ${err.message}`);
     return null;
@@ -215,19 +217,19 @@ function extractPrice(result, expectedCurrency) {
 // Prices one country's basket. Items run concurrently; learned-route updates and
 // evictions are recorded into the shared maps (keys are per-country, so concurrent
 // countries never collide).
-async function fetchCountryItems(country, { fxRate, learnedRoutes, routeUpdates, routeDeletes }) {
+export async function fetchCountryItems(country, { fxRate, learnedRoutes, routeUpdates, routeDeletes, processItemRouteFn = processItemRoute }) {
   console.log(`\n  Processing ${country.flag} ${country.name} (${country.currency})...`);
   const allowedHosts = country.sites.map(s => s.replace(/^www\./, '').split('/')[0]);
 
   // Process all items concurrently — 100ms stagger to respect EXA/Firecrawl rate limits
-  return Promise.all(config.items.map(async (item, idx) => {
+  const settled = await Promise.allSettled(config.items.map(async (item, idx) => {
     await sleep(idx * 200); // stagger starts — 200ms prevents EXA rate limit with 10 concurrent
 
     const routeKey = `${country.code}:${item.id}`;
     const learned = learnedRoutes.get(routeKey);
 
     // --- Learned route fast path + EXA fallback ---
-    const { localPrice, sourceSite, routeUpdate, routeDelete } = await processItemRoute({
+    const { localPrice, sourceSite, routeUpdate, routeDelete } = await processItemRouteFn({
       learned,
       allowedHosts,
       currency: country.currency,
@@ -305,6 +307,29 @@ async function fetchCountryItems(country, { fxRate, learnedRoutes, routeUpdates,
       available: localPrice !== null,
     };
   }));
+
+  // allSettled, not all: a throwing item must not release this country's
+  // concurrency slot while its siblings are still calling Firecrawl/EXA and
+  // recording route changes. Only the throwing item degrades.
+  return settled.map((s, idx) => {
+    if (s.status === 'fulfilled') return s.value;
+    const item = config.items[idx];
+    console.warn(`    [${country.code}] ${item.id}: failed: ${s.reason?.message || s.reason}`);
+    return unavailableItem(item, country);
+  });
+}
+
+function unavailableItem(item, country) {
+  return {
+    itemId: item.id,
+    itemName: item.name,
+    unit: item.unit,
+    localPrice: null,
+    usdPrice: null,
+    currency: country.currency,
+    sourceSite: '',
+    available: false,
+  };
 }
 
 export async function fetchGroceryBasketPrices(prevSnapshot, {
@@ -377,16 +402,7 @@ export async function fetchGroceryBasketPrices(prevSnapshot, {
     let itemPrices = settled[i].status === 'fulfilled' ? settled[i].value : null;
     if (!itemPrices) {
       console.warn(`    [${country.code}] processing failed: ${settled[i].reason?.message || settled[i].reason}`);
-      itemPrices = config.items.map(item => ({
-        itemId: item.id,
-        itemName: item.name,
-        unit: item.unit,
-        localPrice: null,
-        usdPrice: null,
-        currency: country.currency,
-        sourceSite: '',
-        available: false,
-      }));
+      itemPrices = config.items.map(item => unavailableItem(item, country));
     }
 
     let totalUsd = 0;

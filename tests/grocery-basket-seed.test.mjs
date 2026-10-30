@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { fetchGroceryBasketPrices, COUNTRY_CONCURRENCY, COUNTRIES } from '../scripts/seed-grocery-basket.mjs';
+import { fetchGroceryBasketPrices, fetchCountryItems, COUNTRY_CONCURRENCY, COUNTRIES } from '../scripts/seed-grocery-basket.mjs';
 
 // The seeder logs one line per country and item. Silence it so the flood can't
 // corrupt node:test's child-process message parser under --test-concurrency.
@@ -76,5 +76,33 @@ describe('seed-grocery-basket fetchGroceryBasketPrices', () => {
     assert.equal(row.totalUsd, 0);
     assert.ok(row.items.length > 0 && row.items.every((i) => i.available === false));
     assert.ok(data.countries.filter((c) => c.code !== failed.code).every((c) => c.totalUsd === 2));
+  });
+});
+
+describe('seed-grocery-basket fetchCountryItems', () => {
+  // A throwing item must not release the country's concurrency slot while its
+  // sibling items are still in flight (they would keep calling Firecrawl/EXA past
+  // the limit and record route changes after routes.write has already run).
+  it('waits for every item to settle and degrades only the throwing item', async () => {
+    let inFlight = 0;
+    const routeUpdates = new Map();
+    const processItemRouteFn = async ({ itemId }) => {
+      inFlight += 1;
+      try {
+        if (itemId === 'rice') throw new Error('simulated item failure');
+        await new Promise((r) => setTimeout(r, 30));
+        return { localPrice: 2, sourceSite: 'https://test.example', routeUpdate: { url: 'https://test.example' }, routeDelete: false };
+      } finally {
+        inFlight -= 1;
+      }
+    };
+    const items = await fetchCountryItems(COUNTRIES[0], {
+      fxRate: 1, learnedRoutes: new Map(), routeUpdates, routeDeletes: new Set(), processItemRouteFn,
+    });
+    assert.equal(inFlight, 0, 'no item may still be running when the country resolves');
+    const rice = items.find((i) => i.itemId === 'rice');
+    assert.equal(rice.available, false);
+    assert.ok(items.filter((i) => i.itemId !== 'rice').every((i) => i.available && i.usdPrice === 2));
+    assert.equal(routeUpdates.size, items.length - 1, 'every surviving item recorded its route before the country resolved');
   });
 });
