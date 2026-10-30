@@ -201,7 +201,7 @@ describe('candidateTokens / normalizeStoryText', () => {
     for (const word of ['iran', 'close', 'strait', 'hormuz', 'sanctions']) {
       assert.ok(toks.has(word), `${word} must stay an index key`);
     }
-    // The vector still sees the connector words: identity is unchanged.
+    // Removing connector words changes the vector, even though the index drops them.
     const a = storyVector('Iran says it will close the Strait of Hormuz');
     const b = storyVector('Iran close Strait Hormuz');
     assert.ok(a && b && cosineSimilarity(a, b) < 0.99);

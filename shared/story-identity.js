@@ -102,8 +102,8 @@ function isNonAscii(token) {
 // MAX_CANDIDATE_BUCKET (no pairs scored through them) or, below the cap,
 // score every pair in the batch, which is the O(n²) scan the inverted index
 // exists to avoid. The vector still sees these tokens; only candidate
-// generation ignores them, so a pair that shares nothing else was never
-// going to clear the similarity threshold anyway.
+// generation ignores them. Keyless headlines retain their original candidate
+// tokens; the existing bucket cap still bounds pair scoring.
 export const CANDIDATE_STOPWORDS = new Set([
   'the', 'and', 'for', 'with', 'from', 'that', 'this', 'into', 'over',
   'after', 'amid', 'amidst', 'about', 'than', 'then', 'what', 'when', 'where',
@@ -122,23 +122,25 @@ export const CANDIDATE_STOPWORDS = new Set([
  * ASCII tokens shorter than 3 chars and the CANDIDATE_STOPWORDS connector
  * words are dropped (stopword-weight noise); non-ASCII tokens are kept
  * whole AND as char bigrams so unsegmented scripts still produce index
- * keys.
+ * keys. If none remain, retain the original keys under the same bucket cap.
  * @param {string} text
  * @returns {Set<string>}
  */
 export function candidateTokens(text) {
   const out = new Set();
+  const fallback = new Set();
   const clamped = stripAttributionSuffix(text).slice(0, MAX_IDENTITY_CHARS);
   for (const tok of normalizeStoryText(clamped).split(' ')) {
     if (!tok) continue;
     if (isNonAscii(tok)) {
       out.add(tok);
       for (let i = 0; i + 2 <= tok.length; i++) out.add(tok.slice(i, i + 2));
-    } else if (tok.length >= 3 && !CANDIDATE_STOPWORDS.has(tok)) {
-      out.add(tok);
+    } else if (tok.length >= 3) {
+      fallback.add(tok);
+      if (!CANDIDATE_STOPWORDS.has(tok)) out.add(tok);
     }
   }
-  return out;
+  return out.size ? out : fallback;
 }
 
 // Trailing source-attribution suffixes ("… - Reuters", "… - example.com")
