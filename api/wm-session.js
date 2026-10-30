@@ -188,7 +188,7 @@ export default async function handler(req, ctx) {
   const cors = getCorsHeaders(req, 'POST, OPTIONS');
 
   if (req.method !== 'POST') {
-    return respond({ error: 'Method not allowed' }, 405, cors, 'method_not_allowed');
+    return respond({ error: 'Method not allowed' }, 405, { ...cors, Allow: 'POST, OPTIONS' }, 'method_not_allowed');
   }
 
   // Rate-limit per IP. Without this, an attacker can farm tokens cheaply.
