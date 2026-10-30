@@ -73,11 +73,14 @@ describe('REST gateway 401 challenge (#4840)', () => {
 
   it('an invalid bearer session gets the challenge', async () => {
     process.env.WORLDMONITOR_VALID_KEYS = VALID_KEY;
-    const res = await gateway()(new Request('https://worldmonitor.app/api/seismology/v1/list-earthquakes', {
+    const path = '/api/intelligence/v1/get-country-coverage';
+    const premium = createDomainGateway([{ method: 'GET', path, handler: async () => Response.json({ source: 'rpc' }) }]);
+    const res = await premium(new Request(`https://worldmonitor.app${path}`, {
       headers: { Authorization: 'Bearer definitely-not-a-session' },
     }));
     assert.equal(res.status, 401);
     assert.equal(res.headers.get('www-authenticate'), APEX_CHALLENGE);
+    assert.equal((await res.json()).error, 'Invalid or expired session');
   });
 
   it('points at the metadata document of the request host, never a spoofed one', async () => {
