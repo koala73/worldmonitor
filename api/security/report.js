@@ -102,7 +102,7 @@ export default async function handler(req) {
   }
 
   if (req.method !== 'POST') {
-    return jsonResponse({ error: 'Method not allowed' }, 405, RESPONSE_HEADERS);
+    return jsonResponse({ error: 'Method not allowed' }, 405, { ...RESPONSE_HEADERS, Allow: 'POST, OPTIONS' });
   }
 
   const limited = await checkRateLimit(req, RESPONSE_HEADERS);

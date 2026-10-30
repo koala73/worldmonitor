@@ -216,7 +216,7 @@ export default async function handler(req) {
 
   // GET = return cached or fresh catalog
   if (req.method !== 'GET') {
-    return json({ error: 'Method not allowed' }, 405, cors);
+    return json({ error: 'Method not allowed' }, 405, { ...cors, Allow: 'GET, DELETE, OPTIONS' });
   }
 
   const publicCors = getPublicCorsHeaders('GET, DELETE, OPTIONS');
