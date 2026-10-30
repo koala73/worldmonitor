@@ -282,6 +282,7 @@
     "@dodopayments/convex": "^0.2.8",
     "@fontsource/nunito": "^5.2.7",
     "@fontsource/tajawal": "^5.2.7",
+    "@noble/hashes": "1.4.0",
     "@protomaps/basemaps": "^5.7.1",
     "@sentry/browser": "^10.39.0",
     "@upstash/ratelimit": "^2.0.8",

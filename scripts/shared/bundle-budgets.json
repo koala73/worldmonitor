@@ -7,15 +7,15 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 455814
+    "raw": 456591
   },
   "chunks": {
     "analytics": {
-      "raw": 46173,
+      "raw": 46465,
       "files": 1
     },
     "clerk": {
-      "raw": 21632,
+      "raw": 21861,
       "files": 1
     },
     "convex-client": {
@@ -59,11 +59,11 @@
       "files": 1
     },
     "map-layer-definitions": {
-      "raw": 14650,
+      "raw": 14566,
       "files": 1
     },
     "panels": {
-      "raw": 37687,
+      "raw": 37770,
       "files": 1
     },
     "runtime-config": {
@@ -87,7 +87,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 71262,
+      "raw": 71519,
       "files": 1
     },
     "theme-manager": {
@@ -101,11 +101,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1476120
+      "raw": 1496419
     },
     "chunks": {
       "App": {
-        "raw": 932119,
+        "raw": 948018,
         "files": 1
       },
       "ai-flow-settings": {
@@ -129,7 +129,7 @@
         "files": 1
       },
       "cloud-prefs-sync": {
-        "raw": 6955,
+        "raw": 6960,
         "files": 1
       },
       "continuous": {
@@ -137,7 +137,7 @@
         "files": 1
       },
       "corroboration": {
-        "raw": 13002,
+        "raw": 14245,
         "files": 1
       },
       "cross-domain-storage": {
@@ -153,11 +153,11 @@
         "files": 1
       },
       "feeds": {
-        "raw": 101736,
+        "raw": 100404,
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 121934,
+        "raw": 123418,
         "files": 1
       },
       "index": {
@@ -173,11 +173,11 @@
         "files": 1
       },
       "news-credibility": {
-        "raw": 9373,
+        "raw": 9393,
         "files": 1
       },
       "panel-gating": {
-        "raw": 3475,
+        "raw": 4192,
         "files": 1
       },
       "panel-storage": {
@@ -201,11 +201,11 @@
         "files": 1
       },
       "source-provenance": {
-        "raw": 88764,
+        "raw": 90335,
         "files": 1
       },
       "storage-facility-registry-store": {
-        "raw": 14773,
+        "raw": 15403,
         "files": 1
       },
       "storage-quota": {
@@ -221,7 +221,7 @@
         "files": 1
       },
       "widget-store": {
-        "raw": 23263,
+        "raw": 23325,
         "files": 1
       }
     }

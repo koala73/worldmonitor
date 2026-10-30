@@ -1,3 +1,6 @@
+import { hmac } from '@noble/hashes/hmac';
+import { sha256 } from '@noble/hashes/sha256';
+
 /**
  * story-identity — the ONE similarity definition for "are these the same
  * news story?" (#4919, Bet 1 of the 2026-07-05 strategic review).
@@ -10,7 +13,7 @@
  * corroboration). All three now delegate here.
  *
  * ── Method ──────────────────────────────────────────────────────────────
- * DUAL-VIEW feature-hashed lexical vectors; similarity = min of the two
+ * DUAL-VIEW lexical vectors; similarity = min of the two exact-feature
  * views' cosines (see lexicalStoryVector for why two views). Features:
  *   - word tokens            (weight 2.0)  — core lexical identity
  *   - word bigrams           (weight 1.5)  — order/direction ("ukraine
@@ -20,8 +23,9 @@
  *     (iran/iranian, sanction/sanctions)
  *   - char bigrams for non-ASCII tokens — CJK and other unsegmented
  *     scripts get no whitespace tokens, so bigrams carry the signal
- * hashed (signed FNV-1a) into 512 dims and L2-normalized. Deterministic,
- * dependency-free, script-agnostic, ~µs per title.
+ * retained as sparse feature weights for collision-free identity scoring.
+ * A 512-dimension projection uses HMAC-SHA256 when a deploy salt is set,
+ * and historical FNV-1a otherwise. Projection noise never decides identity.
  *
  * This is an EDIT-TOLERANT identity, not a semantic one: it merges the
  * real-world corroboration killers (source suffixes, truncations,
@@ -44,7 +48,7 @@ const DIM = 512;
 // (edit-variant positives vs same-topic-different-event negatives). The
 // test asserts full separation with margin on both sides; retune there
 // if the vectorizer changes.
-export const STORY_SIMILARITY_THRESHOLD = 0.615;
+export const STORY_SIMILARITY_THRESHOLD = 0.604;
 
 const WEIGHT_TOKEN = 2.0;
 const WEIGHT_BIGRAM = 1.5;
@@ -70,6 +74,34 @@ function fnv1a(str, seed) {
     h = Math.imul(h, 0x01000193) >>> 0;
   }
   return h >>> 0;
+}
+
+// Projection uses the full secret. The numeric fingerprint is diagnostic only.
+const SIGN_SEED = 0x9e3779b9;
+const encoder = new TextEncoder();
+
+/** @param {unknown} value @returns {number} fingerprint, 0 when unset */
+export function deriveFeatureHashSalt(value) {
+  if (typeof value !== 'string' || !value.trim()) return 0;
+  const digest = sha256(encoder.encode(value.trim()));
+  return new DataView(digest.buffer, digest.byteOffset).getUint32(0);
+}
+
+let featureHashSalt;
+let featureHashKey = null;
+
+/** @param {string | null | undefined} value */
+export function setFeatureHashSalt(value) {
+  const salt = typeof value === 'string' ? value.trim() : '';
+  featureHashKey = salt ? encoder.encode(salt) : null;
+  featureHashSalt = deriveFeatureHashSalt(salt);
+  return featureHashSalt;
+}
+
+/** Capture after worker loadEnvFile(), then keep the process setting stable. */
+export function activeFeatureHashSalt() {
+  if (featureHashSalt === undefined) setFeatureHashSalt(globalThis.process?.env?.STORY_FEATURE_HASH_SALT);
+  return featureHashSalt;
 }
 
 /**
@@ -252,11 +284,29 @@ function contentTokens(text) {
   return kept;
 }
 
-/** @param {Float64Array} vec @param {string} feature @param {number} weight */
-function addFeature(vec, feature, weight) {
-  const idx = fnv1a(feature, 0) % DIM;
-  const sign = (fnv1a(feature, 0x9e3779b9) & 1) === 1 ? 1 : -1;
+/** @param {Float64Array} vec @param {Map<string, number>} features @param {string} feature @param {number} weight */
+function addFeature(vec, features, feature, weight) {
+  features.set(feature, (features.get(feature) || 0) + weight);
+  let idx;
+  let sign;
+  if (featureHashKey) {
+    const digest = hmac(sha256, featureHashKey, encoder.encode(feature));
+    idx = ((digest[0] << 8) | digest[1]) % DIM;
+    sign = (digest[2] & 1) === 1 ? 1 : -1;
+  } else {
+    idx = fnv1a(feature, 0) % DIM;
+    sign = (fnv1a(feature, SIGN_SEED) & 1) === 1 ? 1 : -1;
+  }
   vec[idx] += sign * weight;
+}
+
+/** @param {Map<string, number>} features */
+function normalizeFeatures(features) {
+  let norm = 0;
+  for (const value of features.values()) norm += value * value;
+  norm = Math.sqrt(norm);
+  for (const [key, value] of features) features.set(key, value / norm);
+  return features;
 }
 
 /** @param {Float64Array} vec */
@@ -264,7 +314,7 @@ function l2normalize(vec) {
   let norm = 0;
   for (let i = 0; i < DIM; i++) norm += vec[i] * vec[i];
   norm = Math.sqrt(norm);
-  if (norm === 0) return null;
+  if (norm === 0) return vec;
   for (let i = 0; i < DIM; i++) vec[i] /= norm;
   return vec;
 }
@@ -282,8 +332,8 @@ function l2normalize(vec) {
  * A pair is the same story only when BOTH views agree (similarity =
  * min of the two cosines) — each view catches the failure mode the
  * other is blind to. Tuned on the labeled pair set in
- * tests/story-identity.test.mjs: min positive 0.634, max negative
- * 0.595 with THRESHOLD 0.615 between them.
+ * tests/story-identity.test.mjs: min positive 0.619, max negative
+ * 0.589 with THRESHOLD 0.604 between them.
  *
  * Returns null for texts with no usable tokens (callers treat null as
  * "cannot match" — never same-story).
@@ -293,44 +343,47 @@ function l2normalize(vec) {
 function lexicalStoryVector(text) {
   const tokens = contentTokens(text);
   if (tokens.length === 0) return null;
+  activeFeatureHashSalt();
+  const fu = new Map();
+  const fb = new Map();
   const u = new Float64Array(DIM);
   const b = new Float64Array(DIM);
   for (let i = 0; i < tokens.length; i++) {
     const { tok, boost } = tokens[i];
-    addFeature(u, `w:${tok}`, WEIGHT_TOKEN);
-    addFeature(b, `w:${tok}`, WEIGHT_TOKEN * boost);
+    addFeature(u, fu, `w:${tok}`, WEIGHT_TOKEN);
+    addFeature(b, fb, `w:${tok}`, WEIGHT_TOKEN * boost);
     if (i + 1 < tokens.length) {
       const bigram = `b:${tok} ${tokens[i + 1].tok}`;
-      addFeature(u, bigram, WEIGHT_BIGRAM);
-      addFeature(b, bigram, WEIGHT_BIGRAM);
+      addFeature(u, fu, bigram, WEIGHT_BIGRAM);
+      addFeature(b, fb, bigram, WEIGHT_BIGRAM);
     }
     if (isNonAscii(tok)) {
       // Unsegmented-script fallback: char bigrams of the raw token.
       for (let j = 0; j + 2 <= tok.length; j++) {
         const g = `c2:${tok.slice(j, j + 2)}`;
-        addFeature(u, g, WEIGHT_CHARGRAM);
-        addFeature(b, g, WEIGHT_CHARGRAM);
+        addFeature(u, fu, g, WEIGHT_CHARGRAM);
+        addFeature(b, fb, g, WEIGHT_CHARGRAM);
       }
     }
     if (tok.length >= 4) {
       const padded = `<${tok}>`;
       for (let j = 0; j + 4 <= padded.length; j++) {
         const g = `c4:${padded.slice(j, j + 4)}`;
-        addFeature(u, g, WEIGHT_CHARGRAM);
-        addFeature(b, g, WEIGHT_CHARGRAM);
+        addFeature(u, fu, g, WEIGHT_CHARGRAM);
+        addFeature(b, fb, g, WEIGHT_CHARGRAM);
       }
     }
   }
   const un = l2normalize(u);
   const bn = l2normalize(b);
-  if (!un || !bn) return null;
   // Token set rides along for the containment rescue in
   // cosineSimilarity — severe RSS truncation (a headline cut to ~40% of
   // its tokens) drops the cosine below threshold even though the short
   // form is a strict subset of the long form. The old word-overlap
   // dedup metric (|∩|/min) handled exactly this class; keep that
   // guarantee via token containment.
-  return { u: un, b: bn, t: new Set(tokens.map((entry) => entry.tok)) };
+  return { u: un, b: bn, t: new Set(tokens.map((entry) => entry.tok)),
+    f: { u: normalizeFeatures(fu), b: normalizeFeatures(fb) } };
 }
 
 /** Active vectorizer — swappable for a semantic embedding provider. */
@@ -366,6 +419,14 @@ function dot(a, b) {
   return d;
 }
 
+/** @param {Map<string, number>} a @param {Map<string, number>} b */
+function featureDot(a, b) {
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  let sum = 0;
+  for (const [key, value] of small) sum += value * (large.get(key) || 0);
+  return sum;
+}
+
 /**
  * Similarity of two dual-view story vectors: the MIN of the uniform-view
  * and boosted-view cosines — a pair is the same story only when both
@@ -384,7 +445,11 @@ const CONTAINMENT_RESCUE_SCORE = 0.9;
 
 export function cosineSimilarity(a, b) {
   if (!a || !b) return 0;
-  const score = Math.min(dot(a.u, b.u), dot(a.b, b.b));
+  // Exact lexical features prevent hash collisions and salt changes from
+  // changing identity. External embedding providers keep dense cosine.
+  const score = a.f && b.f
+    ? Math.min(featureDot(a.f.u, b.f.u), featureDot(a.f.b, b.f.b))
+    : Math.min(dot(a.u, b.u), dot(a.b, b.b));
   // Rescue only applies to lexical vectors carrying token sets — a
   // semantic provider's vectors skip it (semantic cosine already
   // handles truncation).

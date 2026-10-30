@@ -16,9 +16,15 @@ import {
   isSameStory,
   clusterTexts,
   setStoryVectorProvider,
+  setFeatureHashSalt,
+  activeFeatureHashSalt,
+  deriveFeatureHashSalt,
 } from '../shared/story-identity.js';
 
-afterEach(() => setStoryVectorProvider(null));
+afterEach(() => {
+  setStoryVectorProvider(null);
+  setFeatureHashSalt(null);
+});
 
 // ── Labeled pairs (tuning ground truth) ────────────────────────────────────
 //
@@ -164,6 +170,55 @@ describe('clusterTexts', () => {
     const texts = ['Fed holds interest rates steady', 'Fed holds rates steady'];
     assert.equal(clusterTexts(texts, { threshold: 0.999 }).length, 2);
     assert.equal(clusterTexts(texts).length, 1);
+  });
+});
+
+describe('feature-hash salt (#4925 item 2)', () => {
+  const TITLE = 'Iran threatens to close Strait of Hormuz';
+
+  it('is unsalted by default and derives a stable non-zero seed from a salt string', () => {
+    assert.equal(activeFeatureHashSalt(), 0);
+    assert.equal(deriveFeatureHashSalt(undefined), 0);
+    assert.equal(deriveFeatureHashSalt(''), 0);
+    assert.equal(deriveFeatureHashSalt('   '), 0);
+    const seed = deriveFeatureHashSalt('deploy-secret');
+    assert.notEqual(seed, 0);
+    assert.equal(seed, deriveFeatureHashSalt('deploy-secret'));
+    assert.equal(seed, deriveFeatureHashSalt('  deploy-secret  '), 'surrounding whitespace is not part of the salt');
+    assert.notEqual(seed, deriveFeatureHashSalt('deploy-secret-2'));
+    assert.equal(setFeatureHashSalt('deploy-secret'), seed);
+    assert.equal(activeFeatureHashSalt(), seed);
+  });
+
+  it('moves every feature to a different projection, so an offline collision search is deploy-specific', () => {
+    const unsalted = storyVector(TITLE);
+    setFeatureHashSalt('deploy-secret');
+    const salted = storyVector(TITLE);
+    assert.ok(unsalted && salted);
+    const differing = Array.from(unsalted.u).filter((v, i) => Math.abs(v - salted.u[i]) > 1e-12).length;
+    assert.ok(differing > 0, 'a salt must change the projection');
+    assert.ok(Math.abs(cosineSimilarity(unsalted, salted) - 1) < 1e-9, 'lexical identity is independent of projection salt');
+    setFeatureHashSalt('deploy-secret');
+    assert.deepEqual(Array.from(storyVector(TITLE).u), Array.from(salted.u), 'same salt, same projection');
+  });
+
+  it('keeps the labeled ground truth separating under a salt', () => {
+    setFeatureHashSalt('deploy-secret');
+    for (const [a, b] of POSITIVE_PAIRS) {
+      assert.ok(isSameStory(a, b), `salted positive must merge: ${a} | ${b}`);
+    }
+    for (const [a, b] of NEGATIVE_PAIRS) {
+      assert.ok(!isSameStory(a, b), `salted negative must stay apart: ${a} | ${b}`);
+    }
+    assert.ok(Math.abs(storySimilarity(TITLE, TITLE) - 1) < 1e-9);
+  });
+
+  it('restores the unsalted hashes when cleared', () => {
+    const before = Array.from(storyVector(TITLE).u);
+    setFeatureHashSalt('deploy-secret');
+    setFeatureHashSalt(null);
+    assert.equal(activeFeatureHashSalt(), 0);
+    assert.deepEqual(Array.from(storyVector(TITLE).u), before);
   });
 });
 
@@ -763,4 +818,37 @@ describe('story key TTL ordering (#4924 external review P2)', () => {
       'a track outside the digest freshness floor must not be adopted — it is ageing out and the story would re-fork',
     );
   });
+});
+
+
+it('keeps every labeled decision stable across deployment salts', () => {
+  for (const salt of ['deploy-3', 'deploy-30', 'secret-92', 'secret-120', ...Array.from({ length: 16 }, (_, i) => `regression-deploy-${i}`)]) {
+    setFeatureHashSalt(salt);
+    for (const [a, b] of POSITIVE_PAIRS) assert.ok(isSameStory(a, b), `positive split under ${salt}: ${a}`);
+    for (const [a, b] of NEGATIVE_PAIRS) assert.ok(!isSameStory(a, b), `negative merged under ${salt}: ${a}`);
+  }
+});
+
+it('does not alias salts whose old FNV seeds shared nine low bits', () => {
+  setFeatureHashSalt('secret-92');
+  const first = storyVector('Apple unveils new AI features at WWDC keynote');
+  setFeatureHashSalt('secret-120');
+  const second = storyVector('Apple unveils new AI features at WWDC keynote');
+  assert.notDeepEqual(Array.from(first.u), Array.from(second.u));
+});
+
+it('loads the environment salt after import and freezes it on first use', async () => {
+  const previous = process.env.STORY_FEATURE_HASH_SALT;
+  delete process.env.STORY_FEATURE_HASH_SALT;
+  try {
+    const fresh = await import(`../shared/story-identity.js?lazy-env=${Date.now()}`);
+    process.env.STORY_FEATURE_HASH_SALT = 'loaded-by-loadEnvFile';
+    fresh.storyVector('A headline after environment loading');
+    assert.equal(fresh.activeFeatureHashSalt(), fresh.deriveFeatureHashSalt('loaded-by-loadEnvFile'));
+    process.env.STORY_FEATURE_HASH_SALT = 'later-edit';
+    assert.equal(fresh.activeFeatureHashSalt(), fresh.deriveFeatureHashSalt('loaded-by-loadEnvFile'));
+  } finally {
+    if (previous === undefined) delete process.env.STORY_FEATURE_HASH_SALT;
+    else process.env.STORY_FEATURE_HASH_SALT = previous;
+  }
 });
