@@ -60,7 +60,7 @@ async function stubClerkModule(
   // openSignIn() mounts it, a dismissal removes it, and a completed sign-in sets
   // the user and emits. `isClerkSignInOpen` reads the same DOM the production
   // predicate in src/services/clerk.ts reads.
-  const initialUser = opts.signedOut ? 'null' : "{ email: 'e2e@worldmonitor.app' }";
+  const initialUser = opts.signedOut ? 'null' : "{ id: 'user-a', email: 'e2e@worldmonitor.app' }";
   await page.route('**/services/clerk*', async (route) => {
     await route.fulfill({
       status: 200,
@@ -76,8 +76,12 @@ async function stubClerkModule(
           window.__emitClerkSubscription?.();
         };
         window.__completeClerkSignIn = () => {
-          user = { email: 'e2e@worldmonitor.app' };
+          user = { id: 'user-a', email: 'e2e@worldmonitor.app' };
           document.querySelector('.cl-modalBackdrop')?.remove();
+          window.__emitClerkSubscription?.();
+        };
+        window.__switchClerkUser = () => {
+          user = { id: 'user-b', email: 'other@worldmonitor.app' };
           window.__emitClerkSubscription?.();
         };
         export async function initClerk() {}
@@ -370,6 +374,32 @@ test.describe('MCP grant consent page (#5654)', () => {
     expect(releases).toHaveLength(2);
     releases[1]!();
     await expect(page.locator('#consent')).toBeVisible();
+  });
+
+  test('an account switch cannot inherit the previous account denial', async ({ page }) => {
+    await stubClerkModule(page);
+    let releaseOld: () => void = () => {};
+    const held = new Promise<void>(resolve => { releaseOld = resolve; });
+    let requests = 0;
+    await page.route('**/api/internal/mcp-grant-context*', async route => {
+      if (++requests === 1) {
+        await held;
+        await route.fulfill({ status: 403, json: { error: 'INSUFFICIENT_TIER' } });
+      } else {
+        await route.fulfill({ json: { client_name: 'OpenAI review', redirect_host: 'platform.openai.com' } });
+      }
+    });
+    await page.goto(GRANT_PAGE);
+    await expect.poll(() => requests).toBe(1);
+    await page.evaluate(() => (window as unknown as { __switchClerkUser: () => void }).__switchClerkUser());
+    await expect(page.locator('#consent')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#userEmail')).toHaveText('other@worldmonitor.app');
+    const denial = page.waitForResponse(response => response.url().includes('/mcp-grant-context') && response.status() === 403);
+    releaseOld();
+    await denial;
+    await expect(page.locator('#errorView')).toBeHidden();
+    await expect(page.locator('#consent')).toBeVisible();
+    expect(requests).toBe(2);
   });
 
   test('missing nonce shows terminal error view', async ({ page }) => {
