@@ -386,7 +386,8 @@ describe('host allowlist and transport', () => {
   });
 
   it('keys a page on the layer it requests under every accepted parameter spelling', async () => {
-    for (const param of ['typeNames', 'typeName', 'TYPENAMES', 'TYPENAME']) {
+    // WFS KVP parameter names are case-insensitive (OGC 09-025r1 §6.2.5.2).
+    for (const param of ['typeNames', 'typeName', 'TYPENAMES', 'TYPENAME', 'typenames', 'TypeName']) {
       const cache = new Map();
       const url = new URL(CWFIS_WFS_BASE);
       url.searchParams.set(param, CWFIS_PRESCRIBED_LAYER);
@@ -396,6 +397,15 @@ describe('host allowlist and transport', () => {
       });
       assert.deepEqual([...cache.keys()], [cwfisWfsCacheKey({ typeName: CWFIS_PRESCRIBED_LAYER, startIndex: 0 })], param);
     }
+  });
+
+  it('refuses a disallowed layer under any parameter case', async () => {
+    const url = new URL(CWFIS_WFS_BASE);
+    url.searchParams.set('typenames', 'public:not_a_cwfis_layer');
+    await assert.rejects(
+      fetchApprovedWfs(url.toString(), { fetchFn: async () => { throw new Error('must not fetch'); } }),
+      /layer not allowed/,
+    );
   });
 
   it('does not bind fetch or import ais-relay', () => {

@@ -352,13 +352,16 @@ async function readBoundedText(response, maxBytes) {
   return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
 }
 
-// The layer a WFS URL requests, under any spelling GeoServer accepts. The
+// The layer a WFS URL requests. KVP parameter names are case-insensitive
+// (OGC 09-025r1 §6.2.5.2), so any case of typeNames/typeName counts. The
 // layer check and the cache key both read it, so they cannot disagree.
 function requestedCwfisLayer(parsed) {
-  return parsed.searchParams.get('typeNames')
-    || parsed.searchParams.get('typeName')
-    || parsed.searchParams.get('TYPENAMES')
-    || parsed.searchParams.get('TYPENAME');
+  for (const name of ['typenames', 'typename']) {
+    for (const [key, value] of parsed.searchParams) {
+      if (key.toLowerCase() === name && value) return value;
+    }
+  }
+  return null;
 }
 
 function parseWfsUrl(url) {
