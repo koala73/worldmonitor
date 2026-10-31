@@ -28,6 +28,36 @@ test('bundles the shared LLM health provider registry with the sidecar (#7126)',
   assert.match(dockerfile, /^ENV LOCAL_API_RESOURCE_DIR=\/app$/m);
 });
 
+// api/_user-api-key.js imports ../shared/desktop-key-access.js, so every route
+// that validates a user API key needs it shipped next to api/ (#9906).
+test('ships the shared desktop key access module with the sidecar (#9906)', () => {
+  const config = JSON.parse(readFileSync(new URL('../tauri.conf.json', import.meta.url), 'utf8'));
+  const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
+  assert.ok(config.bundle.resources.includes('../shared/desktop-key-access.js'));
+  assert.match(
+    dockerfile,
+    /COPY --from=builder \/app\/shared\/desktop-key-access\.js \.\/shared\/desktop-key-access\.js/,
+  );
+});
+
+// Served locally, these answer 5xx or an empty 200 (notification-suppressions);
+// the cloud holds their state. Before #9906 a failed Upstash import hid that.
+test('prefers the cloud for routes whose state lives only in the cloud (#9906)', () => {
+  for (const pathname of [
+    '/api/analytics-health',
+    '/api/notification-suppressions',
+    '/api/oauth/authorize',
+    '/api/oauth/register',
+    '/api/security/report',
+    '/api/wm-session',
+  ]) {
+    assert.equal(__testing__.isCloudPreferred(pathname), true, pathname);
+  }
+  for (const pathname of ['/api/opensky', '/api/oref-alerts', '/api/polymarket', '/api/telegram-feed', '/api/x-feed']) {
+    assert.equal(__testing__.isCloudPreferred(pathname), false, pathname);
+  }
+});
+
 test('jsonForScript keeps any value inside an inline <script> as data', () => {
   const { jsonForScript } = __testing__;
   const hostile = '</script><script>alert(1)</script>\u2028\u2029<!--&';

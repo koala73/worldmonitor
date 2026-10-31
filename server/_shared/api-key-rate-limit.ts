@@ -27,7 +27,7 @@ export interface MeterResult {
 
 export const ENTERPRISE_API_RATE_LIMIT: 1000 = core.ENTERPRISE_API_RATE_LIMIT;
 export const API_DAILY_TTL_SECONDS: 172800 = core.API_DAILY_TTL_SECONDS;
-export const getBurstLimiter = core.getBurstLimiter as (perMinute: number) => Ratelimit | null;
+export const getBurstLimiter = core.getBurstLimiter as (perMinute: number) => Promise<Ratelimit | null>;
 export const checkBurst = core.checkBurst as (perMinute: number, identity: string) => Promise<BurstDecision>;
 export const apiKeyDailyKey = core.apiKeyDailyKey as (userId: string, date?: Date) => string;
 export const reserveDailyMeter = core.reserveDailyMeter as (opts: { userId: string; allowance: number; pipeline: RateLimitPipeline; date?: Date }) => Promise<MeterResult>;

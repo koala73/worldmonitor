@@ -2,8 +2,7 @@
 import { getClientRateLimitKey } from '../_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
 import { getOperatorKeys, timingSafeIncludes, sha256Hex } from '../_crypto.js';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
+import { loadUpstashRatelimit } from '../_upstash-ratelimit.js';
 import { checkBootstrapUserApiKeyRateLimit, validateBootstrapUserApiKey } from '../_user-api-key.js';
 import { redirectDisplayHost } from './_redirect-uri.js';
 import { clientAllowsRedirectUri, clientDisplayInfo, describeClientFailure, isClientMetadataDocumentId, resolveOAuthClient } from './_client-metadata.js';
@@ -48,11 +47,12 @@ export function resolveAuthorizationIssuer(req) {
 }
 
 let _rl = null;
-function getRatelimit() {
+async function getRatelimit() {
   if (_rl) return _rl;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
+  const { Ratelimit, Redis } = await loadUpstashRatelimit();
   _rl = new Ratelimit({
     redis: new Redis({ url, token }),
     limiter: Ratelimit.slidingWindow(10, '60 s'),
@@ -280,7 +280,7 @@ export default async function handler(req) {
   }
 
   if (method === 'GET' || method === 'POST') {
-    const rl = getRatelimit();
+    const rl = await getRatelimit();
     if (rl) {
       try {
         const { success } = await rl.limit(`ip:${getClientRateLimitKey(req)}`);

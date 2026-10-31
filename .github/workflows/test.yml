@@ -707,14 +707,42 @@ jobs:
       - uses: ./.github/actions/install-root-deps
       - run: npm run test:sidecar
 
+      # The downloader verifies the release signature and checksum. The cache
+      # holds only a runtime that passed that check, keyed on the script that
+      # pins the version, so a hit skips three uncached, unretried fetches
+      # (one failed run 40668904151).
+      - name: Restore the shipped Node.js runtime
+        id: shipped-node
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: src-tauri/sidecar/node
+          key: shipped-node-x86_64-unknown-linux-gnu-${{ hashFiles('scripts/download-node.sh') }}
+
       - name: Download the shipped Node.js runtime
-        run: bash scripts/download-node.sh --target x86_64-unknown-linux-gnu
+        if: steps.shipped-node.outputs.cache-hit != 'true'
+        run: |
+          for attempt in 1 2 3; do
+            bash scripts/download-node.sh --target x86_64-unknown-linux-gnu && exit 0
+            echo "::warning::shipped runtime download failed (attempt $attempt)"
+            sleep $((attempt * 10))
+          done
+          exit 1
+
+      # The desktop app loads these bundles, not the api/ sources the suite
+      # imports. Build them so the shipped-route check below reads what ships.
+      - name: Build the sidecar handler bundles
+        run: |
+          node scripts/build-sidecar-sebuf.mjs
+          node scripts/build-sidecar-handlers.mjs
 
       - name: Test sidecar with the shipped Node.js runtime
         run: |
           export PATH="$PWD/src-tauri/sidecar/node:$PATH"
           node --version
           npm run test:sidecar
+          # Every route the app ships must load from the shipped files alone
+          # on this runtime (#9906).
+          node scripts/check-sidecar-shipped-routes.mjs
 
   # Desktop drift gates (#5902): path-conditional so unrelated PRs skip them
   # (deploy-gate counts "skipped" as passing). desktop-config is the cheap

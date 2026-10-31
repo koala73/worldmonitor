@@ -122,25 +122,56 @@ describe('root dependency cache (#8710)', () => {
   }
 });
 
-describe('shipped desktop Node coverage (#5909)', () => {
+describe('shipped desktop Node coverage (#5909, #9906)', () => {
   const steps = YAML.parse(testWorkflow).jobs.sidecar.steps;
+  const cache = steps.find((step) => step.name === 'Restore the shipped Node.js runtime');
   const download = steps.find((step) => step.name === 'Download the shipped Node.js runtime');
+  const build = steps.find((step) => step.name === 'Build the sidecar handler bundles');
   const shippedTest = steps.find((step) => step.name === 'Test sidecar with the shipped Node.js runtime');
 
   it('tests the shared downloader output after the repository Node suite', () => {
-    assert.ok(download);
-    assert.ok(shippedTest);
+    assert.ok(cache && download && build && shippedTest);
     const repoSuite = steps.findIndex((step) => step.run === 'npm run test:sidecar');
     assert.ok(repoSuite >= 0);
-    assert.ok(steps.indexOf(download) > repoSuite);
+    assert.ok(steps.indexOf(cache) > repoSuite);
+    assert.ok(steps.indexOf(download) > steps.indexOf(cache));
     assert.ok(steps.indexOf(shippedTest) > steps.indexOf(download));
-    assert.equal(download.run, 'bash scripts/download-node.sh --target x86_64-unknown-linux-gnu');
+    assert.ok(steps.indexOf(shippedTest) > steps.indexOf(build));
+    assert.match(download.run, /bash scripts\/download-node\.sh --target x86_64-unknown-linux-gnu && exit 0/);
     assert.equal(download.env?.NODE_VERSION, undefined, 'CI must use the same pin as the release downloader');
-    for (const step of [download, shippedTest]) {
-      assert.equal(step.if, undefined);
-      assert.equal(step['continue-on-error'], undefined);
-    }
+    for (const step of [download, build, shippedTest]) assert.equal(step['continue-on-error'], undefined);
+    for (const step of [build, shippedTest]) assert.equal(step.if, undefined);
   });
+
+  // A hit skips the downloader, so the key must change whenever the pinned
+  // version or the verification in the script does.
+  it('caches only the verified runtime, keyed on the downloader script', () => {
+    assert.match(cache.uses, /^actions\/cache@[a-f0-9]{40}$/);
+    assert.equal(cache.with.path, 'src-tauri/sidecar/node');
+    assert.equal(cache.with.key, "shipped-node-x86_64-unknown-linux-gnu-${{ hashFiles('scripts/download-node.sh') }}");
+    assert.equal(cache.with['restore-keys'], undefined);
+    assert.equal(download.if, `steps.${cache.id}.outputs.cache-hit != 'true'`);
+  });
+
+  for (const [failures, status] of [[2, 0], [3, 1]]) {
+    it(`retries the download: ${failures} failures exit ${status}`, () => {
+      const dir = mkdtempSync(resolve(tmpdir(), 'wm-shipped-node-download-'));
+      try {
+        mkdirSync(resolve(dir, 'scripts'));
+        mkdirSync(resolve(dir, 'tools'));
+        writeFileSync(resolve(dir, 'scripts/download-node.sh'),
+          `n=$(cat count 2>/dev/null || echo 0); n=$((n + 1)); echo $n > count\n[ "$n" -gt ${failures} ]\n`);
+        writeFileSync(resolve(dir, 'tools/sleep'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+        const result = spawnSync('bash', ['-e', '-c', download.run], {
+          cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: `${resolve(dir, 'tools')}:${process.env.PATH}` },
+        });
+        assert.equal(result.status, status, result.stderr);
+        assert.equal(readFileSync(resolve(dir, 'count'), 'utf8').trim(), String(Math.min(failures + 1, 3)));
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
 
   for (const exitCode of [0, 37]) {
     it(`uses the bundled binary and preserves suite exit ${exitCode}`, () => {
@@ -151,13 +182,16 @@ describe('shipped desktop Node coverage (#5909)', () => {
         const toolsDir = resolve(dir, 'tools');
         mkdirSync(bundledDir, { recursive: true });
         mkdirSync(toolsDir);
-        writeFileSync(resolve(bundledDir, 'node'), '#!/bin/sh\necho shipped-node\n', { mode: 0o755 });
+        writeFileSync(resolve(bundledDir, 'node'), '#!/bin/sh\necho shipped-node "$@"\n', { mode: 0o755 });
         writeFileSync(resolve(toolsDir, 'npm'), `#!/bin/sh\n[ "$*" = 'run test:sidecar' ] || exit 99\nnode\nexit ${exitCode}\n`, { mode: 0o755 });
         const result = spawnSync('bash', ['-e', '-c', shippedTest.run], {
           cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: `${toolsDir}:${process.env.PATH}` },
         });
         assert.equal(result.status, exitCode, result.stderr);
-        assert.equal(result.stdout, 'shipped-node\nshipped-node\n');
+        // The shipped-route check runs on the bundled binary, and only after the suite passed.
+        const lines = ['shipped-node --version', 'shipped-node'];
+        if (exitCode === 0) lines.push('shipped-node scripts/check-sidecar-shipped-routes.mjs');
+        assert.equal(result.stdout, `${lines.join('\n')}\n`);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
