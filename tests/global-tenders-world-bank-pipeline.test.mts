@@ -128,7 +128,7 @@ test('repeated HTTP 500 retains usable records and source clocks independently o
     assert.equal(Date.parse(response.sourceStatuses[0].lastSuccessfulAt), NOW);
     assert.equal(f.read(SOURCE_META).fetchedAt, NOW);
     assert.equal(f.read(SOURCE_META).lastAttemptAt, new Date(f.state.now).toISOString());
-    assert.equal(f.sourceHealth().status, 'SEED_ERROR');
+    assert.equal(f.sourceHealth().status, 'OK', 'retained rows inside the 24h source budget are not an alarm');
     assert.equal(f.read(KEY)._seed.fetchedAt, f.state.now);
     const freshness = await readSectionFreshness({ canonicalKey: KEY, completionMetaKey: COMPLETE }, async key => f.read(key));
     assert.equal(freshness.fetchedAt, f.state.now);
@@ -154,7 +154,8 @@ for (const payload of [null, { procnotices: [{}] }, { total: 2, procnotices: PAY
     f.state.payload = payload;
     await f.run();
     assert.equal((await f.rpc()).total, 1);
-    assert.equal(f.sourceHealth().status, 'SEED_ERROR');
+    assert.equal(f.read(SOURCE_META).sourceState, 'stale');
+    assert.equal(f.sourceHealth().status, 'OK');
     assert.equal(f.read(SOURCE_META).fetchedAt, NOW);
   });
 }
@@ -172,8 +173,11 @@ test('confirmed empty clears old data, and a subsequent failure stays distinct f
   f.state.mode = '500';
   await f.run();
   assert.equal(f.read(SOURCE_META).confirmedEmpty, true);
+  assert.equal(f.read(SOURCE_META).sourceState, 'error');
   assert.equal(f.read(SOURCE_META).fetchedAt, emptyAt);
-  assert.equal(f.sourceHealth().status, 'SEED_ERROR');
+  assert.equal(f.sourceHealth().status, 'OK', 'a verified empty result is still true inside the 24h budget');
+  f.state.now = emptyAt + 24 * 60 * 60_000 + 60_000;
+  assert.notEqual(f.sourceHealth().status, 'OK', 'past the budget the failure warns again');
 });
 
 for (const scenario of ['expired-deadline', 'expired-source', 'missing', 'unusable', 'unknown-clock']) {
@@ -188,7 +192,8 @@ for (const scenario of ['expired-deadline', 'expired-source', 'missing', 'unusab
     if (scenario === 'missing') f.values.delete(KEY);
     f.state.mode = '500';
     // Keep refreshing the aggregate through healthy siblings, while World Bank ages out.
-    for (const minutes of scenario === 'expired-source' ? [60, 120, 180] : [60]) {
+    const hourly = Array.from({ length: 24 }, (_, hour) => (hour + 1) * 60);
+    for (const minutes of scenario === 'expired-source' ? hourly : [60]) {
       f.state.now = NOW + minutes * 60_000;
       await f.run();
     }

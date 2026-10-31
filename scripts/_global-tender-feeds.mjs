@@ -202,8 +202,18 @@ export async function fetchBulgaria({ now = Date.now(), fetchJsonFn, fetchTextFn
   const source = 'bulgaria-eop';
   const read = reader(fetchJsonFn);
   const readText = reader(fetchTextFn);
-  const base = `https://storage.eop.bg/open-data-${isoDay(now - DAY)}/`;
-  const listing = new XMLParser().parse(await readText(base));
+  // Day D's bucket appears around 06:00 UTC on D+1 and answers 403 until then,
+  // so the early-UTC runs read the day before instead of failing.
+  let base = `https://storage.eop.bg/open-data-${isoDay(now - DAY)}/`;
+  let listingXml;
+  try {
+    listingXml = await readText(base);
+  } catch (error) {
+    if (![403, 404].includes(error?.status)) throw error;
+    base = `https://storage.eop.bg/open-data-${isoDay(now - 2 * DAY)}/`;
+    listingXml = await readText(base);
+  }
+  const listing = new XMLParser().parse(listingXml);
   const contents = listing?.ListBucketResult?.Contents;
   const files = contents ? (Array.isArray(contents) ? contents : [contents]) : [];
   const key = files.map((entry) => entry.Key).find((name) => typeof name === 'string' && name.includes('OCDS') && name.endsWith('.json'));

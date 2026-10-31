@@ -201,7 +201,7 @@ const waitForStableBoxes = async (
   for (let attempt = 0; attempt < 30; attempt += 1) {
     await nextLayoutFrames(page, 2);
     const current = await snapshotBoxes(page, selectors);
-    const stable = selectors.every((selector) => boxesMatch(previous[selector], current[selector]));
+    const stable = selectors.every((selector) => boxesMatch(previous[selector] ?? null, current[selector] ?? null));
     if (stable) {
       stableSamples += 1;
       if (stableSamples >= requiredStableSamples) return current;

@@ -1,7 +1,7 @@
 // @ts-expect-error — JS module, no declaration file
 import { getClientRateLimitKey } from '../_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
-import { timingSafeIncludes, sha256Hex } from '../_crypto.js';
+import { getOperatorKeys, timingSafeIncludes, sha256Hex } from '../_crypto.js';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { checkBootstrapUserApiKeyRateLimit, validateBootstrapUserApiKey } from '../_user-api-key.js';
@@ -403,7 +403,7 @@ export default async function handler(req) {
     }
 
     // Validate API key
-    const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
+    const validKeys = getOperatorKeys();
     const enterpriseKey = await timingSafeIncludes(api_key, validKeys);
     let userKey = null;
     if (!enterpriseKey && api_key.startsWith('wm_')) {

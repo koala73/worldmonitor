@@ -1222,7 +1222,7 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
       // Hiding a shell does not cancel its in-flight import. Let active mount
       // attempts settle before the initial viewport scan runs.
       await page.waitForFunction(() => {
-        const debug = (window as typeof window & {
+        const debug = (window as unknown as {
           __wmLcpDebug?: { getSnapshot?: () => { marks: Array<{ name: string; detail?: { panel?: string } }> } };
         }).__wmLcpDebug;
         const marks = debug?.getSnapshot?.().marks;
