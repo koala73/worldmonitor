@@ -173,11 +173,14 @@ const PRO_HERO_CRITICAL_CSS = [
 // paragraph carries its own utilities, mirrored here or in CRITICAL_CSS.
 const WELCOME_HERO_CRITICAL_CSS = [
   'main>section[data-wm-hero]{position:relative;padding:7rem 1rem 6rem}',
-  'main h1{font-family:var(--font-display);font-weight:500;font-size:2.25rem;line-height:1.05;letter-spacing:-.025em}',
+  // Scoped to the hero so it outranks the shared `main [class~=text-4xl]`
+  // mirror (0,1,1); a bare `main h1` (0,0,2) lost to it and pinned the
+  // headline at 2.25rem at every width.
+  'main>section[data-wm-hero] h1{font-family:var(--font-display);font-weight:500;font-size:2.25rem;line-height:1.05;letter-spacing:-.025em}',
   'main [class~=mt-2]{margin-top:.5rem}main [class~=mt-4]{margin-top:1rem}main [class~=mt-12]{margin-top:3rem}main [class~=mb-6]{margin-bottom:1.5rem}main [class~=h-10]{height:2.5rem}main [class~=min-h-12]{min-height:3rem}main [class~=px-6]{padding-inline:1.5rem}',
   'main [class~=rounded-xl]{border-radius:.75rem}main [class~=font-medium]{font-weight:500}main [class~=tabular-nums]{font-variant-numeric:tabular-nums}main [class~=truncate]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-  '@media (max-width:639.98px){main [class~="max-w-[22rem]"]{max-width:22rem}}@media (min-width:640px){main>section[data-wm-hero]{padding-top:8rem;padding-inline:1.5rem}main h1{font-size:3rem}main [class~="sm:gap-4"]{gap:1rem}main [class~="sm:mt-16"]{margin-top:4rem}}',
-  '@media (min-width:768px){main h1{font-size:4.5rem}}',
+  '@media (max-width:639.98px){main [class~="max-w-[22rem]"]{max-width:22rem}}@media (min-width:640px){main>section[data-wm-hero]{padding-top:8rem;padding-inline:1.5rem}main>section[data-wm-hero] h1{font-size:3rem}main [class~="sm:gap-4"]{gap:1rem}main [class~="sm:mt-16"]{margin-top:4rem}}',
+  '@media (min-width:768px){main>section[data-wm-hero] h1{font-size:4.5rem}}',
 ].join('');
 
 const PAGE_CRITICAL_CSS = {
