@@ -82,15 +82,17 @@ test('daily CII health is pending only before its first confirmed publication', 
   })).status, 'STALE_SEED');
 });
 
-test('transit coverage alerts below five measured canonical waterways despite a fresh payload', () => {
+// AISStream only reaches Dover, Gibraltar and Cape (2026-10-31 probe), so
+// losing any one of the three is the coverage fault.
+test('transit coverage alerts below the three AIS-measurable waterways despite a fresh payload', () => {
   const key = STANDALONE_KEYS.chokepointTransits;
-  for (const [recordCount, status] of [[0, 'EMPTY_DATA'], [3, 'COVERAGE_PARTIAL'], [4, 'COVERAGE_PARTIAL'], [5, 'OK'], [13, 'OK']]) {
+  for (const [recordCount, status] of [[0, 'EMPTY_DATA'], [1, 'COVERAGE_PARTIAL'], [2, 'COVERAGE_PARTIAL'], [3, 'OK'], [13, 'OK']]) {
     const result = classifyKey('chokepointTransits', key, { allowOnDemand: false }, makeCtx({
       strens: { [key]: 2000 },
       metaValues: { [SEED_META.chokepointTransits.key]: { fetchedAt: NOW, recordCount } },
     }));
     assert.equal(result.status, status, `${recordCount}/13 measured waterways`);
-    assert.equal(dataProblems({ chokepointTransits: result }).length, recordCount < 5 ? 1 : 0, 'health must report the coverage fault');
+    assert.equal(dataProblems({ chokepointTransits: result }).length, recordCount < 3 ? 1 : 0, 'health must report the coverage fault');
   }
 });
 

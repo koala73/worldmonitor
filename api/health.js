@@ -1553,7 +1553,13 @@ const SEED_META = {
   // change cannot narrow the alarm scope without health noticing.
   portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160, minRecordCount: 174, requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 10 * 24 * 60 }, contentFreshnessActivation: 'portwatchContentFreshness' },
   corridorrisk:        { key: 'seed-meta:supply_chain:corridorrisk',         maxStaleMin: 120 },
-  chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits', maxStaleMin: 30, minRecordCount: 5 }, // measured canonical waterways; September 9 pulse had 5/13
+  // Gate-to-gate counting (#9551) only measures straits AISStream's shore
+  // receivers can see. A 2026-10-31 probe and 42h of gate journals found zero
+  // positions at the narrows of Hormuz, Suez, Bab el-Mandeb, Malacca, Panama,
+  // Taiwan, Bosporus, Korea, Kerch and Lombok; the old 5/13 came from 2° circles
+  // counting nearby port traffic. Dover, Gibraltar and Cape are the measurable
+  // set, so all three must be covered; PortWatch supplies the rest.
+  chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits', maxStaleMin: 30, minRecordCount: 3 },
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
   usniFleet:           { key: 'seed-meta:military:usni-fleet',               maxStaleMin: 720 }, // relay loop every 6h; 720 = 2× interval (was 480 = 1.3×, too tight)
   aisGaps:             {
