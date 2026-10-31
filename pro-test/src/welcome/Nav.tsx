@@ -42,7 +42,7 @@ export const Nav = () => (
     <nav data-wm-nav="primary" className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
         <Logo />
-        <div className="hidden lg:flex items-center gap-5 whitespace-nowrap text-sm text-wm-muted xl:gap-7">
+        <div className="hidden lg:flex items-center gap-4 whitespace-nowrap text-xs text-wm-muted xl:gap-7 xl:text-sm">
           <NavItems />
         </div>
         <details id={TABLET_MENU_ID} className="group relative hidden md:block lg:hidden text-sm text-wm-muted">
