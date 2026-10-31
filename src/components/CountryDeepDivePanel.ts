@@ -3102,9 +3102,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
             const expPct = Math.round(exp.share * 100);
             let text = `\u26A0 ${product.description} imports from ${exp.partnerIso2} (${expPct}%) transit`;
             if (exp.risk.transitChokepoints.length === 0) continue;
-            const measured = exp.risk.transitChokepoints.filter(cp => cp.disruptionScore !== null);
-            if (measured.length === 0) continue;
-            const worstCp = measured.reduce((a, b) => (a.disruptionScore ?? 0) >= (b.disruptionScore ?? 0) ? a : b);
+            // Critical/at-risk always has a measured score; unmeasured points rank last.
+            const worstCp = exp.risk.transitChokepoints.reduce((a, b) => (a.disruptionScore ?? -1) >= (b.disruptionScore ?? -1) ? a : b);
             text += ` ${worstCp.chokepointName} (disruption ${worstCp.disruptionScore}/100).`;
             if (exp.safeAlternative && isVisible(exp.safeAlternative)) {
               const alt = visibleEnriched.find(e => e.partnerIso2 === exp.safeAlternative);

@@ -147,6 +147,20 @@ describe('missing or non-current disruption evidence', () => {
     });
   }
 
+  it('explains a complete but non-current snapshot instead of naming missing chokepoints', () => {
+    const risk = computeSupplierRouteRisk('QA', 'JP', new Map([['hormuz_strait', 0], ['malacca_strait', 0]]), false);
+    assert.match(risk.recommendation, /not current/);
+  });
+
+  it('keeps a modeled route with no chokepoints safe regardless of snapshot currency', () => {
+    // transatlantic has no waypoints, so there is no disruption score to be missing or stale.
+    for (const current of [true, false]) {
+      const risk = computeSupplierRouteRisk('US', 'DE', new Map(), current);
+      assert.deepEqual(risk.transitChokepoints, []);
+      assert.equal(risk.riskLevel, 'safe');
+    }
+  });
+
   it('keeps no-route and missing-evidence unknowns distinct', () => {
     assert.equal(computeSupplierRouteRisk('US', 'JP', new Map(), true).unknownReason, 'no_route');
     assert.equal(computeSupplierRouteRisk('QA', 'JP', new Map(), true).unknownReason, 'unmeasured');
@@ -187,6 +201,18 @@ describe('missing or non-current disruption evidence', () => {
         const ev = chokepointScoreEvidence(resp, NOW);
         assert.equal(ev.current, false);
         assert.equal(ev.scores.get('malacca_strait'), 12);
+      });
+    }
+
+    for (const [label, offsetMs, current] of [
+      ['exactly 60 minutes old', -60 * 60_000, true],
+      ['one second past 60 minutes', -(60 * 60_000 + 1000), false],
+      ['5 minutes ahead (clock skew)', 5 * 60_000, true],
+      ['one second past the skew allowance', 5 * 60_000 + 1000, false],
+    ]) {
+      it(`treats a snapshot ${label} as current=${current}`, () => {
+        const ev = chokepointScoreEvidence({ chokepoints: cps, fetchedAt: new Date(NOW + offsetMs).toISOString(), upstreamUnavailable: false }, NOW);
+        assert.equal(ev.current, current);
       });
     }
 

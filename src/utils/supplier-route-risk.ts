@@ -182,6 +182,7 @@ function determineRiskLevel(chokepoints: TransitChokepoint[], hasRouteData: bool
   const measured = measuredScores(chokepoints);
   if (measured.some(score => score >= 70)) return 'critical';
   if (measured.some(score => score > 30)) return 'at_risk';
+  // No modeled chokepoint on the route: nothing to measure, so snapshot currency does not apply.
   if (chokepoints.length === 0) return 'safe';
   // "Safe" needs every modeled chokepoint measured in a current snapshot.
   return scoresCurrent && measured.length === chokepoints.length ? 'safe' : 'unknown';

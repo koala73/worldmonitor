@@ -102,6 +102,12 @@ it.each([
   expect(body.textContent).toContain('Strait of Hormuz (no data)');
   expect(body.textContent).toContain('1 supplier(s) lack current disruption data for their modeled chokepoints.');
 });
+it('counts safe and unmeasured suppliers separately when no route is at risk', async () => {
+  // CN fully measured (Taiwan 0) is Safe; QA's Hormuz and Malacca are missing.
+  const body = jpFixture([{ id: 'taiwan_strait', disruptionScore: 0 }]);
+  await vi.waitFor(() => expect(riskBadges(body)).toEqual(['Safe', 'Unknown']));
+  expect(body.textContent).toContain('1 supplier(s) verified safe. 1 supplier(s) lack current disruption data for their modeled chokepoints.');
+});
 it('does not call fully measured zero scores safe when the snapshot is stale', async () => {
   const body = jpFixture([{ id: 'taiwan_strait', disruptionScore: 0 }, { id: 'hormuz_strait', disruptionScore: 0 }, { id: 'malacca_strait', disruptionScore: 0 }], { fetchedAt: '2020-01-01T00:00:00Z' });
   await vi.waitFor(() => expect(riskBadges(body)).toEqual(['Unknown', 'Unknown']));
