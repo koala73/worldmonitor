@@ -1,0 +1,75 @@
+---
+title: "Gemini and Antigravity: connect WorldMonitor"
+description: "Connect the hosted WorldMonitor MCP server to Gemini and Google Antigravity, with the listing metadata used for the Gemini Connected Apps and Antigravity Marketplace submissions."
+---
+
+WorldMonitor uses one hosted MCP server for every client: `https://worldmonitor.app/mcp` over Streamable HTTP, with OAuth 2.1 sign-in (PKCE, Dynamic Client Registration and Client ID Metadata Documents). Gemini and Antigravity use the same server, tools and entitlements as every other client. Pro-only tools stay Pro-only. See the [MCP Server overview](/mcp-overview) for auth, quotas and the tool list.
+
+## Google Antigravity
+
+### Install the plugin
+
+The repository ships an Antigravity plugin manifest at `.antigravity-plugin/plugin.json`. It bundles the two MCP servers in `mcp_config.json` and the agent skills in `skills/`.
+
+```bash
+git clone https://github.com/koala73/worldmonitor
+agy plugin validate --strict ./worldmonitor
+agy plugin install ./worldmonitor
+agy plugin list
+```
+
+When the Marketplace listing is live, install it with `agy plugin install worldmonitor@antigravity-plugins-official`.
+
+### Add the server manually
+
+In the Antigravity IDE, open **... > MCP Servers** in the agent side panel and edit `mcp_config.json`. In the CLI, use `~/.gemini/config/mcp_config.json` (global) or `.agents/mcp_config.json` (workspace):
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": { "url": "https://worldmonitor.app/mcp" }
+  }
+}
+```
+
+Antigravity's OAuth callback, `https://antigravity.google/oauth-callback`, is already on the [redirect URI allowlist](/mcp-overview#redirect-uri-allowlist).
+
+## Gemini
+
+### Developer Mode (custom app)
+
+In Gemini Apps Developer Mode, choose **+ Create new**, enter `https://worldmonitor.app/mcp` as the MCP Server URL, accept the security notice and connect. See Google's [Developer Mode guide](https://developers.google.com/connected-apps/mcp/dev-mode/usage).
+
+### Connected App listing metadata
+
+These values are used when registering WorldMonitor in the [Google Connected Console](https://connected.google.com/console).
+
+| Field | Value |
+|---|---|
+| Connected app name | WorldMonitor |
+| Description (under 30 words) | Track world news, country risk, conflicts, markets, energy and shipping chokepoints with source-attributed live data. |
+| Icon (512 x 512 PNG) | `https://www.worldmonitor.app/favico/android-chrome-512x512.png` |
+| MCP endpoint | `https://worldmonitor.app/mcp` |
+| Auth | User-delegated OAuth (Authorization Code), dynamic registration (CIMD or DCR) |
+| Terms of Service URL | `https://www.worldmonitor.app/docs/terms` |
+| Privacy Policy URL | `https://www.worldmonitor.app/docs/privacy` |
+| Website URL | `https://www.worldmonitor.app` |
+
+Capabilities:
+
+- Browse source-attributed world headlines
+- Read country risk and intelligence briefs
+- Check maritime chokepoint and energy disruption status
+- Compare macro and market histories
+
+Example prompts:
+
+- @WorldMonitor what are today's top world headlines?
+- @WorldMonitor summarize the current risk picture for Taiwan
+- Check which shipping chokepoints are disrupted on WorldMonitor
+
+## Related
+
+- [MCP quickstart](/mcp-quickstart)
+- [MCP Server overview](/mcp-overview)
+- [Agent discovery](/agent-discovery)
