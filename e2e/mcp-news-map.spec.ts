@@ -134,6 +134,8 @@ document.documentElement.dataset.cspViolations='0';document.addEventListener('se
     await expect(app.locator('#pluginMapLayers').getByLabel('Undersea Cables', { exact: true })).toBeChecked();
     await expect(app.locator('#pluginMapLayers').getByLabel('Natural Events', { exact: true })).toBeChecked();
     await expect(app.locator('#pluginMapLayers').getByLabel('Fires', { exact: true })).toBeChecked();
+    await expect(app.locator('#mapContainer').getByTitle('M5.1 — Fixture Berlin', { exact: true })).toBeVisible();
+    await expect(app.locator('#mapContainer').getByTitle('Fire — Fixture', { exact: true })).toBeVisible();
     await expect(app.locator('html')).toHaveAttribute('data-csp-violations', '0');
     expect(errors).toEqual([]);
     await page.screenshot({ path: testInfo.outputPath('domain-maps-globe.png'), fullPage: true });
