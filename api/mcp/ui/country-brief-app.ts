@@ -86,11 +86,13 @@ const RENDER = `
         var unit = age < 60 ? "second" : "minute";
         howOld = amount + " " + unit + (amount === 1 ? "" : "s") + " old";
       }
+      // digestCoverage describes the news digest, not the brief: the brief may
+      // come from cache or drop stale news, so the age is never tied to it.
       // Known reason codes become a plain cause; anything else is not shown.
       var reasons = { "empty-rebuild": "The latest news update returned no stories", "build-error": "The latest news update failed", "gate-held": "The latest news update was held back by quality checks" };
       var reason = typeof coverage.staleReason === "string" && Object.prototype.hasOwnProperty.call(reasons, coverage.staleReason)
         ? reasons[coverage.staleReason] : "The latest news update could not be confirmed";
-      var notice = reason + ", so this brief uses " + (howOld ? "news that is " + howOld + "." : "older news of unknown age.");
+      var notice = reason + (howOld ? "; the most recent news on hand is " + howOld : "") + ". This brief may not reflect current news.";
       groundingNotice.textContent = notice;
       groundingNotice.style.display = "block";
     }

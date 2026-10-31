@@ -245,9 +245,18 @@ describe('News Intelligence accepted projections', () => {
         assert.equal(rows(document).length, 8);
         assert.match(document.getElementById('list').textContent, /source not yet reviewed/);
         assert.equal(foot(document).includes('Updated 4 Oct 2026, 12:00 UTC.'), hasSnapshot);
-        assert.match(document.getElementById('list').textContent, /^Some news sources failed in the last update\./, 'a degraded feed is stated above the stories');
+        assert.match(document.getElementById('list').textContent, /^The last news update was incomplete\./, 'a degraded update is stated above the stories');
       });
     }
+  });
+
+  it('does not call stories out of date when freshness could not be read', async () => {
+    const unknown = { ...envelope(), stale: true, freshnessUnknown: true };
+    await mount(result(unknown), document => {
+      const text = document.getElementById('list').textContent;
+      assert.match(text, /Whether these stories are current could not be checked\./);
+      assert.doesNotMatch(text, /out of date/);
+    });
   });
 
   it('renders accepted whole-envelope and direct-data projections with retained metadata only where supplied', async () => {
@@ -260,8 +269,9 @@ describe('News Intelligence accepted projections', () => {
         assert.match(document.getElementById('list').textContent, /source not yet reviewed/);
         assert.doesNotMatch(foot(document), /Showing/, 'no count line when every story is shown');
         assert.equal(foot(document).includes('Updated 4 Oct 2026, 12:00 UTC.'), hasSnapshot);
-        assert.match(document.getElementById('list').textContent, /Some news sources failed in the last update/);
-        assert.equal(document.getElementById('list').textContent.includes('These stories are out of date'), hasSnapshot);
+        assert.match(document.getElementById('list').textContent, /The last news update was incomplete/);
+        assert.doesNotMatch(document.getElementById('list').textContent, /sources failed/, 'degraded does not prove a feed failed');
+        assert.equal(document.getElementById('list').textContent.includes('These stories may be out of date'), hasSnapshot);
       });
     }
   });
@@ -325,7 +335,7 @@ describe('News Intelligence accepted projections', () => {
         assert.equal(rows(document).length, 0);
         // A projected status is still the source's own report, so it stays.
         assert.equal(document.getElementById('list').textContent,
-          (value?.insights?.status === 'degraded' ? 'Some news sources failed in the last update.' : '')
+          (value?.insights?.status === 'degraded' ? 'The last news update was incomplete.' : '')
           + 'This request left out the story list, so there is nothing to show.');
         assert.equal(foot(document), '');
       }
