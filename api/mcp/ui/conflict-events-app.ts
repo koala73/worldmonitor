@@ -201,7 +201,8 @@ const RENDER = `
       marker.setAttribute("class", "conflict-marker");
       marker.setAttribute("transform", "translate(" + location.x + " " + location.y + ")");
       marker.setAttribute("aria-label", location.events.length === 1
-        ? "Select " + location.events[0].label : "Choose one of " + location.events.length + " events at this location");
+        ? "Select " + location.events[0].label
+        : "Choose one of " + location.events.length + " events here, including " + location.events[0].label);
       var hit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       hit.setAttribute("r", "24"); hit.setAttribute("fill", "transparent");
       hit.setAttribute("transform", marker.getAttribute("transform")); hitTargets.appendChild(hit);
@@ -254,8 +255,9 @@ const RENDER = `
       var incomplete = source.candidateComplete === false || uc.candidateComplete === false || fetchedPartial;
       var confirmed = source.candidateComplete === true || uc.candidateComplete === true;
       // "Candidate" events are UCDP's preliminary monthly release.
-      if (fetchedPartial) notes.push("Recent events may be incomplete: the latest monthly UCDP release was only partly loaded.");
-      else if (incomplete) notes.push("Recent events may be incomplete: the latest monthly UCDP release is not confirmed complete.");
+      // The loaded release may not be the newest one, so it is not called "latest".
+      if (fetchedPartial) notes.push("Recent events may be incomplete: a monthly UCDP release was only partly loaded.");
+      else if (incomplete) notes.push("Recent events may be incomplete: the monthly UCDP release is not confirmed complete.");
       else if (!confirmed) notes.push("Whether recent events are complete is unknown.");
       var sourceFailures = source.annualFailedPages;
       var payloadFailures = uc.annualFailedPages;

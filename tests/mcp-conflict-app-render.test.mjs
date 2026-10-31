@@ -347,6 +347,8 @@ describe('Conflict Events geographic selection', () => {
       const markers = doc.querySelectorAll('.conflict-marker');
       assert.equal(markers.length, 2);
       assert.equal(markers[0].querySelector('text').textContent, '2');
+      assert.match(markers[0].getAttribute('aria-label'), /^Choose one of 2 events here, including Coincident first/,
+        'a cluster name carries event detail so same-sized clusters differ');
       for (let i = 0; i < 2; i++) {
         markers[0].dispatchEvent(new doc.defaultView.MouseEvent('click'));
         const choices = doc.querySelectorAll('#conflict-chooser button');
@@ -442,7 +444,7 @@ describe('Conflict Events supplied coverage and attribution', () => {
       await mount(wire, doc => {
         assert.equal(doc.querySelectorAll('.evt').length, shown);
         assert.ok(doc.getElementById('foot').textContent.includes(countText));
-        assert.equal(doc.getElementById('conflict-note').textContent, 'Recent events may be incomplete: the latest monthly UCDP release was only partly loaded. '
+        assert.equal(doc.getElementById('conflict-note').textContent, 'Recent events may be incomplete: a monthly UCDP release was only partly loaded. '
           + '2 pages of older UCDP events failed to load, so some may be missing.');
         assert.equal(doc.getElementById('conflict-note').hidden, false);
         for (const row of doc.querySelectorAll('.evt')) assert.ok(row.textContent.includes(sourceOriginal));

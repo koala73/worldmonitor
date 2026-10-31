@@ -242,13 +242,13 @@ describe('prediction returned-category coverage and freshness', () => {
   it('distinguishes returned empty arrays from omitted or malformed categories', async () => {
     const { doc, send } = await mount([]);
     send(envelope({ geopolitical: [], tech: [], finance: [] }));
-    assert.match(doc.getElementById('groups').textContent, /No prediction markets right now/);
+    assert.match(doc.getElementById('groups').textContent, /No markets in this response/);
     assert.equal(doc.querySelector('.mkt-coverage'), null);
     for (const bootstrap of [{ tech: [] }, { geopolitical: [], tech: [], finance: 'unreadable' }]) {
       send(envelope(bootstrap));
       assert.match(doc.querySelector('.mkt-coverage').textContent, /Finance markets were not included or could not be loaded\./);
       assert.match(doc.getElementById('groups').textContent, /No markets in the categories that loaded/);
-      assert.doesNotMatch(doc.getElementById('groups').textContent, /No prediction markets right now/);
+      assert.doesNotMatch(doc.getElementById('groups').textContent, /No markets in this response/);
     }
     send(envelope({}));
     assert.match(doc.getElementById('groups').textContent, /Prediction data unavailable/);
@@ -266,7 +266,7 @@ describe('prediction returned-category coverage and freshness', () => {
     const { doc, send } = await mount([]);
     send(envelope({ geopolitical: { count: 14, sample: [] }, tech: [], finance: [] }));
     assert.match(doc.getElementById('groups').textContent, /Geopolitical: 14 markets reported, but none were included to show\./);
-    assert.doesNotMatch(doc.getElementById('groups').textContent, /No prediction markets|No markets in the categories/);
+    assert.doesNotMatch(doc.getElementById('groups').textContent, /No markets in this response|No markets in the categories/);
     send(envelope({ tech: { count: 14 } }));
     assert.match(doc.getElementById('groups').textContent, /Tech: 14 markets reported, but none were included to show\./);
     assert.doesNotMatch(doc.getElementById('groups').textContent, /No prediction markets/);
@@ -291,7 +291,7 @@ describe('prediction returned-category coverage and freshness', () => {
     assert.ok(doc.querySelector('.mkt-coverage'));
     send(envelope({ geopolitical: [], tech: [], finance: [] }));
     assert.equal(doc.querySelector('.mkt-coverage'), null);
-    assert.match(doc.getElementById('groups').textContent, /No prediction markets right now/);
+    assert.match(doc.getElementById('groups').textContent, /No markets in this response/);
     assert.equal(doc.getElementById('foot').textContent, 'Updated 4 Oct 2026, 20:00 UTC');
   });
 });

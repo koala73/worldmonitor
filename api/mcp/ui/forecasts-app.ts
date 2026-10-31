@@ -224,9 +224,10 @@ const RENDER = `
         var coverage = value.theaterCount + " of " + value.eligibleTheaterCount + " theaters loaded" + (value.failedTheaterCount ? "; " + value.failedTheaterCount + " failed." : ".");
         target.appendChild(el("p", "empty", (status ? status + " " : "") + coverage));
         var theaterTime = timestamp(value.generatedAt);
-        if (theaterTime) target.appendChild(el("p", "foot", "Generated " + theaterTime));
+        // The source time does not show whether the theaters are current.
+        target.appendChild(el("p", "foot", (theaterTime ? "Generated " + theaterTime + "; whether" : "Whether") + " this is current is unknown."));
         if (value.note) target.appendChild(el("p", "empty", value.note));
-        if (value.error) target.appendChild(el("p", "empty", value.error));
+        if (value.error) target.appendChild(el("p", "empty", "The theater source reported an error."));
         value.theaters.forEach(function (theater) {
           var details = el("details", "fc");
           details.appendChild(el("summary", "", theater.theaterLabel));
@@ -599,7 +600,9 @@ const RENDER = `
         return (!q("domain").value || text(p.domain) === q("domain").value) && (!q("region").value || text(p.region) === q("region").value);
       });
       visible.forEach(appendForecast);
-      if (!host.childNodes.length) host.appendChild(el("div", "empty", !state.available ? "Forecast data unavailable." : !preds.length ? "No forecasts available." : "No forecasts match these filters."));
+      if (!host.childNodes.length) host.appendChild(el("div", "empty", !state.available ? "Forecast data unavailable." : !preds.length ? "No forecasts available."
+        : preds.length < total ? "No forecasts in this response match these filters. Forecasts left out of the response were not checked."
+        : "No forecasts match these filters."));
       var countText = visible.length === preds.length ? preds.length + (preds.length === 1 ? " forecast" : " forecasts")
         : "Showing " + visible.length + " of " + preds.length + " forecasts";
       if (preds.length < total) countText += "; " + (total - preds.length) + " more were not included in this response";

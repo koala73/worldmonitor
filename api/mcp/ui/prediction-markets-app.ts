@@ -131,7 +131,7 @@ const RENDER = `
     if (!host.childNodes.length && !unsampled.length) host.appendChild(el("div", "empty",
       unavailable.length === buckets.length ? "Prediction data unavailable."
         : unavailable.length ? "No markets in the categories that loaded."
-        : "No prediction markets right now."));
+        : "No markets in this response."));
     if (unavailable.length) host.appendChild(el("div", "empty mkt-coverage", listNames(unavailable) + " markets were not included or could not be loaded."));
     unsampled.forEach(function (notice) { host.appendChild(el("div", "empty mkt-coverage", notice)); });
 

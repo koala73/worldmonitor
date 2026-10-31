@@ -280,6 +280,14 @@ describe('Chokepoint Monitor supplied display truth', () => {
       await mount(result(full), document => { assert.match(footer(document), /^Transit count update time unknown/); });
     }
   });
+  it('keeps the cached update time when only the energy baseline is present', async () => {
+    const baselineOnly = { cached_at: '2026-10-04T12:00:00.000Z', stale: false,
+      data: { 'chokepoint-baselines': { referenceYear: 2023, source: 'EIA World Oil Transit Chokepoints' } } };
+    await mount(result(baselineOnly), document => {
+      assert.match(footer(document), /Energy baseline: EIA World Oil Transit Chokepoints, 2023/);
+      assert.match(footer(document), /Updated 4 Oct 2026, 12:00 UTC/, 'a baseline is not an update clock');
+    });
+  });
   it('clears omitted coverage and clocks on replacement projections without acquiring data', async () => {
     const full = payload();
     full.freshnessUnknown = true;

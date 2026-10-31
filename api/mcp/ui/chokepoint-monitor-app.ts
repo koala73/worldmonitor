@@ -166,13 +166,16 @@ const RENDER = `
     }
     q("coverage").textContent = coverageText;
     var clocks = [];
+    var hasDataClock = false;
     if (ts && typeof ts === "object" && !Array.isArray(ts) && (count || keySummary || ts.fetchedAt !== undefined)) {
       var summaryAt = clock(ts.fetchedAt);
       clocks.push(summaryAt ? "Transit counts updated " + summaryAt : "Transit count update time unknown");
+      hasDataClock = true;
     }
     if (transits && typeof transits === "object" && !Array.isArray(transits)) {
       var trackingAt = clock(transits.fetchedAt);
       clocks.push(trackingAt ? "Ship tracking updated " + trackingAt : "Ship tracking update time unknown");
+      hasDataClock = true;
     }
     var baseline = d["chokepoint-baselines"];
     if (baseline && typeof baseline === "object" && !Array.isArray(baseline)) {
@@ -184,7 +187,7 @@ const RENDER = `
     }
     // The envelope time is the oldest cached part (often the yearly baseline),
     // so it is shown only when no transit clock is present.
-    if (envelope.cached_at !== undefined && !clocks.length) {
+    if (envelope.cached_at !== undefined && !hasDataClock) {
       var cachedAt = clock(envelope.cached_at);
       clocks.push(cachedAt ? "Updated " + cachedAt : "Update time unknown");
     }

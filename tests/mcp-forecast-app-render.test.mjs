@@ -339,7 +339,7 @@ describe('original forecast theater UI', () => {
     assert.deepEqual(JSON.parse(JSON.stringify(requests[0].params)), { name: 'get_forecast_theaters', arguments: { panel_request: 'controlled-forecast-receipt' } });
     theaterReply(win, requests[0]);
     const text = doc.getElementById('theaters').textContent;
-    for (const phrase of ['Controlled original theater', 'Original path', 'Original theater assessment', 'Original actor', 'Original mediator', 'Original reaction', 'Original stabilizer', 'Original invalidator', 'Alternate path', 'Alternative assessment', '60%', 'Confidence unknown', '1 of 1 theaters loaded.', 'Generated 4 Oct 2026, 11:23 UTC']) assert.ok(text.includes(phrase), phrase);
+    for (const phrase of ['Controlled original theater', 'Original path', 'Original theater assessment', 'Original actor', 'Original mediator', 'Original reaction', 'Original stabilizer', 'Original invalidator', 'Alternate path', 'Alternative assessment', '60%', 'Confidence unknown', '1 of 1 theaters loaded.', 'Generated 4 Oct 2026, 11:23 UTC; whether this is current is unknown.']) assert.ok(text.includes(phrase), phrase);
     assert.ok(!text.includes(theaterResponse.runId), 'internal run ids stay out of reader text');
     assert.ok(!text.includes('Confidence: 0%'), 'unknown confidence must not become zero');
     for (const details of doc.getElementById('theaters').querySelectorAll('details')) { details.open = true; details.dispatchEvent(new win.Event('toggle')); }
@@ -350,8 +350,10 @@ describe('original forecast theater UI', () => {
     enableTools(win);
     doc.getElementById('load-theaters').click();
     const first = messages.find(m => m.method === 'tools/call');
-    theaterReply(win, first, { ...theaterResponse, status: 'partial', completionStatus: 'partial', eligibleTheaterCount: 2, failedTheaterCount: 1 });
+    theaterReply(win, first, { ...theaterResponse, status: 'partial', completionStatus: 'partial', eligibleTheaterCount: 2, failedTheaterCount: 1, error: 'theater_timeout' });
     assert.match(doc.getElementById('theaters').textContent, /1 of 2.*1 failed/);
+    assert.match(doc.getElementById('theaters').textContent, /The theater source reported an error\./);
+    assert.doesNotMatch(doc.getElementById('theaters').textContent, /theater_timeout/, 'raw error codes stay out of reader text');
     assert.match(doc.getElementById('theaters').textContent, /Original theater assessment/);
     assert.equal(messages.filter(m => m.method === 'tools/call').length, 1);
     doc.getElementById('load-theaters').click();
@@ -602,7 +604,7 @@ describe('forecast MCP analysis parity', () => {
     const region = doc.getElementById('region');
     region.value = 'Europe';
     region.dispatchEvent(new win.Event('change'));
-    assert.match(doc.getElementById('list').textContent, /No forecasts match/);
+    assert.equal(doc.getElementById('list').textContent, 'No forecasts match these filters.');
     region.value = 'Asia';
     region.dispatchEvent(new win.Event('change'));
     const details = doc.querySelector('details');
@@ -620,6 +622,13 @@ describe('forecast MCP analysis parity', () => {
     assert.match(doc.getElementById('list').textContent, /No forecasts available/);
     send(payload({ count: 30, sample: [{ title: 'Sample forecast', probability: null, hasCaseFile: true }] }));
     assert.equal(doc.getElementById('count').textContent, '1 forecast; 29 more were not included in this response.');
+    const filterDomain = doc.getElementById('domain');
+    filterDomain.appendChild(Object.assign(doc.createElement('option'), { value: 'absent' }));
+    filterDomain.value = 'absent'; filterDomain.dispatchEvent(new doc.defaultView.Event('change'));
+    assert.equal(doc.getElementById('list').textContent,
+      'No forecasts in this response match these filters. Forecasts left out of the response were not checked.',
+      'a sampled response does not claim nothing matches');
+    filterDomain.value = ''; filterDomain.dispatchEvent(new doc.defaultView.Event('change'));
     assert.match(doc.querySelector('details').textContent, /Case evidence is not included in this result/);
     assert.equal(doc.querySelector('.pbar'), null);
     assert.match(doc.querySelector('.fc-prob').textContent, /—/);
