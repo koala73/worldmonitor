@@ -56170,7 +56170,7 @@ components:
                     description: Deterministic cache key computed by buildSummaryCacheKey().
             description: |-
                 GetSummarizeArticleCacheRequest looks up a pre-computed summary by cache key.
-                 CI probe: parallel proto checks (throwaway, never merged).
+                 CI probe: parallel proto checks (throwaway, never merged). Stale artifacts.
         worldmonitor_news_v1_ListFeedDigestRequest:
             type: object
             properties:
