@@ -87,7 +87,7 @@ Ollama 层通过 OpenAI 兼容的 `/v1/chat/completions` 端点通信，因此�
 2. 提交前，`buildNewsContext()` 从实时信息流中拉取最近的 15 条 `NewsItem` 标题，并将它们作为结构化上下文前置（`"Recent News:\n- Headline (Source)"`）—— 确保 LLM 始终具备当前态势感知
 3. 查询被发送至 `deductSituation` RPC 端点，该端点调用 `callLlmReasoning()` 并使用提供商回退链（先用付费 OpenRouter，然后依次为 Ollama、免费 OpenRouter Gemma 模型，以及任何通过 `LLM_API_URL`/`LLM_API_KEY`/`LLM_MODEL` 环境变量配置的 OpenAI 兼容端点），系统提示要求其扮演"资深地缘政治情报分析师与预测员"
 4. 温度为 0.3（偏低，以保证分析一致性），最多 1,500 tokens。思维链 `think` 标签会作为纵深防御被剥离
-5. 结果按 `deduct:situation:v1:{hash(query|geoContext)}` 在 Redis 中缓存 1 小时 —— 相同查询直接从缓存返回
+5. 结果按 `deduct:situation:v3:{hash([query, geoContext])}` 在 Redis 中缓存 1 小时 —— 相同查询直接从缓存返回
 
 **跨面板集成**：任何面板都可派发一个 `wm:deduct-context` 自定义 DOM 事件（携带 `{ query, geoContext, autoSubmit }`），它会预填推演面板并可选地自动提交。这使仪表盘任意位置都能发起情境化预测 —— 点击某战区态势卡上的"分析"可自动触发区域推演。5 秒冷却时间防止快速重复提交。
 

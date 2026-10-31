@@ -881,8 +881,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
           },
           category: 'politics',
         }] } } } },
-        rawTokens: [/Port disruption expands/, /MIIT \(China\)/, /Official government source\. State-affiliated: China\. Perspective: none recorded\./, /Alert/, /Germany/],
-        summaryTokens: [/Summary news headline/, /Unreviewed Source/, /Provenance not yet reviewed\. Perspective: none recorded\./],
+        rawTokens: [/Port disruption expands/, /MIIT \(China\) · official source \(China\)/, /Alert/, /Germany/],
+        summaryTokens: [/Summary news headline/, /Unreviewed Source · source not yet reviewed/],
       },
       {
         uri: 'ui://worldmonitor/conflict-events-v2.html',
@@ -914,8 +914,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
             location: { latitude: 1, longitude: 2 },
           }] } },
         } },
-        rawTokens: [/Earthquakes/, /M5\.4/, /Aegean Sea/, /Active Wildfires/, /High/, /Attica/, /brightness 337/, /Showing 1 of 1 loaded events\./],
-        summaryTokens: [/M4\.8/, /Summary quake/, /Nominal/, /Summary fire/, /brightness 301/],
+        rawTokens: [/Earthquakes/, /M5\.4/, /Aegean Sea/, /Active Wildfires/, /high confidence/, /Attica/, /337 K/],
+        summaryTokens: [/M4\.8/, /Summary quake/, /nominal confidence/, /Summary fire/, /301 K/],
       },
       {
         uri: 'ui://worldmonitor/prediction-markets-v3.html',
@@ -940,8 +940,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         summary: { data: { predictions: { predictions: { count: 1, sample: [{
           title: 'Summary forecast', probability: 67, domain: 'economy', region: 'MENA',
         }] } } } },
-        rawTokens: [/Oil remains above \$70/, /42%/, /energy/, /Global/],
-        summaryTokens: [/Summary forecast/, /67%/, /economy/, /MENA/],
+        rawTokens: [/Oil remains above \$70/, /42%/, /Energy/, /Global/],
+        summaryTokens: [/Summary forecast/, /67%/, /Economy/, /MENA/],
       },
     ];
 
@@ -1023,11 +1023,11 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       };
       view.sendToolResult(project ? { projection: envelope } : envelope);
       assert.equal(view.nodes('groups').filter((node) => node.className === 'drow').length, 4);
-      assert.match(view.text('groups'), /M0\.0Observed zero quake1970-01-01/);
+      assert.match(view.text('groups'), /M0\.0Observed zero quake1 Jan 1970, 00:00 UTC/);
       assert.match(view.text('groups'), /—Missing quake/);
-      assert.match(view.text('groups'), /Observed zero fireDetection time unavailable · brightness 0/);
-      assert.doesNotMatch(view.text('groups'), /Missing fireDetection time unavailable · brightness/);
-      assert.equal(view.text('foot'), 'Snapshot: 2026-10-03T16:00:00Z (stale)');
+      assert.match(view.text('groups'), /Observed zero fireDetection time unavailable/);
+      assert.doesNotMatch(view.text('groups'), / 0 K|Missing fireDetection time unavailable · /);
+      assert.equal(view.text('foot'), 'Updated 3 Oct 2026, 16:00 UTC (stale)');
       assert.equal(view.posted.some((message) => ['tools/call', 'ui/call-tool'].includes(message.method)), false);
 
       view.sendToolResult({ projection: { cached_at: '2026-10-04T00:00:00Z', stale: false, data: {
@@ -1035,7 +1035,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       } } });
       assert.match(view.text('groups'), /No natural-hazard events available\./);
       assert.doesNotMatch(view.text('groups'), /Observed zero|unavailable/);
-      assert.equal(view.text('foot'), 'Snapshot: 2026-10-04T00:00:00Z');
+      assert.equal(view.text('foot'), 'Updated 4 Oct 2026, 00:00 UTC');
     });
   }
 
@@ -1146,13 +1146,13 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.equal(view.text('country'), 'Russia');
     // The original defect: sanctionsExposure did not exist, so this printed
     // "None" for a country carrying 3417 active designations.
-    assert.equal(view.text('sanctions'), '3417 sanctions listings');
+    assert.equal(view.text('sanctions'), '3,417 sanctions listings');
     // cii is a CiiScore object, never a bare number.
     assert.equal(view.text('cii'), '78');
     assert.equal(view.text('level'), 'High');
-    assert.equal(view.text('advisory'), 'do not travel');
+    assert.equal(view.text('advisory'), 'Do not travel');
     assert.equal(view.text('trend'), 'Rising');
-    assert.equal(view.text('foot'), 'Snapshot: 2025-08-27T10:00:00.000Z');
+    assert.equal(view.text('foot'), 'Updated 27 Aug 2025, 10:00 UTC');
   });
 
   it('country-risk widget labels CII components by meaning, not by their misnamed wire keys', async () => {
@@ -1182,8 +1182,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.equal(view.text('sanctions'), '—');
     assert.equal(view.text('advisory'), '—');
     assert.equal(view.text('trend'), '—');
-    assert.match(view.text('components'), /unavailable/i);
-    assert.equal(view.text('foot'), 'Upstream unavailable — no snapshot time.');
+    assert.equal(view.text('components'), 'Breakdown unknown.');
+    assert.equal(view.text('foot'), '', 'the outage banner explains the missing time');
   });
 
   it('country-risk widget separates an outage from a genuinely untracked country', async () => {
@@ -1269,11 +1269,11 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
 
     const partialView = mountWidgetHtml(html);
     partialView.sendToolResult(payload);
-    assert.match(partialView.text('foot'), /Source response includes 375 of 1,000 events \(output limit\)\./);
+    assert.match(partialView.text('conflict-note'), /This response includes 375 of 1,000 events because of its size limit\./);
 
     const completeView = mountWidgetHtml(html);
     completeView.sendToolResult({ data: { 'ucdp-events': { events: [] } } });
-    assert.doesNotMatch(completeView.text('foot'), /output limit/i, 'complete responses must not show truncation copy');
+    assert.doesNotMatch(completeView.text('conflict-note'), /size limit/i, 'complete responses must not show truncation copy');
   });
 
   it('EXPANSION WIDGETS: hostile tool text stays literal textContent in all five renderers', async () => {
@@ -1322,6 +1322,9 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         missing: { data: { 'gdelt-intel': {} } },
         empty: { data: { insights: { topStories: [] } } },
         emptyCopy: /No news stories available\./,
+        // A response without the insights label omitted it; the panel says so
+        // rather than claiming the news source failed.
+        missingCopy: /left out the story list/,
       },
       {
         uri: 'ui://worldmonitor/conflict-events-v2.html', hostId: 'list',
@@ -1343,7 +1346,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       const missingView = mountWidgetHtml(html);
       missingView.sendToolResult(entry.missing);
       const missingText = missingView.text(entry.hostId);
-      assert.match(missingText, /unavailable/i, `${entry.uri}: a missing cache label must be visibly unavailable`);
+      assert.match(missingText, entry.missingCopy || /unavailable/i, `${entry.uri}: a missing cache label must be visibly unavailable`);
       assert.doesNotMatch(missingText, entry.emptyCopy, `${entry.uri}: a cache miss must not masquerade as genuine empty data`);
 
       const emptyView = mountWidgetHtml(html);
@@ -2245,7 +2248,7 @@ describe('shared MCP notification failures', () => {
       ['country-brief-v3', 'brief', brief, /Controlled current assessment/],
       ['world-brief-v2', 'brief', world, /First claim/],
       ['news-intelligence-v2', 'list', { data: { insights: { topStories: [{ primaryTitle: 'Port disruption expands', primarySource: 'MIIT (China)', category: 'security', threatLevel: 'high', isAlert: true, countryCode: 'DE' }] } } }, /Port disruption expands/],
-      ['chokepoint-monitor-v2', 'rows', chokepoints, /Hormuz strait/],
+      ['chokepoint-monitor-v2', 'rows', chokepoints, /Strait of Hormuz/],
       ['conflict-events-v2', 'list', { data: { 'ucdp-events': { events: [{ sideA: 'Government forces', sideB: 'Armed group', country: 'Sudan', violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED', dateStart: '2026-07-01', deathsBest: 12 }] } } }, /Government forces vs Armed group/],
       ['natural-disasters', 'groups', { data: { earthquakes: { earthquakes: [{ magnitude: 5.4, place: 'Aegean Sea', occurredAt: '2026-07-02T00:00:00Z' }] }, fires: { fireDetections: [{ confidence: 'FIRE_CONFIDENCE_HIGH', region: 'Attica', brightness: 337, location: { latitude: 37.98, longitude: 23.72 } }] } } }, /Aegean Sea/],
       ['prediction-markets-v3', 'groups', { data: { 'markets-bootstrap': { geopolitical: [{ title: 'Ceasefire by September?', yesPrice: 73, source: 'Polymarket' }], tech: [], finance: [] } } }, /Ceasefire by September/],

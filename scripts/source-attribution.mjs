@@ -49,6 +49,7 @@ const MANIFEST_KIND_RE = /^(?:structured|feed|operational-status)(?:\+(?:structu
 const LOGICAL_KIND_RE = /^(?:candidate|structured|feed|operational-status)(?:\+(?:structured|feed|operational-status))*$/;
 
 const SOURCE_ROOTS = ['scripts', 'server', 'api', 'src'];
+const STRUCTURED_CATALOG_FILES = new Set(['scripts/shared/regional-energy-feeds.json']);
 const SOURCE_EXTENSIONS = new Set(['.cjs', '.js', '.mjs', '.ts', '.tsx']);
 const FEED_FILES = new Set([
   ...FEED_DECLARATION_FILES,
@@ -1220,6 +1221,9 @@ function walkSourceFiles(rootDir) {
   for (const path of FEED_DECLARATION_FILES) {
     if (!files.includes(path) && existsSync(join(rootDir, path))) files.push(path);
   }
+  for (const path of STRUCTURED_CATALOG_FILES) {
+    if (existsSync(join(rootDir, path))) files.push(path);
+  }
   return files.sort();
 }
 
@@ -1285,6 +1289,7 @@ export function scanUpstreamHosts(rootDir = ROOT) {
       const declarationBefore = source.slice(Math.max(0, index - 280), index).match(/(?:const|let|var)\s+[A-Z][A-Z0-9_]*\s*=\s*['"`]?\s*$/);
       const preceding = source.slice(Math.max(0, index - 260), index);
       const candidate = FEED_FILES.has(relativePath)
+        || STRUCTURED_CATALOG_FILES.has(relativePath)
         || SOURCE_HINT_RE.test(line)
         || SOURCE_HINT_RE.test(preceding)
         || pendingDeclaration

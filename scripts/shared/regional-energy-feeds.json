@@ -1,0 +1,82 @@
+[
+  {
+    "id": "pgcb",
+    "countryCode": "BD",
+    "name": "Bangladesh Power Grid",
+    "sourceUrl": "https://erp.powergrid.gov.bd/w/generations/view_generations",
+    "licence": "Unconfirmed",
+    "intervalMin": 60,
+    "maxContentAgeMin": 720,
+    "script": "seed-regional-energy-pgcb.mjs"
+  },
+  {
+    "id": "petrobangla",
+    "countryCode": "BD",
+    "name": "Petrobangla daily gas",
+    "sourceUrl": "https://petrobangla.org.bd/pages/reports",
+    "licence": "Unconfirmed",
+    "intervalMin": 1440,
+    "maxContentAgeMin": 7200,
+    "script": "seed-regional-energy-petrobangla.mjs"
+  },
+  {
+    "id": "niso",
+    "countryCode": "NG",
+    "name": "Nigeria NISO",
+    "sourceUrl": "https://www.niggrid.org/",
+    "licence": "All rights reserved",
+    "intervalMin": 360,
+    "maxContentAgeMin": 7200,
+    "script": "seed-regional-energy-niso.mjs"
+  },
+  {
+    "id": "eskom",
+    "countryCode": "ZA",
+    "name": "Eskom data portal",
+    "sourceUrl": "https://www.eskom.co.za/dataportal/",
+    "licence": "Site terms apply; open data licence unconfirmed",
+    "intervalMin": 1440,
+    "maxContentAgeMin": 10080,
+    "script": "seed-regional-energy-eskom.mjs"
+  },
+  {
+    "id": "cammesa",
+    "countryCode": "AR",
+    "name": "CAMMESA SADI",
+    "sourceUrl": "https://api.cammesa.com/demanda-svc/swagger-ui.html",
+    "licence": "All rights reserved",
+    "intervalMin": 60,
+    "maxContentAgeMin": 720,
+    "script": "seed-regional-energy-cammesa.mjs"
+  },
+  {
+    "id": "gse",
+    "countryCode": "GE",
+    "name": "Georgian State Electrosystem",
+    "sourceUrl": "https://admin.gse.com.ge/api/en/menu/actual-balance-125",
+    "licence": "Unconfirmed",
+    "intervalMin": 1440,
+    "maxContentAgeMin": 129600,
+    "script": "seed-regional-energy-gse.mjs"
+  },
+  {
+    "id": "ons",
+    "countryCode": "BR",
+    "name": "Brazil ONS",
+    "sourceUrl": "https://dados.ons.org.br/api/3/action/package_show?id=balanco-energia-subsistema",
+    "licence": "CC-BY",
+    "intervalMin": 720,
+    "maxContentAgeMin": 7200,
+    "script": "seed-regional-energy-ons.mjs"
+  },
+  {
+    "id": "anp",
+    "countryCode": "BR",
+    "name": "Brazil ANP",
+    "sourceUrl": "https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos",
+    "licence": "Data licence unconfirmed; page footer CC BY-ND 3.0",
+    "intervalMin": 1440,
+    "maxContentAgeMin": 172800,
+    "script": "seed-regional-energy-anp.mjs"
+  }
+]

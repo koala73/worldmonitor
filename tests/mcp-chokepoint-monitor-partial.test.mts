@@ -73,15 +73,15 @@ describe('chokepoint monitor keeps AIS rows when PortWatch history is missing', 
     assert.ok(hormuz);
     assert.match(hormuz.textContent ?? '', /42/);
     assert.match(hormuz.textContent ?? '', /high/i);
-    assert.match(hormuz.textContent ?? '', /PortWatch history unavailable/i);
+    assert.match(hormuz.textContent ?? '', /No weekly history, so the weekly change is unknown/);
     assert.doesNotMatch(hormuz.textContent ?? '', /-80/);
     assert.equal((hormuz.textContent ?? '').includes('Week over week'), true);
   });
 
   it('still renders week-over-week when PortWatch history is present', () => {
-    const suez = [...doc.querySelectorAll('.crow')].find((row) => row.querySelector('.cname')?.textContent === 'Suez');
+    const suez = [...doc.querySelectorAll('.crow')].find((row) => row.querySelector('.cname')?.textContent === 'Suez Canal');
     assert.ok(suez);
-    assert.match(suez.textContent ?? '', /\+12\.50%/);
-    assert.doesNotMatch(suez.textContent ?? '', /PortWatch history unavailable/i);
+    assert.match(suez.textContent ?? '', /\+12\.5%/);
+    assert.doesNotMatch(suez.textContent ?? '', /No weekly history/);
   });
 });

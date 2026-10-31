@@ -243,10 +243,20 @@ describe('News Intelligence accepted projections', () => {
     for (const [wire, hasSnapshot] of [[result(full), true], [result(full.data), false], [{ content: result(full).content }, true]]) {
       await mount(wire, document => {
         assert.equal(rows(document).length, 8);
-        assert.match(document.getElementById('list').textContent, /Provenance not yet reviewed/);
-        assert.equal(foot(document).includes('Snapshot: 2026-10-04T12:00:00.000Z (stale)'), hasSnapshot);
+        assert.match(document.getElementById('list').textContent, /source not yet reviewed/);
+        assert.equal(foot(document).includes('Updated 4 Oct 2026, 12:00 UTC.'), hasSnapshot);
+        assert.match(document.getElementById('list').textContent, /^The last news update was incomplete\./, 'a degraded update is stated above the stories');
       });
     }
+  });
+
+  it('does not call stories out of date when freshness could not be read', async () => {
+    const unknown = { ...envelope(), stale: true, freshnessUnknown: true };
+    await mount(result(unknown), document => {
+      const text = document.getElementById('list').textContent;
+      assert.match(text, /Whether these stories are current could not be checked\./);
+      assert.doesNotMatch(text, /out of date/);
+    });
   });
 
   it('renders accepted whole-envelope and direct-data projections with retained metadata only where supplied', async () => {
@@ -256,10 +266,12 @@ describe('News Intelligence accepted projections', () => {
     ]) {
       await mount(wire, document => {
         assert.equal(rows(document).length, 8);
-        assert.match(document.getElementById('list').textContent, /Provenance not yet reviewed/);
-        assert.match(foot(document), /Showing 8 of 8 loaded stories/);
-        assert.equal(foot(document).includes('Snapshot: 2026-10-04T12:00:00.000Z (stale)'), hasSnapshot);
-        assert.match(foot(document), /Source reports degraded news intelligence/);
+        assert.match(document.getElementById('list').textContent, /source not yet reviewed/);
+        assert.doesNotMatch(foot(document), /Showing/, 'no count line when every story is shown');
+        assert.equal(foot(document).includes('Updated 4 Oct 2026, 12:00 UTC.'), hasSnapshot);
+        assert.match(document.getElementById('list').textContent, /The last news update was incomplete/);
+        assert.doesNotMatch(document.getElementById('list').textContent, /sources failed/, 'degraded does not prove a feed failed');
+        assert.equal(document.getElementById('list').textContent.includes('These stories may be out of date'), hasSnapshot);
       });
     }
   });
@@ -272,9 +284,8 @@ describe('News Intelligence accepted projections', () => {
     for (const wire of [result(summary, true), { content: result(summary).content }, result(summary.data, true)]) {
       await mount(wire, document => {
         assert.equal(rows(document).length, 3);
-        assert.match(foot(document), /Showing 3 sampled stories of 8 reported stories/);
-        assert.match(foot(document), /Full list is not loaded/);
-        assert.match(document.getElementById('list').textContent, /Provenance not yet reviewed/);
+        assert.match(foot(document), /Showing 3 of 8 stories\./);
+        assert.match(document.getElementById('list').textContent, /source not yet reviewed/);
       });
     }
   });
@@ -282,8 +293,7 @@ describe('News Intelligence accepted projections', () => {
   it('preserves the original 12-row cap and names the actual loaded total', async () => {
     await mount(result(envelope(Array.from({ length: 15 }, (_, index) => story(index))), true), document => {
       assert.equal(rows(document).length, 12);
-      assert.match(foot(document), /Showing 12 of 15 loaded stories/);
-      assert.doesNotMatch(foot(document), /sampled|not loaded/);
+      assert.match(foot(document), /Showing 12 of 15 stories\./);
     });
   });
 
@@ -291,8 +301,8 @@ describe('News Intelligence accepted projections', () => {
     for (const count of [undefined, null, -1, 1.5, 1, '8']) {
       await mount(result(envelope({ count, sample: [story(0), story(1)] }), true), document => {
         assert.equal(rows(document).length, 2);
-        assert.match(foot(document), /Showing 2 sampled stories; total unavailable/);
-        assert.doesNotMatch(foot(document), /of .* reported stories/);
+        assert.match(foot(document), /Showing 2 stories; total unknown\./);
+        assert.doesNotMatch(foot(document), /of \S+ stories/);
       });
     }
   });
@@ -301,8 +311,7 @@ describe('News Intelligence accepted projections', () => {
     for (const sample of [[], [story(0)]]) {
       await mount(result(envelope({ count: sample.length, sample }), true), document => {
         assert.equal(rows(document).length, sample.length);
-        assert.match(foot(document), /Sample contains all reported stories/);
-        assert.doesNotMatch(foot(document), /Full list is not loaded/);
+        assert.doesNotMatch(foot(document), /Showing/);
       });
     }
   });
@@ -312,8 +321,7 @@ describe('News Intelligence accepted projections', () => {
       send(result({ insights: { topStories: [] } }, true));
       assert.equal(rows(document).length, 0);
       assert.equal(document.getElementById('list').textContent, 'No news stories available.');
-      assert.match(foot(document), /Showing 0 of 0 loaded stories/);
-      assert.doesNotMatch(foot(document), /Snapshot|stale|degraded|sampled/);
+      assert.equal(foot(document), '');
       for (const value of [{ insights: null }, { insights: { topStories: null } }]) {
         send(result(value, true));
         assert.equal(rows(document).length, 0);
@@ -325,15 +333,15 @@ describe('News Intelligence accepted projections', () => {
         { insights: 'degraded' }, { insights: 8 }, { insights: ['headline'] }]) {
         send(result(value, true));
         assert.equal(rows(document).length, 0);
-        assert.equal(document.getElementById('list').textContent,
-          'This jmespath projection does not include data.insights.topStories, so the panel has no stories to show. The source was not reported unavailable.');
         // A projected status is still the source's own report, so it stays.
-        assert.equal(foot(document), value?.insights?.status === 'degraded' ? 'Source reports degraded news intelligence.' : '');
+        assert.equal(document.getElementById('list').textContent,
+          (value?.insights?.status === 'degraded' ? 'The last news update was incomplete.' : '')
+          + 'This request left out the story list, so there is nothing to show.');
+        assert.equal(foot(document), '');
       }
       send(result({ insights: { topStories: [story(7)] } }, true));
       assert.equal(rows(document).length, 1);
-      assert.match(foot(document), /Showing 1 of 1 loaded stories/);
-      assert.doesNotMatch(foot(document), /Snapshot|sampled|degraded/);
+      assert.equal(foot(document), '');
     });
   });
 
@@ -345,8 +353,8 @@ describe('News Intelligence accepted projections', () => {
       for (const value of [{ stories: [], advisories: [] }, { insights: { status: 'degraded' } }, { insights: 'degraded' }]) {
         send(textOnly(value));
         assert.equal(rows(document).length, 0);
-        assert.equal(document.getElementById('list').textContent,
-          'This response does not include data.insights.topStories, so the panel has no stories to show. The source was not reported unavailable.');
+        assert.match(document.getElementById('list').textContent, /This request left out the story list, so there is nothing to show\.$/);
+        assert.doesNotMatch(document.getElementById('list').textContent, /temporarily unavailable/);
       }
       for (const value of [{ insights: null }, { insights: { topStories: null } }]) {
         send(textOnly(value));
@@ -432,15 +440,14 @@ describe('News Intelligence supplied story details', () => {
       assert.equal(anchor?.rel, 'noopener noreferrer');
       assert.equal(anchor?.textContent, 'Controlled headline 1');
       assert.equal(row.querySelector('time')?.dateTime, '2026-10-02T12:34:56.000Z');
-      assert.match(row.textContent, /Published: 2026-10-02T12:34:56.000Z/);
-      assert.match(row.textContent, /Threat: high/);
+      assert.equal(row.querySelector('time')?.textContent, '2 Oct 2026, 12:34 UTC');
+      assert.match(row.textContent, /High threat/);
       assert.match(row.textContent, /conflict/);
       assert.match(row.textContent, /Alert/);
-      assert.match(row.textContent, /Literal Wire \(declared tier 1\)/);
-      assert.match(row.textContent, /Undeclared Publisher \(tier undeclared\)/);
-      assert.match(row.textContent, /2 counted publishers not listed/);
-      assert.match(row.textContent, /Provenance not yet reviewed/);
-      assert.match(foot(document), /Snapshot: 2026-10-04T12:00:00.000Z/);
+      assert.match(row.textContent, /Corroboration unknown: Literal Wire, Undeclared Publisher and 2 more\./);
+      assert.doesNotMatch(row.textContent, /tier|declared tier|tier undeclared/i, 'publisher tiers are internal ranking detail');
+      assert.match(row.textContent, /Controlled Example Wire · source not yet reviewed/);
+      assert.ok(foot(document).includes('Updated 4 Oct 2026, 12:00 UTC.'));
     });
   });
 
@@ -462,14 +469,14 @@ describe('News Intelligence supplied story details', () => {
         const row=rows(document)[0];
         assert.equal(row.querySelector('a'),null);
         assert.equal(row.querySelector('time'),null);
-        assert.match(row.textContent,/Publication time unavailable/);
-        assert.match(row.textContent,/Publisher roster unavailable/);
-        assert.doesNotMatch(row.textContent,/Threat: high|Literal Wire|2026-10-02/);
+        assert.match(row.textContent,/Publication time unknown/);
+        assert.match(row.textContent,/publishers unknown/);
+        assert.doesNotMatch(row.textContent,/High threat|Literal Wire|2 Oct 2026/);
       }
       send(result(envelope([{...story(0),publishers:[],publishersUnlisted:0}])));
       await new Promise(resolve=>setTimeout(resolve,0));
-      assert.match(rows(document)[0].textContent,/No contributing publishers listed/);
-      assert.doesNotMatch(rows(document)[0].textContent,/Publisher roster unavailable/);
+      assert.match(rows(document)[0].textContent,/Corroboration unknown\./);
+      assert.doesNotMatch(rows(document)[0].textContent,/publishers unknown/);
       send(result(envelope([detailed()]))); await new Promise(resolve=>setTimeout(resolve,0));
       assert.equal(rows(document)[0].querySelector('a')?.href,'https://example.com/original');
     });
@@ -479,12 +486,9 @@ describe('News Intelligence supplied story details', () => {
     const publishers=Array.from({length:14},(_,index)=>({name:'Publisher '+index,tier:index===0?0:1}));
     await mount(result(envelope([{...detailed(),publishers,publishersUnlisted:null}])),document=>{
       const row=rows(document)[0];
-      assert.match(row.textContent,/Publisher 0 \(tier undeclared\)/);
-      assert.match(row.textContent,/Publisher 11/);
-      assert.doesNotMatch(row.textContent,/Publisher 12|Publisher 13/);
-      assert.match(row.textContent,/Showing 12 of 14 supplied publishers/);
-      assert.match(row.textContent,/Unlisted publisher count unavailable/);
-      assert.doesNotMatch(row.textContent,/declared tier 0/);
+      assert.match(row.textContent,/Publisher 0, /);
+      assert.match(row.textContent,/Publisher 11 and 2 more\./);
+      assert.doesNotMatch(row.textContent,/Publisher 12|Publisher 13|tier/);
     });
   });
 
@@ -493,10 +497,9 @@ describe('News Intelligence supplied story details', () => {
     const valid=Array.from({length:14},(_,index)=>({name:'Valid Publisher '+index,tier:1}));
     await mount(result(envelope([{...detailed(),publishers:[...invalid,...valid],publishersUnlisted:0}])),document=>{
       const row=rows(document)[0];
-      assert.match(row.textContent,/Valid Publisher 0 \(declared tier 1\)/);
-      assert.match(row.textContent,/Valid Publisher 11 \(declared tier 1\)/);
-      assert.doesNotMatch(row.textContent,/Valid Publisher 12|Valid Publisher 13|No contributing publishers listed/);
-      assert.match(row.textContent,/Showing 12 of 26 supplied publishers/);
+      assert.match(row.textContent,/: Valid Publisher 0, /);
+      assert.match(row.textContent,/Valid Publisher 11 and 2 more\./, "invalid roster entries are not extra publishers");
+      assert.doesNotMatch(row.textContent,/Valid Publisher 12|Valid Publisher 13/);
     });
   });
 });
@@ -510,166 +513,96 @@ describe('News Intelligence supplied reliability and selection coverage', () => 
       corroboration: { state: 'corroborated', publishers: 4 } }]),
   });
 
-  it('distinguishes stored cluster priority from the CNA publisher declaration', async () => {
+  it('states single-source stories plainly without internal tier or ranking caveats', async () => {
     const value = envelope([{ ...story(0), primaryTitle: 'Controlled CNA cluster priority mismatch',
       primarySource: 'CNA', primaryLink: 'https://example.com/cna-story', pubDate: '2026-10-02T12:34:56.000Z',
       sourceTier: 4, credibilityScore: 77, publishers: [{ name: 'CNA', tier: 2 }], publishersUnlisted: 0,
       corroboration: { state: 'single-publisher', publishers: 1 } }]);
     await mount(result(value), document => {
       const row = rows(document)[0];
-      assert.match(row.textContent, /Cluster priority tier: 4/);
-      assert.match(row.textContent, /This stored cluster tier may use a default when a source is absent from its tier table\./);
-      assert.match(row.textContent, /Publishers: CNA \(declared tier 2\)/);
-      assert.match(row.textContent, /Source reliability: 77\/100/);
-      assert.match(row.textContent, /Corroboration coverage: single-publisher/);
-      assert.match(row.textContent, /Reported publishers: 1/);
-      assert.doesNotMatch(row.textContent, /Declared source tier/);
+      assert.match(row.textContent, /Single source\. Reliability 77\/100\./);
+      assert.doesNotMatch(row.textContent, /tier|Cluster priority|Corroboration coverage|Reported publishers|does not establish/);
       assert.equal(row.querySelector('.story-title').textContent, 'Controlled CNA cluster priority mismatch');
       assert.equal(row.querySelector('.story-title').getAttribute('href'), 'https://example.com/cna-story');
-      assert.ok(row.textContent.includes('2026-10-02T12:34:56.000Z'));
+      assert.ok(row.textContent.includes('2 Oct 2026, 12:34 UTC'));
       assert.equal(rows(document).length, 1);
-      assert.match(foot(document), /Showing 1 of 1 loaded stories/);
+      assert.doesNotMatch(foot(document), /Showing|Selection exclusions/);
     });
   });
 
-  it('preserves supplied reliability, source tiers, corroboration and selection drops across accepted shapes', async () => {
+  it('preserves supplied reliability and corroboration across accepted shapes without selection internals', async () => {
     const original = supplied();
     original.data.insights.provenance = { selectionDrops: { admissibility: 0, sourceCap: 3, overflow: 168 } };
     const summary = { ...original, data: summarizeData(original.data) };
     for (const wire of [result(original), result(original.data), { content: result(original).content },
       result(original, true), result(original.data, true), result(summary, true)]) {
       await mount(wire, document => {
-        assert.match(rows(document)[0].textContent, /Source reliability: 77\/100/);
-        assert.match(rows(document)[0].textContent, /Cluster priority tier: 2/);
-        assert.match(rows(document)[0].textContent, /Corroboration coverage: single-publisher/);
-        assert.match(rows(document)[0].textContent, /Reported publishers: 1/);
-        assert.match(rows(document)[1].textContent, /Source reliability: 89\/100/);
-        assert.match(rows(document)[1].textContent, /Corroboration coverage: corroborated/);
-        assert.match(rows(document)[1].textContent, /Reported publishers: 4/);
-        assert.match(foot(document), /Selection exclusions: admissibility 0; source cap 3; overflow 168/);
-        assert.doesNotMatch(foot(document), /170 (?:loaded|reported) stories/);
+        assert.match(rows(document)[0].textContent, /Single source\. Reliability 77\/100\./);
+        assert.match(rows(document)[1].textContent, /Corroborated\. Reliability 89\/100\./);
+        assert.doesNotMatch(foot(document), /Selection exclusions|admissibility|overflow/);
       });
     }
-  });
-
-  it('keeps supplied selection drops separate from partial summary coverage', async () => {
-    const value = supplied();
-    value.data.insights.topStories.push(story(2), story(3));
-    value.data.insights.provenance = { selectionDrops: { overflow: 168 } };
-    await mount(result({ ...value, data: summarizeData(value.data) }, true), document => {
-      assert.equal(rows(document).length, 3);
-      assert.match(rows(document)[0].textContent, /Source reliability: 77\/100/);
-      assert.match(foot(document), /Showing 3 sampled stories of 4 reported stories/);
-      assert.match(foot(document), /Full list is not loaded/);
-      assert.match(foot(document), /admissibility unavailable; source cap unavailable; overflow 168/);
-      assert.doesNotMatch(foot(document), /172 reported stories/);
-    });
   });
 
   it('preserves measured zero and finite reliability without rounding or count inference', async () => {
     for (const credibilityScore of [0, 77.5, 100]) {
       const value = envelope([{ ...story(0), credibilityScore, sourceTier: 4,
         sourceCount: 99, corroboration: { state: 'unknown', publishers: 0 } }]);
-      value.data.insights.provenance = { selectionDrops: { admissibility: 0, sourceCap: 0, overflow: 0 } };
       await mount(result(value), document => {
-        assert.ok(rows(document)[0].textContent.includes('Source reliability: ' + credibilityScore + '/100'));
-        assert.match(rows(document)[0].textContent, /Cluster priority tier: 4/);
-        assert.match(rows(document)[0].textContent, /Corroboration coverage: unknown/);
-        assert.match(rows(document)[0].textContent, /Reported publishers: 0/);
-        assert.doesNotMatch(rows(document)[0].textContent, /Reported publishers: 99/);
-        assert.match(foot(document), /Selection exclusions: admissibility 0; source cap 0; overflow 0/);
+        assert.ok(rows(document)[0].textContent.includes('Reliability ' + credibilityScore + '/100.'));
+        assert.match(rows(document)[0].textContent, /Corroboration unknown/);
+        assert.doesNotMatch(rows(document)[0].textContent, /99/);
       });
     }
   });
 
-  it('rejects malformed selection-drop containers without inventing measured zeros', async () => {
-    for (const selectionDrops of [0, false, '', 'invalid', 7, null, [], [0, 0, 0]]) {
-      const value = supplied();
-      value.data.insights.provenance = { selectionDrops };
-      for (const wire of [result(value), result(value.data, true), { content: result(value).content }]) {
-        await mount(wire, (document, send) => {
-          assert.match(foot(document), /Selection exclusions: admissibility unavailable; source cap unavailable; overflow unavailable/);
-          assert.doesNotMatch(foot(document), /admissibility 0|source cap 0|overflow 0/);
-          value.data.insights.provenance.selectionDrops = { admissibility: 0, sourceCap: 0, overflow: 0 };
-          send(result(value));
-          assert.match(foot(document), /Selection exclusions: admissibility 0; source cap 0; overflow 0/);
-          value.data.insights.provenance.selectionDrops = selectionDrops;
-          send(result(value));
-          assert.match(foot(document), /Selection exclusions: admissibility unavailable; source cap unavailable; overflow unavailable/);
-        });
-      }
-    }
-  });
-
-  it('keeps invalid or absent values unavailable without accepting incorrect fixture paths', async () => {
-    for (const invalid of [undefined, null, '', '2', true, -1, Infinity]) {
+  it('keeps invalid reliability and corroboration unknown, never calm, and renders hostile states inert', async () => {
+    for (const invalid of [undefined, null, '', '2', true, -1, Infinity, 101, NaN]) {
       const value = envelope([{ ...story(0), credibilityScore: invalid, sourceTier: invalid,
-        corroboration: { state: '<img src=x onerror=alert(1)>', publishers: invalid, publisherCount: 9 } }]);
-      value.data.insights.selectionDrops = { admissibility: 9, sourceCap: 9, overflow: 9 };
-      value.data.insights.provenance = { selectionDrops: { admissibility: invalid, sourceCap: invalid, overflow: invalid } };
+        corroboration: { state: '<img src=x onerror=alert(1)>', publishers: invalid } }]);
       await mount(result(value), document => {
-        assert.match(rows(document)[0].textContent, /Source reliability unavailable/);
-        assert.match(rows(document)[0].textContent, /Cluster priority tier unavailable/);
-        assert.doesNotMatch(rows(document)[0].textContent, /This stored cluster tier may use a default/);
-        assert.match(rows(document)[0].textContent, /Corroboration coverage unavailable/);
-        assert.match(rows(document)[0].textContent, /Reported publisher count unavailable/);
-        assert.match(foot(document), /Selection exclusions: admissibility unavailable; source cap unavailable; overflow unavailable/);
+        assert.match(rows(document)[0].textContent, /Corroboration unknown; publishers unknown\./);
+        assert.doesNotMatch(rows(document)[0].textContent, /Reliability|Corroborated|Single source|<img/);
         assert.equal(document.querySelectorAll('#list img, #list script').length, 0);
       });
     }
-  });
-
-  it('rejects out-of-range reliability, undeclared tiers and fractional counts independently', async () => {
-    for (const [credibilityScore, sourceTier, publishers] of [[101, 5, 1.5], [-0.1, 0, -1], [NaN, 2.5, '4']]) {
-      const value = envelope([{ ...story(0), credibilityScore, sourceTier,
-        corroboration: { state: 'tier4-only', publishers } }]);
-      value.data.insights.provenance = { selectionDrops: { admissibility: 1.5, sourceCap: -1, overflow: '168' } };
-      await mount(result(value), document => {
-        assert.match(rows(document)[0].textContent, /Source reliability unavailable/);
-        assert.match(rows(document)[0].textContent, /Cluster priority tier unavailable/);
-        assert.doesNotMatch(rows(document)[0].textContent, /This stored cluster tier may use a default/);
-        assert.match(rows(document)[0].textContent, /Corroboration coverage: tier4-only/);
-        assert.match(rows(document)[0].textContent, /Reported publisher count unavailable/);
-        assert.match(foot(document), /admissibility unavailable; source cap unavailable; overflow unavailable/);
-      });
-    }
-    await mount(result(envelope([{ ...story(0), sourceTier: 1 }])), document => {
-      assert.match(rows(document)[0].textContent, /Cluster priority tier: 1/);
+    await mount(result(envelope([{ ...story(0), corroboration: { state: 'tier4-only' } }])), document => {
+      assert.match(rows(document)[0].textContent, /Only low-reliability sources/);
     });
   });
 
-  it('clears old supplied fields on replacement and preserves partial drop coverage', async () => {
+  it('clears old supplied fields on replacement', async () => {
     await mount(result(supplied()), (document, send) => {
       send(result({ insights: { topStories: [story(0)], provenance: { selectionDrops: { overflow: 168 } } } }, true));
-      assert.match(rows(document)[0].textContent, /Source reliability unavailable/);
-      assert.match(rows(document)[0].textContent, /Cluster priority tier unavailable/);
-      assert.doesNotMatch(rows(document)[0].textContent, /This stored cluster tier may use a default/);
-      assert.match(rows(document)[0].textContent, /Reported publisher count unavailable/);
-      assert.doesNotMatch(rows(document)[0].textContent, /77\/100|single-publisher|Reported publishers: 1/);
-      assert.match(foot(document), /admissibility unavailable; source cap unavailable; overflow 168/);
-      assert.match(foot(document), /Showing 1 of 1 loaded stories/);
-      assert.doesNotMatch(foot(document), /Snapshot|stale|degraded/);
+      assert.doesNotMatch(rows(document)[0].textContent, /77\/100|Single source/);
+      assert.match(rows(document)[0].textContent, /Corroboration unknown/);
+      assert.equal(foot(document), '');
+      assert.doesNotMatch(document.getElementById('list').textContent, /out of date|failed/);
     });
   });
 });
 
 describe('News Intelligence publication timestamp wire types', () => {
   it('renders finite epoch milliseconds, including zero, separately from the cache snapshot', async () => {
-    for (const [pubDate,expected] of [[1791279480000,'2026-10-06T09:38:00.000Z'],[0,'1970-01-01T00:00:00.000Z'],['2026-10-06T09:38:00.000Z','2026-10-06T09:38:00.000Z']]) {
+    for (const [pubDate,expected] of [[1791279480000,'2026-10-06T09:38:00.000Z'],['2026-10-06T09:38:00.000Z','2026-10-06T09:38:00.000Z']]) {
       await mount(result(envelope([{...story(0),pubDate}])),document=>{
         assert.equal(rows(document)[0].querySelector('time')?.dateTime,expected);
-        assert.ok(rows(document)[0].textContent.includes('Published: '+expected));
-        assert.match(foot(document),/Snapshot: 2026-10-04T12:00:00.000Z/);
+        assert.ok(rows(document)[0].textContent.includes('6 Oct 2026, 09:38 UTC'));
+        assert.ok(foot(document).includes('Updated 4 Oct 2026, 12:00 UTC.'));
       });
     }
+    await mount(result(envelope([{...story(0),pubDate:0}])),document=>{
+      assert.equal(rows(document)[0].querySelector('time'),null,'a zero epoch is a missing date, not 1970');
+      assert.match(rows(document)[0].textContent,/Publication time unknown/);
+    });
   });
 
   it('keeps invalid, missing, boolean, nonfinite and out-of-range times unavailable', async () => {
     for (const pubDate of [undefined,null,'','   ','invalid-date',true,false,NaN,Infinity,-Infinity,8640000000000001,-8640000000000001]) {
       await mount(result(envelope([{...story(0),pubDate}])),document=>{
         assert.equal(rows(document)[0].querySelector('time'),null);
-        assert.match(rows(document)[0].textContent,/Publication time unavailable/);
-        assert.match(foot(document),/Snapshot: 2026-10-04T12:00:00.000Z/);
+        assert.match(rows(document)[0].textContent,/Publication time unknown/);
+        assert.ok(foot(document).includes('Updated 4 Oct 2026, 12:00 UTC.'));
       });
     }
   });

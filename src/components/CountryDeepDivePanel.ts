@@ -21,7 +21,7 @@ import { getCountryInfrastructure } from '@/services/related-assets';
 import type { PredictionMarket } from '@/services/prediction';
 import type { AssetType, NewsItem, RelatedAsset } from '@/types';
 import { sanitizeUrl, escapeHtml } from '@/utils/sanitize';
-import { computeAlternativeSuppliers, type ChokepointScoreMap, type EnrichedExporter } from '@/utils/supplier-route-risk';
+import { chokepointScoreEvidence, computeAlternativeSuppliers, type EnrichedExporter } from '@/utils/supplier-route-risk';
 import { formatIntelBrief, renderBriefEvidenceFooter, type IntelBriefEvidence } from '@/utils/format-intel-brief';
 import { collectBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
 import { getCSSColor, isMobileDevice, showToast } from '@/utils';
@@ -3070,7 +3070,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
           if (exp.risk.transitChokepoints.length > 0) {
             const cpNames = exp.risk.transitChokepoints
-              .map(cp => cp.chokepointName)
+              .map(cp => cp.disruptionScore === null ? `${cp.chokepointName} (no data)` : cp.chokepointName)
               .join(', ');
             const cpInfo = this.el('div', 'cdp-risk-chokepoints');
             cpInfo.textContent = cpNames;
@@ -3088,6 +3088,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         const hasAtRisk = visibleEnriched.some(e => e.risk.riskLevel === 'at_risk');
         const hasUnknown = visibleEnriched.some(e => e.risk.riskLevel === 'unknown');
         const hasSafe = visibleEnriched.some(e => e.risk.riskLevel === 'safe');
+        // A missing chokepoint score is missing evidence, not a safe route (#7990).
+        const noRouteCount = visibleEnriched.filter(e => e.risk.unknownReason === 'no_route').length;
+        const unmeasuredCount = visibleEnriched.filter(e => e.risk.unknownReason === 'unmeasured').length;
+        const unknownParts: string[] = [];
+        if (noRouteCount) unknownParts.push(`${noRouteCount} supplier(s) have no modeled route data.`);
+        if (unmeasuredCount) unknownParts.push(`${unmeasuredCount} supplier(s) lack current disruption data for their modeled chokepoints.`);
         if (hasCritical || hasAtRisk) {
           for (const exp of visibleEnriched) {
             if (exp.risk.riskLevel === 'safe' || exp.risk.riskLevel === 'unknown') continue;
@@ -3096,7 +3102,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
             const expPct = Math.round(exp.share * 100);
             let text = `\u26A0 ${product.description} imports from ${exp.partnerIso2} (${expPct}%) transit`;
             if (exp.risk.transitChokepoints.length === 0) continue;
-            const worstCp = exp.risk.transitChokepoints.reduce((a, b) => a.disruptionScore > b.disruptionScore ? a : b);
+            // Critical/at-risk always has a measured score; unmeasured points rank last.
+            const worstCp = exp.risk.transitChokepoints.reduce((a, b) => (a.disruptionScore ?? -1) >= (b.disruptionScore ?? -1) ? a : b);
             text += ` ${worstCp.chokepointName} (disruption ${worstCp.disruptionScore}/100).`;
             if (exp.safeAlternative && isVisible(exp.safeAlternative)) {
               const alt = visibleEnriched.find(e => e.partnerIso2 === exp.safeAlternative);
@@ -3107,15 +3114,21 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
             item.textContent = text;
             recsMount.append(item);
           }
+          if (unknownParts.length) {
+            const item = this.el('div', 'cdp-recommendation-item');
+            item.textContent = `\u2139 ${unknownParts.join(' ')} Their route risk cannot be assessed.`;
+            recsMount.append(item);
+          }
         } else if (hasUnknown && !hasSafe) {
           const item = this.el('div', 'cdp-recommendation-item');
-          item.textContent = '\u2139 No modeled maritime route data available for these suppliers. Risk cannot be assessed.';
+          item.textContent = unmeasuredCount
+            ? `\u2139 ${unknownParts.join(' ')} Risk cannot be assessed.`
+            : '\u2139 No modeled maritime route data available for these suppliers. Risk cannot be assessed.';
           recsMount.append(item);
         } else if (hasUnknown && hasSafe) {
           const safeCount = visibleEnriched.filter(e => e.risk.riskLevel === 'safe').length;
-          const unknownCount = visibleEnriched.filter(e => e.risk.riskLevel === 'unknown').length;
           const item = this.el('div', 'cdp-recommendation-item');
-          item.textContent = `\u2139 ${safeCount} supplier(s) verified safe. ${unknownCount} supplier(s) have no modeled route data.`;
+          item.textContent = `\u2139 ${safeCount} supplier(s) verified safe. ${unknownParts.join(' ')}`;
           recsMount.append(item);
         } else {
           const safeItem = this.el('div', 'cdp-recommendation-item cdp-recommendation-safe');
@@ -3135,11 +3148,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       (this.source ? this.source.chokepoints(this.signal) : fetchChokepointStatus()).then(resp => {
         if (this.getCode() !== capturedCode) return;
         if (!resp.chokepoints.length) return;
-        const scores: ChokepointScoreMap = new Map();
-        for (const cp of resp.chokepoints) {
-          scores.set(cp.id, cp.disruptionScore);
-        }
-        const enriched = computeAlternativeSuppliers(product.topExporters, importerIso2, scores);
+        // Partial, degraded or stale snapshots keep their measured scores but cannot make a route safe.
+        const { scores, current } = chokepointScoreEvidence(resp);
+        const enriched = computeAlternativeSuppliers(product.topExporters, importerIso2, scores, current);
         renderRows(enriched);
       }).catch(() => {
         console.warn('[deep-dive] Chokepoint status unavailable for route risk enrichment');

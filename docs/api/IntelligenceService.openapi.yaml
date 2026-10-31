@@ -9751,6 +9751,63 @@ components:
                     format: int32
                 importShareSource:
                     type: string
+                regionalEnergyFeeds:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RegionalEnergyFeed'
+        RegionalEnergyFeed:
+            type: object
+            properties:
+                sourceId:
+                    type: string
+                name:
+                    type: string
+                sourceUrl:
+                    type: string
+                licence:
+                    type: string
+                status:
+                    type: string
+                    description: |-
+                        available, partial, stale, unavailable, or error. Partial means that the
+                         latest series have different freshness states. It is not a risk rating.
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Unix epoch milliseconds; zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Latest observation period in Unix epoch milliseconds; zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
+                dataUrls:
+                    type: array
+                    items:
+                        type: string
+                observations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RegionalEnergyObservation'
+                error:
+                    type: string
+                    description: Stable failure code. Empty for a valid record, including retained stale data.
+        RegionalEnergyObservation:
+            type: object
+            properties:
+                metric:
+                    type: string
+                period:
+                    type: string
+                    description: 'Source reporting period: YYYY-MM, YYYY-MM-DD, or a UTC ISO timestamp.'
+                value:
+                    type: number
+                    format: double
+                unit:
+                    type: string
+                area:
+                    type: string
+                    description: Provider coverage, product, or cross-border partner. Empty means national.
+                stale:
+                    type: boolean
         ComputeEnergyShockScenarioRequest:
             type: object
             properties:

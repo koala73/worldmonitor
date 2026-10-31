@@ -12,7 +12,7 @@ The inventory is **generated, not hand-written**: `scripts/source-attribution.mj
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **805 active source hosts** representing **790 active providers** (**368 structured/API**, **468 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **812 active source hosts** representing **797 active providers** (**375 structured/API**, **468 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -29,6 +29,7 @@ This generated inventory covers **805 active source hosts** representing **790 a
 | acleddata.com (acleddata.com) | structured — scripts/seed-conflict-intel.mjs, scripts/seed-unrest-events.mjs, scripts/shared/acled-oauth.mjs, server/_shared/acled-auth.ts, +1 more |
 | actualite.cd (actualite.cd) | feed — shared/news-catalog.json |
 | ActuNiger (actuniger.com) | feed — shared/news-catalog.json |
+| admin.gse.com.ge (admin.gse.com.ge) | structured — scripts/shared/regional-energy-feeds.json |
 | adsb.fi Open Data (opendata.adsb.fi) | structured — scripts/seed-military-flights.mjs, src/components/MapPopup.ts |
 | adsb.lol (api.adsb.lol) | structured — scripts/ais-relay.cjs, scripts/seed-military-flights.mjs, server/worldmonitor/aviation/v1/list-aircraft-emergencies.ts, src/components/MapPopup.ts |
 | ae.usembassy.gov (ae.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
@@ -55,6 +56,7 @@ This generated inventory covers **805 active source hosts** representing **790 a
 | api.anthropic.com (api.anthropic.com) | structured — server/_shared/llm-anthropic.ts |
 | api.aviationstack.com (api.aviationstack.com) | structured — scripts/ais-relay.cjs, scripts/seed-aviation.mjs |
 | api.axios.com (api.axios.com) | feed — shared/news-catalog.json |
+| api.cammesa.com (api.cammesa.com) | structured — scripts/_regional-energy-source.mjs, scripts/shared/regional-energy-feeds.json |
 | api.cloudflare.com (api.cloudflare.com) | structured — scripts/_kv-storage.mjs, scripts/_r2-storage.mjs, scripts/cloudflare-cache-rule.mjs, scripts/seed-internet-outages.mjs, +1 more |
 | api.coingecko.com (api.coingecko.com) | structured — scripts/ais-relay.cjs |
 | api.data.gov.my (api.data.gov.my) | structured — scripts/_dosm-product-demand.mjs, scripts/backfill-fuel-prices-prev.mjs, scripts/seed-fuel-prices.mjs |
@@ -192,6 +194,7 @@ This generated inventory covers **805 active source hosts** representing **790 a
 | ctvnews.ca (ctvnews.ca) | feed — shared/news-catalog.json |
 | customer.dodopayments.com (customer.dodopayments.com) | structured — src/services/billing.ts |
 | CWFIS / CWFIF (NRCan) (geoserver.cwfif.nrcan.gc.ca) | structured — scripts/wildfire/cwfis-wfs.mjs |
+| dados.ons.org.br (dados.ons.org.br) | structured — scripts/shared/regional-energy-feeds.json |
 | dai2.xumo.com (dai2.xumo.com) | Excluded / candidate — No current fetch observed |
 | Daily Nation (nation.africa) | feed — shared/news-catalog.json |
 | dailytrust.com (dailytrust.com) | feed — shared/news-catalog.json |
@@ -260,6 +263,7 @@ This generated inventory covers **805 active source hosts** representing **790 a
 | eonet.gsfc.nasa.gov (eonet.gsfc.nasa.gov) | structured — scripts/seed-natural-events.mjs |
 | EPA RadNet (radnet.epa.gov) | structured — scripts/seed-radiation-watch.mjs |
 | epms.ppra.gov.pk (epms.ppra.gov.pk) | structured — scripts/_global-tender-feeds.mjs |
+| erp.powergrid.gov.bd (erp.powergrid.gov.bd) | structured — scripts/shared/regional-energy-feeds.json |
 | ert-ucdn.broadpeak-aas.com (ert-ucdn.broadpeak-aas.com) | feed — src/config/live-video-sources.ts |
 | ert.gr (ert.gr) | feed — shared/news-catalog.json |
 | ertflix.ascdn.broadpeak.io (ertflix.ascdn.broadpeak.io) | Excluded / candidate — No current fetch observed |
@@ -517,6 +521,7 @@ This generated inventory covers **805 active source hosts** representing **790 a
 | Parallel Search MCP (search.parallel.ai) | structured — src/services/mcp-store.ts |
 | patents.google.com (patents.google.com) | structured — scripts/_defense-patents-source.mjs |
 | pe-fa-lp02a.9c9media.com (pe-fa-lp02a.9c9media.com) | Excluded / candidate — No current fetch observed |
+| petrobangla.org.bd (petrobangla.org.bd) | structured — scripts/shared/regional-energy-feeds.json |
 | phys.org (phys.org) | structured — scripts/seed-climate-news.mjs |
 | pitchbook.com (pitchbook.com) | feed+structured — shared/news-catalog.json, src/config/variants/tech.ts |
 | pk.usembassy.gov (pk.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
@@ -827,6 +832,7 @@ This generated inventory covers **805 active source hosts** representing **790 a
 | www.eluniverso.com (www.eluniverso.com) | feed — shared/news-catalog.json |
 | www.engadget.com (www.engadget.com) | feed+structured — shared/news-catalog.json, src/config/variants/tech.ts |
 | www.epdk.gov.tr (www.epdk.gov.tr) | structured — scripts/_epdk-crude-imports.mjs |
+| www.eskom.co.za (www.eskom.co.za) | structured — scripts/shared/regional-energy-feeds.json |
 | www.ethiopia-insight.com (www.ethiopia-insight.com) | feed — shared/news-catalog.json |
 | www.eu-startups.com (www.eu-startups.com) | feed+structured — shared/news-catalog.json, src/config/variants/tech.ts |
 | www.euronews.com (www.euronews.com) | feed+structured — shared/news-catalog.json, src/main.ts |
@@ -852,7 +858,7 @@ This generated inventory covers **805 active source hosts** representing **790 a
 | www.goodnewsnetwork.org (www.goodnewsnetwork.org) | feed — shared/news-catalog.json |
 | www.google.com (www.google.com) | structured — scripts/ais-relay.cjs, src/components/AviationCommandBar.ts, src/components/MapPopup.ts |
 | www.googleapis.com (www.googleapis.com) | structured — scripts/seo-gsc-collect.mjs |
-| www.gov.br (www.gov.br) | structured — scripts/seed-fuel-prices.mjs |
+| www.gov.br (www.gov.br) | structured — scripts/seed-fuel-prices.mjs, scripts/shared/regional-energy-feeds.json |
 | www.gov.uk (www.gov.uk) | feed+structured — scripts/lib/border-route-sources.mjs, scripts/seed-fuel-prices.mjs, scripts/seed-security-advisories.mjs, server/worldmonitor/displacement/v1/cross-border-data.ts, +1 more |
 | www.handybulk.com (www.handybulk.com) | structured — scripts/seed-supply-chain-trade.mjs |
 | www.hotnews.ro (www.hotnews.ro) | feed — shared/news-catalog.json |
@@ -898,6 +904,7 @@ This generated inventory covers **805 active source hosts** representing **790 a
 | www.newscientist.com (www.newscientist.com) | Excluded / candidate — No current fetch observed |
 | www.newyorkfed.org (www.newyorkfed.org) | structured — scripts/ais-relay.cjs |
 | www.nfx.com (www.nfx.com) | structured — src/config/variants/tech.ts |
+| www.niggrid.org (www.niggrid.org) | structured — scripts/shared/regional-energy-feeds.json |
 | www.northernminer.com (www.northernminer.com) | feed — shared/news-catalog.json |
 | www.notion-status.com (www.notion-status.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
 | www.nrc.nl (www.nrc.nl) | feed — shared/news-catalog.json |

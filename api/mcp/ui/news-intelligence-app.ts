@@ -29,6 +29,7 @@ const STYLES = `
   .chip.alert { color: #fff; background: var(--severe); border-color: var(--severe); font-weight: 600; }
   .story-country { font-size: 11px; color: var(--muted); }
   .story-src { overflow-wrap: anywhere; margin-top: 4px; font-size: 12px; color: var(--muted); }
+  .news-note { font-size: 12px; color: var(--high); padding: 6px 0; }
 `;
 
 const BODY = `
@@ -60,13 +61,52 @@ const RENDER = `
     var projectedInsights = d.insights;
     var omitsInsights = !hasOwn.call(d, "insights") || (projectedInsights !== null
       && (typeof projectedInsights !== "object" || !hasOwn.call(projectedInsights, "topStories")));
-    var projectionWrapped = hasOwn.call(data, "projection");
     var ins = d.insights && typeof d.insights === "object" ? d.insights : null;
     var sourceStories = ins && ins.topStories;
     var storyState = listState(sourceStories);
     var stories = storyState.items;
     var host = q("list");
     host.textContent = "";
+    // A short, plain provenance tag; unreviewed sources say so rather than
+    // reading as neutral.
+    function provenanceLabel(provenance) {
+      if (!provenance || typeof provenance !== "object") return "";
+      var state = collapseWs(provenance.stateAffiliated);
+      var where = state ? " (" + state + ")" : "";
+      var biases = Array.isArray(provenance.knownBiases)
+        ? provenance.knownBiases.map(collapseWs).filter(Boolean) : [];
+      var label = provenance.type === "gov" ? "official source" + where
+        : provenance.risk === "high" ? "state media" + where
+        : provenance.risk === "medium" ? (state ? "state-funded" + where : "use with caution")
+        : provenance.risk === "unknown" ? "source not yet reviewed"
+        : "";
+      if (biases.length) label += (label ? "; " : "") + biases.join(", ");
+      return label ? " · " + label : "";
+    }
+    function corroborationText(story) {
+      var publishers = Array.isArray(story.publishers) ? story.publishers : null;
+      // Only valid roster entries count, so blank or malformed rows never
+      // inflate the "and N more" figure.
+      var validNames = [];
+      if (publishers) {
+        for (var j = 0; j < publishers.length; j++) {
+          var publisher = publishers[j];
+          if (publisher && typeof publisher.name === "string" && publisher.name.trim()) validNames.push(collapseWs(publisher.name));
+        }
+      }
+      var names = validNames.slice(0, 12);
+      var unlisted = Number.isInteger(story.publishersUnlisted) && story.publishersUnlisted > 0 ? story.publishersUnlisted : 0;
+      var more = validNames.length - names.length + unlisted;
+      var corroboration = story.corroboration && typeof story.corroboration === "object" ? story.corroboration : {};
+      var state = corroboration.state;
+      var lead = state === "single-publisher" ? "Single source"
+        : state === "tier4-only" ? "Only low-reliability sources"
+        : state === "corroborated" ? "Corroborated"
+        : "Corroboration unknown";
+      if (!names.length) return lead + (publishers || lead !== "Corroboration unknown" ? "" : "; publishers unknown") + ".";
+      if (state === "single-publisher" && names.length === 1 && !more) return lead + ".";
+      return lead + ": " + names.join(", ") + (more > 0 ? " and " + more + " more" : "") + ".";
+    }
     for (var i = 0; i < stories.length && i < 12; i++) {
       var s = stories[i];
       if (!s || typeof s !== "object") continue;
@@ -82,103 +122,60 @@ const RENDER = `
       head.appendChild(title);
       var cat = collapseWs(s.category);
       if (cat) head.appendChild(el("span", "chip", cat));
-      var threat = typeof s.threatLevel === "string" ? collapseWs(s.threatLevel) : "";
-      if (threat) head.appendChild(el("span", "chip", "Threat: " + threat));
+      var threat = typeof s.threatLevel === "string" ? collapseWs(s.threatLevel).toLowerCase() : "";
+      if (threat) head.appendChild(el("span", "chip", threat.charAt(0).toUpperCase() + threat.slice(1) + " threat"));
       if (s.isAlert === true) head.appendChild(el("span", "chip alert", "Alert"));
       var cn = countryName(s.countryCode);
       if (cn) head.appendChild(el("span", "story-country", cn));
       row.appendChild(head);
       var src = collapseWs(s.primarySource);
-      var provenanceSummary = s.sourceProvenance && typeof s.sourceProvenance === "object"
-        ? collapseWs(s.sourceProvenance.summary) : "";
-      if (src) row.appendChild(el("div", "story-src", src + (provenanceSummary ? " • " + provenanceSummary : "")));
-      var hasPublicationTime = (typeof s.pubDate === "string" && s.pubDate.trim()) ||
-        (typeof s.pubDate === "number" && Number.isFinite(s.pubDate));
-      var published = hasPublicationTime ? new Date(s.pubDate) : null;
-      if (published && Number.isFinite(published.getTime())) {
-        var publication = el("time", "story-src", "Published: " + published.toISOString());
-        publication.dateTime = published.toISOString();
-        publication.style.display = "block";
-        row.appendChild(publication);
+      var metaLine = el("div", "story-src", src ? src + provenanceLabel(s.sourceProvenance) + " · " : "");
+      var pubValue = typeof s.pubDate === "number" && s.pubDate <= 0 ? null : s.pubDate;
+      var published = utcTime(pubValue);
+      if (published) {
+        var publication = el("time", "", published);
+        publication.dateTime = new Date(pubValue).toISOString();
+        metaLine.appendChild(publication);
       } else {
-        row.appendChild(el("div", "story-src", "Publication time unavailable."));
+        metaLine.appendChild(el("span", "", "Publication time unknown"));
       }
-      var publishers = Array.isArray(s.publishers) ? s.publishers : null;
-      var publisherNames = [];
-      if (publishers) {
-        for (var j = 0; j < publishers.length && publisherNames.length < 12; j++) {
-          var publisher = publishers[j];
-          if (!publisher || typeof publisher.name !== "string" || !publisher.name.trim()) continue;
-          var tier = publisher.tier;
-          var declaredTier = Number.isInteger(tier) && tier >= 1 && tier <= 4;
-          publisherNames.push(publisher.name + (declaredTier ? " (declared tier " + tier + ")" : " (tier undeclared)"));
-        }
-      }
-      var publisherText = publishers
-        ? (publisherNames.length ? "Publishers: " + publisherNames.join(", ") + "." : "No contributing publishers listed.")
-        : "Publisher roster unavailable.";
-      if (publishers && publishers.length > publisherNames.length) {
-        publisherText += " Showing " + publisherNames.length + " of " + publishers.length + " supplied publishers.";
-      }
-      var unlisted = s.publishersUnlisted;
-      if (Number.isInteger(unlisted) && unlisted >= 0) {
-        if (unlisted > 0) publisherText += " " + unlisted + " counted publishers not listed.";
-      } else {
-        publisherText += " Unlisted publisher count unavailable.";
-      }
-      row.appendChild(el("div", "story-src", publisherText));
+      row.appendChild(metaLine);
+      var support = corroborationText(s);
       var reliability = s.credibilityScore;
-      var reliabilityText = typeof reliability === "number" && Number.isFinite(reliability) && reliability >= 0 && reliability <= 100
-        ? "Source reliability: " + reliability + "/100." : "Source reliability unavailable.";
-      var sourceTier = s.sourceTier;
-      var sourceTierText = Number.isInteger(sourceTier) && sourceTier >= 1 && sourceTier <= 4
-        ? "Cluster priority tier: " + sourceTier + ". This stored cluster tier may use a default when a source is absent from its tier table."
-        : "Cluster priority tier unavailable.";
-      row.appendChild(el("div", "story-src", reliabilityText + " " + sourceTierText));
-      var corroboration = s.corroboration && typeof s.corroboration === "object" ? s.corroboration : {};
-      var coverageState = corroboration.state;
-      var coverageText = ["unknown", "single-publisher", "tier4-only", "corroborated"].indexOf(coverageState) >= 0
-        ? "Corroboration coverage: " + coverageState + "." : "Corroboration coverage unavailable.";
-      var publisherCount = corroboration.publishers;
-      coverageText += Number.isInteger(publisherCount) && publisherCount >= 0
-        ? " Reported publishers: " + publisherCount + "." : " Reported publisher count unavailable.";
-      row.appendChild(el("div", "story-src", coverageText + " Coverage does not establish accuracy."));
+      if (typeof reliability === "number" && Number.isFinite(reliability) && reliability >= 0 && reliability <= 100) {
+        support += " Reliability " + reliability + "/100.";
+      }
+      row.appendChild(el("div", "story-src", support));
       host.appendChild(row);
     }
     var shown = host.childNodes.length;
     if (!shown) {
-      var notShownBecause = " so the panel has no stories to show. The source was not reported unavailable.";
       host.appendChild(el("div", "empty", storyState.available
         ? "No news stories available."
-        : omitsInsights ? (projectionWrapped ? "This jmespath projection" : "This response")
-          + " does not include data.insights.topStories," + notShownBecause
+        : omitsInsights ? "This request left out the story list, so there is nothing to show."
         : "News intelligence is temporarily unavailable."));
     }
+    var notes = [];
+    // "degraded" also covers a failed summary with healthy feeds, and a stale
+    // flag can come from unreadable freshness data, so neither names a cause.
+    if (ins && ins.status === "degraded") notes.push("The last news update was incomplete.");
+    if (envelope.freshnessUnknown === true) notes.push("Whether these stories are current could not be checked.");
+    else if (envelope.stale === true) notes.push("These stories may be out of date.");
+    if (notes.length) host.insertBefore(el("div", "news-note", notes.join(" ")), host.firstChild);
 
     var footParts = [];
     if (storyState.available) {
       if (Array.isArray(sourceStories)) {
-        footParts.push("Showing " + shown + " of " + stories.length + " loaded stories.");
+        if (shown < stories.length) footParts.push("Showing " + shown + " of " + stories.length + " stories.");
       } else {
         var total = sourceStories.count;
-        var knownTotal = typeof total === "number" && Number.isFinite(total) && Number.isInteger(total) && total >= stories.length;
-        footParts.push("Showing " + shown + " sampled stories" +
-          (knownTotal ? " of " + total + " reported stories." : "; total unavailable.") +
-          (knownTotal ? (total > stories.length ? " Full list is not loaded." : " Sample contains all reported stories.")
-            : " Full list coverage is unavailable."));
+        var knownTotal = typeof total === "number" && Number.isInteger(total) && total >= stories.length;
+        if (!knownTotal) footParts.push("Showing " + shown + " stories; total unknown.");
+        else if (total > shown) footParts.push("Showing " + shown + " of " + total + " stories.");
       }
     }
-    if (storyState.available) {
-      var selectionDrops = ins && ins.provenance && ins.provenance.selectionDrops;
-      var dropParts = [];
-      for (var dropField of [["admissibility", "admissibility"], ["sourceCap", "source cap"], ["overflow", "overflow"]]) {
-        var dropped = selectionDrops && typeof selectionDrops === "object" && !Array.isArray(selectionDrops) ? selectionDrops[dropField[0]] : undefined;
-        dropParts.push(dropField[1] + " " + (Number.isInteger(dropped) && dropped >= 0 ? dropped : "unavailable"));
-      }
-      footParts.push("Selection exclusions: " + dropParts.join("; ") + ".");
-    }
-    if (ins && ins.status === "degraded") footParts.push("Source reports degraded news intelligence.");
-    if (envelope.cached_at) footParts.push("Snapshot: " + collapseWs(envelope.cached_at) + (envelope.stale ? " (stale)" : ""));
+    var updated = utcTime(envelope.cached_at);
+    if (envelope.cached_at) footParts.push("Updated " + (updated || collapseWs(envelope.cached_at)) + ".");
     q("foot").textContent = footParts.join(" ");
 `;
 
