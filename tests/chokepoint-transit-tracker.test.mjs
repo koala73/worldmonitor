@@ -174,6 +174,13 @@ describe('chokepoint transit gates', () => {
     }
   });
 
+  // CodeRabbit on #9902: upstashSet resolves false instead of throwing, so an
+  // unchecked coverage write left health reading the previous transitCoverage.
+  it('fails the transit tick when the coverage metadata write fails', () => {
+    assert.match(relaySrc, /const metaOk = await upstashSet\('seed-meta:supply_chain:chokepoint_transits'/);
+    assert.match(relaySrc, /if \(!metaOk\) throw new Error\('Transit coverage metadata write failed'\)/);
+  });
+
   it('is what the relay counts with', () => {
     assert.match(relaySrc, /createDurableTransitTracker\(\{\s*gates: CHOKEPOINT_TRANSIT_GATES,/);
   });

@@ -10534,7 +10534,10 @@ async function seedChokepointTransits() {
   const payload = { transits, transitCoverage, fetchedAt: now };
   const ok = await envelopeWrite(CHOKEPOINT_TRANSIT_KEY, payload, CHOKEPOINT_TRANSIT_TTL, { recordCount: covered, sourceVersion: 'chokepoint-transits' });
   if (!ok) throw new Error('Transit count publication failed');
-  await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: covered, transitCoverage }, 604800);
+  // Health names the measurable straits from this transitCoverage, so a dropped
+  // write must fail the tick instead of leaving the previous coverage in place.
+  const metaOk = await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: covered, transitCoverage }, 604800);
+  if (!metaOk) throw new Error('Transit coverage metadata write failed');
   console.log(`[Transit] Seeded ${covered}/${canonical.length} measured chokepoints (missing: ${missing.join(', ')})`);
 }
 
