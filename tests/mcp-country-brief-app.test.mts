@@ -183,7 +183,7 @@ describe('Country Brief retained digest disclosure', () => {
       try {
         const notice = win.document.getElementById('grounding-notice');
         assert.ok(notice && notice.style.display !== 'none', 'retained digest notice must be visible');
-        assert.equal(notice.textContent, 'The latest news update could not be confirmed, so this brief uses news that is 15 minutes old.');
+        assert.equal(notice.textContent, 'The latest news update could not be confirmed; the most recent news on hand is 15 minutes old. This brief may not reflect current news.');
         assert.doesNotMatch(notice.textContent, /feed_timeout|2026-10-05T10/, 'raw reason codes and timestamps stay out of the notice');
         assert.doesNotMatch(notice.textContent, /assessment used|sources used|grounding was used/i);
         assertOriginalBrief(win);
@@ -201,7 +201,7 @@ describe('Country Brief retained digest disclosure', () => {
         send(win, { ...retainedBrief, generatedAt: 1, digestCoverage: coverage });
         const notice = win.document.getElementById('grounding-notice');
         assert.notEqual(notice.style.display, 'none');
-        assert.equal(notice.textContent, 'The latest news update could not be confirmed, so this brief uses older news of unknown age.');
+        assert.equal(notice.textContent, 'The latest news update could not be confirmed. This brief may not reflect current news.');
         assert.doesNotMatch(notice.textContent, /15 minutes|1970/);
       }
       for (const coverage of [{ state: 'STALE' }, { servedStale: 'true' }, { state: 'ready', servedStale: false }]) {
@@ -215,7 +215,7 @@ describe('Country Brief retained digest disclosure', () => {
     const win = await render({ ...retainedBrief, digestCoverage: { ...retainedBrief.digestCoverage, staleReason: reason } });
     try {
       const notice = win.document.getElementById('grounding-notice');
-      assert.equal(notice.textContent, 'The latest news update could not be confirmed, so this brief uses news that is 15 minutes old.');
+      assert.equal(notice.textContent, 'The latest news update could not be confirmed; the most recent news on hand is 15 minutes old. This brief may not reflect current news.');
       assert.equal(notice.querySelector('img'), null);
       const causes: Record<string, string> = {
         'build-error': 'The latest news update failed',
@@ -226,7 +226,7 @@ describe('Country Brief retained digest disclosure', () => {
       };
       for (const code of Object.getOwnPropertyNames(causes)) {
         send(win, { ...retainedBrief, digestCoverage: { ...retainedBrief.digestCoverage, staleReason: code } });
-        assert.equal(notice.textContent, causes[code] + ', so this brief uses news that is 15 minutes old.', code);
+        assert.equal(notice.textContent, causes[code] + '; the most recent news on hand is 15 minutes old. This brief may not reflect current news.', code);
       }
       assertOriginalBrief(win);
     } finally { await win.happyDOM.close(); }

@@ -153,8 +153,11 @@ const RENDER = `
         : "News intelligence is temporarily unavailable."));
     }
     var notes = [];
-    if (ins && ins.status === "degraded") notes.push("Some news sources failed in the last update.");
-    if (envelope.stale === true) notes.push("These stories are out of date; the news feed has not refreshed.");
+    // "degraded" also covers a failed summary with healthy feeds, and a stale
+    // flag can come from unreadable freshness data, so neither names a cause.
+    if (ins && ins.status === "degraded") notes.push("The last news update was incomplete.");
+    if (envelope.freshnessUnknown === true) notes.push("Whether these stories are current could not be checked.");
+    else if (envelope.stale === true) notes.push("These stories may be out of date.");
     if (notes.length) host.insertBefore(el("div", "news-note", notes.join(" ")), host.firstChild);
 
     var footParts = [];
