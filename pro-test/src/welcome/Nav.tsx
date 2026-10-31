@@ -5,26 +5,26 @@ import { DASHBOARD_PATH } from '../routes';
 
 const TABLET_MENU_ID = 'welcome-tablet-navigation';
 const NAV_ITEMS = [
-  { href: '/use-cases/', labelKey: 'welcome.nav.useCases', accent: false },
-  { href: '#first-five', labelKey: 'welcome.nav.firstFive', accent: false },
-  { href: '#depth', labelKey: 'welcome.nav.depth', accent: false },
-  { href: '#agents', labelKey: 'welcome.nav.agents', accent: false },
-  { href: '/sources/', labelKey: 'welcome.depth.s3l', accent: false },
-  { href: '/pro#pricing', labelKey: 'welcome.nav.pricing', accent: true },
-  { href: '#faq', labelKey: 'welcome.nav.faq', accent: false },
-  { href: '/blog/', labelKey: 'welcome.nav.blog', accent: false },
-  { href: '/docs/documentation', labelKey: 'welcome.nav.docs', accent: false },
+  { href: '/use-cases/', labelKey: 'welcome.nav.useCases' },
+  { href: '#first-five', labelKey: 'welcome.nav.firstFive' },
+  { href: '#depth', labelKey: 'welcome.nav.depth' },
+  { href: '#agents', labelKey: 'welcome.nav.agents' },
+  { href: '/sources/', labelKey: 'welcome.depth.s3l' },
+  { href: '/pro#pricing', labelKey: 'welcome.nav.pricing' },
+  { href: '#faq', labelKey: 'welcome.nav.faq' },
+  { href: '/blog/', labelKey: 'welcome.nav.blog' },
+  { href: '/docs/documentation', labelKey: 'welcome.nav.docs' },
 ] as const;
 
 const NavItems = ({ compact = false }: { compact?: boolean }) => (
   <>
-    {NAV_ITEMS.map(({ href, labelKey, accent }) => (
+    {NAV_ITEMS.map(({ href, labelKey }) => (
       <a
         key={href}
         href={href}
         className={compact
-          ? `block px-4 py-2.5 hover:bg-white/5 transition-colors ${accent ? 'text-wm-green' : 'hover:text-wm-text'}`
-          : `transition-colors ${accent ? 'hover:text-wm-green' : 'hover:text-wm-text'}`}
+          ? 'block px-4 py-2 hover:bg-white/5 hover:text-wm-text transition-colors'
+          : 'transition-colors hover:text-wm-text'}
         onClick={compact
           ? () => document.getElementById(TABLET_MENU_ID)?.removeAttribute('open')
           : undefined}
@@ -42,16 +42,16 @@ export const Nav = () => (
     <nav data-wm-nav="primary" className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
         <Logo />
-        <div className="hidden lg:flex items-center gap-4 whitespace-nowrap text-xs font-mono text-wm-muted xl:gap-7 xl:text-sm">
+        <div className="hidden lg:flex items-center gap-4 whitespace-nowrap text-xs text-wm-muted xl:gap-7 xl:text-sm">
           <NavItems />
         </div>
-        <details id={TABLET_MENU_ID} className="group relative hidden md:block lg:hidden text-sm font-mono text-wm-muted">
-          <summary className="list-none cursor-pointer border border-wm-border bg-wm-card px-3 py-2 rounded-sm inline-flex items-center gap-2 hover:text-wm-text transition-colors [&::-webkit-details-marker]:hidden">
+        <details id={TABLET_MENU_ID} className="group relative hidden md:block lg:hidden text-sm text-wm-muted">
+          <summary className="list-none cursor-pointer border border-wm-border bg-wm-card px-3 py-2 rounded-md inline-flex items-center gap-2 hover:text-wm-text transition-colors [&::-webkit-details-marker]:hidden">
             <MenuIcon className="w-4 h-4" aria-hidden="true" />
             {t('welcome.nav.menu')}
             <ChevronDown className="w-3 h-3 transition-transform group-open:rotate-180" aria-hidden="true" />
           </summary>
-          <div className="absolute right-0 top-[calc(100%+0.5rem)] z-10 w-52 border border-wm-border bg-wm-card shadow-xl py-1">
+          <div className="absolute right-0 top-[calc(100%+0.5rem)] z-10 w-52 rounded-lg border border-wm-border bg-wm-card shadow-xl py-1">
             <NavItems compact />
           </div>
         </details>
@@ -60,9 +60,9 @@ export const Nav = () => (
           aria-label={t('welcome.nav.launch')}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-nav"
-          className="shrink-0 bg-wm-green text-wm-bg px-3 sm:px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wide sm:tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-1.5"
+          className="shrink-0 bg-wm-green text-wm-bg min-h-9 py-2 px-4 rounded-md text-sm font-medium hover:bg-green-300 transition-colors inline-flex items-center gap-2"
         >
-          {t('welcome.nav.launch')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
+          {t('welcome.nav.launch')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </a>
       </div>
     </nav>

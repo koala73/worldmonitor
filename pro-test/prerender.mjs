@@ -87,7 +87,7 @@ const CRITICAL_CSS = [
   // legal footer row (#6982) shipped exactly that, painted across the header
   // and over the Launch CTA on both / and /pro. deploy-config.test.mjs proves
   // the containment against the prerendered welcome page.
-  'nav[data-wm-nav]{position:fixed;top:0;left:0;right:0;z-index:50;background:rgba(17,17,17,.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid #222;border-inline-width:0;border-bottom-width:0}nav[data-wm-nav]>div{max-width:80rem;margin-inline:auto;padding-inline:1rem;height:4rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem}nav[data-wm-nav] a{display:flex;align-items:center;gap:.5rem}nav[data-wm-nav] a[aria-label*="Launch"]{flex-shrink:0;background:#4ade80;color:#050505;padding:.5rem .75rem;border-radius:.25rem;font:700 .75rem/1 ui-monospace,SFMono-Regular,monospace;text-transform:uppercase;letter-spacing:.025em}',
+  'nav[data-wm-nav]{position:fixed;top:0;left:0;right:0;z-index:50;background:rgba(17,17,17,.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid #222;border-inline-width:0;border-bottom-width:0}nav[data-wm-nav]>div{max-width:80rem;margin-inline:auto;padding-inline:1rem;height:4rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem}nav[data-wm-nav] a{display:flex;align-items:center;gap:.5rem}nav[data-wm-nav] a[data-umami-event-target="welcome-nav"]{flex-shrink:0;background:#4ade80;color:#050505;min-height:2.25rem;padding:.5rem 1rem;border-radius:.375rem;font:500 .875rem/1.25rem var(--font-sans)}',
   // The nav's lucide icons ship literal width="24" height="24" attributes and
   // are resized purely by `w-*`/`h-*` utilities, so without these mirrors every
   // one of them paints at 24px and snaps to 12/16/20/24/32px when the deferred
@@ -98,7 +98,6 @@ const CRITICAL_CSS = [
   // is the #4603 failure in reverse.
   'nav[data-wm-nav] [class~=flex]{display:flex}nav[data-wm-nav] [class~=relative]{position:relative}nav[data-wm-nav] [class~=absolute]{position:absolute}nav[data-wm-nav] [class~=z-10]{z-index:10}nav[data-wm-nav] [class~=items-center]{align-items:center}nav[data-wm-nav] [class~=justify-center]{justify-content:center}nav[data-wm-nav] [class~=overflow-hidden]{overflow:hidden}nav[data-wm-nav] [class~=rounded-full]{border-radius:9999px}nav[data-wm-nav] .border{border-style:solid;border-width:1px;border-color:#222}nav[data-wm-nav] [class~=opacity-50]{opacity:.5}nav[data-wm-nav] [class~=w-3]{width:.75rem}nav[data-wm-nav] [class~=h-3]{height:.75rem}nav[data-wm-nav] [class~=w-4]{width:1rem}nav[data-wm-nav] [class~=h-4]{height:1rem}nav[data-wm-nav] [class~=w-5]{width:1.25rem}nav[data-wm-nav] [class~=h-5]{height:1.25rem}nav[data-wm-nav] [class~=w-6]{width:1.5rem}nav[data-wm-nav] [class~=h-6]{height:1.5rem}nav[data-wm-nav] [class~=w-8]{width:2rem}nav[data-wm-nav] [class~=h-8]{height:2rem}',
   'nav[data-wm-nav] .hidden{display:none}nav[data-wm-nav] [class~=font-display]{font-family:var(--font-display);font-weight:700}nav[data-wm-nav] [class~=text-wm-muted],main [class~=text-wm-muted]{color:#9ca3af}nav[data-wm-nav] [class~=text-wm-green],main [class~=text-wm-green]{color:#4ade80}nav[data-wm-nav] [class~=text-wm-blue]{color:#60a5fa}nav[data-wm-nav] [class~=text-wm-bg]{color:#050505}nav[data-wm-nav] [class~=text-sm]{font-size:.875rem;line-height:1.25rem}nav[data-wm-nav] [class~=leading-none]{line-height:1}nav[data-wm-nav] [class~=tracking-tight]{letter-spacing:-.025em}',
-  'main>section:first-child{position:relative;overflow:hidden;padding:7rem 1rem 4rem}main>section:first-child>div:first-child{position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(74,222,128,.10) 0%,transparent 55%);pointer-events:none}main>section:first-child>div:nth-child(2){position:relative;z-index:10;max-width:64rem;margin-inline:auto;text-align:center}main h1{font-family:var(--font-display);font-weight:700;font-size:2.25rem;line-height:1.08;letter-spacing:-.025em}main p{margin:1.5rem auto 0;max-width:42rem;color:#9ca3af;font-size:1rem;line-height:1.5}',
   'main [class~=relative]{position:relative}main [class~=absolute]{position:absolute}main [class~=inset-0]{inset:0}main [class~=z-10]{z-index:10}main [class~=pointer-events-none]{pointer-events:none}main [class~=flex]{display:flex}main [class~=inline-flex]{display:inline-flex}main [class~=grid]{display:grid}main [class~=block]{display:block}main .hidden{display:none}main [class~=items-center]{align-items:center}main [class~=items-stretch]{align-items:stretch}main [class~=justify-center]{justify-content:center}main [class~=justify-between]{justify-content:space-between}main [class~=flex-col]{flex-direction:column}main [class~=flex-wrap]{flex-wrap:wrap}main [class~=grid-cols-2]{grid-template-columns:repeat(2,minmax(0,1fr))}',
   'main [class~=mx-auto]{margin-inline:auto}main [class~=mt-1]{margin-top:.25rem}main [class~=mt-3]{margin-top:.75rem}main [class~=mt-6]{margin-top:1.5rem}main [class~=mt-8]{margin-top:2rem}main [class~=mt-9]{margin-top:2.25rem}main [class~=mt-10]{margin-top:2.5rem}main [class~=mb-5]{margin-bottom:1.25rem}main [class~=gap-1]{gap:.25rem}main [class~=gap-2]{gap:.5rem}main [class~=gap-3]{gap:.75rem}main [class~=gap-4]{gap:1rem}main [class~=gap-x-6]{column-gap:1.5rem}main [class~=gap-y-3]{row-gap:.75rem}',
   'main [class~=w-full]{width:100%}main [class~=max-w-full]{max-width:100%}main [class~=max-w-2xl]{max-width:42rem}main [class~=max-w-3xl]{max-width:48rem}main [class~=max-w-5xl]{max-width:64rem}main [class~=min-w-0]{min-width:0}main [class~=shrink-0]{flex-shrink:0}main [class~=overflow-hidden]{overflow:hidden}',
@@ -124,9 +123,9 @@ const CRITICAL_CSS = [
   // match would paint any story slug containing "moments" as a full-width
   // uppercase CTA button until the deferred stylesheet lands. Same element,
   // same painted result, no reach into feed-supplied hrefs.
-  'main a[data-umami-event-target="welcome-hero"],main a[href="#moments"]{width:100%;justify-content:center;padding:.875rem 1.25rem;border-radius:.25rem;font:700 .875rem/1.25 var(--font-mono);letter-spacing:.025em;text-transform:uppercase}main a[href="#moments"]{background:transparent;color:#f3f4f6}',
-  '@media (min-width:640px){nav[data-wm-nav]>div{padding-inline:1.5rem}main>section:first-child{padding-top:8rem;padding-inline:1.5rem}main h1{font-size:3rem;line-height:1.05}main [class~="sm:flex-row"]{flex-direction:row}main [class~="sm:items-center"]{align-items:center}main [class~="sm:w-auto"]{width:auto}main [class~="sm:grid-cols-4"]{grid-template-columns:repeat(4,minmax(0,1fr))}main [class~="sm:max-w-3xl"]{max-width:48rem}main [class~="sm:max-w-none"]{max-width:none}main [class~="sm:px-4"]{padding-inline:1rem}main [class~="sm:px-6"]{padding-inline:1.5rem}main [class~="sm:px-8"]{padding-inline:2rem}main [class~="sm:tracking-wider"]{letter-spacing:.05em}main [class~="sm:block"]{display:block}}',
-  '@media (min-width:768px){main h1{font-size:4.5rem}main p{font-size:1.125rem;line-height:1.75rem}main [class~="md:text-lg"]{font-size:1.125rem;line-height:1.75rem}nav[data-wm-nav] [class~="md:block"]{display:block}nav[data-wm-nav] [class~="md:flex"]{display:flex}}',
+  'main a[data-umami-event-target="welcome-hero"],main a[href="#moments"]{min-height:3rem;padding-block:.75rem;justify-content:center;border-radius:.375rem;font-size:.875rem;line-height:1.25rem;font-weight:500}main a[data-umami-event-target="welcome-hero"]{padding-inline:1.5rem}main a[href="#moments"]{padding-inline:1rem}',
+  '@media (min-width:640px){nav[data-wm-nav]>div{padding-inline:1.5rem}main [class~="sm:flex-row"]{flex-direction:row}main [class~="sm:items-center"]{align-items:center}main [class~="sm:w-auto"]{width:auto}main [class~="sm:grid-cols-4"]{grid-template-columns:repeat(4,minmax(0,1fr))}main [class~="sm:max-w-3xl"]{max-width:48rem}main [class~="sm:max-w-none"]{max-width:none}main [class~="sm:px-4"]{padding-inline:1rem}main [class~="sm:px-6"]{padding-inline:1.5rem}main [class~="sm:px-8"]{padding-inline:2rem}main [class~="sm:tracking-wider"]{letter-spacing:.05em}main [class~="sm:block"]{display:block}}',
+  '@media (min-width:768px){main [class~="md:text-lg"]{font-size:1.125rem;line-height:1.75rem}nav[data-wm-nav] [class~="md:block"]{display:block}nav[data-wm-nav] [class~="md:flex"]{display:flex}}',
   '@media (min-width:1024px){nav[data-wm-nav] [class~="lg:flex"]{display:flex}nav[data-wm-nav] [class~="lg:hidden"]{display:none}}',
 ].join('');
 
@@ -158,7 +157,36 @@ const PRO_CRITICAL_CSS = [
   '}',
 ].join('');
 
-const PAGE_CRITICAL_CSS = { 'index.html': CRITICAL_CSS + PRO_CRITICAL_CSS };
+// Hero geometry differs per page, so it lives outside the shared block.
+// These are unlayered like CRITICAL_CSS and so stay in force after the
+// deferred sheet lands: each value must equal what Tailwind resolves for the
+// hero's classes, or the swap reflows the first viewport.
+//
+// /pro: the original rules, byte-for-byte, in their original cascade order.
+const PRO_HERO_CRITICAL_CSS = [
+  'main>section:first-child{position:relative;overflow:hidden;padding:7rem 1rem 4rem}main>section:first-child>div:first-child{position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(74,222,128,.10) 0%,transparent 55%);pointer-events:none}main>section:first-child>div:nth-child(2){position:relative;z-index:10;max-width:64rem;margin-inline:auto;text-align:center}main h1{font-family:var(--font-display);font-weight:700;font-size:2.25rem;line-height:1.08;letter-spacing:-.025em}main p{margin:1.5rem auto 0;max-width:42rem;color:#9ca3af;font-size:1rem;line-height:1.5}',
+  '@media (min-width:640px){main>section:first-child{padding-top:8rem;padding-inline:1.5rem}main h1{font-size:3rem;line-height:1.05}}',
+  '@media (min-width:768px){main h1{font-size:4.5rem}main p{font-size:1.125rem;line-height:1.75rem}}',
+].join('');
+
+// / (welcome/Hero.tsx): no wash layer and no blanket `main p` rule; every hero
+// paragraph carries its own utilities, mirrored here or in CRITICAL_CSS.
+const WELCOME_HERO_CRITICAL_CSS = [
+  'main>section[data-wm-hero]{position:relative;padding:7rem 1rem 6rem}',
+  // Scoped to the hero so it outranks the shared `main [class~=text-4xl]`
+  // mirror (0,1,1); a bare `main h1` (0,0,2) lost to it and pinned the
+  // headline at 2.25rem at every width.
+  'main>section[data-wm-hero] h1{font-family:var(--font-display);font-weight:500;font-size:2.25rem;line-height:1.05;letter-spacing:-.025em}',
+  'main [class~=mt-2]{margin-top:.5rem}main [class~=mt-4]{margin-top:1rem}main [class~=mt-12]{margin-top:3rem}main [class~=mb-6]{margin-bottom:1.5rem}main [class~=h-10]{height:2.5rem}main [class~=min-h-12]{min-height:3rem}main [class~=px-6]{padding-inline:1.5rem}',
+  'main [class~=rounded-xl]{border-radius:.75rem}main [class~=font-medium]{font-weight:500}main [class~=tabular-nums]{font-variant-numeric:tabular-nums}main [class~=truncate]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  '@media (max-width:639.98px){main [class~="max-w-[22rem]"]{max-width:22rem}}@media (min-width:640px){main>section[data-wm-hero]{padding-top:8rem;padding-inline:1.5rem}main>section[data-wm-hero] h1{font-size:3rem}main [class~="sm:gap-4"]{gap:1rem}main [class~="sm:mt-16"]{margin-top:4rem}}',
+  '@media (min-width:768px){main>section[data-wm-hero] h1{font-size:4.5rem}}',
+].join('');
+
+const PAGE_CRITICAL_CSS = {
+  'index.html': CRITICAL_CSS + PRO_HERO_CRITICAL_CSS + PRO_CRITICAL_CSS,
+  'welcome.html': CRITICAL_CSS + WELCOME_HERO_CRITICAL_CSS,
+};
 
 // Flip each deferred preload to a real stylesheet on load, on error (retry a
 // failed fetch as a stylesheet), and after a timeout (covers browsers that
