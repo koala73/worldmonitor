@@ -1,5 +1,5 @@
 import { isSessionTokenShape, validateSessionToken } from './_session.js';
-import { timingSafeIncludes } from './_crypto.js';
+import { getOperatorKeys, timingSafeIncludes } from './_crypto.js';
 
 export const USER_API_KEY_GATEWAY_VALIDATION_ERROR = 'User API key requires gateway validation';
 
@@ -20,7 +20,7 @@ export function getHeaderApiKey(req) {
 
 async function isValidEnterpriseKey(key) {
   if (!key) return false;
-  const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
+  const validKeys = getOperatorKeys();
   return timingSafeIncludes(key, validKeys);
 }
 
@@ -60,20 +60,39 @@ async function validateCredential(key, forceKey) {
   return { valid: false, required: true, error: 'API key required' };
 }
 
-function getCookie(req, name) {
+// Every value sent for `name`, in the order the browser sent them. A browser
+// holding both a host-only and a Domain cookie of the same name sends both.
+function getCookies(req, name) {
   const raw = req.headers.get('Cookie') || req.headers.get('cookie') || '';
-  if (!raw) return '';
+  if (!raw) return [];
   const prefix = `${name}=`;
+  const values = [];
   for (const part of raw.split(';')) {
     const trimmed = part.trim();
     if (!trimmed.startsWith(prefix)) continue;
     try {
-      return decodeURIComponent(trimmed.slice(prefix.length));
+      values.push(decodeURIComponent(trimmed.slice(prefix.length)));
     } catch {
-      return trimmed.slice(prefix.length);
+      values.push(trimmed.slice(prefix.length));
     }
   }
-  return '';
+  return values.filter(Boolean);
+}
+
+function getCookie(req, name) {
+  return getCookies(req, name)[0] || '';
+}
+
+// First wm-session value that validates; otherwise the first value's result,
+// so the error still names the credential the browser led with.
+async function validateSessionCookies(sessionCookies, forceKey) {
+  let firstResult = null;
+  for (const cookie of sessionCookies) {
+    const result = await validateCredential(cookie, forceKey);
+    if (result.valid) return result;
+    firstResult ??= result;
+  }
+  return firstResult;
 }
 
 // Note: HTTP headers like Origin / Referer / Sec-Fetch-Site are entirely
@@ -98,7 +117,7 @@ function getCookie(req, name) {
 export async function validateApiKey(req, options = {}) {
   const forceKey = options.forceKey === true;
   const headerKey = getHeaderApiKey(req);
-  const sessionCookie = getCookie(req, 'wm-session');
+  const sessionCookies = getCookies(req, 'wm-session');
   const testerCookies = [getCookie(req, '__Host-wm-pro-key'), getCookie(req, '__Host-wm-widget-key')].filter(Boolean);
   const origin = req.headers.get('Origin') || '';
 
@@ -126,7 +145,7 @@ export async function validateApiKey(req, options = {}) {
   }
 
   if (headerKey) return validateCredential(headerKey, forceKey);
-  if (sessionCookie) return validateCredential(sessionCookie, forceKey);
+  if (sessionCookies.length) return validateSessionCookies(sessionCookies, forceKey);
 
   // Preserve the useful invalid-key error when the only credential is a stale
   // tester cookie. The fallback above applies only when valid anonymous

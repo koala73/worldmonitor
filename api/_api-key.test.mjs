@@ -114,22 +114,35 @@ test('dual wm-pro-key cookies use the first value sent by the browser', async ()
   assert.equal(r.kind, 'enterprise');
 });
 
-test('dual wm-session cookies use the first value sent by the browser', async () => {
-  // getCookie() is first-match. An invalid host-only wm-session listed first
-  // shadows a later valid Domain cookie — the production tombstone in
-  // api/wm-session.js exists so the browser should not send both after a mint.
+test('a stale wm-session cookie does not shadow a later valid one', async () => {
+  // Browsers send an older host-only wm-session before a newer
+  // Domain=.worldmonitor.app one. The tombstone in api/wm-session.js only
+  // clears it once the browser re-mints on the api host, so the reader must
+  // not stop at the first stale value.
   const { token } = await issueSessionToken();
-  const shadowed = await validateApiKey(makeReq({
-    cookie: `wm-session=wms_invalid; wm-session=${encodeURIComponent(token)}`,
-  }));
-  assert.equal(shadowed.valid, false, 'first-match keeps the invalid host-only cookie');
-  assert.equal(shadowed.error, 'Invalid session token');
+  for (const cookie of [
+    `wm-session=wms_invalid; wm-session=${encodeURIComponent(token)}`,
+    `wm-session=${encodeURIComponent(token)}; wm-session=wms_invalid`,
+  ]) {
+    const r = await validateApiKey(makeReq({ cookie }));
+    assert.equal(r.valid, true, cookie);
+    assert.equal(r.kind, 'session');
+  }
+});
 
-  const tombstoned = await validateApiKey(makeReq({
-    cookie: `wm-session=${encodeURIComponent(token)}`,
-  }));
-  assert.equal(tombstoned.valid, true, 'after tombstone only the valid Domain cookie remains');
-  assert.equal(tombstoned.kind, 'session');
+test('duplicate wm-session cookies that are all invalid stay rejected', async () => {
+  const r = await validateApiKey(makeReq({ cookie: 'wm-session=wms_invalid; wm-session=wms_also_invalid' }));
+  assert.equal(r.valid, false);
+  assert.equal(r.error, 'Invalid session token');
+});
+
+test('a valid duplicate wm-session cookie still cannot satisfy forceKey', async () => {
+  const { token } = await issueSessionToken();
+  const r = await validateApiKey(makeReq({
+    cookie: `wm-session=wms_invalid; wm-session=${encodeURIComponent(token)}`,
+  }), { forceKey: true });
+  assert.equal(r.valid, false);
+  assert.equal(r.error, 'Pro authentication required');
 });
 
 test('PR #3557 review: wms_ session token is REJECTED when forceKey=true (premium endpoints)', async () => {
@@ -342,6 +355,30 @@ test('REGRESSION: wm_-prefixed key in WORLDMONITOR_VALID_KEYS is honored as ente
     assert.equal(r.kind, 'enterprise', 'must be kind=enterprise so gateway skips entitlement check');
   } finally {
     process.env.WORLDMONITOR_VALID_KEYS = previous;
+  }
+});
+
+test('WORLDMONITOR_VALID_KEYS entries are trimmed like server/_shared/premium-check.ts', async () => {
+  // "k1, k2" authenticated k2 at the gateway's premium check but not here.
+  const previous = process.env.WORLDMONITOR_VALID_KEYS;
+  process.env.WORLDMONITOR_VALID_KEYS = ` ${ENTERPRISE_KEY} , spaced-operator-key ,`;
+  try {
+    for (const key of [ENTERPRISE_KEY, 'spaced-operator-key']) {
+      const r = await validateApiKey(makeReq({ key }));
+      assert.equal(r.valid, true, key);
+      assert.equal(r.kind, 'enterprise');
+    }
+    const { getOperatorKeys } = await import('./_crypto.js');
+    assert.deepEqual(getOperatorKeys(), [ENTERPRISE_KEY, 'spaced-operator-key']);
+  } finally {
+    process.env.WORLDMONITOR_VALID_KEYS = previous;
+  }
+});
+
+test('every api/ operator-key reader uses the shared trimming parser', async () => {
+  for (const rel of ['./_api-key.js', './_oauth-token.js', './mcp/auth.ts', './oauth/authorize.js', './oauth/token.ts']) {
+    const source = await readFile(new URL(rel, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /WORLDMONITOR_VALID_KEYS\s*\|\|/, `${rel} must call getOperatorKeys()`);
   }
 });
 
