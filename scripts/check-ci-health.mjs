@@ -55,10 +55,11 @@ export function jobSeconds(job) {
   return (Date.parse(job.completed_at) - Date.parse(job.started_at)) / 1000;
 }
 
-// Keep names readable but inert: no mentions, issue references, URLs (GitHub
-// autolinks bare ones), markup or table breaks.
+// Keep names readable but inert: no mentions, issue references, URLs, markup
+// or table breaks. GitHub autolinks a bare `www.` host even after `_`.
 export function safeLabel(value) {
-  const label = String(value ?? '').replace(/[^\w .,()+-]/g, '_').replace(/\s+/g, ' ').trim();
+  const label = String(value ?? '').replace(/[^\w .,()+-]/g, '_').replace(/www\./gi, 'www_')
+    .replace(/\s+/g, ' ').trim();
   return (label || '_').slice(0, 100);
 }
 
@@ -285,7 +286,11 @@ export function collect({ gh, repository, now }) {
       .flatMap((date) => listRuns(gh, repository, workflow, `created=${date}`))
       .filter((run) => Date.parse(run.created_at) >= eventStart && run.status === 'completed');
 
-    for (const run of window.filter((item) => item.run_attempt > 1).slice(0, RERUNS_PER_WORKFLOW)) {
+    // Days are read oldest first; the cap keeps the newest re-runs.
+    const newestReruns = window.filter((item) => item.run_attempt > 1)
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+      .slice(0, RERUNS_PER_WORKFLOW);
+    for (const run of newestReruns) {
       reruns.push({ run, attempts: allAttempts(run) });
     }
     // A timed-out attempt survives a later successful re-run, so every

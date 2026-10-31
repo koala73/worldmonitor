@@ -113,6 +113,9 @@ describe('flaky detector', () => {
       assert.doesNotMatch(text, /[@[\]<>|#]|https?:|evil\.example\//);
     }
     assert.equal(safeLabel('unit-shard (5)'), 'unit-shard (5)');
+    for (const host of ['www.evil.example', 'Test_www.evil.example', 'x WWW.Evil.example']) {
+      assert.doesNotMatch(safeLabel(host), /www\./i, host);
+    }
     assert.equal(safeLabel('x'.repeat(300)).length, 100);
   });
 
@@ -278,6 +281,28 @@ describe('collection against a fake GitHub API', () => {
     const { findings, actions } = checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true });
     assert.deepEqual(findings.map((finding) => finding.title), ['CI health (flaky): Test / sidecar']);
     assert.deepEqual(actions, []);
+  });
+
+  it('keeps the newest re-runs when the per-workflow cap applies', () => {
+    const attempts = {};
+    const daily = {};
+    // 61 re-runs: one on Oct 25 (oldest), sixty on Oct 31. Only the oldest flakes.
+    daily['2026-10-25'] = [run({ id: 1000, run_attempt: 2, created_at: '2026-10-25T10:00:00Z' })];
+    attempts['1000/1'] = [job('old', 'failure', 40)];
+    attempts['1000/2'] = [job('old', 'success')];
+    daily['2026-10-31'] = Array.from({ length: 60 }, (_, index) => {
+      const id = 2000 + index;
+      attempts[`${id}/1`] = [job('new', 'success')];
+      attempts[`${id}/2`] = [job('new', 'success')];
+      return run({ id, run_attempt: 2, created_at: `2026-10-31T0${Math.floor(index / 10)}:${String(index % 10).padStart(2, '0')}:00Z` });
+    });
+    daily['2026-10-31'][59] = { ...daily['2026-10-31'][59], id: 3000 };
+    attempts['3000/1'] = [job('newest', 'failure', 40)];
+    attempts['3000/2'] = [job('newest', 'success')];
+    const { gh } = fakeGh({ daily, attempts });
+    assert.deepEqual(checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true }).findings.map((finding) => finding.title), [
+      'CI health (flaky): Test / newest',
+    ]);
   });
 
   it('keeps a timeout from an earlier attempt that a later re-run turned green', () => {
