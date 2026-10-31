@@ -96,8 +96,9 @@ function readBody(uri, id = 100) {
 // reporting. Keeping innerHTML as a throwing setter turns the harness into an
 // executable injection guard rather than another source-regex assertion.
 function mountWidgetHtml(html) {
-  class TestElement {
+  class TestElement extends EventTarget {
     constructor(tagName, id = '') {
+      super();
       this.tagName = String(tagName).toUpperCase();
       this.id = id;
       this.className = '';
