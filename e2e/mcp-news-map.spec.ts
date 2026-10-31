@@ -16,7 +16,7 @@ const payload = { categories: {
 }, feedStatuses: {}, generatedAt: new Date().toISOString() };
 const hazards = { structuredContent: { data: {
   earthquakes: { earthquakes: [
-    { id: 'fixture-quake', place: 'Fixture Berlin', magnitude: 5.1, depthKm: 10, location: { latitude: 52.5, longitude: 13.4 }, occurredAt: Date.now(), sourceUrl: 'https://example.com/quake', source: 'USGS fixture', category: 'earthquake' },
+    { id: 'fixture-quake', place: 'Fixture Berlin', magnitude: 5.1, depthKm: 10, location: { latitude: 52.5, longitude: 13.4 }, occurredAt: Date.now(), sourceUrl: 'https://example.com/quake', source: 'usgs' },
     { id: 'invalid-quake', location: { latitude: 999, longitude: 13.4 } },
   ] },
   events: { dataAvailable: true, events: [{ id: 'fixture-flood', title: 'Fixture flood', category: 'floods', categoryTitle: 'Floods', lat: 50, lon: 10, date: Date.now(), sourceUrl: 'https://example.com/flood', sourceName: 'Fixture', closed: false }] },
