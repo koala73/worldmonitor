@@ -590,3 +590,18 @@ test('repeat invalid_query failures from already-failing countries do not abando
   assert.match(regression.logs, /CIRCUIT-BREAKER: \d+% of batch 1 rejected as invalid_query/);
   assert.match(regression.logs, /Skipping remaining \d+ batches/);
 });
+
+// One known member must not make the whole batch known: CN is decision-critical
+// and therefore always in batch 1. Giving only CN the history leaves the rest of
+// batch 1 fresh, and their 7-of-8 failures are still a regression signal.
+test('failure history exempts only the member that carries it, not its batch', () => {
+  const input = fixtures();
+  for (const [, code] of countries) {
+    input[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
+    input[`${PREFIX}${code}`].asof = '2026-09-08';
+  }
+  input[`${PREFIX}CN`].refreshFailure = { code: 'invalid_query', consecutiveFailures: 4, lastAttemptAt: NOW - DAY / 2 };
+  const result = runProducer(input, 'invalid-query');
+  assert.match(result.logs, /CIRCUIT-BREAKER: \d+% of batch 1 rejected as invalid_query/);
+  assert.match(result.logs, /Skipping remaining \d+ batches/);
+});
