@@ -13,10 +13,12 @@ WorldMonitor 为所有客户端提供同一个托管 MCP 服务器：`https://wo
 
 ```bash
 git clone https://github.com/koala73/worldmonitor
-agy plugin validate --strict ./worldmonitor
+agy plugin validate ./worldmonitor
 agy plugin install ./worldmonitor
 agy plugin list
 ```
+
+验证仓库时，`AGENTS.md`、`mcp.json` 和根目录的 `plugin.json` 会产生兼容性警告。Antigravity 使用 `.antigravity-plugin/plugin.json`、`mcp_config.json` 和 `skills/`；其他文件用于仓库开发和其他客户端。提交 Marketplace 前，需将 Antigravity 清单、README、图标、MCP 配置和技能整理为独立插件包，再运行 `agy plugin validate --strict <bundle-directory>`，确保错误和警告均为零。
 
 Marketplace 上架后，可使用 `agy plugin install worldmonitor@antigravity-plugins-official` 安装。
 

@@ -13,10 +13,12 @@ The repository ships an Antigravity plugin manifest at `.antigravity-plugin/plug
 
 ```bash
 git clone https://github.com/koala73/worldmonitor
-agy plugin validate --strict ./worldmonitor
+agy plugin validate ./worldmonitor
 agy plugin install ./worldmonitor
 agy plugin list
 ```
+
+Validation of the repository reports compatibility warnings for `AGENTS.md`, `mcp.json`, and the root `plugin.json`. Antigravity uses `.antigravity-plugin/plugin.json`, `mcp_config.json`, and `skills/`; the other files support repository development and other clients. Before Marketplace submission, prepare a standalone bundle with the Antigravity manifest, README, logo, MCP configuration, and skills, then run `agy plugin validate --strict <bundle-directory>` and require zero errors and warnings.
 
 When the Marketplace listing is live, install it with `agy plugin install worldmonitor@antigravity-plugins-official`.
 
