@@ -1293,17 +1293,12 @@ Recovery is accepted only when:
 |---|---|
 | **Service name** | `seed-bundle-energy-sources` |
 | **Start command** | `node scripts/seed-bundle-energy-sources.mjs` |
-| **Cron schedule** | `*/10 * * * *` (every ten minutes; registry target) |
+| **Cron schedule** | `30 7 * * *` (daily 07:30 UTC) |
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 6 services |
 | **Net savings** | 5 slots |
-| **Members** | GIE Gas Storage, Gas Storage Countries, JODI Gas/Oil, Oil-Trade-Series, OWID Energy Mix, IEA Oil Stocks, EIA Petroleum, crisis/SPR policies, pipelines/storage registries, fuel shortages/disruptions; PGCB, Petrobangla, NISO, Eskom, CAMMESA, GSE, ONS and ANP. Each member retains its own interval gate. |
+| **Members** | GIE Gas Storage (daily), Gas Storage Countries (daily), JODI Gas (monthly), JODI Oil (monthly), Oil-Trade-Series (weekly), OWID Energy Mix (monthly), IEA Oil Stocks (monthly) |
 | **Required env** | `COMTRADE_API_KEYS` for the weekly Oil-Trade-Series Comtrade mirror lane. Without it, the other oil sources can publish while all mirrors report `unavailable`. |
-
-The existing service uses a 570-second budget and durable rotating first
-priority. No new service is required. See [regional energy feeds](regional-energy-feeds.md)
-for the scheduling bounds, source contracts and activation checks. Confirm the
-live schedule only after an authorized rollout.
 
 #### Activate the oil-trade mirror lane
 
@@ -1518,6 +1513,35 @@ entries.
 | seed-consumer-prices | `2a369c41-cc5c-486a-a8d7-f0ca552e27a8` | Scraper |
 | seed-consumer-prices-publish | `4492a338-cb37-40da-9e98-95a8d67e49c9` | Redis publisher |
 | seed-consumer-aggregate | `4fdd1078-7884-48f8-92fc-06b390d0fdc4` | Index calculator |
+
+### Regional energy feeds: seed-bundle-regional-energy (planned, #9842)
+
+The regional grid and fuel feeds run in their own service. The daily
+`seed-bundle-energy-sources` cron keeps its 07:30 UTC cadence, and a failing
+regional host retries only on this service's ticks.
+
+| Setting | Value |
+|---|---|
+| **Service name** | `seed-bundle-regional-energy` |
+| **Start command** | `node scripts/seed-bundle-regional-energy.mjs` |
+| **Cron schedule** | `*/15 * * * *` (every fifteen minutes) |
+| **Lifecycle** | planned — create the Railway service before removing `lifecycle: planned` from `scripts/railway-services.json` and from the exact list in `tests/railway-watch-path-audit.test.mjs` |
+| **Members** | PGCB, Petrobangla, NISO, Eskom, CAMMESA, GSE, ONS and ANP. Each keeps its own interval gate from `scripts/shared/regional-energy-feeds.json`. |
+| **Wall-time budget** | `maxBundleMs: 570_000`; each member reserves 120 s plus kill grace |
+| **Required variable** | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` |
+| **Heartbeat** | `bundle:heartbeat:regional-energy` |
+
+The scheduler claims `bundle:turn:regional-energy` under a 15-minute lease and
+rotates the lead group by four members per completed tick. Four members fit one
+tick even when all of them time out, so every member leads within
+`ceil(members / 4)` completed ticks. A Redis outage or a held lease defers the
+tick without advancing the turn.
+
+Health stays soft for each feed until its first successful publication writes
+`seed-activated:energy:regional-<id>`. Creating the service is therefore safe
+before the first tick, and no probe turns strict before the cron runs. See
+[regional energy feeds](regional-energy-feeds.md) for source contracts and
+acceptance checks.
 
 ### Standalone seed crons (43, not bundled)
 

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { X509Certificate } from 'node:crypto';
 import { rootCertificates } from 'node:tls';
 import { execFileSync } from 'node:child_process';
-import { orderEnergySections } from '../scripts/_energy-bundle-order.mjs';
+import { orderRegionalEnergySections, REGIONAL_ENERGY_LEAD_GROUP_SIZE } from '../scripts/_regional-energy-order.mjs';
 import { claimBundleTurn, acknowledgeBundleTurn } from '../scripts/_bundle-turn.mjs';
 import { extractBundleSections } from './helpers/bundle-section-parser.mjs';
 import { sectionWorstCaseMs, BUNDLE_PREFLIGHT_HEADROOM_MS } from '../scripts/_bundle-runner.mjs';
@@ -35,53 +35,59 @@ describe('regional energy source observations', () => {
     `], { cwd: new URL('../', import.meta.url), timeout: 5000 });
   });
 
-  it('gives every source a turn in the existing service even after persistent timeouts', () => {
-    const source = readFileSync(new URL('../scripts/seed-bundle-energy-sources.mjs', import.meta.url), 'utf8');
+  it('runs every regional feed in its own service and gives each a lead turn after persistent timeouts', () => {
+    const source = readFileSync(new URL('../scripts/seed-bundle-regional-energy.mjs', import.meta.url), 'utf8');
     const sections = extractBundleSections(source).map(section => ({ ...section, timeoutMs: Number(section.timeoutMsExpr.replaceAll('_', '')) }));
-    const regional = sections.filter(section => section.label.startsWith('Regional-Energy-'));
-    const legacy = sections.filter(section => !section.label.startsWith('Regional-Energy-'));
-    assert.deepEqual(regional.map(section => section.label.replace('Regional-Energy-', '')).sort(), feeds.map(feed => feed.id).sort());
+    assert.deepEqual(sections.map(section => section.label), feeds.map(feed => `Regional-Energy-${feed.id}`));
+    for (const feed of feeds) {
+      const section = sections.find(s => s.label === `Regional-Energy-${feed.id}`);
+      assert.equal(section.script, feed.script);
+      assert.equal(Number(section.intervalMsExpr), feed.intervalMin * 60_000);
+    }
     assert.match(source, /maxBundleMs: 570_000/);
     assert.match(source, /prefetchFreshness: true/);
-    assert.match(source, /onTerminalComplete:[\s\S]*acknowledgeBundleTurn/);
+    assert.match(source, /claimBundleTurn\('regional-energy'\)/);
+    assert.match(source, /onTerminalComplete:[\s\S]*acknowledgeBundleTurn\('regional-energy', claim\)/);
+
+    const energy = readFileSync(new URL('../scripts/seed-bundle-energy-sources.mjs', import.meta.url), 'utf8');
+    assert.doesNotMatch(energy, /Regional-Energy-|seed-regional-energy-/, 'regional feeds must not ride the daily energy-sources bundle');
     const registry = JSON.parse(readFileSync(new URL('../scripts/railway-services.json', import.meta.url), 'utf8'));
-    assert.equal(registry.some(service => service.service.startsWith('seed-bundle-regional-energy-')), false);
-    assert.equal(registry.find(service => service.service === 'seed-bundle-energy-sources').cronSchedule, '*/10 * * * *');
-    const offered = new Set();
-    let cycleRegional = new Set();
-    for (let turn = 0; turn < 3 * legacy.length; turn++) {
-      const ordered = orderEnergySections(sections, turn);
+    const service = registry.find(entry => entry.service === 'seed-bundle-regional-energy');
+    assert.equal(service?.entry, 'scripts/seed-bundle-regional-energy.mjs');
+    assert.equal(service.cronSchedule, '*/15 * * * *');
+    assert.equal(registry.find(entry => entry.service === 'seed-bundle-energy-sources').cronSchedule, undefined);
+    for (const feed of feeds) assert.ok(service.watchPatterns.includes(`scripts/${feed.script}`));
+    // Health tolerates three intervals; the cron must leave room for a late tick.
+    assert.ok(Math.min(...feeds.map(feed => feed.intervalMin)) * 3 >= 3 * 15);
+
+    const groups = Math.ceil(sections.length / REGIONAL_ENERGY_LEAD_GROUP_SIZE);
+    const ledWithin = new Map(sections.map(section => [section.label, Infinity]));
+    for (let turn = 0; turn < 2 * sections.length; turn++) {
+      const ordered = orderRegionalEnergySections(sections, turn);
       assert.equal(new Set(ordered).size, sections.length);
-      const priority = ordered.slice(0, turn % 3 === 2 ? 1 : 4);
-      const worstCase = priority.reduce((total, section) => total + sectionWorstCaseMs(section), BUNDLE_PREFLIGHT_HEADROOM_MS);
-      assert.ok(worstCase <= 560_000, `priority work must fit together: ${worstCase}`);
-      priority.forEach(section => offered.add(section.label));
-      if (turn % 3 !== 2) {
-        assert.ok(priority.every(section => section.label.startsWith('Regional-Energy-')));
-        priority.forEach(section => cycleRegional.add(section.label));
-      } else {
-        assert.equal(cycleRegional.size, 8, 'every regional feed must lead within three completed ticks');
-        cycleRegional = new Set();
-      }
+      const lead = ordered.slice(0, REGIONAL_ENERGY_LEAD_GROUP_SIZE);
+      const worstCase = lead.reduce((total, section) => total + sectionWorstCaseMs(section), BUNDLE_PREFLIGHT_HEADROOM_MS);
+      assert.ok(worstCase <= 560_000, `lead group must fit one tick even when every member times out: ${worstCase}`);
+      for (const section of lead) ledWithin.set(section.label, Math.min(ledWithin.get(section.label), turn + 1));
     }
-    assert.deepEqual([...offered].sort(), sections.map(section => section.label).sort());
+    for (const [label, ticks] of ledWithin) assert.ok(ticks <= groups, `${label} first led after ${ticks} ticks; expected at most ${groups}`);
   });
 
-  it('uses a separate durable energy turn and advances it only on terminal acknowledgement', async () => {
+  it('uses its own durable turn and advances it only on terminal acknowledgement', async () => {
     const commands = [];
     const options = {
       credentials: { restUrl: 'https://redis.example', token: 'fixture' },
-      token: 'energy-turn',
+      token: 'regional-turn',
       fetchImpl: async (_url, init) => {
         commands.push(JSON.parse(init.body));
         return Response.json({ result: commands.length === 1 ? [1, '2'] : 1 });
       },
     };
-    const claim = await claimBundleTurn('energy-sources', options);
-    assert.deepEqual(claim, { turn: 2, token: 'energy-turn' });
+    const claim = await claimBundleTurn('regional-energy', options);
+    assert.deepEqual(claim, { turn: 2, token: 'regional-turn' });
     assert.equal(commands.length, 1);
-    assert.deepEqual(commands[0].slice(3, 5), ['bundle:turn:energy-sources', 'bundle:turn:energy-sources:lease']);
-    assert.equal(await acknowledgeBundleTurn('energy-sources', claim, options), true);
+    assert.deepEqual(commands[0].slice(3, 5), ['bundle:turn:regional-energy', 'bundle:turn:regional-energy:lease']);
+    assert.equal(await acknowledgeBundleTurn('regional-energy', claim, options), true);
     assert.deepEqual(commands[1].slice(3, 5), commands[0].slice(3, 5));
   });
 

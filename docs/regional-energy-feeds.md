@@ -56,28 +56,27 @@ missing or stale data stays strict, even after its cache TTL expires.
 The MCP headline energy tool does not yet expose the regional series; the
 omission is recorded in its parity exclusions.
 
-The existing `seed-bundle-energy-sources` service owns all eight writers.
-Its registry target is every ten minutes; each feed keeps its own interval gate.
-A durable leased turn rotates first priority between four grid feeds (PGCB,
-NISO, CAMMESA, ONS), four report feeds (Petrobangla, Eskom, GSE, ANP), and the
-existing energy members. Each regional group gets first priority every three
-completed ticks, normally thirty minutes. The legacy lead rotates within its
-group, so all fifteen legacy members get a first-priority slot within forty-five
-completed ticks, normally seven and a half hours. Successful recent members are
-skipped by their existing freshness gates.
+The `seed-bundle-regional-energy` service owns all eight writers. It runs every
+fifteen minutes, and each feed keeps its own interval gate. The daily
+`seed-bundle-energy-sources` service is unchanged, so a failing regional host
+retries only on this service's ticks.
 
 Every tick has a 570-second budget. Each regional child has a 120-second
 lifecycle deadline, including an 80-second fetch deadline and forty-second
 publish/cleanup reserve. Four timeout-plus-grace reservations and concurrent
-freshness preflight total 540 seconds, so every member of the priority regional
-group can run even when all four time out. The longest existing child deadlines
-are 530 seconds, leaving room for termination and preflight when legacy work
-leads. A failed completed tick still advances the turn. An interrupted tick keeps
-its turn for replay after the fifteen-minute lease expires. Redis outages or an
-already-held scheduler lease defer the tick without advancing its turn.
+freshness preflight total 540 seconds, so a lead group of four can run even
+when all four time out. A durable leased turn rotates the lead group by four
+members per completed tick, so every feed leads within `ceil(members / 4)`
+completed ticks. A failed completed tick
+still advances the turn. An interrupted tick keeps its turn for replay after
+the fifteen-minute lease expires. Redis outages or an already-held scheduler
+lease defer the tick without advancing its turn.
 
-This adds no Railway service. Slow or failed sources retain last-good data.
-After an authorized rollout, confirm the actual Railway schedule and image commit,
+The service lands as `planned` in `scripts/railway-services.json`; creating it
+is an operator step. Health stays soft for each feed until its first successful
+publication writes the activation marker, so the probes cannot alarm before the
+service exists. Slow or failed sources retain last-good data.
+After an authorized rollout, confirm the Railway service, schedule and image commit,
 then observe two natural scheduling rotations and at least one daily run. Check logs for
 `Regional-Energy-` and `regional-`, health metadata/record counts, and the profile
 for each of BD, NG, ZA, AR, GE and BR. Require source-dated values and valid
@@ -86,7 +85,7 @@ Monthly feeds need a later natural publication to prove report rollover.
 
 On repeated HTTP/parser failures or non-advancing observations, retain last-good
 data, inspect the linked provider artifact, and mark the rollout unaccepted.
-The deploying operator owns validation. Roll back the existing bundle image and schedule together if publication fails. Do not clear caches to conceal failures.
+The deploying operator owns validation. Roll back the regional service image and schedule together if publication fails. Do not clear caches to conceal failures.
 
 ## Bangladesh certificate chains
 
