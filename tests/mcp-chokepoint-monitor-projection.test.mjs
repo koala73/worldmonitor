@@ -49,7 +49,7 @@ describe('Chokepoint Monitor local route details', () => {
         assert.equal(details[1].open, false);
         const control = details[0].querySelector('summary');
         assert.equal(control.getAttribute('aria-label'), 'Route details for Hormuz');
-        assert.equal(details[1].querySelector('summary').getAttribute('aria-label'), 'Route details for Suez');
+        assert.equal(details[1].querySelector('summary').getAttribute('aria-label'), 'Route details for Suez Canal');
         const before = messages.filter(message => message.method === 'ui/notifications/size-changed').length;
         control.click();
         assert.equal(details[0].open, true);
@@ -58,7 +58,7 @@ describe('Chokepoint Monitor local route details', () => {
           'Cargo, last 24 hours': '12', 'Other, last 24 hours': '2',
           'Reported incidents, 7 days': '7', 'Reported disruption': '12.5%', 'Reported anomaly signal': 'Yes',
         });
-        assert.equal(details[0].querySelector('.csum').textContent, 'Summary fetched: 2026-10-04T12:00:00.000Z');
+        assert.equal(details[0].querySelector('.csum').textContent, 'Summary fetched: 4 Oct 2026, 12:00 UTC');
         control.click();
         assert.equal(details[0].open, false);
         await document.defaultView.happyDOM.waitUntilComplete();
@@ -81,7 +81,7 @@ describe('Chokepoint Monitor local route details', () => {
         'Cargo, last 24 hours': '—', 'Other, last 24 hours': '—',
         'Reported incidents, 7 days': '—', 'Reported disruption': '—', 'Reported anomaly signal': 'Unknown',
       });
-      assert.match(rows(document)[0].textContent, /PortWatch history unavailable/);
+      assert.match(rows(document)[0].textContent, /No weekly history, so the weekly change is unknown\./);
     });
   });
 
@@ -121,7 +121,7 @@ describe('Chokepoint Monitor local route details', () => {
       assert.notEqual(replacement, old);
       assert.equal(old.isConnected, false);
       assert.equal(replacement.open, false);
-      assert.equal(replacement.querySelector('summary').getAttribute('aria-label'), 'Route details for ' + hostile);
+      assert.equal(replacement.querySelector('summary').getAttribute('aria-label'), 'Route details for <img Src=x Onerror=alert(1)>');
       assert.equal(values(replacement)['Cargo, last 24 hours'], '0');
       assert.equal(document.querySelectorAll('#rows img, #rows script, #rows a').length, 0);
       send(result(payload(Object.fromEntries(Array.from({ length: 25 }, (_, index) => ['route_' + index, supplied]))), true));
