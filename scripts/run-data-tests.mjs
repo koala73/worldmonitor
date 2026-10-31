@@ -58,11 +58,19 @@ export async function main(args) {
       'built-output': { type: 'string', default: 'all' },
       timings: { type: 'string' },
       'test-name-pattern': { type: 'string' },
+      // Milliseconds one file may run. The slowest measured file takes ~36s, and
+      // a single test already fails at 120s, so 300s only catches files that
+      // never exit.
+      'file-timeout': { type: 'string', default: '300000' },
     },
   });
   if (!/^[1-9]\d*$/.test(values.concurrency) || !Number.isSafeInteger(Number(values.concurrency))) {
     throw new Error('Concurrency must be a positive integer');
   }
+  if (!/^[1-9]\d*$/.test(values['file-timeout']) || !Number.isSafeInteger(Number(values['file-timeout']))) {
+    throw new Error('--file-timeout must be a positive integer of milliseconds');
+  }
+  const fileTimeout = Number(values['file-timeout']);
   let index = 1;
   let total = 1;
   if (values.shard) {
@@ -95,6 +103,17 @@ export async function main(args) {
   delete env.NODE_TEST_CONTEXT;
   const timingFd = values.timings ? openSync(values.timings, 'w') : undefined;
   let success = false;
+  // node:test's `timeout` is per test. A file whose tests all pass but which
+  // leaves a handle open (a timer, a socket) never exits, and the run waits on
+  // it silently until the CI job is killed. Abort the run and name the file.
+  const abort = new AbortController();
+  const running = new Map();
+  let overdue = [];
+  const watchdog = setInterval(() => {
+    const now = Date.now();
+    overdue = [...running].filter(([, started]) => now - started > fileTimeout).map(([file]) => file);
+    if (overdue.length) abort.abort();
+  }, Math.min(5000, fileTimeout));
   try {
     const events = run({
       files: selected.map((file) => resolve(file)),
@@ -103,6 +122,14 @@ export async function main(args) {
       execArgv: ['--import', 'tsx'],
       testNamePatterns: values['test-name-pattern'],
       env,
+      signal: abort.signal,
+    });
+    // A file-level test is the one whose name is its own path.
+    events.on('test:dequeue', (data) => {
+      if (data.file && data.name === data.file) running.set(data.file, Date.now());
+    });
+    events.on('test:complete', (data) => {
+      if (data.file && data.name === data.file) running.delete(data.file);
     });
     events.on('test:summary', (data) => {
       if (!data.file) success = data.success;
@@ -114,8 +141,15 @@ export async function main(args) {
       })}\n`);
     });
     await pipeline(events, new spec(), process.stdout, { end: false });
+    if (overdue.length) {
+      for (const file of overdue) {
+        console.error(`Data test file still running after --file-timeout=${fileTimeout}ms (a test hung or a handle was left open): ${relative(process.cwd(), file).split(sep).join('/')}`);
+      }
+      return 1;
+    }
     return success ? 0 : 1;
   } finally {
+    clearInterval(watchdog);
     if (timingFd !== undefined) closeSync(timingFd);
   }
 }
