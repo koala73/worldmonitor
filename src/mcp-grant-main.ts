@@ -206,11 +206,34 @@ function resetMintPhase(): void {
 }
 
 const CONTEXT_AUTO_RETRY_BUDGET = 1;
+const CONTEXT_LOAD_TIMEOUT_MS = 30_000;
 let contextLoadGeneration = 0;
+let contextLoadInFlight: { generation: number; userId: string | undefined; promise: Promise<void> } | null = null;
 
 async function loadContext(nonce: string): Promise<void> {
+  const userId = getCurrentClerkUser()?.id;
+  if (contextLoadInFlight?.generation === contextLoadGeneration && contextLoadInFlight.userId === userId) return contextLoadInFlight.promise;
   const generation = ++contextLoadGeneration;
-  await loadContextAttempt(nonce, CONTEXT_AUTO_RETRY_BUDGET, generation);
+  let timeout: number | undefined;
+  const deadline = new Promise<void>(resolve => {
+    timeout = window.setTimeout(() => {
+      if (generation === contextLoadGeneration) {
+        contextLoadGeneration += 1;
+        if (mintPhase === 'idle' || !$('loading').hidden) {
+          showRetryableContextView('The authorization service took too long to respond. Try again.');
+        }
+      }
+      resolve();
+    }, CONTEXT_LOAD_TIMEOUT_MS);
+  });
+  const promise = Promise.race([loadContextAttempt(nonce, CONTEXT_AUTO_RETRY_BUDGET, generation), deadline]);
+  contextLoadInFlight = { generation, userId, promise };
+  try {
+    await promise;
+  } finally {
+    window.clearTimeout(timeout);
+    if (contextLoadInFlight?.promise === promise) contextLoadInFlight = null;
+  }
 }
 
 async function loadContextAttempt(
@@ -240,6 +263,7 @@ async function loadContextAttempt(
   if (!resp.ok) {
     let body: ApiError | null = null;
     try { body = (await resp.json()) as ApiError; } catch { /* ignore */ }
+    if (generation !== contextLoadGeneration) return;
     const verdict = classifyGrantDenial(resp.status, body?.error);
     const action = routeGrantContextDenial(verdict.action, mintPhase, retriesRemaining);
     switch (action) {

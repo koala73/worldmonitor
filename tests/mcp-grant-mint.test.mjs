@@ -20,6 +20,7 @@ import { signGrant, verifyGrant, readGrantSecret, GrantConfigError } from '../ap
 import { mintGrantHandler } from '../api/internal/mcp-grant-mint.ts';
 import { grantContextHandler } from '../api/internal/mcp-grant-context.ts';
 import { isAllowedRedirectUri } from '../api/oauth/_redirect-uri.js';
+import { OAUTH_BIND_COOKIE, hashOAuthBindValue } from '../api/oauth/_browser-binding.js';
 
 const FIXED_NOW = 1_700_000_000_000; // arbitrary, far past Y2K
 
@@ -46,11 +47,18 @@ afterEach(() => {
   else process.env.CONVEX_SERVER_SHARED_SECRET = ORIGINAL_CONVEX_SECRET;
 });
 
+// Every nonce is bound to the browser that started the flow; the requests
+// below carry that browser's cookie (tests/oauth-browser-binding.test.mjs
+// covers the refusals).
+const BIND_VALUE = 'b'.repeat(43);
+const BIND_COOKIE_HEADER = `${OAUTH_BIND_COOKIE}=${BIND_VALUE}`;
+
 const BASE_NONCE_DATA = {
   client_id: 'client_abc',
   redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
   code_challenge: 'a'.repeat(43),
   state: '',
+  bind_hash: await hashOAuthBindValue(BIND_VALUE),
   created_at: FIXED_NOW - 1000,
 };
 
@@ -143,7 +151,7 @@ function makeContextDeps(overrides = {}) {
 function makePostReq(body) {
   return new Request('https://worldmonitor.app/api/internal/mcp-grant-mint', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer fake-jwt' },
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer fake-jwt', cookie: BIND_COOKIE_HEADER },
     body: JSON.stringify(body),
   });
 }
@@ -154,7 +162,7 @@ function makeGetReq(nonce) {
     : `https://worldmonitor.app/api/internal/mcp-grant-context`;
   return new Request(url, {
     method: 'GET',
-    headers: { Authorization: 'Bearer fake-jwt' },
+    headers: { Authorization: 'Bearer fake-jwt', cookie: BIND_COOKIE_HEADER },
   });
 }
 
