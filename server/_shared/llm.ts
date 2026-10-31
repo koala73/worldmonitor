@@ -46,6 +46,7 @@ export interface ProviderCredentials {
 
 const PROVIDER_CHAIN = [
   'ollama',
+  'minimax',
   'openrouter',
   'openrouter-free',
   'openrouter-free-backup',
@@ -148,6 +149,19 @@ export function getProviderCredentials(
       model: overrides.model || process.env.OLLAMA_MODEL || 'llama3.1:8b',
       headers,
       extraBody: { reasoning_effort: 'none' },
+    };
+  }
+
+  if (provider === 'minimax') {
+    const apiKey = process.env.MINIMAX_API_KEY;
+    if (!apiKey) return null;
+    return {
+      apiUrl: 'https://api.minimax.io/v1/chat/completions',
+      model: overrides.model || process.env.MINIMAX_MODEL || 'MiniMax-M3.1-Flash',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
     };
   }
 
