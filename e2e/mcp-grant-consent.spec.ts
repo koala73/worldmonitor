@@ -53,7 +53,7 @@ const HOSTILE_REDIRECTS: ReadonlyArray<[label: string, redirect: string]> = [
  */
 async function stubClerkModule(
   page: Page,
-  opts: { trackSignIn?: boolean; signedOut?: boolean; tokenUpdates?: boolean } = {},
+  opts: { trackSignIn?: boolean; signedOut?: boolean; tokenUpdates?: boolean; stallFirstToken?: boolean } = {},
 ): Promise<void> {
   const openSignInBody = opts.trackSignIn ? 'window.__openSignInCalled = true;' : '';
   // Signed-out mode models the real Clerk modal as a `.cl-modalBackdrop` node:
@@ -89,7 +89,11 @@ async function stubClerkModule(
         // The grant page sends the STANDARD session token (it carries \`sid\`,
         // which /api/internal/mcp-grant-mint checks for liveness); a missing
         // export here fails ESM linking and the page never boots.
+        let tokenRequests = 0;
         export async function getClerkSessionToken() {
+          if (${Boolean(opts.stallFirstToken)} && ++tokenRequests === 1) {
+            await new Promise(resolve => { window.__releaseClerkToken = resolve; });
+          }
           if (${Boolean(opts.tokenUpdates)}) {
             await new Promise(resolve => setTimeout(resolve, 10));
             window.__emitClerkSubscription?.();
@@ -334,6 +338,52 @@ function stubMintRedirect(
 }
 
 test.describe('MCP grant consent page (#5654)', () => {
+  for (const stalledStage of ['token', 'context'] as const) {
+    test(`a stalled ${stalledStage} load offers retry and ignores its late denial`, async ({ page }, testInfo) => {
+      await page.clock.install();
+      await stubClerkModule(page, { stallFirstToken: stalledStage === 'token' });
+      let releaseContext: () => void = () => {};
+      const held = new Promise<void>(resolve => { releaseContext = resolve; });
+      let requests = 0;
+      await page.route('**/api/internal/mcp-grant-context*', async route => {
+        const requestNumber = ++requests;
+        if (stalledStage === 'context' && requestNumber === 1) await held;
+        if ((stalledStage === 'context' && requestNumber === 1) || (stalledStage === 'token' && requestNumber === 2)) {
+          await route.fulfill({ status: 403, json: { error: 'INSUFFICIENT_TIER' } });
+        } else {
+          await route.fulfill({ json: { client_name: 'OpenAI review', redirect_host: 'platform.openai.com' } });
+        }
+      });
+      await page.goto(GRANT_PAGE);
+      if (stalledStage === 'token') {
+        await page.waitForFunction(() => typeof (window as unknown as { __releaseClerkToken?: unknown }).__releaseClerkToken === 'function');
+      } else {
+        await expect.poll(() => requests).toBe(1);
+      }
+      await page.clock.fastForward(30_001);
+      await expect(page.locator('#retryContextBtn')).toBeVisible();
+      await expect(page.locator('#loading')).toBeHidden();
+      if (stalledStage === 'context') {
+        await page.screenshot({ path: testInfo.outputPath('consent-timeout-desktop.png'), fullPage: true });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.screenshot({ path: testInfo.outputPath('consent-timeout-mobile.png'), fullPage: true });
+      }
+      await page.locator('#retryContextBtn').click();
+      await expect(page.locator('#consent')).toBeVisible();
+      const lateDenial = page.waitForResponse(response => response.url().includes('/mcp-grant-context') && response.status() === 403);
+      if (stalledStage === 'token') {
+        await page.evaluate(() => (window as unknown as { __releaseClerkToken: () => void }).__releaseClerkToken());
+      } else {
+        releaseContext();
+      }
+      await lateDenial;
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await expect(page.locator('#consent')).toBeVisible();
+      await expect(page.locator('#errorView')).toBeHidden();
+      expect(requests).toBe(2);
+    });
+  }
+
   test('token resolution updates do not restart the pending consent load', async ({ page }, testInfo) => {
     await stubClerkModule(page, { tokenUpdates: true });
     let contextRequests = 0;
