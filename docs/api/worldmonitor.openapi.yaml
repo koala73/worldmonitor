@@ -56168,7 +56168,9 @@ components:
                 cacheKey:
                     type: string
                     description: Deterministic cache key computed by buildSummaryCacheKey().
-            description: GetSummarizeArticleCacheRequest looks up a pre-computed summary by cache key.
+            description: |-
+                GetSummarizeArticleCacheRequest looks up a pre-computed summary by cache key.
+                 CI probe: parallel proto checks (throwaway, never merged).
         worldmonitor_news_v1_ListFeedDigestRequest:
             type: object
             properties:
