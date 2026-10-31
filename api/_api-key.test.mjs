@@ -130,6 +130,16 @@ test('a stale wm-session cookie does not shadow a later valid one', async () => 
   }
 });
 
+test('wm-session candidates are capped so one request cannot buy unbounded validation work', async () => {
+  // A host-only plus a Domain cookie is the real duplicate case; a caller
+  // packing hundreds of values must not get each one HMAC-validated.
+  const { token } = await issueSessionToken();
+  const padding = Array.from({ length: 4 }, (_, i) => `wm-session=wms_invalid_${i}`).join('; ');
+  const r = await validateApiKey(makeReq({ cookie: `${padding}; wm-session=${encodeURIComponent(token)}` }));
+  assert.equal(r.valid, false, 'a value past the candidate cap is never validated');
+  assert.equal(r.error, 'Invalid session token');
+});
+
 test('duplicate wm-session cookies that are all invalid stay rejected', async () => {
   const r = await validateApiKey(makeReq({ cookie: 'wm-session=wms_invalid; wm-session=wms_also_invalid' }));
   assert.equal(r.valid, false);

@@ -60,14 +60,19 @@ async function validateCredential(key, forceKey) {
   return { valid: false, required: true, error: 'API key required' };
 }
 
-// Every value sent for `name`, in the order the browser sent them. A browser
-// holding both a host-only and a Domain cookie of the same name sends both.
+// A browser holding both a host-only and a Domain cookie of one name sends
+// both. Cap the candidates so a padded Cookie header cannot multiply the
+// validation work done before any rate limiter runs.
+const MAX_COOKIE_CANDIDATES = 4;
+
+// The first MAX_COOKIE_CANDIDATES values sent for `name`, in browser order.
 function getCookies(req, name) {
   const raw = req.headers.get('Cookie') || req.headers.get('cookie') || '';
   if (!raw) return [];
   const prefix = `${name}=`;
   const values = [];
   for (const part of raw.split(';')) {
+    if (values.length >= MAX_COOKIE_CANDIDATES) break;
     const trimmed = part.trim();
     if (!trimmed.startsWith(prefix)) continue;
     try {
