@@ -178,6 +178,17 @@ describe('regional energy source observations', () => {
     assert.ok(!rows.some(r => r.period === '2026-10'));
     assert.ok(rows.every(r => r.unit === 'GWh'));
   });
+
+  it('rejects a GSE page that repeats balance labels without quadratic work', () => {
+    execFileSync(process.execPath, ['--input-type=module', '-e', `
+      import assert from 'node:assert/strict';
+      import { readFileSync } from 'node:fs';
+      import { parseGse } from './scripts/lib/regional-energy-feeds.mjs';
+      const items = JSON.parse(readFileSync('tests/fixtures/regional-energy/gseEnPdf.json', 'utf8'));
+      for (let i = 0; i < 40_000; i++) items.push({ text: 'Total Generation', x: 10, y: 1000 + i, width: 50 });
+      assert.throws(() => parseGse(items), /Changed GSE balance rows/);
+    `], { cwd: new URL('../', import.meta.url), timeout: 5000 });
+  });
 });
 
 describe('source discovery and publication boundary', () => {

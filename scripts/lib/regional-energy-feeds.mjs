@@ -262,9 +262,14 @@ export function parseGse(items) {
     'Net Import/Export Armenia': 'energy.exchange.net', 'Net Import/Export Turkey': 'energy.exchange.net',
   };
   const points = [];
-  for (const label of items.filter(i => Object.hasOwn(labels, i.text))) {
+  const labelItems = items.filter(i => Object.hasOwn(labels, i.text));
+  // Each balance row appears once. Rejecting repeats also bounds the row scans
+  // below to one per known label, whatever the page's text-item count.
+  if (new Set(labelItems.map(i => i.text)).size !== labelItems.length) throw new Error('Changed GSE balance rows');
+  for (const label of labelItems) {
+    const line = lineItems(items, label.y);
     for (let m = 0; m < 12; m++) {
-      const cell = lineItems(items, label.y).filter(i => i.x + i.width / 2 >= centers[m] - step / 2 && i.x + i.width / 2 < centers[m] + step / 2).map(i => i.text).join('');
+      const cell = line.filter(i => i.x + i.width / 2 >= centers[m] - step / 2 && i.x + i.width / 2 < centers[m] + step / 2).map(i => i.text).join('');
       if (!cell.trim()) continue;
       const area = label.text.startsWith('Net Import/Export ') ? label.text.slice('Net Import/Export '.length) : '';
       points.push(observation(labels[label.text], `${year}-${String(m + 1).padStart(2, '0')}`, number(cell, true), 'GWh', area));
