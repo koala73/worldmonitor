@@ -207,13 +207,14 @@ function resetMintPhase(): void {
 
 const CONTEXT_AUTO_RETRY_BUDGET = 1;
 let contextLoadGeneration = 0;
-let contextLoadInFlight: { generation: number; promise: Promise<void> } | null = null;
+let contextLoadInFlight: { generation: number; userId: string | undefined; promise: Promise<void> } | null = null;
 
 async function loadContext(nonce: string): Promise<void> {
-  if (contextLoadInFlight?.generation === contextLoadGeneration) return contextLoadInFlight.promise;
+  const userId = getCurrentClerkUser()?.id;
+  if (contextLoadInFlight?.generation === contextLoadGeneration && contextLoadInFlight.userId === userId) return contextLoadInFlight.promise;
   const generation = ++contextLoadGeneration;
   const promise = loadContextAttempt(nonce, CONTEXT_AUTO_RETRY_BUDGET, generation);
-  contextLoadInFlight = { generation, promise };
+  contextLoadInFlight = { generation, userId, promise };
   try {
     await promise;
   } finally {

@@ -369,6 +369,7 @@ test.describe('MCP grant consent page (#5654)', () => {
     const oldResponse = page.waitForResponse('**/api/internal/mcp-grant-context*');
     releases[0]!();
     await oldResponse;
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     await emitClerkSubscription(page);
     await expect(page.locator('#consent')).toBeHidden();
     expect(releases).toHaveLength(2);
@@ -397,6 +398,7 @@ test.describe('MCP grant consent page (#5654)', () => {
     const denial = page.waitForResponse(response => response.url().includes('/mcp-grant-context') && response.status() === 403);
     releaseOld();
     await denial;
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     await expect(page.locator('#errorView')).toBeHidden();
     await expect(page.locator('#consent')).toBeVisible();
     expect(requests).toBe(2);
