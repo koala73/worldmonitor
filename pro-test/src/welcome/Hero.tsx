@@ -106,7 +106,10 @@ export const Hero = () => (
     <div className="max-w-5xl mx-auto text-center">
       <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
         <div className="mb-6 font-mono text-xs text-wm-muted">{t('welcome.hero.eyebrow')}</div>
-        <h1 className="text-4xl sm:text-5xl md:text-7xl font-display font-medium tracking-tight leading-[1.05]">
+        {/* Dutch "inlichtingendashboard" is ~335px at 36px, wider than a 320px
+            phone's column: hyphenate it, or break it where hyphenation is
+            unavailable. */}
+        <h1 className="text-4xl sm:text-5xl md:text-7xl font-display font-medium tracking-tight leading-[1.05] break-words hyphens-auto">
           {t('welcome.hero.headline1')}
           <br />
           <span className="text-wm-green">{t('welcome.hero.headline2')}</span>

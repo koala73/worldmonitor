@@ -3074,14 +3074,15 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
     assert.equal(setup?.with['cache-dependency-path'], 'pro-test/package-lock.json');
   });
 
-  it('runs the four /pro browser gates in one Playwright run', () => {
+  it('runs the /pro browser gates in one Playwright run', () => {
     // Each Playwright run starts the Vite dev server and Chrome (~3.5s), and
-    // the four gates ran one after another.
+    // the gates ran one after another.
     const specs = [
       'e2e/pro-critical-css-cls.spec.ts',
       'e2e/pro-mobile-overflow.spec.ts',
       'e2e/pro-hero-animation.spec.ts',
       'e2e/pro-hero-lcp.spec.ts',
+      'e2e/welcome-nav-fit.spec.ts',
     ];
     const script = packageScripts['test:e2e:pro-gates'] ?? '';
     assert.match(script, /^cross-env VITE_VARIANT=full playwright test /);

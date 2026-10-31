@@ -39,8 +39,10 @@ function LiveBadge({ live, capturedAt }: { live: boolean; capturedAt: string }) 
 
 function Card({ icon, title, live, capturedAt, children }: { icon: ReactNode; title: string; live: boolean; capturedAt: string; children: ReactNode }) {
   return (
-    <div className="bg-wm-card border border-wm-border rounded-xl p-5 flex flex-col gap-4 min-h-[232px]">
-      <div className="flex items-center justify-between border-b border-wm-border pb-3">
+    // min-w-0 and the wrapping header keep a long translated badge ("Veröffentlichter
+    // Pulse vom …") from widening the card past a 320px phone.
+    <div className="min-w-0 bg-wm-card border border-wm-border rounded-xl p-5 flex flex-col gap-4 min-h-[232px]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-wm-border pb-3">
         <div className="flex items-center gap-2 font-mono text-xs text-wm-muted">
           {icon} {title}
         </div>
