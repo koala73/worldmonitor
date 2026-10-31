@@ -3,31 +3,52 @@ import { Logo } from '../components/Logo';
 import { t } from '../i18n';
 import { DASHBOARD_PATH } from '../routes';
 
-const TABLET_MENU_ID = 'welcome-tablet-navigation';
+// The menu is kept under its original id: the prerender and a11y suites
+// locate the nav's link groups by it.
+const MENU_ID = 'welcome-tablet-navigation';
+
+// `inline` is the breakpoint from which a link sits in the desktop row;
+// below it, and for links with `inline: false`, it lives only in the menu.
+// Nine inline links could not fit beside the logo and Launch in most
+// locales (French needed ~1474px against a 1280px container), which pushed
+// Launch off-screen, so the in-page section anchors moved to the menu.
+// Sources and Blog wait for xl: with them, Bulgarian and Russian overflow
+// the 1024px row.
 const NAV_ITEMS = [
-  { href: '/use-cases/', labelKey: 'welcome.nav.useCases' },
-  { href: '#first-five', labelKey: 'welcome.nav.firstFive' },
-  { href: '#depth', labelKey: 'welcome.nav.depth' },
-  { href: '#agents', labelKey: 'welcome.nav.agents' },
-  { href: '/sources/', labelKey: 'welcome.depth.s3l' },
-  { href: '/pro#pricing', labelKey: 'welcome.nav.pricing' },
-  { href: '#faq', labelKey: 'welcome.nav.faq' },
-  { href: '/blog/', labelKey: 'welcome.nav.blog' },
-  { href: '/docs/documentation', labelKey: 'welcome.nav.docs' },
+  { href: '/use-cases/', labelKey: 'welcome.nav.useCases', inline: 'lg' },
+  { href: '/sources/', labelKey: 'welcome.depth.s3l', inline: 'xl' },
+  { href: '/pro#pricing', labelKey: 'welcome.nav.pricing', inline: 'lg' },
+  { href: '/blog/', labelKey: 'welcome.nav.blog', inline: 'xl' },
+  { href: '/docs/documentation', labelKey: 'welcome.nav.docs', inline: 'lg' },
+  { href: '#first-five', labelKey: 'welcome.nav.firstFive', inline: false },
+  { href: '#depth', labelKey: 'welcome.nav.depth', inline: false },
+  { href: '#agents', labelKey: 'welcome.nav.agents', inline: false },
+  { href: '#faq', labelKey: 'welcome.nav.faq', inline: false },
 ] as const;
 
-const NavItems = ({ compact = false }: { compact?: boolean }) => (
+// Literal class names so Tailwind's scanner generates both variants.
+const MENU_HIDDEN_FROM = { lg: ' lg:hidden', xl: ' xl:hidden' } as const;
+
+const InlineItems = () => (
   <>
-    {NAV_ITEMS.map(({ href, labelKey }) => (
+    {NAV_ITEMS.filter(({ inline }) => inline).map(({ href, labelKey, inline }) => (
+      <a key={href} href={href} className={`transition-colors hover:text-wm-text${inline === 'xl' ? ' hidden xl:inline' : ''}`}>
+        {t(labelKey)}
+      </a>
+    ))}
+  </>
+);
+
+// Every link is in the menu; the inline ones hide there from the
+// breakpoint where the desktop row shows them.
+const MenuItems = () => (
+  <>
+    {NAV_ITEMS.map(({ href, labelKey, inline }) => (
       <a
         key={href}
         href={href}
-        className={compact
-          ? 'block px-4 py-2 hover:bg-white/5 hover:text-wm-text transition-colors'
-          : 'transition-colors hover:text-wm-text'}
-        onClick={compact
-          ? () => document.getElementById(TABLET_MENU_ID)?.removeAttribute('open')
-          : undefined}
+        className={`block px-4 py-2 hover:bg-white/5 hover:text-wm-text transition-colors${inline ? MENU_HIDDEN_FROM[inline] : ''}`}
+        onClick={() => document.getElementById(MENU_ID)?.removeAttribute('open')}
       >
         {t(labelKey)}
       </a>
@@ -41,28 +62,36 @@ export const Nav = () => (
   <header>
     <nav data-wm-nav="primary" className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
-        <Logo />
-        <div className="hidden lg:flex items-center gap-4 whitespace-nowrap text-xs text-wm-muted xl:gap-7 xl:text-sm">
-          <NavItems />
+        {/* Glyph-only below 375px: at 360px the full lockup, the menu button
+            and a translated Launch label do not fit on one row. */}
+        <Logo compactOnNarrow />
+        <div className="hidden lg:flex items-center gap-4 xl:gap-6 whitespace-nowrap text-xs xl:text-sm text-wm-muted ms-auto me-2">
+          <InlineItems />
         </div>
-        <details id={TABLET_MENU_ID} className="group relative hidden md:block lg:hidden text-sm text-wm-muted">
-          <summary className="list-none cursor-pointer border border-wm-border bg-wm-card px-3 py-2 rounded-md inline-flex items-center gap-2 hover:text-wm-text transition-colors [&::-webkit-details-marker]:hidden">
+        {/* Below sm the panel anchors to the fixed nav, not the button, and spans
+            the row: a 14rem panel hung off the button ran 64px past the left
+            edge at 320px. */}
+        <details id={MENU_ID} className="group sm:relative text-sm text-wm-muted ms-auto lg:ms-0">
+          <summary className="list-none cursor-pointer border border-wm-border bg-wm-card min-h-9 px-2 sm:px-3 py-2 rounded-md inline-flex items-center gap-2 hover:text-wm-text transition-colors [&::-webkit-details-marker]:hidden">
             <MenuIcon className="w-4 h-4" aria-hidden="true" />
-            {t('welcome.nav.menu')}
-            <ChevronDown className="w-3 h-3 transition-transform group-open:rotate-180" aria-hidden="true" />
+            {/* Below sm the button is icon-only; the label stays readable to screen readers. */}
+            <span className="sr-only sm:not-sr-only">{t('welcome.nav.menu')}</span>
+            <ChevronDown className="hidden sm:block w-3 h-3 transition-transform group-open:rotate-180" aria-hidden="true" />
           </summary>
-          <div className="absolute right-0 top-[calc(100%+0.5rem)] z-10 w-52 rounded-lg border border-wm-border bg-wm-card shadow-xl py-1">
-            <NavItems compact />
+          <div className="absolute inset-x-4 sm:inset-x-auto sm:end-0 top-[calc(100%+0.5rem)] z-10 sm:w-56 rounded-lg border border-wm-border bg-wm-card shadow-xl py-1">
+            <MenuItems />
           </div>
         </details>
+        {/* Below sm the label may wrap to two lines instead of pushing past
+            the edge: French and Vietnamese need ~200px on one line. */}
         <a
           href={DASHBOARD_PATH}
           aria-label={t('welcome.nav.launch')}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-nav"
-          className="shrink-0 bg-wm-green text-wm-bg min-h-9 py-2 px-4 rounded-md text-sm font-medium hover:bg-green-300 transition-colors inline-flex items-center gap-2"
+          className="min-w-0 sm:shrink-0 bg-wm-green text-wm-bg min-h-9 py-2 px-3 sm:px-4 rounded-md text-xs sm:text-sm font-medium text-center hover:bg-green-300 transition-colors inline-flex items-center gap-2"
         >
-          {t('welcome.nav.launch')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
+          {t('welcome.nav.launch')} <ArrowRight className="hidden sm:block w-4 h-4" aria-hidden="true" />
         </a>
       </div>
     </nav>
