@@ -10,7 +10,7 @@ const timestamp = z.number().positive().refine(value => Number.isFinite(new Date
 const location = z.object({ latitude, longitude });
 const earthquake = z.object({
   id: z.string(), place: z.string(), magnitude: z.number().finite(), depthKm: z.number().finite(),
-  location, occurredAt: timestamp, sourceUrl: z.string(), source: z.string(), category: z.string(),
+  location, occurredAt: timestamp, sourceUrl: z.string(), source: z.string(), category: z.string().optional(),
 }).passthrough();
 const event = z.object({
   id: z.string(), title: z.string(), lat: latitude, lon: longitude, date: timestamp,
