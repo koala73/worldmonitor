@@ -1,0 +1,68 @@
+---
+title: "Gemini 与 Antigravity：连接 WorldMonitor"
+description: "了解如何在 Google Antigravity 中连接 WorldMonitor 托管 MCP 服务器，以及 Gemini 自定义应用的 OAuth 限制和 Connected Apps 与 Antigravity Marketplace 的上架准备信息。"
+---
+
+WorldMonitor 为所有客户端提供同一个托管 MCP 服务器：`https://worldmonitor.app/mcp`，使用 Streamable HTTP 传输，并通过 OAuth 2.1 登录（PKCE、动态客户端注册和客户端 ID 元数据文档）。Antigravity 使用与其他受支持客户端相同的服务器、工具和权限。下文介绍 Gemini 的上架准备；目前尚不支持其自定义应用的 OAuth 回调。仅限 Pro 的工具仍然仅限 Pro。认证、配额和工具列表见 [MCP 服务器概览](/zh/mcp-overview)。
+
+## Google Antigravity
+
+### 安装插件
+
+仓库在 `.antigravity-plugin/plugin.json` 提供 Antigravity 插件清单，捆绑 `mcp_config.json` 中的两个 MCP 服务器和 `skills/` 中的智能体技能。
+
+```bash
+git clone https://github.com/koala73/worldmonitor
+agy plugin validate ./worldmonitor
+agy plugin install ./worldmonitor
+agy plugin list
+```
+
+验证仓库时，`AGENTS.md`、`mcp.json` 和根目录的 `plugin.json` 会产生兼容性警告。Antigravity 使用 `.antigravity-plugin/plugin.json`、`mcp_config.json` 和 `skills/`；其他文件用于仓库开发和其他客户端。提交 Marketplace 前，需将 Antigravity 清单、README、图标、MCP 配置和技能整理为独立插件包，再运行 `agy plugin validate --strict <bundle-directory>`，确保错误和警告均为零。
+
+Marketplace 上架后，可使用 `agy plugin install worldmonitor@antigravity-plugins-official` 安装。
+
+### 手动添加服务器
+
+在 Antigravity IDE 中，打开智能体侧边栏的 **... > MCP Servers** 并编辑 `mcp_config.json`。在 CLI 中，使用 `~/.gemini/config/mcp_config.json`（全局）或 `.agents/mcp_config.json`（工作区）：
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": { "url": "https://worldmonitor.app/mcp" }
+  }
+}
+```
+
+Antigravity 的 OAuth 回调 `https://antigravity.google/oauth-callback` 已在[重定向 URI 允许列表](/zh/mcp-overview#redirect-uri-允许列表)中。
+
+## Gemini
+
+### 开发者模式（自定义应用）
+
+WorldMonitor 的[重定向 URI 允许列表](/zh/mcp-overview#redirect-uri-允许列表)目前尚不支持 Gemini 自定义应用的 OAuth 回调，因此该流程尚不能用于需要认证的工具调用。公开的工具发现成功并不能证明登录或付费访问可用。
+
+在实现并验证回调支持后，按照 Google 的[开发者模式指南](https://developers.google.com/connected-apps/mcp/dev-mode/usage)操作：选择 **+ Create new**，将 `https://worldmonitor.app/mcp` 填入 MCP Server URL，接受安全提示并连接。
+
+### Connected App 上架信息
+
+在 [Google Connected Console](https://connected.google.com/console) 注册 WorldMonitor 时使用以下值。
+
+提交前需完成控制台签发的域名验证、确认 Google 为此应用提供的 OAuth 重定向 URI 可被接受，并使用 Pro 账户进行端到端测试。
+
+| 字段 | 值 |
+|---|---|
+| 应用名称 | WorldMonitor |
+| 描述（少于 30 个英文单词） | Track world news, country risk, conflicts, markets, energy and shipping chokepoints with source-attributed live data. |
+| 图标（512 x 512 PNG） | `https://www.worldmonitor.app/favico/android-chrome-512x512.png` |
+| MCP 端点 | `https://worldmonitor.app/mcp` |
+| 认证 | 用户授权 OAuth（授权码），动态注册（CIMD 或 DCR） |
+| 服务条款 URL | `https://www.worldmonitor.app/docs/terms` |
+| 隐私政策 URL | `https://www.worldmonitor.app/docs/privacy` |
+| 网站 URL | `https://www.worldmonitor.app` |
+
+## 相关链接
+
+- [MCP 快速入门](/zh/mcp-quickstart)
+- [MCP 服务器概览](/zh/mcp-overview)
+- [智能体发现](/zh/agent-discovery)

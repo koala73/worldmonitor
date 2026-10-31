@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "worldmonitor": {
+      "url": "https://worldmonitor.app/mcp"
+    },
+    "worldmonitor-docs": {
+      "url": "https://www.worldmonitor.app/docs/mcp"
+    }
+  }
+}
