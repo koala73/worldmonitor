@@ -465,7 +465,7 @@ it('keeps zero counters distinct from malformed counters and missing errors', as
     await mount(wire, document => {
       const text = sectionText(document, 'Active Wildfires');
       assert.match(text, value === 0 ? /NASA FIRMS.*OK · 0 detections/ : /NASA FIRMS.*OK · detections count unknown/);
-      assert.doesNotMatch(text, /NASA FIRMS[^]*?error:|partial|failed requests/);
+      assert.doesNotMatch(text, /error:|partial|failed requests/);
     });
   }
 });
