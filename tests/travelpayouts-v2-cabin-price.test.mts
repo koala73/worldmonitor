@@ -167,7 +167,7 @@ describe('Travelpayouts v2 cabin and month-matrix price', () => {
       const fields = { ...row };
       if (label === 'missing amount') delete fields.value;
       upstream = { success: true, data: [fields, ticket({ trip_class: 0, value: 500 })] };
-      const result = await searchPricesTravelpayouts({ ...base, departureDate: '2030-01' });
+      const result = await searchPricesTravelpayouts({ ...base, departureDate: '2030-01', maxResults: 1 });
       assert.equal(result.upstreamFailed, false);
       assert.deepEqual(result.quotes.map(quote => quote.priceAmount), [500]);
     });
