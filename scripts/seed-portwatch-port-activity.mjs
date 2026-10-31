@@ -1205,19 +1205,37 @@ function refreshFailureCode(reason) {
 // only deepen. Both mean "stop spending the budget", so both get an arm.
 // Pure + exported so the trip thresholds are testable without a live run.
 export const CIRCUIT_BREAKER_TRIP_RATE = 0.8;
+// Fewest batch members without an invalid_query history that can prove a
+// schema regression on their own.
+export const CIRCUIT_BREAKER_MIN_FRESH_EVIDENCE = 3;
+// `knownInvalidQuery` holds the ISO3s of batch members whose previous refresh
+// already failed as invalid_query. Their repeat failure is not new evidence: an
+// intermittent upstream (2026-10-27..31) keeps the same oldest-cached failing
+// countries at the head of the expiring tier, so counting them aborted every
+// run before the countries behind them were tried. A real regression still
+// trips on its first run, when no country carries that history yet.
 export function classifyBatchCircuitBreak(
   errors,
   batchSize,
   tripRate = CIRCUIT_BREAKER_TRIP_RATE,
+  { knownInvalidQuery = new Set() } = {},
 ) {
   if (!Array.isArray(errors) || !Number.isFinite(batchSize) || batchSize <= 0) return null;
+  const isKnown = (entry) => knownInvalidQuery.has(String(entry).split(':', 1)[0].trim());
+  const freshSize = batchSize - knownInvalidQuery.size;
   // invalid_query is tested first so a batch carrying both classes reports the
   // one that no amount of backing off can recover.
   for (const [code, pattern] of [
     ['invalid_query', INVALID_QUERY_PATTERN],
     ['rate_limited', RATE_LIMIT_PATTERN],
   ]) {
-    const rate = errors.filter((entry) => pattern.test(String(entry))).length / batchSize;
+    let rate;
+    if (code === 'invalid_query' && knownInvalidQuery.size > 0) {
+      if (freshSize < CIRCUIT_BREAKER_MIN_FRESH_EVIDENCE) continue;
+      rate = errors.filter((entry) => pattern.test(String(entry)) && !isKnown(entry)).length / freshSize;
+    } else {
+      rate = errors.filter((entry) => pattern.test(String(entry))).length / batchSize;
+    }
     if (rate >= tripRate) return { code, rate };
   }
   return null;
@@ -1774,7 +1792,10 @@ export async function fetchAll(progress, {
     // throttle (rate_limited, #8501), where continuing only deepened the
     // throttle and burned the full 60s before throwing anyway.
     if (batchIdx === 1 && batches > 1 && batch.length >= 5) {
-      const tripped = classifyBatchCircuitBreak(batchErrors, batch.length);
+      const knownInvalidQuery = new Set(batch
+        .filter(({ prevPayload }) => prevPayload?.refreshFailure?.code === 'invalid_query')
+        .map(({ iso3 }) => iso3));
+      const tripped = classifyBatchCircuitBreak(batchErrors, batch.length, undefined, { knownInvalidQuery });
       const action = circuitBreakerAction(tripped);
       if (action === 'abort') {
         console.error(
