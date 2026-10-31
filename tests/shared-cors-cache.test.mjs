@@ -114,9 +114,6 @@ test('shared responses use public CORS and RSS is the private exception (#7216)'
     if (url === `${REDIS_URL}/pipeline`) {
       return json([{ result: [59, 60] }]);
     }
-    if (url.startsWith('https://www.fwdstart.me/')) {
-      return new Response('<a href="/p/test"></a><img alt="Shared CORS Test Post" /><span>Jan 12, 2026</span>');
-    }
     if (url.startsWith('https://nominatim.openstreetmap.org/reverse?')) {
       return json({
         address: { country: 'United States', country_code: 'us' },
@@ -139,13 +136,6 @@ test('shared responses use public CORS and RSS is the private exception (#7216)'
   const { default: gpsJam } = await import(moduleUrl('../api/gpsjam.js', suffix));
   const gpsJamResponse = await gpsJam(request('/api/gpsjam'));
 
-  delete process.env.UPSTASH_REDIS_REST_URL;
-  delete process.env.UPSTASH_REDIS_REST_TOKEN;
-  const { default: fwdStart } = await import(moduleUrl('../api/fwdstart.js', suffix));
-  const fwdStartResponse = await fwdStart(request('/api/fwdstart'));
-
-  process.env.UPSTASH_REDIS_REST_URL = REDIS_URL;
-  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
   const { default: reverseGeocode } = await import(moduleUrl('../api/reverse-geocode.js', suffix));
   const pendingWrites = [];
   const reverseGeocodeResponse = await reverseGeocode(
@@ -172,7 +162,6 @@ test('shared responses use public CORS and RSS is the private exception (#7216)'
 
   const problems = [
     ...sharedCorsProblems('gpsjam', gpsJamResponse),
-    ...sharedCorsProblems('fwdstart', fwdStartResponse),
     ...sharedCorsProblems('reverse-geocode', reverseGeocodeResponse),
     ...privateCorsProblems('rss-proxy', rssProxyResponse),
     ...privateCorsProblems('rss-proxy error response', rssProxyErrorResponse, { expectSuccess: false }),

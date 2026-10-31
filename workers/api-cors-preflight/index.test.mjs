@@ -349,7 +349,6 @@ test('hasPublicCorsPolicy: exact-match paths', () => {
   assert.equal(hasPublicCorsPolicy('/api/security/report'), true);
   assert.equal(hasPublicCorsPolicy('/api/geo'), true);
   assert.equal(hasPublicCorsPolicy('/api/version'), true);
-  assert.equal(hasPublicCorsPolicy('/api/fwdstart'), true);
   assert.equal(hasPublicCorsPolicy('/api/gpsjam'), true);
   assert.equal(hasPublicCorsPolicy('/api/reverse-geocode'), true);
   assert.equal(hasPublicCorsPolicy('/api/product-catalog'), true);
@@ -468,7 +467,6 @@ test('public cacheable endpoint paths pass Vercel CORS headers through unchanged
   // endpoint policy. Pin every path because this Worker is the final CORS
   // layer before the browser.
   const paths = [
-    '/api/fwdstart',
     '/api/gpsjam',
     '/api/reverse-geocode',
     '/api/product-catalog',
