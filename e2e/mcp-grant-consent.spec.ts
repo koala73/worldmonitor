@@ -56,7 +56,7 @@ const HOSTILE_REDIRECTS: ReadonlyArray<[label: string, redirect: string]> = [
  */
 async function stubClerkModule(
   page: Page,
-  opts: { trackSignIn?: boolean; signedOut?: boolean } = {},
+  opts: { trackSignIn?: boolean; signedOut?: boolean; tokenUpdates?: boolean } = {},
 ): Promise<void> {
   const openSignInBody = opts.trackSignIn ? 'window.__openSignInCalled = true;' : '';
   // Signed-out mode models the real Clerk modal as a `.cl-modalBackdrop` node:
@@ -88,7 +88,13 @@ async function stubClerkModule(
         // The grant page sends the STANDARD session token (it carries \`sid\`,
         // which /api/internal/mcp-grant-mint checks for liveness); a missing
         // export here fails ESM linking and the page never boots.
-        export function getClerkSessionToken() { return Promise.resolve(user ? 'stub-jwt-token' : null); }
+        export async function getClerkSessionToken() {
+          if (${Boolean(opts.tokenUpdates)}) {
+            await new Promise(resolve => setTimeout(resolve, 10));
+            window.__emitClerkSubscription?.();
+          }
+          return user ? 'stub-jwt-token' : null;
+        }
         export function getCurrentClerkUser() { return user; }
         export function isClerkSignInOpen() {
           return Boolean(document.querySelector('.cl-modalBackdrop'));
@@ -327,6 +333,23 @@ function stubMintRedirect(
 }
 
 test.describe('MCP grant consent page (#5654)', () => {
+  test('token resolution updates do not restart the pending consent load', async ({ page }, testInfo) => {
+    await stubClerkModule(page, { tokenUpdates: true });
+    let contextRequests = 0;
+    await page.route('**/api/internal/mcp-grant-context*', async route => {
+      contextRequests++;
+      await route.fulfill({ json: { client_name: 'OpenAI review', redirect_host: 'platform.openai.com' } });
+    });
+    await page.goto(GRANT_PAGE);
+    await expect(page.locator('#consent')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#loading')).toBeHidden();
+    expect(contextRequests).toBe(1);
+    await page.screenshot({ path: testInfo.outputPath('consent-token-update-desktop.png'), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator('#authorizeBtn')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('consent-token-update-mobile.png'), fullPage: true });
+  });
+
   test('missing nonce shows terminal error view', async ({ page }) => {
     await stubClerkModule(page);
     await page.goto('/mcp-grant');
