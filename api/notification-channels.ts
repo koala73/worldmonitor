@@ -943,5 +943,5 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
     }
   }
 
-  return json({ error: 'Method not allowed' }, 405, corsHeaders);
+  return json({ error: 'Method not allowed' }, 405, { ...corsHeaders, Allow: 'GET, POST, OPTIONS' });
 }

@@ -466,7 +466,7 @@ async function proxyWidgetAgent(
   }
 
   if (req.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405, corsHeaders);
+    return json({ error: 'Method not allowed' }, 405, { ...corsHeaders, Allow: 'GET, POST, OPTIONS' });
   }
 
   if (!spendId || !quotaUserId) {

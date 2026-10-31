@@ -121,7 +121,7 @@ export default async function handler(
   }
 
   if (req.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405, cors);
+    return json({ error: 'Method not allowed' }, 405, { ...cors, Allow: 'POST, OPTIONS' });
   }
 
   // Validate Clerk bearer token

@@ -114,7 +114,7 @@ export default async function handler(
     return new Response(null, { status: 204, headers: cors });
   }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    return new Response('Method not allowed', { status: 405, headers: cors });
+    return new Response('Method not allowed', { status: 405, headers: { ...cors, Allow: 'GET, HEAD, OPTIONS' } });
   }
 
   // Extract the hash from the URL pathname. Expect:
