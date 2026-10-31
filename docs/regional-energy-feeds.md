@@ -72,10 +72,10 @@ still advances the turn. An interrupted tick keeps its turn for replay after
 the fifteen-minute lease expires. Redis outages or an already-held scheduler
 lease defer the tick without advancing its turn.
 
-The service lands as `planned` in `scripts/railway-services.json`; creating it
-is an operator step. Health stays soft for each feed until its first successful
-publication writes the activation marker, so the probes cannot alarm before the
-service exists. Slow or failed sources retain last-good data.
+The service was provisioned on 2026-10-31 (Railway service
+`441a7f0d-b3a7-464a-8328-9638c00c226c`, 2 vCPU and 2 GB). Health stays soft for
+each feed until its first successful publication writes the activation marker.
+Slow or failed sources retain last-good data.
 After an authorized rollout, confirm the Railway service, schedule and image commit,
 then observe two natural scheduling rotations and at least one daily run. Check logs for
 `Regional-Energy-` and `regional-`, health metadata/record counts, and the profile

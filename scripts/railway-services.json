@@ -851,7 +851,6 @@
   {
     "entry": "scripts/seed-bundle-regional-energy.mjs",
     "deployMode": "nixpacks-root-scripts",
-    "lifecycle": "planned",
     "service": "seed-bundle-regional-energy",
     "cronSchedule": "*/15 * * * *",
     "requiredEnv": [
@@ -878,6 +877,7 @@
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
+      "scripts/railpack.json",
       "scripts/seed-bundle-regional-energy.mjs",
       "scripts/seed-regional-energy-anp.mjs",
       "scripts/seed-regional-energy-cammesa.mjs",

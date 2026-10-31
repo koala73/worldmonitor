@@ -1514,7 +1514,7 @@ entries.
 | seed-consumer-prices-publish | `4492a338-cb37-40da-9e98-95a8d67e49c9` | Redis publisher |
 | seed-consumer-aggregate | `4fdd1078-7884-48f8-92fc-06b390d0fdc4` | Index calculator |
 
-### Regional energy feeds: seed-bundle-regional-energy (planned, #9842)
+### Regional energy feeds: seed-bundle-regional-energy (#9842)
 
 The regional grid and fuel feeds run in their own service. The daily
 `seed-bundle-energy-sources` cron keeps its 07:30 UTC cadence, and a failing
@@ -1523,9 +1523,9 @@ regional host retries only on this service's ticks.
 | Setting | Value |
 |---|---|
 | **Service name** | `seed-bundle-regional-energy` |
-| **Start command** | `node scripts/seed-bundle-regional-energy.mjs` |
+| **Start command** | `node seed-bundle-regional-energy.mjs` (root directory `scripts`) |
 | **Cron schedule** | `*/15 * * * *` (every fifteen minutes) |
-| **Lifecycle** | planned — create the Railway service before removing `lifecycle: planned` from `scripts/railway-services.json` and from the exact list in `tests/railway-watch-path-audit.test.mjs` |
+| **Service ID** | `441a7f0d-b3a7-464a-8328-9638c00c226c` (provisioned 2026-10-31; 2 vCPU, 2 GB; asia-southeast1) |
 | **Members** | PGCB, Petrobangla, NISO, Eskom, CAMMESA, GSE, ONS and ANP. Each keeps its own interval gate from `scripts/shared/regional-energy-feeds.json`. |
 | **Wall-time budget** | `maxBundleMs: 570_000`; each member reserves 120 s plus kill grace |
 | **Required variable** | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` |
