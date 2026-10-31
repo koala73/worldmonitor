@@ -1558,7 +1558,8 @@ const SEED_META = {
   // positions at the narrows of Hormuz, Suez, Bab el-Mandeb, Malacca, Panama,
   // Taiwan, Bosporus, Korea, Kerch and Lombok; the old 5/13 came from 2° circles
   // counting nearby port traffic. Dover, Gibraltar and Cape are the measurable
-  // set, so all three must be covered; PortWatch supplies the rest.
+  // set: the floor is three, and composeChokepointTransitsCoverage requires
+  // those three by name. PortWatch supplies the rest.
   chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits', maxStaleMin: 30, minRecordCount: 3 },
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
   usniFleet:           { key: 'seed-meta:military:usni-fleet',               maxStaleMin: 720 }, // relay loop every 6h; 720 = 2× interval (was 480 = 1.3×, too tight)
@@ -4527,6 +4528,20 @@ function composeChinaDecisionSignalsStatus(entry, _chinaCoverageEntry, now) {
 // with the input detail attached for diagnosis. A dead input is never
 // contained: containment means the served payload is merely old, while scores
 // built without a signal are wrong.
+// The straits AISStream's receivers reach (2026-10-31 probe). Named, not
+// counted: a lit Taiwan must not stand in for a dark Gibraltar.
+const AIS_MEASURABLE_TRANSIT_IDS = Object.freeze(['dover_strait', 'gibraltar', 'cape_of_good_hope']);
+
+function composeChokepointTransitsCoverage(entry, rawMeta) {
+  if (!entry || entry.status !== 'OK') return entry;
+  const missing = unwrapEnvelope(parseRedisValue(rawMeta)).data?.transitCoverage?.missing;
+  const missingMeasurable = Array.isArray(missing)
+    ? AIS_MEASURABLE_TRANSIT_IDS.filter((id) => missing.includes(id))
+    : [...AIS_MEASURABLE_TRANSIT_IDS];
+  if (missingMeasurable.length === 0) return entry;
+  return { ...entry, status: 'COVERAGE_PARTIAL', missingMeasurable };
+}
+
 function composeRiskScoresInputHealth(entry, rawMeta, checks, now, containmentEvidenceByName) {
   if (!entry) return entry;
   const meta = unwrapEnvelope(parseRedisValue(rawMeta)).data;
@@ -5953,6 +5968,10 @@ export async function handleHealth(req, ctx, options = {}) {
     checks.chinaCoverage,
     evaluationNow,
   );
+  checks.chokepointTransits = composeChokepointTransitsCoverage(
+    checks.chokepointTransits,
+    keyMetaValues.get(SEED_META.chokepointTransits.key),
+  );
   checks.riskScores = composeRiskScoresInputHealth(
     checks.riskScores,
     keyMetaValues.get(SEED_META.riskScores.key),
@@ -6207,6 +6226,7 @@ export default async function handler(req, ctx) {
 // 2026-05-04 health-readiness plan, Sprint 1 test plan (Codex round 2 P1).
 export const __testing__ = {
   composeContractsFinderHealth,
+  composeChokepointTransitsCoverage,
   composeRiskScoresInputHealth,
   readSeedMeta,
   classifyKey,

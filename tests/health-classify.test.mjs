@@ -96,6 +96,23 @@ test('transit coverage alerts below the three AIS-measurable waterways despite a
   }
 });
 
+// Greptile on #9902: a count of three would accept Taiwan standing in for a
+// dark Gibraltar. The three measurable straits are named, not counted.
+test('transit coverage requires Dover, Gibraltar and Cape by name', () => {
+  const { composeChokepointTransitsCoverage } = __testing__;
+  const ok = { status: 'OK', records: 3 };
+  const meta = (missing) => JSON.stringify({ fetchedAt: NOW, recordCount: 13 - missing.length, transitCoverage: { covered: 13 - missing.length, total: 13, missing } });
+  const dark = ['suez', 'malacca_strait', 'hormuz_strait', 'bab_el_mandeb', 'panama', 'bosphorus', 'korea_strait', 'kerch_strait', 'lombok_strait'];
+  assert.equal(composeChokepointTransitsCoverage(ok, meta([...dark, 'taiwan_strait'])).status, 'OK');
+  const swapped = composeChokepointTransitsCoverage(ok, meta([...dark, 'gibraltar']));
+  assert.equal(swapped.status, 'COVERAGE_PARTIAL', 'Taiwan cannot stand in for Gibraltar');
+  assert.deepEqual(swapped.missingMeasurable, ['gibraltar']);
+  assert.equal(composeChokepointTransitsCoverage(ok, JSON.stringify({ fetchedAt: NOW, recordCount: 3 })).status, 'COVERAGE_PARTIAL',
+    'coverage that cannot be read cannot prove the three');
+  const stale = { status: 'STALE_SEED', records: 3 };
+  assert.equal(composeChokepointTransitsCoverage(stale, meta([...dark, 'gibraltar'])).status, 'STALE_SEED', 'a worse verdict stands');
+});
+
 test('MND first-failure pending requires fresh last-good and expires without another poll', () => {
   const name = 'crossStraitActivityTaiwanMnd';
   const key = STANDALONE_KEYS[name];

@@ -842,9 +842,10 @@ is absent. An absent count does not establish zero traffic or a closed strait.
 There is no claim that AIS coverage is permanently unavailable there.
 
 The `chokepointTransits` health check counts canonical waterways with observed
-crossings, out of 13. Its floor is five, the coverage in the September 9, 2026
-published pulse. Fewer than five produces `COVERAGE_PARTIAL`; zero produces
-`EMPTY_DATA`. Either status appears in `checks.chokepointTransits.status` (and
+crossings, out of 13. AIS positions currently reach the transit gates of three
+waterways: Dover, Gibraltar and the Cape of Good Hope. The check requires those
+three by name. Fewer than three covered waterways, or any one of the three
+missing, produces `COVERAGE_PARTIAL`; zero produces `EMPTY_DATA`. Either status appears in `checks.chokepointTransits.status` (and
 the compact `problems` entry), turns the top-level `dataStatus` to `DEGRADED`
 or `CRITICAL`, and opens one Sentry incident when it first appears. A fresh write of 13 empty rows cannot satisfy
 this coverage check. The raw cache and seed metadata include the missing ids.
