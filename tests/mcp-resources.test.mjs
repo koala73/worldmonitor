@@ -940,8 +940,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         summary: { data: { predictions: { predictions: { count: 1, sample: [{
           title: 'Summary forecast', probability: 67, domain: 'economy', region: 'MENA',
         }] } } } },
-        rawTokens: [/Oil remains above \$70/, /42%/, /energy/, /Global/],
-        summaryTokens: [/Summary forecast/, /67%/, /economy/, /MENA/],
+        rawTokens: [/Oil remains above \$70/, /42%/, /Energy/, /Global/],
+        summaryTokens: [/Summary forecast/, /67%/, /Economy/, /MENA/],
       },
     ];
 
@@ -1269,11 +1269,11 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
 
     const partialView = mountWidgetHtml(html);
     partialView.sendToolResult(payload);
-    assert.match(partialView.text('foot'), /Source response includes 375 of 1,000 events \(output limit\)\./);
+    assert.match(partialView.text('conflict-note'), /This response includes 375 of 1,000 events because of its size limit\./);
 
     const completeView = mountWidgetHtml(html);
     completeView.sendToolResult({ data: { 'ucdp-events': { events: [] } } });
-    assert.doesNotMatch(completeView.text('foot'), /output limit/i, 'complete responses must not show truncation copy');
+    assert.doesNotMatch(completeView.text('conflict-note'), /size limit/i, 'complete responses must not show truncation copy');
   });
 
   it('EXPANSION WIDGETS: hostile tool text stays literal textContent in all five renderers', async () => {
@@ -2248,7 +2248,7 @@ describe('shared MCP notification failures', () => {
       ['country-brief-v3', 'brief', brief, /Controlled current assessment/],
       ['world-brief-v2', 'brief', world, /First claim/],
       ['news-intelligence-v2', 'list', { data: { insights: { topStories: [{ primaryTitle: 'Port disruption expands', primarySource: 'MIIT (China)', category: 'security', threatLevel: 'high', isAlert: true, countryCode: 'DE' }] } } }, /Port disruption expands/],
-      ['chokepoint-monitor-v2', 'rows', chokepoints, /Hormuz strait/],
+      ['chokepoint-monitor-v2', 'rows', chokepoints, /Strait of Hormuz/],
       ['conflict-events-v2', 'list', { data: { 'ucdp-events': { events: [{ sideA: 'Government forces', sideB: 'Armed group', country: 'Sudan', violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED', dateStart: '2026-07-01', deathsBest: 12 }] } } }, /Government forces vs Armed group/],
       ['natural-disasters', 'groups', { data: { earthquakes: { earthquakes: [{ magnitude: 5.4, place: 'Aegean Sea', occurredAt: '2026-07-02T00:00:00Z' }] }, fires: { fireDetections: [{ confidence: 'FIRE_CONFIDENCE_HIGH', region: 'Attica', brightness: 337, location: { latitude: 37.98, longitude: 23.72 } }] } } }, /Aegean Sea/],
       ['prediction-markets-v3', 'groups', { data: { 'markets-bootstrap': { geopolitical: [{ title: 'Ceasefire by September?', yesPrice: 73, source: 'Polymarket' }], tech: [], finance: [] } } }, /Ceasefire by September/],
