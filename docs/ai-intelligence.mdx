@@ -87,7 +87,7 @@ The Deduction Panel is an interactive AI geopolitical analysis tool that produce
 2. Before submission, `buildNewsContext()` pulls the 15 most recent `NewsItem` titles from the live feed and prepends them as structured context (`"Recent News:\n- Headline (Source)"`) — ensuring the LLM always has current situational awareness
 3. The query is sent to the `deductSituation` RPC endpoint, which calls `callLlmReasoning()` with a provider fallback chain (paid OpenRouter first, then Ollama, the free OpenRouter Gemma model, and any OpenAI-compatible endpoint via `LLM_API_URL`/`LLM_API_KEY`/`LLM_MODEL` env vars) with a system prompt instructing it to act as a "senior geopolitical intelligence analyst and forecaster"
 4. Temperature is 0.3 (low, for analytic consistency), max 1,500 tokens. Chain-of-thought `think` tags are stripped as defense-in-depth
-5. Results are cached in Redis for 1 hour by `deduct:situation:v1:{hash(query|geoContext)}` — identical queries serve instantly from cache
+5. Results are cached in Redis for 1 hour by `deduct:situation:v3:{hash([query, geoContext])}` — identical queries serve instantly from cache
 
 **Cross-panel integration**: Any panel can dispatch a `wm:deduct-context` custom DOM event with `{ query, geoContext, autoSubmit }`, which pre-fills the Deduction Panel and optionally auto-submits. This enables contextual forecasting from any part of the dashboard — clicking "Analyze" on a theater posture card can automatically trigger a regional deduction. A 5-second cooldown prevents rapid re-submission.
 

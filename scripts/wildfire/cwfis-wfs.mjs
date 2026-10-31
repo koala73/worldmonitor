@@ -352,14 +352,20 @@ async function readBoundedText(response, maxBytes) {
   return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
 }
 
+// The layer a WFS URL requests, under any spelling GeoServer accepts. The
+// layer check and the cache key both read it, so they cannot disagree.
+function requestedCwfisLayer(parsed) {
+  return parsed.searchParams.get('typeNames')
+    || parsed.searchParams.get('typeName')
+    || parsed.searchParams.get('TYPENAMES')
+    || parsed.searchParams.get('TYPENAME');
+}
+
 function parseWfsUrl(url) {
   const parsed = new URL(url);
   if (parsed.protocol !== 'https:') throw new CwfisWfsError('UNTRUSTED_SOURCE_HOST');
   assertCwfisHost(parsed.hostname);
-  const typeName = parsed.searchParams.get('typeNames')
-    || parsed.searchParams.get('typeName')
-    || parsed.searchParams.get('TYPENAMES')
-    || parsed.searchParams.get('TYPENAME');
+  const typeName = requestedCwfisLayer(parsed);
   if (typeName) assertCwfisLayer(typeName);
   return parsed;
 }
@@ -400,10 +406,7 @@ export async function fetchApprovedWfs(url, {
   if (!allowed.has(parsed.hostname.toLowerCase())) {
     throw new CwfisWfsError('UNTRUSTED_SOURCE_HOST');
   }
-  const typeName = parsed.searchParams.get('typeNames')
-    || parsed.searchParams.get('typeName')
-    || parsed.searchParams.get('TYPENAMES')
-    || CWFIS_ACTIVE_LAYER;
+  const typeName = requestedCwfisLayer(parsed) || CWFIS_ACTIVE_LAYER;
   const bbox = parsed.searchParams.get('bbox') || parsed.searchParams.get('BBOX') || '';
   const startIndex = parsed.searchParams.get('startIndex') || parsed.searchParams.get('STARTINDEX') || '0';
   const cacheKey = cwfisWfsCacheKey({ typeName, bbox, startIndex });

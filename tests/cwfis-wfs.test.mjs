@@ -385,6 +385,19 @@ describe('host allowlist and transport', () => {
     );
   });
 
+  it('keys a page on the layer it requests under every accepted parameter spelling', async () => {
+    for (const param of ['typeNames', 'typeName', 'TYPENAMES', 'TYPENAME']) {
+      const cache = new Map();
+      const url = new URL(CWFIS_WFS_BASE);
+      url.searchParams.set(param, CWFIS_PRESCRIBED_LAYER);
+      await fetchApprovedWfs(url.toString(), {
+        fetchFn: async () => new Response(activeJson, { headers: { 'content-type': 'application/json' } }),
+        cache,
+      });
+      assert.deepEqual([...cache.keys()], [cwfisWfsCacheKey({ typeName: CWFIS_PRESCRIBED_LAYER, startIndex: 0 })], param);
+    }
+  });
+
   it('does not bind fetch or import ais-relay', () => {
     assert.doesNotMatch(parseModuleSrc, /fetch\.bind/);
     assert.doesNotMatch(parseModuleSrc, /fetch\.bind\(globalThis\)/);
