@@ -70,7 +70,9 @@ export const Nav = () => (
         </div>
         {/* Below sm the panel anchors to the fixed nav, not the button, and spans
             the row: a 14rem panel hung off the button ran 64px past the left
-            edge at 320px. */}
+            edge at 320px. The panel is capped to the space under the fixed
+            nav and scrolls, or a landscape phone could not reach its last
+            links. */}
         <details id={MENU_ID} className="group sm:relative text-sm text-wm-muted ms-auto lg:ms-0">
           <summary className="list-none cursor-pointer border border-wm-border bg-wm-card min-h-9 px-2 sm:px-3 py-2 rounded-md inline-flex items-center gap-2 hover:text-wm-text transition-colors [&::-webkit-details-marker]:hidden">
             <MenuIcon className="w-4 h-4" aria-hidden="true" />
@@ -78,7 +80,7 @@ export const Nav = () => (
             <span className="sr-only sm:not-sr-only">{t('welcome.nav.menu')}</span>
             <ChevronDown className="hidden sm:block w-3 h-3 transition-transform group-open:rotate-180" aria-hidden="true" />
           </summary>
-          <div className="absolute inset-x-4 sm:inset-x-auto sm:end-0 top-[calc(100%+0.5rem)] z-10 sm:w-56 rounded-lg border border-wm-border bg-wm-card shadow-xl py-1">
+          <div className="absolute inset-x-4 sm:inset-x-auto sm:end-0 top-[calc(100%+0.5rem)] z-10 sm:w-56 max-h-[calc(100dvh-5rem)] overflow-y-auto overscroll-contain rounded-lg border border-wm-border bg-wm-card shadow-xl py-1">
             <MenuItems />
           </div>
         </details>
