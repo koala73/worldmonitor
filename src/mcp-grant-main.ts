@@ -219,7 +219,7 @@ async function loadContext(nonce: string): Promise<void> {
     timeout = window.setTimeout(() => {
       if (generation === contextLoadGeneration) {
         contextLoadGeneration += 1;
-        if (mintPhase === 'idle') {
+        if (mintPhase === 'idle' || !$('loading').hidden) {
           showRetryableContextView('The authorization service took too long to respond. Try again.');
         }
       }
