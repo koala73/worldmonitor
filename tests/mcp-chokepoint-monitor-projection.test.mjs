@@ -232,7 +232,7 @@ describe('Chokepoint Monitor supplied display truth', () => {
     for (const [wire, hasEnvelope] of [[result(full), true], [{ content: result(full).content }, true], [result(full, true), true], [result(full.data, true), false]]) {
       await mount(wire, document => {
         assert.equal(rows(document).length, 2);
-        assert.equal(document.getElementById('coverage').textContent, 'Live ship tracking covers 5 of 13 chokepoints. Not covered, so their 24-hour counts show —: '
+        assert.equal(document.getElementById('coverage').textContent, 'Live ship tracking covers 5 of 13 chokepoints. Not covered: '
           + 'Suez Canal, Strait of Malacca, Bab el-Mandeb, Panama Canal, Cape of Good Hope, Korea Strait, Kerch Strait, Lombok Strait.');
         const lines = footer(document).split('\n');
         assert.deepEqual(lines.slice(0, 3), ['Transit counts updated 6 Oct 2026, 19:47 UTC', 'Ship tracking updated 6 Oct 2026, 19:48 UTC',

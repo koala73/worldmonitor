@@ -161,7 +161,7 @@ const RENDER = `
         : "Live ship tracking coverage is unknown.";
       var missing = coverage && coverage.missing;
       if (Array.isArray(missing) && missing.every(function(key) { return typeof key === "string" && key.trim().length > 0; })) {
-        if (missing.length) coverageText += " Not covered, so their 24-hour counts show —: " + missing.map(prettyName).join(", ") + ".";
+        if (missing.length) coverageText += " Not covered: " + missing.map(prettyName).join(", ") + ".";
       } else coverageText += " Which chokepoints are not covered is unknown.";
     }
     q("coverage").textContent = coverageText;
