@@ -49,10 +49,7 @@ const HOSTILE_REDIRECTS: ReadonlyArray<[label: string, redirect: string]> = [
  * signed-in Pro user. This avoids needing real Clerk credentials.
  *
  * `subscribeClerk` invokes its callback synchronously, matching Clerk's own
- * addListener, which fires immediately with current state. That makes
- * `bootstrap()` issue two overlapping context loads and so exercises the
- * `contextLoadGeneration` staleness guard rather than papering over it — which
- * is why assertions here must never assume a single request.
+ * addListener, which fires immediately with current state.
  */
 async function stubClerkModule(
   page: Page,
@@ -348,6 +345,31 @@ test.describe('MCP grant consent page (#5654)', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.locator('#authorizeBtn')).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('consent-token-update-mobile.png'), fullPage: true });
+  });
+
+  test('signing in again replaces the old pending load without duplicating the new one', async ({ page }) => {
+    await stubClerkModule(page);
+    const releases: Array<() => void> = [];
+    await page.route('**/api/internal/mcp-grant-context*', async route => {
+      await new Promise<void>(resolve => { releases.push(resolve); });
+      await route.fulfill({ json: { client_name: 'OpenAI review', redirect_host: 'platform.openai.com' } });
+    });
+    await page.goto(GRANT_PAGE);
+    await expect.poll(() => releases.length).toBe(1);
+    await page.evaluate(() => {
+      const auth = window as unknown as { __signOutClerk: () => void; __completeClerkSignIn: () => void };
+      auth.__signOutClerk();
+      auth.__completeClerkSignIn();
+    });
+    await expect.poll(() => releases.length).toBe(2);
+    const oldResponse = page.waitForResponse('**/api/internal/mcp-grant-context*');
+    releases[0]!();
+    await oldResponse;
+    await emitClerkSubscription(page);
+    await expect(page.locator('#consent')).toBeHidden();
+    expect(releases).toHaveLength(2);
+    releases[1]!();
+    await expect(page.locator('#consent')).toBeVisible();
   });
 
   test('missing nonce shows terminal error view', async ({ page }) => {
