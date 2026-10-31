@@ -36,14 +36,14 @@ const HeroProofRail = () => (
     initial={false}
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.6, delay: 0.28 }}
-    className="mt-8 mx-auto grid w-full max-w-[22rem] sm:max-w-3xl grid-cols-2 sm:grid-cols-4 overflow-hidden rounded-sm border border-wm-border bg-wm-card/70 text-left backdrop-blur-sm"
+    className="mt-12 mx-auto grid w-full max-w-[22rem] sm:max-w-3xl grid-cols-2 sm:grid-cols-4 overflow-hidden rounded-md border border-wm-border bg-wm-card text-left"
   >
     {HERO_PROOF_STATS.map((stat, i) => {
       const className = `px-4 py-3 ${i % 2 === 1 ? 'border-l border-wm-border' : ''} ${i > 1 ? 'border-t border-wm-border sm:border-t-0' : ''} ${i > 0 ? 'sm:border-l sm:border-wm-border' : ''}`;
       const content = (
         <>
-          <div className="font-display text-2xl font-bold text-wm-text">{stat.value}</div>
-          <div className="mt-1 font-mono text-xs uppercase tracking-[1px] leading-relaxed break-words text-wm-muted">{t(stat.labelKey)}</div>
+          <div className="font-display text-2xl font-medium tabular-nums text-wm-text">{stat.value}</div>
+          <div className="mt-1 font-mono text-xs leading-relaxed break-words text-wm-muted">{t(stat.labelKey)}</div>
         </>
       );
       return 'href' in stat ? (
@@ -52,7 +52,7 @@ const HeroProofRail = () => (
           href={stat.href}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-sources-proof"
-          className={`${className} hover:bg-wm-green/5 transition-colors`}
+          className={`${className} hover:bg-white/[0.03] transition-colors`}
         >
           {content}
         </a>
@@ -61,33 +61,27 @@ const HeroProofRail = () => (
   </motion.div>
 );
 
+// The product is the hero's visual, so it rises into the first screen right
+// under the actions. The bar names the window and carries the one live dot on
+// the page; the image itself is a capture, so the dot is static, not pinging.
 const ConsoleFrame = () => (
   <motion.div
     initial={false}
     animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.7, delay: 0.35 }}
-    className="relative max-w-5xl mx-auto mt-10 sm:mt-14"
+    transition={{ duration: 0.7, delay: 0.2 }}
+    className="relative max-w-5xl mx-auto mt-12 sm:mt-16"
   >
-    <div className="absolute -inset-8 bg-wm-green/5 blur-[60px] rounded-full pointer-events-none" aria-hidden="true" />
     <a
       href={DASHBOARD_PATH}
       data-umami-event="welcome-cta"
       data-umami-event-target="welcome-plate"
-      className="relative block border border-wm-border rounded-md overflow-hidden border-glow bg-wm-card hover:border-wm-green/40 transition-colors"
+      className="relative block border border-wm-border rounded-xl overflow-hidden bg-wm-card hover:border-white/20 transition-colors"
     >
-      <div className="flex items-center justify-between gap-3 px-3 sm:px-4 h-9 border-b border-wm-border bg-wm-bg/80 font-mono text-xs uppercase tracking-widest text-wm-muted">
-        <div className="flex items-center gap-1.5" aria-hidden="true">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
-          <span className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
-          <span className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
-        </div>
-        <span className="hidden sm:block">worldmonitor.app — global operations</span>
-        <span className="inline-flex min-w-0 items-center gap-1.5 text-wm-green">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-wm-green opacity-60" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-wm-green" />
-          </span>
-          <span>{t('welcome.hero.plateNote')}</span>
+      <div className="flex items-center justify-between gap-3 px-4 h-10 border-b border-wm-border bg-wm-bg font-mono text-xs text-wm-muted">
+        <span className="hidden sm:block truncate">worldmonitor.app/dashboard</span>
+        <span className="inline-flex min-w-0 items-center gap-2">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-wm-green" aria-hidden="true" />
+          <span className="truncate">{t('welcome.hero.plateNote')}</span>
         </span>
       </div>
       <picture>
@@ -108,69 +102,52 @@ const ConsoleFrame = () => (
 );
 
 export const Hero = () => (
-  <section className="pt-28 sm:pt-32 pb-16 px-4 sm:px-6 relative overflow-hidden">
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(74,222,128,0.10)_0%,transparent_55%)] pointer-events-none" aria-hidden="true" />
-    <div className="max-w-5xl mx-auto text-center relative z-10">
-      <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-        <div className="inline-flex max-w-full flex-wrap items-center justify-center gap-2 font-mono text-xs uppercase tracking-[4px] text-wm-green mb-5 px-3 py-1.5 rounded-full border border-wm-green/30 bg-wm-green/10 leading-relaxed">
-          <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-wm-green opacity-60" />
-            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-wm-green" />
-          </span>
-          {t('welcome.hero.eyebrow')}
-        </div>
-        <h1 className="text-4xl sm:text-5xl md:text-7xl font-display font-bold tracking-tight leading-[1.08] sm:leading-[1.05]">
+  <section data-wm-hero="welcome" className="pt-28 sm:pt-32 pb-24 px-4 sm:px-6">
+    <div className="max-w-5xl mx-auto text-center">
+      <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+        <div className="mb-6 font-mono text-xs text-wm-muted">{t('welcome.hero.eyebrow')}</div>
+        <h1 className="text-4xl sm:text-5xl md:text-7xl font-display font-medium tracking-tight leading-[1.05]">
           {t('welcome.hero.headline1')}
           <br />
-          <span className="text-wm-green text-glow">{t('welcome.hero.headline2')}</span>
+          <span className="text-wm-green">{t('welcome.hero.headline2')}</span>
         </h1>
-        <p className="text-base md:text-lg text-wm-muted max-w-2xl mx-auto mt-6">
+        <p className="mx-auto mt-6 max-w-2xl text-base md:text-lg text-wm-muted">
           {t('welcome.hero.sub')}
         </p>
-        <p className="mt-3 font-mono text-xs uppercase tracking-widest text-wm-muted">
+        <p className="mt-2 font-mono text-xs text-wm-muted">
           <time dateTime={PUBLISHED_PULSE_DATE}>
             {t('welcome.hero.asOf', { date: formatLocalizedDate(PUBLISHED_PULSE_DATE, currentLanguageBase()) })}
           </time>
         </p>
       </motion.div>
 
-      <motion.div
-        initial={false}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.15 }}
-        className="mt-9 mx-auto flex max-w-[22rem] sm:max-w-none flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4"
-      >
+      <div className="mt-8 mx-auto flex max-w-[22rem] sm:max-w-none flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 sm:gap-4">
         <a
           href={DASHBOARD_PATH}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-hero"
-          className="w-full sm:w-auto justify-center bg-wm-green text-wm-bg px-5 sm:px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wide sm:tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-wm-green px-6 text-sm font-medium text-wm-bg transition-colors hover:bg-green-300"
         >
           {t('welcome.hero.ctaPrimary')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </a>
         <a
           href="#moments"
-          className="w-full sm:w-auto justify-center border border-wm-border text-wm-text px-5 sm:px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wide sm:tracking-wider font-bold hover:border-wm-green/50 transition-colors inline-flex items-center"
+          className="inline-flex h-12 items-center justify-center rounded-md px-4 text-sm font-medium text-wm-text transition-colors hover:bg-white/[0.06]"
         >
           {t('welcome.hero.ctaSecondary')}
         </a>
-      </motion.div>
-      <motion.div
-        initial={false}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.6, delay: 0.25 }}
-        className="mt-3 font-mono text-xs uppercase tracking-widest text-wm-muted"
-      >
+      </div>
+      <div className="mt-4 font-mono text-xs text-wm-muted">
         {t('welcome.hero.ctaFree')}
-      </motion.div>
+      </div>
+    </div>
+
+    <ConsoleFrame />
+
+    <div className="max-w-5xl mx-auto text-center">
       <HeroProofRail />
 
-      <motion.div
-        initial={false}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.6, delay: 0.3 }}
-        className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs font-mono text-wm-muted"
-      >
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs font-mono text-wm-muted">
         <WiredBadge />
         <a
           href={SILICON_CANALS_2M_URL}
@@ -186,37 +163,29 @@ export const Hero = () => (
           href="https://github.com/koala73/worldmonitor"
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1.5 hover:text-wm-text transition-colors"
+          className="inline-flex items-center gap-2 hover:text-wm-text transition-colors"
         >
           <Github className="w-3.5 h-3.5" aria-hidden="true" /> {t('welcome.hero.trustOpenSource')}
         </a>
         <span aria-hidden="true" className="text-wm-border">|</span>
         {/* Builder self-identification cue — surface names stay untranslated. */}
         <a href="#agents" className="hover:text-wm-text transition-colors">
-          <span className="text-wm-green">{t('welcome.hero.trustBuild')}</span> REST API · MCP · npm · PyPI · Go · RubyGems
+          <span className="text-wm-text">{t('welcome.hero.trustBuild')}</span> REST API · MCP · npm · PyPI · Go · RubyGems
         </a>
-      </motion.div>
-      <div className="mx-auto mt-10 max-w-2xl text-center">
-        <h2 className="font-display text-xl font-bold text-wm-text">{t('welcome.hero.whatIsTitle')}</h2>
+      </div>
+      <div className="mx-auto mt-16 max-w-2xl text-center">
+        <h2 className="font-display text-xl font-medium text-wm-text">{t('welcome.hero.whatIsTitle')}</h2>
         <p className="welcome-seo-summary mt-3 text-sm leading-relaxed text-wm-muted">{t('welcome.hero.whatIsBody', depthProofStats)}</p>
         <p className="mt-3 text-sm leading-relaxed text-wm-muted">{t('welcome.hero.whatIsBestFor')}</p>
-      </div>
-      <motion.div
-        initial={false}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.6, delay: 0.35 }}
-        className="mt-4"
-      >
         <a
           href="/blog/posts/worldmonitor-is-not-palantir/"
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-positioning"
-          className="inline-flex items-center gap-1.5 font-mono text-xs text-wm-muted hover:text-wm-green transition-colors"
+          className="mt-4 inline-flex items-center gap-2 font-mono text-xs text-wm-muted hover:text-wm-green transition-colors"
         >
           {t('welcome.hero.positioningLink')} <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
         </a>
-      </motion.div>
+      </div>
     </div>
-    <ConsoleFrame />
   </section>
 );

@@ -39,7 +39,6 @@ const NUGGETS = [
 
 export const Depth = () => (
   <section id="depth" className="py-24 px-6 border-t border-wm-border relative">
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(96,165,250,0.05)_0%,transparent_50%)] pointer-events-none" aria-hidden="true" />
     <div className="max-w-7xl mx-auto relative">
       <SectionHeading
         eyebrow={t('welcome.depth.eyebrow')}
@@ -51,12 +50,13 @@ export const Depth = () => (
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: '-60px' }}
         transition={{ duration: 0.6 }}
-        className="data-grid !grid-cols-2 sm:!grid-cols-3 xl:!grid-cols-5"
+        className="data-grid !grid-cols-2 sm:!grid-cols-3 xl:!grid-cols-5 rounded-xl overflow-hidden"
       >
         {DEPTH_PROOF_STATS.map(({ value, labelKey }) => (
           <div key={labelKey} className="data-cell text-center flex flex-col">
-            <dt className="font-mono text-xs uppercase tracking-widest text-wm-muted mt-2">{t(labelKey)}</dt>
-            <dd className="order-first text-3xl md:text-4xl font-display font-bold text-wm-green text-glow">{String(value)}</dd>
+            <dt className="font-mono text-xs text-wm-muted mt-2">{t(labelKey)}</dt>
+            {/* One lead figure carries the accent: every provider is attributed. */}
+            <dd className={`order-first text-3xl md:text-4xl font-display font-medium tabular-nums ${labelKey === 'welcome.depth.s3l' ? 'text-wm-green' : 'text-wm-text'}`}>{String(value)}</dd>
           </div>
         ))}
       </motion.dl>
@@ -71,10 +71,10 @@ export const Depth = () => (
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-40px' }}
             transition={{ duration: 0.4, delay: (i % 3) * 0.06 }}
-            className="group bg-wm-card border border-wm-border rounded-sm p-5 hover:border-wm-green/40 hover:border-glow transition-all"
+            className="group bg-wm-card border border-wm-border rounded-xl p-6 hover:border-white/20 transition-colors"
           >
             <Icon className="w-5 h-5 text-wm-muted group-hover:text-wm-green transition-colors mb-3" aria-hidden="true" />
-            <h3 className="font-bold text-sm mb-1.5">{t(`welcome.depth.n${n}Title`)}</h3>
+            <h3 className="font-medium text-sm mb-2">{t(`welcome.depth.n${n}Title`)}</h3>
             <p className="text-xs text-wm-muted leading-relaxed">{t(`welcome.depth.n${n}Desc`, depthProofStats)}</p>
           </motion.a>
         ))}
