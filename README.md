@@ -142,7 +142,7 @@ World Monitor is built for agents and scripts as well as browsers:
 
 - **MCP server** — `https://worldmonitor.app/mcp` (Streamable HTTP). Public `tools/list`; `tools/call` authenticates with a `X-WorldMonitor-Key` header or OAuth.
   The server also publishes its Agent Skills through the draft `io.modelcontextprotocol/skills` extension (`skills/list`, `skills/get`, and `skill://…` resource reads).
-- **Gemini and Google Antigravity** — add `https://worldmonitor.app/mcp` in Gemini Developer Mode, or install the bundled Antigravity plugin (`.antigravity-plugin/plugin.json` + `mcp_config.json`) with `agy plugin install ./worldmonitor`. See [Gemini and Antigravity](https://www.worldmonitor.app/docs/gemini-antigravity).
+- **Google Antigravity and Gemini listing preparation** — install the bundled Antigravity plugin (`.antigravity-plugin/plugin.json` + `mcp_config.json`) with `agy plugin install ./worldmonitor`. Gemini custom-app OAuth callbacks are not currently supported. See [Gemini and Antigravity](https://www.worldmonitor.app/docs/gemini-antigravity).
 - **REST API** — base `https://api.worldmonitor.app`, described by the [OpenAPI spec](https://worldmonitor.app/openapi.yaml).
 - **CLI** — the official [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) npm package (source in [`cli/`](cli/)). Run it with no arguments in a terminal for the [terminal dashboard](https://www.worldmonitor.app/docs/cli-dashboard):
 

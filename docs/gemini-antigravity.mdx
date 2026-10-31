@@ -1,9 +1,9 @@
 ---
 title: "Gemini and Antigravity: connect WorldMonitor"
-description: "Connect the hosted WorldMonitor MCP server to Gemini and Google Antigravity, with the listing metadata used for the Gemini Connected Apps and Antigravity Marketplace submissions."
+description: "Connect WorldMonitor to Google Antigravity, review Gemini custom-app OAuth limitations, and prepare Gemini Connected Apps and Antigravity Marketplace submissions."
 ---
 
-WorldMonitor uses one hosted MCP server for every client: `https://worldmonitor.app/mcp` over Streamable HTTP, with OAuth 2.1 sign-in (PKCE, Dynamic Client Registration and Client ID Metadata Documents). Gemini and Antigravity use the same server, tools and entitlements as every other client. Pro-only tools stay Pro-only. See the [MCP Server overview](/mcp-overview) for auth, quotas and the tool list.
+WorldMonitor exposes its hosted MCP server at `https://worldmonitor.app/mcp` over Streamable HTTP, with OAuth 2.1 sign-in (PKCE, Dynamic Client Registration and Client ID Metadata Documents). Antigravity uses the same server, tools and entitlements as other supported clients. Gemini listing preparation is described below; its custom-app OAuth callbacks are not currently supported. Pro-only tools stay Pro-only. See the [MCP Server overview](/mcp-overview) for auth, quotas and the tool list.
 
 ## Google Antigravity
 
@@ -38,11 +38,15 @@ Antigravity's OAuth callback, `https://antigravity.google/oauth-callback`, is al
 
 ### Developer Mode (custom app)
 
-In Gemini Apps Developer Mode, choose **+ Create new**, enter `https://worldmonitor.app/mcp` as the MCP Server URL, accept the security notice and connect. See Google's [Developer Mode guide](https://developers.google.com/connected-apps/mcp/dev-mode/usage).
+Gemini custom-app OAuth callbacks are not currently supported by WorldMonitor's [redirect URI allowlist](/mcp-overview#redirect-uri-allowlist), so authenticated tool calls are not ready to use through this flow. Public tool discovery alone does not verify sign-in or paid access.
+
+Once callback support has been implemented and verified, follow Google's [Developer Mode guide](https://developers.google.com/connected-apps/mcp/dev-mode/usage): choose **+ Create new**, enter `https://worldmonitor.app/mcp` as the MCP Server URL, accept the security notice and connect.
 
 ### Connected App listing metadata
 
 These values are used when registering WorldMonitor in the [Google Connected Console](https://connected.google.com/console).
+
+Before submitting, complete console-issued domain verification, confirm that Google's app-specific OAuth redirect URIs are accepted, and test end to end with a Pro account.
 
 | Field | Value |
 |---|---|

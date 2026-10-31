@@ -1,9 +1,9 @@
 ---
 title: "Gemini 与 Antigravity：连接 WorldMonitor"
-description: "将托管的 WorldMonitor MCP 服务器连接到 Gemini 和 Google Antigravity，并列出用于 Gemini Connected Apps 与 Antigravity Marketplace 提交的上架信息。"
+description: "了解如何在 Google Antigravity 中连接 WorldMonitor 托管 MCP 服务器，以及 Gemini 自定义应用的 OAuth 限制和 Connected Apps 与 Antigravity Marketplace 的上架准备信息。"
 ---
 
-WorldMonitor 为所有客户端提供同一个托管 MCP 服务器：`https://worldmonitor.app/mcp`，使用 Streamable HTTP 传输，并通过 OAuth 2.1 登录（PKCE、动态客户端注册和客户端 ID 元数据文档）。Gemini 和 Antigravity 使用与其他客户端相同的服务器、工具和权限。仅限 Pro 的工具仍然仅限 Pro。认证、配额和工具列表见 [MCP 服务器概览](/zh/mcp-overview)。
+WorldMonitor 为所有客户端提供同一个托管 MCP 服务器：`https://worldmonitor.app/mcp`，使用 Streamable HTTP 传输，并通过 OAuth 2.1 登录（PKCE、动态客户端注册和客户端 ID 元数据文档）。Antigravity 使用与其他受支持客户端相同的服务器、工具和权限。下文介绍 Gemini 的上架准备；目前尚不支持其自定义应用的 OAuth 回调。仅限 Pro 的工具仍然仅限 Pro。认证、配额和工具列表见 [MCP 服务器概览](/zh/mcp-overview)。
 
 ## Google Antigravity
 
@@ -38,11 +38,15 @@ Antigravity 的 OAuth 回调 `https://antigravity.google/oauth-callback` 已在[
 
 ### 开发者模式（自定义应用）
 
-在 Gemini Apps 开发者模式中选择 **+ Create new**，将 `https://worldmonitor.app/mcp` 填入 MCP Server URL，接受安全提示后连接。参见 Google 的[开发者模式指南](https://developers.google.com/connected-apps/mcp/dev-mode/usage)。
+WorldMonitor 的[重定向 URI 允许列表](/zh/mcp-overview#redirect-uri-允许列表)目前尚不支持 Gemini 自定义应用的 OAuth 回调，因此该流程尚不能用于需要认证的工具调用。公开的工具发现成功并不能证明登录或付费访问可用。
+
+在实现并验证回调支持后，按照 Google 的[开发者模式指南](https://developers.google.com/connected-apps/mcp/dev-mode/usage)操作：选择 **+ Create new**，将 `https://worldmonitor.app/mcp` 填入 MCP Server URL，接受安全提示并连接。
 
 ### Connected App 上架信息
 
 在 [Google Connected Console](https://connected.google.com/console) 注册 WorldMonitor 时使用以下值。
+
+提交前需完成控制台签发的域名验证、确认 Google 为此应用提供的 OAuth 重定向 URI 可被接受，并使用 Pro 账户进行端到端测试。
 
 | 字段 | 值 |
 |---|---|
