@@ -5,6 +5,7 @@ import { unsafeRawHtml } from '@/utils/sanitize';
 import {
   clearPanelColSpans,
   clearPanelSpans,
+  loadPanelSpans,
   savePanelColSpan,
   savePanelSpan,
 } from '@/utils/panel-storage';
@@ -49,6 +50,101 @@ describe('Panel keyboard resize accessibility', () => {
     expect(colHandle?.getAttribute('aria-valuenow')).toBe('2');
 
     panel.destroy();
+  });
+
+  it('synchronizes natural video panel spans after mounting and viewport resize (#8276)', () => {
+    for (const id of ['live-news', 'live-webcams']) {
+      const panel = new Panel({
+        id,
+        title: id,
+        className: 'panel-wide',
+      });
+
+      const element = panel.getElement();
+      const handle = element.querySelector('.panel-resize-handle');
+
+      // Before mounting, the wide-panel fallback is two rows.
+      expect(handle?.getAttribute('aria-valuenow')).toBe('2');
+
+      // Simulate the natural three-row CSS footprint.
+      element.style.gridRowStart = 'span 3';
+
+      document.body.appendChild(element);
+      panel.notifyConnected();
+
+      expect(getComputedStyle(element).gridRowStart).toBe('span 3');
+      expect(handle?.getAttribute('aria-valuenow')).toBe('3');
+
+      // Simulate the compact viewport layout.
+      element.style.gridRowStart = 'span 2';
+      window.dispatchEvent(new Event('resize'));
+
+      expect(handle?.getAttribute('aria-valuenow')).toBe('2');
+
+      // Return to the regular desktop layout.
+      element.style.gridRowStart = 'span 3';
+      window.dispatchEvent(new Event('resize'));
+
+      expect(handle?.getAttribute('aria-valuenow')).toBe('3');
+
+      panel.destroy();
+      element.remove();
+    }
+  });
+
+  it.each(['mouse', 'touch'] as const)('keeps a natural span responsive after a no-op %s gesture', (input) => {
+    const panel = new Panel({ id: 'live-news', title: 'News', className: 'panel-wide' });
+    const element = panel.getElement();
+    element.style.gridRowStart = 'span 3';
+    document.body.appendChild(element);
+    panel.notifyConnected();
+    const handle = element.querySelector<HTMLElement>('.panel-resize-handle')!;
+    const touch = (type: string, y: number) => new TouchEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      touches: type === 'touchend' ? [] : [{ clientY: y } as Touch],
+    });
+    const start = () => handle.dispatchEvent(input === 'mouse'
+      ? new MouseEvent('mousedown', { clientY: 300, bubbles: true })
+      : touch('touchstart', 300));
+    const move = (y: number) => document.dispatchEvent(input === 'mouse'
+      ? new MouseEvent('mousemove', { clientY: y, bubbles: true })
+      : touch('touchmove', y));
+    const end = () => document.dispatchEvent(input === 'mouse'
+      ? new MouseEvent('mouseup', { bubbles: true })
+      : touch('touchend', 300));
+
+    try {
+      for (const deltas of [[], [5], [80, 0]]) {
+        start();
+        for (const delta of deltas) move(300 + delta);
+        end();
+        expect(loadPanelSpans()['live-news']).toBeUndefined();
+        expect(element.classList.contains('resized')).toBe(false);
+        expect(element.classList.contains('span-3')).toBe(false);
+      }
+
+      element.style.gridRowStart = 'span 2';
+      window.dispatchEvent(new Event('resize'));
+      expect(handle.getAttribute('aria-valuenow')).toBe('2');
+
+      start();
+      move(380);
+      end();
+      expect(loadPanelSpans()['live-news']).toBe(3);
+      expect(element.classList.contains('resized')).toBe(true);
+      expect(element.classList.contains('span-3')).toBe(true);
+
+      start();
+      move(380);
+      move(300);
+      end();
+      expect(loadPanelSpans()['live-news']).toBe(3);
+      expect(element.classList.contains('resized')).toBe(true);
+      expect(element.classList.contains('span-3')).toBe(true);
+    } finally {
+      panel.destroy();
+    }
   });
 
   it('updates separator values when saved dimensions are reset', () => {

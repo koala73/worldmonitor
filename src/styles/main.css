@@ -1919,6 +1919,30 @@ canvas,
   );
 }
 
+/* #8276: Reserve enough grid rows for the natural wide video panels.
+   Let the panels fill their grid area without overlapping the next row.
+   Preserve user-resized spans and the mobile layout. */
+@media (min-width: 769px) {
+  #panelsGrid > .panel[data-panel="live-news"].panel-wide:not(.panel-collapsed):not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4),
+  #panelsGrid > .panel[data-panel="live-webcams"].panel-wide:not(.panel-collapsed):not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
+    grid-row: span 3;
+    height: 100%;
+  }
+}
+
+/* #8276: Keep natural video panels compact on short desktop viewports.
+   Two 200px grid rows plus the 4px gap provide a 404px footprint.
+   The breakpoint prevents the default three-row footprint from
+   exceeding the webcam panel's former viewport-height limit.
+   Explicit user-resized spans remain untouched. */
+@media (min-width: 769px) and (height < 672px) {
+  #panelsGrid > .panel[data-panel="live-news"].panel-wide:not(.panel-collapsed):not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4),
+  #panelsGrid > .panel[data-panel="live-webcams"].panel-wide:not(.panel-collapsed):not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
+    grid-row: span 2;
+    height: 100%;
+  }
+}
+
 .panel.span-3 {
   grid-row: span 3 !important;
   min-height: 600px !important;
