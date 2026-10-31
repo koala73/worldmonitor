@@ -1211,15 +1211,16 @@ jobs:
           retention-days: 14
       # Named explicitly for the same reason as the ci-smoke set above: nothing
       # runs the e2e/ glob, so an unnamed gate reported green while never
-      # executing. The four /pro gates (critical-CSS layout shift, mobile
-      # overflow, hero native animation, hero LCP) share one Playwright run:
+      # executing. The /pro gates (critical-CSS layout shift, mobile
+      # overflow, hero native animation, hero LCP, landing nav fit in every
+      # locale) share one Playwright run:
       # each run starts the Vite dev server and Chrome (~3.5s), and separate
       # runs went one after another. They read the same public/pro/ bytes the
       # build step above produced, and nothing between here and there rebuilds
       # them -- they sit after the prehydration upload rather than beside its
       # build because dashboard-build-guards.test.mjs pins that
       # build/prehydration pair as literally adjacent text.
-      - name: Run /pro critical-CSS, overflow, hero animation and LCP gates
+      - name: Run /pro critical-CSS, overflow, hero animation, LCP and nav-fit gates
         id: pro-gates
         if: matrix.part == 'pro-gates'
         run: npm run test:e2e:pro-gates
