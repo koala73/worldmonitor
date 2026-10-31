@@ -230,6 +230,7 @@
 *Could not find public function for 'payments/businessSeats:sendTeamAccessEndedEmail'*
 *Could not find public function for 'payments/cacheActions:deleteAiRoutingPolicyCache'*
 *Could not find public function for 'payments/cacheActions:deleteEntitlementCache'*
+*Could not find public function for 'payments/cacheActions:invalidateEmbedKeyCaches'*
 *Could not find public function for 'payments/cacheActions:invalidateUserApiKeyCaches'*
 *Could not find public function for 'payments/cacheActions:resyncEntitlementCacheFromDb'*
 *Could not find public function for 'payments/cacheActions:syncEntitlementCache'*

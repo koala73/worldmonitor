@@ -125,10 +125,9 @@ export async function listEmbedKeys(): Promise<EmbedKeyInfo[]> {
 /**
  * Revoke an embed key by its Convex document ID.
  *
- * Unlike `revokeApiKey`, this does not bust the edge validation cache: there is
- * no ownership-checked invalidation route for `embedKeys` yet, so a revoked key
- * keeps validating for at most the 60s `CACHE_TTL_SECONDS` in
- * `server/_shared/embed-key.ts`.
+ * The Convex mutation schedules the edge validation cache drop itself, so new
+ * reads are denied once that job runs; if it fails, the entry still ages out
+ * within the 60s `CACHE_TTL_SECONDS` in `server/_shared/embed-key.ts`.
  *
  * A map frame is slower still: it already holds a `wmg_` grant good for up to
  * `EMBED_GRANT_TTL_MS` (30 minutes), and revocation only stops the NEXT mint.

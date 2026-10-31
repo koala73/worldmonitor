@@ -458,6 +458,38 @@ describe("createEmbedKeyForUser input validation", () => {
     ).resolves.toMatchObject({ keyPrefix: "wme_00006" });
   });
 
+  test("revoking schedules edge cache invalidation for that key only", async () => {
+    const savedUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const savedToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = "https://redis.example";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
+    // Asserted as scheduled, never run: on real timers the job fires after the
+    // test ends and writes to a torn-down database.
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await seedEntitlement(t, "user-pro", "pro_monthly");
+      const asPro = t.withIdentity(PRO_USER);
+      const first = await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: PRO_USER.subject, clerkPlan: "free", ...makeKeyArgs(1),
+      });
+      await t.mutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: PRO_USER.subject, clerkPlan: "free", ...makeKeyArgs(2),
+      });
+
+      await asPro.mutation(api.embedKeys.revokeEmbedKey, { keyId: first.id });
+
+      const scheduled = await t.run(async (ctx) => ctx.db.system.query("_scheduled_functions").collect());
+      const jobs = scheduled.filter((job) => job.name.includes("invalidateEmbedKeyCaches"));
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0]!.args[0]).toEqual({ keyHashes: [makeKeyArgs(1).keyHash] });
+    } finally {
+      vi.useRealTimers();
+      if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL; else process.env.UPSTASH_REDIS_REST_URL = savedUrl;
+      if (savedToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN; else process.env.UPSTASH_REDIS_REST_TOKEN = savedToken;
+    }
+  });
+
   test("the cap is per user, not global", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, "user-pro", "pro_monthly");

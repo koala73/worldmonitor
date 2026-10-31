@@ -174,6 +174,33 @@ describe("createApiKey", () => {
     });
   }
 
+  test("overflow convergence schedules cache invalidation for the keys it revokes and the survivors whose ranks shift", async () => {
+    const savedUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const savedToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = "https://redis.example";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
+    // Asserted as scheduled, never run (see the revokeApiKey case below).
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await seedApiEntitlement(t, "user-api");
+      await seedActiveApiKeys(t, "user-api", 6);
+
+      await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(7) });
+
+      const scheduled = await t.run(async (ctx) => ctx.db.system.query("_scheduled_functions").collect());
+      const jobs = scheduled.filter((job) => job.name.includes("invalidateUserApiKeyCaches"));
+      expect(jobs).toHaveLength(1);
+      const keyHashes = (jobs[0]!.args[0] as { keyHashes: string[] }).keyHashes;
+      expect(keyHashes.slice(0, 2)).toEqual([makeKeyArgs(1).keyHash, makeKeyArgs(2).keyHash]);
+      expect(new Set(keyHashes)).toEqual(new Set([1, 2, 3, 4, 5, 6].map((n) => makeKeyArgs(n).keyHash)));
+    } finally {
+      vi.useRealTimers();
+      if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL; else process.env.UPSTASH_REDIS_REST_URL = savedUrl;
+      if (savedToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN; else process.env.UPSTASH_REDIS_REST_TOKEN = savedToken;
+    }
+  });
+
   test("revoked keys do not count toward the limit", async () => {
     const t = convexTest(schema, modules);
     await seedApiEntitlement(t, "user-api");
