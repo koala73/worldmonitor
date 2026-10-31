@@ -181,6 +181,30 @@ test('Bulgaria reads the previous daily OCDS file and keeps lot deadlines separa
   assert.equal(result.records[0].deadline, '2026-11-09T10:00:00.000Z');
 });
 
+test('Bulgaria falls back one day while the previous daily bucket is unpublished', async () => {
+  // storage.eop.bg publishes day D's bucket around 06:00 UTC on D+1 and answers
+  // 403 AccessDenied until then, so every UTC morning would otherwise fail.
+  const calls = [];
+  const result = await fetchBulgaria({ now: NOW, fetchTextFn: async (url) => {
+    calls.push(String(url));
+    if (String(url).includes('open-data-2026-10-28/')) throw Object.assign(new Error('HTTP 403'), { status: 403 });
+    return '<ListBucketResult><Contents><Key>notices OCDS.json</Key></Contents></ListBucketResult>';
+  }, fetchJsonFn: async (url) => {
+    calls.push(String(url));
+    return { releases: [release({ tender: { id: '1', title: 'Water supply', status: 'active', lots: [
+      { id: 'LOT-1', tenderPeriod: { endDate: END } },
+    ] } })] };
+  } });
+  assert.match(calls[0], /open-data-2026-10-28\/$/);
+  assert.match(calls[1], /open-data-2026-10-27\/$/);
+  assert.match(calls[2], /open-data-2026-10-27\/notices%20OCDS.json$/);
+  assert.equal(result.records.length, 1);
+
+  await assert.rejects(fetchBulgaria({ now: NOW, fetchTextFn: async () => {
+    throw Object.assign(new Error('HTTP 500'), { status: 500 });
+  }, fetchJsonFn: async () => assert.fail('no listing, no file read') }), /HTTP 500/);
+});
+
 test('Latvia keeps competition lots, resolves Riga winter time, and drops contact points', async () => {
   const result = await fetchLatvia({ now: NOW, fetchJsonFn: async () => [{
     identifier: 'notice-1', name: 'Water supply', formType: 'competition',
@@ -241,7 +265,7 @@ test('each added source accepts valid empty responses and has a strict official 
   }
 });
 
-test('added sources retain last-good records only within their own three-hour success clock', async () => {
+test('added sources retain last-good records only within their own 24-hour success clock', async () => {
   const record = (await fetchKenya({ now: NOW, fetchJsonFn: async () => ({ data: [{ id: 1, title: 'Water supply',
     status_id: 1, terminated: 0, published: 1, close_at: '2026-11-09 10:00:00' }] }) })).records[0];
   const prior = { fetchedAt: NOW, dataAvailable: true, tenders: [record], sourceStatuses: [{
@@ -251,7 +275,10 @@ test('added sources retain last-good records only within their own three-hour su
     settled: [{ status: 'rejected', reason: new Error('HTTP 429') }], attemptedAt: new Date(now).toISOString() });
   const retained = failed(NOW + 60_000, prior);
   assert.equal(retained.sourceStatuses[0].state, 'stale');
-  const expired = failed(NOW + 180 * 60_000, retained);
+  const lateDay = failed(NOW + (24 * 60 - 1) * 60_000, retained);
+  assert.equal(lateDay.sourceStatuses[0].state, 'stale');
+  assert.equal(lateDay.tenders.length, 1);
+  const expired = failed(NOW + 24 * 60 * 60_000, lateDay);
   assert.equal(expired.tenders.length, 0);
   assert.equal(expired.sourceStatuses[0].state, 'error');
   assert.equal(expired.sourceStatuses[0].lastSuccessfulAt, new Date(NOW).toISOString());

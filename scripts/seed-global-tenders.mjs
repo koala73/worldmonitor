@@ -24,7 +24,10 @@ import {
 } from './_global-tenders.mjs';
 
 const CACHE_TTL_SECONDS = 10_800; // 3h, safely beyond the hourly Railway cadence.
-const SOURCE_STATUS_TTL_SECONDS = CACHE_TTL_SECONDS;
+// Per-source status must outlive the 24h last-good budget health grades it
+// against; 26h leaves two hourly ticks for the key to age into STALE_SEED
+// before it expires into EMPTY.
+const SOURCE_STATUS_TTL_SECONDS = 26 * 60 * 60;
 const MAX_PER_SOURCE = 100;
 const GETS_FEED_URL = 'https://www.gets.govt.nz/ExternalRSSFeed.htm';
 const CANADA_BUYS_OPEN_CSV_URL = 'https://canadabuys.canada.ca/opendata/pub/openTenderNotice-ouvertAvisAppelOffres.csv';

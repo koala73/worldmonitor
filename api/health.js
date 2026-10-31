@@ -1304,59 +1304,69 @@ const SEED_META = {
   },
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
   globalTenders:    { key: 'seed-meta:economic:global-tenders',   maxStaleMin: 180 },
-  globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 240 }, // 150min request pacing + hourly member gate yields ~180min publishes; 240min leaves one gate of scheduling jitter without raising the 10/day SAM budget.
-  globalTendersTed:             { key: 'seed-meta:economic:global-tenders:ted',              maxStaleMin: 180 },
+  // Per-source tender health: the producer keeps a failed source's last-good
+  // open tenders for 24h (TENDER_SOURCE_RETENTION_MS in scripts/_global-tenders.mjs),
+  // and seed-meta fetchedAt is the last SUCCESS, so a rate-limited, unpublished
+  // or weekend-quiet portal is OK until that success is a day old, then
+  // STALE_SEED. sourceFailureWithinBudgetOk keeps a failed attempt from
+  // reporting SEED_ERROR inside that budget only while the source still serves
+  // something true: retained rows ('stale') or a verified empty result. An
+  // 'error' with nothing retained still warns.
+  globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 1440, sourceFailureWithinBudgetOk: true },
+  globalTendersTed:             { key: 'seed-meta:economic:global-tenders:ted',              maxStaleMin: 1440, sourceFailureWithinBudgetOk: true },
+  // Contracts Finder keeps its bespoke first-failure containment instead
+  // (composeContractsFinderHealth), which recounts usable canonical rows.
   globalTendersContractsFinder: { key: 'seed-meta:economic:global-tenders:contracts-finder', maxStaleMin: 180 },
-  globalTendersCanadaBuys:      { key: 'seed-meta:economic:global-tenders:canada-buys',      maxStaleMin: 180 },
-  globalTendersGets:            { key: 'seed-meta:economic:global-tenders:gets',             maxStaleMin: 180 },
-  globalTendersWorldBank:       { key: 'seed-meta:economic:global-tenders:world-bank',       maxStaleMin: 180 },
+  globalTendersCanadaBuys:      { key: 'seed-meta:economic:global-tenders:canada-buys',      maxStaleMin: 1440, sourceFailureWithinBudgetOk: true },
+  globalTendersGets:            { key: 'seed-meta:economic:global-tenders:gets',             maxStaleMin: 1440, sourceFailureWithinBudgetOk: true },
+  globalTendersWorldBank:       { key: 'seed-meta:economic:global-tenders:world-bank',       maxStaleMin: 1440, sourceFailureWithinBudgetOk: true },
   globalTendersColombiaSecop: {
-    key: 'seed-meta:economic:global-tenders:colombia-secop', maxStaleMin: 180,
+    key: 'seed-meta:economic:global-tenders:colombia-secop', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:colombia-secop',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:colombia-secop' },
   },
   globalTendersKenyaPpip: {
-    key: 'seed-meta:economic:global-tenders:kenya-ppip', maxStaleMin: 180,
+    key: 'seed-meta:economic:global-tenders:kenya-ppip', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:kenya-ppip',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:kenya-ppip' },
   },
   globalTendersSouthAfricaEtenders: {
-    key: 'seed-meta:economic:global-tenders:south-africa-etenders', maxStaleMin: 180,
+    key: 'seed-meta:economic:global-tenders:south-africa-etenders', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:south-africa-etenders',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:south-africa-etenders' },
   },
   globalTendersChileMercadoPublico: {
-    key: 'seed-meta:economic:global-tenders:chile-mercado-publico', maxStaleMin: 180,
+    key: 'seed-meta:economic:global-tenders:chile-mercado-publico', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:chile-mercado-publico',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:chile-mercado-publico' },
   },
   globalTendersBrazilPncp: {
-    key: 'seed-meta:economic:global-tenders:brazil-pncp', maxStaleMin: 180,
+    key: 'seed-meta:economic:global-tenders:brazil-pncp', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:brazil-pncp',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:brazil-pncp' },
   },
   globalTendersUkraineProzorro: {
-    key: 'seed-meta:economic:global-tenders:ukraine-prozorro', maxStaleMin: 180,
+    key: 'seed-meta:economic:global-tenders:ukraine-prozorro', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:ukraine-prozorro',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:ukraine-prozorro' },
   },
   globalTendersBulgariaEop: {
-    key: 'seed-meta:economic:global-tenders:bulgaria-eop', maxStaleMin: 180,
+    key: 'seed-meta:economic:global-tenders:bulgaria-eop', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:bulgaria-eop',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:bulgaria-eop' },
   },
   globalTendersLatviaIub: {
-    key: 'seed-meta:economic:global-tenders:latvia-iub', maxStaleMin: 180,
+    key: 'seed-meta:economic:global-tenders:latvia-iub', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:latvia-iub',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:latvia-iub' },
   },
   globalTendersPolandBzp: {
-    key: 'seed-meta:economic:global-tenders:poland-bzp', maxStaleMin: 180,
+    key: 'seed-meta:economic:global-tenders:poland-bzp', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:poland-bzp',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:poland-bzp' },
   },
   globalTendersPakistanPpra: {
-    key: 'seed-meta:economic:global-tenders:pakistan-ppra', maxStaleMin: 180,
+    key: 'seed-meta:economic:global-tenders:pakistan-ppra', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:pakistan-ppra',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:pakistan-ppra' },
   },
@@ -3400,7 +3410,10 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     && meta.sourceState !== 'ok'
     && !sourceUnavailable
     && !sourceBlocked
-    && sourceFailure?.pending !== true);
+    && sourceFailure?.pending !== true
+    && !(seedCfg.sourceFailureWithinBudgetOk === true && seedStale === false
+      && ((meta.sourceState === 'stale' && meta.recordCount > 0)
+        || (meta.sourceState === 'error' && meta.confirmedEmpty === true))));
   // Content-age trio (2026-05-04 health-readiness plan). Presence of
   // maxContentAgeMin is the opt-in signal — legacy seeders without it
   // get contentAge: null and skip the STALE_CONTENT branch in classifyKey.
