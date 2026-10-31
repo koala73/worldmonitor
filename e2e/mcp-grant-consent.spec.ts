@@ -421,6 +421,7 @@ test.describe('MCP grant consent page (#5654)', () => {
     await oldResponse;
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     await emitClerkSubscription(page);
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     await expect(page.locator('#consent')).toBeHidden();
     expect(releases).toHaveLength(2);
     releases[1]!();
@@ -452,6 +453,57 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#errorView')).toBeHidden();
     await expect(page.locator('#consent')).toBeVisible();
     expect(requests).toBe(2);
+  });
+
+  test('a context deadline preserves active consent but recovers loading during a late mint cooldown', async ({ page }) => {
+    await page.clock.install();
+    await stubClerkModule(page);
+    let contextRequests = 0;
+    const releases: Array<() => void> = [];
+    await page.route('**/api/internal/mcp-grant-context*', async route => {
+      const requestNumber = ++contextRequests;
+      if (requestNumber === 2 || requestNumber === 3) {
+        await new Promise<void>(resolve => { releases.push(resolve); });
+        await route.fulfill({ status: 403, json: { error: 'INSUFFICIENT_TIER' } });
+      } else {
+        await route.fulfill({ json: { client_name: 'OpenAI review', redirect_host: 'platform.openai.com' } });
+      }
+    });
+    let releaseMint: () => void = () => {};
+    const heldMint = new Promise<void>(resolve => { releaseMint = resolve; });
+    await page.route('**/api/internal/mcp-grant-mint', async route => {
+      await heldMint;
+      await route.fulfill({ status: 503, json: { error: 'SERVICE_UNAVAILABLE' }, headers: { 'Retry-After': '3' } });
+    });
+    await page.goto(GRANT_PAGE);
+    await expect(page.locator('#consent')).toBeVisible();
+    await page.locator('#authorizeBtn').click();
+    await expect(page.locator('#authorizeBtn')).toHaveText('Authorizing…');
+    await emitClerkSubscription(page);
+    await expect.poll(() => releases.length).toBe(1);
+    await page.clock.fastForward(30_001);
+    await expect(page.locator('#consent')).toBeVisible();
+    await expect(page.locator('#loading')).toBeHidden();
+    await expect(page.locator('#errorView')).toBeHidden();
+    await page.evaluate(() => {
+      const auth = window as unknown as { __signOutClerk: () => void; __switchClerkUser: () => void };
+      auth.__signOutClerk();
+      auth.__switchClerkUser();
+    });
+    await expect.poll(() => releases.length).toBe(2);
+    await page.clock.fastForward(29_000);
+    releaseMint();
+    await expect(page.locator('#authorizeBtn')).toHaveText('Retry shortly…');
+    await expect(page.locator('#loading')).toBeVisible();
+    await page.clock.fastForward(1_100);
+    await expect(page.locator('#retryContextBtn')).toBeVisible({ timeout: 3000 });
+    await page.locator('#retryContextBtn').click();
+    await expect(page.locator('#consent')).toBeVisible();
+    await expect(page.locator('#userEmail')).toHaveText('other@worldmonitor.app');
+    for (const release of releases) release();
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect(page.locator('#errorView')).toBeHidden();
+    expect(contextRequests).toBe(4);
   });
 
   test('missing nonce shows terminal error view', async ({ page }) => {
