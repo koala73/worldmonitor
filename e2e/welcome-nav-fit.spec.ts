@@ -21,7 +21,7 @@ const LOCALES = readdirSync(resolve(repoRoot, 'pro-test/src/locales'))
   .filter((file) => file.endsWith('.json'))
   .map((file) => file.replace(/\.json$/, ''));
 
-const GROUPS = [
+const GROUPS: { name: string; widths: [number, ...number[]]; isMobile: boolean }[] = [
   // isMobile honours the viewport meta tag, so page-level overflow shows up
   // as a wider layout viewport, the way a phone renders it.
   { name: 'phone', widths: [320, 360, 390], isMobile: true },

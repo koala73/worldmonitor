@@ -8,7 +8,9 @@ interface LogoProps {
   onClick?: MouseEventHandler<HTMLAnchorElement>;
   /**
    * Below 375px, show only the glyph. The wordmark stays in the accessibility
-   * tree as the link's name, so the 32px target keeps its label.
+   * tree as the link's name, so the 32px target keeps its label. The lockup
+   * also stops shrinking, so the wordmark never wraps; without this prop it
+   * still gives way to the /pro nav's Sign In and Upgrade buttons at 360px.
    */
   compactOnNarrow?: boolean;
 }
@@ -32,7 +34,7 @@ export const Logo = ({ href = 'https://worldmonitor.app', onClick, compactOnNarr
   <a
     href={href}
     onClick={onClick}
-    className="shrink-0 flex items-center gap-2 hover:opacity-80 transition-opacity"
+    className={`${compactOnNarrow ? 'shrink-0 ' : ''}flex items-center gap-2 hover:opacity-80 transition-opacity`}
   >
     <span
       className="relative w-8 h-8 rounded-full bg-wm-card border border-wm-border flex items-center justify-center overflow-hidden"
