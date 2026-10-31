@@ -881,8 +881,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
           },
           category: 'politics',
         }] } } } },
-        rawTokens: [/Port disruption expands/, /MIIT \(China\)/, /Official government source\. State-affiliated: China\. Perspective: none recorded\./, /Alert/, /Germany/],
-        summaryTokens: [/Summary news headline/, /Unreviewed Source/, /Provenance not yet reviewed\. Perspective: none recorded\./],
+        rawTokens: [/Port disruption expands/, /MIIT \(China\) · official source \(China\)/, /Alert/, /Germany/],
+        summaryTokens: [/Summary news headline/, /Unreviewed Source · source not yet reviewed/],
       },
       {
         uri: 'ui://worldmonitor/conflict-events-v2.html',
@@ -1146,13 +1146,13 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.equal(view.text('country'), 'Russia');
     // The original defect: sanctionsExposure did not exist, so this printed
     // "None" for a country carrying 3417 active designations.
-    assert.equal(view.text('sanctions'), '3417 sanctions listings');
+    assert.equal(view.text('sanctions'), '3,417 sanctions listings');
     // cii is a CiiScore object, never a bare number.
     assert.equal(view.text('cii'), '78');
     assert.equal(view.text('level'), 'High');
-    assert.equal(view.text('advisory'), 'do not travel');
+    assert.equal(view.text('advisory'), 'Do not travel');
     assert.equal(view.text('trend'), 'Rising');
-    assert.equal(view.text('foot'), 'Snapshot: 2025-08-27T10:00:00.000Z');
+    assert.equal(view.text('foot'), 'Updated 27 Aug 2025, 10:00 UTC');
   });
 
   it('country-risk widget labels CII components by meaning, not by their misnamed wire keys', async () => {
@@ -1182,8 +1182,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.equal(view.text('sanctions'), '—');
     assert.equal(view.text('advisory'), '—');
     assert.equal(view.text('trend'), '—');
-    assert.match(view.text('components'), /unavailable/i);
-    assert.equal(view.text('foot'), 'Upstream unavailable — no snapshot time.');
+    assert.equal(view.text('components'), 'Breakdown unknown.');
+    assert.equal(view.text('foot'), '', 'the outage banner explains the missing time');
   });
 
   it('country-risk widget separates an outage from a genuinely untracked country', async () => {
@@ -1322,6 +1322,9 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         missing: { data: { 'gdelt-intel': {} } },
         empty: { data: { insights: { topStories: [] } } },
         emptyCopy: /No news stories available\./,
+        // A response without the insights label omitted it; the panel says so
+        // rather than claiming the news source failed.
+        missingCopy: /left out the story list/,
       },
       {
         uri: 'ui://worldmonitor/conflict-events-v2.html', hostId: 'list',
@@ -1343,7 +1346,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       const missingView = mountWidgetHtml(html);
       missingView.sendToolResult(entry.missing);
       const missingText = missingView.text(entry.hostId);
-      assert.match(missingText, /unavailable/i, `${entry.uri}: a missing cache label must be visibly unavailable`);
+      assert.match(missingText, entry.missingCopy || /unavailable/i, `${entry.uri}: a missing cache label must be visibly unavailable`);
       assert.doesNotMatch(missingText, entry.emptyCopy, `${entry.uri}: a cache miss must not masquerade as genuine empty data`);
 
       const emptyView = mountWidgetHtml(html);
