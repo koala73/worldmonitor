@@ -1,0 +1,62 @@
+---
+title: "Gemini 与 Antigravity：连接 WorldMonitor"
+description: "将托管的 WorldMonitor MCP 服务器连接到 Gemini 和 Google Antigravity，并列出用于 Gemini Connected Apps 与 Antigravity Marketplace 提交的上架信息。"
+---
+
+WorldMonitor 为所有客户端提供同一个托管 MCP 服务器：`https://worldmonitor.app/mcp`，使用 Streamable HTTP 传输，并通过 OAuth 2.1 登录（PKCE、动态客户端注册和客户端 ID 元数据文档）。Gemini 和 Antigravity 使用与其他客户端相同的服务器、工具和权限。仅限 Pro 的工具仍然仅限 Pro。认证、配额和工具列表见 [MCP 服务器概览](/zh/mcp-overview)。
+
+## Google Antigravity
+
+### 安装插件
+
+仓库在 `.antigravity-plugin/plugin.json` 提供 Antigravity 插件清单，捆绑 `mcp_config.json` 中的两个 MCP 服务器和 `skills/` 中的智能体技能。
+
+```bash
+git clone https://github.com/koala73/worldmonitor
+agy plugin validate --strict ./worldmonitor
+agy plugin install ./worldmonitor
+agy plugin list
+```
+
+Marketplace 上架后，可使用 `agy plugin install worldmonitor@antigravity-plugins-official` 安装。
+
+### 手动添加服务器
+
+在 Antigravity IDE 中，打开智能体侧边栏的 **... > MCP Servers** 并编辑 `mcp_config.json`。在 CLI 中，使用 `~/.gemini/config/mcp_config.json`（全局）或 `.agents/mcp_config.json`（工作区）：
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": { "url": "https://worldmonitor.app/mcp" }
+  }
+}
+```
+
+Antigravity 的 OAuth 回调 `https://antigravity.google/oauth-callback` 已在[重定向 URI 允许列表](/zh/mcp-overview#redirect-uri-允许列表)中。
+
+## Gemini
+
+### 开发者模式（自定义应用）
+
+在 Gemini Apps 开发者模式中选择 **+ Create new**，将 `https://worldmonitor.app/mcp` 填入 MCP Server URL，接受安全提示后连接。参见 Google 的[开发者模式指南](https://developers.google.com/connected-apps/mcp/dev-mode/usage)。
+
+### Connected App 上架信息
+
+在 [Google Connected Console](https://connected.google.com/console) 注册 WorldMonitor 时使用以下值。
+
+| 字段 | 值 |
+|---|---|
+| 应用名称 | WorldMonitor |
+| 描述（少于 30 个英文单词） | Track world news, country risk, conflicts, markets, energy and shipping chokepoints with source-attributed live data. |
+| 图标（512 x 512 PNG） | `https://www.worldmonitor.app/favico/android-chrome-512x512.png` |
+| MCP 端点 | `https://worldmonitor.app/mcp` |
+| 认证 | 用户授权 OAuth（授权码），动态注册（CIMD 或 DCR） |
+| 服务条款 URL | `https://www.worldmonitor.app/docs/terms` |
+| 隐私政策 URL | `https://www.worldmonitor.app/docs/privacy` |
+| 网站 URL | `https://www.worldmonitor.app` |
+
+## 相关链接
+
+- [MCP 快速入门](/zh/mcp-quickstart)
+- [MCP 服务器概览](/zh/mcp-overview)
+- [智能体发现](/zh/agent-discovery)
