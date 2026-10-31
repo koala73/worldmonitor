@@ -498,7 +498,7 @@ describe('News Intelligence supplied story details', () => {
     await mount(result(envelope([{...detailed(),publishers:[...invalid,...valid],publishersUnlisted:0}])),document=>{
       const row=rows(document)[0];
       assert.match(row.textContent,/: Valid Publisher 0, /);
-      assert.match(row.textContent,/Valid Publisher 11 and 14 more\./);
+      assert.match(row.textContent,/Valid Publisher 11 and 2 more\./, "invalid roster entries are not extra publishers");
       assert.doesNotMatch(row.textContent,/Valid Publisher 12|Valid Publisher 13/);
     });
   });
