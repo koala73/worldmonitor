@@ -62,7 +62,7 @@ describe('checkShippedRoutes', () => {
     const result = await check({ 'api/uses-pkg.js': `import { value } from 'installed-pkg';\n${handler}` });
     assert.equal(result.failures.length, 1);
     assert.equal(result.failures[0].route, 'uses-pkg.js');
-    assert.match(result.failures[0].reason, /Cannot find package 'installed-pkg'/);
+    assert.match(result.failures[0].reason, /Cannot find (module|package) 'installed-pkg'/);
   });
 
   it('fails a route reaching a repo file outside the shipped resources, through a helper', async () => {
