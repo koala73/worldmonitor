@@ -85,15 +85,18 @@ const RENDER = `
     }
     function corroborationText(story) {
       var publishers = Array.isArray(story.publishers) ? story.publishers : null;
-      var names = [];
+      // Only valid roster entries count, so blank or malformed rows never
+      // inflate the "and N more" figure.
+      var validNames = [];
       if (publishers) {
-        for (var j = 0; j < publishers.length && names.length < 12; j++) {
+        for (var j = 0; j < publishers.length; j++) {
           var publisher = publishers[j];
-          if (publisher && typeof publisher.name === "string" && publisher.name.trim()) names.push(collapseWs(publisher.name));
+          if (publisher && typeof publisher.name === "string" && publisher.name.trim()) validNames.push(collapseWs(publisher.name));
         }
       }
+      var names = validNames.slice(0, 12);
       var unlisted = Number.isInteger(story.publishersUnlisted) && story.publishersUnlisted > 0 ? story.publishersUnlisted : 0;
-      var more = (publishers ? publishers.length - names.length : 0) + unlisted;
+      var more = validNames.length - names.length + unlisted;
       var corroboration = story.corroboration && typeof story.corroboration === "object" ? story.corroboration : {};
       var state = corroboration.state;
       var lead = state === "single-publisher" ? "Single source"
