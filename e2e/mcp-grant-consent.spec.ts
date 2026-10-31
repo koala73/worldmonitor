@@ -49,21 +49,18 @@ const HOSTILE_REDIRECTS: ReadonlyArray<[label: string, redirect: string]> = [
  * signed-in Pro user. This avoids needing real Clerk credentials.
  *
  * `subscribeClerk` invokes its callback synchronously, matching Clerk's own
- * addListener, which fires immediately with current state. That makes
- * `bootstrap()` issue two overlapping context loads and so exercises the
- * `contextLoadGeneration` staleness guard rather than papering over it — which
- * is why assertions here must never assume a single request.
+ * addListener, which fires immediately with current state.
  */
 async function stubClerkModule(
   page: Page,
-  opts: { trackSignIn?: boolean; signedOut?: boolean } = {},
+  opts: { trackSignIn?: boolean; signedOut?: boolean; tokenUpdates?: boolean; stallFirstToken?: boolean } = {},
 ): Promise<void> {
   const openSignInBody = opts.trackSignIn ? 'window.__openSignInCalled = true;' : '';
   // Signed-out mode models the real Clerk modal as a `.cl-modalBackdrop` node:
   // openSignIn() mounts it, a dismissal removes it, and a completed sign-in sets
   // the user and emits. `isClerkSignInOpen` reads the same DOM the production
   // predicate in src/services/clerk.ts reads.
-  const initialUser = opts.signedOut ? 'null' : "{ email: 'e2e@worldmonitor.app' }";
+  const initialUser = opts.signedOut ? 'null' : "{ id: 'user-a', email: 'e2e@worldmonitor.app' }";
   await page.route('**/services/clerk*', async (route) => {
     await route.fulfill({
       status: 200,
@@ -79,8 +76,12 @@ async function stubClerkModule(
           window.__emitClerkSubscription?.();
         };
         window.__completeClerkSignIn = () => {
-          user = { email: 'e2e@worldmonitor.app' };
+          user = { id: 'user-a', email: 'e2e@worldmonitor.app' };
           document.querySelector('.cl-modalBackdrop')?.remove();
+          window.__emitClerkSubscription?.();
+        };
+        window.__switchClerkUser = () => {
+          user = { id: 'user-b', email: 'other@worldmonitor.app' };
           window.__emitClerkSubscription?.();
         };
         export async function initClerk() {}
@@ -88,7 +89,17 @@ async function stubClerkModule(
         // The grant page sends the STANDARD session token (it carries \`sid\`,
         // which /api/internal/mcp-grant-mint checks for liveness); a missing
         // export here fails ESM linking and the page never boots.
-        export function getClerkSessionToken() { return Promise.resolve(user ? 'stub-jwt-token' : null); }
+        let tokenRequests = 0;
+        export async function getClerkSessionToken() {
+          if (${Boolean(opts.stallFirstToken)} && ++tokenRequests === 1) {
+            await new Promise(resolve => { window.__releaseClerkToken = resolve; });
+          }
+          if (${Boolean(opts.tokenUpdates)}) {
+            await new Promise(resolve => setTimeout(resolve, 10));
+            window.__emitClerkSubscription?.();
+          }
+          return user ? 'stub-jwt-token' : null;
+        }
         export function getCurrentClerkUser() { return user; }
         export function isClerkSignInOpen() {
           return Boolean(document.querySelector('.cl-modalBackdrop'));
@@ -327,6 +338,174 @@ function stubMintRedirect(
 }
 
 test.describe('MCP grant consent page (#5654)', () => {
+  for (const stalledStage of ['token', 'context'] as const) {
+    test(`a stalled ${stalledStage} load offers retry and ignores its late denial`, async ({ page }, testInfo) => {
+      await page.clock.install();
+      await stubClerkModule(page, { stallFirstToken: stalledStage === 'token' });
+      let releaseContext: () => void = () => {};
+      const held = new Promise<void>(resolve => { releaseContext = resolve; });
+      let requests = 0;
+      await page.route('**/api/internal/mcp-grant-context*', async route => {
+        const requestNumber = ++requests;
+        if (stalledStage === 'context' && requestNumber === 1) await held;
+        if ((stalledStage === 'context' && requestNumber === 1) || (stalledStage === 'token' && requestNumber === 2)) {
+          await route.fulfill({ status: 403, json: { error: 'INSUFFICIENT_TIER' } });
+        } else {
+          await route.fulfill({ json: { client_name: 'OpenAI review', redirect_host: 'platform.openai.com' } });
+        }
+      });
+      await page.goto(GRANT_PAGE);
+      if (stalledStage === 'token') {
+        await page.waitForFunction(() => typeof (window as unknown as { __releaseClerkToken?: unknown }).__releaseClerkToken === 'function');
+      } else {
+        await expect.poll(() => requests).toBe(1);
+      }
+      await page.clock.fastForward(30_001);
+      await expect(page.locator('#retryContextBtn')).toBeVisible();
+      await expect(page.locator('#loading')).toBeHidden();
+      if (stalledStage === 'context') {
+        await page.screenshot({ path: testInfo.outputPath('consent-timeout-desktop.png'), fullPage: true });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.screenshot({ path: testInfo.outputPath('consent-timeout-mobile.png'), fullPage: true });
+      }
+      await page.locator('#retryContextBtn').click();
+      await expect(page.locator('#consent')).toBeVisible();
+      const lateDenial = page.waitForResponse(response => response.url().includes('/mcp-grant-context') && response.status() === 403);
+      if (stalledStage === 'token') {
+        await page.evaluate(() => (window as unknown as { __releaseClerkToken: () => void }).__releaseClerkToken());
+      } else {
+        releaseContext();
+      }
+      await lateDenial;
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await expect(page.locator('#consent')).toBeVisible();
+      await expect(page.locator('#errorView')).toBeHidden();
+      expect(requests).toBe(2);
+    });
+  }
+
+  test('token resolution updates do not restart the pending consent load', async ({ page }, testInfo) => {
+    await stubClerkModule(page, { tokenUpdates: true });
+    let contextRequests = 0;
+    await page.route('**/api/internal/mcp-grant-context*', async route => {
+      contextRequests++;
+      await route.fulfill({ json: { client_name: 'OpenAI review', redirect_host: 'platform.openai.com' } });
+    });
+    await page.goto(GRANT_PAGE);
+    await expect(page.locator('#consent')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#loading')).toBeHidden();
+    expect(contextRequests).toBe(1);
+    await page.screenshot({ path: testInfo.outputPath('consent-token-update-desktop.png'), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator('#authorizeBtn')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('consent-token-update-mobile.png'), fullPage: true });
+  });
+
+  test('signing in again replaces the old pending load without duplicating the new one', async ({ page }) => {
+    await stubClerkModule(page);
+    const releases: Array<() => void> = [];
+    await page.route('**/api/internal/mcp-grant-context*', async route => {
+      await new Promise<void>(resolve => { releases.push(resolve); });
+      await route.fulfill({ json: { client_name: 'OpenAI review', redirect_host: 'platform.openai.com' } });
+    });
+    await page.goto(GRANT_PAGE);
+    await expect.poll(() => releases.length).toBe(1);
+    await page.evaluate(() => {
+      const auth = window as unknown as { __signOutClerk: () => void; __completeClerkSignIn: () => void };
+      auth.__signOutClerk();
+      auth.__completeClerkSignIn();
+    });
+    await expect.poll(() => releases.length).toBe(2);
+    const oldResponse = page.waitForResponse('**/api/internal/mcp-grant-context*');
+    releases[0]!();
+    await oldResponse;
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await emitClerkSubscription(page);
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect(page.locator('#consent')).toBeHidden();
+    expect(releases).toHaveLength(2);
+    releases[1]!();
+    await expect(page.locator('#consent')).toBeVisible();
+  });
+
+  test('an account switch cannot inherit the previous account denial', async ({ page }) => {
+    await stubClerkModule(page);
+    let releaseOld: () => void = () => {};
+    const held = new Promise<void>(resolve => { releaseOld = resolve; });
+    let requests = 0;
+    await page.route('**/api/internal/mcp-grant-context*', async route => {
+      if (++requests === 1) {
+        await held;
+        await route.fulfill({ status: 403, json: { error: 'INSUFFICIENT_TIER' } });
+      } else {
+        await route.fulfill({ json: { client_name: 'OpenAI review', redirect_host: 'platform.openai.com' } });
+      }
+    });
+    await page.goto(GRANT_PAGE);
+    await expect.poll(() => requests).toBe(1);
+    await page.evaluate(() => (window as unknown as { __switchClerkUser: () => void }).__switchClerkUser());
+    await expect(page.locator('#consent')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#userEmail')).toHaveText('other@worldmonitor.app');
+    const denial = page.waitForResponse(response => response.url().includes('/mcp-grant-context') && response.status() === 403);
+    releaseOld();
+    await denial;
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect(page.locator('#errorView')).toBeHidden();
+    await expect(page.locator('#consent')).toBeVisible();
+    expect(requests).toBe(2);
+  });
+
+  test('a context deadline preserves active consent but recovers loading during a late mint cooldown', async ({ page }) => {
+    await page.clock.install();
+    await stubClerkModule(page);
+    let contextRequests = 0;
+    const releases: Array<() => void> = [];
+    await page.route('**/api/internal/mcp-grant-context*', async route => {
+      const requestNumber = ++contextRequests;
+      if (requestNumber === 2 || requestNumber === 3) {
+        await new Promise<void>(resolve => { releases.push(resolve); });
+        await route.fulfill({ status: 403, json: { error: 'INSUFFICIENT_TIER' } });
+      } else {
+        await route.fulfill({ json: { client_name: 'OpenAI review', redirect_host: 'platform.openai.com' } });
+      }
+    });
+    let releaseMint: () => void = () => {};
+    const heldMint = new Promise<void>(resolve => { releaseMint = resolve; });
+    await page.route('**/api/internal/mcp-grant-mint', async route => {
+      await heldMint;
+      await route.fulfill({ status: 503, json: { error: 'SERVICE_UNAVAILABLE' }, headers: { 'Retry-After': '3' } });
+    });
+    await page.goto(GRANT_PAGE);
+    await expect(page.locator('#consent')).toBeVisible();
+    await page.locator('#authorizeBtn').click();
+    await expect(page.locator('#authorizeBtn')).toHaveText('Authorizing…');
+    await emitClerkSubscription(page);
+    await expect.poll(() => releases.length).toBe(1);
+    await page.clock.fastForward(30_001);
+    await expect(page.locator('#consent')).toBeVisible();
+    await expect(page.locator('#loading')).toBeHidden();
+    await expect(page.locator('#errorView')).toBeHidden();
+    await page.evaluate(() => {
+      const auth = window as unknown as { __signOutClerk: () => void; __switchClerkUser: () => void };
+      auth.__signOutClerk();
+      auth.__switchClerkUser();
+    });
+    await expect.poll(() => releases.length).toBe(2);
+    await page.clock.fastForward(29_000);
+    releaseMint();
+    await expect(page.locator('#authorizeBtn')).toHaveText('Retry shortly…');
+    await expect(page.locator('#loading')).toBeVisible();
+    await page.clock.fastForward(1_100);
+    await expect(page.locator('#retryContextBtn')).toBeVisible({ timeout: 3000 });
+    await page.locator('#retryContextBtn').click();
+    await expect(page.locator('#consent')).toBeVisible();
+    await expect(page.locator('#userEmail')).toHaveText('other@worldmonitor.app');
+    for (const release of releases) release();
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect(page.locator('#errorView')).toBeHidden();
+    expect(contextRequests).toBe(4);
+  });
+
   test('missing nonce shows terminal error view', async ({ page }) => {
     await stubClerkModule(page);
     await page.goto('/mcp-grant');
