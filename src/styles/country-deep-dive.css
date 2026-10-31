@@ -1899,6 +1899,7 @@
 }
 
 .cdp-risk-chokepoints {
+  white-space: normal;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: #64748b;
   margin-top: 2px;
