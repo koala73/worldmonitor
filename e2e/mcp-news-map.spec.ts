@@ -93,7 +93,7 @@ document.documentElement.dataset.cspViolations='0';document.addEventListener('se
     await page.setContent(`<iframe title="WorldMonitor plugin" style="border:0;width:100%;height:1000px" sandbox="allow-scripts"></iframe><script>
       const frame=document.querySelector('iframe');window.calls=[];window.addEventListener('message',e=>{if(e.source!==frame.contentWindow)return;const m=e.data;window.calls.push(m);const send=o=>frame.contentWindow.postMessage({jsonrpc:'2.0',...o},'*');
       if(m.method==='ui/initialize')send(window.rejectInit?{id:m.id,error:{code:-32000,message:'Fixture initialization failed'}}:{id:m.id,result:{hostCapabilities:{serverTools:{}},hostContext:{theme:'dark'}}});
-      if(m.method==='tools/call')send({id:m.id,result:${JSON.stringify(hazards)}});
+      if(m.method==='tools/call')send(m.params.name==='get_natural_disasters'?{id:m.id,result:${JSON.stringify(hazards)}}:{id:m.id,result:{isError:true,content:[{type:'text',text:'Unexpected tool'}]}});
       if(m.method==='ui/notifications/initialized')send({method:'ui/notifications/tool-result',params:{structuredContent:${JSON.stringify(mapPayload)}}});});frame.srcdoc=${JSON.stringify(strictHtml).replace(/</g, '\\u003c')};</script>`);
     const app = page.frameLocator('iframe');
     await expect(app.locator('.panel')).toHaveCount(12);
