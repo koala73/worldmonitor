@@ -304,8 +304,8 @@ describe('Natural Disasters actual-handler resource source truth', () => {
   });
   it('discloses loaded row caps and reported summary counts for each family', async () => {
     await mount(await result({ limit: 0 }), document => {
-      assert.match(groups(document), /Showing 8 of 10 events/);
-      assert.match(groups(document), /Showing 6 of 8 events/);
+      assert.match(groups(document), /Showing 8 of 10 returned events/);
+      assert.match(groups(document), /Showing 6 of 8 returned events/);
       assert.doesNotMatch(groups(document), /of 2 events/, 'a fully shown list needs no count line');
     });
     await mount(await result({ summary: true, limit: 0 }), document => {
@@ -384,7 +384,7 @@ for (const summary of [false, true]) {
       assert.doesNotMatch(text, /Partial|Failed calls|Error:|Transport|Enriched|Appended|State:/, 'pipeline internals stay out of the panel');
       assert.equal(document.querySelectorAll('.dgroup details.dsources').length, 1, 'source status sits behind one disclosure');
       assert.doesNotMatch(groups(document), /Earthquakes|Other natural events|Source total|1444 fires|Canada cohort/);
-      assert.match(text, summary ? /Showing 3 of 8 events/ : /Showing 6 of 8 events/);
+      assert.match(text, summary ? /Showing 3 of 8 events/ : /Showing 6 of 8 returned events/);
     });
   });
 }
@@ -421,6 +421,11 @@ it('shows regional decision reasons without equating accepted HKO with complete 
       const text = sectionText(document, 'Other natural events');
       assert.match(text, /Western Pacific coverage is incomplete: HKO warning summary · failed \(HTTP_503\)\./);
       assert.doesNotMatch(text, /coverage is incomplete: [^.]*(JMA|JTWC)/, 'only the attempted source that failed is flagged');
+    });
+    failedEnvelope.data.events.westernPacific.dataAvailable = false;
+    await mount(failed, document => {
+      assert.match(sectionText(document, 'Other natural events'),
+        /Western Pacific coverage is unavailable: HKO warning summary · failed \(HTTP_503\)\./, 'an unavailable region still names the failed source');
     });
   }
 });
@@ -569,7 +574,7 @@ describe('Natural local geography and reported details', () => {
     });
     await mount(wire, async (document, send, messages) => {
       assert.equal(document.querySelectorAll('[data-select]').length, 15, '8 quake + 6 fire + 1 OTHER');
-      assert.match(document.getElementById('natural-map-status').textContent, /15 of 17 listed events have map locations/);
+      assert.match(document.getElementById('natural-map-status').textContent, /15 of 17 events in the shown layers have map locations/);
       const footer = document.getElementById('foot').textContent;
       const usage = document.getElementById('panel-usage').textContent;
       const row = activate(document, rowSelect); await tick(document);
@@ -583,6 +588,10 @@ describe('Natural local geography and reported details', () => {
       assert.equal(document.getElementById('natural-selection').textContent, '');
       activate(document, '[data-layer="fires"]'); activate(document, '[data-layer="earthquakes"]');
       assert.match(document.getElementById('natural-map-status').textContent, /Layers hidden/);
+      activate(document, '[data-layer="fires"]');
+      assert.equal(document.getElementById('natural-map-status').textContent, '6 events on the map.',
+        'hidden layers do not count against located events');
+      activate(document, '[data-layer="fires"]');
       activate(document, '[data-layer="events"]');
       assert.equal(row.getAttribute('aria-pressed'), 'false');
       assert.equal(document.getElementById('foot').textContent, footer);

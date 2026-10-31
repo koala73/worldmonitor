@@ -140,7 +140,7 @@ const RENDER = `
       var message;
       if (Array.isArray(view.list)) {
         if (shown >= view.list.length) return;
-        message = "Showing " + shown + " of " + view.list.length + " events.";
+        message = "Showing " + shown + " of " + view.list.length + " returned events.";
       } else {
         var total = view.list.count;
         var known = typeof total === "number" && Number.isInteger(total) && total >= view.items.length;
@@ -475,9 +475,10 @@ const RENDER = `
         entry.marker.setAttribute("aria-label", entry.label + (chosen ? "; selected " + itemLabel(chosen) : ""));
         if (members.length) entry.marker.setAttribute("class", "natural-marker " + members[0].dataset);
       });
-      var valid = items.filter(function(item) { return item.point && layers[item.dataset].visible; }).length;
+      var shownItems = items.filter(function(item) { return layers[item.dataset].visible; });
+      var valid = shownItems.filter(function(item) { return item.point; }).length;
       mapStatus.textContent = Object.keys(layers).some(function(key) { return layers[key].visible; })
-        ? (valid === items.length ? valid + (valid === 1 ? " event" : " events") + " on the map." : valid + " of " + items.length + " listed events have map locations.")
+        ? (valid === shownItems.length ? valid + (valid === 1 ? " event" : " events") + " on the map." : valid + " of " + shownItems.length + " events in the shown layers have map locations.")
         : Object.keys(layers).some(function(key) { return !layers[key].button.disabled; })
           ? "Layers hidden. Source rows and coverage remain below." : "Map locations unavailable for supplied datasets. See source coverage below.";
     }
@@ -629,11 +630,10 @@ const RENDER = `
         regionalSources.forEach(function (region) {
           var coverage = otherView.bucket[region.key];
           if (coverage && typeof coverage === "object") {
-            if (coverage.dataAvailable === false) warning(otherView.section, region.label + " coverage is unavailable.");
-            else {
-              var failedSources = (decisionList(coverage).decisions || []).filter(decisionFailed);
-              if (failedSources.length) warning(otherView.section, region.label + " coverage is incomplete: " + failedSources.map(decisionLine).join("; ") + ".");
-            }
+            var failedSources = (decisionList(coverage).decisions || []).filter(decisionFailed);
+            var failedText = failedSources.length ? ": " + failedSources.map(decisionLine).join("; ") : "";
+            if (coverage.dataAvailable === false) warning(otherView.section, region.label + " coverage is unavailable" + failedText + ".");
+            else if (failedSources.length) warning(otherView.section, region.label + " coverage is incomplete" + failedText + ".");
           }
         });
         regionalDetails(otherView, regionalSources);
