@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import http, { createServer, request as httpRequest } from 'node:http';
 import https from 'node:https';
-import { createHmac } from 'node:crypto';
 import dns from 'node:dns/promises';
 import { EventEmitter } from 'node:events';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -1206,10 +1205,8 @@ test('preserves POST body when cloud fallback is triggered after local non-OK re
   }
 });
 
-test('signs desktop register-interest cloud fallback when shared secret is configured', async () => {
-  const originalSecret = process.env.WM_DESKTOP_SHARED_SECRET;
+test('forwards desktop register-interest to the cloud RPC without legacy signature headers', async () => {
   const originalConvex = process.env.CONVEX_URL;
-  process.env.WM_DESKTOP_SHARED_SECRET = 'desktop-test-secret';
   delete process.env.CONVEX_URL;
 
   const remote = await setupRegisterInterestRemote();
@@ -1228,10 +1225,9 @@ test('signs desktop register-interest cloud fallback when shared secret is confi
       email: 'desktop@example.com',
       source: 'web-form',
       appVersion: '2.8.0',
+      turnstileToken: 'desktop-turnstile-token',
     }, {
       'Content-Encoding': 'gzip',
-      'X-WorldMonitor-Desktop-Timestamp': '1',
-      'X-WorldMonitor-Desktop-Signature': 'sha256=bad',
     });
     assert.equal(response.status, 200);
     assert.equal(remote.requests.length, 1);
@@ -1239,33 +1235,15 @@ test('signs desktop register-interest cloud fallback when shared secret is confi
     const request = remote.requests[0];
     assert.equal(request.path, '/api/leads/v1/register-interest');
     assert.equal(request.json.source, 'desktop-settings');
-    const timestamp = request.headers['x-worldmonitor-desktop-timestamp'];
-    const signature = request.headers['x-worldmonitor-desktop-signature'];
+    assert.equal(request.json.turnstileToken, 'desktop-turnstile-token');
     assert.equal(request.headers['content-encoding'], undefined);
     assert.match(request.headers['user-agent'], /Chrome\/131\.0\.0\.0/);
-    assert.match(timestamp, /^\d+$/);
-    assert.match(signature, /^sha256=[a-f0-9]{64}$/);
-    assert.notEqual(timestamp, '1');
-    assert.notEqual(signature, 'sha256=bad');
-
-    const canonical = JSON.stringify({
-      email: 'desktop@example.com',
-      source: 'desktop-settings',
-      appVersion: '2.8.0',
-      referredBy: '',
-      website: '',
-      turnstileToken: '',
-    });
-    const expected = `sha256=${createHmac('sha256', process.env.WM_DESKTOP_SHARED_SECRET)
-      .update(`${timestamp}\n${canonical}`)
-      .digest('hex')}`;
-    assert.equal(signature, expected);
+    const legacyHeaders = Object.keys(request.headers).filter((name) => name.startsWith('x-worldmonitor-desktop-'));
+    assert.deepEqual(legacyHeaders, []);
   } finally {
     await app.close();
     await localApi.cleanup();
     await remote.close();
-    if (originalSecret === undefined) delete process.env.WM_DESKTOP_SHARED_SECRET;
-    else process.env.WM_DESKTOP_SHARED_SECRET = originalSecret;
     if (originalConvex === undefined) delete process.env.CONVEX_URL;
     else process.env.CONVEX_URL = originalConvex;
   }
@@ -2051,6 +2029,72 @@ test('allows Docker LLM origins and only the configured Ollama origin on desktop
   }
 });
 
+test('a silent Ollama completion outlasts the upstream idle timeout but not the Ollama one', async () => {
+  const envSnapshot = {
+    LOCAL_API_MODE: process.env.LOCAL_API_MODE,
+    OLLAMA_API_URL: process.env.OLLAMA_API_URL,
+  };
+  const ollama = createServer(async (_req, res) => {
+    await sleep(300);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const ollamaPort = await listen(ollama);
+  const localApi = await setupApiDir({
+    'ollama-probe.js': `
+      export default async function handler() {
+        const upstream = await fetch(new URL('/v1/chat/completions', process.env.OLLAMA_API_URL), {
+          method: 'POST',
+          body: '{}',
+        });
+        return new Response(await upstream.text(), { status: upstream.status });
+      }
+    `,
+  });
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  process.env.OLLAMA_API_URL = `http://127.0.0.1:${ollamaPort}`;
+  __testing__.setUpstreamIdleTimeoutMs(50);
+  __testing__.setOllamaIdleTimeoutMs(2000);
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    mode: 'tauri-sidecar',
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+  // The test's own fetch runs through the patched one, so it would idle out
+  // waiting on the sidecar.
+  const probe = () => new Promise((resolve, reject) => {
+    httpRequest(`http://127.0.0.1:${port}/api/ollama-probe`, {
+      headers: { Authorization: `Bearer ${TEST_LOCAL_API_TOKEN}` },
+    }, (res) => {
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(body) }));
+    }).on('error', reject).end();
+  });
+  try {
+    const completed = await probe();
+    assert.equal(completed.status, 200);
+    assert.deepEqual(completed.body, { ok: true });
+
+    __testing__.setOllamaIdleTimeoutMs(100);
+    const hung = await probe();
+    assert.equal(hung.status, 502);
+    assert.match(hung.body.reason, /idle-timed out/);
+  } finally {
+    __testing__.setUpstreamIdleTimeoutMs(12000);
+    __testing__.setOllamaIdleTimeoutMs(90000);
+    await app.close();
+    for (const [key, value] of Object.entries(envSnapshot)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => ollama.close((error) => (error ? reject(error) : resolve())));
+  }
+});
+
 test('blocks handler global fetches to non-global IPv4 special ranges', async () => {
   const originalHttpRequest = http.request;
   const blockedUrls = [
@@ -2668,36 +2712,6 @@ test('accepts OLLAMA_MODEL via /api/local-env-update', async () => {
   }
 });
 
-test('accepts WM_DESKTOP_SHARED_SECRET via /api/local-env-update', async () => {
-  const originalSecret = process.env.WM_DESKTOP_SHARED_SECRET;
-  const localApi = await setupApiDir({});
-
-  const app = await createLocalApiServer({
-    port: 0,
-    apiDir: localApi.apiDir,
-    logger: { log() { }, warn() { }, error() { } },
-  });
-  const { port } = await app.start();
-
-  try {
-    const response = await authFetch(`http://127.0.0.1:${port}/api/local-env-update`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: 'WM_DESKTOP_SHARED_SECRET', value: 'desktop-secret-from-runtime' }),
-    });
-    assert.equal(response.status, 200);
-    const body = await response.json();
-    assert.equal(body.ok, true);
-    assert.equal(body.key, 'WM_DESKTOP_SHARED_SECRET');
-    assert.equal(process.env.WM_DESKTOP_SHARED_SECRET, 'desktop-secret-from-runtime');
-  } finally {
-    if (originalSecret === undefined) delete process.env.WM_DESKTOP_SHARED_SECRET;
-    else process.env.WM_DESKTOP_SHARED_SECRET = originalSecret;
-    await app.close();
-    await localApi.cleanup();
-  }
-});
-
 test('accepts ALPHA_VANTAGE_API_KEY via /api/local-env-update', async () => {
   const originalKey = process.env.ALPHA_VANTAGE_API_KEY;
   const localApi = await setupApiDir({});
@@ -2741,32 +2755,6 @@ test('stores ALPHA_VANTAGE_API_KEY without claiming the provider demo response v
     assert.equal(response.status, 200);
     assert.equal(response.json?.valid, true);
     assert.equal(response.json?.message, 'Key stored');
-  } finally {
-    await app.close();
-    await localApi.cleanup();
-  }
-});
-
-test('validates WM_DESKTOP_SHARED_SECRET without provider probe', async () => {
-  const localApi = await setupApiDir({});
-
-  const app = await createLocalApiServer({
-    port: 0,
-    apiDir: localApi.apiDir,
-    logger: { log() { }, warn() { }, error() { } },
-  });
-  const { port } = await app.start();
-
-  try {
-    const response = await authFetch(`http://127.0.0.1:${port}/api/local-validate-secret`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: 'WM_DESKTOP_SHARED_SECRET', value: 'desktop-secret-from-runtime' }),
-    });
-    assert.equal(response.status, 200);
-    const body = await response.json();
-    assert.equal(body.valid, true);
-    assert.equal(body.message, 'Desktop shared secret stored');
   } finally {
     await app.close();
     await localApi.cleanup();
@@ -3616,6 +3604,123 @@ test('rss-proxy blocks IPv4-mapped IPv6 literals and DNS answers before transpor
     dns.resolve4 = originalResolve4;
     dns.resolve6 = originalResolve6;
     https.request = originalHttpsRequest;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy escapes control characters from the blocked url before logging it', async () => {
+  const localApi = await setupApiDir({});
+  const warnings = [];
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn(...args) { warnings.push(args.join(' ')); }, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const feedUrl = 'http://127.0.0.1/\n[local-api] forged\r\u001b[2J';
+    const response = await authFetch(
+      `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`,
+    );
+    assert.equal(response.status, 403);
+    const blocked = warnings.filter((line) => line.includes('rss-proxy SSRF blocked'));
+    assert.equal(blocked.length, 1, JSON.stringify(warnings));
+    for (const line of warnings) {
+      assert.doesNotMatch(line, /[\r\n\u001b]/, JSON.stringify(line));
+    }
+    assert.ok(blocked[0].includes(JSON.stringify(feedUrl)), blocked[0]);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('a malformed request-target gets a 400 and the sidecar keeps serving', async () => {
+  const localApi = await setupApiDir({
+    'ping.js': `
+      export default async function handler() {
+        return new Response('pong', { status: 200 });
+      }
+    `,
+  });
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  const rawRequest = (target) => new Promise((resolve, reject) => {
+    const socket = net.connect(port, '127.0.0.1', () => {
+      socket.write(`GET ${target} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`);
+    });
+    let data = '';
+    socket.setEncoding('utf8');
+    socket.on('data', (chunk) => { data += chunk; });
+    socket.on('end', () => resolve(data));
+    socket.on('error', reject);
+    socket.setTimeout(5000, () => { socket.destroy(); reject(new Error(`no response for ${target}`)); });
+  });
+
+  try {
+    const raw = await rawRequest('//');
+    assert.match(raw.split('\r\n')[0], /^HTTP\/1\.1 400 /);
+
+    const response = await authFetch(`http://127.0.0.1:${port}/api/ping`);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'pong');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('a throw that escapes the request handler gets a 500 and the sidecar keeps serving', async () => {
+  const localApi = await setupApiDir({
+    'boom.js': `
+      export default async function handler() {
+        // dispatch() returns this Response; reading its body then throws
+        // inside the request handler's own try.
+        return new Response(new ReadableStream({
+          start(controller) { controller.error(new Error('body failed')); },
+        }));
+      }
+    `,
+    'ping.js': `
+      export default async function handler() {
+        return new Response('pong', { status: 200 });
+      }
+    `,
+  });
+  const errors = [];
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: {
+      log() {},
+      warn() {},
+      error(message) {
+        errors.push(message);
+        // A failing logger inside the handler's own catch is the throw that
+        // escapes handleRequest.
+        if (message === '[local-api] fatal') throw new Error('logger failed');
+      },
+    },
+  });
+  const { port } = await app.start();
+
+  try {
+    const failed = await authFetch(`http://127.0.0.1:${port}/api/boom`);
+    assert.equal(failed.status, 500);
+    assert.deepEqual(await failed.json(), { error: 'Internal server error' });
+    assert.ok(errors.includes('[local-api] unhandled request error'), JSON.stringify(errors));
+
+    const response = await authFetch(`http://127.0.0.1:${port}/api/ping`);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'pong');
+  } finally {
     await app.close();
     await localApi.cleanup();
   }

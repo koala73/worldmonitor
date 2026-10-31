@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { createRequire } from 'node:module';
+import { inflateRawSync } from 'node:zlib';
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { readBoundedResponseBytes } from './_china-exchange-transport.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -56,7 +58,89 @@ function parseSpdrDate(raw) {
  * Parse the XLSX historical archive into an ascending-by-date array of
  * `{ date, tonnes, aum, nav }` records. Exposed for unit tests.
  */
+// The archive is ~530 KB and inflates to a few MB. ExcelJS inflates every
+// entry in memory, and JSZip acts on each entry's declared size, so a small
+// download could otherwise expand without bound.
+export const MAX_GLD_ARCHIVE_BYTES = 20 * 1024 * 1024;
+export const MAX_GLD_XLSX_EXPANDED_BYTES = 200 * 1024 * 1024;
+
+export async function readGldArchive(resp) {
+  return Buffer.from(await readBoundedResponseBytes(resp, MAX_GLD_ARCHIVE_BYTES));
+}
+
+function tooLarge(maxBytes) {
+  return new Error(`SPDR historical-archive XLSX expands past ${maxBytes} bytes`);
+}
+
+function notAZip(detail) {
+  return new Error(`SPDR historical-archive is not a readable XLSX: ${detail}`);
+}
+
+/**
+ * Throws unless the workbook's ZIP entries, both as declared in the central
+ * directory and as actually inflated, total at most `maxBytes`.
+ */
+export function assertXlsxExpansionWithin(buf, maxBytes = MAX_GLD_XLSX_EXPANDED_BYTES) {
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 0xFFFF); i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd === -1) throw notAZip('no end of central directory');
+  // JSZip reads a different directory when any end-record field is at its
+  // maximum (its ZIP64 branch) or when a ZIP64 locator precedes the record.
+  const disks = [buf.readUInt16LE(eocd + 4), buf.readUInt16LE(eocd + 6)];
+  const counts = [buf.readUInt16LE(eocd + 8), buf.readUInt16LE(eocd + 10)];
+  const dirSize = buf.readUInt32LE(eocd + 12);
+  const dirOffset = buf.readUInt32LE(eocd + 16);
+  if ([...disks, ...counts].includes(0xFFFF) || dirSize === 0xFFFFFFFF || dirOffset === 0xFFFFFFFF
+    || (eocd >= 20 && buf.readUInt32LE(eocd - 20) === 0x07064b50)) {
+    throw notAZip('ZIP64 archives are not accepted');
+  }
+  // JSZip shifts every offset by any gap between the directory's declared end
+  // and the end record (bytes prepended to the archive). Refuse that layout so
+  // the offsets read here are the ones it uses.
+  if (dirOffset + dirSize !== eocd) throw notAZip('central directory does not end at the end record');
+  // JSZip walks the records by signature and ignores the declared count, so
+  // walk them the same way and refuse an archive whose count disagrees.
+  const count = counts[1];
+  let at = dirOffset;
+  let declared = 0;
+  let inflated = 0;
+  let records = 0;
+  while (at + 46 <= buf.length && buf.readUInt32LE(at) === 0x02014b50) {
+    records++;
+    const method = buf.readUInt16LE(at + 10);
+    const compressedSize = buf.readUInt32LE(at + 20);
+    declared += buf.readUInt32LE(at + 24);
+    if (declared > maxBytes) throw tooLarge(maxBytes);
+    const local = buf.readUInt32LE(at + 42);
+    if (local + 30 > buf.length || buf.readUInt32LE(local) !== 0x04034b50) throw notAZip('bad local header');
+    const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+    const data = buf.subarray(start, start + compressedSize);
+    if (method === 0) {
+      inflated += data.length;
+    } else if (method === 8) {
+      try {
+        inflated += inflateRawSync(data, { maxOutputLength: Math.max(1, maxBytes - inflated) }).length;
+      } catch (err) {
+        if (err?.code === 'ERR_BUFFER_TOO_LARGE') throw tooLarge(maxBytes);
+        throw notAZip(err?.message || 'inflate failed');
+      }
+    } else {
+      throw notAZip(`compression method ${method}`);
+    }
+    if (inflated > maxBytes) throw tooLarge(maxBytes);
+    at += 46 + buf.readUInt16LE(at + 28) + buf.readUInt16LE(at + 30) + buf.readUInt16LE(at + 32);
+  }
+  if (records !== count) throw notAZip(`${records} central directory records, expected ${count}`);
+  if (at !== eocd) throw notAZip('central directory does not end at the end record');
+}
+
 export async function parseGldArchiveXlsx(xlsxBuffer) {
+  assertXlsxExpansionWithin(xlsxBuffer);
   const ExcelJS = require('exceljs');
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(xlsxBuffer);
@@ -130,7 +214,7 @@ async function fetchGldFlows() {
   if (!/spreadsheet|xlsx|octet-stream/i.test(ct)) {
     throw new Error(`SPDR historical-archive returned non-XLSX content-type: ${ct}`);
   }
-  const buf = Buffer.from(await resp.arrayBuffer());
+  const buf = await readGldArchive(resp);
   const history = await parseGldArchiveXlsx(buf);
   if (history.length < 30) throw new Error(`Parsed only ${history.length} rows — SPDR XLSX format may have changed`);
   const flows = computeFlows(history);

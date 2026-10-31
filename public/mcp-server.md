@@ -29,6 +29,8 @@ Call `get_mcp_allowance({})` to read the current verified account allowance when
 
 When a denial's `error.data` carries `checkoutTool: "start_upgrade"`, call `start_upgrade({plan})` with its `recommendedPlan` to get a personal checkout link for the signed-in account. The user pays in a browser; the tool never charges and spends no daily allowance. After payment, `get_mcp_allowance` reports the paid limit without re-authorization.
 
+Webcam discovery is available through `find_webcams` (bounded viewport metadata and clusters) followed by `get_webcam_media` (one camera's recent media). Capture timestamps, catalog freshness and URL resolution times are separate. Media is recent visual context without guaranteed live conditions. Preserve Windy's courtesy and link every displayed image to the returned Windy detail or player URL; see the [webcam tool reference](https://www.worldmonitor.app/docs/mcp-tools-reference#get_webcam_media).
+
 ## MCP Apps
 
 World Monitor supports MCP Apps (`io.modelcontextprotocol/ui`) with interactive `ui://` app shells. The linked tools are `get_country_risk`, `get_world_brief`, `get_country_brief`, `get_market_data`, `get_chokepoint_status`, `get_news_intelligence`, `get_conflict_events`, `get_natural_disasters`, `get_prediction_markets`, `get_forecast_predictions`, `open_news_dashboard`, and `open_country_brief`; their UI resources are:
@@ -52,7 +54,7 @@ Hosts discover the links through `_meta.ui.resourceUri` in `tools/list`, enumera
 
 `get_gold_intelligence` preserves gold quotes and optional COT, ETF and central-bank enrichment with individual observation dates; `unavailable` and absent enrichment remain explicit. It requires subscription access and makes one signed downstream GET, charged at weight 2 on API allowances (the MCP request plus the downstream request). `get_infrastructure_status` reads Cloudflare Radar outages, traffic anomalies and global DDoS summaries from the seeded cache; the traffic `totalCount` is global before filtering and DDoS percentages are not country-filtered. The retired `get_internet_activity` and `get_energy_storage` names still answer with a `deprecation` notice that names their replacements.
 
-- **Connecting an MCP client:** an `initialize` with no credentials gets `401` with a `WWW-Authenticate` challenge, which starts your client's OAuth sign-in. A free account is enough.
+- **Connecting an MCP client:** an `initialize` with no credentials gets `401` with a `WWW-Authenticate` challenge, which starts your client's OAuth sign-in. A free account is enough. A script that sends a default HTTP-library `User-Agent` (`python-httpx`, `node`, `undici`, `Go-http-client` and similar) completes the handshake anonymously and gets the `401` at its first gated tool call.
 - **`tools/list` and other stateless discovery calls:** anonymous, no key.
 - **`get_sources` via `tools/call`:** no credentials and no daily quota; separate fail-closed limit of 10 anonymous calls/minute/IP. Its `tools/list` and server-card entries carry `_meta["worldmonitor/access"]: "free"`.
 - **All other data-bearing `tools/call` and `resources/read`:** need subscription access through an API key or OAuth.

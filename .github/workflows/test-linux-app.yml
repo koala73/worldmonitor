@@ -41,13 +41,13 @@ jobs:
           node-version: '24'
           cache: 'npm'
 
-      - name: Install Rust stable
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7
         with:
-          toolchain: stable
+          toolchain: 1.99.1
 
       - name: Rust cache
-        uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           workspaces: './src-tauri -> target'
           cache-on-failure: true
@@ -73,7 +73,6 @@ jobs:
       - name: Bundle Node.js runtime
         shell: bash
         env:
-          NODE_VERSION: '22.14.0'
           NODE_TARGET: 'x86_64-unknown-linux-gnu'
         run: bash scripts/download-node.sh --target "$NODE_TARGET"
 

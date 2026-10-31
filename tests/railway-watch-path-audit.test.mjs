@@ -129,6 +129,7 @@ const NIXPACKS_BUILD_FILES = Object.freeze([
   'scripts/package.json',
   'scripts/package-lock.json',
   'scripts/nixpacks.toml',
+  'scripts/railpack.json',
 ]);
 
 // A `nixpacks-root-repo` service builds from the repository root, so it reads
@@ -161,7 +162,7 @@ const RELAY_INVENTORY_BUILD_INPUTS = Object.freeze([
   'shared/source-attribution-manifest.json',
   'public/.well-known/mcp/server-card.json',
   'src/components/**/*.ts',
-  'src/config/feeds.ts',
+  'shared/news-catalog.json',
   'src/config/map-layer-definitions.ts',
   'src/config/variants/*.ts',
   'src/locales/*.json',
@@ -977,7 +978,12 @@ describe('planned Railway service lifecycle', () => {
     // made rather than a way to quiet a red gate.
     //
     const expectedPlannedServices = [
-      'seed-country-history',
+      // seed-country-history is deliberately ABSENT now: #9435 landed it
+      // planned until the Railway service existed, and service
+      // d295b2c7-59ba-4748-9525-62292c5bc98c now runs
+      // `node seed-country-history.mjs` on cron 30 0 * * *. Leaving it planned
+      // made registry sync refuse the whole fleet with `unexpected repository
+      // service(s): seed-country-history`.
       // seed-bundle-canada is deliberately ABSENT now: all six members merged
       // (#6669, #6672, #6674 and the roads stack) and the Railway service was
       // provisioned, so it is a live cron and belongs in the audit. Leaving it
@@ -997,10 +1003,25 @@ describe('planned Railway service lifecycle', () => {
       // `node seed-live-video-resolved.mjs` on cron 0 */6 * * * and has
       // published once. Leaving it planned would exempt a live cron from the
       // watch-path and deploy-drift checks.
+      // seed-no2-activity (#9722) is deliberately ABSENT: service
+      // 359e5bd7-4160-41d6-8792-f4aff20a3006 runs `node seed-no2-activity.mjs`
+      // on cron 20 6 * * * with the CDSE credentials. Leaving it planned would
+      // exempt a live cron from the watch-path and deploy-drift checks.
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',
+      // seed-ukmto-incidents (#9832) is deliberately ABSENT now: service
+      // fa702bee-b70c-44de-9aca-9cea889e89fb runs
+      // `node seed-ukmto-incidents.mjs` on cron */30 * * * * against the
+      // hormuz.data-tracking.net republication (#9858). Leaving it planned
+      // would exempt a live cron from the watch-path and deploy-drift checks.
       'seed-weather-alerts',
+      // seed-notam-nms (#9637) is deliberately ABSENT now: it landed planned
+      // until FAA granted production NMS-API access, and service
+      // 4aa3db57-9388-4c69-a248-8a538e576454 now runs
+      // `node seed-notam-nms.mjs` on cron */5 * * * * against the production
+      // host (#9635). Leaving it planned would exempt a live cron from the
+      // watch-path and deploy-drift checks.
       // shipping-webhook-worker (#9217) is deliberately ABSENT now: #9236
       // landed it planned until the Railway service existed, and service
       // a97fa619-a8f4-4244-9748-6c0f6c3eade3 now runs
@@ -1039,6 +1060,19 @@ describe('planned Railway service lifecycle', () => {
       'UPSTASH_REDIS_REST_TOKEN',
     ]);
     assert.ok(managedRailwayServices(RAILWAY_SERVICE_REGISTRY).includes(imd));
+  });
+
+  it('audit-manages provisioned seed-country-history', () => {
+    // Service d295b2c7-59ba-4748-9525-62292c5bc98c exists, so the row must
+    // carry no lifecycle field. Asserting ABSENCE is what stops `planned`
+    // being reinstated to quiet a red gate.
+    const live = RAILWAY_SERVICE_REGISTRY.find((entry) => entry.service === 'seed-country-history');
+    assert.ok(live, 'seed-country-history must remain in the Railway registry');
+    assert.equal(Object.hasOwn(live, 'lifecycle'), false);
+    assert.equal(live.cronSchedule, '30 0 * * *');
+    assert.equal(live.startCommand, 'node seed-country-history.mjs');
+    assert.deepEqual(live.requiredEnv, ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']);
+    assert.ok(managedRailwayServices(RAILWAY_SERVICE_REGISTRY).includes(live));
   });
 
   it('audit-manages provisioned seed-live-video-resolved', () => {
@@ -1408,10 +1442,10 @@ describe('closure detection layers', () => {
   });
 
   describe('the build inputs each deploy mode contributes', () => {
-    it('gives a scripts-rooted nixpacks service its own three build files', () => {
+    it('gives a scripts-rooted service its own four build files', () => {
       assert.deepEqual(
         [...buildInputsFor({ deployMode: 'nixpacks-root-scripts' }, repoRoot)].sort(),
-        ['scripts/nixpacks.toml', 'scripts/package-lock.json', 'scripts/package.json'],
+        ['scripts/nixpacks.toml', 'scripts/package-lock.json', 'scripts/package.json', 'scripts/railpack.json'],
       );
     });
 
@@ -1525,7 +1559,7 @@ describe('closure detection layers', () => {
     const missing = [...buildInputsFor(entry, repoRoot)]
       .filter((file) => !watched.has(file))
       .sort();
-    assert.deepEqual(missing, ['scripts/nixpacks.toml', 'scripts/package-lock.json']);
+    assert.deepEqual(missing, ['scripts/nixpacks.toml', 'scripts/package-lock.json', 'scripts/railpack.json']);
   });
 });
 

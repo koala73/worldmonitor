@@ -13,6 +13,9 @@
  */
 import { query, closePool } from '../db/client.js';
 import { loadAllBasketConfigs } from '../config/loader.js';
+import { classifyMatchAdmission } from './scrape-coverage.js';
+import type { ValidatorResult } from '../adapters/validator.js';
+import { MAX_OBSERVATION_AGE_DAYS } from '../observation-freshness.js';
 
 const logger = {
   info: (msg: string, ...args: unknown[]) => console.log(`[validate] ${msg}`, ...args),
@@ -38,6 +41,9 @@ interface MatchRow {
   canonicalName: string;
   price: number;
   currencyCode?: string;
+  reviewedBy: string | null;
+  observationId: string;
+  admitted: boolean;
 }
 
 async function validateBasket(basketSlug: string, marketCode: string): Promise<void> {
@@ -49,9 +55,14 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
     canonical_name: string;
     price: string;
     currency_code: string | null;
+    reviewed_by: string | null;
+    observation_id: string;
+    validator: ValidatorResult | null;
   }>(
     `SELECT pm.id AS match_id, pm.basket_item_id, pm.match_status,
-            r.slug AS retailer_slug, cp.canonical_name, po.price, r.currency_code
+            r.slug AS retailer_slug, cp.canonical_name, po.price, r.currency_code,
+            pm.reviewed_by, po.id AS observation_id,
+            po.raw_payload_json->'validator' AS validator
      FROM product_matches pm
      JOIN retailer_products rp ON rp.id = pm.retailer_product_id AND rp.active = true
      JOIN retailers r ON r.id = rp.retailer_id AND r.market_code = $2 AND r.active = true
@@ -59,13 +70,14 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
      JOIN baskets b ON b.id = bi.basket_id AND b.slug = $1
      JOIN canonical_products cp ON cp.id = pm.canonical_product_id
      JOIN LATERAL (
-       SELECT price FROM price_observations
-       WHERE retailer_product_id = rp.id AND in_stock = true
+       SELECT id, price, in_stock, raw_payload_json FROM price_observations
+       WHERE retailer_product_id = rp.id
        ORDER BY observed_at DESC, id DESC LIMIT 1
-     ) po ON true
+     ) po ON po.in_stock = true
+       AND rp.last_seen_at >= NOW() - make_interval(days => $3)
      WHERE pm.match_status IN ('auto', 'approved', 'review')
        AND pm.pin_disabled_at IS NULL`,
-    [basketSlug, marketCode],
+    [basketSlug, marketCode, MAX_OBSERVATION_AGE_DAYS],
   );
 
   const rows: MatchRow[] = result.rows.map((r) => ({
@@ -76,6 +88,9 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
     canonicalName: r.canonical_name,
     price: parseFloat(r.price),
     currencyCode: typeof r.currency_code === 'string' ? r.currency_code : undefined,
+    reviewedBy: r.reviewed_by,
+    observationId: r.observation_id,
+    admitted: classifyMatchAdmission(r.validator ?? undefined).status === 'auto',
   }));
 
   // Group by basket item
@@ -85,20 +100,56 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
     byItem.get(r.basketItemId)!.push(r);
   }
 
+  // Retailers a scrape saw within the window, per item, whatever their stock.
+  // The priced query above also drops a retailer whose latest observation is
+  // out of stock; that says nothing about this item's price, so releasing a
+  // hold then would publish a price this job flagged. A hold is released only
+  // when no other retailer has been seen at all. Loaded once, on first need.
+  let seenRetailers: Map<string, number> | null = null;
+  const othersSeen = async (basketItemId: string): Promise<boolean> => {
+    if (!seenRetailers) {
+      const seen = await query<{ basket_item_id: string; retailers: number }>(
+        `SELECT pm.basket_item_id, COUNT(DISTINCT r.id)::int AS retailers
+         FROM product_matches pm
+         JOIN retailer_products rp ON rp.id = pm.retailer_product_id
+         JOIN retailers r ON r.id = rp.retailer_id AND r.market_code = $2 AND r.active = true
+         JOIN basket_items bi ON bi.id = pm.basket_item_id AND bi.active = true
+         JOIN baskets b ON b.id = bi.basket_id AND b.slug = $1
+         WHERE pm.match_status <> 'rejected'
+           AND rp.last_seen_at >= NOW() - make_interval(days => $3)
+         GROUP BY pm.basket_item_id`,
+        [basketSlug, marketCode, MAX_OBSERVATION_AGE_DAYS],
+      );
+      seenRetailers = new Map(seen.rows.map((r) => [r.basket_item_id, Number(r.retailers)]));
+    }
+    return (seenRetailers.get(basketItemId) ?? 0) > 1;
+  };
+
   let flagged = 0;
   let restored = 0;
 
-  for (const [, itemRows] of byItem) {
+  for (const [basketItemId, itemRows] of byItem) {
     // Need >= 2 retailers to compute a meaningful cross-retailer median.
-    // Single-retailer items cannot be sanity-checked — skip.
-    if (itemRows.length < 2) continue;
-
-    const med = median(itemRows.map((r) => r.price));
-    if (med === 0) continue;
+    // Single-retailer items cannot be sanity-checked, so nothing is flagged —
+    // but a hold this job placed while a peer existed is released once no
+    // scrape has seen that peer within the window, or the item stays held
+    // forever.
+    const pricesByRetailer = new Map<string, number[]>();
+    for (const row of itemRows) {
+      const prices = pricesByRetailer.get(row.retailerSlug) ?? [];
+      prices.push(row.price);
+      pricesByRetailer.set(row.retailerSlug, prices);
+    }
+    const peered = pricesByRetailer.size >= 2;
+    const peerPrices = [...pricesByRetailer.values()].map(prices => median(prices));
+    const med = peered ? median(peerPrices) : 0;
+    if (peered && med === 0) continue;
+    const disputedPair = peerPrices.length === 2 &&
+      Math.max(...peerPrices) / Math.min(...peerPrices) > UPPER_RATIO;
 
     for (const row of itemRows) {
-      const ratio = row.price / med;
-      const isOutlier = ratio > UPPER_RATIO || ratio < LOWER_RATIO;
+      const ratio = peered ? row.price / med : 1;
+      const isOutlier = peered && (disputedPair || ratio > UPPER_RATIO || ratio < LOWER_RATIO);
       const wasReview = row.matchStatus === 'review';
 
       if (isOutlier && !wasReview) {
@@ -106,16 +157,19 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
           `UPDATE product_matches
            SET match_status = 'review',
                evidence_json = evidence_json || $2,
-               reviewed_by = 'validate-job',
-               reviewed_at = NOW()
-           WHERE id = $1`,
+               reviewed_by = CASE WHEN match_status = 'approved' THEN reviewed_by ELSE 'validate-job' END,
+               reviewed_at = CASE WHEN match_status = 'approved' THEN reviewed_at ELSE NOW() END
+           WHERE id = $1 AND match_status IN ('auto', 'approved')`,
           [row.matchId, JSON.stringify({
             flaggedAt: new Date().toISOString(),
-            reason: 'price_outlier',
+            previousMatchStatus: row.matchStatus,
+            previousReviewedBy: row.reviewedBy,
+            reason: disputedPair ? 'price_disagreement' : 'price_outlier',
             price: row.price,
             medianPrice: Math.round(med * 100) / 100,
             ratio: Math.round(ratio * 100) / 100,
-            threshold: ratio > UPPER_RATIO ? `>${UPPER_RATIO}x median` : `<${LOWER_RATIO}x median`,
+            threshold: disputedPair ? `>${UPPER_RATIO}x peer`
+              : ratio > UPPER_RATIO ? `>${UPPER_RATIO}x median` : `<${LOWER_RATIO}x median`,
           })],
         );
         logger.warn(
@@ -123,7 +177,10 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
           `${(row.currencyCode ?? "").padEnd(3)}${row.price.toFixed(2).padStart(7)}  (median=${med.toFixed(2)}, ratio=${ratio.toFixed(2)}x)`,
         );
         flagged++;
-      } else if (!isOutlier && wasReview) {
+      } else if (
+        !isOutlier && wasReview && row.reviewedBy === 'validate-job' && row.admitted &&
+        (peered || !(await othersSeen(basketItemId)))
+      ) {
         // Price returned to normal range — restore so it flows into aggregate again.
         await query(
           `UPDATE product_matches
@@ -131,25 +188,33 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
                evidence_json = evidence_json || $2,
                reviewed_by = 'validate-job',
                reviewed_at = NOW()
-           WHERE id = $1`,
-          [row.matchId, JSON.stringify({
+           WHERE id = $1 AND match_status = 'review' AND reviewed_by = 'validate-job'
+             AND pin_disabled_at IS NULL
+             AND $3 = (SELECT id::text FROM price_observations
+                       WHERE retailer_product_id = product_matches.retailer_product_id
+                       ORDER BY observed_at DESC, id DESC LIMIT 1)`,
+          [row.matchId, JSON.stringify(peered ? {
             restoredAt: new Date().toISOString(),
             reason: 'price_within_range',
             price: row.price,
             medianPrice: Math.round(med * 100) / 100,
             ratio: Math.round(ratio * 100) / 100,
-          })],
+          } : {
+            restoredAt: new Date().toISOString(),
+            reason: 'no_fresh_peer',
+            price: row.price,
+          }), row.observationId],
         );
         logger.info(
           `  RESTORED ${row.canonicalName.padEnd(30)} ${row.retailerSlug.padEnd(20)}` +
-          `${(row.currencyCode ?? "").padEnd(3)}${row.price.toFixed(2).padStart(7)}  now within range`,
+          `${(row.currencyCode ?? "").padEnd(3)}${row.price.toFixed(2).padStart(7)}  ${peered ? 'now within range' : 'no fresh peer'}`,
         );
         restored++;
       }
     }
   }
 
-  const singleRetailerItems = [...byItem.values()].filter((r) => r.length < 2).length;
+  const singleRetailerItems = [...byItem.values()].filter(rows => new Set(rows.map(row => row.retailerSlug)).size < 2).length;
   logger.info(`${basketSlug}:${marketCode} — flagged=${flagged} restored=${restored} single-retailer-skipped=${singleRetailerItems}`);
 }
 

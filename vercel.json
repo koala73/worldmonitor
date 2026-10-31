@@ -18,6 +18,7 @@
     { "source": "/crises/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/crises/:match", "permanent": true },
     { "source": "/use-cases/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/use-cases/:match", "permanent": true },
     { "source": "/accuracy/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/accuracy/:match", "permanent": true },
+    { "source": "/monitor-the-situation/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/monitor-the-situation/:match", "permanent": true },
     { "source": "/reference/", "destination": "/reference/changelog/", "permanent": false },
     { "source": "/reference/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/reference/:match", "permanent": true },
     { "source": "/sources/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/sources/:match", "permanent": true },
@@ -33,11 +34,13 @@
     { "source": "/api-reference/:match*", "destination": "https://www.worldmonitor.app/docs/api-reference/:match*", "permanent": true },
     { "source": "/api", "destination": "/docs/api-reference", "permanent": false },
     { "source": "/api/", "destination": "/docs/api-reference", "permanent": false },
-    { "source": "/docs", "destination": "/docs/documentation", "permanent": false },
+    { "source": "/docs", "destination": "/docs/documentation", "permanent": true },
+    { "source": "/docs/", "destination": "/docs/documentation", "permanent": true },
     { "source": "/security.txt", "destination": "/.well-known/security.txt", "permanent": true },
     { "source": "/index.html", "destination": "/", "permanent": true },
     { "source": "/welcome", "destination": "/", "permanent": true },
     { "source": "/CLERK-ROUTER/:path*", "destination": "/dashboard", "permanent": false },
+    { "source": "/settings", "destination": "/dashboard", "permanent": false },
     { "source": "/es", "destination": "/es/", "permanent": true },
     { "source": "/pt", "destination": "/pt/", "permanent": true },
     { "source": "/ru", "destination": "/ru/", "permanent": true },
@@ -100,6 +103,7 @@
     { "source": "/use-cases", "destination": "/use-cases/", "permanent": true },
     { "source": "/use-cases/:slug([a-z0-9-]+)", "destination": "/use-cases/:slug/", "permanent": true },
     { "source": "/accuracy", "destination": "/accuracy/", "permanent": true },
+    { "source": "/monitor-the-situation", "destination": "/monitor-the-situation/", "permanent": true },
     { "source": "/trust", "destination": "/trust/", "permanent": true },
     { "source": "/agent", "destination": "/agent/", "permanent": true },
     { "source": "/trust/review", "destination": "/trust/review/", "permanent": false },
@@ -124,7 +128,11 @@
     { "source": "/dashboard/", "destination": "/dashboard", "permanent": true },
     { "source": "/story/", "destination": "/story", "permanent": true },
     { "source": "/stocks/", "destination": "/stocks", "permanent": true },
-    { "source": "/stocks/:symbol/", "destination": "/stocks/:symbol", "permanent": true }
+    { "source": "/stocks/:symbol/", "destination": "/stocks/:symbol", "permanent": true },
+    { "source": "/verify/", "destination": "/verify", "permanent": true },
+    { "source": "/mcp-grant/", "destination": "/mcp-grant", "permanent": true },
+    { "source": "/desktop-sign-in/", "destination": "/desktop-sign-in", "permanent": true },
+    { "source": "/embed/", "destination": "/embed", "permanent": true }
   ],
   "rewrites": [
     { "source": "/plugin/assets/boot-:attempt([0-9]+)/:asset([a-zA-Z0-9_.-]+\\.js)", "destination": "/plugin/assets/:asset" },
@@ -184,7 +192,7 @@
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, follow" }]
     },
     {
-      "source": "/(country-instability-index|countries|sources|chokepoints|research|crises|use-cases|accuracy|compare|tools|reference|changelog)/(.*).json",
+      "source": "/(country-instability-index|countries|sources|chokepoints|research|crises|use-cases|accuracy|monitor-the-situation|compare|tools|reference|changelog)/(.*).json",
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, follow" }]
     },
     {
@@ -582,7 +590,7 @@
         { "key": "Cross-Origin-Opener-Policy-Report-Only", "value": "same-origin; report-to=\"wm-coop-coep\"" },
         { "key": "Cross-Origin-Embedder-Policy-Report-Only", "value": "require-corp; report-to=\"wm-coop-coep\"" },
         { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(self), accelerometer=(), autoplay=(self \"https://www.youtube.com\" \"https://www.youtube-nocookie.com\"), bluetooth=(), display-capture=(), encrypted-media=(self \"https://www.youtube.com\" \"https://www.youtube-nocookie.com\"), gyroscope=(), hid=(), idle-detection=(), magnetometer=(), midi=(), payment=(self \"https://checkout.dodopayments.com\" \"https://test.checkout.dodopayments.com\" \"https://pay.google.com\" \"https://hooks.stripe.com\" \"https://js.stripe.com\"), picture-in-picture=(self \"https://www.youtube.com\" \"https://www.youtube-nocookie.com\" \"https://challenges.cloudflare.com\"), unload=(*), screen-wake-lock=(), serial=(), usb=(), xr-spatial-tracking=(\"https://challenges.cloudflare.com\"), tools=(self)" },
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; connect-src 'self' https: wss: blob: data: https://*.ingest.sentry.io https://*.ingest.us.sentry.io; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'strict-dynamic' 'nonce-wm-static-bootstrap' 'sha256-h0RiSjzitWmlVHuHxDHV1z/h7io4rveTmT0yR7CKaJ0=' 'sha256-5Z9IhMFGUf29PVDaWoiTpwEg7J7Q4r4F49rLS77PJm0=' 'sha256-Z5TaQuwFMHlxoFSQYuTWfxuPE5RUOpVsZOttUGCcRNE=' 'sha256-Jgh3W4Qj3HWZPVSti0C073yuiaz611LO8OZRUCsN0x8=' 'sha256-llBxZlyh3eu6gbNvZXaeD9oZE2jgTvnh72FEO/GDErQ=' 'sha256-qBy8dsjFg+wfik0vT6vqHdUfbfSdoK+3noanAXUt4mk=' 'sha256-sMkhxXs3qUW2IR01a4d3tL1e2XQV0XUwxXAeL31nDjM=' 'wasm-unsafe-eval'; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' data: blob: https:; frame-src 'self' https://www.worldmonitor.app https://worldmonitor.app https://tech.worldmonitor.app https://finance.worldmonitor.app https://commodity.worldmonitor.app https://happy.worldmonitor.app https://energy.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com https://www.google.com https://webcams.windy.com https://challenges.cloudflare.com https://*.clerk.accounts.dev https://clerk.worldmonitor.app https://vercel.live https://*.dodopayments.com https://checkout.dodopayments.com https://test.checkout.dodopayments.com https://*.hs.dodopayments.com https://*.custom.hs.dodopayments.com https://pay.google.com https://hooks.stripe.com https://js.stripe.com; frame-ancestors 'self' https://www.worldmonitor.app https://tech.worldmonitor.app https://finance.worldmonitor.app https://commodity.worldmonitor.app https://happy.worldmonitor.app https://energy.worldmonitor.app https://worldmonitor.app https://vercel.live; base-uri 'self'; object-src 'none'; form-action 'self' https://api.worldmonitor.app" }
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; connect-src 'self' https: wss: blob: data: https://*.ingest.sentry.io https://*.ingest.us.sentry.io; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'strict-dynamic' 'nonce-wm-static-bootstrap' 'sha256-5Z9IhMFGUf29PVDaWoiTpwEg7J7Q4r4F49rLS77PJm0=' 'sha256-Z5TaQuwFMHlxoFSQYuTWfxuPE5RUOpVsZOttUGCcRNE=' 'sha256-Jgh3W4Qj3HWZPVSti0C073yuiaz611LO8OZRUCsN0x8=' 'sha256-llBxZlyh3eu6gbNvZXaeD9oZE2jgTvnh72FEO/GDErQ=' 'sha256-EXBrp/yOlluawv4VDhli8iSRVcXnwQKDrGr4WtUcq/Y=' 'sha256-sMkhxXs3qUW2IR01a4d3tL1e2XQV0XUwxXAeL31nDjM=' 'wasm-unsafe-eval'; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' data: blob: https:; frame-src 'self' https://www.worldmonitor.app https://worldmonitor.app https://tech.worldmonitor.app https://finance.worldmonitor.app https://commodity.worldmonitor.app https://happy.worldmonitor.app https://energy.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com https://www.google.com https://webcams.windy.com https://challenges.cloudflare.com https://*.clerk.accounts.dev https://clerk.worldmonitor.app https://vercel.live https://*.dodopayments.com https://checkout.dodopayments.com https://test.checkout.dodopayments.com https://*.hs.dodopayments.com https://*.custom.hs.dodopayments.com https://pay.google.com https://hooks.stripe.com https://js.stripe.com; frame-ancestors 'self' https://www.worldmonitor.app https://tech.worldmonitor.app https://finance.worldmonitor.app https://commodity.worldmonitor.app https://happy.worldmonitor.app https://energy.worldmonitor.app https://worldmonitor.app https://vercel.live; base-uri 'self'; object-src 'none'; form-action 'self' https://api.worldmonitor.app" }
       ]
     },
     {
@@ -780,6 +788,18 @@
       ]
     },
     {
+      "source": "/monitor-the-situation/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/monitor-the-situation",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" }
+      ]
+    },
+    {
       "source": "/compare/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" }
@@ -828,23 +848,23 @@
       ]
     },
     {
-      "source": "/(country-instability-index|countries|sources|chokepoints|research|crises|use-cases|accuracy|compare|tools|reference|changelog)",
+      "source": "/(country-instability-index|countries|sources|chokepoints|research|crises|use-cases|accuracy|monitor-the-situation|compare|tools|reference|changelog)",
       "headers": [
         { "key": "CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
         { "key": "Vercel-CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
-        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
+        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"https://worldmonitor.app/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
       ]
     },
     {
-      "source": "/(country-instability-index|countries|sources|chokepoints|research|crises|use-cases|accuracy|compare|tools|reference|changelog)/(.*)",
+      "source": "/(country-instability-index|countries|sources|chokepoints|research|crises|use-cases|accuracy|monitor-the-situation|compare|tools|reference|changelog)/(.*)",
       "headers": [
         { "key": "CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
         { "key": "Vercel-CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
-        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
+        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"https://worldmonitor.app/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
       ]
     },
     {
-      "source": "/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|country-instability-index|countries|chokepoints|compare|crises|tools|research|reference|changelog|sources|use-cases|accuracy|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|sitemap-main\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|desktop-sign-in\\.html|desktop-sign-in|.*\\.md$).*)",
+      "source": "/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|country-instability-index|countries|chokepoints|compare|crises|tools|research|reference|changelog|sources|use-cases|accuracy|monitor-the-situation|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|sitemap-main\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|desktop-sign-in\\.html|desktop-sign-in|.*\\.md$).*)",
       "headers": [
         { "key": "Cache-Control", "value": "private, no-cache, must-revalidate" }
       ]
@@ -855,7 +875,7 @@
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
         { "key": "CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
         { "key": "Vercel-CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
-        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
+        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"https://worldmonitor.app/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
       ]
     },
     {
@@ -864,7 +884,7 @@
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
         { "key": "CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
         { "key": "Vercel-CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
-        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
+        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"https://worldmonitor.app/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
       ]
     },
     {
@@ -873,7 +893,7 @@
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
         { "key": "CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
         { "key": "Vercel-CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
-        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
+        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"https://worldmonitor.app/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
       ]
     },
     {
@@ -882,7 +902,7 @@
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
         { "key": "CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
         { "key": "Vercel-CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
-        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
+        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"https://worldmonitor.app/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
       ]
     },
     {
@@ -907,7 +927,7 @@
     {
       "source": "/(blog|blog/(?!_astro/|og/|images/).*|pro/?)",
       "headers": [
-        {"key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\""}
+        {"key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"https://worldmonitor.app/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\""}
       ]
     },
     {
@@ -956,7 +976,7 @@
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
         { "key": "CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
         { "key": "Vercel-CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
-        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
+        { "key": "Link", "value": "</.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </openapi.yaml>; rel=\"service-desc\"; type=\"application/vnd.oai.openapi\", </docs/documentation>; rel=\"service-doc\"; type=\"text/html\", </api/health?compact=1>; rel=\"status\"; type=\"application/json\", </.well-known/oauth-protected-resource>; rel=\"http://www.iana.org/assignments/relation/oauth-protected-resource\", </.well-known/oauth-authorization-server>; rel=\"http://www.iana.org/assignments/relation/oauth-authorization-server\", </.well-known/mcp/server-card.json>; rel=\"mcp-server-card\"; anchor=\"https://worldmonitor.app/mcp\", </.well-known/mcp/docs-server-card.json>; rel=\"mcp-server-card\"; anchor=\"/docs/mcp\", </.well-known/agent-skills/index.json>; rel=\"agent-skills-index\"; type=\"application/json\", </api-versioning.md>; rel=\"deprecation\"; type=\"text/markdown\"" }
       ]
     },
     {

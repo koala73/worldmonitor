@@ -18,10 +18,12 @@
 // would undercut the thing this tool exists to advertise.
 import attributionManifest from '../../../shared/source-attribution-manifest.json';
 import { getProvenanceCoverage, getSourceProvenanceState } from '../../../shared/source-provenance';
+import { withOutletProfile } from '../../../server/_shared/outlet-profile';
 import { TELEGRAM_CHANNEL_TRUST } from '../../../shared/telegram-channel-trust';
 import { SOURCE_TIERS } from '../../../server/_shared/source-tiers';
 import { resolveSourceOrigin, sourceOriginFilterValue, sourceOriginLabel } from '../../../scripts/source-origin.mjs';
 import { argNum, argStr, ciIncludes } from '../filters';
+import { MEDIA_PERSPECTIVE_TOOL } from './media-perspective-tool';
 import type { ToolDef } from '../types';
 
 interface ManifestEntry {
@@ -124,7 +126,7 @@ export function outletRecord(name: string) {
   return {
     name,
     tier,
-    provenance,
+    provenance: withOutletProfile(name, provenance),
     ...(platformIdentities ? { platformIdentities } : {}),
   };
 }
@@ -133,7 +135,7 @@ export const SOURCE_TOOLS: ToolDef[] = [
   {
     name: 'get_sources',
     title: 'Source inventory',
-    _outputBudgetBytes: 65536,
+    _outputBudgetBytes: 131072,
     // U7 roster (R7). The selection criterion is cheap to serve, cacheable,
     // low value to bulk-scrape, AND reliably fresh. This tool satisfies all
     // four trivially: it is a committed-registry read with no network call, no
@@ -223,7 +225,7 @@ export const SOURCE_TOOLS: ToolDef[] = [
             properties: {
               name: { type: 'string' },
               tier: { type: ['number', 'null'], description: 'Declared editorial tier, or null when WorldMonitor has not declared one. Never defaulted to a number.' },
-              provenance: { type: 'object', description: 'Same provenance shape the news tools attach to stories, minus the prose `summary`. `knownBiases` is always present; empty means no perspective label recorded, not neutral.' },
+              provenance: { type: 'object', description: 'Same provenance shape the news tools attach to stories, minus the prose `summary`. `knownBiases` is always present; empty means no perspective label recorded, not neutral. Includes the outlet profile: `homeCountry`, `audience` (domestic, international or diaspora), `language` and `ownershipClass`, each null when no profile is recorded.' },
               platformIdentities: {
                 type: 'array',
                 description: 'Stable platform-specific identities for this source, when configured.',
@@ -336,4 +338,5 @@ export const SOURCE_TOOLS: ToolDef[] = [
     // which the RpcToolDef contract names as the valid empty-_apiPaths case.
     _apiPaths: [],
   },
+  MEDIA_PERSPECTIVE_TOOL,
 ];

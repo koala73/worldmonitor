@@ -159,13 +159,16 @@ describe('bounded panel reads with an enabled minute limiter', () => {
     assert.equal(counts.get(userBucket), undefined);
     assert.equal(pipe.count, 1);
   });
-  it('completes a full panel when the host reconnects before each internal read', async () => {
+  it('completes a full panel when reconnect notifications reach the IP limit', async () => {
     const { deps, pipe } = makeProDeps();
     const receipt = await open(deps);
     for (let i = 0; i < 64; i++) {
       for (const method of ['initialize', 'notifications/initialized', 'ping']) {
         const response = await handler(proReq('POST', { jsonrpc: '2.0', ...(method === 'notifications/initialized' ? {} : { id: i }), method }), deps);
-        if (method === 'notifications/initialized') assert.equal(response.status, 202, `acknowledgment ${i + 1}`);
+        if (method === 'notifications/initialized') {
+          assert.equal(response.status, i < 60 ? 202 : 429, `notification ${i + 1}`);
+          assert.equal(await response.text(), '');
+        }
         else assert.equal((await response.json()).error, undefined, `${method} ${i + 1}`);
       }
       assert.equal((await invoke(deps, 'get_country_brief_section', energy(receipt.token))).body.error, undefined, `read ${i + 1}`);
@@ -173,6 +176,11 @@ describe('bounded panel reads with an enabled minute limiter', () => {
     assert.equal(pipe.count, 1);
     assert.equal(fetched.length, 1);
     assert.equal(counts.get(userBucket), 1);
+    assert.equal(counts.get(`rl:mcp:pro-min:pro-protocol:${PRO_USER_ID}`), 128);
+    for (let i = 0; i < 64; i++) {
+      const setup = await handler(proReq('POST', { jsonrpc: '2.0', id: `setup-fill-${i}`, method: 'ping' }), deps);
+      assert.equal((await setup.json()).error, undefined);
+    }
     const response = await handler(proReq('POST', { jsonrpc: '2.0', id: 'setup-193', method: 'initialize' }), deps);
     const denied = await response.json();
     assert.equal(denied.id, 'setup-193');

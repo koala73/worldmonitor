@@ -135,6 +135,36 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     );
   });
 
+  for (const method of ['tools/list', 'prompts/list', 'resources/list', 'resources/templates/list']) {
+    for (const cursor of [null, 17, false, [], {}]) {
+      it(`${method} rejects non-string cursor ${JSON.stringify(cursor)}`, async () => {
+        const res = await handler(makeReq('POST', {
+          jsonrpc: '2.0', id: 'bad-cursor', method, params: { cursor },
+        }));
+        assert.equal(res.status, 200);
+        const body = await res.json();
+        assert.equal(body.id, 'bad-cursor');
+        assert.equal(body.error?.code, -32602);
+        assert.equal(body.result, undefined);
+        assertNoStore(res, method);
+      });
+    }
+
+    it(`${method} preserves complete terminal lists with absent and string cursors`, async () => {
+      let expected;
+      for (const params of [undefined, {}, { cursor: '' }, { cursor: 'unknown-opaque-token' }]) {
+        const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method, params }));
+        assert.equal(res.status, 200);
+        const body = await res.json();
+        assert.equal(body.error, undefined);
+        assert.ok(body.result);
+        assert.equal(body.result.nextCursor, undefined);
+        if (expected) assert.deepEqual(body.result, expected);
+        expected = body.result;
+      }
+    });
+  }
+
   it('resources/list succeeds WITHOUT credentials (public discovery) and returns resources', async () => {
     // Mirrors orank's `mcp-resource-listing` check, which drives this
     // anonymously: `initialize` advertises the `resources` capability, so an
@@ -436,17 +466,18 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.deepEqual(body.result, {});
   });
 
-  it('accepts ordinary scalar JSON-RPC IDs and echoes them unchanged', async () => {
-    for (const id of [42, 'correlation-id']) {
+  it('accepts integer and bounded string JSON-RPC IDs and echoes them unchanged', async () => {
+    for (const id of [0, -0, -42, 42, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER + 1, 1e100, '', 'correlation-id', '🚀'.repeat(64)]) {
       const res = await handler(makeReq('POST', { jsonrpc: '2.0', id, method: 'ping', params: {} }));
       const body = await res.json();
-      assert.equal(body.id, id);
+      assert.equal(body.id, id === 0 ? 0 : id);
       assert.equal(body.error, undefined);
     }
   });
 
-  it('rejects oversized, structured, and non-finite JSON-RPC IDs with id:null', async () => {
+  it('rejects invalid MCP request IDs with id:null', async () => {
     const invalidBodies = [
+      ...[null, 1.25, -1.25, true, false].map(id => ({ label: JSON.stringify(id), body: JSON.stringify({ jsonrpc: '2.0', id, method: 'ping' }) })),
       { label: 'oversized string', body: JSON.stringify({ jsonrpc: '2.0', id: '🚀'.repeat(65), method: 'ping', params: {} }) },
       { label: 'object', body: JSON.stringify({ jsonrpc: '2.0', id: { nested: true }, method: 'ping', params: {} }) },
       { label: 'array', body: JSON.stringify({ jsonrpc: '2.0', id: [1], method: 'ping', params: {} }) },
@@ -461,6 +492,37 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       const body = await res.json();
       assert.equal(body.error?.code, -32600, `${label} must be an Invalid Request`);
       assert.equal(body.id, null, `${label} must not be reflected`);
+    }
+  });
+
+  it('rejects non-object params before authentication or method dispatch', async () => {
+    for (const params of [null, [], [1], 17, 'params', true, false]) {
+      for (const method of ['ping', 'tools/call', 'notifications/initialized']) {
+        const res = await handler(new Request(BASE_URL, {
+          method: 'POST',
+          body: JSON.stringify({ jsonrpc: '2.0', id: 0, method, params }),
+        }));
+        const body = await res.json();
+        assert.equal(res.status, 200);
+        assert.equal(body.error?.code, -32600, `${method} ${JSON.stringify(params)}`);
+        assert.equal(body.id, 0);
+        assertNoStore(res, 'invalid params');
+      }
+    }
+  });
+
+  it('accepts omitted and object params while acknowledging valid notifications without a response body', async () => {
+    for (const fields of [{}, { params: {} }, { params: { _meta: { trace: 'test' } } }]) {
+      const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 'ping', method: 'ping', ...fields }));
+      assert.deepEqual(await res.json(), { jsonrpc: '2.0', id: 'ping', result: {} });
+      for (const method of ['notifications/initialized', 'notifications/cancelled', 'ping']) {
+        const ack = await handler(new Request(BASE_URL, {
+          method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', method, ...fields }),
+        }));
+        assert.equal(ack.status, 202, method);
+        assert.equal(await ack.text(), '', method);
+        assertNoStore(ack, 'notification');
+      }
     }
   });
 
@@ -981,6 +1043,8 @@ describe('api/mcp.ts — PRO MCP Server', () => {
         { primaryTitle: 'Official ministry update', primarySource: 'MIIT (China)' },
         { primaryTitle: 'Unreviewed report', primarySource: 'Reuters US' },
         { primaryTitle: 'Reviewed wire report', primarySource: 'Reuters' },
+        { primaryTitle: 'Foreign-facing state broadcast', primarySource: 'Press TV' },
+        { primaryTitle: 'Uncatalogued outlet', primarySource: 'No Such Outlet' },
       ],
     };
     mockCacheKeys(
@@ -989,7 +1053,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     );
 
     const out = await callTool('get_news_intelligence', {});
-    const [government, unreviewed, wire] = out.data.insights.topStories;
+    const [government, unreviewed, wire, stateBroadcast, uncatalogued] = out.data.insights.topStories;
 
     assert.deepEqual(government.sourceProvenance, {
       risk: 'high',
@@ -1001,7 +1065,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       stateAffiliated: 'China',
       knownBiases: [],
       note: 'Chinese Ministry of Industry and Information Technology official feed',
-      summary: 'Official government source: China. Perspective: none recorded. Chinese Ministry of Industry and Information Technology official feed.',
+      summary: 'Official government source: China. Perspective: none recorded. Chinese Ministry of Industry and Information Technology official feed. Home CN; domestic audience; language zh; ownership state.',
+      homeCountry: 'CN',
+      audience: 'domestic',
+      language: 'zh',
+      ownershipClass: 'state',
     });
     assert.deepEqual(unreviewed.sourceProvenance, {
       risk: 'unknown',
@@ -1012,7 +1080,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       typeReviewed: false,
       knownBiases: [],
       note: 'Provenance not yet reviewed — do not treat as independent journalism',
-      summary: 'Provenance not yet reviewed — do not treat as independent journalism. Perspective: none recorded.',
+      summary: 'Provenance not yet reviewed — do not treat as independent journalism. Perspective: none recorded. Home GB; international audience; language en; ownership private.',
+      homeCountry: 'GB',
+      audience: 'international',
+      language: 'en',
+      ownershipClass: 'private',
     });
     assert.deepEqual(wire.sourceProvenance, {
       risk: 'low',
@@ -1023,8 +1095,21 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       typeReviewed: true,
       knownBiases: [],
       note: 'Wire service, strict editorial standards',
-      summary: 'Reviewed. Perspective: none recorded. Wire service, strict editorial standards.',
+      summary: 'Reviewed. Perspective: none recorded. Wire service, strict editorial standards. Home GB; international audience; language en; ownership private.',
+      homeCountry: 'GB',
+      audience: 'international',
+      language: 'en',
+      ownershipClass: 'private',
     });
+    assert.equal(stateBroadcast.sourceProvenance.audience, 'international');
+    assert.equal(stateBroadcast.sourceProvenance.homeCountry, 'IR');
+    assert.equal(stateBroadcast.sourceProvenance.ownershipClass, 'state');
+    assert.deepEqual(
+      [uncatalogued.sourceProvenance.homeCountry, uncatalogued.sourceProvenance.audience, uncatalogued.sourceProvenance.language, uncatalogued.sourceProvenance.ownershipClass],
+      [null, null, null, null],
+      'an outlet with no profile reports nulls, never a guessed country or audience',
+    );
+    assert.match(uncatalogued.sourceProvenance.summary, /Outlet profile: none recorded\.$/);
   });
 
   // --- Telemetry ---
@@ -3981,13 +4066,53 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     });
     process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
-    globalThis.fetch = async () => new Response(
-      JSON.stringify({ result: JSON.stringify({ ok: 1 }) }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } },
-    );
+    const reads = [];
+    globalThis.fetch = async (url) => {
+      reads.push(decodeURIComponent(String(url)));
+      return new Response(
+        JSON.stringify({ result: JSON.stringify({ ok: 1 }) }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
     assert.equal(res.status, 200, `MCP call-site admits free-account allowance: ${await res.clone().text()}`);
     assert.ok(pipe.count >= 1, 'free-account meter reserved a slot');
+    // The tier-1 physical-metals datasets stay behind the subscription (#7433
+    // exception closed): never read, and named as locked rather than absent.
+    const payload = JSON.parse((await res.json()).result.content[0].text);
+    for (const key of ['market:physical-premium:v1', 'market:physical-divergence:v1']) {
+      assert.equal(reads.some((url) => url.includes(key)), false, `${key} must never be read for a free account`);
+    }
+    assert.ok(reads.some((url) => url.includes('market:stocks-bootstrap:v1')), 'free quotes are still read');
+    assert.equal(Object.hasOwn(payload.data, 'physical-premium'), false);
+    assert.equal(Object.hasOwn(payload.data, 'physical-divergence'), false);
+    assert.deepEqual(payload.locked, ['physical-premium', 'physical-divergence']);
+    assert.match(payload.upgradeUrl, /^https:\/\//);
+  });
+
+  it('happy: a Pro caller still reads the physical-metals datasets through get_market_data', async () => {
+    const { deps } = makeProDeps();
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    const reads = [];
+    globalThis.fetch = async (url) => {
+      const read = decodeURIComponent(String(url));
+      reads.push(read);
+      // A divergence miss keeps the stub clear of the stored-contract validator.
+      return new Response(
+        JSON.stringify({ result: read.includes('market:physical-divergence:v1') ? null : JSON.stringify({ ok: 1 }) }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data', { asset_class: ['commodity'] })), deps);
+    assert.equal(res.status, 200, await res.clone().text());
+    const payload = JSON.parse((await res.json()).result.content[0].text);
+    for (const key of ['market:physical-premium:v1', 'market:physical-divergence:v1']) {
+      assert.ok(reads.some((url) => url.includes(key)), `${key} is read for a Pro caller`);
+    }
+    assert.ok(Object.hasOwn(payload.data, 'physical-premium'));
+    assert.equal(payload.locked, undefined);
+    assert.equal(payload.upgradeUrl, undefined);
   });
 
   it('error: free-account allowance exhausted → structured denial (#6716)', async () => {

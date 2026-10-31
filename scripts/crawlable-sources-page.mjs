@@ -110,6 +110,7 @@ const SOURCE_DOMAIN_MATCHERS = [
 // Keep ambiguous structured providers explicit so a new unmatched provider
 // fails the build instead of silently becoming "geopolitics".
 const SOURCE_DOMAIN_OVERRIDES = new Map([
+  ['hormuz.data-tracking.net', 'infrastructure'],
   ['Alberta Emergency Alert', 'environment'],
   ['B.C. Evacuation Orders and Alerts', 'environment'],
   ['SaskAlert', 'environment'],
@@ -121,6 +122,10 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['factchecktools.googleapis.com', 'news'],
   // BestTime live busyness is the fallback feed for the PizzINT (Pentagon pizza) panel.
   ['besttime.app', 'military'],
+  // Turkey's crude imports by origin for the energy shock model.
+  ['www.epdk.gov.tr', 'energy'],
+  // UN M49 region table behind media-perspective outlet_regions (build-time only).
+  ['unstats.un.org', 'news'],
   ['api.scrapecreators.com', 'news'],
   ['api.telegram.org', 'news'],
   ['api.tzevaadom.co.il', 'military'],
@@ -128,6 +133,8 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['api.windy.com', 'environment'],
   ['archive-api.open-meteo.com', 'environment'],
   ['open-meteo.caseyjhand.com', 'environment'],
+  ['identity.dataspace.copernicus.eu', 'environment'],
+  ['sh.dataspace.copernicus.eu', 'environment'],
   ['British Geological Survey World Mineral Statistics', 'energy'],
   ['Bank of Canada', 'finance'],
   ['bothsidesofthetable.com', 'technology'],
@@ -194,6 +201,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
 // Keep the hostname as the traceability link, but never make it do double duty
 // as the visible provider title.
 const SOURCE_NAME_OVERRIDES = new Map([
+  ['hormuz.data-tracking.net', 'UK Maritime Trade Operations (UKMTO) via hormuz.data-tracking.net'],
   ['acleddata.com', 'ACLED'],
   ['factchecktools.googleapis.com', 'Google Fact Check Tools API'],
   ['adsb.lol', 'ADSB.lol'],
@@ -270,6 +278,8 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['feodotracker.abuse.ch', 'Feodo Tracker'],
   ['finance.yahoo.com', 'Yahoo Finance'],
   ['firms.modaps.eosdis.nasa.gov', 'NASA FIRMS'],
+  ['identity.dataspace.copernicus.eu', 'Copernicus Data Space Ecosystem (identity)'],
+  ['sh.dataspace.copernicus.eu', 'Copernicus Sentinel Hub (Sentinel-5P TROPOMI)'],
   ['gain.nd.edu', 'Notre Dame Global Adaptation Initiative'],
   ['gamma-api.polymarket.com', 'Polymarket'],
   ['geospatial-usace.opendata.arcgis.com', 'U.S. Army Corps of Engineers'],
@@ -375,6 +385,7 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['www.ecb.europa.eu', 'European Central Bank (ECB)'],
   ['www.ecdc.europa.eu', 'European Centre for Disease Prevention and Control'],
   ['www.eia.gov', 'U.S. Energy Information Administration (EIA)'],
+  ['www.epdk.gov.tr', 'Energy Market Regulatory Authority of Türkiye (EPDK)'],
   ['www.fao.org', 'UN Food and Agriculture Organization (FAO)'],
   ['www.federalreserve.gov', 'U.S. Federal Reserve'],
   ['www.gdacs.org', 'Global Disaster Alert and Coordination System (GDACS)'],
@@ -810,6 +821,17 @@ export function buildSourcePages(sourceCatalog) {
   });
 }
 
+function sourceCategoryDocumentTitle(name) {
+  const longTitle = `${name}: Data Sources and Providers | World Monitor`;
+  const title = [...longTitle].length > 60
+    ? `${name} Data Sources | World Monitor`
+    : longTitle;
+  if ([...title].length > 60) {
+    throw new Error(`${name} document title is ${[...title].length} characters: ${title}`);
+  }
+  return title;
+}
+
 export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets = [], baseUrl, lastmod, helpers, directoryPages = null, sourcePage = null, catalogAnchors = sourceCardAnchors(sourceCatalog), siblingPages = [] }) {
   const { absoluteUrl, breadcrumbLd, dataCatalogLd, escapeHtml, pageDocument } = helpers;
   const path = sourcePage?.path || '/sources/';
@@ -1159,7 +1181,7 @@ ${providerCards}
   return pageDocument({
     baseUrl,
     path,
-    title: sourcePage ? `${sourcePage.name} sources | World Monitor` : 'Data Source Catalog | World Monitor',
+    title: sourcePage ? sourceCategoryDocumentTitle(sourcePage.name) : 'Global Data Sources: OSINT, Markets, Energy | World Monitor',
     description,
     lastmod,
     jsonLd: [

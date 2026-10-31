@@ -161,7 +161,7 @@ export async function openStockResearchOverlay(rawSymbol: string, stock?: Market
             <div class="stock-research-name">${escapeHtml(stock?.name || symbol)}</div>
           </div>
           <div class="stock-research-quote">
-            <span>${stock ? formatPrice(stock.price) : '—'}</span>
+            <span>${stock ? escapeHtml(formatPrice(stock.price)) : '—'}</span>
             <span class="${stock ? getChangeClass(stock.change) : ''}">${stock ? formatChange(stock.change) : ''}</span>
             ${tape ? `<div class="stock-research-tape" data-tape-claim="${escapeHtml(tape.claim)}">${escapeHtml(tape.label)}</div>` : ''}
           </div>

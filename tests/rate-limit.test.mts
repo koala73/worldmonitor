@@ -704,11 +704,6 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       reason: 'the provider-wide Nominatim bucket is shared across both routes and must fail closed before upstream work',
     },
     {
-      path: 'server/worldmonitor/leads/v1/register-interest.ts',
-      expected: /if\s*\(\s*scoped\.degraded\s*\)\s*\{/,
-      reason: 'desktop lead capture bypasses Turnstile, so Redis degradation must fail closed locally',
-    },
-    {
       path: 'server/worldmonitor/infrastructure/v1/reverse-geocode.ts',
       expected: /if\s*\(\s*providerLimit\.degraded\s*\)\s*\{/,
       reason: 'the gateway half of the provider-wide Nominatim bucket must fail closed before upstream work',
@@ -841,6 +836,12 @@ describe('slow-Redis timeout is degraded, not a silent allow (#6412 review)', ()
       errorLogs.some((l) => l.includes('[rate-limit] redis-error') && l.includes('timed out')),
       `the bypass window must be visible in logs: ${errorLogs.join(' | ')}`,
     );
+  });
+
+  it('global checkRateLimit fails closed on an SDK timeout', { timeout: HANG_TEST_TIMEOUT_MS }, async () => {
+    const res = await checkRateLimit(makeRequest({ 'x-real-ip': '203.0.113.79' }), {}, { failClosed: true });
+    assert.equal(res?.status, 503);
+    assert.equal(res?.headers.get('X-RateLimit-Mode'), 'degraded');
   });
 
   it('checkRateLimit (api/_rate-limit.js) fails closed on a timed-out decision when asked to', { timeout: HANG_TEST_TIMEOUT_MS }, async () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { validateSearchHit, AUTO_MATCH_THRESHOLD } from './validator.js';
 import type { BasketItem } from '../config/types.js';
+import { loadBasketConfig } from '../config/loader.js';
 
 const item = (over: Partial<BasketItem> = {}): BasketItem => ({
   id: 'x',
@@ -9,6 +10,43 @@ const item = (over: Partial<BasketItem> = {}): BasketItem => ({
   weight: 0.1,
   baseUnit: 'g',
   ...over,
+});
+
+describe('retained basket quantity context', () => {
+  const eggs = loadBasketConfig('essentials_ae').items.find(i => i.id === 'eggs_12')!;
+  const milk = loadBasketConfig('essentials_gb').items.find(i => i.id === 'milk_1l')!;
+
+  it.each([
+    { item: eggs, marketCode: 'ae', sizeText: '12 Pack', productName: 'Eggs Fresh 12 Pack', quantity: 12 },
+    { item: milk, marketCode: 'gb', sizeText: '2 Pint', productName: 'Morrisons British Semi Skimmed Milk 2 Pint', quantity: 1136.5225 },
+  ])('verifies explicit retained $sizeText using basket and market context', fixture => {
+    const r = validateSearchHit({ ...fixture, canonicalName: fixture.item.canonicalName });
+    expect(r.ok).toBe(true);
+    expect(r.score).toBe(1);
+    expect(r.signals.sizeWindow).toBe('pass');
+    expect(r.signals.extractedBaseQty).toBeCloseTo(fixture.quantity);
+  });
+
+  it('does not choose GB pint conversion without GB context', () => {
+    for (const marketCode of [undefined, 'us', 'ae']) {
+      const r = validateSearchHit({ canonicalName: milk.canonicalName, productName: 'Morrisons British Semi Skimmed Milk 2 Pint', sizeText: '2 Pint', item: milk, marketCode });
+      expect(r.signals.sizeWindow).toBe('unverified');
+      expect(r.score).toBeLessThan(AUTO_MATCH_THRESHOLD);
+    }
+  });
+
+  it('does not infer item count from plural packages', () => {
+    const r = validateSearchHit({ canonicalName: eggs.canonicalName, productName: 'Eggs Fresh 12 Packs', sizeText: '12 Packs', item: eggs, marketCode: 'ae' });
+    expect(r.signals.sizeWindow).toBe('unverified');
+    expect(r.signals.extractedBaseQty).toBeNull();
+    expect(r.score).toBeLessThan(AUTO_MATCH_THRESHOLD);
+  });
+
+  it('keeps class rejection when a count quantity can be normalized', () => {
+    const r = validateSearchHit({ canonicalName: eggs.canonicalName, productName: 'Eggs Fresh 12 Pack seeds', sizeText: '12 Pack', item: eggs, marketCode: 'ae' });
+    expect(r.ok).toBe(false);
+    expect(r.signals.nonFoodIndicatorHit).toBe('seeds');
+  });
 });
 
 describe('validateSearchHit — known bad log examples', () => {
@@ -245,14 +283,14 @@ describe('validateSearchHit — quantity window', () => {
     expect(r.signals.sizeWindow).toBe('pass');
   });
 
-  it('treats a structurally-absent size as neutral (does not hard-fail)', () => {
+  it('keeps missing quantity evidence unverified (does not hard-fail)', () => {
     const r = validateSearchHit({
       canonicalName: 'Plain Yogurt 500g',
       productName: 'Plain Yogurt',
       sizeText: undefined,
       item: item({ baseUnit: 'g', minBaseQty: 450, maxBaseQty: 550 }),
     });
-    expect(r.signals.sizeWindow).toBe('absent');
+    expect(r.signals.sizeWindow).toBe('unverified');
     expect(r.ok).toBe(true);
   });
 });
@@ -262,21 +300,32 @@ describe('validateSearchHit — quantity window', () => {
 // 0.85 and published as `auto`. Split the neutral bucket so "could not verify"
 // no longer clears AUTO_MATCH_THRESHOLD on overlap alone.
 describe('validateSearchHit — absent vs unverified size (#6868)', () => {
-  // Nothing to verify keeps the old 0.2 weight, so a full-overlap hit still
-  // publishes. Without this fixture a future edit that lowers every non-pass
-  // size to 0.05 would silently demote every retailer that omits sizeText.
-  it('keeps a missing sizeText above the auto-match threshold', () => {
+  it.each([['Plain Yogurt 2x250g', true], ['Plain Yogurt 2x25g', false]] as const)(
+    'uses the complete fetched multipack quantity from %s', (productName, accepted) => {
+      const result = validateSearchHit({ canonicalName: 'Plain Yogurt 500g', productName,
+        sizeText: undefined, item: item({ baseUnit: 'g', minBaseQty: 450, maxBaseQty: 550 }) });
+      expect(result.ok && result.score >= AUTO_MATCH_THRESHOLD).toBe(accepted);
+      expect(result.signals.extractedBaseQty).toBe(accepted ? 500 : 50);
+    });
+  it('uses the fetched title instead of the requested quantity when sizeText is missing', () => {
+    for (const productName of ['Plain Yogurt 500g', 'Plain Yogurt 50g']) {
+      const result = validateSearchHit({ canonicalName: 'Plain Yogurt 500g', productName,
+        sizeText: undefined, item: item({ baseUnit: 'g', minBaseQty: 450, maxBaseQty: 550 }) });
+      expect(result.ok).toBe(productName === 'Plain Yogurt 500g');
+      expect(result.score >= AUTO_MATCH_THRESHOLD).toBe(productName === 'Plain Yogurt 500g');
+    }
+  });
+  it('keeps a missing sizeText below the auto-match threshold', () => {
     const r = validateSearchHit({
       canonicalName: 'Plain Yogurt 500g',
       productName: 'Al Ain Plain Yogurt',
       sizeText: undefined,
       item: item({ baseUnit: 'g', minBaseQty: 450, maxBaseQty: 550 }),
     });
-    expect(r.signals.sizeWindow).toBe('absent');
+    expect(r.signals.sizeWindow).toBe('unverified');
     expect(r.ok).toBe(true);
-    expect(r.score).toBeGreaterThanOrEqual(AUTO_MATCH_THRESHOLD);
-    // 1.0*0.55 + 0.2 + 0.1 = 0.85
-    expect(r.score).toBeCloseTo(0.85);
+    expect(r.score).toBeLessThan(AUTO_MATCH_THRESHOLD);
+    expect(r.score).toBeCloseTo(0.70);
   });
 
   it('keeps an item with no quantity window above the auto-match threshold', () => {
@@ -541,5 +590,66 @@ describe('validateSearchHit — non-food and token overlap', () => {
     expect(r.ok).toBe(false);
     expect(r.reasons).toContain('empty-product-name');
     expect(r.score).toBe(0);
+  });
+});
+
+// Real JioMart extractions admitted in production (essentials-in, 2026-08..10).
+// The extractor reports the per-unit size; the multipack lives in the title.
+describe('validateSearchHit — India multipacks and wrong products', () => {
+  const india = loadBasketConfig('essentials_in').items;
+  const byName = (name: string) => india.find(i => i.canonicalName === name)!;
+  const check = (canonicalName: string, productName: string, sizeText: string, productUrl?: string) =>
+    validateSearchHit({ canonicalName, productName, sizeText, productUrl, item: byName(canonicalName), marketCode: 'in' });
+
+  it.each([
+    ['Sunflower Oil 1L', 'Vishwai sunflower oil pack of 4', '1 L', 4000],
+    ['Basmati Rice 1kg', 'RED ROSE TIBAR BASMATI RICE, 1 KG (PACK OF 20 - 20 KG )', '1 KG', 20000],
+    ['White Sugar 1kg', 'Annprash White Sugar - 1 kg (Pack of 2)', '1 kg', 2000],
+    ['Sunflower Oil 1L', 'Fortune Sunflower Oil 2 x 1L (Pack of 2)', '1 L', 2000],
+    ['Sunflower Oil 1L', 'Fortune Sunflower Oil 2 x 1 L', '1 L', 2000],
+    // A count size in the title must not displace the content size the window measures.
+    ['White Sandwich Bread 400g', 'White Sandwich Bread 6 pcs (Pack of 2, 400g each)', '400 g', 800],
+  ])('rejects %s matched to the multipack "%s"', (canonicalName, productName, sizeText, total) => {
+    const r = check(canonicalName, productName, sizeText);
+    expect(r.ok).toBe(false);
+    expect(r.signals.sizeWindow).toBe('fail');
+    expect(r.signals.extractedBaseQty).toBe(total);
+    expect(r.reasons).toContain(`size-window-fail:${total}${byName(canonicalName).baseUnit}`);
+  });
+
+  it.each([
+    ['Sunflower Oil 1L', 'Vishwai sunflower oil pack of 1', '1 L'],
+    ['Fresh Paneer 200g', 'Amul Fresh Paneer 200 g (Pack)', '200 g'],
+    ['Onions 1kg', 'Onion (Approx. 900 g - 1000 g)', '900 g'],
+    ['Fresh Eggs 12 Pack', 'Farm Fresh White Eggs, Pack of 12', '12 pcs'],
+    // The title states both the total and the per-unit size; the total must not be multiplied again.
+    ['Plain Curd Yogurt 400g', 'Plain Curd Yogurt 400g (Pack of 2, 200g each)', '400g'],
+  ])('still admits %s as "%s"', (canonicalName, productName, sizeText) => {
+    expect(check(canonicalName, productName, sizeText).ok).toBe(true);
+  });
+
+  it('rejects fried onion for Onions 1kg', () => {
+    const r = check('Onions 1kg', 'Kings Crispy Fried Onion, 400 g pack of 2', '800 gm');
+    expect(r.ok).toBe(false);
+    expect(r.reasons).toContain('negative-token:fried');
+  });
+
+  it('rejects a pickle page whose extracted title echoed the canonical name', () => {
+    const r = check('Tomatoes Fresh 1kg', 'Tomatoes Fresh 1kg', '1 kg',
+      'https://www.jiomart.com/product/surya-1kg-tomato-pickle-authentic-taste-flavour-home-made-mq1234-5678');
+    expect(r.ok).toBe(false);
+    expect(r.reasons).toContain('negative-token:pickle');
+  });
+
+  it('matches a hyphenated negative token against the URL path', () => {
+    const r = check('Plain Curd Yogurt 400g', 'Plain Curd Yogurt 400g', '400 g',
+      'https://www.jiomart.com/product/epigamia-plant-based-curd-400-g-mx1abc-123456');
+    expect(r.ok).toBe(false);
+    expect(r.reasons).toContain('negative-token:plant-based');
+  });
+
+  it('reads negative tokens from the URL path only, not the host', () => {
+    const r = check('Tomatoes Fresh 1kg', 'Tomato Local 1 kg', '1 kg', 'https://pickle.example.com/product/tomato-local-1-kg');
+    expect(r.ok).toBe(true);
   });
 });

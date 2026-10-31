@@ -20,6 +20,7 @@ import {
 import { assessContentAge } from '../api/_content-age.js';
 import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
 import { CHINA_MACRO_MAX_CONTENT_AGE_MIN } from '../scripts/_china-macro-contract.mjs';
+import { buildOfficialChinaMacroFixture } from './helpers/china-macro-fixture.mjs';
 import {
   CHINA_MACRO_KEY,
   CHINA_MACRO_SEED_OPTIONS,
@@ -54,7 +55,7 @@ function officialFetch({ calls = [], overrides = new Map() } = {}) {
       if (override instanceof Response) return override;
       return new Response(override);
     }
-    if (target === 'https://www.pbc.gov.cn/robots.txt') {
+    if (target === 'https://www.pbc.gov.cn/robots.txt' || target === 'https://jrj.sh.gov.cn/robots.txt') {
       return new Response('User-agent: *\nDisallow: /\n');
     }
     if (
@@ -455,7 +456,7 @@ describe('China official macro source adapters', () => {
     assert.equal(SAFE_MAX_REQUESTS_PER_RUN, 6);
     assert.equal(PBOC_MAX_REQUESTS_PER_RUN, 2);
     assert.equal(GACC_MAX_REQUESTS_PER_RUN, 2);
-    assert.equal(calls.length, 11);
+    assert.equal(calls.length, 12);
     assert.equal(snapshot.schemaVersion, 2);
     assert.equal(snapshot.launchReady, true);
     assert.equal(snapshot.status, 'degraded');
@@ -528,6 +529,20 @@ describe('China official macro source adapters', () => {
           redirectBehavior: 'none',
           termsStatus: 'not_evaluated_robots_blocked',
           sourceUrl: 'https://www.pbc.gov.cn/',
+        },
+        {
+          publisherId: 'publisher:shanghai-finance-cn',
+          source: 'Shanghai Municipal Financial Commission Office',
+          host: 'jrj.sh.gov.cn',
+          status: 'blocked',
+          reason: 'ROBOTS_DISALLOW',
+          checkedAt: retrievalTime,
+          requestBudget: 6,
+          requestCount: 1,
+          robotsStatus: 'disallow_candidate_paths',
+          redirectBehavior: 'none',
+          termsStatus: 'reviewed_2026-10-24_facts_only_source_credit_required',
+          sourceUrl: 'https://jrj.sh.gov.cn/SCGK194/index.html',
         },
         {
           publisherId: 'publisher:gacc-cn',
@@ -713,6 +728,7 @@ describe('China official macro source adapters', () => {
         ['www.stats.gov.cn', 'followed'],
         ['www.safe.gov.cn', 'followed'],
         ['www.pbc.gov.cn', 'followed'],
+        ['jrj.sh.gov.cn', 'none'],
         ['english.customs.gov.cn', 'followed'],
       ],
     );
@@ -1088,23 +1104,13 @@ describe('China official macro source adapters', () => {
     );
     assert.equal(writes.length, 1);
 
-    const completionWrites = [];
-    await recordChinaMacroCompletedRun(
-      snapshot,
-      async (...args) => { completionWrites.push(args); },
-      staleContentNow,
+    await assert.rejects(
+      recordChinaMacroCompletedRun(snapshot, async () => assert.fail('must not write completion'), staleContentNow),
+      /structurally valid completed run/,
     );
-    assert.deepEqual(completionWrites, [[
-      'economic',
-      'china-macro-complete',
-      5,
-      'china-macro-required-official-sources-v2',
-      CHINA_MACRO_TTL_SECONDS,
-      staleContentNow,
-    ]]);
   });
 
-  it('stamps launch-ready transport with the published content age', async () => {
+  it('does not attest content health until a launch-ready snapshot is published', async () => {
     const snapshot = await fetchChinaMacroSnapshot({
       now,
       readCachedFn: async () => null,
@@ -1114,14 +1120,97 @@ describe('China official macro source adapters', () => {
     assert.equal(validateChinaMacroSnapshot(snapshot, now), true);
     const writes = [];
     await recordChinaMacroTransportFreshness(snapshot, async (...args) => { writes.push(args); }, now);
-    const observedAt = Date.parse('2026-06-30T23:59:59.000Z');
     assert.deepEqual(writes[0][6], {
-      newestItemAt: observedAt,
-      oldestItemAt: observedAt,
+      newestItemAt: null,
+      oldestItemAt: null,
       maxContentAgeMin: CHINA_MACRO_MAX_CONTENT_AGE_MIN,
     });
-    assert.equal(assessContentAge(transportMetaFromWrite(writes[0]), now).contentStale, false);
+    assert.equal(assessContentAge(transportMetaFromWrite(writes[0]), now).contentStale, true);
+
+    await recordChinaMacroCompletedRun(snapshot, async (...args) => { writes.push(args); }, now);
+    assert.equal(assessContentAge(transportMetaFromWrite(writes[1]), now).contentStale, false);
+    assert.equal(writes[2][1], 'china-macro-complete');
+
+    const failedWrites = [];
+    await assert.rejects(recordChinaMacroCompletedRun(snapshot, async (...args) => {
+      failedWrites.push(args);
+      return null;
+    }, now), /published content metadata write failed/);
+    assert.equal(failedWrites.length, 1, 'failed content attestation must not stamp completion');
+    await assert.rejects(recordChinaMacroCompletedRun(snapshot, async (...args) => (
+      args[1] === 'china-macro-complete' ? null : {}
+    ), now), /completion metadata write failed/);
   });
+
+  for (const publishFails of [true, false]) {
+    it(`keeps health ${publishFails ? 'stale after a failed' : 'fresh after a successful'} canonical publish`, async () => {
+      const snapshot = await buildOfficialChinaMacroFixture(Date.now());
+      assert.equal(validateChinaMacroSnapshot(snapshot), true);
+      const priorRunAt = Date.now() - 4 * 86_400_000;
+      const priorEnvelope = { _seed: { fetchedAt: priorRunAt, recordCount: 5 }, data: { lastGood: true } };
+      const redis = new Map([
+        [CHINA_MACRO_KEY, JSON.stringify(priorEnvelope)],
+        ['seed-meta:economic:china-macro-complete', JSON.stringify({ fetchedAt: priorRunAt })],
+      ]);
+      const originalFetch = globalThis.fetch;
+      const originalExit = process.exit;
+      const env = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
+      const exitCodes = [];
+      process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+      const run = ([op, key, value]) => {
+        if (op === 'GET') return redis.get(key) ?? null;
+        if (op === 'SET') { redis.set(key, value); return 'OK'; }
+        return 1;
+      };
+      globalThis.fetch = async (url, opts = {}) => {
+        const target = String(url);
+        const body = opts.body ? JSON.parse(opts.body) : null;
+        if (target.includes('/get/')) {
+          return Response.json({ result: redis.get(decodeURIComponent(target.split('/get/')[1])) ?? null });
+        }
+        if (target.endsWith('/pipeline')) return Response.json(body.map((command) => ({ result: run(command) })));
+        if (publishFails && body?.[0] === 'SET' && body[1] === CHINA_MACRO_KEY) {
+          return Response.json({ error: 'canonical write rejected' }, { status: 400 });
+        }
+        return Response.json({ result: Array.isArray(body) ? run(body) : 'OK' });
+      };
+      process.exit = (code) => { exitCodes.push(code); throw new Error('__exit__'); };
+      try {
+        const { runSeed } = await import('../scripts/_seed-utils.mjs');
+        await runSeed('economic', 'china-macro', CHINA_MACRO_KEY, async () => {
+          await recordChinaMacroTransportFreshness(snapshot);
+          return snapshot;
+        }, CHINA_MACRO_SEED_OPTIONS).catch((error) => {
+          if (error.message !== '__exit__' && !(publishFails && error.message.includes('canonical write rejected'))) throw error;
+        });
+      } finally {
+        globalThis.fetch = originalFetch;
+        process.exit = originalExit;
+        if (env.url === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+        else process.env.UPSTASH_REDIS_REST_URL = env.url;
+        if (env.token === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+        else process.env.UPSTASH_REDIS_REST_TOKEN = env.token;
+      }
+      assert.deepEqual(exitCodes, publishFails ? [] : [0]);
+      const transportMeta = JSON.parse(redis.get('seed-meta:economic:china-macro-transport'));
+      assert.equal(assessContentAge(transportMeta, Date.now()).contentStale, publishFails);
+      const canonical = JSON.parse(redis.get(CHINA_MACRO_KEY));
+      const completion = JSON.parse(redis.get('seed-meta:economic:china-macro-complete'));
+      if (publishFails) {
+        assert.deepEqual(canonical, priorEnvelope);
+        assert.equal(completion.fetchedAt, priorRunAt);
+      } else {
+        assert.equal(canonical.data.generatedAt, snapshot.generatedAt);
+        assert.ok(completion.fetchedAt > priorRunAt);
+      }
+      const freshness = await readSectionFreshness(CHINA_MACRO_BUNDLE_SECTION, async (key) => {
+        const raw = redis.get(key);
+        return raw == null ? null : JSON.parse(raw);
+      });
+      assert.equal(freshness !== null, !publishFails);
+    });
+  }
 
   it('leaves the bundle section due after a rejected publish so the next tick retries', async () => {
     const redis = new Map();

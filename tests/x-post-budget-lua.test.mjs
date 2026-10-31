@@ -6,9 +6,17 @@ import {
   SETTLE_LUA,
   ACK_RECEIPTS_LUA,
   STATUS_LUA,
+  DEFAULT_X_POST_DAILY_LIMIT,
+  DEFAULT_X_POST_MONTHLY_LIMIT,
+  DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  DEFAULT_X_DAILY_COVERAGE_POSTS,
+  JAPAN_MOD_X_SLOT_POSTS,
+  X_SHARED_COVERAGE_MODEL,
   createXPostBudget,
+  xPostBudgetServiceStatus,
 } from '../scripts/lib/x-post-budget.cjs';
 import { pollXFeed } from '../scripts/lib/x-news-accounts.cjs';
+import { MAX_COMPANY_MONITORING_X_RETURNED_POSTS } from '../scripts/lib/company-monitoring-x-provider.mjs';
 
 const DAY_KEY = 'intelligence:x-post-budget:v1:day:2026-09-02';
 const MONTH_KEY = 'intelligence:x-post-budget:v1:month:2026-09';
@@ -698,6 +706,8 @@ describe('X Post budget Lua, executed', () => {
 
 describe('X Post budget key scope', () => {
   it('runs transient List recovery through the real budget Lua without spending future coverage', async () => {
+    // Leaves exactly the 500 held Posts, so the five-Post spare retry cannot fit.
+    const retryDeniedDayUsed = DEFAULT_X_POST_DAILY_LIMIT - 500;
     for (const scenario of ['recovery', 'persistent', 'transport', 'malformed', 'credits', 'retry-denied']) {
       const nowMs = Date.parse('2026-09-02T12:00:00.000Z');
       const redis = makeRedis({}, nowMs);
@@ -718,7 +728,7 @@ describe('X Post budget key scope', () => {
         now: () => nowMs, lookupDeletions: false, verifyMembership: false,
         withReturnedPosts: (request) => budget.withReturnedPosts(request),
         sleep: async () => {
-          if (scenario === 'retry-denied') redis.store.set(DAY_KEY, '100');
+          if (scenario === 'retry-denied') redis.store.set(DAY_KEY, String(retryDeniedDayUsed));
         },
         fetchImpl: async () => {
           fetches += 1;
@@ -732,7 +742,7 @@ describe('X Post budget key scope', () => {
       assert.equal(fetches, ['recovery', 'persistent'].includes(scenario) ? 2 : 1, scenario);
       assert.equal(next.listAccepted, scenario === 'recovery', scenario);
       assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '500', 'only the current five-Post slot was consumed');
-      const charged = ['transport', 'malformed'].includes(scenario) ? '5' : scenario === 'retry-denied' ? '100' : '0';
+      const charged = ['transport', 'malformed'].includes(scenario) ? '5' : scenario === 'retry-denied' ? String(retryDeniedDayUsed) : '0';
       assert.equal(redis.store.get(DAY_KEY), charged, scenario);
       assert.deepEqual(next.items, [existing], 'valid empty pages and failures both retain the timeline');
       if (scenario === 'retry-denied') assert.equal(next.errorCode, 'X_BUDGET_DEFERRED');
@@ -763,6 +773,103 @@ describe('X Post budget key scope', () => {
     await budget.reserve({ consumer: 'curated-feed', operation: 'timeline', requestedPosts: 1 });
     assert.match(calls[2].keys[0], /:day:2026-10-01$/);
     assert.match(calls[2].keys[1], /:month:2026-10$/);
+  });
+
+  const sharedModelBudget = (redis, nowMs) => {
+    let id = 0;
+    return createXPostBudget({
+      ...X_SHARED_COVERAGE_MODEL,
+      now: () => nowMs,
+      idFactory: () => `shared-${++id}`,
+      evalCommand: async (script, keys, args) => runScript(script, keys, args, redis,
+        script === ACK_RECEIPTS_LUA ? null : script === STATUS_LUA ? 5 : 6),
+    });
+  };
+  const japanRead = (slot) => ({
+    consumer: 'japan-mod',
+    operation: 'x-candidate-discovery',
+    requestedPosts: JAPAN_MOD_X_SLOT_POSTS,
+    coverageId: `japan-mod:slot-${slot}`,
+    coverageUnitPosts: JAPAN_MOD_X_SLOT_POSTS,
+    previousModelCoverageUnit: false,
+  });
+
+  it('holds two Japan MOD reads a day that company monitoring cannot spend', async () => {
+    const nowMs = Date.parse('2026-09-02T12:00:00.000Z');
+    const redis = makeRedis({}, nowMs);
+    const budget = sharedModelBudget(redis, nowMs);
+    const spare = DEFAULT_X_POST_DAILY_LIMIT - DEFAULT_X_DAILY_COVERAGE_POSTS;
+    assert.equal(spare, MAX_COMPANY_MONITORING_X_RETURNED_POSTS, 'one full Company Monitoring lease fits beside the hold');
+    assert.ok(DEFAULT_X_POST_DAILY_LIMIT * 31 <= DEFAULT_X_POST_MONTHLY_LIMIT, 'the monthly limit never binds before the daily one');
+
+    const company = await budget.reserve({ consumer: 'company-monitoring', operation: 'search', requestedPosts: spare });
+    assert.equal(company.allowed, true);
+    assert.equal(redis.store.get(COVERAGE_MODEL_KEY), `fixed-slots-v1:${DEFAULT_X_DAILY_COVERAGE_POSTS}`);
+    const overflow = await budget.reserve({ consumer: 'company-monitoring', operation: 'search', requestedPosts: 1 });
+    assert.equal(overflow.allowed, false);
+    assert.equal(overflow.reason, 'daily_limit');
+
+    for (const slot of [0, 1]) {
+      const japan = await budget.reserve(japanRead(slot));
+      assert.equal(japan.allowed, true, `slot ${slot}`);
+    }
+    const third = await budget.reserve(japanRead(1));
+    assert.equal(third.allowed, false, 'one read per slot');
+    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), String(DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS));
+  });
+
+  it('keeps every producer admissible on the day the larger model deploys', async () => {
+    const nowMs = Date.parse('2026-09-02T12:00:00.000Z');
+    const redis = makeRedis({
+      [DAY_KEY]: 300,
+      [MONTH_KEY]: 9000,
+      [COVERAGE_HOLD_KEY]: 170,
+      [COVERAGE_MODEL_KEY]: `fixed-slots-v1:${DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS}`,
+    }, nowMs);
+    const budget = sharedModelBudget(redis, nowMs);
+
+    const status = await budget.status({ requestedPosts: 5, coverageUnitPosts: 5 });
+    assert.equal(status.nextRequestAdmissible, true);
+    assert.equal(xPostBudgetServiceStatus(status), 'ok');
+
+    const curated = await budget.reserve({
+      consumer: 'curated-feed', operation: 'list-feed', requestedPosts: 5,
+      coverageId: 'list-slot:2026-09-02T12:00:00.000Z', coverageUnitPosts: 5,
+    });
+    assert.equal(curated.allowed, true);
+    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '165');
+
+    const japan = await budget.reserve(japanRead(1));
+    assert.equal(japan.allowed, true);
+    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '165', 'an unreserved Japan read cannot spend curated slots');
+    assert.equal(redis.store.get(DAY_KEY), '330');
+    assert.equal(redis.store.get(COVERAGE_MODEL_KEY), `fixed-slots-v1:${DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS}`);
+  });
+
+  it('projects an unreserved Japan read on a previous-model day the way reserve admits it', async () => {
+    const nowMs = Date.parse('2026-09-02T12:00:00.000Z');
+    const exactDayUsed = DEFAULT_X_POST_DAILY_LIMIT - JAPAN_MOD_X_SLOT_POSTS - 165;
+    for (const [dayUsed, admissible] of [[exactDayUsed, true], [exactDayUsed + 1, false]]) {
+      const redis = makeRedis({
+        [DAY_KEY]: dayUsed,
+        [MONTH_KEY]: 9000,
+        [COVERAGE_HOLD_KEY]: 165,
+        [COVERAGE_MODEL_KEY]: `fixed-slots-v1:${DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS}`,
+      }, nowMs);
+      const budget = sharedModelBudget(redis, nowMs);
+      const status = await budget.status(japanRead(0));
+      assert.equal(status.nextRequestDailyProjected, dayUsed + JAPAN_MOD_X_SLOT_POSTS + 165, `day ${dayUsed}`);
+      assert.equal(status.nextRequestAdmissible, admissible, `day ${dayUsed}`);
+      assert.equal((await budget.reserve(japanRead(0))).allowed, admissible, `day ${dayUsed}`);
+    }
+  });
+
+  it('rejects a previous model that is not smaller than the current one', () => {
+    assert.throws(() => createXPostBudget({
+      evalCommand: async () => null,
+      dailyCoveragePosts: 505,
+      previousDailyCoveragePosts: 505,
+    }), /previousDailyCoveragePosts/);
   });
 
   it('rejects a missing requested-Post maximum before Redis is called', async () => {

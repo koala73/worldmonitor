@@ -11,13 +11,13 @@
 # Derive inventory metrics from the immutable build context. This stage uses
 # only Node builtins; the relay's production dependency install stays intact.
 # .dockerignore excludes local environment and credential files.
-FROM node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS inventory-builder
+FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3 AS inventory-builder
 
 WORKDIR /workspace
 COPY . .
 RUN node scripts/generate-inventory-facts.mjs
 
-FROM node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
+FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3
 
 # curl required by OREF polling (Node.js JA3 fingerprint blocked by Akamai; curl passes)
 RUN apk add --no-cache curl
@@ -70,6 +70,7 @@ COPY scripts/lib/digest-stale-gate.cjs ./scripts/lib/digest-stale-gate.cjs
 COPY scripts/lib/publisher-link-relay-gate.cjs ./scripts/lib/publisher-link-relay-gate.cjs
 # Classify digest URL/auth/transport helper required by ais-relay.cjs (#7437).
 COPY scripts/lib/classify-digest-request.cjs ./scripts/lib/classify-digest-request.cjs
+COPY scripts/lib/news-digest-warm.cjs ./scripts/lib/news-digest-warm.cjs
 COPY scripts/lib/saudi-civil-defense-alerts.cjs ./scripts/lib/saudi-civil-defense-alerts.cjs
 COPY scripts/lib/chokepoint-disruption-alerts.cjs ./scripts/lib/chokepoint-disruption-alerts.cjs
 # Middle East strike feed (conflict:iran-events:v1), required at relay startup;
@@ -142,9 +143,13 @@ COPY scripts/shared/ucdp-candidate.cjs ./scripts/shared/ucdp-candidate.cjs
 # in _seed-utils.mjs and the AIS relay. Missing it = ERR_MODULE_NOT_FOUND when
 # any COPY'd seeder loads _seed-utils.mjs (guarded by dockerfile-relay-imports).
 COPY scripts/shared/compare-and-delete-script.cjs ./scripts/shared/compare-and-delete-script.cjs
+# Edition list for the classify loop, generated from shared/news-catalog.json.
+COPY scripts/shared/news-digest-editions.json ./scripts/shared/news-digest-editions.json
+COPY scripts/shared/news-digest-warm-cells.json ./scripts/shared/news-digest-warm-cells.json
 # A missing inventory artifact fails the image build before relay startup.
 COPY --from=inventory-builder /workspace/scripts/shared/inventory-facts.generated.json ./scripts/shared/inventory-facts.generated.json
 COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
+COPY scripts/_env-file.mjs ./scripts/_env-file.mjs
 # _seed-envelope-source.mjs and _seed-contract.mjs are transitively imported
 # by _seed-utils.mjs (lines 9-10) and by seed-chokepoint-flows.mjs /
 # seed-ember-electricity.mjs directly. Missing them here = silent

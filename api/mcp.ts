@@ -1,6 +1,8 @@
 // Vercel-edge route entry. The implementation lives under ./mcp/; this file
 // stays here so the deployed route URL (`/api/mcp`) doesn't move.
 
+import { latestProtocolVersion, supportedProtocolVersions } from './mcp/constants';
+
 export const config = { runtime: 'edge' };
 
 export { default } from './mcp/handler';
@@ -29,17 +31,11 @@ export {
 // value. ./mcp/constants's `negotiateProtocolVersion` re-reads env at call
 // time, so the runtime handler returns the active value on every request
 // regardless of when the shim was loaded.
-// 2025-06-18 is negotiated by DEFAULT; the env var survives only as an
-// explicit `=off` kill-switch pinning the server back to the legacy floor.
-const MCP_PROTOCOL_FLOOR_2025_06_18_DISABLED =
-  process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'off';
-export const MCP_SUPPORTED_PROTOCOL_VERSIONS: readonly string[] =
-  MCP_PROTOCOL_FLOOR_2025_06_18_DISABLED
-    ? ['2025-03-26']
-    : ['2025-03-26', '2025-06-18'];
-export const MCP_PROTOCOL_VERSION: string = MCP_PROTOCOL_FLOOR_2025_06_18_DISABLED
-  ? '2025-03-26'
-  : '2025-06-18';
+// 2025-11-25 is negotiated by DEFAULT; MCP_PROTOCOL_2025_11_25=off and
+// MCP_PROTOCOL_FLOOR_2025_06_18=off survive as `=off` kill-switches. Both
+// snapshots call the same env-reading functions the handler uses.
+export const MCP_SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = supportedProtocolVersions();
+export const MCP_PROTOCOL_VERSION: string = latestProtocolVersion();
 export { dispatchToolsCall, executeTool } from './mcp/dispatch';
 export { evaluateFreshness } from './mcp/freshness';
 export { applyJmespath, JMESPATH_SCHEMA } from './mcp/jmespath';

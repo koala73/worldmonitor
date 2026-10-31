@@ -128,6 +128,7 @@ World Monitor はブラウザだけでなく、エージェントやスクリプ
   ```sh
   npx worldmonitor tools          # その場で実行 — すべての MCP ツールを一覧表示 (キー不要)
   npm install -g worldmonitor     # または `worldmonitor` (エイリアス `wm`) コマンドをインストール
+  brew install worldmonitor       # または Homebrew でインストール
   worldmonitor risk IR --api-key wm_xxx
   ```
 

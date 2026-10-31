@@ -3,7 +3,7 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { getDefaultAutoSelectFamily, getDefaultAutoSelectFamilyAttemptTimeout, isIP } from 'node:net';
-import { Agent } from 'undici';
+import { Agent, Dispatcher1Wrapper } from 'undici';
 import { withSourceRequestDiagnostics } from './natural/source-request-diagnostics.mjs';
 
 import {
@@ -67,6 +67,12 @@ const DAYS = 30;
 const WILDFIRE_MAX_AGE_MS = 48 * 60 * 60 * 1000;
 const SOURCE_REQUEST_TIMEOUT_MS = 15_000;
 const SOURCE_REQUEST_BUDGET_MS = 30_500;
+// GDACS MAP serves DR (~2.9 MB) and TC (~0.8 MB) in 17-32 s on a healthy day,
+// first byte alone 6-11 s, so the shared 15 s cap failed them routinely. Its
+// six per-type requests run concurrently beside EONET and NHC, so the longer
+// budget stays well inside the bundle's 180 s section timeout.
+const GDACS_REQUEST_TIMEOUT_MS = 45_000;
+const GDACS_REQUEST_BUDGET_MS = 60_500;
 const SOURCE_TRANSPORT_CODES = new Set([
   'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND', 'EPIPE',
   'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET',
@@ -176,7 +182,8 @@ function sourceFailureDetails(error) {
 
 function isDualFamilyConnectFailure(error) {
   try {
-    const aggregate = error?.cause;
+    const cause = error?.cause;
+    const aggregate = cause?.code === 'UND_ERR_CONNECT_TIMEOUT' ? cause.cause : cause;
     if (!(error instanceof TypeError) || !(aggregate instanceof AggregateError)
       || aggregate.code !== 'ETIMEDOUT' || aggregate.errors.length !== 2) return false;
     const [ipv4, ipv6] = aggregate.errors;
@@ -219,9 +226,12 @@ async function readEonetBody(res, controller, signal) {
   }
 }
 
-async function fetchEventSourceJson(source, url, fetchFn, noContentValue) {
+async function fetchEventSourceJson(source, url, fetchFn, noContentValue, {
+  attemptTimeoutMs = SOURCE_REQUEST_TIMEOUT_MS,
+  budgetMs = SOURCE_REQUEST_BUDGET_MS,
+} = {}) {
   const started = performance.now();
-  const deadline = started + SOURCE_REQUEST_BUDGET_MS;
+  const deadline = started + budgetMs;
   let attempt = 0;
   let ipv4Retry = false;
   return withRetry(() => withSourceRequestDiagnostics(async progress => {
@@ -229,19 +239,19 @@ async function fetchEventSourceJson(source, url, fetchFn, noContentValue) {
     if (remaining <= 0) throw Object.assign(new Error(`${source} request budget exhausted`), { nonRetryable: true });
     attempt++;
     const attemptStarted = performance.now();
-    const dispatcher = ipv4Retry ? new Agent({ connect: { family: 4, timeout: SOURCE_REQUEST_TIMEOUT_MS } }) : undefined;
+    const dispatcher = ipv4Retry ? new Agent({ connect: { family: 4, timeout: attemptTimeoutMs } }) : undefined;
     const controller = source === 'eonet' ? new AbortController() : null;
     const signal = controller
       ? AbortSignal.any([controller.signal, AbortSignal.timeout(remaining)])
-      : AbortSignal.timeout(Math.min(SOURCE_REQUEST_TIMEOUT_MS, remaining));
-    const headerTimer = controller && setTimeout(() => controller.abort(new DOMException('EONET headers timed out', 'TimeoutError')), Math.min(SOURCE_REQUEST_TIMEOUT_MS, remaining));
+      : AbortSignal.timeout(Math.min(attemptTimeoutMs, remaining));
+    const headerTimer = controller && setTimeout(() => controller.abort(new DOMException('EONET headers timed out', 'TimeoutError')), Math.min(attemptTimeoutMs, remaining));
     let stage = 'request';
     let headersReceivedAt;
     try {
       const res = await fetchFn(url, {
         headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
         signal,
-        ...(dispatcher ? { dispatcher } : {}),
+        ...(dispatcher ? { dispatcher: new Dispatcher1Wrapper(dispatcher) } : {}),
       });
       headersReceivedAt = performance.now();
       if (headerTimer) clearTimeout(headerTimer);
@@ -420,7 +430,8 @@ async function fetchGdacsType(eventtype, fetchFn, now) {
     }).toString();
   } else url.searchParams.set('eventtype', eventtype);
   const data = await fetchEventSourceJson(`gdacs:${eventtype}`, url.toString(), fetchFn,
-    eventtype === 'VO' ? { type: 'FeatureCollection', features: [] } : undefined);
+    eventtype === 'VO' ? { type: 'FeatureCollection', features: [] } : undefined,
+    { attemptTimeoutMs: GDACS_REQUEST_TIMEOUT_MS, budgetMs: GDACS_REQUEST_BUDGET_MS });
   if (!Array.isArray(data?.features) || data.features.some(feature =>
     !['Point', 'Polygon', 'MultiPolygon', 'LineString', 'MultiLineString'].includes(feature?.geometry?.type))) {
     throw new Error(`GDACS malformed response (${eventtype})`);

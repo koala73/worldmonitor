@@ -447,6 +447,33 @@ async function runHarness(
 }
 
 describe('cloud preference write serialization', () => {
+  it('restores a persisted dirty marker before reconciling cloud preferences after reload', async () => {
+    await runHarness(async (cloudPrefs, controls) => {
+      // A fresh module starts with no in-memory dirty keys. These values are
+      // what the previous page left behind before its upload could finish.
+      localStorage.setItem('wm-cloud-sync-version', '1');
+      localStorage.setItem('wm-market-watchlist-v1', '["LOCAL"]');
+      localStorage.setItem('wm-cloud-prefs-dirty-keys', JSON.stringify({
+        userId: 'user-1',
+        keys: ['wm-market-watchlist-v1'],
+      }));
+      controls.seedRow('test-token', {
+        'wm-market-watchlist-v1': '["CLOUD"]',
+        'worldmonitor-theme': 'light',
+      }, 2);
+
+      try {
+        await cloudPrefs.onSignIn('user-1', 'full');
+
+        assert.equal(localStorage.getItem('wm-market-watchlist-v1'), '["LOCAL"]');
+        assert.equal(localStorage.getItem('worldmonitor-theme'), 'light');
+      } finally {
+        // Clear the scheduled upload while this harness still owns the globals.
+        await cloudPrefs.syncNow();
+      }
+    });
+  });
+
   it('normalizes legacy webcam data on upload without changing other preferences', async () => {
     const result = await runHarness(async (cloudPrefs) => {
       localStorage.setItem('wm-pinned-webcams', '[null,{}]');

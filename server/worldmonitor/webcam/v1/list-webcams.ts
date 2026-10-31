@@ -1,6 +1,6 @@
 import type { ListWebcamsRequest, ListWebcamsResponse, WebcamEntry, WebcamCluster, ServerContext } from '../../../../src/generated/server/worldmonitor/webcam/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/webcam/v1/service_server';
-import { geoSearchByBoxStrict, getHashFieldsBatchStrict, getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { geoSearchByBoxStrict, getHashFieldsBatchStrict, getCachedJson, runRedisPipeline, setCachedJson } from '../../../_shared/redis';
 
 import { readRequiredSeed, SeedUnavailableError } from '../../../_shared/required-seed';
 
@@ -136,6 +136,10 @@ export async function listWebcams(_ctx: ServerContext, req: ListWebcamsRequest):
     }
 
     if (ids.length === 0) {
+      // The active pointer outlives the geo/meta keys by six hours. Redis
+      // GEOSEARCH returns [] for a missing key as well as an empty viewport.
+      const [seedKeys] = await runRedisPipeline([['EXISTS', geoKey, metaKey]], true);
+      if (seedKeys?.error || seedKeys?.result !== 2) throw new SeedUnavailableError(geoKey);
       const empty: ListWebcamsResponse = { webcams: [], clusters: [], totalInView: 0 };
       await setCachedJson(cacheKey, empty, RESPONSE_CACHE_TTL);
       return empty;

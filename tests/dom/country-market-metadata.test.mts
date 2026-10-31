@@ -165,7 +165,7 @@ describe('original public country market metadata', () => {
     Reflect.get(fixtureState.controller, 'source').mode = 'website';
     await load(fixtureState);
     await vi.waitFor(() => expect(footer(fixtureState)).toBe('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.'));
-    expect(listMarkets).toHaveBeenCalledWith({ category: 'country:CN', query: '', pageSize: 5, cursor: '' });
+    expect(listMarkets).toHaveBeenCalledWith({ category: 'country:CN', query: '', pageSize: 5, cursor: '', minLiquidity: 0 });
     listMarkets.mockResolvedValue({ ...reply, fetchedAt: 0 });
     await load(fixtureState);
     await vi.waitFor(() => expect(footer(fixtureState)).toBe('Snapshot time unavailable. Quote times are not supplied.'));

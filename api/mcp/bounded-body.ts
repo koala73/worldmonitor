@@ -50,7 +50,13 @@ async function readBoundedBody(
   if (!source.body) return new Uint8Array();
 
   const reader = source.body.getReader();
-  const body = new Uint8Array(Math.floor(maxBytes));
+  // Hold what arrived in one buffer that grows geometrically, capped at
+  // maxBytes. Reserving the full cap up front cost it on every read (the news
+  // digest runs 20 concurrent 5 MiB reads on a 128 MB Edge isolate), and
+  // keeping one array per read cost heap per read, so a body trickled as
+  // many tiny chunks grew with the number of reads instead of the bytes.
+  const cap = Math.floor(maxBytes);
+  let body = new Uint8Array(0);
   let total = 0;
   let cancelled = false;
   const cancel = async () => {
@@ -68,8 +74,15 @@ async function readBoundedBody(
         await cancel();
         throw createTooLargeError(maxBytes);
       }
+      const needed = total + value.byteLength;
+      if (needed > body.byteLength) {
+        const grown = new Uint8Array(Math.min(cap, Math.max(needed, body.byteLength * 2, 64 * 1024)));
+        grown.set(body.subarray(0, total));
+        body = grown;
+      }
+      // Copied, never retained: a source may reuse one buffer across reads.
       body.set(value, total);
-      total += value.byteLength;
+      total = needed;
     }
   } catch (error) {
     await cancel();

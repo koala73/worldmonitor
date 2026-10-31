@@ -213,6 +213,7 @@ const SEEDERS = [
   ['TransitSummary', "'seed-meta:supply_chain:transit-summaries'", 'TRANSIT_SUMMARY_INTERVAL_MS', 'seedTransitSummaries'],
   ['Cyber', "'seed-meta:cyber:threats'", 'CYBER_SEED_INTERVAL_MS', 'seedCyberThreats'],
   ['MiddleEastStrikes', 'middleEastStrikes.SEED_META_KEY', 'MIDDLE_EAST_STRIKES_INTERVAL_MS', 'seedMiddleEastStrikes'],
+  ['DigestWarm', 'DIGEST_WARM_HEARTBEAT_KEY', 'DIGEST_WARM_INTERVAL_MS', 'seedDigestWarm'],
 ];
 
 for (const [label, metaKey, intervalConst, seedFn] of SEEDERS) {

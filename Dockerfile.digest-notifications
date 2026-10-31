@@ -29,7 +29,7 @@
 #   AI_DIGEST_ENABLED=0           (kill switch for AI summary LLM call)
 # =============================================================================
 
-FROM node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
+FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3
 
 WORKDIR /app
 
@@ -49,6 +49,7 @@ RUN npm ci --prefix scripts --omit=dev
 # Digest cron + shared script helpers it imports via createRequire.
 COPY scripts/seed-digest-notifications.mjs ./scripts/
 COPY scripts/_digest-markdown.mjs ./scripts/
+COPY scripts/_env-file.mjs ./scripts/
 COPY scripts/lib/ ./scripts/lib/
 # Sprint 1 / U4 operator one-shot — `clearDeliveredEntry` primitive
 # pairs with the delivered-log writer in scripts/lib/digest-delivered-

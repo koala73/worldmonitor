@@ -8,6 +8,7 @@ import filterParamContracts from '../../../../shared/openapi-filter-param-contra
 import { CACHE_VERSION } from '../../../../src/utils/summary-cache-key';
 import { getCachedJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
+import { aiRoutingCacheSuffix, resolveAiRouting } from '../../../_shared/ai-routing-policy';
 
 const CACHE_KEY_PATTERN = new RegExp(filterParamContracts.newsSummarizeArticleCacheKeyPattern);
 // #5969: the shared pattern is version-agnostic (`summary:v\d+:`), so a stale
@@ -51,7 +52,9 @@ export async function getSummarizeArticleCache(
   }
 
   try {
-    const cached = await getCachedJson(cacheKey);
+    // A restricted caller reads only summaries written under its own policy
+    // namespace (summarize-article.ts appends the same suffix).
+    const cached = await getCachedJson(`${cacheKey}${aiRoutingCacheSuffix(await resolveAiRouting(ctx.request))}`);
 
     if (cached === NEG_SENTINEL || cached === null || cached === undefined) {
       markNoCacheResponse(ctx.request);

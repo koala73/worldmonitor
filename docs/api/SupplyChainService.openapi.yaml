@@ -5090,12 +5090,12 @@ components:
                     type: boolean
                     description: |-
                         True when the NGA navigational-warning source returned a valid response,
-                         including a valid empty list. Missing legacy values fail closed.
+                         empty list included; a missing value fails closed.
                 aisSnapshotAvailable:
                     type: boolean
                     description: |-
-                        True when the AIS snapshot source returned a valid response. This owns
-                         both ais_disruptions and congestion_level. Missing legacy values fail closed.
+                        True when the AIS snapshot source returned a valid response; owns
+                         ais_disruptions and congestion_level. A missing value fails closed.
         DirectionalDwt:
             type: object
             properties:
@@ -5144,21 +5144,34 @@ components:
                 dataAvailable:
                     type: boolean
                     description: |-
-                        False when the upstream portwatch source did not return history for this
-                         chokepoint in the current cycle — wow_change_pct and history are then
-                         zero-state fill, not genuine readings. Client should render a "transit
-                         data unavailable" indicator and skip chart rendering.
-
-                         This says nothing about today_* — those come from the relay's in-memory
-                         AIS window, a separate source. Read today_counts_available for those.
+                        False when PortWatch returned no history this cycle; wow_change_pct,
+                         history and official_*/baseline_* are then zero-state fill.
                 todayCountsAvailable:
                     type: boolean
                     description: |-
-                        False when the relay's 24h AIS window held no crossings for this
-                         chokepoint, so today_total/tanker/cargo/other are unsupplied rather than
-                         a measured zero (#7457). The fields stay 0 to keep the int32 contract;
-                         clients must withhold the count when this is false instead of publishing
-                         the 0. True means the counts are a real measurement.
+                        False when the relay's 24h AIS window held no crossings; today_* are then
+                         unsupplied, not a measured zero.
+                officialLatestDate:
+                    type: string
+                    description: |-
+                        IMF PortWatch latest published day, YYYY-MM-DD (~4-day lag); empty means
+                         withhold official_latest_total and official_avg_7d (absent below 7 days).
+                officialLatestTotal:
+                    type: integer
+                    format: int32
+                officialAvg7d:
+                    type: number
+                    format: double
+                baselineAvgDaily:
+                    type: number
+                    format: double
+                    description: |-
+                        Mean daily transits, 12 months ending a year before the seed; 0 means
+                         withhold. baseline_from/to: YYYY-MM-DD bounds, inclusive.
+                baselineFrom:
+                    type: string
+                baselineTo:
+                    type: string
         TransitDayCount:
             type: object
             properties:
@@ -5665,7 +5678,7 @@ components:
                 supplyDeficitPct:
                     type: number
                     format: double
-                    description: Average refined-product supply deficit % under full closure (Gasoline/Diesel/Jet fuel/LPG average; HS 27 only)
+                    description: Average refined-product supply deficit % under full closure at the pre-crisis Gulf crude share, after bypass rerouting for Hormuz when per-exporter shares exist (average over the products among Gasoline/Diesel/Jet fuel/LPG/Naphtha with recorded positive demand; HS 27 only)
                 coverageDays:
                     type: integer
                     format: int32

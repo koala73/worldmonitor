@@ -150,6 +150,12 @@
   container-type: inline-size;
   container-name: country-brief;
   overscroll-behavior: contain;
+  /* Opt out of the dashboard's `.panel-content { content-visibility: auto }`.
+     The panel slides in from off-screen, and Chrome skipped rendering this subtree
+     whenever it judged the panel off-screen, so the brief's paint depended on that
+     judgement during the slide-in. */
+  content-visibility: visible;
+  contain-intrinsic-size: none;
 }
 
 .cdp-shell {

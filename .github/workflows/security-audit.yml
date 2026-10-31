@@ -33,6 +33,33 @@ jobs:
       AUDIT_FAIL_ON_OUTAGE: ${{ github.event_name == 'schedule' && '1' || '0' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/scripts/audit-production-dependencies.mjs
+            /.npmrc
+            /blog-site/.npmrc
+            /pro-test/.npmrc
+            /package.json
+            /package-lock.json
+            /scripts/package.json
+            /scripts/package-lock.json
+            /consumer-prices-core/package.json
+            /consumer-prices-core/package-lock.json
+            /blog-site/package.json
+            /blog-site/package-lock.json
+            /pro-test/package.json
+            /pro-test/package-lock.json
+            /docker/runtime-package.json
+            /docker/runtime-package-lock.json
+            /workers/railway-reconcile-control/package.json
+            /workers/railway-reconcile-control/package-lock.json
+            /workers/api-cors-preflight/package.json
+            /workers/api-cors-preflight/package-lock.json
+            /demos/verification-desk/package.json
+            /demos/verification-desk/package-lock.json
+            /integrations/zapier/package.json
+            /integrations/zapier/package-lock.json
       # The introduced-vs-inherited split needs the base commit in the object
       # DB. checkout leaves a shallow merge ref, so fetch just that one commit.
       - name: Fetch base commit
@@ -169,6 +196,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/scripts/audit-rust-dependencies.mjs
+            /.github/rust-advisory-decisions.json
+            /scripts/lib/main-module.mjs
+            /src-tauri/Cargo.lock
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'

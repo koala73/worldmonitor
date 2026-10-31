@@ -46,6 +46,7 @@ export const predictionPanelReadSchema = z.object({
   category: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined).pipe(z.enum(['geopolitical', 'tech', 'finance']).optional()),
   source: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined).pipe(z.enum(['kalshi', 'polymarket']).optional()),
   query: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined),
+  min_liquidity: z.number().finite().min(0).optional().transform(value => value || undefined),
   limit: z.number().default(30),
 }).strict();
 export const predictionPanelViewSchema = predictionPanelReadSchema.extend({
@@ -96,6 +97,7 @@ export type NewsIntelligencePanelAdmission = z.infer<typeof newsIntelligencePane
 export const newsIntelligencePanelReadSchema = z.object({
   topic: z.unknown().optional(), category: z.unknown().optional(), country: z.unknown().optional(),
   alerts_only: z.unknown().optional(), query: z.unknown().optional(), min_importance: z.unknown().optional(), limit: z.unknown().optional(),
+  stories_cursor: z.unknown().optional(),
 }).strict();
 export const newsIntelligencePanelViewSchema = newsIntelligencePanelReadSchema.extend({
   refresh: z.boolean().default(false), request_id: z.string().uuid().optional(),

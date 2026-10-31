@@ -286,9 +286,23 @@ export async function fetchTelegramFeed(limit = 50): Promise<TelegramFeedRespons
     throw error;
   }
   assertCurrentGeneration(generation);
+  // A relay container that has not polled yet answers enabled with no posts and
+  // no updatedAt. That is a restart, not an empty feed: keep the posts already
+  // on screen, and never cache it, so the next refresh asks again.
+  if (isUnpolledTelegramFeed(json)) {
+    // Only posts are worth keeping. A polled-empty fallback would replace
+    // "Connecting" with "No messages available" for the whole restart.
+    const stale = staleFallback();
+    return stale?.items.length ? stale : json;
+  }
   cachedResponse = json;
   cachedAt = Date.now();
   return json;
+}
+
+/** Enabled relay with no posts and no completed poll: it is still starting. */
+export function isUnpolledTelegramFeed(feed: TelegramFeedResponse): boolean {
+  return feed.enabled && feed.items.length === 0 && feed.updatedAt === null;
 }
 
 export async function fetchTelegramChannelPreview(username: string): Promise<TelegramChannelPreview> {

@@ -513,3 +513,14 @@ describe('country view MCP boundary', () => {
     assert.ok(outage.body.error);
   });
 });
+
+describe('get_country_brief_section reader count', () => {
+  it('states the number of readers it actually exposes', async () => {
+    const { COUNTRY_READERS } = await import('../shared/country-brief-host.ts');
+    const { TOOL_REGISTRY } = await import('../api/mcp/registry/index.ts');
+    const tool = TOOL_REGISTRY.find((entry) => entry.name === 'get_country_brief_section');
+    const count = Object.keys(COUNTRY_READERS).length;
+    assert.match(tool.description, new RegExp(`\\b${count} readers selected by section\\b`));
+    assert.match(tool.inputSchema.properties.section.description, new RegExp(`\\bWhich of the ${count} fixed readers\\b`));
+  });
+});

@@ -29,7 +29,7 @@ Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pas
 
 | Endpoint | Purpose |
 |----------|---------|
-| `https://worldmonitor.app/mcp` | JSON-RPC server (Streamable HTTP transport; JSON responses by default, SSE responses when clients advertise `text/event-stream`; `initialize` negotiates protocol `2025-06-18` by default, `2025-03-26` for older clients) |
+| `https://worldmonitor.app/mcp` | JSON-RPC server (Streamable HTTP transport; JSON responses by default, SSE responses when clients advertise `text/event-stream`; `initialize` negotiates protocol `2025-11-25` by default, `2025-06-18` or `2025-03-26` for older clients) |
 | `https://worldmonitor.app/oauth/register` | Dynamic Client Registration (RFC 7591). Clients on the [trusted list](#client-id-metadata-documents) can skip it and use their Client ID Metadata Document URL as `client_id` |
 | `https://worldmonitor.app/oauth/authorize` | OAuth 2.1 authorization endpoint (PKCE required) |
 | `https://worldmonitor.app/oauth/token` | Token endpoint (authorization_code + refresh_token) |
@@ -44,11 +44,14 @@ Registry listings: the server is published in the [official MCP registry](https:
 
 ### Protocol negotiation
 
-WorldMonitor's static server card at `/.well-known/mcp/server-card.json` advertises protocol version `2025-06-18`, and the live `initialize` handshake negotiates it by default — so the advertised floor and the negotiated version stay in lock-step:
+WorldMonitor's static server card at `/.well-known/mcp/server-card.json` advertises protocol version `2025-11-25`, and the live `initialize` handshake negotiates it by default — so the advertised floor and the negotiated version stay in lock-step:
 
-- By default, `initialize` supports both `2025-03-26` and `2025-06-18`.
-- Clients requesting `2025-06-18` receive `2025-06-18`; clients pinned to `2025-03-26` continue receiving `2025-03-26`.
-- Setting `MCP_PROTOCOL_FLOOR_2025_06_18=off` pins the server back to the legacy `2025-03-26`-only floor; a client that then requests `2025-06-18` receives the safe default `2025-03-26`.
+- By default, `initialize` supports `2025-03-26`, `2025-06-18`, and `2025-11-25`.
+- Clients requesting one of those receive it unchanged; a client requesting any other version receives `2025-11-25`.
+- On `2025-11-25`, a `tools/call` whose arguments fail validation returns an `isError` tool result the model can read and correct, instead of the `-32602` error earlier versions receive (see the [error catalog](/mcp-error-catalog)).
+- Setting `MCP_PROTOCOL_2025_11_25=off` drops `2025-11-25` again, and `MCP_PROTOCOL_FLOOR_2025_06_18=off` pins the server back to the legacy `2025-03-26`-only floor.
+- The handshake-free `2026-07-28` revision is off by default. While it is off, its clients fall back to `initialize` as above.
+- With `MCP_PROTOCOL_2026_07_28=on`, a request whose `params._meta` carries `io.modelcontextprotocol/protocolVersion` is served per request on the `2026-07-28` rules: `server/discover`, the required `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers, `resultType` and cache hints on results, and a minimal `subscriptions/listen`. On `/mcp`, an anonymous `2026-07-28` request gets the sign-in challenge except the free `get_sources` call and `ui://` app reads; the machine-discovery aliases stay anonymous. Requests without that envelope keep the behavior above. The [error catalog](/mcp-error-catalog#mcp-2026-07-28-requests) lists the error codes these requests can receive.
 
 Tool `outputSchema` metadata is emitted on `tools/list` regardless of the negotiated protocol version. Older `2025-03-26` clients should ignore unknown fields, while newer clients can use the schema immediately. Every successful `tools/call` also returns the payload as `structuredContent`, which strict clients require once a schema is advertised; the [tools reference](/mcp-tools-reference) describes how projections and soft envelopes are represented.
 
@@ -98,6 +101,7 @@ Dynamic Client Registration is **not** open to arbitrary redirects. A `redirect_
 | Glama | `https://glama.ai/api/app/mcp/oauth/callback` (connectors and test profiles), `https://glama.ai/mcp/inspector/oauth/callback` ([Glama MCP Inspector](https://glama.ai/mcp/inspector)) |
 | Make.com | `https://www.make.com/oauth/cb/mcp` ([Make MCP client](https://apps.make.com/mcp-client)) |
 | Microsoft 365 Copilot | `https://teams.microsoft.com/api/platform/v1.0/oAuthRedirect` ([Build MCP plugins](https://learn.microsoft.com/microsoft-365/copilot/extensibility/build-mcp-plugins)) |
+| Meta Muse | `https://agent.meta.ai/api/hatch/oauth/callback` |
 | Notion | `https://www.notion.so/workflows/mcp/oauth/callback`, `https://app.notion.com/workflows/mcp/oauth/callback` ([client metadata](https://www.notion.so/oauth/mcp-client-metadata.json)) |
 | Linear | `https://linear.app/connect/mcp/callback` ([client metadata](https://linear.app/.well-known/oauth-client-metadata/mcp.json)) |
 | Lovable | `https://api.lovable.dev/workspaces/connectors/mcp/oauth/callback` ([client metadata](https://api.lovable.dev/.well-known/oauth-client)) |
@@ -318,6 +322,7 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 | `get_supply_chain_data` | Dry bulk shipping stress index, customs flows, COMTRADE bilateral trade. |
 | `get_price_and_debt_indicators` | Price and debt indicators: Big Mac index, FAO Food Price Index, and per-country national debt levels. |
 | `get_wto_trade_flows` | WTO merchandise trade flows for one reporting country versus the World (reporter 3-digit UN M49, window 1–30 years). Distinguishes `not_covered` from faults. |
+| `get_no2_activity` | Sentinel-5P NO2 activity direction for 167 countries and 32 industrial clusters: year-over-year change of the latest 56-day window with a 10% dead band, per-region exclusions and the Copernicus credit. Filter by country, region id or kind. |
 | `get_tariff_averages` | Average tariff a country applies by year: schedule rates through 2023, no Section 301/232 duties. The WTO MFN average, or with a partner and/or WITS product group the effectively applied simple and import-weighted averages (UNCTAD TRAINS). |
 | `get_bilateral_tariff` | Tariff on one HS6 product between two countries: schedule rate through 2023, no Section 301/232 duties. Applied, MFN and preferential rates for one year (UNCTAD TRAINS via WITS). |
 | `get_us_import_duty` | Current US duty on one HTS product from one country: live HTS base rates plus the Section 301 and 232 duties in force, each with a status. |
@@ -466,6 +471,7 @@ Reverse lookup workflow:
 | `get_economic_data` | `GET /api/economic/v1/get-ecb-fx-rates`<br/>`GET /api/economic/v1/get-economic-calendar`<br/>`GET /api/economic/v1/get-eu-yield-curve`<br/>`GET /api/economic/v1/list-fuel-prices`<br/>`GET /api/market/v1/get-cot-positioning`<br/>`GET /api/market/v1/list-earnings-calendar` |
 | `get_price_and_debt_indicators` | `GET /api/economic/v1/get-fao-food-price-index`<br/>`GET /api/economic/v1/get-national-debt`<br/>`GET /api/economic/v1/list-bigmac-prices` |
 | `get_wto_trade_flows` | `GET /api/trade/v1/get-trade-flows` |
+| `get_no2_activity` | `GET /api/economic/v1/get-no2-activity` |
 | `get_tariff_averages` | `GET /api/trade/v1/get-tariff-trends` |
 | `get_bilateral_tariff` | `GET /api/trade/v1/get-bilateral-tariff` |
 | `get_us_import_duty` | `GET /api/trade/v1/get-us-import-duty` |

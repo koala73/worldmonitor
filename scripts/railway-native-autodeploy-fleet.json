@@ -157,6 +157,10 @@
       "name": "seed-cot"
     },
     {
+      "id": "d295b2c7-59ba-4748-9525-62292c5bc98c",
+      "name": "seed-country-history"
+    },
+    {
       "id": "fd27928b-0b9b-45d6-b056-92fa2f5d60a6",
       "name": "seed-cyber-threats"
     },
@@ -289,6 +293,14 @@
       "name": "seed-natural-events"
     },
     {
+      "id": "359e5bd7-4160-41d6-8792-f4aff20a3006",
+      "name": "seed-no2-activity"
+    },
+    {
+      "id": "4aa3db57-9388-4c69-a248-8a538e576454",
+      "name": "seed-notam-nms"
+    },
+    {
       "id": "96fabace-d56d-4854-8096-3f5bcfe0d88a",
       "name": "seed-prediction-markets"
     },
@@ -323,6 +335,10 @@
     {
       "id": "dd3097f7-df65-4b0e-89ca-86a5fac7d558",
       "name": "seed-trade-flows"
+    },
+    {
+      "id": "fa702bee-b70c-44de-9aca-9cea889e89fb",
+      "name": "seed-ukmto-incidents"
     },
     {
       "id": "33c8c2a1-ad66-45ec-ac7e-609d69a59455",

@@ -71,7 +71,7 @@
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + KI) und MCP für Claude, GPT, eigene LLMs."
   },
   "deliveryDesk": {
-    "eyebrow": "DELIVERY DESK",
+    "eyebrow": "LIEFERPULT",
     "title": "Was ist der persönliche Intelligence Desk?",
     "body": "Bis zu 30 bewertete Elemente pro Versand, dedupliziert über Quellen, bewertet gegen Ihre Watchlist. Wählen Sie Ihren Rhythmus – täglich, zweimal täglich oder wöchentlich – mit KI-Bewertung und zu beobachtenden Signalen, geliefert an Slack, Discord, Telegram, Email oder Webhook.",
     "closer": "Kein Newsletter. Ein Analyst.",
@@ -81,17 +81,14 @@
     "windowTitle": "worldmonitor.app — Live-Dashboard",
     "openFullScreen": "Vollbild öffnen",
     "tryLiveDashboard": "Live-Dashboard testen",
-    "iframeTitle": "World Monitor — Live Intelligence Dashboard",
+    "iframeTitle": "World Monitor — Live-Intelligence-Dashboard",
     "description": "3D-WebGL-Globus · interaktive Kartenebenen · Echtzeit-Markt-, Makro-, geopolitische, Energie- und Infrastrukturdaten"
   },
   "socialProof": {
     "uniqueVisitors": "Einzelne Besucher",
     "peakDailyUsers": "Tägliche Nutzer (Peak)",
     "countriesReached": "Erreichte Länder",
-    "liveDataSources": "Live-Datenquellen",
-    "quote": "Märkte, Geldpolitik, Geopolitik, Energie — alles bewegt sich jetzt gemeinsam. Ich brauchte etwas, das zeigt, wie diese Kräfte in Echtzeit zusammenhängen — nicht nur die Schlagzeilen, sondern die zugrundeliegenden Treiber.",
-    "ceo": "CEO von",
-    "asToldTo": "erzählt gegenüber"
+    "liveDataSources": "Live-Datenquellen"
   },
   "audience": {
     "title": "Für wen ist World Monitor entwickelt?",
@@ -244,7 +241,7 @@
     "infraLayers": "Infrastruktur-Ebenen",
     "satellite": "Orbitale Überwachung",
     "connectorsRow": "Konnektoren",
-    "deployment": "Deployment",
+    "deployment": "Bereitstellung",
     "securityRow": "Sicherheit",
     "f5_15min": "5-15 Min",
     "fLt60s": "<60 Sekunden",
@@ -372,7 +369,8 @@
           "Physische Metalle-Divergenz, Mineralien-Konzentration und Staatsverschuldungsdaten",
           "Geplante KI-Zusammenfassung + Warnregeln-Engine",
           "MCP + SDK-Zugriff für Claude Desktop & andere KI-Clients (50 Aufrufe/Tag)",
-          "Benutzerdefinierte Widgets und 10 Dashboards (vs. 3)"
+          "Benutzerdefinierte Widgets und 10 Dashboards (vs. 3)",
+          "Desktop-Schlüssel für die Desktop-App (2 Schlüssel)"
         ],
         "highlightFeatures": [
           "Persönliche Lizenz",
@@ -432,6 +430,7 @@
           "Datenexport — CSV-, JSON- & PDF-Berichte",
           "25 benutzerdefinierte Dashboards (vs 10)",
           "MCP + SDK: 250 Aufrufe/Tag (statt 50)",
+          "Desktop-Schlüssel für die Desktop-App (3 Schlüssel)",
           "Prioritäts-Support"
         ],
         "highlightFeatures": [
@@ -457,7 +456,7 @@
       "ogDescription": "World Monitor: geopolitisches Lagebild-Dashboard in Echtzeit. Kostenlose Live-Karte: Konflikte, Schifffahrt, Flüge, Märkte und Cyber, mit API und MCP-Server."
     },
     "nav": {
-      "useCases": "Korrelationen",
+      "useCases": "Anwendungsfälle",
       "firstFive": "Erste 5 Min",
       "depth": "Tiefe",
       "pricing": "Preisgestaltung",
@@ -502,7 +501,7 @@
       "chokeSummary": "{{disrupted}} von {{total}} unterbrochen",
       "cardMarkets": "Märkte",
       "marketBreadth": "Steigend",
-      "marketBest": "Best",
+      "marketBest": "Beste",
       "marketWeakest": "Schwächste",
       "trendRising": "steigend",
       "trendFalling": "fallend",
@@ -599,7 +598,7 @@
       "s5l": "Instabilitätsindex · live",
       "s6l": "Resilienz-Rankings",
       "s7l": "Unterseekabel",
-      "s8l": "Pipelines & LNG",
+      "s8l": "Pipelines und LNG",
       "s9l": "AI-Rechenzentren kartiert",
       "s10l": "Bewertete Hotspots",
       "s11l": "Börsen & Vermögenswerte",
@@ -650,13 +649,13 @@
       "title1": "Kostenlos ist das Observatorium.",
       "title2": "Pro ist der Operationsraum.",
       "sub": "Das Dashboard ist kostenlos für 0 $ — jede Kartenebene außer Resilience, keine Anmeldung. Pro fügt die Entscheidungsebene hinzu.",
-      "freeTitle": "Kostenlos",
+      "freeTitle": "Kostenloser Plan",
       "freeDesc": "Die kostenlose Version ist ein vollständiges Produkt, keine Testversion. Jede Kartenebene außer Resilience, alle sechs Monitore — ohne Anmeldung, ohne Zeitlimit.",
       "freeF1": "Alle Kartenebenen außer Resilience & kuratierte Feeds",
       "freeF2": "Länderübersichten, Hotspots, Instabilitätsbewertungen",
       "freeF3": "Engpässe, Kabel, Kaskadenanalyse",
       "freeF4": "Breaking-Alert-Pipeline & Beobachtungslisten",
-      "proTitle": "Pro",
+      "proTitle": "Pro-Plan",
       "proDesc": "Nutzen Sie es. Die Entscheidungsebene, die in den obigen Momenten verwendet wird:",
       "proF1": "WM Analyst – Chat über Live-Services mit Quellenangaben",
       "proF2": "Szenario-Engine & Route Explorer — Störungen vor ihrer Auswirkung analysieren",
@@ -686,7 +685,7 @@
       "q8": "Benötige ich ein Konto?",
       "a8": "Nein. Das Dashboard funktioniert sofort ohne Anmeldung. Ein Konto ist nur wichtig, wenn Sie auf Pro upgraden oder Einstellungen geräteübergreifend synchronisieren möchten.",
       "q9": "Ist es Open Source?",
-      "a9": "Ja — Open Source unter AGPL-3.0 auf GitHub: Code lesen, selbst hosten oder erweitern. Native Desktop-Apps für Windows, macOS und Linux sind ebenfalls verfügbar, plus eine Android-TV-App für Wanddisplays.",
+      "a9": "Ja – Open Source unter AGPL-3.0 auf GitHub: Code einsehen, selbst hosten oder darauf aufbauen. Pro und Pro Business enthalten Desktop-Schlüssel, sodass dein eigener Desktop-Build Pro Cloud-Daten laden kann; Docker-Instanzen laufen auf ihren eigenen Daten. Native Desktop-Apps für Windows, macOS und Linux sind ebenfalls verfügbar, plus eine Android TV-App für Wall Displays.",
       "q10": "Warum ist World Monitor nicht Palantir?",
       "a10": "Palantir macht die eigenen Daten einer Institution innerhalb dieser Institution einsatzfähig. World Monitor startet von der anderen Seite: Es sammelt, normalisiert, korreliert und überwacht öffentliche Daten, veröffentlicht dann diese Intelligenzschicht über ein kostenloses Dashboard und Open-Source-Code. Andere Aufgabe, anderes Produkt.",
       "q11": "Welche World Monitor-Lizenz brauche ich?",
@@ -712,7 +711,16 @@
       "chokepointDesc": "Überprüfe Störungsstatus, Schiffsströme und Risiken über {{chokepoints}} kritische Meerespassagen hinweg.",
       "countryRiskTitle": "Eine Länderrisiko-Bewegung erklären",
       "countryRiskDesc": "Verfolge die politischen, sicherheitsbezogenen, wirtschaftlichen und Resilienz-Signale hinter einer Länderveränderung, mit Resilienz-Ranking für {{resilienceRanked}} Länder.",
-      "open": "Belege öffnen"
+      "open": "Belege öffnen",
+      "workflow": "Schritt-für-Schritt-Ablauf"
+    },
+    "voices": {
+      "eyebrow": "In ihren Worten",
+      "title": "Was Menschen über World Monitor sagen",
+      "sub": "{{users}} Menschen in {{countries}} Ländern haben World Monitor genutzt. Das sagen die Presse und einige von ihnen.",
+      "translatedJa": "Aus dem Japanischen übersetzt",
+      "prev": "Vorherige Zitate",
+      "next": "Weitere Zitate"
     }
   },
   "whatsNew": {
@@ -720,13 +728,13 @@
     "title": "Neuigkeiten in World Monitor",
     "subtitle": "Neue Funktionen der letzten 30 Tage — Fehlerbehebungen und technische Details nicht inbegriffen.",
     "proTag": "PRO",
-    "m1": "Physik-Premium-Divergenz-Index — SGE vs. COMEX, mit Historie",
-    "m2": "Rohstoff-Versorgungsvulnerabilitäts-Rankings — Engpass-Abhängigkeit Fächerung",
-    "m3": "Mineralienproduktions-Konzentration und die Rüstungsindustriebasis",
-    "m4": "Fünf-Faktor-Resilienz-Scorecards mit Indikator-Level-Scores",
-    "m5": "Benutzerdefinierte Telegram-Kanal-Beobachtungslisten",
-    "m6": "Passkey-Anmeldung",
-    "m7": "KI-Agenten können das Dashboard steuern — Panels, Reiter, Kartenschichten und Missionen",
-    "m8": "Umfangreichere Länder-Resilienz-Seiten"
+    "m1": "Medienperspektive — wie Medien aus jedem Land über jedes Land berichten, für KI-Agenten und die API",
+    "m2": "/verify — eine Beleg-Karte für jede Behauptung, mit veröffentlichten Faktenchecks",
+    "m3": "Anzahl bestätigender Quellen in Alarmen, Digests und Karten-Popups, dazu eine öffentliche /trust-Seite",
+    "m4": "Automatische Angriffsverfolgung — das Länderrisiko steigt unter Beschuss und erholt sich, sobald die Angriffe enden",
+    "m5": "Luftraumsperrungen aus FAA-NOTAMs und eine Kartenebene für gemeldete Flugzeugnotfälle",
+    "m6": "Karte der Industrieaktivität aus NO2-Satellitendaten von Sentinel-5P",
+    "m7": "Kapitalströme für 230 Volkswirtschaften und jedes Länderpaar, für KI-Agenten und die API",
+    "m8": "Terminal-Dashboard und zoombare CLI-Karte — brew install worldmonitor"
   }
 }

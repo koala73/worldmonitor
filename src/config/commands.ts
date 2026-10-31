@@ -54,7 +54,7 @@ export const COMMANDS: Command[] = [
 
   // Individual layer toggles
   { id: 'layer:ais', keywords: ['ais', 'ships', 'vessels', 'maritime'], label: 'Toggle AIS vessel tracking', icon: '\u{1F6A2}', category: 'layers' },
-  { id: 'layer:flights', keywords: ['flights', 'aviation', 'aircraft', 'planes', 'airport', 'delays', 'notam', 'closures'], label: 'Toggle aviation layer', icon: '\u2708\uFE0F', category: 'layers' },
+  { id: 'layer:flights', keywords: ['flights', 'aviation', 'aircraft', 'planes', 'airport', 'delays', 'notam', 'closures', 'tfr', 'airspace', 'restricted airspace', 'temporary flight restriction', 'danger area', 'no fly zone'], label: 'Toggle aviation layer', icon: '\u2708\uFE0F', category: 'layers' },
   { id: 'layer:aircraftEmergencies', keywords: ['aircraft emergencies', 'squawk', ...EMERGENCY_CODES], label: 'Aircraft emergencies', icon: '\u2708\uFE0F', category: 'layers' },
   { id: 'layer:conflicts', keywords: ['conflicts', 'battles'], label: 'Toggle conflict zones', icon: '\u2694\uFE0F', category: 'layers' },
   { id: 'layer:hotspots', keywords: ['hotspots', 'crises'], label: 'Toggle intel hotspots', icon: '\u{1F4CD}', category: 'layers' },
@@ -88,6 +88,7 @@ export const COMMANDS: Command[] = [
   { id: 'layer:cii', keywords: ['cii', 'instability index', 'country instability'], label: 'Toggle country instability', icon: '\u{1F30E}', category: 'layers' },
   { id: 'layer:dayNight', keywords: ['day night', 'terminator', 'shadow', 'day/night'], label: 'Toggle day/night overlay', icon: '\u{1F31C}', category: 'layers' },
   { id: 'layer:sanctions', keywords: ['sanctions', 'embargoes'], label: 'Toggle sanctions', icon: '\u{1F6AB}', category: 'layers' },
+  { id: 'layer:no2Activity', keywords: ['no2', 'nitrogen dioxide', 'industrial activity', 'emissions', 'sentinel', 'pollution'], label: 'Toggle industrial activity (NO2)', icon: '\u{1F3ED}', category: 'layers' },
 
   // Panel navigation (matching actual DEFAULT_PANELS keys)
   { id: 'panel:live-news', keywords: ['news', 'live news', 'headlines'], label: 'Panel: Live News', icon: '\u{1F4F0}', category: 'panels' },
@@ -150,6 +151,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:hormuz-tracker', keywords: ['hormuz', 'strait of hormuz', 'shipping', 'crude oil', 'lng', 'fertilizer', 'tanker', 'wto'], label: 'Panel: Hormuz Trade Tracker', icon: '\u{1F6A2}', category: 'panels' },
   { id: 'panel:etf-flows', keywords: ['etf', 'etf flows', 'fund flows'], label: 'Panel: BTC ETF Tracker', icon: '\u{1F4B9}', category: 'panels' },
   { id: 'panel:stablecoins', keywords: ['stablecoins', 'usdt', 'usdc'], label: 'Panel: Stablecoins', icon: '\u{1FA99}', category: 'panels' },
+  { id: 'panel:ukmto-incidents', keywords: ['ukmto', 'maritime', 'incidents'], label: 'Panel: UKMTO Incidents', icon: '⚓', category: 'panels' },
   { id: 'panel:monitors', keywords: ['monitors', 'my monitors', 'watchlist'], label: 'Panel: My Monitors', icon: '\u{1F4CB}', category: 'panels' },
   { id: 'panel:map', keywords: ['map', 'globe', 'global map'], label: 'Panel: Global Map', icon: '\u{1F5FA}\uFE0F', category: 'panels' },
   { id: 'panel:live-webcams', keywords: ['webcams', 'live cameras', 'cctv'], label: 'Panel: Live Webcams', icon: '\u{1F4F7}', category: 'panels' },

@@ -45,6 +45,8 @@ export interface LiveVideoPresentation {
   readonly controls: boolean;
 }
 
+export type AudioAvailability = 'unknown' | 'available' | 'unavailable';
+
 export interface LiveVideoOptions {
   readonly source: LiveVideoSource;
   readonly autoplay: boolean;
@@ -53,6 +55,7 @@ export interface LiveVideoOptions {
   /** Called synchronously from openLiveVideo with the first state, then on every change. */
   readonly onState: (state: LiveVideoState) => void;
   readonly onMutedChange?: (muted: boolean) => void;
+  readonly onAudioAvailabilityChange?: (availability: AudioAvailability) => void;
   /** The viewer paused or resumed from the player's own controls. */
   readonly onPlayingChange?: (playing: boolean) => void;
 }
@@ -104,6 +107,7 @@ interface TransportContext {
   onLiveLost(): void;
   onPlayingChange(playing: boolean): void;
   onMutedChange(muted: boolean): void;
+  onAudioAvailabilityChange?(availability: AudioAvailability): void;
 }
 
 type YouTubeCandidate = Extract<Candidate, { kind: 'video' | 'channel' }>;
@@ -427,7 +431,9 @@ function mountYouTubeSidecar(container: HTMLElement, candidate: YouTubeCandidate
 
 /** HLS: Safari and WKWebView play it natively; elsewhere hls.js loads on first use. */
 function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 'hls' }>, context: TransportContext): Transport {
-  const video = document.createElement('video');
+  const video = document.createElement('video') as HTMLVideoElement & {
+    readonly audioTracks?: EventTarget & { readonly length: number };
+  };
   video.className = context.presentation.className;
   video.title = context.presentation.title;
   video.muted = context.muted;
@@ -439,6 +445,7 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
   let manifest: 'live' | 'vod' | 'unknown' = 'unknown';
   let failure: HlsFailure = null;
   let hls: import('hls.js').default | null = null;
+  let nativeAudioCleanup: (() => void) | undefined;
   let playedSeconds = 0;
   let lastSample: { readonly atMs: number; readonly seconds: number } | null = null;
   let reportedMuted = context.muted;
@@ -482,18 +489,43 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
   });
   container.appendChild(video);
 
-  if (video.canPlayType('application/vnd.apple.mpegurl')) {
+  const nativeHls = Boolean(video.canPlayType('application/vnd.apple.mpegurl'));
+  const mountNative = () => {
+    const readAudioTracks = () => {
+      if (!destroyed && video.readyState >= 1 && video.audioTracks) {
+        context.onAudioAvailabilityChange?.(video.audioTracks.length > 0 ? 'available' : 'unavailable');
+      }
+    };
+    video.addEventListener('loadedmetadata', readAudioTracks);
+    video.audioTracks?.addEventListener('addtrack', readAudioTracks);
+    video.audioTracks?.addEventListener('removetrack', readAudioTracks);
+    const tracks = video.audioTracks;
+    video.addEventListener('emptied', () => {
+      if (!destroyed) context.onAudioAvailabilityChange?.('unknown');
+    });
+    nativeAudioCleanup = () => {
+      tracks?.removeEventListener('addtrack', readAudioTracks);
+      tracks?.removeEventListener('removetrack', readAudioTracks);
+    };
     video.src = candidate.url;
+  };
+  if (nativeHls && (video.audioTracks || !context.onAudioAvailabilityChange)) {
+    mountNative();
   } else {
     void import('hls.js').then(({ default: Hls }) => {
       if (destroyed) return;
       if (!Hls.isSupported()) {
-        fail({ kind: 'fatal', detail: 'hls-unsupported' });
+        if (nativeHls) mountNative();
+        else fail({ kind: 'fatal', detail: 'hls-unsupported' });
         return;
       }
-      const instance = new Hls({ enableWorker: true, lowLatencyMode: true });
+      const instance = new Hls({ enableWorker: true, lowLatencyMode: true, capLevelOnFPSDrop: true });
       hls = instance;
       instance.on(Hls.Events.LEVEL_LOADED, (_event, data) => { manifest = data.details.live ? 'live' : 'vod'; });
+      instance.on(Hls.Events.BUFFER_CREATED, (_event, { tracks }) => {
+        context.onAudioAvailabilityChange?.(tracks.audio ? 'available'
+          : tracks.video && !tracks.audiovideo ? 'unavailable' : 'unknown');
+      });
       instance.on(Hls.Events.ERROR, (_event, data) => {
         if (!data.fatal) return;
         const status = data.response?.code;
@@ -501,7 +533,11 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
       });
       instance.loadSource(candidate.url);
       instance.attachMedia(video);
-    }, () => fail({ kind: 'fatal', detail: 'hls-load-failed' }));
+    }, () => {
+      if (destroyed) return;
+      if (nativeHls) mountNative();
+      else fail({ kind: 'fatal', detail: 'hls-load-failed' });
+    });
   }
   if (context.autoplay) video.play()?.catch(() => {});
 
@@ -518,6 +554,7 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
     },
     destroy() {
       destroyed = true;
+      nativeAudioCleanup?.();
       hls?.destroy();
       hls = null;
       video.pause();
@@ -617,6 +654,7 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
 
   function mount(index: number): void {
     unmount();
+    options.onAudioAvailabilityChange?.('unknown');
     const { candidate } = parsed.candidates[index]!;
     const startedAt = Date.now();
     let mounted: Transport | null = null;
@@ -633,6 +671,9 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
         muted = next;
         options.onMutedChange?.(next);
       },
+      onAudioAvailabilityChange: options.onAudioAvailabilityChange ? (availability) => {
+        if (isCurrent()) options.onAudioAvailabilityChange?.(availability);
+      } : undefined,
     };
     if (candidate.kind === 'hls') mounted = mountHls(container, candidate, context);
     else if (isDesktopRuntime()) mounted = mountYouTubeSidecar(container, candidate, context);

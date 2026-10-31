@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import http, { createServer } from 'node:http';
 import https from 'node:https';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 import dns from 'node:dns/promises';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
@@ -18,9 +18,6 @@ const { getConfiguredLlmHealthProviders } = await import(
 );
 
 const brotliCompressAsync = promisify(brotliCompress);
-const DESKTOP_AUTH_SECRET_ENV = 'WM_DESKTOP_SHARED_SECRET';
-const DESKTOP_AUTH_TIMESTAMP_HEADER = 'X-WorldMonitor-Desktop-Timestamp';
-const DESKTOP_AUTH_SIGNATURE_HEADER = 'X-WorldMonitor-Desktop-Signature';
 const LOCAL_API_TRANSPORT_HEADER = 'x-worldmonitor-local-token';
 const MAX_REGISTRATION_BODY_BYTES = 16 * 1024;
 const MAX_REGISTRATION_EMAIL_LENGTH = 254;
@@ -80,22 +77,6 @@ function tokenMatches(candidate, expected) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-function canonicalizeDesktopAuthPayload(payload) {
-  return JSON.stringify({
-    email: typeof payload?.email === 'string' ? payload.email : '',
-    source: typeof payload?.source === 'string' ? payload.source : '',
-    appVersion: typeof payload?.appVersion === 'string' ? payload.appVersion : '',
-    referredBy: typeof payload?.referredBy === 'string' ? payload.referredBy : '',
-    website: typeof payload?.website === 'string' ? payload.website : '',
-    turnstileToken: typeof payload?.turnstileToken === 'string' ? payload.turnstileToken : '',
-  });
-}
-
-function signDesktopAuthPayload(secret, timestamp, payload) {
-  const message = `${timestamp}\n${canonicalizeDesktopAuthPayload(payload)}`;
-  return `sha256=${createHmac('sha256', secret).update(message).digest('hex')}`;
-}
-
 function isTransientVerificationError(error) {
   if (!(error instanceof Error)) return false;
   const code = typeof error.code === 'string' ? error.code : '';
@@ -119,6 +100,11 @@ const MAX_CONCURRENT_UPSTREAM = 6;
 // Mutable (not const) only so tests can shrink it -- production always runs
 // at the default.
 let _upstreamIdleTimeoutMs = 12000;
+// The configured Ollama server sends nothing until a non-streaming completion
+// ends, so its silence is inference. This bound outlasts the longest server
+// LLM deadline (60s), so the caller's own deadline ends a slow completion and
+// this only reclaims a slot from a server that truly hangs.
+let _ollamaIdleTimeoutMs = 90000;
 function acquireUpstreamSlot() {
   if (_activeUpstream < MAX_CONCURRENT_UPSTREAM) {
     _activeUpstream++;
@@ -226,16 +212,21 @@ function registerSidecarAllowedPrivateFetchOrigins(port, extraOrigins = []) {
   };
 }
 
+function isConfiguredOllamaOrigin(url) {
+  if (!process.env.OLLAMA_API_URL) return false;
+  try {
+    return url.origin === new URL(process.env.OLLAMA_API_URL).origin;
+  } catch {
+    return false;
+  }
+}
+
 function isAllowedPrivateSidecarFetch(url) {
   if (sidecarAllowedPrivateFetchOrigins.has(url.origin)) return true;
   // Desktop users can change Ollama settings without restarting the sidecar.
   // Trust only the current configured origin, never an address from a request.
-  if (process.env.LOCAL_API_MODE === 'tauri-sidecar' && process.env.OLLAMA_API_URL) {
-    try {
-      return url.origin === new URL(process.env.OLLAMA_API_URL).origin;
-    } catch { /* invalid configuration grants no private-network access */ }
-  }
-  return false;
+  // An invalid configuration grants no private-network access.
+  return process.env.LOCAL_API_MODE === 'tauri-sidecar' && isConfiguredOllamaOrigin(url);
 }
 
 async function assertSafeSidecarFetchUrl(url) {
@@ -327,7 +318,8 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
       // Catches a peer that accepts the connection and then goes silent
       // forever (no error, no close, no data) -- the only stall shape none
       // of the listeners above ever observe.
-      req.setTimeout(_upstreamIdleTimeoutMs, () => {
+      const idleTimeoutMs = isConfiguredOllamaOrigin(url) ? _ollamaIdleTimeoutMs : _upstreamIdleTimeoutMs;
+      req.setTimeout(idleTimeoutMs, () => {
         req.destroy();
         settle(reject, new Error('upstream request idle-timed out'));
       });
@@ -349,7 +341,7 @@ const ALLOWED_ENV_KEYS = new Set([
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
   'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'ALPHA_VANTAGE_API_KEY', 'NASA_FIRMS_API_KEY',
   'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WORLDMONITOR_API_KEY', 'WTO_API_KEY',
-  'AVIATIONSTACK_API', 'ICAO_API_KEY', 'UCDP_ACCESS_TOKEN', DESKTOP_AUTH_SECRET_ENV,
+  'AVIATIONSTACK_API', 'ICAO_API_KEY', 'UCDP_ACCESS_TOKEN',
 ]);
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -873,19 +865,10 @@ async function proxyRegisterInterestToCloud(requestUrl, req, context) {
   headers.delete('Content-Encoding');
   headers.delete('Connection');
   headers.delete('Expect');
-  headers.delete(DESKTOP_AUTH_TIMESTAMP_HEADER);
-  headers.delete(DESKTOP_AUTH_SIGNATURE_HEADER);
   headers.set('Origin', 'https://worldmonitor.app');
   headers.set('User-Agent', CHROME_UA);
   headers.set('Content-Type', 'application/json');
   headers.set('Content-Length', String(Buffer.byteLength(body)));
-
-  const secret = process.env[DESKTOP_AUTH_SECRET_ENV];
-  if (secret) {
-    const timestamp = String(Date.now());
-    headers.set(DESKTOP_AUTH_TIMESTAMP_HEADER, timestamp);
-    headers.set(DESKTOP_AUTH_SIGNATURE_HEADER, signDesktopAuthPayload(secret, timestamp, normalizedPayload));
-  }
 
   return fetchWithTimeout(target, {
     method: 'POST',
@@ -937,6 +920,7 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
 // generated route tables and fails when an entry is not a real RPC path, when
 // its handler reaches an upstream itself, or when a seed-only route is missing.
 const cloudPreferredExact = new Set([
+  '/api/maritime/v1/list-ukmto-incidents',
   '/api/bootstrap',
   '/api/aviation/v1/get-airport-ops-summary',
   '/api/displacement/v1/get-displacement-summary',
@@ -966,6 +950,7 @@ const cloudPreferredExact = new Set([
   '/api/economic/v1/get-macro-signals',
   '/api/economic/v1/get-nat-gas-storage',
   '/api/economic/v1/get-national-debt',
+  '/api/economic/v1/get-no2-activity',
   '/api/economic/v1/get-oil-inventories',
   '/api/economic/v1/get-oil-stocks-analysis',
   '/api/economic/v1/get-us-cpi-monthly',
@@ -1023,6 +1008,8 @@ const cloudPreferredExact = new Set([
   '/api/military/v1/get-theater-posture',
   '/api/military/v1/get-usni-fleet-report',
   '/api/military/v1/list-defense-patents',
+  '/api/news/v1/list-news-pool',
+  '/api/news/v1/list-source-items',
   '/api/news/v1/summarize-article-cache',
   '/api/research/v1/list-arxiv-papers',
   '/api/research/v1/list-hackernews-items',
@@ -1303,7 +1290,7 @@ function makeCorsHeaders(req) {
   return {
     'Access-Control-Allow-Origin': getSidecarCorsOrigin(req),
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
   };
@@ -1715,9 +1702,6 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     case 'ICAO_API_KEY':
       return ok('ICAO API key stored (verification requires NOTAM endpoint access)');
 
-    case DESKTOP_AUTH_SECRET_ENV:
-      return ok('Desktop shared secret stored');
-
     default:
       return ok('Key stored');
     }
@@ -1995,7 +1979,7 @@ async function dispatch(requestUrl, req, routes, context) {
     // SSRF protection: block private IPs, reserved ranges, and DNS rebinding
     const safety = await isSafeUrl(feedUrl);
     if (!safety.safe) {
-      context.logger.warn(`[local-api] rss-proxy SSRF blocked: ${safety.reason} (url=${feedUrl})`);
+      context.logger.warn(`[local-api] rss-proxy SSRF blocked: ${safety.reason} (url=${JSON.stringify(feedUrl)})`);
       return rssProxyJson({ error: safety.reason }, 403);
     }
 
@@ -2006,7 +1990,7 @@ async function dispatch(requestUrl, req, routes, context) {
       // the TOCTOU DNS-rebinding window for IPv4 and IPv6-only feeds.
       const pinned = pickPinnedAddress(safety.resolvedAddresses);
       if (!pinned) {
-        context.logger.warn(`[local-api] rss-proxy SSRF blocked: no validated address (url=${feedUrl})`);
+        context.logger.warn(`[local-api] rss-proxy SSRF blocked: no validated address (url=${JSON.stringify(feedUrl)})`);
         return rssProxyJson({ error: 'Could not resolve hostname' }, 403);
       }
       const response = await fetchWithTimeout(feedUrl, {
@@ -2186,8 +2170,8 @@ async function dispatch(requestUrl, req, routes, context) {
   }
 }
 
-// Test seam: lets tests shrink ipv4Fetch's upstream idle timeout so a
-// silent-stall test doesn't have to wait out the real 12s production value.
+// Test seam: lets tests shrink ipv4Fetch's idle timeouts so a silent-stall
+// test doesn't have to wait out the real production values.
 // Production code never calls this.
 export const __testing__ = {
   isCloudPreferred,
@@ -2197,6 +2181,9 @@ export const __testing__ = {
   setUpstreamIdleTimeoutMs(ms) {
     _upstreamIdleTimeoutMs = ms;
   },
+  setOllamaIdleTimeoutMs(ms) {
+    _ollamaIdleTimeoutMs = ms;
+  },
 };
 
 export async function createLocalApiServer(options = {}) {
@@ -2205,8 +2192,17 @@ export async function createLocalApiServer(options = {}) {
   const routes = await buildRouteTable(context.apiDir);
   let unregisterSelfFetchOrigins = null;
 
-  const server = createServer(async (req, res) => {
-    const requestUrl = new URL(req.url || '/', `http://127.0.0.1:${context.port}`);
+  const handleRequest = async (req, res) => {
+    let requestUrl;
+    try {
+      requestUrl = new URL(req.url || '/', `http://127.0.0.1:${context.port}`);
+    } catch {
+      // A raw request-target such as `//` is not a valid relative URL and
+      // makes the WHATWG parser throw ERR_INVALID_URL.
+      res.writeHead(400, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
+      res.end(JSON.stringify({ error: 'Bad request' }));
+      return;
+    }
 
     if (!requestUrl.pathname.startsWith('/api/')) {
       res.writeHead(404, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
@@ -2268,6 +2264,20 @@ export async function createLocalApiServer(options = {}) {
       res.writeHead(500, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
       res.end(JSON.stringify({ error: 'Internal server error' }));
     }
+  };
+
+  // Any throw that escapes handleRequest would be an unhandled rejection,
+  // which terminates the sidecar until the app restarts.
+  const server = createServer((req, res) => {
+    handleRequest(req, res).catch((error) => {
+      context.logger.error('[local-api] unhandled request error', error);
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
+      res.writeHead(500, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    });
   });
 
   return {

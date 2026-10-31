@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-loss-diagnostics';
+import { BROWSER_NEWS_CATALOG } from '../src/config/news-catalog.browser.generated';
 
 // Request budget for the news load on a default anonymous dashboard load (#5376).
 //
@@ -37,10 +38,22 @@ import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-l
 const DIGEST_GLOB = '**/api/news/v1/list-feed-digest*';
 const RSS_PROXY_GLOB = '**/api/rss-proxy*';
 
-// Time to let a SECOND news load land if one is coming. Production saw the two
-// digest requests 1.2 s apart; the local dev server is faster, so this is a wide
-// margin over the interval being guarded.
-const SECOND_LOAD_SETTLE_MS = 8_000;
+// A SECOND news load comes from one of two places. The bootstrap fan-out runs its
+// own loadAllData(), and App sets `data-wm-initial-data-ready` only after that
+// fan-out resolves (both the normal and the slow-tier-timeout path), so waiting on
+// the flag covers it at any runner speed: with the #5376 gate removed, the second
+// digest fired before the flag in every test here. After the flag, the hydration
+// triggers (an immediate primeVisiblePanelData(), rAF / requestIdleCallback with a
+// 300 ms timeout, IntersectionObserver) get this quiet window. Production saw the
+// two digest requests 1.2 s apart; that interval sits inside the fan-out.
+const POST_FANOUT_QUIET_MS = 1_500;
+
+async function settleAfterInitialFanout(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => document.documentElement.dataset.wmInitialDataReady === 'true',
+  );
+  await page.waitForTimeout(POST_FANOUT_QUIET_MS);
+}
 
 // src/app/data-loader.ts `perFeedFallbackCategoryFeedLimit`. Every per-feed
 // fallback is capped at this many feeds per category, custom categories included.
@@ -59,7 +72,8 @@ const SECOND_LOAD_SETTLE_MS = 8_000;
 const PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT = 3;
 
 // A Tech news panel customized into a `full` session: absent from FULL_FEEDS, so
-// it resolves as a CUSTOM category and direct fetch is its only path. Priority 1
+// it resolves as a CUSTOM category. It reads the tech digest first and falls back
+// to a capped direct fetch only when that digest does not carry it. Priority 1
 // keeps it inside the 40-panel free-tier cap (FULL_PANELS enables 39 priority-1
 // panels), and its 10 TECH_FEEDS entries are well past the per-category cap.
 const CUSTOM_CATEGORY_KEY = 'startups';
@@ -215,22 +229,33 @@ const HEALTHY_DIGEST_CATEGORIES = ['politics', 'intel'];
 const HEALTHY_POLITICS_HEADLINE = 'Healthy last-good politics headline';
 const PARTIAL_POLITICS_HEADLINE = 'Fresh partial politics headline';
 
-function digestBody(categoryKeys: readonly string[], politicsHeadline?: string): string {
+function digestBody(
+  categoryKeys: readonly string[],
+  politicsHeadline?: string,
+  headlines: Readonly<Record<string, { source: string; title: string }>> = {},
+): string {
+  const headlineFor = (key: string): { source: string; title: string } | undefined =>
+    headlines[key] ?? (key === 'politics' && politicsHeadline
+      ? { source: 'BBC World', title: politicsHeadline }
+      : undefined);
   return JSON.stringify({
-    categories: Object.fromEntries(categoryKeys.map((key) => [
-      key,
-      {
-        items: key === 'politics' && politicsHeadline
-          ? [{
-              source: 'BBC World',
-              title: politicsHeadline,
-              link: `https://example.com/${encodeURIComponent(politicsHeadline)}`,
-              publishedAt: Date.now(),
-              isAlert: false,
-            }]
-          : [],
-      },
-    ])),
+    categories: Object.fromEntries(categoryKeys.map((key) => {
+      const headline = headlineFor(key);
+      return [
+        key,
+        {
+          items: headline
+            ? [{
+                source: headline.source,
+                title: headline.title,
+                link: `https://example.com/${encodeURIComponent(headline.title)}`,
+                publishedAt: Date.now(),
+                isAlert: false,
+              }]
+            : [],
+        },
+      ];
+    })),
     feedStatuses: {},
     generatedAt: new Date(0).toISOString(),
   });
@@ -253,6 +278,16 @@ async function installNewsRequestAccounting(
     healthyPoliticsHeadline?: string;
     degradedPoliticsHeadline?: string;
     failDigestLanguages?: readonly string[];
+    /**
+     * Bodies for OTHER editions' digests, keyed by `variant`. A cross-edition
+     * panel reads the digest of the edition that places its category; an
+     * edition absent here gets the healthy full-edition body, which carries
+     * none of that edition's categories.
+     */
+    editionDigests?: Readonly<Record<string, {
+      categories: readonly string[];
+      headlines?: Readonly<Record<string, { source: string; title: string }>>;
+    }>>;
   } = {},
 ): Promise<NewsRequestLog> {
   const log: NewsRequestLog = { digestUrls: [], rssProxyUrls: [] };
@@ -268,7 +303,17 @@ async function installNewsRequestAccounting(
   // bearing bucket would exercise rendering, not the request budget.
   await page.route(DIGEST_GLOB, async (route) => {
     log.digestUrls.push(route.request().url());
-    const requestLanguage = new URL(route.request().url()).searchParams.get('lang') ?? 'en';
+    const requestUrl = new URL(route.request().url());
+    const requestLanguage = requestUrl.searchParams.get('lang') ?? 'en';
+    const edition = options.editionDigests?.[requestUrl.searchParams.get('variant') ?? 'full'];
+    if (edition) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: digestBody(edition.categories, undefined, edition.headlines),
+      });
+      return;
+    }
     if (options.failDigestLanguages?.includes(requestLanguage)) {
       await route.fulfill({ status: 503, contentType: 'text/plain', body: 'digest unavailable' });
       return;
@@ -344,7 +389,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     // The news load is not viewport-gated, so nothing needs scrolling to
     // provoke the second load — the bootstrap fan-out and the hydration
     // trigger both fire on their own during this window.
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await settleAfterInitialFanout(page);
 
     expect(
       log.rssProxyUrls,
@@ -396,7 +441,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     } finally {
       lossWatch.dispose();
     }
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await settleAfterInitialFanout(page);
 
     const feeds = distinctProxiedFeeds(log.rssProxyUrls);
 
@@ -442,10 +487,75 @@ test.describe('dashboard news request budget (#5376)', () => {
       'a freshly seeded anonymous profile has no persisted rotation state, so the first load is cycle 0',
     ).toBe(0);
 
+    // The only extra request a cross-edition panel may add is ONE digest read
+    // for the edition that places its category (tech, for `startups`). Here
+    // that digest does not carry the category, so the panel falls back to the
+    // capped direct fetch above. A second full-edition digest would mean the
+    // whole news load re-ran.
+    const editions = log.digestUrls.map((url) => new URL(url).searchParams.get('variant') ?? 'full');
     expect(
-      log.digestUrls.length,
-      'customizing a category must not add a second news load either',
+      editions.filter((edition) => edition === 'full').length,
+      `customizing a category must not add a second news load either, got: ${log.digestUrls.join(', ')}`,
     ).toBe(1);
+    expect(
+      editions.filter((edition) => edition !== 'full'),
+      'a cross-edition panel reads exactly one digest of the edition that places its category',
+    ).toEqual(['tech']);
+  });
+
+  // The intended path since every category became digest-served: a
+  // cross-edition panel reads the digest of the edition that places it, and
+  // makes no direct feed requests at all.
+  test('a cross-edition panel is served by its edition digest with zero direct feed fetches', async ({ page }) => {
+    const headline = 'Cross-edition startups headline from the tech digest';
+    await seedFreshAnonymousFullVariant(page, {
+      [CUSTOM_CATEGORY_KEY]: { name: 'Startups & VC', enabled: true, priority: 1 },
+    });
+    const log = await installNewsRequestAccounting(page, {
+      editionDigests: {
+        tech: {
+          categories: [CUSTOM_CATEGORY_KEY],
+          headlines: { [CUSTOM_CATEGORY_KEY]: { source: 'TechCrunch Startups', title: headline } },
+        },
+      },
+    });
+
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget cross-edition boot',
+    );
+    try {
+      const firstDigest = page.waitForRequest(DIGEST_GLOB);
+      await page.goto('/');
+      await page.waitForFunction(
+        () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+      );
+      await firstDigest;
+    } finally {
+      lossWatch.dispose();
+    }
+    await settleAfterInitialFanout(page);
+
+    const startupsPanel = await mountDeferredPanel(page, CUSTOM_CATEGORY_KEY);
+    await expect(
+      startupsPanel.getByText(headline).first(),
+      'the item the edition digest carries must render in the panel',
+    ).toBeAttached();
+    // Sources the tech digest carries come from it; only the ones no digest
+    // carries yet (browserOnly, still pending migration) are fetched directly,
+    // within the per-category window.
+    const startupsFeeds = BROWSER_NEWS_CATALOG.editions.tech?.startups ?? [];
+    const browserOnlyUrls = new Set(startupsFeeds.filter((f) => f.browserOnly).map((f) => f.url));
+    const direct = distinctProxiedFeeds(log.rssProxyUrls);
+    expect(direct.length, 'direct fetches stay within the per-category window')
+      .toBeLessThanOrEqual(PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT);
+    expect(
+      direct.filter((url) => !browserOnlyUrls.has(url)),
+      'a source the edition digest carries must not be fetched feed by feed',
+    ).toEqual([]);
+    const editions = log.digestUrls.map((url) => new URL(url).searchParams.get('variant') ?? 'full');
+    expect(editions.filter((edition) => edition === 'full').length).toBe(1);
+    expect(editions.filter((edition) => edition !== 'full')).toEqual(['tech']);
   });
 
   // The other outage shape, and the one that actually happens: the digest answers
@@ -644,7 +754,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     await page.waitForFunction(
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await settleAfterInitialFanout(page);
 
     expect(
       log.digestUrls.length,
@@ -693,7 +803,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     await page.waitForFunction(
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await settleAfterInitialFanout(page);
 
     expect(
       log.digestUrls.some((url) => new URL(url).searchParams.get('lang') === 'fr'),
@@ -739,7 +849,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     } finally {
       lossWatch.dispose();
     }
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await settleAfterInitialFanout(page);
 
     const panel = page.locator(`[data-panel="${EMPTY_CATEGORY_PANEL}"]`);
     await panel.scrollIntoViewIfNeeded();
@@ -780,7 +890,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     } finally {
       lossWatch.dispose();
     }
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await settleAfterInitialFanout(page);
 
     // Attempt 1 was served 503, so that load rendered every category empty. A
     // second attempt is the whole point: it is served 200 and the dashboard
@@ -796,7 +906,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     // work-list, so the gate stops the retries rather than looping every trigger.
     const afterRecovery = log.digestUrls.length;
     await fireHydrationTrigger(page);
-    await page.waitForTimeout(3_000);
+    await page.waitForTimeout(POST_FANOUT_QUIET_MS);
     expect(
       log.digestUrls.length,
       `once a load has landed, further triggers must not re-fetch the digest ` +
@@ -1109,6 +1219,24 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
       // Keep this fixture to already-mounted panels: a deferred neighbor's
       // mount callback would independently prime data and mask the lost scroll.
       await page.addStyleTag({ content: '[data-deferred-panel="true"] { display: none !important; }' });
+      // Hiding a shell does not cancel its in-flight import. Let active mount
+      // attempts settle before the initial viewport scan runs.
+      await page.waitForFunction(() => {
+        const debug = (window as typeof window & {
+          __wmLcpDebug?: { getSnapshot?: () => { marks: Array<{ name: string; detail?: { panel?: string } }> } };
+        }).__wmLcpDebug;
+        const marks = debug?.getSnapshot?.().marks;
+        if (!marks) return false;
+        const active = new Set<string>();
+        for (const { name, detail } of marks) {
+          if (!detail?.panel) continue;
+          if (name === 'wm:panel:deferred-mount-start') active.add(detail.panel);
+          if (name === 'wm:panel:deferred-mount-ready' || name === 'wm:panel:deferred-mount-unavailable') {
+            active.delete(detail.panel);
+          }
+        }
+        return active.size === 0;
+      });
       slowBootstrap.release();
       await navigation;
       await waitForLcpMark(page, 'wm:data:initial-fanout-start');

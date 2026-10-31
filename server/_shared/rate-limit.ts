@@ -571,13 +571,15 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     getClientRateLimitKey(request);
 
   try {
-    const { success, limit, reset } = await limitWithFallback(
+    const { success, limit, reset, reason } = await limitWithFallback(
       rl,
       identifier,
       `rl:fw:${identifier}`,
       GLOBAL_RATE_LIMIT,
       GLOBAL_RATE_WINDOW_SECONDS,
     );
+
+    if (reason === 'timeout') throw new Error('rate-limit decision timed out');
 
     if (!success) {
       return tooManyRequestsResponse(limit, reset, corsHeaders, GLOBAL_RATE_WINDOW_SECONDS);
@@ -603,6 +605,9 @@ interface EndpointRatePolicy {
 // using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
+  '/api/scorecard/v1/get-five-factor-scorecard': { limit: 30, window: '60 s' },
+  '/api/scorecard/v1/get-bloc-scorecard': { limit: 30, window: '60 s' },
+  '/api/scorecard/v1/list-five-factor-scorecards': { limit: 30, window: '60 s' },
   // #9094 /verify fact-check lookup: public, and a cache miss spends the
   // Google Fact Check Tools API quota.
   '/api/news/v1/search-fact-checks': { limit: 20, window: '60 s' },

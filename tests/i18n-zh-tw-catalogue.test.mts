@@ -160,12 +160,6 @@ interface KeyRule {
 
 /** The per-entry rules, written out for the same reason as EXPECTED_BANNED. */
 const EXPECTED_KEY_RULES: KeyRule[] = [
-  {
-    catalogue: 'src',
-    path: 'modals.settingsWindow.worldMonitor.register.description',
-    from: '請訪問',
-    to: '請造訪',
-  },
   { catalogue: 'src', path: 'popups.techEvent.days.inDays', from: '天后', to: '天後' },
   { catalogue: 'pro-test', path: 'faq.q5', from: '這隻', to: '這只' },
 ];
@@ -183,7 +177,6 @@ const EXPECTED_KEY_RULES: KeyRule[] = [
  * A future entry that legitimately needs one of these adds its path here.
  */
 const KEY_OVERRIDE_ALLOWED_PATHS = new Map<string, readonly string[]>([
-  ['請訪問', []],
   ['天后', []],
   ['這隻', []],
 ]);

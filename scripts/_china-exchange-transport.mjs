@@ -18,7 +18,7 @@ export function sourceError(code, cause) {
   error.code = code;
   return error;
 }
-async function readBoundedResponseBytes(response, maxBytes) {
+export async function readBoundedResponseBytes(response, maxBytes) {
   const contentLength = Number(response?.headers?.get?.('content-length'));
   if (Number.isFinite(contentLength) && contentLength > maxBytes) {
     // Cancel before throwing, matching the chunked path below. Leaving the body

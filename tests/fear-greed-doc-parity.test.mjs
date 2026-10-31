@@ -1,3 +1,6 @@
+// These text checks compare Fear & Greed weights, fallback rules, output fields,
+// and Redis keys with the published methodology (#8690, section 2).
+// Executing the seeder cannot verify the figures and examples readers see.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

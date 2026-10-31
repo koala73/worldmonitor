@@ -88,10 +88,7 @@
     "uniqueVisitors": "Visitatori unici",
     "peakDailyUsers": "Utenti giornalieri (picco)",
     "countriesReached": "Paesi raggiunti",
-    "liveDataSources": "Fonti dati live",
-    "quote": "Mercati, politica monetaria, geopolitica, energia — ora tutto si muove insieme. Mi serviva qualcosa che mostrasse come queste forze si collegano in tempo reale, non solo i titoli ma i motori sottostanti.",
-    "ceo": "CEO di",
-    "asToldTo": "raccontato a"
+    "liveDataSources": "Fonti dati live"
   },
   "audience": {
     "title": "Per chi è stato creato World Monitor?",
@@ -161,7 +158,7 @@
     "oneKey": "Servizi live, 1 Chiave",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky e altro — tutti attivi, senza registrazioni separate.",
     "deliveryLabel": "Scegli come l'intelligence ti trova",
-    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLab": "Laboratorio di stress della catena di approvvigionamento",
     "supplyChainLabDesc": "Modella uno shock di costo tra paesi e settori. Classifica la vulnerabilità delle commodities per dipendenza da colli di bottiglia. Traccia la concentrazione da miniera a raffineria e la divergenza del premio fisico SGE–COMEX — la serie che si muove prima della notizia.",
     "roadmapNote": "In roadmap: sorveglianza orbitale, cronologia più lunga, layer mappa premium."
   },
@@ -244,12 +241,12 @@
     "infraLayers": "Livelli infrastruttura",
     "satellite": "Sorveglianza orbitale",
     "connectorsRow": "Connettori",
-    "deployment": "Deployment",
+    "deployment": "Distribuzione",
     "securityRow": "Sicurezza",
     "f5_15min": "5-15 minuti",
     "fLt60s": "<60 secondi",
     "fPerRequest": "Per richiesta",
-    "fLiveEdge": "Live-edge",
+    "fLiveEdge": "In diretta",
     "f50panels": "Panel",
     "fWhiteLabel": "White-label",
     "fBYOK": "BYOK",
@@ -372,7 +369,8 @@
           "Divergenza metalli fisici, concentrazione minerali e dati debito sovrano",
           "Digest AI programmato + motore regole alert",
           "Accesso MCP + SDK per Claude Desktop e altri client AI (50 chiamate/giorno)",
-          "Widget personalizzati e 10 dashboard (vs 3)"
+          "Widget personalizzati e 10 dashboard (vs 3)",
+          "Chiave desktop per l'app desktop (2 chiavi)"
         ],
         "highlightFeatures": [
           "Licenza personale",
@@ -432,6 +430,7 @@
           "Esportazione dati — CSV, JSON e report PDF",
           "25 dashboard personalizzati (vs 10)",
           "MCP + SDK: 250 chiamate/giorno (rispetto a 50)",
+          "Chiave desktop per l'app desktop (3 chiavi)",
           "Supporto prioritario"
         ],
         "highlightFeatures": [
@@ -457,7 +456,7 @@
       "ogDescription": "World Monitor: dashboard di intelligence geopolitica in tempo reale. Mappa live gratuita di conflitti, navi, voli, mercati e cyber, con API e server MCP."
     },
     "nav": {
-      "useCases": "Correlazioni",
+      "useCases": "Casi d'uso",
       "firstFive": "Primi 5 min",
       "depth": "Approfondimento",
       "pricing": "Prezzi",
@@ -478,7 +477,7 @@
       "ctaFree": "Gratuito · Nessuna registrazione · Si carica in secondi",
       "ctaSecondary": "Scopri come lo usano ↓",
       "trustUsers": "2M+ utenti",
-      "trustOpenSource": "Open source · AGPL-3.0",
+      "trustOpenSource": "Codice aperto · AGPL-3.0",
       "screenshotAlt": "Dashboard di intelligence live World Monitor — mappa globale con layer di conflitto, spedizioni e mercati",
       "plateNote": "Catturato dalla mappa live — clicca per aprirla",
       "trustBuild": "Costruisci su di esso:",
@@ -650,13 +649,13 @@
       "title1": "Free è l'osservatorio.",
       "title2": "Pro è la sala operativa.",
       "sub": "La dashboard è gratuita a $0 — ogni livello mappa tranne Resilience, senza registrazione. Pro aggiunge il livello decisionale.",
-      "freeTitle": "Free",
+      "freeTitle": "Piano Free",
       "freeDesc": "Il livello gratuito è un prodotto completo, non una prova. Ogni livello mappa tranne Resilience, tutti e sei i monitor — senza registrazione, nessun conto alla rovescia.",
       "freeF1": "Tutti i layer mappe tranne Resilience e feed curati",
       "freeF2": "Brief nazionali, hotspot, punteggi di instabilità",
       "freeF3": "Chokepoint, cavi, analisi a cascata",
       "freeF4": "Pipeline di avviso Breaking e watchlist",
-      "proTitle": "Pro",
+      "proTitle": "Piano Pro",
       "proDesc": "Agisci su di esso. Lo strato decisionale utilizzato nei momenti precedenti:",
       "proF1": "WM Analyst — interroga i servizi live con citazioni",
       "proF2": "Scenario engine & Route Explorer — simula i disagi prima che si verifichino",
@@ -686,7 +685,7 @@
       "q8": "Ho bisogno di un account?",
       "a8": "No. La dashboard funziona istantaneamente senza iscrizione. Un account è importante solo quando esegui l'upgrade a Pro o desideri sincronizzare le impostazioni tra i dispositivi.",
       "q9": "È open source?",
-      "a9": "Sì — open source sotto AGPL-3.0 su GitHub: leggi il codice, auto-ospitalo o sviluppalo. Sono disponibili anche app desktop native per Windows, macOS e Linux, più un'app Android TV per i display murali.",
+      "a9": "Sì — open source sotto AGPL-3.0 su GitHub: leggi il codice, auto-ospitalo o costruisci sopra di esso. Pro e Pro Business includono chiavi desktop, quindi la tua build desktop personalizzata può caricare i dati cloud Pro; le copie Docker vengono eseguite sui propri dati. Sono disponibili anche app desktop native per Windows, macOS e Linux, oltre a un'app Android TV per display a parete.",
       "q10": "Perché World Monitor non è Palantir?",
       "a10": "Palantir rende operativi i dati di un'istituzione all'interno di quella stessa istituzione. World Monitor parte dall'altro capo: assembla, normalizza, correla e monitora i dati del mondo pubblico, quindi pubblica questo livello di intelligence attraverso una dashboard gratuita e codice open-source. Compiti diversi, prodotti diversi.",
       "q11": "Quale licenza World Monitor mi serve?",
@@ -712,21 +711,30 @@
       "chokepointDesc": "Ispeziona lo stato dei disagi, i flussi di navi e i rischi attraverso {{chokepoints}} passaggi marittimi critici.",
       "countryRiskTitle": "Spiega una mossa di rischio paese",
       "countryRiskDesc": "Traccia i segnali politici, di sicurezza, economici e di resilienza dietro i cambiamenti di un paese, con resilienza valutata per {{resilienceRanked}} paesi.",
-      "open": "Apri prove"
+      "open": "Apri prove",
+      "workflow": "Procedura passo passo"
+    },
+    "voices": {
+      "eyebrow": "Con le loro parole",
+      "title": "Cosa dicono le persone di World Monitor",
+      "sub": "{{users}} persone in {{countries}} paesi hanno usato World Monitor. Ecco cosa hanno detto la stampa e alcune di loro.",
+      "translatedJa": "Tradotto dal giapponese",
+      "prev": "Citazioni precedenti",
+      "next": "Altre citazioni"
     }
   },
   "whatsNew": {
-    "eyebrow": "Shipping log",
+    "eyebrow": "Registro dei rilasci",
     "title": "Novità in World Monitor",
     "subtitle": "Nuove funzionalità degli ultimi 30 giorni — fix e ottimizzazioni esclusi.",
     "proTag": "PRO",
-    "m1": "Indice divergenza premio fisico — SGE vs COMEX, con cronologia",
-    "m2": "Ranking vulnerabilità fornitura commodities — fan-out dipendenza colli di bottiglia",
-    "m3": "Concentrazione produzione minerali e industrial base della difesa",
-    "m4": "Scorecard resilienza a cinque fattori con punteggi a livello di indicatore",
-    "m5": "Watchlist canale Telegram personalizzati",
-    "m6": "Accesso con Passkey",
-    "m7": "Gli agenti AI possono guidare il dashboard — pannelli, tab, layer mappa e missioni",
-    "m8": "Pagine resilienza paese più ricche"
+    "m1": "Prospettiva mediatica — come i media di ogni paese raccontano qualsiasi paese, per agenti IA e API",
+    "m2": "/verify — una scheda di prove per qualsiasi affermazione, con i fact-check pubblicati",
+    "m3": "Numero di fonti concordanti su avvisi, riepiloghi e popup della mappa, più una pagina pubblica /trust",
+    "m4": "Monitoraggio automatico degli attacchi — il rischio di un paese sale sotto attacco e rientra quando gli attacchi cessano",
+    "m5": "Chiusure dello spazio aereo dai NOTAM della FAA e un livello mappa delle emergenze aeree segnalate",
+    "m6": "Mappa dell'attività industriale dai dati satellitari NO2 di Sentinel-5P",
+    "m7": "Flussi di capitale per 230 economie e qualsiasi coppia di paesi, per agenti IA e API",
+    "m8": "Dashboard nel terminale e mappa CLI con zoom — brew install worldmonitor"
   }
 }

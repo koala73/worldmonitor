@@ -143,11 +143,13 @@ describe('locale completeness', () => {
   }
 
   for (const file of ['en.json', ...localeFiles]) {
-    it(`${file} discloses NWS, ECCC, and WMO SWIC coverage for every weather layer label`, () => {
+    it(`${file} discloses NWS, ECCC, and WMO SWIC coverage in the weather layer help, not the short label`, () => {
       const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
       const staleScope = STALE_WEATHER_SCOPE_BY_LOCALE[file];
+      const label = locale.components.deckgl.layers.weatherAlerts;
+      assert.equal(typeof label, 'string');
+      assert.doesNotMatch(label, /[(（]|NWS|SWIC/, `${file} weatherAlerts label must stay short`);
       const values = [
-        locale.components.deckgl.layers.weatherAlerts,
         locale.components.deckgl.layerHelp.descriptions.weatherAlerts,
         locale.components.deckgl.layerHelp.descriptions.weatherAlertsMarket,
       ];
@@ -177,18 +179,18 @@ describe('locale completeness', () => {
       ];
       for (const value of values) {
         assert.equal(typeof value, 'string');
-        assert.match(value, /Canada|Canadian/i, `${file} canadaRoads copy must identify Canadian scope`);
+        assert.match(value, /Canada|Canadian|Kanada|kanadisch/i, `${file} canadaRoads copy must identify Canadian scope`);
         assert.doesNotMatch(value, /Ontario and Alberta/i, `${file} canadaRoads copy must not claim only two provinces`);
       }
     });
 
-    it(`${file} discloses the AB + BC + SK scope for the canadaAlerts layer`, () => {
+    it(`${file} discloses the provincial scope for the canadaAlerts layer in its help, not the short label`, () => {
       const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
       const layer = locale.components.deckgl.layers.canadaAlerts;
       const help = locale.components.deckgl.layerHelp.descriptions.canadaAlerts;
       assert.equal(typeof layer, 'string');
       assert.equal(typeof help, 'string');
-      assert.match(layer, /AB \+ BC \+ SK/, `${file} canadaAlerts layer label must name SK`);
+      assert.doesNotMatch(layer, /[(（]|AB \+ BC/, `${file} canadaAlerts layer label must stay short`);
       assert.match(help, /SaskAlert/i, `${file} canadaAlerts help must name SaskAlert`);
       assert.doesNotMatch(layer, /Alberta Emergency Alert only/i, `${file} canadaAlerts copy must not claim Alberta-only coverage`);
       assert.doesNotMatch(help, /Alberta Emergency Alert only/i, `${file} canadaAlerts copy must not claim Alberta-only coverage`);
@@ -204,18 +206,18 @@ describe('locale completeness', () => {
       ];
       for (const value of values) {
         assert.equal(typeof value, 'string');
-        assert.match(value, /Canada|Canadian/i, `${file} canadaRoads copy must identify Canadian scope`);
+        assert.match(value, /Canada|Canadian|Kanada|kanadisch/i, `${file} canadaRoads copy must identify Canadian scope`);
         assert.doesNotMatch(value, /Ontario and Alberta/i, `${file} canadaRoads copy must not claim only two provinces`);
       }
     });
 
-    it(`${file} discloses the AB + BC + SK scope for the canadaAlerts layer`, () => {
+    it(`${file} discloses the provincial scope for the canadaAlerts layer in its help, not the short label`, () => {
       const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
       const layer = locale.components.deckgl.layers.canadaAlerts;
       const help = locale.components.deckgl.layerHelp.descriptions.canadaAlerts;
       assert.equal(typeof layer, 'string');
       assert.equal(typeof help, 'string');
-      assert.match(layer, /AB \+ BC \+ SK/, `${file} canadaAlerts layer label must name SK`);
+      assert.doesNotMatch(layer, /[(（]|AB \+ BC/, `${file} canadaAlerts layer label must stay short`);
       assert.match(help, /SaskAlert/i, `${file} canadaAlerts help must name SaskAlert`);
       assert.doesNotMatch(layer, /Alberta Emergency Alert only/i, `${file} canadaAlerts copy must not claim Alberta-only coverage`);
       assert.doesNotMatch(help, /Alberta Emergency Alert only/i, `${file} canadaAlerts copy must not claim Alberta-only coverage`);

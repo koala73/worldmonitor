@@ -22,9 +22,6 @@ const src = readFileSync(join(root, 'scripts/seed-bundle-canada.mjs'), 'utf8');
 const RUNNER_SRC = readFileSync(join(root, 'scripts/_bundle-runner.mjs'), 'utf8');
 const TORONTO_TFS_SEEDER_SRC = readFileSync(join(root, 'scripts/seed-toronto-tfs.mjs'), 'utf8');
 const TORONTO_TPS_SEEDER_SRC = readFileSync(join(root, 'scripts/seed-toronto-tps.mjs'), 'utf8');
-const ACCEPTANCE_BASELINE = JSON.parse(
-  readFileSync(join(root, 'scripts/seed-freshness-baseline.json'), 'utf8'),
-);
 const sections = extractBundleSections(src);
 
 const MIN = 60_000;
@@ -112,20 +109,6 @@ test('Manitoba cutover acknowledgement reaches the first eligible Provincial-511
     15 * MIN,
     'the first eligible Provincial-511 admission must still be three */5 ticks out',
   );
-
-  // Directional: no ack is required now, but one added later must span exactly
-  // that window rather than expiring on the activation tick.
-  const manitoba = ACCEPTANCE_BASELINE.acknowledged.find((entry) => entry.name === 'manitobaRoads');
-  if (manitoba) {
-    const activatedAt = Date.parse(manitoba.cutover?.activatedAt);
-    const firstScheduledRunAt = Date.parse(manitoba.cutover?.firstScheduledRunAt);
-    assert.equal(
-      firstScheduledRunAt,
-      activatedAt + firstEligibleDelayMs,
-      'the cutover must include */5 ticks skipped by the runner\'s 0.8-interval freshness gate',
-    );
-    assert.equal(Date.parse(manitoba.expiresAt), firstScheduledRunAt);
-  }
 });
 
 test('seed-meta keys follow runSeed(domain, resource), not the canonical key', () => {
@@ -232,10 +215,6 @@ test('Toronto sources use provider freshness, bounded execution, and durable act
     assert.match(contract.seederSrc, new RegExp(`afterPublish:\\s*mark${contract.label === 'Toronto-TFS' ? 'Tfs' : 'Tps'}Activated`));
     assert.match(contract.seederSrc, new RegExp(contract.activationKey));
   }
-
-  const acknowledged = new Set(ACCEPTANCE_BASELINE.acknowledged.map((entry) => entry.name));
-  assert.equal(acknowledged.has('torontoTfs'), false);
-  assert.equal(acknowledged.has('torontoTps'), false);
 });
 
 test('skips a member whose script is absent instead of failing the whole bundle', () => {

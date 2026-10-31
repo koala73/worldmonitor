@@ -88,10 +88,7 @@
     "uniqueVisitors": "Visitantes únicos",
     "peakDailyUsers": "Usuarios diarios pico",
     "countriesReached": "Países alcanzados",
-    "liveDataSources": "Fuentes de datos en vivo",
-    "quote": "Mercados, política monetaria, geopolítica, energía — ahora todo se mueve junto. Necesitaba algo que mostrara cómo se conectan estas fuerzas en tiempo real, no solo los titulares, sino los motores subyacentes.",
-    "ceo": "CEO de",
-    "asToldTo": "contado a"
+    "liveDataSources": "Fuentes de datos en vivo"
   },
   "audience": {
     "title": "¿Para quién está diseñado World Monitor?",
@@ -249,7 +246,7 @@
     "f5_15min": "5-15 minutos",
     "fLt60s": "<60 segundos",
     "fPerRequest": "Por solicitud",
-    "fLiveEdge": "Live-edge",
+    "fLiveEdge": "En vivo",
     "f50panels": "Paneles",
     "fWhiteLabel": "White-label",
     "fBYOK": "BYOK",
@@ -372,7 +369,8 @@
           "Divergencia de metales físicos, concentración de minerales y datos de deuda soberana",
           "Resumen de IA programado + motor de reglas de alerta",
           "Acceso a MCP + SDK para Claude Desktop y otros clientes de IA (50 llamadas/día)",
-          "Widgets personalizados y 10 dashboards (vs 3)"
+          "Widgets personalizados y 10 dashboards (vs 3)",
+          "Clave de escritorio para la app de escritorio (2 claves)"
         ],
         "highlightFeatures": [
           "Licencia personal",
@@ -432,6 +430,7 @@
           "Exportación de datos — reportes CSV, JSON y PDF",
           "25 paneles personalizados (vs 10)",
           "MCP + SDK: 250 llamadas/día (vs 50)",
+          "Clave de escritorio para la app de escritorio (3 claves)",
           "Soporte prioritario"
         ],
         "highlightFeatures": [
@@ -457,7 +456,7 @@
       "ogDescription": "World Monitor: panel de inteligencia geopolítica en tiempo real. Mapa gratuito en vivo de conflictos, buques, vuelos, mercados y ciber, con API y servidor MCP."
     },
     "nav": {
-      "useCases": "Correlaciones",
+      "useCases": "Casos de uso",
       "firstFive": "Primeros 5 min",
       "depth": "Profundidad",
       "pricing": "Precios",
@@ -650,13 +649,13 @@
       "title1": "Gratis es el observatorio.",
       "title2": "Pro es la sala de operaciones.",
       "sub": "El dashboard es gratuito a $0 — cada capa de mapa excepto Resilience, sin registro. Pro añade la capa de decisión.",
-      "freeTitle": "Gratis",
+      "freeTitle": "Plan Gratis",
       "freeDesc": "El nivel gratuito es un producto completo, no una prueba. Cada capa de mapa excepto Resilience, los seis monitores — sin registro, sin límite de tiempo.",
       "freeF1": "Todas las capas de mapa excepto Resilience y feeds curados",
       "freeF2": "Resúmenes de países, puntos de acceso, puntuaciones de inestabilidad",
       "freeF3": "Cuellos de botella, cables, análisis en cascada",
       "freeF4": "Pipeline de alertas BREAKING y listas de vigilancia",
-      "proTitle": "Pro",
+      "proTitle": "Plan Pro",
       "proDesc": "Actúa sobre ello. La capa de decisión utilizada en los momentos anteriores:",
       "proF1": "WM Analyst — chat en servicios activos, con citas",
       "proF2": "Motor de escenarios y Explorador de rutas — simula interrupciones antes de que ocurran",
@@ -686,7 +685,7 @@
       "q8": "¿Necesito una cuenta?",
       "a8": "No. El panel funciona al instante sin registro. Una cuenta solo importa cuando mejoras a Pro o deseas que la configuración se sincronice entre dispositivos.",
       "q9": "¿Es de código abierto?",
-      "a9": "Sí — código abierto bajo AGPL-3.0 en GitHub: lee el código, hospédalo por ti mismo, o construye sobre él. También hay aplicaciones de escritorio nativas para Windows, macOS y Linux, más una aplicación Android TV para pantallas de pared.",
+      "a9": "Sí, es código abierto bajo AGPL-3.0 en GitHub: consulta el código, auto-alójalo o construye sobre él. Pro y Pro Business incluyen claves de escritorio, así tu compilación propia de escritorio puede cargar datos Pro en la nube; las instancias Docker se ejecutan con sus propios datos. También están disponibles aplicaciones de escritorio nativas para Windows, macOS y Linux, más una app de Android TV para pantallas de pared.",
       "q10": "¿Por qué World Monitor no es Palantir?",
       "a10": "Palantir hace que los datos propios de una institución sean operacionales dentro de esa institución. World Monitor comienza desde el otro extremo: reúne, normaliza, correlaciona y monitorea datos del mundo público, y luego publica esa capa de inteligencia a través de un panel gratuito y código de código abierto. Trabajo diferente, producto diferente.",
       "q11": "¿Qué licencia de World Monitor necesito?",
@@ -712,7 +711,16 @@
       "chokepointDesc": "Inspecciona el estado de las disrupciones, flujos de embarcaciones y riesgo a través de {{chokepoints}} pasos marítimos críticos.",
       "countryRiskTitle": "Explicar un movimiento de riesgo país",
       "countryRiskDesc": "Rastrea las señales políticas, de seguridad, económicas y de resiliencia detrás del cambio de un país, con resiliencia clasificada para {{resilienceRanked}} países.",
-      "open": "Abrir evidencia"
+      "open": "Abrir evidencia",
+      "workflow": "Flujo de trabajo paso a paso"
+    },
+    "voices": {
+      "eyebrow": "En sus palabras",
+      "title": "Lo que dice la gente sobre World Monitor",
+      "sub": "{{users}} personas en {{countries}} países han usado World Monitor. Esto es lo que dijeron la prensa y algunas de ellas.",
+      "translatedJa": "Traducido del japonés",
+      "prev": "Citas anteriores",
+      "next": "Más citas"
     }
   },
   "whatsNew": {
@@ -720,13 +728,13 @@
     "title": "Novedades en WorldMonitor",
     "subtitle": "Nuevas funciones de los últimos 30 días — correcciones e infraestructura no incluidas.",
     "proTag": "PRO",
-    "m1": "Índice de divergencia del premio físico — SGE vs COMEX, con historial",
-    "m2": "Clasificaciones de vulnerabilidad de suministro de materias primas — expansión de dependencia de cuellos de botella",
-    "m3": "Concentración de producción mineral y la base industrial de defensa",
-    "m4": "Tarjetas de resiliencia de cinco factores con puntuaciones a nivel de indicadores",
-    "m5": "Listas de vigilancia de canales de Telegram personalizados",
-    "m6": "Inicio de sesión con passkey",
-    "m7": "Los agentes de IA pueden dirigir el dashboard — paneles, pestañas, capas de mapa y misiones",
-    "m8": "Páginas de resiliencia de país más enriquecidas"
+    "m1": "Perspectiva mediática — cómo los medios de cada país cubren a cualquier país, para agentes de IA y la API",
+    "m2": "/verify — una ficha de evidencia para cualquier afirmación, con verificaciones de datos publicadas",
+    "m3": "Recuento de fuentes que corroboran en alertas, resúmenes y ventanas del mapa, más una página pública /trust",
+    "m4": "Seguimiento automático de ataques — el riesgo de un país sube bajo ataque y se recupera cuando cesan",
+    "m5": "Cierres de espacio aéreo a partir de NOTAM de la FAA y una capa de mapa de emergencias aéreas reportadas",
+    "m6": "Mapa de actividad industrial con datos satelitales de NO2 de Sentinel-5P",
+    "m7": "Flujos de capital de 230 economías y de cualquier par de países, para agentes de IA y la API",
+    "m8": "Panel en la terminal y mapa CLI con zoom — brew install worldmonitor"
   }
 }

@@ -28,6 +28,7 @@ import {
 export const PERSONAL_DELETE_TABLES = [
   "userPreferences",
   "userPreferenceWriteRateLimits",
+  "billingEmailUpdateAttempts",
   "notificationChannels",
   "alertRules",
   "telegramPairingTokens",
@@ -37,9 +38,11 @@ export const PERSONAL_DELETE_TABLES = [
   "userReferralCodes",
   "userReferralCredits",
   "entitlements",
+  "aiRoutingPolicies",
   "apiUsageRollups",
   "apiPlanLimitNotices",
   "checkoutAdmissions",
+  "checkoutSessionEvents",
   "followedCountriesUserMeta",
   "users",
 ] as const;
@@ -76,6 +79,11 @@ async function takePersonalRows(
       return ctx.db
         .query("userPreferenceWriteRateLimits")
         .withIndex("by_user_window", (q) => q.eq("userId", userId))
+        .take(limit);
+    case "billingEmailUpdateAttempts":
+      return ctx.db
+        .query("billingEmailUpdateAttempts")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
         .take(limit);
     case "notificationChannels":
       return ctx.db
@@ -122,6 +130,11 @@ async function takePersonalRows(
         .query("entitlements")
         .withIndex("by_userId", (q) => q.eq("userId", userId))
         .take(limit);
+    case "aiRoutingPolicies":
+      return ctx.db
+        .query("aiRoutingPolicies")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .take(limit);
     case "apiUsageRollups":
       return ctx.db
         .query("apiUsageRollups")
@@ -135,6 +148,11 @@ async function takePersonalRows(
     case "checkoutAdmissions":
       return ctx.db
         .query("checkoutAdmissions")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(limit);
+    case "checkoutSessionEvents":
+      return ctx.db
+        .query("checkoutSessionEvents")
         .withIndex("by_user", (q) => q.eq("userId", userId))
         .take(limit);
     case "followedCountriesUserMeta":

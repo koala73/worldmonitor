@@ -33,11 +33,12 @@ const ALLOWED_HEADERS = [
   'X-Api-Key',
   'X-Widget-Key',
   'X-Pro-Key',
-  'X-WorldMonitor-Desktop-Timestamp',
-  'X-WorldMonitor-Desktop-Signature',
   'Idempotency-Key',
   'Mcp-Session-Id',
   'MCP-Protocol-Version',
+  // MCP 2026-07-28 request metadata headers (mirrored method / tool, prompt or resource name).
+  'Mcp-Method',
+  'Mcp-Name',
   'Last-Event-ID',
 ].join(', ');
 

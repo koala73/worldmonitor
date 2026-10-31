@@ -73,6 +73,7 @@ import type * as payments_cancellationEmailCopy from "../payments/cancellationEm
 import type * as payments_checkout from "../payments/checkout.js";
 import type * as payments_checkoutRateLimit from "../payments/checkoutRateLimit.js";
 import type * as payments_checkoutRateLimitAlarm from "../payments/checkoutRateLimitAlarm.js";
+import type * as payments_checkoutSessionLog from "../payments/checkoutSessionLog.js";
 import type * as payments_repairStaleOnHoldDerivedState from "../payments/repairStaleOnHoldDerivedState.js";
 import type * as payments_returnUrlOrigin from "../payments/returnUrlOrigin.js";
 import type * as payments_seedProductPlans from "../payments/seedProductPlans.js";
@@ -159,6 +160,7 @@ declare const fullApi: ApiFromModules<{
   "payments/checkout": typeof payments_checkout;
   "payments/checkoutRateLimit": typeof payments_checkoutRateLimit;
   "payments/checkoutRateLimitAlarm": typeof payments_checkoutRateLimitAlarm;
+  "payments/checkoutSessionLog": typeof payments_checkoutSessionLog;
   "payments/repairStaleOnHoldDerivedState": typeof payments_repairStaleOnHoldDerivedState;
   "payments/returnUrlOrigin": typeof payments_returnUrlOrigin;
   "payments/seedProductPlans": typeof payments_seedProductPlans;

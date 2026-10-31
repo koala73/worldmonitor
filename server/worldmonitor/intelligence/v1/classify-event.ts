@@ -9,6 +9,7 @@ import { cachedFetchJson } from '../../../_shared/redis';
 import { markNoCacheResponse, markUnservedLlmResponse } from '../../../_shared/response-headers';
 import { CLASSIFY_VALID_CATEGORIES, CLASSIFY_VALID_LEVELS, UPSTREAM_TIMEOUT_MS, buildClassifyCacheKey, isValidClassifyHit } from './_shared';
 import { callLlm } from '../../../_shared/llm';
+import { aiRoutingCacheSuffix, resolveAiRouting, toLlmRoutingPolicy } from '../../../_shared/ai-routing-policy';
 
 // ========================================================================
 // Constants
@@ -53,7 +54,10 @@ export async function classifyEvent(
     return { classification: undefined };
   }
 
-  const cacheKey = await buildClassifyCacheKey(title);
+  // The relay's background classifier writes the shared keys from its own
+  // chain; a restricted caller gets a separate namespace (ai-routing-policy.ts).
+  const aiRouting = await resolveAiRouting(ctx.request);
+  const cacheKey = `${await buildClassifyCacheKey(title)}${aiRoutingCacheSuffix(aiRouting)}`;
 
   const systemPrompt = `You classify news headlines into threat level and category. Return ONLY valid JSON, no other text.
 
@@ -104,6 +108,7 @@ Return: {"level":"...","category":"..."}`;
           ],
           temperature: 0,
           modelOverrides: CLASSIFY_MODEL_OVERRIDES,
+          routingPolicy: toLlmRoutingPolicy(aiRouting),
           // Sized for the REASONING fallback, not the primary. DeepSeek answers
           // this two-field JSON in ~10 tokens (4,264 successful calls over the
           // 7 days to 2026-08-29: p50=10, p95=11, max=12), so the old ceiling of

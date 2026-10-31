@@ -27,6 +27,11 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     action: "delete",
     notes: "Prefs write counters",
   },
+  {
+    target: "billingEmailUpdateAttempts",
+    action: "delete",
+    notes: "Billing email change cooldown",
+  },
   { target: "notificationChannels", action: "delete", notes: "Contact endpoints" },
   { target: "alertRules", action: "delete", notes: "Alert config" },
   { target: "telegramPairingTokens", action: "delete", notes: "Telegram pairing" },
@@ -82,9 +87,11 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     notes: "Delete referrer-owned credits; anonymize referee email on surviving credits",
   },
   { target: "entitlements", action: "delete", notes: "Access, not invoices" },
+  { target: "aiRoutingPolicies", action: "delete", notes: "Per-account AI provider restriction; the edge cache entry expires in 60 s" },
   { target: "apiUsageRollups", action: "delete", notes: "Usage windows" },
   { target: "apiPlanLimitNotices", action: "delete", notes: "Plan-limit notices" },
   { target: "checkoutAdmissions", action: "delete", notes: "Checkout admission counters" },
+  { target: "checkoutSessionEvents", action: "delete", notes: "Checkout funnel session log" },
   {
     target: "proActivationPresentations",
     action: "delete",

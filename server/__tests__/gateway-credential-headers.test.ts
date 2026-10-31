@@ -151,10 +151,9 @@ describe('credential-bearing headers force a private tier (#8400)', () => {
 
     // Every headers.get('X-…') a sibling auth path treats as a credential.
     // Route-scoped verifications are deliberately NOT credentials here (see
-    // the CREDENTIAL_BEARING_HEADERS comment): the desktop HMAC pair
-    // (register-interest.ts, POST-only single RPC) and the internal-MCP
-    // HMAC trio (mcp-internal-hmac.ts, consumed by the pre-check and
-    // stripped before handlers) never act as bearers on an auth path.
+    // the CREDENTIAL_BEARING_HEADERS comment): the internal-MCP HMAC trio
+    // (mcp-internal-hmac.ts, consumed by the pre-check and stripped before
+    // handlers) never acts as a bearer on an auth path.
     // Inbound-only plumbing (Vary echo, CORS allowlist membership, the
     // per-process verified-marker nonce, relay-to-upstream relay headers the
     // client never sends) is likewise excluded.

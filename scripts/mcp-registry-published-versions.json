@@ -112,6 +112,18 @@
     "1.44.0": {
       "tools": 95,
       "manifestSha256": "2a6ea6bb7a7b20970b1358335fd4a65b94286aad08ccec20b1581bad4ca7b047"
+    },
+    "1.45.0": {
+      "tools": 96,
+      "manifestSha256": "705ab2847f34880f5f998c98bbcebc171ab51829e885145d68c02d91ad111c32"
+    },
+    "1.46.0": {
+      "tools": 97,
+      "manifestSha256": "cc9d68a0f9db74bddc33d0ad847fa229623dabf81b1d58dfb706877a562b6ec1"
+    },
+    "1.47.0": {
+      "tools": 99,
+      "manifestSha256": "b21bca07f365be3a2f15e4881f7354078a8fc679b2827620e1400b42848e4d69"
     }
   }
 }

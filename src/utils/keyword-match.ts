@@ -6,17 +6,38 @@ export interface TokenizedTitle {
 const INFLECTION_SUFFIXES = new Set(['s', 'es', 'ian', 'ians', 'ean', 'eans', 'an', 'ans', 'n', 'ns', 'i', 'is', 'ish', 'ese']);
 const MIN_SUFFIX_KEYWORD_LEN = 4;
 
+const LATIN_COMBINING_MARKS = /(\p{Script=Latin})\p{M}+/gu;
+const APOSTROPHES = /[\u2018\u2019\u02BC\u0060\u00B4]/g;
+const EDGE_NON_WORD = /^[^\p{L}\p{N}\p{M}]+|[^\p{L}\p{N}\p{M}]+$/gu;
+const NON_WORD = /[^\p{L}\p{N}\p{M}]+/u;
+const POSSESSIVE = /'s$/;
+
+/**
+ * Normalize headlines and keywords with NFKD, fold Latin accents and curly
+ * apostrophes, and lowercase. Preserve meaningful marks in non-Latin scripts.
+ */
+export function normalizeForMatch(text: string): string {
+  return text.normalize('NFKD').replace(LATIN_COMBINING_MARKS, '$1').toLowerCase().replace(APOSTROPHES, "'");
+}
+
 export function tokenizeForMatch(title: string): TokenizedTitle {
-  const lower = title.toLowerCase();
+  const norm = normalizeForMatch(title);
   const words = new Set<string>();
   const ordered: string[] = [];
-  for (const raw of lower.split(/\s+/)) {
-    const cleaned = raw.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
+  for (const raw of norm.split(/\s+/)) {
+    const cleaned = raw.replace(EDGE_NON_WORD, '');
     if (!cleaned) continue;
     words.add(cleaned);
-    ordered.push(cleaned);
-    for (const part of cleaned.split(/[^a-z0-9]+/)) {
-      if (part) words.add(part);
+    const parts = cleaned.split(NON_WORD).filter(Boolean);
+    for (const part of parts) words.add(part);
+    if (parts.length <= 1) {
+      ordered.push(cleaned);
+    } else {
+      // Compound tokens ("north-korea", "assad's") contribute their pieces to
+      // the ordered list so phrase keywords match; a trailing possessive 's is
+      // dropped from the ordered list only.
+      const ord = POSSESSIVE.test(cleaned) ? cleaned.replace(POSSESSIVE, '').split(NON_WORD).filter(Boolean) : parts;
+      ordered.push(...ord);
     }
   }
   return { words, ordered };
@@ -54,9 +75,13 @@ function matchSingleWord(words: Set<string>, keyword: string): boolean {
 }
 
 export function matchKeyword(tokens: TokenizedTitle, keyword: string): boolean {
-  const parts = keyword.toLowerCase().split(/\s+/).filter((w): w is string => w.length > 0);
-  if (parts.length === 0) return false;
-  if (parts.length === 1) return matchSingleWord(tokens.words, parts[0]!);
+  const words = normalizeForMatch(keyword)
+    .split(/[^\p{L}\p{N}\p{M}']+/u)
+    .map(w => w.replace(/^'+|'+$/g, ''))
+    .filter((w): w is string => w.length > 0);
+  if (words.length === 0) return false;
+  if (words.length === 1) return matchSingleWord(tokens.words, words[0]!);
+  const { ordered: parts } = tokenizeForMatch(keyword);
   const { ordered } = tokens;
   for (let i = 0; i <= ordered.length - parts.length; i++) {
     let match = true;

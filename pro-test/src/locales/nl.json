@@ -71,7 +71,7 @@
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) en MCP voor Claude, GPT, eigen LLM's."
   },
   "deliveryDesk": {
-    "eyebrow": "DELIVERY DESK",
+    "eyebrow": "AFLEVERBALIE",
     "title": "Wat is het persoonlijke inlichtingenburo?",
     "body": "Tot 30 gerangschikte items per verzending, gededupliceerd over bronnen, gescoord tegen je watchlist. Kies je ritme — dagelijks, tweemaal per dag of wekelijks — met een AI-beoordeling en signalen om op te letten, verzonden naar Slack, Discord, Telegram, Email of webhook.",
     "closer": "Geen nieuwsbrief. Een analist.",
@@ -81,17 +81,14 @@
     "windowTitle": "worldmonitor.app — Live dashboard",
     "openFullScreen": "Open volledig scherm",
     "tryLiveDashboard": "Probeer het live dashboard",
-    "iframeTitle": "World Monitor — Live Intelligence Dashboard",
+    "iframeTitle": "World Monitor — Live inlichtingendashboard",
     "description": "3D WebGL-globe · interactieve kaartlagen · real-time gegevens voor markten, macro-economie, geopolitiek, energie en infrastructuur"
   },
   "socialProof": {
     "uniqueVisitors": "Unieke bezoekers",
     "peakDailyUsers": "Piek dagelijkse gebruikers",
     "countriesReached": "Bereikte landen",
-    "liveDataSources": "Live databronnen",
-    "quote": "Markten, monetair beleid, geopolitiek, energie — alles beweegt nu samen. Ik had iets nodig dat toont hoe deze krachten in realtime verbonden zijn, niet alleen de koppen maar de onderliggende drijvers.",
-    "ceo": "CEO van",
-    "asToldTo": "verteld aan"
+    "liveDataSources": "Live databronnen"
   },
   "audience": {
     "title": "Voor wie is World Monitor gebouwd?",
@@ -161,7 +158,7 @@
     "oneKey": "Live Services, 1 Sleutel",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky en meer — alles actief, geen aparte registraties.",
     "deliveryLabel": "Kies hoe intelligence jou vindt",
-    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLab": "Stresslab voor de toeleveringsketen",
     "supplyChainLabDesc": "Model een kostenschok over landen en sectoren. Rank grondstoffengevoeligheid op basis van chokepoint-afhankelijkheid. Volg concentratie van mijn tot raffinaderij en de SGE–COMEX fysieke premiumafwijking — de reeks die vóór het bericht beweegt.",
     "roadmapNote": "Op de routekaart: orbitale bewaking, langere geschiedenis, premiumkaartlagen."
   },
@@ -244,7 +241,7 @@
     "infraLayers": "Infrastructuurlagen",
     "satellite": "Orbitale surveillance",
     "connectorsRow": "Connectoren",
-    "deployment": "Deployment",
+    "deployment": "Uitrol",
     "securityRow": "Beveiliging",
     "f5_15min": "5-15 minuten",
     "fLt60s": "<60 seconden",
@@ -372,7 +369,8 @@
           "Fysieke metalen afwijking, mineraalconcentratie en staatsschuldgegevens",
           "Geplande AI-digest + waarschuwingsregelengine",
           "MCP + SDK-toegang voor Claude Desktop & andere AI-clients (50 oproepen/dag)",
-          "Aangepaste widgets en 10 dashboards (versus 3)"
+          "Aangepaste widgets en 10 dashboards (versus 3)",
+          "Desktopsleutel voor de desktopapp (2 sleutels)"
         ],
         "highlightFeatures": [
           "Persoonlijke licentie",
@@ -432,6 +430,7 @@
           "Gegevensexport — CSV, JSON & PDF-rapporten",
           "25 aangepaste dashboards (tegen 10)",
           "MCP + SDK: 250 calls/dag (vs 50)",
+          "Desktopsleutel voor de desktopapp (3 sleutels)",
           "Prioriteitsondersteuning"
         ],
         "highlightFeatures": [
@@ -457,7 +456,7 @@
       "ogDescription": "World Monitor: realtime geopolitiek inlichtingendashboard. Gratis livekaart van conflicten, scheepvaart, vluchten, markten en cyber, met API en MCP-server."
     },
     "nav": {
-      "useCases": "Correlaties",
+      "useCases": "Toepassingen",
       "firstFive": "Eerste 5 minuten",
       "depth": "Diepte",
       "pricing": "Prijzen",
@@ -478,7 +477,7 @@
       "ctaFree": "Gratis · Geen registratie · Laadt in seconden",
       "ctaSecondary": "Zie hoe mensen het gebruiken ↓",
       "trustUsers": "2M+ gebruikers",
-      "trustOpenSource": "Open source · AGPL-3.0",
+      "trustOpenSource": "Open broncode · AGPL-3.0",
       "screenshotAlt": "World Monitor live inlichtingendashboard — wereldkaart met conflicten, scheepvaart- en marktlagen",
       "plateNote": "Vastgelegd van de live kaart — klik om deze te openen",
       "trustBuild": "Bouw erop:",
@@ -650,13 +649,13 @@
       "title1": "Gratis is het observatorium.",
       "title2": "Pro is de operationele kamer.",
       "sub": "Het dashboard is gratis voor $0 — elke kaartlaag behalve Resilience, geen registratie. Pro voegt de beslissingslaag toe.",
-      "freeTitle": "Gratis",
+      "freeTitle": "Gratis abonnement",
       "freeDesc": "De gratis versie is een volledig product, geen trial. Elke kaartlaag behalve Resilience, alle zes monitoren — geen registratie, geen proefperiode.",
       "freeF1": "Alle kaartlagen behalve Resilience & samengestelde feeds",
       "freeF2": "Landensamenvattingen, hotspots, instabiliteitsscores",
       "freeF3": "Chokepoints, kabels, cascadeanalyse",
       "freeF4": "Pipeline voor brekend nieuws & watchlists",
-      "proTitle": "Pro",
+      "proTitle": "Pro-abonnement",
       "proDesc": "Pak het aan. De beslissingslaag die in de momenten hierboven wordt gebruikt:",
       "proF1": "WM Analyst — chat over live services, met citaten",
       "proF2": "Scenario engine & Route Explorer — speel verstoringen door voordat ze toeslaan",
@@ -686,7 +685,7 @@
       "q8": "Heb ik een account nodig?",
       "a8": "Nee. Het dashboard werkt direct zonder registratie. Een account is alleen belangrijk wanneer je upgradet naar Pro of instellingen wilt synchroniseren op meerdere apparaten.",
       "q9": "Is het open source?",
-      "a9": "Ja — open source onder AGPL-3.0 op GitHub: lees de code, host het zelf, of bouw erop voort. Native desktop-apps voor Windows, macOS en Linux zijn ook beschikbaar, plus een Android TV-app voor wanddisplays.",
+      "a9": "Ja — open source onder AGPL-3.0 op GitHub: lees de code, host het zelf, of bouw erop voort. Pro en Pro Business bevatten desktopsleutels, zodat je eigen desktopbuild Pro-cloudgegevens kan laden; Docker-kopieën draaien op hun eigen gegevens. Systeemeigen desktopapps voor Windows, macOS en Linux zijn ook beschikbaar, plus een Android TV-app voor wandschermen.",
       "q10": "Waarom is World Monitor niet Palantir?",
       "a10": "Palantir maakt de eigen data van een organisatie operationeel binnen die organisatie. World Monitor begint vanaf het andere uiteinde: het verzamelt, normaliseert, correleert en monitort openbare data, en publiceert die intelligentielaag via een gratis dashboard en open-source code. Ander doel, ander product.",
       "q11": "Welke World Monitor-licentie heb ik nodig?",
@@ -712,7 +711,16 @@
       "chokepointDesc": "Controleer verstoringstatus, scheepsstromen en risico's over {{chokepoints}} kritieke zeepassages.",
       "countryRiskTitle": "Leg een landenrisico-beweging uit",
       "countryRiskDesc": "Volg de politieke, veiligheids-, economische en veerkrachtsignalen achter veranderingen in een land; veerkracht gerangschikt voor {{resilienceRanked}} landen.",
-      "open": "Open bewijs"
+      "open": "Open bewijs",
+      "workflow": "Stapsgewijze werkwijze"
+    },
+    "voices": {
+      "eyebrow": "In hun woorden",
+      "title": "Wat mensen zeggen over World Monitor",
+      "sub": "{{users}} mensen in {{countries}} landen hebben World Monitor gebruikt. Dit zeiden de pers en sommigen van hen.",
+      "translatedJa": "Vertaald uit het Japans",
+      "prev": "Vorige citaten",
+      "next": "Meer citaten"
     }
   },
   "whatsNew": {
@@ -720,13 +728,13 @@
     "title": "Wat is er nieuw in WorldMonitor",
     "subtitle": "Nieuwe functies van de afgelopen 30 dagen — correcties en onderhoud niet inbegrepen.",
     "proTag": "PRO",
-    "m1": "Fysieke premiumafwijkingsindex — SGE versus COMEX, met geschiedenis",
-    "m2": "Rankings grondstoffentoevoergebonden kwetsbaarheid — chokepoint-afhankelijkheid uitwaaier",
-    "m3": "Concentratie van mineraalproductie en de defensie-industriële basis",
-    "m4": "Vijf-factorveerkracht scorecards met scores op indicatorniveau",
-    "m5": "Aangepaste Telegram-kanaalwachtlijsten",
-    "m6": "Passkey-aanmelding",
-    "m7": "AI-agenten kunnen het dashboard aansturen — panelen, tabbladen, kaartlagen en missies",
-    "m8": "Rijkere pagina's voor landveerkracht"
+    "m1": "Mediaperspectief — hoe media uit elk land over elk land berichten, voor AI-agents en de API",
+    "m2": "/verify — een bewijskaart voor elke bewering, met gepubliceerde factchecks",
+    "m3": "Aantal bevestigende bronnen bij meldingen, digests en kaartpop-ups, plus een openbare /trust-pagina",
+    "m4": "Automatische aanvalsregistratie — het landrisico stijgt onder aanval en herstelt zodra de aanvallen stoppen",
+    "m5": "Luchtruimsluitingen uit FAA-NOTAM's en een kaartlaag met gemelde noodsituaties van vliegtuigen",
+    "m6": "Kaart van industriële activiteit uit NO2-satellietdata van Sentinel-5P",
+    "m7": "Kapitaalstromen voor 230 economieën en elk landenpaar, voor AI-agents en de API",
+    "m8": "Terminaldashboard en zoombare CLI-kaart — brew install worldmonitor"
   }
 }

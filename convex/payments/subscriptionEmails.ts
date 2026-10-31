@@ -19,6 +19,7 @@ import {
   billingDeletionForUser,
   isCancellationScheduled,
   isCoveringAt,
+  resolveBillingRecipient,
 } from "./subscriptionHelpers";
 
 export { formatAccessEndDate } from "./cancellationEmailCopy";
@@ -266,7 +267,7 @@ function userWelcomeHtml(planName: string, planKey: string, signInEmail?: string
     ? `Welcome to ${planName} — your intel, delivered.`
     : `Welcome to ${planName}!`;
   const ctaLabel = isPro ? "Open My Brief" : "Open Dashboard";
-  const ctaHref = isPro ? "https://worldmonitor.app/brief" : "https://worldmonitor.app";
+  const ctaHref = isPro ? "https://www.worldmonitor.app/dashboard" : "https://www.worldmonitor.app";
   const supportLine = isPro
     ? `<p style="font-size: 11px; color: #666; text-align: center; margin: 0 0 20px;">Questions? Reply to this email or ping <a href="mailto:${ADMIN_EMAIL}" style="color: #4ade80;">${ADMIN_EMAIL}</a>.</p>`
     : "";
@@ -648,20 +649,7 @@ export const getDunningContext = internalQuery({
       .unique();
     if (!sub || await billingDeletionForUser(ctx, sub.userId)) return null;
 
-    // Recipient resolution mirrors the portal's trust order: the sub's own
-    // rawPayload email first (per-Clerk-userId by construction), then the
-    // customers row for the SAME userId (see billing.ts on why customers
-    // rows can race across Clerk accounts — same-userId lookup only).
-    const rawEmail = (sub.rawPayload as { customer?: { email?: string } } | null)
-      ?.customer?.email;
-    let email = typeof rawEmail === "string" && rawEmail.includes("@") ? rawEmail : "";
-    if (!email) {
-      const customer = await ctx.db
-        .query("customers")
-        .withIndex("by_userId", (q) => q.eq("userId", sub.userId))
-        .first();
-      email = customer?.email ?? "";
-    }
+    const email = await resolveBillingRecipient(ctx, sub);
 
     const now = Date.now();
     const siblingSubs = await ctx.db
@@ -694,7 +682,7 @@ export const getDunningContext = internalQuery({
       cancelledAt: sub.cancelledAt ?? null,
       cancelScheduledAt: isCancellationScheduled(sub) ? (sub.cancelScheduledAt ?? null) : null,
       currentPeriodEnd: sub.currentPeriodEnd,
-      email: email.trim(),
+      email,
       hasLiveSub,
       entitlementCoveredUntil,
     };

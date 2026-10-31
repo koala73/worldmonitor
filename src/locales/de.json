@@ -25,7 +25,7 @@
       "unrest": "Unruhen",
       "conflict": "Konflikt",
       "security": "Militäraktivität",
-      "information": "Information"
+      "information": "Informationen"
     },
     "signals": {
       "protests": "Proteste",
@@ -78,18 +78,18 @@
     },
     "militaryActivity": "Militärische Aktivität",
     "defenseIndustrial": {
-      "title": "Defense Industrial Base",
-      "expenditure": "Military spend",
-      "personnel": "Personnel",
-      "armsImports": "Arms imports",
+      "title": "Rüstungsindustrielle Basis",
+      "expenditure": "Militärausgaben",
+      "personnel": "Personal",
+      "armsImports": "Rüstungsimporte",
       "concentration": "Lieferantenkonzentrationsindex",
-      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "suppliers": "Rüstungslieferanten ({{start}}–{{end}})",
       "source": "Quellen: World Bank und SIPRI Arms Transfers Database. Der Transfervolumen-Indikator misst relative Rüstungstransfers, nicht den Finanzwert.",
-      "sourceWorldBank": "Source: World Bank.",
+      "sourceWorldBank": "Quelle: Weltbank.",
       "snapshotAssembled": "Datenstand von {{source}} zusammengestellt am {{time}}",
-      "unavailable": "Not available",
-      "coverage": "Mapped coverage",
-      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+      "unavailable": "Nicht verfügbar",
+      "coverage": "Kartierte Berichterstattung",
+      "supplierRetained": "Lieferantendaten aus der letzten erfolgreichen Importer-Aktualisierung beibehalten."
     },
     "economicIndicators": "Wirtschaftsindikatoren",
     "ownFlights": "Eigene Flüge",
@@ -194,47 +194,47 @@
       "activityNowcast": "Aktivitäts-Nowcast",
       "decisionSignalsUnavailable": "Der China-Entscheidungssignal-Snapshot ist derzeit nicht verfügbar."
     },
-    "foodStocks": "Food stocks",
+    "foodStocks": "Lebensmittelbestände",
     "foodStocksHelp": "USDA-Produktion, -Versorgung und -Verteilung von Rohstoffbeständen im Verhältnis zur Nutzung nach Vermarktungsjahr, mit dem Weltverhältnis zum Vergleich. FAOSTAT Food Balances ergänzt Produktion und inländisches Angebot, wenn Production, Supply and Distribution keine vollständige Länderbilanz aufweist.",
-    "loadingFoodStocks": "Loading food stocks…",
-    "foodStocksUnavailable": "Food stocks unavailable.",
-    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
-    "foodStocksCommodity": "Commodity",
-    "foodStocksMarketingYear": "Marketing year",
-    "foodStocksRatio": "Stocks-to-use",
-    "foodStocksWorld": "World",
+    "loadingFoodStocks": "Lebensmittelbestände werden geladen…",
+    "foodStocksUnavailable": "Lebensmittelbestände nicht verfügbar.",
+    "foodStocksProLocked": "Upgrade auf PRO für das Rohstoff-Bestands-Verbrauchs-Verhältnis",
+    "foodStocksCommodity": "Rohstoff",
+    "foodStocksMarketingYear": "Vermarktungsjahr",
+    "foodStocksRatio": "Bestands-Verbrauchs-Verhältnis",
+    "foodStocksWorld": "Welt",
     "commodities": {
-      "wheat": "Wheat",
-      "corn": "Corn",
-      "rice": "Rice",
-      "soybeans": "Soybeans",
-      "barley": "Barley",
-      "palmOil": "Palm oil"
+      "wheat": "Weizen",
+      "corn": "Mais",
+      "rice": "Reis",
+      "soybeans": "Sojabohnen",
+      "barley": "Gerste",
+      "palmOil": "Palmöl"
     },
     "demographicsCapability": {
-      "title": "Demographics & Workforce",
+      "title": "Demografie & Arbeitskraft",
       "help": "Altersstruktur, Bildungs-Pipeline und industrielle Arbeitskraftkapazität aus den Quellen UN World Population Prospects, UNESCO Institute for Statistics und World Bank World Development Indicators sowie ILOSTAT.",
-      "loading": "Loading demographics and workforce data…",
-      "unavailable": "Demographics and workforce data unavailable.",
-      "proLocked": "Upgrade to PRO for demographics and workforce data",
-      "notAvailable": "Not available",
-      "ageStructure": "Age structure",
-      "education": "Education pipeline",
-      "industrialWorkforce": "Industrial workforce",
-      "medianAge": "Median age",
-      "oldAgeDependency": "Old-age dependency",
-      "totalDependency": "Total dependency",
-      "workingAgePopulation": "Working-age population",
-      "workingAgeProjection": "Working-age population (+10 years)",
-      "tertiaryEnrollment": "Tertiary enrollment",
+      "loading": "Lade Demografie- und Arbeitskraftdaten…",
+      "unavailable": "Demografie- und Arbeitskraftdaten nicht verfügbar.",
+      "proLocked": "Upgrade auf PRO für Demografie- und Arbeitskraftdaten",
+      "notAvailable": "Nicht verfügbar",
+      "ageStructure": "Altersstruktur",
+      "education": "Bildungspipeline",
+      "industrialWorkforce": "Industrielle Arbeitskraft",
+      "medianAge": "Medianalter",
+      "oldAgeDependency": "Altenabhängigkeit",
+      "totalDependency": "Gesamtabhängigkeit",
+      "workingAgePopulation": "Bevölkerung im erwerbsfähigen Alter",
+      "workingAgeProjection": "Bevölkerung im erwerbsfähigen Alter (+10 Jahre)",
+      "tertiaryEnrollment": "Tertiäre Einschreibung",
       "stemGraduates": "Absolventen der Naturwissenschaften, Technologie, Ingenieurwesen und Mathematik",
-      "researchers": "Researchers",
-      "craftTrades": "Craft and trades workers",
-      "plantOperators": "Plant and machine operators",
-      "trainedIndustrialWorkforce": "Combined industrial workforce",
-      "manufacturingShare": "Manufacturing employment",
-      "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh.",
+      "researchers": "Forscher",
+      "craftTrades": "Handwerks- und verwandte Berufe",
+      "plantOperators": "Maschinen- und Anlagenführer",
+      "trainedIndustrialWorkforce": "Kombinierte industrielle Arbeitskraft",
+      "manufacturingShare": "Beschäftigung in der Fertigung",
+      "source": "Quellen: {{sources}}.",
+      "retained": "{{stage}}-Daten aus der letzten erfolgreichen Aktualisierung beibehalten.",
       "statusNotSupplied": "Status zu Schätzung und Imputation nicht angegeben"
     },
     "fiveFactorScorecard": {
@@ -316,7 +316,7 @@
     "pinMap": "Karte oben anpinnen",
     "filterSources": "Quellen filtern...",
     "sourcesEnabled": "{{enabled}}/{{total}} aktiviert",
-    "finance": "FINANCE",
+    "finance": "FINANZEN",
     "panelDisplayCaption": "Wählen Sie aus, welche Panels auf dem Dashboard angezeigt werden",
     "tabSettings": "Einstellungen",
     "tabPanels": "Panels",
@@ -454,7 +454,7 @@
     "securityAdvisories": "Sicherheitshinweise",
     "orefSirens": "Israel-Sirenen",
     "telegramIntel": "Telegram-Nachrichten",
-    "xIntel": "X News Accounts",
+    "xIntel": "X-Nachrichtenkonten",
     "gulfEconomies": "Golf-Ökonomien",
     "gulfIndices": "Golf-Indizes",
     "gulfCurrencies": "Golf-Währungen",
@@ -492,7 +492,8 @@
     "fearGreed": "Angst & Gier",
     "marketBreadth": "Marktbreite",
     "climateNews": "Klimanachrichten",
-    "fx": "Devisenkurse"
+    "fx": "Devisenkurse",
+    "ukmtoIncidents": "UKMTO-Vorfälle"
   },
   "commands": {
     "prefixes": {
@@ -573,8 +574,8 @@
         "climate": "Klimaanomalien umschalten",
         "outages": "Internetausfälle umschalten",
         "tradeRoutes": "Handelsrouten umschalten",
-        "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaRoads": "Overlay für kanadische Straßen umschalten",
+        "canadaAlerts": "Overlay für kanadische Provinznotwarnungen umschalten"
       },
       "view": {
         "dark": "Zum Dunkelmodus wechseln",
@@ -770,7 +771,7 @@
         "unrest": "Unruhe",
         "conflict": "Konflikt",
         "security": "Militäraktivität",
-        "information": "Information"
+        "information": "Informationen"
       },
       "signals": {
         "protests": "Proteste",
@@ -840,15 +841,17 @@
       "logCleared": "Protokoll gelöscht.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Lizenz- / API-Schlüssel",
+          "title": "Desktop-Schlüssel",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Abonnenten von API Starter und API Business erstellen diesen Schlüssel im Web-Dashboard unter Settings → API Keys. Wenn der vollständige Schlüssel verloren ist, widerrufen Sie ihn und erstellen Sie einen Ersatz."
+          "description": "Für Builds ohne Anmeldung. Pro: Erstelle einen unter Settings → API Keys im Web; API-Plan-Schlüssel funktionieren auch. Für deine eigene Nutzung; gemeinsame oder öffentliche Deployments benötigen einen API-Plan. Hilfe: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "ODER",
         "register": {
-          "title": "Benötigen Sie einen API-Schlüssel?",
-          "description": "Eine Schritt-für-Schritt-Anleitung finden Sie unter worldmonitor.app/docs/api-keys. Manuelle API-Schlüssel erfordern einen API Starter- oder API Business-Tarif.",
-          "submitBtn": "API-Tarife ansehen"
+          "submitBtn": "Pläne anzeigen"
+        },
+        "signIn": {
+          "title": "Mit Pro anmelden",
+          "description": "Pro funktioniert hier, sobald du dich im Hauptfenster anmeldest. Kein Schlüssel erforderlich."
         }
       },
       "shellTitle": "World Monitor – Einstellungen",
@@ -975,12 +978,12 @@
       "loadingHistory": "Transitverlauf wird geladen…",
       "historyUnavailable": "Transitverlauf nicht verfügbar",
       "transitDataUnavailable": "Transitdaten nicht verfügbar (Upstream teilweise)",
-      "infoTooltip": "<strong>Supply Chain Monitor</strong> Globale Logistik- und Ressourcenverfolgung:<ul><li><strong>Engpässe</strong>: Maritimer Transitstatus, Störungsindizes und Schiffszahlen</li><li><strong>Schifffahrt</strong>: Baltic Dry Index und Frachtratentrends</li><li><strong>Mineralien</strong>: Konzentrationrisiko kritischer Mineralien (Produzentenkonzentrationsindex) und Top-Produzenten</li></ul>Klicken Sie auf eine Engpass-Karte, um das Transitverlaufs-Diagramm zu erweitern.",
-      "mineStage": "Mine",
-      "refineryStage": "Refine",
-      "stageUnavailable": "No published figures for this stage",
-      "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "infoTooltip": "<strong>Lieferkettenmonitor</strong> Globale Logistik- und Ressourcenverfolgung:<ul><li><strong>Engpässe</strong>: Maritimer Transitstatus, Störungsindizes und Schiffszahlen</li><li><strong>Schifffahrt</strong>: Baltic Dry Index und Frachtratentrends</li><li><strong>Mineralien</strong>: Konzentrationsrisiko kritischer Mineralien (Produzentenkonzentrationsindex) und Top-Produzenten</li></ul>Klicken Sie auf eine Engpass-Karte, um das Transitverlaufs-Diagramm zu erweitern.",
+      "mineStage": "Bergbau",
+      "refineryStage": "Verarbeitung",
+      "stageUnavailable": "Keine veröffentlichten Zahlen für diese Stufe",
+      "withheldNote": "W = einbehalten",
+      "productionCaption": "Länderanteile der tatsächlichen Produktion. Die Karte zeigt in der Depositen-Ebene, wo sich Rohstoffe befinden; diese Tabelle zeigt, wer sie abbaut oder verarbeitet.",
       "productionProLocked": "Upgrade auf PRO für Bergbau- und Raffinerie-Länderanteile mit Konzentration (Produzentenkonzentrationsindex) nach Stufe."
     },
     "tradePolicy": {
@@ -1121,7 +1124,7 @@
         "ucdpEvents": "Bewaffnete Konfliktereignisse",
         "displacementFlows": "Fluchtbewegungen",
         "climateAnomalies": "Klimaanomalien",
-        "weatherAlerts": "Unwetterwarnungen (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Wetterwarnungen",
         "strategicWaterways": "Engpässe",
         "economicCenters": "Wirtschaftszentren",
         "criticalMinerals": "Kritische Mineralien",
@@ -1143,7 +1146,9 @@
         "radiationSpike": "Strahlungsspitze",
         "radiationElevated": "Erhöhte Strahlung",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaAlerts": "Canada Alerts",
+        "notamAirspace": "NOTAM-Luftraumbeschränkungen",
+        "no2Activity": "Industrielle Aktivität"
       },
       "layersTitle": "Ebenen",
       "layerSearch": "Ebenen suchen...",
@@ -1205,7 +1210,7 @@
           "timeFilter": "Zeitfilter (oben rechts)",
           "geopolitical": "Geopolitisch",
           "militaryStrategic": "Militär & Strategie",
-          "transport": "Transport",
+          "transport": "Verkehr",
           "labels": "Beschriftungen",
           "overlays": "Overlays & Beschriftungen"
         },
@@ -1264,8 +1269,10 @@
           "financeGulfInvestments": "Investitionen von Staatsfonds des Golfkooperationsrats und ausländische Direktinvestitionen",
           "geoBoundaries": "Entmilitarisierte Zonen, Waffenstillstandslinien und umstrittene Grenzen",
           "ciiChoropleth": "Länderinstabilitätsindex-Wärmekarte – färbt Länder nach Punktzahl (grün=stabil, rot=kritisch)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaRoads": "Offizielle Straßenvorkommnisse, Warnungen, Bedingungen, Sperrungen, Bauarbeiten und Gefahren in unterstützten Jurisdiktionen in Kanada",
+          "canadaAlerts": "Provinzielle öffentliche Sicherheitswarnungen von Alberta Emergency Alert, B.C. Evacuation Orders and Alerts und SaskAlert",
+          "notamAirspace": "Temporäre Flugbeschränkungen und beschränkter, Gefahren- und verbotener Luftraum aus FAA-NOTAMs, derzeit gültig oder innerhalb von 24 Stunden beginnend",
+          "no2Activity": "NO2-Aktivitätsrichtung aus Sentinel-5P für 167 Länder und 32 Industriecluster: das jüngste 56-Tage-Fenster gegenüber denselben Daten der Vorjahre, nach einem Totband von 10 %. Enthält modifizierte Copernicus-Sentinel-Daten."
         },
         "notes": {
           "timeAffects": "Betrifft: Erdbeben, Wetter, Proteste, Ausfälle"
@@ -1321,7 +1328,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Index: World Monitor · Standortdaten:",
+      "indexSource": "Index: World Monitor",
+      "venueSource": "Standortdaten:",
       "statusNormal": "NORMAL",
       "statusNoData": "KEINE DATEN",
       "statusNoBaseline": "KEIN REFERENZWERT",
@@ -1330,6 +1338,16 @@
       "tensionsTitle": "Geopolitische Spannungen",
       "tensionsSource": "Spannungen: World Monitor anhand von GDELT-Ereignissen",
       "insufficientData": "Unzureichende Daten",
+      "evidenceStrikes": "Gemeldete Angriffe in 3 Tagen ({{countries}}): {{value}}",
+      "evidenceAirports": "Gestörte Flughäfen: {{value}}",
+      "evidenceAirportClosed": "Flughafen {{name}} geschlossen",
+      "evidenceAirportHalted": "{{name}}: die meisten Flüge gestrichen",
+      "evidenceAirportRestricted": "{{name}}: Flüge eingeschränkt",
+      "evidenceMilitaryAircraft": "Militärflugzeuge ({{country}}) in der Region: {{value}}",
+      "evidencePlaAircraft": "Chinesische Militärflugzeuge nahe Taiwan: {{value}}",
+      "evidencePlaShips": "Chinesische Marineschiffe nahe Taiwan: {{value}}",
+      "evidenceSanctions": "Neue US-Sanktionen diese Woche ({{country}}): {{value}}",
+      "evidenceUsual": "(üblich {{value}})",
       "pizzaUnavailable": "Pizzeria-Aktivität nicht verfügbar",
       "source": "Quelle:",
       "defcon": "DEFCON {{level}}",
@@ -1506,8 +1524,8 @@
       "critical": "KRITISCH",
       "high": "HOCH",
       "dismiss": "Ausblenden",
-      "alertsRegion": "Breaking news alerts",
-      "viewPanel": "View related panel"
+      "alertsRegion": "Breaking-News-Warnungen",
+      "viewPanel": "Zugehöriges Panel anzeigen"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Eilmeldungen",
@@ -1671,7 +1689,7 @@
       }
     },
     "gdeltIntel": {
-      "infoTooltip": "<strong>News Intelligence</strong> Globale Nachrichtenüberwachung in Echtzeit:<ul><li>Kuratierte Themenkategorien (Konflikte, Cyber usw.)</li><li>Artikel aus über 100 Sprachen übersetzt</li><li>Aktualisierungen alle 15 Minuten</li><li>14-Tage-Trend von Medienton &amp; -volumen je Thema</li></ul>Quelle: GDELT-Projekt (gdeltproject.org)"
+      "infoTooltip": "<strong>Nachrichtenaufklärung</strong> Globale Nachrichtenüberwachung in Echtzeit:<ul><li>Kuratierte Themenkategorien (Konflikte, Cyber usw.)</li><li>Artikel aus über 100 Sprachen übersetzt</li><li>Aktualisierungen alle 15 Minuten</li><li>14-Tage-Trend von Medienton &amp; -volumen je Thema</li></ul>Quelle: GDELT-Projekt (gdeltproject.org)"
     },
     "telegramIntel": {
       "infoTooltip": "Echtzeitige Signale aus überwachten Telegram-Kanälen für Open-Source-Geheimdienstarbeit",
@@ -1699,18 +1717,18 @@
       "filterCyber": "Cyber"
     },
     "xIntel": {
-      "infoTooltip": "Curated public news-account posts from X. Official API only.",
-      "loading": "Connecting to X news-account relay...",
-      "empty": "No posts available",
-      "disabled": "X news-account relay not active",
-      "filterAll": "All",
+      "infoTooltip": "Kurierte öffentliche Beiträge vom X-Nachrichtenkonto. Nur offizielle API.",
+      "loading": "Verbinde mit X-Nachrichtenkonto-Relay…",
+      "empty": "Keine Beiträge verfügbar",
+      "disabled": "X-Nachrichtenkonto-Relay nicht aktiv",
+      "filterAll": "Alle",
       "filterBreaking": "Breaking",
-      "filterConflict": "Conflict",
+      "filterConflict": "Konflikt",
       "filterOsint": "Open-Source-Geheimdienstarbeit",
-      "filterMiddleeast": "Middle East",
+      "filterMiddleeast": "Naher Osten",
       "live": "LIVE",
-      "viewSource": "View Source",
-      "filterGeopolitics": "Geopolitics",
+      "viewSource": "Quelle anzeigen",
+      "filterGeopolitics": "Geopolitik",
       "filterCyber": "Cyber"
     },
     "investments": {
@@ -1811,7 +1829,7 @@
     },
     "insights": {
       "noStories": "Noch keine aktuellen oder quellenübergreifenden Meldungen",
-      "infoTooltip": "<strong>KI-gestützte Analyse</strong><br>• <strong>World Brief</strong>: KI-Zusammenfassung (OpenRouter)<br>• <strong>Sentiment</strong>: Nachrichtentonanalyse<br>• <strong>Velocity</strong>: schnelllebige Meldungen<br>• <strong>Focal Points</strong>: korreliert Nachrichtenentitäten mit Kartensignalen (Militär, Proteste, Ausfälle)<br><em>Nur Desktop • Unterstützt von Llama 3.3 + Focal Point Detection</em>",
+      "infoTooltip": "<strong>KI-gestützte Analyse</strong><br>• <strong>Weltlage</strong>: KI-Zusammenfassung (OpenRouter)<br>• <strong>Stimmung</strong>: Nachrichtentonanalyse<br>• <strong>Tempo</strong>: schnelllebige Meldungen<br>• <strong>Schwerpunkte</strong>: korreliert Nachrichtenentitäten mit Kartensignalen (Militär, Proteste, Ausfälle)<br><em>Nur Desktop • Unterstützt von Llama 3.3 + Focal Point Detection</em>",
       "step": "Schritt {{step}}/{{total}}",
       "waitingForData": "Warten auf Nachrichtendaten...",
       "rankingStories": "Wichtige Meldungen werden priorisiert...",
@@ -1842,7 +1860,7 @@
       "streamAlwaysOnLabel": "Live-Streams im Dashboard automatisch abspielen",
       "streamAlwaysOnDesc": "Startet Live News und Live Webcams automatisch, sobald sie sichtbar sind. Deaktiviert lassen, damit Videos erst nach Klick auf Abspielen geladen werden.",
       "globeRenderScaleOptions": {
-        "1": "Eco (1x)",
+        "1": "Öko (1x)",
         "2": "4K (2x)",
         "3": "Extrem (3x)",
         "auto": "Auto (Gerät)",
@@ -1982,6 +2000,7 @@
       }
     },
     "liveNews": {
+      "audioUnavailable": "Audio nicht verfügbar",
       "notLive": "{{name}} sendet derzeit nicht live",
       "signInToYouTube": "Bei YouTube anmelden",
       "openOnYouTube": "Auf YouTube öffnen",
@@ -2091,15 +2110,15 @@
     },
     "commodities": {
       "infoTooltip": "<strong>Rohstoffe</strong> Handelbare Nicht-Energie-Rohstoffe mit Schwerpunkt auf Metallen und Materialien. Energiepreise finden Sie im Energiekomplex, Makro-Stressindikatoren unter Makro-Stress.",
-      "commodities": "Commodities",
-      "physicalPremiums": "Physical premium",
-      "physical": "Physical",
-      "paper": "Paper",
-      "premium": "Premium",
-      "asOf": "As of {{date}}",
+      "commodities": "Rohstoffe",
+      "physicalPremiums": "Physische Prämie",
+      "physical": "Physisch",
+      "paper": "Papier",
+      "premium": "Prämie",
+      "asOf": "Stand: {{date}}",
       "metals": {
         "gold": "Gold",
-        "silver": "Silver"
+        "silver": "Silber"
       },
       "divergence": {
         "compositeValue": "Physischer Stressindex: {{value}} / 100",
@@ -2169,7 +2188,7 @@
       "tripDays": "Reisetage"
     },
     "chatAnalyst": {
-      "infoTooltip": "<strong>WM Analyst</strong> KI-Analyst mit Live-Kontext über geopolitische, Markt-, Militär- und Wirtschaftsbereiche. Betrieben durch Claude mit Echtzeitdaten aus aktiven WorldMonitor-Feeds."
+      "infoTooltip": "<strong>WM-Analyst</strong> KI-Analyst mit Live-Kontext über geopolitische, Markt-, Militär- und Wirtschaftsbereiche. Betrieben durch Claude mit Echtzeitdaten aus aktiven WorldMonitor-Feeds."
     },
     "cotPositioning": {
       "infoTooltip": "<strong>Futures-Positionierung</strong> Wöchentliche Nettopositionen für kommerzielle Händler, große Spekulanten und kleine Händler in Rohstoff- und Finanz-Futures. Quelle: Commitments of Traders-Report der Commodity Futures Trading Commission, veröffentlicht am Freitag."
@@ -2232,7 +2251,7 @@
       "infoTooltip": "<strong>Wirtschaftskalender</strong> Geplante makroökonomische Veröffentlichungen: Verbraucherpreisindex, Nonfarm-Beschäftigung, Bruttoinlandsprodukt, Einkaufsmanagerindex und Zentralbankentscheidungen. Zeigt Prognose vs. Ist vs. Vorher. Hochauswirkende Ereignisse sind hervorgehoben. Quelle: Wirtschaftsdatendienstleister."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> World Monitor-Verhältnis von High-Yield-Kredit zu Long Treasuries, angepasst für Aktienvolatilität und High-Yield-Spread: (HYG / TLT) / (VIX × High-Yield-Spread / 100). Dies ist nicht der Kansas City Fed Financial Stress Index. Ein Wert von 1,5 oder höher ist niedriger Stress; unter 0,3 ist hoher Stress.",
+      "infoTooltip": "<strong>Finanzstressindikator</strong> World Monitor-Verhältnis von High-Yield-Kredit zu Long Treasuries, angepasst für Aktienvolatilität und High-Yield-Spread: (HYG / TLT) / (VIX × High-Yield-Spread / 100). Dies ist nicht der Kansas City Fed Financial Stress Index. Ein Wert von 1,5 oder höher ist niedriger Stress; unter 0,3 ist hoher Stress.",
       "title": "Finanzstress-Indikator",
       "usFsiValue": "US Financial Stress Indicator-Wert",
       "cissTitle": "EU CISS (systemischer Stressindikator Euroraum)",
@@ -2346,7 +2365,7 @@
       "noData": "Energiedaten vorübergehend nicht verfügbar – wird erneut versucht",
       "liveTape": "Live-Daten",
       "liveTapeSource": "Marktnotierungen",
-      "infoTooltip": "<strong>Energy Complex</strong> Physische und handelbare Energiesignale an einem Ort:<ul><li><strong>US Energy Information Administration Metriken</strong>: WTI, Brent, US-Produktion und Bestände</li><li><strong>Live Tape</strong>: Handelbare Energiepreise wie Rohöl und Erdgas</li><li><strong>Zweck</strong>: Physische Energiespannungen von breiteren Makro- und Rohstoff-Panels trennen</li></ul>"
+      "infoTooltip": "<strong>Energiekomplex</strong> Physische und handelbare Energiesignale an einem Ort:<ul><li><strong>US Energy Information Administration Metriken</strong>: WTI, Brent, US-Produktion und Bestände</li><li><strong>Live Tape</strong>: Handelbare Energiepreise wie Rohöl und Erdgas</li><li><strong>Zweck</strong>: Physische Energiespannungen von breiteren Makro- und Rohstoff-Panels trennen</li></ul>"
     },
     "consumerPrices": {
       "tabs": {
@@ -2480,14 +2499,14 @@
       },
       "unavailable": {
         "symbols": "{{symbols}} — {{reason}}",
-        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
-        "notFound": "no quote available",
-        "providerError": "quote lookup failed, retrying shortly",
-        "rateLimited": "quote provider rate limited, retrying shortly",
-        "notConfigured": "quote provider not configured",
-        "requestLimit": "too many symbols requested",
-        "budget": "not loaded yet, retrying shortly",
-        "seed": "market data temporarily unavailable"
+        "symbolsMore": "{{symbols}} +{{count}} weitere — {{reason}}",
+        "notFound": "kein Kurs verfügbar",
+        "providerError": "Kursabfrage fehlgeschlagen, wird in Kürze erneut versucht",
+        "rateLimited": "Anfragelimit des Kursanbieters erreicht, wird in Kürze erneut versucht",
+        "notConfigured": "Kursanbieter nicht konfiguriert",
+        "requestLimit": "zu viele Symbole angefordert",
+        "budget": "noch nicht geladen, wird in Kürze erneut versucht",
+        "seed": "Marktdaten vorübergehend nicht verfügbar"
       }
     },
     "heatmap": {
@@ -2541,7 +2560,7 @@
       "infoTooltip": "<strong>Gold-Intelligence</strong> Goldpreise in mehreren Währungen, Gold/Silber- und Gold/Platin-Verhältnisse und Positionen von verwalteten Geldern in Futures. Quellen umfassen Yahoo Finance und die Commodity Futures Trading Commission."
     },
     "wsbTickerScanner": {
-      "infoTooltip": "<strong>WallStreetBets Ticker Scanner</strong> Echtzeit-Ticker-Erwähnungen aus r/wallstreetbets, r/stocks und r/investing. Nach Erwähnungshäufigkeit und Engagement eingestuft. Velocity misst, wie schnell ein Ticker in Beiträgen an Dynamik gewinnt."
+      "infoTooltip": "<strong>WallStreetBets-Ticker-Scanner</strong> Echtzeit-Ticker-Erwähnungen aus r/wallstreetbets, r/stocks und r/investing. Nach Erwähnungshäufigkeit und Engagement eingestuft. Velocity misst, wie schnell ein Ticker in Beiträgen an Dynamik gewinnt."
     },
     "proBanner": {
       "badge": "PRO",
@@ -2559,7 +2578,15 @@
       "renewalFailedDesc": "Die Verlängerung Ihres Abonnements konnte nicht überprüft werden. Verwalten Sie Ihre Abrechnung oder kontaktieren Sie den Support, falls das Problem weiterhin besteht.",
       "manageBilling": "Abrechnung verwalten",
       "lapsedDesc": "Ihr Pro-Abonnement ist abgelaufen. Abonnieren Sie erneut, um den Premium-Zugriff wiederzuerlangen.",
-      "resubscribe": "Erneut abonnieren"
+      "resubscribe": "Erneut abonnieren",
+      "billingEmailBouncedMessage": "Abrechnungs-E-Mails an {{email}} kommen als unzustellbar zurück. Aktualisieren Sie Ihre Rechnungs-E-Mail-Adresse, damit Sie Belege und Zahlungshinweise erhalten.",
+      "fixBillingEmail": "Rechnungs-E-Mail korrigieren",
+      "billingEmailLabel": "Neue Rechnungs-E-Mail-Adresse",
+      "save": "Speichern",
+      "billingEmailUpdated": "Rechnungs-E-Mail-Adresse auf {{email}} geändert. Belege und Zahlungshinweise gehen ab jetzt dorthin.",
+      "billingEmailInvalid": "Geben Sie eine gültige E-Mail-Adresse ein.",
+      "billingEmailSuppressed": "An diese Adresse können wir ebenfalls nicht zustellen. Versuchen Sie eine andere.",
+      "billingEmailUpdateFailed": "Ihre Rechnungs-E-Mail-Adresse konnte nicht aktualisiert werden. Versuchen Sie es erneut oder kontaktieren Sie den Support, falls es weiterhin fehlschlägt."
     },
     "checkoutFailureBanner": {
       "message": "Zahlung konnte nicht abgeschlossen werden. Es wurde keine Gebühr eingezogen.",
@@ -2805,7 +2832,7 @@
       "infoTooltip": "Live-Status für die sieben globalen Öl- und Gas-Schiffs-Engpässe. Durchsatzschätzungen kalibriert von Portwatch-Schiffskapazität + Schiffsverfolgungsobservationen. Siehe /docs/methodology/chokepoints für Methodologie.",
       "unknown": "unbekannt",
       "shortName": {
-        "hormuzStrait": "Hormuz",
+        "hormuzStrait": "Hormus",
         "malaccaStrait": "Malakka",
         "suez": "Suez",
         "babElMandeb": "Bab el-Mandeb",
@@ -2824,7 +2851,7 @@
       "attribution": {
         "method": "Portwatch-Schiffskapazität + Schiffsverfolgungskalibrierung",
         "sampleLabel": "Schiffsverfolgungsstörungs-Signale",
-        "creditName": "US Energy Information Administration World Oil Transit Chokepoints"
+        "creditName": "US Energy Information Administration Ölverschiffungs-Engpässe weltweit"
       }
     },
     "mobileNav": {
@@ -3052,7 +3079,9 @@
         "africa": "Afrika"
       },
       "scheduled": "Plan.",
-      "estimated": "Gesch."
+      "estimated": "Gesch.",
+      "normalOperations": "NORMALBETRIEB",
+      "open": "OFFEN"
     },
     "cyberThreat": {
       "title": "CYBERBEDROHUNG"
@@ -3326,7 +3355,7 @@
       "heading": "KURS",
       "mmsi": "Maritime Mobile Service Identity",
       "region": "REGION",
-      "strikeGroup": "STRIKE GROUP",
+      "strikeGroup": "KAMPFGRUPPE",
       "usniIntel": "US Naval Institute Intelligence",
       "usniSource": "Quelle: US Naval Institute News Fleet Tracker",
       "approximatePosition": "Position ungefähr — basierend auf US Naval Institute Wochenbericht, keine Echtzeit-Schiffsverfolgung.",
@@ -3458,7 +3487,12 @@
       "position": "Position",
       "ground": "Am Boden",
       "airborne": "In der Luft"
-    }
+    },
+    "upcomingForecast": "Künftige Vorhersage",
+    "currentForecast": "Aktuelle Vorhersage",
+    "expiredForecast": "Abgelaufene Vorhersage",
+    "validFrom": "Gültig ab",
+    "validUntil": "Gültig bis"
   },
   "signals": {
     "context": {
@@ -3638,7 +3672,7 @@
     "refresh": "Aktualisieren",
     "all": "Alle",
     "cancel": "Abbrechen",
-    "dismiss": "Dismiss"
+    "dismiss": "Schließen"
   },
   "preferences": {
     "display": "Anzeige",
@@ -3672,7 +3706,7 @@
     "documentTitle": "World Monitor — Dashboard für globale Echtzeitinformationen",
     "metaDescription": "Echtzeit-Plattform für globale Intelligence. Featured in WIRED. Von 2M+ Menschen in 190 Ländern genutzt. Konflikte, Märkte, Militär und Open-Source-Intelligence auf einen Blick.",
     "offlineTitle": "Sie sind offline",
-    "offlineMessage": "World Monitor benötigt eine Internetverbindung für Echtzeit-Nachrichtendaten.",
+    "offlineMessage": "World Monitor benötigt eine Internetverbindung für Echtzeit-Aufklärungsdaten.",
     "offlineRetry": "Erneut versuchen"
   },
   "widgets": {
@@ -3754,8 +3788,8 @@
       "orefSirens2": "Sirenenzonenkartierung mit Bedrohungsklassifizierung",
       "telegramIntel1": "Kuratierte Telegram-Kanäle zur Open-Source-Intelligence",
       "telegramIntel2": "Konflikts- und geopolitische Updates in Echtzeit",
-      "xIntel1": "Curated public news accounts on X",
-      "xIntel2": "API-fresh posts with official permalinks"
+      "xIntel1": "Kuratierte X-Nachrichtenkonten",
+      "xIntel2": "Aktuelle API-Beiträge und Permalinks"
     }
   },
   "auth": {
@@ -3854,5 +3888,295 @@
     "noEvents": "Für dieses Datum wurden keine ausgewählten Schlagzeilen erfasst. Das beweist nicht, dass keine Ereignisse stattfanden.",
     "unlock90": "90 Tage mit Pro freischalten",
     "unlock365": "365 Tage mit einem API-Tarif freischalten"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "Quelle",
+      "freshness": "Aktualität",
+      "confidence": "Konfidenz",
+      "limitations": "Einschränkungen",
+      "related": "Verwandt",
+      "groundedIn": "Belegt in",
+      "curated": "Kuratiert v1",
+      "fallback": "Nicht kuratiert",
+      "layerGuide": "Ebenenleitfaden"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "Nachrichten / Hotspots",
+        "purpose": "Hebt überwachte geopolitische Hotspots hervor und erhöht ihre Stufe, wenn zugehörige Meldungen und Eskalationssignale zusammenfallen.",
+        "source": "Hotspot-Verzeichnis von WorldMonitor, RSS/GDELT-Nachrichtenaufklärung, Hotspot-Eskalationsbewertung, militärische Aktivität und der Kontext der Länderinstabilität.",
+        "freshness": "Hotspot-Standorte sind kuratiert und statisch. Nachrichtenfeeds werden getrennt auf Aktualität geprüft; die Hotspot-Stufen werden neu berechnet, wenn die Nachrichtenfeeds des Dashboards aktualisiert werden, etwa alle 10 Minuten, während GDELT-Auswertungen längere Seed- und Cache-Budgets haben.",
+        "confidence": "Nützlich als Hinweis zur Vorsortierung, nicht als zitierfähige Aussage, solange die zugrunde liegenden Meldungen und der Länderkontext nicht geöffnet wurden.",
+        "limitations": {
+          "0": "Nachrichtenmenge und Stichwortabgleich können stark beachtete Regionen überrepräsentieren.",
+          "1": "Wenig beachtete Ereignisse können fehlen, wenn die Abdeckung durch RSS oder GDELT dünn oder verzögert ist."
+        },
+        "related": {
+          "0": "Live-Nachrichten",
+          "1": "Strategischer Risikoüberblick",
+          "2": "Länderbrief",
+          "3": "Hotspot-Popups"
+        }
+      },
+      "no2Activity": {
+        "category": "Wirtschaft",
+        "purpose": "Färbt Länder und Industriecluster nach der Richtung ihres troposphärischen NO2 aus Sentinel-5P, einer Verbrennungsspur, im jüngsten 56-Tage-Fenster gegenüber denselben Daten der Vorjahre.",
+        "source": "Copernicus Sentinel-5P TROPOMI NO2 über die CDSE Sentinel Hub Statistical API, täglich je Region vom Dienst seed-no2-activity aggregiert. Enthält modifizierte Copernicus-Sentinel-Daten.",
+        "freshness": "Alle 24 Stunden eingespeist; das Fenster endet 3 Tage vor dem Lauf, damit späte Granulate eintreffen, mit einem Aktualitätsbudget von 72 Stunden.",
+        "confidence": "Eine Region erhält nur mit mindestens 14 gültigen Tagen und 2 Basisjahren einen Wert; Bewölkung ist das dominierende Rauschen, daher verweigert ein dünnes Fenster den Wert statt zu raten.",
+        "limitations": {
+          "0": "„Basis ausstehend“ ist wochenlang nach dem Hinzufügen einer Region der erwartete Zustand, solange Vorjahresfenster noch abgerufen werden.",
+          "1": "NO2 folgt der Verbrennung, daher erscheinen sauberere Erzeugung oder sauberere Fahrzeuge als nachlassende Aktivität."
+        },
+        "related": {
+          "0": "China-Aktivitäts-Nowcast",
+          "1": "Länderbrief"
+        }
+      },
+      "conflicts": {
+        "category": "Konflikt",
+        "purpose": "Zeigt kuratierte Konfliktzonen und geopolitische Grenzüberlagerungen, damit sich Live-Signale an bekannten Schauplätzen einordnen lassen.",
+        "source": "Konfliktzonen-Verzeichnis von WorldMonitor, Konfliktkontext von UCDP/ACLED und dokumentierte Grenzmetadaten wie die koreanische DMZ.",
+        "freshness": "Die Grundzonen sind kuratiert und statisch. Dynamische Konfliktereignisse werden getrennt über ACLED/UCDP-Feeds und Statussignale verfolgt.",
+        "confidence": "Gut zur geografischen Orientierung, für sich allein aber keine Echtzeit-Bestätigung eines Vorfalls.",
+        "limitations": {
+          "0": "Statische Zonen können schnellen taktischen Änderungen hinterherhinken.",
+          "1": "Manche Konfliktbelege erscheinen als Konfliktereignisse, in der Länderinstabilität oder in verwandten Panels und nicht als Konfliktzonen-Polygon."
+        },
+        "related": {
+          "0": "UCDP-Ereignisse",
+          "1": "Instabilitätsindex",
+          "2": "Strategisches Risiko",
+          "3": "Länderbrief"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "Luftfahrt",
+        "purpose": "Zeigt gemeldete Transpondercodes 7500, 7600 und 7700 unabhängig von der militärischen Einstufung.",
+        "source": "Exakte Squawk-Abfragen bei adsb.lol. Flugzeugdetails stammen aus Anbieterfeldern. Die Lizenz ist ODbL.",
+        "freshness": "Prüft im sichtbaren Zustand jede Minute. Die letzte Meldung darf höchstens 120 Sekunden alt sein. Kartenpositionen dürfen höchstens 90 Sekunden alt sein. Unbekannte Meldungen verfallen nach 15 Minuten.",
+        "confidence": "Ein gemeldetes Transpondersignal bestätigt weder einen Vorfall noch die Ursache, eine Landung oder eine Auflösung.",
+        "limitations": {
+          "0": "Die Empfängerabdeckung ist unvollständig.",
+          "1": "Der Zeitpunkt der letzten Meldung ist nicht der Zeitpunkt, zu dem der Squawk gesetzt wurde.",
+          "2": "Flugzeuge ohne aktuelle Position erscheinen nur in der Detailliste.",
+          "3": "Konflikte und Empfangsverlust werden als unbekannt geführt."
+        },
+        "related": {
+          "0": "Flugzeugdetails"
+        }
+      },
+      "ais": {
+        "category": "Maritim",
+        "purpose": "Zeigt Schiffsdichte und AIS-Störungssignale in strategischen Gewässern und an Engpässen.",
+        "source": "AISStream-Relay-Snapshots, der maritime Dienst von WorldMonitor und Klassifikatoren für Engpass-Störungen.",
+        "freshness": "AIS-Relay-Snapshots werden standardmäßig alle 5 Sekunden neu aufgebaut; der Server kann den Basis-Dichte-Snapshot 5 Minuten zwischenspeichern. Die Ebene ist deaktiviert oder veraltet, wenn Relay-Zugangsdaten oder die Verbindung fehlen.",
+        "confidence": "Nützlich zur Suche nach maritimen Auffälligkeiten, aber AIS wird von den Schiffen selbst gemeldet und Schiffe können vom Netz gehen.",
+        "limitations": {
+          "0": "Die landgestützte AIS-Abdeckung ist ungleichmäßig, mit dokumentiert schwächerer Sicht im Nahen Osten, in Asien und auf hoher See.",
+          "1": "Dunkle Schifffahrt wird aus Lücken und Stauungsmustern abgeleitet und ist kein direkter Beleg für Absicht."
+        },
+        "related": {
+          "0": "Lieferkette",
+          "1": "Engpass-Leiste",
+          "2": "Militärische Schiffe",
+          "3": "AIS-Signale im Länderbrief"
+        }
+      },
+      "tradeRoutes": {
+        "category": "Maritim",
+        "purpose": "Zeichnet wichtige Container-, Energie- und Massengutrouten durch strategische Engpässe, um Störungspfade einzuordnen.",
+        "source": "Handelsrouten-Verzeichnis von WorldMonitor sowie Engpass-Status und Transit-Zusammenfassungen der Lieferkette.",
+        "freshness": "Die Routengeometrie ist statisch. Der Engpass-Status wird alle 6 Minuten warm abgefragt und die Transit-Zusammenfassungen alle 10 Minuten über Lieferketten-Caches und Relay-Pfade aktualisiert.",
+        "confidence": "Gut als Kontext für die Exposition auf Routenebene, kein Routing-Feed auf Schiffsebene.",
+        "limitations": {
+          "0": "Routen sind modellierte Korridore und müssen nicht einem konkreten Reiseplan entsprechen.",
+          "1": "Störungsüberlagerungen hängen vom aktuellen Engpass- und AIS-Zustand ab."
+        },
+        "related": {
+          "0": "Lieferkette",
+          "1": "Routen-Explorer",
+          "2": "Szenario-Engine",
+          "3": "Wasserstraßen-Ebene"
+        }
+      },
+      "flights": {
+        "category": "Luftfahrt",
+        "purpose": "Hebt Flughafenstörungen und NOTAM-Schließungen hervor, Luftraum-NOTAMs, die jetzt gelten oder innerhalb von 24 Stunden beginnen (vorübergehende Flugbeschränkungen, Sperr-, Gefahren- und Verbotsgebiete, militärische Operationsgebiete, Luftraumreservierungen und Schließungen), sowie Live-Flugzeugpositionen, wenn eine Ortung verfügbar ist.",
+        "source": "FAA ASWS, AviationStack, FAA NOTAM Management Service (NMS-API) und ICAO-NOTAMs, adsb.lol (ODbL), Wingbits, die ältere OpenSky-Wiederherstellung, optionale nicht-kommerzielle Lückenfüllung über airplanes.live/adsb.fi und der Luftfahrtdienst. Luftraum-NOTAMs werden als Polygone gezeichnet, wo NMS sie liefert, als Kreise, wo das NOTAM einen Radius bis 250 NM angibt, und sonst als Marker.",
+        "freshness": "Seeds zu Flughafenstörungen laufen im 30-Minuten-Takt; Luftraum-NOTAMs werden alle 5 Minuten aus NMS-Änderungsabrufen geseedet, mit einem täglichen vollständigen Neuabgleich, bei einem Aktualitätsbudget von 20 Minuten; das Luftfahrt-Panel aktualisiert operative Ansichten zusätzlich im 5-Minuten-Abruf.",
+        "confidence": "Am besten zur Vorsortierung von Störungen; die Abdeckung einzelner Live-Flugzeuge hängt von ADS-B und den konfigurierten Anbietern ab. Der NOTAM-Text ist maßgeblich, wie ihn die FAA verteilt.",
+        "limitations": {
+          "0": "Simulierte Demodaten auf AviationStack-Basis können erscheinen, wenn ein API-Schlüssel fehlt.",
+          "1": "Live-Flugzeugpositionen können verzögert sein oder fehlen, wo die ADS-B-Abdeckung schwach oder blockiert ist.",
+          "2": "Luftraum-NOTAM-Flächen werden nur auf der deck.gl-Karte gezeichnet; die SVG- und Globus-Karten zeigen Flughafenmarker.",
+          "3": "Die meisten US-TFR beschreiben ihre Form nur im Text und erscheinen daher als Marker an der NOTAM-Position, nicht als Sperrfläche.",
+          "4": "Zeitpläne innerhalb des Gültigkeitsfensters eines NOTAM (zum Beispiel tägliche Stunden) stehen im Tooltip, steuern aber nicht die Sichtbarkeit."
+        },
+        "related": {
+          "0": "Airline-Intelligence",
+          "1": "Luftfahrt-Befehlsleiste",
+          "2": "Luftfahrtsignale im Länderbrief",
+          "3": "Flugnotfälle",
+          "4": "GPS-Störung"
+        }
+      },
+      "ucdpEvents": {
+        "category": "Konflikt",
+        "purpose": "Zeichnet bewaffnete Konfliktereignisse mit Land, Akteuren, Datum und Spannen der Todesopfer.",
+        "source": "GED-API des Uppsala Conflict Data Program über den Konfliktdienst und den UCDP-Event-Seed.",
+        "freshness": "Wird alle 6 Stunden geseedet, wenn der UCDP-Seed ordnungsgemäß läuft.",
+        "confidence": "Redaktionell konsistenter als rohe Eilmeldungen, aber bewusst verzögert und kein Live-Feed vom Gefechtsfeld.",
+        "limitations": {
+          "0": "Der jährliche, forschungsnahe Veröffentlichungsrhythmus kann sehr neue Ereignisse verpassen.",
+          "1": "Spannen der Todesopfer sind Schätzungen und sind als Spannen zu lesen, nicht als exakte Zahlen."
+        },
+        "related": {
+          "0": "UCDP-Ereignisse-Panel",
+          "1": "Konfliktkomponente des Instabilitätsindex",
+          "2": "Länderzeitachse"
+        }
+      },
+      "weather": {
+        "category": "Wetter",
+        "purpose": "Zeigt aktive amtliche Unwetterwarnungen nationaler Wetterdienste, zusammengeführt in einem Feed weather:alerts:v1.",
+        "source": "National Weather Service der Vereinigten Staaten (NWS), Environment and Climate Change Canada (ECCC) und die CAP-Aggregation des WMO Severe Weather Information Centre (SWIC), geseedet über das WorldMonitor-Relay.",
+        "freshness": "Warnungen von NWS, ECCC und SWIC werden vom Relay alle 15 Minuten geseedet und gegen ein Aktualitätsbudget von 45 Minuten überwacht.",
+        "confidence": "Maßgeblich für Warnungen der beteiligten nationalen Dienste, abhängig vom Veröffentlichungszeitpunkt der Quelle. NWS und ECCC werden als Polygone gezeichnet; geokodierte SWIC-Warnungen erscheinen am Länderschwerpunkt des herausgebenden Dienstes mit einer ausdrücklichen Genauigkeitsmarkierung.",
+        "limitations": {
+          "0": "Die meisten SWIC-Mitglieder veröffentlichen Geokodierungen, keine Polygone; diese Warnungen erscheinen als Punkte auf Länderebene mit der Gebietsbeschreibung im Wortlaut, nicht als Überlagerung des gewarnten Gebiets.",
+          "1": "Die SWIC-Abdeckung hängt davon ab, welche WMO-Mitglieder gerade an den Aggregator liefern; die Dichte unterscheidet sich nach Region.",
+          "2": "US- und kanadische SWIC-Zeilen werden ausgelassen, weil NWS und ECCC für diese Länder bereits Abdeckung auf Polygon-Ebene liefern."
+        },
+        "related": {
+          "0": "Naturereignisse",
+          "1": "Unwetter-Popups",
+          "2": "Status der Datenaktualität"
+        }
+      },
+      "canadaRoads": {
+        "category": "Verkehr",
+        "purpose": "Zeigt amtliche Straßenereignisse, Warnungen, Zustände, Sperrungen, Baustellen und Gefahren in den unterstützten kanadischen Zuständigkeiten.",
+        "source": "Provinz-Feeds von Ontario 511, Alberta 511 und Manitoba 511, Road Restrictions der City of Toronto und DriveBC Open511, geseedet über WorldMonitor.",
+        "freshness": "Ontario 511, Alberta 511 und Manitoba 511 werden alle 15 Minuten geseedet und gegen ein Aktualitätsbudget von 45 Minuten überwacht. Einschränkungen in Toronto werden alle 2 Stunden geseedet, DriveBC Open511 alle 30 Minuten.",
+        "confidence": "Maßgeblich für die unterstützten provinziellen und kommunalen Herausgeber, abhängig vom Veröffentlichungszeitpunkt und von der kartierten Geometrie.",
+        "limitations": {
+          "0": "Alberta 511 roadconditions wird nicht übernommen (der Anbieter-Endpunkt antwortet mit 404); die Live-Darstellung für Alberta zeigt nur Ereignisse und Warnungen.",
+          "1": "Provinzwarnungen ohne Koordinaten erscheinen nicht als Kartenpunkte.",
+          "2": "Polylinien zum Straßenzustand können komplexe Autobahngeometrie vereinfachen."
+        },
+        "related": {
+          "0": "Wetterwarnungen",
+          "1": "Status der Datenaktualität"
+        }
+      },
+      "canadaAlerts": {
+        "category": "Warnmeldungen",
+        "purpose": "Zeigt aktive Warnungen des Bevölkerungsschutzes aus Alberta, British Columbia und Saskatchewan als Kartenpunkte neben dem US-NWS-Wetter.",
+        "source": "Atom von Alberta Emergency Alert, die GeoJSON-Ebene OGL-BC Evacuation Orders and Alerts und der öffentliche JSON-Feed von SaskAlert plus CAP-1.2-Details vom selben Host werden zu einer canadaAlerts-Vereinigung normalisiert. Polygone aus CAP/GeoRSS, Evakuierungspolygone aus British Columbia und CAP-Polygone von SaskAlert werden zu Schwerpunkten; Einträge ohne Geometrie nutzen den Schwerpunkt der Quellprovinz.",
+        "freshness": "Die Provinzquellen werden alle 15 Minuten geseedet und die Vereinigung gegen ein Aktualitätsbudget von 45 Minuten überwacht. Ein leerer Feed (keine aktiven Warnungen) ist ein gültiger Erfolg mit null Einträgen.",
+        "confidence": "Maßgeblich für Warnungen von Alberta Emergency Alert, B.C. Evacuation Orders and Alerts und SaskAlert, abhängig vom Veröffentlichungszeitpunkt und von der kartierten Warngeometrie.",
+        "limitations": {
+          "0": "Die Abdeckung beschränkt sich auf Alberta, British Columbia und Saskatchewan. Ontario hat keinen geeigneten, von der Provinz betriebenen Maschinen-Feed außerhalb des ausgeschlossenen NAAD.",
+          "1": "Ersetzt weder US-NWS-Unwetterwarnungen noch die Straßenebenen von Ontario und Toronto.",
+          "2": "Einträge ohne kartierbare Schwere (CAP-/Farb-Semantik von Alberta, Evakuierungsstatus von British Columbia oder CAP-Schwere von SaskAlert) werden verworfen und nicht erfunden. Farbe oder Stufe in der SaskAlert-Zusammenfassung gelten nicht als CAP-Schwere."
+        },
+        "related": {
+          "0": "Wetterwarnungen",
+          "1": "Naturereignisse",
+          "2": "Status der Datenaktualität"
+        }
+      },
+      "cyberThreats": {
+        "category": "Cyberlage",
+        "purpose": "Kartiert geografisch angereicherte Kompromittierungsindikatoren wie C2-Server, Malware-Hosts, Phishing, schädliche URLs und Ransomware-Infrastruktur.",
+        "source": "abuse.ch Feodo Tracker und URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, der RSS-/Nachrichten-Feed von ransomware.live und die Anreicherung per IP-Geolokation.",
+        "freshness": "Seeds zu Cyber-Bedrohungen laufen alle 2 Stunden; angezeigte IOCs nutzen ein rollierendes Fenster von 14 Tagen und werden für die Kartenleistung gedeckelt.",
+        "confidence": "Gut für die Sicht auf Infrastruktur, aber Zuschreibung und IP-Geolokation können ungenau sein.",
+        "limitations": {
+          "0": "Die IP-Geolokation kann auf Hosting-Infrastruktur zeigen statt auf einen Betreiber oder ein Opfer.",
+          "1": "Verfügbarkeit der Feeds, API-Schlüssel und Missbrauchsmeldungen je Feed können die Abdeckung verzerren."
+        },
+        "related": {
+          "0": "Popups der Cyber-Bedrohungen",
+          "1": "Cyber-Beitrag zur Länderinstabilität",
+          "2": "Status der Datenaktualität"
+        }
+      },
+      "natural": {
+        "category": "Naturkatastrophen",
+        "purpose": "Zeigt Erdbeben, schwere Katastrophenwarnungen und aktive Erdbeobachtungsereignisse für das Lagebild.",
+        "source": "USGS-Erdbeben, GDACS-Warnungen und NASA-EONET-Ereignisse, zusammengeführt im Dienst für Naturereignisse.",
+        "freshness": "Naturereignisse werden alle 3 Stunden geseedet; die Erwartung für USGS-Erdbeben ist eine Quelltaktung von etwa 5 Minuten.",
+        "confidence": "Belastbar für erkannte öffentliche Katastrophensignale; die Konfidenz hängt von der Gefahrenart und der Meldelatenz der Quelle ab.",
+        "limitations": {
+          "0": "GDACS-Warnungen geringer Schwere werden herausgefiltert, damit die Karte lesbar bleibt.",
+          "1": "EONET-Waldbrände werden nach Aktualität gefiltert, deshalb können ältere offene Ereignisse nicht als aktive Kartenpunkte erscheinen."
+        },
+        "related": {
+          "0": "Popups der Naturereignisse",
+          "1": "Wetterwarnungen",
+          "2": "Natursignale im Länderbrief"
+        }
+      },
+      "waterways": {
+        "category": "Maritim",
+        "purpose": "Markiert strategische Wasserstraßen und Engpässe, damit Störungssignale an der festen maritimen Geografie gelesen werden können.",
+        "source": "Verzeichnis strategischer Wasserstraßen von WorldMonitor mit Statusüberlagerungen der Lieferketten-Engpässe aus AIS, NGA-Warnungen und von PortWatch abgeleiteten Feeds.",
+        "freshness": "Die Lage der Wasserstraßen ist statisch; der Live-Status der Engpässe wird alle 6 Minuten warm abgefragt und die Transit-Zusammenfassungen alle 10 Minuten aktualisiert, wenn der Weg über Relay und PortWatch intakt ist.",
+        "confidence": "Hoch für die feste Geografie; die Konfidenz der Live-Störung hängt von den begleitenden Feeds AIS, NGA und PortWatch ab.",
+        "limitations": {
+          "0": "Ein sichtbarer Engpass-Marker bedeutet nicht, dass gerade eine Störung besteht.",
+          "1": "Flächen-Geofences und modellierte Routen können komplexe Verkehrsmuster vereinfachen."
+        },
+        "related": {
+          "0": "Lieferkette",
+          "1": "Handelsrouten",
+          "2": "Routen-Explorer",
+          "3": "Szenario-Engine"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "Länderrisiko",
+        "purpose": "Färbt Länder nach dem aktuellen Wert des Country Instability Index für eine grobe Vorsortierung des strategischen Risikos.",
+        "source": "Bewertungsdienst des Country Instability Index von WorldMonitor mit Signalen aus Konflikt, Unruhen, Reisehinweisen, Cyber, Schiffsverfolgung, Luftfahrt, Naturereignissen und Nachrichten.",
+        "freshness": "Der Cache der Risikowerte wird alle 8 Minuten warm abgefragt; seed-meta und health.riskScores zeigen den Zustand live, veraltet, teilweise oder beeinträchtigt gegenüber einem Aktualitätsbudget von 30 Minuten.",
+        "confidence": "Zusammengesetztes Modellsignal, keine amtliche Länderbewertung und keine Wahrscheinlichkeitsprognose.",
+        "limitations": {
+          "0": "Dünne oder beeinträchtigte Quellenfamilien können die Konfidenz senken, auch wenn ein Land noch einen Wert hat.",
+          "1": "Die Farbe auf Länderebene kann Unterschiede innerhalb des Landes verdecken und sollte vor einem Zitat an den Panels geprüft werden."
+        },
+        "related": {
+          "0": "Instabilitätsindex",
+          "1": "Strategischer Risikoüberblick",
+          "2": "Status der Datenaktualität",
+          "3": "Länderbrief"
+        }
+      }
+    },
+    "fallback": {
+      "category": "Ebene",
+      "purpose": "Diese Ebene lässt sich auf der Karte einschalten, aber eine kuratierte Quellen- und Konfidenzkarte gibt es dafür noch nicht.",
+      "source": "Nicht im kuratierten v1-Satz zur Ebenen-Erklärbarkeit enthalten.",
+      "freshness": "Hier ist kein Aktualitätsvertrag auf Ebenenebene hinterlegt. Prüfen Sie, sofern vorhanden, die sichtbaren Panel-Kennzeichen, Popups oder den Status der Datenaktualität.",
+      "confidence": "Unbekannt, bis quellenspezifische Metadaten ergänzt sind.",
+      "limitations": {
+        "0": "Eine fehlende kuratierte Karte bedeutet nicht, dass die Ebene nicht unterstützt wird.",
+        "1": "Nutzen Sie Ebenen-Popups und verwandte Panels für quellenspezifischen Kontext."
+      },
+      "related": {
+        "0": "Ebenenleitfaden"
+      }
+    }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO-Daten nicht verfügbar.",
+    "empty": "UKMTO hat keine Vorfälle zurückgegeben.",
+    "stale": "Veraltete Quelldaten. Zuletzt geprüft",
+    "current": "Quelle geprüft",
+    "reportedClaims": "Meldungen des Herausgebers. Angaben werden möglicherweise noch untersucht.",
+    "occurred": "Vorfall",
+    "reported": "Veröffentlicht"
   }
 }

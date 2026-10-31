@@ -18,7 +18,23 @@ const OFFICIAL_SOURCE_HOSTS = {
   'canada-buys': ['canadabuys.canada.ca', 'www.merx.com', 'portal.us.bn.cloud.ariba.com', 'discovery.ariba.com'],
   gets: ['gets.govt.nz'],
   'world-bank': ['worldbank.org'],
+  'colombia-secop': ['secop.gov.co'],
+  'kenya-ppip': ['tenders.go.ke'],
+  'south-africa-etenders': ['etenders.gov.za'],
+  'chile-mercado-publico': ['mercadopublico.cl'],
+  'brazil-pncp': ['pncp.gov.br'],
+  'ukraine-prozorro': ['prozorro.gov.ua'],
+  'bulgaria-eop': ['app.eop.bg'],
+  'latvia-iub': ['eis.gov.lv', 'pvs.iub.gov.lv'],
+  'poland-bzp': ['ezamowienia.gov.pl'],
+  'pakistan-ppra': ['epms.ppra.gov.pk'],
 };
+
+export function tracksTenderFreshness(source) {
+  return ['contracts-finder', 'world-bank', 'colombia-secop', 'kenya-ppip', 'south-africa-etenders',
+    'chile-mercado-publico', 'brazil-pncp', 'ukraine-prozorro', 'bulgaria-eop', 'latvia-iub',
+    'poland-bzp', 'pakistan-ppra'].includes(source);
+}
 
 function string(value) { return typeof value === 'string' ? value.trim() : ''; }
 function firstString(...values) { return values.map(string).find(Boolean) || ''; }
@@ -117,6 +133,8 @@ function normalize({ source, sourceNoticeId, officialUrl, countryCode = '', regi
     automationFit: classifyAutomationFit({ title, description, categories: [...normalizedCategories, ...normalizedSectors] }),
   };
 }
+
+export { normalize as normalizePublicTender };
 
 export function normalizeSamOpportunity(raw) {
   const noticeId = firstString(raw?.noticeId, raw?.notice_id, raw?.solicitationNumber);
@@ -245,7 +263,7 @@ export function mergeTenderSourceResults({ settled, sourceNames, previousSnapsho
         fetchedAt: result.value.status.fetchedAt || attemptedAt,
         lastSuccessfulAt: result.value.status.lastSuccessfulAt || result.value.status.fetchedAt || attemptedAt,
         stale: false,
-        ...(['contracts-finder', 'world-bank'].includes(source) ? { consecutiveFailures: 0, firstFailureAt: '' } : {}),
+        ...(tracksTenderFreshness(source) ? { consecutiveFailures: 0, firstFailureAt: '' } : {}),
       });
       continue;
     }
@@ -255,7 +273,7 @@ export function mergeTenderSourceResults({ settled, sourceNames, previousSnapsho
     const priorStatus = previousStatuses.get(source);
     const fulfilledStatus = result.status === 'fulfilled' ? result.value?.status : null;
     const error = string(fulfilledStatus?.error || result.reason?.message || 'upstream request failed').slice(0, 200);
-    if (['contracts-finder', 'world-bank'].includes(source)) {
+    if (tracksTenderFreshness(source)) {
       // A bundle success or a failed source attempt is not a source success.
       const lastSuccessfulAt = firstString(priorStatus?.lastSuccessfulAt,
         priorStatus?.state === 'ok' ? priorStatus.fetchedAt : '');

@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, PUBLISH_BLOCKED_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 import { DAY, readSectionFreshness, bundleHeartbeatKey, BUNDLE_HEARTBEAT_TTL_SECONDS } from '../scripts/_bundle-runner.mjs';
 import { OWID_SOURCE_VERSION } from '../scripts/seed-owid-energy-mix.mjs';
+import { JODI_OIL_SOURCE_VERSION } from '../scripts/seed-jodi-oil.mjs';
 import {
   SUPERSEDED_KEY_TTL_SECONDS,
   atomicSwitch,
@@ -105,7 +106,12 @@ test('an error canonical envelope never makes a failed migration look fresh', as
   assert.equal(freshness, null);
 });
 
-test('energy-sources wires the OWID freshness gate to the producer version', () => {
+for (const gate of [
+  { label: 'OWID-Energy-Mix', script: 'seed-owid-energy-mix.mjs', constant: 'OWID_SOURCE_VERSION' },
+  // A deploy that changes what JODI-Oil writes must reseed on the next tick,
+  // not wait out the interval with the old payload still served.
+  { label: 'JODI-Oil', script: 'seed-jodi-oil.mjs', constant: 'JODI_OIL_SOURCE_VERSION' },
+]) test(`energy-sources wires the ${gate.label} freshness gate to the producer version`, () => {
   const bundlePath = join(SCRIPTS_DIR, 'seed-bundle-energy-sources.mjs');
   const rawSource = readFileSync(bundlePath, 'utf8');
   const sectionSource = extractRunBundleSectionSource(rawSource, 'energy-sources');
@@ -116,29 +122,44 @@ test('energy-sources wires the OWID freshness gate to the producer version', () 
   );
   const source = stripLineComments(sectionSource);
   const sections = extractBundleSections(source);
-  const owidSections = sections.filter((section) => section.label === 'OWID-Energy-Mix');
+  const gateSections = sections.filter((section) => section.label === gate.label);
 
   assert.equal(sections.length, countSectionAnchors(source));
   assert.equal(sections.length, countSectionScriptKeys(source));
   assert.equal(
-    owidSections.length,
+    gateSections.length,
     1,
-    'seed-bundle-energy-sources.mjs must declare exactly one OWID-Energy-Mix section',
+    `seed-bundle-energy-sources.mjs must declare exactly one ${gate.label} section`,
   );
-  const [owidSection] = owidSections;
-  assert.equal(owidSection.script, 'seed-owid-energy-mix.mjs');
+  const [gateSection] = gateSections;
+  assert.equal(gateSection.script, gate.script);
   assert.equal(
-    owidSection.expectedSourceVersionExpr,
-    'OWID_SOURCE_VERSION',
-    'OWID-Energy-Mix must reference the producer source-version constant',
+    gateSection.expectedSourceVersionExpr,
+    gate.constant,
+    `${gate.label} must reference the producer source-version constant`,
   );
   assert.equal(
     hasNamedImportBinding(rawSource, {
-      moduleSpecifier: './seed-owid-energy-mix.mjs',
-      importedName: 'OWID_SOURCE_VERSION',
+      moduleSpecifier: `./${gate.script}`,
+      importedName: gate.constant,
     }),
     true,
-    'OWID_SOURCE_VERSION must be imported from the OWID energy-mix producer',
+    `${gate.constant} must be imported from ${gate.script}`,
+  );
+});
+
+test('a JODI-Oil seed-meta written before the current source version is due', async () => {
+  const section = {
+    seedMetaKey: 'energy:jodi-oil',
+    canonicalKey: 'energy:jodi-oil:v1:_countries',
+    expectedSourceVersion: JODI_OIL_SOURCE_VERSION,
+  };
+  const fetchedAt = Date.now();
+  const read = (meta) => async (key) => (key === 'seed-meta:energy:jodi-oil' ? meta : ['US', 'MY']);
+  assert.equal(await readSectionFreshness(section, read({ fetchedAt, recordCount: 81 })), null);
+  assert.deepEqual(
+    await readSectionFreshness(section, read({ fetchedAt, recordCount: 81, sourceVersion: JODI_OIL_SOURCE_VERSION })),
+    { fetchedAt },
   );
 });
 
@@ -269,7 +290,39 @@ test('a missing completion marker keeps an explicit-freshness section due', asyn
   assert.equal(freshness, null);
 });
 
-function runBundleWith(sections, opts = {}, env = {}) {
+// Child-process counterpart of compressTime in
+// tests/natural-events-transport.test.mjs. The bundle runs in a spawned
+// process, so in-process timer mocks cannot reach it; this source is written
+// into the generated runner file instead. Two separate knobs, because the
+// runner's two kinds of wait need different treatment:
+//   clock  — Date.now() advances `clock`x faster from runner start, so wall time
+//            the runner MEASURES (freshness-gate elapsed vs maxBundleMs) accrues
+//            in 1/clock of the real wait. The runner's own setTimeouts stay
+//            real, so a section's timeout still covers a real child cold start.
+//   timers — the runner's setTimeout delays (section timeout, SIGTERM→SIGKILL
+//            grace) fire after 1/timers of their nominal length.
+// Seeder children the runner spawns, and the fake Upstash in this process,
+// keep the real clock either way.
+function compressTimeSource({ clock = 1, timers = 1 } = {}) {
+  let source = '';
+  if (clock !== 1) {
+    source += `{ const realNow = Date.now; const origin = realNow(); Date.now = () => origin + (realNow() - origin) * ${clock}; }\n`;
+  }
+  if (timers !== 1) {
+    source += `{ const realSetTimeout = globalThis.setTimeout; globalThis.setTimeout = (fn, ms = 0, ...args) => realSetTimeout(fn, Math.ceil(ms / ${timers}), ...args); }\n`;
+  }
+  return source;
+}
+
+// Scale for the tests that starve a section by burning bundle wall time in
+// slow freshness reads (fake Upstash getDelayMs). Their lower bound — enough
+// elapsed for the victim to defer — comes from the fake server's real delays,
+// so it holds at any scale and under any load. Their upper bound — RUNS still
+// admitted after ten reads in the stall tests — leaves 25s of runner-clock
+// slack, i.e. 2.5s of real per-run overhead at 10x.
+const STARVE_TIME_SCALE = 10;
+
+function runBundleWith(sections, opts = {}, env = {}, { compressTime } = {}) {
   const runPath = join(FIXTURES_DIR, `_bundle-runner-test-run-${randomUUID()}.mjs`);
   const fixtureSections = sections.map((section) => ({
     ...section,
@@ -277,7 +330,7 @@ function runBundleWith(sections, opts = {}, env = {}) {
   }));
   writeFileSync(
     runPath,
-    `import { runBundle } from '../_bundle-runner.mjs';\nawait runBundle('test', ${JSON.stringify(
+    `import { runBundle } from '../_bundle-runner.mjs';\n${compressTimeSource(compressTime)}await runBundle('test', ${JSON.stringify(
       fixtureSections,
     )}, ${JSON.stringify(opts)});\n`,
   );
@@ -1041,15 +1094,23 @@ test('timeout emits terminal reason BEFORE SIGTERM/SIGKILL grace (survives conta
     // elapsed 1.1s instead of the expected ~11s (1s + 10s grace), and
     // the `[HANG] hung` assertion failed.
     //
-    // 3000ms gives generous cold-start margin (typical Node startup
-    // is 50-200ms; even loaded CI shouldn't exceed 1-2s) while still
+    // 3000ms of REAL time gives generous cold-start margin (typical Node
+    // startup is 50-200ms; even loaded CI shouldn't exceed 1-2s) while still
     // exercising the same timeout → SIGTERM → grace → SIGKILL flow
-    // the test is here to validate. The 20s cap below remains
-    // comfortably above 3s + 10s grace + overhead.
-    const TIMEOUT_MS = 3000;
-    const { code, stdout, stderr } = await runBundleWith([
-      { label: 'HANG', script: '_bundle-fixture-hang.mjs', intervalMs: 1, timeoutMs: TIMEOUT_MS },
-    ]);
+    // the test is here to validate.
+    //
+    // The runner's timers run 10x compressed, so the section is declared at
+    // 10x that (30s nominal) to keep the real 3s before SIGTERM, and the
+    // production 10s KILL_GRACE_MS elapses in 1s. The 20s cap below remains
+    // comfortably above 3s + 1s grace + overhead.
+    const TIME_SCALE = 10;
+    const REAL_TIMEOUT_MS = 3000;
+    const { code, stdout, stderr } = await runBundleWith(
+      [{ label: 'HANG', script: '_bundle-fixture-hang.mjs', intervalMs: 1, timeoutMs: REAL_TIMEOUT_MS * TIME_SCALE }],
+      {},
+      {},
+      { compressTime: { clock: TIME_SCALE, timers: TIME_SCALE } },
+    );
     const elapsedMs = Date.now() - t0;
     assert.equal(code, 1, 'bundle must exit non-zero on failure');
     const combined = stdout + stderr;
@@ -1245,11 +1306,15 @@ test('a tick that runs nothing while deferring due work exits non-zero', async (
   // then no longer fits. Keep each response well below the runner's 5s read
   // timeout: a 4.5s fixture used to race that timeout under suite contention,
   // turning a freshness test into a load-dependent false red.
+  //
+  // The runner's clock runs STARVE_TIME_SCALE x fast (see compressTimeSource),
+  // so a 200ms real response is a 2s read on the clock the budget check uses.
+  // The read timeout stays on the real clock, now 25x the response time.
   const cleanupDue = writeFixture('_bundle-fixture-starved-due.mjs', `console.log('due-ran');\n`);
   const freshMeta = JSON.stringify({ fetchedAt: Date.now(), recordCount: 1 });
   const freshKeys = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
   const redis = await startFakeUpstash({
-    getDelayMs: 2_000,
+    getDelayMs: 2_000 / STARVE_TIME_SCALE,
     strings: new Map(freshKeys.map((key) => [`seed-meta:starve:${key}`, freshMeta])),
   });
   try {
@@ -1267,6 +1332,7 @@ test('a tick that runs nothing while deferring due work exits non-zero', async (
       ],
       { maxBundleMs: 60_000 },
       { UPSTASH_REDIS_REST_URL: redis.url, UPSTASH_REDIS_REST_TOKEN: redis.token },
+      { compressTime: { clock: STARVE_TIME_SCALE } },
     );
     assert.equal(code, 1, 'a tick that published nothing while starving due work is not a success');
     assert.match(stdout, /\[Bundle:test\] Finished .* ran:0 skipped:9 deferred:1 failed:0 graceful:0/);
@@ -1819,7 +1885,7 @@ test('a deferred section older than 2x its interval fails the tick even when sib
   const staleMeta = JSON.stringify({ fetchedAt: Date.now() - 3 * HOUR, recordCount: 1 });
   const freshKeys = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
   const redis = await startFakeUpstash({
-    getDelayMs: 2_000,
+    getDelayMs: 2_000 / STARVE_TIME_SCALE,
     strings: new Map([
       ...freshKeys.map((key) => [`seed-meta:stall:${key}`, JSON.stringify({ fetchedAt: Date.now(), recordCount: 1 })]),
       ['seed-meta:stall:victim', staleMeta],
@@ -1844,6 +1910,7 @@ test('a deferred section older than 2x its interval fails the tick even when sib
       ],
       { maxBundleMs: 60_000 },
       { UPSTASH_REDIS_REST_URL: redis.url, UPSTASH_REDIS_REST_TOKEN: redis.token },
+      { compressTime: { clock: STARVE_TIME_SCALE } },
     );
     assert.equal(code, 1, 'a starved-while-green tick is not a success');
     assert.match(stdout, /\[Bundle:test\] Finished .* ran:1 skipped:10 deferred:1 failed:0 graceful:0 stalled:1/);
@@ -1866,7 +1933,7 @@ test('a deferred section within 2x its interval stays ordinary pressure (exit 0)
   const dueMeta = JSON.stringify({ fetchedAt: Date.now() - Math.round(0.9 * HOUR), recordCount: 1 });
   const freshKeys = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
   const redis = await startFakeUpstash({
-    getDelayMs: 2_000,
+    getDelayMs: 2_000 / STARVE_TIME_SCALE,
     strings: new Map([
       ...freshKeys.map((key) => [`seed-meta:pressure:${key}`, JSON.stringify({ fetchedAt: Date.now(), recordCount: 1 })]),
       ['seed-meta:pressure:victim', dueMeta],
@@ -1887,6 +1954,7 @@ test('a deferred section within 2x its interval stays ordinary pressure (exit 0)
       ],
       { maxBundleMs: 60_000 },
       { UPSTASH_REDIS_REST_URL: redis.url, UPSTASH_REDIS_REST_TOKEN: redis.token },
+      { compressTime: { clock: STARVE_TIME_SCALE } },
     );
     assert.equal(code, 0, 'ordinary pressure with a healthy sibling stays exit 0');
     assert.match(stdout, /\[Bundle:test\] Finished .* ran:1 skipped:10 deferred:1 failed:0 graceful:0 stalled:0/);

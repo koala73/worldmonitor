@@ -1,6 +1,19 @@
-import { internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
+import { internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
+
+/** The suppression row for an address, matched on its trimmed lowercase form. */
+export async function findEmailSuppression(
+  ctx: QueryCtx | MutationCtx,
+  email: string,
+): Promise<Doc<"emailSuppressions"> | null> {
+  const normalizedEmail = email.trim().toLowerCase();
+  return await ctx.db
+    .query("emailSuppressions")
+    .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedEmail))
+    .first();
+}
 
 export const suppress = internalMutation({
   args: {
@@ -50,11 +63,7 @@ export const isEmailSuppressed = internalQuery({
     purpose: v.union(v.literal("transactional"), v.literal("marketing")),
   },
   handler: async (ctx, args) => {
-    const normalizedEmail = args.email.trim().toLowerCase();
-    const entry = await ctx.db
-      .query("emailSuppressions")
-      .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedEmail))
-      .first();
+    const entry = await findEmailSuppression(ctx, args.email);
     // Broadcast exporters consume every emailSuppressions row. Transactional
     // senders may deliver account and payment notices after a broadcast
     // opt-out; marketing senders must retain that opt-out.

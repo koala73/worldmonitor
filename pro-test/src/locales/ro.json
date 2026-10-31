@@ -88,10 +88,7 @@
     "uniqueVisitors": "Vizitatori unici",
     "peakDailyUsers": "Utilizatori zilnici (vârf)",
     "countriesReached": "Țări atinse",
-    "liveDataSources": "Surse de date live",
-    "quote": "Piețe, politică monetară, geopolitică, energie — totul se mișcă împreună acum. Aveam nevoie de ceva care să arate cum aceste forțe se conectează în timp real, nu doar titlurile, ci motoarele de dedesubt.",
-    "ceo": "CEO al",
-    "asToldTo": "povestit către"
+    "liveDataSources": "Surse de date live"
   },
   "audience": {
     "title": "Pentru cine este World Monitor?",
@@ -161,7 +158,7 @@
     "oneKey": "Servicii Live, 1 Cheie",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky și mai mult — toate active, fără înregistrări separate.",
     "deliveryLabel": "Alege cum te găsește intelligence-ul",
-    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLab": "Laborator de stres al lanțului de aprovizionare",
     "supplyChainLabDesc": "Modelează un șoc de cost pe țări și sectoare. Clasifică vulnerabilitatea mărfurilor după dependența de puncte de strangulare. Urmărește concentrația mine-rafinărie și divergența primei fizice SGE–COMEX — seria care se mișcă înainte ca titlul să apară.",
     "roadmapNote": "Pe foaia de parcurs: supraveghere orbitală, istoric mai lung, straturi de hartă premium."
   },
@@ -244,12 +241,12 @@
     "infraLayers": "Straturi infrastructură",
     "satellite": "Supraveghere orbitală",
     "connectorsRow": "Conectori",
-    "deployment": "Deployment",
+    "deployment": "Implementare",
     "securityRow": "Securitate",
     "f5_15min": "5-15 minute",
     "fLt60s": "<60 secunde",
     "fPerRequest": "Per cerere",
-    "fLiveEdge": "Live-edge",
+    "fLiveEdge": "În direct",
     "f50panels": "Paneluri",
     "fWhiteLabel": "White-label",
     "fBYOK": "BYOK",
@@ -331,9 +328,9 @@
   },
   "soonBadge": "În curând",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | Inteligență AI și MCP",
     "description": "World Monitor Pro adaugă un analist AI, rezumate inteligente programate, widgeturi personalizate, cercetare de piață și acces MCP la date geopolitice și financiare în timp real.",
-    "ogTitle": "World Monitor Pro | Geopolitical AI",
+    "ogTitle": "World Monitor Pro | IA geopolitică",
     "ogDescription": "Întreabă, abonează-te, construiește. WM Analyst chat, un digest AI conform programului tău (zilnic, de două ori pe zi sau săptămânal), constructor de widget-uri personalizat și MCP pentru Claude/GPT — pe serviciile live sub o singură cheie."
   },
   "pricing": {
@@ -372,7 +369,8 @@
           "Divergență metale fizice, concentrație minerale și date datorii suverane",
           "Digest AI programat + motor reguli de alertare",
           "Acces MCP + SDK pentru Claude Desktop și alți clienți AI (50 apeluri/zi)",
-          "Widgeturi personalizate și 10 dashboard-uri (vs 3)"
+          "Widgeturi personalizate și 10 dashboard-uri (vs 3)",
+          "Cheie desktop pentru aplicația desktop (2 chei)"
         ],
         "highlightFeatures": [
           "Licență personală",
@@ -432,6 +430,7 @@
           "Export de date — rapoarte CSV, JSON și PDF",
           "25 de tablouri de bord personalizate (vs 10)",
           "MCP + SDK: 250 apeluri/zi (vs 50)",
+          "Cheie desktop pentru aplicația desktop (3 chei)",
           "Suport prioritar"
         ],
         "highlightFeatures": [
@@ -444,7 +443,7 @@
       "checkoutDefault": "Să încep",
       "learnMore": "Aflați mai multe"
     },
-    "axisPersonal": "Personal",
+    "axisPersonal": "Uz personal",
     "axisPersonalNote": "utilizare individuală",
     "axisCommercial": "Comercial",
     "axisCommercialNote": "muncă, clienți și produse"
@@ -457,7 +456,7 @@
       "ogDescription": "World Monitor: tablou de bord de informații geopolitice în timp real. Hartă live gratuită: conflicte, transport maritim, zboruri, piețe și cyber, cu API și MCP."
     },
     "nav": {
-      "useCases": "Corelații",
+      "useCases": "Cazuri de utilizare",
       "firstFive": "Primele 5 min",
       "depth": "Adâncime",
       "pricing": "Prețuri",
@@ -478,7 +477,7 @@
       "ctaFree": "Gratuit · Fără înregistrare · Se încarcă în secunde",
       "ctaSecondary": "Vedeți cum îl folosesc oamenii ↓",
       "trustUsers": "2M+ utilizatori",
-      "trustOpenSource": "Open source · AGPL-3.0",
+      "trustOpenSource": "Sursă deschisă · AGPL-3.0",
       "screenshotAlt": "Tabloul de bord de inteligență live World Monitor — hartă globală cu straturi de conflict, transport și piață",
       "plateNote": "Capturat din harta în direct — faceți clic pentru a o deschide",
       "trustBuild": "Construiți pe ea:",
@@ -650,13 +649,13 @@
       "title1": "Free este observatorul.",
       "title2": "Pro este sala operațiilor.",
       "sub": "Dashboard-ul este gratuit la $0 — fiecare strat de hartă cu excepția Resilience, fără înregistrare. Pro adaugă stratul decizional.",
-      "freeTitle": "Free",
+      "freeTitle": "Planul Free",
       "freeDesc": "Nivelul gratuit este un produs complet, nu o versiune de probă. Fiecare strat de hartă cu excepția Resilience, toate șase monitoare — fără înregistrare, fără limită de timp de probă.",
       "freeF1": "Toate straturile de hartă, cu excepția Resilience și fluxuri curate",
       "freeF2": "Rezumate țări, puncte fierbinți, scoruri de instabilitate",
       "freeF3": "Puncte critice, cabluri, analiză în cascadă",
       "freeF4": "Pipeline de alerte breaking și liste de monitorizare",
-      "proTitle": "Pro",
+      "proTitle": "Planul Pro",
       "proDesc": "Acționează. Stratul decizional folosit în momentele de mai sus:",
       "proF1": "WM Analyst — chat pe serviciile live, cu citări",
       "proF2": "Scenario engine & Route Explorer — simulează perturbații înainte ca acestea să se producă",
@@ -686,7 +685,7 @@
       "q8": "Am nevoie de un cont?",
       "a8": "Nu. Tabloul de bord funcționează instant fără înregistrare. Un cont este important doar atunci când te actualizezi la Pro sau când vrei ca setările să se sincronizeze pe mai multe dispozitive.",
       "q9": "Este open source?",
-      "a9": "Da — open source sub AGPL-3.0 pe GitHub: citește codul, auto-găzduiește-l sau construiește pe baza lui. Aplicații desktop native pentru Windows, macOS și Linux sunt disponibile, plus o aplicație Android TV pentru afișaje pe perete.",
+      "a9": "Da — open source sub AGPL-3.0 pe GitHub: citește codul, găzduiește-l singur sau construiește pe baza lui. Pro și Pro Business includ chei desktop, deci construcția desktop proprie poate încărca datele cloud Pro; instanțele Docker rulează cu datele proprii. Sunt disponibile și aplicații desktop native pentru Windows, macOS și Linux, plus o aplicație Android TV pentru afișaje de perete.",
       "q10": "De ce World Monitor nu este Palantir?",
       "a10": "Palantir face datele proprii ale unei instituții operaționale în cadrul acesteia. World Monitor pornește de la celălalt capăt: adună, normalizează, corelează și monitorizează datele din domeniul public, apoi publică acel strat de inteligență printr-un tablou de bord gratuit și cod open-source. Sarcini diferite, produse diferite.",
       "q11": "De ce licență World Monitor am nevoie?",
@@ -712,7 +711,16 @@
       "chokepointDesc": "Inspectează starea perturbării, fluxurile de nave și riscul pe {{chokepoints}} pasaje maritime critice.",
       "countryRiskTitle": "Explicați o mișcare de risc-țară",
       "countryRiskDesc": "Urmărește semnalele politice, de securitate, economice și de reziliență din spatele schimbării unei țări, cu reziliență clasificată pentru {{resilienceRanked}} de țări.",
-      "open": "Deschideți dovezi"
+      "open": "Deschideți dovezi",
+      "workflow": "Flux de lucru pas cu pas"
+    },
+    "voices": {
+      "eyebrow": "În cuvintele lor",
+      "title": "Ce spun oamenii despre World Monitor",
+      "sub": "{{users}} de oameni din {{countries}} de țări au folosit World Monitor. Iată ce au spus presa și unii dintre ei.",
+      "translatedJa": "Tradus din japoneză",
+      "prev": "Citatele anterioare",
+      "next": "Mai multe citate"
     }
   },
   "whatsNew": {
@@ -720,13 +728,13 @@
     "title": "Ce e nou în WorldMonitor",
     "subtitle": "Funcții noi din ultimele 30 de zile — corecții și lucrări de infrastructură nu incluse.",
     "proTag": "PRO",
-    "m1": "Index divergență primă fizică — SGE vs COMEX, cu istoric",
-    "m2": "Clasificări vulnerabilitate aprovizionare mărfuri — despicarea dependenței de puncte de strangulare",
-    "m3": "Concentrație producție minerale și baza industrială de apărare",
-    "m4": "Fișe de reziență cu cinci factori și scoruri la nivel indicator",
-    "m5": "Liste de monitorizare personalizate pe canal Telegram",
-    "m6": "Autentificare cu parolă de acces",
-    "m7": "Agenți AI pot gestiona dashboard-ul — panouri, file, straturi hartă și misiuni",
-    "m8": "Pagini de reziență țări mai bogate"
+    "m1": "Perspectiva media — cum relatează presa din fiecare țară despre orice țară, pentru agenți AI și API",
+    "m2": "/verify — o fișă de dovezi pentru orice afirmație, cu verificări de fapte publicate",
+    "m3": "Numărul surselor care confirmă în alerte, rezumate și ferestrele hărții, plus o pagină publică /trust",
+    "m4": "Urmărire automată a atacurilor — riscul unei țări crește sub atac și scade când atacurile încetează",
+    "m5": "Închideri ale spațiului aerian din NOTAM-urile FAA și un strat de hartă cu urgențele aeriene raportate",
+    "m6": "Hartă a activității industriale din datele satelitare NO2 Sentinel-5P",
+    "m7": "Fluxuri de capital pentru 230 de economii și orice pereche de țări, pentru agenți AI și API",
+    "m8": "Panou în terminal și hartă CLI cu zoom — brew install worldmonitor"
   }
 }

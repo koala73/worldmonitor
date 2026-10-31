@@ -2417,7 +2417,9 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.equal(counters.pipelineCalls ?? 0, pipelinesBeforeHit, 'a hit adds no grounding pipelines');
       assert.deepEqual(counters.readKeys.slice(readsBeforeHit).filter(key => !key.startsWith('ci-sebuf:')), [
         'energy:spine:v1:FI', 'resilience:static:FI', 'energy:mix:v1:FI',
-      ], 'a hit keeps only the existing energy-year reads, with no new grounding or evidence reads');
+        // NOTAM airport status keys the cache like the energy years do.
+        'aviation:notam:closures:v2', 'seed-meta:aviation:notam',
+      ], 'a hit keeps only the cache-key reads, with no new grounding or evidence reads');
       assert.doesNotMatch(userPrompts[0], /invented port|protests=3/);
       const irrelevant = 'Source [2]: ' + JSON.stringify({ title: 'Finland wins football final', source: 'Sports', url: 'https://example.com/sport' });
       assert.deepEqual(await read(`${source}\n${irrelevant}\nSource [3]: {malformed`), first,

@@ -175,7 +175,7 @@ If required secrets are missing/disabled:
 - NASA FIRMS: satellite fire detection returns empty state.
 - Wingbits: flight enrichment disabled, heuristic-only flight classification remains.
 - AIS / OpenSky relay: live tracking features are disabled cleanly.
-- World Monitor API key and no Pro sign-in: cloud requests use an anonymous session, so the desktop sees what a signed-out browser sees. Tier-gated and premium routes stay unavailable.
+- No Pro sign-in and no World Monitor key: cloud requests use an anonymous session, so the desktop sees what a signed-out browser sees. Tier-gated and premium routes stay unavailable. A desktop key or API key removes this limit; see [Sign-in and desktop keys](#sign-in-and-desktop-keys).
 
 ## Sidecar
 
@@ -211,7 +211,17 @@ The sidecar employs multiple resilience patterns to maintain data availability w
 
 When a local API handler is missing, throws an error, or returns a 5xx status, the sidecar transparently proxies the request to the cloud deployment. Endpoints that fail are marked as `cloudPreferred` — subsequent requests skip the local handler and go directly to the cloud until the sidecar is restarted. Origin and Referer headers are stripped before proxying to maintain server-to-server parity.
 
-Cloud requests carry the strongest credential the desktop has. A configured `WORLDMONITOR_API_KEY` is sent as `X-WorldMonitor-Key`, and a signed-in Pro desktop also forwards its session bearer. A request with no API key carries an anonymous session that the sidecar mints and caches, the same kind a browser holds. The gateway accepts it on public routes and refuses it on tier-gated and premium ones, so a signed-out desktop reaches exactly what a signed-out browser reaches.
+Cloud requests carry the strongest credential the desktop has. A configured `WORLDMONITOR_API_KEY` is sent as `X-WorldMonitor-Key`, and a signed-in Pro desktop also forwards its session bearer. A request with neither carries an anonymous session that the sidecar mints and caches, the same kind a browser holds. The gateway accepts it on public routes and refuses it on tier-gated and premium ones, so a signed-out desktop reaches exactly what a signed-out browser reaches.
+
+### Sign-in and desktop keys
+
+A key is not required to run the app. There are three ways to get Pro cloud data on the desktop:
+
+- **Sign in.** A Pro or Pro Business subscriber signs in from the desktop app. The app forwards the session bearer with cloud requests.
+- **Desktop key.** Pro includes 2 desktop keys and Pro Business 3. Paste one into **Settings → Overview → Desktop key**; it is stored in the OS keychain. It works in the official app and in self-built desktop copies, with no sign-in. It is for the subscriber only, it has a per-account daily and per-minute ceiling, and it does not reach `/api/v2/`, shipping webhooks, MCP via key, or OAuth key grants. See [Desktop keys](/api-keys#desktop-keys).
+- **API key.** API Starter and API Business keys also work in the desktop app.
+
+With none of these, the app uses an anonymous session and the local sidecar. Docker self-host copies run on their own data and never call the cloud.
 
 ## Observability
 

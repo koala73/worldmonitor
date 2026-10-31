@@ -5,6 +5,7 @@ import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
 import { timingSafeEqualStrings } from "./lib/svixVerify";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
+import { briefOnlyUserIds, type BriefRuleFlags } from "./alertRules";
 import {
   CHECKOUT_RATE_LIMITED,
   isCheckoutTimedOutOutcome,
@@ -15,6 +16,7 @@ import { resendWebhookHandler } from "./resendWebhookHandler";
 import { clerkWebhookHandler } from "./accountDeletion/clerkWebhook";
 import { channelTypeValidator, USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
+import { normalizeAcquisitionSource } from "../shared/acquisition-source";
 import { verifyDunningPortalToken } from "./lib/identitySigning";
 import { buildUnsubscribeUrl, EMAIL_UNSUBSCRIBE_PATH, verifyUnsubscribeToken } from "./lib/emailUnsubscribe";
 import {
@@ -155,6 +157,45 @@ function extractConvexErrorCode(err: unknown): string | null {
     if (typeof code === "string") return code;
   }
   return null;
+}
+
+// Row-shape bounds every alertRules writer enforces (convex/alertRules.ts
+// assertRuleShape / assertRuleSlotAvailable). Surfaced as a 400 with the
+// machine-readable code so the edge handler and the client can route on it.
+const ALERT_RULE_SHAPE_CODES = new Set([
+  "VARIANT_INVALID",
+  "EVENT_TYPES_INVALID",
+  "CHANNELS_INVALID",
+  "RULE_LIMIT_EXCEEDED",
+]);
+
+function alertRuleValidationResponse(err: unknown, passthroughCodes: readonly string[] = []): Response | null {
+  const code = extractConvexErrorCode(err);
+  if (!code || (!ALERT_RULE_SHAPE_CODES.has(code) && !passthroughCodes.includes(code))) return null;
+  const parsed = parseConvexErrorData(err);
+  const message = (parsed && typeof parsed === "object")
+    ? (parsed as { message?: string }).message ?? ""
+    : "";
+  return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
+}
+
+// Walks every page of a paginated internal query. The cross-tenant alertRules
+// reads are byte-bounded per page so one oversized row cannot push a single
+// transaction past the Convex read limit; the HTTP action stitches the pages.
+async function collectPages<T>(
+  fetchPage: (cursor: string | null) => Promise<{ page: T[]; continueCursor: string; isDone: boolean }>,
+): Promise<T[]> {
+  const out: T[] = [];
+  let cursor: string | null = null;
+  // 10,000 pages × 256 rows is far beyond any plausible table size; the guard
+  // only turns a cursor bug into an error instead of an unbounded loop.
+  for (let guard = 0; guard < 10_000; guard++) {
+    const result = await fetchPage(cursor);
+    out.push(...result.page);
+    if (result.isDone) return out;
+    cursor = result.continueCursor;
+  }
+  throw new Error("paginated read did not terminate");
 }
 
 function readConvexErrorNumber(err: unknown, field: string): number | null {
@@ -390,7 +431,111 @@ export async function internalEntitlementsHttpHandler(
     });
 }
 
+export async function internalAiRoutingPolicyHttpHandler(
+  ctx: ActionCtx,
+  request: Request,
+): Promise<Response> {
+  const providedSecret = request.headers.get("x-convex-shared-secret") ?? "";
+  const expectedSecret = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+  if (!expectedSecret || !(await timingSafeEqualStrings(providedSecret, expectedSecret))) {
+    return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  }
+  const body = await parseJsonObjectBody<{ userId?: unknown }>(request);
+  if (!body) return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+  if (typeof body.userId !== "string" || body.userId.length === 0 || body.userId.length > 256) {
+    return Response.json({ error: "MISSING_USER_ID" }, { status: 400 });
+  }
+  const policy = await ctx.runQuery(internal.entitlements.getAiRoutingPolicyByUserId, { userId: body.userId });
+  return Response.json({ policy }, { status: 200 });
+}
+
+/**
+ * Railway delivery jobs (notification relay, digest seeder) read a user's AI
+ * routing policy before an LLM call that carries that user's data
+ * (scripts/lib/ai-routing-policy.cjs). Delivery-scoped relay secret only.
+ */
+export async function relayAiRoutingPolicyHttpHandler(
+  ctx: ActionCtx,
+  request: Request,
+): Promise<Response> {
+  const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+  if (unauthorized) return unauthorized;
+  const body = await parseJsonObjectBody<{ userId?: unknown }>(request);
+  if (!body) return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+  if (typeof body.userId !== "string" || body.userId.length === 0 || body.userId.length > 256) {
+    return Response.json({ error: "MISSING_USER_ID" }, { status: 400 });
+  }
+  const policy = await ctx.runQuery(internal.entitlements.getAiRoutingPolicyByUserId, { userId: body.userId });
+  return Response.json({ policy }, { status: 200 });
+}
+
 const http = httpRouter();
+
+// The gateway has verified both the JWT and the live Clerk session.
+http.route({
+  path: "/relay/api-keys/create",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
+    if (unauthorized) return unauthorized;
+    const body = await parseJsonObjectBody<Record<string, unknown>>(request);
+    if (!body || typeof body.userId !== "string" || !body.userId
+      || typeof body.name !== "string" || typeof body.keyPrefix !== "string" || typeof body.keyHash !== "string"
+      || (body.scopes !== undefined && (!Array.isArray(body.scopes) || !body.scopes.every(s => typeof s === "string")))
+      || (body.keyKind !== undefined && body.keyKind !== "api" && body.keyKind !== "desktop")) {
+      return Response.json({ error: "INVALID_REQUEST" }, { status: 400 });
+    }
+    try {
+      const result = await ctx.runMutation(internal.apiKeys.createApiKeyForUser, {
+        userId: body.userId, name: body.name, keyPrefix: body.keyPrefix, keyHash: body.keyHash,
+        scopes: body.scopes as string[] | undefined,
+        keyKind: body.keyKind as "api" | "desktop" | undefined,
+      });
+      return Response.json(result);
+    } catch (error) {
+      const code = extractConvexErrorCode(error);
+      if (code) {
+        const status = code.endsWith("LIMIT_REACHED") ? 409
+          : code.startsWith("INVALID_") || code === "DUPLICATE_KEY" ? 400 : 403;
+        return Response.json({ error: code }, { status });
+      }
+      return Response.json({ error: "INTERNAL_ERROR" }, { status: 500 });
+    }
+  }),
+});
+
+// The gateway has verified both the JWT and the live Clerk session.
+http.route({
+  path: "/relay/embed-keys/create",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
+    if (unauthorized) return unauthorized;
+    const body = await parseJsonObjectBody<Record<string, unknown>>(request);
+    if (!body || typeof body.userId !== "string" || !body.userId
+      || typeof body.name !== "string" || typeof body.keyPrefix !== "string" || typeof body.keyHash !== "string"
+      || (body.clerkPlan !== undefined && body.clerkPlan !== "free" && body.clerkPlan !== "pro")
+      || (body.allowedOrigins !== undefined && (!Array.isArray(body.allowedOrigins) || !body.allowedOrigins.every(s => typeof s === "string")))) {
+      return Response.json({ error: "INVALID_REQUEST" }, { status: 400 });
+    }
+    try {
+      const result = await ctx.runMutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: body.userId, name: body.name, keyPrefix: body.keyPrefix, keyHash: body.keyHash,
+        clerkPlan: body.clerkPlan as "free" | "pro" | undefined,
+        allowedOrigins: body.allowedOrigins as string[] | undefined,
+      });
+      return Response.json(result);
+    } catch (error) {
+      const code = extractConvexErrorCode(error);
+      if (code) {
+        const status = code === "KEY_LIMIT_REACHED" ? 409
+          : code.startsWith("INVALID_") || code === "DUPLICATE_KEY" || code === "TOO_MANY_ORIGINS" ? 400 : 403;
+        return Response.json({ error: code }, { status });
+      }
+      return Response.json({ error: "INTERNAL_ERROR" }, { status: 500 });
+    }
+  }),
+});
 
 // Only the edge contact handler may write leads after its public abuse checks.
 http.route({
@@ -443,6 +588,12 @@ http.route({
   path: "/api/internal-entitlements",
   method: "POST",
   handler: httpAction(internalEntitlementsHttpHandler),
+});
+
+http.route({
+  path: "/api/internal-ai-routing-policy",
+  method: "POST",
+  handler: httpAction(internalAiRoutingPolicyHttpHandler),
 });
 
 http.route({
@@ -1148,13 +1299,8 @@ http.route({
           if (code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED" || code === "CHOKEPOINTS_INVALID") {
             return new Response(JSON.stringify({ error: code }), { status: 400, headers: { "Content-Type": "application/json" } });
           }
-          if (code === "INCOMPATIBLE_DELIVERY") {
-            const parsed = parseConvexErrorData(err);
-            const message = (parsed && typeof parsed === "object")
-              ? (parsed as { message?: string }).message ?? ""
-              : "";
-            return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
-          }
+          const validation = alertRuleValidationResponse(err, ["INCOMPATIBLE_DELIVERY"]);
+          if (validation) return validation;
           throw err;
         }
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -1168,16 +1314,22 @@ http.route({
         if (body.quietHoursOverride !== undefined && !VALID_OVERRIDE.has(body.quietHoursOverride)) {
           return new Response(JSON.stringify({ error: "invalid quietHoursOverride" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        await ctx.runMutation((internal as any).alertRules.setQuietHoursForUser, {
-          userId,
-          variant: body.variant,
-          quietHoursEnabled: body.quietHoursEnabled,
-          quietHoursStart: body.quietHoursStart,
-          quietHoursEnd: body.quietHoursEnd,
-          quietHoursTimezone: body.quietHoursTimezone,
-          quietHoursOverride: body.quietHoursOverride as "critical_only" | "silence_all" | "batch_on_wake" | undefined,
-          countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
-        });
+        try {
+          await ctx.runMutation((internal as any).alertRules.setQuietHoursForUser, {
+            userId,
+            variant: body.variant,
+            quietHoursEnabled: body.quietHoursEnabled,
+            quietHoursStart: body.quietHoursStart,
+            quietHoursEnd: body.quietHoursEnd,
+            quietHoursTimezone: body.quietHoursTimezone,
+            quietHoursOverride: body.quietHoursOverride as "critical_only" | "silence_all" | "batch_on_wake" | undefined,
+            countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
+          });
+        } catch (err: unknown) {
+          const validation = alertRuleValidationResponse(err, ["COUNTRIES_LIMIT_EXCEEDED"]);
+          if (validation) return validation;
+          throw err;
+        }
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
@@ -1189,14 +1341,20 @@ http.route({
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        await ctx.runMutation((internal as any).alertRules.setDigestSettingsForUser, {
-          userId,
-          variant: body.variant,
-          digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly",
-          digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
-          digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
-          countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
-        });
+        try {
+          await ctx.runMutation((internal as any).alertRules.setDigestSettingsForUser, {
+            userId,
+            variant: body.variant,
+            digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly",
+            digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
+            digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
+            countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
+          });
+        } catch (err: unknown) {
+          const validation = alertRuleValidationResponse(err, ["COUNTRIES_LIMIT_EXCEEDED", "INCOMPATIBLE_DELIVERY"]);
+          if (validation) return validation;
+          throw err;
+        }
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
@@ -1258,9 +1416,10 @@ http.route({
           const message = (parsed && typeof parsed === "object")
             ? (parsed as { message?: string }).message ?? ""
             : "";
-          if (code === "INCOMPATIBLE_DELIVERY" || code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED" || code === "CHOKEPOINTS_INVALID") {
-            return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
-          }
+          const validation = alertRuleValidationResponse(err, [
+            "INCOMPATIBLE_DELIVERY", "TICKERS_LIMIT_EXCEEDED", "COUNTRIES_LIMIT_EXCEEDED", "CHOKEPOINTS_INVALID",
+          ]);
+          if (validation) return validation;
           if (code === "PRO_REQUIRED") {
             // 402 Payment Required — the canonical HTTP status for paywall-gated
             // content. Client reads `error: "PRO_REQUIRED"` to route to the
@@ -1291,8 +1450,31 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
-    const rules = await ctx.runQuery((internal as any).alertRules.getDigestRules);
+    const rules = await collectPages((cursor) =>
+      ctx.runQuery((internal as any).alertRules.getDigestRules, { cursor }));
     return new Response(JSON.stringify(rules), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// Service-to-service: the digest cron fetches paid users who need a default
+// in-app brief (no digest rule of their own). Returns user ids only.
+http.route({
+  path: "/relay/brief-only-users",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
+    // One clock read for the whole scan: every page must run the same query.
+    const now = Date.now();
+    const [paidUserIds, flags] = await Promise.all([
+      collectPages<string>((cursor) => ctx.runQuery((internal as any).alertRules.listPaidUserIds, { cursor, now })),
+      collectPages<BriefRuleFlags>((cursor) => ctx.runQuery((internal as any).alertRules.listBriefRuleFlags, { cursor })),
+    ]);
+    const userIds = briefOnlyUserIds(paidUserIds, flags);
+    return new Response(JSON.stringify(userIds), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -1305,16 +1487,20 @@ http.route({
 // the cross-tenant scan is never reachable anonymously. `?enabled=false`
 // selects the disabled set; defaults to enabled=true (all the relay ever asks).
 http.route({
+  path: "/relay/ai-routing-policy",
+  method: "POST",
+  handler: httpAction(relayAiRoutingPolicyHttpHandler),
+});
+
+http.route({
   path: "/relay/enabled-rules",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
     const enabled = new URL(request.url).searchParams.get("enabled") !== "false";
-    const rules = await ctx.runQuery(
-      (internal as any).alertRules.getByEnabled,
-      { enabled },
-    );
+    const rules = await collectPages((cursor) =>
+      ctx.runQuery((internal as any).alertRules.getByEnabled, { enabled, cursor }));
     return new Response(JSON.stringify(rules), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -1908,6 +2094,7 @@ http.route({
       discountCode?: string;
       referralCode?: string;
       attributionSource?: string;
+      acquisition?: unknown;
       bypassPendingGuard?: boolean;
     }>(request);
     if (!body) {
@@ -1936,6 +2123,7 @@ http.route({
           discountCode: body.discountCode,
           referralCode: body.referralCode,
           attributionSource: body.attributionSource,
+          acquisition: normalizeAcquisitionSource(body.acquisition) ?? undefined,
           bypassPendingGuard: body.bypassPendingGuard,
         },
       );
@@ -2359,8 +2547,25 @@ http.route({
   path: "/relay/intel-history",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    if (await intelRelayUnauthorized(request)) {
-      return intelJson({ error: "UNAUTHORIZED" }, 401);
+    const startedAt = Date.now();
+    const phase = (name: string, status?: number) => {
+      console.info(JSON.stringify({
+        event: "intel_history_phase",
+        phase: name,
+        elapsedMs: Math.max(0, Date.now() - startedAt),
+        ...(status === undefined ? {} : { status }),
+      }));
+    };
+    const respond = (body: unknown, status: number) => {
+      const response = intelJson(body, status);
+      phase("response_ready", status);
+      return response;
+    };
+    phase("handler_enter");
+    const unauthorized = await intelRelayUnauthorized(request);
+    phase("auth_complete");
+    if (unauthorized) {
+      return respond({ error: "UNAUTHORIZED" }, 401);
     }
 
     const body = await parseJsonObjectBody<{
@@ -2369,8 +2574,9 @@ http.route({
       runId?: unknown;
       records?: unknown;
     }>(request);
+    phase("body_complete");
     if (!body) {
-      return intelJson({ error: "INVALID_JSON" }, 400);
+      return respond({ error: "INVALID_JSON" }, 400);
     }
 
     const missing: string[] = [];
@@ -2385,13 +2591,13 @@ http.route({
       }
     }
     if (missing.length > 0) {
-      return intelJson({ error: "MISSING_FIELDS", required: missing }, 400);
+      return respond({ error: "MISSING_FIELDS", required: missing }, 400);
     }
     if (!Array.isArray(body.records) || body.records.length === 0) {
-      return intelJson({ error: "MISSING_FIELDS", required: ["records"] }, 400);
+      return respond({ error: "MISSING_FIELDS", required: ["records"] }, 400);
     }
     if (body.records.length > INTEL_HISTORY_MAX_APPEND_RECORDS) {
-      return intelJson(
+      return respond(
         {
           error: "TOO_MANY_RECORDS",
           max: INTEL_HISTORY_MAX_APPEND_RECORDS,
@@ -2407,7 +2613,7 @@ http.route({
     for (let i = 0; i < body.records.length; i++) {
       const validated = validateIntelHistoryRecord(body.records[i]);
       if (!validated.ok) {
-        return intelJson(
+        return respond(
           { error: "INVALID_RECORD", index: i, reason: validated.reason },
           400,
         );
@@ -2415,17 +2621,21 @@ http.route({
       records.push(validated.record);
     }
 
+    phase("validation_complete");
     try {
+      phase("mutation_started");
       const result = await ctx.runMutation(internal.intelHistory.append, {
         domain: body.domain as string,
         resource: body.resource as string,
         runId: body.runId as string,
         records,
       });
-      return intelJson(result, 200);
+      phase("mutation_complete");
+      return respond(result, 200);
     } catch (err) {
+      phase("mutation_failed");
       const msg = err instanceof Error ? err.message : "intel history append failed";
-      return intelJson({ error: msg }, 500);
+      return respond({ error: msg }, 500);
     }
   }),
 });

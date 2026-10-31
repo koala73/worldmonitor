@@ -13,13 +13,22 @@
  * use API-key-only auth.
  */
 
-import { validateBearerToken } from '../auth-session';
+import { validateBearerToken, type ValidateBearerTokenOptions } from '../auth-session';
 import { renderBillingVerificationDenial, unverifiableEntitlementDenial } from './entitlement-check';
 
 export interface ClerkSession {
   userId: string;
   orgId: string | null;
   role: 'free' | 'pro';
+  /**
+   * Clerk `sid`; null when the token carries none (machine tokens). A route
+   * that trades the bearer for a credential outliving it (desktop sign-in
+   * ticket, Pro MCP grant) must pass this to `verifyClerkSessionActive` —
+   * after its rate limit — since signature verification alone would let a
+   * revoked session (sign-out, "sign out other devices", admin revoke) be
+   * laundered into a fresh credential until `exp`.
+   */
+  sessionId?: string | null;
 }
 
 export interface UnverifiableSession {
@@ -43,12 +52,15 @@ export function sessionVerificationUnavailableResponse(headers: Record<string, s
  *
  * Verification errors fail closed and remain retryable.
  */
-export async function resolveClerkSession(request: Request): Promise<ClerkSession | UnverifiableSession | null> {
+export async function resolveClerkSession(
+  request: Request,
+  options: ValidateBearerTokenOptions = {},
+): Promise<ClerkSession | UnverifiableSession | null> {
   try {
     const authHeader = request.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) return null;
 
-    const session = await validateBearerToken(authHeader.slice(7));
+    const session = await validateBearerToken(authHeader.slice(7), options);
     if (!session.valid) return session.reason === 'unverifiable' ? UNVERIFIABLE : null;
     if (!session.userId) return null;
 
@@ -56,6 +68,7 @@ export async function resolveClerkSession(request: Request): Promise<ClerkSessio
       userId: session.userId,
       orgId: session.orgId ?? null,
       role: session.role ?? 'free',
+      sessionId: session.sessionId ?? null,
     };
   } catch (err) {
     // sentry-coverage-ok Verification failures become retryable 503 responses; no credential failure is inferred.
@@ -74,4 +87,21 @@ export async function resolveSessionUserId(request: Request): Promise<string | R
   const session = await resolveClerkSession(request);
   if (session && 'reason' in session) return sessionVerificationUnavailableResponse();
   return session?.userId ?? null;
+}
+
+/**
+ * The bearer's identity from the local JWKS check alone — no outbound call —
+ * as the retryable-denial contract: null = 401, Response = the token could not
+ * be verified. Cheap enough to gate a per-user rate limiter; a route that then
+ * needs the session live calls `verifyClerkSessionActive` on `sessionId` after
+ * the limiter, so a limited caller never spends the shared Clerk quota.
+ */
+export async function resolveVerifiedClerkSession(request: Request): Promise<ClerkSession | Response | null> {
+  // No plan lookup: these routes never read `role`, and a standard session
+  // token (no `plan` claim) would otherwise cost one Clerk call per request
+  // ahead of the limiter. Only the cached JWKS fetch remains.
+  const session = await resolveClerkSession(request, { resolvePlan: false });
+  if (!session) return null;
+  if ('reason' in session) return sessionVerificationUnavailableResponse();
+  return session;
 }

@@ -1,6 +1,7 @@
 import { clearTelegramIntelCache } from '@/services/telegram-intel';
 import { subscribeRuntimeConfig } from '@/services/runtime-config';
 import type { AppContext, AppModule } from '@/app/app-context';
+import type { LoadAllDataTrigger } from '@/app/viewport-hydration-ledger';
 import { CORRELATION_DOMAINS } from '@/types/correlation';
 import type { CorrelationPanel } from '@/components/CorrelationPanel';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
@@ -421,7 +422,7 @@ export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
   openCountryBrief: (code: string) => void;
   openSearch: () => void;
-  loadAllData: (forceAll?: boolean) => Promise<void>;
+  loadAllData: (forceAll?: boolean, trigger?: LoadAllDataTrigger) => Promise<void>;
   primeVisiblePanelData: () => void;
   updateMonitorResults: () => void;
   loadSecurityAdvisories?: () => Promise<void>;
@@ -2970,6 +2971,15 @@ export class PanelLayoutManager implements AppModule {
       return p;
     });
 
+    this.lazyImportedPanel('ukmto-incidents', () => import('@/components/UkmtoIncidentsPanel'), 'UkmtoIncidentsPanel', (UkmtoIncidentsPanel) => {
+      const panel = new UkmtoIncidentsPanel();
+      panel.setLocationClickHandler((lat: number, lon: number) => {
+        if (this.ctx.isMobile) this.revealMobileMap();
+        this.ctx.map?.setCenter(lat, lon, 6);
+      });
+      return panel;
+    });
+
     this.lazyImportedPanel('climate', () => import('@/components/ClimateAnomalyPanel'), 'ClimateAnomalyPanel', (ClimateAnomalyPanel) => {
       const p = new ClimateAnomalyPanel();
       p.setZoneClickHandler((lat: number, lon: number) => { this.ctx.map?.setCenter(lat, lon, 4); });
@@ -3557,7 +3567,7 @@ export class PanelLayoutManager implements AppModule {
 
   private scheduleLoadAllData(phase: HydrationSchedulePhase = 'near'): void {
     if (typeof window === 'undefined') {
-      void this.callbacks.loadAllData();
+      void this.callbacks.loadAllData(false, 'viewport');
       return;
     }
     const mark = (label: string) => {
@@ -3572,7 +3582,7 @@ export class PanelLayoutManager implements AppModule {
         this.scheduledLoadAllIdle = idle(() => {
           this.scheduledLoadAllIdle = null;
           mark('wm:hydration:near-trigger');
-          void this.callbacks.loadAllData();
+          void this.callbacks.loadAllData(false, 'viewport');
         }, { timeout: 300 });
         return;
       }
@@ -3586,7 +3596,7 @@ export class PanelLayoutManager implements AppModule {
     this.scheduledLoadAllRaf = window.requestAnimationFrame(() => {
       this.scheduledLoadAllRaf = null;
       mark(`wm:hydration:${phase}-trigger`);
-      void this.callbacks.loadAllData();
+      void this.callbacks.loadAllData(false, 'viewport');
     });
   }
 

@@ -2,6 +2,7 @@ import { convexTest } from "convex-test";
 import { expect, test, describe } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
+import { getFeaturesForPlan } from "../lib/entitlements";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -857,6 +858,14 @@ describe("multi-active-sub guard", () => {
       userId: "user_cache_optional_features_shape",
       planKey: "pro_monthly",
       features: { ...baseFeatures, dataExport: true, embedAccess: true },
+      validUntil: Date.now() + DAY_MS,
+    });
+    // Desktop-key fields (plan 2026-10-25-001): the catalog's complete Pro
+    // features object now carries them at the top level and in planLimits.
+    await t.action(internal.payments.cacheActions.syncEntitlementCache, {
+      userId: "user_cache_desktop_key_shape",
+      planKey: "pro_monthly",
+      features: getFeaturesForPlan("pro_monthly"),
       validUntil: Date.now() + DAY_MS,
     });
   });

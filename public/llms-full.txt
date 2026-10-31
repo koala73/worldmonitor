@@ -3,7 +3,7 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-> Version: 2.11.2 · Last updated: 2026-10-20
+> Version: 2.11.6 · Last updated: 2026-10-25
 
 World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux. It is live in 190+ countries, with structural resilience ranked for 170 of 196 countries.
 
@@ -126,7 +126,7 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 
 - **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json · Registry entries: `app.worldmonitor/mcp` in the official MCP registry (registry.modelcontextprotocol.io) · https://smithery.ai/servers/worldmonitor/wm-mcp · https://mcp.so/server/world-monitor
 - **REST API.** Base `https://api.worldmonitor.app`. API key required. Send the `X-WorldMonitor-Key` header. Use `https://www.worldmonitor.app/sandbox/index.json` for key-free examples. The OpenAPI spec is at https://www.worldmonitor.app/openapi.yaml.
-- **CLI:** `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the `worldmonitor` command. A zero-dependency, MCP-first client for the tools and REST API above — `worldmonitor call get_sources` needs no key; pass `--api-key` for every other data tool. https://www.npmjs.com/package/worldmonitor
+- **CLI:** `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the `worldmonitor` command; `brew install worldmonitor` installs it with Homebrew (https://formulae.brew.sh/formula/worldmonitor). A zero-dependency, MCP-first client for the tools and REST API above — `worldmonitor call get_sources` needs no key; pass `--api-key` for every other data tool. https://www.npmjs.com/package/worldmonitor
 - **Agent Skills:** discovery manifest at https://worldmonitor.app/.well-known/agent-skills/index.json · install via `npx skills add koala73/worldmonitor` (https://skills.sh/koala73/worldmonitor)
 - **Agent Plugin metadata.** https://www.worldmonitor.app/plugin.json describes the Agent Plugins 1.0.0 repository package.
 - **Keys, plans & limits:** https://www.worldmonitor.app/pricing.md (markdown) · live JSON catalog `GET https://www.worldmonitor.app/api/product-catalog` (public, no key) · auth matrix https://www.worldmonitor.app/docs/usage-auth · rate limits https://www.worldmonitor.app/docs/usage-rate-limits.md · issue a key at https://www.worldmonitor.app/pro
@@ -302,7 +302,7 @@ Unique layers: stock exchanges, financial centers, and central-bank and supranat
 <a id="corpus-data-sources"></a>
 ## Data Sources
 
-The live inventory currently covers 578+ observed upstream hosts. The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) maps coverage by domain, and the [source attribution ledger](https://www.worldmonitor.app/docs/source-attribution) records each host's observed surface, license posture, required attribution, and review status.
+The live inventory currently covers 790 attributed providers across 805 observed source hosts. The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) maps coverage by domain, and the [source attribution ledger](https://www.worldmonitor.app/docs/source-attribution) records each host's observed surface, license posture, required attribution, and review status.
 
 - ACLED (Armed Conflict Location & Event Data), self-hosted deployments with ACLED credentials only: Protests, riots, conflicts — 30-day window, tokenized API
 - GDELT (Global Database of Events, Language, and Tone): Geo-events, protest keywords, topic feeds
@@ -433,7 +433,7 @@ The sections below are produced by `npm run build:llms-full` from the source cat
 <a id="corpus-source-provider-directory"></a>
 ## Source provider directory
 
-World Monitor publishes 773 named providers across 18 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
+World Monitor publishes 790 named providers across 18 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
 
 - [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 40 providers.
 - [Military & Strategic](https://www.worldmonitor.app/sources/military/): 22 providers.
@@ -447,12 +447,12 @@ World Monitor publishes 773 named providers across 18 source catalog pages. Each
 - [News & OSINT — page 8](https://www.worldmonitor.app/sources/news/page/8/): 52 providers.
 - [Finance & Economics](https://www.worldmonitor.app/sources/finance/): 60 providers.
 - [Finance & Economics — page 2](https://www.worldmonitor.app/sources/finance/page/2/): 6 providers.
-- [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 23 providers.
-- [Infrastructure & Cyber](https://www.worldmonitor.app/sources/infrastructure/): 52 providers.
-- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 46 providers.
-- [Aviation & Airspace](https://www.worldmonitor.app/sources/aviation/): 14 providers.
-- [China Coverage](https://www.worldmonitor.app/sources/china/): 12 providers.
-- [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 26 providers.
+- [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 24 providers.
+- [Infrastructure & Cyber](https://www.worldmonitor.app/sources/infrastructure/): 53 providers.
+- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 48 providers.
+- [Aviation & Airspace](https://www.worldmonitor.app/sources/aviation/): 15 providers.
+- [China Coverage](https://www.worldmonitor.app/sources/china/): 14 providers.
+- [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 36 providers.
 
 <a id="corpus-comparisons"></a>
 ## Comparisons
@@ -820,13 +820,14 @@ tier, but `flowEstimate` is absent until a baseline-backed flow model is added.
 <a id="corpus-live-transit-counts-and-coverage"></a>
 ## Live transit counts and coverage
 
-The live transit counter uses AIS entry and exit reports for the same vessel.
-The vessel must remain inside the monitored area for at least five minutes.
-A crossing is recorded at the first report outside the area that arrives
-within six hours of the vessel's last report inside it. Reports often arrive in
-bursts, so a vessel can be silent for most of that time.
-Counts cover the preceding 24 hours. They are observed crossings, not a census
-of all traffic. Missing entry or exit reports prevent a measurement.
+The live transit counter uses two gate areas for each chokepoint, one on each
+side of the narrows. The gates cover the shipping lanes and keep clear of the
+nearby ports and anchorages. A crossing is recorded when a vessel reported in
+one gate is next reported in the opposite gate within 18 hours. Traffic that
+stays on one side, including port calls, anchorage moves and ferries, is not
+counted. Reports often arrive in bursts, so a vessel can be silent for most of
+that time. Counts cover the preceding 24 hours. They are observed crossings, not
+a census of all traffic. A vessel not reported in both gates is not counted.
 PortWatch history and week-over-week movement are separate inputs and do not
 fill a missing live count.
 
@@ -843,8 +844,9 @@ There is no claim that AIS coverage is permanently unavailable there.
 The `chokepointTransits` health check counts canonical waterways with observed
 crossings, out of 13. Its floor is five, the coverage in the September 9, 2026
 published pulse. Fewer than five produces `COVERAGE_PARTIAL`; zero produces
-`EMPTY_DATA`. The existing Seed Freshness Monitor checks every 15 minutes and
-reports incident transitions. A fresh write of 13 empty rows cannot satisfy
+`EMPTY_DATA`. Either status appears in `checks.chokepointTransits.status` (and
+the compact `problems` entry), turns the top-level `dataStatus` to `DEGRADED`
+or `CRITICAL`, and opens one Sentry incident when it first appears. A fresh write of 13 empty rows cannot satisfy
 this coverage check. The raw cache and seed metadata include the missing ids.
 
 <a id="corpus-live-flow"></a>
@@ -1313,6 +1315,8 @@ Transparency matters. Here is where the data comes from:
 - **Critical minerals**: [USGS](https://www.usgs.gov/centers/national-minerals-information-center) mineral commodity data with HHI calculations
 
 All sources are public. No proprietary data feeds. No paywall.
+
+For vessel-level research, read [how to assess AIS tracking accuracy](/blog/posts/ais-vessel-tracking-accuracy/) before treating a position, destination field or transmission gap as evidence of a port visit.
 
 <a id="corpus-frequently-asked-questions-track-trade-routes-chokepoints-and-freight-costs"></a>
 ## Frequently Asked Questions (Track Trade Routes, Chokepoints, and Freight Costs)

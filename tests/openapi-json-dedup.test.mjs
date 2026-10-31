@@ -28,6 +28,7 @@ import {
   dropDefaultParameterRequired,
   dropUnreferencedSecuritySchemes,
   shortenGeneratedSuccessDescriptions,
+  trimResponseExampleLists,
 } from '../scripts/build-openapi-json.mjs';
 import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
 
@@ -1000,7 +1001,7 @@ describe('public OpenAPI dedupe (real bundle)', () => {
     // #9093 adds two POST operations to the YAML bundle; only submit carries
     // the 2 idempotency headers (review is exempt from replay).
     assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 41 });
-    assert.equal(int64Stats.replacedRefs, 50);
+    assert.equal(int64Stats.replacedRefs, 53);
     // Described int64 fields (own comment + generated warning) keep their
     // comment beside the shared $ref; a regression to zero would silently give
     // back ~4 KB of the scanner budget.
@@ -1327,11 +1328,39 @@ describe('JSON-only description and parameter compaction', () => {
     assert.equal(stats.shortened, 1);
   });
 
-  it('all three passes engage on the real bundle', () => {
-    const { json, softBreakStats, defaultRequiredStats, successDescriptionStats } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+  it('keeps one item of each object list in a response example, and leaves scalar lists and schemas alone', () => {
+    const example = {
+      rows: [{ id: 'a', tags: [{ k: 1 }, { k: 2 }] }, { id: 'b' }],
+      bbox: [1, 2, 3, 4],
+      empty: [],
+    };
+    const spec = {
+      paths: {
+        '/a': {
+          get: {
+            responses: {
+              200: { description: 'OK', content: { 'application/json': { example: structuredClone(example), schema: { type: 'object', example: structuredClone(example) } } } },
+              202: { $ref: '#/components/responses/R' },
+            },
+          },
+        },
+      },
+      components: { responses: { R: { description: 'OK', content: { 'application/json': { example: structuredClone(example) } } } } },
+    };
+    const stats = trimResponseExampleLists(spec);
+    const served = spec.paths['/a'].get.responses[200].content['application/json'];
+    assert.deepEqual(served.example, { rows: [{ id: 'a', tags: [{ k: 1 }] }], bbox: [1, 2, 3, 4], empty: [] });
+    assert.deepEqual(served.schema.example, example, 'schema examples left alone');
+    assert.deepEqual(spec.components.responses.R.content['application/json'].example, example, 'components left alone');
+    assert.equal(stats.trimmed, 2);
+  });
+
+  it('all four passes engage on the real bundle', () => {
+    const { json, softBreakStats, defaultRequiredStats, successDescriptionStats, exampleListStats } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
     assert.ok(softBreakStats.collapsed >= 500, `soft breaks collapsed: ${softBreakStats.collapsed}`);
     assert.ok(defaultRequiredStats.dropped >= 200, `default required dropped: ${defaultRequiredStats.dropped}`);
     assert.ok(successDescriptionStats.shortened >= 200, `success descriptions shortened: ${successDescriptionStats.shortened}`);
     assert.equal(json.includes('"Successful response"'), false, 'no generated success description survives');
+    assert.ok(exampleListStats.trimmed >= 5, `example lists trimmed: ${exampleListStats.trimmed}`);
   });
 });

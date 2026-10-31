@@ -79,10 +79,12 @@ export declare function aggregateThreats(
 
 export declare function clusterNewsCore(
   items: NewsItemCore[],
-  getSourceTier: (source: string) => number
+  getSourceTier: (source: string) => number,
+  tokenizeTitle?: (title: string) => Set<string>
 ): ClusteredEventCore[];
 
 export declare function topClusterKeywords(
   cluster: Pick<ClusteredEventCore, 'allItems'>,
-  limit?: number
+  limit?: number,
+  tokenizeTitle?: (title: string) => Set<string>
 ): string[];

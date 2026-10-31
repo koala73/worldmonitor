@@ -85,6 +85,10 @@ async function stubClerkModule(
         };
         export async function initClerk() {}
         export function getClerkToken() { return Promise.resolve(user ? 'stub-jwt-token' : null); }
+        // The grant page sends the STANDARD session token (it carries \`sid\`,
+        // which /api/internal/mcp-grant-mint checks for liveness); a missing
+        // export here fails ESM linking and the page never boots.
+        export function getClerkSessionToken() { return Promise.resolve(user ? 'stub-jwt-token' : null); }
         export function getCurrentClerkUser() { return user; }
         export function isClerkSignInOpen() {
           return Boolean(document.querySelector('.cl-modalBackdrop'));

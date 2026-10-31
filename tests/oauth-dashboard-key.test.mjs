@@ -14,7 +14,7 @@ let convexCalls;
 let rateCount;
 beforeEach(() => {
   store = new Map();
-  validation = { userId: 'user_dashboard' };
+  validation = { id: 'key_dashboard', userId: 'user_dashboard' };
   convexCalls = 0;
   rateCount = 1;
   Object.assign(process.env, {
@@ -109,7 +109,7 @@ it('reports validation failure as retryable', async () => {
   assert.equal(retry.error, 'temporarily_unavailable');
   assert.ok(retry.nonce);
   assert.equal(store.has('oauth:nonce:test'), false);
-  validation = { userId: 'user_dashboard' };
+  validation = { id: 'key_dashboard', userId: 'user_dashboard' };
   const recovered = await handler(new Request('https://api.worldmonitor.app/oauth/authorize', {
     method: 'POST', body: new URLSearchParams({ _nonce: retry.nonce, _js: '1', api_key: key }),
   }));
@@ -141,7 +141,7 @@ it('returns a fresh nonce when dashboard validation is rate limited', async () =
 });
 
 it('rejects scoped company keys on the generic consent path', async () => {
-  validation = { userId: 'user_dashboard', scopes: ['company_monitoring:read'], companyMonitoringAccountId: 'account' };
+  validation = { id: 'key_dashboard', userId: 'user_dashboard', scopes: ['company_monitoring:read'], companyMonitoringAccountId: 'account' };
   assert.equal((await consent()).status, 400);
 });
 

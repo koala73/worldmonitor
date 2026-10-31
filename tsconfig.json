@@ -24,6 +24,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "shared/indexable-landing-locales.ts"],
+  "include": ["src", "shared/indexable-landing-locales.ts", "shared/pwa-precache.ts"],
   "exclude": ["src/workers/ml.worker.ts"]
 }

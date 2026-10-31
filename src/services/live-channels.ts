@@ -46,6 +46,7 @@ export const OPTIONAL_LIVE_CHANNELS: BuiltinLiveChannel[] = [
   { id: 'yahoo', name: 'Yahoo Finance', handle: '@YahooFinance' },
   { id: 'cnn', name: 'CNN', handle: '@CNN' },
   { id: 'fox-news', name: 'Fox News', handle: '@FoxNews' },
+  { id: 'livenow-fox', name: 'LiveNOW from FOX' },
   { id: 'newsmax', name: 'Newsmax', handle: '@NewsmaxTV' },
   { id: 'abc-news', name: 'ABC News', handle: '@ABCNews' },
   { id: 'cbs-news', name: 'CBS News', handle: '@CBSNews' },
@@ -143,7 +144,7 @@ export const OPTIONAL_LIVE_CHANNELS: BuiltinLiveChannel[] = [
 ];
 
 const _REGION_ENTRIES: { key: string; labelKey: string; channelIds: string[] }[] = [
-  { key: 'na', labelKey: 'components.liveNews.regionNorthAmerica', channelIds: ['bloomberg', 'yahoo', 'cnn', 'fox-news', 'newsmax', 'abc-news', 'cbs-news', 'nbc-news', 'cbc-news', 'ctv-news', 'reuters-tv', 'nasa'] },
+  { key: 'na', labelKey: 'components.liveNews.regionNorthAmerica', channelIds: ['bloomberg', 'yahoo', 'cnn', 'fox-news', 'livenow-fox', 'newsmax', 'abc-news', 'cbs-news', 'nbc-news', 'cbc-news', 'ctv-news', 'reuters-tv', 'nasa'] },
   { key: 'eu', labelKey: 'components.liveNews.regionEurope', channelIds: ['sky', 'euronews', 'dw', 'france24', 'bbc-news', 'gb-news', 'the-guardian', 'france24-en', 'phoenix', 'rtp3', 'welt', 'rtve', 'trt-haber', 'ntv-turkey', 'cnn-turk', 'tv-rain', 'rt', 'tvp-info', 'telewizja-republika', 'tagesschau24', 'euronews-fr', 'euronews-gr', 'skai-tv', 'ert-news', 'france24-fr', 'france-info', 'bfmtv', 'tv5monde-info', 'nrk1'] },
   { key: 'latam', labelKey: 'components.liveNews.regionLatinAmerica', channelIds: ['cnn-brasil', 'jovem-pan', 'record-news', 'band-jornalismo', 'tn-argentina', 'c5n', 'milenio', 'noticias-caracol', 'ntn24', 't13', 'dw-espanol', 'rt-espanol', 'cgtn-espanol'] },
   { key: 'asia', labelKey: 'components.liveNews.regionAsia', channelIds: ['tbs-news', 'ann-news', 'ntv-news', 'cti-news', 'cgtn', 'wion', 'ndtv', 'cna-asia', 'nhk-world', 'arirang-news', 'india-today', 'abp-news'] },

@@ -62,6 +62,15 @@ export interface EntitlementState {
      * Convex snapshot hydrates.
      */
     embedAccess?: boolean;
+    /**
+     * Desktop-key issuance (plan 2026-10-25-001): Pro and Pro Business may
+     * hold `maxDesktopKeys` desktop keys. The Convex read path merges the
+     * catalog, so both are present on current snapshots; read them through
+     * `hasDesktopKeyAccess` (shared/desktop-key-access.js), which is
+     * fail-closed on `undefined`.
+     */
+    desktopKeyAccess?: boolean;
+    maxDesktopKeys?: number;
   };
   validUntil: number;
 }

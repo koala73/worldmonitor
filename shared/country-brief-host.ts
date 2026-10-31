@@ -90,6 +90,7 @@ export const COUNTRY_READERS = {
   disruptions: { path: '/api/supply-chain/v1/list-energy-disruptions', args: z.object({ assetId: z.literal('').default(''), assetType: z.literal('').default(''), ongoingOnly: z.enum(['true', 'false']).default('false') }).strict() },
   scenario: { path: '/api/intelligence/v1/compute-energy-shock', args: z.object({ country_code: z.string().regex(/^[A-Z]{2}$/), chokepoint_id: z.string().regex(/^[a-z0-9_-]{1,80}$/), disruption_pct: z.coerce.number().min(0).max(100).default(0), fuel_mode: z.enum(['both', 'oil', 'gas']).default('oil') }).strict() },
   defense: { path: '/api/military/v1/get-defense-industrial-base', args: z.object({ country_code: z.string().regex(/^[A-Z]{2}$/) }).strict() },
+  no2: { path: '/api/economic/v1/get-no2-activity', args: z.object({ country_code: z.string().regex(/^[A-Z]{2}$/), kind: z.literal('NO2_REGION_KIND_COUNTRY').default('NO2_REGION_KIND_COUNTRY') }).strict() },
   markets: { path: '/api/prediction/v1/list-prediction-markets', args: z.object({ page_size: z.coerce.number().int().min(1).max(100).default(50), query: z.string().max(100).default(''), category: z.string().max(40).default(''), cursor: z.literal('').default('') }).strict() },
   china: { path: '/api/intelligence/v1/get-china-decision-signals', args: z.object({  }).strict() },
   production: { path: '/api/supply-chain/v1/get-mineral-production', args: z.object({ commodity: z.string().regex(/^[a-z0-9-]{1,60}$/), iso2: z.literal('').default(''), stage: z.literal('').default('') }).strict() },

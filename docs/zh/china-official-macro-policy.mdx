@@ -47,8 +47,9 @@ NBS 从 `www.stats.gov.cn/english/PressRelease/` 采集；SAFE 从
 观测都有效并位于各自年龄预算内，快照才是 launch-ready。传输新鲜度与快照完整性
 写入独立 seed metadata。只有已发布的快照才记录完成运行，因此被拒绝的快照会在下一次
 宏观 bundle 运行（每日 UTC 08:00 与 09:00）重试，而不是等待 36 小时间隔。传输
-metadata 携带所抓取快照的内容年龄；非 launch-ready 快照没有内容年龄，因此在快照
-重新发布前，health 会将 `chinaMacro` 报告为 `STALE_CONTENT`。
+metadata 在规范快照发布前不携带内容年龄。发布后的钩子先记录已发布内容的年龄，再写入
+完成标记。因此，验证或发布失败时，health 会将 `chinaMacro` 报告为 `STALE_CONTENT`，
+同时保留最后良好快照。
 
 `GET /api/economic/v1/get-china-macro-snapshot` 仅读取规范
 `economic:china:macro:v2` seed，缓存缺失时不会向上游发布者扇出。Railway 宏观成员

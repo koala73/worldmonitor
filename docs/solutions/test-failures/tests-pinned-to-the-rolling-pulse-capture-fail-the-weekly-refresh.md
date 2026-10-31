@@ -51,3 +51,11 @@ Fixed in PR #9112, commit 073af50e6, on the automation branch the workflow opene
 - Never assert a chokepoint's score, band, transit count, congestion, or warning count as a literal. Read it from the pulse, or use `tests/fixtures/crawlable-live-pulse-fixture.json` through `livePulseSnapshotPath` when the test needs a fixed state.
 - A test that encodes "the committed capture predates change X" has a built-in expiry. Encode the pre-change state as an inline constant instead.
 - When the refresh fails in verification, fix the test in the draft PR the workflow opened; it will not re-freeze a week whose PR exists.
+
+## Recurrence and the structural fix (2026-10-26)
+
+The prevention list above did not stop the sixth instance. PR #9693 failed on `data-cii-methodology-version="v8"` and the lede's `CII v8 currently monitors 31 countries`, two literals in `crawlable-corpus.test.mjs` written on 2026-09-01 (#7491). They held for eight weeks because every capture carried v8, then broke on the first capture after CII moved to v14. A rule a reviewer has to remember cannot catch a pin that only fails when the live value moves.
+
+`scripts/rehearse-crawlable-pulse-refresh.mjs` moves those values first. It writes a drifted copy of the committed capture (re-dated to today, every `vN` methodology version bumped, CII readings rotated across scored countries, chokepoint readings rotated across chokepoints) and runs the refresh workflow's own `Rebuild published artifacts` and `Verify published artifacts` steps, parsed from `crawlable-pulse-refresh.yml`. `crawlable-pulse-rehearsal.yml` runs it on every PR that touches the capture, the corpus generators, or a verify test, and `tests/rehearse-crawlable-pulse-refresh.test.mjs` fails if the verify list gains a test that the rehearsal's path filter misses. Run against `main` before the fix, it failed on exactly the `v8` pin using only the old v8 capture, so it would have caught the pin on #7491.
+
+When the rehearsal fails, run `node scripts/rehearse-crawlable-pulse-refresh.mjs --keep` locally to inspect the drifted capture and rebuilt pages, then `git restore . && git clean -fd docs/snapshots` to undo.

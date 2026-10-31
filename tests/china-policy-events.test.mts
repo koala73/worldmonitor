@@ -265,6 +265,26 @@ describe('China official policy adapters (#5576)', () => {
     base * SCALING_CEILING_RATIO + 2;
   const rejectsScaling = ({ base, quadrupled }: { base: number; quadrupled: number }): boolean =>
     quadrupled > scalingCeilingMs(base);
+  // The guard judges ratio-of-mins so a single stalled sample cannot falsely
+  // trip it (#6985 / #7102). The same min/min aggregation compresses a genuine
+  // quadratic when the quadrupled series draws one fast sample (11.9x on CI in
+  // September, 11.4x on PR #9633), so the positive control judges the median
+  // per-attempt ratio against the same 12x ceiling. #8019 had folded the
+  // control back onto min/min and the flake returned.
+  const controlTripsGate = ({ medianRatio }: { medianRatio: number }): boolean =>
+    medianRatio > SCALING_CEILING_RATIO;
+  const summarizeAttempts = (attempts: Array<[baseMs: number, quadrupledMs: number]>) => {
+    const base = Math.min(...attempts.map(([baseMs]) => baseMs));
+    const quadrupled = Math.min(...attempts.map(([, quadrupledMs]) => quadrupledMs));
+    const ratios = attempts.map(([baseMs, quadrupledMs]) => quadrupledMs / baseMs).sort((a, b) => a - b);
+    return {
+      base,
+      quadrupled,
+      ratio: quadrupled / base,
+      marginMs: quadrupled - scalingCeilingMs(base),
+      medianRatio: ratios[Math.floor(ratios.length / 2)]!,
+    };
+  };
 
   it('keeps the scaling predicate at 12x plus 2ms, including the control gap', () => {
     assert.equal(rejectsScaling({ base: 10, quadrupled: 115 }), false);
@@ -273,15 +293,25 @@ describe('China official policy adapters (#5576)', () => {
     assert.equal(rejectsScaling({ base: 10, quadrupled: 123 }), true);
   });
 
+  it('judges the positive control on the median attempt, not ratio-of-mins', () => {
+    // Shaped like PR #9633's unit-shard (1) failure: 16.5ms -> 188.1ms is
+    // 11.4x min/min because one quadrupled sample ran fast, while every other
+    // attempt scaled ~14x. A quadratic must still trip the control.
+    const lucky = summarizeAttempts([
+      [16.5, 188.1], [17.0, 240.0], [17.2, 238.0], [17.1, 242.0], [16.9, 236.0],
+    ]);
+    assert.equal(rejectsScaling(lucky), false, 'min/min alone compresses this quadratic under the gate');
+    assert.equal(controlTripsGate(lucky), true);
+    // A linear scan with GC noise (~10x at worst under 16-way load) must not.
+    assert.equal(controlTripsGate(summarizeAttempts([
+      [10, 41], [10, 98], [10, 44], [10, 101], [10, 40],
+    ])), false);
+  });
+
   const measureScaling = (
     walk: (fixtures: ScalingFixtures) => void,
     baseRepeat: number,
-  ): {
-    base: number;
-    quadrupled: number;
-    ratio: number;
-    marginMs: number;
-  } => {
+  ): ReturnType<typeof summarizeAttempts> => {
     const baseFixtures = buildFixtures(baseRepeat);
     const quadrupledFixtures = buildFixtures(baseRepeat * 4);
 
@@ -301,27 +331,19 @@ describe('China official policy adapters (#5576)', () => {
     // to be running, which can push the ratio over the gate on a loaded box
     // even though neither size is actually slow. Alternating means a stall
     // lands on both series' running minimum instead of just one (#6985).
-    let base = Number.POSITIVE_INFINITY;
-    let quadrupled = Number.POSITIVE_INFINITY;
+    const attempts: Array<[number, number]> = [];
     for (let attempt = 0; attempt < SCALING_ATTEMPTS; attempt += 1) {
       const baseMs = timeOnce(baseFixtures);
       const quadrupledMs = timeOnce(quadrupledFixtures);
-      base = Math.min(base, baseMs);
-      quadrupled = Math.min(quadrupled, quadrupledMs);
+      attempts.push([baseMs, quadrupledMs]);
     }
-
-    return {
-      base,
-      quadrupled,
-      ratio: quadrupled / base,
-      marginMs: quadrupled - scalingCeilingMs(base),
-    };
+    return summarizeAttempts(attempts);
   };
 
   const scalingDetail = (
     scaling: ReturnType<typeof measureScaling>,
   ): string =>
-    `${scaling.ratio.toFixed(1)}x min/min ` +
+    `${scaling.ratio.toFixed(1)}x min/min, median attempt ${scaling.medianRatio.toFixed(1)}x ` +
     `— linear is ~4x, catastrophic backtracking ~16x ` +
     `(${scaling.base.toFixed(1)}ms → ${scaling.quadrupled.toFixed(1)}ms, ` +
     `${scaling.marginMs.toFixed(1)}ms against the ceiling)`;
@@ -369,7 +391,7 @@ describe('China official policy adapters (#5576)', () => {
     );
     t.diagnostic(scalingDetail(scaling));
     assert.ok(
-      rejectsScaling(scaling),
+      controlTripsGate(scaling),
       `the quadratic control must trip the gate, but scaled only ${scalingDetail(scaling)}`,
     );
   });

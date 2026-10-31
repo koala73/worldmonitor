@@ -8,6 +8,7 @@
 export const LIVE_PAGE_LINKS_PATH = 'scripts/live-pages/related-links.mjs';
 
 const LIVE = Object.freeze({
+  situation: { href: '/monitor-the-situation/', label: 'Monitor the situation: headlines, crisis trackers, chokepoints and outages on one board' },
   debt: { href: '/tools/national-debt-clock/', label: 'National debt clock: live US and world government debt' },
   outages: { href: '/tools/internet-outages/', label: 'Internet outages right now, by country' },
   markets: { href: '/tools/prediction-markets/', label: 'Prediction market odds on world events today' },
@@ -38,8 +39,8 @@ export function crisisLiveLinks({ touchesOilChokepoint }) {
 /** Live page to live page, and back to the corpus pages that cite it. */
 export const LIVE_PAGE_RELATED = Object.freeze({
   'fear-and-greed-index': [LIVE.yieldCurve, LIVE.markets],
-  'internet-outages': [LIVE.markets, { href: '/crises/', label: 'Crisis trackers' }],
-  'prediction-markets': [LIVE.fearGreed, LIVE.outages, { href: '/crises/', label: 'Crisis trackers' }],
+  'internet-outages': [LIVE.markets, LIVE.situation, { href: '/crises/', label: 'Crisis trackers' }],
+  'prediction-markets': [LIVE.fearGreed, LIVE.outages, LIVE.situation, { href: '/crises/', label: 'Crisis trackers' }],
   'national-debt-clock': [LIVE.yieldCurve, LIVE.fearGreed, { href: '/countries/united-states/', label: 'United States country profile' }],
   'treasury-yield-curve': [LIVE.debt, LIVE.fearGreed, LIVE.oil],
   'crude-oil-inventories': [

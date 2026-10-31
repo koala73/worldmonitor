@@ -268,6 +268,9 @@ describe('resilience runtime manifest gateway auth', () => {
     assert.deepEqual(
       [...PUBLIC_NO_AUTH_RPC_PATHS],
       [
+        '/api/scorecard/v1/get-five-factor-scorecard',
+        '/api/scorecard/v1/get-bloc-scorecard',
+        '/api/scorecard/v1/list-five-factor-scorecards',
         '/api/intelligence/v1/get-china-decision-signals',
         '/api/resilience/v1/get-runtime-manifest',
         '/api/leads/v1/submit-contact',

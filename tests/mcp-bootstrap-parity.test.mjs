@@ -37,6 +37,7 @@ const { TOOL_REGISTRY } = mcpTesting;
 //   - operational:         relay heartbeats and similar — visible via /api/health, not MCP.
 // -----------------------------------------------------------------------------
 const EXCLUDED_FROM_MCP = new Map([
+  ['maritime:ukmto-incidents:v1', 'UKMTO publisher reports await activation and source-aware MCP composition (#9831)'],
   ['risk:scores:history:index',
     'operational: string index for daily CII health; MCP country history and weekly movers read the per-country sorted sets directly.'],
 
@@ -68,6 +69,11 @@ const EXCLUDED_FROM_MCP = new Map([
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:world-bank',
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
+  ...['colombia-secop', 'kenya-ppip', 'south-africa-etenders', 'chile-mercado-publico', 'brazil-pncp',
+    'ukraine-prozorro', 'bulgaria-eop', 'latvia-iub', 'poland-bzp', 'pakistan-ppra'].map((source) => [
+    `economic:global-tenders:v1:source:${source}`,
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.',
+  ]),
   ['military:cross-strait-activity:v1:source:taiwan-mnd',
     'operational: Taiwan MND transport status, errors, and last-success time consumed by api/health.js; #5580 owns final MCP composition for the separately attributed official activity records.'],
   ['maritime:ais-gaps:v1',
@@ -111,6 +117,10 @@ const EXCLUDED_FROM_MCP = new Map([
     'cascade-mirror: stale fallback of military:surges:v1, which is covered by get_military_surge; this copy is retained for the health freshness probe.'],
   ['intelligence:military-cii:v1',
     'intermediate: per-country military-presence aggregate (own/foreign flights+vessels, AIS disruption buckets) read by server/worldmonitor/intelligence/v1/get-risk-scores.ts to feed the CII Security component; surfaces transitively via the country-risk score returned by get_country_risk. Not a queryable MCP slice on its own.'],
+  ['aviation:notam:airspace:v1',
+    'deferred: FAA NMS airspace restrictions (drawn by the Aviation map layer): TFRs and restricted/danger/prohibited area geometry, about 1.5 MB raw. Needs a geo-filtered tool, not this blob, once production data exists (activation: #9635). Airport-level closures reach MCP via get_aviation_status (see the next entry).'],
+  ['aviation:notam:nms:closures:v1',
+    'intermediate: FAA NMS aerodrome closures. scripts/seed-aviation.mjs merges them into aviation:notam:closures:v2, applyNotam folds that into aviation:delays-bootstrap:v2, and get_aviation_status serves it. Only monitored airports survive the merge; closures elsewhere stay in this key.'],
   ['alerts:canada:v1',
     'map-only Alberta + B.C. + Saskatchewan provincial alert union (canadaAlerts). #6610 and #6659 ship province seeders and DeckGL dots; no MCP tool. Do not fold into weather:alerts:v1 (NWS).'],
   ['alerts:canada:alberta-aea:v1',
@@ -273,6 +283,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred to a future expanded intelligence tool. Not in v1 brainstorm inventory.'],
   ['gdelt:bulk:dyad-tension:v1',
     'intermediate: daily event buckets and replay cursor for get-pizzint-status tension scores; that dashboard endpoint remains deferred to a future expanded intelligence tool.'],
+  ['intelligence:tension-evidence:v1',
+    'derived: per-pair readings re-read from the strike, aviation, military flight, Taiwan Strait and sanctions keys, served only as the evidence get-pizzint-status attaches to its tension rows; that dashboard endpoint remains deferred to a future expanded intelligence tool.'],
   ['gdelt:bulk:country-events:v1',
     'intermediate: per-country daily GDELT conflict/protest buckets and baselines that feed the CII Conflict and Unrest components; agents read the result through the risk-score tools.'],
   ['intelligence:wsb-tickers:v1',
@@ -285,8 +297,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred to a future region-aware intelligence tool.'],
   ['intelligence:market-implications:v1',
     'deferred: LLM-generated narrative composite; underlying inputs already exposed via existing data tools. A future LLM-narrative tool would bundle this.'],
-  ['webcam:cameras:active',
-    'deferred: Windy webcam active-version pointer for app map markers. A future webcam MCP tool would expose decoded camera entries, not the raw Redis pointer.'],
   ['supply_chain:hormuz_tracker:v1',
     'deferred: specialized Strait-of-Hormuz tracker; broader chokepoint coverage via get_chokepoint_status. Hormuz-specific tool deferred.'],
   ['resilience:static:index:v1',
@@ -423,6 +433,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: relay loop heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
   ['relay:heartbeat:climate-news',
     'operational: relay loop heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
+  ['relay:heartbeat:news-digest-warm',
+    'operational: relay digest warm-cycle heartbeat — covered by /api/health, not a user-facing data slice for MCP (#9766).'],
   ['bundle:heartbeat:static-ref',
     'operational: seed-bundle-static-ref tick-execution heartbeat — covered by /api/health, not a user-facing data slice for MCP (#6691).'],
   ['bundle:heartbeat:static-ref-heavy',

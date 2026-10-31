@@ -1,3 +1,6 @@
+// These source checks pin helper use and allowed window.open counts in the
+// migrated renderer files (#8690, section 2).
+// Runtime tests of openExternalUrl cannot prove that every listed caller uses it.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

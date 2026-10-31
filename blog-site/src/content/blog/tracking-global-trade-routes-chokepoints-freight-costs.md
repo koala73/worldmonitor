@@ -6,7 +6,7 @@ keywords: "chokepoint monitoring, Strait of Hormuz shipping, freight index dashb
 audience: "Supply chain professionals, commodity traders, logistics analysts, maritime intelligence, geopolitical risk analysts"
 heroImage: "/blog/images/blog/hormuz-chokepoint-crisis.png"
 pubDate: "2026-03-15"
-modifiedDate: "2026-10-18"
+modifiedDate: "2026-10-26"
 ---
 
 > **Key Takeaways:** In the March 15, 2026 snapshot, Strait of Hormuz traffic was down 94.4%. World Monitor combines its canonical waterway registry, freight indices, WTO trade policy, and critical-mineral concentration in one dashboard.
@@ -135,6 +135,8 @@ Transparency matters. Here is where the data comes from:
 - **Critical minerals**: [USGS](https://www.usgs.gov/centers/national-minerals-information-center) mineral commodity data with HHI calculations
 
 All sources are public. No proprietary data feeds. No paywall.
+
+For vessel-level research, read [how to assess AIS tracking accuracy](/blog/posts/ais-vessel-tracking-accuracy/) before treating a position, destination field or transmission gap as evidence of a port visit.
 
 ## Frequently Asked Questions
 

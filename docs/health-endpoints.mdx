@@ -36,19 +36,20 @@ On a cache miss, only the Redis lease owner performs the registry sweep. Other r
 
 Expired snapshots and snapshots past a grace deadline are not served as current health. A failed owner releases only its token; a lost owner can be replaced after the 30-second lease expires. Expired owners cannot overwrite a successor's verdict snapshot. HTTP-only monitors see a temporary unavailable response only during a cold refresh with no retained verdict.
 
-The top-level `status` describes user-visible platform availability, not perfect data-source health. `HEALTHY` can therefore coexist with warnings in `summary` and `problems` when those warnings are contained by usable last-good data.
+The top-level `status` describes user-visible platform availability, not perfect data-source health. `HEALTHY` can therefore coexist with warnings in `summary` and `problems` when those warnings are contained by usable last-good data. `dataStatus` is the strict ingestion verdict over the same summary: `OK`, `DEGRADED` when any actionable warning exists (contained or not), or `CRITICAL` when any check is critical.
 
 ### Response Body
 
 ```json
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
+  "dataStatus": "OK | DEGRADED | CRITICAL",
   "summary": {
-    "total": 333,
-    "ok": 333,
+    "total": 349,
+    "ok": 348,
     "warn": 0,
     "containedWarn": 0,
-    "onDemandWarn": 0,
+    "onDemandWarn": 1,
     "staleContent": 0,
     "rolloutPending": 0,
     "crit": 0
@@ -113,7 +114,7 @@ The seeder validates every page before it replaces the snapshot. A verified empt
 
 ### Bundle tick heartbeats
 
-`_bundle-runner.mjs` writes `bundle:heartbeat:<label>` on every container start, including skip-all ticks. Member seed-meta cannot see a daily cron that never fires when its sections are weekly or monthly. `/api/health` probes `staticRefBundleTick` (`bundle:heartbeat:static-ref`) and, as of #6806, `staticRefHeavyBundleTick` (`bundle:heartbeat:static-ref-heavy`) — one heartbeat for the consolidated heavy bundle carrying Arms-Suppliers, Military-Bases and Mineral-Production. A 48h silence is `STALE_SEED`. Missing keys before the first tick are `EMPTY` under an expiring acknowledgement, not a page-out.
+`_bundle-runner.mjs` writes `bundle:heartbeat:<label>` on every container start, including skip-all ticks. Member seed-meta cannot see a daily cron that never fires when its sections are weekly or monthly. `/api/health` probes `staticRefBundleTick` (`bundle:heartbeat:static-ref`) and, as of #6806, `staticRefHeavyBundleTick` (`bundle:heartbeat:static-ref-heavy`) — one heartbeat for the consolidated heavy bundle carrying Arms-Suppliers, Military-Bases and Mineral-Production. A 48h silence is `STALE_SEED`. Missing keys before the first tick were `EMPTY` under a since-retired expiring acknowledgement, not a page-out.
 
 ### Consumer-price source coverage
 
@@ -164,7 +165,7 @@ Keys are grouped into three tiers that determine alert severity:
 | `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet (expected until first request); counted in `summary.onDemandWarn` |
 | `EMPTY` | Crit | Bootstrap or seeded standalone key has no data. Outranks any concurrent producer fault, which would otherwise report the softer `SEED_ERROR` (see below) |
 | `EMPTY_DATA` | Crit | Key exists but contains zero records (and 0 is not a valid state for it) |
-| `RELAY_GATE_MISCONFIGURED` | Crit | The production build serving `/api/health` cannot see `CONVEX_TENANT_RELAY_SECRET` or a relay site URL (`CONVEX_SITE_URL`, or `CONVEX_URL` as the gateways accept), or the resolved URL is malformed or not `https:`; in every case the verdict is reached before any request is sent, so the tenant secret never travels over plaintext. On the missing-env shape checkout, the customer portal and notification channels answer 503 before reaching Convex. Reported on the `relayGatewayGate` liveness entry, which is not a data key; on a production build it is counted once in `summary.total`, so `total` there is the key-registry size plus one and the `ok + warn + onDemandWarn + crit` partition still holds. Set the value (`CONVEX_SITE_URL`, or `CONVEX_URL` as the gateways accept), then push a new commit; a same-commit redeploy is cancelled by the ignored-build step |
+| `RELAY_GATE_MISCONFIGURED` | Crit | The production build serving `/api/health` cannot see `CONVEX_TENANT_RELAY_SECRET` or a relay site URL (`CONVEX_SITE_URL`, or `CONVEX_URL` as the gateways accept), or the resolved URL is malformed or not `https:`; in every case the verdict is reached before any request is sent, so the tenant secret never travels over plaintext. On the missing-env shape checkout, the customer portal and notification channels answer 503 before reaching Convex. Reported on the `relayGatewayGate` liveness entry, which is not a data key; on a production build it is counted once in `summary.total`, so `total` there is the key-registry size plus one and the `ok + warn + onDemandWarn + crit` partition still holds. Set the value (`CONVEX_SITE_URL`, or `CONVEX_URL` as the gateways accept), then redeploy production; the ignored-build step builds a same-commit redeploy on `main` |
 | `RELAY_GATE_REJECTED` | Crit | The deployed Convex tenant-relay gate answered `401` to this build's gateway credential on a body-less `POST /relay/create-checkout`. Either side can be stale: a variable written after the last `convex deploy` reads as undefined inside deployed functions until the next push. The probe runs once per verdict snapshot (60 s), never per poll |
 | `RELAY_GATE_UNREACHABLE` | Warn after grace | The gate probe got no classifiable answer (network error, timeout, 5xx, or anything other than `401` / `400 MISSING_FIELDS`). A transport verdict, not a credential one. The first sighting carries a three-minute `transportGraceUntil` during which it counts as `ok`, appears in compact `pending` and is not an operational problem; a stall still present when the deadline passes moves to `problems` and counts in `summary.warn`. The deadline is kept in Redis across sweeps, including by a sweep that only waited on another sweep's probe (it stores its fallback with `probed: false`, which the next sweep re-probes rather than reuses), so a probing sweep that dies before publishing does not restart the grace — but only when another sweep was waiting on it, since that fallback is written only by a sweep that lost the probe lease. If the sole scheduled caller takes the lease and dies before publishing, nothing is stored and the next run is a first sighting. Once the deadline passes the streak continues under `transportGraceExpiredAt` instead, because republishing an expired softening deadline would make every verdict snapshot unservable and turn each poll into a full sweep instead of a warm read. The relay itself is not re-probed at that rate: whenever a reusable gate verdict is cached, the gateway is contacted about once per freshness window however often the endpoint is polled. Two paths leave no reusable verdict — a stored fallback from a sweep that only waited (`probed: false`), and a probe whose publish failed — and the sweep after either one probes again. Persistent across sweeps means a Convex outage or a wrong `CONVEX_SITE_URL` |
 
@@ -288,11 +289,12 @@ whenever their producer recorded one:
 | `ageMonths` | How many months behind the run that observation month is |
 | `unavailableSince` | Epoch milliseconds of the first run that **recorded** the gap, carried forward across runs. Best-effort: a run that cannot read the previous `seed-meta` (Redis blip, first run after deploy) re-dates it to that run. Read it as "first run that recorded this gap", never as a measured outage start |
 
-The block never moves the status. China's rows going unusable is an upstream
-fact no retry clears — every China row in both JODI files has carried
-`ASSESSMENT_CODE 3` ("null/uncertain") since at least 2026-08 — so grading it
-would be a warning nobody can act on. What it must not be is silent: the
-seeders publish the other 50-57 countries regardless of China, and this block
+The block never moves the status. A China row that carries no usable number
+is an upstream fact no retry clears, so grading it would be a warning nobody
+can act on. `ASSESSMENT_CODE 3` is not that case: it marks a value JODI has not
+assessed, every China cell in both JODI files carries it, and both seeders keep
+those values. What it must not be is silent: the
+seeders publish every other country regardless of China, and this block
 is what names the country that dropped out.
 
 It describes the producer's **last completed publish**, like every other
@@ -703,28 +705,19 @@ Selected thresholds from `SEED_META`:
 
 > These are illustrative; `SEED_META` in `api/health.js` is the source of truth and each entry documents its own cadence rationale.
 
-### Scheduled monitor results
+### Ingestion incidents
 
-The Seed Freshness Monitor publishes a production acceptance summary on each
-workflow run and retains its JSON observation for seven days. The summary lists
-active incidents, acknowledged degradation, stale-content grace deadlines, and
-baseline entries that no longer appear in health.
+`/api/health` is the only source of truth for ingestion. `status` stays the
+availability verdict uptime monitors read; `dataStatus` (`OK`, `DEGRADED`,
+`CRITICAL`) is the strict verdict, so a contained source warning is never
+invisible at the top level.
 
-A successful workflow run can still have active source incidents. The workflow
-alerts on new or changed incidents and suppresses repeat alerts for unchanged
-failures. Read the production acceptance summary to determine whether the data
-passed. An unavailable observation is **Unverified**, never healthy.
-
-Generate the same report locally without publishing GitHub statuses:
-
-```bash
-node scripts/check-seed-freshness.mjs \
-  --json-output /tmp/seed-freshness.json \
-  --markdown-output /tmp/seed-freshness.md
-```
-
-The command still exits nonzero when operational acceptance fails. It writes
-both reports from the same health observation before returning that verdict.
+Each actionable `source:status` pair opens or regresses one Sentry issue
+(level `warning`, tags `health_source` and `health_status`, grouped by source
+and status) until Sentry accepts it; `health:incident-alerts` records accepted
+pairs, so a failed delivery is retried by the next sweep. An unchanged incident
+does not re-alert; a recovered source that breaks again does. `?history=1`
+lists the incident log.
 
 ### MCP preset liveness
 

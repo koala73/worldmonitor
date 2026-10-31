@@ -11,6 +11,9 @@ import { strict as assert } from 'node:assert';
 
 import { mcpHandler } from '../api/mcp.ts';
 import { HMAC_SECRET, callBody, makePipelineMock } from './helpers/mcp-pro-deps.mjs';
+import { SOURCE_PROPAGANDA_RISK, SOURCE_TYPES, getSourceProvenanceState } from '../shared/source-provenance.ts';
+import { SOURCE_TIERS, declaredSourceTier } from '../server/_shared/source-tiers.ts';
+import { withOutletProfile } from '../server/_shared/outlet-profile.ts';
 
 const ENV_KEY = 'operator_test_key_world_brief_corroboration';
 const MCP_URL = 'https://worldmonitor.app/mcp';
@@ -57,6 +60,13 @@ function seededStory(overrides = {}) {
     effectiveImportanceScore: 88,
     ...overrides,
   };
+}
+
+function expectedProvenance(sources) {
+  return sources.map((source) => {
+    const { summary: _summary, ...provenance } = getSourceProvenanceState(source);
+    return { source, tier: declaredSourceTier(source), ...withOutletProfile(source, provenance) };
+  });
 }
 
 function insightsPayload(stories) {
@@ -137,6 +147,7 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
       entityCorroboration: true,
       sourceTier: 1,
       sources: ['Reuters', 'AP', 'BBC', 'AFP', 'Kyodo', 'DPA'],
+      sourceProvenance: expectedProvenance(['Reuters', 'AP', 'BBC', 'AFP', 'Kyodo', 'DPA']),
       corroboration: { state: 'corroborated', publishers: 6 },
       publishers: [
         { name: 'AFP', tier: 1, labels: ['AFP'], labelsUnlisted: 0 },
@@ -209,6 +220,56 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
     assert.match(tool.description, /publishers roster/);
   });
 
+  it('gives each outlet its declared tier and provenance, index-aligned with sources (#9722)', async () => {
+    // sourceTier is only the best tier in the story, so a tier-1 wire hid a
+    // high-risk state outlet beside it unless the agent called get_sources.
+    stubInsights([
+      seededStory({ primaryTitle: 'Wire plus state media', sources: ['Reuters World', 'RT', 'Unreviewed Local Desk'] }),
+      seededStory({ primaryTitle: 'Legacy', sources: undefined }),
+    ]);
+
+    const { payload } = await callWorldBrief();
+
+    const [mixed, legacy] = payload.topStories;
+    assert.equal(mixed.sourceTier, 1);
+    assert.deepEqual(mixed.sourceProvenance, [
+      {
+        source: 'Reuters World', tier: 1, risk: 'unknown', type: 'wire',
+        riskDeclared: true, typeDeclared: true, riskReviewed: false, typeReviewed: true,
+        knownBiases: [], note: 'Provenance not yet reviewed — do not treat as independent journalism',
+        homeCountry: 'GB', audience: 'international', language: 'en', ownershipClass: 'private',
+      },
+      {
+        source: 'RT', tier: 3, risk: 'high', type: 'wire',
+        riskDeclared: true, typeDeclared: true, riskReviewed: true, typeReviewed: true,
+        stateAffiliated: 'Russia', knownBiases: [], note: 'Russian state media, banned in EU',
+        homeCountry: 'RU', audience: 'international', language: 'en', ownershipClass: 'state',
+      },
+      {
+        source: 'Unreviewed Local Desk', tier: null, risk: 'unknown', type: 'unknown',
+        riskDeclared: false, typeDeclared: false, riskReviewed: false, typeReviewed: false,
+        knownBiases: [], note: 'Provenance not yet reviewed — do not treat as independent journalism',
+        homeCountry: null, audience: null, language: null, ownershipClass: null,
+      },
+    ]);
+    assert.deepEqual(mixed.sourceProvenance.map((entry) => entry.source), mixed.sources);
+    assert.equal(legacy.sourceProvenance, undefined, 'no outlet list means no provenance list');
+    assert.equal(payload.transportCoverage, undefined, 'a brief inside the budget keeps every note');
+  });
+
+  it('documents sourceProvenance on topStories items', async () => {
+    const { RPC_TOOLS } = await import('../api/mcp/registry/rpc-tools.ts');
+    const tool = RPC_TOOLS.find((entry) => entry.name === 'get_world_brief');
+    const provenance = tool.outputSchema.properties.topStories.items.properties.sourceProvenance;
+    assert.equal(provenance.type, 'array');
+    assert.deepEqual(provenance.items.required, [
+      'source', 'tier', 'risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases',
+    ]);
+    assert.deepEqual(provenance.items.properties.tier.enum, [1, 2, 3, 4, null]);
+    assert.equal(provenance.items.properties.summary, undefined, 'summary is dropped for the output budget');
+    assert.match(tool.description, /sourceProvenance/);
+  });
+
   it('keeps topStories index-aligned with headlines', async () => {
     // The alignment is the contract an agent relies on to attach evidence to a
     // headline, so assert it across a mixed batch that also exercises the
@@ -239,6 +300,7 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
 
     assert.equal(payload.topStories[0].sources.length, 12);
     assert.deepEqual(payload.topStories[0].sources.slice(0, 2), ['Outlet 1', 'Outlet 2']);
+    assert.deepEqual(payload.topStories[0].sourceProvenance.map((entry) => entry.source), payload.topStories[0].sources);
   });
 
   it('omits memberTitles from the world brief', async () => {
@@ -270,6 +332,7 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
     assert.deepEqual(payload.topStories, [{
       title: 'Legacy story with no corroboration fields',
       sources: ['Real Outlet'],
+      sourceProvenance: expectedProvenance(['Real Outlet']),
       corroboration: { state: 'single-publisher', publishers: 1 },
       publishers: [{ name: 'Real Outlet', tier: null, labels: ['Real Outlet'], labelsUnlisted: 0 }],
       publishersUnlisted: 0,
@@ -295,41 +358,94 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
       entityCorroboration: false,
       sourceTier: 1,
       sources: [],
+      sourceProvenance: [],
       corroboration: { state: 'unknown', publishers: null },
       publishers: [],
       publishersUnlisted: 0,
     }]);
   });
 
-  it('stays inside the 64KB output budget with a worst-case snapshot', async () => {
-    // 12 stories (the headline cap) each at the 500-char title clip and the
-    // 12-outlet cap. If this ever exceeds the budget, api/mcp/dispatch.ts
-    // replaces the entire response with { _budget_exceeded: true } — a
-    // user-visible regression, not a silent truncation.
-    // Each story also carries ten publisher families of six case-variant
-    // labels, so the roster fills all eight publisher slots and all four label
-    // slots with strings at the 40-byte wire cap.
-    const longTitle = 'W'.repeat(600);
+  // 12 stories (the headline cap) each at the 500-char title clip and the
+  // 12-outlet cap. If a response exceeds the budget, api/mcp/dispatch.ts
+  // replaces the entire response with { _budget_exceeded: true }, a
+  // user-visible regression, not a silent truncation.
+  // Each story also carries ten publisher families of six case-variant
+  // labels, so the roster fills all eight publisher slots and all four label
+  // slots with strings at the 40-byte wire cap. The first 12 labels are the
+  // reviewed sources with the largest provenance records, so every
+  // sourceProvenance slot carries the heaviest real entry.
+  function stubWorstCaseBrief(titleChar, storyCount = 12) {
+    const longTitle = titleChar.repeat(600);
     const caseVariant = (base, variant) => [...base]
       .map((char, index) => (index < 6 && (variant >> index) & 1 ? char.toUpperCase() : char)).join('');
+    const provenanceBytes = (source) => Buffer.byteLength(JSON.stringify(expectedProvenance([source])[0]), 'utf8');
+    const heaviest = [...new Set([...Object.keys(SOURCE_TIERS), ...Object.keys(SOURCE_TYPES), ...Object.keys(SOURCE_PROPAGANDA_RISK)])]
+      .sort((a, b) => provenanceBytes(b) - provenanceBytes(a))
+      .slice(0, 12);
     const outlets = [
-      ...Array.from({ length: 12 }, (_, i) => `Long Outlet Name Number ${i + 1}`),
+      ...heaviest,
       ...Array.from({ length: 10 }, (_, family) => Array.from(
         { length: 6 },
         (_, variant) => caseVariant(`outlet${family}-${'o'.repeat(60)}`, variant),
       )).flat(),
     ];
-    stubInsights(Array.from({ length: 12 }, (_, i) => seededStory({
+    stubInsights(Array.from({ length: storyCount }, (_, i) => seededStory({
       primaryTitle: `${i} ${longTitle}`,
       sources: outlets,
     })));
+  }
+
+  it('stays inside the 64KB output budget with a worst-case snapshot', async () => {
+    stubWorstCaseBrief('W');
 
     const { payload, rawText } = await callWorldBrief();
 
     assert.equal(payload._budget_exceeded, undefined, 'response must not be replaced by the budget guard');
     assert.equal(payload.topStories.length, 12);
-    assert.ok(payload.topStories.every((story) => story.publishers.length === 8 && story.publishersUnlisted === 14),
+    assert.ok(payload.topStories.every((story) => story.publishers.length === 8),
       'the fixture must fill every roster slot');
+    assert.ok(payload.topStories.every((story) => story.sourceProvenance.length === 12),
+      'the fixture must fill every provenance slot');
+    assert.ok(payload.topStories.every((story) => story.sourceProvenance.every((entry) => entry.note === undefined
+      && entry.homeCountry === undefined && entry.ownershipClass === undefined && typeof entry.risk === 'string')),
+      'notes and outlet profile fields are shed while the structured provenance stays');
+    assert.deepEqual(payload.transportCoverage, {
+      field: 'topStories[].sourceProvenance[].{note,homeCountry,audience,language,ownershipClass}',
+      original_count: 144, returned_count: 0, omitted_count: 144, omission_reason: 'output_budget',
+    });
+    assert.ok(
+      Buffer.byteLength(rawText, 'utf8') < 65_536,
+      `serialized world brief is ${Buffer.byteLength(rawText, 'utf8')} bytes, over the 65536 budget`,
+    );
+  });
+
+  it('sheds only notes, keeping outlet profiles, when that is enough', async () => {
+    stubWorstCaseBrief('W', 9);
+
+    const { payload, rawText } = await callWorldBrief();
+
+    assert.equal(payload._budget_exceeded, undefined);
+    assert.ok(payload.topStories.every((story) => story.sourceProvenance.length === 12));
+    assert.ok(payload.topStories.every((story) => story.sourceProvenance.every((entry) => entry.note === undefined && 'homeCountry' in entry)),
+      'notes go first; the outlet profile stays');
+    assert.equal(payload.transportCoverage.field, 'topStories[].sourceProvenance[].note');
+    assert.ok(Buffer.byteLength(rawText, 'utf8') < 65_536);
+  });
+
+  it('drops whole provenance lists when shedding notes cannot fit multibyte titles', async () => {
+    // The title clip counts characters, so a CJK title costs three bytes per
+    // character in both headlines and topStories.
+    stubWorstCaseBrief('世');
+
+    const { payload, rawText } = await callWorldBrief();
+
+    assert.equal(payload._budget_exceeded, undefined, 'response must not be replaced by the budget guard');
+    assert.equal(payload.topStories.length, 12);
+    assert.ok(payload.topStories.every((story) => story.sourceProvenance === undefined && story.sources.length === 12),
+      'provenance lists are dropped while outlet names stay');
+    assert.deepEqual(payload.transportCoverage, {
+      field: 'topStories[].sourceProvenance', original_count: 12, returned_count: 0, omitted_count: 12, omission_reason: 'output_budget',
+    });
     assert.ok(
       Buffer.byteLength(rawText, 'utf8') < 65_536,
       `serialized world brief is ${Buffer.byteLength(rawText, 'utf8')} bytes, over the 65536 budget`,

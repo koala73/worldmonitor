@@ -259,6 +259,29 @@ describe("claimSubscription anonymous ownership proof", () => {
     expect(rows.oldSub).toBeNull();
   });
 
+  test("moves anonymous checkout session rows to the claimant so account deletion finds them", async () => {
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    await seedAnonClaimState(t);
+    await t.run((ctx) => ctx.db.insert("checkoutSessionEvents", {
+      userId: ANON_USER_ID,
+      productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      sessionId: "cks_anon_claim_001",
+      anonymous: true,
+      occurredAt: NOW,
+    }));
+
+    await t.withIdentity(CLAIMANT_A).mutation(api.payments.billing.claimSubscription, {
+      anonId: ANON_USER_ID,
+      claimToken: await signAnonClaimToken(ANON_USER_ID),
+    });
+
+    expect(await t.run((ctx) => ctx.db.query("checkoutSessionEvents").collect())).toEqual([
+      // `anonymous` keeps recording how the checkout started.
+      expect.objectContaining({ userId: CLAIMANT_A.subject, sessionId: "cks_anon_claim_001", anonymous: true }),
+    ]);
+  });
+
   test("keeps existing higher-tier entitlement precedence when proof is valid", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
     const t = convexTest(schema, modules);

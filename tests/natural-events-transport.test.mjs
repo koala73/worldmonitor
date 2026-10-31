@@ -6,6 +6,33 @@ import dns from 'node:dns';
 import { gzipSync } from 'node:zlib';
 import { fetchNaturalEvents, naturalEventsAfterPublish } from '../scripts/seed-natural-events.mjs';
 
+// Skip the real 500 ms sleep between retries (withRetry's test-only knob,
+// inert outside node:test); attempt counts and computed waits are unchanged.
+// Tests that time the backoff itself opt out with useRealRetryDelay().
+process.env.WM_SEED_RETRY_DELAY_MS = '0';
+function useRealRetryDelay(t) {
+  delete process.env.WM_SEED_RETRY_DELAY_MS;
+  t.after(() => { process.env.WM_SEED_RETRY_DELAY_MS = '0'; });
+}
+
+// Run the transport's real deadlines `factor` times faster: performance.now()
+// advances `factor` ms per real ms, and setTimeout, setInterval and
+// AbortSignal.timeout delays (production and fixture server alike) shrink by
+// `factor`. Constants and assertions stay in virtual ms, so the 15 s header,
+// 5 s idle and 30.5 s budget relationships are unchanged. Math.ceil keeps
+// delays integral: AbortSignal.timeout throws on fractional milliseconds.
+function compressTime(t, factor = 10) {
+  const realNow = performance.now.bind(performance);
+  const origin = realNow();
+  const { setTimeout: realSetTimeout, setInterval: realSetInterval } = globalThis;
+  const realAbortTimeout = AbortSignal.timeout.bind(AbortSignal);
+  const scale = ms => Math.ceil(ms / factor);
+  t.mock.method(performance, 'now', () => origin + (realNow() - origin) * factor);
+  t.mock.method(globalThis, 'setTimeout', (callback, ms = 0, ...args) => realSetTimeout(callback, scale(ms), ...args));
+  t.mock.method(globalThis, 'setInterval', (callback, ms = 0, ...args) => realSetInterval(callback, scale(ms), ...args));
+  t.mock.method(AbortSignal, 'timeout', ms => realAbortTimeout(scale(ms)));
+}
+
 const NOW = Date.parse('2026-09-18T06:00:00Z');
 const event = {
   id: 'eonet-recovered', title: 'Volcano', categories: [{ id: 'volcanoes' }],
@@ -42,7 +69,8 @@ const run = transport => fetchNaturalEvents({
   fetchHkoWarningsFn: async () => ({ warnings: [], dataAvailable: true, sourceDecision: { status: 'used' } }),
 });
 
-test('late EONET headers leave progressing body time within the shared budget', { timeout: 25_000 }, async t => {
+test('late EONET headers leave progressing body time within the shared budget', { timeout: 10_000 }, async t => {
+  compressTime(t);
   const body = JSON.stringify({ events: [event] });
   const timers = [];
   const server = createServer((_req, res) => {
@@ -65,7 +93,8 @@ test('late EONET headers leave progressing body time within the shared budget', 
   assert.equal(transport.calls.get('eonet'), 2);
 });
 
-test('EONET aborts a silent body and retries within the existing source budget', { timeout: 15_000 }, async t => {
+test('EONET aborts a silent body and retries within the existing source budget', { timeout: 10_000 }, async t => {
+  compressTime(t);
   let disconnected = 0;
   const server = createServer((req, res) => {
     req.on('close', () => disconnected++);
@@ -85,7 +114,8 @@ test('EONET aborts a silent body and retries within the existing source budget',
   assert.equal(disconnected, 2);
 });
 
-test('EONET progressing body cannot renew the total deadline', { timeout: 35_000 }, async t => {
+test('EONET progressing body cannot renew the total deadline', { timeout: 10_000 }, async t => {
+  compressTime(t);
   let interval;
   let disconnected = false;
   const server = createServer((req, res) => {
@@ -132,7 +162,8 @@ test('EONET streamed JSON preserves native BOM and invalid UTF-8 decoding', asyn
   assert.equal(result.events.find(item => item.id === event.id).title, expected.events[0].title);
 });
 
-test('EONET bounds decompressed bytes and rejects a truncated native response', async t => {
+test('EONET bounds decompressed bytes and rejects a truncated native response', { timeout: 10_000 }, async t => {
+  compressTime(t);
   const compressed = gzipSync(JSON.stringify({ events: [], padding: 'x'.repeat(2 * 1024 * 1024) }));
   let mode = 'oversize';
   const server = createServer((_req, res) => {
@@ -168,14 +199,19 @@ test('EONET success and malformed JSON release header and idle timers', async t 
   }
 });
 
-function dualFamilyFailure() {
-  return new TypeError('fetch failed', { cause: Object.assign(new AggregateError([
+function dualFamilyFailure(wrapped = false) {
+  const aggregate = Object.assign(new AggregateError([
     Object.assign(new Error(), { code: 'ETIMEDOUT', syscall: 'connect', address: '127.0.0.1' }),
     Object.assign(new Error(), { code: 'ENETUNREACH', syscall: 'connect', address: '::1' }),
-  ]), { code: 'ETIMEDOUT' }) });
+  ]), { code: 'ETIMEDOUT' });
+  const cause = wrapped
+    ? Object.assign(new Error('connect timeout', { cause: aggregate }), { code: 'UND_ERR_CONNECT_TIMEOUT' })
+    : aggregate;
+  return new TypeError('fetch failed', { cause });
 }
 
-test('EONET retries the dual-family connect failure over IPv4 and destroys its dispatcher', async t => {
+for (const wrapped of [false, true]) {
+test(`EONET retries ${wrapped ? 'wrapped' : 'direct'} dual-family connect failure over IPv4 and destroys its dispatcher`, async t => {
   const server = createServer((_req, res) => { res.end(JSON.stringify({ events: [event] })); });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -190,31 +226,43 @@ test('EONET retries the dual-family connect failure over IPv4 and destroys its d
   let dispatcher;
   const transport = fixture(async (source, attempt, options) => {
     if (source !== 'eonet') { assert.equal(options.dispatcher, undefined); return; }
-    if (attempt === 1) { assert.equal(options.dispatcher, undefined); throw dualFamilyFailure(); }
+    if (attempt === 1) { assert.equal(options.dispatcher, undefined); throw dualFamilyFailure(wrapped); }
     dispatcher = options.dispatcher;
     return fetch(`http://eonet.fixture.invalid:${server.address().port}`, options);
   });
   const result = await run(transport);
   assert.deepEqual(families, [4]);
-  assert.equal(dispatcher.destroyed, true);
+  await assert.rejects(
+    fetch(`http://eonet.fixture.invalid:${server.address().port}`, { dispatcher }),
+    error => error.cause?.code === 'UND_ERR_DESTROYED',
+  );
   assert.equal(transport.calls.get('eonet'), 2);
   for (const [source, count] of transport.calls) if (source !== 'eonet') assert.equal(count, 1, source);
   assert.ok(result.events.some(item => item.id === event.id));
   assert.equal(result._sourceSnapshots.eonet.fetchedAt, NOW);
 });
+}
 
 test('IPv4 fallback is limited to EONET and the exact connect failure signature', async () => {
   const wrongFamily = dualFamilyFailure();
   wrongFamily.cause.errors[1].address = '127.0.0.2';
   const wrongCode = dualFamilyFailure();
   wrongCode.cause.errors[1].code = 'ECONNREFUSED';
+  const wrongWrapper = dualFamilyFailure(true);
+  wrongWrapper.cause.code = 'UND_ERR_SOCKET';
+  const wrappedWrongFamily = dualFamilyFailure(true);
+  wrappedWrongFamily.cause.cause.errors[1].address = '127.0.0.2';
   for (const [source, failure] of [
     ['gdacs:TC', dualFamilyFailure()],
+    ['gdacs:TC', dualFamilyFailure(true)],
     ['eonet', new DOMException('timeout', 'TimeoutError')],
     ['eonet', new TypeError('fetch failed', { cause: { code: 'ETIMEDOUT' } })],
     ['eonet', new TypeError('fetch failed', { cause: new AggregateError([]) })],
     ['eonet', wrongFamily],
     ['eonet', wrongCode],
+    ['eonet', wrongWrapper],
+    ['eonet', wrappedWrongFamily],
+    ['eonet', new TypeError('fetch failed', { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } })],
   ]) {
     const transport = fixture((current, _attempt, options) => {
       assert.equal(options.dispatcher, undefined);
@@ -225,12 +273,13 @@ test('IPv4 fallback is limited to EONET and the exact connect failure signature'
   }
 });
 
-test('failed IPv4 retry destroys its dispatcher and preserves the previous success and expiry', async () => {
+for (const wrapped of [false, true]) {
+test(`failed IPv4 retry for ${wrapped ? 'wrapped' : 'direct'} error destroys its dispatcher and preserves the previous success and expiry`, async () => {
   const initial = await run(fixture());
   let dispatcher;
   const transport = fixture((source, attempt, options) => {
     if (source !== 'eonet') return;
-    if (attempt === 1) throw dualFamilyFailure();
+    if (attempt === 1) throw dualFamilyFailure(wrapped);
     dispatcher = options.dispatcher;
     throw new DOMException('timeout', 'TimeoutError');
   });
@@ -239,7 +288,10 @@ test('failed IPv4 retry destroys its dispatcher and preserves the previous succe
     now, previousSources: initial._sourceSnapshots, fetchFn: transport.fetchFn,
     fetchHkoWarningsFn: async () => ({ warnings: [], dataAvailable: true, sourceDecision: { status: 'used' } }),
   });
-  assert.equal(dispatcher.destroyed, true);
+  await assert.rejects(
+    fetch('http://eonet.fixture.invalid', { dispatcher }),
+    error => error.cause?.code === 'UND_ERR_DESTROYED',
+  );
   assert.equal(transport.calls.get('eonet'), 2);
   for (const [source, count] of transport.calls) if (source !== 'eonet') assert.equal(count, 1, source);
   const health = naturalEventsAfterPublish(result).freshnessMetaPatch.sourceHealth.eonet;
@@ -248,6 +300,7 @@ test('failed IPv4 retry destroys its dispatcher and preserves the previous succe
   assert.equal(health.lastAttemptAt, now);
   assert.equal(health.retainedUntil, NOW + 18 * 3_600_000);
 });
+}
 
 test('a body-stage failure does not select the EONET connect fallback', async () => {
   const transport = fixture((source, _attempt, options) => {
@@ -367,7 +420,8 @@ test('elapsed request time reduces the next timeout within the shared deadline',
   assert.ok(result.events.some(item => item.id === event.id));
 });
 
-test('native fetch covers header and body stalls and exhausts within the source deadline', { timeout: 40_000 }, async t => {
+test('native fetch covers header and body stalls and exhausts within the source deadline', { timeout: 10_000 }, async t => {
+  compressTime(t);
   let eonetRequests = 0;
   let tcRequests = 0;
   const server = createServer((req, res) => {
@@ -399,6 +453,36 @@ test('native fetch covers header and body stalls and exhausts within the source 
   assert.ok(result.events.some(item => item.id === event.id));
   assert.deepEqual(naturalEventsAfterPublish(result).freshnessMetaPatch.failedSources, ['gdacs:TC']);
   assert.ok(elapsed >= 29_000, `elapsed ${elapsed}ms`);
+});
+
+// GDACS's DR (2.9 MB) and TC (0.8 MB) feeds routinely take 17-32 s end to
+// end, with the first byte alone at 6-11 s. A 15 s cap failed them on healthy
+// days and published naturalEvents as SEED_ERROR (GDACS_TYPE_COVERAGE_INCOMPLETE).
+test('a slow but healthy GDACS feed completes inside its own per-attempt limit', { timeout: 10_000 }, async t => {
+  compressTime(t);
+  let drRequests = 0;
+  const drought = {
+    type: 'Feature', geometry: { type: 'Point', coordinates: [12, 8] },
+    properties: { eventtype: 'DR', eventid: 7, alertlevel: 'Orange', name: 'Drought', fromdate: new Date(NOW).toISOString() },
+  };
+  const server = createServer((req, res) => {
+    drRequests++;
+    setTimeout(() => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.write('{"type":"FeatureCollection",');
+      setTimeout(() => res.end(`"features":${JSON.stringify([drought])}}`), 18_000);
+    }, 11_000);
+  });
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const transport = fixture((source, _attempt, options) => {
+    if (source === 'gdacs:DR') return fetch(`${origin}/dr`, options);
+  });
+  const result = await run(transport);
+  assert.equal(drRequests, 1);
+  assert.deepEqual(naturalEventsAfterPublish(result).freshnessMetaPatch.failedSources ?? [], []);
 });
 
 test('Retry-After is honored and an elapsed deadline prevents a late retry', async t => {
@@ -499,6 +583,7 @@ test('throwing diagnostic getters preserve bounded failures and the retry limit'
 });
 
 test('failure timing separates each request duration from total elapsed time', async t => {
+  useRealRetryDelay(t);
   let clock = 0;
   const logs = [];
   t.mock.method(performance, 'now', () => clock);
@@ -521,6 +606,7 @@ test('failure timing separates each request duration from total elapsed time', a
 });
 
 test('failure phase timings distinguish late headers from a stalled body and reset on retry', async t => {
+  useRealRetryDelay(t);
   let clock = 0;
   const logs = [];
   t.mock.method(performance, 'now', () => clock);

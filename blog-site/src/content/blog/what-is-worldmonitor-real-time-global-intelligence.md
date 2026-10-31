@@ -6,7 +6,7 @@ keywords: "global intelligence dashboard, real-time intelligence platform, OSINT
 audience: "General tech audience, OSINT researchers, analysts, journalists"
 heroImage: "/blog/images/blog/what-is-worldmonitor-real-time-global-intelligence.jpg"
 pubDate: "2026-02-10"
-modifiedDate: "2026-08-05"
+modifiedDate: "2026-10-26"
 ---
 
 World Monitor is a **free, open-source, real-time global intelligence dashboard** that correlates conflicts, markets, shipping, aviation, infrastructure, cyber threats, natural hazards, and live news on one map. The public dashboard requires no signup; paid Pro, API, and Enterprise plans add analyst, automation, programmatic, and team workflows.
@@ -24,7 +24,7 @@ World Monitor turns many public signals into one situational-awareness view. Ins
 | Natural hazards | Earthquakes, fires, volcanoes, floods, weather, and radiation signals | [USGS](https://earthquake.usgs.gov/), [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/), and official alert feeds |
 | Cyber and infrastructure | Outages, malicious infrastructure, datacenters, nuclear sites, and dependency cascades | Cloudflare Radar, abuse.ch feeds, and public infrastructure datasets |
 
-The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) documents provider, cadence, license posture, and provenance details for 578+ observed upstream hosts. A source being present does not make every observation equally fresh or authoritative; each feed retains its own reporting delay and revision policy.
+The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) documents provider, cadence, license posture, and provenance details for 790 attributed providers across 805 observed source hosts. A source being present does not make every observation equally fresh or authoritative; each feed retains its own reporting delay and revision policy.
 
 ## How Is It Different From a News Dashboard?
 
@@ -34,7 +34,7 @@ That correlation layer is the product's central idea: separate weak signals beco
 
 ## What Is Included in the Free Dashboard?
 
-The public dashboard exposes a shared map-layer catalog, curated news feeds backed by observed upstream hosts, country briefs, instability scores, chokepoints, infrastructure, markets, disasters, and watchlists. Every layer except the Resilience layer is available on the free plan, and the dashboard can be opened without an account.
+The public dashboard exposes a shared map-layer catalog, curated news feeds backed by observed upstream hosts, [country briefs](/countries/), [instability scores](/country-instability-index/), [chokepoints](/chokepoints/), infrastructure, markets, disasters, and watchlists. Every layer except the Resilience layer is available on the free plan, and the dashboard can be opened without an account.
 
 World Monitor currently maintains:
 
@@ -76,6 +76,8 @@ Developers can start with the [API reference](https://www.worldmonitor.app/docs/
 Yes. The platform source is published under AGPL-3.0 on [GitHub](https://github.com/koala73/worldmonitor). The web app uses Preact, TypeScript, and Vite; the desktop shell uses Tauri with a Node.js sidecar. The hosted service also offers paid Pro, API, and Enterprise plans with separate subscription-license terms.
 
 Open source makes the implementation inspectable, but it does not eliminate source limitations. Public feeds can be delayed, revised, rate-limited, unavailable, or wrong. World Monitor preserves timestamps and provenance so users can distinguish an observed fact from an analytical inference and return to the original publisher.
+
+The inputs do not all share one clock. Read [what real-time means in an intelligence dashboard](/blog/posts/real-time-intelligence-data-freshness/) to distinguish observation age from screen refresh.
 
 ## Frequently Asked Questions
 

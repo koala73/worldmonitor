@@ -1,3 +1,6 @@
+// These source checks pin embed-specific imports, request wiring, and credential
+// boundaries beyond the layer linter's rules (#8690, section 2).
+// A mounted embed exercises selected paths, not every forbidden source reference.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

@@ -8,7 +8,7 @@
 //
 // The co-pin:
 //   gas interval   15d  (two runner eligibility windows fit in content headroom)
-//   oil interval   35d
+//   oil interval   15d  (a new monthly JODI file lands within ~2 weeks)
 //   maxStaleMin    40d
 //   data/meta TTL  70d  (last-good survives one missed monthly publish)
 //
@@ -41,7 +41,7 @@ const DAY_SECONDS = 24 * 3600;
 const DAY_MIN = 24 * 60;
 const ONE_MIN_MS = 60_000;
 const GAS_INTERVAL_DAYS = 15;
-const OIL_INTERVAL_DAYS = 35;
+const OIL_INTERVAL_DAYS = 15;
 const GAS_OBSERVED_LAG_DAYS = 197;
 const DAILY_CRON_MAX_DELAY_DAYS = 1;
 const NOW = Date.parse('2026-08-28T00:00:00.000Z');
@@ -189,7 +189,7 @@ test('oil and gas write seed-meta with the same TTL as the data keys', () => {
 });
 
 test('the interval-to-40-day boundary keeps last-good and does not report EMPTY', () => {
-  // Day 37: past both the 15d gas and 35d oil intervals, but still inside the
+  // Day 37: past the 15d gas and oil intervals, but still inside the
   // 40d health grace. The 70d TTL must keep data present instead of EMPTY.
   const ageMin = 37 * DAY_MIN;
   for (const { name } of JODI_CHECKS) {

@@ -56,11 +56,18 @@ function fredPreserveKeyTtls() {
 }
 
 export async function fetchFredBatch({
-  fetchFredSeriesImpl = fetchFredSeries,
+  fetchFredSeriesImpl = () => fetchFredSeries({ throwOnEmpty: true }),
   fetchGscpiFromRedisImpl = fetchGscpiFromRedis,
   computeStressIndexImpl = computeStressIndex,
 } = {}) {
-  const seriesById = await fetchFredSeriesImpl();
+  let seriesById;
+  try {
+    seriesById = await fetchFredSeriesImpl();
+  } catch (error) {
+    if (error?.preservableFetchFailure !== true) throw error;
+    console.error(`  FETCH FAILED: ${error.message}`);
+    return { seriesCount: 0, sourceUnavailable: true };
+  }
   const usableSeriesById = Object.fromEntries(
     FRED_SEED_SERIES
       .filter((seriesId) => isUsableFredSeries(seriesById[seriesId]))

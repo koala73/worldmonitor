@@ -6,7 +6,7 @@ keywords: "real-time conflict map, geopolitical intelligence map, military track
 audience: "Geopolitical analysts, defense researchers, policy makers, journalists covering conflict"
 heroImage: "/blog/images/blog/track-global-conflicts-in-real-time.jpg"
 pubDate: "2026-02-14"
-modifiedDate: "2026-10-18"
+modifiedDate: "2026-10-26"
 ---
 
 When a military escalation begins, the first 24 hours define the narrative. Analysts who see the signals early, the unusual flight patterns, the naval repositioning, the news velocity spike, have a decisive advantage over those waiting for the morning briefing.
@@ -157,6 +157,8 @@ Jump between regions instantly with named preset views: Global, Americas, Europe
 Build a picture, then share it. World Monitor encodes your entire view state (map position, active layers, time range) into a URL. Send it to a colleague, and they see exactly what you see.
 
 For public sharing, the story export feature generates social-ready briefs with Open Graph images for Twitter/X, LinkedIn, WhatsApp, Telegram, and Reddit.
+
+Before relying on a generated brief, use the [AI intelligence summary review workflow](/blog/posts/ai-intelligence-summary-reliability/) to check its sources, timing and inferences.
 
 ## Frequently Asked Questions
 

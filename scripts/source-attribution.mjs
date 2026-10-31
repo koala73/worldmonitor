@@ -338,6 +338,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Office of the U.S. Trade Representative; link to the original release.',
     status: 'reviewed',
   },
+  'jrj.sh.gov.cn': {
+    provider: 'Shanghai Financial Portal',
+    license: 'Shanghai Financial Portal copyright statement section 2 (https://jrj.sh.gov.cn/BQSM/index.html), reviewed 2026-10-24. Numeric facts and publication metadata only; retain the credited underlying source. No article prose or third-party media redistribution.',
+    attribution: 'People’s Bank of China, republished by Shanghai Financial Portal. Link to the dated https://jrj.sh.gov.cn/SCGK194/ report.',
+    status: 'reviewed',
+  },
   '511on.ca': {
     provider: 'Ontario 511',
     license: 'Ontario 511 API terms; Government of Ontario data; attribution required',
@@ -976,8 +982,10 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'd98354f04ec04824262cd243290b38c4b657c6c4da33097239c9cedfc8e9d9b0',
-  reason: 'Preserve reviewed provider identities, register the two official NASA FIRMS Area API hosts as one provider identity, name TradingView as the provider behind the S&P 500 breadth screener scan that replaced the WAF-blocked Barchart quote pages, exclude the Sentry error-tracking host that the resolve-pin audit reads, group the JODI publication catalog with its existing data host, and name the eight major publishers carried as Google News site: feeds after the 2026-10-16 Google News World audit, group the Al Jazeera feed host with the host of its Google News site: search as one Al Jazeera provider, and name the International Trade Administration behind the Consolidated Screening List bulk download with the notice its Data API terms require.',
+  sha256: '68bc5750134cdb616d47fd6899af0e6a7f8f2af8399b140d7ec5e3e86ec52510',
+  // 2026-10-24: add Shanghai Financial Portal as a distinct official
+  // republisher. Preserve PBOC source credit under /BQSM/index.html section 2.
+  reason: 'Preserve all reviewed provider identities and add Shanghai Financial Portal as a distinct official M2 republisher with PBOC source attribution. The 2026-10-24 review of its copyright statement section 2 permits the facts-only source contract with original source credit.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
@@ -1037,6 +1045,8 @@ const EXCLUDED_HOSTS = new Set([
   't.me',
   'reddit.com',
   'openrouter.ai',
+  // AI model provider (server/_shared/llm-anthropic.ts), not an ingested dataset.
+  'api.anthropic.com',
   'api.typesafe.ai',
   'tts.baidu.com',
   'api.indexnow.org',
@@ -1103,6 +1113,61 @@ function read(rootDir, path) {
   return readFileSync(join(rootDir, path), 'utf8');
 }
 
+// Catalog prose (feed notes, category notes, $comment) can quote retired URLs
+// that no view fetches. Blank those string values where they sit, by key, so
+// only active URL fields are scanned. Masking by position (not by text) keeps
+// an active URL that happens to equal a note. Line numbers stay put.
+const CATALOG_PROSE_KEYS = new Set(['$comment', 'note', 'notes']);
+
+function maskCatalogProse(source) {
+  try {
+    JSON.parse(source);
+  } catch {
+    return source;
+  }
+  const out = source.split('');
+  // Each open container records whether its values are prose: an object
+  // tracks the key it is reading; an array inherits from its own key.
+  const stack = [];
+  let pendingKey = null;
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === '"') {
+      let j = i + 1;
+      while (source[j] !== '"') j += source[j] === '\\' ? 2 : 1;
+      const top = stack[stack.length - 1];
+      let k = j + 1;
+      while (/\s/.test(source[k] ?? '')) k += 1;
+      const isKey = top?.type === 'object' && source[k] === ':';
+      if (isKey) {
+        pendingKey = JSON.parse(source.slice(i, j + 1));
+      } else {
+        const prose = top?.type === 'array' ? top.prose : CATALOG_PROSE_KEYS.has(pendingKey);
+        if (prose) for (let m = i + 1; m < j; m += 1) out[m] = ' ';
+        pendingKey = null;
+      }
+      i = j + 1;
+      continue;
+    }
+    if (ch === '{') {
+      stack.push({ type: 'object' });
+      pendingKey = null;
+    } else if (ch === '[') {
+      const parent = stack[stack.length - 1];
+      const prose = parent?.type === 'array' ? parent.prose : CATALOG_PROSE_KEYS.has(pendingKey);
+      stack.push({ type: 'array', prose });
+      pendingKey = null;
+    } else if (ch === '}' || ch === ']') {
+      stack.pop();
+    } else if (ch === ',') {
+      if (stack[stack.length - 1]?.type === 'object') pendingKey = null;
+    }
+    i += 1;
+  }
+  return out.join('');
+}
+
 function readdirPresentSync(absoluteDir) {
   try {
     return readdirSync(absoluteDir, { withFileTypes: true });
@@ -1151,6 +1216,10 @@ function walkSourceFiles(rootDir) {
     }
   };
   for (const root of SOURCE_ROOTS) visit(root);
+  // The feed catalog is data under shared/, outside the code roots.
+  for (const path of FEED_DECLARATION_FILES) {
+    if (!files.includes(path) && existsSync(join(rootDir, path))) files.push(path);
+  }
   return files.sort();
 }
 
@@ -1190,7 +1259,8 @@ export function scanUpstreamHosts(rootDir = ROOT) {
     hosts.set(host, current);
   };
   for (const relativePath of walkSourceFiles(rootDir)) {
-    const source = read(rootDir, relativePath);
+    const raw = read(rootDir, relativePath);
+    const source = relativePath.endsWith('.json') && FEED_FILES.has(relativePath) ? maskCatalogProse(raw) : raw;
     const lineStarts = [0];
     for (let offset = source.indexOf('\n'); offset !== -1; offset = source.indexOf('\n', offset + 1)) {
       lineStarts.push(offset + 1);
@@ -1242,7 +1312,9 @@ export function scanUpstreamHosts(rootDir = ROOT) {
         }
       }
     }
-    if (FEED_FILES.has(relativePath)) {
+    // The JSON catalog stores expanded Google News URLs (handled above); its
+    // `notes` may quote retired gn() queries that are no longer fetched.
+    if (FEED_FILES.has(relativePath) && !relativePath.endsWith('.json')) {
       // Server feed mirrors build Google News URLs through gn()/gnLocale().
       // Count a site-scoped publisher under its own host as well as counting
       // the Google News URL literal above under news.google.com.

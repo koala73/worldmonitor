@@ -18,6 +18,8 @@
       "mcpCallsPerDay": 0,
       "dashboardAiCallsPerDay": 0,
       "mcpBurstRequestsPerMinute": 0,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": false
     },
     "cta": "Get Started",
@@ -38,7 +40,8 @@
       "Physical metals divergence, minerals concentration & sovereign debt data",
       "Scheduled AI digest + alert rules engine",
       "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
-      "Custom widgets & 10 dashboards (vs 3)"
+      "Custom widgets & 10 dashboards (vs 3)",
+      "Desktop key for the desktop app (2 keys)"
     ],
     "highlightFeatures": [
       "Personal license",
@@ -50,6 +53,8 @@
       "mcpCallsPerDay": 50,
       "dashboardAiCallsPerDay": 500,
       "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 7500,
+      "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
     "monthlyProductId": "pdt_0Nbtt71uObulf7fGXhQup",
@@ -68,6 +73,7 @@
       "Data export — CSV, JSON & PDF reports",
       "25 custom dashboards (vs 10)",
       "MCP + SDK: 250 calls/day (vs 50)",
+      "Desktop key for the desktop app (3 keys)",
       "Priority support"
     ],
     "highlightFeatures": [
@@ -80,6 +86,8 @@
       "mcpCallsPerDay": 250,
       "dashboardAiCallsPerDay": 2500,
       "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 7500,
+      "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
     "monthlyProductId": "pdt_0NjyFDbhURh2oROgPIU3G",
@@ -109,6 +117,8 @@
       "mcpCallsPerDay": 1000,
       "dashboardAiCallsPerDay": 1000,
       "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
     "monthlyProductId": "pdt_0NbttVmG1SERrxhygbbUq",
@@ -138,6 +148,8 @@
       "mcpCallsPerDay": 10000,
       "dashboardAiCallsPerDay": 10000,
       "mcpBurstRequestsPerMinute": 300,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
     "monthlyProductId": "pdt_0Nbttg7NuOJrhbyBGCius",
@@ -168,6 +180,8 @@
       "mcpCallsPerDay": 25000,
       "dashboardAiCallsPerDay": 25000,
       "mcpBurstRequestsPerMinute": 1000,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": false
     },
     "cta": "Contact Sales",

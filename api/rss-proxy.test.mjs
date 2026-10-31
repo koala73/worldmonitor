@@ -1050,6 +1050,58 @@ test('leaves a feed inside both bounds byte-identical', async () => {
   assert.equal(await res.text(), feed, 'a small feed must pass through untouched');
 });
 
+function truncatedFeed(prefix) {
+  return `<rss><channel>${prefix}`
+    + Array.from({ length: 30 }, (_, i) => `<item><title>Episode ${i}</title></item>`).join('');
+}
+
+test('closes a truncated feed against the last same-name opener', async () => {
+  // `</inner>` closes the LAST `<inner>`, dropping the `<wrap>` opened after
+  // it, so only the first `<wrap>` is left to close.
+  const feed = truncatedFeed(`<wrap><inner><wrap></inner>${'<x></y>'.repeat(200)}`);
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/rss+xml' } }));
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const text = await res.text();
+
+  assert.equal(res.status, 200);
+  assert.equal(countTags(text, 'item').close, 20, 'the item bound truncated the feed');
+  assert.ok(text.endsWith(`<title>Episode 19</title></item>${'</x>'.repeat(200)}</wrap></channel></rss>`),
+    `closing tags must match the open-element stack, got tail ${JSON.stringify(text.slice(-80))}`);
+});
+
+test('refuses a truncated feed nested deeper than any real feed, quickly', async () => {
+  // A close tag with no matching opener used to scan the whole open-element
+  // stack, so N openers followed by N stray closers cost N^2: 0.25 MiB took
+  // ~3.5 s of synchronous edge CPU, 1 MiB ~52 s. Holding that many elements
+  // open is also what lets the stack's memory grow with the 5 MiB body cap.
+  const openers = 90_000;
+  const feed = truncatedFeed(`<item><title>x</title>${'<a>'.repeat(openers)}${'</b>'.repeat(openers)}</item>`);
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/rss+xml' } }));
+
+  const started = performance.now();
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  await res.text();
+  const elapsed = performance.now() - started;
+
+  assert.equal(res.status, 502, 'a hostile nesting depth is a hard failure, like an item wider than the cap');
+  assert.ok(elapsed < 2000, `closing the truncated feed took ${elapsed.toFixed(0)} ms`);
+});
+
+test('closes a truncated feed in linear time when stray closers meet the deepest allowed stack', async () => {
+  const feed = truncatedFeed(`<item><title>x</title>${'<a>'.repeat(500)}${'</b>'.repeat(1_000_000)}</item>`);
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/rss+xml' } }));
+
+  const started = performance.now();
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const text = await res.text();
+  const elapsed = performance.now() - started;
+
+  assert.equal(res.status, 200);
+  assert.ok(text.endsWith('<title>Episode 18</title></item></channel></rss>'), `got tail ${JSON.stringify(text.slice(-60))}`);
+  assert.ok(elapsed < 2000, `closing the truncated feed took ${elapsed.toFixed(0)} ms`);
+});
+
 test('rejects an allowlisted host on a non-default port, directly or via redirect', async () => {
   const calls = [];
   globalThis.fetch = async (input) => {

@@ -1,3 +1,6 @@
+// These text checks pin audit protocol wording and cross-file Redis guardrails,
+// including non-empty discovery checks in both UCDP writers (#8690, section 2).
+// Running a seeder cannot verify the audit templates or all writer declarations.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

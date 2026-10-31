@@ -38,6 +38,7 @@ import {
   recordTerminalCheckoutRateLimit,
   recordTerminalCheckoutTimeout,
 } from "./checkoutRateLimitAlarm";
+import { recordCreatedCheckoutSession } from "./checkoutSessionLog";
 
 // MCP paid-funnel campaign marker (#6716). Imported, never re-declared: a
 // second copy of this normalisation is exactly the drift that produced the
@@ -46,6 +47,7 @@ import {
 // The Convex runtime imports from `shared/` elsewhere (convex/apiKeys.ts,
 // convex/companyMonitoring/*), so there is no module-boundary reason to fork it.
 import { normalizeCheckoutAttributionSource as normalizeAttributionSource } from "../../shared/mcp-attribution";
+import { acquisitionCheckoutMetadata } from "../../shared/acquisition-source";
 
 const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
 const PAYMENT_IN_PROGRESS = "PAYMENT_IN_PROGRESS";
@@ -130,6 +132,27 @@ function normalizeCheckoutLoginEmail(raw: string | undefined): string | null {
   return trimmed;
 }
 
+const MAX_PREFILL_NAME_LENGTH = 100;
+
+/**
+ * Dodo `customer` prefill for the hosted checkout form. Dodo requires an email
+ * to create a customer, so with no usable login email (phone-only signups,
+ * anonymous buyers) nothing is sent and the buyer fills the form as before.
+ */
+function checkoutCustomerPrefill(
+  loginEmail: string | null,
+  rawName: string | undefined,
+): { customer?: { email: string; name?: string } } {
+  if (!loginEmail) return {};
+  const name = typeof rawName === "string" ? rawName.trim() : "";
+  return {
+    customer: {
+      email: loginEmail,
+      ...(name && name.length <= MAX_PREFILL_NAME_LENGTH ? { name } : {}),
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Shared checkout session creation logic
 // ---------------------------------------------------------------------------
@@ -141,6 +164,8 @@ interface CheckoutArgs {
   referralCode?: string;
   /** MCP paid-funnel attribution (#6716). Parallel to referralCode. */
   attributionSource?: string;
+  /** First-touch acquisition source from the browser; re-validated here. */
+  acquisition?: unknown;
 }
 
 interface UserInfo {
@@ -270,7 +295,7 @@ async function _createCheckoutSession(
   args: CheckoutArgs,
   user: UserInfo,
 ): Promise<
-  | (Awaited<ReturnType<typeof createDodoCheckoutSession>> & { anonymous_claim_token?: string })
+  | (Omit<Awaited<ReturnType<typeof createDodoCheckoutSession>>, "session_id"> & { anonymous_claim_token?: string })
   | CheckoutRateLimitedOutcome
   | CheckoutTimedOutOutcome
 > {
@@ -392,6 +417,9 @@ async function _createCheckoutSession(
     // subscriptionHelpers on first subscription.active.
     metadata.wm_attribution = attributionSource;
   }
+  // First-touch channel (UTM, referrer host, landing page) so subscriptions
+  // carry channel next to billing country. Only `wm_acq_*` keys, re-validated.
+  Object.assign(metadata, acquisitionCheckoutMetadata(args.acquisition));
 
   try {
     // A 429 here is Dodo rate-limiting our shared API key (account-level, not
@@ -404,13 +432,22 @@ async function _createCheckoutSession(
         createDodoCheckoutSession({
           product_cart: [{ product_id: args.productId, quantity: 1 }],
           return_url: returnUrl,
-          // Note: deliberately not passing `customer` block — Dodo locks
-          // those fields as read-only. User identity is tracked via
-          // metadata.wm_user_id + HMAC signature instead.
+          // Prefill the signed-in email and name so buyers don't retype them.
+          // #2809 dropped this because Dodo made prefilled fields read-only;
+          // the allow_customer_editing_* flags below keep both editable, so a
+          // buyer can still bill a different address. Identity stays on
+          // metadata.wm_user_id + HMAC signature, never on this email.
+          ...checkoutCustomerPrefill(loginEmail, user.name),
           ...(args.discountCode ? { discount_code: args.discountCode } : {}),
           ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+          // Country, plus state/ZIP only where tax needs them, instead of a
+          // full street address.
+          minimal_address: true,
           feature_flags: {
             allow_discount_code: true,
+            allow_customer_editing_email: true,
+            allow_customer_editing_name: true,
+            allow_phone_number_collection: false,
           },
           customization: {
             theme: "dark",
@@ -447,9 +484,16 @@ async function _createCheckoutSession(
       });
       return result;
     }
+    const { session_id: sessionId, ...session } = result;
+    await recordCreatedCheckoutSession(ctx, {
+      userId: user.userId,
+      productId: args.productId,
+      ...(sessionId ? { sessionId } : {}),
+      anonymous: anonymousClaimToken !== null,
+    });
     return anonymousClaimToken
-      ? { ...result, anonymous_claim_token: anonymousClaimToken }
-      : result;
+      ? { ...session, anonymous_claim_token: anonymousClaimToken }
+      : session;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(
@@ -463,6 +507,17 @@ async function _createCheckoutSession(
 // Internal action: called by /relay/create-checkout with trusted userId
 // ---------------------------------------------------------------------------
 
+// The edge handler forwards only normalized known keys; the values are
+// re-validated again when stamped into provider metadata.
+const acquisitionValidator = v.object({
+  source: v.optional(v.string()),
+  medium: v.optional(v.string()),
+  campaign: v.optional(v.string()),
+  referrer: v.optional(v.string()),
+  landing: v.optional(v.string()),
+  firstSeen: v.optional(v.string()),
+});
+
 export const internalCreateCheckout = internalAction({
   args: {
     userId: v.string(),
@@ -473,6 +528,7 @@ export const internalCreateCheckout = internalAction({
     discountCode: v.optional(v.string()),
     referralCode: v.optional(v.string()),
     attributionSource: v.optional(v.string()),
+    acquisition: v.optional(acquisitionValidator),
     // "Start a new checkout anyway" — skips ONLY the pending-payment guard
     // (#4438). The subscription guard still applies.
     bypassPendingGuard: v.optional(v.boolean()),
@@ -511,6 +567,7 @@ export const internalCreateCheckout = internalAction({
         discountCode: args.discountCode,
         referralCode: args.referralCode,
         attributionSource: args.attributionSource,
+        acquisition: args.acquisition,
       },
       {
         userId: args.userId,

@@ -3,6 +3,13 @@
   "schema_version": 1,
   "exceptions": [
     {
+      "path": "api/mcp/registry/media-perspective-tool.ts",
+      "category": "external-protocol",
+      "reason": "MCP media-perspective tool definition. It forwards to the generated news RPC with the verified caller's credential and exports no HTTP route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/country-history-tool.ts",
       "category": "external-protocol",
       "reason": "MCP country-history tool definition. It forwards to the generated intelligence RPC with the verified caller's credential and exports no HTTP route.",
@@ -241,6 +248,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/webcam-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP webcam tool definitions and fixed WebcamService dispatch. Exports no standalone JSON data route.",
+      "owner": "@FayezBast",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/index.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY merge + buildPublicTool + SUMMARY_SCHEMA + TOOL_LIST_RESPONSE precompute + collision guard. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
@@ -335,6 +349,13 @@
       "path": "api/mcp/rpc.ts",
       "category": "external-protocol",
       "reason": "MCP JSON-RPC 2.0 envelope helpers (rpcOk + rpcError). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/modern.ts",
+      "category": "external-protocol",
+      "reason": "MCP 2026-07-28 (modern era) envelope detection and per-request _meta/header validation for the /mcp handler. Part of the same external-protocol transport, not a JSON data API.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -854,6 +875,20 @@
       "category": "internal-helper",
       "reason": "Settings-UI revoke action for Pro MCP tokens (plan 2026-05-10-001 U9). Clerk-authenticated; forwards the verified-from-JWT userId to Convex /api/internal-revoke-pro-mcp-token (in-mutation tenancy gate validates `row.userId === userId`), then writes the `pro-mcp-token-neg:<tokenId>` sentinel so any in-flight bearer is invalidated within the 60s neg-cache window. Calls the internal HTTP route rather than the public mutation to (a) avoid ConvexHttpClient's no-default-timeout foot-gun (memory `convex-httpclient-no-default-timeout-bypasses-typed-503`) and (b) atomically pair with the cache-invalidation step. Plain `{tokenId}` request / `{ok:true}` response — modeling as a sebuf RPC would over-engineer a single-button settings action.",
       "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/user-api-keys.ts",
+      "category": "internal-helper",
+      "reason": "First-party API and desktop key issuance. Requires a locally verified Clerk session, a fail-closed per-user limiter, and a live session check before the gateway-only Convex relay can create a key.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
+      "path": "api/user-embed-keys.ts",
+      "category": "internal-helper",
+      "reason": "First-party embed key issuance. Requires a locally verified Clerk session, a fail-closed per-user limiter, a live session check, and a server-side Clerk role lookup before the gateway-only Convex relay can create a key.",
+      "owner": "@koala73",
       "removal_issue": null
     },
     {
