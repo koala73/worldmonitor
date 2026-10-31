@@ -208,7 +208,13 @@ describe('Fiji FCCC fuel prices', () => {
     // Fiji is UTC+12, so 1 November starts at 12:00Z on 31 October.
     const fiji = feeds.find(f => f.id === 'fccc').utcOffsetMin;
     assert.equal(inEffect(nov, Date.parse('2026-10-31T09:00:00Z'), fiji).length, 0);
+    // A price is not in effect before the day starts: no early-serving slack for calendar dates.
+    assert.equal(inEffect(nov, Date.parse('2026-10-31T11:30:00Z'), fiji).length, 0);
+    assert.equal(inEffect(nov, Date.parse('2026-10-31T12:00:00Z'), fiji).length, nov.length);
     assert.equal(inEffect(nov, Date.parse('2026-10-31T12:30:00Z'), fiji).length, nov.length);
+    // Timestamp schedules keep their hour of lead.
+    const slot = [{ metric: 'demand.scheduled_daily', period: '2026-10-31T12:00:00.000Z', value: 1, unit: 'MW', area: '' }];
+    assert.equal(inEffect(slot, Date.parse('2026-10-31T11:30:00Z')).length, 1);
     const served = buildFeedSnapshot('fccc', nov, 'https://fccc.gov.fj/x.pdf', Date.parse('2026-10-31T12:30:00Z'));
     // Content age starts at Fiji's local midnight, not a UTC midnight 12 hours ahead.
     assert.equal(regionalEnergyContentMeta(served, Date.parse('2026-10-31T12:30:00Z')).newestItemAt, Date.parse('2026-10-31T12:00:00Z'));

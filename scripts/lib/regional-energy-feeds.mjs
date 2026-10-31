@@ -698,7 +698,8 @@ export function parseFijiFuel(items) {
 // future checks; timestamps are already absolute. Published periods keep the
 // source date.
 export const effectiveAt = (period, utcOffsetMin = 0) => periodEnd(period) - (period.includes('T') ? 0 : utcOffsetMin * 60000);
-export const inEffect = (points, nowMs, utcOffsetMin = 0) => points.filter(p => effectiveAt(p.period, utcOffsetMin) <= nowMs + 3600000);
+// Timestamp schedules may lead by an hour; a calendar day or month is not in effect before it starts.
+export const inEffect = (points, nowMs, utcOffsetMin = 0) => points.filter(p => effectiveAt(p.period, utcOffsetMin) <= nowMs + (p.period.includes('T') ? 3600000 : 0));
 
 export function buildFeedSnapshot(sourceId, observations, dataUrl, nowMs = Date.now()) {
   const feed = feeds.find(f => f.id === sourceId);
