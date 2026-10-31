@@ -102,3 +102,30 @@ for (const group of GROUPS) {
     }
   });
 }
+
+// The nav is fixed, so an open menu taller than the space under it cannot be
+// scrolled into view: in landscape (568x320) the last of the nine links sat
+// below the screen.
+test.describe('welcome menu stays reachable on a landscape phone', () => {
+  test.use({ viewport: { width: 568, height: 320 }, isMobile: true, hasTouch: true });
+
+  test('the open panel fits the viewport and scrolls to its last link', async ({ page }) => {
+    expect(existsSync(resolve(repoRoot, WELCOME)), `${WELCOME} is missing. Run \`npm run build:pro\` first.`).toBe(true);
+    await serveBuiltSite(page);
+    await page.goto(`${ORIGIN}/pro/welcome.html?lang=en`, { waitUntil: 'load' });
+    await expect(page.locator('html')).toHaveAttribute('lang', /^en/);
+
+    await page.locator('#welcome-tablet-navigation summary').click();
+    const panel = page.locator('#welcome-tablet-navigation > div');
+    await expect(panel).toBeVisible();
+    const box = await panel.boundingBox();
+    expect(box, 'menu panel has no box').not.toBeNull();
+    expect(box!.y + box!.height, 'menu panel runs past the bottom of the viewport').toBeLessThanOrEqual(320);
+
+    const last = panel.locator('a').last();
+    await last.scrollIntoViewIfNeeded();
+    const lastBox = await last.boundingBox();
+    expect(lastBox, 'last menu link has no box').not.toBeNull();
+    expect(lastBox!.y + lastBox!.height, 'last menu link cannot be brought on screen').toBeLessThanOrEqual(320);
+  });
+});
