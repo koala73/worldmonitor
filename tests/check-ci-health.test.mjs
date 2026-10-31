@@ -14,6 +14,8 @@ import {
   findSlowdowns,
   findTimeouts,
   median,
+  pickOwnedIssue,
+  safeLabel,
   syncIssues,
 } from '../scripts/check-ci-health.mjs';
 
@@ -33,11 +35,12 @@ function run(overrides = {}) {
   };
 }
 
-function job(name, conclusion, seconds = 120) {
-  const started = Date.parse('2026-10-31T04:10:00Z');
+function job(name, conclusion, seconds = 120, startOffset = 0, steps = []) {
+  const started = Date.parse('2026-10-31T04:10:00Z') + startOffset * 1000;
   return {
     name,
     conclusion,
+    steps: steps.map((step) => ({ name: step })),
     started_at: new Date(started).toISOString(),
     completed_at: new Date(started + seconds * 1000).toISOString(),
   };
@@ -65,19 +68,52 @@ describe('flaky detector', () => {
     const findings = findFlakyJobs([{
       run: run({ run_attempt: 2 }),
       attempts: [
-        [job('unit-shard (3)', 'failure', 180), job('unit', 'failure', 3)],
-        [job('unit-shard (3)', 'success'), job('unit', 'success', 3)],
+        [job('unit-shard (3)', 'failure', 180), job('unit', 'failure', 3, 181)],
+        [job('unit-shard (3)', 'success'), job('unit', 'success', 3, 121)],
       ],
     }]);
     assert.deepEqual(findings.map((finding) => finding.title), ['CI health (flaky): Test / unit-shard (3)']);
   });
 
-  it('still flags a fast job that failed on its own', () => {
+  it('does not blame an aggregate job whose dependency timed out (cancelled, not failed)', () => {
+    // Run 40112988523: the webmcp smoke job hit its 25-minute timeout and
+    // variant-smoke-full failed 3 seconds after it ended.
     const findings = findFlakyJobs([{
       run: run({ run_attempt: 2 }),
-      attempts: [[job('changes', 'failure', 4)], [job('changes', 'success', 4)]],
+      attempts: [
+        [job('variant-smoke-pro-webmcp (webmcp)', 'cancelled', 1500), job('variant-smoke-full', 'failure', 3, 1503)],
+        [job('variant-smoke-pro-webmcp (webmcp)', 'success', 160), job('variant-smoke-full', 'success', 3, 163)],
+      ],
     }]);
-    assert.equal(findings.length, 1);
+    assert.deepEqual(findings, []);
+  });
+
+  it('still flags a fast job that failed on its own, even beside another failure', () => {
+    // public-docs and mintlify-slugs are independent: both start with the run.
+    const findings = findFlakyJobs([{
+      run: run({ name: 'Lint Code', run_attempt: 2 }),
+      attempts: [
+        [job('public-docs', 'failure', 9), job('mintlify-slugs', 'failure', 12)],
+        [job('public-docs', 'success', 9), job('mintlify-slugs', 'success', 12)],
+      ],
+    }]);
+    assert.deepEqual(findings.map((finding) => finding.title), [
+      'CI health (flaky): Lint Code / public-docs',
+      'CI health (flaky): Lint Code / mintlify-slugs',
+    ]);
+  });
+
+  it('reduces fork-controlled workflow and job names to inert labels', () => {
+    const findings = findFlakyJobs([{
+      run: run({ name: 'Test @koala73 [x](https://evil.example)', run_attempt: 2 }),
+      attempts: [[job('<img src=x> | `boom`', 'failure', 40)], [job('<img src=x> | `boom`', 'success')]],
+    }]);
+    const [finding] = findings;
+    for (const text of [finding.title, finding.summary]) {
+      assert.doesNotMatch(text, /[@[\]<>|#]|https?:|evil\.example\//);
+    }
+    assert.equal(safeLabel('unit-shard (5)'), 'unit-shard (5)');
+    assert.equal(safeLabel('x'.repeat(300)).length, 100);
   });
 
   it('ignores jobs that still fail, and groups repeat flakes into one finding', () => {
@@ -92,13 +128,13 @@ describe('flaky detector', () => {
 
 describe('timeout detector', () => {
   it('flags a job cancelled on main after ten or more minutes', () => {
-    const findings = findTimeouts([{ run: run({ conclusion: 'cancelled' }), jobs: [
+    const findings = findTimeouts([{ run: run({ conclusion: 'cancelled' }), attempt: 1, jobs: [
       job('unit-shard (5)', 'cancelled', 916),
       job('unit-shard (1)', 'cancelled', 120),
       job('unit', 'failure', 3),
     ] }]);
     assert.deepEqual(findings.map((finding) => finding.title), ['CI health (timeout): Test / unit-shard (5)']);
-    assert.match(findings[0].evidence[0].detail, /916s/);
+    assert.match(findings[0].evidence[0].detail, /attempt 1 cancelled after 916s/);
   });
 });
 
@@ -126,14 +162,23 @@ describe('failing-main detector', () => {
 });
 
 describe('slowdown detector', () => {
-  const samples = (window, seconds, count) => Array.from({ length: count }, () => ({
-    workflow: 'Test', job: 'sidecar', window, seconds, run: run(),
+  const samples = (window, seconds, count, steps = ['Run npm run test:sidecar']) => Array.from({ length: count }, () => ({
+    workflow: 'Test', job: 'sidecar', window, seconds, steps, run: run(),
   }));
 
   it('flags a median rise of at least 20% and 30 seconds', () => {
     const findings = findSlowdowns([...samples('current', 98, 6), ...samples('previous', 62, 6)]);
     assert.deepEqual(findings.map((finding) => finding.title), ['CI health (slower): Test / sidecar']);
     assert.match(findings[0].summary, /98s.*62s.*\+58%/);
+    assert.doesNotMatch(findings[0].summary, /Steps new this week/);
+  });
+
+  it('names the steps that appeared this week, the usual cause of a deliberate slowdown', () => {
+    const findings = findSlowdowns([
+      ...samples('current', 98, 6, ['Run npm run test:sidecar', 'Test sidecar with the shipped Node.js runtime']),
+      ...samples('previous', 62, 6),
+    ]);
+    assert.match(findings[0].summary, /Steps new this week: `Test sidecar with the shipped Node.js runtime`\./);
   });
 
   it('ignores small absolute rises, small relative rises, and thin samples', () => {
@@ -174,29 +219,102 @@ describe('issue sync', () => {
       { action: 'created', number: 99, title: finding.title },
     ]);
   });
+
+  it('only ever rewrites an issue the scan itself opened', () => {
+    const title = finding.title;
+    const human = { number: 3, title, user: { login: 'someone' } };
+    const pull = { number: 4, title, user: { login: 'github-actions[bot]' }, pull_request: {} };
+    const owned = { number: 5, title, user: { login: 'github-actions[bot]' } };
+    assert.equal(pickOwnedIssue([human, pull], title), null);
+    assert.equal(pickOwnedIssue([human, pull, owned], title), owned);
+    assert.equal(pickOwnedIssue([{ ...owned, title: `${title} (copy)` }], title), null);
+  });
 });
 
 describe('collection against a fake GitHub API', () => {
-  it('reads each monitored workflow one day at a time and every attempt of a re-run', () => {
+  // NOW is Saturday 12:00 UTC. The event window reaches back 7 days and 6 hours.
+  function fakeGh({ daily = {}, attempts = {}, newestMain = [], staleMain = null, successMain = [] }) {
     const paths = [];
-    const rerun = run({ id: 7, run_attempt: 2, created_at: '2026-10-30T10:00:00Z' });
+    let mainReads = 0;
     const gh = (args) => {
       assert.equal(args[0], 'api', 'a dry run must only read');
       const path = args[1];
       paths.push(path);
-      if (path.includes('/runs?created=2026-10-30&')) return JSON.stringify({ workflow_runs: path.includes('test.yml') ? [rerun] : [] });
-      if (path.includes('/runs?')) return JSON.stringify({ workflow_runs: [] });
-      if (path.endsWith('/runs/7/attempts/1/jobs?per_page=100')) return JSON.stringify({ jobs: [job('sidecar', 'failure', 40)] });
-      if (path.endsWith('/runs/7/attempts/2/jobs?per_page=100')) return JSON.stringify({ jobs: [job('sidecar', 'success')] });
+      const workflow = /workflows\/([^/]+)\/runs/.exec(path)?.[1];
+      const date = /runs\?created=(\d{4}-\d{2}-\d{2})&/.exec(path)?.[1];
+      if (date) return JSON.stringify({ workflow_runs: workflow === 'test.yml' ? (daily[date] ?? []) : [] });
+      if (path.includes('runs?event=push&branch=main&per_page=')) {
+        if (workflow !== 'test.yml') return JSON.stringify({ workflow_runs: [], total_count: 0 });
+        mainReads += 1;
+        if (staleMain && mainReads === 1) return JSON.stringify(staleMain);
+        return JSON.stringify({ workflow_runs: newestMain, total_count: newestMain.length ? 500 : 0 });
+      }
+      if (path.includes('runs?event=push&branch=main&status=success')) return JSON.stringify({ workflow_runs: workflow === 'test.yml' ? successMain : [] });
+      const attempt = /runs\/(\d+)\/attempts\/(\d+)\/jobs/.exec(path);
+      if (attempt) return JSON.stringify({ jobs: attempts[`${attempt[1]}/${attempt[2]}`] ?? [] });
       throw new Error(`unexpected path ${path}`);
     };
+    return { gh, paths };
+  }
+
+  it('reads every calendar day the overlapping window touches, so nothing falls between weekly scans', () => {
+    const { gh, paths } = fakeGh({});
+    checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true });
+    for (const workflow of MONITORED_WORKFLOWS) {
+      const days = paths.filter((path) => path.includes(`/workflows/${workflow}/runs?created=`)).map((path) => /created=([\d-]+)/.exec(path)[1]);
+      assert.deepEqual(days, ['2026-10-24', '2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31']);
+    }
+  });
+
+  it('inspects a re-run that still failed overall and reports the job it recovered', () => {
+    const rerun = run({ id: 7, run_attempt: 2, conclusion: 'failure', event: 'pull_request', created_at: '2026-10-30T10:00:00Z' });
+    const { gh } = fakeGh({
+      daily: { '2026-10-30': [rerun] },
+      attempts: {
+        '7/1': [job('sidecar', 'failure', 40), job('unit-shard (2)', 'failure', 150)],
+        '7/2': [job('sidecar', 'success'), job('unit-shard (2)', 'failure', 150)],
+      },
+    });
     const { findings, actions } = checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true });
     assert.deepEqual(findings.map((finding) => finding.title), ['CI health (flaky): Test / sidecar']);
     assert.deepEqual(actions, []);
-    for (const workflow of MONITORED_WORKFLOWS) {
-      const days = paths.filter((path) => path.includes(`/workflows/${workflow}/runs?created=2026-`)).map((path) => /created=(\d{4}-\d{2}-\d{2})/.exec(path)[1]);
-      assert.deepEqual(days, ['2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31']);
-    }
+  });
+
+  it('keeps a timeout from an earlier attempt that a later re-run turned green', () => {
+    const rerun = run({ id: 9, run_attempt: 2, conclusion: 'success', event: 'push', head_branch: 'main', created_at: '2026-10-31T04:08:21Z' });
+    const { gh } = fakeGh({
+      daily: { '2026-10-31': [rerun] },
+      attempts: { '9/1': [job('unit-shard (5)', 'cancelled', 916)], '9/2': [job('unit-shard (5)', 'success', 180)] },
+    });
+    const { findings } = checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true });
+    const timeout = findings.find((finding) => finding.kind === 'timeout');
+    assert.equal(timeout?.title, 'CI health (timeout): Test / unit-shard (5)');
+    assert.match(timeout.evidence[0].detail, /attempt 1 cancelled after 916s/);
+  });
+
+  it('overlaps the previous scan by six hours and ignores anything older', () => {
+    const attempts = { '11/1': [job('a', 'failure', 40)], '11/2': [job('a', 'success')], '12/1': [job('b', 'failure', 40)], '12/2': [job('b', 'success')] };
+    // 7 days and 4 hours before NOW: the previous scan may have run late and missed it.
+    const late = run({ id: 11, run_attempt: 2, created_at: '2026-10-24T08:00:00Z' });
+    const old = run({ id: 12, run_attempt: 2, created_at: '2026-10-24T05:00:00Z' });
+    const { gh } = fakeGh({ daily: { '2026-10-24': [late, old] }, attempts });
+    assert.deepEqual(checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true }).findings.map((finding) => finding.title), [
+      'CI health (flaky): Test / a',
+    ]);
+  });
+
+  it('does not let a stale main listing raise a failing-main alarm', () => {
+    const at = (hour, conclusion) => run({ id: hour, created_at: `2026-10-31T${String(hour).padStart(2, '0')}:00:00Z`, conclusion });
+    const fresh = [at(11, 'success'), at(10, 'failure'), at(9, 'failure')];
+    // The stale snapshot is an older view: a smaller total and only the failures.
+    const stale = { workflow_runs: [at(10, 'failure'), at(9, 'failure')], total_count: 498 };
+    const { gh } = fakeGh({ newestMain: fresh, staleMain: stale });
+    assert.deepEqual(checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true }).findings, []);
+
+    const { gh: failingGh } = fakeGh({ newestMain: [at(11, 'failure'), at(10, 'failure'), at(9, 'success')] });
+    assert.deepEqual(checkCiHealth({ gh: failingGh, repository: 'o/r', now: NOW, dryRun: true }).findings.map((finding) => finding.title), [
+      'CI health (failing on main): Test',
+    ]);
   });
 });
 
