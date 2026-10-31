@@ -126,13 +126,13 @@ export const Hero = () => (
           href={DASHBOARD_PATH}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-hero"
-          className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-wm-green px-6 text-sm font-medium text-wm-bg transition-colors hover:bg-green-300"
+          className="inline-flex min-h-12 py-3 items-center justify-center gap-2 rounded-md bg-wm-green px-6 text-sm font-medium text-wm-bg transition-colors hover:bg-green-300"
         >
           {t('welcome.hero.ctaPrimary')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </a>
         <a
           href="#moments"
-          className="inline-flex h-12 items-center justify-center rounded-md px-4 text-sm font-medium text-wm-text transition-colors hover:bg-white/[0.06]"
+          className="inline-flex min-h-12 py-3 items-center justify-center rounded-md px-4 text-sm font-medium text-wm-text transition-colors hover:bg-white/[0.06]"
         >
           {t('welcome.hero.ctaSecondary')}
         </a>

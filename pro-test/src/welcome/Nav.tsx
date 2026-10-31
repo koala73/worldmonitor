@@ -60,7 +60,7 @@ export const Nav = () => (
           aria-label={t('welcome.nav.launch')}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-nav"
-          className="shrink-0 bg-wm-green text-wm-bg h-9 px-4 rounded-md text-sm font-medium hover:bg-green-300 transition-colors inline-flex items-center gap-2"
+          className="shrink-0 bg-wm-green text-wm-bg min-h-9 py-2 px-4 rounded-md text-sm font-medium hover:bg-green-300 transition-colors inline-flex items-center gap-2"
         >
           {t('welcome.nav.launch')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </a>

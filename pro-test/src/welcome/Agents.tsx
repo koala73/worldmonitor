@@ -87,7 +87,7 @@ export const Agents = () => (
         <p className="font-mono text-xs text-wm-text mb-8">{t('welcome.agents.promise')}</p>
         <a
           href="/docs/documentation"
-          className="inline-flex h-12 items-center rounded-md border border-wm-border px-6 text-sm font-medium text-wm-text transition-colors hover:border-white/20 hover:bg-white/[0.03]"
+          className="inline-flex min-h-12 py-3 items-center rounded-md border border-wm-border px-6 text-sm font-medium text-wm-text transition-colors hover:border-white/20 hover:bg-white/[0.03]"
         >
           {t('welcome.agents.cta')}
         </a>

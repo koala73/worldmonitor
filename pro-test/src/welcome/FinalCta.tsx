@@ -20,7 +20,7 @@ export const FinalCta = () => (
           href={DASHBOARD_PATH}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-final"
-          className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-wm-green px-6 text-sm font-medium text-wm-bg transition-colors hover:bg-green-300"
+          className="inline-flex min-h-12 py-3 items-center justify-center gap-2 rounded-md bg-wm-green px-6 text-sm font-medium text-wm-bg transition-colors hover:bg-green-300"
         >
           {t('welcome.cta.button')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </a>

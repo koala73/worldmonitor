@@ -36,7 +36,7 @@ export const PricingTeaser = () => (
             href={DASHBOARD_PATH}
             data-umami-event="welcome-cta"
             data-umami-event-target="welcome-pricing-free"
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-wm-green px-5 text-sm font-medium text-wm-bg transition-colors hover:bg-green-300"
+            className="inline-flex min-h-10 py-2 items-center justify-center gap-2 rounded-md bg-wm-green px-5 text-sm font-medium text-wm-bg transition-colors hover:bg-green-300"
           >
             {t('welcome.nav.launch')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
           </a>
@@ -64,7 +64,7 @@ export const PricingTeaser = () => (
             href="/pro#pricing"
             data-umami-event="welcome-cta"
             data-umami-event-target="welcome-pricing-pro"
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-wm-green px-5 text-sm font-medium text-wm-bg transition-colors hover:bg-green-300"
+            className="inline-flex min-h-10 py-2 items-center justify-center gap-2 rounded-md bg-wm-green px-5 text-sm font-medium text-wm-bg transition-colors hover:bg-green-300"
           >
             {t('welcome.pricing.cta')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
           </a>

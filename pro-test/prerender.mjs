@@ -87,7 +87,7 @@ const CRITICAL_CSS = [
   // legal footer row (#6982) shipped exactly that, painted across the header
   // and over the Launch CTA on both / and /pro. deploy-config.test.mjs proves
   // the containment against the prerendered welcome page.
-  'nav[data-wm-nav]{position:fixed;top:0;left:0;right:0;z-index:50;background:rgba(17,17,17,.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid #222;border-inline-width:0;border-bottom-width:0}nav[data-wm-nav]>div{max-width:80rem;margin-inline:auto;padding-inline:1rem;height:4rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem}nav[data-wm-nav] a{display:flex;align-items:center;gap:.5rem}nav[data-wm-nav] a[aria-label*="Launch"]{flex-shrink:0;background:#4ade80;color:#050505;height:2.25rem;padding:0 1rem;border-radius:.375rem;font:500 .875rem/1.25rem var(--font-sans)}',
+  'nav[data-wm-nav]{position:fixed;top:0;left:0;right:0;z-index:50;background:rgba(17,17,17,.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid #222;border-inline-width:0;border-bottom-width:0}nav[data-wm-nav]>div{max-width:80rem;margin-inline:auto;padding-inline:1rem;height:4rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem}nav[data-wm-nav] a{display:flex;align-items:center;gap:.5rem}nav[data-wm-nav] a[aria-label*="Launch"]{flex-shrink:0;background:#4ade80;color:#050505;min-height:2.25rem;padding:.5rem 1rem;border-radius:.375rem;font:500 .875rem/1.25rem var(--font-sans)}',
   // The nav's lucide icons ship literal width="24" height="24" attributes and
   // are resized purely by `w-*`/`h-*` utilities, so without these mirrors every
   // one of them paints at 24px and snaps to 12/16/20/24/32px when the deferred
@@ -123,7 +123,7 @@ const CRITICAL_CSS = [
   // match would paint any story slug containing "moments" as a full-width
   // uppercase CTA button until the deferred stylesheet lands. Same element,
   // same painted result, no reach into feed-supplied hrefs.
-  'main a[data-umami-event-target="welcome-hero"],main a[href="#moments"]{height:3rem;justify-content:center;border-radius:.375rem;font-size:.875rem;line-height:1.25rem;font-weight:500}main a[data-umami-event-target="welcome-hero"]{padding-inline:1.5rem}main a[href="#moments"]{padding-inline:1rem}',
+  'main a[data-umami-event-target="welcome-hero"],main a[href="#moments"]{min-height:3rem;padding-block:.75rem;justify-content:center;border-radius:.375rem;font-size:.875rem;line-height:1.25rem;font-weight:500}main a[data-umami-event-target="welcome-hero"]{padding-inline:1.5rem}main a[href="#moments"]{padding-inline:1rem}',
   '@media (min-width:640px){nav[data-wm-nav]>div{padding-inline:1.5rem}main [class~="sm:flex-row"]{flex-direction:row}main [class~="sm:items-center"]{align-items:center}main [class~="sm:w-auto"]{width:auto}main [class~="sm:grid-cols-4"]{grid-template-columns:repeat(4,minmax(0,1fr))}main [class~="sm:max-w-3xl"]{max-width:48rem}main [class~="sm:max-w-none"]{max-width:none}main [class~="sm:px-4"]{padding-inline:1rem}main [class~="sm:px-6"]{padding-inline:1.5rem}main [class~="sm:px-8"]{padding-inline:2rem}main [class~="sm:tracking-wider"]{letter-spacing:.05em}main [class~="sm:block"]{display:block}}',
   '@media (min-width:768px){main [class~="md:text-lg"]{font-size:1.125rem;line-height:1.75rem}nav[data-wm-nav] [class~="md:block"]{display:block}nav[data-wm-nav] [class~="md:flex"]{display:flex}}',
   '@media (min-width:1024px){nav[data-wm-nav] [class~="lg:flex"]{display:flex}nav[data-wm-nav] [class~="lg:hidden"]{display:none}}',
@@ -174,9 +174,9 @@ const PRO_HERO_CRITICAL_CSS = [
 const WELCOME_HERO_CRITICAL_CSS = [
   'main>section[data-wm-hero]{position:relative;padding:7rem 1rem 6rem}',
   'main h1{font-family:var(--font-display);font-weight:500;font-size:2.25rem;line-height:1.05;letter-spacing:-.025em}',
-  'main [class~=mt-2]{margin-top:.5rem}main [class~=mt-4]{margin-top:1rem}main [class~=mt-12]{margin-top:3rem}main [class~=mb-6]{margin-bottom:1.5rem}main [class~=h-10]{height:2.5rem}main [class~=h-12]{height:3rem}main [class~=px-6]{padding-inline:1.5rem}',
+  'main [class~=mt-2]{margin-top:.5rem}main [class~=mt-4]{margin-top:1rem}main [class~=mt-12]{margin-top:3rem}main [class~=mb-6]{margin-bottom:1.5rem}main [class~=h-10]{height:2.5rem}main [class~=min-h-12]{min-height:3rem}main [class~=px-6]{padding-inline:1.5rem}',
   'main [class~=rounded-xl]{border-radius:.75rem}main [class~=font-medium]{font-weight:500}main [class~=tabular-nums]{font-variant-numeric:tabular-nums}main [class~=truncate]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-  '@media (min-width:640px){main>section[data-wm-hero]{padding-top:8rem;padding-inline:1.5rem}main h1{font-size:3rem}main [class~="sm:gap-4"]{gap:1rem}main [class~="sm:mt-16"]{margin-top:4rem}}',
+  '@media (max-width:639.98px){main [class~="max-w-[22rem]"]{max-width:22rem}}@media (min-width:640px){main>section[data-wm-hero]{padding-top:8rem;padding-inline:1.5rem}main h1{font-size:3rem}main [class~="sm:gap-4"]{gap:1rem}main [class~="sm:mt-16"]{margin-top:4rem}}',
   '@media (min-width:768px){main h1{font-size:4.5rem}}',
 ].join('');
 
