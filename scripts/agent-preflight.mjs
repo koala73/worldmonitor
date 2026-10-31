@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve, win32 } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import {
@@ -134,6 +134,30 @@ Options:
   -h, --help            Show this help text.`);
 }
 
+function npmCliScript(env, execPath) {
+  const configured = env?.npm_execpath;
+  if (typeof configured === 'string' && win32.basename(configured).toLowerCase() === 'npm-cli.js') {
+    return configured;
+  }
+  return win32.join(win32.dirname(execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+}
+
+// Windows npm is a .cmd shim. Node cannot spawn it without a shell, so the
+// default runner executes npm's JavaScript CLI with this Node instead.
+export function createPreflightRunner({
+  platform = process.platform,
+  env = process.env,
+  execPath = process.execPath,
+  spawn = spawnSync,
+} = {}) {
+  return (file, args, options) => {
+    if (platform === 'win32' && file === 'npm') {
+      return spawn(execPath, [npmCliScript(env, execPath), ...(args ?? [])], options);
+    }
+    return spawn(file, args, options);
+  };
+}
+
 function runCommand(runner, file, args, options = {}) {
   const env = {
     ...process.env,
@@ -204,7 +228,7 @@ function binEntries(packageJson) {
   return Object.entries(packageJson.bin);
 }
 
-export function probeDependencies(rootDir = process.cwd(), runner = spawnSync) {
+export function probeDependencies(rootDir = process.cwd(), runner = createPreflightRunner()) {
   const dependencyRoots = [
     { label: 'root', path: resolve(rootDir) },
     ...(existsSync(resolve(rootDir, 'blog-site', 'package.json'))
@@ -731,7 +755,7 @@ export function actionReadiness(checks) {
     .map(([action, blockers]) => [action, { ready: blockers.length === 0, blockers }]));
 }
 
-export function runAgentPreflight(options = {}, runner = spawnSync) {
+export function runAgentPreflight(options = {}, runner = createPreflightRunner()) {
   const mode = options.mode ?? null;
   if (mode !== null && !MODES.includes(mode)) throw new Error('--mode must be review, tests, or repair');
   const rootDir = resolve(options.rootDir || process.cwd());
