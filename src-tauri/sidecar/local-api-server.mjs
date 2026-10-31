@@ -1073,11 +1073,14 @@ const cloudPreferredAlwaysPrefixes = ['/api/scorecard/v1/'];
 // the security-report sink. The sidecar holds none of it, so served locally
 // they answer 5xx or empty. Until #9906 they reached the cloud only by accident:
 // a static Upstash import kept them from loading on desktop at all.
+// reverse-geocode belongs here too: its shared Nominatim limiter fails closed
+// without Upstash (503 locally), and its geocode cache is the cloud's Redis.
 const cloudPreferredServerStateRoutes = new Set([
   '/api/analytics-health',
   '/api/notification-suppressions',
   '/api/oauth/authorize',
   '/api/oauth/register',
+  '/api/reverse-geocode',
   '/api/security/report',
   '/api/wm-session',
 ]);
