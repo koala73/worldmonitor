@@ -65,7 +65,7 @@ async function validateCredential(key, forceKey) {
 // validation work done before any rate limiter runs.
 const MAX_COOKIE_CANDIDATES = 4;
 
-// The first MAX_COOKIE_CANDIDATES values sent for `name`, in browser order.
+// The first MAX_COOKIE_CANDIDATES nonempty values sent for `name`, in browser order.
 function getCookies(req, name) {
   const raw = req.headers.get('Cookie') || req.headers.get('cookie') || '';
   if (!raw) return [];
@@ -75,13 +75,15 @@ function getCookies(req, name) {
     if (values.length >= MAX_COOKIE_CANDIDATES) break;
     const trimmed = part.trim();
     if (!trimmed.startsWith(prefix)) continue;
+    let value;
     try {
-      values.push(decodeURIComponent(trimmed.slice(prefix.length)));
+      value = decodeURIComponent(trimmed.slice(prefix.length));
     } catch {
-      values.push(trimmed.slice(prefix.length));
+      value = trimmed.slice(prefix.length);
     }
+    if (value) values.push(value);
   }
-  return values.filter(Boolean);
+  return values;
 }
 
 function getCookie(req, name) {

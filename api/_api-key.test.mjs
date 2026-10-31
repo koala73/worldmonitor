@@ -140,6 +140,14 @@ test('wm-session candidates are capped so one request cannot buy unbounded valid
   assert.equal(r.error, 'Invalid session token');
 });
 
+test('empty wm-session values do not use up the candidate cap', async () => {
+  const { token } = await issueSessionToken();
+  const empties = Array.from({ length: 4 }, () => 'wm-session=').join('; ');
+  const r = await validateApiKey(makeReq({ cookie: `${empties}; wm-session=${encodeURIComponent(token)}` }));
+  assert.equal(r.valid, true);
+  assert.equal(r.kind, 'session');
+});
+
 test('duplicate wm-session cookies that are all invalid stay rejected', async () => {
   const r = await validateApiKey(makeReq({ cookie: 'wm-session=wms_invalid; wm-session=wms_also_invalid' }));
   assert.equal(r.valid, false);
