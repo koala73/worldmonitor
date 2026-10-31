@@ -2080,18 +2080,31 @@ describe('welcome landing page routing', () => {
       // Comments in this file discuss selectors (including ones that no longer
       // exist); scanning them would fail the guard over prose.
       .replace(/^[ \t]*\/\/.*$/gm, '');
-    const generatedWelcomeHtml = readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8');
+    // Every landing the prerender writes ships this same critical CSS, and
+    // the localized ones translate attribute text such as aria-label, so a
+    // rule must bind on each of them, not only on the English page.
+    const generatedWelcomePages = [
+      ['public/pro/welcome.html', readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8')],
+      ...nonDefaultLandingLocales().map((locale) => {
+        const rel = `public/${locale.pathSegment}/index.html`;
+        return [rel, readFileSync(resolve(__dirname, '..', rel), 'utf-8')];
+      }),
+    ];
 
     // Region-scoped: a `main a[...]` rule is dead if only a <nav> anchor
     // matches it, so each selector is checked against anchors from its own
     // region rather than the whole document.
-    const anchorsByRegion = new Map(['main', 'nav'].map((region) => {
-      const markup = generatedWelcomeHtml.match(new RegExp(`<${region}\\b[\\s\\S]*?</${region}>`))?.[0] ?? '';
-      return [region, markup.match(/<a\b[^>]*>/g) ?? []];
-    }));
-    for (const [region, anchors] of anchorsByRegion) {
-      assert.ok(anchors.length > 0, `prerendered welcome HTML must contain <${region}> anchors`);
-    }
+    const anchorsByRegionFor = (html, page) => {
+      const byRegion = new Map(['main', 'nav'].map((region) => {
+        const markup = html.match(new RegExp(`<${region}\\b[\\s\\S]*?</${region}>`))?.[0] ?? '';
+        return [region, markup.match(/<a\b[^>]*>/g) ?? []];
+      }));
+      for (const [region, anchors] of byRegion) {
+        assert.ok(anchors.length > 0, `${page} must contain <${region}> anchors`);
+      }
+      return byRegion;
+    };
+    const pageAnchors = generatedWelcomePages.map(([page, html]) => [page, anchorsByRegionFor(html, page)]);
 
     // `[~|^$*]?` covers every CSS attribute operator, so a rule rewritten with
     // one we do not model fails loudly below instead of dropping out of the
@@ -2109,7 +2122,10 @@ describe('welcome landing page routing', () => {
       // would paint any story slug containing "moments" as a hero CTA until the
       // deferred stylesheet lands.
       'main a[href="#moments"]',
-      'nav[data-wm-nav] a[aria-label*="Launch"]',
+      // The analytics marker, not the aria-label: localized landings
+      // translate the label ("Dashboard starten"), so an `aria-label*="Launch"`
+      // rule left their Launch button unstyled until the stylesheet landed.
+      'nav[data-wm-nav] a[data-umami-event-target="welcome-nav"]',
     ]) {
       assert.ok(scanned.has(required), `critical CSS must still style the welcome CTA via ${required}`);
     }
@@ -2124,19 +2140,21 @@ describe('welcome landing page routing', () => {
       // rather than defaulted: an unknown region silently reports every rule in
       // it as dead, which reads as a broken CTA instead of a broken guard.
       const anchorRegion = region.startsWith('nav') ? 'nav' : region;
-      assert.ok(
-        anchorsByRegion.has(anchorRegion),
-        `critical CSS region "${region}" has no anchor pool — teach this guard the region or it stops checking every rule inside it`
-      );
-      const matched = anchorsByRegion.get(anchorRegion).some((tag) => {
-        const actual = tag.match(new RegExp(`\\b${attribute}="([^"]*)"`))?.[1];
-        if (actual === undefined) return false;
-        return operator === '*' ? actual.includes(value) : actual === value;
-      });
-      assert.ok(
-        matched,
-        `critical CSS selector ${region} a[${attribute}${operator}="${value}"] matches no prerendered <${region}> anchor — the rule is dead and its CTA paints unstyled`
-      );
+      for (const [page, anchorsByRegion] of pageAnchors) {
+        assert.ok(
+          anchorsByRegion.has(anchorRegion),
+          `critical CSS region "${region}" has no anchor pool — teach this guard the region or it stops checking every rule inside it`
+        );
+        const matched = anchorsByRegion.get(anchorRegion).some((tag) => {
+          const actual = tag.match(new RegExp(`\\b${attribute}="([^"]*)"`))?.[1];
+          if (actual === undefined) return false;
+          return operator === '*' ? actual.includes(value) : actual === value;
+        });
+        assert.ok(
+          matched,
+          `critical CSS selector ${region} a[${attribute}${operator}="${value}"] matches no prerendered <${region}> anchor in ${page} — the rule is dead there and its CTA paints unstyled`
+        );
+      }
     }
   });
 

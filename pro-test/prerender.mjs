@@ -87,7 +87,7 @@ const CRITICAL_CSS = [
   // legal footer row (#6982) shipped exactly that, painted across the header
   // and over the Launch CTA on both / and /pro. deploy-config.test.mjs proves
   // the containment against the prerendered welcome page.
-  'nav[data-wm-nav]{position:fixed;top:0;left:0;right:0;z-index:50;background:rgba(17,17,17,.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid #222;border-inline-width:0;border-bottom-width:0}nav[data-wm-nav]>div{max-width:80rem;margin-inline:auto;padding-inline:1rem;height:4rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem}nav[data-wm-nav] a{display:flex;align-items:center;gap:.5rem}nav[data-wm-nav] a[aria-label*="Launch"]{flex-shrink:0;background:#4ade80;color:#050505;min-height:2.25rem;padding:.5rem 1rem;border-radius:.375rem;font:500 .875rem/1.25rem var(--font-sans)}',
+  'nav[data-wm-nav]{position:fixed;top:0;left:0;right:0;z-index:50;background:rgba(17,17,17,.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid #222;border-inline-width:0;border-bottom-width:0}nav[data-wm-nav]>div{max-width:80rem;margin-inline:auto;padding-inline:1rem;height:4rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem}nav[data-wm-nav] a{display:flex;align-items:center;gap:.5rem}nav[data-wm-nav] a[data-umami-event-target="welcome-nav"]{flex-shrink:0;background:#4ade80;color:#050505;min-height:2.25rem;padding:.5rem 1rem;border-radius:.375rem;font:500 .875rem/1.25rem var(--font-sans)}',
   // The nav's lucide icons ship literal width="24" height="24" attributes and
   // are resized purely by `w-*`/`h-*` utilities, so without these mirrors every
   // one of them paints at 24px and snaps to 12/16/20/24/32px when the deferred
