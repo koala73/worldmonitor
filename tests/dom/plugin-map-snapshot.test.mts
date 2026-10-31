@@ -9,7 +9,7 @@ describe('plugin hazard snapshot boundary', () => {
   it('accepts USGS earthquakes without the optional NRCan category', () => {
     const { category: _category, ...usgs } = { ...quake, source: 'usgs' };
     const snapshot = parsePluginHazardSnapshot(result([usgs]), ['natural']);
-    expect(snapshot.earthquakes).toEqual([usgs]);
+    expect(snapshot.earthquakes).toEqual([{ ...usgs, category: '' }]);
     expect(snapshot.coverage.earthquakes).toEqual({ accepted: 1, skipped: 0, received: 1 });
   });
 
