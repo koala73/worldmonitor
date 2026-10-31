@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { X509Certificate } from 'node:crypto';
 import { rootCertificates } from 'node:tls';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { deflateRawSync } from 'node:zlib';
 import { orderRegionalEnergySections, REGIONAL_ENERGY_LEAD_GROUP_SIZE } from '../scripts/_regional-energy-order.mjs';
 import { claimBundleTurn, acknowledgeBundleTurn } from '../scripts/_bundle-turn.mjs';
 import { extractBundleSections } from './helpers/bundle-section-parser.mjs';
@@ -275,5 +279,71 @@ describe('source discovery and publication boundary', () => {
       assert.throws(() => buildFeedSnapshot('pgcb', [invalid], data.dataUrl, Date.parse('2026-10-29')));
     }
     assert.throws(() => buildFeedSnapshot('pgcb', [], data.dataUrl));
+  });
+});
+
+// ANP workbooks come from a remote host, so their ZIP headers and sheet
+// shapes are untrusted input to the seeder.
+const ANP_TRADE_PAGE = 'https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/importacoes-e-exportacoes';
+const ANP_TRADE_CSV = 'https://www.gov.br/anp/ie/derivados/importacoes-exportacoes-derivados-2026.csv';
+const ANP_PRICE_PAGE = 'https://www.gov.br/anp/pt-br/assuntos/precos-e-defesa-da-concorrencia/precos/levantamento-de-precos-de-combustiveis-ultimas-semanas-pesquisadas';
+const ANP_WORKBOOK = 'https://www.gov.br/anp/arquivos/resumo_semanal_lpc_2026-10-19_2026-10-25.xlsx';
+const anpFetch = workbook => async url => new Response({
+  [ANP_TRADE_PAGE]: `<a href="${ANP_TRADE_CSV}">csv</a>`,
+  [ANP_TRADE_CSV]: fixture('anpTradeCsv.csv'),
+  [ANP_PRICE_PAGE]: `<a href="${ANP_WORKBOOK}">xlsx</a>`,
+  [ANP_WORKBOOK]: workbook,
+}[url]);
+
+// One deflated entry whose headers declare 64 bytes but which inflates past the budget.
+function understatedZip(name, inflatedBytes) {
+  const data = deflateRawSync(Buffer.alloc(inflatedBytes));
+  const file = Buffer.from(name);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt16LE(8, 8);
+  local.writeUInt32LE(data.length, 18); local.writeUInt32LE(64, 22); local.writeUInt16LE(file.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6); central.writeUInt16LE(8, 10);
+  central.writeUInt32LE(data.length, 20); central.writeUInt32LE(64, 24); central.writeUInt16LE(file.length, 28);
+  const dirAt = 30 + file.length + data.length;
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(1, 8); end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(46 + file.length, 12); end.writeUInt32LE(dirAt, 16);
+  return Buffer.concat([local, file, data, central, file, end]);
+}
+
+describe('ANP workbook bounds', () => {
+  it('measures real inflation instead of the sizes a workbook declares', async () => {
+    const bomb = understatedZip('xl/worksheets/sheet1.xml', 60_000_000);
+    assert.ok(bomb.length < 25_000_000);
+    await assert.rejects(fetchRegionalEnergyFeed('anp', { fetchFn: anpFetch(bomb) }), /ANP workbook exceeds size budget/);
+  });
+
+  it('reads sheet rows by their cells, not up to their last column', async () => {
+    const { default: ExcelJS } = await import('exceljs');
+    const book = new ExcelJS.Workbook();
+    const sheet = book.addWorksheet('BRASIL');
+    // Every row's only cell sits in column XFD (16,384). Densifying 3,000 such
+    // rows needs about 400 MB, far beyond the child's heap.
+    for (let r = 1; r <= 3000; r++) sheet.getCell(r, 16384).value = r;
+    const dir = mkdtempSync(join(tmpdir(), 'anp-wide-'));
+    const workbook = join(dir, 'wide.xlsx');
+    writeFileSync(workbook, Buffer.from(await book.xlsx.writeBuffer()));
+    const child = spawnSync(process.execPath, ['--max-old-space-size=160', '--input-type=module', '-e', `
+      import { readFileSync } from 'node:fs';
+      import { fetchRegionalEnergyFeed } from './scripts/_regional-energy-source.mjs';
+      const routes = ${JSON.stringify({ [ANP_TRADE_PAGE]: `<a href="${ANP_TRADE_CSV}">csv</a>`, [ANP_PRICE_PAGE]: `<a href="${ANP_WORKBOOK}">xlsx</a>` })};
+      routes[${JSON.stringify(ANP_TRADE_CSV)}] = readFileSync('tests/fixtures/regional-energy/anpTradeCsv.csv', 'utf8');
+      routes[${JSON.stringify(ANP_WORKBOOK)}] = readFileSync(${JSON.stringify(workbook)});
+      try {
+        await fetchRegionalEnergyFeed('anp', { fetchFn: async url => new Response(routes[url]) });
+      } catch (err) {
+        console.error(err.message);
+      }
+    `], { cwd: new URL('..', import.meta.url), timeout: 60_000, encoding: 'utf8' });
+    rmSync(dir, { recursive: true, force: true });
+    // The sheet has no ANP header, so a bounded read ends in that parser error.
+    assert.equal(child.status, 0, child.stderr.slice(-400));
+    assert.match(child.stderr, /Missing ANP price header/);
   });
 });

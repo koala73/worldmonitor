@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { rootCertificates } from 'node:tls';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
+import { assertZipExpansionWithin } from './_zip-expansion.mjs';
 import {
   parsePgcb, parseNiso, parseCammesa, parseEskom, parseOns, parseAnpTrade,
   parseAnpPriceRows, parsePetrobangla, parseGse, pdfItems, periodEnd,
@@ -10,6 +11,8 @@ import {
 } from './lib/regional-energy-feeds.mjs';
 
 const USER_AGENT = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
+// The national price sheet uses about a dozen columns.
+const ANP_SHEET_COLUMNS = 64;
 const DOWNLOAD_HOSTS = new Set([
   'erp.powergrid.gov.bd', 'petrobangla.org.bd', 'www.niggrid.org',
   'www.eskom.co.za', 'api.cammesa.com', 'admin.gse.com.ge',
@@ -112,20 +115,26 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
     const priceUrl = [...pricePage.matchAll(/href="([^"]+)"/g)].find(m => /\/resumo[_-]semanal[_-]lpc[_-].+\.xlsx$/.test(m[1]))?.[1];
     if (!priceUrl) throw new Error('Missing ANP weekly price workbook');
     const bytes = await read(priceUrl, 'bytes');
-    const { unzipSync } = await import('fflate');
-    let expandedSize = 0;
-    unzipSync(new Uint8Array(bytes), { filter: f => {
-      expandedSize += f.originalSize;
-      if (expandedSize > 50_000_000) throw new Error('ANP workbook exceeds size budget');
-      return false;
-    } });
+    // ZIP headers are not trusted: inflate each entry with a bounded output
+    // before ExcelJS inflates the same bytes without one.
+    try {
+      assertZipExpansionWithin(bytes, 50_000_000);
+    } catch (err) {
+      throw new Error(/expands past/.test(err.message) ? 'ANP workbook exceeds size budget' : `ANP workbook is ${err.message}`);
+    }
     const { default: ExcelJS } = await import('exceljs');
     const book = new ExcelJS.Workbook();
     await book.xlsx.load(bytes);
     const sheet = book.getWorksheet('BRASIL');
     if (!sheet) throw new Error('Missing national ANP price sheet');
+    // ExcelJS indexes row values by column, so copying row.values would
+    // allocate up to a far-right cell. Copy only cells within the price table.
     const sheetRows = [];
-    sheet.eachRow(row => sheetRows.push(Array.from(row.values).slice(1)));
+    sheet.eachRow(row => {
+      const values = [];
+      row.eachCell((cell, column) => { if (column <= ANP_SHEET_COLUMNS) values[column - 1] = cell.value; });
+      sheetRows.push(Array.from(values));
+    });
     points = [...trade, ...parseAnpPriceRows(sheetRows)];
   }
   const snapshot = buildFeedSnapshot(id, points, downloaded.at(-1), nowMs);
