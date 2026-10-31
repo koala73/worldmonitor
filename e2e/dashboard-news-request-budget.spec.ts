@@ -1219,6 +1219,24 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
       // Keep this fixture to already-mounted panels: a deferred neighbor's
       // mount callback would independently prime data and mask the lost scroll.
       await page.addStyleTag({ content: '[data-deferred-panel="true"] { display: none !important; }' });
+      // Hiding a shell does not cancel its in-flight import. Let active mount
+      // attempts settle before the initial viewport scan runs.
+      await page.waitForFunction(() => {
+        const debug = (window as unknown as {
+          __wmLcpDebug?: { getSnapshot?: () => { marks: Array<{ name: string; detail?: { panel?: string } }> } };
+        }).__wmLcpDebug;
+        const marks = debug?.getSnapshot?.().marks;
+        if (!marks) return false;
+        const active = new Set<string>();
+        for (const { name, detail } of marks) {
+          if (!detail?.panel) continue;
+          if (name === 'wm:panel:deferred-mount-start') active.add(detail.panel);
+          if (name === 'wm:panel:deferred-mount-ready' || name === 'wm:panel:deferred-mount-unavailable') {
+            active.delete(detail.panel);
+          }
+        }
+        return active.size === 0;
+      });
       slowBootstrap.release();
       await navigation;
       await waitForLcpMark(page, 'wm:data:initial-fanout-start');

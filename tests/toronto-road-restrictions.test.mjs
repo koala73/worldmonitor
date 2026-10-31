@@ -381,16 +381,7 @@ test("bootstrap fetches every Canada road feed on demand, including Toronto", ()
   }
 });
 
-test("Toronto roads is live, so it carries no freshness acknowledgement", () => {
-  // Was: pinned the expiring-ack window for a probe that had never published.
-  // The bundle is provisioned and torontoRoads reads healthy, so the ack was
-  // removed as SATISFIED rather than re-anchored. Asserting its absence keeps
-  // it from being reinstated — a suppression outliving its problem would
-  // silently absorb a future Toronto outage.
-  const baseline = JSON.parse(readFileSync(join(root, "scripts/seed-freshness-baseline.json"), "utf8"));
-  const row = baseline.acknowledged.find((a) => a.issue === 6609 || a.name === "torontoRoads");
-  assert.equal(row, undefined, "torontoRoads publishes now; it must not be acknowledged as known-empty");
-
+test("Toronto roads staleness budget covers its bundle cadence", () => {
   // The staleness budget must still cover the 2h bundle cadence. This is the
   // pairing that broke once already: the interval moved to 2h while the probe
   // kept a 45min budget, so a healthy publisher read STALE_SEED permanently.

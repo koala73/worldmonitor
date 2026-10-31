@@ -869,7 +869,7 @@ Return the frozen v1 scorecard for exactly one country or bloc. Choose one of a 
 | `preset` | string | one selector | `USMCA`, `EU27`, `BRICS`, `GCC`, `ASEAN`, or `NATO`. |
 | `members` | string[] | one selector | Custom bloc of 2–30 unique uppercase ISO-2 codes. |
 
-- **API endpoints:** `GET /api/scorecard/v1/get-five-factor-scorecard`, `GET /api/scorecard/v1/get-bloc-scorecard`
+- **API endpoints:** `GET /api/scorecard/v1/get-five-factor-scorecard`, `GET /api/scorecard/v1/get-bloc-scorecard` — free for anonymous REST callers, unlike this MCP tool.
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument; use `jmespath` to trim evidence.
 - **Kind:** canonical RPC proxy over `scorecard:five-factor:v1`; it does not fetch source datasets at request time.
 - **Freshness:** daily seed with a 36-hour freshness budget. Read `computedAt`, `methodologyVersion`, and the seed health metadata separately when operational freshness matters.
@@ -909,7 +909,7 @@ curl -s https://worldmonitor.app/mcp \
 List a compact summary for every country in the frozen scorecard cohort. Each row keeps the pillar score, band, input coverage, and insufficient-data reasons, but omits raw inputs and source observations so the complete country set stays within the MCP output budget.
 
 - **Parameters:** none
-- **API endpoint:** `GET /api/scorecard/v1/list-five-factor-scorecards`
+- **API endpoint:** `GET /api/scorecard/v1/list-five-factor-scorecards` — free for anonymous REST callers, unlike this MCP tool.
 - **Access:** `subscription` — requires a Pro subscription.
 - **Kind:** compact projection of the same atomic `scorecard:five-factor:v1` snapshot.
 
@@ -2658,7 +2658,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_supply_chain_data`
 
-Return seeded supply-chain pressure and trade data: freight-rate indices, the NY Fed GSCPI, a BDRY and carrier-equity shipping-stress proxy, monthly customs revenue and UN COMTRADE flows. Freight includes FRED levels and history, plus SSE change percentages, direction and z-scores against stored prior observations, with at least 12 baseline points. SSE raw levels and Baltic indices are excluded. GSCPI is monthly, in standard deviations, and subject to revision. Customs revenue is stale after 2 days; freight after 7 hours; GSCPI after 2 days. Requires a paid plan; no live fetch, weight 1 on API plans. dataset selects shipping_stress, customs-revenue, flows, freight-rates or gscpi; commodity and reporter filter flows. limit caps lists, with newest GSCPI months kept chronological (default 30, 0 for no cap).
+Return seeded supply-chain pressure and trade data: freight-rate indices, the NY Fed GSCPI, a BDRY and carrier-equity shipping-stress proxy, monthly customs revenue and UN COMTRADE flows. Freight includes FRED levels and history, plus SSE change percentages, direction and z-scores against stored prior observations, with at least 12 baseline points. SSE raw levels and Baltic indices are excluded. GSCPI is monthly, in standard deviations, and subject to revision. Customs revenue is stale after 2 days; freight after 19 hours; GSCPI after 2 days. Requires a paid plan; no live fetch, weight 1 on API plans. dataset selects shipping_stress, customs-revenue, flows, freight-rates or gscpi; commodity and reporter filter flows. limit caps lists, with newest GSCPI months kept chronological (default 30, 0 for no cap).
 
 **Parameters (tool-specific):**
 
@@ -2672,7 +2672,7 @@ Return seeded supply-chain pressure and trade data: freight-rate indices, the NY
 - **API endpoints:** `GET /api/supply-chain/v1/get-shipping-stress`, `GET /api/trade/v1/get-customs-revenue`, `GET /api/supply-chain/v1/get-shipping-rates`
 - **Access:** `subscription`. Requires a Pro subscription because the bundle includes Pro-only COMTRADE flows. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** freight **7 h**, GSCPI and customs revenue **2 d**.
+- **Freshness budget:** freight **19 h**, GSCPI and customs revenue **2 d**.
 
 `freight-rates.indices[]` includes source, frequency, observation date, period movement and baseline statistics. The z-score uses the mean and population standard deviation of stored history excluding the latest point. It is null with fewer than 12 baseline points or zero variance. Weekly SSE history retains up to 56 points as future observations accumulate; it cannot be backfilled. `gscpi.series.observations` keeps the newest `limit` months in chronological order. GSCPI is attributed to the Federal Reserve Bank of New York, and values are subject to revision.
 

@@ -91,7 +91,7 @@ non-convergence cases through the real CLI with a local fake Railway executable.
 When source-health behavior changes, add the expanded proof once before delivery:
 
 ```sh
-node --import tsx --test --test-concurrency=2 tests/seed-freshness-monitor.test.mjs tests/seed-health-status-publisher.test.mjs
+node --import tsx --test --test-concurrency=2 tests/health-verdict-snapshot.test.mjs tests/health-classify.test.mjs
 ```
 
 Keep `npm run test:data` as the complete-suite command. Reproduce one CI shard with:

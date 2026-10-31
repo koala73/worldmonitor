@@ -148,9 +148,9 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   test.setTimeout(300_000);
   await page.addInitScript(() => {
     const getContext = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (type, options) {
+    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, options?: unknown) {
       return type.startsWith('webgl') ? null : Reflect.apply(getContext, this, [type, options]);
-    };
+    } as typeof HTMLCanvasElement.prototype.getContext;
   });
   const errors: string[] = [];
   let releaseGeometry!: () => void;

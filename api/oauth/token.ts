@@ -39,7 +39,7 @@ import { getPublicCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from '../_json-response.js';
 // @ts-expect-error — JS module, no declaration file
-import { keyFingerprint, sha256Hex, timingSafeIncludes, verifyPkceS256 } from '../_crypto.js';
+import { getOperatorKeys, keyFingerprint, sha256Hex, timingSafeIncludes, verifyPkceS256 } from '../_crypto.js';
 // @ts-expect-error — JS module, no declaration file
 import { isClientMetadataDocumentId, resolveOAuthClient } from './_client-metadata.js';
 import { validateProMcpToken } from '../../server/_shared/pro-mcp-token';
@@ -205,7 +205,7 @@ function reportTokenRateLimitDegraded(
 
 async function validateSecret(secret: string | null | undefined): Promise<boolean> {
   if (!secret) return false;
-  const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
+  const validKeys = getOperatorKeys();
   return timingSafeIncludes(secret, validKeys);
 }
 

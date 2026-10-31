@@ -3,42 +3,67 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 
-const SOURCE_URL = 'https://sccd.royalnavy.mod.uk/api/ukmto/all';
+// UKMTO's own JSON backend (sccd.royalnavy.mod.uk) blocks automated clients at Cloudflare.
+// hormuz.data-tracking.net republishes the same reports through a documented public API:
+// UKMTO reports stay under the Open Government Licence, the republished table under CC BY 4.0.
+// It refreshes every 30 minutes and asks that clients do not poll faster.
+const SOURCE_URL = 'https://hormuz.data-tracking.net/api/incidents';
+const REQUIRED_COLUMNS = ['id', 'type', 'lat', 'lon', 'ts', 'place', 'text'];
 export const canonicalKey = 'maritime:ukmto-incidents:v1';
 
-function parseUtcDate(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?Z$/.test(value)) return NaN;
-  const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed) || new Date(parsed).toISOString().slice(0, 19) !== value.slice(0, 19)) return NaN;
-  return parsed;
+// The table stores each text cell as an index into a shared string list `s`; `k` names those columns.
+function decodeRows(value) {
+  const table = value?.t;
+  if (!value || typeof value !== 'object' || value.v !== 1 || !table || !Array.isArray(table.c) || !Array.isArray(table.k)
+    || !Array.isArray(table.r) || !Array.isArray(value.s) || table.r.length > 2000) throw new Error('Invalid UKMTO snapshot');
+  const column = Object.fromEntries(table.c.map((name, index) => [name, index]));
+  if (!REQUIRED_COLUMNS.every(name => Number.isInteger(column[name]))) throw new Error('Invalid UKMTO snapshot columns');
+  const textColumns = new Set(table.k);
+  return table.r.map(row => {
+    if (!Array.isArray(row) || row.length !== table.c.length) throw new Error('Invalid UKMTO incident');
+    return Object.fromEntries(REQUIRED_COLUMNS.map(name => {
+      const cell = row[column[name]];
+      if (!textColumns.has(column[name])) return [name, cell];
+      if (!Number.isInteger(cell) || cell < 0 || cell >= value.s.length) throw new Error('Invalid UKMTO string reference');
+      return [name, value.s[cell]];
+    }));
+  });
 }
 
+// The reader drops a whole snapshot when any incident date is not a representable Date.
+const isRepresentableTime = ms => typeof ms === 'number' && Number.isSafeInteger(ms) && ms > 0 && Number.isFinite(new Date(ms).getTime());
+
 export function normalizeIncidents(value) {
-  if (!Array.isArray(value) || value.length > 2000) throw new Error('Invalid UKMTO snapshot');
   const incidents = new Map();
-  for (const row of value) {
-    if (!row || typeof row !== 'object') throw new Error('Invalid UKMTO incident');
-    const occurredAt = parseUtcDate(row.utcDateOfIncident);
-    const reportedAt = parseUtcDate(row.utcDateCreated);
-    if (typeof row.sitecoreId !== 'string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(row.sitecoreId)
-      || !Number.isInteger(row.incidentNumber) || row.incidentNumber < 1
-      || !Number.isFinite(occurredAt) || occurredAt <= 0 || !Number.isFinite(reportedAt) || reportedAt <= 0
-      || typeof row.locationLatitude !== 'number' || !Number.isFinite(row.locationLatitude) || Math.abs(row.locationLatitude) > 90
-      || typeof row.locationLongitude !== 'number' || !Number.isFinite(row.locationLongitude) || Math.abs(row.locationLongitude) > 180
-      || typeof row.incidentTypeName !== 'string' || !row.incidentTypeName.trim()
-      || typeof row.place !== 'string' || typeof row.otherDetails !== 'string'
-      || row.otherDetails.length > 20000) throw new Error('Invalid UKMTO incident fields');
+  for (const row of decodeRows(value)) {
+    const number = /^UKMTO-([1-9]\d{0,9})$/.exec(typeof row.id === 'string' ? row.id : '')?.[1];
+    if (!number || Number(number) > 2 ** 31 - 1
+      || !Number.isInteger(row.ts) || !isRepresentableTime(row.ts * 1000)
+      || typeof row.lat !== 'number' || !Number.isFinite(row.lat) || Math.abs(row.lat) > 90
+      || typeof row.lon !== 'number' || !Number.isFinite(row.lon) || Math.abs(row.lon) > 180
+      || typeof row.type !== 'string' || !row.type.trim()
+      || typeof row.place !== 'string' || typeof row.text !== 'string'
+      || row.text.length > 20000) throw new Error('Invalid UKMTO incident fields');
     const incident = {
-      id: row.sitecoreId.toLowerCase(), incidentNumber: row.incidentNumber,
-      incidentType: row.incidentTypeName.trim(), place: row.place.trim(),
-      description: row.otherDetails.trim(), occurredAt, reportedAt,
-      location: { latitude: row.locationLatitude, longitude: row.locationLongitude },
+      id: `ukmto-${number}`, incidentNumber: Number(number),
+      incidentType: row.type.trim(), place: row.place.trim(),
+      description: row.text.trim(), occurredAt: row.ts * 1000,
+      // The republished table has no publication time; 0 tells readers it is unknown.
+      reportedAt: 0,
+      location: { latitude: row.lat, longitude: row.lon },
     };
     const existing = incidents.get(incident.id);
     if (existing && JSON.stringify(existing) !== JSON.stringify(incident)) throw new Error('Conflicting UKMTO incident ID');
     incidents.set(incident.id, incident);
   }
-  return [...incidents.values()].sort((a, b) => b.occurredAt - a.occurredAt || a.id.localeCompare(b.id));
+  // The publisher repeats some reports under a second, non-UKMTO number (UKMTO-28082035 is warning 179-26).
+  // Reports at the same time and position are one incident; keep its UKMTO number.
+  const byEvent = new Map();
+  for (const incident of [...incidents.values()].sort((a, b) => a.incidentNumber - b.incidentNumber)) {
+    const event = `${incident.occurredAt}:${incident.location.latitude}:${incident.location.longitude}`;
+    if (!byEvent.has(event)) byEvent.set(event, incident);
+  }
+  return [...byEvent.values()].sort((a, b) => b.occurredAt - a.occurredAt || a.id.localeCompare(b.id));
 }
 
 export async function fetchUkmtoIncidents(_context, fetchFn = fetch) {
@@ -47,7 +72,7 @@ export async function fetchUkmtoIncidents(_context, fetchFn = fetch) {
     signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) {
-    const error = new Error(`UKMTO HTTP ${response.status}`);
+    const error = new Error(`UKMTO source HTTP ${response.status}`);
     // Access and schema failures repeat on an immediate retry; the next cron run retries them.
     if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) error.nonRetryable = true;
     throw error;
@@ -65,13 +90,14 @@ export async function fetchUkmtoIncidents(_context, fetchFn = fetch) {
 }
 
 export const seedOptions = {
-  validateFn: data => Boolean(data && Array.isArray(data.incidents) && Number.isFinite(data.fetchedAt) && data.fetchedAt > 0),
+  validateFn: data => Boolean(data && Array.isArray(data.incidents) && Number.isFinite(data.fetchedAt) && data.fetchedAt > 0
+    && data.incidents.every(item => isRepresentableTime(item?.occurredAt))),
   declareRecords: data => data.incidents.length,
   ttlSeconds: 86400,
-  maxStaleMin: 15,
+  maxStaleMin: 75,
   schemaVersion: 1,
   zeroIsValid: true,
-  sourceVersion: 'ukmto-site-json-v1',
+  sourceVersion: 'hormuz-data-tracking-incidents-v1',
   emptyDataIsFailure: true,
   afterPublish: async () => {
     const creds = getOptionalUpstashCreds();

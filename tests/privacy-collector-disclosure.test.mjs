@@ -1,3 +1,9 @@
+// This compares declared telemetry script hosts with provider names in policy
+// text and checks the DebugBear sampling rate (#8690, section 2). Source and
+// policy text define this parity check without loading third-party scripts; it
+// does not observe beacon destinations or verify that the policy names those
+// hosts.
+//
 /**
  * The privacy policy claims its subprocessor list is complete ("listed in full
  * below"). This asserts that the claim survives contact with the code.

@@ -1,3 +1,8 @@
+// This pins the settled or exempt CSS pulse rules and the MapComponent
+// settle-window wiring (#8690, section 2). These unit tests inspect
+// declarations because their Node runner does not animate CSS or measure
+// compositing layers.
+//
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

@@ -74,6 +74,7 @@ const HOST_ORIGINS = Object.freeze({
   'niggrid.org': 'NG',
   'eskom.co.za': 'ZA',
   'dados.ons.org.br': 'BR',
+  'www.datos.gov.co': 'CO',
   // Editorial hosts used by site-scoped news searches. These are catalogued
   // as publishers in their own right; the shared search endpoint is a
   // separate provider.
@@ -165,6 +166,8 @@ const HOST_ORIGINS = Object.freeze({
   'zerkalo.io': 'BY',
   'acleddata.com': 'US',
   'adsb.lol': 'NL',
+  // Republishes UK Maritime Trade Operations reports; the catalog origin is the reporting authority.
+  'hormuz.data-tracking.net': 'GB',
   'api.adsb.lol': 'NL',
   'aerotime.aero': 'LT',
   'agentskills.io': 'US',

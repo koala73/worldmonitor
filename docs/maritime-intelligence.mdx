@@ -11,28 +11,32 @@ reports from [UK Maritime Trade Operations](https://www.ukmto.org/recent-inciden
 Select an incident heading to center the map on its reported position. The Ships
 layer in the full dashboard also shows UKMTO positions in the flat and globe maps.
 
-The panel preserves the publisher's incident type, narrative, incident time and
-publication time. These are attributed reports, which can remain under
-investigation. They do not change AIS availability, NGA warnings or risk scores.
-UKMTO pin colors describe reporting delay and are not used as severity ratings.
-WorldMonitor's DeckGL markers instead distinguish fresh and stale snapshots;
-the globe markers do not use that color distinction. The map status reports
-UKMTO availability separately from AIS, including empty and unavailable results.
+The panel preserves the publisher's incident type, narrative and incident time.
+These are attributed reports, which can remain under investigation. They do not
+change AIS availability, NGA warnings or risk scores. WorldMonitor's DeckGL
+markers distinguish fresh and stale snapshots; the globe markers do not use that
+color distinction. The map status reports UKMTO availability separately from
+AIS, including empty and unavailable results.
 
-The planned collector polls every five minutes. A snapshot becomes stale after
-15 minutes without a successful retrieval and is unavailable after 24 hours.
-An empty successful response is shown separately from unavailable data. The
-panel shows the retrieval time in UTC, independently of the incident time.
+The collector polls every 30 minutes, matching the source's refresh interval. A
+snapshot becomes stale after 75 minutes without a successful retrieval and is
+unavailable after 24 hours. An empty successful response is shown separately
+from unavailable data. The panel shows the retrieval time in UTC, independently
+of the incident time.
 
 API clients can read `GET /api/maritime/v1/list-ukmto-incidents`. The dashboard uses
 the on-demand `ukmtoIncidents` bootstrap key. Both read the same validated cache. The RPC is not CDN-cached, so availability
 and freshness are recomputed on each request. Its full contract is in the
 MaritimeService OpenAPI spec and YAML bundle; it is omitted from the compact
 scanner JSON to keep that artifact within its byte limit.
-The upstream is the JSON backend used by UKMTO's official website. It has no
-verified public developer contract, SLA or published polling allowance.
-See [UKMTO's terms](https://www.ukmto.org/terms-and-conditions), sections 20–23,
-for reuse and third-party-feed provisions. Contains public sector information
+UKMTO's own website backend blocks automated clients, so the reports are
+collected from the documented public API of
+[hormuz.data-tracking.net](https://hormuz.data-tracking.net/api-docs), which
+republishes them. That table has no publication time, so the panel shows only
+the incident time. A report the republisher lists twice at the same time and
+position is shown once, under its UKMTO number. The republished table is
+licensed under CC BY 4.0. See [UKMTO's terms](https://www.ukmto.org/terms-and-conditions),
+sections 20–23, for reuse provisions. Contains public sector information
 licensed under the Open Government Licence v3.0.
 
 ## Route Explorer

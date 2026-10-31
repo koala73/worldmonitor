@@ -38,6 +38,7 @@ import {
   TRADE_FLOW_COVERAGE_KEY,
   TRADE_FLOW_KEY_PREFIX,
   TRADE_FLOW_META_KEY,
+  TRADE_TTL,
   TRADE_FLOW_SEED_YEARS,
   TRADE_FLOW_EMPTY_STREAK_TO_DROP,
   WORLD_PARTNER_CODE as SEED_WORLD_PARTNER_CODE,
@@ -1066,6 +1067,7 @@ describe('publishTradeFlows records the dominant failure mode', () => {
     assert.equal(payload.dominantFailureMode, 'upstream',
       'the run\'s own stats must be folded into a coarse mode on the meta record');
     assert.equal(payload.recordCount, 1);
+    assert.equal(payload.payloadTtlSeconds, TRADE_TTL);
   });
 
   test('a clean run records dominantFailureMode none', async () => {

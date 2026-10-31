@@ -142,7 +142,7 @@ test('duration balancing is deterministic and separates expensive files', () => 
 });
 
 test('invalid selection fails instead of succeeding with no tests', () => {
-  for (const args of [[], ['missing.test.mjs'], [...patterns, '--shard=0/2'], [...patterns, '--shard=3/2'], [...patterns, '--concurrency=0'], [...patterns, '--built-output=some'], ['tests/data-test-shards.test.mjs', '--built-output=exclude']]) {
+  for (const args of [[], ['missing.test.mjs'], [...patterns, '--shard=0/2'], [...patterns, '--shard=3/2'], [...patterns, '--concurrency=0'], [...patterns, '--built-output=some'], [...patterns, '--file-timeout=0'], [...patterns, '--file-timeout=5s'], ['tests/data-test-shards.test.mjs', '--built-output=exclude']]) {
     const result = run([...args, '--list']);
     assert.notEqual(result.status, 0, JSON.stringify(args));
     assert.equal(result.stdout, '');
@@ -169,6 +169,28 @@ test('real runner retains failures, built-output environment and timing evidence
     const failure = run([failing]);
     assert.equal(failure.status, 1, failure.stdout + failure.stderr);
     assert.match(failure.stdout, /fixture failure/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// A file whose tests all pass but which leaves a handle open never exits, and
+// node:test's per-test timeout cannot see it. unit-shard (5) sat silent for 14
+// minutes that way on 2098d920ae until the job timeout, naming no file.
+test('real runner names and fails a file that outlives the per-file budget', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wm-data-shard-'));
+  try {
+    const leaking = join(dir, 'leaks-handle.test.mjs');
+    const healthy = join(dir, 'healthy.test.mjs');
+    writeFileSync(leaking, "import { test } from 'node:test'; test('passes but leaves an interval', () => { setInterval(() => {}, 1000); });\n");
+    writeFileSync(healthy, "import { test } from 'node:test'; test('healthy', () => {});\n");
+    const started = Date.now();
+    const result = run([healthy, leaking, '--file-timeout=2000']);
+    assert.equal(result.error, undefined, 'the runner must stop itself before the 30s spawn cap');
+    assert.ok(Date.now() - started < 20_000);
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, /leaks-handle\.test\.mjs/);
+    assert.doesNotMatch(result.stderr, /healthy\.test\.mjs/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

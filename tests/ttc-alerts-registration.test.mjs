@@ -30,16 +30,6 @@ describe('TTC service-alerts production registration (#6623)', () => {
     const written = `seed-meta:${domain}:${resource}`;
 
     assert.equal(healthTesting.SEED_META.ttcAlerts.key, written);
-
-    // ttcAlerts publishes now (seed-bundle-canada is provisioned), so its
-    // expiring-ack was removed as satisfied and is no longer REQUIRED. The
-    // invariant that survives is directional: IF an acknowledgement exists it
-    // must watch the key runSeed actually writes, or it is anchored to a probe
-    // that can never clear. Requiring the ack outright would force a satisfied
-    // suppression to be reinstated just to keep this test green.
-    const baseline = JSON.parse(read('scripts/seed-freshness-baseline.json'));
-    const ack = baseline.acknowledged.find((row) => row.name === 'ttcAlerts');
-    if (ack) assert.equal(ack.cutover.probeKey, written);
   });
 
   it('does not ship the 404 alerts.ttc.ca/api/alerts/live URL', () => {
@@ -97,12 +87,6 @@ describe('TTC service-alerts production registration (#6623)', () => {
       /'transit:ttc:alerts':\s*\{ key: 'seed-meta:transit:ttc-alerts',\s*intervalMin:\s*15/,
     );
     assert.equal(healthTesting.SEED_META.ttcAlerts.key, 'seed-meta:transit:ttc-alerts');
-    // The baseline was the third carrier of the colon form. Its ack is gone now
-    // that the probe publishes, so this checks it directionally: present or
-    // absent is fine, wrong key is not.
-    const baseline = JSON.parse(read('scripts/seed-freshness-baseline.json'));
-    const ack = baseline.acknowledged.find((row) => row.name === 'ttcAlerts');
-    if (ack) assert.equal(ack.cutover.probeKey, 'seed-meta:transit:ttc-alerts');
   });
 
   it('does not overload VIA or 511 adapters', () => {

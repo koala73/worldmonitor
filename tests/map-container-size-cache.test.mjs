@@ -1,3 +1,8 @@
+// This pins cached geometry reads on the render path, bounds direct
+// container-size reads and checks resize-cache wiring (#8690, section 2).
+// These source constraints guard against forced reflows that layout-free
+// happy-dom tests cannot measure.
+//
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

@@ -601,3 +601,47 @@ describe('DeckGLMap layer performance notice', () => {
     await vi.advanceTimersByTimeAsync(250);
   }
 });
+
+
+describe('DeckGL renderer readiness and settlement', () => {
+  it('interrupts the previous move and settles only the current flight', async () => {
+    const { map, fake } = await mapWith();
+    map.setView('mena');
+    const firstFlight = fake.lastFlightGeneration();
+    const first = map.whenViewportSettled();
+    map.setCenter(41, 29, 6);
+    const second = map.whenViewportSettled();
+    await expect(first).resolves.toBe(false);
+    let settled = false;
+    void second.then(() => { settled = true; });
+    fake.emit('moveend', { [firstFlight.key]: firstFlight.generation });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    fake.settleLastFlight();
+    await expect(second).resolves.toBe(true);
+    expect(map.getCenter()).toEqual({ lat: 41, lon: 29 });
+  });
+
+  it.each([false, true])('defers chokepoint opens until ready (destroyed=%s)', async (destroyed) => {
+    let release!: () => void;
+    const host = Object.create(DeckGLMap.prototype);
+    const center = vi.fn();
+    const show = vi.fn();
+    Object.assign(host, {
+      destroyed: false, maplibreMap: null,
+      initPromise: new Promise<void>(resolve => { release = resolve; }),
+      setCenter: center, popup: { show }, getContainerCenter: () => ({ x: 20, y: 30 }),
+    });
+    host.openChokepoint('hormuz_strait');
+    expect(center).not.toHaveBeenCalled();
+    expect(show).not.toHaveBeenCalled();
+    host.maplibreMap = {};
+    host.destroyed = destroyed;
+    release();
+    await Promise.resolve();
+    expect(center).toHaveBeenCalledTimes(destroyed ? 0 : 1);
+    if (!destroyed) expect(center).toHaveBeenCalledWith(26.5, 56.5, 5);
+    expect(show).toHaveBeenCalledTimes(destroyed ? 0 : 1);
+    if (!destroyed) expect(show).toHaveBeenCalledWith(expect.objectContaining({ type: 'waterway', x: 20, y: 30 }));
+  });
+});

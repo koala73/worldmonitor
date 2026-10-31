@@ -1,3 +1,7 @@
+// Cache-key source contract by design (#8690, section 2): this suite pins
+// provider key templates to each upstream request's varying options.
+// Runtime shared-cache helper tests do not inspect these provider-specific
+// template literals.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -17,7 +21,7 @@ function blockBetween(start, end) {
 
 describe('Travelpayouts cache-key contract', () => {
   it('keys v3 day-precision cache by every upstream-varying request option', () => {
-    const block = blockBetween('// v3: prices_for_dates', '} else if (isMonthPrecision)');
+    const block = blockBetween('departure_at: departureDate', '} else if (isMonthPrecision)');
 
     assert.match(block, /if \(nonstopOnly\) params\.set\('direct', 'true'\)/);
     assert.match(block, /if \(market_\) params\.set\('market', market_\)/);
@@ -29,17 +33,17 @@ describe('Travelpayouts cache-key contract', () => {
   });
 
   it('keeps month-matrix cache keyed only by upstream-varying options', () => {
-    const block = blockBetween('// v2: month-matrix', '// v2: latest');
+    const block = blockBetween("month: departureDate + '-01'", "period_type: 'year'");
 
     assert.doesNotMatch(block, /params\.set\('direct'/);
     assert.doesNotMatch(block, /limit: String\(Math\.min\(maxResults, 30\)\)/);
     assert.match(block, /const cacheKey = `tp:month:\$\{origin\}:\$\{destination\}:\$\{departureDate\}:\$\{cabin\}:\$\{currency_\}:v1`/);
     assert.match(block, /nonstopOnly \? data\.filter\(r => \(r\.number_of_changes \?\? 0\) === 0\) : data/);
-    assert.match(block, /rows\.slice\(0, maxResults\)/);
+    assert.match(block, /priced\.slice\(0, maxResults\)/);
   });
 
   it('keys latest cache by upstream-varying trip shape and capped limit', () => {
-    const block = blockBetween('// v2: latest', '// Save 7-day price snapshot');
+    const block = blockBetween("period_type: 'year'", 'const snapshotKey');
 
     assert.match(block, /one_way: returnDate \? 'false' : 'true'/);
     assert.match(block, /limit: String\(Math\.min\(maxResults, 30\)\)/);

@@ -62,9 +62,8 @@ All must be green before flipping:
 2. **Register the health probe, then confirm it green.** ✅ **Done and accepted in #6452**
    (2026-08-11). The probe was deliberately **not** registered in the scaffold PR,
    because `scripts/check-health-probe-cutovers.mts` requires a new strict probe to
-   carry machine-readable pre-seed evidence, or an acknowledgement expiring by the
-   producer's first scheduled run within 24 hours — neither is obtainable before the
-   seeder has ever run, and the second would require knowing the merge time in advance.
+   carry machine-readable pre-seed evidence or a durable activation marker, and
+   pre-seed evidence is not obtainable before the seeder has ever run.
 
    The order was: seeder ships → `seed-bundle-macro` publishes once → add the
    `educationAttainment` entry on the **pre-seed evidence** path, citing the Railway

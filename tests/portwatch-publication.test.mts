@@ -121,6 +121,11 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
         && countries.findIndex(([code]) => code === iso3) % 8 !== 0) {
         return Response.json({ error: { code: 429, message: 'Unable to perform query. Too many requests.' } });
       }
+      // 2026-10-27..31: intermittent ArcGIS 400 on the same 7 of every 8 countries.
+      if (mode === 'invalid-query'
+        && countries.findIndex(([code]) => code === iso3) % 8 !== 0) {
+        return Response.json({ error: { code: 400, message: 'Cannot perform query. Invalid query parameters.' } });
+      }
       if (mode === 'corrupt-failure' && iso3 === countries[0][0]) return Response.json({ features: [null] });
       if (mode === 'zero') return Response.json({ features: [], exceededTransferLimit: false });
       if (mode === 'activity-page' && iso3 === countries[0][0] && !where.includes('<=')) {
@@ -553,4 +558,50 @@ test('a throttled upstream keeps its remaining cold-fetch slots and blocks publi
   assert.equal(result.redis[META].coverage.published, 174, 'every country stays usable');
   assert.ok(result.redis[META].coverage.refreshFailures.some((e: any) => e.code === 'rate_limited'));
   assert.equal(health(result.redis, NOW).status, 'SEED_ERROR', 'the freshness monitor owns the alarm');
+});
+
+// 2026-10-27..31: the oldest-cached countries kept failing with an intermittent
+// `Invalid query parameters` and kept heading the queue (a failed fetch never
+// advances cacheWrittenAt), so batch 1 aborted every run before the countries
+// behind it were tried. A batch whose invalid_query failures all repeat a known
+// failure must not abort; the run keeps every cold-fetch slot.
+test('repeat invalid_query failures from already-failing countries do not abandon the run', () => {
+  const input = fixtures();
+  for (const [, code] of countries) {
+    input[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
+    input[`${PREFIX}${code}`].asof = '2026-09-08';
+    input[`${PREFIX}${code}`].refreshFailure = { code: 'invalid_query', consecutiveFailures: 4, lastAttemptAt: NOW - DAY / 2 };
+  }
+  const result = runProducer(input, 'invalid-query');
+
+  assert.doesNotMatch(result.logs, /CIRCUIT-BREAKER/);
+  assert.doesNotMatch(result.logs, /Skipping remaining \d+ batches/);
+  assert.match(result.logs, /batch 5\/5/);
+  const refreshed = countries.filter(([, code]) => result.redis[`${PREFIX}${code}`].cacheWrittenAt === NOW);
+  assert.ok(refreshed.length >= 2, `expected the countries upstream answered to land, got ${refreshed.length}`);
+
+  // The same upstream with no failure history is still a regression: abort.
+  const fresh = fixtures();
+  for (const [, code] of countries) {
+    fresh[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
+    fresh[`${PREFIX}${code}`].asof = '2026-09-08';
+  }
+  const regression = runProducer(fresh, 'invalid-query');
+  assert.match(regression.logs, /CIRCUIT-BREAKER: \d+% of batch 1 rejected as invalid_query/);
+  assert.match(regression.logs, /Skipping remaining \d+ batches/);
+});
+
+// One known member must not make the whole batch known: CN is decision-critical
+// and therefore always in batch 1. Giving only CN the history leaves the rest of
+// batch 1 fresh, and their 7-of-8 failures are still a regression signal.
+test('failure history exempts only the member that carries it, not its batch', () => {
+  const input = fixtures();
+  for (const [, code] of countries) {
+    input[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
+    input[`${PREFIX}${code}`].asof = '2026-09-08';
+  }
+  input[`${PREFIX}CN`].refreshFailure = { code: 'invalid_query', consecutiveFailures: 4, lastAttemptAt: NOW - DAY / 2 };
+  const result = runProducer(input, 'invalid-query');
+  assert.match(result.logs, /CIRCUIT-BREAKER: \d+% of batch 1 rejected as invalid_query/);
+  assert.match(result.logs, /Skipping remaining \d+ batches/);
 });

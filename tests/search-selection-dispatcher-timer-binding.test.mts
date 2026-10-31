@@ -71,12 +71,16 @@ const bindingsLiteral = findDispatcherBindingsLiteral(sourceFile);
 const setTimeoutPropertyText = extractPropertyText(bindingsLiteral, 'setTimeout');
 const clearTimeoutPropertyText = extractPropertyText(bindingsLiteral, 'clearTimeout');
 
-const transpiledSetTimeoutProperty = ts.transpileModule(setTimeoutPropertyText, {
-  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },
-}).outputText.trim().replace(/;$/, '');
-const transpiledClearTimeoutProperty = ts.transpileModule(clearTimeoutPropertyText, {
-  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },
-}).outputText.trim().replace(/;$/, '');
+// TypeScript 6+ prepends a "use strict" prologue to non-module input; the
+// property text is spliced into an object literal, so drop it.
+function transpileProperty(text: string): string {
+  return ts.transpileModule(text, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },
+  }).outputText.trim().replace(/^"use strict";\s*/, '').replace(/;$/, '');
+}
+
+const transpiledSetTimeoutProperty = transpileProperty(setTimeoutPropertyText);
+const transpiledClearTimeoutProperty = transpileProperty(clearTimeoutPropertyText);
 
 /**
  * Build the real bindings object from the extracted source, resolving bare and

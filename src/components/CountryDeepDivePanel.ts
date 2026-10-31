@@ -30,8 +30,7 @@ import { PORTS } from '@/config/ports';
 import { getChokepointRoutes } from '@/config/trade-routes';
 import { STRATEGIC_WATERWAYS } from '@/config/geo';
 import { hasPremiumAccess, readClientEntitlementBelief, readPremiumAccessGrant } from '@/services/panel-gating';
-import { getAuthState, subscribeAuthState } from '@/services/auth-state';
-import { onEntitlementChange } from '@/services/entitlements';
+import { getAuthState } from '@/services/auth-state';
 import { trackGateHit } from '@/services/analytics';
 import { fetchBypassOptions, fetchChokepointStatus } from '@/services/supply-chain';
 import { haversineDistanceKm } from '@/services/related-assets';
@@ -198,8 +197,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private demographicsCapabilityRequestId = 0;
   private fiveFactorScorecardRequestId = 0;
   private fiveFactorScorecardAbortController: AbortController | null = null;
-  private fiveFactorScorecardAuthUnsubscribe: (() => void) | null = null;
-  private fiveFactorScorecardEntitlementUnsubscribe: (() => void) | null = null;
   private fiveFactorScorecardBody: HTMLElement | null = null;
   private energyBody: HTMLElement | null = null;
   private maritimeBody: HTMLElement | null = null;
@@ -3827,42 +3824,21 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
   }
 
+  // Free for everyone (#9742) — unlike its Pro siblings on this panel, this
+  // section needs no auth/entitlement gate or resync on sign-in/upgrade.
   private mountFiveFactorScorecard(code: string, body: HTMLElement): void {
     this.tearDownFiveFactorScorecard();
     this.fiveFactorScorecardBody = body;
-    let lastAccess: boolean | null = null;
-    const syncAccess = (): void => {
-      if (this.currentCode !== code || this.fiveFactorScorecardBody !== body) return;
-      const hasAccess = this.canRequestPremium();
-      if (hasAccess === lastAccess) return;
-      lastAccess = hasAccess;
-      this.fiveFactorScorecardRequestId += 1;
-      this.fiveFactorScorecardAbortController?.abort();
-      this.fiveFactorScorecardAbortController = null;
-      if (!hasAccess) {
-        body.replaceChildren(this.makeProLocked(t('countryBrief.fiveFactorScorecard.proLocked')));
-        return;
-      }
-      body.replaceChildren(this.makeLoading(t('countryBrief.fiveFactorScorecard.loading')));
-      const accessController = new AbortController();
-      this.fiveFactorScorecardAbortController = accessController;
-      void this.renderFiveFactorScorecard(code, body, accessController.signal);
-    };
-    if (this.source?.mode !== 'host') {
-      this.fiveFactorScorecardAuthUnsubscribe = subscribeAuthState(syncAccess);
-      this.fiveFactorScorecardEntitlementUnsubscribe = onEntitlementChange(syncAccess);
-    }
-    syncAccess();
+    body.replaceChildren(this.makeLoading(t('countryBrief.fiveFactorScorecard.loading')));
+    const accessController = new AbortController();
+    this.fiveFactorScorecardAbortController = accessController;
+    void this.renderFiveFactorScorecard(code, body, accessController.signal);
   }
 
   private tearDownFiveFactorScorecard(): void {
     this.fiveFactorScorecardRequestId += 1;
     this.fiveFactorScorecardAbortController?.abort();
     this.fiveFactorScorecardAbortController = null;
-    this.fiveFactorScorecardAuthUnsubscribe?.();
-    this.fiveFactorScorecardAuthUnsubscribe = null;
-    this.fiveFactorScorecardEntitlementUnsubscribe?.();
-    this.fiveFactorScorecardEntitlementUnsubscribe = null;
     this.fiveFactorScorecardBody = null;
   }
 
@@ -3880,7 +3856,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const { getFiveFactorScorecard } = await import('@/services/scorecard');
       if (!stillCurrent() || signal.aborted || accessSignal.aborted) return;
       const response = await (this.source ? this.source.factors(code, combineAbortSignals([signal, accessSignal])) : getFiveFactorScorecard(code, combineAbortSignals([signal, accessSignal])));
-      if (!stillCurrent() || !this.canRequestPremium()) return;
+      if (!stillCurrent()) return;
       body.replaceChildren(renderFiveFactorScorecardSection(response, t));
     } catch (error) {
       const cancelled = signal.aborted || accessSignal.aborted || !stillCurrent();
@@ -3891,7 +3867,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
           widget: 'five-factor-scorecard',
         });
       }
-      if (stillCurrent() && this.canRequestPremium()) {
+      if (stillCurrent()) {
         this.setSectionFailure('factors', error instanceof CountrySectionError ? error.state : 'unavailable', t('countryBrief.fiveFactorScorecard.unavailable'));
       }
     } finally {

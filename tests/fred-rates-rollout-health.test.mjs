@@ -190,6 +190,7 @@ function installHealthPipelineMock(recordCount, {
     };
     if (key === SEED_META.globalTendersContractsFinder.key) meta.sourceState = 'ok';
     if (key === CII_RISK_SCORES_META_KEY) meta.inputs = healthyCiiInputs();
+    if (key === SEED_META.chokepointTransits.key) meta.transitCoverage = { covered: 13, total: 13, missing: [] };
     for (const config of configs) {
       if (config.requiredRedistributionPolicyVersion != null) {
         meta.redistributionPolicyVersion = config.requiredRedistributionPolicyVersion;

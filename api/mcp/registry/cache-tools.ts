@@ -3572,7 +3572,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     title: 'Freight rates, supply-chain pressure and trade flows',
     _subscriptionOnly: true,
     _outputBudgetBytes: 131072,
-    description: 'Return seeded supply-chain pressure and trade data: freight-rate indices, the NY Fed GSCPI, a BDRY and carrier-equity shipping-stress proxy, monthly customs revenue and UN COMTRADE flows. Freight includes FRED levels and history, plus SSE change percentages, direction and z-scores against stored prior observations, with at least 12 baseline points. SSE raw levels and Baltic indices are excluded. GSCPI is monthly, in standard deviations, and subject to revision. Customs revenue is stale after 2 days; freight after 7 hours; GSCPI after 2 days. Requires a paid plan; no live fetch, weight 1 on API plans. dataset selects shipping_stress, customs-revenue, flows, freight-rates or gscpi; commodity and reporter filter flows. limit caps lists, with newest GSCPI months kept chronological (default 30, 0 for no cap).',
+    description: 'Return seeded supply-chain pressure and trade data: freight-rate indices, the NY Fed GSCPI, a BDRY and carrier-equity shipping-stress proxy, monthly customs revenue and UN COMTRADE flows. Freight includes FRED levels and history, plus SSE change percentages, direction and z-scores against stored prior observations, with at least 12 baseline points. SSE raw levels and Baltic indices are excluded. GSCPI is monthly, in standard deviations, and subject to revision. Customs revenue is stale after 2 days; freight after 19 hours; GSCPI after 2 days. Requires a paid plan; no live fetch, weight 1 on API plans. dataset selects shipping_stress, customs-revenue, flows, freight-rates or gscpi; commodity and reporter filter flows. limit caps lists, with newest GSCPI months kept chronological (default 30, 0 for no cap).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3686,7 +3686,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     ],
     _freshnessChecks: [
       { key: 'seed-meta:trade:customs-revenue', maxStaleMin: 2880 },
-      { key: 'seed-meta:supply_chain:shipping', maxStaleMin: 420, honorContentAge: true },
+      { key: 'seed-meta:supply_chain:shipping', maxStaleMin: 1140, honorContentAge: true },
       { key: 'seed-meta:economic:gscpi', maxStaleMin: 2880 },
     ],
     _apiPaths: [

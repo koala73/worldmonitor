@@ -820,19 +820,7 @@ test('Manitoba partial poll must not replace last-good or flip health green', as
   );
 });
 
-test('manitobaRoads publishes, so its cutover acknowledgement is gone and the probe wiring is what stays pinned', () => {
-  // The #6622 ack was pruned on 2026-08-20: the live monitor reported
-  // manitobaRoads:EMPTY as "no longer reported", and the entry had already
-  // passed its own expiresAt. Asserting ABSENCE is what stops it being
-  // reinstated — an acknowledgement that outlives its problem silently absorbs
-  // the NEXT outage of the same probe.
-  const baseline = JSON.parse(readFileSync(new URL('../scripts/seed-freshness-baseline.json', import.meta.url), 'utf8'));
-  assert.equal(
-    baseline.acknowledged.some((row) => row.name === 'manitobaRoads'),
-    false,
-    'manitobaRoads publishes; do not suppress a future recurrence',
-  );
-
+test('manitobaRoads probe watches the exact key its seeder writes', () => {
   // What the ack was pinning as a side effect, and the only reason its
   // probeKey was ever worth asserting: health must watch the exact seed-meta
   // key the seeder writes. runSeed derives `seed-meta:${domain}:${resource}`,

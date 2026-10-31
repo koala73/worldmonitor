@@ -353,6 +353,37 @@ describe('batch circuit-breaker classification (#8501)', () => {
     assert.equal(classifyBatchCircuitBreak(mixed, 6)?.code, 'invalid_query');
   });
 
+  // 2026-10-27..31: ArcGIS returned intermittent `Invalid query parameters`.
+  // The oldest-cached countries head the expiring tier every run and a failed
+  // fetch never advances cacheWrittenAt, so batch 1 was the same five
+  // already-failing countries each time. 5 of 6 tripped the abort and the 24
+  // countries behind them were never attempted, run after run. A repeat failure
+  // from a country already failing that way is not NEW evidence of a schema
+  // regression; only countries without that history can supply it.
+  it('does not abort on invalid_query evidence that only repeats known failures', () => {
+    const observed = [
+      'VGB: Cannot perform query. Invalid query parameters.',
+      'BHR: Cannot perform query. Invalid query parameters.',
+      'ABW: Cannot perform query. Invalid query parameters.',
+      'PRI: Cannot perform query. Invalid query parameters.',
+      'HKG: Cannot perform query. Invalid query parameters.',
+    ];
+    const knownInvalidQuery = new Set(['VGB', 'BHR', 'ABW', 'PRI', 'HKG']);
+    assert.equal(classifyBatchCircuitBreak(observed, 6, undefined, { knownInvalidQuery }), null);
+    assert.equal(classifyBatchCircuitBreak(observed, 6)?.code, 'invalid_query',
+      'without failure history the same batch still reads as a regression');
+  });
+
+  it('still aborts when countries with no failure history hit invalid_query', () => {
+    const fresh = ['AAA', 'BBB', 'CCC'].map((iso3) => `${iso3}: Cannot perform query. Invalid query parameters.`);
+    const known = ['VGB', 'BHR', 'ABW'].map((iso3) => `${iso3}: Cannot perform query. Invalid query parameters.`);
+    const knownInvalidQuery = new Set(['VGB', 'BHR', 'ABW']);
+    assert.equal(classifyBatchCircuitBreak([...fresh, ...known], 6, undefined, { knownInvalidQuery })?.code,
+      'invalid_query');
+    assert.equal(classifyBatchCircuitBreak([fresh[0], ...known], 4, undefined, { knownInvalidQuery }), null,
+      'one fresh country is too little evidence to abandon the run');
+  });
+
   it('does not trip on a mixed bag of unrelated failures', () => {
     const errors = [
       'A: per-country timeout after 90s (A)',

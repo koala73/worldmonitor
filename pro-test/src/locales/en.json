@@ -718,7 +718,9 @@
       "eyebrow": "In their words",
       "title": "What people say about World Monitor",
       "sub": "{{users}} people in {{countries}} countries have used World Monitor. Here is what the press and some of them said.",
-      "translatedJa": "Translated from Japanese"
+      "translatedJa": "Translated from Japanese",
+      "prev": "Previous quotes",
+      "next": "More quotes"
     }
   },
   "whatsNew": {
@@ -726,13 +728,13 @@
     "title": "What's new in WorldMonitor",
     "subtitle": "New features from the last 30 days — fixes and plumbing not included.",
     "proTag": "PRO",
-    "m1": "Physical premium divergence index — SGE vs COMEX, with history",
-    "m2": "Commodity supply-vulnerability rankings — chokepoint dependency fan-out",
-    "m3": "Mineral production concentration & the defense industrial base",
-    "m4": "Five-factor resilience scorecards with indicator-level scores",
-    "m5": "Custom Telegram channel watchlists",
-    "m6": "Passkey sign-in",
-    "m7": "AI agents can drive the dashboard — panels, tabs, map layers & missions",
-    "m8": "Richer country resilience pages"
+    "m1": "Media perspective — how outlets from each country cover any country, for AI agents and the API",
+    "m2": "/verify — an evidence card for any claim, citing published fact-checks",
+    "m3": "Corroboration counts on alerts, digests and map popups, plus a public /trust page",
+    "m4": "Automated strike tracking — country risk rises under attack and recovers once strikes stop",
+    "m5": "Airspace closures from FAA NOTAMs and a reported aircraft-emergency map layer",
+    "m6": "Industrial activity map from Sentinel-5P satellite NO2",
+    "m7": "Capital flows for 230 economies and any country pair, for AI agents and the API",
+    "m8": "Terminal dashboard and zoomable CLI map — brew install worldmonitor"
   }
 }

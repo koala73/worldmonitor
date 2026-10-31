@@ -41,13 +41,24 @@ describe('homepage and /pro voices', () => {
   });
 
   it('makes each whole card the link, in one row that scrolls sideways', () => {
-    const cards = voicesSource.match(/export const VoiceCards = \(\) => \(([\s\S]*?)\n\);/)?.[1];
-    assert.ok(cards, 'VoiceCards must be defined');
-    assert.match(cards, /<ul className="[^"]*\bflex\b[^"]*\boverflow-x-auto\b[^"]*\bsnap-x\b/);
+    const cards = voicesSource.slice(voicesSource.indexOf('export const VoiceCards'));
+    assert.ok(cards.length > 0, 'VoiceCards must be defined');
+    assert.match(cards, /<ul ref=\{rowRef\} className="[^"]*\bflex\b[^"]*\boverflow-x-auto\b[^"]*\bsnap-x\b/);
     assert.match(cards, /<li [^>]*>\s*<a\s+href=\{voice\.href\}[^>]*>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<blockquote/);
     // The quotes are English on every locale, so screen readers must not voice them as the page language.
-    assert.match(cards, /<blockquote lang="en"/);
+    // ...and RTL pages (ar, fa) must not reorder their punctuation.
+    assert.match(cards, /<blockquote lang="en" dir="ltr"/);
+    assert.match(cards, /<span lang="en" dir="ltr">\s*<span className="font-bold text-wm-text">\{voice\.name\}/);
     assert.doesNotMatch(cards, /columns-\d/);
+  });
+
+  // Paging and end states, in LTR and RTL, are exercised by clicking in
+  // tests/dom/welcome-voices-arrows.test.mts.
+  it('labels both arrows through i18n', () => {
+    const buttons = [...voicesSource.matchAll(/<button [^\n]*/g)].map((m) => m[0]);
+    assert.equal(buttons.length, 2);
+    assert.match(buttons[0], /aria-label=\{t\('welcome\.voices\.prev'\)\}/);
+    assert.match(buttons[1], /aria-label=\{t\('welcome\.voices\.next'\)\}/);
   });
 
   it('labels translated quotes', () => {

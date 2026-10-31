@@ -1,3 +1,8 @@
+// Cron-source check by design (#8690, section 2): this suite pins the app
+// Origin header and best-effort exit policy in the warm-ping entry points.
+// The scripts run on import, so reading their source checks those
+// declarations without starting live upstream requests.
+//
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

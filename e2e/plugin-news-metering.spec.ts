@@ -1191,7 +1191,7 @@ type GlobeMovementWindow = RendererProbeWindow & {
 async function clickObservedGlobeControl(page: Page, selector: string): Promise<void> {
   const button = page.frameLocator('iframe').locator(selector);
   await button.evaluate(() => document.addEventListener('click', () => {
-    const probe = window as GlobeMovementWindow;
+    const probe = window as unknown as GlobeMovementWindow;
     probe.__observedTarget = probe.__newsCamera.viewportTarget && { ...probe.__newsCamera.viewportTarget };
     probe.__observedMovement = probe.__newsCamera.whenViewportSettled();
     const target = probe.__observedTarget;
@@ -1216,13 +1216,13 @@ for (const flags of [
     await expect(frame.locator('#panelsGrid')).toContainText('Controlled earthquake report in Japan');
     expect((await newsAction(page, 'focus_news_article', { link: 'https://example.com/news' })).isError).not.toBe(true);
     await frame.locator('body').evaluate((_element, preferences) => {
-      Object.assign((window as GlobeMovementWindow).__newsCamera.controls, preferences);
+      Object.assign((window as unknown as GlobeMovementWindow).__newsCamera.controls, preferences);
     }, flags);
     const outcomes = [];
     for (const button of ['.zoom-in', '.zoom-reset']) {
       await frame.locator(button).click();
       const result = await frame.locator('body').evaluate(async () => {
-        const camera = (window as GlobeMovementWindow).__newsCamera;
+        const camera = (window as unknown as GlobeMovementWindow).__newsCamera;
         const target = camera.viewportTarget && { ...camera.viewportTarget };
         const completed = await camera.whenViewportSettled();
         const restored = { autoRotate: camera.controls.autoRotate, enableDamping: camera.controls.enableDamping };
@@ -1251,7 +1251,7 @@ test(`physical globe ${gesture} interruption fails the old Zoom and keeps later 
   await expect(frame.locator('#panelsGrid')).toContainText('Controlled earthquake report in Japan');
   expect((await newsAction(page, 'focus_news_article', { link: 'https://example.com/news' })).isError).not.toBe(true);
   await frame.locator('body').evaluate(() => {
-    const probe = window as GlobeMovementWindow;
+    const probe = window as unknown as GlobeMovementWindow;
     const globe = probe.__newsCamera.globe as unknown as { pointOfView(...args: unknown[]): unknown };
     const original = globe.pointOfView;
     probe.__cameraWrites = 0;
@@ -1262,7 +1262,7 @@ test(`physical globe ${gesture} interruption fails the old Zoom and keeps later 
   });
   await frame.locator('.zoom-in').click();
   await frame.locator('body').evaluate(() => {
-    const probe = window as GlobeMovementWindow;
+    const probe = window as unknown as GlobeMovementWindow;
     if (!probe.__newsCamera.viewportTarget) throw new Error('Zoom must still be active before physical interruption');
     probe.__movement = probe.__newsCamera.whenViewportSettled();
   });
@@ -1274,11 +1274,11 @@ test(`physical globe ${gesture} interruption fails the old Zoom and keeps later 
     await page.mouse.up();
   } else await page.mouse.wheel(0, -100);
   const interrupted = await frame.locator('body').evaluate(async () => {
-    const probe = window as GlobeMovementWindow;
+    const probe = window as unknown as GlobeMovementWindow;
     return { completed: await probe.__movement, autoRotate: probe.__newsCamera.controls.autoRotate, enableDamping: probe.__newsCamera.controls.enableDamping, writes: probe.__cameraWrites };
   });
   await page.waitForTimeout(1400);
-  const laterWrites = await frame.locator('body').evaluate(() => (window as GlobeMovementWindow).__cameraWrites);
+  const laterWrites = await frame.locator('body').evaluate(() => (window as unknown as GlobeMovementWindow).__cameraWrites);
   await writeFile(info.outputPath('interruption-before-assertion.json'), JSON.stringify({ interrupted, laterWrites, contexts: host.contexts, calls: host.calls }, null, 2));
   expect(interrupted.completed).toBe(false);
   expect(interrupted.autoRotate).toBe(gesture === 'wheel');
@@ -1286,7 +1286,7 @@ test(`physical globe ${gesture} interruption fails the old Zoom and keeps later 
   expect(laterWrites).toBe(interrupted.writes);
   for (const button of ['.zoom-in', '.zoom-reset']) {
     await frame.locator(button).click();
-    expect(await frame.locator('body').evaluate(() => (window as GlobeMovementWindow).__newsCamera.whenViewportSettled())).toBe(true);
+    expect(await frame.locator('body').evaluate(() => (window as unknown as GlobeMovementWindow).__newsCamera.whenViewportSettled())).toBe(true);
   }
   expect(host.calls.map(call => call.name)).toEqual(['open_news_dashboard']);
 });
@@ -1300,17 +1300,17 @@ test(`physical Zoom supersedes a longer globe move through both tween durations 
   await expect(frame.locator('#panelsGrid')).toContainText('Controlled earthquake report in Japan');
   expect((await newsAction(page, 'focus_news_article', { link: 'https://example.com/news' })).isError).not.toBe(true);
   await frame.locator('body').evaluate((_element, rotate) => {
-    (window as GlobeMovementWindow).__newsCamera.controls.autoRotate = rotate;
+    (window as unknown as GlobeMovementWindow).__newsCamera.controls.autoRotate = rotate;
   }, autoRotate);
   const pending = newsAction(page, 'apply_news_view', { map_latitude: -20, map_longitude: 50, map_zoom: 6 });
-  await expect.poll(() => frame.locator('body').evaluate(() => Boolean((window as GlobeMovementWindow).__newsCamera.viewportTarget))).toBe(true);
+  await expect.poll(() => frame.locator('body').evaluate(() => Boolean((window as unknown as GlobeMovementWindow).__newsCamera.viewportTarget))).toBe(true);
   await frame.locator('body').evaluate(() => {
-    const probe = window as GlobeMovementWindow;
+    const probe = window as unknown as GlobeMovementWindow;
     probe.__movement = probe.__newsCamera.whenViewportSettled();
   });
   await frame.locator('.zoom-in').click();
   const superseded = await frame.locator('body').evaluate(async () => {
-    const probe = window as GlobeMovementWindow;
+    const probe = window as unknown as GlobeMovementWindow;
     const camera = probe.__newsCamera;
     const target = camera.viewportTarget && { ...camera.viewportTarget };
     const newer = camera.whenViewportSettled();
@@ -1323,7 +1323,7 @@ test(`physical Zoom supersedes a longer globe move through both tween durations 
   // Both original (1200 ms) and Zoom (500 ms) animations must have finished.
   await page.waitForTimeout(1400);
   const final = await frame.locator('body').evaluate(() => {
-    const camera = (window as GlobeMovementWindow).__newsCamera;
+    const camera = (window as unknown as GlobeMovementWindow).__newsCamera;
     return { pov: camera.globe.pointOfView(), flags: { autoRotate: camera.controls.autoRotate, enableDamping: camera.controls.enableDamping } };
   });
   await writeFile(info.outputPath('supersession-before-assertion.json'), JSON.stringify({ superseded, final, contexts: host.contexts, calls: host.calls }, null, 2));
@@ -1348,29 +1348,29 @@ test('globe longitude wrap and rapid physical supersession retain the latest cam
   const frame = page.frameLocator('iframe');
   await expect(frame.locator('#panelsGrid')).toContainText('Controlled earthquake report in Japan');
   expect((await newsAction(page, 'focus_news_article', { link: 'https://example.com/news' })).isError).not.toBe(true);
-  await frame.locator('body').evaluate(() => { (window as GlobeMovementWindow).__newsCamera.controls.autoRotate = false; });
+  await frame.locator('body').evaluate(() => { (window as unknown as GlobeMovementWindow).__newsCamera.controls.autoRotate = false; });
   expect((await newsAction(page, 'apply_news_view', { map_latitude: 0, map_longitude: 179, map_zoom: 3 })).isError).not.toBe(true);
   const crossing = newsAction(page, 'apply_news_view', { map_latitude: 0, map_longitude: -179 });
-  await expect.poll(() => frame.locator('body').evaluate(() => Boolean((window as GlobeMovementWindow).__newsCamera.viewportTarget))).toBe(true);
+  await expect.poll(() => frame.locator('body').evaluate(() => Boolean((window as unknown as GlobeMovementWindow).__newsCamera.viewportTarget))).toBe(true);
   await page.waitForTimeout(250);
-  const duringWrap = await frame.locator('body').evaluate(() => (window as GlobeMovementWindow).__newsCamera.globe.pointOfView());
+  const duringWrap = await frame.locator('body').evaluate(() => (window as unknown as GlobeMovementWindow).__newsCamera.globe.pointOfView());
   expect(Math.abs(duringWrap.lng)).toBeGreaterThan(178);
   expect((await crossing).isError).not.toBe(true);
-  const wrapped = await frame.locator('body').evaluate(() => (window as GlobeMovementWindow).__newsCamera.globe.pointOfView());
+  const wrapped = await frame.locator('body').evaluate(() => (window as unknown as GlobeMovementWindow).__newsCamera.globe.pointOfView());
   expect(Math.abs((((wrapped.lng + 179) + 540) % 360) - 180)).toBeLessThanOrEqual(0.0001);
-  await frame.locator('body').evaluate(() => { (window as GlobeMovementWindow).__movements = []; });
+  await frame.locator('body').evaluate(() => { (window as unknown as GlobeMovementWindow).__movements = []; });
   for (const button of ['.zoom-in', '.zoom-out', '.zoom-in']) {
     await frame.locator(button).click();
     await frame.locator('body').evaluate(() => {
-      const probe = window as GlobeMovementWindow;
+      const probe = window as unknown as GlobeMovementWindow;
       probe.__movements!.push(probe.__newsCamera.whenViewportSettled());
       probe.__movementTarget = { ...probe.__newsCamera.viewportTarget! };
     });
   }
-  const results = await frame.locator('body').evaluate(async () => Promise.all((window as GlobeMovementWindow).__movements!));
+  const results = await frame.locator('body').evaluate(async () => Promise.all((window as unknown as GlobeMovementWindow).__movements!));
   await page.waitForTimeout(1400);
   const final = await frame.locator('body').evaluate(() => {
-    const probe = window as GlobeMovementWindow;
+    const probe = window as unknown as GlobeMovementWindow;
     return { target: probe.__movementTarget!, pov: probe.__newsCamera.globe.pointOfView(), zoom: probe.__newsMap.getState().zoom };
   });
   await writeFile(info.outputPath('wrap-rapid-before-assertion.json'), JSON.stringify({ duringWrap, wrapped, results, final, contexts: host.contexts, calls: host.calls }, null, 2));
@@ -1390,16 +1390,16 @@ test('an active globe movement pauses without camera writes and resumes with its
   expect((await newsAction(page, 'focus_news_article', { link: 'https://example.com/news' })).isError).not.toBe(true);
   await frame.locator('.zoom-in').click();
   const paused = await frame.locator('body').evaluate(() => {
-    const probe = window as GlobeMovementWindow;
+    const probe = window as unknown as GlobeMovementWindow;
     probe.__movement = probe.__newsCamera.whenViewportSettled();
     probe.__movementTarget = { ...probe.__newsCamera.viewportTarget! };
     probe.__newsCamera.setRenderPaused(true);
     return probe.__newsCamera.globe.pointOfView();
   });
   await page.waitForTimeout(700);
-  const during = await frame.locator('body').evaluate(() => (window as GlobeMovementWindow).__newsCamera.globe.pointOfView());
+  const during = await frame.locator('body').evaluate(() => (window as unknown as GlobeMovementWindow).__newsCamera.globe.pointOfView());
   const result = await frame.locator('body').evaluate(async () => {
-    const probe = window as GlobeMovementWindow;
+    const probe = window as unknown as GlobeMovementWindow;
     probe.__newsCamera.setRenderPaused(false);
     const completed = await probe.__movement;
     return { completed, target: probe.__movementTarget!, pov: probe.__newsCamera.globe.pointOfView(), flags: { autoRotate: probe.__newsCamera.controls.autoRotate, enableDamping: probe.__newsCamera.controls.enableDamping } };
@@ -1425,7 +1425,7 @@ test('renderer replacement cancels an active globe movement and its scheduled wr
   expect((await newsAction(page, 'focus_news_article', { link: 'https://example.com/news' })).isError).not.toBe(true);
   await frame.locator('.zoom-in').click();
   const result = await frame.locator('body').evaluate(async () => {
-    const probe = window as GlobeMovementWindow;
+    const probe = window as unknown as GlobeMovementWindow;
     const pending = probe.__newsCamera.whenViewportSettled();
     await probe.__newsMap.switchToFlat();
     const camera = probe.__newsCamera as GlobeMovementProbe & { destroyed: boolean; viewportAnimationFrame: number | null };
@@ -1456,16 +1456,16 @@ for (const initialZoom of [1.5, 4]) {
     await expect(marker).toBeAttached();
     await marker.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     await frame.locator('#mapContainer').evaluate(element => element.addEventListener('click', event => {
-      (window as GlobeMovementWindow).__markerDelivered = event.isTrusted && event.target instanceof Element
+      (window as unknown as GlobeMovementWindow).__markerDelivered = event.isTrusted && event.target instanceof Element
         && event.target.closest('[title]')?.getAttribute('title') === 'Controlled earthquake report in Japan';
     }, { once: true, capture: true }));
     const beforeMarker = host.contexts.length;
     await marker.click({ force: true });
     await expect.poll(() => host.contexts.length).toBeGreaterThan(beforeMarker);
-    expect(await frame.locator('body').evaluate(() => (window as GlobeMovementWindow).__markerDelivered)).toBe(true);
+    expect(await frame.locator('body').evaluate(() => (window as unknown as GlobeMovementWindow).__markerDelivered)).toBe(true);
     expect(host.contexts.at(-1)?.latestInteraction).toEqual(article);
     const before = await frame.locator('body').evaluate(() => {
-      const probe = window as GlobeMovementWindow;
+      const probe = window as unknown as GlobeMovementWindow;
       return { zoom: probe.__newsMap.getState().zoom, flags: { autoRotate: probe.__newsCamera.controls.autoRotate, enableDamping: probe.__newsCamera.controls.enableDamping } };
     });
     expect(before.flags.autoRotate).toBe(true);
@@ -1476,12 +1476,12 @@ for (const initialZoom of [1.5, 4]) {
     await page.mouse.move(bounds!.x + bounds!.width * 0.7, bounds!.y + bounds!.height * 0.7);
     await page.mouse.wheel(0, -400);
     await expect.poll(() => host.contexts.length).toBeGreaterThan(beforeWheel);
-    const wheel = await frame.locator('body').evaluate(() => (window as GlobeMovementWindow).__newsMap.getState().zoom);
+    const wheel = await frame.locator('body').evaluate(() => (window as unknown as GlobeMovementWindow).__newsMap.getState().zoom);
     expect(wheel).toBeGreaterThan(before.zoom);
     await expect.poll(() => host.contexts.at(-1)?.map?.zoom).toBeCloseTo(wheel, 4);
     const beforeZoom = host.contexts.length;
     await clickObservedGlobeControl(page, '.zoom-in');
-    const result = await frame.locator('body').evaluate(() => (window as GlobeMovementWindow).__observedSettlement!);
+    const result = await frame.locator('body').evaluate(() => (window as unknown as GlobeMovementWindow).__observedSettlement!);
     await writeFile(info.outputPath('wheel-zoom-before-assertion.json'), JSON.stringify({ initialZoom, before, wheel, beforeZoom, result, contexts: host.contexts, calls: host.calls }, null, 2));
     expect(result.completed).toBe(true);
     expect(result.target).not.toBeNull();
@@ -1520,7 +1520,7 @@ for (const failure of ['human', 'nonhuman', 'button', 'readiness'] as const) {
     const previousContext = host.contexts.at(-1);
     const before = host.calls.length;
     await frame.locator('body').evaluate((_, failure) => {
-      const probe = window as RendererProbeWindow;
+      const probe = window as unknown as RendererProbeWindow;
       const map = probe.__newsMap;
       const switchToFlat = map.switchToFlat.bind(map);
       const settle = map.whenViewportSettled.bind(map);
@@ -1554,17 +1554,17 @@ for (const failure of ['human', 'nonhuman', 'button', 'readiness'] as const) {
       ? frame.locator('#mapDimensionToggle [data-mode="flat"]').click().then(() => undefined)
       : newsAction(page, 'apply_news_view', { renderer: 'flat', source: 'Unapplied publisher', map_latitude: -20, map_longitude: 50, map_zoom: 8, map_layers: [] });
     if (failure !== 'readiness') {
-      await expect.poll(() => frame.locator('body').evaluate(() => Boolean((window as RendererProbeWindow).__releaseNewsSettlement))).toBe(true);
+      await expect.poll(() => frame.locator('body').evaluate(() => Boolean((window as unknown as RendererProbeWindow).__releaseNewsSettlement))).toBe(true);
       if (failure === 'human') {
         await frame.locator('.zoom-in').click();
         await frame.locator('.zoom-reset').click();
       }
-      await frame.locator('body').evaluate(() => (window as RendererProbeWindow).__releaseNewsSettlement!());
+      await frame.locator('body').evaluate(() => (window as unknown as RendererProbeWindow).__releaseNewsSettlement!());
     }
     const result = await pending;
-    if (failure === 'button') await expect.poll(() => frame.locator('body').evaluate(() => (window as RendererProbeWindow).__newsSettlementReason)).toBe('viewport_interrupted');
+    if (failure === 'button') await expect.poll(() => frame.locator('body').evaluate(() => (window as unknown as RendererProbeWindow).__newsSettlementReason)).toBe('viewport_interrupted');
     const trace = await frame.locator('body').evaluate(() => {
-      const probe = window as RendererProbeWindow;
+      const probe = window as unknown as RendererProbeWindow;
       return { reason: probe.__newsSettlementReason, authorityBefore: probe.__newsAuthority, authorityAfter: probe.__newsMap.getViewportAuthorityToken() };
     });
     await writeFile(info.outputPath('renderer-failure-trace.json'), JSON.stringify({ failure, trace, result, contexts: host.contexts }, null, 2));
@@ -1604,16 +1604,16 @@ test('isolated globe wheel publishes the changed camera without another view com
   const callsBefore = host.calls.length;
   const contextsBefore = host.contexts.length;
   const before = await frame.locator('body').evaluate(() => {
-    const map = (window as RendererProbeWindow).__newsMap;
+    const map = (window as unknown as RendererProbeWindow).__newsMap;
     return { zoom: map.getState().zoom, authority: map.getViewportAuthorityToken() };
   });
   const bounds = await frame.locator('#mapContainer canvas').first().boundingBox();
   expect(bounds).not.toBeNull();
   await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
   await page.mouse.wheel(0, -400);
-  await expect.poll(() => frame.locator('body').evaluate(() => (window as RendererProbeWindow).__newsMap.getState().zoom)).toBeGreaterThan(before.zoom);
+  await expect.poll(() => frame.locator('body').evaluate(() => (window as unknown as RendererProbeWindow).__newsMap.getState().zoom)).toBeGreaterThan(before.zoom);
   const changed = await frame.locator('body').evaluate(async () => {
-    const map = (window as RendererProbeWindow).__newsMap;
+    const map = (window as unknown as RendererProbeWindow).__newsMap;
     await map.whenViewportSettled();
     return { zoom: map.getState().zoom, authority: map.getViewportAuthorityToken() };
   });
@@ -1638,7 +1638,7 @@ test('a news marker clicked during globe Zoom retains the settled camera context
   const callsBefore = host.calls.length;
   await expect(frame.locator('#mapContainer [title="Controlled earthquake report in Japan"]')).toBeAttached();
   await frame.locator('#mapContainer').evaluate(container => {
-    const probe = window as GlobeMovementWindow & { __orbitStarts?: number };
+    const probe = window as unknown as GlobeMovementWindow & { __orbitStarts?: number };
     probe.__orbitStarts = 0;
     (probe.__newsCamera.controls as { autoRotate: boolean; enableDamping: boolean; addEventListener(type: string, callback: () => void): void }).addEventListener('start', () => { probe.__orbitStarts!++; });
     const observeMarker = (event: Event) => {
@@ -1670,7 +1670,7 @@ test('a news marker clicked during globe Zoom retains the settled camera context
   const markerContext = host.contexts[contextsBeforeMarker];
   const contextsAfterMarker = contextsBeforeMarker + 1;
   const settled = await frame.locator('body').evaluate(async () => {
-    const map = (window as RendererProbeWindow).__newsMap;
+    const map = (window as unknown as RendererProbeWindow).__newsMap;
     let failure: string | undefined;
     try { await map.whenViewportSettled(); } catch (error) { failure = String(error); }
     return { center: map.getCenter(), map: map.getState(), failure };
@@ -1706,11 +1706,11 @@ test('direct news Zoom and Reset publish the settled camera without another view
   const latestInteraction = host.contexts.at(-1)?.latestInteraction;
   const before = host.calls.length;
   const contextsBeforeZoom = host.contexts.length;
-  const zoomBefore = await frame.locator('body').evaluate(() => (window as RendererProbeWindow).__newsMap.getState().zoom);
+  const zoomBefore = await frame.locator('body').evaluate(() => (window as unknown as RendererProbeWindow).__newsMap.getState().zoom);
   await frame.locator('.zoom-in').click();
-  await expect.poll(() => frame.locator('body').evaluate(() => (window as RendererProbeWindow).__newsMap.getState().zoom)).toBeGreaterThan(zoomBefore);
+  await expect.poll(() => frame.locator('body').evaluate(() => (window as unknown as RendererProbeWindow).__newsMap.getState().zoom)).toBeGreaterThan(zoomBefore);
   const zoomed = await frame.locator('body').evaluate(async () => {
-    const map = (window as RendererProbeWindow).__newsMap;
+    const map = (window as unknown as RendererProbeWindow).__newsMap;
     await map.whenViewportSettled();
     return { center: map.getCenter(), map: map.getState() };
   });
@@ -1721,7 +1721,7 @@ test('direct news Zoom and Reset publish the settled camera without another view
   expect(host.calls).toHaveLength(before);
   await frame.locator('.zoom-reset').click();
   const settled = await frame.locator('body').evaluate(async () => {
-    const map = (window as RendererProbeWindow).__newsMap;
+    const map = (window as unknown as RendererProbeWindow).__newsMap;
     await map.whenViewportSettled();
     return { center: map.getCenter(), map: map.getState() };
   });
@@ -1743,7 +1743,7 @@ test('host resize preserves a newer category refusal after a superseded human ob
   const selected = host.contexts.at(-1)?.latestInteraction;
   const callsBefore = host.calls.length;
   await frame.locator('body').evaluate(() => {
-    const probe = window as RendererProbeWindow & { __observerEntered?: boolean; __observerFinished?: Promise<void> };
+    const probe = window as unknown as RendererProbeWindow & { __observerEntered?: boolean; __observerFinished?: Promise<void> };
     const map = probe.__newsMap;
     const original = map.whenViewportSettled.bind(map);
     const gate = new Promise<void>(resolve => { probe.__releaseNewsSettlement = resolve; });
@@ -1757,14 +1757,14 @@ test('host resize preserves a newer category refusal after a superseded human ob
     };
   });
   await frame.locator('[data-action="zoom-in"]').click();
-  await expect.poll(() => frame.locator('body').evaluate(() => Boolean((window as RendererProbeWindow & { __observerEntered?: boolean }).__observerEntered))).toBe(true);
+  await expect.poll(() => frame.locator('body').evaluate(() => Boolean((window as unknown as RendererProbeWindow & { __observerEntered?: boolean }).__observerEntered))).toBe(true);
   const refusal = await newsAction(page, 'apply_news_view', { category: 'missing', source: 'Unapplied publisher' });
   const expected = { applied: false, reason: 'unknown_category', requestedCategory: 'missing', latestInteraction: selected };
   expect(refusal.structuredContent).toMatchObject(expected);
   await expect.poll(() => host.contexts.at(-1)).toMatchObject(expected);
   const atRefusal = host.contexts.length;
   await frame.locator('body').evaluate(async () => {
-    const probe = window as RendererProbeWindow & { __observerFinished?: Promise<void> };
+    const probe = window as unknown as RendererProbeWindow & { __observerFinished?: Promise<void> };
     probe.__releaseNewsSettlement!();
     await probe.__observerFinished;
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
@@ -1772,7 +1772,7 @@ test('host resize preserves a newer category refusal after a superseded human ob
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
   expect(host.contexts.at(-1)).toMatchObject(expected);
   expect(host.contexts).toHaveLength(atRefusal);
-  const authorityBefore = await frame.locator('body').evaluate(() => (window as RendererProbeWindow).__newsMap.getViewportAuthorityToken());
+  const authorityBefore = await frame.locator('body').evaluate(() => (window as unknown as RendererProbeWindow).__newsMap.getViewportAuthorityToken());
   const widthBefore = await frame.locator('body').evaluate(() => innerWidth);
   const contextBeforeResize = host.contexts.at(-1);
   const beforeResize = host.contexts.length;
@@ -1783,7 +1783,7 @@ test('host resize preserves a newer category refusal after a superseded human ob
     return innerWidth;
   });
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
-  const authorityAfter = await frame.locator('body').evaluate(() => (window as RendererProbeWindow).__newsMap.getViewportAuthorityToken());
+  const authorityAfter = await frame.locator('body').evaluate(() => (window as unknown as RendererProbeWindow).__newsMap.getViewportAuthorityToken());
   await writeFile(info.outputPath('host-resize-checkpoint.json'), JSON.stringify({ refusal, contextBeforeResize, latest: host.contexts.at(-1), afterResize: host.contexts.slice(beforeResize), authorityBefore, authorityAfter, widthBefore, widthAfter, calls: host.calls }, null, 2));
   expect(widthAfter).not.toBe(widthBefore);
   expect(authorityAfter).toBe(authorityBefore);
@@ -1794,7 +1794,7 @@ test('host resize preserves a newer category refusal after a superseded human ob
   await expect(frame.getByRole('combobox', { name: 'News source' })).toHaveValue('');
   await frame.locator('[data-action="reset"]').click();
   const reset = await frame.locator('body').evaluate(async () => {
-    const map = (window as RendererProbeWindow).__newsMap;
+    const map = (window as unknown as RendererProbeWindow).__newsMap;
     await map.whenViewportSettled();
     return { authority: map.getViewportAuthorityToken(), center: map.getCenter(), map: map.getState() };
   });
@@ -1815,7 +1815,7 @@ test('a newer category refusal supersedes an older pending human camera observat
   const selected = host.contexts.at(-1)?.latestInteraction;
   const callsBefore = host.calls.length;
   await frame.locator('body').evaluate(() => {
-    const probe = window as RendererProbeWindow & { __observerEntered?: boolean; __observerFinished?: Promise<void> };
+    const probe = window as unknown as RendererProbeWindow & { __observerEntered?: boolean; __observerFinished?: Promise<void> };
     const map = probe.__newsMap;
     const original = map.whenViewportSettled.bind(map);
     const gate = new Promise<void>(resolve => { probe.__releaseNewsSettlement = resolve; });
@@ -1829,14 +1829,14 @@ test('a newer category refusal supersedes an older pending human camera observat
     };
   });
   await frame.locator('[data-action="zoom-in"]').click();
-  await expect.poll(() => frame.locator('body').evaluate(() => Boolean((window as RendererProbeWindow & { __observerEntered?: boolean }).__observerEntered))).toBe(true);
+  await expect.poll(() => frame.locator('body').evaluate(() => Boolean((window as unknown as RendererProbeWindow & { __observerEntered?: boolean }).__observerEntered))).toBe(true);
   const refusal = await newsAction(page, 'apply_news_view', { category: 'missing', source: 'Unapplied publisher' });
   const expected = { applied: false, reason: 'unknown_category', requestedCategory: 'missing', latestInteraction: selected };
   expect(refusal.structuredContent).toMatchObject(expected);
   await expect.poll(() => host.contexts.at(-1)).toMatchObject(expected);
   const atRefusal = host.contexts.length;
   await frame.locator('body').evaluate(async () => {
-    const probe = window as RendererProbeWindow & { __observerFinished?: Promise<void> };
+    const probe = window as unknown as RendererProbeWindow & { __observerFinished?: Promise<void> };
     probe.__releaseNewsSettlement!();
     await probe.__observerFinished;
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));

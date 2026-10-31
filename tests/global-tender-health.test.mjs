@@ -3,9 +3,35 @@ import assert from 'node:assert/strict';
 
 import { __testing__ } from '../api/health.js';
 
+test('new tender sources become strict after their first successful publication', () => {
+  const { classifyKey, SEED_META, STANDALONE_KEYS, ACTIVATION_MARKERS } = __testing__;
+  const sources = ['ColombiaSecop', 'KenyaPpip', 'SouthAfricaEtenders', 'ChileMercadoPublico', 'BrazilPncp',
+    'UkraineProzorro', 'BulgariaEop', 'LatviaIub', 'PolandBzp', 'PakistanPpra'];
+  const now = Date.parse('2026-10-29T12:00:00Z');
+  for (const source of sources) {
+    const name = `globalTenders${source}`;
+    const key = STANDALONE_KEYS[name];
+    assert.equal(ACTIVATION_MARKERS[name], SEED_META[name].activationKey);
+    const classify = (active, present, ageMinutes = 1) => classifyKey(name, key, { allowOnDemand: true }, {
+      now, activationStates: new Map([[name, active]]), keyErrors: new Map(), keyMetaErrors: new Map(),
+      keyStrens: new Map(present ? [[key, 100]] : []),
+      keyMetaValues: new Map(present ? [[SEED_META[name].key, JSON.stringify({
+        fetchedAt: now - ageMinutes * 60_000, recordCount: 0, sourceState: 'ok',
+      })]] : []),
+    });
+    assert.equal(classify(false, false).status, 'EMPTY_ON_DEMAND', name);
+    assert.equal(classify(true, false).status, 'EMPTY', name);
+    assert.equal(classify(true, true).status, 'OK', name);
+    assert.equal(classify(true, true, 1439).status, 'OK', name);
+    assert.equal(classify(true, true, 1441).status, 'STALE_SEED', name);
+  }
+});
+
 test('health registers and classifies per-source global tender freshness', () => {
   const { classifyKey, SEED_META, STANDALONE_KEYS, ZERO_RECORD_DATA_OK_KEYS } = __testing__;
-  const sources = ['Sam', 'Ted', 'ContractsFinder', 'CanadaBuys', 'Gets', 'WorldBank'];
+  const sources = ['Sam', 'Ted', 'ContractsFinder', 'CanadaBuys', 'Gets', 'WorldBank',
+    'ColombiaSecop', 'KenyaPpip', 'SouthAfricaEtenders', 'ChileMercadoPublico', 'BrazilPncp',
+    'UkraineProzorro', 'BulgariaEop', 'LatviaIub', 'PolandBzp', 'PakistanPpra'];
 
   for (const source of sources) {
     const name = `globalTenders${source}`;
@@ -31,37 +57,38 @@ test('health registers and classifies per-source global tender freshness', () =>
     now,
   });
 
-  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(entry.status, 'OK', 'retained rows inside the 24h source budget are not an alarm');
   assert.equal(entry.records, 12);
 });
 
-test('SAM health allows the effective paced cadence plus one hourly jitter gate', () => {
+test('every per-source tender check grades a failed attempt against a 24h last-success budget', () => {
   const { classifyKey, SEED_META, STANDALONE_KEYS } = __testing__;
-  const name = 'globalTendersSam';
-  const dataKey = STANDALONE_KEYS[name];
-  const metaKey = SEED_META[name].key;
   const now = Date.parse('2026-07-22T12:00:00Z');
+  // Contracts Finder keeps its bespoke 180min first-failure containment (tests below).
+  assert.equal(SEED_META.globalTendersContractsFinder.maxStaleMin, 180);
+  assert.equal(SEED_META.globalTendersContractsFinder.sourceFailureWithinBudgetOk, undefined);
+  const sources = ['Sam', 'Ted', 'CanadaBuys', 'Gets', 'WorldBank',
+    'ColombiaSecop', 'KenyaPpip', 'SouthAfricaEtenders', 'ChileMercadoPublico', 'BrazilPncp',
+    'UkraineProzorro', 'BulgariaEop', 'LatviaIub', 'PolandBzp', 'PakistanPpra'];
 
-  assert.equal(SEED_META.globalTendersSam.maxStaleMin, 240);
-  for (const source of ['Ted', 'ContractsFinder', 'CanadaBuys', 'Gets', 'WorldBank']) {
-    assert.equal(SEED_META[`globalTenders${source}`].maxStaleMin, 180, `${source} keeps the hourly source SLA`);
+  for (const source of sources) {
+    const name = `globalTenders${source}`;
+    assert.equal(SEED_META[name].maxStaleMin, 1440, name);
+    assert.equal(SEED_META[name].sourceFailureWithinBudgetOk, true, name);
+    const dataKey = STANDALONE_KEYS[name];
+    const classify = (ageMin, meta) => classifyKey(name, dataKey, { allowOnDemand: true }, {
+      now, activationStates: new Map([[name, true]]),
+      keyStrens: new Map([[dataKey, 128]]), keyErrors: new Map(), keyMetaErrors: new Map(),
+      keyMetaValues: new Map([[SEED_META[name].key, JSON.stringify({ fetchedAt: now - ageMin * 60_000, ...meta })]]),
+    });
+    const retained = { recordCount: 3, sourceState: 'stale', stale: true, error: 'HTTP 429' };
+    assert.equal(classify(1439, retained).status, 'OK', `${name}: rate-limited source still serving last-good rows`);
+    assert.notEqual(classify(1441, retained).status, 'OK', `${name}: a day without a success warns`);
+    assert.equal(classify(60, { recordCount: 0, sourceState: 'error', stale: true, confirmedEmpty: true }).status, 'OK',
+      `${name}: a verified empty result stays true while the next attempt fails`);
+    assert.notEqual(classify(60, { recordCount: 0, sourceState: 'error', stale: true, error: 'HTTP 403' }).status, 'OK',
+      `${name}: a failure serving nothing still warns`);
   }
-
-  const classifyAtAge = (ageMin) => classifyKey(name, dataKey, { allowOnDemand: true }, {
-    keyStrens: new Map([[dataKey, 128]]),
-    keyErrors: new Map(),
-    keyMetaValues: new Map([[metaKey, JSON.stringify({
-      fetchedAt: now - ageMin * 60_000,
-      recordCount: 1,
-      sourceState: 'ok',
-      stale: false,
-    })]]),
-    keyMetaErrors: new Map(),
-    now,
-  });
-
-  assert.equal(classifyAtAge(181).status, 'OK', 'normal post-180min scheduler jitter must not false-alarm');
-  assert.equal(classifyAtAge(241).status, 'STALE_SEED', 'a genuinely missed paced refresh must still warn');
 });
 
 // An adapter the deployment never opted into is not a fault. fetchSam writes

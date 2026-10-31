@@ -1,4 +1,13 @@
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { t } from '../i18n';
+
+// Inline rather than lucide-react: the dom-tests CI job installs root deps only,
+// and its arrow test renders this component.
+const Chevron = ({ pointsLeft }: { pointsLeft: boolean }) => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d={pointsLeft ? 'm15 18-6-6 6-6' : 'm9 18 6-6-6-6'} />
+  </svg>
+);
 
 /**
  * What the press and notable people said about World Monitor, quoted verbatim.
@@ -55,9 +64,60 @@ export const VOICES: ReadonlyArray<Voice> = [
   },
 ];
 
-// One row that scrolls sideways, so the quotes cost one card of height.
-export const VoiceCards = () => (
-  <ul className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4">
+const isRtl = (row: HTMLElement) => getComputedStyle(row).direction === 'rtl';
+
+// One row that scrolls sideways, so the quotes cost one card of height. Mice
+// cannot swipe and macOS hides scrollbars, so arrows page the row. In RTL
+// (ar, fa) scrollLeft runs from 0 to negative, so progress is |scrollLeft| and
+// paging and the chevrons flip.
+export const VoiceCards = () => {
+  const rowRef = useRef<HTMLUListElement>(null);
+  const [edges, setEdges] = useState({ atStart: true, atEnd: false, rtl: false });
+
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const update = () => {
+      const progress = Math.abs(row.scrollLeft);
+      setEdges({
+        atStart: progress <= 1,
+        atEnd: progress + row.clientWidth >= row.scrollWidth - 1,
+        rtl: isRtl(row),
+      });
+    };
+    update();
+    row.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      row.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
+  const page = (direction: 1 | -1) => {
+    const row = rowRef.current;
+    if (row) row.scrollBy({ left: (isRtl(row) ? -1 : 1) * direction * row.clientWidth * 0.9, behavior: 'smooth' });
+  };
+
+  const arrowClass = 'flex items-center justify-center w-10 h-10 border border-wm-border bg-wm-card text-wm-text hover:border-wm-green disabled:opacity-30 disabled:hover:border-wm-border transition-colors';
+
+  return (
+    <div>
+      <VoiceRow rowRef={rowRef} />
+      <div className="flex justify-end gap-2 mt-2">
+        <button type="button" className={arrowClass} onClick={() => page(-1)} disabled={edges.atStart} aria-label={t('welcome.voices.prev')}>
+          <Chevron pointsLeft={!edges.rtl} />
+        </button>
+        <button type="button" className={arrowClass} onClick={() => page(1)} disabled={edges.atEnd} aria-label={t('welcome.voices.next')}>
+          <Chevron pointsLeft={edges.rtl} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const VoiceRow = ({ rowRef }: { rowRef: RefObject<HTMLUListElement | null> }) => (
+  <ul ref={rowRef} className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4">
     {VOICES.map((voice) => (
       <li key={voice.href} className="snap-start shrink-0 w-[85%] sm:w-[22rem] flex">
         <a
@@ -66,11 +126,14 @@ export const VoiceCards = () => (
           rel="noopener noreferrer"
           className="flex flex-col w-full bg-wm-card border border-wm-border p-6 hover:border-wm-green transition-colors"
         >
-          {/* Quotes stay verbatim in English on every locale; say so for screen readers. */}
-          <blockquote lang="en" className="text-wm-text leading-relaxed flex-1">“{voice.quote}”</blockquote>
+          {/* Quotes stay verbatim in English on every locale: lang for screen
+              readers, dir so RTL pages do not move the quote marks and ellipses. */}
+          <blockquote lang="en" dir="ltr" className="text-wm-text leading-relaxed flex-1">“{voice.quote}”</blockquote>
           <span className="block mt-4 text-sm">
-            <span className="font-bold text-wm-text">{voice.name}</span>
-            <span className="text-wm-muted"> · {voice.role}</span>
+            <span lang="en" dir="ltr">
+              <span className="font-bold text-wm-text">{voice.name}</span>
+              <span className="text-wm-muted"> · {voice.role}</span>
+            </span>
             {voice.translatedFrom === 'ja' && (
               <span className="block mt-1 font-mono text-xs text-wm-muted">{t('welcome.voices.translatedJa')}</span>
             )}

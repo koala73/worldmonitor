@@ -1,0 +1,42 @@
+name: CI Health Scan
+
+# Weekly scan of the workflows that gate merges (Test, Typecheck, Lint Code,
+# Proto Generation Check) for flaky jobs, job timeouts on main, failing main
+# and week-over-week job slowdowns. Each finding is one rolling issue titled
+# "CI health (<kind>): <workflow> / <job>"; see scripts/check-ci-health.mjs.
+#
+# It reads ~400 API pages and takes ~7 minutes, so it runs weekly, not per
+# push. A scan is never cancelled midway through updating issues.
+
+on:
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: ci-health-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      - name: Scan CI health and sync issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check-ci-health.mjs

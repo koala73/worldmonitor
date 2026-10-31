@@ -304,8 +304,8 @@ actually reached production is the separate
 The six-hourly `Railway Native Deploy Health` workflow performs this audit in
 deployment-only mode and runs the deployment-history check from the same
 Viewer projection. `Railway Registry Sync` reuses the same environment and
-Viewer token only for its final independent read. `Seed Freshness Monitor` owns
-ingestion acceptance only.
+Viewer token only for its final independent read. Ingestion health belongs to
+`/api/health`.
 Create the dedicated GitHub Actions environment
 `ingestion-acceptance-production`, restrict its deployment branch policy to
 `main`, and configure:
@@ -580,63 +580,31 @@ incident note.
 
 ### Merged does not mean deployed
 
-`.github/workflows/seed-freshness-monitor.yml` runs every 15 minutes on the
-default branch. Scheduled runs prefer the latest `main` commit whose `gate`
-status is success. If HEAD is missing, pending, failed, or errored, the job
-walks first-parent history and monitors the newest gated ancestor inside a
-6-hour / 25-commit window. That is not a skip: the probe still runs against a
-revision the repository gates accepted. The run fails closed only when no such
-ancestor exists, or the newest one is older than the bound. Manual runs
-execute directly.
-Its one `monitor` job checks ingestion operational acceptance through
-`scripts/check-seed-freshness.mjs`. It does not install Railway, audit Railway
-configuration, classify deployment history, or imply that a merge reached a
-container.
+`/api/health` is the only source of truth for production ingestion. A merge,
+image build, or elapsed time proves nothing about whether a seeder ran; only
+the health sweep does.
 
-The probe is strict on every run, but the workflow conclusion is
-transition-based. `scripts/update-seed-health-statuses.mjs` publishes one
-durable `ingestion/seed/<source>` status on the historical operational anchor
-`b93afd05d0f4ea2c465e79fd064e87fc1f9fb2f3`. The exact gated revision remains
-the revision being observed, but it does not receive source-health statuses.
-This separation prevents a continuing data incident from making Railway read
-an unrelated deployable commit as a failed check suite.
-A new failure, a changed failure class, an expired acknowledgement, a probe
-transport error, or a malformed observation fails the workflow. The same
-unchanged incident remains red on the anchor, appends no new status, and does
-not create another generic failed run. This preserves the alarm while
-separating "still broken" from "broke again".
+Every sweep reports two verdicts. `status` is platform availability, the value
+uptime monitors keyword-match: a source that is broken but still serves usable
+last-good data is a contained warning and leaves it `HEALTHY` (#7939).
+`dataStatus` is the strict ingestion verdict over the same summary: `OK`,
+`DEGRADED` (any actionable warning, contained or not), or `CRITICAL`. Its
+values never contain the word `HEALTHY`, so it cannot satisfy an uptime keyword
+check by accident. The compact `problems` map names each source.
 
-Recovery is not inferred from a merge, image build, or elapsed time. The
-publisher posts success only after the live compact-health observation stops
-reporting that source. The first run after this status lifecycle is activated
-imports the newest trusted legacy projection before it initializes the anchor,
-so an incident that already exists does not become a false new alert. Later
-exact repeats are quiet. The publisher also proves that the anchor is an
-ancestor of the monitored revision before it writes any status.
+Health alerts on transitions itself. Each actionable `source:status` pair
+opens or regresses one Sentry issue at level `warning`, grouped by
+`health-source-incident`, source and status, and tagged `health_source` and
+`health_status`. `health:incident-alerts` records only the pairs Sentry
+accepted, so a failed delivery stays pending and the next sweep retries it. A
+continuing incident never re-alerts. A recovered source leaves the record, so a
+recurrence alerts again. An unreadable or corrupt record opens nothing and is
+left for the next sweep. `?history=1` keeps the incident log, deduplicated by
+its own signature (`health:failure-log-sig`).
 
-The acceptance context is the completion marker and is always written last. If
-GitHub accepts only part of a projection, the next poll overlays those trusted
-partial statuses on the last complete projection, repairs the anchor, and does
-not report an already-written source transition again.
-
-Read the separate six-hourly `Railway Native Deploy Health` workflow for
-production source, build, trigger, and deployment conclusions. A red Seed
-Freshness run says the ingestion observation failed or could not be authorized.
-A red Railway Native Deploy Health run says the fleet configuration or
-deployment evidence failed. Neither workflow hides or gates the other's
-conclusion.
-
-The probe classifies every actionable problem, including `SEED_ERROR`,
-`STALE_SEED`, `STALE_CONTENT`, and degraded composed coverage. Statuses that
-explicitly end in `_ON_DEMAND` remain informational. It deliberately does not
-run on an ingestion push because Railway may not have deployed or executed
-that revision yet. This is the operational acceptance gate for the "merged and
-green, but production data is still unhealthy" gap. A workflow failure means
-new operational information or an unreadable control plane; the durable source
-statuses on the operational anchor remain the current incident inventory
-between transitions. A genuinely new or changed incident can still fail one
-scheduled run; persistent incident state cannot be copied onto later main
-commits.
+Statuses ending in `_ON_DEMAND`, content-age pre-warnings, and entries inside a
+bounded grace window (`pending`) are not actionable and stay out of both
+`dataStatus` and incidents.
 
 #### Deploy-drift check
 
@@ -667,9 +635,8 @@ be exposed to checkout, setup, dependency installation, or any command with
 mutation authority. The deployment-only audit cannot query variables and
 refuses `--apply`. It requires every repository source to keep
 `source.checkSuites=false`; `true` is direct configuration drift because it
-restores the check-suite deferral that this cutover removes. `Seed Freshness`
-remains a separate ingestion monitor and must not install Railway, read Railway
-configuration, or classify deployments.
+restores the check-suite deferral that this cutover removes. Ingestion health
+stays with `/api/health`; this check never reads it.
 
 ```bash
 node scripts/check-railway-deploy-drift.mjs --audit-deployment-config # add --json for the machine-readable form
@@ -1836,28 +1803,31 @@ Redis-only verification is not sufficient to close #3979; it only confirms that 
 
 ## UKMTO incidents
 
-`seed-ukmto-incidents` is registered as `planned`. This registration does not
-provision or deploy a worker. Production activation requires separate approval.
-
-Use the repository-root Nixpacks deployment with start command
-`node scripts/seed-ukmto-incidents.mjs`, cron `*/5 * * * *`, Node.js 24 and the
-existing Upstash REST URL/token credentials. No UKMTO credential is required.
-Confirm the official website backend's access and reuse terms before activation.
-Five minutes is our initial polling choice, not a published provider allowance.
+`seed-ukmto-incidents` (service `fa702bee-b70c-44de-9aca-9cea889e89fb`,
+provisioned 2026-10-29) runs from `scripts/` with Railpack, start command
+`node seed-ukmto-incidents.mjs`, cron `*/30 * * * *`, restart policy `NEVER`, and
+`UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` referenced from the shared
+variables. No source credential or proxy is required.
+The collector reads `https://hormuz.data-tracking.net/api/incidents`, a documented
+public API that republishes UKMTO reports (CC BY 4.0; UKMTO reports under the Open
+Government Licence v3.0). UKMTO's own backend at `sccd.royalnavy.mod.uk` returns a
+Cloudflare block to automated clients from every route tested on 2026-10-29,
+including UK and US residential proxy exits. The republisher refreshes every
+30 minutes and asks clients not to poll faster.
 
 The collector validates the complete response before publishing
 `maritime:ukmto-incidents:v1` and `seed-meta:maritime:ukmto-incidents`. A successful
 empty response is valid. Invalid rows, HTTP errors and timeouts preserve the
 previous snapshot without advancing its retrieval time. Consumers mark it stale
-after 15 minutes and hide it after 24 hours.
+after 75 minutes and hide it after 24 hours.
 
 After the first successful publish, the collector sets the permanent marker
 `seed-activated:maritime:ukmto-incidents`. The `ukmtoIncidents` health probe stays
 pending before this marker and becomes strict after it. Do not remove the marker
 to hide a failed source. UKMTO health remains independent of AIS and NGA.
 
-After approved deployment, change the service lifecycle to `active`, then observe
-at least three scheduled runs over at least 15 minutes. Confirm terminal deployment, fresh seed metadata,
+After a deployment or source change, observe at least three scheduled runs over
+at least 60 minutes. Confirm terminal deployment, fresh seed metadata,
 `ukmtoIncidents` health, the RPC response and the rendered panel. Search worker
 logs for `UKMTO seed failed`, invalid-field errors and non-200 responses. Repeated
 failures or a stale retrieval time require investigation of the upstream contract.

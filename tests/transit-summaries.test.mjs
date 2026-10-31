@@ -172,7 +172,8 @@ describe('seedTransitSummaries (relay)', () => {
 
   function buildSeedChokepointTransits({
     envelopeWrite,
-    upstashSet = async () => {},
+    // The relay's upstashSet resolves true on OK and false on failure.
+    upstashSet = async () => true,
     chokepointCrossings = new Map(),
     log = () => {},
     upstashEval = transitStore(),
@@ -412,6 +413,14 @@ describe('seedTransitSummaries (relay)', () => {
     assert.equal(summaries.suez.todayOther, 1);
     assert.equal(summaries.suez.wowChangePct, 2.8);
     assert.equal(summaries.hormuz_strait.todayTotal, null, 'a chokepoint with no AIS crossings stays absent');
+  });
+
+  it('fails the transit tick when the coverage metadata write is dropped', async () => {
+    const seedTransits = buildSeedChokepointTransits({
+      envelopeWrite: async () => true,
+      upstashSet: async () => false,
+    });
+    await assert.rejects(seedTransits(), /Transit coverage metadata write failed/);
   });
 
   it('makes both AIS writers agree on whether today has a count', async () => {

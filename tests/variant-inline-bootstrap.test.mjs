@@ -1,3 +1,8 @@
+// Committed-HTML contract by design (#8690, section 2): this suite pins
+// variant-host declarations and the inline script's CSP hash in vercel.json.
+// Runtime module tests do not check the committed HTML and header policy
+// that the browser reads before those modules run.
+//
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';

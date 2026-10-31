@@ -5,11 +5,10 @@ name: Pulse Freshness Monitor
 # the snapshot reached the build ceiling and the next visible symptom would have
 # been a blocked deploy.
 #
-# A dedicated monitor rather than a check folded into seed-freshness-monitor.yml:
-# that workflow declares its own scope ("This workflow owns only
-# ingestion/data acceptance"), reads live /api/health, and therefore cannot see
-# either the age of a committed file under docs/snapshots/ or another workflow's
-# conclusion. Wrong signal source, not merely a crowded host.
+# A dedicated monitor rather than a check folded into /api/health: health reads
+# live Redis seeds and therefore cannot see either the age of a committed file
+# under docs/snapshots/ or another workflow's conclusion. Wrong signal source,
+# not merely a crowded host.
 #
 # It reports by opening or updating ONE issue, the pattern in
 # mcp-preset-liveness.yml and orphaned-stacked-merge-monitor.yml — deliberately

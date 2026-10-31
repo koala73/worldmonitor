@@ -32,6 +32,12 @@ export async function verifyPkceS256(codeVerifier, codeChallenge) {
   return diff === 0; // true = match, false = wrong verifier; null = invalid_request
 }
 
+// Operator keys from WORLDMONITOR_VALID_KEYS. Entries are trimmed so "k1, k2"
+// means the same set here as in server/_shared/premium-check.ts.
+export function getOperatorKeys() {
+  return (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').map((k) => k.trim()).filter(Boolean);
+}
+
 export async function timingSafeIncludes(candidate, validKeys) {
   if (typeof candidate !== 'string' ||
       !candidate ||

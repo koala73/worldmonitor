@@ -68,8 +68,8 @@ test('custom news rotation persists, accumulates, survives lazy mount, and repor
     const ctx = {
       currentTimeRange: '1h',
       newsByCategory: {} as Record<string, NewsItem[]>,
-      newsPanels: {} as Record<string, NewsPanel>,
-      panels: {} as Record<string, NewsPanel>,
+      newsPanels: {} as Record<string, InstanceType<typeof NewsPanel>>,
+      panels: {} as Record<string, InstanceType<typeof NewsPanel>>,
       newsCategoryPanelKeys: new Map<string, string>(),
       disabledSources: new Set<string>(),
       statusPanel: {

@@ -17,6 +17,8 @@ import {
   fetchYearCsv,
   validateCoverage,
   mergeSourceRows,
+  prepareOilPublish,
+  readPreviousOilMeta,
   CANONICAL_KEY,
   COUNTRY_KEY_PREFIX,
   JODI_TTL,
@@ -1182,5 +1184,98 @@ describe('net oil imports (IEA days basis)', () => {
     const csv = makeCsv([makeRow({ REF_AREA: 'AU', TIME_PERIOD: '2024-05', ENERGY_PRODUCT: 'TOTCRUDE', FLOW_BREAKDOWN: 'TOTIMPSB', OBS_VALUE: '150' })]);
     const rows = mergeSourceRows('', '', makeCsv([makeRow({})]), '', '', csv);
     assert.ok(rows.some((r) => r.TIME_PERIOD === '2024-05' && r.ENERGY_PRODUCT === 'TOTCRUDE'));
+  });
+});
+
+describe('prepareOilPublish refuses an older vintage than the published one', () => {
+  const NOW = new Date('2026-10-29T07:32:00.000Z');
+
+  /** Diesel demand for `count` countries, all in `month`. */
+  function rowsFor(month, count = 45) {
+    const rows = [];
+    for (let index = 0; index < count; index++) {
+      rows.push({
+        REF_AREA: `X${String(index).padStart(2, '0')}`,
+        TIME_PERIOD: month,
+        ENERGY_PRODUCT: 'GASDIES',
+        FLOW_BREAKDOWN: 'TOTDEMO',
+        UNIT_MEASURE: 'KBD',
+        OBS_VALUE: '894.4',
+        ASSESSMENT_CODE: '1',
+      });
+    }
+    return rows;
+  }
+
+  const publishedThrough = (month) => ({ newestItemAt: Date.parse(monthPeriodEnd(month)) });
+
+  it('refuses a run whose newest month is older than the snapshot it would replace', () => {
+    // 2026-10-29: every 2026 file timed out, so the run built December 2025
+    // and overwrote a snapshot dated August 2026.
+    const { refusalReason } = prepareOilPublish({
+      allRows: rowsFor('2025-12'),
+      previousMeta: publishedThrough('2026-08'),
+      now: NOW,
+    });
+    assert.match(refusalReason ?? '', /newest month 2025-12 is older than the published 2026-08/);
+  });
+
+  it('publishes the same or a newer vintage', () => {
+    for (const month of ['2026-08', '2026-09']) {
+      const { refusalReason } = prepareOilPublish({
+        allRows: rowsFor(month),
+        previousMeta: publishedThrough('2026-08'),
+        now: NOW,
+      });
+      assert.equal(refusalReason, null, month);
+    }
+  });
+
+  it('publishes when no previous vintage is recorded', () => {
+    for (const previousMeta of [null, {}, { newestItemAt: null }, { newestItemAt: 'not a time' }]) {
+      const { refusalReason } = prepareOilPublish({ allRows: rowsFor('2025-12'), previousMeta, now: NOW });
+      assert.equal(refusalReason, null, JSON.stringify(previousMeta));
+    }
+  });
+
+  it('reads the previous vintage strictly: a failed read stops the run, a missing key does not', async (t) => {
+    const previousDelay = process.env.WM_SEED_RETRY_DELAY_MS;
+    process.env.WM_SEED_RETRY_DELAY_MS = '1';
+    t.after(() => {
+      if (previousDelay === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
+      else process.env.WM_SEED_RETRY_DELAY_MS = previousDelay;
+    });
+
+    const calls = [];
+    // Fails the first `failures` reads, then returns `value`.
+    const read = (failures, value = null) => async (key, options) => {
+      calls.push({ key, options });
+      if (calls.length <= failures) throw new Error('Redis snapshot read failed: HTTP 503');
+      return value;
+    };
+
+    await assert.rejects(
+      readPreviousOilMeta(read(Infinity)),
+      /HTTP 503/,
+      'a read failure must not pass as "no previous vintage"',
+    );
+    assert.equal(calls.length, 3, 'a persistent failure is retried twice, then stops the run');
+
+    calls.length = 0;
+    assert.deepEqual(await readPreviousOilMeta(read(1, { newestItemAt: 1 })), { newestItemAt: 1 }, 'a transient failure is retried');
+
+    calls.length = 0;
+    assert.equal(await readPreviousOilMeta(read(0, null)), null, 'a missing key is a first publish');
+    assert.equal(calls.length, 1);
+    assert.ok(calls.every(({ key, options }) => key === 'seed-meta:energy:jodi-oil' && options?.strict === true));
+  });
+
+  it('keeps the country-floor reason when both gates fail', () => {
+    const { refusalReason } = prepareOilPublish({
+      allRows: rowsFor('2025-12', 39),
+      previousMeta: publishedThrough('2026-08'),
+      now: NOW,
+    });
+    assert.match(refusalReason ?? '', /only 39 countries/);
   });
 });

@@ -129,7 +129,7 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
     label: 'China Containerized Freight Index',
     ownerIssue: 5271,
     launchStatus: 'launched',
-    transport: metaTransport('seed-meta:supply_chain:shipping', 420),
+    transport: metaTransport('seed-meta:supply_chain:shipping', 1140),
     content: {
       key: 'supply_chain:shipping:v2',
       maxAgeMin: 28 * 1_440,

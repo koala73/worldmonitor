@@ -1,6 +1,6 @@
 ---
 title: "Pro Intelligence Suite"
-description: "The Pro-only derived datasets — physical metals premiums and divergence, mineral concentration, defense industrial base, demographics, food stocks, resilience indicators, supply vulnerability, and the five-factor scorecard — with each dataset's REST route, seed cadence, and MCP surface where one exists."
+description: "The Pro-only derived datasets — physical metals premiums and divergence, mineral concentration, defense industrial base, demographics, food stocks, resilience indicators, and supply vulnerability — with each dataset's REST route, seed cadence, and MCP surface where one exists. The five-factor scorecard REST routes are free; see the Access section."
 ---
 
 A family of derived datasets ships behind the Pro tier. Each one answers a question the raw feeds cannot: not *what is the gold price* but *is the physical premium abnormal for gold right now*; not *where is cobalt* but *who refines it, and how concentrated is that*.
@@ -9,7 +9,11 @@ They share a read-only contract, not one pipeline. Seed cadence and surfaces dif
 
 ## Access
 
-Every route below requires **tier 1 (Pro) or higher**. There is no anonymous or free-account read.
+Every route below requires **tier 1 (Pro) or higher**, with one exception: the
+[five-factor country scorecard](#five-factor-country-scorecard) REST routes are
+free, including for anonymous callers — its MCP tools still require a
+subscription. There is no anonymous or free-account read of anything else on
+this page.
 
 | Caller | How to authenticate |
 | --- | --- |
@@ -171,6 +175,12 @@ See [Supply vulnerability methodology](/methodology/supply-vulnerability).
 ## Five-factor country scorecard
 
 A per-country read, a bloc read, and a cohort list. The first two share one MCP tool.
+
+**Free, unlike every other dataset on this page.** The three REST routes below
+return 200 for anonymous callers — no API key or subscription needed. The MCP
+tools `get_five_factor_scorecard` and `list_five_factor_scorecards` still
+require a WorldMonitor subscription, since MCP tool calls authenticate
+separately from the REST API.
 
 | Route | MCP tool | Returns |
 | --- | --- | --- |

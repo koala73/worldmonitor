@@ -867,7 +867,7 @@ function adaptTrade(
       observationTimePrecision: timestampPrecision(observedRaw),
       retrievalTime,
       retrievalTimePrecision: retrievalTime ? 'instant' : 'unknown',
-      transportFreshness: transportFreshness(snapshots.shippingMeta, 420, assessedAt),
+      transportFreshness: transportFreshness(snapshots.shippingMeta, 1140, assessedAt),
       contentFreshness: contentFreshness(observedAt, 28 * 1_440, assessedAt),
       summary: 'China Containerized Freight Index observation.',
       // `periodChangePct` is a proven period-over-period move — the exchange's own
@@ -899,7 +899,7 @@ function adaptTrade(
       sourceUrl: 'https://en.sse.net.cn/indices/ccfinew.jsp',
       sourceScope: 'national',
       retrievalTime,
-      transportFreshness: transportFreshness(snapshots.shippingMeta, 420, assessedAt),
+      transportFreshness: transportFreshness(snapshots.shippingMeta, 1140, assessedAt),
       summary: 'China Containerized Freight Index observation is unavailable.',
     }));
   }

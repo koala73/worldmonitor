@@ -214,6 +214,5 @@ test('newsThreatSummary: a vanished summary is critical on the live health path,
   });
   assert.equal(entry.status, 'EMPTY');
   assert.equal(STATUS_COUNTS[entry.status], 'crit');
-  // check-seed-freshness excuses EMPTY on entries flagged onDemand.
-  assert.equal(entry.onDemand, undefined, 'the freshness monitor must not excuse the gap');
+  assert.equal(entry.onDemand, undefined, 'the gap must not read as on-demand');
 });

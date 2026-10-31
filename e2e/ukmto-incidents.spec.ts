@@ -32,14 +32,14 @@ for (const state of ['fresh', 'stale', 'empty', 'unavailable'] as const) {
     const now = Date.now();
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
     const incident = {
-      id: 'a5b33f9d-6c8e-43fc-9af0-3936d61bf55d', incidentNumber: 143,
+      id: 'ukmto-143', incidentNumber: 143,
       incidentType: 'Suspicious Activity', place: 'Strait of Hormuz',
       description: 'Test report. Master reported a suspicious approach. <img src=x onerror=alert(1)>',
-      occurredAt: now - 3600000, reportedAt: now - 1800000,
+      occurredAt: now - 3600000, reportedAt: 0,
       location: { latitude: 26.43, longitude: 56.48 },
     };
     await page.route('**/api/bootstrap**', route => route.fulfill({ json: { data: state === 'unavailable' ? {} : {
-      ukmtoIncidents: { incidents: state === 'empty' ? [] : [incident], fetchedAt: now - (state === 'stale' ? 20 * 60000 : 0), dataAvailable: true },
+      ukmtoIncidents: { incidents: state === 'empty' ? [] : [incident], fetchedAt: now - (state === 'stale' ? 80 * 60000 : 0), dataAvailable: true },
     } } }));
     await page.goto('/');
     const panel = page.locator('.panel[data-panel="ukmto-incidents"]');
@@ -49,6 +49,8 @@ for (const state of ['fresh', 'stale', 'empty', 'unavailable'] as const) {
       await expect(panel.getByRole('button', { name: /UKMTO 143/ })).toBeVisible();
       await expect(panel.locator('.ukmto-status')).toContainText(state === 'stale' ? 'Stale' : 'Source checked');
       await expect(panel.locator('.ukmto-incident img')).toHaveCount(0);
+      await expect(panel.locator('.ukmto-attribution a[href="https://hormuz.data-tracking.net/"]')).toBeVisible();
+      await expect(panel.locator('.ukmto-dates')).not.toContainText('Published');
       await panel.getByRole('button', { name: /UKMTO 143/ }).click();
     } else {
       await expect(panel).toContainText(state === 'empty' ? 'No incidents' : 'unavailable');

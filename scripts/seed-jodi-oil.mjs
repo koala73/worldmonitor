@@ -13,7 +13,6 @@ import {
   logSeedResult,
   withRetry,
   readSeedSnapshot,
-  readExistingSeedMeta,
 } from './_seed-utils.mjs';
 import {
   MAX_JODI_CONTENT_AGE_MIN,
@@ -786,6 +785,29 @@ export function formatCoverageFailureReason({ countryCount }) {
 }
 
 /**
+ * JODI files only grow, so a run whose newest month is older than the one
+ * already published lost its current-year files. On 2026-10-29 every 2026
+ * download timed out and the run replaced an August 2026 snapshot with
+ * December 2025, which emptied every country's crude imports. Refuse, so the
+ * coverage-gate path keeps the last-good snapshot.
+ */
+function formatVintageRegressionReason(newestItemAt, publishedNewestItemAt) {
+  if (!Number.isFinite(newestItemAt) || !Number.isFinite(publishedNewestItemAt)) return null;
+  if (newestItemAt >= publishedNewestItemAt) return null;
+  const month = (ms) => new Date(ms).toISOString().slice(0, 7);
+  return `newest month ${month(newestItemAt)} is older than the published ${month(publishedNewestItemAt)}`;
+}
+
+/**
+ * The published seed-meta, read strictly. The vintage check above treats a
+ * missing record as a first publish, so a failed read must not look like one:
+ * after two retries it throws, and main() stops before writing anything.
+ */
+export function readPreviousOilMeta(read = readSeedSnapshot) {
+  return withRetry(() => read(META_KEY, { strict: true }), 2, 1000);
+}
+
+/**
  * Everything main() decides about a parsed snapshot, in one testable place:
  * whether it may publish, what China looks like, and the seed-meta record that
  * carries both to /api/health.
@@ -803,11 +825,10 @@ export function prepareOilPublish({ allRows, previousMeta = null, now = new Date
   // published. It also stops a null-only month from overwriting a country's
   // last-good record — the key simply is not rewritten and ages out instead.
   const countries = parsed.filter(hasOilMeasurements);
-  const refusalReason = validateCoverage(countries)
-    ? null
-    : formatCoverageFailureReason({ countryCount: countries.length });
-
   const contentMeta = jodiDatasetContentMeta(countries, hasOilMeasurements, now);
+  const refusalReason = validateCoverage(countries)
+    ? formatVintageRegressionReason(contentMeta?.newestItemAt, previousMeta?.newestItemAt)
+    : formatCoverageFailureReason({ countryCount: countries.length });
   return {
     parsedCount: parsed.length,
     countries,
@@ -857,12 +878,12 @@ async function main() {
 
     console.log(`  Parsed ${allRows.length} KBD rows`);
 
-    const previousMeta = await readExistingSeedMeta('energy', 'jodi-oil');
+    const previousMeta = await readPreviousOilMeta();
     if (previousMeta?.chinaRow == null) {
-      // readExistingSeedMeta collapses "no prior record" and "read failed" into
-      // one null, so an ongoing gap re-dates to this run. Say so, or the reset
-      // is indistinguishable from a genuine new outage in the log.
-      console.warn('  China oil row: no previous record readable — dating any gap from this run');
+      // A missing record (or one written before chinaRow existed) re-dates an
+      // ongoing gap to this run. Say so, or the reset is indistinguishable from
+      // a genuine new outage in the log.
+      console.warn('  China oil row: no previous record — dating any gap from this run');
     }
     const { countries, parsedCount, chinaCoverage, refusalReason, metaPayload } = prepareOilPublish({
       allRows,

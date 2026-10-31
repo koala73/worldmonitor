@@ -36,16 +36,17 @@ On a cache miss, only the Redis lease owner performs the registry sweep. Other r
 
 Expired snapshots and snapshots past a grace deadline are not served as current health. A failed owner releases only its token; a lost owner can be replaced after the 30-second lease expires. Expired owners cannot overwrite a successor's verdict snapshot. HTTP-only monitors see a temporary unavailable response only during a cold refresh with no retained verdict.
 
-The top-level `status` describes user-visible platform availability, not perfect data-source health. `HEALTHY` can therefore coexist with warnings in `summary` and `problems` when those warnings are contained by usable last-good data.
+The top-level `status` describes user-visible platform availability, not perfect data-source health. `HEALTHY` can therefore coexist with warnings in `summary` and `problems` when those warnings are contained by usable last-good data. `dataStatus` is the strict ingestion verdict over the same summary: `OK`, `DEGRADED` when any actionable warning exists (contained or not), or `CRITICAL` when any check is critical.
 
 ### Response Body
 
 ```json
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
+  "dataStatus": "OK | DEGRADED | CRITICAL",
   "summary": {
-    "total": 347,
-    "ok": 346,
+    "total": 357,
+    "ok": 356,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 1,
@@ -113,7 +114,7 @@ The seeder validates every page before it replaces the snapshot. A verified empt
 
 ### Bundle tick heartbeats
 
-`_bundle-runner.mjs` writes `bundle:heartbeat:<label>` on every container start, including skip-all ticks. Member seed-meta cannot see a daily cron that never fires when its sections are weekly or monthly. `/api/health` probes `staticRefBundleTick` (`bundle:heartbeat:static-ref`) and, as of #6806, `staticRefHeavyBundleTick` (`bundle:heartbeat:static-ref-heavy`) — one heartbeat for the consolidated heavy bundle carrying Arms-Suppliers, Military-Bases and Mineral-Production. A 48h silence is `STALE_SEED`. Missing keys before the first tick are `EMPTY` under an expiring acknowledgement, not a page-out.
+`_bundle-runner.mjs` writes `bundle:heartbeat:<label>` on every container start, including skip-all ticks. Member seed-meta cannot see a daily cron that never fires when its sections are weekly or monthly. `/api/health` probes `staticRefBundleTick` (`bundle:heartbeat:static-ref`) and, as of #6806, `staticRefHeavyBundleTick` (`bundle:heartbeat:static-ref-heavy`) — one heartbeat for the consolidated heavy bundle carrying Arms-Suppliers, Military-Bases and Mineral-Production. A 48h silence is `STALE_SEED`. Missing keys before the first tick were `EMPTY` under a since-retired expiring acknowledgement, not a page-out.
 
 ### Consumer-price source coverage
 
@@ -704,28 +705,19 @@ Selected thresholds from `SEED_META`:
 
 > These are illustrative; `SEED_META` in `api/health.js` is the source of truth and each entry documents its own cadence rationale.
 
-### Scheduled monitor results
+### Ingestion incidents
 
-The Seed Freshness Monitor publishes a production acceptance summary on each
-workflow run and retains its JSON observation for seven days. The summary lists
-active incidents, acknowledged degradation, stale-content grace deadlines, and
-baseline entries that no longer appear in health.
+`/api/health` is the only source of truth for ingestion. `status` stays the
+availability verdict uptime monitors read; `dataStatus` (`OK`, `DEGRADED`,
+`CRITICAL`) is the strict verdict, so a contained source warning is never
+invisible at the top level.
 
-A successful workflow run can still have active source incidents. The workflow
-alerts on new or changed incidents and suppresses repeat alerts for unchanged
-failures. Read the production acceptance summary to determine whether the data
-passed. An unavailable observation is **Unverified**, never healthy.
-
-Generate the same report locally without publishing GitHub statuses:
-
-```bash
-node scripts/check-seed-freshness.mjs \
-  --json-output /tmp/seed-freshness.json \
-  --markdown-output /tmp/seed-freshness.md
-```
-
-The command still exits nonzero when operational acceptance fails. It writes
-both reports from the same health observation before returning that verdict.
+Each actionable `source:status` pair opens or regresses one Sentry issue
+(level `warning`, tags `health_source` and `health_status`, grouped by source
+and status) until Sentry accepts it; `health:incident-alerts` records accepted
+pairs, so a failed delivery is retried by the next sweep. An unchanged incident
+does not re-alert; a recovered source that breaks again does. `?history=1`
+lists the incident log.
 
 ### MCP preset liveness
 
