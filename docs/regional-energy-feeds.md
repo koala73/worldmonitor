@@ -1,8 +1,8 @@
 # Regional energy feeds
 
 `get-country-energy-profile?country_code=BD` now includes `regionalEnergyFeeds`.
-The same field serves NG, ZA, AR, GE and BR. Other countries return an empty
-list. Existing energy fields keep their meaning. No card or import-risk score
+The same field serves NG, ZA, AR, GE, BR, VN, KZ, PE, PG and FJ. Other
+countries return an empty list. Existing energy fields keep their meaning. No card or import-risk score
 is added.
 
 | Source | Country | Observations | Poll interval |
@@ -15,11 +15,40 @@ is added.
 | GSE | GE | Monthly generation, consumption and signed net exchange by border (GWh) | 1 day |
 | ONS | BR | National SIN load, generation by fuel and signed interchange (MW) | 12 hours |
 | ANP | BR | Monthly petroleum-product imports/exports (m3); national weekly retail prices, preserving each product's unit | 1 day |
+| EVN | VN | Daily peak (MW), energy produced and imported, energy by source (mln kWh); dispatch by source at the midday trough and evening peak (MW) | 6 hours |
+| KOREM | KZ | Daily generation and consumption (mln kWh), latest peak consumption (MW); day-ahead price (KZT/kWh) and traded volume (thousand kWh) by zone | 6 hours |
+| COES | PE | Half-hourly SEIN executed demand and its daily and weekly schedules (MW) | 1 hour |
+| ICCC | PG | Monthly Port Moresby retail prices, unsubsidised prices and subsidy components (PGK/l) | 12 hours |
+| FCCC | FJ | Monthly approved retail fuel prices by schedule (FJD/l) and LPG prices by schedule and pack size | 12 hours |
 
 These are bounded source slices, not a mirror of every provider dataset. PGCB's
 demand and load-shedding cells are commented out in the source and are omitted.
 NISO's hourly GenCo details, CAMMESA regional/marginal-cost data and ONS plant
 and reservoir datasets are outside this initial path.
+
+Batch 2 (#9893) adds VN, KZ, PE, PG and FJ. Jamaica's Petrojam and Guatemala's
+MEM, also listed in that issue, refuse the WorldMonitor User-Agent and are not
+collected: Petrojam returns HTTP 403, and MEM began serving a Cloudflare
+challenge on 2026-10-31. EVN reports rooftop solar as both a sales estimate and
+a terminal estimate; each is kept with its basis in the area.
+KOREM's peak is the portal's latest daily consumption maximum. ICCC and FCCC
+state all rights reserved, and FCCC's robots file signals `use=reference`; the
+registry records that text.
+
+KOREM, COES, ICCC and FCCC publish ahead of the period they describe: day-ahead
+auction results, schedules for later today and price releases dated from their
+effective day. These feeds carry `publishesAhead` in the registry and publish
+only periods already in effect. For ICCC and FCCC, the seeder reads the newest
+release first and falls back to the previous one, at most three, while the
+newest is not yet in effect. Every other feed still rejects a future period as
+a parser fault. KOREM, ICCC and FCCC dates are local calendar days, so their
+registry `utcOffsetMin` (UTC+5, UTC+10 and UTC+12) sets when a date starts, in
+the seeder and in the profile reader. A Fiji release for 1 November is served
+from 12:00Z on 31 October. COES uses absolute timestamps. Seed content age uses
+the same local start and ignores items that had not started when the run began,
+because health treats a future newest item as stale content. COES schedules extend to the next hour, so the feed's newest
+item can stay current after executed demand stops; the per-series `stale` flag
+still marks the executed series.
 
 Each feed includes provider attribution, licence text, artifact URLs, fetch time,
 source observation time and up to eight observations per metric/area series.
@@ -56,7 +85,7 @@ missing or stale data stays strict, even after its cache TTL expires.
 The MCP headline energy tool does not yet expose the regional series; the
 omission is recorded in its parity exclusions.
 
-The `seed-bundle-regional-energy` service owns all eight writers. It runs every
+The `seed-bundle-regional-energy` service owns every regional writer. It runs every
 fifteen minutes, and each feed keeps its own interval gate. The daily
 `seed-bundle-energy-sources` service is unchanged, so a failing regional host
 retries only on this service's ticks.
@@ -79,7 +108,7 @@ service exists. Slow or failed sources retain last-good data.
 After an authorized rollout, confirm the Railway service, schedule and image commit,
 then observe two natural scheduling rotations and at least one daily run. Check logs for
 `Regional-Energy-` and `regional-`, health metadata/record counts, and the profile
-for each of BD, NG, ZA, AR, GE and BR. Require source-dated values and valid
+for each of BD, NG, ZA, AR, GE, BR, VN, KZ, PE, PG and FJ. Require source-dated values and valid
 attribution; do not count a green build or a fresh fetch alone as acceptance.
 Monthly feeds need a later natural publication to prove report rollover.
 

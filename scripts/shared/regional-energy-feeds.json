@@ -37,7 +37,10 @@
     "licence": "Site terms apply; open data licence unconfirmed",
     "intervalMin": 1440,
     "maxContentAgeMin": 10080,
-    "script": "seed-regional-energy-eskom.mjs"
+    "script": "seed-regional-energy-eskom.mjs",
+    "seriesMaxContentAgeMin": {
+      "outages.unplanned.average": 30240
+    }
   },
   {
     "id": "cammesa",
@@ -77,6 +80,66 @@
     "licence": "Data licence unconfirmed; page footer CC BY-ND 3.0",
     "intervalMin": 1440,
     "maxContentAgeMin": 172800,
-    "script": "seed-regional-energy-anp.mjs"
+    "script": "seed-regional-energy-anp.mjs",
+    "seriesMaxContentAgeMin": {
+      "fuel.retail_price": 30240
+    }
+  },
+  {
+    "id": "evn",
+    "countryCode": "VN",
+    "name": "Vietnam EVN system bulletin",
+    "sourceUrl": "https://evn.com.vn/vi-VN/news-l/Thong-tin-tom-tat-van-hanh-HTD-Quoc-gia-60-2015",
+    "licence": "All rights reserved",
+    "intervalMin": 360,
+    "maxContentAgeMin": 4320,
+    "script": "seed-regional-energy-evn.mjs"
+  },
+  {
+    "id": "korem",
+    "countryCode": "KZ",
+    "name": "Kazakhstan KOREM",
+    "sourceUrl": "https://portal.korem.kz/?lang=ru",
+    "licence": "Unconfirmed",
+    "intervalMin": 360,
+    "maxContentAgeMin": 4320,
+    "script": "seed-regional-energy-korem.mjs",
+    "publishesAhead": true,
+    "utcOffsetMin": 300
+  },
+  {
+    "id": "coes",
+    "countryCode": "PE",
+    "name": "Peru COES SEIN demand",
+    "sourceUrl": "https://www.coes.org.pe/Portal/portalinformacion/demanda",
+    "licence": "Unconfirmed",
+    "intervalMin": 60,
+    "maxContentAgeMin": 360,
+    "script": "seed-regional-energy-coes.mjs",
+    "publishesAhead": true
+  },
+  {
+    "id": "iccc",
+    "countryCode": "PG",
+    "name": "PNG ICCC fuel prices",
+    "sourceUrl": "https://iccc.gov.pg/category/fuel-prices/",
+    "licence": "All rights reserved",
+    "intervalMin": 720,
+    "maxContentAgeMin": 64800,
+    "script": "seed-regional-energy-iccc.mjs",
+    "publishesAhead": true,
+    "utcOffsetMin": 600
+  },
+  {
+    "id": "fccc",
+    "countryCode": "FJ",
+    "name": "Fiji FCCC fuel prices",
+    "sourceUrl": "https://fccc.gov.fj/",
+    "licence": "All rights reserved; robots content-signal ai-train=no, use=reference",
+    "intervalMin": 720,
+    "maxContentAgeMin": 64800,
+    "script": "seed-regional-energy-fccc.mjs",
+    "publishesAhead": true,
+    "utcOffsetMin": 720
   }
 ]

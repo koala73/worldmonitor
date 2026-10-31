@@ -4054,6 +4054,20 @@
       ]
     },
     {
+      "host": "evn.com.vn",
+      "provider": "evn.com.vn",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved",
+      "attribution": "Credit Vietnam Electricity (EVN) and link to https://evn.com.vn/vi-VN/news-l/Thong-tin-tom-tat-van-hanh-HTD-Quoc-gia-60-2015.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "example.com",
       "provider": "Example domain placeholder",
       "kind": "structured",
@@ -4177,6 +4191,20 @@
       "references": [
         {
           "path": "scripts/_yahoo-sector-valuations.cjs"
+        }
+      ]
+    },
+    {
+      "host": "fccc.gov.fj",
+      "provider": "fccc.gov.fj",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved; robots content-signal ai-train=no, use=reference",
+      "attribution": "Credit the Fijian Competition and Consumer Commission and link to https://fccc.gov.fj/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -5275,6 +5303,23 @@
       "references": [
         {
           "path": "src/config/live-video-sources.ts"
+        }
+      ]
+    },
+    {
+      "host": "iccc.gov.pg",
+      "provider": "iccc.gov.pg",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved",
+      "attribution": "Credit the PNG Independent Consumer and Competition Commission and link to https://iccc.gov.pg/category/fuel-prices/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-energy-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -7598,6 +7643,23 @@
       "references": [
         {
           "path": "scripts/_demographics-capability-source.mjs"
+        }
+      ]
+    },
+    {
+      "host": "portal.korem.kz",
+      "provider": "portal.korem.kz",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit KOREM, the Kazakhstan electricity market operator and link to https://portal.korem.kz/?lang=ru.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-energy-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -11574,6 +11636,23 @@
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.cnn.gr and link to the original feed publisher.",
       "status": "excluded"
+    },
+    {
+      "host": "www.coes.org.pe",
+      "provider": "www.coes.org.pe",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit COES SINAC and link to https://www.coes.org.pe/Portal/portalinformacion/demanda.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-energy-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
     },
     {
       "host": "www.coindesk.com",

@@ -28,16 +28,19 @@ function decodeFeed(feed: typeof feeds[number], raw: unknown, nowMs: number): Re
   if (record.sourceId !== feed.id || !Number.isFinite(fetchedAt) || fetchedAt > nowMs + 3600000
     || !Array.isArray(record.observations) || !record.observations.length || record.observations.length > 2000
     || !Array.isArray(record.dataUrls) || !record.dataUrls.every(u => typeof u === 'string' && u.startsWith('https://'))) return invalid;
+  // Date and month periods are the provider's calendar; see utcOffsetMin in the registry.
+  const localOffsetMs = ((feed as { utcOffsetMin?: number }).utcOffsetMin ?? 0) * 60000;
   const observations: RegionalEnergyObservation[] = [];
   const latest = new Map<string, { time: number; stale: boolean }>();
   for (const item of record.observations) {
     if (item == null || typeof item !== 'object') return invalid;
     const p = item as Record<string, unknown>;
     const time = observationTime(p.period);
-    if (!Number.isFinite(time) || time > nowMs + 3600000 || typeof p.value !== 'number' || !Number.isFinite(p.value)
+    const effectiveAt = typeof p.period === 'string' && !p.period.includes('T') ? time - localOffsetMs : time;
+    if (!Number.isFinite(time) || effectiveAt > nowMs + 3600000 || typeof p.value !== 'number' || !Number.isFinite(p.value)
       || typeof p.metric !== 'string' || !p.metric || typeof p.unit !== 'string' || !p.unit || typeof p.area !== 'string') return invalid;
-    const budget = feed.id === 'anp' && p.metric === 'fuel.retail_price' ? 21 * 1440
-      : feed.id === 'eskom' && p.metric === 'outages.unplanned.average' ? 21 * 1440 : feed.maxContentAgeMin;
+    const seriesBudget = (feed as { seriesMaxContentAgeMin?: Partial<Record<string, number>> }).seriesMaxContentAgeMin?.[p.metric];
+    const budget = typeof seriesBudget === 'number' ? seriesBudget : feed.maxContentAgeMin;
     const stale = nowMs - time > budget * 60000 || nowMs - fetchedAt > feed.intervalMin * 3 * 60000;
     const series = `${p.metric}|${p.area}`;
     if (!latest.has(series) || latest.get(series)!.time < time) latest.set(series, { time, stale });

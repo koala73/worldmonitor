@@ -405,7 +405,7 @@ const EXCLUDED_FROM_MCP = new Map([
   // (could be a follow-up tool).
   ['energy:spine:v1:_countries',
     'deferred: per-country energy spine index; covered indirectly via get_energy_intelligence headline aggregates. Future expanded per-country energy tool would expose this.'],
-  ...['pgcb', 'petrobangla', 'niso', 'eskom', 'cammesa', 'gse', 'ons', 'anp'].map(id => [
+  ...['pgcb', 'petrobangla', 'niso', 'eskom', 'cammesa', 'gse', 'ons', 'anp', 'evn', 'korem', 'coes', 'iccc', 'fccc'].map(id => [
     `energy:regional:${id}:v1`,
     'deferred: country-specific regional observations exposed by get-country-energy-profile; the MCP energy tool provides headline aggregates. A future per-country energy tool can expose these series.',
   ]),

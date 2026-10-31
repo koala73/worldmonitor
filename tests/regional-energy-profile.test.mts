@@ -46,6 +46,33 @@ test('old source data stays stale after a fresh fetch', async () => {
   assert.equal(feeds[0].observations[0].stale, true);
 });
 
+test('a series budget from the feed registry overrides the feed budget for that metric only', async () => {
+  const feeds = await readRegionalEnergyFeeds('BR', async key => key.includes('anp') ? snapshot('anp', {
+    observedAt: '2026-09-30T23:59:59.999Z',
+    observations: [
+      // Weekly price 29 days old: past its 21-day series budget.
+      { metric: 'fuel.retail_price', period: '2026-09-30', value: 6.2, unit: 'BRL/l', area: 'GASOLINA COMUM' },
+      // Monthly trade of the same age: inside the feed's 120-day budget.
+      { metric: 'fuel.imports', period: '2026-09', value: 1000, unit: 'm3', area: 'DIESEL' },
+    ],
+  }) : null, now);
+  const anp = feeds.find(feed => feed.sourceId === 'anp')!;
+  assert.equal(anp.observations.find(p => p.metric === 'fuel.retail_price')!.stale, true);
+  assert.equal(anp.observations.find(p => p.metric === 'fuel.imports')!.stale, false);
+  assert.equal(anp.status, 'partial');
+});
+
+test('a local-calendar feed serves a date that has started in its own time zone', async () => {
+  // 1 November in Fiji (UTC+12) began at 12:00Z on 31 October.
+  const feeds = await readRegionalEnergyFeeds('FJ', async () => snapshot('fccc', {
+    fetchedAt: '2026-10-31T12:20:00.000Z',
+    dataUrls: ['https://fccc.gov.fj/x.pdf'],
+    observations: [{ metric: 'fuel.retail_price', period: '2026-11-01', value: 3.7, unit: 'FJD/l', area: 'Motor Spirit; Schedule 1' }],
+  }), Date.parse('2026-10-31T12:30:00Z'));
+  assert.equal(feeds[0].status, 'available');
+  assert.equal(feeds[0].observations[0].stale, false);
+});
+
 test('a cache failure is distinct from a source with no seed and does not discard peer feeds', async () => {
   const feeds = await readRegionalEnergyFeeds('BD', async key => {
     if (key.includes('petrobangla')) throw new Error('redis unavailable');
