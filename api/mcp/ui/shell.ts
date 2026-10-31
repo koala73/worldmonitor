@@ -358,8 +358,12 @@ export const PANEL_USAGE_BRIDGE = `
       document.getElementById("root").prepend(notice);
     }
     notice.hidden = false;
-    notice.textContent = (usage.remaining === null ? "Unlimited allowance" : usage.remaining + " of " + usage.limit + " requests remaining") +
-      ", at the last panel request. Resets " + new Date(usage.resetsAt).toLocaleString() + ". Opening this panel uses 1 request; its rendered details are included.";
+    var resets = new Date(usage.resetsAt);
+    var resetText = Number.isFinite(resets.getTime())
+      ? " · resets " + resets.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+      : "";
+    notice.textContent = (usage.remaining === null ? "Unlimited requests" : usage.remaining + " of " + usage.limit + " requests remaining") +
+      resetText + ". Opening this panel uses 1 request.";
   }
 `;
 

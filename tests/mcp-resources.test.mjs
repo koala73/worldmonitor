@@ -914,8 +914,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
             location: { latitude: 1, longitude: 2 },
           }] } },
         } },
-        rawTokens: [/Earthquakes/, /M5\.4/, /Aegean Sea/, /Active Wildfires/, /High/, /Attica/, /brightness 337/, /Showing 1 of 1 loaded events\./],
-        summaryTokens: [/M4\.8/, /Summary quake/, /Nominal/, /Summary fire/, /brightness 301/],
+        rawTokens: [/Earthquakes/, /M5\.4/, /Aegean Sea/, /Active Wildfires/, /high confidence/, /Attica/, /337 K/],
+        summaryTokens: [/M4\.8/, /Summary quake/, /nominal confidence/, /Summary fire/, /301 K/],
       },
       {
         uri: 'ui://worldmonitor/prediction-markets-v3.html',
@@ -1023,11 +1023,11 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       };
       view.sendToolResult(project ? { projection: envelope } : envelope);
       assert.equal(view.nodes('groups').filter((node) => node.className === 'drow').length, 4);
-      assert.match(view.text('groups'), /M0\.0Observed zero quake1970-01-01/);
+      assert.match(view.text('groups'), /M0\.0Observed zero quake1 Jan 1970, 00:00 UTC/);
       assert.match(view.text('groups'), /—Missing quake/);
-      assert.match(view.text('groups'), /Observed zero fireDetection time unavailable · brightness 0/);
-      assert.doesNotMatch(view.text('groups'), /Missing fireDetection time unavailable · brightness/);
-      assert.equal(view.text('foot'), 'Snapshot: 2026-10-03T16:00:00Z (stale)');
+      assert.match(view.text('groups'), /Observed zero fireDetection time unavailable/);
+      assert.doesNotMatch(view.text('groups'), / 0 K|Missing fireDetection time unavailable · /);
+      assert.equal(view.text('foot'), 'Updated 3 Oct 2026, 16:00 UTC (stale)');
       assert.equal(view.posted.some((message) => ['tools/call', 'ui/call-tool'].includes(message.method)), false);
 
       view.sendToolResult({ projection: { cached_at: '2026-10-04T00:00:00Z', stale: false, data: {
@@ -1035,7 +1035,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       } } });
       assert.match(view.text('groups'), /No natural-hazard events available\./);
       assert.doesNotMatch(view.text('groups'), /Observed zero|unavailable/);
-      assert.equal(view.text('foot'), 'Snapshot: 2026-10-04T00:00:00Z');
+      assert.equal(view.text('foot'), 'Updated 4 Oct 2026, 00:00 UTC');
     });
   }
 
