@@ -13,7 +13,12 @@
 //
 // textContent-only rendering; renderBody stays backtick/`${`/regex-free.
 
+import { CHOKEPOINT_REGISTRY } from '../../../server/_shared/chokepoint-registry';
 import { buildAppHtml } from './shell';
+
+// Canonical reader names ("Strait of Hormuz"), keyed by the ids the transit
+// summaries use. The JSON holds only plain names, so it is safe inside RENDER.
+const CHOKEPOINT_NAMES = JSON.stringify(Object.fromEntries(CHOKEPOINT_REGISTRY.map(c => [c.id, c.displayName])));
 
 const STYLES = `
   .crow { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
@@ -22,6 +27,7 @@ const STYLES = `
   .cname { font-size: 15px; font-weight: 600; }
   .risk { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
     padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); }
+  .risk.unknown { text-transform: none; letter-spacing: 0; font-weight: 400; border-color: transparent; }
   .cstats { display: flex; gap: 18px; margin-top: 6px; flex-wrap: wrap; }
   .cstat { display: flex; flex-direction: column; }
   .cstat .k { font-size: 11px; color: var(--muted); }
@@ -52,10 +58,20 @@ const RENDER = `
     q("empty").style.display = "none";
     q("card").style.display = "block";
 
+    var NAMES = ${CHOKEPOINT_NAMES};
     function prettyName(key) {
-      var s = String(key == null ? "" : key).split("_").join(" ").trim();
-      if (!s) return "—";
-      return s.charAt(0).toUpperCase() + s.slice(1);
+      var id = String(key == null ? "" : key);
+      if (Object.prototype.hasOwnProperty.call(NAMES, id)) return NAMES[id];
+      var words = id.split("_").join(" ").trim().split(" ").filter(Boolean);
+      if (!words.length) return "—";
+      return words.map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(" ");
+    }
+    // One decimal is enough for a weekly change ("+12.5%").
+    function changeText(v) {
+      if (v == null) return "—";
+      var r = Math.round(v * 10) / 10;
+      if (r === 0) r = 0;
+      return (r > 0 ? "+" : "") + r.toFixed(1) + "%";
     }
     function riskColor(r) {
       if (r === "critical" || r === "severe") return cssVar("--severe");
@@ -71,9 +87,8 @@ const RENDER = `
       if (typeof v === "number") ms = v;
       else if (typeof v === "string" && v.indexOf("T") >= 0) ms = Date.parse(v);
       else if (typeof v === "string" && v.trim() && String(Number(v)) === v.trim()) ms = Number(v);
-      if (!Number.isFinite(ms) || ms <= 0) return "Unknown";
-      var date = new Date(ms);
-      return Number.isFinite(date.getTime()) ? date.toISOString() : "Unknown";
+      if (!Number.isFinite(ms) || ms <= 0) return "";
+      return utcTime(ms);
     }
     function stat(k, v, color) {
       var wrap = el("div", "cstat");
@@ -93,8 +108,8 @@ const RENDER = `
     if (keySummary) {
       var reported = summaries.count;
       var knownCount = typeof reported === "number" && Number.isFinite(reported) && Number.isInteger(reported) && reported >= summaries.sample_keys.length;
-      host.appendChild(el("div", "empty", (knownCount ? "Summary reports " + reported + " chokepoints." : "Summary count is unavailable.") +
-        " Transit records are not loaded."));
+      host.appendChild(el("div", "empty", (knownCount ? reported + " chokepoints reported," : "Chokepoints reported,") +
+        " but this response left out their transit figures."));
     } else if (summaries && typeof summaries === "object" && !Array.isArray(summaries)) {
       var keys = Object.keys(summaries);
       for (var i = 0; i < keys.length && count < 20; i++) {
@@ -105,8 +120,9 @@ const RENDER = `
         var head = el("div", "crow-head");
         head.appendChild(el("span", "cname", prettyName(keys[i])));
         var risk = typeof s.riskLevel === "string" ? collapseWs(s.riskLevel).toLowerCase() : "";
-        if (["normal", "low", "moderate", "warning", "high", "elevated", "critical", "severe"].indexOf(risk) < 0) risk = "Unknown";
-        var badge = el("span", "risk", risk);
+        var riskKnown = ["normal", "low", "moderate", "warning", "high", "elevated", "critical", "severe"].indexOf(risk) >= 0;
+        if (!riskKnown) risk = "Unknown";
+        var badge = el("span", riskKnown ? "risk" : "risk unknown", riskKnown ? risk : "Risk unknown");
         var rc = riskColor(risk);
         badge.style.color = rc;
         badge.style.borderColor = rc;
@@ -119,13 +135,13 @@ const RENDER = `
         stats.appendChild(stat("Last 24 hours", total == null ? "—" : String(total)));
         var wow = s.dataAvailable === true && typeof s.wowChangePct === "number" && Number.isFinite(s.wowChangePct) ? s.wowChangePct : null;
         var wowColor = wow == null ? null : (wow >= 0 ? cssVar("--up") : cssVar("--down"));
-        stats.appendChild(stat("Week over week", pctText(wow), wowColor));
+        stats.appendChild(stat("Week over week", changeText(wow), wowColor));
         var tanker = countsAvailable ? transitCount(s.todayTanker) : null;
         stats.appendChild(stat("Tanker", tanker == null ? "—" : String(tanker)));
         row.appendChild(stats);
 
-        if (historyMissing) row.appendChild(el("div", "csum", "PortWatch history unavailable"));
-        else if (s.dataAvailable !== true) row.appendChild(el("div", "csum", "PortWatch history unknown"));
+        if (historyMissing) row.appendChild(el("div", "csum", "No weekly history, so the weekly change is unknown."));
+        else if (s.dataAvailable !== true) row.appendChild(el("div", "csum", "Weekly history status unknown."));
         if (s.riskSummary) row.appendChild(el("div", "csum", collapseWs(s.riskSummary)));
         host.appendChild(row);
         count++;
@@ -140,26 +156,43 @@ const RENDER = `
       var covered = coverage && transitCount(coverage.covered);
       var totalRoutes = coverage && transitCount(coverage.total);
       var coverageKnown = covered != null && totalRoutes != null && totalRoutes > 0 && covered <= totalRoutes;
-      coverageText = "AIS coverage: " + (coverageKnown ? covered + "/" + totalRoutes : "Unknown");
+      coverageText = coverageKnown
+        ? "Live ship tracking covers " + covered + " of " + totalRoutes + " chokepoints."
+        : "Live ship tracking coverage is unknown.";
       var missing = coverage && coverage.missing;
       if (Array.isArray(missing) && missing.every(function(key) { return typeof key === "string" && key.trim().length > 0; })) {
-        coverageText += " · Missing: " + (missing.length ? missing.map(prettyName).join(", ") : "None reported");
-      } else coverageText += " · Missing: Unknown";
+        if (missing.length) coverageText += " Not covered: " + missing.map(prettyName).join(", ") + ".";
+      } else coverageText += " Which chokepoints are not covered is unknown.";
     }
     q("coverage").textContent = coverageText;
     var clocks = [];
-    if (ts && typeof ts === "object" && !Array.isArray(ts) && (count || keySummary || ts.fetchedAt !== undefined)) clocks.push("Summary fetched: " + clock(ts.fetchedAt));
-    if (transits && typeof transits === "object" && !Array.isArray(transits)) clocks.push("AIS fetched: " + clock(transits.fetchedAt));
+    var hasDataClock = false;
+    if (ts && typeof ts === "object" && !Array.isArray(ts) && (count || keySummary || ts.fetchedAt !== undefined)) {
+      var summaryAt = clock(ts.fetchedAt);
+      clocks.push(summaryAt ? "Transit counts updated " + summaryAt : "Transit count update time unknown");
+      hasDataClock = true;
+    }
+    if (transits && typeof transits === "object" && !Array.isArray(transits)) {
+      var trackingAt = clock(transits.fetchedAt);
+      clocks.push(trackingAt ? "Ship tracking updated " + trackingAt : "Ship tracking update time unknown");
+      hasDataClock = true;
+    }
     var baseline = d["chokepoint-baselines"];
     if (baseline && typeof baseline === "object" && !Array.isArray(baseline)) {
       var year = baseline.referenceYear;
       if (typeof year === "string" && String(Number(year)) === year) year = Number(year);
       var yearKnown = typeof year === "number" && Number.isInteger(year) && year >= 1900 && year <= 9999;
-      clocks.push("Baseline: " + (typeof baseline.source === "string" && baseline.source.trim() ? collapseWs(baseline.source) : "Unknown source") +
-        " · Reference year: " + (yearKnown ? String(year) : "Unknown") + " · Updated: " + clock(baseline.updatedAt));
+      clocks.push("Energy baseline: " + (typeof baseline.source === "string" && baseline.source.trim() ? collapseWs(baseline.source) : "source unknown") +
+        (yearKnown ? ", " + year : ", reference year unknown"));
     }
-    if (envelope.cached_at !== undefined) clocks.push("Snapshot: " + (clock(envelope.cached_at) === "Unknown" ? "Unknown" : collapseWs(envelope.cached_at)) + (envelope.stale === true ? " (stale)" : ""));
-    if (envelope.freshnessUnknown === true) clocks.push("Freshness: Unknown");
+    // The envelope time is the oldest cached part (often the yearly baseline),
+    // so it is shown only when no transit clock is present.
+    if (envelope.cached_at !== undefined && !hasDataClock) {
+      var cachedAt = clock(envelope.cached_at);
+      clocks.push(cachedAt ? "Updated " + cachedAt : "Update time unknown");
+    }
+    if (envelope.stale === true) clocks.push("Some of this data is out of date.");
+    if (envelope.freshnessUnknown === true) clocks.push("Freshness could not be checked.");
     q("foot").textContent = clocks.join("\\n");
 `;
 

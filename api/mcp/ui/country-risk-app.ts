@@ -95,6 +95,7 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
   .meta .v { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
   .foot { margin-top: 14px; font-size: 11px; color: var(--muted); }
   .empty { color: var(--muted); padding: 8px 0; }
+  #panel-usage { margin: 0 0 10px; font-size: 11px; color: var(--muted); }
   a { color: var(--accent); text-decoration: none; }
 </style>
 </head>
@@ -104,13 +105,13 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
   <div id="card" style="display:none">
     <div class="head">
       <div class="country" id="country">—</div>
-      <div class="badge" id="badge">Composite Instability Index</div>
+      <div class="badge" id="badge">Country Instability Index</div>
     </div>
     <!-- upstreamUnavailable: a required upstream read failed, so the zeroed risk
          fields mean UNKNOWN. Without this banner an outage renders exactly
          like a calm, low-risk country. -->
     <div class="degraded" id="degraded" style="display:none">
-      Upstream risk data is unavailable — the fields below are unknown, not low.
+      Risk data could not be loaded, so the scores below are unknown, not low.
     </div>
     <div class="cii-row">
       <div class="cii-score" id="cii">—</div>
@@ -121,12 +122,12 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     <div class="components" id="components"></div>
     <div class="meta">
       <div class="k">Structural baseline</div><div class="v" id="baseline">—</div>
-      <div class="k">Approx. 24-hour movement</div><div class="v" id="movement">—</div>
+      <div class="k">24-hour change (approx.)</div><div class="v" id="movement">—</div>
       <div class="k">Travel advisory</div><div class="v" id="advisory">—</div>
       <div class="k">Sanctions exposure</div><div class="v" id="sanctions">—</div>
       <div class="k">Trend</div><div class="v" id="trend">—</div>
     </div>
-    <div class="foot" id="movement-note" style="display:none">Zero may mean stable or no valid prior snapshot.</div>
+    <div class="foot" id="movement-note" style="display:none">A change of 0 can mean no movement, or that there was no earlier reading to compare.</div>
     <div class="foot" id="display-note" style="display:none"></div>
     <div class="foot" id="foot"></div>
   </div>
@@ -144,13 +145,6 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     post({ jsonrpc: "2.0", method: method, params: params || {} });
   }
 
-  function levelFor(score) {
-    if (typeof score !== "number" || isNaN(score)) return { label: "Unknown", varName: "--muted" };
-    if (score >= 75) return { label: "Severe", varName: "--severe" };
-    if (score >= 50) return { label: "High", varName: "--high" };
-    if (score >= 25) return { label: "Moderate", varName: "--moderate" };
-    return { label: "Low", varName: "--low" };
-  }
   function ciiLevelFor(score) {
     if (typeof score !== "number" || !isFinite(score)) return { label: "Unknown", varName: "--muted" };
     if (score >= 81) return { label: "Critical", varName: "--severe" };
@@ -171,6 +165,17 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     return null;
   }
   function clampPct(n) { return Math.max(0, Math.min(100, n)); }
+  // Scores print with thousands separators and at most one decimal.
+  function round1(n) { var r = Math.round(n * 10) / 10; return r === 0 ? 0 : r; }
+  function fmt(n) { return round1(n).toLocaleString("en-US"); }
+  var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function utcTime(ms) {
+    var d = new Date(ms);
+    if (isNaN(d.getTime())) return "";
+    function two(v) { return v < 10 ? "0" + v : String(v); }
+    return d.getUTCDate() + " " + MONTHS[d.getUTCMonth()] + " " + d.getUTCFullYear() + ", " +
+      two(d.getUTCHours()) + ":" + two(d.getUTCMinutes()) + " UTC";
+  }
 
   function setText(id, text) {
     var el = document.getElementById(id);
@@ -192,7 +197,7 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
   function describeAdvisory(level) {
     if (typeof level !== "string") return "—";
     var text = cleanText(level, 64).replace(/[-_]+/g, " ");
-    return text === "" ? "None" : text;
+    return text === "" ? "None" : text.charAt(0).toUpperCase() + text.slice(1);
   }
   // Sanctions arrive as two scalars, not a collection: sanctions_active plus
   // sanctions_count. count alone is enough to render, but active is the
@@ -205,7 +210,7 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     // "designations exist but we printed None" is the precise failure this
     // shell was fixed to stop making.
     var n = num(count);
-    if (n != null && n > 0) return String(n) + (n === 1 ? " sanctions listing" : " sanctions listings");
+    if (n != null && n > 0) return fmt(n) + (n === 1 ? " sanctions listing" : " sanctions listings");
     if (active === true) return "Active";
     if (active === false) return "None";
     return "—";
@@ -290,7 +295,8 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
       var cbar = document.createElement("div");
       cbar.className = "comp-bar";
       var fill = document.createElement("span");
-      var cl = levelFor(val);
+      // Same colour bands as the headline score, so one colour means one level.
+      var cl = ciiLevelFor(val);
       var ccolor = getComputedStyle(document.documentElement).getPropertyValue(cl.varName).trim();
       fill.style.width = clampPct(val) + "%";
       fill.style.background = ccolor || "var(--accent)";
@@ -301,16 +307,17 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     if (!any) {
       var none = document.createElement("div");
       none.className = "empty";
-      none.textContent = degraded
-        ? "Component breakdown unavailable — upstream data could not be read."
-        : "No component breakdown available.";
+      // The outage banner above already says why; this line only marks the gap.
+      none.textContent = degraded ? "Breakdown unknown." : "No component breakdown available.";
       host.appendChild(none);
     }
 
     var baseline = degraded ? null : num(score.staticBaseline);
     var movement = degraded ? null : num(score.dynamicScore);
-    setText("baseline", baseline == null ? "—" : String(baseline));
-    setText("movement", movement == null ? "—" : String(movement));
+    setText("baseline", baseline == null ? "—" : fmt(baseline));
+    var moved = movement == null ? null : round1(movement);
+    setText("movement", moved == null ? "—"
+      : (moved > 0 ? "+" : "") + fmt(moved) + (Math.abs(moved) === 1 ? " point" : " points"));
     document.getElementById("movement-note").style.display = movement === 0 ? "block" : "none";
 
     var shortenedCountry = cleanText(data.countryName, 65).length > 64;
@@ -330,12 +337,8 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     // is unknown (which includes "no CII score for this country").
     var foot = document.getElementById("foot");
     var fetchedAt = num(data.fetchedAt);
-    if (fetchedAt != null && fetchedAt > 0) {
-      var when = new Date(fetchedAt);
-      foot.textContent = "Snapshot: " + (isNaN(when.getTime()) ? String(fetchedAt) : when.toISOString());
-    } else {
-      foot.textContent = degraded ? "Upstream unavailable — no snapshot time." : "";
-    }
+    var when = fetchedAt != null && fetchedAt > 0 ? utcTime(fetchedAt) : "";
+    foot.textContent = when ? "Updated " + when : "";
     reportSize();
   }
 

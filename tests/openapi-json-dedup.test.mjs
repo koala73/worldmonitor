@@ -26,6 +26,7 @@ import {
   buildBundle,
   collapseSoftLineBreaks,
   dropDefaultParameterRequired,
+  dropDuplicateOperationSummaries,
   dropUnreferencedSecuritySchemes,
   shortenGeneratedSuccessDescriptions,
   trimResponseExampleLists,
@@ -47,6 +48,27 @@ import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const buildScriptPath = resolve(root, 'scripts/build-openapi-json.mjs');
+
+describe('duplicate generated operation summaries', () => {
+  it('removes only exact operationId copies and leaves schemas and custom summaries intact', () => {
+    const spec = {
+      paths: {
+        '/example': {
+          get: { operationId: 'GetExample', summary: 'GetExample', responses: { 200: { description: 'OK' } } },
+          post: { operationId: 'PostExample', summary: 'Create an example' },
+          'x-metadata': { operationId: 'Metadata', summary: 'Metadata' },
+        },
+        '/missing-id': { get: { summary: 'Useful summary' }, post: { operationId: '', summary: '' } },
+      },
+      components: { schemas: { Example: { type: 'object', properties: { value: { type: 'number' } } } } },
+    };
+    const expected = structuredClone(spec);
+    delete expected.paths['/example'].get.summary;
+    assert.deepEqual(dropDuplicateOperationSummaries(spec), { dropped: 1 });
+    assert.deepEqual(spec, expected);
+    assert.deepEqual(dropDuplicateOperationSummaries(spec), { dropped: 0 });
+  });
+});
 
 // Leave headroom under the ~1 MB cap: the spec sat at ~752 KB when the check
 // last passed and ~853 KB deduped today. If this fails, either extend the

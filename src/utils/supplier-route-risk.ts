@@ -8,8 +8,12 @@ export type SupplierRiskLevel = 'safe' | 'at_risk' | 'critical' | 'unknown';
 export interface TransitChokepoint {
   chokepointId: string;
   chokepointName: string;
-  disruptionScore: number;
+  /** null when the chokepoint has no observation; never read it as zero. */
+  disruptionScore: number | null;
 }
+
+/** Why a route is `unknown`: no modeled route, or a modeled route without current scores. */
+export type SupplierRiskUnknownReason = 'no_route' | 'unmeasured';
 
 export interface SupplierRouteRisk {
   exporterIso2: string;
@@ -17,11 +21,46 @@ export interface SupplierRouteRisk {
   routeIds: string[];
   transitChokepoints: TransitChokepoint[];
   riskLevel: SupplierRiskLevel;
-  maxDisruptionScore: number;
+  unknownReason: SupplierRiskUnknownReason | null;
+  /** Highest measured score; null when no transit chokepoint was measured. */
+  maxDisruptionScore: number | null;
   recommendation: string;
 }
 
+/** Observed scores only. A missing key means "not measured", not "zero". */
 export type ChokepointScoreMap = Map<string, number>;
+
+export interface ChokepointScoreEvidence {
+  scores: ChokepointScoreMap;
+  /** True only for an available, dated snapshot inside the freshness window. */
+  current: boolean;
+}
+
+// Matches the chokepoint status health contract (seed-meta:supply_chain:chokepoints, maxStaleMin 60).
+const CHOKEPOINT_SCORES_MAX_AGE_MS = 60 * 60_000;
+const CHOKEPOINT_SCORES_FUTURE_SKEW_MS = 5 * 60_000;
+
+/**
+ * Build the observed score map from a chokepoint status response, and say
+ * whether the snapshot is current enough to support a "safe" conclusion.
+ * Scores from a degraded or stale snapshot are kept: a measured high score
+ * still shows risk, but it cannot establish that a route is safe.
+ */
+export function chokepointScoreEvidence(
+  resp: { chokepoints: ReadonlyArray<{ id: string; disruptionScore?: number }>; fetchedAt?: string; upstreamUnavailable?: boolean },
+  nowMs: number = Date.now(),
+): ChokepointScoreEvidence {
+  const scores: ChokepointScoreMap = new Map();
+  for (const cp of resp.chokepoints) {
+    if (typeof cp.disruptionScore === 'number' && Number.isFinite(cp.disruptionScore)) scores.set(cp.id, cp.disruptionScore);
+  }
+  const fetchedMs = resp.fetchedAt ? Date.parse(resp.fetchedAt) : Number.NaN;
+  const current = resp.upstreamUnavailable !== true
+    && Number.isFinite(fetchedMs)
+    && fetchedMs <= nowMs + CHOKEPOINT_SCORES_FUTURE_SKEW_MS
+    && nowMs - fetchedMs <= CHOKEPOINT_SCORES_MAX_AGE_MS;
+  return { scores, current };
+}
 
 interface ClusterEntry {
   nearestRouteIds: string[];
@@ -125,7 +164,7 @@ function collectTransitChokepoints(routeIds: string[], scores: ChokepointScoreMa
       result.push({
         chokepointId: cpId,
         chokepointName: chokepointNameMap.get(cpId) ?? cpId,
-        disruptionScore: scores.get(cpId) ?? 0,
+        disruptionScore: scores.get(cpId) ?? null,
       });
     }
   }
@@ -133,26 +172,37 @@ function collectTransitChokepoints(routeIds: string[], scores: ChokepointScoreMa
   return result;
 }
 
-function determineRiskLevel(chokepoints: TransitChokepoint[], hasRouteData: boolean): SupplierRiskLevel {
-  if (!hasRouteData) return 'unknown';
-  for (const cp of chokepoints) {
-    if (cp.disruptionScore >= 70) return 'critical';
-  }
-  for (const cp of chokepoints) {
-    if (cp.disruptionScore > 30) return 'at_risk';
-  }
-  return 'safe';
+function measuredScores(chokepoints: TransitChokepoint[]): number[] {
+  return chokepoints.flatMap(cp => cp.disruptionScore === null ? [] : [cp.disruptionScore]);
 }
 
-function buildRecommendation(riskLevel: SupplierRiskLevel, chokepoints: TransitChokepoint[]): string {
-  if (riskLevel === 'unknown') return 'No modeled maritime route data available for this pair.';
+function determineRiskLevel(chokepoints: TransitChokepoint[], hasRouteData: boolean, scoresCurrent: boolean): SupplierRiskLevel {
+  if (!hasRouteData) return 'unknown';
+  // Measured high scores count even from a partial or stale snapshot.
+  const measured = measuredScores(chokepoints);
+  if (measured.some(score => score >= 70)) return 'critical';
+  if (measured.some(score => score > 30)) return 'at_risk';
+  // No modeled chokepoint on the route: nothing to measure, so snapshot currency does not apply.
+  if (chokepoints.length === 0) return 'safe';
+  // "Safe" needs every modeled chokepoint measured in a current snapshot.
+  return scoresCurrent && measured.length === chokepoints.length ? 'safe' : 'unknown';
+}
+
+function buildRecommendation(riskLevel: SupplierRiskLevel, chokepoints: TransitChokepoint[], hasRouteData: boolean): string {
+  if (!hasRouteData) return 'No modeled maritime route data available for this pair.';
+  if (riskLevel === 'unknown') {
+    const missing = chokepoints.filter(cp => cp.disruptionScore === null).map(cp => cp.chokepointName);
+    return missing.length > 0
+      ? `Route transits ${missing.join(', ')} with no current disruption data. Risk cannot be assessed.`
+      : 'Chokepoint disruption data for this route is not current. Risk cannot be assessed.';
+  }
   if (chokepoints.length === 0) return 'No transit chokepoints detected.';
   if (riskLevel === 'critical') {
-    const worst = chokepoints.reduce((a, b) => a.disruptionScore > b.disruptionScore ? a : b);
+    const worst = chokepoints.reduce((a, b) => (a.disruptionScore ?? -1) >= (b.disruptionScore ?? -1) ? a : b);
     return `Route transits ${worst.chokepointName} (disruption: ${worst.disruptionScore}/100). Consider alternative suppliers.`;
   }
   if (riskLevel === 'at_risk') {
-    const elevated = chokepoints.filter(cp => cp.disruptionScore > 30);
+    const elevated = chokepoints.filter(cp => cp.disruptionScore !== null && cp.disruptionScore > 30);
     const names = elevated.map(cp => cp.chokepointName).join(', ');
     return `Route transits ${names} (elevated risk). Monitor closely.`;
   }
@@ -163,6 +213,8 @@ export function computeSupplierRouteRisk(
   exporterIso2: string,
   importerIso2: string,
   chokepointScores: ChokepointScoreMap,
+  /** Whether the scores come from a current snapshot; only then can a route be safe. */
+  scoresCurrent = false,
 ): SupplierRouteRisk {
   const exporterCluster = getCluster(exporterIso2);
   const importerCluster = getCluster(importerIso2);
@@ -182,11 +234,10 @@ export function computeSupplierRouteRisk(
     const allowed = INTRA_REGIONAL_CHOKEPOINTS[sharedCoast]!;
     transitChokepoints = transitChokepoints.filter(cp => allowed.has(cp.chokepointId));
   }
-  const riskLevel = determineRiskLevel(transitChokepoints, hasRouteData);
-  const maxDisruptionScore = transitChokepoints.length > 0
-    ? Math.max(...transitChokepoints.map(cp => cp.disruptionScore))
-    : 0;
-  const recommendation = buildRecommendation(riskLevel, transitChokepoints);
+  const riskLevel = determineRiskLevel(transitChokepoints, hasRouteData, scoresCurrent);
+  const measured = measuredScores(transitChokepoints);
+  const maxDisruptionScore = measured.length > 0 ? Math.max(...measured) : null;
+  const recommendation = buildRecommendation(riskLevel, transitChokepoints, hasRouteData);
 
   return {
     exporterIso2,
@@ -194,6 +245,7 @@ export function computeSupplierRouteRisk(
     routeIds,
     transitChokepoints,
     riskLevel,
+    unknownReason: riskLevel !== 'unknown' ? null : hasRouteData ? 'unmeasured' : 'no_route',
     maxDisruptionScore,
     recommendation,
   };
@@ -212,10 +264,11 @@ export function computeAlternativeSuppliers(
   exporters: Array<{ partnerCode: number; partnerIso2: string; value: number; share: number }>,
   importerIso2: string,
   chokepointScores: ChokepointScoreMap,
+  scoresCurrent = false,
 ): EnrichedExporter[] {
   const enriched: EnrichedExporter[] = exporters.map(exp => ({
     ...exp,
-    risk: computeSupplierRouteRisk(exp.partnerIso2, importerIso2, chokepointScores),
+    risk: computeSupplierRouteRisk(exp.partnerIso2, importerIso2, chokepointScores, scoresCurrent),
     safeAlternative: null,
   }));
 

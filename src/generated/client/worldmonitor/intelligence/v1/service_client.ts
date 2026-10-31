@@ -904,6 +904,29 @@ export interface GetCountryEnergyProfileResponse {
   importShareAvailable: boolean;
   importShareYear: number;
   importShareSource: string;
+  regionalEnergyFeeds: RegionalEnergyFeed[];
+}
+
+export interface RegionalEnergyFeed {
+  sourceId: string;
+  name: string;
+  sourceUrl: string;
+  licence: string;
+  status: string;
+  fetchedAt: number;
+  observedAt: number;
+  dataUrls: string[];
+  observations: RegionalEnergyObservation[];
+  error: string;
+}
+
+export interface RegionalEnergyObservation {
+  metric: string;
+  period: string;
+  value: number;
+  unit: string;
+  area: string;
+  stale: boolean;
 }
 
 export interface ComputeEnergyShockScenarioRequest {

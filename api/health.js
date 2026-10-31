@@ -672,6 +672,14 @@ const STANDALONE_KEYS = {
   portwatchChokepointsRef:  'portwatch:chokepoints:ref:v1',
   chokepointFlows:          'energy:chokepoint-flows:v1',
   emberElectricity:         'energy:ember:v1:_all',
+  regionalEnergyPgcb:       'energy:regional:pgcb:v1',
+  regionalEnergyPetrobangla: 'energy:regional:petrobangla:v1',
+  regionalEnergyNiso:       'energy:regional:niso:v1',
+  regionalEnergyEskom:      'energy:regional:eskom:v1',
+  regionalEnergyCammesa:    'energy:regional:cammesa:v1',
+  regionalEnergyGse:        'energy:regional:gse:v1',
+  regionalEnergyOns:        'energy:regional:ons:v1',
+  regionalEnergyAnp:        'energy:regional:anp:v1',
   resilienceIntervals:      'resilience:intervals:v12:US',
   sprPolicies:              'energy:spr-policies:v1',
   pipelinesGas:             'energy:pipelines:gas:v1',
@@ -2183,6 +2191,22 @@ const SEED_META = {
     },
   },
   emberElectricity:     { key: 'seed-meta:energy:ember',                maxStaleMin: 2880 }, // daily cron (08:00 UTC); 2880min = 48h = 2x interval
+  regionalEnergyPgcb:  { key: 'seed-meta:energy:regional-pgcb', maxStaleMin: 180, maxContentAgeMin: 720, activationKey: 'seed-activated:energy:regional-pgcb',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-pgcb' } },
+  regionalEnergyPetrobangla: { key: 'seed-meta:energy:regional-petrobangla', maxStaleMin: 4320, maxContentAgeMin: 7200, activationKey: 'seed-activated:energy:regional-petrobangla',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-petrobangla' } },
+  regionalEnergyNiso: { key: 'seed-meta:energy:regional-niso', maxStaleMin: 1080, maxContentAgeMin: 7200, activationKey: 'seed-activated:energy:regional-niso',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-niso' } },
+  regionalEnergyEskom: { key: 'seed-meta:energy:regional-eskom', maxStaleMin: 4320, maxContentAgeMin: 10080, activationKey: 'seed-activated:energy:regional-eskom',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-eskom' } },
+  regionalEnergyCammesa: { key: 'seed-meta:energy:regional-cammesa', maxStaleMin: 180, maxContentAgeMin: 720, activationKey: 'seed-activated:energy:regional-cammesa',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-cammesa' } },
+  regionalEnergyGse: { key: 'seed-meta:energy:regional-gse', maxStaleMin: 4320, maxContentAgeMin: 129600, activationKey: 'seed-activated:energy:regional-gse',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-gse' } },
+  regionalEnergyOns: { key: 'seed-meta:energy:regional-ons', maxStaleMin: 2160, maxContentAgeMin: 7200, activationKey: 'seed-activated:energy:regional-ons',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-ons' } },
+  regionalEnergyAnp: { key: 'seed-meta:energy:regional-anp', maxStaleMin: 4320, maxContentAgeMin: 172800, activationKey: 'seed-activated:energy:regional-anp',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-anp' } },
   cryptoSectors:        { key: 'seed-meta:market:crypto-sectors',             maxStaleMin: 120 }, // relay loop every ~30min; 120min = 2h = 4x interval
   ddosAttacks:          { key: 'seed-meta:cf:radar:ddos',                    maxStaleMin: 60 }, // seed-internet-outages publishes the payload before advancing this clock; outages cron ~15min; 60 = 4x interval
   economicStress:       { key: 'seed-meta:economic:stress-index',            maxStaleMin: 180 }, // computed in seed-economy afterPublish; cron ~1h; 180min = 3x interval
@@ -2328,6 +2352,15 @@ if (!IRAN_EVENTS_ENABLED) {
 // chronic outage went undetected until a user noticed the panel was stuck on
 // "Loading...". Removed marketImplications below.
 const ON_DEMAND_KEYS = new Set([
+  'regionalEnergyPgcb',
+  'regionalEnergyPetrobangla',
+  'regionalEnergyNiso',
+  'regionalEnergyEskom',
+  'regionalEnergyCammesa',
+  'regionalEnergyGse',
+  'regionalEnergyOns',
+  'regionalEnergyAnp',
+
   'globalTendersColombiaSecop',
   'globalTendersKenyaPpip',
   'globalTendersSouthAfricaEtenders',
@@ -2520,6 +2553,15 @@ const ON_DEMAND_KEYS = new Set([
 // publish; when the marker exists the key leaves ON_DEMAND softening and
 // normal EMPTY/STALE_SEED rules apply.
 const ACTIVATION_MARKERS = {
+  regionalEnergyPgcb: SEED_META.regionalEnergyPgcb.activationKey,
+  regionalEnergyPetrobangla: SEED_META.regionalEnergyPetrobangla.activationKey,
+  regionalEnergyNiso: SEED_META.regionalEnergyNiso.activationKey,
+  regionalEnergyEskom: SEED_META.regionalEnergyEskom.activationKey,
+  regionalEnergyCammesa: SEED_META.regionalEnergyCammesa.activationKey,
+  regionalEnergyGse: SEED_META.regionalEnergyGse.activationKey,
+  regionalEnergyOns: SEED_META.regionalEnergyOns.activationKey,
+  regionalEnergyAnp: SEED_META.regionalEnergyAnp.activationKey,
+
   globalTendersColombiaSecop: SEED_META.globalTendersColombiaSecop.activationKey,
   globalTendersKenyaPpip: SEED_META.globalTendersKenyaPpip.activationKey,
   globalTendersSouthAfricaEtenders: SEED_META.globalTendersSouthAfricaEtenders.activationKey,

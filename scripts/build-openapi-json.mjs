@@ -190,6 +190,23 @@ export function shortenGeneratedSuccessDescriptions(spec) {
   return stats;
 }
 
+// Generated summaries repeat operationId verbatim. Keep custom summaries and
+// the human-readable YAML; omit only this duplicate from the compact JSON.
+export function dropDuplicateOperationSummaries(spec) {
+  const stats = { dropped: 0 };
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    for (const [method, operation] of Object.entries(pathItem ?? {})) {
+      if (!['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'].includes(method)) continue;
+      if (typeof operation?.operationId !== 'string' || !operation.operationId) continue;
+      if (operation.summary === operation.operationId) {
+        delete operation.summary;
+        stats.dropped += 1;
+      }
+    }
+  }
+  return stats;
+}
+
 /**
  * A 2xx response example illustrates the payload's shape; one item of each list
  * of objects shows that shape as well as nine. The two captured examples that
@@ -385,6 +402,7 @@ export function buildBundle({ spec: provided } = {}) {
   const softBreakStats = collapseSoftLineBreaks(spec);
   const defaultRequiredStats = dropDefaultParameterRequired(spec);
   const successDescriptionStats = shortenGeneratedSuccessDescriptions(spec);
+  const duplicateSummaryStats = dropDuplicateOperationSummaries(spec);
   const exampleListStats = trimResponseExampleLists(spec);
 
   // Minified: this artifact is machine-consumed (scanners/agents), and the
@@ -408,6 +426,7 @@ export function buildBundle({ spec: provided } = {}) {
     softBreakStats,
     defaultRequiredStats,
     successDescriptionStats,
+    duplicateSummaryStats,
     exampleListStats,
     excludedStats,
   };

@@ -339,7 +339,8 @@ describe('original forecast theater UI', () => {
     assert.deepEqual(JSON.parse(JSON.stringify(requests[0].params)), { name: 'get_forecast_theaters', arguments: { panel_request: 'controlled-forecast-receipt' } });
     theaterReply(win, requests[0]);
     const text = doc.getElementById('theaters').textContent;
-    for (const phrase of ['Controlled original theater', 'Original path', 'Original theater assessment', 'Original actor', 'Original mediator', 'Original reaction', 'Original stabilizer', 'Original invalidator', 'Alternate path', 'Alternative assessment', '60%', 'Confidence unknown', theaterResponse.runId, 'completed', '1 of 1', '2026-10-04T11:23:20.000Z']) assert.ok(text.includes(phrase), phrase);
+    for (const phrase of ['Controlled original theater', 'Original path', 'Original theater assessment', 'Original actor', 'Original mediator', 'Original reaction', 'Original stabilizer', 'Original invalidator', 'Alternate path', 'Alternative assessment', '60%', 'Confidence unknown', '1 of 1 theaters loaded.', 'Generated 4 Oct 2026, 11:23 UTC; whether this is current is unknown.']) assert.ok(text.includes(phrase), phrase);
+    assert.ok(!text.includes(theaterResponse.runId), 'internal run ids stay out of reader text');
     assert.ok(!text.includes('Confidence: 0%'), 'unknown confidence must not become zero');
     for (const details of doc.getElementById('theaters').querySelectorAll('details')) { details.open = true; details.dispatchEvent(new win.Event('toggle')); }
     assert.equal(messages.filter(m => m.method === 'tools/call').length, 1);
@@ -349,8 +350,10 @@ describe('original forecast theater UI', () => {
     enableTools(win);
     doc.getElementById('load-theaters').click();
     const first = messages.find(m => m.method === 'tools/call');
-    theaterReply(win, first, { ...theaterResponse, status: 'partial', completionStatus: 'partial', eligibleTheaterCount: 2, failedTheaterCount: 1 });
+    theaterReply(win, first, { ...theaterResponse, status: 'partial', completionStatus: 'partial', eligibleTheaterCount: 2, failedTheaterCount: 1, error: 'theater_timeout' });
     assert.match(doc.getElementById('theaters').textContent, /1 of 2.*1 failed/);
+    assert.match(doc.getElementById('theaters').textContent, /The theater source reported an error\./);
+    assert.doesNotMatch(doc.getElementById('theaters').textContent, /theater_timeout/, 'raw error codes stay out of reader text');
     assert.match(doc.getElementById('theaters').textContent, /Original theater assessment/);
     assert.equal(messages.filter(m => m.method === 'tools/call').length, 1);
     doc.getElementById('load-theaters').click();
@@ -369,7 +372,7 @@ describe('original forecast theater UI', () => {
     doc.getElementById('load-theaters').click();
     const first = messages.find(m => m.method === 'tools/call');
     theaterReply(win, first, { ...theaterResponse, status: 'unknown', completionStatus: '' });
-    assert.match(doc.getElementById('theaters').textContent, /Completion unknown/);
+    assert.match(doc.getElementById('theaters').textContent, /Whether this run finished is unknown/);
     assert.match(doc.getElementById('theaters').textContent, /Original theater assessment/);
     doc.getElementById('load-theaters').click();
     const second = messages.filter(m => m.method === 'tools/call')[1];
@@ -394,12 +397,13 @@ describe('original forecast theater UI', () => {
       theaterReply(win, messages.filter(m => m.method === 'tools/call').at(-1), source);
       assert.match(doc.getElementById('theaters').textContent, /Original theater assessment/);
       assert.match(doc.getElementById('theaters').textContent, /Previously loaded evidence remains visible/);
-      assert.ok(doc.getElementById('theaters').textContent.includes(source.status));
+      assert.match(doc.getElementById('theaters').textContent, /The latest refresh did not load: (the theater source is unavailable|no theater results were found|theater results are still being prepared|every theater failed)\./);
+      assert.doesNotMatch(doc.getElementById('theaters').textContent, /redis_unavailable/);
     }
     doc.getElementById('load-theaters').click();
     theaterReply(win, messages.filter(m => m.method === 'tools/call').at(-1), { ...empty, status: 'empty', completionStatus: 'no_eligible_theaters' });
     assert.doesNotMatch(doc.getElementById('theaters').textContent, /Original theater assessment/);
-    assert.match(doc.getElementById('theaters').textContent, /No eligible theaters/);
+    assert.match(doc.getElementById('theaters').textContent, /No theaters qualified this run/);
     assert.equal(messages.filter(m => m.method === 'tools/call').length, 6);
   });
   it('bounds a stalled theater read and ignores a response from outside the host', async () => {
@@ -432,20 +436,20 @@ describe('forecast MCP analysis parity', () => {
       assert.ok(text.includes(phrase), `missing website analysis field: ${phrase}`);
     }
     assert.match(doc.getElementById('list').textContent, /rising.*7 days/);
-    assert.match(doc.querySelector('.fc-meta').textContent, /AI backed.*AI signal \(moderate\).*\+10%/);
+    assert.equal(doc.querySelector('.fc-meta').textContent, 'EnergyEuroperising7 daysAI support (moderate) · +10%');
   });
   it('renders full and sampled forecasts from the dispatcher projection envelope', async () => {
     const { doc, sendResult } = await mount({ data: { predictions: null } });
     sendResult({ structuredContent: { projection: payload([forecast]) }, content: [{ type: 'text', text: JSON.stringify({ data: { predictions: null } }) }] });
     assert.equal(doc.querySelectorAll('.fc').length, 1, 'structured projected forecasts must override the fallback text');
     assert.match(doc.querySelector('details').textContent, /Supporting observation \(80%\).*Controlled actor/);
-    assert.match(doc.getElementById('foot').textContent, /Snapshot: 2026-10-03T17:00:00Z/);
+    assert.match(doc.getElementById('foot').textContent, /Generated 3 Oct 2026, 16:55 UTC/);
     sendResult({ structuredContent: { projection: { ...payload({ count: 14, sample: [{ ...forecast, probability: null }] }, { degraded: true, stale: true }), stale: true } } });
     assert.equal(doc.querySelectorAll('.fc').length, 1);
-    assert.match(doc.getElementById('count').textContent, /1 of 14 loaded/);
+    assert.equal(doc.getElementById('count').textContent, '1 forecast; 13 more were not included in this response.');
     assert.equal(doc.querySelector('.fc-prob').textContent, '—');
     assert.equal(doc.querySelector('.pbar'), null);
-    assert.match(doc.getElementById('foot').textContent, /Generated: 2026-10-03T16:55:00\.000Z.*Snapshot: 2026-10-03T17:00:00Z.*source degraded.*stale cache/);
+    assert.equal(doc.getElementById('foot').textContent, 'Generated 3 Oct 2026, 16:55 UTC · Out of date · Some forecast sources failed');
   });
   it('keeps projected unknown, empty and malformed coverage distinct and replaces prior forecasts', async () => {
     const { doc, sendResult } = await mount();
@@ -600,7 +604,7 @@ describe('forecast MCP analysis parity', () => {
     const region = doc.getElementById('region');
     region.value = 'Europe';
     region.dispatchEvent(new win.Event('change'));
-    assert.match(doc.getElementById('list').textContent, /No forecasts match/);
+    assert.equal(doc.getElementById('list').textContent, 'No forecasts match these filters.');
     region.value = 'Asia';
     region.dispatchEvent(new win.Event('change'));
     const details = doc.querySelector('details');
@@ -617,7 +621,14 @@ describe('forecast MCP analysis parity', () => {
     send(payload([]));
     assert.match(doc.getElementById('list').textContent, /No forecasts available/);
     send(payload({ count: 30, sample: [{ title: 'Sample forecast', probability: null, hasCaseFile: true }] }));
-    assert.match(doc.getElementById('count').textContent, /1 of 30/);
+    assert.equal(doc.getElementById('count').textContent, '1 forecast; 29 more were not included in this response.');
+    const filterDomain = doc.getElementById('domain');
+    filterDomain.appendChild(Object.assign(doc.createElement('option'), { value: 'absent' }));
+    filterDomain.value = 'absent'; filterDomain.dispatchEvent(new doc.defaultView.Event('change'));
+    assert.equal(doc.getElementById('list').textContent,
+      'No forecasts in this response match these filters. Forecasts left out of the response were not checked.',
+      'a sampled response does not claim nothing matches');
+    filterDomain.value = ''; filterDomain.dispatchEvent(new doc.defaultView.Event('change'));
     assert.match(doc.querySelector('details').textContent, /Case evidence is not included in this result/);
     assert.equal(doc.querySelector('.pbar'), null);
     assert.match(doc.querySelector('.fc-prob').textContent, /—/);
@@ -625,18 +636,18 @@ describe('forecast MCP analysis parity', () => {
   });
   it('shows degraded and stale source state without calling it fresh', async () => {
     const { doc } = await mount({ ...payload([forecast], { degraded: true, stale: true, error: 'upstream_unavailable' }), stale: true });
-    assert.match(doc.getElementById('foot').textContent, /source degraded/);
-    assert.match(doc.getElementById('foot').textContent, /stale/);
-    assert.match(doc.getElementById('foot').textContent, /2026-10-03T16:55:00\.000Z/);
+    assert.equal(doc.getElementById('foot').textContent,
+      'Generated 3 Oct 2026, 16:55 UTC · Out of date · Some forecast sources failed · The forecast source reported an error');
+    assert.doesNotMatch(doc.getElementById('foot').textContent, /upstream_unavailable/);
   });
   it('handles numeric and ISO generation times without a blank or invented date', async () => {
     const { doc, send } = await mount();
-    assert.match(doc.getElementById('foot').textContent, /Generated: 2026-10-03T16:55:00\.000Z/);
+    assert.match(doc.getElementById('foot').textContent, /Generated 3 Oct 2026, 16:55 UTC/);
     send(payload([forecast], { generatedAt: '2026-10-03T16:55:00Z' }));
-    assert.match(doc.getElementById('foot').textContent, /Generated: 2026-10-03T16:55:00\.000Z/);
+    assert.match(doc.getElementById('foot').textContent, /Generated 3 Oct 2026, 16:55 UTC/);
     for (const generatedAt of [0, 'invalid-date', 1e30, null]) {
       send(payload([forecast], { generatedAt }));
-      assert.doesNotMatch(doc.getElementById('foot').textContent, /Generated:|1970/);
+      assert.doesNotMatch(doc.getElementById('foot').textContent, /Generated|1970|Invalid/);
     }
   });
   it('keeps hostile fields as text and ignores non-text optional fields', async () => {
@@ -649,9 +660,10 @@ describe('forecast MCP analysis parity', () => {
     const { doc, send } = await mount(payload([{ ...forecast, calibration: { marketTitle: 'Unknown market', marketPrice: null }, demotedBySimulation: true, simulationAdjustment: -0.12 }]));
     assert.match(doc.getElementById('list').textContent, /Unknown market \(probability unknown\)/);
     assert.doesNotMatch(doc.getElementById('list').textContent, /Unknown market \(0%\)/);
-    assert.match(doc.querySelector('.fc-meta').textContent, /AI skeptical.*AI flag: dropped.*−12%/);
+    assert.match(doc.querySelector('.fc-meta').textContent, /AI skeptical · −12%$/);
+    assert.equal(doc.querySelectorAll('.fc-meta .chip').length, 5, 'one AI chip, not two');
     send(payload([{ ...forecast, simulationAdjustment: -0.05 }]));
-    assert.match(doc.querySelector('.fc-meta').textContent, /AI flagged.*AI caution.*−5%/);
+    assert.match(doc.querySelector('.fc-meta').textContent, /AI caution · −5%$/);
   });
   it('replaces prior analysis and resets a filter absent from the new result', async () => {
     const { win, doc, send } = await mount();
@@ -683,14 +695,13 @@ describe('published reliability and original evidence continuity', () => {
     const changed = compact(); changed.cached_at = '2026-10-07T01:00:00Z'; changed.stale = true;
     Object.assign(changed.data.predictions, { stale: true, degraded: true, error: 'source_failure' });
     send(changed);
-    assert.match(doc.getElementById('foot').textContent, /Snapshot: 2026-10-07T01:00:00Z.*Forecast source degraded.*stale cache.*source failure/);
+    assert.equal(doc.getElementById('foot').textContent, 'Generated 3 Oct 2026, 16:55 UTC · Out of date · Some forecast sources failed · The forecast source reported an error');
     assert.ok(doc.querySelector('#list details') === details); assert.equal(details.open, true);
     assert.ok(doc.getElementById('theaters').firstChild === theaterNode);
     assert.match(details.textContent, /Loading original case/);
     caseReply(win, request);
     const recovered = compact(); recovered.cached_at = '2026-10-07T02:00:00Z'; send(recovered);
-    assert.match(doc.getElementById('foot').textContent, /Snapshot: 2026-10-07T02:00:00Z/);
-    assert.doesNotMatch(doc.getElementById('foot').textContent, /degraded|stale cache|source failure/);
+    assert.equal(doc.getElementById('foot').textContent, 'Generated 3 Oct 2026, 16:55 UTC');
     assert.ok(doc.querySelector('#list details') === details); assert.equal(details.open, true);
     assert.match(details.textContent, /Supporting observation/);
     assert.ok(doc.getElementById('theaters').firstChild === theaterNode);

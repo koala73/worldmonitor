@@ -97,4 +97,37 @@ message GetCountryEnergyProfileResponse {
   bool   import_share_available = 62;
   int32  import_share_year      = 63;
   string import_share_source    = 64;
+
+  // Independent operational feeds. Missing measurements are omitted, including
+  // source failures. These observations do not change the structural mix or risk.
+  repeated RegionalEnergyFeed regional_energy_feeds = 65;
+}
+
+message RegionalEnergyObservation {
+  string metric = 1;
+  // Source reporting period: YYYY-MM, YYYY-MM-DD, or a UTC ISO timestamp.
+  string period = 2;
+  double value = 3;
+  string unit = 4;
+  // Provider coverage, product, or cross-border partner. Empty means national.
+  string area = 5;
+  bool stale = 6;
+}
+
+message RegionalEnergyFeed {
+  string source_id = 1;
+  string name = 2;
+  string source_url = 3;
+  string licence = 4;
+  // available, partial, stale, unavailable, or error. Partial means that the
+  // latest series have different freshness states. It is not a risk rating.
+  string status = 5;
+  // Unix epoch milliseconds; zero when unavailable.
+  int64 fetched_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Latest observation period in Unix epoch milliseconds; zero when unavailable.
+  int64 observed_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  repeated string data_urls = 8;
+  repeated RegionalEnergyObservation observations = 9;
+  // Stable failure code. Empty for a valid record, including retained stale data.
+  string error = 10;
 }

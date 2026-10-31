@@ -1007,6 +1007,9 @@ describe('planned Railway service lifecycle', () => {
       // 359e5bd7-4160-41d6-8792-f4aff20a3006 runs `node seed-no2-activity.mjs`
       // on cron 20 6 * * * with the CDSE credentials. Leaving it planned would
       // exempt a live cron from the watch-path and deploy-drift checks.
+      // seed-bundle-regional-energy (#9842) stays planned until its Railway
+      // service exists. Remove it from this list when that service is provisioned.
+      'seed-bundle-regional-energy',
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',

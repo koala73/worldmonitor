@@ -231,6 +231,20 @@
       ]
     },
     {
+      "host": "admin.gse.com.ge",
+      "provider": "admin.gse.com.ge",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit Georgian State Electrosystem and link to https://admin.gse.com.ge/api/en/menu/actual-balance-125.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "ae.usembassy.gov",
       "provider": "ae.usembassy.gov",
       "kind": "structured",
@@ -571,6 +585,23 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "api.cammesa.com",
+      "provider": "api.cammesa.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved",
+      "attribution": "Credit CAMMESA SADI and link to https://api.cammesa.com/demanda-svc/swagger-ui.html.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_regional-energy-source.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -2832,6 +2863,20 @@
       ]
     },
     {
+      "host": "dados.ons.org.br",
+      "provider": "dados.ons.org.br",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC-BY",
+      "attribution": "Credit Brazil ONS and link to https://dados.ons.org.br/api/3/action/package_show?id=balanco-energia-subsistema.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "dai2.xumo.com",
       "provider": "dai2.xumo.com",
       "kind": "feed",
@@ -3889,6 +3934,20 @@
       "references": [
         {
           "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
+      "host": "erp.powergrid.gov.bd",
+      "provider": "erp.powergrid.gov.bd",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit Bangladesh Power Grid and link to https://erp.powergrid.gov.bd/w/generations/view_generations.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -7406,6 +7465,20 @@
       "license": "Excluded: live-video playback transport; channel/provider terms apply separately",
       "attribution": "Excluded from the external-provider count: presentation-only HLS stream, not an ingested dataset.",
       "status": "excluded"
+    },
+    {
+      "host": "petrobangla.org.bd",
+      "provider": "petrobangla.org.bd",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit Petrobangla daily gas and link to https://petrobangla.org.bd/pages/reports.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
     },
     {
       "host": "phys.org",
@@ -11891,6 +11964,20 @@
       ]
     },
     {
+      "host": "www.eskom.co.za",
+      "provider": "www.eskom.co.za",
+      "kind": "structured",
+      "observed": true,
+      "license": "Site terms apply; open data licence unconfirmed",
+      "attribution": "Credit Eskom data portal and link to https://www.eskom.co.za/dataportal/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "www.ethiopia-insight.com",
       "provider": "www.ethiopia-insight.com",
       "kind": "feed",
@@ -12299,6 +12386,9 @@
       "references": [
         {
           "path": "scripts/seed-fuel-prices.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -13051,6 +13141,20 @@
       "references": [
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.niggrid.org",
+      "provider": "www.niggrid.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved",
+      "attribution": "Credit Nigeria NISO and link to https://www.niggrid.org/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
