@@ -1,4 +1,5 @@
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile, readdir, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -6,8 +7,32 @@ import { pathToFileURL } from 'node:url';
 const HEALTHY = new Set(['OK', 'OK_ZERO', 'OK_CASCADE', 'COVERAGE_MARGIN_LOW']);
 const PENDING = new Set(['EMPTY_ON_DEMAND', 'ROLLOUT_PENDING', 'REFRESH_PENDING', 'NOT_CONFIGURED', 'SOURCE_BLOCKED', 'CONTENT_AGE_PREWARNING']);
 
+async function assertPrivateDirectory(directory) {
+  const stat = await lstat(directory).catch(error => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (!stat) return false;
+  if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0
+    || (process.getuid && stat.uid !== process.getuid())) {
+    throw new Error('Evidence directory must be private, owned by the current user, and not a symbolic link');
+  }
+  return true;
+}
+
+async function readEvent(path) {
+  const file = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+  try {
+    const stat = await file.stat();
+    if (!stat.isFile() || (stat.mode & 0o077) !== 0
+      || (process.getuid && stat.uid !== process.getuid())) throw new Error('Evidence file must be private and owned by the current user');
+    return JSON.parse(await file.readFile('utf8'));
+  } finally { await file.close(); }
+}
+
 async function appendEvent(directory, event) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
+  await assertPrivateDirectory(directory);
   const path = join(directory, `${Date.now()}-${randomUUID()}.json`);
   await writeFile(path, JSON.stringify(event, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
   return path;
@@ -41,11 +66,9 @@ export async function captureHealthEvidence(directory, snapshot, owner) {
 }
 
 export async function readIncidents(directory) {
-  const files = (await readdir(directory).catch(error => {
-    if (error.code === 'ENOENT') return [];
-    throw error;
-  })).filter(name => name.endsWith('.json')).sort();
-  const events = await Promise.all(files.map(async file => JSON.parse(await readFile(join(directory, file), 'utf8'))));
+  if (!await assertPrivateDirectory(directory)) return [];
+  const files = (await readdir(directory)).filter(name => name.endsWith('.json')).sort();
+  const events = await Promise.all(files.map(file => readEvent(join(directory, file))));
   events.sort((a, b) => a.observedAt.localeCompare(b.observedAt)
     || Number(a.type === 'resolution') - Number(b.type === 'resolution')
     || (a.capturedAt ?? '').localeCompare(b.capturedAt ?? ''));

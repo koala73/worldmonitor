@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, readdir, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { captureHealthEvidence, readIncidents, resolveIncident } from '../scripts/health-incident-evidence.mjs';
@@ -73,4 +73,25 @@ test('content-age advisories neither open incidents nor count as recurrence', as
     assert.equal(incident.occurrences, 1);
     assert.equal(incident.state, 'recovered');
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+
+test('capture and report reject shared directories and symbolic links', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'health-evidence-security-'));
+  const directory = join(root, 'events');
+  const snapshot = { checkedAt: '2031-01-01', checks: { a: { status: 'SEED_ERROR' } } };
+  try {
+    await captureHealthEvidence(directory, snapshot, 'owner');
+    await chmod(directory, 0o777);
+    await assert.rejects(captureHealthEvidence(directory, snapshot, 'owner'), /private/);
+    await assert.rejects(readIncidents(directory), /private/);
+    await chmod(directory, 0o700);
+    const alias = join(root, 'alias');
+    await symlink(directory, alias);
+    await assert.rejects(captureHealthEvidence(alias, snapshot, 'owner'), /private/);
+    await assert.rejects(readIncidents(alias), /private/);
+    const [file] = await readdir(directory);
+    await symlink(join(directory, file), join(directory, 'linked.json'));
+    await assert.rejects(readIncidents(directory));
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
