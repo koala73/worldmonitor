@@ -588,14 +588,15 @@ const STANDALONE_KEYS = {
   // #8538. One probe per worldwide CPI source. The canonical keys are 115 KB –
   // 1 MB and the read path pipelines four of them, so health reads the
   // seed-meta keys instead of paying for the full payloads.
-  // Food-price history is read on demand by GetFoodPrices.
-  foodPricesPihps: 'seed-meta:economic:food-prices-pihps',
-  foodPricesPbs: 'seed-meta:economic:food-prices-pbs',
-  foodPricesDa: 'seed-meta:economic:food-prices-da',
-  foodPricesCbsl: 'seed-meta:economic:food-prices-cbsl',
-  foodPricesSniim: 'seed-meta:economic:food-prices-sniim',
-  foodPricesGiews: 'seed-meta:economic:food-prices-giews',
-  foodPricesOnagri: 'seed-meta:economic:food-prices-onagri',
+  // Food prices: STRLEN on the cache GetFoodPrices reads (O(1), never loads the
+  // payload), so an evicted cache cannot read OK while its seed-meta survives.
+  foodPricesPihps: 'economic:food-prices:pihps:v1',
+  foodPricesPbs: 'economic:food-prices:pbs:v1',
+  foodPricesDa: 'economic:food-prices:da:v1',
+  foodPricesCbsl: 'economic:food-prices:cbsl:v1',
+  foodPricesSniim: 'economic:food-prices:sniim:v1',
+  foodPricesGiews: 'economic:food-prices:giews:v1',
+  foodPricesOnagri: 'economic:food-prices:onagri:v1',
   worldCpiImf:           'seed-meta:economic:world-cpi-imf',
   worldCpiEurostat:      'seed-meta:economic:world-cpi-eurostat',
   worldCpiEstat:         'seed-meta:economic:world-cpi-estat',

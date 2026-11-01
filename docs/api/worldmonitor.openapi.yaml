@@ -45845,14 +45845,21 @@ components:
                     format: double
                 wowAvailable:
                     type: boolean
+                    description: |-
+                        True only when the same series has a price exactly seven days before `date`.
+                         When false, there is no comparison: wow_pct, previous_date and previous_price
+                         are placeholders (0 or empty), not a 0% change.
                 wowPct:
                     type: number
                     format: double
+                    description: Week-over-week change in percent. Meaningful only when wow_available is true.
                 previousDate:
                     type: string
+                    description: Date of the baseline price. Empty when wow_available is false.
                 previousPrice:
                     type: number
                     format: double
+                    description: Baseline price in the same unit and currency. 0 when wow_available is false.
         worldmonitor_economic_v1_FoodSecurityContext:
             type: object
             properties:

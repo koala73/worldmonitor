@@ -11,9 +11,15 @@ message FoodMarketPrice {
   string currency = 6;
   string date = 7;
   double price = 8;
+  // True only when the same series has a price exactly seven days before `date`.
+  // When false, there is no comparison: wow_pct, previous_date and previous_price
+  // are placeholders (0 or empty), not a 0% change.
   bool wow_available = 9;
+  // Week-over-week change in percent. Meaningful only when wow_available is true.
   double wow_pct = 10;
+  // Date of the baseline price. Empty when wow_available is false.
   string previous_date = 11;
+  // Baseline price in the same unit and currency. 0 when wow_available is false.
   double previous_price = 12;
 }
 
