@@ -116,6 +116,8 @@ describe("submit", () => {
     ["summary", { summary: "   " }],
     ["principalId", { authKind: "keyed", reporterKey: "principal:user_1" }],
     ["principalId", { principalId: "user_1" }],
+    ["reporterKey", { reporterKey: `ip:${hex("d")}` }],
+    ["reporterKey", { authKind: "keyed", principalId: "user_1", reporterKey: "principal:user_2", ipHash: undefined }],
   ])("rejects an invalid %s without storing", async (field, overrides) => {
     const t = convexTest(schema, modules);
     await expect(t.mutation(internal.agentFeedback.submit, report(overrides))).rejects.toThrow(field);
@@ -135,8 +137,10 @@ describe("submit", () => {
 });
 
 describe("security reports", () => {
-  const security = (overrides: Record<string, unknown> = {}) =>
-    report({ kind: "security", reporterKey: `ip:${uniqueHex()}`, ...overrides });
+  const security = (overrides: Record<string, unknown> = {}) => {
+    const ipHash = (overrides.ipHash as string | undefined) ?? uniqueHex();
+    return report({ kind: "security", ipHash, reporterKey: `ip:${ipHash}`, ...overrides });
+  };
 
   test("go straight to private and take one email slot", async () => {
     const t = convexTest(schema, modules);
@@ -151,9 +155,9 @@ describe("security reports", () => {
   test("a retried security report does not take a second slot", async () => {
     const t = convexTest(schema, modules);
     const retryKey = uniqueHex();
-    const reporterKey = `ip:${uniqueHex()}`;
-    await t.mutation(internal.agentFeedback.submit, security({ retryKey, reporterKey }));
-    await t.mutation(internal.agentFeedback.submit, security({ retryKey, reporterKey }));
+    const ipHash = uniqueHex();
+    await t.mutation(internal.agentFeedback.submit, security({ retryKey, ipHash }));
+    await t.mutation(internal.agentFeedback.submit, security({ retryKey, ipHash }));
     const counter = await t.run((ctx) => ctx.db.query("counters").first());
     expect(counter?.value).toBe(1);
   });
@@ -226,8 +230,9 @@ describe("security reports", () => {
       });
       const inFlight = await ctx.db.insert("agentFeedback", { ...base, receivedAt: NOW - 1000, notifyScheduledAt: NOW - 1000 });
       const announced = await ctx.db.insert("agentFeedback", { ...base, receivedAt: NOW - 1000, notifiedAt: NOW - 500 });
+      const closed = await ctx.db.insert("agentFeedback", { ...base, status: "closed", receivedAt: NOW - 1000 });
       const bug = await ctx.db.insert("agentFeedback", { ...base, kind: "bug", status: "received", receivedAt: NOW - 1000 });
-      return { heldBack, staleScheduled, inFlight, announced, bug };
+      return { heldBack, staleScheduled, inFlight, announced, bug, closed };
     });
 
     expect(await t.action(internal.agentFeedback.sendSecurityDigest, {})).toEqual({ listed: 2 });
@@ -236,6 +241,7 @@ describe("security reports", () => {
     expect(bodies[0]).toContain(ids.staleScheduled);
     expect(bodies[0]).not.toContain(ids.inFlight);
     expect(bodies[0]).not.toContain(ids.bug);
+    expect(bodies[0]).not.toContain(ids.closed);
     expect(bodies[0]).not.toContain("DIGEST-SECRET");
 
     // Marked rows are not listed again, and an empty digest sends nothing.
@@ -247,14 +253,28 @@ describe("security reports", () => {
 describe("transition", () => {
   test("filed drops text and keeps the issue number", async () => {
     const t = convexTest(schema, modules);
-    const { reportId } = await t.mutation(internal.agentFeedback.submit, report({ expected: "e", actual: "a", clientName: "n" }));
+    const { reportId } = await t.mutation(internal.agentFeedback.submit, report({
+      expected: "e", actual: "a", clientName: "n", requestId: "iad1::abc",
+    }));
     await t.mutation(internal.agentFeedback.transition, { reportId, to: "triaged" });
     await t.mutation(internal.agentFeedback.transition, { reportId, to: "filed", issueNumber: 9999 });
     const [row] = await rows(t);
     expect(row).toMatchObject({ status: "filed", issueNumber: 9999, surfaceName: "get_market_data", fingerprint: hex("a") });
-    for (const field of ["summary", "expected", "actual", "clientName"] as const) {
+    // Decision 10: text and network identity go; reporter keys are tombstoned.
+    for (const field of ["summary", "expected", "actual", "clientName", "requestId", "ipHash", "uaHash"] as const) {
       expect(row[field]).toBeUndefined();
     }
+    expect(row.reporterKey).toBe("filed");
+    expect(row.retryKey).toBe("filed");
+  });
+
+  test("a filed keyed row keeps principalId so account deletion still finds it", async () => {
+    const t = convexTest(schema, modules);
+    const { reportId } = await t.mutation(internal.agentFeedback.submit, report({
+      authKind: "keyed", principalId: "user_1", reporterKey: "principal:user_1", ipHash: undefined,
+    }));
+    await t.mutation(internal.agentFeedback.transition, { reportId, to: "filed", issueNumber: 1 });
+    expect((await rows(t))[0].principalId).toBe("user_1");
   });
 
   test("security rows can only be closed", async () => {
@@ -299,6 +319,29 @@ describe("prune", () => {
     expect(result).toEqual({ deleted: ages.filter(([, , gone]) => gone).length, rescheduled: false });
     const left = (await rows(t)).map((r) => `${r.status}:${Math.round((NOW - r.receivedAt) / DAY)}`).sort();
     expect(left).toEqual(["filed:364", "private:179", "received:29"]);
+  });
+
+  test("removes email counters older than two days and keeps recent ones", async () => {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      for (const days of [0, 1, 3, 40]) {
+        await ctx.db.insert("counters", { name: securityEmailCounterName(NOW - days * DAY), value: 1 });
+      }
+      await ctx.db.insert("counters", { name: "unrelated", value: 7 });
+    });
+    await t.mutation(internal.agentFeedback.prune, {});
+    const names = (await t.run((ctx) => ctx.db.query("counters").collect())).map((c) => c.name).sort();
+    expect(names).toEqual([securityEmailCounterName(NOW - DAY), securityEmailCounterName(NOW), "unrelated"].sort());
+  });
+
+  test("a non-positive limit cannot loop", async () => {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("agentFeedback", { ...report(), status: "received", receivedAt: NOW - 40 * DAY, updatedAt: NOW });
+    });
+    expect(await t.mutation(internal.agentFeedback.prune, { limit: 0 })).toEqual({ deleted: 1, rescheduled: true });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await rows(t)).toHaveLength(0);
   });
 
   test("self-drains when a batch is full", async () => {

@@ -80,8 +80,11 @@ function invalid(field: string): never {
   throw new ConvexError({ kind: "INVALID_FEEDBACK", field });
 }
 
+const SECURITY_EMAIL_COUNTER_PREFIX = "agentFeedback:securityEmails:";
+const FILED_TOMBSTONE = "filed";
+
 export function securityEmailCounterName(now: number): string {
-  return `agentFeedback:securityEmails:${new Date(now).toISOString().slice(0, 10)}`;
+  return `${SECURITY_EMAIL_COUNTER_PREFIX}${new Date(now).toISOString().slice(0, 10)}`;
 }
 
 /**
@@ -166,6 +169,12 @@ export const submit = internalMutation({
     if (args.uaHash !== undefined && !HASH_RE.test(args.uaHash)) invalid("uaHash");
     if (args.authKind === "keyed" && !args.principalId) invalid("principalId");
     if (args.authKind === "anonymous" && args.principalId !== undefined) invalid("principalId");
+    // The reporter key must name the same identity as the reporter fields, or
+    // the hourly cap splits and account deletion orphans the row.
+    const expectedReporterKey = args.authKind === "keyed"
+      ? `principal:${args.principalId}`
+      : `ip:${args.ipHash ?? ""}`;
+    if (args.reporterKey !== expectedReporterKey) invalid("reporterKey");
 
     const summary = clip(args.summary, FEEDBACK_MAX_SUMMARY);
     if (!summary) invalid("summary");
@@ -284,8 +293,8 @@ async function sendOwnerEmail(
     return result.sent;
   } catch (err) {
     const status = err instanceof ResendSendError ? err.status : "request error";
-    // Throwing lets Convex retry the action. The row is already durable, and
-    // the digest picks it up if every retry fails.
+    // Scheduled actions are not retried. The row is already durable and keeps
+    // notifiedAt unset, so the daily digest announces it instead.
     throw new Error(`[agentFeedback] Resend failed (${status})`);
   }
 }
@@ -334,6 +343,8 @@ export const listUnannouncedSecurity = internalQuery({
       )
       .take(DIGEST_BATCH * 2);
     return rows
+      // A row the owner already closed needs no announcement.
+      .filter((row) => row.status === "private")
       .filter((row) =>
         row.notifyScheduledAt === undefined ||
         row.notifyScheduledAt < now - FEEDBACK_NOTIFY_GRACE_MS,
@@ -410,7 +421,9 @@ export const transition = internalMutation({
         invalid("issueNumber");
       }
       // Decision 10: a filed row keeps id, kind, surface, fingerprint, and the
-      // issue number. The text now lives in the GitHub issue.
+      // issue number for a year. The text now lives in the GitHub issue, and
+      // the reporter's network identity goes with it. principalId stays so
+      // account deletion can still find a keyed reporter's row.
       await ctx.db.patch(row._id, {
         status: "filed",
         issueNumber: args.issueNumber,
@@ -418,6 +431,11 @@ export const transition = internalMutation({
         expected: undefined,
         actual: undefined,
         clientName: undefined,
+        requestId: undefined,
+        ipHash: undefined,
+        uaHash: undefined,
+        reporterKey: FILED_TOMBSTONE,
+        retryKey: FILED_TOMBSTONE,
         updatedAt: now,
       });
       return { status: "filed" as const };
@@ -449,7 +467,7 @@ export const prune = internalMutation({
   args: { now: v.optional(v.number()), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const now = args.now ?? Date.now();
-    const batch = args.limit ?? PRUNE_BATCH;
+    const batch = Math.max(1, Math.floor(args.limit ?? PRUNE_BATCH));
     let deleted = 0;
     let full = false;
     for (const [status, retention] of Object.entries(FEEDBACK_RETENTION_MS) as Array<
@@ -465,6 +483,17 @@ export const prune = internalMutation({
       deleted += stale.length;
       if (stale.length >= batch) full = true;
     }
+    // Daily email counters are only read on their own UTC day.
+    const staleCounters = await ctx.db
+      .query("counters")
+      .withIndex("by_name", (q) =>
+        q.gte("name", SECURITY_EMAIL_COUNTER_PREFIX)
+          .lt("name", securityEmailCounterName(now - 2 * DAY_MS)),
+      )
+      .take(batch);
+    for (const counter of staleCounters) await ctx.db.delete(counter._id);
+    if (staleCounters.length >= batch) full = true;
+
     // Keep the same `now` across the chain so the cutoff stays fixed.
     if (full) {
       await ctx.scheduler.runAfter(0, internal.agentFeedback.prune, { now, limit: batch });
