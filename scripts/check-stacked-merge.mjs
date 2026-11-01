@@ -501,10 +501,10 @@ export function checkClosedPull({ event, gh, git, issues, sleep } = {}) {
 function retargetComment({ closedPull, item }) {
   if (item.action === 'closed-by-base-deletion') {
     return [
-      `Parent ${pullLabel(closedPull)} merged into \`${item.to}\` and its branch \`${item.from}\` was deleted, so GitHub closed this PR instead of retargeting it.`,
-      'Its changes have not reached the default branch, and any PR based on this branch now merges into a dead end.',
+      `Parent ${pullLabel(closedPull)} merged into \`${item.to}\`, and this PR closed after its base branch \`${item.from}\` was deleted. GitHub may have closed it instead of retargeting it.`,
+      'If this PR was not closed on purpose, its changes may not have reached the default branch, and any open PR based on this branch would merge into a dead end.',
       '',
-      `To land it, restore \`${item.from}\` (\`git push origin <sha>:refs/heads/${item.from}\`), reopen this PR, and run \`gh pr edit ${item.number} --base ${item.to}\`, or open a new PR from this branch. See #7006.`,
+      `Check whether its changes already reached the default branch. If they did not, restore \`${item.from}\` (\`git push origin <sha>:refs/heads/${item.from}\`), reopen this PR, and run \`gh pr edit ${item.number} --base ${item.to}\`, or open a new PR from this branch. See #7006.`,
     ].join('\n');
   }
   if (item.action === 'retarget') {
@@ -520,6 +520,14 @@ function retargetComment({ closedPull, item }) {
     '',
     `Retarget it (\`gh pr edit ${item.number} --base main\`) or close it. See #7006.`,
   ].join('\n');
+}
+
+function branchExists({ gh, repository, ref }) {
+  // matching-refs is a prefix match and returns [] rather than 404 when absent.
+  const refs = flattenGhPages(gh([
+    'api', '--paginate', '--slurp', `repos/${repository}/git/matching-refs/heads/${ref.split('/').map(encodeURIComponent).join('/')}`,
+  ]));
+  return refs.some((item) => item?.ref === `refs/heads/${ref}`);
 }
 
 function rerunLatestGuard({ gh, repository, headSha }) {
@@ -552,38 +560,9 @@ export function retargetStackedChildren({ event, gh } = {}) {
     'api', '--paginate', '--slurp',
     `repos/${repository}/pulls?state=${state}&base=${encodeURIComponent(base)}&per_page=100`,
   ]));
-  const plan = planStackRetargets({
-    closedPull, openChildren: listChildren('open', headRef), repository, defaultBranch,
-  }).map((item) => ({ ...item, parent: closedPull }));
-  // Deleting a merged branch by hand (delete_branch_on_merge is off) can make
-  // GitHub close its children instead of retargeting them, before this job
-  // lists open ones. Their own open children then sit on a dead branch with a
-  // stale green guard (#9950 → #9958 → #9962, #9963).
-  if (isMergedPull(closedPull)) {
-    const mergedAt = Date.parse(closedPull.merged_at);
-    for (const child of listChildren('closed', headRef)) {
-      if (isMergedPull(child) || !(Date.parse(child.closed_at) >= mergedAt)
-        || child.base?.ref !== headRef
-        || (child.base?.repo?.full_name && child.base.repo.full_name !== repository)
-        || !stackedBaseRef({ closedPull: child, repository, defaultBranch })) continue;
-      plan.push({
-        number: child.number,
-        action: 'closed-by-base-deletion',
-        from: headRef,
-        to: closedPull.base.ref,
-        parent: closedPull,
-      });
-      plan.push(...planStackRetargets({
-        closedPull: child,
-        openChildren: listChildren('open', child.head.ref),
-        repository,
-        defaultBranch,
-      }).map((item) => ({ ...item, parent: child })));
-    }
-  }
   const failures = [];
   const warnings = [];
-  for (const { parent, ...item } of plan) {
+  const applyItem = ({ parent, ...item }) => {
     let applied = item.action !== 'retarget';
     if (item.action === 'retarget') {
       try {
@@ -620,6 +599,51 @@ export function retargetStackedChildren({ event, gh } = {}) {
         (item.action === 'strand' ? failures : warnings).push(message);
       }
     }
+  };
+  const plan = planStackRetargets({
+    closedPull, openChildren: listChildren('open', headRef), repository, defaultBranch,
+  }).map((item) => ({ ...item, parent: closedPull }));
+  // Retarget open children first: nothing below may delay or prevent it.
+  plan.forEach(applyItem);
+  // Deleting a merged branch by hand (delete_branch_on_merge is off) can make
+  // GitHub close its children instead of retargeting them, before this job
+  // lists open ones. Their own open children then sit on a dead branch with a
+  // stale green guard (#9950 → #9958 → #9962, #9963).
+  if (isMergedPull(closedPull)) {
+    const closedPlan = [];
+    try {
+      const mergedAt = Date.parse(closedPull.merged_at);
+      const closedChildren = listChildren('closed', headRef).filter((child) => !isMergedPull(child)
+        && Date.parse(child.closed_at) >= mergedAt
+        && child.base?.ref === headRef
+        && (!child.base?.repo?.full_name || child.base.repo.full_name === repository)
+        && stackedBaseRef({ closedPull: child, repository, defaultBranch }));
+      // Only a deleted base explains the closure; a child closed by hand while
+      // the branch still exists gets no recovery comment.
+      const baseDeleted = closedChildren.length > 0 && !branchExists({ gh, repository, ref: headRef });
+      for (const child of closedChildren) {
+        if (baseDeleted) {
+          closedPlan.push({
+            number: child.number,
+            action: 'closed-by-base-deletion',
+            from: headRef,
+            to: closedPull.base.ref,
+            parent: closedPull,
+          });
+        }
+        // Either way the child is closed unmerged, so its open children are stranded.
+        closedPlan.push(...planStackRetargets({
+          closedPull: child,
+          openChildren: listChildren('open', child.head.ref),
+          repository,
+          defaultBranch,
+        }).map((item) => ({ ...item, parent: child })));
+      }
+    } catch (error) {
+      failures.push(`closed children of ${headRef}: lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    closedPlan.forEach(applyItem);
+    plan.push(...closedPlan);
   }
   return {
     ok: failures.length === 0,

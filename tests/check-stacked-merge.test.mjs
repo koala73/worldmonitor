@@ -1062,7 +1062,7 @@ describe('retargetStackedChildren executor', () => {
     assert.equal(reads, 2);
     assert.equal(log.filter(entry => entry.path.endsWith('/rerun')).length, 1);
   });
-  function fakeGh(children, { failPatch = new Set(), failRerun = false, closedChildren = [], openByBase = {} } = {}) {
+  function fakeGh(children, { failPatch = new Set(), failRerun = false, closedChildren = [], openByBase = {}, existingBranches = [], failClosedList = false } = {}) {
     const log = [];
     const gh = (args, options = {}) => {
       const path = args.find(arg => arg.startsWith('repos/'));
@@ -1072,7 +1072,14 @@ describe('retargetStackedChildren executor', () => {
         const base = decodeURIComponent(new URL(path, 'https://api.github.test').searchParams.get('base'));
         return JSON.stringify([openByBase[base] ?? children]);
       }
-      if (path.includes('/pulls?state=closed&base=')) return JSON.stringify([closedChildren]);
+      if (path.includes('/pulls?state=closed&base=')) {
+        if (failClosedList) throw new Error('closed list refused');
+        return JSON.stringify([closedChildren]);
+      }
+      if (path.includes('/git/matching-refs/heads/')) {
+        const prefix = decodeURIComponent(path.split('/git/matching-refs/heads/')[1]);
+        return JSON.stringify([existingBranches.filter(name => name.startsWith(prefix)).map(name => ({ ref: `refs/heads/${name}` }))]);
+      }
       if (method === 'PATCH') {
         const number = Number(path.split('/').at(-1));
         if (failPatch.has(number)) throw new Error(`patch ${number} refused`);
@@ -1221,6 +1228,45 @@ describe('retargetStackedChildren executor', () => {
     // The grandchild's guard reruns against the live base, which now fails.
     assert.deepEqual(log.filter(entry => entry.path.endsWith('/rerun')).map(entry => entry.path), [
       'repos/koala73/worldmonitor/actions/runs/333333/rerun',
+    ]);
+  });
+
+  it('strands the open children of a child closed by hand, without a deletion comment', () => {
+    // The base still exists (a longer name sharing its prefix must not count as it),
+    // so the closure was manual: no recovery claim, but #9962 is still stranded.
+    const { gh, log } = fakeGh([], {
+      closedChildren: [CHILD_9958],
+      openByBase: { 'feat/mcp-report-issue': [GRANDCHILD_9962] },
+      existingBranches: ['feat/agent-feedback-rest', 'feat/agent-feedback-rest-v2'],
+    });
+    const result = retargetStackedChildren({ event: pullEvent(PARENT_9950, { action: 'closed' }), gh });
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(result.plan.map(item => [item.number, item.action]), [[9962, 'strand']]);
+    assert.ok(log.some(entry => entry.path === 'repos/koala73/worldmonitor/git/matching-refs/heads/feat/agent-feedback-rest'));
+    assert.deepEqual(log.filter(entry => entry.path.endsWith('/comments')).map(entry => entry.path), [
+      'repos/koala73/worldmonitor/issues/9962/comments',
+    ]);
+  });
+
+  it('flags a deleted base even when a longer branch name shares its prefix', () => {
+    const { gh } = fakeGh([], {
+      closedChildren: [CHILD_9958],
+      existingBranches: ['feat/agent-feedback-rest-v2'],
+    });
+    const result = retargetStackedChildren({ event: pullEvent(PARENT_9950, { action: 'closed' }), gh });
+    assert.deepEqual(result.plan.map(item => [item.number, item.action]), [[9958, 'closed-by-base-deletion']]);
+  });
+
+  it('retargets open children before the closed-child lookup, and reports that lookup failing', () => {
+    const { gh, log } = fakeGh([CHILD_8519], { failClosedList: true });
+    const result = retargetStackedChildren({ event: pullEvent(PARENT_8518, { action: 'closed' }), gh });
+    assert.equal(result.exitCode, 1);
+    assert.match(result.annotation, /closed children of feat\/live-news-session-v2: lookup failed/);
+    const order = log.map(entry => entry.method === 'PATCH' || entry.path.endsWith('/rerun') || entry.path.includes('state=closed') ? entry.path : null).filter(Boolean);
+    assert.deepEqual(order, [
+      'repos/koala73/worldmonitor/pulls/8519',
+      'repos/koala73/worldmonitor/actions/runs/a490f4/rerun',
+      'repos/koala73/worldmonitor/pulls?state=closed&base=feat%2Flive-news-session-v2&per_page=100',
     ]);
   });
 
