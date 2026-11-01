@@ -27,13 +27,126 @@ async function mount(wire, callback) {
     const send = value => win.dispatchEvent(new win.MessageEvent('message', { source: win.eval('window.parent'), data: { jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { result: value } } }));
     send(wire);
     await win.happyDOM.waitUntilComplete();
-    await callback(win.document, send);
+    await callback(win.document, send, messages);
     assert.equal(reads, 0);
     assert.equal(messages.filter(message => ['tools/call', 'ui/call-tool'].includes(message?.method)).length, 0);
   } finally { await win.happyDOM.close(); }
 }
 const rows = document => document.querySelectorAll('.crow');
 const footer = document => document.getElementById('foot').textContent;
+
+describe('Chokepoint Monitor local route details', () => {
+  const values = detail => Object.fromEntries(Array.from(detail.querySelectorAll('.cstat'), item => [item.querySelector('.k').textContent, item.querySelector('.v').textContent]));
+  const supplied = row({ todayCargo: 12, todayOther: 2, incidentCount7d: 7, disruptionPct: 12.5, anomaly: { signal: true } });
+
+  it('opens independently named native disclosures and reports host size without data calls', async () => {
+    const full = payload({ hormuz: supplied, suez: supplied });
+    for (const wire of [result(full), { content: result(full).content }, result(full, true), result(full.data, true)]) {
+      await mount(wire, async (document, send, messages) => {
+        const details = document.querySelectorAll('.crow details');
+        assert.equal(details.length, 2, 'Each supplied route needs a native disclosure');
+        assert.equal(details[0].open, false);
+        assert.equal(details[1].open, false);
+        const control = details[0].querySelector('summary');
+        assert.equal(control.getAttribute('aria-label'), 'Route details for Hormuz');
+        assert.equal(details[1].querySelector('summary').getAttribute('aria-label'), 'Route details for Suez Canal');
+        const before = messages.filter(message => message.method === 'ui/notifications/size-changed').length;
+        control.click();
+        await document.defaultView.happyDOM.waitUntilComplete();
+        const afterOpen = messages.filter(message => message.method === 'ui/notifications/size-changed').length;
+        assert.ok(afterOpen > before, 'Opening the first route must update host height');
+        assert.equal(details[0].open, true);
+        assert.equal(details[1].open, false);
+        assert.deepEqual(values(details[0]), {
+          'Cargo, last 24 hours': '12', 'Other, last 24 hours': '2',
+          'Reported incidents, 7 days': '7', 'Reported disruption': '12.5%', 'Reported anomaly signal': 'Yes',
+        });
+        assert.equal(details[0].querySelector('.csum').textContent, 'Summary fetched: 4 Oct 2026, 12:00 UTC');
+        control.click();
+        assert.equal(details[0].open, false);
+        await document.defaultView.happyDOM.waitUntilComplete();
+        const afterClose = messages.filter(message => message.method === 'ui/notifications/size-changed').length;
+        assert.ok(afterClose > afterOpen, 'Closing the first route must update host height');
+        details[1].querySelector('summary').click();
+        await document.defaultView.happyDOM.waitUntilComplete();
+        assert.equal(details[1].open, true);
+        assert.equal(details[0].open, false);
+        const afterSecondOpen = messages.filter(message => message.method === 'ui/notifications/size-changed').length;
+        assert.ok(afterSecondOpen > afterClose, 'Opening the second route must update host height');
+        details[1].querySelector('summary').click();
+        await document.defaultView.happyDOM.waitUntilComplete();
+        assert.equal(details[1].open, false);
+        assert.equal(details[0].open, false);
+        assert.ok(messages.filter(message => message.method === 'ui/notifications/size-changed').length > afterSecondOpen, 'Closing the second route must update host height');
+      });
+    }
+  });
+
+  it('preserves measured zeros and separates unavailable daily counts from independent signals', async () => {
+    const zero = row({ todayCargo: 0, todayOther: 0, incidentCount7d: 0, disruptionPct: 0, anomaly: { signal: false }, dataAvailable: false });
+    await mount(result(payload({ zero, unavailable: { ...zero, todayCountsAvailable: false }, missing: row() })), document => {
+      const details = document.querySelectorAll('.crow details');
+      assert.equal(details.length, 3);
+      assert.deepEqual(values(details[0]), {
+        'Cargo, last 24 hours': '0', 'Other, last 24 hours': '0',
+        'Reported incidents, 7 days': '0', 'Reported disruption': '0%', 'Reported anomaly signal': 'No',
+      });
+      assert.deepEqual(values(details[1]), { ...values(details[0]), 'Cargo, last 24 hours': '—', 'Other, last 24 hours': '—' });
+      assert.deepEqual(values(details[2]), {
+        'Cargo, last 24 hours': '—', 'Other, last 24 hours': '—',
+        'Reported incidents, 7 days': '—', 'Reported disruption': '—', 'Reported anomaly signal': 'Unknown',
+      });
+      assert.match(rows(document)[0].textContent, /No weekly history, so the weekly change is unknown\./);
+    });
+  });
+
+  it('rejects malformed detail values rather than converting them to zero or a signal', async () => {
+    for (const invalid of [null, '4', -1, 1.5, Number.MAX_SAFE_INTEGER + 1, Infinity, NaN]) {
+      const full = payload({ controlled: row({ todayCargo: invalid, todayOther: invalid, incidentCount7d: invalid, disruptionPct: 101, anomaly: { signal: invalid } }) });
+      full.data['transit-summaries'].fetchedAt = 'invalid';
+      await mount(result(full), document => {
+        const detail = document.querySelector('.crow details');
+        assert.ok(detail, 'Invalid details must not remove the route disclosure');
+        assert.deepEqual(values(detail), {
+          'Cargo, last 24 hours': '—', 'Other, last 24 hours': '—',
+          'Reported incidents, 7 days': '—', 'Reported disruption': '—', 'Reported anomaly signal': 'Unknown',
+        });
+        assert.equal(detail.querySelector('.csum').textContent, 'Summary fetched: Unknown');
+      });
+    }
+    for (const disruptionPct of [null, '0', -0.1, Infinity, NaN]) {
+      await mount(result(payload({ controlled: row({ disruptionPct, anomaly: [] }) })), document => {
+        const detail = document.querySelector('.crow details');
+        assert.ok(detail);
+        assert.equal(values(detail)['Reported disruption'], '—');
+        assert.equal(values(detail)['Reported anomaly signal'], 'Unknown');
+      });
+    }
+  });
+
+  it('clears expanded details on result replacement and preserves literal route names and the row bound', async () => {
+    await mount(result(payload({ old_route: supplied })), (document, send) => {
+      const old = document.querySelector('.crow details');
+      assert.ok(old);
+      old.querySelector('summary').click();
+      assert.equal(old.open, true);
+      const hostile = '<img src=x onerror=alert(1)>';
+      send(result(payload({ [hostile]: row({ todayCargo: 0 }) }), true));
+      const replacement = document.querySelector('.crow details');
+      assert.notEqual(replacement, old);
+      assert.equal(old.isConnected, false);
+      assert.equal(replacement.open, false);
+      assert.equal(replacement.querySelector('summary').getAttribute('aria-label'), 'Route details for <img Src=x Onerror=alert(1)>');
+      assert.equal(values(replacement)['Cargo, last 24 hours'], '0');
+      assert.equal(document.querySelectorAll('#rows img, #rows script, #rows a').length, 0);
+      send(result(payload(Object.fromEntries(Array.from({ length: 25 }, (_, index) => ['route_' + index, supplied]))), true));
+      assert.equal(document.querySelectorAll('.crow details').length, 20);
+      send(result(null, true));
+      assert.equal(document.querySelectorAll('.crow details').length, 0);
+      assert.equal(footer(document), '');
+    });
+  });
+});
 
 describe('Chokepoint Monitor supplied projections', () => {
   it('preserves full, text and direct-data controls', async () => {

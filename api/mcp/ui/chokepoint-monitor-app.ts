@@ -33,6 +33,10 @@ const STYLES = `
   .cstat .k { font-size: 11px; color: var(--muted); }
   .cstat .v { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .csum { margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .route-details { margin-top: 8px; font-size: 12px; }
+  .route-details summary { box-sizing: border-box; min-height: 44px; padding: 14px 4px;
+    cursor: pointer; overflow-wrap: anywhere; }
+  .route-details summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
   .coverage { margin-top: 12px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
   .foot { white-space: pre-line; overflow-wrap: anywhere; }
 `;
@@ -139,6 +143,27 @@ const RENDER = `
         var tanker = countsAvailable ? transitCount(s.todayTanker) : null;
         stats.appendChild(stat("Tanker", tanker == null ? "—" : String(tanker)));
         row.appendChild(stats);
+
+        var details = el("details", "route-details");
+        var detailControl = el("summary", "", "Route details");
+        detailControl.setAttribute("aria-label", "Route details for " + prettyName(keys[i]));
+        details.appendChild(detailControl);
+        details.addEventListener("toggle", reportSize);
+        var detailStats = el("div", "cstats");
+        var cargo = countsAvailable ? transitCount(s.todayCargo) : null;
+        var other = countsAvailable ? transitCount(s.todayOther) : null;
+        var incidents = transitCount(s.incidentCount7d);
+        var disruption = typeof s.disruptionPct === "number" && Number.isFinite(s.disruptionPct) && s.disruptionPct >= 0 && s.disruptionPct <= 100
+          ? s.disruptionPct : null;
+        var anomaly = s.anomaly && typeof s.anomaly === "object" && !Array.isArray(s.anomaly) ? s.anomaly.signal : null;
+        detailStats.appendChild(stat("Cargo, last 24 hours", cargo == null ? "—" : String(cargo)));
+        detailStats.appendChild(stat("Other, last 24 hours", other == null ? "—" : String(other)));
+        detailStats.appendChild(stat("Reported incidents, 7 days", incidents == null ? "—" : String(incidents)));
+        detailStats.appendChild(stat("Reported disruption", disruption == null ? "—" : String(disruption) + "%"));
+        detailStats.appendChild(stat("Reported anomaly signal", anomaly === true ? "Yes" : anomaly === false ? "No" : "Unknown"));
+        details.appendChild(detailStats);
+        details.appendChild(el("div", "csum", "Summary fetched: " + (clock(ts.fetchedAt) || "Unknown")));
+        row.appendChild(details);
 
         if (historyMissing) row.appendChild(el("div", "csum", "No weekly history, so the weekly change is unknown."));
         else if (s.dataAvailable !== true) row.appendChild(el("div", "csum", "Weekly history status unknown."));
