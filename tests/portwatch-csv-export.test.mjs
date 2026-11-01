@@ -72,10 +72,16 @@ function mangleKoreaRow(mangle) {
 }
 const TRUNCATED_ROW_CSV = mangleKoreaRow((cells, col) => cells.slice(0, col.portname + 1));
 const NON_NUMERIC_CSV = mangleKoreaRow((cells, col) => { cells[col.n_total] = 'N/A'; return cells; });
+const BAD_DATE_CSV = mangleKoreaRow((cells, col) => { cells[col.date] = '2026/13/01'; return cells; });
 
 test('a tracked row that is cut short or holds a non-numeric count rejects the export', () => {
   assert.throws(() => chokepointsFromCsv(TRUNCATED_ROW_CSV, SINCE, WINDOW), /malformed row for Korea Strait/);
   assert.throws(() => chokepointsFromCsv(NON_NUMERIC_CSV, SINCE, WINDOW), /malformed row for Korea Strait/);
+});
+
+test('a tracked row whose date is not a real calendar day rejects the export', () => {
+  // 2026-13-01 sorts inside the history window, so the window filter alone keeps it.
+  assert.throws(() => chokepointsFromCsv(BAD_DATE_CSV, SINCE, WINDOW), /invalid date for Korea Strait/);
 });
 
 test('an export without the expected header or chokepoint rows is rejected', () => {
@@ -87,7 +93,7 @@ test('an export without the expected header or chokepoint rows is rejected', () 
 const HUB_HOST = 'hub.arcgis.com';
 const QUERY_HOST = 'services9.arcgis.com';
 
-function stubNetwork(t, hubResponse) {
+function stubNetwork(t, hubResponse, previous = null) {
   const env = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
@@ -96,7 +102,7 @@ function stubNetwork(t, hubResponse) {
   globalThis.fetch = async (input) => {
     const url = String(input);
     calls.push(url);
-    if (url.startsWith('https://redis.test')) return Response.json({ result: null });
+    if (url.startsWith('https://redis.test')) return Response.json({ result: previous && JSON.stringify(previous) });
     if (url.includes(HUB_HOST)) return hubResponse();
     if (url.includes('outStatistics')) return Response.json({ features: [{ attributes: { avg_total: 50, day_count: 365 } }] });
     return Response.json({ features: [{ attributes: { date: '2026-10-25', n_total: 10 } }] });
@@ -145,3 +151,16 @@ for (const [label, hubResponse] of [
     assert.equal(result.korea_strait.baseline.avgDaily, 50);
   });
 }
+
+test('fetchAll queries a chokepoint whose CSV history ends before the previous snapshot', async (t) => {
+  // The previous Korea entry is past the carry-forward limit, so without a
+  // query the older CSV history would replace it.
+  const previous = {
+    korea_strait: { history: [{ date: '2026-10-28', total: 5 }], wowChangePct: 0, baseline: null, fetchedAt: NOW - 4 * DAY_MS },
+  };
+  const calls = stubNetwork(t, () => new Response(CSV, { status: 200 }), previous);
+  await fetchAll();
+  const queried = queriedNames(calls);
+  assert.equal(queried.has('Korea Strait'), true, 'the trailing CSV entry is re-queried');
+  assert.equal(queried.has('Suez Canal'), false, 'a CSV entry with no newer previous history is not');
+});
