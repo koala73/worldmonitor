@@ -17,4 +17,4 @@ Only record causal closure after the repair has supporting evidence. The command
 node scripts/health-incident-evidence.mjs resolve /tmp/incident-evidence 'toronto@2031-01-01T00:00:00.000Z' /tmp/verified-repair.md
 ```
 
-A subsequent failure creates a new incident. Preserve old source clocks, deadlines and evidence gaps in the referenced report. Natural recovery alone does not justify causal closure.
+A subsequent failure creates a new incident. Preserve old source clocks, deadlines and evidence gaps in the referenced report. Natural recovery alone does not justify causal closure. Each capture stores the incident reference and original owner, so importing older evidence preserves an existing closure. Use one capture writer per evidence directory.

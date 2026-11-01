@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const HEALTHY = new Set(['OK', 'OK_ZERO', 'OK_CASCADE', 'COVERAGE_MARGIN_LOW']);
-const PENDING = new Set(['EMPTY_ON_DEMAND', 'ROLLOUT_PENDING', 'REFRESH_PENDING', 'NOT_CONFIGURED', 'SOURCE_BLOCKED']);
+const PENDING = new Set(['EMPTY_ON_DEMAND', 'ROLLOUT_PENDING', 'REFRESH_PENDING', 'NOT_CONFIGURED', 'SOURCE_BLOCKED', 'CONTENT_AGE_PREWARNING']);
 
 async function appendEvent(directory, event) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -22,14 +22,29 @@ export async function captureHealthEvidence(directory, snapshot, owner) {
   for (const check of Object.values(snapshot.checks)) {
     if (!check || typeof check.status !== 'string' || !check.status) throw new Error('Invalid health check status');
   }
+  const observedAt = new Date(snapshot.checkedAt).toISOString();
+  const previous = await readIncidents(directory);
+  const incidentRefs = {};
+  for (const [source, check] of Object.entries(snapshot.checks)) {
+    const history = previous.filter(row => row.source === source).sort((a, b) => a.lastSeen.localeCompare(b.lastSeen));
+    const incident = history.find(row => row.lastSeen >= observedAt)
+      ?? history.find(row => row.causeStatus === 'open');
+    if (incident) incidentRefs[source] = { id: incident.id, owner: incident.owner };
+    else if (!HEALTHY.has(check.status) && !PENDING.has(check.status)) {
+      incidentRefs[source] = { id: `${source}@${observedAt}`, owner };
+    }
+  }
   return appendEvent(directory, {
-    type: 'observation', observedAt: new Date(snapshot.checkedAt).toISOString(),
-    capturedAt: new Date().toISOString(), owner, snapshot,
+    type: 'observation', observedAt,
+    capturedAt: new Date().toISOString(), owner, snapshot, incidentRefs,
   });
 }
 
 export async function readIncidents(directory) {
-  const files = (await readdir(directory)).filter(name => name.endsWith('.json')).sort();
+  const files = (await readdir(directory).catch(error => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  })).filter(name => name.endsWith('.json')).sort();
   const events = await Promise.all(files.map(async file => JSON.parse(await readFile(join(directory, file), 'utf8'))));
   events.sort((a, b) => a.observedAt.localeCompare(b.observedAt)
     || Number(a.type === 'resolution') - Number(b.type === 'resolution')
@@ -39,17 +54,17 @@ export async function readIncidents(directory) {
   for (const event of events) {
     if (event.type === 'resolution') {
       const incident = incidents.find(row => row.id === event.incidentId);
-      if (incident) {
-        incident.causeStatus = 'resolved';
-        incident.resolutionEvidence = event.evidence;
-        active.delete(incident.source);
-      }
+      if (!incident) throw new Error(`Resolution references an unknown incident: ${event.incidentId}`);
+      incident.causeStatus = 'resolved';
+      incident.resolutionEvidence = event.evidence;
+      active.delete(incident.source);
       continue;
     }
     if (event.type !== 'observation') throw new Error('Unknown evidence event');
     for (const [source, check] of Object.entries(event.snapshot.checks)) {
       if (PENDING.has(check.status)) continue;
-      let incident = active.get(source);
+      const reference = event.incidentRefs?.[source];
+      let incident = reference ? incidents.find(row => row.id === reference.id) : active.get(source);
       if (HEALTHY.has(check.status)) {
         if (incident) {
           incident.state = 'recovered';
@@ -60,7 +75,7 @@ export async function readIncidents(directory) {
       }
       if (!incident) {
         incident = {
-          id: `${source}@${event.observedAt}`, source, owner: event.owner,
+          id: reference?.id ?? `${source}@${event.observedAt}`, source, owner: reference?.owner ?? event.owner,
           firstSeen: event.observedAt, occurrences: 1, causeStatus: 'open', state: 'failing',
         };
         incidents.push(incident);

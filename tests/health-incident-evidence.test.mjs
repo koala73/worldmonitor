@@ -43,3 +43,34 @@ test('missing checks and pending caches cannot prove recovery', async () => {
     assert.equal(incidents[0].state, 'failing');
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('older evidence preserves stable incident references and recorded closure', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'health-evidence-'));
+  const snapshot = day => ({ checkedAt: `2031-01-0${day}`, checks: { a: { status: 'SEED_ERROR' } } });
+  try {
+    await captureHealthEvidence(dir, snapshot(2), 'original-owner');
+    const [original] = await readIncidents(dir);
+    await resolveIncident(dir, original.id, 'repair-proof.md');
+    await captureHealthEvidence(dir, snapshot(1), 'historical-import-owner');
+    const [incident] = await readIncidents(dir);
+    assert.equal(incident.id, original.id);
+    assert.equal(incident.owner, original.owner);
+    assert.equal(incident.firstSeen, '2031-01-01T00:00:00.000Z');
+    assert.equal(incident.causeStatus, 'resolved');
+    assert.equal(incident.resolutionEvidence, 'repair-proof.md');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('content-age advisories neither open incidents nor count as recurrence', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'health-evidence-'));
+  try {
+    await captureHealthEvidence(dir, { checkedAt: '2031-01-01', checks: { a: { status: 'CONTENT_AGE_PREWARNING' } } }, 'owner');
+    assert.deepEqual(await readIncidents(dir), []);
+    await captureHealthEvidence(dir, { checkedAt: '2031-01-02', checks: { a: { status: 'SEED_ERROR' } } }, 'owner');
+    await captureHealthEvidence(dir, { checkedAt: '2031-01-03', checks: { a: { status: 'OK' } } }, 'owner');
+    await captureHealthEvidence(dir, { checkedAt: '2031-01-04', checks: { a: { status: 'CONTENT_AGE_PREWARNING' } } }, 'owner');
+    const [incident] = await readIncidents(dir);
+    assert.equal(incident.occurrences, 1);
+    assert.equal(incident.state, 'recovered');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
