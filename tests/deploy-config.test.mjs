@@ -6051,3 +6051,24 @@ describe('cold-load metric evidence reaches the CI artifact (#7837)', () => {
     );
   });
 });
+
+// Google Connected Console fetches this file to verify domain ownership and
+// rejects any redirect (https://developers.google.com/connected-apps/gpc/perform-the-steps).
+// The file's own shape is pinned in tests/google-connected-apps-verification.test.mjs.
+describe('Google Connected Apps verification route', () => {
+  const path = '/.well-known/google-connected-apps';
+
+  it('is served directly as JSON on every host Google may fetch', () => {
+    for (const host of ['worldmonitor.app', 'www.worldmonitor.app']) {
+      assert.equal(firstRedirectFor({ host, path }), null, `${host}${path} must not redirect`);
+      assert.equal(firstRewriteFor({ host, path }), null, `${host}${path} must serve the static file`);
+    }
+    assert.equal(effectiveHeader(path, 'content-type'), 'application/json; charset=utf-8');
+  });
+
+  it('would catch a wildcard rule that does not name the file', () => {
+    for (const source of ['/.well-known/(.*)', '/.well-known/:path*', '/:path*']) {
+      assert.equal(sourceToRegExp(source).test(path), true, `${source} must be modelled as matching ${path}`);
+    }
+  });
+});
