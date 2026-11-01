@@ -158,7 +158,8 @@ describe('published MCP URLs are the canonical endpoint (#9722)', () => {
       } catch {
         continue; // deleted in the working tree, or a submodule path
       }
-      if (!text.includes('worldmonitor.app')) continue;
+      // Case-insensitive, like the matcher: `WorldMonitor.App/mcp` is the same host.
+      if (!/worldmonitor\.app/i.test(text)) continue;
       text.split('\n').forEach((line, index) => {
         for (const hit of findWrongMcpUrls(line)) {
           offenders.push(`  ${file}:${index + 1}  ${hit.url}  (${hit.label})`);
