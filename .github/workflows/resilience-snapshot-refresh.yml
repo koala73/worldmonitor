@@ -93,7 +93,9 @@ jobs:
           # figures a month stale and turn the drift test red on main.
           npm run build:ai-search
           mapfile -t suites < <(grep -lE "$SNAPSHOT_CONSUMERS" tests/*.test.mjs tests/*.test.mts)
-          node scripts/run-data-tests.mjs --built-output=exclude "${suites[@]}"
+          # No built-output filter: it drops whole suites such as
+          # public-product-facts, which skip only their build-only cases here.
+          node scripts/run-data-tests.mjs "${suites[@]}"
       - name: Commit the monthly snapshot
         if: steps.reconcile.outputs.skip != 'true'
         env:
