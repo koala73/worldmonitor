@@ -45,6 +45,12 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.language == 'go' && 'autobuild' || 'none' }}
+          # Generated upstream @vercel/og + satori bundle (scripts/vendor-vercel-og.mjs).
+          # Its library internals re-raise ~22 alerts on every re-vendor; the generator
+          # script and our patched vendor copies (braces, stream-json) stay scanned.
+          config: |
+            paths-ignore:
+              - vendor/vercel-og/dist
       - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           category: /language:${{ matrix.language }}
