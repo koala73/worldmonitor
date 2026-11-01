@@ -24795,7 +24795,7 @@ body.map-width-resizing {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  color: #fff;
+  color: inherit;
   font-weight: 600;
   line-height: 1;
   flex-shrink: 0;

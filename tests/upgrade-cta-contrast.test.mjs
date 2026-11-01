@@ -10,9 +10,12 @@
  * src/styles/main.css and requires WCAG AA contrast (4.5:1) for:
  *   1. every upgrade CTA, listed by selector below, and
  *   2. every rule in src/styles/ whose background uses var(--accent…) or
- *      var(--green…) and that declares its own text color.
- * A gradient is checked at every color stop. A token that is not defined and
- * has no fallback fails, because the browser then drops the declaration.
+ *      var(--green…) and that declares its own text color, and every :hover
+ *      rule that changes only the text of such a rule.
+ * Rules inside a container that pins its own tokens (the route explorer modal
+ * is dark in both themes) resolve with those tokens. A gradient is checked at
+ * every color stop. A token that is not defined and has no fallback fails,
+ * because the browser then drops the declaration.
  */
 
 import { describe, it } from 'node:test';
@@ -34,9 +37,14 @@ const UPGRADE_CTAS = [
   ['route-explorer.css', '.re-content__upgrade'],
 ];
 
-/** Accent-background rules that inherit their text color from the page. */
+/** Accent-background rules that inherit their text color, with the declaration they inherit. */
 const INHERITED_TEXT = {
-  '.re-picker__item--active': 'var(--text)',
+  '.re-picker__item--active': 'var(--text-primary, #c9d1d9)', // from .re-modal__surface
+};
+
+/** Sheets whose rules all render inside a container that pins theme tokens. */
+const SCOPED_TOKENS = {
+  'route-explorer.css': '.re-modal',
 };
 
 function stripComments(css) {
@@ -157,10 +165,15 @@ function themeBlock(selector) {
 
 const dark = themeBlock(':root');
 const light = { ...dark, ...themeBlock('[data-theme="light"]') };
-const THEMES = [['dark', dark], ['light', light]];
 
-function assertReadable(label, background, text) {
-  for (const [name, theme] of THEMES) {
+function themesFor(file) {
+  const scope = SCOPED_TOKENS[file];
+  const pinned = scope ? tokens(rule(file, scope).body) : {};
+  return [['dark', { ...dark, ...pinned }], ['light', { ...light, ...pinned }]];
+}
+
+function assertReadable(file, label, background, text) {
+  for (const [name, theme] of themesFor(file)) {
     const [fg] = colors(text, theme);
     for (const bg of colors(background, theme)) {
       const ratio = contrast(fg, bg);
@@ -168,6 +181,16 @@ function assertReadable(label, background, text) {
     }
   }
 }
+
+describe('dark-only containers pin the dark theme values', () => {
+  for (const [file, scope] of Object.entries(SCOPED_TOKENS)) {
+    it(`${scope} matches :root`, () => {
+      for (const [name, value] of Object.entries(tokens(rule(file, scope).body))) {
+        assert.equal(value, dark[name], `${scope} ${name} drifted from the dark theme`);
+      }
+    });
+  }
+});
 
 describe('upgrade CTAs are readable in both themes', () => {
   for (const [file, selector, inherited] of UPGRADE_CTAS) {
@@ -177,7 +200,7 @@ describe('upgrade CTAs are readable in both themes', () => {
       const text = declaration(body, 'color') ?? inherited?.color;
       assert.ok(background, `${selector} declares no background`);
       assert.ok(text, `${selector} declares no text color`);
-      assertReadable(selector, background, text);
+      assertReadable(file, selector, background, text);
     });
   }
 });
@@ -189,8 +212,14 @@ describe('accent and green backgrounds keep readable text in both themes', () =>
   for (const [file, css] of Object.entries(sheets)) {
     // The happy variant defines its own palette; these tokens do not apply.
     if (file === 'happy-theme.css') continue;
-    for (const { selector, body, line } of rules(css)) {
-      const background = declaration(body, 'background') ?? declaration(body, 'background-color');
+    const list = rules(css);
+    for (const { selector, body, line } of list) {
+      let background = declaration(body, 'background') ?? declaration(body, 'background-color');
+      // A :hover rule that only recolors text sits on its base rule's background.
+      if (!background && selector.endsWith(':hover') && declaration(body, 'color')) {
+        const base = list.find((r) => r.selector === selector.slice(0, -':hover'.length));
+        background = base && (declaration(base.body, 'background') ?? declaration(base.body, 'background-color'));
+      }
       if (!background || !/var\(\s*--(accent|green)\b/.test(background)) continue;
       // A translucent tint depends on what sits under it; only solid fills are judged.
       if (/transparent|rgba\(|hsla\(/.test(background)) continue;
@@ -199,7 +228,7 @@ describe('accent and green backgrounds keep readable text in both themes', () =>
       checked += 1;
       judged.push(selector);
       try {
-        assertReadable(selector, background, text);
+        assertReadable(file, selector, background, text);
       } catch (err) {
         failures.push(`${file}:${line} ${err.message}`);
       }

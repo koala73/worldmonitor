@@ -2063,7 +2063,7 @@
 .cdp-load-status { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; padding: 13px 0; font-size: 11px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
 .cdp-load-status [role="status"] { color: var(--green); }
 .cdp-export-primary { background: var(--green); color: #0a0a0a; border-color: var(--green); padding: 0 14px; }
-.cdp-export-primary:hover { color: var(--bg); filter: brightness(1.08); }
+.cdp-export-primary:hover { filter: brightness(1.08); }
 .cdp-overview-lead { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; padding: 28px 0; }
 .cdp-overview-lead > .cdp-card { border-top: 0; padding: 0; }
 .cdp-shell[data-brief-topic="overview"] .cdp-overview-lead { grid-template-columns: minmax(0, 1fr) 280px; gap: 44px; }
