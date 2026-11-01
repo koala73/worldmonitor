@@ -485,7 +485,7 @@
 
 .cdp-maritime-anomaly {
   margin-left: 4px;
-  color: var(--semantic-warning);
+  color: var(--semantic-elevated);
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
@@ -1432,7 +1432,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   background: transparent;
-  color: var(--text-primary);
+  color: var(--text);
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   cursor: pointer;
   transition: background 0.15s;
@@ -1484,7 +1484,7 @@
 }
 
 .cdp-facts-thumbnail { float: right; max-width: 100px; border-radius: 6px; margin: 0 0 8px 12px; }
-.cdp-facts-summary { font-size: calc(0.82rem * var(--wm-panel-effective-scale, 1)); color: var(--cdp-muted); line-height: 1.5; margin-bottom: 8px; }
+.cdp-facts-summary { font-size: calc(0.82rem * var(--wm-panel-effective-scale, 1)); color: var(--text-muted); line-height: 1.5; margin-bottom: 8px; }
 .cdp-facts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .cdp-facts-grid .cdp-fact-item { font-size: calc(0.78rem * var(--wm-panel-effective-scale, 1)); }
 
@@ -1511,7 +1511,7 @@
 .cdp-card-help:hover {
   opacity: 1;
 }
-.cdp-facts-grid .cdp-fact-label { color: var(--cdp-muted); text-transform: uppercase; font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); }
+.cdp-facts-grid .cdp-fact-label { color: var(--text-muted); text-transform: uppercase; font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); }
 
 .cdp-vuln-index { font-size: calc(13px * var(--wm-panel-effective-scale, 1)); color: #94a3b8; margin-bottom: 8px; }
 .cdp-section-sublabel { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -1533,7 +1533,7 @@
 .cdp-vulnerability-list { display: grid; gap: 6px; }
 .cdp-vulnerability-row { border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; background: rgba(255,255,255,0.02); }
 .cdp-vulnerability-summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px; cursor: pointer; }
-.cdp-vulnerability-commodity { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); font-weight: 600; color: var(--text-primary); }
+.cdp-vulnerability-commodity { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); font-weight: 600; color: var(--text); }
 .cdp-vulnerability-score { min-width: 38px; padding: 2px 6px; border-radius: 10px; text-align: center; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); font-weight: 700; background: rgba(148,163,184,0.14); color: #cbd5e1; }
 .cdp-vulnerability-state { margin-left: auto; font-size: calc(8px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
 .cdp-vulnerability-state[data-state="stale_input"] { color: #fde047; }
@@ -1545,9 +1545,9 @@
 .cdp-vulnerability-components { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 0 8px 8px; }
 .cdp-vulnerability-component { display: grid; gap: 2px; padding: 6px; border-radius: 4px; background: rgba(0,0,0,0.16); }
 .cdp-vulnerability-component-label, .cdp-vulnerability-component-detail, .cdp-vulnerability-reasons, .cdp-vulnerability-sources { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim); }
-.cdp-vulnerability-component-value { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-primary); }
+.cdp-vulnerability-component-value { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text); }
 .cdp-vulnerability-reasons, .cdp-vulnerability-sources { padding: 0 8px 8px; overflow-wrap: anywhere; }
-.cdp-vulnerability-source, .cdp-vulnerability-methodology { color: var(--accent-color); text-decoration: underline; }
+.cdp-vulnerability-source, .cdp-vulnerability-methodology { color: var(--accent); text-decoration: underline; }
 @media (max-width: 520px) { .cdp-vulnerability-components { grid-template-columns: 1fr; } }
 .cdp-card-footer { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: #475569; margin-top: 6px; }
 

@@ -693,7 +693,7 @@ canvas,
 
 .version {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  color: var(--muted);
+  color: inherit;
   opacity: 0.5;
   margin-left: 6px;
   font-weight: normal;
@@ -821,7 +821,7 @@ canvas,
 
 .credit-link {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  color: var(--muted);
+  color: inherit;
   opacity: 0.6;
   font-weight: normal;
   letter-spacing: 0.5px;
@@ -1015,7 +1015,7 @@ canvas,
 
 .focus-select:focus {
   outline: none;
-  border-color: var(--primary);
+  border-color: var(--green);
 }
 
 .focus-select option {
@@ -1618,7 +1618,7 @@ canvas,
 }
 
 .map-pin-btn.active:hover {
-  background: var(--green-dim);
+  background: color-mix(in srgb, var(--green) 85%, var(--bg));
 }
 
 /* Hidden by default — shown only inside 768px media query */
@@ -2635,7 +2635,7 @@ body.panel-resize-active iframe {
 }
 
 .panel-summary-error {
-  color: var(--accent-red);
+  color: var(--red);
 }
 
 .panel-info-wrapper {
@@ -2783,7 +2783,7 @@ body.panel-resize-active iframe {
   display: block;
   height: 8px;
   border-radius: 4px;
-  background: linear-gradient(90deg, var(--surface-alt), var(--border), var(--surface-alt));
+  background: linear-gradient(90deg, var(--surface-hover), var(--border), var(--surface-hover));
   opacity: 0.65;
 }
 
@@ -3280,7 +3280,7 @@ body.panel-resize-active iframe {
 
 .live-channels-modal-close:hover {
   color: var(--text);
-  background: var(--darken);
+  background: var(--darken-medium);
 }
 
 /* Available channels section */
@@ -3346,7 +3346,7 @@ body.panel-resize-active iframe {
   text-align: center;
   color: var(--text-dim);
   font-size: calc(14px * var(--wm-panel-effective-scale, 1));
-  background: var(--darken);
+  background: var(--bg-secondary);
   border: 1px dashed var(--border);
   border-radius: 6px;
   margin-top: 4px;
@@ -4553,7 +4553,7 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   display: inline-block;
   padding: 1px 4px;
   border-radius: 2px;
-  background: var(--surface-light);
+  background: var(--overlay-light);
   color: var(--text-dim);
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
   font-weight: 500;
@@ -5714,14 +5714,14 @@ body.playback-mode .status-dot {
 }
 
 .time-btn:hover {
-  border-color: var(--primary);
-  color: var(--primary);
+  border-color: var(--green);
+  color: var(--green);
 }
 
 .time-btn.active {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: var(--bg);
+  background: var(--green);
+  border-color: var(--green);
+  color: #0a0a0a;
   font-weight: bold;
 }
 
@@ -7496,7 +7496,7 @@ body.playback-mode .status-dot {
   position: relative;
   width: 566px;
   max-width: 100%;
-  background: var(--bg-panel);
+  background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 20px 22px 16px;
@@ -8214,7 +8214,7 @@ a.prediction-link:hover {
   align-items: center;
   margin-bottom: 10px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .prediction-conviction {
@@ -8295,7 +8295,7 @@ a.prediction-link:hover {
   margin-top: 2px;
   border: 1px solid transparent;
   background: var(--border);
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .prediction-source[data-source="kalshi"] {
@@ -12517,7 +12517,7 @@ a.prediction-link:hover {
 
 .sc-disruption-table td {
   padding: 4px 6px;
-  border-bottom: 1px solid var(--border-faint);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .sc-disruption-table td:nth-child(n+2) {
@@ -15516,11 +15516,11 @@ a.prediction-link:hover {
 }
 
 .gdelt-intel-article.tone-negative {
-  border-left-color: var(--danger);
+  border-left-color: var(--red);
 }
 
 .gdelt-intel-article.tone-positive {
-  border-left-color: var(--success);
+  border-left-color: var(--green);
 }
 
 .gdelt-intel-article .article-header {
@@ -15590,8 +15590,8 @@ a.prediction-link:hover {
   color: var(--text-dim);
 }
 
-.gdelt-trend-value.positive { color: var(--success); }
-.gdelt-trend-value.negative { color: var(--danger); }
+.gdelt-trend-value.positive { color: var(--green); }
+.gdelt-trend-value.negative { color: var(--red); }
 
 /* Hotspot GDELT Context */
 .hotspot-gdelt-context {
@@ -17135,7 +17135,7 @@ a.prediction-link:hover {
 }
 
 .history-event.cyclical {
-  color: var(--warning);
+  color: var(--yellow);
   font-style: italic;
 }
 
@@ -17840,7 +17840,7 @@ a.prediction-link:hover {
 .findings-modal-title {
   font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .findings-modal-close {
@@ -17854,7 +17854,7 @@ a.prediction-link:hover {
 }
 
 .findings-modal-close:hover {
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .findings-modal-content {
@@ -17903,7 +17903,7 @@ a.prediction-link:hover {
 .findings-modal-item-type {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .findings-modal-item-priority {
@@ -20060,7 +20060,7 @@ a.prediction-link:hover {
 
 .insight-badge.velocity.elevated {
   background: rgba(251, 146, 60, 0.15);
-  color: var(--orange);
+  color: var(--semantic-high);
 }
 
 .insight-badge.velocity.high {
@@ -20196,7 +20196,7 @@ a.prediction-link:hover {
 }
 
 .insights-convergence .insights-section-title {
-  color: var(--orange);
+  color: var(--semantic-high);
 }
 
 .convergence-zone {
@@ -20204,7 +20204,7 @@ a.prediction-link:hover {
   margin-bottom: 8px;
   background: rgba(251, 146, 60, 0.05);
   border-radius: 4px;
-  border-left: 2px solid var(--orange);
+  border-left: 2px solid var(--semantic-high);
 }
 
 .convergence-region {
@@ -20247,12 +20247,12 @@ a.prediction-link:hover {
 }
 
 .focal-point.elevated {
-  border-left-color: var(--orange);
+  border-left-color: var(--semantic-high);
   background: rgba(251, 146, 60, 0.08);
 }
 
 .focal-point.watch {
-  border-left-color: var(--blue);
+  border-left-color: var(--semantic-info);
   background: rgba(59, 130, 246, 0.05);
 }
 
@@ -20283,12 +20283,12 @@ a.prediction-link:hover {
 }
 
 .focal-point-urgency.elevated {
-  background: var(--orange);
-  color: white;
+  background: var(--semantic-high);
+  color: #0a0a0a;
 }
 
 .focal-point-urgency.watch {
-  background: var(--surface-elevated);
+  background: var(--surface-hover);
   color: var(--text-dim);
 }
 
@@ -20676,7 +20676,7 @@ a.prediction-link:hover {
 
 .ai-flow-toggle-label {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-primary);
+  color: var(--text);
   font-weight: 500;
 }
 
@@ -20756,7 +20756,7 @@ a.prediction-link:hover {
 
 .ai-flow-cta-title {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-primary);
+  color: var(--text);
   font-weight: 500;
 }
 
@@ -20863,7 +20863,7 @@ a.prediction-link:hover {
 }
 
 .fw-panel-status-val {
-  color: var(--text-primary);
+  color: var(--text);
   font-weight: 500;
   max-width: 60%;
   text-align: right;
@@ -20904,7 +20904,7 @@ a.prediction-link:hover {
 .fw-library-item-name {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
   display: flex;
   align-items: center;
   gap: 5px;
@@ -20949,7 +20949,7 @@ a.prediction-link:hover {
 
 .fw-lib-btn:hover {
   background: rgba(255, 255, 255, 0.07);
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .fw-lib-btn-danger {
@@ -21001,7 +21001,7 @@ a.prediction-link:hover {
 .fw-import-modal-title {
   font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .fw-import-modal-close {
@@ -21018,7 +21018,7 @@ a.prediction-link:hover {
 }
 
 .fw-import-modal-close:hover {
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .fw-import-tabs {
@@ -21041,7 +21041,7 @@ a.prediction-link:hover {
 }
 
 .fw-import-tab.active {
-  color: var(--text-primary);
+  color: var(--text);
   border-bottom-color: #60a5fa;
 }
 
@@ -21071,7 +21071,7 @@ a.prediction-link:hover {
   border-radius: 5px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.04);
-  color: var(--text-primary);
+  color: var(--text);
   box-sizing: border-box;
   outline: none;
   transition: border-color 0.15s;
@@ -21090,7 +21090,7 @@ a.prediction-link:hover {
   border-radius: 5px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.04);
-  color: var(--text-primary);
+  color: var(--text);
   box-sizing: border-box;
   resize: vertical;
   outline: none;
@@ -21118,7 +21118,7 @@ a.prediction-link:hover {
 .fw-import-preview-name {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .fw-import-preview-desc {
@@ -23716,9 +23716,9 @@ body.map-width-resizing {
 }
 
 .telegram-intel-preview-card.is-error {
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
-  background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 35%, var(--border));
+  background: color-mix(in srgb, var(--red) 9%, var(--surface));
 }
 
 .telegram-intel-preview-copy {
@@ -25428,7 +25428,7 @@ body.map-width-resizing {
 }
 
 .debt-tab:hover {
-  background: var(--bg-hover);
+  background: var(--surface-hover);
   color: var(--text);
 }
 
@@ -28441,7 +28441,7 @@ body.map-width-resizing {
   border: 1px solid var(--settings-border, rgba(255,255,255,0.1));
   border-radius: 4px;
   padding: 2px 6px;
-  color: var(--settings-text-primary);
+  color: var(--settings-text-primary, var(--text));
   user-select: all;
   white-space: nowrap;
   overflow: hidden;

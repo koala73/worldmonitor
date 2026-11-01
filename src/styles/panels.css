@@ -1792,7 +1792,7 @@
 .oref-alert-title {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .oref-alert-time {
@@ -3447,7 +3447,7 @@ a.hub-top-story {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 500;
   line-height: 1.35;
-  color: var(--text-primary);
+  color: var(--text);
   margin-bottom: 2px;
 }
 
