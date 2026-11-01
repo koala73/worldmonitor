@@ -1605,12 +1605,17 @@ curl -s https://worldmonitor.app/mcp \
 
 基础设施级联模拟：在种子化的海底电缆表加上精选的管道、港口和咽喉要道注册表上进行广度优先故障传播。不传 `source_id` 可获取按类型分组的可模拟节点目录；链式容量沿路径相乘，远端影响会真实地衰减。
 
+传入 `countries` 可比较各国的海底电缆暴露度。`data.exposure` 中每一项列出在该国登陆的电缆、不同登陆站、这些电缆经过的咽喉要道及其占该国电缆的比例（`largestSingleChokepointShare` 为单一封锁的最坏情况），以及 `activeIncidents`：NGA 通告监测标记为 `FAULT` 或 `DEGRADED` 的电缆。没有事件的电缆只是没有匹配的通告，并不代表确认正常。`health_available: false` 表示无法读取电缆健康快照。咽喉要道判定结合简化路由几何与登陆点：在波斯湾或红海内外均有登陆点的电缆，视为穿过两者之间的出口。
+
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
 | `source_id` | string | 要中断的节点 id（不传参数可获取完整目录）。 |
+| `source_ids` | array | 同时切断多个节点（例如一组电缆 id）；所有 id 必须有效，各国影响在切断集合内累加。传入 `source_id` 时忽略。 |
+| `cut_cables_through` | string | 咽喉要道 id（例如 `chokepoint:hormuz_strait`）：切断路由经过该处的所有电缆。传入 `source_id` 或 `source_ids` 时忽略。 |
 | `disruption_level` | number | 初始故障严重度，0.1 到 1 之间（默认 1）。 |
+| `countries` | array | 最多 10 个国家（ISO alpha-2、alpha-3 或英文名称），在 `data.exposure` 中返回各国电缆暴露度比较。可与切断参数组合使用。 |
 
 - **API 端点：** 无（仅 MCP 的派生分析）。
 - **类型：** 派生分析 — 每次请求从种子化电缆表构建依赖图。

@@ -2051,12 +2051,17 @@ curl -s https://worldmonitor.app/mcp \
 
 Infrastructure cascade simulation: breadth-first failure propagation across the seeded submarine-cable table plus the curated pipeline, port, and chokepoint registries. Call with no `source_id` for the catalog of simulatable node ids grouped by type; chained capacity math multiplies along paths so distant impacts shrink realistically.
 
+Pass `countries` to compare subsea cable exposure. Each `data.exposure` entry lists the cables that land in the country, its distinct landing stations, the chokepoints those cables cross with the share of the country's cables each one carries (`largestSingleChokepointShare` is the worst single closure), and `activeIncidents` for cables the NGA notice monitor flags `FAULT` or `DEGRADED`. A cable with no incident has no matched notice; that does not confirm it is healthy. `health_available: false` means the cable-health snapshot could not be read. Chokepoint crossings combine simplified route geometry with landing points: a cable that lands inside the Persian Gulf or Red Sea and also outside it crosses the exit between them.
+
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
 | `source_id` | string | Node id to disrupt (see the no-argument catalog for valid ids). |
+| `source_ids` | array | Cut several nodes at once (e.g. a list of cable ids); all ids must be known and per-country impacts add up across the cut. Ignored when `source_id` is given. |
+| `cut_cables_through` | string | Chokepoint id (e.g. `chokepoint:hormuz_strait`): cut every cable whose route crosses it. Ignored when `source_id` or `source_ids` is given. |
 | `disruption_level` | number | Initial failure severity between 0.1 and 1 (default 1). |
+| `countries` | array | Up to 10 countries (ISO alpha-2, alpha-3 or English name) for the per-country cable exposure comparison in `data.exposure`. Combines with the cut arguments. |
 
 - **API endpoints:** none (MCP-only derived analysis).
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
