@@ -14,7 +14,7 @@ Review the `received` queue weekly. Unreviewed `received` and `triaged` rows are
 
 ## Credentials
 
-The script reads `CONVEX_URL` and `CONVEX_DEPLOY_KEY` (the production deploy key, used by `npx convex run`) and, for `--join`, `AXIOM_API_TOKEN`, through `loadEnvFile`. It never prints them.
+The script reads `CONVEX_URL` and `CONVEX_DEPLOY_KEY` (the production deploy key, used by `npx convex run`) and, for `--join`, `AXIOM_QUERY_TOKEN` (or `AXIOM_API_TOKEN` when that token has query access to `wm_api_usage`), through `loadEnvFile`. It never prints them.
 
 ## Reading the queue
 
@@ -22,11 +22,14 @@ The script reads `CONVEX_URL` and `CONVEX_DEPLOY_KEY` (the production deploy key
 node scripts/triage-agent-feedback.mjs list                    # received, newest 200
 node scripts/triage-agent-feedback.mjs list --status private   # security reports
 node scripts/triage-agent-feedback.mjs list --join             # add the Axiom row and Sentry trace per requestId
+node scripts/triage-agent-feedback.mjs list --after <cursor>   # the next page; the header prints the cursor
 ```
+
+A page holds up to 500 reports. When more are waiting, the header line says so and prints the `--after` cursor for the next page, so a flood of new reports never hides older ones.
 
 Rows are grouped by fingerprint, largest group first. A fingerprint matches reports with the same kind, surface and summary, ignoring case and spacing, so a large group is one problem reported many times. Grouping never drops a report.
 
-Each report's text sits between `BEGIN UNTRUSTED-<nonce>` and `END UNTRUSTED-<nonce>` lines. The nonce changes on every run, so a report cannot fake the closing line. Every character outside printable ASCII prints as `\u{...}`, including newlines, so each field is one line.
+Each report's text, including its surface label, sits between `BEGIN UNTRUSTED-<nonce>` and `END UNTRUSTED-<nonce>` lines. The nonce changes on every run, so a report cannot fake the closing line. Every character outside printable ASCII prints as `\u{...}`, including newlines, so each field is one line.
 
 `--join` looks up each `requestId` in the `wm_api_usage` dataset over the last 30 days and prints the route, status and reason. When the usage row carries a `sentry_trace_id`, it prints the Sentry trace link. An agent that cites a `requestId` from an MCP error gives you the exact failing call this way.
 
@@ -46,7 +49,7 @@ To draft an issue, write the report to a file and edit it before opening the iss
 node scripts/triage-agent-feedback.mjs issue-body <id> --out /tmp/report.md
 ```
 
-Each field is quoted inside a code fence longer than any backtick run in it, so report text cannot break out into Markdown. The draft is never printed to the terminal.
+Each field, including the surface label, is quoted inside a code fence longer than any backtick run in it, so report text cannot break out into Markdown. The draft is never printed to the terminal. `issue-body` refuses a security report: those are handled in the private advisory and closed with `close`.
 
 ## Alerts
 

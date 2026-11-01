@@ -536,6 +536,16 @@ describe("listForTriage", () => {
     const page = await t.query(internal.agentFeedback.listForTriage, { status: "received", limit: 3 });
     expect(page.rows.map((r) => r.summary)).toEqual(["row 3", "row 2", "row 1"]);
     expect(page.more).toBe(true);
+    // A flood of newer reports must not hide older ones: the cursor reaches them.
+    expect(typeof page.continueCursor).toBe("string");
+    const rest = await t.query(internal.agentFeedback.listForTriage, {
+      status: "received",
+      limit: 3,
+      cursor: page.continueCursor,
+    });
+    expect(rest.rows.map((r) => r.summary)).toEqual(["row 0"]);
+    expect(rest.more).toBe(false);
+    expect(rest.continueCursor).toBeNull();
   });
 
   test("refuses a terminal status and an out-of-range limit", async () => {
@@ -543,5 +553,28 @@ describe("listForTriage", () => {
     await expect(t.query(internal.agentFeedback.listForTriage, { status: "filed" as never })).rejects.toThrow();
     await expect(t.query(internal.agentFeedback.listForTriage, { status: "received", limit: 0 })).rejects.toThrow();
     await expect(t.query(internal.agentFeedback.listForTriage, { status: "received", limit: 501 })).rejects.toThrow();
+  });
+});
+
+describe("getForTriage", () => {
+  test("reads one open public report by id, however old", async () => {
+    const t = convexTest(schema, modules);
+    const old = await t.mutation(internal.agentFeedback.submit, report({ summary: "old one" }));
+    for (let i = 0; i < 3; i += 1) {
+      vi.setSystemTime(NOW + 1 + i);
+      await t.mutation(internal.agentFeedback.submit, report({ summary: `newer ${i}` }));
+    }
+    const row = await t.query(internal.agentFeedback.getForTriage, { reportId: old.reportId });
+    expect(row).toMatchObject({ reportId: old.reportId, summary: "old one", status: "received" });
+    expect(row).not.toHaveProperty("ipHash");
+  });
+
+  test("returns null for a security report or a closed row", async () => {
+    const t = convexTest(schema, modules);
+    const security = await t.mutation(internal.agentFeedback.submit, report({ kind: "security", summary: "vuln" }));
+    expect(await t.query(internal.agentFeedback.getForTriage, { reportId: security.reportId })).toBeNull();
+    const dismissed = await t.mutation(internal.agentFeedback.submit, report({ summary: "noise" }));
+    await t.mutation(internal.agentFeedback.transition, { reportId: dismissed.reportId, to: "dismissed", reason: "spam" });
+    expect(await t.query(internal.agentFeedback.getForTriage, { reportId: dismissed.reportId })).toBeNull();
   });
 });
