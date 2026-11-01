@@ -1697,7 +1697,7 @@ export class DataLoaderManager implements AppModule {
           const carried = crossEdition.complete ? [] : this.getStaleNewsItems(category)
             .filter(i => enabledNames.has(i.source) && !deliveredSources.has(i.source));
           recordSelectedFreshness(crossEdition.servedStale || carried.length > 0);
-          this.setNewsRefreshDegraded(category, !crossEdition.complete);
+          this.setNewsRefreshDegraded(category, carried.length > 0);
           const digestItems = crossEdition.items.filter(i => enabledNames.has(i.source));
           void ingestTrendingHeadlines(digestItems.map(i => ({
             title: i.title,
