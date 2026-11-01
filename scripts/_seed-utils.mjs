@@ -2771,7 +2771,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   const fetchDeadlineAtMs = Date.now() + fetchDeadlineMs;
   try {
     data = await raceFetchDeadline(
-      withRetry(() => fetchFn({ runStartedAtMs: startMs, fetchDeadlineAtMs })),
+      withRetry(() => fetchFn({ runId, runStartedAtMs: startMs, fetchDeadlineAtMs })),
       fetchDeadlineMs,
       `${domain}:${resource}`,
     );

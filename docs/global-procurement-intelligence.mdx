@@ -80,6 +80,20 @@ The [source proposal](https://github.com/koala73/worldmonitor/issues/9840) inclu
 
 TED and World Bank were already integrated. Supplier debarment lists are not tender opportunities and are not imported here. Weekly map aggregates are outside the panel/API extension.
 
+## Natural run receipts
+
+The private Redis list `economic:global-tenders:run-history:v1` preserves the latest 72 completed fetch attempts. The key expires seven days after its last update. It is separate from the public tender snapshot and does not change source retention or health thresholds.
+
+Each receipt has a unique `runId`, start and completion times, and per-source outcomes. A source entry separates newly fetched records from retained records and preserves its last successful fetch time. SAM runs inside the existing request-pacing interval use the `paced` outcome and count previous records as retained. Each source records up to 32 HTTP attempts, with a total request count and a truncation flag. Request details include the host, timeout budget, HTTP status, and failure phase (`headers` or `body`). Successful body reads use `complete`. Failure codes exclude raw error messages. Receipts contain no query strings, headers, response bodies, or tender records.
+
+Bulgaria receipts include the requested bucket date, attempted dates, the HTTP status that caused fallback, and the selected bucket date. `selectedDate` remains null unless the selected file parses and normalizes successfully. These dates describe the export window, not a new freshness policy.
+
+Publication starts as `unconfirmed`. The seeder changes it to `published` only after the canonical snapshot, source status, source metadata, and aggregate freshness writes succeed. The confirmation includes `publishedAt` and the seed runner's `seedRunId`. A failed validation or publication leaves the receipt unconfirmed. An unconfirmed receipt does not identify which write failed. Use the runner logs for that cause.
+
+Operators can read the newest receipts with `LRANGE economic:global-tenders:run-history:v1 0 9` through the existing authorized Redis tooling. Search runner logs for `Procurement receipt:` to correlate a receipt with its natural execution. Compare `outcome`, `fetchedCount`, `retainedCount`, request failures, and bucket dates before changing a provider adapter.
+
+The history records attempts that finish the source fetch phase. A process exit during fetch or a failed canonical-cache read can prevent a receipt. Redis write failures also prevent receipt persistence. The seeder stops publication when its required receipt write fails and does not repeat provider requests to retry that write. After publication, the existing bundle completion marker remains the separate attestation that the runner completed its final required write.
+
 ## Deployment configuration
 
 Only the U.S. SAM.gov adapter needs a new credential:

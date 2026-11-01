@@ -11,7 +11,7 @@ test('CSL preserves a safe nested transport code without exposing error text', a
     const result = await ingestCslEntries({ fetchFn: async () => {
       throw new TypeError('fetch failed', { cause: Object.assign(new Error('secret-url?token=private'), { code: 'UND_ERR_CONNECT_TIMEOUT' }) });
     } });
-    assert.equal(result.error, 'fetch failed');
+    assert.equal(result.error, 'fetch failed (cause: UND_ERR_CONNECT_TIMEOUT)');
     assert.equal(records.length, 1);
     assert.equal(records[0].source, 'csl');
     assert.equal(records[0].errorCode, 'UND_ERR_CONNECT_TIMEOUT');

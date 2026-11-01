@@ -50,6 +50,13 @@ function seed(now: number, fixtures = {}, fail = false, empty = false) {
   assert.ok(result, child.stdout + child.stderr);
   const parsed = JSON.parse(result.slice(7));
   assert.equal(parsed.exitCode, 0, child.stdout + child.stderr);
+  const logs = child.stdout.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
+  const receipt = logs.find(entry => entry.event === 'natural_source_receipt');
+  const completion = logs.find(entry => entry.event === 'seed_complete');
+  assert.ok(receipt?.runId);
+  assert.equal(completion?.runId, receipt.runId);
+  assert.deepEqual(receipt.sourceHealth, parsed.values[META].sourceHealth);
+  assert.equal(receipt.recordCount, parsed.values[KEY]._seed.recordCount);
   return parsed;
 }
 

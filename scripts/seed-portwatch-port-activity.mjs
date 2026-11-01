@@ -15,6 +15,7 @@ import {
   PUBLISH_BLOCKED_EXIT_CODE,
 } from './_seed-utils.mjs';
 import { createCountryResolvers } from './_country-resolver.mjs';
+import { createPortwatchRequestTrace } from './_portwatch-request-diagnostics.mjs';
 import {
   buildPortActivityMetaPayload,
   contentClockFor,
@@ -225,6 +226,17 @@ const RATE_LIMIT_RETRY_DELAY_MS = 8_000;
 // truthful classification.
 const RATE_LIMIT_RETRY_MIN_ATTEMPT_MS = FETCH_TIMEOUT;
 const MAX_RATE_LIMIT_RETRIES = 1;
+// 2026-11-01: ArcGIS answered the identical reference query with
+// `Invalid query parameters`, `Invalid URL` and a full page within seconds of
+// each other, and one such page failed the 00:00Z tick with exit 1. Under that
+// degradation the error is intermittent, so it gets bounded retries. A real
+// schema regression (2026-04-29 `date` -> `date_`) fails every attempt, still
+// throws once the retries are spent, and still trips the batch circuit-breaker.
+// The reference fetch is 3 pages inside its own 120s slice, so it can afford
+// more attempts than a country, whose 90s wrap must also hold the proxy leg.
+const INVALID_QUERY_RETRY_DELAY_MS = 5_000;
+const MAX_REFERENCE_INVALID_QUERY_RETRIES = 3;
+const MAX_COUNTRY_INVALID_QUERY_RETRIES = 1;
 // Hard publication expiry: reject cached payloads at seven days. Queue a full
 // refetch earlier so the bounded rotation can finish before this deadline,
 // even when upstream maxDate is unchanged. Protects against window-shift drift
@@ -288,19 +300,46 @@ function arcgisErrorInfo(err) {
 // 10s slack (see those constants for the per-tweak rationale + the
 // dated re-measurements that justified each shift).
 async function arcgisProxyRetry(url, reason, { signal } = {}) {
-  const proxyAuth = resolveProxyForConnect();
-  if (!proxyAuth) throw new Error(`ArcGIS direct ${reason} + no proxy configured for ${url.slice(0, 80)}`);
-  console.warn(`  [portwatch] ${reason} — retrying via proxy: ${url.slice(0, 80)}`);
-  const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { accept: 'application/json', timeoutMs: PROXY_FETCH_TIMEOUT, signal });
-  const proxied = JSON.parse(buffer.toString('utf8'));
-  if (proxied?.error) {
-    // Greptile PR #3681 review P2: ArcGIS can return `{"error":{"code":400}}`
-    // with no message field. Fall back to code, then JSON.stringify so the
-    // thrown error message stays informative on unexpected error shapes.
-    const errInfo = arcgisErrorInfo(proxied.error);
-    throw createArcgisProxyError(reason, errInfo);
+  const trace = createPortwatchRequestTrace(url, 'proxy');
+  let response;
+  let proxied;
+  let phase = 'fetch';
+  try {
+    const proxyAuth = resolveProxyForConnect();
+    if (!proxyAuth) throw new Error(`ArcGIS direct ${reason} + no proxy configured for ${url.slice(0, 80)}`);
+    console.warn(`  [portwatch] ${reason} — retrying via proxy: ${url.slice(0, 80)}`);
+    // proxyFetch applies timeoutMs to the CONNECT tunnel and again to the
+    // response, so on its own the leg could run 2 x PROXY_FETCH_TIMEOUT. The
+    // per-country wrap and the reference retry guard both size the proxy leg
+    // at PROXY_FETCH_TIMEOUT, so one deadline on the signal covers both phases.
+    const legController = new AbortController();
+    const legTimer = setTimeout(
+      () => legController.abort(new Error(`ArcGIS proxy leg timeout after ${PROXY_FETCH_TIMEOUT}ms`)),
+      PROXY_FETCH_TIMEOUT,
+    );
+    let buffer;
+    try {
+      ({ buffer } = await httpsProxyFetchRaw(url, proxyAuth, {
+        accept: 'application/json',
+        timeoutMs: PROXY_FETCH_TIMEOUT,
+        signal: signal ? AbortSignal.any([signal, legController.signal]) : legController.signal,
+        onErrorResponse: (result) => { response = result; phase = 'http'; },
+      }));
+    } finally {
+      clearTimeout(legTimer);
+    }
+    phase = 'json';
+    proxied = JSON.parse(buffer.toString('utf8'));
+    phase = 'arcgis';
+    if (proxied?.error) {
+      const errInfo = arcgisErrorInfo(proxied.error);
+      throw createArcgisProxyError(reason, errInfo);
+    }
+    return proxied;
+  } catch (error) {
+    trace.fail(error, { phase, response, arcgisError: proxied?.error });
+    throw error;
   }
-  return proxied;
 }
 
 const defaultFetch = (...args) => globalThis.fetch(...args);
@@ -334,6 +373,7 @@ async function fetchWithTimeout(url, {
   const combined = signal
     ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
     : AbortSignal.timeout(timeoutMs);
+  const trace = createPortwatchRequestTrace(url, 'direct');
   let resp;
   try {
     resp = await fetchFn(url, {
@@ -341,6 +381,7 @@ async function fetchWithTimeout(url, {
       signal: combined,
     });
   } catch (err) {
+    trace.fail(err, { phase: 'fetch' });
     // If the CALLER signal aborted (real cancellation request from SIGTERM
     // / per-country timeout), propagate as-is. Only the internal
     // FETCH_TIMEOUT or transient network errors fall through to the proxy
@@ -412,13 +453,24 @@ async function fetchWithTimeout(url, {
     return await proxyRetryFn(url, `direct ${errName || 'timeout'}`, { signal });
   }
   if (resp.status === 429) {
+    trace.fail(new Error('ArcGIS HTTP 429'), { phase: 'http', response: resp });
     // Preflight (noProxyFallback) treats 429 as a soft failure: throw and
     // let the caller fall through to the expensive per-country path.
     if (noProxyFallback) throw new Error(`ArcGIS HTTP 429 (preflight, no proxy fallback)`);
     return await proxyRetryFn(url, 'HTTP 429 rate-limited', { signal });
   }
-  if (!resp.ok) throw new Error(`ArcGIS HTTP ${resp.status} for ${url.slice(0, 80)}`);
-  const body = await resp.json();
+  if (!resp.ok) {
+    const error = new Error(`ArcGIS HTTP ${resp.status} for ${url.slice(0, 80)}`);
+    trace.fail(error, { phase: 'http', response: resp });
+    throw error;
+  }
+  let body;
+  try {
+    body = await resp.json();
+  } catch (error) {
+    trace.fail(error, { phase: 'json', response: resp });
+    throw error;
+  }
   // A raw `body.error.message` interpolation threw "ArcGIS error: undefined"
   // for a message-less envelope — unusable in logs, and invisible to both
   // the rate-limit classifier and the invalid-params circuit breaker, which
@@ -426,6 +478,7 @@ async function fetchWithTimeout(url, {
   if (body?.error) {
     const errInfo = arcgisErrorInfo(body.error);
     const error = new Error(`ArcGIS error: ${errInfo}`);
+    trace.fail(error, { phase: 'arcgis', response: resp, arcgisError: body.error });
     if (!noProxyFallback && refreshFailureCode(error) === 'rate_limited') {
       return await proxyRetryFn(url, 'HTTP 200 rate-limited', { signal });
     }
@@ -539,7 +592,16 @@ export async function fetchAllPortRefs({
         fetchFn,
         proxyRetryFn,
       }),
-      { signal, sleepFn, label: `reference page ${page}`, deadlineAt },
+      {
+        signal,
+        sleepFn,
+        label: `reference page ${page}`,
+        deadlineAt,
+        // A retried page can still fall back to the proxy, so reserve the same
+        // direct + proxy budget the per-page check above reserves.
+        minAttemptMs: FETCH_TIMEOUT + PROXY_FETCH_TIMEOUT,
+        invalidQueryRetries: MAX_REFERENCE_INVALID_QUERY_RETRIES,
+      },
     );
     const features = validatedPage(body, `reference page ${page}`, offset);
     for (const f of features) {
@@ -872,7 +934,13 @@ export async function fetchCountryActivityWithRecovery(iso3, {
       dateField,
       forceProxy: false,
     }),
-    { signal, sleepFn, label: iso3, deadlineAt },
+    {
+      signal,
+      sleepFn,
+      label: iso3,
+      deadlineAt,
+      invalidQueryRetries: MAX_COUNTRY_INVALID_QUERY_RETRIES,
+    },
   );
   if (isUsableActivity(directResult)) {
     return { portAccumMap: directResult.portAccumMap, verifiedZero: false };
@@ -1243,8 +1311,10 @@ export function classifyBatchCircuitBreak(
 
 // What a tripped breaker should DO — the two classes need opposite responses.
 //
-// `invalid_query` is unrecoverable within the run (schema/policy regression):
-// the remaining batches would fail identically, so abort and keep last-good.
+// `invalid_query` that survives its per-country retry from countries with no
+// invalid_query history is treated as unrecoverable within the run
+// (schema/policy regression): the remaining batches would fail identically,
+// so abort and keep last-good.
 //
 // `rate_limited` is NOT. The 2026-09-22 incident landed 6 of 30 countries while
 // 24 were throttled, so batch 1 sits right at the 80% trip rate — aborting
@@ -1308,16 +1378,20 @@ function waitForRetry(delayMs, signal) {
   });
 }
 
-// Retry only the rate-limit failure class. Other ArcGIS errors (invalid query,
-// timeout, empty result) must retain their existing failure semantics so a
-// global upstream regression still reaches the circuit-breaker and coverage
-// gates without being hidden by a generic retry loop.
+// Retry the rate-limit failure class and, only when the caller opts in with
+// `invalidQueryRetries`, a bounded number of invalid_query failures. Other
+// ArcGIS errors (timeout, empty result) retain their existing failure semantics
+// so a global upstream regression still reaches the circuit-breaker and
+// coverage gates without being hidden by a generic retry loop. Each class has
+// its own retry budget, and every retry passes the same deadline guard.
 export async function retryRateLimited(
   operation,
   {
     signal,
     delayMs = RATE_LIMIT_RETRY_DELAY_MS,
     maxRetries = MAX_RATE_LIMIT_RETRIES,
+    invalidQueryRetries = 0,
+    invalidQueryDelayMs = INVALID_QUERY_RETRY_DELAY_MS,
     sleepFn = waitForRetry,
     label = 'country',
     // Per-country wrap deadline (epoch ms). Omitted by callers that have no
@@ -1327,6 +1401,7 @@ export async function retryRateLimited(
   } = {},
 ) {
   let retries = 0;
+  let invalidQueryRetriesUsed = 0;
   while (true) {
     const attemptController = new AbortController();
     const attemptSignal = signal
@@ -1339,30 +1414,41 @@ export async function retryRateLimited(
       // window before retrying so one fast 429 cannot overlap a second full
       // country attempt and amplify the upstream rate limit.
       attemptController.abort(reason);
-      if (
-        retries >= maxRetries
-        || refreshFailureCode(reason) !== 'rate_limited'
-        || signal?.aborted
-      ) {
+      if (signal?.aborted) throw reason;
+      const code = refreshFailureCode(reason);
+      let waitMs;
+      let attempt;
+      let budget;
+      if (code === 'rate_limited' && retries < maxRetries) {
+        waitMs = delayMs;
+        attempt = retries + 1;
+        budget = maxRetries;
+      } else if (code === 'invalid_query' && invalidQueryRetriesUsed < invalidQueryRetries) {
+        waitMs = invalidQueryDelayMs;
+        attempt = invalidQueryRetriesUsed + 1;
+        budget = invalidQueryRetries;
+      } else {
         throw reason;
       }
+      const what = code === 'rate_limited' ? 'rate-limited' : 'invalid_query';
       // Declining a retry that cannot finish keeps the failure truthfully
-      // `rate_limited`. Starting one anyway hands the country back as
-      // `timeout`, which the batch circuit-breaker cannot read as throttling.
-      if (Number.isFinite(deadlineAt) && Date.now() + delayMs + minAttemptMs > deadlineAt) {
+      // classified. Starting one anyway hands the country back as `timeout`,
+      // which the batch circuit-breaker cannot read as throttling.
+      if (Number.isFinite(deadlineAt) && Date.now() + waitMs + minAttemptMs > deadlineAt) {
         console.warn(
-          `  [port-activity] ${label}: rate-limited — skipping retry, ` +
+          `  [port-activity] ${label}: ${what} — skipping retry, ` +
           `${Math.max(0, Math.round((deadlineAt - Date.now()) / 1000))}s left is under the ` +
-          `${(delayMs + minAttemptMs) / 1000}s cooldown-plus-attempt budget`,
+          `${(waitMs + minAttemptMs) / 1000}s cooldown-plus-attempt budget`,
         );
         throw reason;
       }
-      retries += 1;
+      if (code === 'rate_limited') retries += 1;
+      else invalidQueryRetriesUsed += 1;
       console.warn(
-        `  [port-activity] ${label}: rate-limited — retrying ` +
-        `after ${delayMs}ms (${retries}/${maxRetries})`,
+        `  [port-activity] ${label}: ${what} — retrying ` +
+        `after ${waitMs}ms (${attempt}/${budget})`,
       );
-      await sleepFn(delayMs, signal);
+      await sleepFn(waitMs, signal);
     }
   }
 }

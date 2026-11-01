@@ -4994,6 +4994,11 @@ export class DataLoaderManager implements AppModule {
     try {
       const fireResult = await fetchAllFires(1);
       if (fireResult.skipped) {
+        this.ctx.intelligenceCache.satelliteFires = [];
+        this.ctx.map?.setFires([]);
+        (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
+        await runSignalAggregator(this.ctx.statusPanel, 'satellite fires', (aggregator) => aggregator.ingestSatelliteFires([]));
+        dataFreshness.recordError('firms', fireResult.reason ?? 'no_data');
         // en.json carries panels.satelliteFires as a flat title string, so the
         // nested .noData lookup could never resolve — it rendered the raw key.
         this.ctx.panels['satellite-fires']?.showConfigError(t('common.noData'));
