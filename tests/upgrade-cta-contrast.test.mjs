@@ -184,8 +184,13 @@ function assertReadable(file, label, background, text) {
 
 describe('dark-only containers pin the dark theme values', () => {
   for (const [file, scope] of Object.entries(SCOPED_TOKENS)) {
-    it(`${scope} matches :root`, () => {
-      for (const [name, value] of Object.entries(tokens(rule(file, scope).body))) {
+    it(`${scope} pins every theme-dependent token ${file} reads, at its :root value`, () => {
+      const pinned = tokens(rule(file, scope).body);
+      const read = new Set([...stripComments(sheets[file]).matchAll(/var\(\s*(--[\w-]+)/g)].map((m) => m[1]));
+      const flipping = [...read].filter((name) => name in dark && dark[name] !== light[name]);
+      assert.ok(flipping.length > 0, `${file} reads no theme-dependent token; the scan is broken`);
+      for (const name of flipping) assert.ok(name in pinned, `${scope} does not pin ${name}`);
+      for (const [name, value] of Object.entries(pinned)) {
         assert.equal(value, dark[name], `${scope} ${name} drifted from the dark theme`);
       }
     });
