@@ -36,6 +36,12 @@ export const REFRESH_WORKFLOW_PATH = '.github/workflows/resilience-snapshot-refr
 export const REHEARSED_STEP = 'Rebuild and verify published artifacts';
 // A record's identity. Everything else on it is this month's reading.
 const IDENTITY_FIELDS = ['countryCode', 'countryName', 'identity'];
+// The headline half of a greyed-out reading: the figures its page publishes,
+// and the confidence flag that moves with coverage and imputation.
+const GREY_HEADLINE_FIELDS = [
+  'overallScore', 'overallScoreRaw', 'level', 'lowConfidence', 'dimensionCoverage', 'imputationShare',
+  'baselineScore', 'stressScore', 'stressFactor', 'trend', 'change30d',
+];
 // Non-test files whose change can break the refresh. Tests are matched by the
 // workflow's SNAPSHOT_CONSUMERS pattern instead, the same rule that selects
 // them for verification.
@@ -47,10 +53,6 @@ export const REHEARSAL_TRIGGERS = [
 
 function pick(record, fields) {
   return Object.fromEntries(fields.filter((field) => field in record).map((field) => [field, record[field]]));
-}
-
-function omit(record, fields) {
-  return Object.fromEntries(Object.entries(record).filter(([field]) => !fields.includes(field)));
 }
 
 // Pairs 0-1, 2-3, ... so every country moves exactly one place and nothing
@@ -93,16 +95,17 @@ export function driftResilienceSnapshot(snapshot, { targetDate, keepReadings = M
   const itemOrder = neighbourOrder(drifted.items.length);
   drifted.items = drifted.items.map((item, index) => ({ ...item, ...itemIdentities[itemOrder[index]] }));
 
-  // Greyed-out rows are ordered by country code, so the readings move instead.
-  // Each row takes a reading from the next displayed coverage step up (the
-  // top step takes the one below): every published percentage changes, by
-  // the smallest step the list holds, as a real month moves them (Taiwan
-  // 38% -> 40%). A larger jump trips the corpus page-size and story guards,
-  // which a real month would not. Countries with a hand-written coverage
-  // story keep their own readings: the build fails by design when a story's
-  // cited gaps stop matching its country's data, and that needs a human
+  // Greyed-out rows are ordered by country code, so the headline figures move
+  // instead. Each row takes the figures of a row one displayed coverage step
+  // up (the top step takes the one below): every published percentage
+  // changes, by the smallest step the list holds, as a real month moves them
+  // (Taiwan 38% -> 40%). Dimension evidence stays with its country: which
+  // sources cover it is structural (Taiwan is outside WHO), and a borrowed
+  // gap list trips page-size guards a real month would not. Countries with a
+  // hand-written coverage story keep their figures: the build fails by design
+  // when a story stops matching its country's data, and that needs a human
   // rewrite, not a test fix.
-  const greyReadings = drifted.greyedOut.map((entry) => omit(entry, IDENTITY_FIELDS));
+  const greyReadings = drifted.greyedOut.map((entry) => pick(entry, GREY_HEADLINE_FIELDS));
   const percent = (reading) => Math.round(reading.dimensionCoverage * 100);
   const steps = new Map();
   greyReadings.forEach((reading, index) => {
@@ -115,7 +118,7 @@ export function driftResilienceSnapshot(snapshot, { targetDate, keepReadings = M
     const level = levels.indexOf(percent(greyReadings[index]));
     const donors = steps.get(levels[level === levels.length - 1 ? level - 1 : level + 1]);
     const donor = donors[steps.get(levels[level]).indexOf(index) % donors.length];
-    return { ...pick(entry, IDENTITY_FIELDS), ...greyReadings[donor] };
+    return { ...entry, ...greyReadings[donor] };
   });
   return drifted;
 }

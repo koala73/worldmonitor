@@ -44,6 +44,7 @@ import {
   DATASET_SCHEMA_CONTENT_VERSION,
   datasetObservationCoverage,
   datasetTemporalCoverage,
+  describeAvailableEvidence,
   describeHeadlineIneligibilityReason,
   describeInventoryScope,
   developmentsHasDatedItem,
@@ -3611,27 +3612,24 @@ describe('crawlable corpus generator', () => {
       assert.match(taiwan, /population of at least 200,000/);
       assert.match(taiwan, /coverage falls below 55%/);
       assert.match(taiwan, /imputation share exceeds 40%/);
-      const taiwanSnapshot = JSON.parse(read(repoRoot, manifest.sources.resilienceSnapshot)).greyedOut
-        .find((item) => item.countryCode === 'TW');
-      assert.ok(taiwanSnapshot, 'Taiwan is the greyed-out fixture country');
-      const taiwanCoverage = `coverage is ${Math.round(taiwanSnapshot.dimensionCoverage * 100)}%`;
-      const taiwanImputation = `imputation share is ${Math.round(taiwanSnapshot.imputationShare * 100)}%`;
+      // Taiwan's figures, and which quality gates they miss, move with every
+      // monthly snapshot, so the expected sentences come from the snapshot.
+      const taiwanCountry = countryByCode.get('TW');
+      assert.equal(taiwanCountry?.headlineEligible, false, 'Taiwan is the greyed-out fixture country');
       const taiwanWhy = unpublishedHeadingParagraph(taiwan, 'Why Taiwan is unpublished');
-      assert.ok(taiwanWhy.includes(taiwanCoverage), taiwanWhy);
-      assert.ok(taiwanWhy.includes(taiwanImputation), taiwanWhy);
+      assert.equal(taiwanWhy, describeHeadlineIneligibilityReason(taiwanCountry));
       assert.doesNotMatch(
         taiwanWhy,
         /Ranking requires coverage of at least 65%/,
         'eligibility thresholds in FAQ/JSON-LD must not be the Why-unpublished analysis reason',
       );
       const taiwanCovered = unpublishedHeadingParagraph(taiwan, 'What the snapshot does cover');
-      assert.match(
+      assert.equal(
         taiwanCovered,
-        /Cyber and digital capacity \(100%\)|Macro-fiscal position \(95%\)/,
-        'available-evidence copy must name a strongest observed dimension, not only weak usable rows',
+        describeAvailableEvidence(taiwanCountry),
+        'available-evidence copy must lead with the best-covered observed dimensions, not only weak usable rows',
       );
-      assert.ok(taiwan.includes(taiwanCoverage));
-      assert.ok(taiwan.includes(taiwanImputation));
+      assert.ok(taiwan.includes(`coverage is ${Math.round(taiwanCountry.dimensionCoverage * 100)}%`));
       assert.match(taiwan, /World Bank/);
       assert.match(taiwan, /WHO/);
       assert.match(taiwan, /Nearest ranked comparators:/);

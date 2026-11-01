@@ -17,7 +17,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REHEARSAL_WORKFLOW_PATH = '.github/workflows/resilience-snapshot-rehearsal.yml';
 
 function country(code, fields) {
-  return { countryCode: code, countryName: `Country ${code}`, identity: { commonName: code }, ...fields };
+  return { countryCode: code, countryName: `Country ${code}`, identity: { commonName: code }, domains: [`${code} evidence`], ...fields };
 }
 
 function snapshot() {
@@ -72,6 +72,7 @@ describe('resilience snapshot refresh rehearsal', () => {
         byCode(original.greyedOut, code).dimensionCoverage,
         `${code} changes coverage, even where its code neighbour shared it`,
       );
+      assert.deepEqual(byCode(drifted.greyedOut, code).domains, [`${code} evidence`], `${code} keeps its own dimension evidence`);
     }
     assert.ok(drifted.greyedOut.every((row) => row.headlineEligible === false));
 
