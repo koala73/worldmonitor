@@ -156,6 +156,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
       "price_usd_monthly": 99.99,
       "price_usd_yearly": 899.99,
       "features": [
+        "full Pro dashboard (1 named user)",
         "REST API",
         "license / API key included",
         "1,000 requests/day starter limit (REST + MCP combined; a live MCP call counts as 2-3)",
@@ -163,7 +164,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
         "webhooks",
         "structured JSON",
         "OpenAPI docs",
-        "commercial license — for your organization"
+        "commercial license — internal use in your organization, not customer-facing products"
       ]
     },
     {

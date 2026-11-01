@@ -592,7 +592,7 @@ function pricingSummary() {
         name: 'API',
         price_usd_monthly: byKey.api_starter.price,
         price_usd_yearly: byKey.api_starter_annual.price,
-        features: ['REST API', 'license / API key included', '1,000 requests/day starter limit (REST + MCP combined; a live MCP call counts as 2-3)', dashboardAi('api_starter'), 'webhooks', 'structured JSON', 'OpenAPI docs', 'commercial license — for your organization'],
+        features: ['full Pro dashboard (1 named user)', 'REST API', 'license / API key included', '1,000 requests/day starter limit (REST + MCP combined; a live MCP call counts as 2-3)', dashboardAi('api_starter'), 'webhooks', 'structured JSON', 'OpenAPI docs', 'commercial license — internal use in your organization, not customer-facing products'],
       },
       {
         name: 'API Business',

@@ -380,15 +380,16 @@
       "api": {
         "description": "Belső eszközök fejlesztése élő hírességi adatok alapján",
         "features": [
+          "Teljes Pro dashboard (1 megnevezett felhasználó)",
           "REST API + hivatalos SDK-k (npm, PyPI, RubyGems, Go)",
-          "Licenc- / API-kulcs mellékelve",
+          "Licenc / API kulcs",
           "Valós idejű adatfolyamok",
           "60 kérés/perc",
           "1000 kérés/nap (REST + MCP kombinálva; egy élő MCP hívás 2-3-nak számít)",
-          "Webhook-értesítések"
+          "Webhook értesítések"
         ],
         "highlightFeatures": [
-          "Kereskedelmi licenc — szervezete számára"
+          "Kereskedelmi felhasználás — csak belső, nem ügyfeleknek szóló"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "Prioritásos támogatás"
         ],
         "highlightFeatures": [
-          "Kereskedelmi licenc — ügyfeleinek"
+          "Kereskedelmi felhasználás — az ügyfeleinek szóló termékekben"
         ]
       },
       "proBusiness": {

@@ -380,15 +380,16 @@
       "api": {
         "description": "Twórz narzędzia wewnętrzne na podstawie aktualnych danych analizy",
         "features": [
+          "Pełny dashboard Pro w pakiecie (1 użytkownik nazwany)",
           "REST API + oficjalne SDK (npm, PyPI, RubyGems, Go)",
-          "Klucz licencyjny / API w zestawie",
+          "Licencja / klucz API w pakiecie",
           "Strumienie danych w czasie rzeczywistym",
           "60 żądań/minutę",
-          "1000 żądań/dzień w pakiecie (REST + MCP razem; jedno aktywne połączenie MCP liczy się jako 2-3)",
+          "1000 żądań/dzień w pakiecie (REST + MCP łącznie; jedno aktywne wywołanie MCP liczy się jako 2-3)",
           "Powiadomienia webhook"
         ],
         "highlightFeatures": [
-          "Licencja komercyjna — dla Twojej organizacji"
+          "Użycie komercyjne — tylko wewnętrznie, bez dostępu klientów"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "Wsparcie priorytetowe"
         ],
         "highlightFeatures": [
-          "Licencja komercyjna — dla Twoich klientów"
+          "Użycie komercyjne — w produktach dostępnych dla klientów"
         ]
       },
       "proBusiness": {

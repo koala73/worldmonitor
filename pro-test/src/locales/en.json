@@ -70,6 +70,7 @@
       "api": {
         "description": "Build internal tools on live intelligence data",
         "features": [
+          "Full Pro dashboard included (1 named user)",
           "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
           "License / API key included",
           "Real-time data streams",
@@ -78,7 +79,7 @@
           "Webhook notifications"
         ],
         "highlightFeatures": [
-          "Commercial license — for your organization"
+          "Commercial use — internal only, not customer-facing"
         ]
       },
       "apiBusiness": {
@@ -92,7 +93,7 @@
           "Priority support"
         ],
         "highlightFeatures": [
-          "Commercial license — for your customers"
+          "Commercial use — in your customer-facing products"
         ]
       },
       "enterprise": {

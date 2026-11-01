@@ -380,15 +380,16 @@
       "api": {
         "description": "Gradite interno alate na temelju podataka užive obavještajne analize",
         "features": [
-          "REST API + službeni SDK-ovi (npm, PyPI, RubyGems, Go)",
-          "Uključen licencni / API ključ",
-          "Tokovi podataka u stvarnom vremenu",
-          "60 zahtjeva/minutu",
-          "1.000 zahtjeva/dan uključeno (REST + MCP kombinovano; live MCP poziv broji kao 2-3)",
-          "Webhook obavijesti"
+          "Uključena puna Pro nadzorna ploča (1 imenovani korisnik)",
+          "REST API + službeni SDKs (npm, PyPI, RubyGems, Go)",
+          "Uključena licenca / API ključ",
+          "Tokovi podataka u realnom vremenu",
+          "60 zahtjeva/minuta",
+          "1.000 zahtjeva/dan uključeno (REST + MCP kombinirano; jedan MCP poziv računa se kao 2-3)",
+          "Obavijesti putem webhooks"
         ],
         "highlightFeatures": [
-          "Komercijalna licencija — za vašu organizaciju"
+          "Komercijalna upotreba — samo interno, ne za klijente"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "Prioritetna podrška"
         ],
         "highlightFeatures": [
-          "Komercijalna licencija — za vaše klijente"
+          "Komercijalna upotreba — u vašim proizvodima za klijente"
         ]
       },
       "proBusiness": {

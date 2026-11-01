@@ -70,15 +70,16 @@
       "api": {
         "description": "Jenga zana za ndani kwenye data ya ujumbe halisi",
         "features": [
+          "Dashboard kamili ya Pro iliyojumuishwa (mtumiaji 1 aliyeteuliwa)",
           "REST API + SDK rasmi (npm, PyPI, RubyGems, Go)",
-          "Leseni / ufunguo wa API wajumuishwa",
-          "Mtiririko wa data wa halisi wa wakati",
-          "Mahitaji 60 kwa dakika",
-          "Ombi 1,000 kwa siku zilizoingizwa (REST + MCP pamoja; simu ya MCP hai huhesabu kama 2-3)",
+          "Leseni / Ufunguo wa API iliyojumuishwa",
+          "Mtiririko wa data halisi",
+          "Ombi 60 kwa dakika",
+          "Ombi 1,000 kwa siku iliyojumuishwa (REST + MCP pamoja; simu halisi ya MCP inahesabu kama 2-3)",
           "Arifa za Webhook"
         ],
         "highlightFeatures": [
-          "Leseni ya biashara — kwa shirikishi lako"
+          "Matumizi ya kibiashara — ya ndani tu, si kwa wateja"
         ]
       },
       "apiBusiness": {
@@ -92,7 +93,7 @@
           "Msaada wa kipaumbele"
         ],
         "highlightFeatures": [
-          "Leseni ya biashara — kwa wateja wako"
+          "Matumizi ya kibiashara — katika bidhaa zako zinazowahudumia wateja"
         ]
       },
       "enterprise": {

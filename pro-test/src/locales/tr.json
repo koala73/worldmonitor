@@ -380,15 +380,16 @@
       "api": {
         "description": "Canlı istihbarat verileri üzerinde dahili araçlar oluşturun",
         "features": [
-          "REST API + resmî SDK'lar (npm, PyPI, RubyGems, Go)",
+          "Tam Pro dashboard dahil (1 adlandırılmış kullanıcı)",
+          "REST API + resmi SDK'lar (npm, PyPI, RubyGems, Go)",
           "Lisans / API anahtarı dahil",
           "Gerçek zamanlı veri akışları",
-          "Dakikada 60 istek",
-          "Günde 1.000 istek dahil (REST + MCP birleşik; canlı MCP çağrısı 2-3 olarak sayılır)",
+          "60 istek/dakika",
+          "1.000 istek/gün dahil (REST + MCP birleşik; canlı MCP çağrısı 2-3 sayılır)",
           "Webhook bildirimleri"
         ],
         "highlightFeatures": [
-          "Ticari lisans — kuruluşunuz için"
+          "Ticari kullanım — yalnızca dahili, müşteriye yönelik değil"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "Öncelikli destek"
         ],
         "highlightFeatures": [
-          "Ticari lisans — müşterileriniz için"
+          "Ticari kullanım — müşteriye yönelik ürünlerinizde"
         ]
       },
       "proBusiness": {

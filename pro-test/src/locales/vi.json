@@ -380,15 +380,16 @@
       "api": {
         "description": "Xây dựng công cụ nội bộ trên dữ liệu thông minh trực tiếp",
         "features": [
+          "Dashboard Pro đầy đủ (1 người dùng được đặt tên)",
           "REST API + SDK chính thức (npm, PyPI, RubyGems, Go)",
-          "Bao gồm khóa bản quyền / API",
+          "Bao gồm License / API key",
           "Luồng dữ liệu thời gian thực",
           "60 yêu cầu/phút",
-          "1.000 yêu cầu/ngày (REST + MCP kết hợp; một cuộc gọi MCP trực tiếp tính là 2-3)",
+          "Bao gồm 1.000 yêu cầu/ngày (REST + MCP kết hợp; một lệnh gọi MCP trực tiếp tính là 2-3)",
           "Thông báo Webhook"
         ],
         "highlightFeatures": [
-          "Giấy phép thương mại — cho tổ chức của bạn"
+          "Sử dụng thương mại — chỉ nội bộ, không dành cho khách hàng"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "Hỗ trợ ưu tiên"
         ],
         "highlightFeatures": [
-          "Giấy phép thương mại — cho khách hàng của bạn"
+          "Sử dụng thương mại — trong các sản phẩm hướng tới khách hàng của bạn"
         ]
       },
       "proBusiness": {

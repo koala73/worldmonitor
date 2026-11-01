@@ -380,15 +380,16 @@
       "api": {
         "description": "Bouw interne tools op live intelligentiegegevens",
         "features": [
+          "Volledige Pro-dashboard inbegrepen (1 benoemde gebruiker)",
           "REST API + officiële SDK's (npm, PyPI, RubyGems, Go)",
-          "Licentie-/API-sleutel inbegrepen",
-          "Real-time gegevensstromen",
+          "Licentie / API-sleutel inbegrepen",
+          "Gegevensstromen in realtime",
           "60 aanvragen/minuut",
-          "1.000 verzoeken/dag inbegrepen (REST + MCP gecombineerd; een live MCP-aanroep telt als 2-3)",
-          "Webhook-meldingen"
+          "1.000 aanvragen/dag inbegrepen (REST + MCP gecombineerd; een live MCP-aanroep telt als 2-3)",
+          "Webhookberichten"
         ],
         "highlightFeatures": [
-          "Commerciële licentie — voor uw organisatie"
+          "Commercieel gebruik — alleen intern, niet naar klanten toe"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "Prioritaire ondersteuning"
         ],
         "highlightFeatures": [
-          "Commerciële licentie — voor uw klanten"
+          "Commercieel gebruik — in uw naar klanten gerichte producten"
         ]
       },
       "proBusiness": {

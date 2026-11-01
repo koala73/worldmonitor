@@ -380,15 +380,16 @@
       "api": {
         "description": "Erstellen Sie interne Tools mit Live-Intelligence-Daten",
         "features": [
-          "REST-API + offizielle SDKs (npm, PyPI, RubyGems, Go)",
-          "Lizenz-/API-Schlüssel inklusive",
+          "Vollständiges Pro-Dashboard enthalten (1 benannter Benutzer)",
+          "REST API + offizielle SDKs (npm, PyPI, RubyGems, Go)",
+          "Lizenz / API-Schlüssel enthalten",
           "Echtzeit-Datenströme",
           "60 Anfragen/Minute",
-          "1.000 Anfragen/Tag inklusive (REST + MCP kombiniert; ein Live-MCP-Aufruf zählt als 2–3)",
+          "1.000 Anfragen/Tag enthalten (REST + MCP kombiniert; ein Live-MCP-Aufruf zählt als 2–3)",
           "Webhook-Benachrichtigungen"
         ],
         "highlightFeatures": [
-          "Kommerzielle Lizenz – für Ihre Organisation"
+          "Kommerzielle Nutzung — nur intern, nicht kundenseitig"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "Priorisierter Support"
         ],
         "highlightFeatures": [
-          "Kommerzielle Lizenz – für Ihre Kunden"
+          "Kommerzielle Nutzung — in Ihren kundenseitigen Produkten"
         ]
       },
       "proBusiness": {

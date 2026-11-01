@@ -380,15 +380,16 @@
       "api": {
         "description": "Construiți instrumente interne pe date de informații în timp real",
         "features": [
-          "API REST + SDK-uri oficiale (npm, PyPI, RubyGems, Go)",
-          "Cheie de licență / API inclusă",
+          "Tablou de bord Pro complet inclus (1 utilizator numit)",
+          "REST API + SDK-uri oficiale (npm, PyPI, RubyGems, Go)",
+          "Licență / cheie API inclusă",
           "Fluxuri de date în timp real",
-          "60 de cereri/minut",
-          "1.000 cereri/zi incluse (REST + MCP combinate; un apel MCP live contează ca 2-3)",
-          "Notificări webhook"
+          "60 cereri/minut",
+          "1.000 cereri/zi incluse (REST + MCP combinate; un apel MCP activ contează ca 2-3)",
+          "Notificări prin webhook"
         ],
         "highlightFeatures": [
-          "Licență comercială — pentru organizația dvs."
+          "Utilizare comercială — numai internă, nu pentru clienți"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "Suport prioritar"
         ],
         "highlightFeatures": [
-          "Licență comercială — pentru clienții dvs."
+          "Utilizare comercială — în produsele dumneavoastră destinate clienților"
         ]
       },
       "proBusiness": {

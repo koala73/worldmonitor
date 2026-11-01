@@ -380,15 +380,16 @@
       "api": {
         "description": "Vytvářejte interní nástroje na základě živých dat o zpravodajství",
         "features": [
+          "Včetně plného Pro dashboardu (1 jmenovaný uživatel)",
           "REST API + oficiální SDK (npm, PyPI, RubyGems, Go)",
-          "Licenční / API klíč v ceně",
+          "Licenční klíč / API klíč včetně",
           "Datové toky v reálném čase",
-          "60 požadavků/minutu",
-          "1 000 požadavků za den (REST + MCP dohromady; živý MCP hovor se počítá jako 2–3)",
-          "Webhook oznámení"
+          "60 požadavků za minutu",
+          "1 000 požadavků za den včetně (REST + MCP dohromady; jeden live MCP call se počítá jako 2–3)",
+          "Webhook notifikace"
         ],
         "highlightFeatures": [
-          "Komerční licence — pro vaši organizaci"
+          "Komerční použití — pouze interní, není určeno pro zákazníky"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "Prioritní podpora"
         ],
         "highlightFeatures": [
-          "Komerční licence — pro vaše zákazníky"
+          "Komerční použití — v produktech dostupných vašim zákazníkům"
         ]
       },
       "proBusiness": {

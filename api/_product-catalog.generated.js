@@ -101,7 +101,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 1000,
-      "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), Webhook notifications, Commercial license — for your organization"
+      "description": "Full Pro dashboard included (1 named user), REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), Webhook notifications, Commercial use — internal only, not customer-facing"
     },
     {
       "planKey": "api_starter_annual",
@@ -131,7 +131,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 10000,
-      "description": "Everything in API Starter, R1–R3 redistribution rights for customer-facing products, 300 requests/minute, 10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), 5 Pro licenses — invite users at any corporate email domain, Priority support, Commercial license — for your customers"
+      "description": "Everything in API Starter, R1–R3 redistribution rights for customer-facing products, 300 requests/minute, 10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), 5 Pro licenses — invite users at any corporate email domain, Priority support, Commercial use — in your customer-facing products"
     },
     {
       "planKey": "api_business_annual",
@@ -332,6 +332,7 @@ export const TIER_CONFIG = {
     "localeKey": "api",
     "description": "Build internal tools on live intelligence data",
     "features": [
+      "Full Pro dashboard included (1 named user)",
       "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
       "License / API key included",
       "Real-time data streams",
@@ -340,7 +341,7 @@ export const TIER_CONFIG = {
       "Webhook notifications"
     ],
     "highlightFeatures": [
-      "Commercial license — for your organization"
+      "Commercial use — internal only, not customer-facing"
     ],
     "planLimits": {
       "apiRequestsPerDay": 1000,
@@ -367,7 +368,7 @@ export const TIER_CONFIG = {
       "Priority support"
     ],
     "highlightFeatures": [
-      "Commercial license — for your customers"
+      "Commercial use — in your customer-facing products"
     ],
     "planLimits": {
       "apiRequestsPerDay": 10000,

@@ -380,15 +380,16 @@
       "api": {
         "description": "Créez des outils internes sur des données de renseignement en direct",
         "features": [
+          "Dashboard Pro complet inclus (1 utilisateur nommé)",
           "API REST + SDK officiels (npm, PyPI, RubyGems, Go)",
           "Clé de licence / API incluse",
           "Flux de données en temps réel",
           "60 requêtes/minute",
           "1 000 requêtes/jour incluses (REST + MCP combinés ; un appel MCP en direct compte pour 2-3)",
-          "Notifications webhook"
+          "Notifications par webhook"
         ],
         "highlightFeatures": [
-          "Licence commerciale — pour votre organisation"
+          "Usage commercial — interne uniquement, pas accessible aux clients"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "Support prioritaire"
         ],
         "highlightFeatures": [
-          "Licence commerciale — pour vos clients"
+          "Usage commercial — dans vos produits destinés aux clients"
         ]
       },
       "proBusiness": {

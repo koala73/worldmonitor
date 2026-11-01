@@ -380,15 +380,16 @@
       "api": {
         "description": "Crie ferramentas internas com dados de inteligência em tempo real",
         "features": [
-          "API REST + SDKs oficiais (npm, PyPI, RubyGems, Go)",
-          "Chave de licença / API incluída",
+          "Dashboard Pro completo incluído (1 usuário nomeado)",
+          "REST API + SDKs oficiais (npm, PyPI, RubyGems, Go)",
+          "Licença / chave de API incluída",
           "Fluxos de dados em tempo real",
           "60 requisições/minuto",
           "1.000 requisições/dia incluídas (REST + MCP combinados; uma chamada MCP ao vivo conta como 2-3)",
           "Notificações por webhook"
         ],
         "highlightFeatures": [
-          "Licença comercial — para sua organização"
+          "Uso comercial — apenas interno, não voltado para o cliente"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "Suporte prioritário"
         ],
         "highlightFeatures": [
-          "Licença comercial — para seus clientes"
+          "Uso comercial — em seus produtos voltados para o cliente"
         ]
       },
       "proBusiness": {

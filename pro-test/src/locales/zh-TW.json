@@ -380,15 +380,16 @@
       "api": {
         "description": "在即時資料基礎上構建內部工具",
         "features": [
+          "完整 Pro 儀表板（1 個命名使用者）",
           "REST API + 官方 SDK（npm、PyPI、RubyGems、Go）",
           "包含許可證 / API 金鑰",
           "即時資料流",
-          "每分鐘 60 個請求",
-          "每天包含 1,000 次請求（REST + MCP 合計；一次即時 MCP 呼叫計為 2-3 次）",
+          "60 請求/分鐘",
+          "包含 1,000 請求/天（REST + MCP 合計；一次即時 MCP 呼叫計為 2-3）",
           "Webhook 通知"
         ],
         "highlightFeatures": [
-          "商業許可證 — 供您的組織使用"
+          "商業用途 — 僅內部使用，不面向客戶"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "優先支援"
         ],
         "highlightFeatures": [
-          "商業許可證 — 供您的客戶使用"
+          "商業用途 — 在您面向客戶的產品中使用"
         ]
       },
       "proBusiness": {

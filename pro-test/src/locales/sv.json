@@ -380,15 +380,16 @@
       "api": {
         "description": "Bygg interna verktyg på live-intelligensdata",
         "features": [
-          "REST-API + officiella SDK:er (npm, PyPI, RubyGems, Go)",
-          "Licens-/API-nyckel ingår",
-          "Realtidsdataströmmar",
+          "Fullständig Pro-dashboard ingår (1 namngiven användare)",
+          "REST API + officiella SDK:er (npm, PyPI, RubyGems, Go)",
+          "Licens / API-nyckel ingår",
+          "Dataströmmar i realtid",
           "60 förfrågningar/minut",
-          "1 000 förfrågningar/dag inkluderat (REST + MCP kombinerat; ett live MCP-anrop räknas som 2–3)",
+          "1 000 förfrågningar/dag ingår (REST + MCP kombinerat; ett live MCP-anrop räknas som 2–3)",
           "Webhook-meddelanden"
         ],
         "highlightFeatures": [
-          "Kommersiell licens — för din organisation"
+          "Kommersiell användning — endast internt, inte kundriktad"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "Prioriterad support"
         ],
         "highlightFeatures": [
-          "Kommersiell licens — för dina kunder"
+          "Kommersiell användning — i dina kundriktade produkter"
         ]
       },
       "proBusiness": {
