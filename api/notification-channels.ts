@@ -141,14 +141,15 @@ async function encryptSlackWebhook(webhookUrl: string): Promise<string> {
  * until the list widens.
  *
  * Source of truth: pushpad/known-push-services (built from ~200M real
- * subscriptions). jmt17.google.com is what Chromium issues on every
- * non-STABLE channel; android.googleapis.com serves older Chrome
+ * subscriptions). jmt17.google.com is what Chromium issues by default on
+ * every non-STABLE channel; android.googleapis.com serves older Chrome
  * subscriptions. The default port only, so a listed host can't be aimed at
  * another service on the same machine.
  *
- * The endpoint must already be in canonical form: the relay's web-push sends
- * with legacy url.parse(), which reads `localhost%2epush.apple.com` as host
- * `localhost`. Browsers always emit canonical endpoints.
+ * The relay's web-push sends with legacy url.parse(), which disagrees with
+ * WHATWG on `localhost%2epush.apple.com` and on hosts holding `{`, `'` or `;`.
+ * Only a canonical endpoint with a letters-digits-hyphens host and no
+ * userinfo parses the same in both. Browsers always emit those.
  */
 const PUSH_SERVICE_HOSTS = new Set([
   'fcm.googleapis.com',
@@ -157,9 +158,11 @@ const PUSH_SERVICE_HOSTS = new Set([
   'updates.push.services.mozilla.com',
 ]);
 const PUSH_SERVICE_DOMAIN_SUFFIXES = ['.push.apple.com', '.notify.windows.com'];
+const LDH_HOSTNAME = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 
 function isAllowedPushEndpoint(endpoint: string, u: URL): boolean {
-  if (u.href !== endpoint || u.port !== '') return false;
+  if (u.href !== endpoint || u.port !== '' || u.username !== '' || u.password !== '') return false;
+  if (!LDH_HOSTNAME.test(u.hostname)) return false;
   return PUSH_SERVICE_HOSTS.has(u.hostname)
     || PUSH_SERVICE_DOMAIN_SUFFIXES.some((suffix) => u.hostname.endsWith(suffix));
 }

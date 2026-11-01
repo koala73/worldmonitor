@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
+import { parse as legacyParse } from 'node:url';
 
 // Sentry WORLDMONITOR-1B0 / WORLDMONITOR-XR: Chrome-labelled browsers on macOS
 // got "endpoint host is not a recognised push service" during Pro activation.
@@ -91,6 +92,7 @@ describe('set-web-push endpoint allow-list', () => {
   const accepted = [
     'https://fcm.googleapis.com/fcm/send/token-a',
     'https://fcm.googleapis.com/wp/token-b',
+    'https://fcm.googleapis.com/preprod/wp/token-b2',
     'https://jmt17.google.com/fcm/send/token-c',
     'https://android.googleapis.com/gcm/send/token-d',
     'https://updates.push.services.mozilla.com/wpush/v2/token-e',
@@ -124,6 +126,11 @@ describe('set-web-push endpoint allow-list', () => {
     'https://redis%2enotify.windows.com/x',
     'https://fcm.googleapis.com:0443/fcm/send/x',
     'https://fcm.googleapis.com:443/fcm/send/x',
+    // WHATWG keeps these inside the hostname; url.parse() ends the host there.
+    'https://internal.example.com{.push.apple.com/fcm/send/x',
+    "https://internal'x.notify.windows.com/x",
+    'https://internal;x.push.apple.com/x',
+    'https://user:pass@fcm.googleapis.com/fcm/send/x',
   ];
 
   for (const endpoint of rejected) {
@@ -135,4 +142,25 @@ describe('set-web-push endpoint allow-list', () => {
       assert.deepEqual(relayedEndpoints, []);
     });
   }
+
+  it('relays only endpoints the relay\'s legacy url.parse() reads to the same host', async () => {
+    const pieces: string[] = [];
+    for (let code = 0x20; code < 0x7f; code++) pieces.push(String.fromCharCode(code));
+    for (let code = 0; code < 256; code++) pieces.push(`%${code.toString(16).padStart(2, '0')}`);
+    const candidates = pieces.flatMap((p) => [
+      `https://internal${p}.push.apple.com/x`,
+      `https://internal${p}x.notify.windows.com/x`,
+      `https://fcm.googleapis.com${p}/fcm/send/x`,
+      `https://a${p}@web.push.apple.com/x`,
+    ]);
+    const { register, relayedEndpoints } = await loadHandler();
+    for (const endpoint of candidates) await register(endpoint);
+    assert.ok(relayedEndpoints.length > 0, 'the sweep must reach the relay at least once');
+    for (const endpoint of relayedEndpoints) {
+      const whatwg = new URL(endpoint);
+      const legacy = legacyParse(endpoint);
+      assert.equal(legacy.hostname, whatwg.hostname, endpoint);
+      assert.equal(legacy.port ?? '', whatwg.port, endpoint);
+    }
+  });
 });
