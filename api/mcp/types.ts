@@ -69,6 +69,20 @@ export interface McpToolExecutionContext {
   // Set only by dispatch for a signed-in free account on the paid-funnel
   // allowance (#6716). Cache tools then never read their `_subscriptionCacheKeys`.
   freeAccountAllowance?: true;
+  // Set only by dispatch, and only for `report_issue` (#8721): who is
+  // reporting, derived from the request (the same getClientIp rules
+  // applyFreeTierLimit uses) and the auth context, never from `params`.
+  // `principalId` is present only for a principal that passed the entitlement
+  // pre-check with API access; every other caller reports anonymously. The
+  // reporting call's own request id is not carried: it is already on this
+  // call's wm_api_usage row, and the stored `requestId` is the one the caller
+  // cites for the call that failed.
+  feedbackCaller?: {
+    clientIp: string;
+    userAgent: string;
+    principalId?: string;
+    isKnownTool: (name: string) => boolean;
+  };
   inboundHostClass: McpInboundHostClass;
   downstreamOrigin: string;
   downstreamOriginTag: string;
@@ -121,6 +135,14 @@ export interface BaseToolDef {
   // `{ kind: 'free' }` context that carries no identity, so `buildAuthHeaders`
   // throws rather than signing. In practice that means `_apiPaths: []` and a
   // committed-registry or cache read. Enforced by test, not by convention.
+  //
+  // One stated exception: `report_issue` (#8721) writes through a
+  // shared-secret Convex HTTP action. The secret authorizes one append-only
+  // write behind fail-closed admission and mints no principal, unlike an
+  // HMAC-signed gateway call. The exception is exactly that tool and that
+  // action (docs/architecture/agent-feedback-threat-model.md, "Free-tier
+  // amendment"); tests/mcp-free-tier-subset.test.mjs pins it. It does not
+  // extend to any other tool.
   _freeTier?: true;
   // Cache-backed tools can require the same paid access as their REST route.
   _subscriptionOnly?: true;

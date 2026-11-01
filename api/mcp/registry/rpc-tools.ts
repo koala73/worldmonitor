@@ -19,7 +19,7 @@ import MINING_SITES_RAW from '../../../shared/mining-sites.js';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { argStr } from '../filters';
 import { buildAuthHeaders } from '../auth';
-import { assertToolFetchOk, BillingDenialError, parseSafeRpcViolations, RpcValidationError, throwIfBillingDenial } from '../billing-denial';
+import { assertToolFetchOk, BillingDenialError, parseSafeRpcViolations, RpcValidationError, throwIfBillingDenial, UpstreamHttpError } from '../billing-denial';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
 import {
   assertMcpToolFetchOk,
@@ -1900,7 +1900,7 @@ export const RPC_TOOLS: ToolDef[] = [
         } catch {
           code = detail.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
         }
-        throw new Error(`get-country-intel-brief HTTP ${res.status}${code ? `: ${code}` : ''}`);
+        throw new UpstreamHttpError(`get-country-intel-brief HTTP ${res.status}${code ? `: ${code}` : ''}`, res.status);
       }
       const result = await res.json() as Record<string, unknown>;
       const resultSources = collectMcpBriefSources(Array.isArray(result.sources) ? result.sources as DigestItemForBrief[] : [], 6);
@@ -2778,7 +2778,7 @@ export const RPC_TOOLS: ToolDef[] = [
           if (!auth) return null;
           const response = await fetchMcpDownstream(url, { headers: { ...auth, 'User-Agent': UA }, signal: AbortSignal.timeout(8_000) }, execution);
           throwIfBillingDenial(response, operation);
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          if (!response.ok) throw new UpstreamHttpError(`HTTP ${response.status}`, response.status);
           return response.json() as Promise<T>;
         }));
         // A failure in one half must not hide a billing denial in the other.
@@ -2965,7 +2965,7 @@ export const RPC_TOOLS: ToolDef[] = [
       if (!res.ok) {
         throwIfBillingDenial(res, endpoint);
         const detail = (await res.text().catch(() => '')).slice(0, 200);
-        throw new Error(`${endpoint} HTTP ${res.status}${detail ? ` — ${detail}` : ''}`);
+        throw new UpstreamHttpError(`${endpoint} HTTP ${res.status}${detail ? ` — ${detail}` : ''}`, res.status);
       }
       const data = await res.json() as VesselResp;
       if (portsView) {

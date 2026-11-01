@@ -2646,3 +2646,26 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `report_issue`
+
+为 WorldMonitor 维护者存储一份报告：缺陷、缺失的能力、错误或过期的数据，或安全问题。它是 [`POST /api/feedback/v1/submit-report`](/zh/api-platform) 的 MCP 对应工具，使用相同的校验、脱敏和限额。每份报告都由人工阅读，不会公开，不会被自动处理，也不会回复。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `kind` | string | 是 | `bug`、`missing_capability`、`data_quality` 或 `security`。 |
+| `summary` | string | 是 | 一句话，最多 300 个字符。这是报告正文，不是缓存工具通用的 `summary` 开关。 |
+| `surface` | string | 否 | 报告涉及的对象：工具名、REST 路径，或尚不存在的功能的简短标签。最多 200 个字符。 |
+| `expected` | string | 否 | 预期结果。最多 2,000 个字符。 |
+| `actual` | string | 否 | 实际结果。最多 2,000 个字符。 |
+| `requestId` | string | 否 | 失败调用的请求 ID：MCP 错误中的 `error.data.requestId`，或 REST 响应的 `x-vercel-id` 头。仅限字母、数字、`:`、`_` 和 `-`，最多 128 个字符。 |
+| `clientName` | string | 否 | 客户端或智能体名称。最多 80 个字符。 |
+
+**响应：** `{ reportId, status }`。`status` 为 `received`，安全报告为 `private`，并附带 `advisoryUrl` 和 `notice`。10 分钟内重发相同报告会返回第一次的 `reportId`，不会重复存储。
+
+- **访问：free。** 无需凭据。通过权益检查的 Pro 或 API 账户使用自己的额度；其他调用方（包括免费账户和未通过检查的密钥）均以匿名身份报告。身份始终来自请求凭据，从不来自参数。
+- **限额：** 匿名调用方每个 IP 每小时 5 份，每个账户每天 30 份，另有全站上限。超过 24 KB 的参数在任何报告限额或存储调用之前即被拒绝。此工具不消耗每日额度。
+- **脱敏：** 凭据和电子邮件地址在存储前被替换。报告中不应包含密钥或个人数据。
+- **安全报告：** `security` 报告仅用于标记存在漏洞。详细信息请通过私密的[安全公告表单](https://github.com/koala73/worldmonitor/security/advisories/new)提交。
+- **错误：** `-32602` 指出无效字段。`-32029`（HTTP 429，`Retry-After: 3600`）表示额度已用完。`-32603`（HTTP 503，`Retry-After: 60`）表示限流器或存储不可用，报告未被存储。`-32002`（HTTP 403）表示账户正在删除。被拒绝的安全报告在 `error.data` 中保留 `advisoryUrl`。
+- **API 端点：** 无。报告直接写入存储。
