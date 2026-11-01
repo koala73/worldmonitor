@@ -3307,7 +3307,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     logSeedResult(domain, recordCount, durationMs, {
       runId,
       canonicalKey,
-      fetchedAt: envelopeMeta?.fetchedAt ?? null,
+      fetchedAt: envelopeMeta?.fetchedAt ?? meta?.fetchedAt ?? null,
       ...(contentAgeOptedIn ? { newestItemAt: contentNewestAt, oldestItemAt: contentOldestAt, maxContentAgeMin } : {}),
       payloadBytes,
       contractMode,

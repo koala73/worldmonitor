@@ -484,3 +484,17 @@ test('initial fetch failure records an error with NX and no success timestamp', 
   assert.equal(meta.recordCount, 0);
   assert.equal(JSON.stringify(meta).includes('provider unavailable'), false);
 });
+
+
+test('legacy completion receipt preserves the published acquisition clock', async () => {
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(' '));
+  try {
+    await runWithExitTrap(() => runSeed('test', 'legacy-receipt', 'test:legacy-receipt:v1', async () => ({ items: [1] })));
+    const receipt = logs.map(line => { try { return JSON.parse(line); } catch { return null; } }).find(row => row?.event === 'seed_complete');
+    const meta = lastMetaSetBody('legacy-receipt');
+    assert.equal(typeof meta.fetchedAt, 'number');
+    assert.equal(receipt.fetchedAt, meta.fetchedAt);
+  } finally { console.log = originalLog; }
+});
