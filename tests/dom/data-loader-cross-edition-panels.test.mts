@@ -226,7 +226,7 @@ describe('cross-edition panels read the digests of every edition that carries th
     expect(mocks.fetchCategoryFeeds).not.toHaveBeenCalled();
   });
 
-  it('keeps the missing edition\'s last items beside the fresh ones while its digest is missing', async () => {
+  it('keeps the missing edition\'s last items beside the fresh ones while its digest is missing and nothing was saved', async () => {
     vi.stubGlobal('fetch', digestFetch({
       finance: editionDigest('markets', ['Finance Wire']),
       commodity: editionDigest('markets', ['Commodity Desk']),
@@ -235,6 +235,8 @@ describe('cross-edition panels read the digests of every edition that carries th
     const loader = await makeLoader({ markets: { setRefreshDegraded } });
     await loader.loadNewsCategory('markets', feeds(['Finance Wire', 'Commodity Desk']), null, true, OPTIONS);
     (loader as unknown as { crossEditionDigests: Map<string, unknown> }).crossEditionDigests.clear();
+    await vi.waitFor(() => expect(mocks.saved.size).toBe(2));
+    mocks.saved.clear();
     const refreshed = editionDigest('markets', ['Finance Wire']);
     for (const item of refreshed.categories.markets!.items) (item as { title: string }).title += ' (new)';
     vi.stubGlobal('fetch', digestFetch({ finance: refreshed }));
@@ -254,7 +256,7 @@ describe('cross-edition panels read the digests of every edition that carries th
     expect(mocks.fetchCategoryFeeds).not.toHaveBeenCalled();
   });
 
-  it('keeps the panel\'s last items while no carrying edition digest arrives', async () => {
+  it('keeps the panel\'s last items while no carrying edition digest arrives and nothing was saved', async () => {
     vi.stubGlobal('fetch', digestFetch({
       finance: editionDigest('markets', ['Finance Wire']),
       commodity: editionDigest('markets', ['Commodity Desk']),
@@ -262,6 +264,8 @@ describe('cross-edition panels read the digests of every edition that carries th
     const loader = await makeLoader();
     const first = await loader.loadNewsCategory('markets', feeds(['Finance Wire', 'Commodity Desk']), null, true, OPTIONS);
     (loader as unknown as { crossEditionDigests: Map<string, unknown> }).crossEditionDigests.clear();
+    await vi.waitFor(() => expect(mocks.saved.size).toBe(2));
+    mocks.saved.clear();
     vi.stubGlobal('fetch', digestFetch({}));
     const recorded: boolean[] = [];
 
@@ -281,6 +285,7 @@ describe('cross-edition panels read the digests of every edition that carries th
     const firstPage = await makeLoader();
     const first = await firstPage.loadNewsCategory('markets', feeds(['Finance Wire', 'Commodity Desk']), null, true, OPTIONS);
     await vi.waitFor(() => expect(mocks.saved.size).toBe(2));
+    mocks.checkBatchForBreakingAlerts.mockClear();
 
     vi.stubGlobal('fetch', digestFetch({}));
     const setRefreshDegraded = vi.fn();
@@ -293,7 +298,7 @@ describe('cross-edition panels read the digests of every edition that carries th
     expect(items.map(i => i.title).sort()).toEqual(first.map(i => i.title).sort());
     expect(setRefreshDegraded).toHaveBeenLastCalledWith(true);
     expect(recorded).toEqual([true]);
-    expect(mocks.checkBatchForBreakingAlerts).not.toHaveBeenCalledWith(expect.arrayContaining([expect.anything()]));
+    expect(mocks.checkBatchForBreakingAlerts).not.toHaveBeenCalled();
     expect(mocks.fetchCategoryFeeds).not.toHaveBeenCalled();
   });
 });

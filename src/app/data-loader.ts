@@ -690,7 +690,10 @@ export class DataLoaderManager implements AppModule {
         );
         if (!resp.ok) return null;
         const data = await resp.json() as ListFeedDigestResponse;
-        return countDigestCategories(data) > 0 ? data : null;
+        if (countDigestCategories(data) === 0) return null;
+        // As for the home digest (#7084), a stale replay must not restart the saved copy's clock.
+        if (data.coverage?.servedStale !== true) this.persistDigest(digestCacheKey(edition, language), data);
+        return data;
       } catch (e) {
         console.warn(`[News] ${edition} digest fetch for a cross-edition panel failed:`, e);
         return null;
@@ -701,6 +704,14 @@ export class DataLoaderManager implements AppModule {
       if (!data && this.crossEditionDigests.get(key)?.promise === promise) this.crossEditionDigests.delete(key);
     });
     return promise;
+  }
+
+  /** The live edition digest, else the copy a previous page load saved. */
+  private async selectEditionDigest(edition: string, language: string): Promise<SelectedNewsDigest | null> {
+    const live = await this.fetchEditionDigest(edition, language);
+    if (live) return { digest: live, servedStale: live.coverage?.servedStale === true };
+    const saved = await this.readSavedDigest(digestCacheKey(edition, language));
+    return saved ? { digest: saved, servedStale: true } : null;
   }
 
   /**
@@ -754,8 +765,8 @@ export class DataLoaderManager implements AppModule {
   /**
    * Items for a cross-edition panel, read from every other edition whose
    * digest carries `category` (a key such as `markets` is placed in both the
-   * finance and commodity editions). `complete` is false when some of those
-   * digests did not arrive; null means none did.
+   * finance and commodity editions), live or saved. `complete` is false when
+   * some of those digests are unavailable; null means all of them are.
    */
   private async crossEditionCategoryItems(
     category: string,
@@ -763,12 +774,12 @@ export class DataLoaderManager implements AppModule {
     const editions = digestEditionsFor(category).filter(edition => edition !== SITE_VARIANT);
     if (editions.length === 0) return null;
     const language = getCurrentLanguage();
-    const digests = await Promise.all(editions.map(edition => this.fetchEditionDigest(edition, language)));
-    const carrying = digests.filter((d): d is ListFeedDigestResponse => !!d?.categories && category in d.categories);
+    const selections = await Promise.all(editions.map(edition => this.selectEditionDigest(edition, language)));
+    const carrying = selections.filter((s): s is SelectedNewsDigest => !!s?.digest.categories && category in s.digest.categories);
     if (carrying.length === 0) return null;
     return {
-      items: carrying.flatMap(d => (d.categories[category]?.items ?? []).map(protoItemToNewsItem)),
-      servedStale: carrying.some(d => d.coverage?.servedStale === true),
+      items: carrying.flatMap(s => (s.digest.categories[category]?.items ?? []).map(protoItemToNewsItem)),
+      servedStale: carrying.some(s => s.servedStale),
       complete: carrying.length === editions.length,
     };
   }
@@ -941,17 +952,21 @@ export class DataLoaderManager implements AppModule {
     });
   }
 
-  private async loadPersistedDigest(key = this.digestCacheKey()): Promise<ListFeedDigestResponse | null> {
+  private async readSavedDigest(key: string): Promise<ListFeedDigestResponse | null> {
     try {
       const envelope = await getPersistentCache<ListFeedDigestResponse>(key);
-      if (!envelope) return null;
-      if (Date.now() - envelope.updatedAt > this.persistedDigestMaxAgeMs) return null;
-      // Do not let an IndexedDB read started for a previous language complete
-      // into the new language's in-memory fallback.
-      if (key !== this.digestCacheKey()) return null;
-      this.lastGoodDigest = retainRicherScopedDigest(this.lastGoodDigest, key, envelope.data);
+      if (!envelope || Date.now() - envelope.updatedAt > this.persistedDigestMaxAgeMs) return null;
       return envelope.data;
     } catch { return null; }
+  }
+
+  private async loadPersistedDigest(key = this.digestCacheKey()): Promise<ListFeedDigestResponse | null> {
+    const data = await this.readSavedDigest(key);
+    // Do not let an IndexedDB read started for a previous language complete
+    // into the new language's in-memory fallback.
+    if (!data || key !== this.digestCacheKey()) return null;
+    this.lastGoodDigest = retainRicherScopedDigest(this.lastGoodDigest, key, data);
+    return data;
   }
 
   /**
@@ -1697,7 +1712,7 @@ export class DataLoaderManager implements AppModule {
           const carried = crossEdition.complete ? [] : this.getStaleNewsItems(category)
             .filter(i => enabledNames.has(i.source) && !deliveredSources.has(i.source));
           recordSelectedFreshness(crossEdition.servedStale || carried.length > 0);
-          this.setNewsRefreshDegraded(category, carried.length > 0);
+          this.setNewsRefreshDegraded(category, crossEdition.servedStale || carried.length > 0);
           const digestItems = crossEdition.items.filter(i => enabledNames.has(i.source));
           void ingestTrendingHeadlines(digestItems.map(i => ({
             title: i.title,
