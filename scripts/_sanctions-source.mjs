@@ -137,6 +137,9 @@ async function fetchRedirectViaProxy(sourceUrl, {
         headers: { 'User-Agent': CHROME_UA },
         maxResponseBytes: OFAC_PROXY_BOOTSTRAP_MAX_BYTES,
         timeoutMs,
+        // proxyFetch times the tunnel and the response separately; this
+        // signal holds both to one timeoutMs.
+        signal: AbortSignal.timeout(timeoutMs),
       });
       if (OFAC_REDIRECT_STATUSES.has(result.status) && result.location) {
         return trustedSignedDownloadUrl(result.location, sourceUrl);
