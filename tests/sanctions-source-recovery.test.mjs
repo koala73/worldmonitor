@@ -498,7 +498,10 @@ describe('OFAC source caller deadline', () => {
     assert.equal(proxyCalls, 0, 'no proxy bootstrap may start after the deadline');
   });
 
-  it('caps the proxy bootstrap timeout at the time left before the deadline', async () => {
+  it('caps the proxy bootstrap timeout at the time left before the deadline', async (t) => {
+    // Freeze the clock: the stub's own Date.now() read lands after the code's,
+    // so a real millisecond tick between them fails the exact bound below.
+    t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
     const timeouts = [];
     const deadlineAt = Date.now() + 5_000;
 
@@ -547,7 +550,8 @@ describe('OFAC source caller deadline', () => {
     assert.ok(elapsed < budget + 500, `proxy request ran ${elapsed} ms against a ${budget} ms budget`);
   });
 
-  it('never sleeps past the deadline between retries', async () => {
+  it('never sleeps past the deadline between retries', async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
     const sleeps = [];
     const deadlineAt = Date.now() + 3_000;
     let attempts = 0;
