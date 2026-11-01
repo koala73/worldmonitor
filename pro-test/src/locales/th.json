@@ -381,7 +381,7 @@
         "description": "สร้างเครื่องมือภายในจากข้อมูล live intelligence",
         "features": [
           "แดชบอร์ด Pro เต็มรูปแบบ (ผู้ใช้ที่ระบุชื่อ 1 คน)",
-          "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
+          "REST API + SDK อย่างเป็นทางการ (npm, PyPI, RubyGems, Go)",
           "ใบอนุญาต / คีย์ API รวมอยู่",
           "สตรีมข้อมูลแบบเรียลไทม์",
           "60 คำขอ/นาที",
