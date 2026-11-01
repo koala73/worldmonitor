@@ -111,7 +111,7 @@ function bundleFreshnessRatio() {
     join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', '_bundle-runner.mjs'),
     'utf8',
   );
-  const match = /elapsed\s*<\s*section\.intervalMs\s*\*\s*(\d+(?:\.\d+)?)/.exec(runnerSrc);
+  const match = /const\s+eligibilityMs\s*=\s*section\.intervalMs\s*\*\s*(\d+(?:\.\d+)?)/.exec(runnerSrc);
   assert.ok(match, 'expected the bundle runner freshness threshold');
   return Number(match[1]);
 }

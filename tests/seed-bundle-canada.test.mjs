@@ -86,7 +86,7 @@ test('per-member cadence is the declared one, not TTC\'s cron inherited', () => 
 test('Manitoba cutover acknowledgement reaches the first eligible Provincial-511 admission', () => {
   const provincial = section('Provincial-511');
   const intervalMs = resolveExpr(src, provincial.intervalMsExpr);
-  const freshnessGuard = /elapsed\s*<\s*section\.intervalMs\s*\*\s*(\d+(?:\.\d+)?)/.exec(RUNNER_SRC);
+  const freshnessGuard = /const\s+eligibilityMs\s*=\s*section\.intervalMs\s*\*\s*(\d+(?:\.\d+)?)/.exec(RUNNER_SRC);
   assert.ok(freshnessGuard, 'bundle runner must expose its interval freshness admission ratio');
   const freshnessRatio = Number(freshnessGuard[1]);
   assert.ok(freshnessRatio > 0 && freshnessRatio <= 1, 'freshness admission ratio must be in (0, 1]');
