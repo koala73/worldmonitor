@@ -581,7 +581,7 @@
     {
       "source": "/((?!docs|embed|embed\\.html|wm-widget-sandbox\\.html).*)",
       "headers": [
-        { "key": "Content-Signal", "value": "ai-train=no, search=yes, ai-input=yes" },
+        { "key": "Content-Signal", "value": "ai-train=yes, search=yes, ai-input=yes" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
         { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
