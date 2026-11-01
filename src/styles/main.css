@@ -23721,6 +23721,25 @@ body.map-width-resizing {
   background: color-mix(in srgb, var(--red) 9%, var(--surface));
 }
 
+/* Status text in a semantic color. On white the light palette's raw values are
+   3.2-3.6:1, so light mode pulls each 30% toward the text color (5:1 and up).
+   tests/upgrade-cta-contrast.test.mjs (STATUS_TEXT) checks both themes. */
+[data-theme="light"] :is(.panel-summary-error, .gdelt-trend-value.negative, .telegram-intel-preview-card.is-error) {
+  color: color-mix(in srgb, var(--red) 70%, var(--text));
+}
+
+[data-theme="light"] :is(.gdelt-trend-value.positive) {
+  color: color-mix(in srgb, var(--green) 70%, var(--text));
+}
+
+[data-theme="light"] :is(.insights-convergence .insights-section-title, .insight-badge.velocity.elevated) {
+  color: color-mix(in srgb, var(--semantic-high) 70%, var(--text));
+}
+
+[data-theme="light"] :is(.history-event.cyclical, .cdp-maritime-anomaly) {
+  color: color-mix(in srgb, var(--semantic-elevated) 70%, var(--text));
+}
+
 .telegram-intel-preview-copy {
   min-width: 0;
 }

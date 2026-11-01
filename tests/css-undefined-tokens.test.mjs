@@ -15,7 +15,9 @@
  * sheets their own entry point imports, so tokens they declare do not count for
  * the dashboard; each standalone sheet is checked against its own page's sheets,
  * following @import (base-layer.css pulls in main.css). happy-theme.css only
- * applies to the happy variant and the embed page.
+ * applies to the happy variant and the embed page: its tokens do not count for
+ * the main dashboard, and its own uses are checked against the dashboard tokens
+ * plus its own.
  *
  * Limitation: a token declared under any selector counts as defined everywhere,
  * so a token scoped to one container is not caught when read outside it.
@@ -68,6 +70,8 @@ const dashboardTokens = new Set(dashboardSheets.flatMap((p) => declares(p)));
 
 /** Tokens visible to a sheet: its page's sheets plus inline-set tokens. */
 function definedFor(path) {
+  // A variant theme layers over the dashboard, so it sees the dashboard tokens plus its own.
+  if (VARIANT_ONLY.has(path)) return new Set([...dashboardTokens, ...declares(path)]);
   if (!(path in STANDALONE)) return dashboardTokens;
   return new Set([path, ...STANDALONE[path]].flatMap((p) => declares(p)));
 }
@@ -75,7 +79,7 @@ function definedFor(path) {
 /** Every var(--name) with no fallback, with its file and line. */
 function bareUses() {
   const uses = [];
-  for (const path of [...dashboardSheets, ...Object.keys(STANDALONE)]) {
+  for (const path of [...dashboardSheets, ...Object.keys(STANDALONE), ...VARIANT_ONLY]) {
     const css = sheets[path];
     for (const m of css.matchAll(/var\(\s*(--[\w-]+)\s*\)/g)) {
       uses.push({ path, name: m[1], where: `src/${path}:${css.slice(0, m.index).split('\n').length}` });

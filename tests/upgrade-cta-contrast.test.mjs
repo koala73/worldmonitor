@@ -210,6 +210,49 @@ describe('upgrade CTAs are readable in both themes', () => {
   }
 });
 
+/**
+ * Status text drawn in a semantic color (error red, positive green, elevated
+ * orange/amber). The light palette's raw values sit at 3.2-3.6:1 on white, so
+ * the light theme darkens them in one `[data-theme="light"] :is(...)` rule.
+ */
+const STATUS_TEXT = [
+  ['main.css', '.panel-summary-error'],
+  ['main.css', '.gdelt-trend-value.negative'],
+  ['main.css', '.gdelt-trend-value.positive'],
+  ['main.css', '.telegram-intel-preview-card.is-error'],
+  ['main.css', '.insights-convergence .insights-section-title'],
+  ['main.css', '.insight-badge.velocity.elevated'],
+  ['main.css', '.history-event.cyclical'],
+  ['country-deep-dive.css', '.cdp-maritime-anomaly'],
+];
+
+/** The light-theme rule that overrides a selector's text color, if any. */
+function lightOverride(selector) {
+  return rules(mainCss).find((r) => r.selector.startsWith('[data-theme="light"] :is(')
+    && r.selector.slice(r.selector.indexOf('(') + 1, -1).split(',').map((s) => s.trim()).includes(selector));
+}
+
+describe('semantic status text is readable in both themes', () => {
+  for (const [file, selector] of STATUS_TEXT) {
+    it(selector, () => {
+      const base = rules(sheets[file]).filter((r) => r.selector === selector && declaration(r.body, 'color')).pop();
+      assert.ok(base, `${selector} declares no text color in ${file}`);
+      const ownBackground = declaration(base.body, 'background');
+      // Translucent tints sit on the panel surface; judge them against it.
+      const background = ownBackground && !/transparent|rgba\(|hsla\(/.test(ownBackground) ? ownBackground : 'var(--surface)';
+      const override = lightOverride(selector);
+      for (const [name, theme] of themesFor(file)) {
+        const text = name === 'light' && override ? declaration(override.body, 'color') : declaration(base.body, 'color');
+        const [fg] = colors(text, theme);
+        for (const bg of colors(background, theme)) {
+          const ratio = contrast(fg, bg);
+          assert.ok(ratio >= 4.5, `${selector} (${name}): text ${fg} on ${bg} is ${ratio.toFixed(2)}:1`);
+        }
+      }
+    });
+  }
+});
+
 describe('accent and green backgrounds keep readable text in both themes', () => {
   const failures = [];
   const judged = [];
