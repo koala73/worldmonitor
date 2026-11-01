@@ -145,8 +145,8 @@ describe('PortWatch reference pagination recovery', () => {
       assert.deepEqual(records.map((record) => record.route), ['direct', 'proxy']);
       assert.equal(records[1].phase, status === 200 ? 'arcgis' : 'http');
       assert.equal(records[1].query.resultOffset, '1');
+      assert.deepEqual(records[1].arcgisError, envelope.error);
       if (status === 200) {
-        assert.deepEqual(records[1].arcgisError, envelope.error);
         assert.equal(records[1].status, null, 'the shared proxy helper does not expose successful response status');
       } else {
         assert.equal(records[1].status, 503);

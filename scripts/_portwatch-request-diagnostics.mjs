@@ -5,12 +5,13 @@ const QUERY_FIELDS = [
   'outStatistics', 'returnGeometry', 'outSR', 'f',
 ];
 const RESPONSE_HEADERS = ['content-type', 'date', 'retry-after', 'x-esri-request-id', 'x-request-id', 'cf-ray'];
+const MAX_ERROR_BODY_BYTES = 64 * 1024;
 
 function safeText(value, maxBytes = 256) {
   const redacted = String(value ?? '')
     .replace(/(https?:\/\/)[^\s/]*@/gi, '$1[redacted]@')
     .replace(/\b(Bearer|Basic)\s+[^\s,;"']+/gi, '$1 [redacted]')
-    .replace(/([?&])([^=\s&#"']+)=([^\s&#"']*)/g, (match, separator, name) =>
+    .replace(/([?&])([^=\s?&#"']+)=([^\s&#"']*)/g, (match, separator, name) =>
       QUERY_FIELDS.includes(name) ? match : `${separator}${name}=[redacted]`)
     .replace(/(["']?(?:token|api[_-]?key|access_token|password|secret|signature)["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;&}]+)/gi, '$1[redacted]');
   const buffer = Buffer.from(redacted);
@@ -68,6 +69,13 @@ export function createPortwatchRequestTrace(url, route) {
   return {
     fail(error, { phase, response, arcgisError } = {}) {
       try {
+        if (arcgisError == null && Buffer.isBuffer(response?.buffer) && response.buffer.length <= MAX_ERROR_BODY_BYTES) {
+          try {
+            arcgisError = JSON.parse(response.buffer.toString('utf8'))?.error;
+          } catch {
+            arcgisError = undefined;
+          }
+        }
         const finished = Date.now();
         const headers = {};
         for (const name of RESPONSE_HEADERS) {
