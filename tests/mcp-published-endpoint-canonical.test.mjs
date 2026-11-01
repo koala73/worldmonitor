@@ -33,10 +33,19 @@ import {
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Hosts are case-insensitive and the server normalizes them
+// (normalizeMcpHost: lowercase, trailing dots and port dropped), so the host
+// part matches every spelling the server treats as the same host. Paths are
+// matched exactly, as isMcpAliasRequest matches them.
+const caseless = (s) =>
+  [...s].map((c) => (/[a-z]/i.test(c) ? `[${c.toLowerCase()}${c.toUpperCase()}]` : escapeRegExp(c))).join('');
+const HOST_TAIL = '\\.*(?::\\d+)?';
 
 // Longest first so `/.well-known/mcp.json` is not read as `/.well-known/mcp`.
 const PATHS = [...MCP_PRODUCT_PATHS].sort((a, b) => b.length - a.length).map(escapeRegExp).join('|');
-const ALIASES = MCP_PRODUCTION_ALIAS_LABELS.map(escapeRegExp).join('|');
+const ALIASES = MCP_PRODUCTION_ALIAS_LABELS.map(caseless).join('|');
+const APEX = caseless('worldmonitor.app');
+const SCHEME = '[hH][tT][tT][pP][sS]?://';
 // The policy matches the path exactly, so a longer path such as
 // `/.well-known/mcp/docs-server-card.json` or `/mcp-server.md` is a different
 // resource. A trailing sentence period still ends the URL.
@@ -45,15 +54,19 @@ const PATH_END = '(?![A-Za-z0-9_\\-/]|\\.[A-Za-z0-9])';
 const WRONG_MCP_URLS = [
   {
     label: 'an alias host that answers 410 canonical_endpoint_required',
-    re: new RegExp(`https?://(?:${ALIASES})\\.worldmonitor\\.app(?:${PATHS})${PATH_END}`, 'g'),
+    re: new RegExp(`${SCHEME}(?:${ALIASES})\\.${APEX}${HOST_TAIL}(?:${PATHS})${PATH_END}`, 'g'),
   },
   {
     label: 'the internal /api/mcp path, which has a different OAuth resource',
-    re: new RegExp(`https?://worldmonitor\\.app/api/mcp${PATH_END}`, 'g'),
+    re: new RegExp(`${SCHEME}${APEX}${HOST_TAIL}/api/mcp${PATH_END}`, 'g'),
   },
   {
     label: 'plain http, which redirects and turns a POST into a GET',
-    re: new RegExp(`http://worldmonitor\\.app(?:${PATHS})${PATH_END}`, 'g'),
+    re: new RegExp(`[hH][tT][tT][pP]://${APEX}${HOST_TAIL}(?:${PATHS})${PATH_END}`, 'g'),
+  },
+  {
+    label: 'a host spelling that is not the canonical one (case, port or trailing dot)',
+    re: new RegExp(`https://(?!worldmonitor\\.app/)${APEX}${HOST_TAIL}/mcp${PATH_END}`, 'g'),
   },
 ];
 
@@ -88,6 +101,29 @@ describe('wrong-MCP-URL matcher', () => {
         const url = `https://${label}.worldmonitor.app${path}`;
         assert.deepEqual(findWrongMcpUrls(`Add ${url} as a connector.`).map((h) => h.url), [url]);
       }
+    }
+  });
+
+  it('flags alias hosts in any case, with a port or a trailing dot, as the server normalizes them', () => {
+    for (const url of [
+      'https://WWW.worldmonitor.app/mcp',
+      'https://www.WorldMonitor.App/mcp',
+      'https://www.worldmonitor.app:443/mcp',
+      'https://api.worldmonitor.app./mcp',
+      'HTTPS://Energy.worldmonitor.app:8443/api/mcp',
+    ]) {
+      assert.deepEqual(findWrongMcpUrls(`Connect to ${url}.`).map((h) => h.url), [url], url);
+    }
+  });
+
+  it('flags a non-canonical spelling of the apex endpoint itself', () => {
+    for (const url of [
+      'https://WorldMonitor.app/mcp',
+      'https://worldmonitor.app:443/mcp',
+      'https://worldmonitor.app./mcp',
+      'https://worldmonitor.app:443/api/mcp',
+    ]) {
+      assert.ok(findWrongMcpUrls(`"url": "${url}"`).length > 0, url);
     }
   });
 
