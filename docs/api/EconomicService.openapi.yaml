@@ -3441,7 +3441,8 @@ paths:
                         application/json:
                             example:
                                 "sources":
-                                    - "cadence": "example"
+                                    - "attribution": "example"
+                                      "cadence": "example"
                                       "contextOnly": true
                                       "contexts":
                                           - "country": "US"
@@ -3450,7 +3451,6 @@ paths:
                                             "referenceDate": "2026-01-15"
                                             "status": "example"
                                       "country": "US"
-                                      "countryCode": "US"
                                 "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetFoodPricesResponse'
@@ -6953,6 +6953,9 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/FoodSecurityContext'
+                attribution:
+                    type: string
+                    description: Citation the publisher asks for (for example a licence or required credit). Empty when none is stated.
         FoodMarketPrice:
             type: object
             properties:

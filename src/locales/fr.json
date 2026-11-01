@@ -3032,6 +3032,8 @@
       "market": "Marché",
       "retail": "Détail",
       "wholesale": "Gros",
+      "farmgate": "Prix à la ferme",
+      "export": "Export",
       "prices": "Prix alimentaires",
       "product": "Produit",
       "price": "Prix / unité",

@@ -82,5 +82,151 @@
     "maxFetchAgeDays": 45,
     "maxContentAgeDays": 180,
     "fetchBudgetMs": 30000
+  },
+  {
+    "id": "tcb",
+    "name": "Bangladesh TCB",
+    "country": "Bangladesh",
+    "countryCode": "BD",
+    "url": "https://tcb.gov.bd/pages/daily-rmps",
+    "hosts": [
+      "objectstorage.ap-dcc-gazipur-1.oraclecloud15.com"
+    ],
+    "cadence": "daily",
+    "contextOnly": false,
+    "maxFetchAgeDays": 3,
+    "maxContentAgeDays": 7,
+    "fetchBudgetMs": 60000,
+    "attribution": "Trading Corporation of Bangladesh (TCB), Dhaka daily retail market prices"
+  },
+  {
+    "id": "nabc",
+    "name": "Thailand NABC (OAE farm-gate)",
+    "country": "Thailand",
+    "countryCode": "TH",
+    "url": "https://www.nabc.go.th/commodity",
+    "cadence": "weekly",
+    "contextOnly": false,
+    "maxFetchAgeDays": 10,
+    "maxContentAgeDays": 21,
+    "fetchBudgetMs": 60000,
+    "attribution": "National Agricultural Big Data Center (NABC), Ministry of Agriculture and Cooperatives; weekly farm-gate prices from the Office of Agricultural Economics"
+  },
+  {
+    "id": "nsckg",
+    "name": "Kyrgyzstan NSC daily prices",
+    "country": "Kyrgyzstan",
+    "countryCode": "KG",
+    "url": "https://stat.gov.kg/ru/daily-prices/",
+    "cadence": "daily",
+    "contextOnly": false,
+    "maxFetchAgeDays": 3,
+    "maxContentAgeDays": 7,
+    "fetchBudgetMs": 60000,
+    "attribution": "National Statistical Committee of the Kyrgyz Republic"
+  },
+  {
+    "id": "statkz",
+    "name": "Kazakhstan BNS social food prices",
+    "country": "Kazakhstan",
+    "countryCode": "KZ",
+    "url": "https://stat.gov.kz/en/industries/economy/prices/spreadsheets/",
+    "cadence": "weekly",
+    "contextOnly": false,
+    "maxFetchAgeDays": 10,
+    "maxContentAgeDays": 21,
+    "fetchBudgetMs": 60000,
+    "attribution": "© Bureau of National Statistics of the Agency for Strategic Planning and Reforms of the Republic of Kazakhstan"
+  },
+  {
+    "id": "statuz",
+    "name": "Uzbekistan Statistics Agency",
+    "country": "Uzbekistan",
+    "countryCode": "UZ",
+    "url": "https://stat.uz/ru/ofitsialnaya-statistika/prices-and-indexes",
+    "hosts": [
+      "api.siat.stat.uz"
+    ],
+    "cadence": "monthly",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 100,
+    "fetchBudgetMs": 30000,
+    "attribution": "Source: National Statistics Committee of the Republic of Uzbekistan, www.stat.uz (CC BY 4.0). Modified: product names translated to English and animal feed items omitted."
+  },
+  {
+    "id": "maga",
+    "name": "Guatemala MAGA",
+    "country": "Guatemala",
+    "countryCode": "GT",
+    "url": "https://precios.maga.gob.gt/diarios/diarios.html",
+    "cadence": "daily",
+    "contextOnly": false,
+    "maxFetchAgeDays": 3,
+    "maxContentAgeDays": 7,
+    "fetchBudgetMs": 30000,
+    "attribution": "Ministerio de Agricultura, Ganadería y Alimentación, Planeamiento (MAGA Guatemala)"
+  },
+  {
+    "id": "ocpv",
+    "name": "Côte d'Ivoire OCPV",
+    "country": "Côte d'Ivoire",
+    "countryCode": "CI",
+    "url": "https://www.ocpv-ci.com/",
+    "cadence": "weekly",
+    "contextOnly": false,
+    "maxFetchAgeDays": 10,
+    "maxContentAgeDays": 21,
+    "fetchBudgetMs": 90000
+  },
+  {
+    "id": "sima",
+    "name": "SIMA Niger",
+    "country": "Niger",
+    "countryCode": "NE",
+    "url": "https://simaniger.net/publications/bulletins-sima?category=hebdo_cereales",
+    "cadence": "weekly",
+    "contextOnly": false,
+    "maxFetchAgeDays": 10,
+    "maxContentAgeDays": 21,
+    "fetchBudgetMs": 60000,
+    "attribution": "SIMA Niger"
+  },
+  {
+    "id": "mit",
+    "name": "Tanzania MIT wholesale prices",
+    "country": "Tanzania",
+    "countryCode": "TZ",
+    "url": "https://www.viwanda.go.tz/documents/product-prices-domestic",
+    "cadence": "daily",
+    "contextOnly": false,
+    "maxFetchAgeDays": 3,
+    "maxContentAgeDays": 14,
+    "fetchBudgetMs": 60000
+  },
+  {
+    "id": "ucda",
+    "name": "Uganda Coffee daily report",
+    "country": "Uganda",
+    "countryCode": "UG",
+    "url": "https://ugandacoffee.go.ug/",
+    "cadence": "daily",
+    "contextOnly": false,
+    "maxFetchAgeDays": 3,
+    "maxContentAgeDays": 7,
+    "fetchBudgetMs": 90000
+  },
+  {
+    "id": "amman",
+    "name": "Greater Amman Municipality Central Market",
+    "country": "Jordan",
+    "countryCode": "JO",
+    "url": "https://ammancity.gov.jo/ar/market/prices.aspx",
+    "cadence": "daily",
+    "contextOnly": false,
+    "maxFetchAgeDays": 3,
+    "maxContentAgeDays": 7,
+    "fetchBudgetMs": 60000,
+    "attribution": "Greater Amman Municipality"
   }
 ]

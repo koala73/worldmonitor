@@ -3032,6 +3032,8 @@
       "market": "Mercado",
       "retail": "Minorista",
       "wholesale": "Mayorista",
+      "farmgate": "En finca",
+      "export": "Exportación",
       "prices": "Precios de alimentos",
       "product": "Producto",
       "price": "Precio / unidad",

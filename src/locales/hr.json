@@ -3108,6 +3108,8 @@
       "market": "Tržište",
       "retail": "Maloprodaja",
       "wholesale": "Veleprodaja",
+      "farmgate": "Otkupna cijena",
+      "export": "Izvoz",
       "prices": "Cijene hrane",
       "product": "Proizvod",
       "price": "Cijena / jedinica",

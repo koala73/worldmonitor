@@ -2628,6 +2628,8 @@
       "market": "Markt",
       "retail": "Detailhandel",
       "wholesale": "Groothandel",
+      "farmgate": "Af boerderij",
+      "export": "Export",
       "prices": "Voedselprijzen",
       "product": "Artikel",
       "price": "Prijs / eenheid",

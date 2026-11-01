@@ -67,6 +67,8 @@ const INTERNATIONAL_HOST_SUFFIXES = [
 // Host → ISO 3166-1 alpha-2, 'EU', or null (international).
 // Only hosts that cannot be inferred from a real ccTLD or government suffix.
 const HOST_ORIGINS = Object.freeze({
+  'simaniger.net': 'NE',
+  'www.ocpv-ci.com': 'CI',
   'api.cammesa.com': 'AR',
   'admin.gse.com.ge': 'GE',
   'erp.powergrid.gov.bd': 'BD',

@@ -10,7 +10,7 @@ import { yieldToMain } from '@/utils/after-paint';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
 import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
 import type { ClusteredEvent, Feed, NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
-import type { MarketData } from '@/types';
+import type { MarketData, InternetOutage } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
 import {
   FEEDS,
@@ -166,7 +166,6 @@ import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
 import type { StockBacktestPanel } from '@/components/StockBacktestPanel';
 import type { PredictionPanel } from '@/components/PredictionPanel';
 import type { InsightsPanel } from '@/components/InsightsPanel';
-import type { InternetDisruptionsPanel } from '@/components/InternetDisruptionsPanel';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 
 import type { EconomicPanel } from '@/components/EconomicPanel';
@@ -423,6 +422,7 @@ export class DataLoaderManager implements AppModule {
 
   private mapFlashCache: Map<string, number> = new Map();
   private readonly MAP_FLASH_COOLDOWN_MS = 10 * 60 * 1000;
+  private outageAuxGeneration = 0;
   private readonly applyTimeRangeFilterToNewsPanelsDebounced = debounce(() => {
     this.applyTimeRangeFilterToNewsPanels();
   }, 120);
@@ -1227,6 +1227,12 @@ export class DataLoaderManager implements AppModule {
     // Intelligence signals: run for any variant that shows these panels
     if (shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture', 'climate', 'population-exposure', 'security-advisories', 'radiation-watch', 'displacement', 'ucdp-events', 'satellite-fires', 'oref-sirens'])) {
       tasks.push({ name: 'intelligence', task: () => runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
+    }
+    // Internet Disruptions has no other gate: the intelligence pass above keys on
+    // panels the tech variant lacks, and loadDataForLayer only runs for the map
+    // layer. Mounting the panel re-runs this pass, so this task delivers to it.
+    if (shouldLoad('internet-disruptions')) {
+      tasks.push({ name: 'outages', task: () => runGuarded('outages', () => this.loadOutages()) });
     }
 
     if (this.hydratesPanel('satellite-fires', ['full']) && (shouldLoad('satellite-fires') || this.ctx.mapLayers.natural)) {
@@ -3463,15 +3469,7 @@ export class DataLoaderManager implements AppModule {
           this.ctx.map?.setLayerReady('outages', outages.length > 0);
           this.ctx.statusPanel?.updateFeed('NetBlocks', { status: 'ok', itemCount: outages.length });
         }
-        (this.ctx.panels['internet-disruptions'] as InternetDisruptionsPanel)?.setOutages(outages);
-        fetchTrafficAnomalies().then(r => {
-          this.ctx.map?.setTrafficAnomalies(r.anomalies);
-          (this.ctx.panels['internet-disruptions'] as InternetDisruptionsPanel)?.setAnomalies(r.anomalies);
-        }).catch(() => {});
-        fetchDdosAttacks().then(r => {
-          this.ctx.map?.setDdosLocations(r.topTargetLocations ?? []);
-          (this.ctx.panels['internet-disruptions'] as InternetDisruptionsPanel)?.setDdos(r);
-        }).catch(() => {});
+        this.deliverOutagesToPanel(outages);
       } catch (error) {
         console.error('[Intelligence] Outages fetch failed:', error);
         dataFreshness.recordError('outages', String(error));
@@ -3772,12 +3770,39 @@ export class DataLoaderManager implements AppModule {
     console.log('[Intelligence] All signals loaded; canonical CII state refreshed');
   }
 
+  /**
+   * Feed the Internet Disruptions panel: outages now, then traffic anomalies and
+   * DDoS summaries as they arrive. Every write goes through callPanel, which
+   * queues for a lazily mounted panel that is still a deferred shell; a direct
+   * `ctx.panels[key]?.set...()` is silently dropped there.
+   */
+  private deliverOutagesToPanel(outages: InternetOutage[]): void {
+    if (this.ctx.isDestroyed) return;
+    this.callPanel('internet-disruptions', 'setOutages', outages);
+    // Deliveries can overlap (hydration pass, map layer, refresh). Only the
+    // newest one commits, so an older request that fails into the breaker's
+    // empty fallback cannot overwrite a newer success. After teardown nothing
+    // commits: callPanel would queue into the shared pendingCalls map.
+    const generation = ++this.outageAuxGeneration;
+    fetchTrafficAnomalies().then(r => {
+      if (this.ctx.isDestroyed || generation !== this.outageAuxGeneration) return;
+      this.ctx.map?.setTrafficAnomalies(r.anomalies);
+      this.callPanel('internet-disruptions', 'setAnomalies', r.anomalies);
+    }).catch(() => {});
+    fetchDdosAttacks().then(r => {
+      if (this.ctx.isDestroyed || generation !== this.outageAuxGeneration) return;
+      this.ctx.map?.setDdosLocations(r.topTargetLocations ?? []);
+      this.callPanel('internet-disruptions', 'setDdos', r);
+    }).catch(() => {});
+  }
+
   async loadOutages(): Promise<void> {
     if (this.ctx.intelligenceCache.outages) {
       const outages = this.ctx.intelligenceCache.outages;
       this.ctx.map?.setOutages(outages);
       this.ctx.map?.setLayerReady('outages', outages.length > 0);
       this.ctx.statusPanel?.updateFeed('NetBlocks', { status: 'ok', itemCount: outages.length });
+      this.deliverOutagesToPanel(outages);
       return;
     }
     try {
@@ -3788,16 +3813,9 @@ export class DataLoaderManager implements AppModule {
       await runSignalAggregator(this.ctx.statusPanel, 'outages', (aggregator) => aggregator.ingestOutages(outages));
       this.ctx.statusPanel?.updateFeed('NetBlocks', { status: 'ok', itemCount: outages.length });
       dataFreshness.recordUpdate('outages', outages.length);
-      (this.ctx.panels['internet-disruptions'] as InternetDisruptionsPanel)?.setOutages(outages);
-      fetchTrafficAnomalies().then(r => {
-        this.ctx.map?.setTrafficAnomalies(r.anomalies);
-        (this.ctx.panels['internet-disruptions'] as InternetDisruptionsPanel)?.setAnomalies(r.anomalies);
-      }).catch(() => {});
-      fetchDdosAttacks().then(r => {
-        this.ctx.map?.setDdosLocations(r.topTargetLocations ?? []);
-        (this.ctx.panels['internet-disruptions'] as InternetDisruptionsPanel)?.setDdos(r);
-      }).catch(() => {});
+      this.deliverOutagesToPanel(outages);
     } catch (error) {
+      if (this.ctx.isDestroyed) return;
       this.callPanel('internet-disruptions', 'showError');
       this.ctx.map?.setLayerReady('outages', false);
       this.ctx.statusPanel?.updateFeed('NetBlocks', { status: 'error' });

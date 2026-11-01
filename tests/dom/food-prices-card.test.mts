@@ -6,7 +6,7 @@ import type { FoodPriceSource } from '@/generated/client/worldmonitor/economic/v
 const row = { item: '<img src=x onerror=alert(1)>', market: 'Market', marketType: 'retail', origin: '', unit: 'kg', currency: 'PHP', price: 55, date: '2026-10-29', wowAvailable: false, wowPct: 0, previousDate: '', previousPrice: 0 };
 const source = (overrides: Partial<FoodPriceSource> = {}): FoodPriceSource => ({
   id: 'da', name: 'DA', country: 'Philippines', countryCode: 'PH', url: 'https://www.da.gov.ph/price-monitoring/', cadence: 'daily', contextOnly: false,
-  fetchedAt: '2026-10-29T12:00:00Z', latestReportDate: '2026-10-29', status: 'current', prices: [row], contexts: [], ...overrides,
+  fetchedAt: '2026-10-29T12:00:00Z', latestReportDate: '2026-10-29', status: 'current', prices: [row], contexts: [], attribution: '', ...overrides,
 });
 let host: HTMLElement;
 beforeAll(initTestI18n);
@@ -21,6 +21,14 @@ describe('official food prices card', () => {
     expect(host.textContent).not.toContain('0.0%');
     expect(host.textContent).toContain('55 PHP');
     expect(host.textContent).toContain('2026-10-29');
+  });
+  it('shows the publisher credit as text next to the source, and nothing when none is stated', () => {
+    const credit = 'Source: <b>Stat</b> (CC BY 4.0)';
+    new FoodPricesCard(host).update([source({ attribution: credit })]);
+    expect(host.querySelector('.food-prices-attribution')?.textContent).toBe(credit);
+    expect(host.querySelector('b')).toBeNull();
+    new FoodPricesCard(host).update([source()]);
+    expect(host.querySelector('.food-prices-attribution')).toBeNull();
   });
   it('switches countries and markets without mixing retail and wholesale prices', () => {
     new FoodPricesCard(host).update([source(), source({ id: 'cbsl', country: 'Sri Lanka', prices: [
@@ -46,6 +54,19 @@ describe('official food prices card', () => {
     expect(host.querySelector('details')?.textContent).not.toContain('99.0%');
     expect(host.querySelector('details a')?.hasAttribute('href')).toBe(false);
     expect(host.textContent).toContain('Unavailable');
+  });
+  it('lists every monthly context source and labels farmgate and export markets', () => {
+    new FoodPricesCard(host).update([
+      source({ id: 'ucda', country: 'Uganda', prices: [{ ...row, item: 'Robusta FAQ (low)', marketType: 'farmgate', currency: 'UGX' }, { ...row, item: 'Arabica Bugisu B', market: 'Kampala (FOT)', marketType: 'export', currency: 'USD' }] }),
+      source({ id: 'onagri', name: 'ONAGRI', country: 'Tunisia', contextOnly: true, prices: [{ ...row, item: 'Figs' }] }),
+      source({ id: 'statuz', name: 'Uzbekistan Statistics Agency', country: 'Uzbekistan', contextOnly: true, latestReportDate: '2026-09-01', prices: [{ ...row, item: 'Rice', currency: 'UZS' }] }),
+    ]);
+    const options = Array.from(host.querySelectorAll('select')[1]!.options).map(option => option.textContent);
+    expect(options).toEqual(['Market · Farmgate', 'Kampala (FOT) · Export']);
+    const context = host.querySelector('details')!.textContent!;
+    expect(context).toContain('Tunisia · ONAGRI');
+    expect(context).toContain('Uzbekistan · Uzbekistan Statistics Agency');
+    expect(context).toContain('2026-09-01');
   });
   it('can retry after transport failure and recover', () => {
     const card = new FoodPricesCard(host);
@@ -84,4 +105,15 @@ it('restores focus to the Tunisia table rather than the weekly table after refre
   card.update(sources);
   expect(document.activeElement).toBe(host.querySelector('details [role="region"]'));
   expect(host.querySelector('details')!.open).toBe(true);
+});
+
+it('restores focus to the Uzbekistan table, not the first monthly table, after refresh', () => {
+  const card = new FoodPricesCard(host);
+  const sources = [source(), source({ id: 'onagri', country: 'Tunisia', contextOnly: true }),
+    source({ id: 'statuz', country: 'Uzbekistan', contextOnly: true, prices: [{ ...row, item: 'Rice', currency: 'UZS' }] })];
+  card.update(sources);
+  host.querySelector('details')!.open = true;
+  host.querySelectorAll<HTMLElement>('details [role="region"]')[1]!.focus();
+  card.update(sources);
+  expect(document.activeElement).toBe(host.querySelectorAll('details [role="region"]')[1]);
 });

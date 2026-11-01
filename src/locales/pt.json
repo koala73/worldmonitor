@@ -2646,6 +2646,8 @@
       "market": "Mercado",
       "retail": "Varejo",
       "wholesale": "Atacado",
+      "farmgate": "Preço ao produtor",
+      "export": "Exportação",
       "prices": "Preços de alimentos",
       "product": "Produto",
       "price": "Preço / unidade",

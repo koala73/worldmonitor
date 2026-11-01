@@ -42,9 +42,9 @@ export class FoodPricesCard {
     return h('label', { className: 'food-prices-filter' }, h('span', {}, title), select);
   }
 
-  private table(prices: FoodMarketPrice[], contextOnly: boolean): HTMLElement {
+  private table(prices: FoodMarketPrice[], contextOnly: boolean, sourceId: string): HTMLElement {
     const format = new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 });
-    return h('div', { className: 'food-prices-table-wrap', tabIndex: 0, role: 'region', 'aria-label': label('prices'), 'data-price-table': contextOnly ? 'context' : 'weekly' },
+    return h('div', { className: 'food-prices-table-wrap', tabIndex: 0, role: 'region', 'aria-label': label('prices'), 'data-price-table': contextOnly ? `context:${sourceId}` : 'weekly' },
       h('table', { className: 'food-prices-table' },
         h('thead', {}, h('tr', {}, ...[label('product'), label('price'), ...(contextOnly ? [] : [label('weekly')])].map(text => h('th', { scope: 'col' }, text)))),
         h('tbody', {}, ...prices.map(price => h('tr', {},
@@ -77,11 +77,11 @@ export class FoodPricesCard {
       }), this.market, value => { this.market = value; this.render(); }));
       sections.push(h('div', { className: 'food-prices-filters' }, ...filters), this.sourceNote(source));
       const prices = source.prices.filter(price => JSON.stringify([price.market, price.marketType]) === this.market);
-      sections.push(prices.length ? this.table(prices, false) : h('p', {}, label('unavailable')));
+      sections.push(prices.length ? this.table(prices, false, source.id) : h('p', {}, label('unavailable')));
     } else sections.push(h('p', {}, label('unavailable')));
 
     const giews = this.sources.find(source => source.id === 'giews');
-    const tunisia = this.sources.find(source => source.id === 'onagri');
+    const monthly = this.sources.filter(source => source.contextOnly && source.id !== 'giews');
     const context = h('details', { className: 'food-prices-context' }, h('summary', {}, label('context')));
     if (wasOpen) context.setAttribute('open', '');
     context.append(h('p', { className: 'food-prices-note' }, label('contextNote')));
@@ -96,9 +96,9 @@ export class FoodPricesCard {
         context.append(h('p', {}, sourceLink(brief.url, brief.title), h('small', {}, `${label(brief.status)} · ${label('report')}: ${brief.referenceDate || label('unavailable')}`)));
       } else context.append(h('p', {}, label('unavailable')));
     }
-    if (tunisia) {
-      context.append(h('h4', {}, `${tunisia.country} · ${tunisia.name}`), this.sourceNote(tunisia));
-      context.append(tunisia.prices.length ? this.table(tunisia.prices, true) : h('p', {}, label('unavailable')));
+    for (const source of monthly) {
+      context.append(h('h4', {}, `${source.country} · ${source.name}`), this.sourceNote(source));
+      context.append(source.prices.length ? this.table(source.prices, true, source.id) : h('p', {}, label('unavailable')));
     }
     sections.push(context);
     this.host.replaceChildren(...sections);
@@ -110,6 +110,7 @@ export class FoodPricesCard {
   private sourceNote(source: FoodPriceSource): HTMLElement {
     return h('p', { className: 'food-prices-source', role: 'status' },
       sourceLink(source.url, source.name), ` · ${label(source.status)}`,
-      h('small', {}, `${label('report')}: ${source.latestReportDate || '—'} · ${label('checked')}: ${source.fetchedAt ? source.fetchedAt.slice(0, 10) : '—'}`));
+      h('small', {}, `${label('report')}: ${source.latestReportDate || '—'} · ${label('checked')}: ${source.fetchedAt ? source.fetchedAt.slice(0, 10) : '—'}`),
+      ...(source.attribution ? [h('small', { className: 'food-prices-attribution' }, source.attribution)] : []));
   }
 }

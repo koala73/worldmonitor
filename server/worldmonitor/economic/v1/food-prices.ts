@@ -21,7 +21,8 @@ function publisherUrl(value: unknown, source: SourceDefinition): string {
   if (typeof value !== 'string') return source.url;
   try {
     const url = new URL(value);
-    if (url.protocol === 'https:' && url.hostname === new URL(source.url).hostname && !url.username && !url.password) return url.href;
+    const hosts: string[] = [new URL(source.url).hostname, ...('hosts' in source && Array.isArray(source.hosts) ? source.hosts : [])];
+    if (url.protocol === 'https:' && hosts.includes(url.hostname) && !url.username && !url.password) return url.href;
   } catch { /* Use the registered publisher when a cached link is malformed. */ }
   return source.url;
 }
@@ -72,5 +73,6 @@ export function buildFoodPriceSource(source: SourceDefinition, value: unknown, n
     id: source.id, name: source.name, country: source.country, countryCode: source.countryCode,
     url: publisherUrl(snapshot.reportUrl, source), cadence: source.cadence, contextOnly: source.contextOnly,
     fetchedAt, latestReportDate, status: !hasData ? 'unavailable' : stale ? 'stale' : partial ? 'partial' : 'current', prices, contexts,
+    attribution: 'attribution' in source && typeof source.attribution === 'string' ? source.attribution : '',
   };
 }

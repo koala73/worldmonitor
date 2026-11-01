@@ -3032,6 +3032,8 @@
       "market": "Piață",
       "retail": "Cu amănuntul",
       "wholesale": "Angro",
+      "farmgate": "Preț la poarta fermei",
+      "export": "Export",
       "prices": "Prețurile alimentelor",
       "product": "Produs",
       "price": "Preț / unitate",

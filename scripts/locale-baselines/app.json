@@ -3267,6 +3267,8 @@
   "components.foodPrices.market": "Market",
   "components.foodPrices.retail": "Retail",
   "components.foodPrices.wholesale": "Wholesale",
+  "components.foodPrices.farmgate": "Farmgate",
+  "components.foodPrices.export": "Export",
   "components.foodPrices.prices": "Food prices",
   "components.foodPrices.product": "Product",
   "components.foodPrices.price": "Price / unit",

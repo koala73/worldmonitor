@@ -3081,6 +3081,8 @@
       "market": "Piac",
       "retail": "Kiskereskedelem",
       "wholesale": "Nagykereskedelem",
+      "farmgate": "Termelői ár",
+      "export": "Export",
       "prices": "Élelmiszerárak",
       "product": "Termék",
       "price": "Ár / egység",

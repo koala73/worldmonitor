@@ -2992,6 +2992,8 @@
       "market": "市場",
       "retail": "零售",
       "wholesale": "批發",
+      "farmgate": "農場收購價",
+      "export": "出口",
       "prices": "食品價格",
       "product": "商品",
       "price": "價格 / 單位",

@@ -2992,6 +2992,8 @@
       "market": "시장",
       "retail": "소매",
       "wholesale": "도매",
+      "farmgate": "산지",
+      "export": "수출",
       "prices": "식품 가격",
       "product": "품목",
       "price": "가격 / 단위",

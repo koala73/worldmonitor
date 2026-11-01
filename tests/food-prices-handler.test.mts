@@ -51,6 +51,12 @@ test('context-only Tunisia prices never receive weekly changes', () => {
   assert.equal(data.prices[0].wowAvailable, false);
 });
 
+test('the registry attribution reaches the response, empty when the publisher states none', () => {
+  const uz = sources.find(source => source.id === 'statuz')!;
+  assert.match(buildFoodPriceSource(uz, snapshot(), now).attribution, /CC BY 4\.0/);
+  assert.equal(buildFoodPriceSource(source, snapshot(), now).attribution, '');
+});
+
 test('a dropped or future observation cannot appear as a current price', () => {
   const data = buildFoodPriceSource(source, snapshot([row, { ...row, item: 'Dropped', date: '2026-10-28' }, { ...row, date: '2026-11-01', price: 100 }]), now);
   assert.deepEqual(data.prices.map(price => price.item), ['Rice']);
@@ -79,7 +85,7 @@ test('RPC uses the real Redis batch reader and preserves unavailable source slot
   const request = new Request('https://www.worldmonitor.app/api/economic/v1/get-food-prices');
   const result = await getFoodPrices({ request } as never, {});
   assert.equal(calls, 1);
-  assert.equal(result.sources.length, 7);
+  assert.equal(result.sources.length, sources.length);
   assert.equal(result.sources.find(source => source.id === 'da')?.prices[0]?.price, 55);
   assert.equal(result.sources.find(source => source.id === 'pihps')?.status, 'unavailable');
   assert.equal(result.unavailable, false);
