@@ -919,3 +919,35 @@ describe('Panel section grouping (SupplyChainPanel.ts)', () => {
     assert.ok(panelSrc.includes('economicIndicators'));
   });
 });
+
+
+describe('SSE weekly history retention', () => {
+  it('keeps 56 weekly points for SCFI and CCFI while other series stay at 24', () => {
+    const history = Array.from({ length: 60 }, (_, i) => ({ date: new Date(Date.UTC(2025, 0, 1 + i * 7)).toISOString().slice(0, 10), value: i + 100 }));
+    for (const indexId of ['SCFI', 'CCFI', 'BDI']) {
+      const [index] = accumulateHistory([{ indexId, currentValue: 999, history: [], _observationDate: '2026-10-16' }], { indices: [{ indexId, history }] });
+      assert.equal(index.history.length, indexId === 'BDI' ? 24 : 56);
+      assert.equal(index.history.at(-1).value, 999);
+      const [undated] = accumulateHistory([{ indexId, currentValue: 999, history: [], _observationDate: null }], { indices: [{ indexId, history }] });
+      assert.equal(undated.history.length, indexId === 'BDI' ? 24 : 56);
+    }
+  });
+});
+
+describe('SSE history bootstrap byte capture', () => {
+  it('reproduces the 24-to-56-point payload growth with the real producer', async () => {
+    const { SSE_HISTORY_BUDGET_CAPTURE, BOOTSTRAP_PAYLOAD_BUDGET_MANIFEST, CAPTURED_KEY_DECODED_BYTES } = await import('../scripts/_bootstrap-payload-budget.mjs');
+    const indices = ['SCFI', 'CCFI'].flatMap(indexId => {
+      const history = Array.from({ length: 55 }, (_, i) => ({ date: new Date(Date.UTC(2025, 0, 3 + i * 7)).toISOString().slice(0, 10), value: 1000 + i + 0.25 }));
+      const parsed = parseSseIndexResponse({ data: { currentDate: '2026-10-16', lastDate: '2026-10-09', lineDataList: [{ dataItemTypeName: `${indexId}_T`, currentContent: 1055.25, lastContent: 1054.25 }] } }, indexId, `${indexId}_T`, indexId, 'index');
+      return accumulateHistory(parsed, { indices: [{ indexId, history }] });
+    });
+    const expanded = Buffer.byteLength(JSON.stringify({ indices }));
+    const baseline = Buffer.byteLength(JSON.stringify({ indices: indices.map(i => ({ ...i, history: i.history.slice(-24) })) }));
+    assert.equal(baseline, SSE_HISTORY_BUDGET_CAPTURE.baselineBytes);
+    assert.equal(expanded, SSE_HISTORY_BUDGET_CAPTURE.expandedBytes);
+    assert.equal(expanded - baseline, SSE_HISTORY_BUDGET_CAPTURE.growthBytes);
+    assert.equal(BOOTSTRAP_PAYLOAD_BUDGET_MANIFEST.tiers.fast.reviewedExceptions.shippingRates.ceilingBytes,
+      CAPTURED_KEY_DECODED_BYTES.shippingRates + expanded - baseline);
+  });
+});

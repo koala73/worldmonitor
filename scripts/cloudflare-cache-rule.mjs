@@ -225,16 +225,29 @@ export const NEGOTIATED_MEDIA_TYPES = Object.freeze(['text/markdown', 'text/plai
 export const SINGLE_REPRESENTATION_EXTENSIONS = Object.freeze(['md', 'txt', 'xml']);
 
 /**
- * The two app-shell documents the dashboard-managed "WWW entry HTML" rule used
- * to cache with no representation guard (#7804). Both carry the shared 600s
- * header in vercel.json, both answer a markdown rendering for
- * `Accept: text/markdown` under that same header (measured 2026-09-06 through
- * the query-bearing form, which every rule keeps on the bypass), and both are
- * claimed here so the guard block gates them like every other HTML document.
- * `/dashboard.html`, the rewrite destination behind `/dashboard`, is not a URL
- * anyone is sent to and stays out.
+ * Slashless and trailing-slash URLs for the prerendered locale homepages.
+ * Keep in lockstep with `nonDefaultLandingLocales()` in
+ * shared/indexable-landing-locales.ts — the cache-rule test compares both.
  */
-export const ENTRY_DOCUMENTS = Object.freeze(['/', '/dashboard']);
+export const INDEXABLE_LANDING_ENTRY_PATHS = Object.freeze([
+  '/es', '/es/',
+  '/pt', '/pt/',
+  '/ru', '/ru/',
+  '/fr', '/fr/',
+  '/de', '/de/',
+  '/ar', '/ar/',
+]);
+
+/**
+ * Exact HTML documents claimed behind the representation guard (#7804, GS-L10N).
+ * `/` and `/dashboard` are the retired "WWW entry HTML" pair. Locale landings
+ * advertise the same 600s CDN header in vercel.json, so they need a matching
+ * exact-path claim or Cloudflare's WWW-documents bypass keeps them DYNAMIC.
+ * `/dashboard.html`, the rewrite destination behind `/dashboard`, is not a URL
+ * anyone is sent to and stays out. Locale paths are exact (set membership), never
+ * `starts_with`, so `/es/not-a-landing` stays on the bypass.
+ */
+export const ENTRY_DOCUMENTS = Object.freeze(['/', '/dashboard', ...INDEXABLE_LANDING_ENTRY_PATHS]);
 
 /**
  * Entry documents whose body also varies by User-Agent: middleware.ts rewrites
@@ -370,10 +383,8 @@ function buildCorpusCacheExpression({
   // routes to markdown: lower() because the middleware matches the UA
   // case-insensitively, and `contains` because it is the wider net — excluding
   // a request only costs a cache hit, admitting one hands a crawler browser HTML.
-  const entryDocuments = documents.map((document) => {
-    // An empty agent list must not emit an empty `and not ( )` group, which
-    // Cloudflare rejects; it simply means there is nobody to carve out.
-    if (!userAgentRouted.includes(document) || !agents.length) return `    or ${path} eq "${document}"`;
+  const unguardedDocuments = documents.filter((document) => !userAgentRouted.includes(document) || !agents.length);
+  const entryDocuments = documents.filter((document) => userAgentRouted.includes(document) && agents.length).map((document) => {
     const carveOuts = agents.map(
       (agent, index) => `        ${index ? 'or ' : ''}lower(http.user_agent) contains "${agent}"`,
     );
@@ -433,6 +444,7 @@ function buildCorpusCacheExpression({
     `    ${path} in {${bare}}`,
     ...nested,
     `    or ${path} in {${agentFiles}}`,
+    ...(unguardedDocuments.length ? [`    or ${path} in {${unguardedDocuments.map((document) => `"${document}"`).join(' ')}}`] : []),
     ...entryDocuments,
     '  ))',
   ].join('\n');

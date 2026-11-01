@@ -1,8 +1,14 @@
 // Pure Earthquakes Canada (NRCan) Atom parser + USGS merge/dedup helpers.
 // Tests import this module, not the seeder entrypoint.
 
-import { CHROME_UA, httpRetryError, roundGeoCoordinate, withRetry } from '../_seed-utils.mjs';
+import { withSourceRequestDiagnostics } from '../lib/source-request-diagnostics.mjs';
+import { createRequire } from 'node:module';
+import {
+  CHROME_UA, httpRetryError, redactProxyCredentials, roundGeoCoordinate, withRetry,
+} from '../_seed-utils.mjs';
 import { decodeHtmlEntities } from '../_html-entities.mjs';
+
+const { parseProxyConfigForAttempt, proxyFetch } = createRequire(import.meta.url)('../_proxy-utils.cjs');
 
 export const NRCAN_ATOM_HOST = 'www.earthquakescanada.nrcan.gc.ca';
 export const NRCAN_ATOM_URL = 'https://www.earthquakescanada.nrcan.gc.ca/cache/earthquakes/canada-en.atom';
@@ -202,10 +208,79 @@ async function readBoundedText(response, maxBytes) {
   return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
 }
 
+const NRCAN_ACCEPT = 'application/atom+xml, application/xml, text/xml, */*';
+const NRCAN_PROXY_EXITS = 3;
+const NRCAN_PROXY_TIMEOUT_MS = 12_000;
+
+function defaultNrcanProxyFetch(url, { attempt, proxyAuth, maxBytes }) {
+  const proxyConfig = parseProxyConfigForAttempt(proxyAuth, attempt);
+  if (!proxyConfig) throw Object.assign(new Error('Invalid proxy auth string'), { nonRetryable: true });
+  // proxyFetch never follows redirects, so a 3xx surfaces as !ok below.
+  return proxyFetch(url, proxyConfig, {
+    accept: NRCAN_ACCEPT,
+    headers: { 'User-Agent': CHROME_UA },
+    maxResponseBytes: maxBytes,
+    timeoutMs: NRCAN_PROXY_TIMEOUT_MS,
+  });
+}
+
+// NRCan moved behind Cloudflare on 2026-10-22, which answers Railway's datacenter
+// egress with 403 and residential exits with 200. Only a 403 earns the proxy leg:
+// every exit would answer a 5xx or 404 the same way. A refused, dropped, or
+// temporarily down exit rotates to the next sticky port. A gateway 4xx (rejected
+// credentials, quota, policy) and any other proxied status are final.
+async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, maxBytes }) {
+  let last;
+  let everyExitRefused = true;
+  for (let attempt = 0; attempt < NRCAN_PROXY_EXITS; attempt++) {
+    let result;
+    try {
+      result = await withSourceRequestDiagnostics({ source: 'nrcan', route: 'proxy', attempt }, async observe => {
+        const response = await proxyFetchFn(url, { attempt, proxyAuth, maxBytes });
+        observe(response);
+        return response;
+      });
+    } catch (error) {
+      if (error?.code === 'RESPONSE_TOO_LARGE') {
+        throw Object.assign(new Error('RESPONSE_TOO_LARGE'), { nonRetryable: true });
+      }
+      if (error?.nonRetryable) throw error;
+      if (error?.proxyConnect && error.status >= 400 && error.status < 500) {
+        error.nonRetryable = true;
+        throw error;
+      }
+      last = redactProxyCredentials(error?.message || error);
+      everyExitRefused = false;
+      continue;
+    }
+    if (result.ok) {
+      if (result.buffer.length > maxBytes) {
+        throw Object.assign(new Error('RESPONSE_TOO_LARGE'), { nonRetryable: true });
+      }
+      return result.buffer.toString('utf8');
+    }
+    last = `HTTP ${result.status}`;
+    if (result.status !== 403) {
+      // httpRetryError carries nonRetryable and Retry-After for the seeder's withRetry.
+      const error = httpRetryError(result, { remainingBudgetMs: 2_000 });
+      error.message = `direct HTTP ${directStatus}; proxy ${last}`;
+      throw error;
+    }
+  }
+  // Only when every exit refused is the failure permanent: an immediate retry restarts
+  // at exit 0 and meets the same refusals. Any dropped tunnel may recover, so stays retryable.
+  throw Object.assign(new Error(`direct HTTP ${directStatus}; proxy ${last}`), {
+    status: directStatus,
+    nonRetryable: everyExitRefused,
+  });
+}
+
 export async function fetchApprovedAtom(url, {
   allowedHosts = [NRCAN_ATOM_HOST],
   maxBytes = MAX_NRCAN_ATOM_BYTES,
   fetchFn = globalThis.fetch,
+  proxyAuth = '',
+  proxyFetchFn = defaultNrcanProxyFetch,
   cache,
 } = {}) {
   const parsed = new URL(url);
@@ -216,25 +291,36 @@ export async function fetchApprovedAtom(url, {
   const cacheKey = nrcanAtomCacheKey(parsed.toString());
   if (cache?.has(cacheKey)) return cache.get(cacheKey);
 
-  const response = await fetchFn(parsed.toString(), {
-    headers: {
-      Accept: 'application/atom+xml, application/xml, text/xml, */*',
-      'User-Agent': CHROME_UA,
-    },
-    redirect: 'error',
-    signal: AbortSignal.timeout(15_000),
+  const { response, xml } = await withSourceRequestDiagnostics({ source: 'nrcan', route: 'direct' }, async observe => {
+    const result = await fetchFn(parsed.toString(), {
+      headers: {
+        Accept: NRCAN_ACCEPT,
+        'User-Agent': CHROME_UA,
+      },
+      redirect: 'error',
+      signal: AbortSignal.timeout(15_000),
+    });
+    observe(result);
+    return { response: result, xml: result.ok ? await readBoundedText(result, maxBytes) : null };
   });
+  if (response.status === 403 && proxyAuth) {
+    await response.body?.cancel?.();
+    const xml = await fetchAtomViaProxy(parsed.toString(), response.status, { proxyAuth, proxyFetchFn, maxBytes });
+    cache?.set(cacheKey, xml);
+    return xml;
+  }
   if (!response.ok) {
     await response.body?.cancel?.();
     throw httpRetryError(response, { remainingBudgetMs: 2_000 });
   }
-  const xml = await readBoundedText(response, maxBytes);
   cache?.set(cacheKey, xml);
   return xml;
 }
 
 export async function fetchNrcanAtom({
   fetchFn = globalThis.fetch,
+  proxyAuth,
+  proxyFetchFn,
   cache,
   url = NRCAN_ATOM_URL,
 } = {}) {
@@ -242,6 +328,8 @@ export async function fetchNrcanAtom({
     allowedHosts: [NRCAN_ATOM_HOST],
     maxBytes: MAX_NRCAN_ATOM_BYTES,
     fetchFn,
+    proxyAuth,
+    proxyFetchFn,
     cache,
   });
   const parsed = parseNrcanAtom(xml);
@@ -432,7 +520,8 @@ export async function fetchMergedEarthquakes({ fetchUsgs, fetchNrcan, previousSo
     const priorCount = previous?.consecutiveFailures;
     const knownStreak = Number.isInteger(priorCount) && priorCount >= 0 && priorCount <= 100;
     const firstFailureAt = knownStreak && priorCount > 0
-      && Number.isSafeInteger(previous.firstFailureAt) && previous.firstFailureAt >= previous.fetchedAt
+      && Number.isSafeInteger(previous.firstFailureAt) && previous.firstFailureAt > 0
+      && (previous.fetchedAt === undefined || previous.firstFailureAt >= previous.fetchedAt)
       && previous.firstFailureAt <= nowMs ? previous.firstFailureAt : nowMs;
     // Unknown predecessors, unusable coverage, and permanent failures earn no grace.
     const nextCount = knownStreak ? Math.min(priorCount + 1, 100) : 2;

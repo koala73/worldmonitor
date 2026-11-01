@@ -23,7 +23,7 @@ const AGENT_RESOURCES = [
   // every other entry here — this block is read by LLMs summarising the
   // section, so a display string that names a different URL than the link
   // would teach them the wrong base URL.
-  { key: 'api', href: 'https://www.worldmonitor.app/docs/api-reference', display: 'worldmonitor.app/docs/api-reference', eventTarget: 'welcome-agent-api' },
+  { key: 'api', href: '/docs/api-reference', display: '/docs/api-reference', eventTarget: 'welcome-agent-api' },
   { key: 'agentView', href: '/?mode=agent', display: '/?mode=agent', eventTarget: 'welcome-agent-view' },
 ] as const;
 
@@ -86,7 +86,7 @@ export const Agents = () => (
         </div>
         <p className="font-mono text-xs uppercase tracking-wider text-wm-text mb-8">{t('welcome.agents.promise')}</p>
         <a
-          href="https://www.worldmonitor.app/docs/documentation"
+          href="/docs/documentation"
           className="border border-wm-border text-wm-text px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-green/50 transition-colors inline-block"
         >
           {t('welcome.agents.cta')}
@@ -119,7 +119,7 @@ export const Agents = () => (
           </p>
           <p className="text-wm-text mb-2"><span className="text-wm-green" aria-hidden="true">✓</span> {t('welcome.agents.termAnswer')}</p>
           <p>
-            <a href="https://www.worldmonitor.app/docs/documentation" className="text-wm-green hover:text-green-300 transition-colors">{t('welcome.agents.termDocs')}</a>
+            <a href="/docs/documentation" className="text-wm-green hover:text-green-300 transition-colors">{t('welcome.agents.termDocs')}</a>
           </p>
         </div>
       </motion.div>

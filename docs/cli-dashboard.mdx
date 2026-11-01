@@ -1,0 +1,263 @@
+---
+title: "Terminal Dashboard"
+description: "Run World Monitor in your terminal: live world map, news, markets, conflict, military flights, cyber, climate, prediction markets and live TV, with mouse support and colour themes. No API key needed."
+---
+
+World Monitor also runs as a full-screen dashboard in your terminal. It ships in the [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) npm package next to the [command-line client](/cli), needs no API key, and shows the same live data as the [web dashboard](https://www.worldmonitor.app/dashboard): a world map, ranked news, markets, conflict and instability, military flights and shipping, cyber threats, climate hazards, prediction markets, live TV and webcams, and platform health.
+
+<Frame caption="Overview: the live world map with quakes, conflict, unrest, hazards, fires, cyber and outage markers, the AI world brief, ranked top stories, a market strip and theater posture.">
+  <img src="/images/tui/overview.webp" alt="World Monitor terminal dashboard, Overview view" />
+</Frame>
+
+## Start it
+
+```sh
+npx worldmonitor            # run once without installing
+npm install -g worldmonitor # or install the `worldmonitor` command (alias `wm`)
+worldmonitor                # open the dashboard (same as `worldmonitor tui`)
+```
+
+Running `worldmonitor` with no arguments in an interactive terminal opens the dashboard. In a pipe, a script or CI it prints the help text instead, so existing automation is unaffected. Press `q` to quit; the terminal is restored as it was.
+
+<Frame caption="Startup: the dashboard connects to the API and loads each data tier before the first view appears. Press Esc, Enter or Space to skip it.">
+  <img src="/images/tui/boot.webp" alt="Startup screen with the World Monitor logo and loading progress" />
+</Frame>
+
+### Requirements
+
+- **Node.js 18 or newer.** The package has no dependencies.
+- **An interactive terminal of at least 80×24.** Larger windows show more panes side by side; 160×45 or more gives the full layout shown on this page.
+- **A terminal with truecolor and mouse support** for the best result, such as Ghostty, kitty, WezTerm, iTerm2, Konsole, Alacritty or the VS Code terminal. Terminals that do not report truecolor, including macOS Terminal, get 256 colours.
+- **A font with braille and box-drawing characters** for the map and panel borders. Most current terminal fonts include them.
+- **Optional:** [mpv](https://mpv.io) and [yt-dlp](https://github.com/yt-dlp/yt-dlp) to play live TV and webcams in the terminal. Without them, streams open in your browser.
+
+## Views
+
+Switch views with the number keys, `Tab` / `Shift+Tab`, or by clicking a tab.
+
+| Key | View | What it shows |
+|---|---|---|
+| `1` | Overview | World map with live markers and a radar sweep, AI world brief, ranked top stories, market strip, theater posture |
+| `2` | Map | Zoomable world map and rotating globe with every dashboard layer, NASA satellite imagery, day/night terminator, hover highlighting, info cards, search |
+| `3` | Brief | The AI world brief as a page: numbered story lines beside the sources they cite and related live headlines |
+| `4` | News | Digest sections with ranked, threat-classified headlines and a story detail pane |
+| `5` | Markets | Indices, commodities, FX and crypto with sparklines, sector heatmap, macro signals, fear & greed, ETF flows, stablecoins, Gulf markets |
+| `6` | Conflict | Country instability (CII) ranking, UCDP armed-conflict events, unrest, theater posture, correlation cards |
+| `7` | Air & Sea | Military aircraft on the map, airport delays, chokepoints, vessel density, shipping stress, freight indices |
+| `8` | Cyber | Threat indicators, DDoS protocol and vector mix, service status, internet outages, traffic anomalies |
+| `9` | Climate | Earthquakes, natural hazards, disease outbreaks, weather alerts, climate anomalies, planetary vitals |
+| `0` | Predict | Prediction markets by domain and AI scenario forecasts |
+| `Alt+1` | Live | Live news channels and webcams, played in the terminal or the browser |
+| `Alt+2` | Intel | GDELT topics, sanctions pressure, travel advisories, social velocity, US spending awards, tech events |
+| `Alt+3` | System | Platform health, per-source freshness, theme and animation settings, video player status |
+
+Every row in every view expands: `Enter` (or a second click) opens a scrollable detail overlay with the full record; `o` opens its link, `Esc` closes it.
+
+### Map
+
+<Frame caption="Map: the flat world map with the default layers, the toolbar above and the layers panel on the right.">
+  <img src="/images/tui/map.webp" alt="Map view with live layers over the world map and the layers panel" />
+</Frame>
+
+The Map view draws the world from the dashboard's own 50 m country geometry, so it zooms from the whole planet to a city without losing detail.
+
+| Key | Action |
+|---|---|
+| Drag, `←` `→` `↑` `↓` (`h` `j` `k` `l`) | Pan (`Shift` pans faster) |
+| Wheel, `+` / `-` | Zoom at the cursor / around the centre |
+| `g` | Switch between the flat map and the globe. The globe rotates slowly while idle; `p` pauses it |
+| `s` | Satellite imagery on / off |
+| `i` | Cycle imagery: NASA Blue Marble, the latest daily VIIRS true-colour mosaic, Black Marble night lights |
+| `d` | Day/night terminator on / off (shades the night side; with imagery it blends in the night lights) |
+| `L` | Layers panel: opens it focused, then focuses the map, then hides it. `Space` / click toggles a layer, group headers toggle the whole group, `ALL` / `NONE` / `DEFAULT` buttons |
+| Hover | Highlights the feature's whole layer and dims everything else; the card shows name, coordinates, both ends of a cable, pipeline or route, and its facts. With nothing under the cursor the card names the country (with its CII and sanctions status when those overlays are on) |
+| Click | Pin the feature (click it again for details); `c` or `Esc` unpins |
+| `Enter` | Full record for the pinned or hovered feature; `m` inside the overlay recentres the map on it |
+| `/` | Search features and countries by name; `Enter` jumps and pins, `n` / `N` step through the results |
+| `z` | Reset the view |
+
+Layers: undersea cables with landing points, pipelines with live operator status, energy storage, energy disruptions, AI data centers, cloud regions, ports, airports with FAA delays, chokepoints with live transit status, trade routes, fuel shortages, military bases, nuclear sites, gamma irradiators, radiation monitors, spaceports, military aircraft (dead-reckoned along their heading between updates), surveillance satellites propagated from their orbital elements (ground track when focused), intel hotspots with theater posture, conflict zones, UCDP conflict events, earthquakes (recent strong ones pulse), fires and thermal anomaly clusters, storms and natural events, GDACS disaster alerts, severe-weather alert polygons, Canadian emergency alerts and road incidents, climate anomalies, disease outbreaks, protests and unrest, internet outages, BGP anomalies, cyber threat infrastructure, positive events, ship-traffic density, AIS disruptions, economic centers, stock exchanges, financial centers, central banks, commodity hubs, Gulf investments, mines and critical minerals, tech HQs, AI labs, startup hubs, plus the CII and sanctions choropleths, graticule, borders and country names as overlays. The view and the layer choices persist between runs.
+
+Imagery is requested from NASA GIBS without a key, for exactly the visible area, and painted as half-block cells; nothing else leaves your machine. Satellite elements, military aircraft and the vessel snapshot use the same anonymous session as the browser.
+
+### Brief
+
+<Frame caption="Brief: the AI world brief and its story lines on the left; the sources and coverage behind the selected line on the right.">
+  <img src="/images/tui/brief.webp" alt="Brief view with story lines and the cited source and related headlines" />
+</Frame>
+
+The Brief view shows the AI world brief as a page: the brief paragraph and its numbered story lines on the left, and on the right what the selected line is talking about: the sources it cites (`[n]`) first, then headlines from the live digest that share its keywords and matching ranked stories. `Enter` on a line jumps to that pane; `Enter` on an item expands it, `o` opens it in the browser.
+
+### News
+
+<Frame caption="News: digest sections on the left, ranked headlines with source, importance score and age in the middle, and the selected story's scores, summary and link on the right.">
+  <img src="/images/tui/news.webp" alt="News view with sections, ranked headlines and story detail" />
+</Frame>
+
+`[` and `]` change the section. `Enter` expands the selected story; `o` opens it in your browser.
+
+### Markets
+
+<Frame caption="Markets: quotes with sparklines, crypto, a sector heatmap, macro signals, fear & greed and ETF flows.">
+  <img src="/images/tui/markets.webp" alt="Markets view with quotes, sparklines and sector heatmap" />
+</Frame>
+
+### Conflict
+
+<Frame caption="Conflict: the Country Instability Index ranking, recent UCDP armed-conflict events, unrest signals and correlation cards.">
+  <img src="/images/tui/conflict.webp" alt="Conflict view with CII ranking, UCDP events and unrest" />
+</Frame>
+
+### Air & Sea
+
+<Frame caption="Air & Sea: live military aircraft plotted on the map, sorted by altitude, with airport delays, chokepoint status, shipping stress and freight indices.">
+  <img src="/images/tui/airsea.webp" alt="Air and Sea view with military flights on the map, airport delays and chokepoints" />
+</Frame>
+
+Military flights and vessel data load only while this view is open. The selected aircraft is highlighted on the map.
+
+### Cyber
+
+<Frame caption="Cyber: threat indicators, DDoS mix, service status and internet outages.">
+  <img src="/images/tui/cyber.webp" alt="Cyber view with threat indicators, DDoS mix and outages" />
+</Frame>
+
+### Climate
+
+<Frame caption="Climate: earthquakes, natural hazards, weather alerts and planetary vitals.">
+  <img src="/images/tui/climate.webp" alt="Climate view with earthquakes, hazards and planetary vitals" />
+</Frame>
+
+### Predict
+
+<Frame caption="Predict: prediction markets grouped by domain, and AI scenario forecasts.">
+  <img src="/images/tui/predict.webp" alt="Predict view with prediction markets and forecasts" />
+</Frame>
+
+### Live
+
+<Frame caption="Live: the dashboard's news channels and webcams, with each channel's stream sources and the local player status.">
+  <img src="/images/tui/live.webp" alt="Live view with news channels, webcams and player controls" />
+</Frame>
+
+| Key | Action |
+|---|---|
+| `Enter` | Play the selected channel or webcam inside the terminal |
+| `w` | Play in an mpv window |
+| `b` | Open in the browser |
+| `s` | Try the next stream source |
+| `[` `]` | Change region |
+
+Each channel tries the broadcaster's HLS stream first, then YouTube. In-terminal video uses the Kitty graphics protocol on Ghostty, kitty, WezTerm and Konsole for full-resolution pixels, and coloured character cells everywhere else, including inside tmux. Press `q` in mpv, or `Ctrl+C`, to stop playback and return to the dashboard.
+
+Install the player on macOS with `brew install mpv yt-dlp`, or with your Linux package manager. Without mpv, `Enter` opens the stream in your browser.
+
+### Intel
+
+<Frame caption="Intel: GDELT topic feeds, sanctions pressure, travel advisories and social velocity.">
+  <img src="/images/tui/intel.webp" alt="Intel view with GDELT topics, sanctions pressure and advisories" />
+</Frame>
+
+### System
+
+<Frame caption="System: platform health, the freshness and refresh interval of every data source, appearance settings and the video player status.">
+  <img src="/images/tui/system.webp" alt="System view with platform health and data source freshness" />
+</Frame>
+
+Use this view to check whether a source failed to load. `r` refreshes the current view immediately.
+
+## Controls
+
+Every action works from the keyboard, and tabs, rows and buttons are clickable. The mouse wheel scrolls lists. Press `?` at any time for the key reference.
+
+<Frame caption="The help overlay (?) lists every key.">
+  <img src="/images/tui/help.webp" alt="Help overlay listing keyboard controls" />
+</Frame>
+
+| Key | Action |
+|---|---|
+| `1`–`9`, `0`, `Alt+1`–`Alt+3` | Jump to a view |
+| `Tab` / `Shift+Tab` | Next / previous view |
+| `←` `→` or `h` `l` | Move between panes |
+| `↑` `↓` or `j` `k` | Move in a list |
+| `PgUp` `PgDn`, `g` `G` | Page, first, last |
+| `Enter` | Expand the selected item into a detail overlay (`Esc` closes, `↑` `↓` scroll) |
+| `o` | Open the selected link in the browser |
+| `t` / `T` | Next theme / theme picker |
+| `a` | Toggle animations |
+| `r` | Refresh the current view now |
+| `W` | Open the web dashboard |
+| `?` | Help |
+| `q` or `Ctrl+C` | Quit |
+
+## Themes
+
+<Frame caption="The colour themes: Neon Horizon (default), Matrix, Amber CRT, Red Alert, Glacier and Synthwave.">
+  <img src="/images/tui/themes.webp" alt="The same Overview view in each colour theme" />
+</Frame>
+
+Press `t` to cycle themes, or `T` to open the picker. The picker previews each theme as you move through the list; `Enter` keeps it and `Esc` returns to the theme you had.
+
+<Frame caption="The theme picker previews the highlighted theme across the whole dashboard.">
+  <img src="/images/tui/picker.webp" alt="Theme picker overlay previewing the Matrix theme" />
+</Frame>
+
+Your theme, the animation setting and the last view are saved in `$XDG_CONFIG_HOME/worldmonitor/tui.json` (usually `~/.config/worldmonitor/tui.json`). The file never contains your API key.
+
+## Options
+
+| Flag | Effect |
+|---|---|
+| `--theme <id>` | Start with a theme: `neon`, `matrix`, `amber`, `redalert`, `ice`, `synthwave` |
+| `--no-anim` | Turn off animations (radar sweep, ticker, typewriter brief). `a` toggles them while running |
+| `--fps <n>` | Frame rate while animating, 5–60 (default 20) |
+| `--base-url <url>` | API host for a self-hosted deployment |
+| `--api-key <key>` | Use your API key instead of an anonymous session |
+
+These flags apply to the terminal dashboard. `worldmonitor web` has its own flags, listed under [Open the web dashboard](#open-the-web-dashboard). On every other command, `--theme`, `--url` and similar flags are passed through to the API as parameters.
+
+| Environment variable | Effect |
+|---|---|
+| `WORLDMONITOR_API_KEY` | API key used instead of the anonymous session |
+| `WORLDMONITOR_BASE_URL` | API host, shared with the other CLI commands |
+| `WORLDMONITOR_TUI_BASE_URL` | API host for the dashboard only |
+| `WM_TUI_COLOR` | Force `truecolor` or `256` colours when detection is wrong |
+| `WM_TUI_VO` | Force mpv's terminal video output, for example `kitty` or `tct` |
+| `WM_TUI_FORCE` | Start the dashboard even when stdin or stdout is not a terminal |
+
+## Data and privacy
+
+The dashboard reads the same public endpoints as the web dashboard: the public bootstrap tiers, the news digest, the compact health endpoint and the version endpoint. Military flights and vessel snapshots use an anonymous, short-lived session token, minted the same way the browser mints one. When `WORLDMONITOR_API_KEY` or `--api-key` is set, that key is sent instead.
+
+Data refreshes in the background: the fast tier every minute, news and health every 2 minutes, the slow tier every 5 minutes. Flights and vessels refresh only while the Air & Sea view is open. A source that fails waits before it retries, and the System view shows its error.
+
+## Open the web dashboard
+
+```sh
+worldmonitor web
+```
+
+Opens [worldmonitor.app/dashboard](https://www.worldmonitor.app/dashboard) in your browser. Inside a clone of the World Monitor repository it starts the local development server (`npm run dev`) instead and opens the local URL.
+
+| Flag | Effect |
+|---|---|
+| `--hosted` | Always open the hosted dashboard, even inside a checkout |
+| `--port <n>` | Port for the local development server (default 5173) |
+| `--no-open` | Print the URL without opening a browser |
+| `--url <url>` | Open this URL instead of the hosted dashboard. Inside a checkout, add `--hosted`, or the local development server starts instead |
+
+## Troubleshooting
+
+- **The map or borders show boxes or question marks.** Your font lacks braille or box-drawing characters. Switch to a current terminal font such as JetBrains Mono, Fira Code, SF Mono, Menlo or Cascadia Code.
+- **Colours look washed out or wrong.** Your terminal may not report truecolor support. Set `COLORTERM=truecolor`, or `WM_TUI_COLOR=256` if your terminal only supports 256 colours.
+- **The mouse does not work inside tmux.** Enable it with `set -g mouse on` in your tmux configuration.
+- **"The dashboard needs an interactive terminal".** stdin or stdout is a pipe or file. Run `worldmonitor tui` directly in a terminal, or use the [scripting commands](/cli) for automation.
+- **Video does not play.** Check the Player section of the System view. mpv and yt-dlp must be on your `PATH`; otherwise streams open in the browser.
+- **A view is empty.** Open the System view to see which source failed and when it will retry. `r` refreshes the current view.
+
+## Related
+
+- **[Command-Line Client](/cli)**: script briefs, risk scores and MCP tools from the same `worldmonitor` command.
+- **[Desktop App](/desktop-app)**: the full web dashboard as a native app.
+- **[SDKs](/sdks)**: Python, Ruby and Go clients.
+- **[MCP server](/mcp-overview)**: connect an AI agent.

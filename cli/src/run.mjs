@@ -11,6 +11,7 @@ import {
   USER_AGENT,
   UsageError,
   VERSION,
+  dashboardOptions,
   formatOutput,
   parseArgs,
   planRequest,
@@ -53,11 +54,37 @@ async function withTimeout(timeoutOpt, fn) {
   }
 }
 
+// The default spec URL redirects (apex -> www), so spec fetches follow
+// redirects by hand: the key (a self-hosted spec may be protected) is kept only
+// while the redirect stays on the original origin.
+async function fetchSpec(fetchImpl, specUrl, headers, signal) {
+  const origin = new URL(specUrl).origin;
+  let url = specUrl;
+  for (let hops = 0; ; hops++) {
+    const hopHeaders = { ...headers };
+    if (new URL(url).origin !== origin) delete hopHeaders[API_KEY_HEADER];
+    const res = await fetchImpl(url, { headers: hopHeaders, redirect: 'manual', signal });
+    const location = res.status >= 300 && res.status < 400 && res.headers.get('location');
+    if (!location || hops === 5) return res;
+    await res.body?.cancel();
+    url = new URL(location, url).toString();
+  }
+}
+
 export async function run(argv, io = {}) {
   const fetchImpl = io.fetch || globalThis.fetch;
   const env = io.env || (typeof process !== 'undefined' ? process.env : {});
   const stdout = io.stdout || ((s) => process.stdout.write(s));
   const stderr = io.stderr || ((s) => process.stderr.write(s));
+
+  const fail = (err) => {
+    if (err instanceof UsageError) {
+      stderr(`Error: ${err.message}\n`);
+      return 2;
+    }
+    stderr(`Error: ${err && err.message ? err.message : String(err)}\n`);
+    return 1;
+  };
 
   const parsed = parseArgs(argv);
   const { command, options } = parsed;
@@ -65,6 +92,31 @@ export async function run(argv, io = {}) {
   if (options.version) {
     stdout(`${VERSION}\n`);
     return 0;
+  }
+  // A bare `worldmonitor` on an interactive terminal opens the dashboard; in a
+  // pipe or script it keeps printing help so existing automation is unchanged.
+  const interactive = io.isTTY !== undefined ? io.isTTY : Boolean(process.stdout.isTTY && process.stdin.isTTY);
+  // `--help` always prints help, even after `tui` or `web`.
+  const wantsTui = !options.help && (command === 'tui' || command === 'dashboard' || (!command && interactive));
+  if (wantsTui) {
+    if (!interactive && !env.WM_TUI_FORCE) {
+      stderr('The dashboard needs an interactive terminal. Run `worldmonitor tui` from a terminal, or see --help.\n');
+      return 2;
+    }
+    try {
+      const launch = io.launchTui || (await import('./tui/index.mjs')).launchTui;
+      return await launch({ options: dashboardOptions(parsed), config: resolveConfig(env), env, fetchImpl: io.fetch });
+    } catch (err) {
+      return fail(err);
+    }
+  }
+  if (command === 'web' && !options.help) {
+    try {
+      const runWeb = io.runWeb || (await import('./tui/web.mjs')).runWeb;
+      return await runWeb({ options: dashboardOptions(parsed), stdout, stderr, env });
+    } catch (err) {
+      return fail(err);
+    }
   }
   if (options.help || !command || command === 'help') {
     stdout(`${HELP}\n`);
@@ -84,9 +136,7 @@ export async function run(argv, io = {}) {
       const headers = { 'user-agent': USER_AGENT, accept: 'application/json' };
       const apiKey = options.apiKey || config.apiKey;
       if (apiKey) headers[API_KEY_HEADER] = apiKey;
-      const res = await withTimeout(options.timeout, (signal) =>
-        fetchImpl(specUrl, { headers, signal }),
-      );
+      const res = await withTimeout(options.timeout, (signal) => fetchSpec(fetchImpl, specUrl, headers, signal));
       const spec = parseBody(await res.text(), res.headers);
       if (!res.ok) {
         stderr(`${formatOutput(spec, options)}\n`);
@@ -98,7 +148,9 @@ export async function run(argv, io = {}) {
     }
 
     const res = await withTimeout(options.timeout, (signal) =>
-      fetchImpl(plan.url, { method: plan.method, headers: plan.headers, body: plan.body, signal }),
+      // redirect: 'manual' — fetch forwards X-WorldMonitor-Key to a redirect
+      // target on any host. The 3xx is reported as a failed request instead.
+      fetchImpl(plan.url, { method: plan.method, headers: plan.headers, body: plan.body, redirect: 'manual', signal }),
     );
     const value = parseBody(await res.text(), res.headers);
 
@@ -129,12 +181,7 @@ export async function run(argv, io = {}) {
     stdout(`${formatOutput(value, options)}\n`);
     return 0;
   } catch (err) {
-    if (err instanceof UsageError) {
-      stderr(`Error: ${err.message}\n`);
-      return 2;
-    }
-    stderr(`Error: ${err && err.message ? err.message : String(err)}\n`);
-    return 1;
+    return fail(err);
   }
 }
 

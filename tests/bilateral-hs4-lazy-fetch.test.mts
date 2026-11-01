@@ -6,18 +6,20 @@
 // still match the substring. These tests drive the real exported function with
 // a mocked fetch and assert the request that leaves the process.
 
-import { test, beforeEach, afterEach } from 'node:test';
+import { test, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { HS4_CODES, HS4_LABELS } from '../scripts/shared/comtrade';
 import { recentPeriod } from '../scripts/shared/comtrade-period.mjs';
-import { lazyFetchBilateralHs4 } from '../server/worldmonitor/supply-chain/v1/_bilateral-hs4-lazy.js';
+import { lazyFetchBilateralHs4, UPSTREAM_GAP_MS } from '../server/worldmonitor/supply-chain/v1/_bilateral-hs4-lazy.js';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 let fetchCalls: string[] = [];
 let upstreamData: unknown[] = [];
+// Comtrade requests and timer delays, in the order the module issued them.
+let timeline: string[] = [];
 
 // Only the upstream calls. The module also talks to Upstash over REST through
 // the same global fetch, so asserting on the raw list would make these tests
@@ -30,6 +32,22 @@ const comtradeCalls = () => fetchCalls.filter(u => u.includes('comtradeapi.un.or
 beforeEach(() => {
   fetchCalls = [];
   upstreamData = [];
+  timeline = [];
+  // Every call pauses UPSTREAM_GAP_MS (1.1 s) between its two catalogue
+  // batches for the preview route's ~1 req/s limit, and the description test
+  // makes one call per heading: ~29 s of real waiting for 0.3 s of work.
+  // Every delay is recorded and only that pause is skipped; the gap test below
+  // asserts it is still requested, between the two batches.
+  const realSetTimeout = globalThis.setTimeout;
+  mock.method(globalThis, 'setTimeout', ((callback: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
+    timeline.push(`delay:${ms}`);
+    if (ms !== UPSTREAM_GAP_MS) return realSetTimeout(callback, ms, ...args);
+    // Record when the gap ends, so a request that does not wait for it shows up.
+    return realSetTimeout((...callbackArgs: unknown[]) => {
+      timeline.push('gap-elapsed');
+      callback(...callbackArgs);
+    }, 0, ...args);
+  }) as typeof setTimeout);
   globalThis.fetch = (async (url: string | URL | Request) => {
     const href = String(url);
     fetchCalls.push(href);
@@ -37,12 +55,14 @@ beforeEach(() => {
       // Stub Upstash REST so the code path is identical either way.
       return new Response(JSON.stringify({ result: null }), { status: 200 });
     }
+    timeline.push('comtrade');
     return new Response(JSON.stringify({ data: upstreamData }), { status: 200 });
   }) as typeof fetch;
 });
 
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
+  mock.restoreAll();
 });
 
 test('lazy fallback requests the stable HS preview route', async () => {
@@ -50,6 +70,15 @@ test('lazy fallback requests the stable HS preview route', async () => {
 
   assert.equal(comtradeCalls().length, 2, 'expected two bounded catalogue requests');
   assert.equal(new URL(comtradeCalls()[0]).pathname, '/public/v1/preview/C/A/HS');
+});
+
+test('lazy fallback waits the upstream gap between its two catalogue batches, and only there', async () => {
+  // The public preview route allows about one request per second. The real
+  // pause is skipped above, so this is what keeps the throttle honest.
+  await lazyFetchBilateralHs4('DE');
+
+  assert.deepEqual(timeline, ['comtrade', `delay:${UPSTREAM_GAP_MS}`, 'gap-elapsed', 'comtrade']);
+  assert.ok(UPSTREAM_GAP_MS >= 1000, `gap ${UPSTREAM_GAP_MS} ms is under the route's 1 req/s limit`);
 });
 
 test('lazy fallback sends an explicit annual period', async () => {

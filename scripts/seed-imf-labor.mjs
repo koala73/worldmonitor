@@ -10,7 +10,7 @@
 // Per WorldMonitor #3027 — feeds resilience macroFiscal scoring (LUR
 // sub-metric) and CountryDeepDivePanel demographic tiles (LP).
 
-import { loadEnvFile, runSeed, loadSharedConfig, imfSdmxFetchIndicator } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, loadSharedConfig, imfSdmxFetchIndicator, imfSdmxFetchIndicatorWithRelease } from './_seed-utils.mjs';
 // Sprint 4 IMF/WEO cohort content-age helper — see header for forecast-year semantics.
 import { imfWeoContentMeta, IMF_WEO_MAX_CONTENT_AGE_MIN, maxIntegerYear } from './_imf-weo-content-age-helpers.mjs';
 
@@ -85,11 +85,12 @@ export function buildLaborCountries({ unemployment = {}, population = {} }) {
 export async function fetchImfLabor() {
   const years = weoYears();
   const [unemployment, population] = await Promise.all([
-    imfSdmxFetchIndicator('LUR', { years }),
+    imfSdmxFetchIndicatorWithRelease('LUR', { years }),
     imfSdmxFetchIndicator('LP', { years }),
   ]);
   return {
-    countries: buildLaborCountries({ unemployment, population }),
+    countries: buildLaborCountries({ unemployment: unemployment.values, population }),
+    releases: { unemploymentPct: unemployment.release },
     seededAt: new Date().toISOString(),
   };
 }

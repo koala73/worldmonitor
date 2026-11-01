@@ -62,7 +62,7 @@ Two CSS facts decided the mirrors' shape:
 
 ## Prevention
 
-- `e2e/pro-hero-lcp.spec.ts` holds the entry JS for 1.5 s and asserts three things at 360/800/1280: the static hero paints visibly, no LCP entry lands at or after the React mount, and the final candidate is the hero `<h1>`. It fails on the old code with `LCP entries after the React mount ... size=65024 H1 "Noise→Signal"`. CI runs it as `npm run test:e2e:pro-lcp`.
+- `e2e/pro-hero-lcp.spec.ts` holds the entry JS for 1.5 s and asserts three things at 360/800/1280: the static hero paints visibly, no LCP entry lands at or after the React mount, and the final candidate is the hero `<h1>`. It fails on the old code with `LCP entries after the React mount ... size=65024 H1 "Noise→Signal"`. CI runs it with the other /pro gates as `npm run test:e2e:pro-gates`; `npm run test:e2e:pro-lcp` runs it alone.
 - `e2e/pro-critical-css-cls.spec.ts` checks `/pro` at 1280 as well as 360. A missing mirror for a prerendered class shows up there as a layout shift.
 - When a DebugBear LCP alert fires, split the page views by `lcpSelector`, `windowWidth` and `lcpText` before reading commits. A null selector means the element was detached. A flat median means only the tail moved.
 - Remaining gap: the static hero is English. A localized heading wider than "Noise→Signal", such as "Rauschen→Signal", still emits a late entry. Per-locale static HTML would close it.

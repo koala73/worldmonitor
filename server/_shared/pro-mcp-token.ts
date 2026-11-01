@@ -258,7 +258,10 @@ export async function issueProMcpTokenForUser(
  * via the OAuth flow anyway). Use {@link validateProMcpTokenOrNull} for
  * that — it wraps this and maps `revoked|transient → null`.
  */
-export async function validateProMcpToken(tokenId: string): Promise<ProMcpValidateUnion> {
+export async function validateProMcpToken(
+  tokenId: string,
+  options: { recordUsage?: boolean } = {},
+): Promise<ProMcpValidateUnion> {
   if (!tokenId) return { ok: 'revoked' };
 
   // Step 1: negative-cache short-circuit.
@@ -273,7 +276,7 @@ export async function validateProMcpToken(tokenId: string): Promise<ProMcpValida
     resp = await fetch(`${env.siteUrl}/api/internal-validate-pro-mcp-token`, {
       method: 'POST',
       headers: convexHeaders(env.sharedSecret),
-      body: JSON.stringify({ tokenId }),
+      body: JSON.stringify({ tokenId, recordUsage: options.recordUsage }),
       signal: AbortSignal.timeout(CONVEX_TIMEOUT_MS),
     });
   } catch (err) {

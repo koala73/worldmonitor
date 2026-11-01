@@ -5,17 +5,23 @@ import { readExistsFlags, readJsonFromUpstash, readRawJsonFromUpstash, redisPipe
 import { unwrapEnvelope } from '../_seed-envelope.js';
 import { chokepointCacheIdentity, chokepointSourcePolicy, type ChokepointPanelRead } from './_chokepoint-snapshot';
 import { newsIntelligenceFreshness, newsIntelligenceReuseUntil, type NewsIntelligencePanelRead } from './_news-intelligence-snapshot';
-import { resolveCountryFilter } from './_country-args';
+import { resolveCountryArg, resolveCountryFilter } from './_country-args';
+import { validateToolArgs } from './_validate-args';
 import { filterNaturalDisastersPanelData, naturalDisastersReuseUntil, type NaturalDisastersPanelRead } from './_natural-disasters-reuse';
 import { isAppOwnedRedisKey } from '../_redis-key-ownership.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
+import { OPERATOR_KEY_DAILY_CEILINGS, reportHighUsageIfCrossed } from '../../server/_shared/high-usage-alarm';
+import { hashKeySync } from '../../server/_shared/usage-identity';
 import { readAccountAllowance } from './_account-allowance';
-import { applyPerMinuteLimit, getMcpBillingVerificationDenial, wwwAuthHeader } from './auth';
-import { BillingDenialError, RpcValidationError, ToolBackoffError } from './billing-denial';
+import { applyPerMinuteLimit, getMcpBillingVerificationDenial, runContextPreChecks, wwwAuthHeader } from './auth';
+import { getClientIp } from '../../server/_shared/client-ip';
+import { FeedbackRejectedError, REPORT_ISSUE_TOOL } from './registry/feedback-tools';
+import { BillingDenialError, RpcValidationError, ToolBackoffError, UpstreamHttpError } from './billing-denial';
 import {
   BothSourcesFailedError,
+  ToolFetchError,
   createMcpToolExecutionContext,
   downstreamErrorTags,
 } from './downstream';
@@ -30,16 +36,25 @@ import { chokepointPanelViewSchema, conflictPanelViewSchema, disasterPanelViewSc
 import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
+import { MCP_UPGRADE_URL } from '../../shared/mcp-attribution';
+import {
+  checkoutProductIdForPlan,
+  MCP_CHECKOUT_PLANS,
+  START_UPGRADE_TOOL,
+  startUpgradeCheckout,
+  type StartUpgradeResult,
+} from './checkout';
 import { filterConflictPanelEvents, isOrdinaryMarketDefault, presentConflictEvents, presentDefaultMarketData, projectConflictSourceObservation } from './registry/cache-tools';
-import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_REGISTRY } from './registry/index';
+import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_ALIASES, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
-import { buildStructuredContent } from './structured-content';
+import { buildSpokenEnvelope, recordStaleFreshnessKeys, spokenLanguageOf } from './spoken';
+import { applyDeprecationNotice, buildStructuredContent } from './structured-content';
 import {
-  emitTelemetry,
   principalIdForLog,
   telemetryEnabled,
 } from './telemetry';
+import { recordToolCall, setUsageDescribeMiss, type McpUsage } from './usage';
 import type {
   CacheToolDef,
   ConflictSourceObservation,
@@ -63,6 +78,8 @@ type CacheToolValue = {
   freshnessUnknown?: true;
   unreadable?: string[];
   contentFreshnessPendingUntil?: string;
+  locked?: string[];
+  upgradeUrl?: string;
   data: Record<string, unknown>;
 };
 
@@ -115,8 +132,27 @@ async function executeCacheTool(
   // key failed the whole tool as a raw TimeoutError (WORLDMONITOR-176/ZM/137),
   // while folding the failure into null would read an unreadable seed-meta as
   // "never seeded" and an unreadable data key as an empty section.
-  const reads = tool._cacheKeys.map((k) => settleRead((panel !== undefined ? readRawJsonFromUpstash : readJsonFromUpstash)(k, 3_000, !isAppOwnedRedisKey(k))));
-  const freshnessChecks = tool._freshnessChecks;
+  const historyMode = params.changes_since_days !== undefined;
+  // get_displacement_data reads, and is judged stale on, only the selected view's dataset.
+  const displacementView = tool.name === 'get_displacement_data';
+  const selectedView = params.view === 'movements' || params.view === 'events' || params.view === 'regions' ? params.view : 'annual';
+  const viewOfKey = (key: string) => key.includes('displacement:summary') ? 'annual'
+    : key.includes('displacement:idmc-idu') ? 'events' : key.includes('displacement:dtm') ? 'regions' : 'movements';
+  const movementMode = displacementView && selectedView === 'movements';
+  const selectedKeys = displacementView ? tool._cacheKeys.filter(key => viewOfKey(key) === selectedView) : tool._cacheKeys;
+  // A free account never reads a subscription dataset or its seed-meta (#7433
+  // exception closed); the withheld sections are named in `locked` below.
+  const subscriptionKeys = execution?.freeAccountAllowance === true ? tool._subscriptionCacheKeys : undefined;
+  const lockedKeys = subscriptionKeys ? tool._cacheKeys.filter(key => Object.prototype.hasOwnProperty.call(subscriptionKeys, key)) : [];
+  const lockedFreshnessKeys = new Set(lockedKeys.map(key => `seed-meta:${key.replace(/:v\d+$/, '')}`));
+  const cacheKeys = (tool.name === 'get_sanctions_data'
+    ? tool._cacheKeys.filter(key => (key === 'sanctions:changes:v1') === historyMode) : selectedKeys)
+    .filter(key => !lockedKeys.includes(key));
+  const reads = cacheKeys.map((k) => settleRead((panel !== undefined || movementMode ? readRawJsonFromUpstash : readJsonFromUpstash)(k, 3_000, !isAppOwnedRedisKey(k))));
+  const selectedChecks = displacementView ? tool._freshnessChecks.filter(check => viewOfKey(check.key) === selectedView) : tool._freshnessChecks;
+  const freshnessChecks = (tool.name === 'get_sanctions_data'
+    ? tool._freshnessChecks.filter(check => (check.key === 'seed-meta:sanctions:changes') === historyMode) : selectedChecks)
+    .filter(check => !lockedFreshnessKeys.has(check.key));
   const metaReads = freshnessChecks.map((check) => settleRead(readJsonFromUpstash(check.key, 3_000, !isAppOwnedRedisKey(check.key))));
   // #6080 deployment-order grace. Only checks declaring a content contract pay
   // for this read, so it is one extra command on get_chokepoint_status and
@@ -150,7 +186,7 @@ async function executeCacheTool(
   // is what tells the caller the verdict rests on a read that failed.
   const metas = metaOutcomes.map((r) => (r.ok ? r.value : null));
   let freshnessUnknown = metaOutcomes.some((r) => !r.ok);
-  const labels = tool._cacheKeys.map((key) => cacheKeyLabel(tool, key));
+  const labels = cacheKeys.map((key) => cacheKeyLabel(tool, key));
   let unreadable = labels.filter((_, i) => !dataReads[i]!.ok);
   // Three-valued on purpose: only a marker we actually read and found ABSENT
   // earns the deployment-order grace. An unreadable marker stays out of the
@@ -180,12 +216,25 @@ async function executeCacheTool(
   // still live, or MCP briefly disagrees with the health surfaces at the exact
   // instant the deadline passes. `now` stays injectable as a test seam.
   const evaluatedAt = now ?? Date.now();
+  const freshnessIndices = freshnessChecks.flatMap((check, index) =>
+    movementMode && check.contentFreshnessActivationKey
+      && activationStates.get(check.contentFreshnessActivationKey) === false
+      && metas[index] == null && results[index] == null && dataReads[index]!.ok
+      ? [] : [index]);
+  freshnessUnknown = freshnessIndices.some(index => !metaOutcomes[index]!.ok);
   let { cached_at, stale, contentFreshnessPendingUntil } = evaluateFreshness(
-    freshnessChecks,
-    metas,
+    freshnessIndices.map(index => freshnessChecks[index]!),
+    freshnessIndices.map(index => metas[index]),
     evaluatedAt,
     activationStates,
   );
+  // Per-check verdicts for the spoken narrators (#9722): the bundle verdict
+  // above cannot say WHICH key is stale, and a narrator must caveat only the
+  // data it reads aloud. Same evaluator, one check at a time.
+  const failedFreshnessChecks = (indices: number[]) => indices
+    .filter(index => evaluateFreshness([freshnessChecks[index]!], [metas[index]], evaluatedAt, activationStates).stale)
+    .map(index => freshnessChecks[index]!.key);
+  let staleCheckKeys = failedFreshnessChecks(freshnessIndices);
 
   if (tool.name === 'get_forecast_predictions') {
     const index = labels.indexOf('predictions');
@@ -204,7 +253,7 @@ async function executeCacheTool(
   // type). The all-null case is structurally distinguishable from "the
   // upstream returned an empty list" (which is a JSON value, not null).
   if (
-    tool._cacheKeys.length > 0 &&
+    cacheKeys.length > 0 &&
     results.every((v: unknown) => v === null || v === undefined)
   ) {
     // Nothing usable came back. If any of it was a failed read rather than a
@@ -245,6 +294,7 @@ async function executeCacheTool(
     const indices = labels.flatMap((label, index) => required.includes(label) ? [index] : []);
     const freshness = evaluateFreshness(indices.map(index => freshnessChecks[index]!), indices.map(index => metas[index]), evaluatedAt, activationStates);
     cached_at = freshness.cached_at; stale = freshness.stale; contentFreshnessPendingUntil = freshness.contentFreshnessPendingUntil;
+    staleCheckKeys = failedFreshnessChecks(indices);
     freshnessUnknown = indices.some(index => !metaOutcomes[index]!.ok);
     unreadable = indices.filter(index => !dataReads[index]!.ok).map(index => labels[index]!);
     activationUnknown &&= required.includes('_countries');
@@ -298,7 +348,7 @@ async function executeCacheTool(
   if (panel !== 'news-intelligence' && panel !== 'chokepoints' && argBool(params.summary)) result = tool._summarize ? tool._summarize(result) : summarizeData(result);
 
   const intelligenceFreshness = panel === 'news-intelligence' ? newsIntelligenceFreshness(data, unwrapped.map(value => value._seed), metas, evaluatedAt) : undefined;
-  return { reuseUntil, value: {
+  const value: CacheToolValue = {
     ...(tool.name === 'get_conflict_events' ? { conflict_source: projectConflictSourceObservation(metas[freshnessChecks.findIndex(check => check.key === 'seed-meta:conflict:ucdp-events')]) } : {}),
     cached_at,
     stale: stale || intelligenceFreshness?.stale === true || chokepointPolicy?.stale === true,
@@ -306,8 +356,11 @@ async function executeCacheTool(
     ...(freshnessUnknown || intelligenceFreshness?.freshnessUnknown || chokepointPolicy?.freshnessUnknown ? { freshnessUnknown: true } : {}),
     ...(unreadable.length > 0 ? { unreadable } : {}),
     ...(contentFreshnessPendingUntil === undefined ? {} : { contentFreshnessPendingUntil }),
+    ...(lockedKeys.length > 0 ? { locked: lockedKeys.map(key => cacheKeyLabel(tool, key)), upgradeUrl: MCP_UPGRADE_URL } : {}),
     data: result,
-  } };
+  };
+  recordStaleFreshnessKeys(value, staleCheckKeys);
+  return { reuseUntil, value };
 }
 
 function filterCacheToolData(tool: CacheToolDef, data: Record<string, unknown>, params: Record<string, unknown>, panel?: CachePanelDomain): Record<string, unknown> {
@@ -395,6 +448,48 @@ function quotaBackendUnavailableResponse(
   );
 }
 
+const REGISTERED_TOOL_NAMES: ReadonlySet<string> = new Set(TOOL_REGISTRY.map((tool) => tool.name));
+
+// #8721 phase 7: an error that suggests a bug (an unexpected tool failure) or
+// a missing capability (an unknown tool) names the tool that takes a report.
+// The handler's exit adds `requestId` beside it (api/mcp/request-id.ts). Known
+// states, such as billing denials, rate limits, validation errors, source
+// outages and report_issue's own refusals, do not carry it.
+const REPORT_GUIDANCE = { reportWith: REPORT_ISSUE_TOOL } as const;
+/** Downstream statuses that mean "busy or down", not "broken": no report hint. */
+const UPSTREAM_EXPECTED_STATUSES = new Set([429, 502, 503, 504]);
+
+/**
+ * Who is calling `report_issue`, from the request and the auth context only
+ * (threat model, "Entry paths"). Keyed means a Pro or `wm_` principal that
+ * passes the same entitlement pre-check paid tools run, and is not on the
+ * free-account allowance (Decision 2). Every other caller, including one whose
+ * pre-check fails or is unavailable, reports anonymously: a lapsed key loses
+ * the keyed bucket, never the ability to report.
+ */
+async function resolveFeedbackCaller(
+  req: Request,
+  context: McpAuthContext,
+  deps: McpHandlerDeps,
+  resourceMetadataUrl: string,
+  corsHeaders: Record<string, string>,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<NonNullable<McpToolExecutionContext['feedbackCaller']>> {
+  let principalId: string | undefined;
+  if (context.kind === 'pro' || context.kind === 'user_key') {
+    // A pre-check that throws (entitlement store unreachable) is "unavailable":
+    // the caller reports anonymously rather than failing the report.
+    const check = await runContextPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx).catch(() => null);
+    if (check?.ok && check.freeAccountAllowance !== true) principalId = context.userId;
+  }
+  return {
+    clientIp: getClientIp(req),
+    userAgent: req.headers.get('user-agent') ?? '',
+    ...(principalId ? { principalId } : {}),
+    isKnownTool: (name) => REGISTERED_TOOL_NAMES.has(name),
+  };
+}
+
 export async function dispatchToolsCall(
   req: Request,
   context: McpAuthContext,
@@ -415,8 +510,32 @@ export async function dispatchToolsCall(
   // rather than emitted with a guessed URL.
   resourceMetadataUrl?: string,
   toolBurstPerMinute?: number,
+  // The caller's entitlement plan key (#9144), so a denial can name the plan
+  // one step up. Omitted → denials carry no checkout hint.
+  planKey?: string,
+  // The request's wm_api_usage row (#9431). Omitted → only the mcp.toolcall
+  // console line is emitted.
+  usage?: McpUsage,
+  // SEP-1303 (MCP 2025-11-25): report argument validation failures as a tool
+  // execution error the model can read and correct, instead of -32602. Only
+  // tools/call on 2025-11-25+ opts in; resources/read re-wraps JSON-RPC errors.
+  inputErrorsAsToolResults?: boolean,
 ): Promise<Response> {
   const id = body.id ?? null;
+  // Every argument-validation failure goes through here. Protocol errors (a
+  // missing or unknown tool name) keep calling rpcError directly.
+  const invalidArguments = (message: string, data?: Record<string, unknown>): Response => inputErrorsAsToolResults
+    ? rpcOk(id, {
+      content: [{ type: 'text', text: JSON.stringify({ error: message, ...data }) }],
+      isError: true,
+    }, corsHeaders)
+    : rpcError(id, -32602, message, corsHeaders, data);
+  // Only a user-bound caller can call start_upgrade, so only they get a
+  // checkout hint. The free allowance is upgraded as free even when a lapsed
+  // paid row still carries its old plan key.
+  const upgradeFrom = context.kind === 'pro' || context.kind === 'user_key'
+    ? (freeAccountAllowance ? 'free' : planKey)
+    : undefined;
   const p = body.params as { name?: string; arguments?: Record<string, unknown> } | null;
   const dedicatedPanel = !freeAccountAllowance && budget?.allowance !== 'api'
     && (context.kind === 'pro' || context.kind === 'user_key');
@@ -429,16 +548,28 @@ export async function dispatchToolsCall(
   if (!p || typeof p.name !== 'string') {
     return rpcError(id, -32602, 'Invalid params: missing tool name', corsHeaders);
   }
-  const tool = TOOL_REGISTRY.find((t) => t.name === p.name);
-  if (!tool) {
+  const resolved = TOOL_ALIASES.resolve(p.name, p.arguments);
+  if (resolved.kind === 'unknown') {
     if (deferredBurst) {
       const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
       if (limited) return limited;
     }
     // Cap the echoed tool name — same reflection-amplification class as the
     // handler.ts method echo (see a2a.ts Greptile #4824 precedent).
-    return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders);
+    return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders, { ...REPORT_GUIDANCE });
   }
+  if (resolved.kind === 'invalid') {
+    if (deferredBurst) {
+      const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
+      if (limited) return limited;
+    }
+    return invalidArguments('Invalid params', { violations: resolved.violations });
+  }
+  const tool = resolved.tool;
+  const notice = resolved.kind === 'alias' ? resolved.notice : null;
+  const aliasArguments = resolved.kind === 'alias' ? resolved.arguments : undefined;
+  const aliasArgumentsShape = resolved.kind === 'alias' ? resolved.argumentsShape : undefined;
+  const telemetryTool = resolved.kind === 'alias' ? p.name : tool.name;
 
   // U7 fail-closed guard (defence in depth). A `free` principal is minted in
   // exactly one place — the handler's free-tier branch, after matching this
@@ -464,8 +595,37 @@ export async function dispatchToolsCall(
     }
     if (Object.keys(p.arguments ?? {}).some(key => key !== 'jmespath')
       || (p.arguments?.jmespath !== undefined && typeof p.arguments.jmespath !== 'string')) {
-      return rpcError(id, -32602, 'Allowance status accepts only the optional jmespath projection.', corsHeaders);
+      return invalidArguments('Allowance status accepts only the optional jmespath projection.');
     }
+  }
+
+  // #9144: quota-exempt like get_mcp_allowance, so it runs here, before any
+  // meter. Every refusal returns before the tool executes; only a created
+  // session reaches the normal result path.
+  let startUpgradeResult: StartUpgradeResult | undefined;
+  if (tool.name === START_UPGRADE_TOOL) {
+    if (context.kind !== 'pro' && context.kind !== 'user_key') {
+      return rpcError(id, -32002, 'Starting an upgrade requires a user-bound credential.', corsHeaders);
+    }
+    // No jmespath: the session (and a checkout admission) is spent before the
+    // projection would run, so a narrowing or broken expression would lose the
+    // only copy of checkoutUrl. The result is three small fields anyway.
+    const upgradeArgs = p.arguments ?? {};
+    if (Object.keys(upgradeArgs).some(key => key !== 'plan')) {
+      return invalidArguments('start_upgrade accepts only plan; it takes no jmespath projection.');
+    }
+    const plan = typeof upgradeArgs.plan === 'string' ? upgradeArgs.plan : '';
+    const productId = checkoutProductIdForPlan(plan);
+    if (!productId) {
+      return invalidArguments(
+        // The tool-result payload is flat; the -32602 error nests it under data.
+        `Unknown plan. Pass one of the self-serve plans listed in ${inputErrorsAsToolResults ? 'plans' : 'data.plans'}.`,
+        { plans: MCP_CHECKOUT_PLANS },
+      );
+    }
+    const upgrade = await startUpgradeCheckout(deps.createCheckout, context.userId, plan, productId, id, corsHeaders, ctx);
+    if (upgrade instanceof Response) return upgrade;
+    startUpgradeResult = upgrade;
   }
 
   // Credentialed INCR-first reservation. Both cache-only AND RPC tools count
@@ -494,14 +654,50 @@ export async function dispatchToolsCall(
   // local registry read that never reaches the gateway, and it is the tool an
   // agent needs most while deciding what it may call.
   if (freeAccountAllowance && toolAccess(tool) === 'subscription') {
-    return mcpDenialResponse({ reason: 'upgrade-required' }, -32002, 403, id, corsHeaders);
+    return mcpDenialResponse({ reason: 'upgrade-required', upgradeFrom }, -32002, 403, id, corsHeaders);
+  }
+
+  // Panel allocation can also spend quota, so reject caller-input errors
+  // before entering either the panel or standalone reservation path.
+  try {
+    // Legacy-shaped alias arguments only pass the target's refinements; every
+    // other call, including a target-shaped alias, meets the full input schema.
+    if (aliasArguments && aliasArgumentsShape === 'legacy') {
+      tool._validateArgs?.(aliasArguments);
+      // A legacy-shaped alias skips the schema walk, which is where an
+      // unsupported `response_mode` is otherwise refused (#9722).
+      if (p.arguments?.response_mode !== undefined && !tool._spoken) {
+        throw new RpcValidationError(tool.name, [{ field: 'response_mode', description: 'This tool has no spoken mode. Only tools that list response_mode in their input schema accept it.' }]);
+      }
+      if (p.arguments?.spoken_language !== undefined) {
+        if (!tool._spoken) {
+          throw new RpcValidationError(tool.name, [{ field: 'spoken_language', description: 'This tool has no spoken mode. Only tools that list response_mode in their input schema accept spoken_language.' }]);
+        }
+        if (p.arguments.response_mode !== 'spoken') {
+          throw new RpcValidationError(tool.name, [{ field: 'spoken_language', description: 'Applies only with response_mode "spoken". Add response_mode: "spoken", or omit spoken_language.' }]);
+        }
+      }
+    } else validateToolArgs(tool, aliasArguments ?? (p.arguments === undefined ? {} : p.arguments));
+  } catch (error) {
+    if (!(error instanceof RpcValidationError)) throw error;
+    if (deferredBurst) {
+      const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
+      if (limited) return limited;
+    }
+    return invalidArguments('Invalid params', { violations: error.violations });
   }
 
   let panelRequest: PaidPanelAdmission | undefined;
   let panelUsage: PanelUsage | undefined;
   let panelRead: Awaited<ReturnType<typeof authorizePanelRead>> | undefined;
   const suppliedPanel = p.arguments?.panel_request;
-  const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request'));
+  // `response_mode` (#9722) only shapes the response after execution, like
+  // `jmespath`, so neither the tool, the panel admission schemas nor the panel
+  // read scope ever see it. Validated above against the tool's narrator.
+  // `spoken_language` picks the sentence wording and is stripped the same way.
+  const spokenRequested = p.arguments?.response_mode === 'spoken';
+  const spokenLanguage = spokenLanguageOf(p.arguments?.spoken_language);
+  const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request' && key !== 'response_mode' && key !== 'spoken_language'));
   let sourceArguments = callArguments;
   // Callers without a dedicated panel allowance (API allowances, operator keys)
   // cannot hold a forecast panel_request; they read original evidence at the
@@ -511,6 +707,23 @@ export async function dispatchToolsCall(
   // jmespath only shapes the response after execution (and after any panel save),
   // so the strict reader contracts and the panel read scope must not see it.
   const forecastReaderArguments = forecastReader ? Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'jmespath')) : callArguments;
+  // A new panel allocation charges the same daily counter as a standalone call
+  // but skips that call's reservation below, so check the Enterprise alarm for
+  // it too, including when the request fails after the allocation was charged.
+  // A reused allocation charged nothing.
+  const reportPanelAllocation = () => {
+    if (panelRequest && !panelRequest.reused && budget?.enterprisePlan
+      && (context.kind === 'pro' || context.kind === 'user_key')) {
+      reportHighUsageIfCrossed({
+        meter: 'mcp',
+        credential: 'enterprise-plan',
+        principal: context.userId,
+        newCount: panelRequest.usage.used,
+        ceiling: resolveDailyLimit(budget.limit) ?? 0,
+        ctx,
+      });
+    }
+  };
   try {
     if (tool.name === 'get_country_brief' || tool.name === 'get_country_risk') {
       if (!dedicatedPanel && ('refresh' in callArguments || 'request_id' in callArguments)) throw new PanelRequestError('Country refresh controls require a paid panel allowance.', 'invalid');
@@ -519,7 +732,7 @@ export async function dispatchToolsCall(
         const parsed = (tool.name === 'get_country_brief' ? countryBriefDirectViewSchema : countryRiskDirectViewSchema).safeParse(view);
         if (!parsed.success) throw new PanelRequestError('Supply valid country arguments and a request_id for refresh.', 'invalid');
         const { refresh, request_id, ...filters } = parsed.data;
-        const normalized = normalizeCountryDirectRead(tool.name, filters);
+        const normalized = normalizeCountryDirectRead(tool.name, filters, resolveCountryArg);
         if (!normalized) throw new PanelRequestError('Supply a recognized country and analysis.', 'invalid');
         sourceArguments = normalized;
         if (suppliedPanel !== undefined && refresh) throw new PanelRequestError('Refresh the country without a reader token.', 'invalid');
@@ -678,15 +891,19 @@ export async function dispatchToolsCall(
       if (allowance && allowance.used > 0) panelUsage = { ...allowance, unit: 'requests' };
     }
   } catch (error) {
+    reportPanelAllocation();
     if (!(error instanceof PanelRequestError)) throw error;
     if (deferredBurst && !panelRead) {
       const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
       if (limited) return limited;
     }
-    if (error.code === 'quota') return mcpDenialResponse({ reason: 'quota-exceeded', limit: error.limit ?? 0, sharedWithRestApi: false }, -32029, 429, id, corsHeaders, { retryAfter: String(secondsUntilUtcMidnight()) });
+    if (error.code === 'quota') return mcpDenialResponse({ reason: 'quota-exceeded', limit: error.limit ?? 0, sharedWithRestApi: false, upgradeFrom }, -32029, 429, id, corsHeaders, { retryAfter: String(secondsUntilUtcMidnight()) });
     if (error.code === 'backend') return quotaBackendUnavailableResponse(id, corsHeaders);
-    return rpcError(id, error.code === 'reads' ? -32029 : -32602, error.message, { ...corsHeaders, ...(error.retryAfter ? { 'Retry-After': String(error.retryAfter) } : {}) }, undefined, error.code === 'reads' ? 429 : 200);
+    // Only `reads` carries retryAfter; `invalid` is a panel argument rejection.
+    if (error.code === 'invalid') return invalidArguments(error.message);
+    return rpcError(id, -32029, error.message, { ...corsHeaders, ...(error.retryAfter ? { 'Retry-After': String(error.retryAfter) } : {}) }, undefined, 429);
   }
+  reportPanelAllocation();
 
   // user_key (#4859) consumes the same per-user daily budget as pro: cache
   // tools read Upstash directly (no downstream gateway metering), so an
@@ -713,7 +930,7 @@ export async function dispatchToolsCall(
           // It must never be -32001/401: docs/mcp-error-catalog.mdx documents that
           // pair as "re-authenticate via OAuth", so an RFC-9728 client would loop
           // (OAuth succeeds, retry, 401 again) on a condition re-auth cannot fix.
-          return mcpDenialResponse({ reason: 'allowance-exhausted' }, -32029, 429, id, corsHeaders, {
+          return mcpDenialResponse({ reason: 'allowance-exhausted', upgradeFrom }, -32029, 429, id, corsHeaders, {
             retryAfter: String(secondsUntilUtcMidnight()),
           });
         }
@@ -742,6 +959,7 @@ export async function dispatchToolsCall(
               reason: 'quota-exceeded',
               limit: reservation.floor,
               sharedWithRestApi: isSharedRestCounter(budget),
+              upgradeFrom,
             },
             -32029,
             429,
@@ -753,6 +971,18 @@ export async function dispatchToolsCall(
         // Hard-cap correctness: NEVER dispatch on reservation failure.
         return quotaBackendUnavailableResponse(id, corsHeaders);
       }
+      if (budget?.enterprisePlan) {
+        reportHighUsageIfCrossed({
+          meter: 'mcp',
+          credential: 'enterprise-plan',
+          principal: context.userId,
+          newCount: reservation.newCount,
+          // reserveQuota prices only an `api` allowance at the tool weight.
+          weight: budget.allowance === 'api' ? toolWeight(tool) : 1,
+          ceiling: resolveDailyLimit(budget.limit) ?? 0,
+          ctx,
+        });
+      }
       // No caller-side rollback of the reservation: once we pass this point the
       // tool runs and the daily slot is charged for good (GHSA-hcq5). The only
       // rollback is INSIDE reserveQuota, for the pre-dispatch cap-exceeded case.
@@ -762,6 +992,42 @@ export async function dispatchToolsCall(
         reset.setUTCHours(24, 0, 0, 0);
         panelUsage = { used: reservation.newCount, limit, remaining: limit === null ? null : Math.max(0, limit - reservation.newCount), resetsAt: reset.toISOString(), unit: 'requests' };
       }
+    }
+  } else if (context.kind === 'env_key' && tool._freeTier !== true && !isMetadataTool) {
+    // Operator keys carry no account and used to skip the daily counter
+    // entirely, so one leaked key had no ceiling. They now reserve on their own
+    // per-key dedicated counter (one unit per call, as on Pro's) against a
+    // circuit breaker far above observed use. Panel admissions need a
+    // user-bound context, so none reach this branch.
+    //
+    // Unlike Pro this fails OPEN when the counter cannot be read, matching the
+    // env_key per-minute limiter: the ceiling guards against a leak, not a
+    // sold allowance, and these tools read cached data. Provider spend stays
+    // fail-closed in the direct-LLM quota the downstream gateway applies.
+    const principal = hashKeySync(context.apiKey);
+    const ceiling = OPERATOR_KEY_DAILY_CEILINGS.mcpUnits;
+    const reservation = deps.redisPipeline
+      ? await reserveQuota(`env_key:${principal}`, deps.redisPipeline, { allowance: 'mcp', limit: ceiling })
+      : null;
+    if (reservation && !reservation.ok && reservation.reason === 'cap-exceeded') {
+      return mcpDenialResponse(
+        { reason: 'quota-exceeded', limit: reservation.floor, sharedWithRestApi: false },
+        -32029,
+        429,
+        id,
+        corsHeaders,
+        { retryAfter: String(secondsUntilUtcMidnight()) },
+      );
+    }
+    if (reservation?.ok) {
+      reportHighUsageIfCrossed({
+        meter: 'mcp',
+        credential: 'operator-key',
+        principal,
+        newCount: reservation.newCount,
+        ceiling,
+        ctx,
+      });
     }
   }
 
@@ -794,6 +1060,7 @@ export async function dispatchToolsCall(
       result = disasterRead.value;
     } else {
       execution = createMcpToolExecutionContext(req.url);
+      if (freeAccountAllowance) execution.freeAccountAllowance = true;
       execution.panelRequest = panelRequest;
       if (tool.name === 'get_country_brief_section' && panelRead && /^[A-Z]{2}$/.test(panelRead.panel)) execution.countryPanelCode = panelRead.panel;
       if (tool.name === 'get_mcp_allowance' && (context.kind === 'pro' || context.kind === 'user_key')) {
@@ -803,10 +1070,14 @@ export async function dispatchToolsCall(
           return allowance;
         };
       }
+      if (startUpgradeResult) execution.startUpgradeResult = startUpgradeResult;
       if (panelRead?.panel === 'forecasts') execution.panelScope = 'forecasts';
       if (perToolForecastRead) execution.perToolForecastRead = true;
+      if (tool.name === REPORT_ISSUE_TOOL) {
+        execution.feedbackCaller = await resolveFeedbackCaller(req, context, deps, resourceMetadataUrl ?? '', corsHeaders, ctx);
+      }
       if (tool._execute) result = await tool._execute(
-        dedicatedPanel && (tool.name === 'get_country_brief' || tool.name === 'get_country_risk') ? sourceArguments : forecastReaderArguments,
+        aliasArguments ?? (dedicatedPanel && (tool.name === 'get_country_brief' || tool.name === 'get_country_risk') ? sourceArguments : forecastReaderArguments),
         execution.downstreamOrigin,
         context,
         execution,
@@ -815,7 +1086,7 @@ export async function dispatchToolsCall(
         const sourceTool = tool.name === 'get_conflict_events' && dedicatedPanel
           ? { ...tool, _postFilter: filterConflictPanelEvents }
           : tool;
-        result = await executeTool(sourceTool, forecastReader ? forecastReaderArguments : execution.panelScope === 'forecasts' ? Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'summary')) : sourceArguments, undefined, execution);
+        result = await executeTool(sourceTool, aliasArguments ?? (forecastReader ? forecastReaderArguments : execution.panelScope === 'forecasts' ? Object.fromEntries(Object.entries(callArguments).filter(([key]) => key !== 'summary')) : sourceArguments), undefined, execution);
       }
     }
     if (panelRead && panelRead.cached === undefined) {
@@ -830,7 +1101,7 @@ export async function dispatchToolsCall(
         const { panelRequest: _receipt, ...snapshot } = result as Record<string, unknown>;
         forecastSnapshotToSave = snapshot;
         forecastCompletedBytes = utf8ByteLength(JSON.stringify(panelRequest ? { ...result, panelRequest } : result));
-      } else await panelRead.save(result);
+      } else await panelRead.save(result, execution?.countryRiskHistoryReuseUntil);
     }
     if (tool.name === 'get_forecast_predictions' && panelRead?.panel === 'forecasts' && tool._execute === undefined && argBool(callArguments.summary) && result && typeof result === 'object' && 'data' in result) {
       const data = (result as { data: Record<string, unknown> }).data;
@@ -862,19 +1133,27 @@ export async function dispatchToolsCall(
     // inside the normal response, so a bad expression is a *user* error after
     // a successful dispatch, not a thrown system error. Genuine tool-execution
     // throws (e.g. `cache_all_null`) still hit the catch below. Single
-    // JSON.stringify per request when
-    // telemetry is off; one extra stringify when MCP_TELEMETRY is enabled
-    // so we can report `bytes_pre_jmespath` separately from the projected
-    // size.
+    // JSON.stringify per request when neither MCP_TELEMETRY nor a usage row
+    // is present; otherwise a projected call stringifies once more so we can
+    // report `bytes_pre_jmespath` separately from the projected size.
     if (tool.name === 'get_market_data' && tool._execute === undefined && isOrdinaryMarketDefault(p.arguments ?? {})
       && result && typeof result === 'object') {
       result = presentDefaultMarketData(result as Record<string, unknown>, tool._outputBudgetBytes);
+    }
+    // Spoken mode (#9722): the finished payload becomes the narrator's
+    // sentence-and-citations envelope. It sits here, after every filter and
+    // presentation step and before the projection, so `jmespath` projects
+    // the envelope (`jmespath: "spoken"` returns only the sentence) and the
+    // attribution rider below is still built from the full payload.
+    const narratedFrom = result;
+    if (spokenRequested && tool._spoken && result && typeof result === 'object' && !Array.isArray(result)) {
+      result = buildSpokenEnvelope(tool, result as Record<string, unknown>, callArguments, Date.now(), spokenLanguage);
     }
     let { text: projectedText, value: projectedValue, failed } = applyJmespath(result, jmespathArg);
     // A news-panel token reading Natural map data keeps its full geometry.
     const newsMapRead = tool.name === 'get_natural_disasters' && panelRead !== undefined && panelRead.panel !== 'disasters';
     let fitCoverage: unknown;
-    if (tool._fitToBudget && !newsMapRead
+    if (tool._fitToBudget && !newsMapRead && !spokenRequested
       && result && typeof result === 'object'
       && (failed === 'projection_too_large' || utf8ByteLength(projectedText) > tool._outputBudgetBytes)) {
       const presented = tool._fitToBudget(result as Record<string, unknown>, tool._outputBudgetBytes, callArguments);
@@ -905,7 +1184,7 @@ export async function dispatchToolsCall(
     // No `jmespath` argument → no rider and byte-identical output, because the
     // unprojected payload already carries its attribution inline.
     const rider = jmespathUsed && tool._attribution !== undefined
-      ? buildAttributionRider(result, tool._attribution)
+      ? buildAttributionRider(narratedFrom, tool._attribution)
       : null;
     let text = rider === null ? projectedText : mergeAttributionRider(projectedText, rider);
     if (fitCoverage !== undefined) {
@@ -913,6 +1192,23 @@ export async function dispatchToolsCall(
       text = rider === null
         ? `{"projection":${projectedText},"transportCoverage":${coverage}}`
         : `${text.slice(0, -1)},"transportCoverage":${coverage}}`;
+    }
+    // Every tool advertises an `outputSchema`, so a strict client rejects a
+    // result without `structuredContent` before the model sees it (#8328). A
+    // soft-fail envelope is already an object in its own advertised branch. A
+    // payload reshaped by the caller — a `jmespath` projection, or a cache
+    // tool's `summary: true`, which turns lists into `{count, sample}` — is no
+    // longer the documented shape and is carried under `projection`.
+    const summaryUsed = tool._execute === undefined && argBool(p.arguments?.summary);
+    let structuredContent = buildStructuredContent(projectedValue, {
+      reshaped: failed === undefined && (jmespathUsed || summaryUsed),
+      rider,
+    });
+    if (fitCoverage !== undefined) structuredContent = { ...structuredContent, transportCoverage: fitCoverage };
+    if (notice) {
+      const applied = applyDeprecationNotice(structuredContent, text, notice);
+      structuredContent = applied.structuredContent;
+      text = applied.text;
     }
     const latencyMs = Date.now() - tStart;
     // Budget gate: always compute byte length for the budget check. This
@@ -924,7 +1220,11 @@ export async function dispatchToolsCall(
     const textBytes = Math.max(utf8ByteLength(text), forecastCompletedBytes);
     const outputBudget = tool._outputBudgetBytes;
     const budgetExceeded = textBytes > outputBudget;
-    if (telemetryEnabled()) {
+    if (usage && tool.name === 'describe_tool' && result && typeof result === 'object'
+      && (result as { error?: unknown }).error === 'unknown_tool') {
+      setUsageDescribeMiss(usage, callArguments.tool_name);
+    }
+    if (telemetryEnabled() || usage) {
       let bytesPre: number;
       if (jmespathUsed) {
         // Telemetry stringify must never escape into the outer catch — a
@@ -941,8 +1241,8 @@ export async function dispatchToolsCall(
       } else {
         bytesPre = textBytes;
       }
-      emitTelemetry('mcp.toolcall', {
-        tool: tool.name,
+      recordToolCall(usage, {
+        tool: telemetryTool,
         auth_kind: context.kind,
         user_id: principalIdForLog(context),
         latency_ms: latencyMs,
@@ -967,23 +1267,12 @@ export async function dispatchToolsCall(
         budget_bytes: outputBudget,
         actual_bytes: textBytes,
         hint,
+        ...(notice ? { deprecation: notice } : {}),
       };
       return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify(envelope) }], structuredContent: envelope, ...(panelUsage ? { _meta: { 'worldmonitor/usage': panelUsage } } : {}) }, corsHeaders);
     }
     if (forecastSnapshotToSave && panelRead) await panelRead.save(forecastSnapshotToSave);
 
-    // Every tool advertises an `outputSchema`, so a strict client rejects a
-    // result without `structuredContent` before the model sees it (#8328). A
-    // soft-fail envelope is already an object in its own advertised branch. A
-    // payload reshaped by the caller — a `jmespath` projection, or a cache
-    // tool's `summary: true`, which turns lists into `{count, sample}` — is no
-    // longer the documented shape and is carried under `projection`.
-    const summaryUsed = tool._execute === undefined && argBool(p.arguments?.summary);
-    const builtContent = buildStructuredContent(projectedValue, {
-      reshaped: failed === undefined && (jmespathUsed || summaryUsed),
-      rider,
-    });
-    const structuredContent = fitCoverage === undefined ? builtContent : { ...builtContent, transportCoverage: fitCoverage };
     return rpcOk(id, { content: [{ type: 'text', text }], structuredContent, ...(panelUsage ? { _meta: { 'worldmonitor/usage': panelUsage } } : {}) }, corsHeaders);
   } catch (err: unknown) {
     // `latency_ms` is time-in-tool (from tStart, captured after the quota
@@ -1010,9 +1299,12 @@ export async function dispatchToolsCall(
     // Sentry/log alerts don't page on ordinary billing churn.
     const isExpectedDenial = err instanceof BillingDenialError;
     const isExpectedSourceOutage = err instanceof McpSourceUnavailableError;
+    // A refused report (its own limits, a degraded limiter, a deleted account)
+    // is an expected state the feedback buckets exist to produce.
+    const isExpectedRefusal = err instanceof FeedbackRejectedError;
     const downstreamTags = downstreamErrorTags(err);
     const isBothFailed = err instanceof BothSourcesFailedError;
-    const log = isClient4xx || isExpectedDenial || isExpectedSourceOutage ? console.warn : console.error;
+    const log = isClient4xx || isExpectedDenial || isExpectedSourceOutage || isExpectedRefusal ? console.warn : console.error;
     log('[mcp] tool execution error:', err);
     captureSilentError(err, {
       tags: {
@@ -1036,10 +1328,10 @@ export async function dispatchToolsCall(
       // Split the api/mcp catch-all (WORLDMONITOR-T8) into per-tool,
       // per-status groups — see api/mcp/error-fingerprint.ts.
       fingerprint: mcpErrorFingerprint('tool-execution', tool.name, err),
-      ...(isClient4xx || isExpectedDenial || isExpectedSourceOutage ? { level: 'warning' as const } : {}),
+      ...(isClient4xx || isExpectedDenial || isExpectedSourceOutage || isExpectedRefusal ? { level: 'warning' as const } : {}),
     });
-    emitTelemetry('mcp.toolcall', {
-      tool: tool.name,
+    recordToolCall(usage, {
+      tool: telemetryTool,
       auth_kind: context.kind,
       user_id: principalIdForLog(context),
       latency_ms: latencyMs,
@@ -1078,6 +1370,19 @@ export async function dispatchToolsCall(
         err.status,
       );
     }
+    if (err instanceof FeedbackRejectedError) {
+      // A security report's refusal keeps the advisory URL (Decision 13).
+      const data = err.advisoryUrl ? { advisoryUrl: err.advisoryUrl, notice: err.notice } : undefined;
+      if (err.status === 403) return rpcError(id, -32002, err.publicMessage, corsHeaders, data, 403);
+      return rpcError(
+        id,
+        err.status === 429 ? -32029 : -32603,
+        err.publicMessage,
+        { ...corsHeaders, 'Retry-After': err.status === 429 ? '3600' : '60' },
+        data,
+        err.status,
+      );
+    }
     if (err instanceof McpSourceUnavailableError) {
       return rpcError(
         id,
@@ -1093,14 +1398,18 @@ export async function dispatchToolsCall(
       );
     }
     // #6559: proto/sebuf ValidationError 400s keep their field/detail pairs as
-    // structured JSON-RPC error data (`error.data.violations`). This is NOT a
-    // tools/call result envelope (`result.content` / `isError`) — agents read
-    // `error.code === -32602` and `error.data.violations[]`.
+    // structured JSON-RPC error data (`error.data.violations`) — agents read
+    // `error.code === -32602` and `error.data.violations[]`. A 2025-11-25+
+    // tools/call gets the same violations in an `isError` result (SEP-1303).
     if (err instanceof RpcValidationError) {
-      return rpcError(id, -32602, 'Invalid params', corsHeaders, {
-        violations: err.violations,
-      });
+      return invalidArguments('Invalid params', { violations: err.violations });
     }
-    return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders);
+    // Only an unexpected failure points at report_issue. An upstream rate limit
+    // or outage is an ordinary state; a report would spend the caller's
+    // allowance on noise.
+    const isExpectedUpstreamState = isBothFailed
+      || ((err instanceof ToolFetchError || err instanceof UpstreamHttpError) && UPSTREAM_EXPECTED_STATUSES.has(err.status));
+    return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders,
+      tool.name === REPORT_ISSUE_TOOL || isExpectedUpstreamState ? undefined : { ...REPORT_GUIDANCE });
   }
 }

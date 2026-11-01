@@ -41,7 +41,7 @@ vi.mock('@/services/live-video/youtube-iframe-api', () => ({
 
 vi.mock('hls.js', () => {
   class FakeHls {
-    static readonly Events = { LEVEL_LOADED: 'hlsLevelLoaded', ERROR: 'hlsError' };
+    static readonly Events = { LEVEL_LOADED: 'hlsLevelLoaded', ERROR: 'hlsError', BUFFER_CREATED: 'hlsBufferCreated' };
     static isSupported(): boolean {
       return true;
     }
@@ -263,6 +263,42 @@ afterEach(() => {
 });
 
 describe('Live News live verification', () => {
+  it('discloses missing HLS audio, preserves the mute preference, and clears the notice on recovery and channel changes', async () => {
+    mount(['bloomberg', 'cnn']);
+    await playFromPlaceholder();
+    const mute = headerButton('Toggle sound');
+    const notice = () => internals().element.querySelector<HTMLElement>('.live-audio-status');
+    expect(mute.disabled).toBe(false);
+    expect(notice()?.hidden ?? true).toBe(true);
+    mute.click();
+    expect(mediaVideo().muted).toBe(false);
+
+    latestHls().emit('hlsBufferCreated', { tracks: { video: {} } });
+    await playHlsLive();
+    expect(notice()?.textContent).toBe('Audio unavailable');
+    expect(notice()?.hidden).toBe(false);
+    expect(mute.disabled).toBe(true);
+    expect(mute.classList.contains('unmuted')).toBe(false);
+    expect(mute.getAttribute('aria-label')).toBe('Audio unavailable');
+    expect(mediaVideo().paused).toBe(false);
+
+    latestHls().emit('hlsBufferCreated', { tracks: { video: {}, audio: {} } });
+    expect(notice()?.hidden).toBe(true);
+    expect(mute.disabled).toBe(false);
+    expect(mute.classList.contains('unmuted')).toBe(true);
+    expect(mediaVideo().muted).toBe(false);
+
+    const retired = latestHls();
+    retired.emit('hlsBufferCreated', { tracks: { video: {} } });
+    channelButton('cnn').click();
+    await flush();
+    expect(notice()?.hidden).toBe(true);
+    expect(mute.disabled).toBe(false);
+    retired.emit('hlsBufferCreated', { tracks: { video: {} } });
+    expect(notice()?.hidden).toBe(true);
+    expect(mute.disabled).toBe(false);
+  });
+
   it('loads no player or stream before play intent', () => {
     mount(['bloomberg', 'cnn']);
     expect(api().players).toHaveLength(0);

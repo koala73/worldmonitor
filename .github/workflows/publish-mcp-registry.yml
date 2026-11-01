@@ -41,7 +41,7 @@ concurrency:
 
 jobs:
   publish:
-    if: ${{ github.event_name == 'release' || github.ref == 'refs/heads/main' }}
+    if: ${{ (github.event_name == 'release' || github.ref == 'refs/heads/main') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     environment: mcp-registry-publish
     runs-on: ubuntu-latest
     timeout-minutes: 10

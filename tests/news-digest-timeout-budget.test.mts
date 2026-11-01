@@ -33,7 +33,7 @@ assert.ok(callerStart >= 0 && callerEnd > callerStart);
 const callerCode = ts.transpileModule(`
   return async function(storyTrackingDeadlineAt, labelByHash, labelChanges, allSliced, titleHashes) {
     const variant = 'full', lang = 'en';
-    const memberHashesByFinal = undefined, clusterAnchorEligibleByFinalHash = undefined;
+    const memberHashesByFinal = undefined, clusterAnchorEligibleByFinalHash = undefined, corroborationByHash = undefined;
     ${DIGEST_SRC.slice(callerStart, callerEnd)}
   }`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
 const runHistoryThenTracking = new Function(

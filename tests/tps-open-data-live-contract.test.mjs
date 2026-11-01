@@ -28,8 +28,9 @@ function failureMessage(source, result) {
 
 describe(`TPS Open Data live contracts (${LIVE ? 'ENABLED' : 'SKIPPED - set LIVE_TPS_OPEN_DATA_TESTS=1'})`, { skip: !LIVE }, () => {
   it('fetches a complete multi-page MCI snapshot without an oversized GET URL', { timeout: 120_000 }, async () => {
+    // A pinned `now` older than the newest REPORT_DATE clamps the anchor below
+    // the data and leaves the window open-ended, a query production never runs.
     const result = await fetchTpsMci({
-      now: FIXED_NOW,
       lookbackDays: TPS_DEFAULT_MCI_LOOKBACK_DAYS,
       pageSize: TPS_MCI_PAGE_CAP,
       maxPages: 3,

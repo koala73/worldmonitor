@@ -68,6 +68,7 @@ async function createHarness({ failReplacement = true, scheduleMicrotask = queue
     renderRafId: null,
     countryPulseRaf: null,
     activeFlightTrails: new Map(),
+    deckFrameProvider: { wake() {}, dispose() {} },
     layerCache: new Map(),
   });
   for (const name of ['settleViewportMovement', 'stopTradeAnimation', 'stopPulseAnimation',

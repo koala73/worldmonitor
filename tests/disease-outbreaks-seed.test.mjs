@@ -446,8 +446,9 @@ const UNOG_ATOM = `<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www
 test('WHO briefings come from the UN Geneva newsroom feed', async (t) => {
   const feed = DISEASE_RSS_FEEDS.find(({ sourceName }) => sourceName === 'WHO briefing');
   assert.ok(feed, 'UN Geneva WHO briefing feed missing');
-  // https answers 301 to http; fetch the final URL directly.
-  assert.equal(feed.url, 'http://www.unognewsroom.org/feed');
+  // The feed is shared health intelligence; a cleartext first hop lets an
+  // on-path host forge WHO entries. /feed and http:// both 301 to this URL.
+  assert.equal(feed.url, 'https://www.unognewsroom.org/rss');
   const recent = new Date(Date.now() - 3_600_000).toISOString();
   t.mock.method(globalThis, 'fetch', async (input) => {
     const url = String(input);
@@ -486,7 +487,7 @@ test('dedup keeps one item per source for the same disease and country', async (
     const url = String(input);
     if (url.startsWith('https://www.who.int/')) return new Response(JSON.stringify({ value: [] }), { status: 200 });
     if (url === 'https://www.cidrap.umn.edu/news/88/rss') return new Response(cidrapXml, { status: 200 });
-    if (url === 'http://www.unognewsroom.org/feed') return new Response(unogXml, { status: 200 });
+    if (url === 'https://www.unognewsroom.org/rss') return new Response(unogXml, { status: 200 });
     if (url.endsWith('.js')) return new Response('not found', { status: 404 });
     return new Response('<rss><channel></channel></rss>', { status: 200 });
   });
@@ -497,6 +498,35 @@ test('dedup keeps one item per source for the same disease and country', async (
     'https://www.cidrap.umn.edu/plague/new',
     'https://www.unognewsroom.org/story/en/1/plague',
   ]);
+});
+
+// A ThinkGlobalHealth article that covers several countries ships one row per
+// country under a single Alert_ID and link. API consumers such as the Zapier
+// trigger deduplicate on `id`, so each row needs its own.
+test('ThinkGlobalHealth rows from one multi-country article get distinct ids', async (t) => {
+  const date = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
+  const row = (country, lat, lng) => ({
+    Alert_ID: '8735680', lat: String(lat), lng: String(lng), diseases: 'Polio', place_name: country,
+    country, date, cases: '1', link: 'https://example.com/weekly-polio', Type: 'outbreak', summary: `${country} polio`,
+  });
+  const realtime = [row('Pakistan', 29.97, 69.39), row('South Sudan', 6.88, 30.5), row('Nigeria', 9.08, 8.68), row('Nigeria', 9.08, 8.68)];
+  const bundle = `/* boilerplate */\neval("${JSON.stringify(`var res = ${JSON.stringify(realtime)}`).slice(1, -1)}")\n`;
+  t.mock.method(globalThis, 'fetch', async (input) => {
+    const url = String(input);
+    if (url.startsWith('https://www.who.int/')) return new Response(JSON.stringify({ value: [] }), { status: 200 });
+    if (url.endsWith('index_bundle.js')) return new Response(bundle, { status: 200 });
+    return new Response('<rss><channel></channel></rss>', { status: 200 });
+  });
+
+  const { outbreaks } = await fetchDiseaseOutbreaks();
+  const tgh = outbreaks.filter((o) => o.sourceName === 'ThinkGlobalHealth');
+  assert.deepEqual(tgh.map((o) => o.location).sort(), ['Nigeria', 'Pakistan', 'South Sudan']);
+  assert.equal(new Set(outbreaks.map((o) => o.id)).size, outbreaks.length);
+});
+
+test('ThinkGlobalHealth ids stay stable across seeder runs', () => {
+  const rec = { lat: 6.88, lng: 30.5, disease: 'Polio', placeName: 'South Sudan', country: 'South Sudan', date: '2026-09-01', cases: '1', sourceUrl: 'https://example.com/weekly-polio', summary: 's' };
+  assert.equal(mapItem(tghNormalizeItem(rec)).id, mapItem(tghNormalizeItem({ ...rec })).id);
 });
 
 test('CDC items without a known disease are dropped', () => {
@@ -547,13 +577,27 @@ test('fetchDiseaseOutbreaks publishes reports that name only a detected disease'
 
 test('Atom links accept single-quoted href', async () => {
   const atom = `<feed><entry><title>Cholera update - WHO</title><link href='https://www.unognewsroom.org/story/en/9/cholera'/><updated>2026-10-05T10:00:00Z</updated><summary>Cholera in Sudan.</summary></entry></feed>`;
-  const items = await fetchRssItems('http://www.unognewsroom.org/feed', 'WHO briefing', {
+  const items = await fetchRssItems('https://www.unognewsroom.org/rss', 'WHO briefing', {
     titleSuffix: ' - WHO',
     fetchImpl: async () => new Response(atom, { status: 200 }),
   });
   assert.equal(items.length, 1);
   assert.equal(items[0].link, 'https://www.unognewsroom.org/story/en/9/cholera');
   assert.equal(items[0].title, 'Cholera update');
+});
+
+// fetch follows https -> http redirects, so a publisher that downgrades would
+// hand the cleartext body to the parser.
+test('a feed redirected to plain http is dropped', async () => {
+  const atom = `<feed><entry><title>Cholera update - WHO</title><link href="https://www.unognewsroom.org/story/en/9/cholera"/><updated>2026-10-05T10:00:00Z</updated><summary>Cholera in Sudan.</summary></entry></feed>`;
+  const downgraded = (finalUrl) => async () => {
+    const response = new Response(atom, { status: 200 });
+    Object.defineProperty(response, 'url', { value: finalUrl });
+    return response;
+  };
+  const opts = { titleSuffix: ' - WHO' };
+  assert.deepEqual(await fetchRssItems('https://www.unognewsroom.org/rss', 'WHO briefing', { ...opts, fetchImpl: downgraded('http://www.unognewsroom.org/rss') }), []);
+  assert.equal((await fetchRssItems('https://www.unognewsroom.org/rss', 'WHO briefing', { ...opts, fetchImpl: downgraded('https://www.unognewsroom.org/rss') })).length, 1);
 });
 
 test('MERS and hantavirus are detected as whole words', () => {
@@ -587,6 +631,16 @@ test('WHO record without PublicationDateAndTime → in-memory item is tagged syn
   assert.equal(inMemory._publishedAtIsSynthetic, true);
   assert.equal(inMemory._originalPublishedMs, null);
   assert.equal(inMemory.publishedMs, NOW, 'publishedMs falls back to now() so existing isFinite filters + UI consumer contract still hold');
+});
+
+// WHO items skip the headline date gate, so an undated one is published. Its
+// id must not carry the fallback "now", or every seeder run mints a new id
+// and id-deduplicating consumers (the Zapier trigger) fire on it again.
+test('an undated WHO report keeps one id across seeder runs', () => {
+  const record = { Title: 'Mpox - Country X', ItemDefaultUrl: '/mpox-x' };
+  const first = mapItem(whoNormalizeItem(record, 1700000000000));
+  const second = mapItem(whoNormalizeItem(record, 1700000600000));
+  assert.equal(first.id, second.id);
 });
 
 test('WHO record with valid PublicationDateAndTime → in-memory item is non-synthetic', () => {

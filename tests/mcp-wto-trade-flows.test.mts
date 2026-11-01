@@ -6,7 +6,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { TOOL_LIST_RESPONSE, TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {
@@ -23,8 +23,8 @@ const BASE = 'https://api.worldmonitor.app';
 function wtoResponse(overrides = {}) {
   return new Response(JSON.stringify({
     flows: [
-      { year: 2014, reportingCountry: 'United States of America', partnerCountry: 'World', exportValueUsd: 1_620_000_000_000, importValueUsd: 2_330_000_000_000, yoyExportChange: 2.5, yoyImportChange: 3.1, productSector: 'Total merchandise' },
-      { year: 2015, reportingCountry: 'United States of America', partnerCountry: 'World', exportValueUsd: 1_500_000_000_000, importValueUsd: 2_280_000_000_000, yoyExportChange: -7.4, yoyImportChange: -2.1, productSector: 'Total merchandise' },
+      { year: 2014, reportingCountry: 'United States of America', partnerCountry: 'World', exportValueUsd: 1_620_000, importValueUsd: 2_330_000, yoyExportChange: 2.5, yoyImportChange: 3.1, productSector: 'Total merchandise' },
+      { year: 2015, reportingCountry: 'United States of America', partnerCountry: 'World', exportValueUsd: 1_500_000, importValueUsd: 2_280_000, yoyExportChange: -7.4, yoyImportChange: -2.1, productSector: 'Total merchandise' },
     ],
     fetchedAt: '2026-08-07T00:00:00.000Z',
     upstreamUnavailable: false,
@@ -68,14 +68,29 @@ describe('get_wto_trade_flows', () => {
     assert.ok(tool._coverageKeys?.includes('trade:flows:v2:840:000'), '_coverageKeys must cover the default reporter data key');
   });
 
-  it('forwards reporter and years to the route and projects the response', async () => {
+  it('advertises millions USD in tools/list and describe_tool', async () => {
+    const describeTool = TOOL_REGISTRY.find((t) => t.name === 'describe_tool');
+    assert.ok(describeTool?._execute);
+    const described = await describeTool._execute({ tool_name: tool.name }, BASE, CTX, {});
+    for (const definition of [TOOL_LIST_RESPONSE.find((t) => t.name === tool.name), described]) {
+      assert.partialDeepStrictEqual(definition, {
+        outputSchema: { anyOf: [{ properties: { flows: { items: { properties: {
+          exportValueUsd: { description: 'Merchandise exports to the World, millions USD (1 = 1,000,000 USD).' },
+          importValueUsd: { description: 'Merchandise imports from the World, millions USD (1 = 1,000,000 USD).' },
+        } } } } }] },
+      });
+    }
+  });
+
+  it('forwards reporter and years and preserves the route values in millions USD', async () => {
     const result = await tool._execute({ reporter: '156', years: 5 }, BASE, CTX, {});
     assert.match(requestedUrl, /^https:\/\/api\.worldmonitor\.app\/api\/trade\/v1\/get-trade-flows\?/);
     assert.match(requestedUrl, /reporting_country=156/);
     assert.match(requestedUrl, /years=5/);
     assert.equal(result.flows.length, 2);
     assert.equal(result.flows[1].year, 2015);
-    assert.equal(result.flows[1].exportValueUsd, 1_500_000_000_000);
+    assert.equal(result.flows[1].exportValueUsd, 1_500_000);
+    assert.equal(result.flows[1].importValueUsd, 2_280_000);
     assert.equal(result.flows[1].yoyExportChange, -7.4);
     assert.equal(result.unavailableReason, 'TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED');
     assert.equal(result.upstreamUnavailable, false);

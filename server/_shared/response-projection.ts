@@ -1,4 +1,4 @@
-import jmespath from 'jmespath';
+import { searchBoundedJmespath } from './bounded-jmespath';
 import { stringifyWithinBudget } from './bounded-json';
 
 // Universal REST response projection — the gateway applies an optional
@@ -91,7 +91,7 @@ export function projectJsonResponse(bodyStr: string, expr: string): ProjectJsonR
 
   let projected: unknown;
   try {
-    projected = jmespath.search(value, expr);
+    projected = searchBoundedJmespath(value, expr);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return {

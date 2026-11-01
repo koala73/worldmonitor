@@ -4,7 +4,7 @@ import type {
   GetYoutubeLiveStreamInfoRequest,
   GetYoutubeLiveStreamInfoResponse,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
-import { ApiError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 
@@ -68,9 +68,11 @@ export const getYoutubeLiveStreamInfo: AviationServiceHandler['getYoutubeLiveStr
 ): Promise<GetYoutubeLiveStreamInfoResponse> => {
   const { videoId } = req;
   const rawHandle = req.channel.replace(/^@/, '').normalize('NFC');
-  if ((videoId && !VIDEO_ID_RE.test(videoId))
-      || (req.channel && !CHANNEL_ID_RE.test(req.channel) && !HANDLE_RE.test(rawHandle))) {
-    throw new ApiError(400, 'Invalid YouTube handle, channel ID or video ID', '');
+  if (videoId && !VIDEO_ID_RE.test(videoId)) {
+    throw new ValidationError([{ field: 'video_id', description: 'Invalid YouTube video ID' }]);
+  }
+  if (req.channel && !CHANNEL_ID_RE.test(req.channel) && !HANDLE_RE.test(rawHandle)) {
+    throw new ValidationError([{ field: 'channel', description: 'Invalid YouTube handle or channel ID' }]);
   }
 
   if (videoId) {

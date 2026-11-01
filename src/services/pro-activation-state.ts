@@ -217,15 +217,23 @@ export function writeScopedFireOnceRecord(
 export const FIRE_ONCE_TTL_MS = 400 * 24 * 60 * 60 * 1000;
 
 export interface FireOnceRecord {
-  /** Subscription identity onboarding was shown for (see deriveSubscriptionKey). */
+  /** Subscription identity whose activation check is settled. */
   subscriptionKey: string;
-  /** Epoch ms the interstitial was shown. */
+  /** Epoch ms the activation check settled. */
   shownAt: number;
+  /** Absent on presented flows, including legacy records. */
+  outcome?: 'not-eligible';
 }
 
 /** Build a fire-once record for an opaque subscription identity. */
-export function computeFireOnceRecord(subscriptionKey: string, now: number): FireOnceRecord {
-  return { subscriptionKey, shownAt: now };
+export function computeFireOnceRecord(
+  subscriptionKey: string,
+  now: number,
+  outcome: 'opened' | 'not-eligible' = 'opened',
+): FireOnceRecord {
+  const record: FireOnceRecord = { subscriptionKey, shownAt: now };
+  if (outcome === 'not-eligible') record.outcome = outcome;
+  return record;
 }
 
 /** True when a fire-once record exists and is still within its TTL. */
@@ -530,8 +538,31 @@ export interface ActivationExistingConfig {
   hasWebPushChannel: boolean;
   /** The enabled current-variant rule includes the verified web-push channel. */
   hasWebPushDelivery: boolean;
-  /** The user has already used a Pro power feature (custom widget / MCP). */
+  /** The user has already used a Pro power feature (custom widget, or a connected MCP client — see resolveHasUsedPowerFeature). */
   hasUsedPowerFeature?: boolean;
+}
+
+/** The subset of an MCP client row this decision needs. */
+export interface PowerFeatureMcpClientLike {
+  revokedAt?: number | null;
+  lastUsedAt?: number | null;
+}
+
+/**
+ * Whether the subscriber has already used a Pro power feature. Two signals,
+ * OR-ed: a locally stored custom widget, or an unrevoked MCP client with
+ * recorded use. Authorization alone does not prove the client was used.
+ * `mcpClients` is optional: a caller that
+ * has not read the client list (a widget already answered, or the lookup
+ * failed) passes nothing and gets the widget-only answer.
+ */
+export function resolveHasUsedPowerFeature(
+  widgetCount: number,
+  mcpClients?: readonly PowerFeatureMcpClientLike[] | null,
+): boolean {
+  if (widgetCount > 0) return true;
+  if (!mcpClients) return false;
+  return mcpClients.some((client) => client.revokedAt == null && client.lastUsedAt != null);
 }
 
 /**
@@ -927,7 +958,9 @@ export function parseFireOnceRecord(raw: string | null): FireOnceRecord | null {
   if (obj === null || typeof obj.subscriptionKey !== 'string' || typeof obj.shownAt !== 'number') {
     return null;
   }
-  return { subscriptionKey: obj.subscriptionKey, shownAt: obj.shownAt };
+  const record: FireOnceRecord = { subscriptionKey: obj.subscriptionKey, shownAt: obj.shownAt };
+  if (obj.outcome === 'not-eligible') record.outcome = obj.outcome;
+  return record;
 }
 
 export function parseChipDismissal(raw: string | null): FinishSetupChipDismissal | null {

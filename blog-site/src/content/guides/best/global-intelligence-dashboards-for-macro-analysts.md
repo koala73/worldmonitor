@@ -5,13 +5,13 @@ metaTitle: "Best global intelligence dashboards for macro analysts (2026) | Worl
 keywords: "Macro analysts, best global intelligence dashboards for macro analysts, geopolitics and markets dashboard, chokepoint shipping data, global intelligence tools"
 audience: "Macro analysts"
 pubDate: "2026-10-02"
-modifiedDate: "2026-10-16"
+modifiedDate: "2026-10-18"
 author: "World Monitor editorial team"
 authorType: "Organization"
 authorUrl: "https://www.worldmonitor.app/"
 ---
 
-This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 16, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
+This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 18, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
 
 ## TL;DR
 
@@ -49,7 +49,7 @@ Check your separate market-data, execution and research requirements. A geopolit
 
 World Monitor puts conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets on one map, free with no account at [worldmonitor.app/dashboard](https://www.worldmonitor.app/dashboard). Its [chokepoints page](https://www.worldmonitor.app/chokepoints) shows live ship transit counts at 13 maritime chokepoints; 7 of them are also measured against an EIA flow baseline, and the other six show counts only. That gives a Hormuz, Red Sea, Suez or Panama question a physical observation beside the news and the market move.
 
-On the paid Pro plan, alert rules by country, event type and severity deliver to Slack, Discord, Telegram, email, browser push or an HMAC-SHA256 signed webhook, in real time or as a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). Pro also includes an MCP server for AI clients. The REST API, on a separate API plan, plus Python, Go and Ruby SDKs and an npm CLI, let you pull the same data into notebooks and models. It does not establish a causal model or a price forecast.
+On the paid Pro plan, alert rules by country, event type and severity deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push or an HMAC-SHA256 signed webhook, in real time or as a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). Pro also includes an MCP server for AI clients. The REST API, on a separate API plan, plus Python, Go and Ruby SDKs and an npm CLI, let you pull the same data into notebooks and models. It does not establish a causal model or a price forecast.
 
 [Geopolitics-to-markets workflow](/blog/posts/geopolitics-to-markets-pipeline-macro-traders-worldmonitor/).
 

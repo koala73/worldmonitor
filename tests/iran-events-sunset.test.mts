@@ -1,4 +1,7 @@
-// Iran-events domain sunset (war ended 2026-07) — flag-gated, default OFF.
+// Iran-events domain — flag-gated, default OFF. The manual LiveUAMap dump was
+// sunset in 2026-07; the key now carries the automated Middle East strike feed
+// produced by ais-relay (scripts/lib/middle-east-strikes.cjs), still behind the
+// same IRAN_EVENTS_ENABLED / VITE_ENABLE_IRAN_ATTACKS switches.
 //
 // Frontend flag: VITE_ENABLE_IRAN_ATTACKS (guarded by isClientRuntime, so under
 // node:test — where `window` is undefined — it always resolves OFF, which is
@@ -95,8 +98,17 @@ describe('iran-events sunset — backend gates (source guards)', () => {
     assert.match(read('scripts/seed-forecasts.mjs'), /iranEvents: iranEventsEnabled\(\) \? parsedByKey\['conflict:iran-events:v1'\] : \[\]/);
   });
 
-  it('seed-iran-events.mjs no-ops (exit 0) when disabled', () => {
-    assert.match(read('scripts/seed-iran-events.mjs'), /IRAN_EVENTS_ENABLED[\s\S]*?process\.exit\(0\)/);
+  it('the retired manual seed-iran-events.mjs can never overwrite the relay feed', () => {
+    const src = read('scripts/seed-iran-events.mjs');
+    assert.match(src, /process\.exit\(0\)/);
+    assert.doesNotMatch(src, /runSeed|_seed-utils|conflict:iran-events:v1['"`]\s*,/, 'the stub must not write the key');
+  });
+
+  it('the ais-relay producer is off unless IRAN_EVENTS_ENABLED=true, like every reader', () => {
+    const relay = read('scripts/ais-relay.cjs');
+    assert.match(relay, /const MIDDLE_EAST_STRIKES_ENABLED = \(process\.env\.IRAN_EVENTS_ENABLED \?\? 'false'\)\.toLowerCase\(\) === 'true';/);
+    assert.match(relay, /function startMiddleEastStrikesLoop\(\) \{\s*if \(!MIDDLE_EAST_STRIKES_ENABLED\) \{/);
+    assert.match(relay, /function noteMiddleEastStrikeItem\(item\) \{\s*if \(!MIDDLE_EAST_STRIKES_ENABLED/);
   });
 
   // ce-code-review #4982 follow-ups — parallel API/MCP surfaces that also read

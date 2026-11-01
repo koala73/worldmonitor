@@ -52,3 +52,15 @@ Use `dry_run: false` only when you intentionally want the manual workflow path t
 | CLI tests fail | The package is not release-ready | Fix `cli/`, rerun tests locally, commit, and push a new release tag |
 
 After the workflow succeeds, confirm the new version appears on npm and that `npx worldmonitor --version` resolves to the published version.
+
+## Update the Homebrew formula
+
+The [`worldmonitor` formula](https://formulae.brew.sh/formula/worldmonitor) lives in [Homebrew/homebrew-core](https://github.com/Homebrew/homebrew-core/blob/main/Formula/w/worldmonitor.rb). It installs the npm archive, so it needs no separate release step. Homebrew's BrewTestBot detects the new npm version, bumps the formula, and builds the bottle. It did this for 0.2.1.
+
+After a few hours, confirm the bump with `brew info worldmonitor`. If the formula still shows the old version, wait until npm serves the new archive, then open the version PR yourself:
+
+```sh
+brew bump-formula-pr worldmonitor --url "https://registry.npmjs.org/worldmonitor/-/worldmonitor-<version>.tgz"
+```
+
+The formula test runs `worldmonitor --version`, `wm --version`, and a live anonymous `worldmonitor call get_sources`. A release that breaks any of these fails the Homebrew bump.

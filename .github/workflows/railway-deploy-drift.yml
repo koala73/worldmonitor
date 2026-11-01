@@ -15,7 +15,7 @@ permissions:
 jobs:
   monitor:
     name: Railway native deployment health
-    if: ${{ github.ref == 'refs/heads/main' }}
+    if: ${{ (github.ref == 'refs/heads/main') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:

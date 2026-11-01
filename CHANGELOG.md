@@ -4,8 +4,85 @@ All notable changes to World Monitor are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Arabic spoken answers on MCP** (#9722): the seven tools with `response_mode: "spoken"` also accept `spoken_language: "ar"` and answer in Modern Standard Arabic. The Arabic wording comes from the same template data path as the English, so it speaks the same numbers, caveats and freshness, with identical `citations`, `stale` and `asOf`. Countries, chokepoints, risk levels, dimensions and categories are named in Arabic, numbers stay in Western digits, and data titles keep their published language. The envelope gains `language`. `spoken_language` is rejected with `-32602` without the spoken mode. Tool count unchanged.
+
+- **Agents can report problems through MCP** (#8721, MCP server 1.48.0, 100 tools): the credential-free tool `report_issue` stores a bug, missing-capability, data-quality or security report for the maintainers, through the same validation, redaction, retry handling and fail-closed limits as `POST /api/feedback/v1/submit-report`. A Pro or API account whose entitlement check passes reports under its own budget of 30 per day; every other caller reports anonymously at 5 per hour per IP. Identity comes from the request, never the arguments. Arguments over 24 KB are refused before any feedback limit or storage call, and a security report points to the private advisory form. The published MCP Registry description now reads "on conflict" instead of "across conflict" so the tool count fits its 100-character limit.
+
+- **Spoken response mode on seven analytical MCP tools** (#9722): `get_country_risk`, `get_world_brief`, `get_chokepoint_status`, `get_forecast_predictions`, `get_prediction_markets`, `get_media_perspective` and `get_resilience_indicators` accept `response_mode: "spoken"` and answer with 2-3 plain-language sentences for text-to-speech plus a `citations` array (source, title, URL, `asOf`, `stale`) instead of the full payload. Sentences are templated from the tool's structured fields (`api/mcp/spoken-narrators.ts`), never model-written, so every number spoken is in the data and the same data always reads the same way; stale snapshots, last-known-good briefs, old risk readings, partial media reads and failed upstream reads change the wording. The mode is advertised in each tool's `inputSchema` and as a `{spoken, citations}` branch of its `outputSchema`; other tools and unknown modes are rejected with `-32602`, `jmespath` projects the envelope, and `summary` cannot be combined with it. Tool count unchanged.
+
+- **Webcam discovery and recent media through MCP** (#5704, MCP server 1.47.0, 99 tools): `find_webcams` reads the existing seeded viewport catalog; `get_webcam_media` resolves one selected camera through WebcamService with at most one Windy request. Results separate catalog freshness, capture time and URL resolution time, retain Windy attribution, and report unavailable media without a generic server error. Windy v3 player URLs now come from `player.<timespan>` and detail links from `urls.detail`. Media is recent visual context without guaranteed live conditions.
+
+- **Sentinel-5P NO2 activity by country and cluster** (#9722, MCP server 1.46.0, 97 tools): `GET /api/economic/v1/get-no2-activity` serves the global NO2 activity dataset that `seed-no2-activity` publishes, validated through the shared contract at the Redis boundary and filtered by `country_code` (the country plus its clusters), `region_id` and `kind`. Each region carries the current 56-day window and its valid days, the baseline years, `changePercent`, `direction` and an `exclusion` from the closed vocabulary; `baseline_backfill_pending` is a first-class state while prior years are still being fetched. The response states `generatedAt`, `stale` (72 h, matching `/api/health`), the `methodVersion` that pins the method constants, and the Copernicus credit line. `unavailableReason` separates `NOT_COVERED` (a filter that names no registered region) from seed, contract and cache faults. The MCP tool `get_no2_activity` proxies the route at subscription access, weight 2, and takes country names and alpha-3 codes. The `tools/list` description budget moves from 64 KiB to 68 KiB.
+- **Industrial activity (NO2) map layer and country brief line** (#9722): an opt-in deck.gl layer colors the 167 countries and 32 industrial clusters of the Sentinel-5P NO2 dataset by direction (strengthening, weakening, unchanged), with baseline-pending and excluded regions as their own states, a legend carrying the Copernicus credit, and a hover card with the change, window, valid days and exclusion. The country brief gains an Industrial Activity (NO2) section with the same states. Both read `GET /api/economic/v1/get-no2-activity`; the layer reads it only while on, never at bootstrap.
+
 ### Changed
 
+- **Per-country subsea cable exposure in MCP** (#9722): `simulate_infrastructure_cascade` takes `countries` (up to 10) and returns `data.exposure` with each country's landing cables, distinct landing stations, the chokepoints those cables cross and the share each carries, and cables the cable-health monitor flags `FAULT` or `DEGRADED`. The MCP cable adapter now keeps route geometry, and a cable that lands inside the Red Sea and also on the Indian Ocean or Mediterranean side counts as crossing Bab el-Mandeb or Suez. Before this, `cut_cables_through` for `chokepoint:bab_el_mandeb` or `chokepoint:suez` reported that no cable crossed. No new tool.
+- **Five-factor country scorecard REST routes are free** (#9742): `GET /api/scorecard/v1/get-five-factor-scorecard`, `get-bloc-scorecard` and `list-five-factor-scorecards` now return 200 for anonymous and free-account callers — removed from `ENDPOINT_ENTITLEMENTS` (`server/_shared/entitlement-check.ts`) and `PREMIUM_RPC_PATHS` (`src/shared/premium-paths.ts`), and from the widget agent's Pro-only exclusion list (`scripts/_widget-data-policy.cjs`), which now advertises the three routes to the anonymous widget session. The Country Deep Dive panel's five-factor scorecard section no longer shows a Pro lock or resubscribes on auth/entitlement changes; it always loads. The MCP tools `get_five_factor_scorecard` and `list_five_factor_scorecards` are unchanged and still require a WorldMonitor subscription — MCP tool calls authenticate separately from the REST API, and every other MCP data tool besides `get_sources` requires credentials by design (`tests/mcp-free-tier-subset.test.mjs`). Every other derived-analytics dataset in the [Pro Intelligence Suite](docs/pro-intelligence-suite.mdx) stays Pro-gated.
+- **Fire detections summary key for the risk-scores and temporal-anomaly rebuilds** (#9509): `seed-fire-detections` now also publishes `wildfire:fires-summary:v1` (per Tier-1-country fire intensity rows, the pre-cap detection total and the FIRMS observation clock, with `seed-meta:wildfire:fires-summary`) beside the 2-5 MB canonical `wildfire:fires:v1`. The CII build and the temporal-anomalies rebuild read the summary (154 KB for 5,716 detections on 2026-10-21) instead of the canonical key, whose GET measured 1.3-2.1 s from a laptop against the 1.5 s Redis deadline; a timed-out read rejected the whole risk-scores build and failed the temporal content clock closed. The CII fire boost formula is unchanged; it now counts every detection of the fetch instead of the first 10,000 rows of the capped canonical array. While the summary is absent the readers recompute it from the canonical key. The `wildfiresSummary` health probe is softened until the seeder's first publish writes `seed-activated:wildfire:fires-summary`.
+
+- **IOM DTM regions in MCP** (#9014): `get_displacement_data` takes `view: "regions"` and returns the latest survey round of each IOM Displacement Tracking Matrix operation in `dtmRegions`, with IDPs by cause, first-level region and region-to-region route, and IOM DTM attribution. It reads only the DTM snapshot and is stale after 48 hours or when the newest round is over 90 days old, matching `/api/health`. No new tool (#9357).
+- **Internal displacement surges in cross-source signals** (#9014): IDMC Internal Displacement Updates now emit `CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE` for up to five countries whose last 30 days reach 5,000 people and three times their monthly average of the previous five months. `detectedAt` is the latest displacement date, because IDMC publishes a median of three weeks late. The CII formula is unchanged.
+- **CII formula `v14`: hosting-location cyber data and a country's own military activity no longer score, worldwide** (2026-10-21). The cyber boost (up to 12) is removed: every cyber feed it read (AbuseIPDB, Feodo Tracker, URLhaus, C2Intel, OTX) places the abusive IP, C2 server or malware URL where it is hosted, not the country under attack, so it scored datacenter countries (Oct 20: US 129 rows, China 172, UK 40, against Ukraine 2 and none for Israel, Saudi Arabia or Yemen), and AbuseIPDB's 500 CRITICAL rows vanished whenever its blacklist call failed (cause not logged; the daily request cap is one possibility), moving the UK, France, Germany and the US by up to 12 points overnight. Security now counts only foreign military flights and vessels located in the country, at the v13 weight; own flights followed the operator anywhere in the world, so routine RAF and French training sorties kept the UK, France, Germany and the US at Security 95-100. The cyber seeder also keeps its last good 24h AbuseIPDB list when the blacklist call fails instead of publishing none, so the cyber panel and map stop flapping. `riskScores` health coverage now needs the conflict and news families (`minRecordCount` 2). On Oct 21 live inputs: UK 33 -> 20, France 43 -> 28, Germany 34 -> 20, US 33 -> 21; Saudi Arabia, Yemen, Israel and Syria unchanged; Ukraine, Russia and Iran lose only their hosting-location cyber points and at most two own-military points. `combinedScore` values fall for countries that hosted flagged infrastructure or flew their own aircraft; the risk-score cache key family moves to `risk:scores:sebuf:v14` and emitted `methodology_version` is now `v14`.
+- **Cross-border movements and CII formula `v13`**: add separately dated UK daily arrivals and CBP monthly encounters beside UNHCR ODP reports, with source health, country/route API filters, an opt-in MCP movement view, and distinct death markers. Fresh source-confirmed arrival surges add five CII points once per explicitly named country. Stock, encounters, deaths, and stale reports do not trigger this boost. `combinedScore` can rise by five points. The risk-score cache key family moves to `risk:scores:sebuf:v13` and emitted `methodology_version` moves to `v13`. Additional route sources remain blocked by permission or access, so global coverage acceptance is incomplete.
+- **CII formula `v12`: a country under attack keeps rising, and recovers once the strikes stop, worldwide** (2026-10-19).
+  v11 counted strikes only through a 72h term inside Conflict, which carries 18%
+  of the composite, so Saudi Arabia scored 54 on Oct 19 under repeated missile
+  and drone strikes. Each country now carries a daily strike intensity: the
+  larger of confirmed strikes from the Middle East strike feed (critical 4, high
+  2, elevated 1, moderate 0.5; the relay keeps a 30-day per-country tally in
+  `conflict:strike-pressure:v1`) and, worldwide while ACLED is dark, GDELT
+  coverage of air, drone, missile and artillery strikes aimed at the country as
+  a share of its coverage (a fourth counter in `gdelt:bulk:country-events:v1`;
+  days stored before it are rebuilt from the archive). Strike pressure decays
+  that with a three-day half-life and enters the composite as a floor (40 at
+  pressure 5, rising 8 per doubling, to 70) and a boost of up to 10. The 72h
+  strikeBoost leaves Conflict. Replayed on Oct 19: Saudi Arabia 53 -> 63, Yemen
+  85 -> 89, Iran 71 -> 73, Russia 76 -> 79, Ukraine 70 -> 71, Israel 56 -> 57;
+  calm countries are unchanged on every replayed date, and a country returns to
+  its v11 level 10-14 days after its last strike. `combinedScore` values move up
+  for struck countries and down slightly where only the old 72h term had
+  counted; the risk-score cache key family moved to `risk:scores:sebuf:v12` and
+  emitted `methodology_version` is now `v12`, so clients should re-baseline.
+- **CII formula `v11`: a sustained crisis scores, and geo events follow real borders, worldwide** (2026-10-19).
+  v10 scored GDELT conflict and protest coverage only against each country's own
+  28-day median, so a month-long campaign raised its own norm and read as calm
+  (Saudi Arabia's Conflict term was 0 on Oct 19). Each GDELT term is now the
+  larger of that escalation and a sustained level, the conflict- or
+  protest-coded share of the country's articles over the last seven complete
+  days, which is 0 at the noise floor every country carries (14% conflict, 2%
+  protest) and needs at least 200 articles. The shared GDELT cap rises from 50
+  to 70. Replayed to Oct 19: Yemen Conflict 68, Saudi Arabia 41, Israel 25; the
+  US, GB and China stay at 0. Separately, fires, GPS jamming, earthquakes,
+  climate anomalies, strikes and military flights and vessels are now placed by
+  point-in-polygon against Natural Earth 1:50m borders instead of overlapping
+  bounding boxes, which had put Jizan in Yemen, Bahrain in Saudi Arabia, Kuwait
+  City in Iraq and Baltic GPS jamming in Russia and had dropped Hawaii and
+  Alaska. Strike events carry their `countryCode`. `combinedScore` values move
+  both ways; the risk-score cache key family moved to `risk:scores:sebuf:v11`
+  and emitted `methodology_version` is now `v11`, so clients should re-baseline.
+- **CII formula `v10`: GDELT escalation stands in for ACLED in Conflict and Unrest** (2026-10-19).
+  Without ACLED access the ACLED event terms were 0 for every country, so the
+  October 2026 Riyadh strikes and France's nationwide riots never reached the
+  index. While the ACLED API returns no events, Conflict and Unrest each add a
+  term of up to 50 points scored from GDELT material-conflict and protest
+  coverage against each country's own 28-day median, so heavily covered
+  countries such as the US and GB do not score on ordinary news days. New
+  standalone health dataset `gdeltCountryEvents` (`gdelt:bulk:country-events:v1`).
+  `combinedScore` values rise for countries in an escalation; the risk-score
+  cache key family moved to `risk:scores:sebuf:v10` and emitted
+  `methodology_version` is now `v10`, so clients should re-baseline.
+- **CII formula `v9`: news counts for every country a headline names** (2026-10-19).
+  Top stories in `news:insights:v1` now carry `countryCodes`, and the CII
+  information component credits each tracked country in it instead of only the
+  first country named, so "Iran-backed Houthis warn of long conflict after Riyadh
+  airport attack" now counts for Saudi Arabia and Yemen as well as Iran. The relay
+  threat summary credits every named country when no attack target is found.
+  `get_news_intelligence` returns `countryCodes` and its `country` filter matches
+  any of them. The risk-score cache key family moved to `risk:scores:sebuf:v9`
+  and emitted `methodology_version` is now `v9`, so clients should re-baseline.
 - **Forecast `projections` no longer returned** (2026-10-07; #8967).
   `GET /api/forecast/v1/get-forecasts`, the `forecast:predictions:v2` payload, and
   the `get_forecast_predictions` and `get_forecast_case` MCP tools no longer
@@ -152,6 +229,7 @@ All notable changes to World Monitor are documented here.
 
 ### Security
 
+- **SDKs and CLI no longer send the API key to a redirect target** (npm `worldmonitor` 0.2.1, `worldmonitor-sdk` 0.1.2, gem `worldmonitor` 0.1.2, Go `sdk/go` v0.1.2). Go's `net/http`, Python's `urllib` and Node's `fetch` follow redirects and forward custom headers, so a 3xx from a configured endpoint passed `X-WorldMonitor-Key` (or the TUI's session token) to whatever host the `Location` named. Go (MCP and REST), Python (REST) and the CLI/TUI (MCP and REST) now refuse redirects and return the 3xx as an API error, as the Rust crate already did; Ruby's `Net::HTTP` never followed them. `worldmonitor list` still follows the spec URL's apex-to-www redirect but keeps the key only while the redirect stays on the original origin. The TUI also trims trailing slashes from its base URL without a backtracking regex. These releases also ship the Go, Python and Ruby changes since 0.1.1: keyless `get_sources` docs and the Ruby linear trailing-slash trim.
 - **`GET /api/telegram-feed` now requires a dashboard session credential and is no longer publicly cacheable** (#7039). The route served Telegram post bodies to any Origin-less caller (`curl` / server-to-server) and advertised `public, s-maxage=120`, the same hole #6654 closed on `/api/x-feed`. It now runs `validateApiKey` (not `forceKey` — the anonymous `wms_` session is the intended credential) and returns `private, max-age=30` with `Vary` on the credential headers. The route is additionally rate-limited to 60 requests/min/IP, so a freely-minted `wms_` token cannot drive unbounded bulk extraction; the panel falls back to its last good payload instead of blanking when a refresh fails, replacing the `stale-if-error` buffer the public cache used to provide.
 - CDN-Cache-Control header now only set for trusted origins (worldmonitor.app, Vercel previews, Tauri); no-origin server-side requests always reach the edge function so `validateApiKey` can run, closing a potential cache-bypass path for external scrapers
 - **Shipping v2 webhook tenant isolation (#3242)** — `POST /api/v2/shipping/webhooks` (register) and `GET /api/v2/shipping/webhooks` (list) now enforce `validateApiKey(req, { forceKey: true })`, matching the sibling `[subscriberId]{,/[action]}` routes and the documented contract in `docs/api-shipping-v2.mdx`. Without this gate, a Clerk-authenticated pro user with no API key would fall through `callerFingerprint()` to the shared `'anon'` bucket and see/overwrite webhooks owned by other `'anon'`-bucket tenants.

@@ -1,3 +1,7 @@
+// Published-document check by design (#8690, section 2): this suite pins
+// the brand page, its discovery links, and Organization JSON-LD identity data.
+// Runtime application tests do not check the document bytes crawlers read.
+//
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
@@ -42,7 +46,8 @@ describe('World Monitor brand-identity page', () => {
     assert.match(body, /## Not World Monitor[\s\S]*world-monitor\.com[\s\S]*worldmonitorintel\.com/, 'brand page must name the same-name sites answer engines confuse with it');
     // The digest email footer linked x.com/worldmonitorapp, an unregistered handle,
     // while every sameAs list names x.com/worldmonitorai.
-    const digest = read('scripts/seed-digest-notifications.mjs');
+    // The digest HTML template lives in scripts/lib/digest-email-html.mjs.
+    const digest = read('scripts/seed-digest-notifications.mjs') + read('scripts/lib/digest-email-html.mjs');
     assert.doesNotMatch(digest, /x\.com\/worldmonitorapp\b/, 'digest footer must not link the unregistered X handle');
     assert.match(digest, /href="https:\/\/x\.com\/worldmonitorai"/, 'digest footer must link the official X account');
     assert.doesNotMatch(body, /streetAddress|tel:|\bfaxNumber\b|\+\d{8,}/);

@@ -11,6 +11,12 @@ http {
   sendfile        on;
   keepalive_timeout  65;
 
+  proxy_ssl_verify on;
+  proxy_ssl_verify_depth 3;
+  proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+  proxy_ssl_server_name on;
+  proxy_ssl_name $proxy_host;
+
   gzip on;
   gzip_min_length 1024;
   gzip_comp_level 5;

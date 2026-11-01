@@ -104,9 +104,6 @@ const EXECUTE_PASSTHROUGH_FETCHES = {
   analyze_situation: [
     'POST /api/intelligence/v1/deduct-situation',
   ],
-  generate_forecasts: [
-    'POST /api/forecast/v1/get-forecasts',
-  ],
   search_flights: [
     'GET /api/aviation/v1/search-google-flights',
   ],

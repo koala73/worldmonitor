@@ -5,13 +5,13 @@ metaTitle: "Best geopolitical monitoring tools for energy analysts (2026) | Worl
 keywords: "Energy analysts, best geopolitical monitoring tools for energy analysts, Strait of Hormuz monitoring, oil chokepoints, energy security dashboard, global intelligence tools"
 audience: "Energy analysts"
 pubDate: "2026-10-02"
-modifiedDate: "2026-10-16"
+modifiedDate: "2026-10-18"
 author: "World Monitor editorial team"
 authorType: "Organization"
 authorUrl: "https://www.worldmonitor.app/"
 ---
 
-This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 16, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
+This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 18, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
 
 ## TL;DR
 
@@ -49,7 +49,7 @@ Confirm units, reporting period and original energy data. Do not combine stock, 
 
 World Monitor's [chokepoints page](https://www.worldmonitor.app/chokepoints) shows live ship transit counts at 13 maritime chokepoints. Seven are also measured against an EIA flow baseline, so you can compare current traffic with a published reference level; the other six show transit counts only, and you should not read a flow estimate into them. The same map shows conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets, so an incident near Hormuz or in the Red Sea sits beside the traffic and the price moves around it. The core map is free with no account at [worldmonitor.app/dashboard](https://www.worldmonitor.app/dashboard).
 
-On the paid Pro plan, alert rules filter by event type, severity and country and deliver to Slack, Discord, Telegram, email, browser push or an HMAC-SHA256 signed webhook. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). For models, the REST API (a separate API plan), Python, Go and Ruby SDKs, and an MCP server for AI clients expose the data. It is not a substitute for proprietary cargo-tracking or commodity datasets.
+On the paid Pro plan, alert rules filter by event type, severity and country and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push or an HMAC-SHA256 signed webhook. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). Rules can also opt in to [chokepoint disruption alerts](https://www.worldmonitor.app/docs/api-notifications#chokepoint-disruption-alerts) for Hormuz, Bab el-Mandeb or any other chokepoint: one fires when navigational warnings, AIS disruption or a transit drop push the chokepoint into the red band at least 15 points above its standing threat level, so a war-zone strait alerts on new activity, at most once every 12 hours. For models, the REST API (a separate API plan), Python, Go and Ruby SDKs, and an MCP server for AI clients expose the data. It is not a substitute for proprietary cargo-tracking or commodity datasets.
 
 [Energy security dashboard workflow](/blog/posts/energy-security-dashboard-worldmonitor/).
 
@@ -74,7 +74,8 @@ Choose its Geopolitical Intelligence module when an analyst needs to investigate
 - **Your question is Hormuz, the Red Sea, Suez or Panama.** Live transit counts at 13 chokepoints show whether ships are moving.
 - **You need a reference level, not just a count.** Seven chokepoints are measured against an EIA flow baseline.
 - **You brief on events and prices together.** Conflict, outages, hazards, shipping and markets share one map.
-- **You want an alert when a producer or transit country flares up.** Country, event-type and severity rules reach Slack, email, Telegram, Discord or a signed webhook.
+- **You want to hear when Hormuz or the Red Sea is disrupted.** Chokepoint disruption alerts fire on live warnings, AIS disruption or a transit drop at the chokepoints you choose.
+- **You want an alert when a producer or transit country flares up.** Country, event-type and severity rules reach Slack, Microsoft Teams, email, Telegram, Discord or a signed webhook.
 - **You feed a model or an AI assistant.** The REST API, SDKs and MCP server expose the same data.
 
 ## Our pick

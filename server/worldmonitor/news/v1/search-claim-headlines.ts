@@ -79,12 +79,33 @@ function poolItem(
   return { source, title, link, pubDate: new Date(row.publishedAt), isAlert: false };
 }
 
+function cachedRows(entry: unknown): unknown[] | null {
+  if (!entry || typeof entry !== 'object' || !('items' in entry) || !Array.isArray(entry.items)) return null;
+  return 'countryItems' in entry && Array.isArray(entry.countryItems) ? [...entry.items, ...entry.countryItems] : entry.items;
+}
+
+/**
+ * A depth feed is a Google News site: search, whose titles end in
+ * " - <publisher>". Dropping it lets a story the native feed also carries be
+ * recognised as the same headline.
+ */
+function depthTitle(row: unknown, title: string): string {
+  const origin = row && typeof row === 'object' && (row as Record<string, unknown>).originPublisherTrusted === true
+    ? (row as Record<string, unknown>).originPublisher : '';
+  const suffix = typeof origin === 'string' && origin ? ` - ${origin.trim()}` : '';
+  return suffix && title.endsWith(suffix) ? title.slice(0, -suffix.length).trim() : title;
+}
+
 async function readPool(): Promise<ClaimPool> {
   const feeds = [...Object.values(VARIANT_FEEDS.full ?? {}).flat(), ...INTEL_SOURCES]
     .filter(feed => isServerFeedReachableForLanguage(feed, 'en'));
   const unique = [...new Map(feeds.map(feed => [rssFeedCacheKey('full', feed.url), feed])).entries()];
+  const depthKeys = unique.flatMap(([, feed]) => feed.depthUrl ? [rssFeedCacheKey('full', feed.depthUrl)] : []);
   const now = Date.now();
-  const [cached, revoked] = await Promise.all([getCachedJsonBatch(unique.map(([key]) => key)), readRevokedUrlSet()]);
+  const [cached, revoked] = await Promise.all([
+    getCachedJsonBatch([...unique.map(([key]) => key), ...depthKeys]),
+    readRevokedUrlSet(),
+  ]);
   if (!revoked.readable) return { items: [], feedsSearched: 0, feedTotal: unique.length, feedCached: 0, readable: false, readAt: now };
   const cutoff = now - resolveMaxAgeMs();
   const items: NewsItemCore[] = [];
@@ -92,20 +113,37 @@ async function readPool(): Promise<ClaimPool> {
   let feedCached = 0;
   let feedsSearched = 0;
   for (const [key, feed] of unique) {
-    const entry = cached.get(key);
-    if (!entry || typeof entry !== 'object' || !('items' in entry) || !Array.isArray(entry.items)) continue;
-    feedCached++;
-    const rows = 'countryItems' in entry && Array.isArray(entry.countryItems)
-      ? [...entry.items, ...entry.countryItems] : entry.items;
+    const rows = cachedRows(cached.get(key));
+    if (rows) feedCached++;
+    // Coverage totals count catalog feeds only; a depth feed adds headlines.
+    const depthRows = feed.depthUrl ? cachedRows(cached.get(rssFeedCacheKey('full', feed.depthUrl))) : null;
     const multiPublisher = isMultiPublisherFeed(feed.url);
     const before = items.length;
-    for (const value of rows) {
+    const titles = new Set<string>();
+    for (const value of rows ?? []) {
+      // Every native title, kept or not, so a revoked or stale native story
+      // cannot come back through its depth copy's different link.
+      const row = value as Record<string, unknown> | null;
+      if (feed.depthUrl && row && row.source === feed.name && typeof row.title === 'string') {
+        titles.add(row.title.replace(/\s+/g, ' ').trim().toLowerCase());
+      }
       const item = poolItem(value, feed.name, multiPublisher, now, cutoff, revoked.urls);
       if (!item) continue;
       const dedupe = item.link || `${item.source}|${item.title}`;
       if (seen.has(dedupe)) continue;
       seen.add(dedupe);
       items.push(item);
+    }
+    for (const value of depthRows ?? []) {
+      const item = poolItem(value, feed.name, false, now, cutoff, revoked.urls);
+      if (!item) continue;
+      const title = depthTitle(value, item.title);
+      if (titles.has(title.toLowerCase())) continue;
+      const dedupe = item.link || `${item.source}|${title}`;
+      if (seen.has(dedupe)) continue;
+      seen.add(dedupe);
+      titles.add(title.toLowerCase());
+      items.push({ ...item, title });
     }
     if (items.length > before) feedsSearched++;
   }

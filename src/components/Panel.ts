@@ -1046,7 +1046,8 @@ export class Panel {
       h('div', { className: 'panel-radar-dot error' }),
     );
 
-    const msgEl = h('div', { className: 'panel-error-msg' }, message || t('common.failedToLoad'));
+    const msgEl = h('div', { className: 'panel-error-msg' });
+    msgEl.textContent = message || t('common.failedToLoad');
 
     const children: (HTMLElement | string)[] = [radarEl, msgEl];
 

@@ -49,6 +49,7 @@ const MANIFEST_KIND_RE = /^(?:structured|feed|operational-status)(?:\+(?:structu
 const LOGICAL_KIND_RE = /^(?:candidate|structured|feed|operational-status)(?:\+(?:structured|feed|operational-status))*$/;
 
 const SOURCE_ROOTS = ['scripts', 'server', 'api', 'src'];
+const STRUCTURED_CATALOG_FILES = new Set(['scripts/shared/regional-energy-feeds.json']);
 const SOURCE_EXTENSIONS = new Set(['.cjs', '.js', '.mjs', '.ts', '.tsx']);
 const FEED_FILES = new Set([
   ...FEED_DECLARATION_FILES,
@@ -92,6 +93,12 @@ const publisherMetadataFeed = (provider) => ({
  * become a provider rename or regroup.
  */
 export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
+  uzstat: Object.freeze({
+    provider: 'stat.uz',
+    memberHosts: Object.freeze(['api.siat.stat.uz', 'stat.uz']),
+    reason: 'The stat.uz prices page publishes the SDMX dataset that its SIAT API host serves; both are the Uzbekistan Statistics Agency.',
+    reviewReference: 'Issue #9892 food-price batch 2 (PR #9993 review)',
+  }),
   jodi: Object.freeze({
     provider: 'www.jodidata.org',
     memberHosts: Object.freeze(['www.jodidata.org', 'api.publisher.jodidata.org']),
@@ -103,6 +110,12 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     memberHosts: Object.freeze(['ogcapi.bgs.ac.uk', 'www.bgs.ac.uk']),
     reason: 'The BGS OGC API supplies the observations and the BGS statistics page supplies the required public attribution link.',
     reviewReference: 'Issue #6449 commodity-vulnerability provenance review',
+  }),
+  'al-jazeera': Object.freeze({
+    provider: 'Al Jazeera',
+    memberHosts: Object.freeze(['aljazeera.com', 'www.aljazeera.com']),
+    reason: 'The Al Jazeera feed host and its Google News site: search name one publisher.',
+    reviewReference: 'PR #9237 follow-up: 2026-10-17 /verify audit, Al Jazeera claim-pool depth',
   }),
   bbc: Object.freeze({
     provider: 'BBC',
@@ -182,6 +195,33 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 });
 
 const PROVIDER_OVERRIDES = {
+  // Food-price publishers (#9892) whose own terms we recorded at onboarding.
+  'stat.uz': {
+    provider: 'stat.uz',
+    identityGroup: 'uzstat',
+    license: 'CC BY 4.0 (stat.uz site footer and ODI open-data certificate); a link to www.stat.uz is required',
+    attribution: 'Source: National Statistics Committee of the Republic of Uzbekistan, www.stat.uz (CC BY 4.0). Link https://stat.uz.',
+    status: 'reviewed',
+  },
+  'api.siat.stat.uz': {
+    provider: 'stat.uz',
+    identityGroup: 'uzstat',
+    license: 'CC BY 4.0 (stat.uz site footer and ODI open-data certificate); a link to www.stat.uz is required',
+    attribution: 'Source: National Statistics Committee of the Republic of Uzbekistan, www.stat.uz (CC BY 4.0). Link https://stat.uz.',
+    status: 'reviewed',
+  },
+  'simaniger.net': {
+    provider: 'simaniger.net',
+    license: 'SIMA Niger asks for the citation "SIMA Niger" and to be contacted before commercial use or mass extraction; polled one weekly bulletin per run',
+    attribution: 'Cite "SIMA Niger" and link the weekly cereal bulletin.',
+    status: 'terms-review',
+  },
+  'ammancity.gov.jo': {
+    provider: 'ammancity.gov.jo',
+    license: 'Site footer: "All rights reserved © 2001 - 2026 - Greater Amman Municipality"; displayed with attribution under the free-dashboard posture',
+    attribution: 'Credit Greater Amman Municipality and link the Central Market price page.',
+    status: 'terms-review',
+  },
   'www.jodidata.org': { provider: 'www.jodidata.org', identityGroup: 'jodi' },
   'api.publisher.jodidata.org': { provider: 'www.jodidata.org', identityGroup: 'jodi' },
   'api.adsb.lol': { provider: 'adsb.lol' },
@@ -311,6 +351,9 @@ const PROVIDER_OVERRIDES = {
   'dhakatribune.com': publisherMetadataFeed('Dhaka Tribune'),
   // Major publishers after the 2026-10-16 Google News World audit; Google News site: feeds.
   'nytimes.com': publisherMetadataFeed('The New York Times'),
+  // Al Jazeera's claim-pool depth search (2026-10-17 /verify audit).
+  'aljazeera.com': { ...publisherMetadataFeed('Al Jazeera'), identityGroup: 'al-jazeera' },
+  'www.aljazeera.com': { provider: 'Al Jazeera', identityGroup: 'al-jazeera' },
   'washingtonpost.com': publisherMetadataFeed('The Washington Post'),
   'economist.com': publisherMetadataFeed('The Economist'),
   'independent.co.uk': publisherMetadataFeed('The Independent'),
@@ -327,6 +370,12 @@ const PROVIDER_OVERRIDES = {
     provider: 'Office of the U.S. Trade Representative',
     license: 'U.S. government public information; site and document-specific notices apply',
     attribution: 'Office of the U.S. Trade Representative; link to the original release.',
+    status: 'reviewed',
+  },
+  'jrj.sh.gov.cn': {
+    provider: 'Shanghai Financial Portal',
+    license: 'Shanghai Financial Portal copyright statement section 2 (https://jrj.sh.gov.cn/BQSM/index.html), reviewed 2026-10-24. Numeric facts and publication metadata only; retain the credited underlying source. No article prose or third-party media redistribution.',
+    attribution: 'People’s Bank of China, republished by Shanghai Financial Portal. Link to the dated https://jrj.sh.gov.cn/SCGK194/ report.',
     status: 'reviewed',
   },
   '511on.ca': {
@@ -664,6 +713,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Global Affairs Canada, Consolidated Canadian Autonomous Sanctions List; link to https://www.international.gc.ca/world-monde/international_relations-relations_internationales/sanctions/consolidated-consolide.aspx?lang=eng',
     status: 'terms-review',
   },
+  'data.trade.gov': {
+    provider: 'International Trade Administration (US Consolidated Screening List)',
+    license: 'US government work. The ITA Data API terms of service (developer.trade.gov/terms-of-service) require the notice: This product uses the International Trade Administration\'s Data API but is not endorsed or certified by the International Trade Administration.',
+    attribution: 'This product uses the International Trade Administration\'s Data API but is not endorsed or certified by the International Trade Administration. Verify listings against the Federal Register and the issuing agency.',
+    status: 'terms-review',
+  },
   'earth-search.aws.element84.com': {
     provider: 'Element84 Earth Search STAC',
     license: 'AWS Open Data and dataset-specific collection licenses',
@@ -961,13 +1016,17 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '4a4f5416be777a6942a6a84063fbe0b8ee506dcbc0c6a4db687a5f684a60d371',
-  reason: 'Preserve reviewed provider identities, register the two official NASA FIRMS Area API hosts as one provider identity, name TradingView as the provider behind the S&P 500 breadth screener scan that replaced the WAF-blocked Barchart quote pages, exclude the Sentry error-tracking host that the resolve-pin audit reads, group the JODI publication catalog with its existing data host, and name the eight major publishers carried as Google News site: feeds after the 2026-10-16 Google News World audit.',
+  sha256: '9bf8f767070c1b27e966921de9258c1076b8f4ba6554194b51cd0732d476532b',
+  // 2026-11-01 (#9892): group stat.uz with its SIAT API host and record the
+  // stated terms of stat.uz (CC BY 4.0), SIMA Niger and Amman Central Market.
+  // 2026-10-24: added Shanghai Financial Portal as a distinct official M2
+  // republisher; PBOC source credit is preserved under /BQSM/index.html section 2.
+  reason: 'Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892).',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage.',
+  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {
@@ -1004,6 +1063,8 @@ const DYNAMIC_HOSTS = [
 ];
 
 const EXCLUDED_HOSTS = new Set([
+  'creativecommons.org',
+  'www.nationalarchives.gov.uk',
   'test',
   'test.dodopayments.com',
   'live.dodopayments.com',
@@ -1020,6 +1081,8 @@ const EXCLUDED_HOSTS = new Set([
   't.me',
   'reddit.com',
   'openrouter.ai',
+  // AI model provider (server/_shared/llm-anthropic.ts), not an ingested dataset.
+  'api.anthropic.com',
   'api.typesafe.ai',
   'tts.baidu.com',
   'api.indexnow.org',
@@ -1035,6 +1098,11 @@ const EXCLUDED_HOSTS = new Set([
   // None of them is an ingested upstream dataset, so they belong with the
   // other webmaster-console hosts above rather than in the provider count.
   'oauth2.googleapis.com',
+  // MCP OAuth clients' published Client ID Metadata Documents
+  // (api/oauth/_client-metadata.js). Fetched to authorize a connection, never
+  // ingested as data.
+  'claude.ai',
+  'chatgpt.com',
   'searchconsole.googleapis.com',
   'www.googleapis.com',
   'yandex.com',
@@ -1079,6 +1147,61 @@ const EXCLUDED_HOSTS = new Set([
 
 function read(rootDir, path) {
   return readFileSync(join(rootDir, path), 'utf8');
+}
+
+// Catalog prose (feed notes, category notes, $comment) can quote retired URLs
+// that no view fetches. Blank those string values where they sit, by key, so
+// only active URL fields are scanned. Masking by position (not by text) keeps
+// an active URL that happens to equal a note. Line numbers stay put.
+const CATALOG_PROSE_KEYS = new Set(['$comment', 'note', 'notes']);
+
+function maskCatalogProse(source) {
+  try {
+    JSON.parse(source);
+  } catch {
+    return source;
+  }
+  const out = source.split('');
+  // Each open container records whether its values are prose: an object
+  // tracks the key it is reading; an array inherits from its own key.
+  const stack = [];
+  let pendingKey = null;
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === '"') {
+      let j = i + 1;
+      while (source[j] !== '"') j += source[j] === '\\' ? 2 : 1;
+      const top = stack[stack.length - 1];
+      let k = j + 1;
+      while (/\s/.test(source[k] ?? '')) k += 1;
+      const isKey = top?.type === 'object' && source[k] === ':';
+      if (isKey) {
+        pendingKey = JSON.parse(source.slice(i, j + 1));
+      } else {
+        const prose = top?.type === 'array' ? top.prose : CATALOG_PROSE_KEYS.has(pendingKey);
+        if (prose) for (let m = i + 1; m < j; m += 1) out[m] = ' ';
+        pendingKey = null;
+      }
+      i = j + 1;
+      continue;
+    }
+    if (ch === '{') {
+      stack.push({ type: 'object' });
+      pendingKey = null;
+    } else if (ch === '[') {
+      const parent = stack[stack.length - 1];
+      const prose = parent?.type === 'array' ? parent.prose : CATALOG_PROSE_KEYS.has(pendingKey);
+      stack.push({ type: 'array', prose });
+      pendingKey = null;
+    } else if (ch === '}' || ch === ']') {
+      stack.pop();
+    } else if (ch === ',') {
+      if (stack[stack.length - 1]?.type === 'object') pendingKey = null;
+    }
+    i += 1;
+  }
+  return out.join('');
 }
 
 function readdirPresentSync(absoluteDir) {
@@ -1129,6 +1252,13 @@ function walkSourceFiles(rootDir) {
     }
   };
   for (const root of SOURCE_ROOTS) visit(root);
+  // The feed catalog is data under shared/, outside the code roots.
+  for (const path of FEED_DECLARATION_FILES) {
+    if (!files.includes(path) && existsSync(join(rootDir, path))) files.push(path);
+  }
+  for (const path of STRUCTURED_CATALOG_FILES) {
+    if (existsSync(join(rootDir, path))) files.push(path);
+  }
   return files.sort();
 }
 
@@ -1168,7 +1298,8 @@ export function scanUpstreamHosts(rootDir = ROOT) {
     hosts.set(host, current);
   };
   for (const relativePath of walkSourceFiles(rootDir)) {
-    const source = read(rootDir, relativePath);
+    const raw = read(rootDir, relativePath);
+    const source = relativePath.endsWith('.json') && FEED_FILES.has(relativePath) ? maskCatalogProse(raw) : raw;
     const lineStarts = [0];
     for (let offset = source.indexOf('\n'); offset !== -1; offset = source.indexOf('\n', offset + 1)) {
       lineStarts.push(offset + 1);
@@ -1193,6 +1324,7 @@ export function scanUpstreamHosts(rootDir = ROOT) {
       const declarationBefore = source.slice(Math.max(0, index - 280), index).match(/(?:const|let|var)\s+[A-Z][A-Z0-9_]*\s*=\s*['"`]?\s*$/);
       const preceding = source.slice(Math.max(0, index - 260), index);
       const candidate = FEED_FILES.has(relativePath)
+        || STRUCTURED_CATALOG_FILES.has(relativePath)
         || SOURCE_HINT_RE.test(line)
         || SOURCE_HINT_RE.test(preceding)
         || pendingDeclaration
@@ -1220,14 +1352,17 @@ export function scanUpstreamHosts(rootDir = ROOT) {
         }
       }
     }
-    if (FEED_FILES.has(relativePath)) {
+    // The JSON catalog stores expanded Google News URLs (handled above); its
+    // `notes` may quote retired gn() queries that are no longer fetched.
+    if (FEED_FILES.has(relativePath) && !relativePath.endsWith('.json')) {
       // Server feed mirrors build Google News URLs through gn()/gnLocale().
       // Count a site-scoped publisher under its own host as well as counting
       // the Google News URL literal above under news.google.com.
       for (const match of source.matchAll(/\bgn(?:Locale)?\(\s*(["'`])([\s\S]*?)\1/g)) {
         const lineStart = source.lastIndexOf('\n', match.index ?? 0) + 1;
         const beforeMatch = source.slice(lineStart, match.index ?? 0);
-        if (beforeMatch.includes('//')) continue;
+        // A `//` after a colon is a URL scheme earlier on the line, not a comment.
+        if (/(?:^|[^:])\/\//.test(beforeMatch)) continue;
         for (const publisherHost of googleNewsPublisherHosts(match[2])) {
           recordHost(publisherHost, 'feed', relativePath);
         }

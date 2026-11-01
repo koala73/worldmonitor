@@ -171,6 +171,24 @@ describe('/api/notification-channels POST billing-verification capture', () => {
 });
 
 describe('/api/notification-channels POST billing-verification contract', () => {
+  it('rejects an expired paid verification marker before any delivery write', async () => {
+    const mod = await importFreshNotificationChannels();
+    let writes = 0;
+    mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
+      validateBearerToken: async () => ({ valid: true, userId: 'user-expired' }),
+      getEntitlements: async () => freeShapedEntitlements({
+        features: { ...freeShapedEntitlements({}).features, tier: 1 },
+        validUntil: Date.now() - 1,
+        billingStatus: 'renewal_verification_pending',
+      }),
+      fetch: async () => { writes++; return Response.json({ ok: true }); },
+      captureSilentError: () => {},
+    });
+    const res = await mod.default(makeSetChannelRequest(), ctx);
+    assert.equal(writes, 0);
+    assert.equal(res.status, 503);
+  });
   it('answers a transient verification failure with a retryable 503, not pro_required', async () => {
     const mod = await importFreshNotificationChannels();
     const relayFetch = mock.fn(async () => {

@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { INTEL_SOURCES, VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds.ts';
+import { NEWS_POOL_LAYOUT } from '../shared/news-pool-layout.generated.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -22,36 +23,17 @@ describe('commodities news agent parity (#5889)', () => {
     );
   });
 
-  it('keeps the MCP category enums aligned with each agent-addressable digest variant', () => {
-    const nlpSrc = readFileSync(join(ROOT, 'api/mcp/registry/nlp-tools.ts'), 'utf8');
-    const expectations = [
-      {
-        constant: 'FULL_DIGEST_CATEGORIES',
-        feedKeys: [
-          ...Object.keys(VARIANT_FEEDS.full ?? {}),
-          ...(INTEL_SOURCES.length > 0 ? ['intel'] : []),
-        ].sort(),
-      },
-      {
-        constant: 'TECH_DIGEST_CATEGORIES',
-        feedKeys: Object.keys(VARIANT_FEEDS.tech ?? {}).sort(),
-      },
-    ];
-
-    for (const { constant, feedKeys } of expectations) {
-      const match = nlpSrc.match(
-        new RegExp(`const ${constant} = \\[([\\s\\S]*?)\\] as const;`),
-      );
-      assert.ok(match, `${constant} must be declared in nlp-tools.ts`);
-      const enumKeys = [...match[1].matchAll(/'([A-Za-z0-9_-]+)'/g)]
-        .map((entry) => entry[1])
-        .sort();
-      assert.deepEqual(
-        enumKeys,
-        feedKeys,
-        `${constant} must list every category emitted by its digest variant (and no extras)`,
-      );
+  it('gives MCP tools every category each digest edition emits', () => {
+    // nlp-tools.ts builds its category enum from this generated layout.
+    for (const [edition, categories] of Object.entries(NEWS_POOL_LAYOUT.editions)) {
+      const feedKeys = [
+        ...Object.keys(VARIANT_FEEDS[edition] ?? {}),
+        ...(edition === 'full' && INTEL_SOURCES.length > 0 ? ['intel'] : []),
+      ].sort();
+      assert.deepEqual([...categories].sort(), feedKeys, `${edition} categories must match its digest (and no extras)`);
     }
+    const nlpSrc = readFileSync(join(ROOT, 'api/mcp/registry/nlp-tools.ts'), 'utf8');
+    assert.match(nlpSrc, /const ALL_DIGEST_CATEGORIES = \[\.\.\.new Set\(Object\.values\(NEWS_POOL_LAYOUT\.editions\)/);
   });
 
   it('keeps the published MCP server card discoverable for category filtering', () => {

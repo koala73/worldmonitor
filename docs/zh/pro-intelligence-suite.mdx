@@ -20,7 +20,7 @@ description: "仅限 Pro 的衍生数据集——实物金属溢价与背离、�
 REST 与 SDK 调用方使用 HTTP 信封。未认证的调用返回 `401` 及 `{"error":"Pro authentication required"}`。已登录的免费账户返回 `403`，其顶层载荷类似 `{"error":"Upgrade required","requiredTier":1,"currentTier":0,"planKey":"pro"}`。MCP 调用方改用 JSON-RPC 信封：同一权限拒绝出现在 `error.data.reason = "upgrade-required"` 下，并且可以包含 `upgradeUrl`。两类拒绝都是最终答复而非临时故障——不要重试。携带 `X-Billing-Verification` 的 `503` **可以**重试；请遵守 `Retry-After`。参见[使用错误](/zh/usage-errors)。
 
 <Note>
-一个刻意保留的狭窄例外：`get_market_data` MCP 工具是基于缓存的数据包，已登录的免费账户可在其小额每日配额内使用，其中两个数据集（`physical-premium`、`physical-divergence`）与下文的金属路由重叠。专用 REST 路由以及本页表格中的每个工具仍然仅限 Pro。
+`get_market_data` MCP 工具是基于缓存的数据包，已登录的免费账户可在其小额每日配额内使用。其中两个数据集（`physical-premium`、`physical-divergence`）就是下文的金属数据，因此免费账户只会在 `locked` 中看到它们，并附带 `upgradeUrl`；只有订阅用户能拿到数据。专用 REST 路由以及本页表格中的每个工具仍然仅限 Pro。
 </Note>
 
 ## 实物与纸面贵金属

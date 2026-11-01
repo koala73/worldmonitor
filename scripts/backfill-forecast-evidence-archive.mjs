@@ -64,7 +64,7 @@ export async function backfillForecastEvidenceArchive(options = {}) {
   let commandsUsed = 0;
 
   const request = async (endpoint, commands, context) => {
-    const commandCount = endpoint.endsWith('/pipeline') ? commands.length : 1;
+    const commandCount = Array.isArray(commands[0]) ? commands.length : 1;
     commandsUsed += commandCount;
     if (commandsUsed > maxCommands) throw new Error(`Backfill command budget exceeded (${commandsUsed}/${maxCommands})`);
     const response = await fetchFn(endpoint, {
@@ -217,7 +217,9 @@ export async function backfillForecastEvidenceArchive(options = {}) {
       ['SET', forecastEvidenceRecordKey(hash), member, 'EX', FORECAST_EVIDENCE_TTL_S],
       ['ZADD', FORECAST_EVIDENCE_KEY, String(score), hash],
     ]);
-    const payload = await request(`${url}/pipeline`, commands, 'Redis forecast evidence backfill write');
+    // Live digest writes can overlap this copy. Publish each record and score
+    // together so neither writer can leave a mixed evidence pair.
+    const payload = await request(`${url}/multi-exec`, commands, 'Redis forecast evidence backfill write');
     if (!redisResultConfirmed(payload, commands.length)) throw new Error('Forecast evidence backfill write was not confirmed');
   }
 

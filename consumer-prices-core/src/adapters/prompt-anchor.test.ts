@@ -59,6 +59,7 @@ async function captureSchema(canonicalName: string): Promise<ExtractSchema> {
       inStockFromPrice: false,
       extractionFallback: 'none',
       requireStrictValidator: false,
+      requirePageTitleMatch: false,
     },
   } as RetailerConfig;
 

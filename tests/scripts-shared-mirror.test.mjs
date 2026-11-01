@@ -20,6 +20,7 @@ const repoRoot = resolve(__dirname, '..');
 const MIRRORED_FILES = [
   'china-corporate-disclosure-policy.js',
   'correlation-runtime-mode.js',
+  'gdelt-tension-pairs.json',
   'geography.js',
   'hapi-app-identifier.json',
   'iso2-to-region.json',
@@ -49,6 +50,8 @@ const MIRRORED_FILES = [
   // #9096: the media provenance worker and API share queue keys, limits and wording.
   'media-provenance-contract.js',
   'media-provenance-contract.d.ts',
+  // Push event registry read by scripts/shipping-webhook-worker.mjs on Railway.
+  'event-triggers.json',
 ];
 
 describe('scripts/shared/ mirrors shared/', () => {

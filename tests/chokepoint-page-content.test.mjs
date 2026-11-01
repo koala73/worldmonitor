@@ -144,4 +144,29 @@ describe('chokepoint page content (#7461)', () => {
     assert.equal(CHOKEPOINT_REGISTRY_OBSERVED_AT, '2026-04-09');
     assert.equal(TRADE_ROUTES_OBSERVED_AT, '2026-03-14');
   });
+
+  it('keeps SEO overrides inside title and description limits', () => {
+    const required = ['bab_el_mandeb', 'panama', 'korea_strait', 'lombok_strait', 'kerch_strait'];
+    const titles = new Set();
+    const descriptions = new Set();
+    for (const id of required) {
+      assert.equal(typeof CHOKEPOINT_CONTENT[id].metaTitle, 'string', `${id} must set metaTitle`);
+      assert.equal(typeof CHOKEPOINT_CONTENT[id].metaDescription, 'string', `${id} must set metaDescription`);
+    }
+    for (const [id, content] of Object.entries(CHOKEPOINT_CONTENT)) {
+      if (typeof content.metaTitle === 'string') {
+        assert.ok(content.metaTitle.length <= 60, `${id} metaTitle must be at most 60 characters`);
+        assert.ok(content.metaTitle.endsWith(' | World Monitor'), `${id} metaTitle must end with the site name`);
+        assert.equal(titles.has(content.metaTitle), false, `${id} metaTitle must be unique`);
+        titles.add(content.metaTitle);
+      }
+      if (typeof content.metaDescription === 'string') {
+        const length = content.metaDescription.length;
+        assert.ok(length >= 120 && length <= 160, `${id} metaDescription must be 120 to 160 characters`);
+        assert.equal(content.metaDescription.includes('\u2014'), false, `${id} metaDescription must not contain an em dash`);
+        assert.equal(descriptions.has(content.metaDescription), false, `${id} metaDescription must be unique`);
+        descriptions.add(content.metaDescription);
+      }
+    }
+  });
 });

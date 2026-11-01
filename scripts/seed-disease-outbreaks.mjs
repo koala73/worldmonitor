@@ -47,8 +47,9 @@ const ECDC_NEWS_FEED = 'https://www.ecdc.europa.eu/en/taxonomy/term/1307/feed';
 // UN Geneva newsroom (Atom): WHO's Geneva press-briefing statements, titled
 // "<story> - WHO" among other UN agencies' items. WHO's 2026-10-06 risk
 // assessment of the Irkutsk case came only from a briefing, not a DON post.
-// The https URL answers 301 to this http one.
-const UNOG_NEWSROOM_FEED = 'http://www.unognewsroom.org/feed';
+// Fetched over https so no on-path host can forge WHO entries; /feed and the
+// http URL both answer 301 to this one (2026-10-19).
+const UNOG_NEWSROOM_FEED = 'https://www.unognewsroom.org/rss';
 // CIDRAP publishes per-disease feeds only (a combined `/news/64+49/rss` returns
 // just the first topic), so each outbreak-prone disease is its own request:
 // Ebola, viral hemorrhagic fever, avian influenza, mpox, cholera, measles,
@@ -120,6 +121,8 @@ export async function fetchRssItems(url, sourceName, { fetchImpl = globalThis.fe
       signal: AbortSignal.timeout(15000),
     });
     if (!resp.ok) { console.warn(`[Disease] ${sourceName} HTTP ${resp.status}`); return []; }
+    // fetch follows a redirect from https to http; a cleartext body could be forged.
+    if (resp.url && !resp.url.startsWith('https:')) { console.warn(`[Disease] ${sourceName} redirected to non-https ${resp.url}`); return []; }
     const xml = await resp.text();
     const bounded = xml.length > RSS_MAX_BYTES ? xml.slice(0, RSS_MAX_BYTES) : xml;
     const items = [];
@@ -214,7 +217,8 @@ export async function fetchDiseaseOutbreaks() {
 
   // TGH items are already disease-curated with exact lat/lng — skip keyword filter,
   // preserve all geo-located alerts, and don't collapse by disease+country.
-  const tghOutbreaks = tghItems.map(mapItem);
+  // The bundle repeats some rows verbatim; those share an id and publish once.
+  const tghOutbreaks = [...new Map(tghItems.map(mapItem).map((o) => [o.id, o])).values()];
 
   const diseaseKeywords = ['outbreak', 'disease', 'virus', 'fever', 'flu', 'ebola', 'mpox',
     'cholera', 'dengue', 'measles', 'polio', 'plague', 'avian', 'h5n1', 'epidemic',

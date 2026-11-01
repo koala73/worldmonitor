@@ -74,8 +74,9 @@ export function isRestEnforcementEnabled(): boolean {
  * in. The three states below are the only ones representable:
  *
  *   - `{allowance: 'mcp'}` — Pro 50, Pro Business 250, the free-account
- *     ceiling, Enterprise `null`. `apiAccess: false` with a zero REST budget,
- *     so they keep `mcp:pro-usage:…` at one unit per standalone call or bounded panel admission.
+ *     ceiling, Enterprise 25,000. All but Enterprise are `apiAccess: false`
+ *     with a zero REST budget; every one keeps `mcp:pro-usage:…` at one unit
+ *     per standalone call or bounded panel admission.
  *   - `{allowance: 'api', counter: 'mcp'}` — API tiers while
  *     `API_RATE_LIMIT_ENFORCE` is off: the sold REST number, weighted, on the
  *     dedicated counter.
@@ -89,9 +90,14 @@ export function isRestEnforcementEnabled(): boolean {
  * When the flag flip becomes permanent, delete `counter` and the shadow branch
  * in `resolveMcpBudget`: no variant is renamed and no call site moves.
  */
-export type McpBudget =
+export type McpBudget = (
   | { allowance: 'mcp'; limit: number | null }
-  | { allowance: 'api'; counter: 'mcp' | 'api'; limit: number | null };
+  | { allowance: 'api'; counter: 'mcp' | 'api'; limit: number | null }
+) & {
+  /** A catalog Enterprise (tier 3) budget: its limit is a circuit breaker
+   *  that pages before it trips (server/_shared/high-usage-alarm.ts). */
+  enterprisePlan?: true;
+};
 
 /**
  * Resolve which budget a plan's MCP calls charge.

@@ -423,7 +423,7 @@ describe('scheduled analytics collector monitor', () => {
     assert.match(workflow, /actions\/setup-node@[a-f0-9]+/);
     assert.match(workflow, /node-version:\s*['"]24['"]/);
     assert.match(workflow, /node scripts\/check-analytics-collector\.mjs/);
-    // The gate that seed-freshness-monitor.yml uses must NOT appear here.
+    // A green-main gate must NOT appear here.
     assert.doesNotMatch(workflow, /context\s*==\s*"gate"/);
   });
 });

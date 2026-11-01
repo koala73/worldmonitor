@@ -10,14 +10,17 @@ import "worldmonitor/scorecard/v1/list_five_factor_scorecards.proto";
 service ScorecardService {
   option (sebuf.http.service_config) = {base_path: "/api/scorecard/v1"};
 
+  // GetFiveFactorScorecard returns the cached five-factor scorecard for one country.
   rpc GetFiveFactorScorecard(GetFiveFactorScorecardRequest) returns (GetFiveFactorScorecardResponse) {
     option (sebuf.http.config) = {path: "/get-five-factor-scorecard", method: HTTP_METHOD_GET};
   }
 
+  // ListFiveFactorScorecards returns compact summaries of all cached five-factor country scorecards.
   rpc ListFiveFactorScorecards(ListFiveFactorScorecardsRequest) returns (ListFiveFactorScorecardsResponse) {
     option (sebuf.http.config) = {path: "/list-five-factor-scorecards", method: HTTP_METHOD_GET};
   }
 
+  // GetBlocScorecard returns the five-factor scorecard for a named bloc or a custom group of 2-30 countries.
   rpc GetBlocScorecard(GetBlocScorecardRequest) returns (GetBlocScorecardResponse) {
     option (sebuf.http.config) = {path: "/get-bloc-scorecard", method: HTTP_METHOD_GET};
   }

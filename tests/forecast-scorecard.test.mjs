@@ -27,6 +27,7 @@ import {
   PUBLIC_FAMILY_OUTCOME_FIELDS,
   buildFamilyOutcomes,
   buildPublicReceipts,
+  buildPublicForecastArchive,
   computeScorecard,
   hasPreLineageAnchor,
   isWithheldEntry,
@@ -34,11 +35,43 @@ import {
 } from '../scripts/_forecast-scorecard.mjs';
 import { PROJECTION_HORIZONS } from '../scripts/_forecast-resolution.mjs';
 import { selectFitCohort } from '../scripts/_forecast-calibration.mjs';
+import { buildProbabilityTrail, stampResolutionTrajectories } from '../scripts/_forecast-probability-trail.mjs';
 import { MARKET_SETTLEMENT_FEED as BET_SETTLEMENT_FEED } from '../scripts/_bet-templates-markets.mjs';
 
 const NOW = Date.parse('2026-07-20T00:00:00Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
 const round6 = (value) => Math.round(value * 1_000_000) / 1_000_000;
+
+describe('public resolved forecast archive', () => {
+  it('uses the receipt cohort and whitelist, without the 20-receipt cap', () => {
+    const valid = Array.from({ length: 25 }, (_, i) => resolved({ id: `fc-${i}`, title: 'Will conflict escalate?', spec: { kind: 'judged' }, domain: 'conflict', region: 'Iran', generationOrigin: 'legacy_detector',
+      firstSeenAt: NOW - DAY_MS, lastSeenAt: NOW, deadline: NOW, trajectory: [[new Date(NOW - DAY_MS).toISOString(), 0.5]],
+      evidence: { selectionVersion: 3, rationale: 'PRIVATE', archiveItems: ['PRIVATE'] },
+    }));
+    const ledger = [...valid, { ...valid[0], duplicateOf: 'x' }, { ...valid[0], stateBucketId: 'fx_stress' },
+      { ...valid[0], generationOrigin: 'bet_engine' }, { ...valid[0], spec: { kind: 'hard', horizon: 'd7' } },
+      { ...valid[0], generationOrigin: 'bet_engine', probabilitySource: 'base_rate' }, { ...valid[0], resolvedAt: NOW - 181 * DAY_MS }];
+    const archive = buildPublicForecastArchive(ledger, NOW);
+    assert.equal(archive.rows.length, 25);
+    assert.deepEqual(archive.rows.map(row => row.forecastId).sort(), valid.map(row => row.id).sort());
+    assert.equal(archive.rows[0].evidence.selectionVersion, 3);
+    assert.ok(!JSON.stringify(archive).includes('PRIVATE'));
+    assert.ok(!JSON.stringify(archive).includes('metricKey'));
+    assert.ok(Buffer.byteLength(JSON.stringify(buildPublicForecastArchive(Array.from({ length: 300 }, (_, i) => ({ ...valid[0], id: `fc-${i}` })), NOW))) < 512 * 1024);
+  });
+
+  it('freezes only the matching subject and window trajectory at resolution', () => {
+    const trail = buildProbabilityTrail(null, { generatedAt: NOW, predictions: [{ id: 'fc-default', region: 'Iran', probability: 0.7 }] },
+      [{ generatedAt: NOW - DAY_MS, predictions: [{ id: 'fc-default', region: 'Iran', probability: 0.5 }] }]);
+    const entry = resolved({ region: 'Iran', resolvedAt: NOW, firstSeenAt: NOW - DAY_MS, deadline: NOW });
+    const other = { ...entry, region: 'Syria' };
+    stampResolutionTrajectories({ entry, other }, trail, NOW);
+    assert.equal(entry.trajectory.length, 2);
+    assert.equal(other.trajectory, undefined);
+    stampResolutionTrajectories({ entry }, { forecasts: {} }, NOW + DAY_MS);
+    assert.equal(entry.trajectory.length, 2);
+  });
+});
 
 function resolved(overrides) {
   return {

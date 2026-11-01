@@ -5,12 +5,17 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { crawlerDocumentSnapshot } from './_lib/crawler-visible-html.mjs';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
+import { nonDefaultLandingLocales } from '../shared/indexable-landing-locales.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const PRO_PAGES = [
   { relPath: 'public/pro/index.html', label: '/pro' },
   { relPath: 'public/pro/welcome.html', label: '/' },
+  ...nonDefaultLandingLocales().map((locale) => ({
+    relPath: `public/${locale.pathSegment}/index.html`,
+    label: locale.canonicalPath,
+  })),
 ];
 
 function src(relPath) {
@@ -155,8 +160,9 @@ describe('pro critical CSS source contract', () => {
   it('applies the shared critical CSS transform to every pro-test page', () => {
     const prerender = src('pro-test/prerender.mjs');
     assert.doesNotMatch(prerender, /seo-prerender/);
-    assert.match(prerender, /const PAGES = \[/);
-    assert.match(prerender, /html = inlineCriticalCss\(html, file, headTags\);/);
+    assert.match(prerender, /inlineCriticalCss\(indexHtml, 'index\.html'\)/);
+    assert.match(prerender, /inlineCriticalCss\(welcomeBase, 'welcome\.html', \[heroImagePreloadTag\(englishWelcome\.html\)\]\)/);
+    assert.match(prerender, /localizeWelcomeDocument\(injected, page\.locale, page\.copy\)/);
     assert.doesNotMatch(prerender, /file === 'welcome\.html'/);
   });
 });

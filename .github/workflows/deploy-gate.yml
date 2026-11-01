@@ -47,7 +47,7 @@ env:
 
 jobs:
   evaluate-direct:
-    if: ${{ github.event_name == 'workflow_run' }}
+    if: ${{ (github.event_name == 'workflow_run') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -71,7 +71,7 @@ jobs:
         run: bash -e .github/scripts/deploy-gate.sh evaluate
 
   discover:
-    if: ${{ github.event_name != 'workflow_run' }}
+    if: ${{ (github.event_name != 'workflow_run') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     outputs:
       discovery: ${{ steps.plan.outputs.discovery }}
@@ -89,7 +89,7 @@ jobs:
 
   invalidate:
     needs: discover
-    if: ${{ needs.discover.result == 'success' && needs.discover.outputs.count != '0' }}
+    if: ${{ (needs.discover.result == 'success' && needs.discover.outputs.count != '0') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -119,7 +119,7 @@ jobs:
 
   recover:
     needs: [discover, invalidate]
-    if: ${{ always() && needs.discover.result == 'success' }}
+    if: ${{ (always() && needs.discover.result == 'success') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -146,7 +146,7 @@ jobs:
 
   evaluate:
     needs: recover
-    if: ${{ always() && needs.recover.result == 'success' && needs.recover.outputs.count != '0' }}
+    if: ${{ (always() && needs.recover.result == 'success' && needs.recover.outputs.count != '0') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -172,7 +172,7 @@ jobs:
 
   gate:
     needs: [discover, invalidate, recover, evaluate]
-    if: ${{ always() && github.event_name != 'workflow_run' }}
+    if: ${{ (always() && github.event_name != 'workflow_run') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     steps:
       - name: Aggregate deploy gate execution

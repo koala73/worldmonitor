@@ -34,7 +34,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "stream-json": "file:../vendor/stream-json",
-    "vite": "^7.3.2"
+    "vite": "^7.3.7"
   },
   "devDependencies": {
     "@sentry/vite-plugin": "^5.4.0",

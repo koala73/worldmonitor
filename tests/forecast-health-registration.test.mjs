@@ -5,6 +5,36 @@ import { __testing__ } from '../api/health.js';
 import { assessFunnelDiversity, buildFunnelHealthMeta } from '../scripts/_forecast-funnel.mjs';
 
 describe('forecast resolution health registration', () => {
+  it('pairs probability trail and archive keys with their producer clocks', () => {
+    for (const [name, key, meta, minutes] of [
+      ['forecastProbabilityTrail', 'forecast:probability-trail:v1', 'seed-meta:forecast:probability-trail', 90],
+      ['forecastArchive', 'forecast:archive:v1', 'seed-meta:forecast:archive', 2160],
+    ]) {
+      assert.equal(__testing__.STANDALONE_KEYS[name], key);
+      const activationKey = `seed-activated:${key.replace(/:v1$/, '')}`;
+      assert.deepEqual(__testing__.SEED_META[name], { key: meta, maxStaleMin: minutes, activationKey,
+        cutover: { mode: 'activation-marker', fromKey: null, issue: 9353, activationKey } });
+    }
+  });
+  it('activates the new probes once and distinguishes an empty archive from missing data', () => {
+    const now = Date.parse('2026-10-18T00:00:00Z');
+    const classify = (name, present, active, ageMinutes = 1) => __testing__.classifyKey(name,
+      __testing__.STANDALONE_KEYS[name], { allowOnDemand: true }, {
+        keyStrens: new Map(present ? [[__testing__.STANDALONE_KEYS[name], 100]] : []),
+        keyErrors: new Map(), keyMetaErrors: new Map(), now,
+        activationStates: new Map([[name, active]]),
+        keyMetaValues: new Map(present ? [[__testing__.SEED_META[name].key, JSON.stringify({
+          fetchedAt: now - ageMinutes * 60_000, recordCount: 0, status: 'ok',
+        })]] : []),
+      });
+    for (const name of ['forecastProbabilityTrail', 'forecastArchive']) {
+      assert.equal(__testing__.ACTIVATION_MARKERS[name], __testing__.SEED_META[name].activationKey);
+      assert.equal(classify(name, false, false).status, 'EMPTY_ON_DEMAND');
+      assert.equal(classify(name, false, true).status, 'EMPTY');
+    }
+    assert.equal(classify('forecastArchive', true, true).status, 'OK');
+    assert.equal(classify('forecastArchive', true, true, 2161).status, 'STALE_SEED');
+  });
   it('classifies the resolution ledger and scorecard as standalone health checks', () => {
     assert.equal(__testing__.STANDALONE_KEYS.forecastResolutions, 'forecast:resolutions:v1');
     assert.equal(__testing__.STANDALONE_KEYS.forecastScorecard, 'forecast:scorecard:v1');

@@ -83,6 +83,7 @@ permissions:
 
 jobs:
   probe:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     # Two requests at a 15s per-request ceiling, plus checkout/setup-node.
     timeout-minutes: 5

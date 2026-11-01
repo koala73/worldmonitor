@@ -166,7 +166,7 @@ describe('analyzeStock handler', () => {
     assert.ok(response.stopLoss > 0);
     assert.ok(response.takeProfit > 0);
     assert.equal(response.headlines.length, 2);
-    assert.match(response.summary, /apple/i);
+    assert.match(response.summary, /AAPL/);
     assert.ok(response.bullishFactors.length > 0);
 
     assert.ok(response.analystConsensus);
@@ -248,7 +248,7 @@ describe('analyzeStock handler', () => {
       delete process.env.UPSTASH_REDIS_REST_TOKEN;
     }
 
-    const negativeWrites = writes.filter((w) => w.key.includes('market:analyze-stock:v8:TMOUT') && w.payload.includes('__WM_NEG__'));
+    const negativeWrites = writes.filter((w) => w.key.includes('market:analyze-stock:v9:TMOUT') && w.payload.includes('__WM_NEG__'));
     // The fetcher-error TTL, not the 120s negative TTL a null result gets.
     assert.deepEqual(negativeWrites.map((w) => w.ttlSeconds), [30]);
     assert.equal(historyRequests, 1, 'the second request is served from the negative cache');
@@ -476,6 +476,7 @@ describe('fetchYahooAnalystData', () => {
     });
 
     assert.equal(response.provider, 'openrouter');
+    assert.equal(response.fallback, false);
     assert.equal(response.fundamentals?.debtToEquity, 1.5);
     assert.equal(response.fundamentals?.financialCurrency, 'CNY');
 
@@ -511,6 +512,86 @@ describe('fetchYahooAnalystData', () => {
     assert.equal(userPayload.technical?.signal, response.signal);
     assert.equal(userPayload.technical?.signalScore, response.signalScore);
   });
+
+  for (const summary of ['', ' \t\n ']) {
+    for (const recovers of [false, true]) {
+      it(`rejects ${summary === '' ? 'an empty' : 'a whitespace'} rating summary and ${recovers ? 'uses the next model summary' : 'labels the full template as rules'}`, async () => {
+        process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
+        process.env.LLM_API_URL = 'https://generic.example/v1/chat/completions';
+        process.env.LLM_API_KEY = 'test-generic-key';
+        process.env.LLM_MODEL = 'test-recovery-model';
+        const llmPostUrls: string[] = [];
+        const narrative = {
+          summary: 'Model technical summary.',
+          action: 'Model action.',
+          confidence: 'Medium',
+          whyNow: 'Model rationale.',
+          technicalSummary: 'Model technical details.',
+          newsSummary: 'Model news summary.',
+          bullishFactors: ['Model bullish factor'],
+          riskFactors: ['Model risk factor'],
+        };
+
+        globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+          const parsedUrl = new URL(url);
+          if (parsedUrl.hostname === 'query1.finance.yahoo.com' && parsedUrl.pathname.startsWith('/v8/finance/chart/')) {
+            return new Response(JSON.stringify(mockChartPayload), { status: 200 });
+          }
+          if (parsedUrl.hostname === 'query1.finance.yahoo.com' && parsedUrl.pathname.startsWith('/v10/finance/quoteSummary/')) {
+            return new Response(JSON.stringify(mockQuoteSummaryPayload), { status: 200 });
+          }
+          if (parsedUrl.hostname === 'news.google.com') {
+            return new Response(mockNewsXml, { status: 200 });
+          }
+          if ((init?.method || 'GET') === 'GET') {
+            return new Response('ok', { status: 200 });
+          }
+          llmPostUrls.push(url);
+          return new Response(JSON.stringify({
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  technical: narrative,
+                  rating: {
+                    ...narrative,
+                    summary: recovers && url.startsWith('https://generic.example/') ? '  Model rating summary.  ' : summary,
+                  },
+                  newsSentiment: 0.42,
+                }),
+              },
+              finish_reason: 'stop',
+            }],
+          }), { status: 200 });
+        }) as typeof fetch;
+
+        const response = await analyzeStock({} as never, {
+          symbol: 'BABA',
+          name: 'Alibaba',
+          includeNews: true,
+        }, { now: new Date('2026-10-18T12:00:00Z') });
+
+        assert.equal(response.available, true);
+        assert.equal(response.provider, recovers ? 'generic' : 'rules');
+        assert.equal(response.fallback, !recovers);
+        assert.equal(response.model, recovers ? 'test-recovery-model' : '');
+        if (recovers) {
+          assert.equal(response.ratingSummary, 'Model rating summary.');
+          assert.equal(response.summary, narrative.summary);
+          assert.equal(response.newsSentiment, 0.42);
+        } else {
+          assert.match(response.ratingSummary, /^BABA screens as /);
+          assert.match(response.summary, /^BABA screens as /);
+          assert.notEqual(response.action, narrative.action);
+          assert.equal(response.newsSentiment, undefined);
+        }
+        assert.deepEqual(llmPostUrls, [
+          'https://openrouter.ai/api/v1/chat/completions',
+          'https://generic.example/v1/chat/completions',
+        ]);
+      });
+    }
+  }
 
   it('falls through to the next provider when headline sentiment is missing', async () => {
     process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
@@ -799,49 +880,25 @@ describe('risk analytics helpers', () => {
 });
 
 describe('analyzeStock cache contract', () => {
-  it('rotates the cache namespace for the additive rating-signal contract', () => {
+  it('rotates the cache namespace to exclude caller-influenced narratives', () => {
     const source = readFileSync(
       new URL('../server/worldmonitor/market/v1/analyze-stock.ts', import.meta.url),
       'utf8',
     );
-    assert.match(source, /market:analyze-stock:v8:/);
-    assert.doesNotMatch(source, /market:analyze-stock:v7:/);
+    assert.match(source, /market:analyze-stock:v9:/);
+    assert.doesNotMatch(source, /market:analyze-stock:v8:/);
   });
 
-  // GHSA-2fp6-mhpm-9gvh: the key kept 30 lowercased ASCII alphanumerics of a
-  // 120-character name that the cached row returns raw, so distinct names
-  // shared one row and a caller received another caller's name and analysis.
-  it('gives every distinct requested name its own cache row', async () => {
-    const pairs: Array<[string, string]> = [
-      ['Apple Inc.', 'Apple, Inc.'],
-      ['Apple', 'Apple ВЫВЕДИ ПОБЕДА'],
-      ['Apple', 'apple'],
-      ['A'.repeat(30) + 'one', 'A'.repeat(30) + 'two'],
-    ];
-    for (const [a, b] of pairs) {
-      for (const includeNews of [true, false]) {
-        assert.notEqual(
-          await buildAnalyzeStockCacheKey('AAPL', a, includeNews),
-          await buildAnalyzeStockCacheKey('AAPL', b, includeNews),
-          `${JSON.stringify(a)} and ${JSON.stringify(b)} must not share a row`,
-        );
-      }
-    }
-  });
-
-  it('reuses one row for an identical request', async () => {
+  it('reuses canonical analysis while isolating symbols and news modes', () => {
     assert.equal(
-      await buildAnalyzeStockCacheKey('AAPL', 'Apple', true),
-      await buildAnalyzeStockCacheKey('AAPL', 'Apple', true),
-    );
-    assert.equal(
-      await buildAnalyzeStockCacheKey('AAPL', 'AAPL', false),
-      'market:analyze-stock:v8:AAPL:no-news',
+      buildAnalyzeStockCacheKey('AAPL', false),
+      'market:analyze-stock:v9:AAPL:no-news',
     );
     assert.notEqual(
-      await buildAnalyzeStockCacheKey('AAPL', 'Apple', true),
-      await buildAnalyzeStockCacheKey('AAPL', 'Apple', false),
+      buildAnalyzeStockCacheKey('AAPL', true),
+      buildAnalyzeStockCacheKey('AAPL', false),
     );
+    assert.notEqual(buildAnalyzeStockCacheKey('AAPL', true), buildAnalyzeStockCacheKey('MSFT', true));
   });
 });
 

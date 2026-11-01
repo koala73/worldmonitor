@@ -3,11 +3,17 @@ syntax = "proto3";
 package worldmonitor.market.v1;
 
 import "sebuf/http/annotations.proto";
+import "buf/validate/validate.proto";
 
 // GetPhysicalPremiumsRequest optionally limits the response to gold or silver.
 message GetPhysicalPremiumsRequest {
   // Accepted values are "gold" and "silver". Empty returns both metals.
-  repeated string metals = 1 [(sebuf.http.query) = { name: "metals" }];
+  repeated string metals = 1 [
+    (buf.validate.field).repeated.max_items = 2,
+    (buf.validate.field).repeated.unique = true,
+    (buf.validate.field).repeated.items.string.pattern = "^(?:gold|silver)$",
+    (sebuf.http.query) = { name: "metals" }
+  ];
 }
 
 // BenchmarkLeg identifies one raw price and its observation clock.

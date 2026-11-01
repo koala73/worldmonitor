@@ -2,6 +2,7 @@ import type { CableAdvisory, RepairShip, UnderseaCable } from '@/types';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { NavigationalWarning } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 import { MaritimeServiceClient } from '@/services/generated-rpc-clients';
+import { extractCableShipName, isCableRelatedNotice, isFreshNotice } from '../../shared/nga-cable-notices';
 
 // UNDERSEA_CABLES (~130KB) lives in the lazy geo-map chunk; cable-activity is
 // reached eagerly via data-loader, so it loads the table on demand inside the
@@ -45,29 +46,8 @@ interface NgaWarning {
   authority: string;
 }
 
-const CABLE_KEYWORDS = [
-  'CABLE',
-  'CABLESHIP',
-  'CABLE SHIP',
-  'CABLE LAYING',
-  'CABLE OPERATIONS',
-  'SUBMARINE CABLE',
-  'UNDERSEA CABLE',
-  'FIBER OPTIC',
-  'TELECOMMUNICATIONS CABLE',
-];
-
-const CABLESHIP_PATTERNS = [
-  /CABLESHIP\s+([A-Z][A-Z0-9\s\-']+)/i,
-  /CABLE\s+SHIP\s+([A-Z][A-Z0-9\s\-']+)/i,
-  /CS\s+([A-Z][A-Z0-9\s\-']+)/i,
-  /M\/V\s+([A-Z][A-Z0-9\s\-']+)/i,
-  /VESSEL\s+([A-Z][A-Z0-9\s\-']+)/i,
-];
-
 function isCableRelated(text: string): boolean {
-  const upper = text.toUpperCase();
-  return CABLE_KEYWORDS.some(kw => upper.includes(kw));
+  return isCableRelatedNotice(text);
 }
 
 function parseCoordinates(text: string): { lat: number; lon: number }[] {
@@ -118,17 +98,7 @@ function parseCoordinates(text: string): { lat: number; lon: number }[] {
 }
 
 function extractCableshipName(text: string): string | null {
-  for (const pattern of CABLESHIP_PATTERNS) {
-    const match = text.match(pattern);
-    if (match?.[1]) {
-      const name = match[1].trim().replace(/\s+/g, ' ');
-      // Skip if it's just a generic word
-      if (name.length > 2 && !/^(THE|AND|FOR|WITH)$/i.test(name)) {
-        return name;
-      }
-    }
-  }
-  return null;
+  return extractCableShipName(text);
 }
 
 function findNearestCable(lat: number, lon: number): UnderseaCable | null {
@@ -149,7 +119,7 @@ function findNearestCable(lat: number, lon: number): UnderseaCable | null {
   return nearest;
 }
 
-function parseIssueDate(dateStr: string): Date {
+function parseIssueDate(dateStr: string): Date | null {
   // Format: "081653Z MAY 2024" or "101200Z JAN 2025"
   const match = dateStr.match(/(\d{2})(\d{4})Z\s+([A-Z]{3})\s+(\d{4})/i);
   if (match?.[1] && match[2] && match[3] && match[4]) {
@@ -169,7 +139,8 @@ function parseIssueDate(dateStr: string): Date {
 
     return new Date(Date.UTC(year, month, day, hours, minutes));
   }
-  return new Date();
+  // Undated notices used to be stamped "now", which made old standing warnings look current.
+  return null;
 }
 
 function determineSeverity(text: string): 'fault' | 'degraded' {
@@ -190,7 +161,7 @@ function slugify(text: string): string {
     .slice(0, 40);
 }
 
-function processWarnings(warnings: NgaWarning[]): CableActivity {
+function processWarnings(warnings: NgaWarning[], nowMs: number = Date.now()): CableActivity {
   const advisories: CableAdvisory[] = [];
   const repairShips: RepairShip[] = [];
   const seenIds = new Set<string>();
@@ -198,9 +169,11 @@ function processWarnings(warnings: NgaWarning[]): CableActivity {
   const cableWarnings = warnings.filter(w => isCableRelated(w.text));
 
   for (const warning of cableWarnings) {
+    const issueDate = parseIssueDate(warning.issueDate);
+    // NGA keeps "until further notice" warnings active for years: skip stale or undated ones.
+    if (!issueDate || !isFreshNotice(issueDate.getTime(), nowMs)) continue;
     const coords = parseCoordinates(warning.text);
     const shipName = extractCableshipName(warning.text);
-    const issueDate = parseIssueDate(warning.issueDate);
 
     // Use first coordinate or try to match to a cable
     let lat = 0;

@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import capturedBooks from './fixtures/prediction-kalshi-orderbooks.json' with { type: 'json' };
 import {
+  attachKalshiLiquidity,
   fetchKalshiEvents,
   fetchKalshiMarketsBySeries,
+  fetchKalshiOrderbookDepths,
+  kalshiOrderbookDepth,
   fetchKalshiSeries,
   fetchPolymarketEventsByTag,
 } from '../scripts/_prediction-upstream.mjs';
@@ -252,5 +256,96 @@ describe('prediction-market upstream coverage', () => {
     });
 
     assert.deepEqual(events, []);
+  });
+});
+
+const BOOKS = capturedBooks.response.orderbooks;
+const bookByTicker = new Map(BOOKS.map((book) => [book.ticker, book]));
+
+function orderbookFetch({ calls = [], fail = () => false } = {}) {
+  return async (url, init) => {
+    const parsed = new URL(String(url));
+    calls.push({ url: parsed, headers: init?.headers });
+    const tickers = parsed.searchParams.getAll('tickers');
+    if (fail(tickers, calls.length)) return new Response('upstream down', { status: 503 });
+    return Response.json({ orderbooks: tickers.filter((t) => bookByTicker.has(t)).map((t) => bookByTicker.get(t)) });
+  };
+}
+
+describe('Kalshi order-book liquidity', () => {
+  it('sums price times size over both bid sides of a captured book, in USD', () => {
+    assert.equal(kalshiOrderbookDepth(bookByTicker.get('KXELONMARS-99')), 754.4);
+    assert.equal(kalshiOrderbookDepth(bookByTicker.get('KXNEXTNATOSECGEN-99-KIOH')), 89.45);
+  });
+
+  it('reads an empty book as zero depth and an unreadable book as unknown', () => {
+    assert.equal(kalshiOrderbookDepth({ ticker: 'EMPTY', orderbook_fp: { yes_dollars: [], no_dollars: null } }), 0);
+    assert.equal(kalshiOrderbookDepth({ ticker: 'MISSING' }), null);
+    assert.equal(kalshiOrderbookDepth({ ticker: 'BAD', orderbook_fp: { yes_dollars: [['0.5', 'lots']] } }), null);
+    assert.equal(kalshiOrderbookDepth({ ticker: 'BAD', orderbook_fp: { yes_dollars: [['-0.5', '10']] } }), null);
+    for (const level of [['0.5', null], [null, '10'], ['0.5', ''], ['0.5'], [true, '10']]) {
+      assert.equal(kalshiOrderbookDepth({ ticker: 'BAD', orderbook_fp: { no_dollars: [level] } }), null, JSON.stringify(level));
+    }
+  });
+
+  it('requests at most 100 tickers per call as repeated tickers= parameters', async () => {
+    const calls = [];
+    const tickers = Array.from({ length: 250 }, (_, i) => `KXT-${i}`);
+    await fetchKalshiOrderbookDepths([...tickers, 'KXT-0'], {
+      fetchFn: orderbookFetch({ calls }),
+      baseUrl: 'https://kalshi.example.test/trade-api/v2/',
+      userAgent: 'test-agent',
+    });
+    assert.deepEqual(calls.map(({ url }) => url.searchParams.getAll('tickers').length), [100, 100, 50]);
+    assert.ok(calls.every(({ url }) => url.pathname === '/trade-api/v2/markets/orderbooks'));
+    assert.ok(calls.every(({ url }) => url.searchParams.getAll('tickers').every((t) => !t.includes(','))));
+    assert.ok(calls.every(({ headers }) => headers['User-Agent'] === 'test-agent'));
+  });
+
+  it('leaves a failed chunk unknown without failing the other chunks', async () => {
+    const failures = [];
+    const tickers = [...Array.from({ length: 100 }, (_, i) => `KXFILL-${i}`), 'KXELONMARS-99'];
+    const depths = await fetchKalshiOrderbookDepths(['KXNEXTNATOSECGEN-99-KIOH', ...tickers], {
+      fetchFn: orderbookFetch({ fail: (_tickers, call) => call === 2 }),
+      baseUrl: 'https://kalshi.example.test',
+      userAgent: 'test',
+      onChunkError: (error, chunk) => failures.push({ error, chunk }),
+    });
+    assert.equal(depths.get('KXNEXTNATOSECGEN-99-KIOH'), 89.45);
+    assert.equal(depths.has('KXELONMARS-99'), false);
+    assert.equal(failures.length, 1);
+    assert.deepEqual(failures[0].chunk, ['KXFILL-99', 'KXELONMARS-99']);
+    assert.match(failures[0].error.message, /503/);
+  });
+
+  it('attaches depth to published Kalshi records only and never writes 0 for an unpriced market', async () => {
+    const records = [
+      { title: 'mars', source: 'kalshi', url: 'https://kalshi.com/markets/KXELONMARS-99' },
+      { title: 'mars again', source: 'kalshi', url: 'https://kalshi.com/markets/KXELONMARS-99' },
+      { title: 'not returned', source: 'kalshi', url: 'https://kalshi.com/markets/KXNOT-RETURNED' },
+      { title: 'poly', source: 'polymarket', url: 'https://polymarket.com/event/x', liquidity: 1234 },
+    ];
+    const summary = await attachKalshiLiquidity(records, {
+      fetchFn: orderbookFetch(),
+      baseUrl: 'https://kalshi.example.test',
+      userAgent: 'test',
+    });
+    assert.equal(records[0].liquidity, 754.4);
+    assert.equal(records[1].liquidity, 754.4);
+    assert.equal('liquidity' in records[2], false);
+    assert.equal(records[3].liquidity, 1234);
+    assert.deepEqual(summary, { tickers: 2, priced: 1 });
+  });
+
+  it('survives a total order-book outage', async () => {
+    const records = [{ title: 'mars', source: 'kalshi', url: 'https://kalshi.com/markets/KXELONMARS-99' }];
+    const summary = await attachKalshiLiquidity(records, {
+      fetchFn: async () => { throw new Error('network down'); },
+      baseUrl: 'https://kalshi.example.test',
+      userAgent: 'test',
+      onChunkError: () => {},
+    });
+    assert.equal('liquidity' in records[0], false);
+    assert.deepEqual(summary, { tickers: 1, priced: 0 });
   });
 });

@@ -15,6 +15,38 @@ function response(status, body = '<xml/>', headers = {}) {
   return new Response(body, { status, headers });
 }
 
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Native fetch keeps the request signal attached while the body streams, so an
+// abort after the headers arrive errors the body mid-read. Mirror that here.
+function slowBodyFetch({ chunks, chunkDelayMs }) {
+  return async (_url, { signal }) => {
+    let sent = 0;
+    const stream = new ReadableStream({
+      start(controller) {
+        signal.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+      },
+      async pull(controller) {
+        await delay(chunkDelayMs);
+        if (signal.aborted) return;
+        if (sent === chunks) return controller.close();
+        sent += 1;
+        controller.enqueue(new TextEncoder().encode('<chunk/>'));
+      },
+    });
+    return new Response(stream, { status: 200 });
+  };
+}
+
+function neverRespondingFetch(calls) {
+  return (_url, { signal }) => {
+    calls.push(Date.now());
+    return new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+  };
+}
+
 describe('OFAC source transport recovery', () => {
   it('returns a healthy direct response without touching the proxy', async () => {
     let proxyCalls = 0;
@@ -369,5 +401,170 @@ describe('OFAC source transport recovery', () => {
       }),
       (error) => error.message === 'fetch failed (UND_ERR_CONNECT_TIMEOUT)' && error.nonRetryable === true,
     );
+  });
+});
+
+describe('OFAC source download deadlines', () => {
+  const noProxy = { proxyUrl: '', sleepFn: async () => {} };
+
+  it('lets a body that outlasts the header timeout finish inside the body budget', { timeout: 5_000 }, async () => {
+    const result = await fetchOfacSourceResponse(SOURCE_URL, {
+      ...noProxy,
+      fetchFn: slowBodyFetch({ chunks: 8, chunkDelayMs: 25 }),
+      headerTimeoutMs: 50,
+      bodyTimeoutMs: 2_000,
+    });
+
+    assert.equal(await result.text(), '<chunk/>'.repeat(8));
+  });
+
+  it('aborts a body that exceeds the body budget', { timeout: 5_000 }, async () => {
+    const startedAt = Date.now();
+    const result = await fetchOfacSourceResponse(SOURCE_URL, {
+      ...noProxy,
+      fetchFn: slowBodyFetch({ chunks: 100, chunkDelayMs: 20 }),
+      headerTimeoutMs: 50,
+      bodyTimeoutMs: 200,
+    });
+
+    await assert.rejects(result.text(), (error) => error.name === 'TimeoutError');
+    assert.ok(Date.now() - startedAt < 1_000, 'the body must stop near its 200 ms budget, not after the full 2 s stream');
+  });
+
+  it('caps the body budget at the caller deadline', { timeout: 10_000 }, async () => {
+    const startedAt = Date.now();
+    const result = await fetchOfacSourceResponse(SOURCE_URL, {
+      ...noProxy,
+      fetchFn: slowBodyFetch({ chunks: 100, chunkDelayMs: 50 }),
+      headerTimeoutMs: 50,
+      bodyTimeoutMs: 8_000,
+      deadlineAt: startedAt + 1_200,
+    });
+
+    await assert.rejects(result.text(), (error) => error.name === 'TimeoutError');
+    const elapsed = Date.now() - startedAt;
+    assert.ok(elapsed >= 1_000 && elapsed < 2_500, `body should stop near the 1.2 s deadline, stopped after ${elapsed} ms`);
+  });
+
+  it('still aborts missing headers at the header timeout and retries once', { timeout: 5_000 }, async () => {
+    const calls = [];
+
+    await assert.rejects(
+      fetchOfacSourceResponse(SOURCE_URL, {
+        ...noProxy,
+        fetchFn: neverRespondingFetch(calls),
+        headerTimeoutMs: 50,
+        bodyTimeoutMs: 2_000,
+      }),
+      (error) => error.name === 'TimeoutError' && error.nonRetryable === true,
+    );
+    assert.equal(calls.length, 2);
+  });
+});
+
+describe('OFAC source caller deadline', () => {
+  const proxyUrl = 'http://user:pass@proxy.test:8000';
+  const redirect = { ok: false, status: 302, location: SIGNED_S3_URL, buffer: Buffer.alloc(0), contentType: '' };
+
+  it('aborts missing headers at the deadline and starts nothing after it', { timeout: 20_000 }, async () => {
+    const calls = [];
+    let proxyCalls = 0;
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => { warnings.push(args.join(' ')); };
+    const startedAt = Date.now();
+
+    try {
+      await assert.rejects(
+        fetchOfacSourceResponse(SOURCE_URL, {
+          fetchFn: neverRespondingFetch(calls),
+          proxyFetchFn: async () => { proxyCalls += 1; return redirect; },
+          proxyUrl,
+          sleepFn: async () => {},
+          headerTimeoutMs: 4_000,
+          deadlineAt: startedAt + 1_500,
+        }),
+        (error) => error.nonRetryable === true && /OFAC fetch deadline reached/.test(error.message),
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.deepEqual(warnings.filter((w) => /via proxy/.test(w)), [],
+      'a deadline stop must not log a proxy retry that never happens');
+    const elapsed = Date.now() - startedAt;
+    assert.ok(elapsed >= 1_000 && elapsed < 3_000, `headers should abort near the 1.5 s deadline, stopped after ${elapsed} ms`);
+    assert.equal(calls.length, 1, 'no direct retry may start after the deadline');
+    assert.equal(proxyCalls, 0, 'no proxy bootstrap may start after the deadline');
+  });
+
+  it('caps the proxy bootstrap timeout at the time left before the deadline', async () => {
+    const timeouts = [];
+    const deadlineAt = Date.now() + 5_000;
+
+    const result = await fetchOfacSourceResponse(SOURCE_URL, {
+      fetchFn: async (url) => String(url) === SOURCE_URL ? response(403, 'blocked') : response(200),
+      proxyFetchFn: async (_url, _proxyConfig, options) => {
+        timeouts.push({ timeoutMs: options.timeoutMs, remaining: deadlineAt - Date.now() });
+        return redirect;
+      },
+      proxyUrl,
+      sleepFn: async () => {},
+      deadlineAt,
+    });
+
+    assert.equal(result.status, 200);
+    assert.equal(timeouts.length, 1);
+    assert.ok(timeouts[0].timeoutMs <= timeouts[0].remaining,
+      `proxy timeout ${timeouts[0].timeoutMs} ms exceeds the ${timeouts[0].remaining} ms left`);
+  });
+
+  it('ends the whole proxy request, tunnel and response, within one timeout', { timeout: 10_000 }, async () => {
+    // proxyFetch starts a fresh timeoutMs timer for the response after the
+    // tunnel opens, so only a signal passed by the caller bounds both phases.
+    const deadlineAt = Date.now() + 2_500;
+    const startedAt = Date.now();
+    let budget;
+
+    await assert.rejects(fetchOfacSourceResponse(SOURCE_URL, {
+      fetchFn: async (url) => String(url) === SOURCE_URL ? response(403, 'blocked') : response(200),
+      proxyFetchFn: async (_url, _proxyConfig, options) => {
+        budget ??= options.timeoutMs;
+        return new Promise((_resolve, reject) => {
+          const stall = setTimeout(() => reject(new Error('proxy stub stalled')), 2 * options.timeoutMs);
+          options.signal?.addEventListener('abort', () => {
+            clearTimeout(stall);
+            reject(options.signal.reason);
+          }, { once: true });
+        });
+      },
+      proxyUrl,
+      sleepFn: async () => {},
+      deadlineAt,
+    }));
+
+    const elapsed = Date.now() - startedAt;
+    assert.ok(elapsed < budget + 500, `proxy request ran ${elapsed} ms against a ${budget} ms budget`);
+  });
+
+  it('never sleeps past the deadline between retries', async () => {
+    const sleeps = [];
+    const deadlineAt = Date.now() + 3_000;
+    let attempts = 0;
+
+    const result = await fetchOfacSourceResponse(SOURCE_URL, {
+      fetchFn: async () => {
+        attempts += 1;
+        return attempts === 1 ? response(429, 'rate limited', { 'retry-after': '5' }) : response(200);
+      },
+      proxyUrl: '',
+      sleepFn: async (delayMs) => { sleeps.push({ delayMs, remaining: deadlineAt - Date.now() }); },
+      deadlineAt,
+    });
+
+    assert.equal(result.status, 200);
+    assert.equal(sleeps.length, 1);
+    assert.ok(sleeps[0].delayMs <= sleeps[0].remaining,
+      `retry sleep ${sleeps[0].delayMs} ms exceeds the ${sleeps[0].remaining} ms left`);
   });
 });

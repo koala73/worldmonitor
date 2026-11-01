@@ -3,7 +3,7 @@
  * Postbuild prerender script — injects critical CSS and the user-visible
  * server-rendered welcome app into the built HTML.
  */
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
@@ -252,10 +252,22 @@ async function renderSsrRoots() {
     server: { hmr: false, middlewareMode: true },
   });
   try {
-    const { renderWelcomeApp } = await server.ssrLoadModule('/src/welcome-prerender.tsx');
+    const {
+      renderWelcomeApp,
+      localizeWelcomeDocument,
+      INDEXABLE_LANDING_LOCALES,
+    } = await server.ssrLoadModule('/src/welcome-prerender.tsx');
     const { htmlToMarkdown } = await server.ssrLoadModule('../api/_md-url-twin.ts');
-    const welcomeHtml = rewriteBuiltAssetUrls(await renderWelcomeApp(), DASHBOARD_SCREENSHOT_ASSETS, 'welcome');
-
+    const rendered = [];
+    for (const locale of INDEXABLE_LANDING_LOCALES) {
+      const { html, copy } = await renderWelcomeApp(locale.id);
+      rendered.push({
+        locale,
+        copy,
+        html: rewriteBuiltAssetUrls(html, DASHBOARD_SCREENSHOT_ASSETS, `welcome ${locale.id}`),
+        markdown: locale.isDefault ? htmlToMarkdown(html, 'World Monitor') : null,
+      });
+    }
     const { renderProFirstViewport, PRO_CONTENT_SLOT } = await server.ssrLoadModule('/src/pro-first-viewport-prerender.tsx');
     const { heroSrLead } = parseProTemplateRoot(readFileSync(resolve(__dirname, '../public/pro/index.html'), 'utf-8'));
     const proShell = rewriteBuiltAssetUrls(await renderProFirstViewport(heroSrLead), [], '/pro first viewport').split(PRO_CONTENT_SLOT);
@@ -264,10 +276,7 @@ async function renderSsrRoots() {
       process.exit(1);
     }
 
-    return {
-      welcome: { html: welcomeHtml, markdown: htmlToMarkdown(welcomeHtml, 'World Monitor') },
-      proShell: { before: proShell[0], after: proShell[1] },
-    };
+    return { rendered, localizeWelcomeDocument, proShell: { before: proShell[0], after: proShell[1] } };
   } finally {
     await server.close();
   }
@@ -315,7 +324,13 @@ function rewriteBuiltAssetUrls(markup, assets, label) {
   return rewritten;
 }
 
-const { welcome: { html: welcomeContent, markdown: welcomeMarkdown }, proShell } = await renderSsrRoots();
+const { rendered: welcomeDocuments, localizeWelcomeDocument, proShell } = await renderSsrRoots();
+const englishWelcome = welcomeDocuments.find((page) => page.locale.isDefault);
+if (!englishWelcome) {
+  console.error('[prerender] ERROR: indexable landing locales must include a default English row.');
+  process.exit(1);
+}
+const welcomeMarkdown = englishWelcome.markdown;
 
 // GitHub star InteractionCounter: populated from the committed freeze
 // snapshot, never hardcoded and never fetched at build time (offline builds
@@ -364,11 +379,11 @@ function fillProofFacts(html, file) {
 
 function spliceProFirstViewport(html) {
   const { whole, overview } = parseProTemplateRoot(html);
-  // Function replacement, for the same $-expansion reason as spliceEmptyRoot.
+  // Function replacement, for the same $-expansion reason as injectWelcomeRoot.
   return html.replace(whole, () => `<div id="root">${proShell.before}${overview}${proShell.after}</div>`);
 }
 
-function spliceEmptyRoot(html, file, content, rootAttributes) {
+function injectWelcomeRoot(html, file, content, localeId) {
   const emptyRoot = '<div id="root"></div>';
   if (!html.includes(emptyRoot)) {
     console.error(`[prerender] ERROR: ${file} has no empty <div id="root"></div> to inject into.`);
@@ -382,27 +397,41 @@ function spliceEmptyRoot(html, file, content, rootAttributes) {
   // splices a SECOND `<div id="root">` into the page and hydration mounts on
   // the wrong one; a backtick (which React does not escape) splices the whole
   // preceding document. A function replacement is taken literally.
+  const rootAttributes = ` data-wm-prerendered="welcome" data-wm-prerender-lang="${localeId}"`;
   return html.replace(emptyRoot, () => `<div id="root"${rootAttributes}>${content}</div>`);
 }
 
-const PAGES = [
-  { file: 'index.html', renderRoot: spliceProFirstViewport, headTags: [] },
-  {
-    file: 'welcome.html',
-    renderRoot: (html, file) => spliceEmptyRoot(html, file, welcomeContent, ' data-wm-prerendered="welcome" data-wm-prerender-lang="en"'),
-    headTags: [heroImagePreloadTag(welcomeContent)],
-  },
-];
+const indexPath = resolve(__dirname, '../public/pro', 'index.html');
+let indexHtml = readFileSync(indexPath, 'utf-8');
+indexHtml = inlineCriticalCss(indexHtml, 'index.html');
+indexHtml = injectGithubStars(indexHtml, 'index.html');
+indexHtml = fillProofFacts(indexHtml, 'index.html');
+indexHtml = spliceProFirstViewport(indexHtml);
+if (!indexHtml.includes('<div id="root">')) {
+  console.error('[prerender] ERROR: index.html has no #root mount point.');
+  process.exit(1);
+}
+writeFileSync(indexPath, indexHtml, 'utf-8');
+console.log('[prerender] Injected critical CSS and visible content into public/pro/index.html');
 
-for (const { file, renderRoot, headTags } of PAGES) {
-  const htmlPath = resolve(__dirname, '../public/pro', file);
-  let html = readFileSync(htmlPath, 'utf-8');
-  html = inlineCriticalCss(html, file, headTags);
-  html = injectGithubStars(html, file);
-  html = fillProofFacts(html, file);
-  html = renderRoot(html, file);
-  writeFileSync(htmlPath, html, 'utf-8');
-  console.log(`[prerender] Injected critical CSS and visible content into public/pro/${file}`);
+const welcomePath = resolve(__dirname, '../public/pro', 'welcome.html');
+let welcomeBase = readFileSync(welcomePath, 'utf-8');
+welcomeBase = inlineCriticalCss(welcomeBase, 'welcome.html', [heroImagePreloadTag(englishWelcome.html)]);
+welcomeBase = injectGithubStars(welcomeBase, 'welcome.html');
+welcomeBase = fillProofFacts(welcomeBase, 'welcome.html');
+
+for (const page of welcomeDocuments) {
+  const injected = injectWelcomeRoot(welcomeBase, 'welcome.html', page.html, page.locale.id);
+  const html = localizeWelcomeDocument(injected, page.locale, page.copy);
+  if (page.locale.isDefault) {
+    writeFileSync(welcomePath, html, 'utf-8');
+    console.log('[prerender] Injected critical CSS and visible content into public/pro/welcome.html');
+    continue;
+  }
+  const outDir = resolve(__dirname, '../public', page.locale.pathSegment);
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(resolve(outDir, 'index.html'), html, 'utf-8');
+  console.log(`[prerender] Wrote localized welcome landing public/${page.locale.pathSegment}/index.html`);
 }
 
 // Both homepage markdown selectors use the rendered HTML's content. Keep the

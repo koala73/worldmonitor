@@ -1,4 +1,8 @@
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
+import {
+  parseWildfireFiresSummary,
+  WILDFIRE_FIRES_SUMMARY_KEY,
+} from '../../../../scripts/shared/wildfire-fires-summary.mjs';
 
 // ========================================================================
 // Constants
@@ -68,7 +72,9 @@ export function makeBaselineKeyV2(type: string, region: string, weekday: number,
  */
 export const COUNT_SOURCE_KEYS = {
   news: 'news:insights:v1',
-  satellite_fires: 'wildfire:fires:v1',
+  // Derived by seed-fire-detections from the 2-5 MB canonical wildfire:fires:v1
+  // (#9509): total count plus the FIRMS clock, small enough for the 1.5 s GET.
+  satellite_fires: WILDFIRE_FIRES_SUMMARY_KEY,
   military_flights: 'military:flights:v1',
   vessels: 'theater-posture:sebuf:v1',
   ais_gaps: 'maritime:ais-gaps:v1',
@@ -186,59 +192,46 @@ function firesContentClock(
   data: unknown,
   skewLimit: number,
 ): TemporalAnomaliesContentAge | null | undefined {
-  if (data == null || typeof data !== 'object' || Array.isArray(data)) return undefined;
-  const payload = data as {
-    fireDetections?: unknown;
-    _firmsState?: unknown;
-    _firmsPartial?: unknown;
-    _firmsCount?: unknown;
-  };
+  // The summary (scripts/shared/wildfire-fires-summary.mjs) carries the FIRMS
+  // clock the canonical rows used to be scanned for: rows, newest/oldest
+  // observation (skew-filtered by the producer at seed time) and the merge's
+  // coverage flags. A present-but-unparsable summary is undatable, not absent.
+  if (data == null) return undefined;
+  const summary = parseWildfireFiresSummary(data);
+  if (!summary) return null;
+  const { firms } = summary;
   // Canonical wildfire merge preserves explicit FIRMS coverage failures even
   // when CWFIS/BC still publish. A full loss is Canada-only coverage; a partial
   // loss leaves known regions dark. Neither is a skippable empty FIRMS window —
   // returning undefined here lets a live news clock hide an incomplete global
   // source behind a fresh temporal-anomalies clock.
-  if (payload._firmsState === 'failed' || payload._firmsPartial === true) return null;
-  // Same outage, older payload shape: before the #7141 follow-up the merge
+  if (firms.state === 'failed' || firms.partial) return null;
+  // Same outage, older merge behaviour: before the #7141 follow-up the merge
   // graded FIRMS on promise settlement alone, so a total outage published
   // `{_firmsState: 'ok', _firmsCount: 0}` with Canada-only rows. The producer
-  // now marks that 'failed', but a payload written by the previous version can
-  // still be in Redis (2h TTL) across a deploy, so fail closed on the declared
-  // count too.
+  // now marks that 'failed', so fail closed on the declared count too.
   //
   // This deliberately also fails closed on a genuinely empty WORLDWIDE FIRMS
-  // window, which is indistinguishable from the outage in this payload shape.
-  // That is the intended bias: zero satellite detections across every
-  // monitored region in a 1-day window is vanishingly rare, a global FIRMS
-  // outage is not, and a false STALE_CONTENT is recoverable where a silently
-  // green monitor is the bug this contract exists to prevent. Once legacy
-  // payloads age out, the `_firmsState: 'failed'` guard above is what fires.
-  if (payload._firmsState === 'ok' && payload._firmsCount === 0) return null;
-  const fires = payload.fireDetections;
-  if (!Array.isArray(fires) || fires.length === 0) {
+  // window, which is indistinguishable from the outage in this shape. That is
+  // the intended bias: zero satellite detections across every monitored region
+  // in a 1-day window is vanishingly rare, a global FIRMS outage is not, and a
+  // false STALE_CONTENT is recoverable where a silently green monitor is the
+  // bug this contract exists to prevent.
+  if (firms.state === 'ok' && firms.count === 0) return null;
+  if (summary.totalCount === 0) {
     // A live FIRMS 1-day window can be empty in the monitored regions. That is
     // "no satellite observations right now", not "we cannot date this".
     return undefined;
   }
-  const timestamps: number[] = [];
-  let firmsRows = 0;
-  for (const fire of fires) {
-    if (!fire || typeof fire !== 'object') continue;
-    const row = fire as Record<string, unknown>;
-    const source = row.source;
-    const isFirms = source == null || source === '' || source === 'firms';
-    if (!isFirms) continue;
-    firmsRows += 1;
-    const ts = parseObservationMs(row.detectedAt, skewLimit);
-    if (ts != null) timestamps.push(ts);
-  }
-  if (firmsRows === 0) {
+  if (firms.rows === 0) {
     // Agency-only payload without an explicit FIRMS failure: skip rather than
     // clock off ignition dates that can be days old on ongoing fires.
     return undefined;
   }
-  if (timestamps.length === 0) return null;
-  return reduceTimestamps(timestamps);
+  const newest = parseObservationMs(firms.newestDetectedAt, skewLimit);
+  const oldest = parseObservationMs(firms.oldestDetectedAt, skewLimit);
+  if (newest == null || oldest == null) return null;
+  return { newestItemAt: newest, oldestItemAt: oldest };
 }
 
 /**

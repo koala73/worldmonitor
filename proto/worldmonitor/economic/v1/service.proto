@@ -9,6 +9,7 @@ import "worldmonitor/economic/v1/get_energy_prices.proto";
 import "worldmonitor/economic/v1/get_macro_signals.proto";
 import "worldmonitor/economic/v1/get_china_macro_snapshot.proto";
 import "worldmonitor/economic/v1/get_china_activity_nowcast.proto";
+import "worldmonitor/economic/v1/get_no2_activity.proto";
 import "worldmonitor/economic/v1/get_energy_capacity.proto";
 import "worldmonitor/economic/v1/get_bis_policy_rates.proto";
 import "worldmonitor/economic/v1/get_bis_exchange_rates.proto";
@@ -29,6 +30,7 @@ import "worldmonitor/economic/v1/get_eu_yield_curve.proto";
 import "worldmonitor/economic/v1/get_eu_fsi.proto";
 import "worldmonitor/economic/v1/get_economic_stress.proto";
 import "worldmonitor/economic/v1/get_fao_food_price_index.proto";
+import "worldmonitor/economic/v1/get_food_prices.proto";
 import "worldmonitor/economic/v1/get_oil_stocks_analysis.proto";
 import "worldmonitor/economic/v1/get_oil_inventories.proto";
 import "worldmonitor/economic/v1/get_energy_crisis_policies.proto";
@@ -37,6 +39,7 @@ import "worldmonitor/economic/v1/get_us_cpi_monthly.proto";
 import "worldmonitor/economic/v1/get_us_treasury_par_yield_curve.proto";
 import "worldmonitor/economic/v1/get_us_interest_rates.proto";
 import "worldmonitor/economic/v1/get_world_cpi_monthly.proto";
+import "worldmonitor/economic/v1/get_capital_flows.proto";
 import "worldmonitor/economic/v1/get_government_yield_curve.proto";
 
 // EconomicService provides APIs for macroeconomic data from FRED, World Bank, and EIA.
@@ -73,6 +76,11 @@ service EconomicService {
   // with reviewed proxy families using a deterministic, no-lookahead method.
   rpc GetChinaActivityNowcast(GetChinaActivityNowcastRequest) returns (GetChinaActivityNowcastResponse) {
     option (sebuf.http.config) = {path: "/get-china-activity-nowcast", method: HTTP_METHOD_GET};
+  }
+
+  // Sentinel-5P NO2 activity direction for 167 countries and 32 industrial clusters, year over year. Seed-backed.
+  rpc GetNo2Activity(GetNo2ActivityRequest) returns (GetNo2ActivityResponse) {
+    option (sebuf.http.config) = {path: "/get-no2-activity", method: HTTP_METHOD_GET};
   }
 
   // Retrieve cached EIA installed capacity series by energy source, with annual megawatt values for comparing available solar, wind and coal generation capacity.
@@ -175,6 +183,11 @@ service EconomicService {
     option (sebuf.http.config) = {path: "/get-fao-food-price-index", method: HTTP_METHOD_GET};
   }
 
+  // GetFoodPrices returns local-currency market prices with exact prior-week comparisons, plus dated GIEWS and Tunisia context. Missing comparisons are explicitly unavailable. Market, market type, product, origin, unit and currency must match; levels are not comparable across countries.
+  rpc GetFoodPrices(GetFoodPricesRequest) returns (GetFoodPricesResponse) {
+    option (sebuf.http.config) = {path: "/get-food-prices", method: HTTP_METHOD_GET};
+  }
+
   // GetOilStocksAnalysis retrieves the IEA oil stocks days-of-cover ranking and regional summary.
   rpc GetOilStocksAnalysis(GetOilStocksAnalysisRequest) returns (GetOilStocksAnalysisResponse) {
     option (sebuf.http.config) = {path: "/get-oil-stocks-analysis", method: HTTP_METHOD_GET};
@@ -208,6 +221,11 @@ service EconomicService {
   // GetUsInterestRates returns the effective federal funds rate, target range, H.15 Treasury yields, and SOFR. history=false is the latest point of each series. history=true is the full history. This is not the Treasury par curve.
   rpc GetUsInterestRates(GetUsInterestRatesRequest) returns (GetUsInterestRatesResponse) {
     option (sebuf.http.config) = {path: "/get-us-interest-rates", method: HTTP_METHOD_GET};
+  }
+
+  // GetCapitalFlows returns where money enters and leaves about 230 economies, and between any two, from official statistics. Per country: IMF balance-of-payments gross inflows and outflows by FDI, portfolio and other investment (quarterly where reported, annual otherwise) with derived Forbes and Warnock surge, stop, flight and retrenchment states; BIS cross-border deposits and borrowing of non-bank residents; IMF portfolio holdings of the country's securities; and IMF direct-investment positions. With country and counterpart: both directions of the pair across bank deposits and lending (with eight quarters of adjusted flows), portfolio holdings and direct investment (with both sides' figures), each leg marked reported, not_itemized or not_published. A person changing residence is not a balance-of-payments flow, so wealth migration does not appear.
+  rpc GetCapitalFlows(GetCapitalFlowsRequest) returns (GetCapitalFlowsResponse) {
+    option (sebuf.http.config) = {path: "/get-capital-flows", method: HTTP_METHOD_GET};
   }
 
   // GetWorldCpiMonthly returns one national CPI series per country, worldwide. The per-country source is chosen by precedence (national overlay, then HICP for Europe, then IMF, then OECD) with a staleness fall-through, so each row carries its source, frequency and index base. Month-over-month and year-over-year changes are computed from that index; levels are not comparable across sources. history=false is the latest period per country. history=true is the stored 10-year window.

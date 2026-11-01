@@ -34,7 +34,7 @@ import { isMainModule } from './lib/main-module.mjs';
 import { defaultRedisEval } from './lib/_upstash-pipeline.mjs';
 import {
   createXPostBudget,
-  DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  X_SHARED_COVERAGE_MODEL,
 } from './lib/x-post-budget.cjs';
 
 export const COMPANY_MONITORING_WORKER_HEALTH_KEY = 'company-monitoring:worker-health:v1';
@@ -750,7 +750,7 @@ async function main() {
   const client = new ConvexHttpClient(convexUrl, { fetch: createConvexFetch() });
   const xPostBudget = createXPostBudget({
     evalCommand: defaultRedisEval,
-    dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+    ...X_SHARED_COVERAGE_MODEL,
   });
   const executeClaim = createCompanyMonitoringExecutor({
     exaExecutor: createExaCohortExecutor({

@@ -696,7 +696,7 @@ describe('batch gateway access', () => {
     }]);
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.includes('/api/internal-validate-api-key')) return Response.json({ userId });
+      if (url.includes('/api/internal-validate-api-key')) return Response.json({ id: 'key_batch', userId, keyKind: 'api' });
       if (url.includes('/api/internal-entitlements')) return Response.json({
         planKey: 'api_starter', validUntil: Date.now() + 86_400_000,
         features: { tier: 2, apiAccess: true, apiRateLimit: 60, apiDailyAllowance: 2 },

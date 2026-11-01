@@ -66,7 +66,10 @@ const REDIRECT_URI = 'https://claude.ai/api/mcp/auth_callback';
 const USER_ID = 'user_pro_123';
 const MCP_TOKEN_ID = 'k57_mcp_token_id';
 const TOKEN_TTL_SECONDS = 3600;
-const REFRESH_TTL_SECONDS = 604800;
+// Idle window for a refresh token. Every rotation writes a fresh token with the
+// full window, so a connector that refreshes at least once in 30 days never
+// expires; one idle longer than that has to reconnect.
+const REFRESH_TTL_SECONDS = 30 * 24 * 3600;
 
 // PKCE: known verifier → known challenge (BASE64URL of SHA-256).
 const CODE_VERIFIER = 'a'.repeat(64);
@@ -718,7 +721,14 @@ describe('U6 tokenHandler — authorization_code (legacy)', () => {
 describe('U6 tokenHandler — refresh_token (Pro)', () => {
   it('Pro refresh preserves kind, userId, mcpTokenId, scope, family_id', async () => {
     await ensureFixtures();
-    const { redis, deps } = makeDeps();
+    let validationOptions;
+    const { redis, deps } = makeDeps({
+      validateProMcpToken: async (tokenId, options) => {
+        assert.equal(tokenId, MCP_TOKEN_ID);
+        validationOptions = options;
+        return { ok: 'valid', userId: USER_ID };
+      },
+    });
     const FAMILY = 'family_original_xxx';
     redis.store.set('oauth:refresh:rt-1', {
       kind: 'pro',
@@ -739,6 +749,7 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
       deps,
     );
     assert.equal(resp.status, 200);
+    assert.deepEqual(validationOptions, { recordUsage: false });
     const body = await resp.json();
     assert.equal(body.scope, 'mcp_pro');
     assert.equal(body.refresh_token, 'uuid_0202');
@@ -2268,5 +2279,201 @@ describe('oauth/token rate-limit degradation (#7270)', () => {
     assert.equal(events[0].route, '/api/oauth/token');
     assert.equal(deliveryHeaders.length, 1);
     assert.equal(deliveryHeaders[0]['User-Agent'], 'worldmonitor-edge/1.0');
+  });
+});
+
+describe('Vercel Connect public client, end to end', () => {
+  // https://vercel.com/docs/connect/providers: DCR with the exact callback
+  // below, token_endpoint_auth_method "none", PKCE S256, and the
+  // authorization_code + refresh_token grants.
+  const VERCEL_CONNECT = 'https://connect.vercel.com/callback';
+  const ENTERPRISE_KEY = 'enterprise-vercel-connect-key';
+  const ENV = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'WORLDMONITOR_VALID_KEYS'];
+
+  it('registers, authorizes, exchanges the code with PKCE, and refreshes, with expires_in on both grants', async () => {
+    const { redis, deps } = makeDeps();
+    const savedEnv = Object.fromEntries(ENV.map((k) => [k, process.env[k]]));
+    const savedFetch = globalThis.fetch;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
+    process.env.WORLDMONITOR_VALID_KEYS = ENTERPRISE_KEY;
+    globalThis.fetch = async (input, init = {}) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      assert.equal(url.origin, 'https://redis.test', `unexpected fetch ${url}`);
+      const [, op, rawKey] = url.pathname.split('/');
+      const reply = (result) => Response.json({ result });
+      if (op === 'get') return reply(redis.store.get(decodeURIComponent(rawKey)) ?? null);
+      if (op === 'getdel') {
+        const key = decodeURIComponent(rawKey);
+        const value = redis.store.get(key) ?? null;
+        redis.store.delete(key);
+        return reply(value);
+      }
+      const body = JSON.parse(init.body);
+      const pipeline = Array.isArray(body[0]);
+      const results = (pipeline ? body : [body]).map(([cmd, key, value]) => {
+        if (['eval', 'evalsha'].includes(cmd.toLowerCase())) return { result: [9, 10] };
+        assert.equal(cmd, 'SET');
+        redis.store.set(key, value);
+        return { result: 'OK' };
+      });
+      return Response.json(pipeline ? results : results[0]);
+    };
+
+    try {
+      const { default: registerHandler } = await import('../api/oauth/register.js');
+      const { default: authorizeHandler } = await import('../api/oauth/authorize.js');
+
+      const registered = await registerHandler(new Request('https://worldmonitor.app/oauth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_name: 'Vercel Connect',
+          redirect_uris: [VERCEL_CONNECT],
+          token_endpoint_auth_method: 'none',
+          grant_types: ['authorization_code', 'refresh_token'],
+          response_types: ['code'],
+        }),
+      }));
+      assert.equal(registered.status, 201);
+      const { client_id } = await registered.json();
+
+      const host = 'worldmonitor.app';
+      const authorizeUrl = new URL(`https://${host}/oauth/authorize`);
+      authorizeUrl.search = new URLSearchParams({
+        client_id,
+        redirect_uri: VERCEL_CONNECT,
+        response_type: 'code',
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: 'S256',
+        state: 'vercel_state',
+      }).toString();
+      const consentPage = await authorizeHandler(new Request(authorizeUrl, { headers: { host } }));
+      assert.equal(consentPage.status, 200, 'consent page renders for the Vercel Connect callback');
+      const cookie = (consentPage.headers.get('Set-Cookie') ?? '').split(';')[0];
+      const nonceKey = [...redis.store.keys()].find((k) => k.startsWith('oauth:nonce:'));
+      assert.ok(nonceKey, 'GET stores the nonce');
+
+      const consent = await authorizeHandler(new Request(`https://${host}/oauth/authorize`, {
+        method: 'POST',
+        headers: { host, origin: `https://${host}`, cookie, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ api_key: ENTERPRISE_KEY, _nonce: nonceKey.slice('oauth:nonce:'.length) }).toString(),
+      }));
+      assert.equal(consent.status, 302);
+      const callback = new URL(consent.headers.get('Location'));
+      assert.equal(callback.origin + callback.pathname, VERCEL_CONNECT);
+      assert.equal(callback.searchParams.get('state'), 'vercel_state');
+      assert.equal(callback.searchParams.get('iss'), `https://${host}`);
+      const code = callback.searchParams.get('code');
+      assert.ok(code);
+
+      const exchanged = await tokenHandler(makeReq('authorization_code', {
+        code, code_verifier: CODE_VERIFIER, client_id, redirect_uri: VERCEL_CONNECT,
+      }), deps);
+      assert.equal(exchanged.status, 200);
+      const tokens = await exchanged.json();
+      assert.equal(tokens.token_type, 'Bearer');
+      assert.equal(tokens.expires_in, TOKEN_TTL_SECONDS);
+      assert.ok(tokens.access_token);
+      assert.ok(tokens.refresh_token);
+
+      const refreshed = await tokenHandler(makeReq('refresh_token', {
+        refresh_token: tokens.refresh_token, client_id,
+      }), deps);
+      assert.equal(refreshed.status, 200);
+      const rotated = await refreshed.json();
+      assert.equal(rotated.token_type, 'Bearer');
+      assert.equal(rotated.expires_in, TOKEN_TTL_SECONDS);
+      assert.notEqual(rotated.refresh_token, tokens.refresh_token);
+    } finally {
+      globalThis.fetch = savedFetch;
+      for (const [k, v] of Object.entries(savedEnv)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Refresh-token idle window
+// ---------------------------------------------------------------------------
+
+/**
+ * Claude refreshes only when the connector is used. With a 7-day refresh TTL,
+ * a connector left alone for a week came back as "Connection has expired" and
+ * needed Reconnect. The window is now 30 days and slides: each rotation issues a
+ * token with the whole window again. The replay evidence (family pointer) and
+ * the family revocation marker must live exactly as long as a token can, or a
+ * replay late in the window would no longer revoke the family (GHSA-f6gj).
+ */
+describe('refresh-token idle window', () => {
+  function assertFullRefreshWindow(ops, refreshToken, familyId) {
+    const cmd = findSetCommand(ops, `oauth:refresh:${refreshToken}`);
+    assert.ok(cmd, `expected SET for oauth:refresh:${refreshToken}`);
+    assert.deepEqual(cmd.slice(3), ['EX', 30 * 24 * 3600], 'refresh token gets the full 30-day window');
+    assertFamilyPointerSetEx(ops, `oauth:famptr:${refreshToken}`, familyId, 30 * 24 * 3600);
+  }
+
+  const CODE_RECORDS = {
+    pro: {
+      kind: 'pro', userId: USER_ID, mcpTokenId: MCP_TOKEN_ID, scope: 'mcp_pro',
+    },
+    user_key: {
+      kind: 'user_key', api_key_hash: 'a'.repeat(64), scope: 'mcp',
+    },
+  };
+
+  for (const [label, codeRecord] of Object.entries(CODE_RECORDS)) {
+    it(`${label}: the code exchange and every rotation write a full 30-day window`, async () => {
+      const { redis, deps } = makeDeps();
+      redis.store.set('oauth:code:idle', {
+        ...codeRecord,
+        client_id: CLIENT_ID,
+        redirect_uri: REDIRECT_URI,
+        code_challenge: CODE_CHALLENGE,
+      });
+      redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+      const issued = await tokenHandler(makeReq('authorization_code', {
+        code: 'idle', code_verifier: CODE_VERIFIER, client_id: CLIENT_ID, redirect_uri: REDIRECT_URI,
+      }), deps);
+      assert.equal(issued.status, 200);
+      let refreshToken = (await issued.json()).refresh_token;
+      const familyId = JSON.parse(redis.store.get(`oauth:refresh:${refreshToken}`)).family_id;
+      assertFullRefreshWindow(redis.ops, refreshToken, familyId);
+
+      // Two rotations: each must restart the window, not inherit what is left.
+      for (let i = 0; i < 2; i += 1) {
+        redis.ops.length = 0;
+        const rotated = await tokenHandler(makeReq('refresh_token', {
+          refresh_token: refreshToken, client_id: CLIENT_ID,
+        }), deps);
+        assert.equal(rotated.status, 200);
+        const next = (await rotated.json()).refresh_token;
+        assert.notEqual(next, refreshToken, 'rotation still issues a new refresh token');
+        assertFullRefreshWindow(redis.ops, next, familyId);
+        refreshToken = next;
+      }
+    });
+  }
+
+  it('a family revoked on replay stays revoked for the whole window', async () => {
+    const { redis, deps } = makeDeps();
+    const FAMILY = 'fam-window';
+    redis.store.set('oauth:refresh:rt-window', {
+      kind: 'pro', client_id: CLIENT_ID, userId: USER_ID, mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro', family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-window', JSON.stringify(FAMILY));
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    const first = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-window', client_id: CLIENT_ID }), deps);
+    assert.equal(first.status, 200);
+    redis.ops.length = 0;
+    const replay = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-window', client_id: CLIENT_ID }), deps);
+    assert.equal(replay.status, 400);
+    assert.equal((await replay.json()).error, 'invalid_grant');
+    assertSetEx(redis.ops, `oauth:famrev:${FAMILY}`, '1', 30 * 24 * 3600);
   });
 });

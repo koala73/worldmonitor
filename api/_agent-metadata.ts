@@ -26,13 +26,13 @@ export function resolveMetadataOrigin(req: Request): string {
 }
 
 /**
- * The published auth.md walkthrough for an origin. The apex is the one allowed
- * host that does not serve it: Cloudflare 301s apex `/auth.md` to www
- * (ARCHITECTURE.md §2 exemption list), and agents following the advertised
- * link off the discovered host drop out of the connect flow.
+ * The published auth.md walkthrough for an origin. Every allowed host serves
+ * it without a redirect: the apex `/auth.md` is on the Cloudflare apex-to-www
+ * exemption list (ARCHITECTURE.md §2). Readiness scanners require the skill
+ * URL to equal `<issuer>/auth.md`, so it stays on the request origin.
  */
 export function authSkillUrl(origin: string): string {
-  return `${origin === FALLBACK_ORIGIN ? 'https://www.worldmonitor.app' : origin}/auth.md`;
+  return `${origin}/auth.md`;
 }
 
 /**

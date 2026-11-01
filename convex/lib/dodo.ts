@@ -43,6 +43,8 @@ export type CheckoutSessionPayload = Parameters<
 
 export interface CheckoutSessionResult {
   checkout_url: string;
+  /** Server-side only: logged for the funnel, stripped before the buyer response. */
+  session_id?: string;
 }
 
 /**
@@ -87,5 +89,5 @@ export async function createDodoCheckoutSession(
       `Dodo checkout session ${session.session_id} has no checkout_url`,
     );
   }
-  return { checkout_url: session.checkout_url };
+  return { checkout_url: session.checkout_url, session_id: session.session_id };
 }

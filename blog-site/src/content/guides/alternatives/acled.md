@@ -5,13 +5,13 @@ metaTitle: "ACLED alternatives for conflict monitoring | World Monitor"
 keywords: "ACLED buyers, acled alternatives for intelligence teams, global intelligence tools"
 audience: "ACLED buyers"
 pubDate: "2026-10-02"
-modifiedDate: "2026-10-16"
+modifiedDate: "2026-10-18"
 author: "World Monitor editorial team"
 authorType: "Organization"
 authorUrl: "https://www.worldmonitor.app/"
 ---
 
-This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 16, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
+This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 18, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
 
 ## TL;DR
 
@@ -34,7 +34,7 @@ Most people who look for an ACLED alternative are not unhappy with the methodolo
 
 **Best when you need live monitoring, alerts and an API rather than a coded dataset.**
 
-The [free map](https://www.worldmonitor.app/dashboard) needs no account and shows conflict alongside protests, shipping, aviation, infrastructure outages, hazards, cyber and markets. On the Pro plan, alert rules filter by event type, severity (all, high or critical) and country, and deliver to Slack, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256. Delivery is real time or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). Developers get a REST API on a separate API plan, Python, Go and Ruby SDKs, an npm CLI, and an MCP server with Pro. Each outlet has an editorial tier and a propaganda-risk band: the News panel shows them as badges, the free `get_sources` MCP tool returns them for any outlet, and the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme.
+The [free map](https://www.worldmonitor.app/dashboard) needs no account and shows conflict alongside protests, shipping, aviation, infrastructure outages, hazards, cyber and markets. On the Pro plan, alert rules filter by event type, severity (all, high or critical) and country, and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256. Delivery is real time or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). Developers get a REST API on a separate API plan, Python, Go and Ruby SDKs, an npm CLI, and an MCP server with Pro. Each outlet has an editorial tier and a propaganda-risk band: the News panel shows them as badges, the free `get_sources` MCP tool returns them for any outlet, and the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme.
 
 The tradeoff: World Monitor aggregates published reports and does not verify events on the ground. It is not a coded research dataset, so do not use map marker counts in place of ACLED event counts.
 
@@ -78,7 +78,7 @@ World Monitor's map is free with no account, and Liveuamap has a free map. Neith
 
 **Can I get conflict alerts instead of a dataset?**
 
-Yes. World Monitor alert rules filter by event type, severity and country and deliver to Slack, Discord, Telegram, email, browser push or an HMAC-signed webhook, as documented in its [notifications reference](https://www.worldmonitor.app/docs/api-notifications).
+Yes. World Monitor alert rules filter by event type, severity and country and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push or an HMAC-signed webhook, as documented in its [notifications reference](https://www.worldmonitor.app/docs/api-notifications).
 
 **What should a migration prove?**
 

@@ -22,7 +22,7 @@ const MAX_SCAN_ITERATIONS = 5;
 // durable tenant data, not a cache.
 const BLOCKLIST_PREFIXES = [
   'rl:', '__', 'oauth:', 'mcp-grant:', 'wm:slack:oauth:', 'wm:discord:oauth:',
-  'internal-mcp-replay:', 'webhook:',
+  'internal-mcp-replay:', 'webhook:', 'desktop-auth:',
 ];
 const DURABLE_DATA_PREFIXES = ['military:bases:', 'conflict:iran-events:', 'conflict:ucdp-events:'];
 
@@ -33,12 +33,18 @@ function getKeyPrefix() {
   return `${env}:${sha}:`;
 }
 
+// Strip any deployment prefixes getKeyPrefix() writes, so another
+// deployment's keys are judged by their logical name.
+function logicalKey(key) {
+  return key.replace(/^(?:(?:preview|development):[^:]+:)+/, '');
+}
+
 function isBlocklisted(key) {
-  return BLOCKLIST_PREFIXES.some(p => key.startsWith(p));
+  return BLOCKLIST_PREFIXES.some(p => logicalKey(key).startsWith(p));
 }
 
 function isDurableData(key) {
-  return DURABLE_DATA_PREFIXES.some(p => key.startsWith(p));
+  return DURABLE_DATA_PREFIXES.some(p => logicalKey(key).startsWith(p));
 }
 
 async function redisPipeline(commands) {

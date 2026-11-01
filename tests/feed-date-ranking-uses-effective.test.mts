@@ -62,12 +62,12 @@ const ALLOW_LIST: AllowEntry[] = [
   // feed-date.ts re-exports it, so its former implementation entries are gone.
   {
     file: 'src/services/feed-date.ts',
-    line: 77,
+    line: 79,
     reason: 'displayPubDateMs implementation — preserves display timestamps for cache serialization; not used as a freshness comparator.',
   },
   {
     file: 'src/services/feed-date.ts',
-    line: 84,
+    line: 86,
     reason: 'displayPubDateMs implementation — string-input branch reconstructs a display timestamp; not used as a freshness comparator.',
   },
   // generateClusterId + cluster date aggregation moved with clusterNewsCore to
@@ -97,7 +97,7 @@ const ALLOW_LIST: AllowEntry[] = [
   },
   {
     file: 'shared/news-clustering-core.js',
-    line: 210,
+    line: 211,
     reason: 'cluster date aggregation for firstSeen/lastUpdated metadata; not a per-item ranking comparator.',
   },
   {
@@ -107,7 +107,7 @@ const ALLOW_LIST: AllowEntry[] = [
   },
   {
     file: 'src/services/trending-keywords.ts',
-    line: 256,
+    line: 271,
     reason: 'headlineKey identity computation — used for dedupe, not freshness ranking.',
   },
 ];

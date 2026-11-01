@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   audit:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     # Worst case that still reaches the reporter: about 3 for checkout and npm ci; at most 8 for the Chromium
     # install (a hung install fails the run instead); at most 3.5 for resolving channel pages (RESOLVE_BUDGET_MS,

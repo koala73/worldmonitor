@@ -22,7 +22,7 @@ const statusBreaker = createCircuitBreaker<ListServiceStatusesResponse>({ name: 
 const ddosBreaker = createCircuitBreaker<ListInternetDdosAttacksResponse>({ name: 'DDoS Attacks', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const trafficAnomaliesBreaker = createCircuitBreaker<ListInternetTrafficAnomaliesResponse>({ name: 'Traffic Anomalies', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
-const emptyOutageFallback: ListInternetOutagesResponse = { outages: [], pagination: undefined };
+const emptyOutageFallback: ListInternetOutagesResponse = { outages: [], pagination: undefined, fetchedAt: 0 };
 const emptyStatusFallback: ListServiceStatusesResponse = { statuses: [] };
 const emptyDdosFallback: ListInternetDdosAttacksResponse = { protocol: [], vector: [], dateRangeStart: '', dateRangeEnd: '', topTargetLocations: [] };
 const emptyAnomaliesFallback: ListInternetTrafficAnomaliesResponse = { anomalies: [], totalCount: 0 };

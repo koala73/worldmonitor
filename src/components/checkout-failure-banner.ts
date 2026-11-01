@@ -16,6 +16,7 @@ import {
   startCheckout,
 } from '@/services/checkout';
 import { t } from '@/services/i18n';
+import { classifySyntheticCheckoutError } from '@/services/checkout-errors';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 
@@ -72,7 +73,7 @@ export function showCheckoutFailureBanner(rawStatus: string): void {
       <line x1="12" y1="8" x2="12" y2="12"/>
       <line x1="12" y1="16" x2="12.01" y2="16"/>
     </svg>
-    <span>${t('components.checkoutFailureBanner.message', { defaultValue: "Payment couldn't be completed. No charge was made." })}</span>
+    <span id="cf-message">${t('components.checkoutFailureBanner.message', { defaultValue: "Payment couldn't be completed. No charge was made." })}</span>
     ${retryButton}
     <button id="cf-dismiss-btn" aria-label="${t('components.checkoutFailureBanner.dismiss', { defaultValue: 'Dismiss' })}" style="background:transparent;color:#fff;border:none;cursor:pointer;font-size:calc(18px * var(--wm-panel-effective-scale, 1));padding:0 4px;line-height:1;">&times;</button>
   `, "legacy direct innerHTML migration"));
@@ -94,8 +95,16 @@ export function showCheckoutFailureBanner(rawStatus: string): void {
       }
       let succeeded = false;
       try {
+        const { parseDodoProductId } = await import('@/config/products');
+        const productId = parseDodoProductId(attempt.productId);
+        if (productId === null) {
+          clearCheckoutAttempt('dismissed');
+          retryBtn?.remove();
+          banner.querySelector('#cf-message')!.textContent = classifySyntheticCheckoutError('invalid_product').userMessage;
+          return;
+        }
         succeeded = await startCheckout(
-          attempt.productId,
+          productId,
           {
             referralCode: attempt.referralCode,
             discountCode: attempt.discountCode,
