@@ -305,6 +305,7 @@ const HOST_ORIGINS = Object.freeze({
   'hacker-news.firebaseio.com': 'US',
   'health.aws.amazon.com': 'US',
   'hnrss.org': 'US',
+  'hub.arcgis.com': 'US',
   'humanprogress.org': 'US',
   'inc42.com': 'IN',
   'indianexpress.com': 'IN',

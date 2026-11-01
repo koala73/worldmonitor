@@ -9,9 +9,15 @@ const TTL = 43_200; // 12h — 2× the 6h cron interval
 
 const ARCGIS_BASE =
   'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query';
+// The Hub's CSV export of the same layer. It is served from cache, so one
+// request returns every chokepoint while the query service above times out
+// (since 2026-10-27, queries past ~10 s return 200 "Invalid query parameters").
+const CSV_EXPORT_URL =
+  'https://hub.arcgis.com/api/download/v1/items/3da2b9ca97684916b75c4013f95d18ab/csv?redirect=true&layers=0';
+const CSV_TIMEOUT_MS = 45_000;
 const PAGE_SIZE = 2000;
 const FETCH_TIMEOUT = 30_000;
-const HISTORY_DAYS = 180;
+export const HISTORY_DAYS = 180;
 const CONCURRENCY = 3;
 const DAY_MS = 24 * 60 * 60 * 1000;
 // Year-earlier baseline: the 12 months ending one year before the seed, so a
@@ -191,6 +197,77 @@ export function buildHistory(features) {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
+const CSV_NUMERIC_FIELDS = [
+  'n_container', 'n_dry_bulk', 'n_general_cargo', 'n_roro', 'n_tanker', 'n_total',
+  'capacity_container', 'capacity_dry_bulk', 'capacity_general_cargo', 'capacity_roro', 'capacity_tanker',
+];
+
+/**
+ * The chokepoint records from the Hub CSV export, in the shape
+ * runFetchPipeline returns. Rows become the query service's features (its
+ * DateOnly `date` comes back as YYYY-MM-DD), so history and WoW go through
+ * buildHistory and computeWow unchanged, and the baseline is the outStatistics
+ * avg/count of n_total over the same window. The export has no quoted fields,
+ * and a quoted comma could only shift columns in an untracked port's row.
+ * Throws when the header or every chokepoint's history is missing, so the
+ * caller can fall back to the query service.
+ */
+export function chokepointsFromCsv(text, sinceEpoch, window) {
+  const lines = text.replace(/^\uFEFF/, '').split('\n');
+  const columns = lines[0].trim().split(',');
+  const col = Object.fromEntries(columns.map((name, i) => [name, i]));
+  for (const name of ['date', 'portname', ...CSV_NUMERIC_FIELDS]) {
+    if (!(name in col)) throw new Error(`CSV export missing column ${name}`);
+  }
+  const idByName = new Map(CHOKEPOINTS.map(cp => [cp.name, cp.id]));
+  const sinceDay = formatDate(sinceEpoch);
+  const baselineEndDay = formatDate(window.toEpoch);
+  const features = {};
+  const baselineTotals = {};
+  for (const line of lines.slice(1)) {
+    const cells = line.split(',');
+    const id = idByName.get(cells[col.portname]);
+    if (!id) continue;
+    // A cut-off or non-numeric row would publish NaN counts; reject the
+    // export so the caller falls back to the query service.
+    if (cells.length < columns.length || CSV_NUMERIC_FIELDS.some(name => cells[col[name]] !== '' && !Number.isFinite(Number(cells[col[name]])))) {
+      throw new Error(`CSV export has a malformed row for ${cells[col.portname]}`);
+    }
+    const date = cells[col.date].replaceAll('/', '-');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || formatDate(Date.parse(`${date}T00:00:00Z`)) !== date) {
+      throw new Error(`CSV export has an invalid date for ${cells[col.portname]}`);
+    }
+    if (date >= window.from && date < baselineEndDay && cells[col.n_total] !== '') {
+      (baselineTotals[id] ??= []).push(Number(cells[col.n_total]));
+    }
+    if (date < sinceDay) continue;
+    const attributes = { date };
+    for (const name of CSV_NUMERIC_FIELDS) attributes[name] = cells[col[name]] === '' ? null : Number(cells[col[name]]);
+    (features[id] ??= []).push({ attributes });
+  }
+  const result = {};
+  for (const [id, rows] of Object.entries(features)) {
+    const history = buildHistory(rows);
+    const totals = baselineTotals[id] ?? [];
+    const stats = { avg_total: totals.length ? totals.reduce((a, b) => a + b, 0) / totals.length : null, day_count: totals.length };
+    result[id] = { history, wowChangePct: computeWow(history), baseline: buildBaseline(stats, window) };
+  }
+  if (Object.keys(result).length === 0) throw new Error('CSV export has no chokepoint rows in the history window');
+  return result;
+}
+
+async function fetchCsvExport(fetchDeadlineAtMs) {
+  const timeoutMs = Number.isFinite(fetchDeadlineAtMs)
+    ? Math.max(0, Math.min(CSV_TIMEOUT_MS, fetchDeadlineAtMs - Date.now()))
+    : CSV_TIMEOUT_MS;
+  const resp = await fetch(CSV_EXPORT_URL, {
+    headers: { 'User-Agent': CHROME_UA, Accept: 'text/csv' },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.text();
+}
+
 /**
  * Run the chokepoint fetch pipeline with batched concurrency + sequential
  * retry-on-empty. Extracted so tests can inject a mock `fetchPagesFn`
@@ -367,35 +444,79 @@ export function mergeWithPrevious(fresh, previous, chokepointIds, nowMs = Date.n
   const result = { ...fresh };
   const carried = [];
   const expired = [];
+  const absent = [];
+  const keptNewer = [];
   const prior = previous?.data && typeof previous.data === 'object' ? previous.data : {};
   const snapshotFetchedAt = Number(previous?.meta?.fetchedAt);
   for (const id of chokepointIds) {
-    if (result[id]) continue;
     const entry = prior[id];
-    if (!entry?.history?.length) continue;
-    const fetchedAt = Number.isFinite(entry.fetchedAt) ? entry.fetchedAt : snapshotFetchedAt;
-    if (!Number.isFinite(fetchedAt) || nowMs - fetchedAt > CARRY_FORWARD_MAX_AGE_MS) {
+    const fetchedAt = Number.isFinite(entry?.fetchedAt) ? entry.fetchedAt : snapshotFetchedAt;
+    const carryable = entry?.history?.length > 0
+      && Number.isFinite(fetchedAt) && nowMs - fetchedAt <= CARRY_FORWARD_MAX_AGE_MS;
+    if (result[id]) {
+      // The cached CSV export can trail a query-fallback run; never let it
+      // move a chokepoint's history backward.
+      const freshLast = result[id].history?.at(-1)?.date ?? '';
+      if (carryable && entry.history.at(-1).date > freshLast) {
+        result[id] = { ...entry, fetchedAt, carriedForward: true };
+        keptNewer.push(id);
+      }
+      continue;
+    }
+    if (!entry?.history?.length) {
+      absent.push(id);
+      continue;
+    }
+    if (!carryable) {
       expired.push(id);
       continue;
     }
     result[id] = { ...entry, fetchedAt, carriedForward: true };
     carried.push(id);
   }
-  return { result, carried, expired };
+  return { result, carried, expired, absent, keptNewer };
+}
+
+const lastHistoryDate = entry => entry?.history?.at(-1)?.date ?? '';
+
+async function fetchFresh(sinceEpoch, window, fetchDeadlineAtMs, prior) {
+  try {
+    const fresh = chokepointsFromCsv(await fetchCsvExport(fetchDeadlineAtMs), sinceEpoch, window);
+    const noBaseline = Object.keys(fresh).filter(id => !fresh[id].baseline);
+    console.log(`[PortWatch] source=hub-csv: ${Object.keys(fresh).length} chokepoints${noBaseline.length ? `, baseline withheld for ${noBaseline.join(', ')}` : ''}`);
+    // Query what the export lacks, and what it trails: the cached export can
+    // end before history an earlier query-fallback run already published.
+    const candidates = CHOKEPOINTS.filter(cp => !fresh[cp.id] || lastHistoryDate(prior[cp.id]) > lastHistoryDate(fresh[cp.id]));
+    if (candidates.length === 0) return fresh;
+    console.warn(`[PortWatch] CSV export lacks or trails ${candidates.map(cp => cp.id).join(', ')}; querying ArcGIS for them`);
+    const queried = await runFetchPipeline(candidates, sinceEpoch, fetchAllPages, 500, {
+      fetchBaselineFn: fetchBaselineStats,
+      baselineWindow: window,
+      fetchDeadlineAtMs,
+    });
+    for (const [id, entry] of Object.entries(queried)) {
+      if (lastHistoryDate(entry) > lastHistoryDate(fresh[id])) fresh[id] = entry;
+    }
+    return fresh;
+  } catch (e) {
+    console.warn(`[PortWatch] source=arcgis-query (csv failed: ${e?.message || e})`);
+    return runFetchPipeline(CHOKEPOINTS, sinceEpoch, fetchAllPages, 500, {
+      fetchBaselineFn: fetchBaselineStats,
+      baselineWindow: window,
+      fetchDeadlineAtMs,
+    });
+  }
 }
 
 export async function fetchAll({ fetchDeadlineAtMs = null } = {}) {
   const nowMs = Date.now();
   const sinceEpoch = nowMs - HISTORY_DAYS * DAY_MS;
-  const fresh = await runFetchPipeline(CHOKEPOINTS, sinceEpoch, fetchAllPages, 500, {
-    fetchBaselineFn: fetchBaselineStats,
-    baselineWindow: baselineWindow(),
-    fetchDeadlineAtMs,
-  });
+  const previous = await readSeedSnapshot(CANONICAL_KEY, { strict: true, includeEnvelopeMeta: true });
+  const prior = previous?.data && typeof previous.data === 'object' ? previous.data : {};
+  const fresh = await fetchFresh(sinceEpoch, baselineWindow(nowMs), fetchDeadlineAtMs, prior);
   if (Object.keys(fresh).length === 0) throw new Error('No chokepoints returned data');
   for (const entry of Object.values(fresh)) entry.fetchedAt = nowMs;
-  const previous = await readSeedSnapshot(CANONICAL_KEY, { strict: true, includeEnvelopeMeta: true });
-  const { result, carried, expired } = mergeWithPrevious(
+  const { result, carried, expired, absent, keptNewer } = mergeWithPrevious(
     fresh,
     previous,
     CHOKEPOINTS.map(cp => cp.id),
@@ -406,6 +527,12 @@ export async function fetchAll({ fetchDeadlineAtMs = null } = {}) {
   }
   if (expired.length > 0) {
     console.warn(`[PortWatch] Previous entry too old to carry (>${CARRY_FORWARD_MAX_AGE_MS / DAY_MS}d), dropping: ${expired.join(', ')}`);
+  }
+  if (keptNewer.length > 0) {
+    console.warn(`[PortWatch] Previous history is newer than this run, keeping it: ${keptNewer.join(', ')}`);
+  }
+  if (absent.length > 0) {
+    console.warn(`[PortWatch] No previous entry to carry, missing from this publish: ${absent.join(', ')}`);
   }
   console.log(`[PortWatch] ${Object.keys(fresh).length} fresh + ${carried.length} carried of ${CHOKEPOINTS.length} chokepoints`);
   return result;
