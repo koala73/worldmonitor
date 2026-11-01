@@ -20,7 +20,7 @@ import {
   spokenResilienceIndicators,
   spokenWorldBrief,
 } from '../api/mcp/spoken-narrators.ts';
-import { SPOKEN_MAX_CHARS, buildSpokenEnvelope } from '../api/mcp/spoken.ts';
+import { SPOKEN_MAX_CHARS, buildSpokenEnvelope, recordStaleFreshnessKeys } from '../api/mcp/spoken.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -286,11 +286,68 @@ describe('spoken narrators build 2-3 plain sentences from the structured payload
       + 'Oil flow through Strait of Hormuz is 2.6 million barrels a day against a normal 21, about 12 percent of normal.');
   });
 
-  it('get_chokepoint_status replaces the last sentence with the stale caveat', () => {
-    const out = narrate('get_chokepoint_status', spokenChokepointStatus, { ...hormuzOnly(CHOKEPOINTS), cached_at: iso(NOW - 2 * 60 * MIN), stale: true }, { chokepoint: 'hormuz' });
+  it('get_chokepoint_status replaces the last sentence with a caveat naming the stale transit data and its age', () => {
+    const stalled = hormuzOnly(CHOKEPOINTS);
+    const out = narrate('get_chokepoint_status', spokenChokepointStatus, {
+      ...stalled, cached_at: iso(NOW - 2 * 60 * MIN), stale: true,
+      data: { ...stalled.data, 'transit-summaries': { ...stalled.data['transit-summaries'], fetchedAt: NOW - 2 * 60 * MIN } },
+    }, { chokepoint: 'hormuz' });
     assertSpeakable(out, 'chokepoint stale');
-    assert.match(out.spoken, /flagged as disrupted\. This snapshot was taken about 2 hours ago and is flagged as stale, so some figures may be out of date\.$/);
+    assert.match(out.spoken, /flagged as disrupted\. The vessel counts and risk ratings were last updated about 2 hours ago and are flagged as stale, so they may be out of date\.$/);
     assert.doesNotMatch(out.spoken, /transited today/);
+    assert.equal(out.stale, true);
+    assert.equal(out.asOf, iso(NOW - 2 * 60 * MIN));
+  });
+
+  // Production 2026-11-01: the bundle's `cached_at` is its OLDEST seed-meta,
+  // which is the annual EIA baselines table (~400-day budget), and `stale` was
+  // tripped by the port-activity index. Neither is narrated, yet the caveat
+  // said the live Hormuz reading was "taken about 210 days ago".
+  const PROD_SHAPED_HORMUZ = {
+    cached_at: iso(NOW - 210 * 24 * 60 * MIN), stale: true,
+    data: {
+      'transit-summaries': {
+        summaries: { hormuz_strait: { todayTotal: null, todayTanker: null, todayCargo: null, todayOther: null, wowChangePct: -72.5, riskLevel: 'critical', incidentCount7d: 627, disruptionPct: 100, riskSummary: '', riskReportAction: '', anomaly: {}, dataAvailable: true, todayCountsAvailable: false } },
+        fetchedAt: NOW - 3 * MIN,
+      },
+      chokepoint_transits: { transits: { 'Strait of Hormuz': { tanker: 0, cargo: 0, other: 0, total: 0, available: false } }, fetchedAt: NOW - 3 * MIN },
+      _countries: ['AE', 'SA'],
+      'chokepoint-baselines': { ...CHOKEPOINTS.data['chokepoint-baselines'], updatedAt: iso(NOW - 210 * 24 * 60 * MIN), chokepoints: [CHOKEPOINTS.data['chokepoint-baselines'].chokepoints[0]] },
+      ref: null,
+      'chokepoint-flows': { hormuz_strait: CHOKEPOINTS.data['chokepoint-flows'].hormuz_strait },
+    },
+  };
+
+  it('get_chokepoint_status never dates live transit data from a static reference key', () => {
+    const out = narrate('get_chokepoint_status', spokenChokepointStatus, PROD_SHAPED_HORMUZ, { chokepoint: 'hormuz' });
+    assertSpeakable(out, 'chokepoint prod-shaped');
+    assert.doesNotMatch(out.spoken, /days ago|snapshot was taken/);
+    assert.equal(out.asOf, iso(NOW - 3 * MIN), 'asOf is the narrated transit data');
+    // Without per-key verdicts the narrator cannot say which part is stale,
+    // so it says that much and no age.
+    assert.match(out.spoken, /^Strait of Hormuz is at critical risk, with 627 incidents in the past 7 days\. /);
+    assert.match(out.spoken, / Some supporting data in this snapshot is flagged as stale, so the oil flow figure may be out of date\.$/);
+  });
+
+  it('get_chokepoint_status speaks no caveat when only an unnarrated dataset is stale', () => {
+    const result = structuredClone(PROD_SHAPED_HORMUZ);
+    recordStaleFreshnessKeys(result, ['seed-meta:supply_chain:portwatch-ports']);
+    const out = narrate('get_chokepoint_status', spokenChokepointStatus, result, { chokepoint: 'hormuz' });
+    assertSpeakable(out, 'chokepoint unnarrated stale');
+    assert.equal(out.spoken,
+      'Strait of Hormuz is at critical risk, with 627 incidents in the past 7 days. '
+      + 'Oil flow is 2.6 million barrels a day against a normal 21, about 12 percent of normal, and it is flagged as disrupted. '
+      + "Today's transit count is not available yet.");
+    assert.equal(out.stale, false);
+    assert.ok(out.citations.every((c) => c.stale === false));
+  });
+
+  it('get_chokepoint_status names stale oil flows when the flow key is the stale one', () => {
+    const result = structuredClone(PROD_SHAPED_HORMUZ);
+    recordStaleFreshnessKeys(result, ['seed-meta:energy:chokepoint-flows']);
+    const out = narrate('get_chokepoint_status', spokenChokepointStatus, result, { chokepoint: 'hormuz' });
+    assertSpeakable(out, 'chokepoint flows stale');
+    assert.match(out.spoken, /flagged as disrupted\. The oil flow figures are flagged as stale, so they may be out of date\.$/);
     assert.equal(out.stale, true);
   });
 
@@ -326,6 +383,32 @@ describe('spoken narrators build 2-3 plain sentences from the structured payload
       + 'Next is 55 percent for Gulf tanker insurance premiums rise, a conflict forecast for Gulf.');
     assert.equal(out.asOf, iso(FORECASTS.data.predictions.generatedAt));
     assert.equal(out.citations[0].title, 'Energy repricing risk from Red Sea maritime disruption');
+  });
+
+  it('get_forecast_predictions does not caveat fresh forecasts because the probability trail is stale', () => {
+    // cached_at is the oldest seed-meta, here the unnarrated probability trail.
+    const trailStale = { ...FORECASTS, cached_at: iso(NOW - 5 * 60 * MIN), stale: true };
+    const fallback = narrate('get_forecast_predictions', spokenForecastPredictions, trailStale);
+    assertSpeakable(fallback, 'forecasts trail stale, unattributed');
+    assert.doesNotMatch(fallback.spoken, /stale|5 hours/);
+    assert.equal(fallback.stale, false);
+    const attributed = structuredClone(trailStale);
+    recordStaleFreshnessKeys(attributed, ['seed-meta:forecast:probability-trail']);
+    const out = narrate('get_forecast_predictions', spokenForecastPredictions, attributed);
+    assert.equal(out.spoken, fallback.spoken);
+    assert.equal(out.stale, false);
+  });
+
+  it('get_forecast_predictions caveats stale forecasts without repeating a wrong age', () => {
+    const old = { ...FORECASTS, cached_at: iso(NOW - 3 * 60 * MIN), stale: true, data: { predictions: { ...FORECASTS.data.predictions, generatedAt: NOW - 3 * 60 * MIN } } };
+    const out = narrate('get_forecast_predictions', spokenForecastPredictions, old);
+    assertSpeakable(out, 'forecasts stale');
+    assert.match(out.spoken, /^WorldMonitor currently publishes 2 forecasts, generated about 3 hours ago; /);
+    assert.match(out.spoken, / These forecasts are older than their usual refresh, so treat them as the last known picture\.$/);
+    assert.equal(out.stale, true);
+    const flagged = structuredClone(FORECASTS);
+    recordStaleFreshnessKeys(flagged, ['seed-meta:forecast:predictions']);
+    assert.equal(narrate('get_forecast_predictions', spokenForecastPredictions, flagged).stale, true);
   });
 
   it('get_media_perspective counts coverage by origin and stance and names the latest headline', () => {
@@ -384,7 +467,7 @@ describe('spoken narrators build 2-3 plain sentences from the structured payload
     };
     const out = narrate('get_forecast_predictions', spokenForecastPredictions, long);
     assertSpeakable(out, 'long forecasts');
-    assert.match(out.spoken, /flagged as stale, so some figures may be out of date\.$/, 'the caveat survives the cut');
+    assert.match(out.spoken, /so treat them as the last known picture\.$/, 'the caveat survives the cut');
     const many = { ...CHOKEPOINTS, data: { ...CHOKEPOINTS.data, 'chokepoint-flows': Object.fromEntries(Array.from({ length: 14 }, (_, i) => [`very_long_chokepoint_name_number_${i}_on_a_distant_coast`, { currentMbd: 1 + i, baselineMbd: 10, flowRatio: 0.5, disrupted: true, source: 'portwatch-dwt' }])) } };
     const crowded = narrate('get_chokepoint_status', spokenChokepointStatus, many);
     assertSpeakable(crowded, 'many disrupted chokepoints');
@@ -571,6 +654,54 @@ describe('tools/call response_mode: "spoken" through the MCP handler', () => {
     assert.equal(staleText.stale, true);
     assert.match(staleText.spoken, /This snapshot was taken about 4 hours ago and is flagged as stale, so some figures may be out of date\.$/);
     assert.ok(staleText.citations.every((c) => c.stale === true));
+  });
+
+  it('get_chokepoint_status through dispatch: a stale port-activity index and an April baselines key do not age the live Hormuz reading', async () => {
+    // Shaped like production on 2026-11-01: transit keys minutes old, the
+    // annual EIA baselines key last written in April (inside its 400-day
+    // budget), and the port-activity index past its 36-hour budget with a
+    // failed last run, which is what trips the bundle's `stale`.
+    const ago = (minutes) => NOW - minutes * MIN;
+    redisKeys.set('supply_chain:transit-summaries:v1', {
+      summaries: { hormuz_strait: { todayTotal: null, wowChangePct: -72.5, riskLevel: 'critical', incidentCount7d: 627, disruptionPct: 100, riskSummary: 'x', riskReportAction: 'y', anomaly: {}, dataAvailable: true, todayCountsAvailable: false } },
+      fetchedAt: ago(3),
+    });
+    redisKeys.set('seed-meta:supply_chain:transit-summaries', { fetchedAt: ago(3), recordCount: 13 });
+    redisKeys.set('supply_chain:chokepoint_transits:v1', { transits: { 'Strait of Hormuz': { tanker: 0, cargo: 0, other: 0, total: 0, available: false } }, fetchedAt: ago(3) });
+    redisKeys.set('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: ago(3), recordCount: 13 });
+    redisKeys.set('supply_chain:portwatch-ports:v1:_countries', ['AE', 'SA']);
+    redisKeys.set('seed-meta:supply_chain:portwatch-ports', { fetchedAt: ago(5719), recordCount: 174, status: 'error' });
+    redisKeys.set('energy:chokepoint-baselines:v1', CHOKEPOINTS.data['chokepoint-baselines']);
+    redisKeys.set('seed-meta:energy:chokepoint-baselines', { fetchedAt: ago(210 * 24 * 60), recordCount: 7 });
+    redisKeys.set('portwatch:chokepoints:ref:v1', { hormuz_strait: { name: 'Strait of Hormuz' } });
+    redisKeys.set('seed-meta:portwatch:chokepoints-ref', { fetchedAt: ago(2 * 24 * 60), recordCount: 13 });
+    redisKeys.set('energy:chokepoint-flows:v1', { hormuz_strait: CHOKEPOINTS.data['chokepoint-flows'].hormuz_strait });
+    redisKeys.set('seed-meta:energy:chokepoint-flows', { fetchedAt: ago(3 * 60), recordCount: 7 });
+
+    const full = await call('get_chokepoint_status', { chokepoint: 'hormuz' });
+    const envelope = JSON.parse(full.body.result.content[0].text);
+    assert.equal(envelope.stale, true, 'the bundle verdict is unchanged');
+    assert.equal(envelope.cached_at, iso(ago(210 * 24 * 60)));
+
+    const { body } = await call('get_chokepoint_status', { chokepoint: 'hormuz', response_mode: 'spoken' });
+    assert.equal(body.error, undefined, JSON.stringify(body.error ?? {}));
+    const text = JSON.parse(body.result.content[0].text);
+    assertSpeakable(text, 'dispatch chokepoint prod-shaped');
+    assert.equal(text.spoken,
+      'Strait of Hormuz is at critical risk, with 627 incidents in the past 7 days. '
+      + 'Oil flow is 2.6 million barrels a day against a normal 21, about 12 percent of normal, and it is flagged as disrupted. '
+      + "Today's transit count is not available yet.");
+    assert.equal(text.stale, false);
+    assert.equal(text.asOf, iso(ago(3)));
+    assert.equal(strictClientVerdict(publicTools.get('get_chokepoint_status'), body.result), null);
+
+    // The same bundle with the transit relay stalled: now the caveat names it.
+    redisKeys.set('seed-meta:supply_chain:transit-summaries', { fetchedAt: ago(95), recordCount: 13 });
+    redisKeys.set('supply_chain:transit-summaries:v1', { ...redisKeys.get('supply_chain:transit-summaries:v1'), fetchedAt: ago(95) });
+    const stalled = JSON.parse((await call('get_chokepoint_status', { chokepoint: 'hormuz', response_mode: 'spoken' })).body.result.content[0].text);
+    assertSpeakable(stalled, 'dispatch chokepoint transit stalled');
+    assert.match(stalled.spoken, / The vessel counts and risk ratings were last updated about 2 hours ago and are flagged as stale, so they may be out of date\.$/);
+    assert.equal(stalled.stale, true);
   });
 
   it('every spoken tool narrates its fixture through dispatch within the speech invariants', async () => {

@@ -261,3 +261,23 @@ export function cacheFreshness(result: Record<string, unknown>, now: number): { 
     : undefined;
   return { asOf, stale, caveat, ago };
 }
+
+// A bundle's `cached_at` is the OLDEST fetch across its keys and its `stale`
+// is true when ANY key misses its budget, so neither says anything about the
+// key a sentence narrates: a static reference table (an annual baselines key
+// on a 400-day budget) sets the age, and an unnarrated index can trip stale.
+// Dispatch records which freshness checks failed against the result object it
+// returns, so a narrator can caveat only the data it speaks. Held in a
+// WeakMap, not on the payload, so the documented wire shape is untouched. A
+// result rebuilt by spreading (panel snapshots, receipts) carries no entry, and
+// the narrator then falls back to the timestamps in the payload itself.
+const staleCheckKeys = new WeakMap<object, readonly string[]>();
+
+export function recordStaleFreshnessKeys(result: object, keys: readonly string[]): void {
+  staleCheckKeys.set(result, [...keys]);
+}
+
+/** The freshness-check keys that failed for this result, or null when dispatch recorded none. */
+export function staleFreshnessKeys(result: object): readonly string[] | null {
+  return staleCheckKeys.get(result) ?? null;
+}

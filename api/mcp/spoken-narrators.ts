@@ -13,6 +13,7 @@ import {
   spokenNumber,
   spokenPercent,
   spokenPoints,
+  staleFreshnessKeys,
   text,
   toEpochMs,
   toIso,
@@ -213,23 +214,65 @@ function incidentsClause(row: ChokepointRow): string {
   return row.incidents !== null ? `, with ${spokenCount(row.incidents, 'incident')} in the past 7 days` : '';
 }
 
+// Freshness of the NARRATED data only (#9722). The bundle's `cached_at` is
+// its oldest key, which is the annual EIA baselines table on a 400-day
+// budget, and its `stale` can be tripped by the port-activity index; neither
+// is read aloud. The sentences speak transit summaries (risk, incidents,
+// today's count) and oil flows, so those two checks decide the caveat. The
+// keys and the 30-minute transit budget mirror this tool's _freshnessChecks.
+const TRANSIT_SUMMARIES_CHECK = 'seed-meta:supply_chain:transit-summaries';
+const CHOKEPOINT_FLOWS_CHECK = 'seed-meta:energy:chokepoint-flows';
+const CHOKEPOINT_BASELINES_CHECK = 'seed-meta:energy:chokepoint-baselines';
+const TRANSIT_STALE_MS = 30 * 60_000;
+
+function chokepointCaveat(transitStale: boolean, transitMs: number | null, flowsStale: boolean, now: number): string | undefined {
+  const transits = transitMs === null ? 'vessel counts and risk ratings' : `vessel counts and risk ratings, last updated ${spokenAgo(transitMs, now)},`;
+  if (transitStale && flowsStale) return `The ${transits} and the oil flow figures are flagged as stale, so they may be out of date.`;
+  if (transitStale) {
+    return transitMs === null
+      ? 'The vessel counts and risk ratings are flagged as stale, so they may be out of date.'
+      : `The vessel counts and risk ratings were last updated ${spokenAgo(transitMs, now)} and are flagged as stale, so they may be out of date.`;
+  }
+  if (flowsStale) return 'The oil flow figures are flagged as stale, so they may be out of date.';
+  return undefined;
+}
+
 export const spokenChokepointStatus: SpokenNarrator = (result, _args, now) => {
-  const freshness = cacheFreshness(result, now);
-  const citations: SpokenCitation[] = [{ source: 'WorldMonitor chokepoint monitor (AIS relay and IMF PortWatch)', asOf: freshness.asOf, stale: freshness.stale }];
   const data = record(result.data) ?? {};
+  const summariesNode = record(data['transit-summaries']);
+  const transitMs = toEpochMs(summariesNode?.fetchedAt);
+  const asOf = transitMs === null ? null : toIso(transitMs);
+  const failed = staleFreshnessKeys(result);
+  const { rows, flowsKnown } = chokepointRows(data);
+  const single = rows.length === 1 ? rows[0]! : null;
+  const narratesFlow = flowsKnown && rows.length > 0 && (single === null || single.currentMbd !== null || single.disrupted);
+  // Without per-check verdicts (a result rebuilt by spreading), the transit
+  // clock in the payload still answers for the transit data; the flow map
+  // carries no clock, so a stale bundle can only be reported as unattributed.
+  const transitStale = summariesNode !== null && (failed !== null
+    ? failed.includes(TRANSIT_SUMMARIES_CHECK)
+    : transitMs === null ? result.stale === true : now - transitMs > TRANSIT_STALE_MS);
+  const flowsStale = narratesFlow && failed !== null && failed.includes(CHOKEPOINT_FLOWS_CHECK);
+  let caveat = chokepointCaveat(transitStale, transitMs, flowsStale, now);
+  if (caveat === undefined && failed === null && result.stale === true && (narratesFlow || rows.length === 0)) {
+    caveat = narratesFlow
+      ? 'Some supporting data in this snapshot is flagged as stale, so the oil flow figure may be out of date.'
+      : 'Some data in this snapshot is flagged as stale.';
+  }
+  const stale = caveat !== undefined;
+  const citations: SpokenCitation[] = [{ source: 'WorldMonitor chokepoint monitor (AIS relay and IMF PortWatch)', asOf, stale }];
   const baselines = record(data['chokepoint-baselines']);
   const baselineSource = text(baselines?.source);
-  if (baselineSource) citations.push({ source: baselineSource, asOf: toIso(baselines?.updatedAt), stale: freshness.stale });
-  const { rows, flowsKnown } = chokepointRows(data);
+  if (baselineSource) citations.push({ source: baselineSource, asOf: toIso(baselines?.updatedAt), stale: failed !== null && failed.includes(CHOKEPOINT_BASELINES_CHECK) });
   if (rows.length === 0) {
     return {
       sentences: ['No chokepoint data is loaded in this snapshot.', 'Try again shortly, or call without a chokepoint filter.'],
-      caveat: freshness.caveat, citations, stale: freshness.stale, asOf: freshness.asOf,
+      caveat, citations, stale, asOf,
     };
   }
   const sentences: string[] = [];
-  if (rows.length === 1) {
-    const row = rows[0]!;
+  if (single) {
+    const row = single;
     sentences.push(row.riskLevel
       ? `${row.name} is at ${row.riskLevel} risk${incidentsClause(row)}.`
       : `${row.name} has no risk rating at the moment${incidentsClause(row)}.`);
@@ -260,7 +303,7 @@ export const spokenChokepointStatus: SpokenNarrator = (result, _args, now) => {
     const flow = focus ? flowClause(focus, `Oil flow through ${focus.name}`) : null;
     if (flow) sentences.push(`${flow}.`);
   }
-  return { sentences, caveat: freshness.caveat, citations, stale: freshness.stale, asOf: freshness.asOf };
+  return { sentences, caveat, citations, stale, asOf };
 };
 
 // ---------------------------------------------------------------------------
@@ -339,11 +382,20 @@ function forecastClause(row: Record<string, unknown>): string {
   return clause;
 }
 
+// The bundle's `cached_at` and `stale` also cover the probability trail,
+// which is not read aloud; the caveat follows the predictions check alone.
+// Key and 90-minute budget mirror this tool's _freshnessChecks.
+const FORECAST_PREDICTIONS_CHECK = 'seed-meta:forecast:predictions';
+const FORECAST_STALE_MS = 90 * 60_000;
+
 export const spokenForecastPredictions: SpokenNarrator = (result, _args, now) => {
-  const freshness = cacheFreshness(result, now);
   const node = record(record(result.data)?.predictions);
-  const generatedMs = toEpochMs(node?.generatedAt) ?? toEpochMs(result.cached_at);
-  const asOf = generatedMs === null ? freshness.asOf : toIso(generatedMs);
+  const generatedMs = toEpochMs(node?.generatedAt);
+  const asOf = generatedMs === null ? null : toIso(generatedMs);
+  const failed = staleFreshnessKeys(result);
+  const stale = failed !== null
+    ? failed.includes(FORECAST_PREDICTIONS_CHECK)
+    : generatedMs === null ? result.stale === true : now - generatedMs > FORECAST_STALE_MS;
   const rows = (Array.isArray(node?.predictions) ? node.predictions as unknown[] : [])
     .map(record)
     .filter((row): row is Record<string, unknown> => row !== null)
@@ -352,10 +404,11 @@ export const spokenForecastPredictions: SpokenNarrator = (result, _args, now) =>
   if (rows.length === 0) {
     return {
       sentences: ['No published forecasts match those filters right now.', 'Try another domain or region, or call again without filters.'],
-      caveat: freshness.caveat, citations: [{ source, asOf, stale: freshness.stale }], stale: freshness.stale, asOf,
+      caveat: stale ? 'The forecast set is older than its usual refresh, so this may not be the latest picture.' : undefined,
+      citations: [{ source, asOf, stale }], stale, asOf,
     };
   }
-  const ago = generatedMs === null ? freshness.ago : spokenAgo(generatedMs, now);
+  const ago = generatedMs === null ? 'at an unknown time' : spokenAgo(generatedMs, now);
   const sentences = [
     `WorldMonitor currently publishes ${spokenCount(rows.length, 'forecast')}, generated ${ago}; these are AI assessments, not guarantees.`,
     `The highest probability is ${forecastClause(rows[0]!)}.`,
@@ -363,9 +416,10 @@ export const spokenForecastPredictions: SpokenNarrator = (result, _args, now) =>
   if (rows.length > 1) sentences.push(`Next is ${forecastClause(rows[1]!)}.`);
   return {
     sentences,
-    caveat: freshness.caveat,
-    citations: rows.slice(0, 3).map((row) => ({ source, title: cleanTitle(row.title), asOf, stale: freshness.stale })),
-    stale: freshness.stale,
+    // The first sentence already speaks the generation age.
+    caveat: stale ? 'These forecasts are older than their usual refresh, so treat them as the last known picture.' : undefined,
+    citations: rows.slice(0, 3).map((row) => ({ source, title: cleanTitle(row.title), asOf, stale })),
+    stale,
     asOf,
   };
 };

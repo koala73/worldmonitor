@@ -48,7 +48,7 @@ import { filterConflictPanelEvents, isOrdinaryMarketDefault, presentConflictEven
 import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_ALIASES, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
-import { buildSpokenEnvelope } from './spoken';
+import { buildSpokenEnvelope, recordStaleFreshnessKeys } from './spoken';
 import { applyDeprecationNotice, buildStructuredContent } from './structured-content';
 import {
   principalIdForLog,
@@ -228,6 +228,13 @@ async function executeCacheTool(
     evaluatedAt,
     activationStates,
   );
+  // Per-check verdicts for the spoken narrators (#9722): the bundle verdict
+  // above cannot say WHICH key is stale, and a narrator must caveat only the
+  // data it reads aloud. Same evaluator, one check at a time.
+  const failedFreshnessChecks = (indices: number[]) => indices
+    .filter(index => evaluateFreshness([freshnessChecks[index]!], [metas[index]], evaluatedAt, activationStates).stale)
+    .map(index => freshnessChecks[index]!.key);
+  let staleCheckKeys = failedFreshnessChecks(freshnessIndices);
 
   if (tool.name === 'get_forecast_predictions') {
     const index = labels.indexOf('predictions');
@@ -287,6 +294,7 @@ async function executeCacheTool(
     const indices = labels.flatMap((label, index) => required.includes(label) ? [index] : []);
     const freshness = evaluateFreshness(indices.map(index => freshnessChecks[index]!), indices.map(index => metas[index]), evaluatedAt, activationStates);
     cached_at = freshness.cached_at; stale = freshness.stale; contentFreshnessPendingUntil = freshness.contentFreshnessPendingUntil;
+    staleCheckKeys = failedFreshnessChecks(indices);
     freshnessUnknown = indices.some(index => !metaOutcomes[index]!.ok);
     unreadable = indices.filter(index => !dataReads[index]!.ok).map(index => labels[index]!);
     activationUnknown &&= required.includes('_countries');
@@ -340,7 +348,7 @@ async function executeCacheTool(
   if (panel !== 'news-intelligence' && panel !== 'chokepoints' && argBool(params.summary)) result = tool._summarize ? tool._summarize(result) : summarizeData(result);
 
   const intelligenceFreshness = panel === 'news-intelligence' ? newsIntelligenceFreshness(data, unwrapped.map(value => value._seed), metas, evaluatedAt) : undefined;
-  return { reuseUntil, value: {
+  const value: CacheToolValue = {
     ...(tool.name === 'get_conflict_events' ? { conflict_source: projectConflictSourceObservation(metas[freshnessChecks.findIndex(check => check.key === 'seed-meta:conflict:ucdp-events')]) } : {}),
     cached_at,
     stale: stale || intelligenceFreshness?.stale === true || chokepointPolicy?.stale === true,
@@ -350,7 +358,9 @@ async function executeCacheTool(
     ...(contentFreshnessPendingUntil === undefined ? {} : { contentFreshnessPendingUntil }),
     ...(lockedKeys.length > 0 ? { locked: lockedKeys.map(key => cacheKeyLabel(tool, key)), upgradeUrl: MCP_UPGRADE_URL } : {}),
     data: result,
-  } };
+  };
+  recordStaleFreshnessKeys(value, staleCheckKeys);
+  return { reuseUntil, value };
 }
 
 function filterCacheToolData(tool: CacheToolDef, data: Record<string, unknown>, params: Record<string, unknown>, panel?: CachePanelDomain): Record<string, unknown> {
