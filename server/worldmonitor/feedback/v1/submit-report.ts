@@ -14,6 +14,8 @@ import { ApiError, ValidationError } from '../../../../src/generated/server/worl
 import { submitAgentFeedback } from '../../../_shared/agent-feedback';
 import { getClientIp } from '../../../_shared/client-ip';
 
+const FEEDBACK_RETRY_AFTER_SECONDS = 60;
+
 export async function submitReport(
   ctx: ServerContext,
   req: SubmitReportRequest,
@@ -38,7 +40,13 @@ export async function submitReport(
     if (outcome.status === 400) {
       throw new ValidationError([{ field: outcome.field ?? 'body', description: outcome.message }]);
     }
-    throw new ApiError(outcome.status, outcome.message, '');
+    const error = new ApiError(outcome.status, outcome.message, '');
+    if (outcome.status === 503) {
+      // The mapper hides 5xx messages unless they opt in. This one is a fixed
+      // string, and for a security report it carries the advisory URL.
+      Object.assign(error, { retryAfter: FEEDBACK_RETRY_AFTER_SECONDS, exposeMessage: true });
+    }
+    throw error;
   }
   return {
     reportId: outcome.reportId,

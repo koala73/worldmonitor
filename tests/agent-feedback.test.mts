@@ -124,6 +124,10 @@ describe('redactFeedbackText', () => {
     ['JWT', 'token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl', 'eyJzdWIiOiIxIn0'],
     ['Convex deploy key', 'prod:happy-otter-123|eyJ2MiI6ImFiYyJ9', 'eyJ2MiI6ImFiYyJ9'],
     ['email address', 'contact ada@example.com please', 'ada@example.com'],
+    ['relative request path', 'GET /api/news/v1/summarize?api_key=SECRETVALUE1&symbol=AAPL', 'SECRETVALUE1'],
+    ['bare query field', 'api_key=SECRETVALUE2&symbol=AAPL', 'SECRETVALUE2'],
+    ['query on a bare name', 'x?key=SECRETVALUE3', 'SECRETVALUE3'],
+    ['bare password field', 'login password=hunter2 failed', 'hunter2'],
   ];
   for (const [name, input, secret] of cases) {
     it(`redacts a ${name}`, () => {
@@ -140,6 +144,14 @@ describe('redactFeedbackText', () => {
       'Authorization: missing',
       'Authorization: required for this route',
     ]) {
+      assert.deepEqual(redactFeedbackText(text), { text, redacted: false }, text);
+    }
+  });
+
+  it('keeps non-credential query fields and numeric codes', () => {
+    const out = redactFeedbackText('GET /api/news/v1/summarize?api_key=SECRETVALUE1&symbol=AAPL');
+    assert.ok(out.text.includes('symbol=AAPL'), out.text);
+    for (const text of ['exit code=1 on page=2', 'ref=main and limit=50', 'sort=key']) {
       assert.deepEqual(redactFeedbackText(text), { text, redacted: false }, text);
     }
   });
@@ -297,6 +309,33 @@ describe('submitAgentFeedback', () => {
     assert.equal(stored.body.principalId, undefined);
     assert.ok(!JSON.stringify(stored.body).includes('203.0.113.7'));
     assert.equal(calls[0]!.body.retryKey, stored.body.retryKey);
+  });
+
+  it('redacts a credential pasted into surface even when it looks like a tool name', async () => {
+    const { fetchImpl, calls } = convex({
+      '/api/internal-find-feedback-retry': notFound,
+      '/api/internal-submit-feedback': () => Response.json({ reportId: 'r1', status: 'received', retried: false }),
+    });
+    const { check } = limiter();
+    const key = `wm_${'ab'.repeat(20)}`;
+    const outcome = await submitAgentFeedback({ ...valid, surface: key }, { authKind: 'anonymous' }, meta, { fetchImpl, checkLimit: check });
+    assert.equal(outcome.ok, true);
+    const stored = calls[1]!.body;
+    assert.ok(!JSON.stringify(stored).includes(key), JSON.stringify(stored));
+    assert.equal(stored.surfaceType, 'other');
+    assert.equal(stored.redacted, true);
+  });
+
+  it('a deleted account gets a final 403, not a retryable 503', async () => {
+    const { fetchImpl } = convex({
+      '/api/internal-find-feedback-retry': notFound,
+      '/api/internal-submit-feedback': () => Response.json({ error: 'ACCOUNT_DELETION_IN_PROGRESS' }, { status: 403 }),
+    });
+    const { check } = limiter();
+    const outcome = await submitAgentFeedback(valid, { authKind: 'keyed', principalId: 'user_gone' }, meta, { fetchImpl, checkLimit: check });
+    assert.equal(outcome.ok, false);
+    assert.ok(!outcome.ok);
+    assert.equal(outcome.status, 403);
   });
 
   it('returns an earlier report for a retry without charging any bucket', async () => {

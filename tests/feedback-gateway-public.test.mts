@@ -159,6 +159,20 @@ describe('feedback gateway public access', { concurrency: 1 }, () => {
     assert.equal(convexCalls.length, 0);
   });
 
+  it('a security report that fails with 503 still carries the advisory URL', async () => {
+    const { entry } = await load();
+    const inner = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.endsWith('/api/internal-submit-feedback')) return new Response('down', { status: 500 });
+      return inner(input, init);
+    }) as typeof fetch;
+    const res = await entry(post(JSON.stringify({ ...valid, kind: 'security' })));
+    assert.equal(res.status, 503);
+    const text = await res.text();
+    assert.ok(text.includes('https://github.com/koala73/worldmonitor/security/advisories/new'), text);
+  });
+
   it('a security report response carries the advisory URL', async () => {
     const { entry } = await load();
     const res = await entry(post(JSON.stringify({ ...valid, kind: 'security' })));

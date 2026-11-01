@@ -163,6 +163,13 @@ export function parseFeedbackReport(
 
 const FEEDBACK_EXTRA_URL_PARAM_RE = /^(key|api_key|apikey|secret|password|sig|signature|code|x-amz-[a-z0-9-]*)$/i;
 
+// URL_TOKEN_PATTERN needs a scheme or a dotted host, so a relative path
+// ("GET /api/x?api_key=..."), a bare "api_key=...&symbol=AAPL", or "x?key=..."
+// never reaches the URL scrub. This pass catches name=value fields anywhere,
+// limited to credential names; an all-digit value ("code=500") is kept.
+const BARE_CREDENTIAL_PARAM_RE = /^(token|access_token|id_token|refresh_token|auth_token|api_key|apikey|key|secret|client_secret|password|passwd|sig|signature|code|license_key|x-amz-[a-z0-9-]*)$/i;
+const BARE_QUERY_FIELD_RE = /(^|[\s"'(?&#;,])([A-Za-z][A-Za-z0-9_.-]*)=([^\s&"'<>#;,)]+)/g;
+
 // After "Bearer" or "Authorization:" the next word is often prose ("the bearer
 // token is rejected", "Authorization: missing"). Only a value shaped like a
 // credential is removed: 8+ token characters with a digit, a token symbol, or
@@ -214,6 +221,9 @@ function redactUrlToken(token: string): string {
 /** Scrubs URL credentials, credential shapes, then email addresses, in that order. */
 export function redactFeedbackText(value: string): { text: string; redacted: boolean } {
   let text = value.replace(URL_TOKEN_PATTERN, (token) => redactUrlToken(token));
+  text = text.replace(BARE_QUERY_FIELD_RE, (match, lead: string, name: string, fieldValue: string) => (
+    BARE_CREDENTIAL_PARAM_RE.test(name) && !/^\d+$/.test(fieldValue) ? `${lead}${name}=${FEEDBACK_REDACTED}` : match
+  ));
   for (const pattern of AUTH_VALUE_PATTERNS) {
     text = text.replace(pattern, (match, prefix: string, value: string) => (
       isTokenShaped(value) ? `${prefix}${FEEDBACK_REDACTED}` : match
@@ -232,9 +242,12 @@ function redactReport(report: FeedbackReport): { report: FeedbackReport; redacte
     if (result.redacted) redacted = true;
     return result.text;
   };
-  const surface: FeedbackSurface = report.surface.type === 'other'
-    ? { type: 'other', name: scrub(report.surface.name)! }
-    : report.surface;
+  // Every classification is scrubbed: a wm_ key or sk_live_ token has the
+  // same shape as a tool name. A name that changed is no longer a real one.
+  const scrubbedName = scrub(report.surface.name)!;
+  const surface: FeedbackSurface = scrubbedName === report.surface.name
+    ? report.surface
+    : { type: 'other', name: scrubbedName };
   // A request id is held to its own charset, so a credential pasted in its
   // place is dropped rather than replaced with a placeholder it cannot hold.
   let requestId = report.requestId;
@@ -417,7 +430,7 @@ export type FeedbackOutcome =
   }
   | {
     ok: false;
-    status: 400 | 429 | 503;
+    status: 400 | 403 | 429 | 503;
     field?: string;
     message: string;
     advisoryUrl?: string;
@@ -433,7 +446,7 @@ function securityExtras(kind: unknown): { advisoryUrl?: string; notice?: string 
   return kind === 'security' ? { advisoryUrl: FEEDBACK_ADVISORY_URL, notice: FEEDBACK_SECURITY_NOTICE } : {};
 }
 
-function failure(status: 400 | 429 | 503, message: string, kind: unknown, field?: string): FeedbackOutcome {
+function failure(status: 400 | 403 | 429 | 503, message: string, kind: unknown, field?: string): FeedbackOutcome {
   const extras = securityExtras(kind);
   const text = extras.notice ? `${message} ${extras.notice}` : message;
   return { ok: false, status, message: text, ...(field ? { field } : {}), ...extras };
@@ -501,6 +514,8 @@ export async function submitAgentFeedback(
     uaHash,
   });
   if (stored?.status === 429) return failure(429, 'Too many reports; try again later.', report.kind);
+  // The account is deleted or being deleted: final, so the caller must not retry.
+  if (stored?.status === 403) return failure(403, 'This account can no longer submit reports.', report.kind);
   if (!stored || !stored.ok) return failure(503, 'Feedback is temporarily unavailable.', report.kind);
   const result = await stored.json().catch(() => null);
   if (!isStoredResult(result)) return failure(503, 'Feedback is temporarily unavailable.', report.kind);
