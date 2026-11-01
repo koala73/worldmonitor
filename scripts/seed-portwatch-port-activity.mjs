@@ -15,6 +15,7 @@ import {
   PUBLISH_BLOCKED_EXIT_CODE,
 } from './_seed-utils.mjs';
 import { createCountryResolvers } from './_country-resolver.mjs';
+import { createPortwatchRequestTrace } from './_portwatch-request-diagnostics.mjs';
 import {
   buildPortActivityMetaPayload,
   contentClockFor,
@@ -288,19 +289,30 @@ function arcgisErrorInfo(err) {
 // 10s slack (see those constants for the per-tweak rationale + the
 // dated re-measurements that justified each shift).
 async function arcgisProxyRetry(url, reason, { signal } = {}) {
-  const proxyAuth = resolveProxyForConnect();
-  if (!proxyAuth) throw new Error(`ArcGIS direct ${reason} + no proxy configured for ${url.slice(0, 80)}`);
-  console.warn(`  [portwatch] ${reason} — retrying via proxy: ${url.slice(0, 80)}`);
-  const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { accept: 'application/json', timeoutMs: PROXY_FETCH_TIMEOUT, signal });
-  const proxied = JSON.parse(buffer.toString('utf8'));
-  if (proxied?.error) {
-    // Greptile PR #3681 review P2: ArcGIS can return `{"error":{"code":400}}`
-    // with no message field. Fall back to code, then JSON.stringify so the
-    // thrown error message stays informative on unexpected error shapes.
-    const errInfo = arcgisErrorInfo(proxied.error);
-    throw createArcgisProxyError(reason, errInfo);
+  const trace = createPortwatchRequestTrace(url, 'proxy');
+  let response;
+  let proxied;
+  let phase = 'fetch';
+  try {
+    const proxyAuth = resolveProxyForConnect();
+    if (!proxyAuth) throw new Error(`ArcGIS direct ${reason} + no proxy configured for ${url.slice(0, 80)}`);
+    console.warn(`  [portwatch] ${reason} — retrying via proxy: ${url.slice(0, 80)}`);
+    const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, {
+      accept: 'application/json', timeoutMs: PROXY_FETCH_TIMEOUT, signal,
+      onErrorResponse: (result) => { response = result; phase = 'http'; },
+    });
+    phase = 'json';
+    proxied = JSON.parse(buffer.toString('utf8'));
+    phase = 'arcgis';
+    if (proxied?.error) {
+      const errInfo = arcgisErrorInfo(proxied.error);
+      throw createArcgisProxyError(reason, errInfo);
+    }
+    return proxied;
+  } catch (error) {
+    trace.fail(error, { phase, response, arcgisError: proxied?.error });
+    throw error;
   }
-  return proxied;
 }
 
 const defaultFetch = (...args) => globalThis.fetch(...args);
@@ -334,6 +346,7 @@ async function fetchWithTimeout(url, {
   const combined = signal
     ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
     : AbortSignal.timeout(timeoutMs);
+  const trace = createPortwatchRequestTrace(url, 'direct');
   let resp;
   try {
     resp = await fetchFn(url, {
@@ -341,6 +354,7 @@ async function fetchWithTimeout(url, {
       signal: combined,
     });
   } catch (err) {
+    trace.fail(err, { phase: 'fetch' });
     // If the CALLER signal aborted (real cancellation request from SIGTERM
     // / per-country timeout), propagate as-is. Only the internal
     // FETCH_TIMEOUT or transient network errors fall through to the proxy
@@ -412,13 +426,24 @@ async function fetchWithTimeout(url, {
     return await proxyRetryFn(url, `direct ${errName || 'timeout'}`, { signal });
   }
   if (resp.status === 429) {
+    trace.fail(new Error('ArcGIS HTTP 429'), { phase: 'http', response: resp });
     // Preflight (noProxyFallback) treats 429 as a soft failure: throw and
     // let the caller fall through to the expensive per-country path.
     if (noProxyFallback) throw new Error(`ArcGIS HTTP 429 (preflight, no proxy fallback)`);
     return await proxyRetryFn(url, 'HTTP 429 rate-limited', { signal });
   }
-  if (!resp.ok) throw new Error(`ArcGIS HTTP ${resp.status} for ${url.slice(0, 80)}`);
-  const body = await resp.json();
+  if (!resp.ok) {
+    const error = new Error(`ArcGIS HTTP ${resp.status} for ${url.slice(0, 80)}`);
+    trace.fail(error, { phase: 'http', response: resp });
+    throw error;
+  }
+  let body;
+  try {
+    body = await resp.json();
+  } catch (error) {
+    trace.fail(error, { phase: 'json', response: resp });
+    throw error;
+  }
   // A raw `body.error.message` interpolation threw "ArcGIS error: undefined"
   // for a message-less envelope — unusable in logs, and invisible to both
   // the rate-limit classifier and the invalid-params circuit breaker, which
@@ -426,6 +451,7 @@ async function fetchWithTimeout(url, {
   if (body?.error) {
     const errInfo = arcgisErrorInfo(body.error);
     const error = new Error(`ArcGIS error: ${errInfo}`);
+    trace.fail(error, { phase: 'arcgis', response: resp, arcgisError: body.error });
     if (!noProxyFallback && refreshFailureCode(error) === 'rate_limited') {
       return await proxyRetryFn(url, 'HTTP 200 rate-limited', { signal });
     }

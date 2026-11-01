@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 
 import * as portwatchSeed from '../scripts/seed-portwatch-port-activity.mjs';
 import { CHROME_UA } from '../scripts/_seed-utils.mjs';
@@ -76,6 +77,87 @@ async function rejectedRefsError(body) {
 }
 
 describe('PortWatch reference pagination recovery', () => {
+  it('records the failed page query and ArcGIS details without another request', async (t) => {
+    const warnings = [];
+    t.mock.method(console, 'warn', (line) => warnings.push(line));
+    const envelope = { error: { code: 400, message: 'Cannot perform query.', details: ['Invalid query parameters.'] } };
+    const transport = paginationTransport(envelope);
+
+    await assert.rejects(portwatchSeed.fetchAllPortRefs(transport), { message: 'ArcGIS error: Cannot perform query.' });
+
+    const records = warnings.filter((line) => line.startsWith('{')).map((line) => JSON.parse(line));
+    assert.equal(records.length, 1);
+    const record = records[0];
+    assert.equal(record.event, 'portwatch_request_failure');
+    assert.equal(record.route, 'direct');
+    assert.equal(record.phase, 'arcgis');
+    assert.match(record.endpoint, /PortWatch_ports_database\/FeatureServer\/0\/query$/);
+    assert.equal(record.query.resultOffset, '1');
+    assert.equal(record.query.where, '1=1');
+    assert.equal(record.query.outFields, 'portid,ISO3,lat,lon');
+    assert.equal(record.status, 200);
+    assert.deepEqual(record.arcgisError, envelope.error);
+    assert.ok(Date.parse(record.finishedAt) >= Date.parse(record.startedAt));
+    assert.deepEqual(transport.requestedOffsets, [0, 1]);
+    assert.equal(transport.proxyCalls.length, 0);
+  });
+
+  it('records a direct transport cause even when the existing proxy fallback recovers', async (t) => {
+    const warnings = [];
+    t.mock.method(console, 'warn', (line) => warnings.push(line));
+    const error = new TypeError('fetch failed', { cause: Object.assign(new Error('connect timed out'), { code: 'ETIMEDOUT' }) });
+    const transport = paginationTransport(error);
+
+    const refs = await portwatchSeed.fetchAllPortRefs(transport);
+
+    const record = warnings.filter((line) => line.startsWith('{')).map((line) => JSON.parse(line))[0];
+    assert.ok(record, 'the recovered direct failure must remain diagnosable');
+    assert.equal(record.phase, 'fetch');
+    assert.equal(record.query.resultOffset, '1');
+    assert.equal(record.causes[1].code, 'ETIMEDOUT');
+    assert.deepEqual([...refs.get('CYP').keys()], ['cy-lca']);
+    assert.deepEqual(transport.requestedOffsets, [0, 1]);
+    assert.equal(transport.proxyCalls.length, 1);
+  });
+
+  for (const status of [200, 503]) {
+    it(`records a real proxy HTTP ${status} rejection without another request`, async (t) => {
+      const warnings = [];
+      t.mock.method(console, 'warn', (line) => warnings.push(line));
+      const previousProxy = process.env.PROXY_URL;
+      process.env.PROXY_URL = 'https://fixture-user:fixture-password@proxy.invalid:443';
+      t.after(() => {
+        if (previousProxy === undefined) delete process.env.PROXY_URL;
+        else process.env.PROXY_URL = previousProxy;
+      });
+      const proxyUtils = createRequire(import.meta.url)('../scripts/_proxy-utils.cjs');
+      const envelope = { error: { code: 400, message: 'Invalid query parameters.', details: ['Invalid paging.'] } };
+      const proxy = t.mock.method(proxyUtils, 'proxyFetch', async () => ({
+        ok: status === 200, status, buffer: Buffer.from(JSON.stringify(envelope)),
+        contentType: 'application/json', headers: { 'retry-after': '60', 'set-cookie': 'private-cookie' },
+      }));
+      const transport = paginationTransport(new TypeError('fetch failed'));
+
+      await assert.rejects(portwatchSeed.fetchAllPortRefs({ fetchFn: transport.fetchFn }), status === 200
+        ? /ArcGIS error \(via proxy after direct TypeError\): Invalid query parameters\./ : /HTTP 503/);
+
+      const records = warnings.filter((line) => line.startsWith('{')).map((line) => JSON.parse(line));
+      assert.deepEqual(records.map((record) => record.route), ['direct', 'proxy']);
+      assert.equal(records[1].phase, status === 200 ? 'arcgis' : 'http');
+      assert.equal(records[1].query.resultOffset, '1');
+      if (status === 200) {
+        assert.deepEqual(records[1].arcgisError, envelope.error);
+        assert.equal(records[1].status, null, 'the shared proxy helper does not expose successful response status');
+      } else {
+        assert.equal(records[1].status, 503);
+        assert.deepEqual(records[1].headers, { 'retry-after': '60' });
+      }
+      assert.equal(proxy.mock.callCount(), 1);
+      assert.deepEqual(transport.requestedOffsets, [0, 1]);
+      assert.doesNotMatch(warnings.join('\n'), /fixture-user|fixture-password|private-cookie/);
+    });
+  }
+
   it('parses and retries a rate-limited HTTP 200 page without restarting pagination', async () => {
     assert.equal(typeof arcgisRateLimitFixture.error, 'object');
     assert.equal(
