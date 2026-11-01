@@ -94,24 +94,29 @@ export function driftResilienceSnapshot(snapshot, { targetDate, keepReadings = M
   drifted.items = drifted.items.map((item, index) => ({ ...item, ...itemIdentities[itemOrder[index]] }));
 
   // Greyed-out rows are ordered by country code, so the readings move instead.
-  // Neighbours by code often share a coverage figure (Andorra and Antigua both
-  // hold 71%), so each row takes the reading half the list away in coverage
-  // order, which differs wherever the list's coverage does. Countries with a
-  // hand-written coverage story keep their own readings: the build fails by
-  // design when a story's cited gaps stop matching its country's data, and
-  // that needs a human rewrite, not a test fix.
+  // Each row takes a reading from the next displayed coverage step up (the
+  // top step takes the one below): every published percentage changes, by
+  // the smallest step the list holds, as a real month moves them (Taiwan
+  // 38% -> 40%). A larger jump trips the corpus page-size and story guards,
+  // which a real month would not. Countries with a hand-written coverage
+  // story keep their own readings: the build fails by design when a story's
+  // cited gaps stop matching its country's data, and that needs a human
+  // rewrite, not a test fix.
   const greyReadings = drifted.greyedOut.map((entry) => omit(entry, IDENTITY_FIELDS));
-  const byCoverage = greyReadings.map((_, index) => index)
-    .filter((index) => !keepReadings.includes(drifted.greyedOut[index].countryCode))
-    .sort((a, b) => greyReadings[a].dimensionCoverage - greyReadings[b].dimensionCoverage);
-  const greyOrder = greyReadings.map((_, index) => index);
-  byCoverage.forEach((index, position) => {
-    greyOrder[index] = byCoverage[(position + Math.floor(byCoverage.length / 2)) % byCoverage.length];
+  const percent = (reading) => Math.round(reading.dimensionCoverage * 100);
+  const steps = new Map();
+  greyReadings.forEach((reading, index) => {
+    if (keepReadings.includes(drifted.greyedOut[index].countryCode)) return;
+    steps.set(percent(reading), [...(steps.get(percent(reading)) ?? []), index]);
   });
-  drifted.greyedOut = drifted.greyedOut.map((entry, index) => ({
-    ...pick(entry, IDENTITY_FIELDS),
-    ...greyReadings[greyOrder[index]],
-  }));
+  const levels = [...steps.keys()].sort((a, b) => a - b);
+  drifted.greyedOut = drifted.greyedOut.map((entry, index) => {
+    if (levels.length < 2 || keepReadings.includes(entry.countryCode)) return entry;
+    const level = levels.indexOf(percent(greyReadings[index]));
+    const donors = steps.get(levels[level === levels.length - 1 ? level - 1 : level + 1]);
+    const donor = donors[steps.get(levels[level]).indexOf(index) % donors.length];
+    return { ...pick(entry, IDENTITY_FIELDS), ...greyReadings[donor] };
+  });
   return drifted;
 }
 
