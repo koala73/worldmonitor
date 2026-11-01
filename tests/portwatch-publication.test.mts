@@ -212,7 +212,18 @@ test('natural 168-to-60 expiry cliff preserves publication and reports incomplet
   const retained = countries[150][1];
   const response = await readCountry(t, result.redis, retained);
   assert.equal(response.available, true);
+  assert.equal(response.stale, false);
   assert.equal(response.fetchedAt, input[`${PREFIX}${retained}`].fetchedAt);
+  // A country that crossed seven days is a coverage gap for health (above),
+  // but its last data is still under its key and the canonical list still
+  // names it, so the API serves it marked stale instead of a blank panel.
+  const expired = result.redis[CANONICAL].find((iso2: string) =>
+    result.redis[`${PREFIX}${iso2}`]?.cacheWrittenAt <= NOW - 7 * DAY);
+  assert.ok(expired, 'the run leaves expired countries in the held canonical list');
+  const expiredResponse = await readCountry(t, result.redis, expired);
+  assert.equal(expiredResponse.available, true);
+  assert.equal(expiredResponse.stale, true);
+  assert.equal(expiredResponse.ports.length, 1);
   process.env.WORLDMONITOR_VALID_KEYS = 'test-key';
   const { handleSeedHealth } = await import('../api/seed-health.js');
   const seedHealthResponse = await handleSeedHealth(new Request('https://api.worldmonitor.app/api/seed-health', {
@@ -222,6 +233,10 @@ test('natural 168-to-60 expiry cliff preserves publication and reports incomplet
   assert.equal(entry.status, 'error');
   assert.equal(entry.recordCount, 168);
   Date.now = () => NOW + 7 * DAY;
+  const aged = await getCountryPortActivity({} as never, { countryCode: retained });
+  assert.equal(aged.available, true);
+  assert.equal(aged.stale, true);
+  Date.now = () => NOW + 30 * DAY;
   assert.equal((await getCountryPortActivity({} as never, { countryCode: retained })).available, false);
 });
 
