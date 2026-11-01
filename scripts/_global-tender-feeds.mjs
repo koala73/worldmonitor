@@ -87,7 +87,10 @@ function ocdsRecords(releases, { source, countryCode, region, noticeUrl }) {
 async function detailsInBatches(items, readDetail) {
   const results = [];
   for (let offset = 0; offset < Math.min(items.length, MAX_DETAILS); offset += 4) {
-    results.push(...await Promise.all(items.slice(offset, offset + 4).map(readDetail)));
+    const settled = await Promise.allSettled(items.slice(offset, offset + 4).map(readDetail));
+    const failed = settled.find(result => result.status === 'rejected');
+    if (failed) throw failed.reason;
+    results.push(...settled.map(result => result.value));
   }
   return results.flat();
 }

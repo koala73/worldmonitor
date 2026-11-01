@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fetchGlobalTenders, fetchWorldBank, fetchSam } from '../scripts/seed-global-tenders.mjs';
-import { fetchBulgaria } from '../scripts/_global-tender-feeds.mjs';
+import { fetchBulgaria, fetchChile } from '../scripts/_global-tender-feeds.mjs';
 import { observeTenderRequest, readTenderBody } from '../scripts/_global-tender-receipts.mjs';
 
 const NOW = Date.parse('2026-11-01T02:00:00Z');
@@ -121,4 +121,30 @@ test('paced SAM receipts count previous records as retained without claiming a f
     assert.equal(run.sources[0].retainedCount, 1);
     assert.equal(run.sources[0].lastSuccessfulAt, lastSuccessfulAt);
   }
+});
+
+test('a failed detail batch settles started sibling requests before completing its source receipt', async () => {
+  let releaseSibling;
+  const sibling = new Promise(resolve => { releaseSibling = resolve; });
+  const run = receipt();
+  let completed = false;
+  const pending = fetchGlobalTenders({ now: NOW, receipt: run, adapters: [['chile-mercado-publico', options => fetchChile({
+    ...options,
+    fetchJsonFn: async (url, requestOptions) => readTenderBody(await observeTenderRequest(url, requestOptions, async () => {
+      if (url.includes('listaOCDS')) return Response.json({ data: Array.from({ length: 6 }, (_, i) => ({ ocid: `ocds-70d2nz-${i}` })) });
+      if (url.endsWith('/0')) throw Object.assign(new Error('HTTP 500'), { status: 500 });
+      await sibling;
+      return Response.json({ releases: [] });
+    }), 'json'),
+  })]] }).then(() => { completed = true; });
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(completed, false, 'source completion must wait for its started detail batch');
+  } finally {
+    releaseSibling();
+    await pending;
+  }
+  assert.equal(run.sources[0].outcome, 'error');
+  assert.equal(run.sources[0].requestCount, 5, 'do not start a second batch after failure');
+  assert.ok(run.sources[0].requests.every(request => request.completedAt));
 });
