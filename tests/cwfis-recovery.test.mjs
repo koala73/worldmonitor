@@ -10,6 +10,7 @@ import {
   CWFIS_WARN_AFTER_CONSECUTIVE_FAILURES,
 } from '../scripts/wildfire/cwfis-wfs.mjs';
 import { mergeWildfireSourcesWithBc, canadianWildfireAfterPublish } from '../scripts/wildfire/bc-fire-points.mjs';
+import { observeWildfireSource } from '../scripts/wildfire/source-outcome.mjs';
 import { __testing__ as health } from '../api/health.js';
 
 process.env.WM_SEED_RETRY_DELAY_MS = '1';
@@ -17,6 +18,7 @@ const NOW = Date.parse('2026-09-07T06:20:00Z');
 const MIN = 60_000;
 const active = JSON.parse(readFileSync(new URL('fixtures/wildfire/cwfis-national-activefires.json', import.meta.url), 'utf8'));
 const bc = JSON.parse(readFileSync(new URL('fixtures/wildfire/bc-current-fire-points.json', import.meta.url), 'utf8'));
+const bcKml = readFileSync(new URL('fixtures/wildfire/bc-current-fire-points.kml', import.meta.url), 'utf8');
 const empty = { type: 'FeatureCollection', features: [], numberMatched: 0, numberReturned: 0 };
 const goodFetch = async (url) => Response.json(new URL(url).searchParams.get('typeNames') === CWFIS_ACTIVE_LAYER
   ? { ...active, numberMatched: active.features.length, numberReturned: active.features.length, links: [] } : empty);
@@ -206,12 +208,14 @@ test('a transient Retry-After beyond the request budget keeps first-failure grac
 });
 
 function runSeedFixture(initial, now, mode, activeFixture = active) {
-  const result = spawnSync(process.execPath, [...(mode.startsWith('bc-') ? ['--import', 'tsx'] : []), '--input-type=module', '--eval', `(${seedProcess.toString()})(${JSON.stringify(initial)}, ${now}, ${JSON.stringify(mode)}, ${JSON.stringify(activeFixture)}, ${JSON.stringify(bc)})`], {
+  const result = spawnSync(process.execPath, [...(mode.startsWith('bc-') ? ['--import', 'tsx'] : []), '--input-type=module', '--eval', `(${seedProcess.toString()})(${JSON.stringify(initial)}, ${now}, ${JSON.stringify(mode)}, ${JSON.stringify(activeFixture)}, ${JSON.stringify(bc)}, ${JSON.stringify(bcKml)})`], {
     encoding: 'utf8', timeout: 10_000,
     env: {
       PATH: process.env.PATH, NODE_TEST_CONTEXT: 'child', WM_SEED_RETRY_DELAY_MS: '1',
       WM_SEED_ENV_FILE: '/dev/null', TEST_MODULE_URL: import.meta.url, NASA_FIRMS_API_KEY: 'fixture-only',
       UPSTASH_REDIS_REST_URL: 'https://redis.cwfis.test', UPSTASH_REDIS_REST_TOKEN: 'fixture-only',
+      RAILWAY_DEPLOYMENT_ID: mode === 'invalid-context' ? 'private-deploy-secret' : 'f212391f-97a5-4009-914f-a1f3eb9525c1',
+      RAILWAY_GIT_COMMIT_SHA: mode === 'invalid-context' ? 'private-commit-secret' : 'a'.repeat(40),
     },
   });
   const output = result.stdout + result.stderr;
@@ -219,7 +223,7 @@ function runSeedFixture(initial, now, mode, activeFixture = active) {
   return { ...JSON.parse(result.stdout.split('FIXTURE_RESULT=')[1].trim()), status: result.status, output };
 }
 
-async function seedProcess(initial, now, mode, activeFixture, bcFixture) {
+async function seedProcess(initial, now, mode, activeFixture, bcFixture, kmlFixture) {
   let clock = now;
   Date.now = () => clock;
   const timer = globalThis.setTimeout;
@@ -264,14 +268,15 @@ async function seedProcess(initial, now, mode, activeFixture, bcFixture) {
     if (url.hostname === 'geoserver.cwfif.nrcan.gc.ca') {
       const layer = url.searchParams.get('typeNames').endsWith('activefires') ? 'active' : 'prescribed';
       calls[layer]++;
-      if (layer === 'active' && mode !== 'ok' && !mode.startsWith('bc-')) throw new TypeError('fetch failed', { cause: Object.assign(new Error('socket reset'), { code: 'ECONNRESET' }) });
+      if ((layer === 'active' && mode !== 'ok' && mode !== 'prescribed-fail' && !mode.startsWith('bc-'))
+        || (layer === 'prescribed' && mode === 'prescribed-fail')) throw new TypeError('fetch failed', { cause: Object.assign(new Error('socket reset'), { code: 'ECONNRESET' }) });
       return Response.json(layer === 'active'
         ? { ...activeFixture, numberMatched: activeFixture.features.length, numberReturned: activeFixture.features.length, links: [] }
         : { type: 'FeatureCollection', features: [], numberMatched: 0, numberReturned: 0 });
     }
     if (url.hostname === 'openmaps.gov.bc.ca') {
       if (mode.startsWith('bc-')) {
-        if (url.pathname.includes('/kml/')) return new Response('<kml/>');
+        if (url.pathname.includes('/kml/')) return new Response(mode === 'bc-kml' ? kmlFixture : '<kml/>');
         calls.bc = (calls.bc || 0) + 1;
         if (mode === 'bc-fail' || mode === 'bc-read-fail') return new Response('<ows:ExceptionReport/>', { status: 400 });
         if (mode === 'bc-empty-fail' && calls.bc > 1) return new Response('', { status: 400 });
@@ -296,6 +301,68 @@ async function seedProcess(initial, now, mode, activeFixture, bcFixture) {
   process.on('exit', () => console.log('FIXTURE_RESULT=' + JSON.stringify({ store: [...store], expiries: [...expiries], calls, reader })));
   await import(new URL('../scripts/seed-fire-detections.mjs', process.env.TEST_MODULE_URL));
 }
+
+test('natural seeder logs source clocks and failures before publication with fixed retention', () => {
+  const good = runSeedFixture([], NOW, 'bc-ok');
+  const events = (capture) => capture.output.split('\n').filter(line => line.startsWith('{')).map(line => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).filter(event => event?.event === 'wildfire_source_outcome');
+  const initial = events(good);
+  assert.equal(initial.length, 3, good.output);
+  assert.deepEqual(new Set(initial.map(event => event.source)), new Set(['firms', 'bc', 'cwfis']));
+  for (const event of initial) {
+    assert.equal(event.outcome, 'fresh');
+    assert.match(event.runId, /^\d+-[a-z0-9]{1,6}$/);
+    assert.equal(event.runId, initial[0].runId);
+    assert.equal(event.deploymentId, 'f212391f-97a5-4009-914f-a1f3eb9525c1');
+    assert.equal(event.commitSha, 'a'.repeat(40));
+  }
+  assert.equal(initial.find(event => event.source === 'bc').route, 'wfs');
+  assert.equal(initial.find(event => event.source === 'firms').fetchedAt, null);
+  assert.equal(events(runSeedFixture([], NOW, 'bc-kml')).find(event => event.source === 'bc').route, 'kml');
+  for (const [mode, minute, expected] of [['bc-fail', 10, 'retained'], ['bc-fail', 120, 'failed'], ['bc-read-fail', 10, 'failed']]) {
+    const capture = runSeedFixture(good.store, NOW + minute * MIN, mode);
+    const rows = events(capture);
+    assert.equal(rows.length, 3, capture.output);
+    const bcEvent = rows.find(event => event.source === 'bc');
+    assert.equal(bcEvent.outcome, expected);
+    assert.equal(bcEvent.route, null);
+    assert.equal(bcEvent.fetchedAt, expected === 'retained' ? NOW : null);
+    assert.equal(bcEvent.retainedUntil, expected === 'retained' ? NOW + 120 * MIN : null);
+    assert.equal(bcEvent.recordCount, expected === 'retained' ? 4 : null);
+    if (mode === 'bc-read-fail') assert.equal(bcEvent.retainedRecordCount, null);
+  }
+  const partial = events(runSeedFixture(good.store, NOW + MIN, 'prescribed-fail')).find(event => event.source === 'cwfis');
+  assert.equal(partial.outcome, 'partial');
+  assert.equal(partial.fetchedAt, null);
+  assert.equal(partial.lastAttemptAt, NOW + MIN);
+  assert.equal(partial.retainedFetchedAt, NOW);
+  assert.equal(partial.retainedUntil, NOW + 180 * MIN);
+  for (const minute of [10, 180]) {
+    const row = events(runSeedFixture(good.store, NOW + minute * MIN, 'active-fail')).find(event => event.source === 'cwfis');
+    assert.equal(row.outcome, minute === 10 ? 'retained' : 'failed');
+    assert.equal(row.fetchedAt, minute === 10 ? NOW : null);
+    assert.equal(row.retainedUntil, minute === 10 ? NOW + 180 * MIN : null);
+  }
+  const firmsPartial = events(runSeedFixture(good.store, NOW + MIN, 'firms-partial')).find(event => event.source === 'firms');
+  assert.equal(firmsPartial.outcome, 'partial');
+  assert.equal(firmsPartial.fetchedAt, null);
+  assert.equal(firmsPartial.retainedUntil, null);
+  const rejected = runSeedFixture([], NOW, 'all-sources-fail');
+  assert.deepEqual(events(rejected).map(event => event.outcome), ['failed', 'failed', 'failed']);
+  assert.doesNotMatch(JSON.stringify(events(rejected)), /fixture-only|https:/);
+  const invalid = runSeedFixture([], NOW, 'invalid-context');
+  assert.ok(events(invalid).every(event => event.deploymentId === null && event.commitSha === null));
+  assert.doesNotMatch(JSON.stringify(events(invalid)), /private/);
+});
+
+test('source diagnostics cannot replace an acquisition result or original failure', async (t) => {
+  t.mock.method(console, 'log', () => { throw new Error('log unavailable'); });
+  const result = { fireDetections: [], _firmsFulfilledCalls: 27, _firmsFailedCalls: 0 };
+  assert.equal(await observeWildfireSource('firms', async () => result), result);
+  const failure = new Error('source unavailable');
+  await assert.rejects(observeWildfireSource('bc', async () => { throw failure; }), error => error === failure);
+});
 
 test('BC failures and unconfirmed empty results keep source coverage through the real seeder and RPC reader', () => {
   let previous = [];
