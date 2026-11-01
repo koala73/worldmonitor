@@ -128,6 +128,12 @@ const eula = read('docs/eula.mdx').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
     assert.match(eula, /The plan includes one dashboard seat/i);
     assert.doesNotMatch(eula, /includes no World Monitor dashboard seat/i);
     assert.match(read('docs/terms.mdx'), /API Starter includes \*\*one dashboard seat\*\*[^.]*internal use only, never customer-facing/i);
+    const seatLine = /^Full Pro dashboard included \(1 named user\)$/;
+    assert.ok(en.pricing.tiers.api.features.some((f: string) => seatLine.test(f)), 'the /pro API Starter card must list the dashboard seat');
+    assert.ok(
+      PRODUCT_CATALOG.api_starter.marketingFeatures.some((f: string) => seatLine.test(f)),
+      'the catalog API Starter features must list the dashboard seat',
+    );
     assert.ok(
       en.pricing.tiers.api.highlightFeatures.some((f: string) => /internal only, not customer-facing/i.test(f)),
       'the API Starter card must say its commercial use is internal only',

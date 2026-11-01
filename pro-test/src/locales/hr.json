@@ -385,7 +385,7 @@
           "Uključena licenca / API ključ",
           "Tokovi podataka u realnom vremenu",
           "60 zahtjeva/minuta",
-          "1.000 zahtjeva/dan uključeno (REST + MCP kombinirano; jedan MCP poziv računa se kao 2-3)",
+          "1.000 zahtjeva/dan uključeno (REST + MCP kombinirano; jedan MCP poziv uživo računa se kao 2-3)",
           "Obavijesti putem webhooks"
         ],
         "highlightFeatures": [

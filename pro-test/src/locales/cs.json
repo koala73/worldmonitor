@@ -385,7 +385,7 @@
           "Licenční klíč / API klíč včetně",
           "Datové toky v reálném čase",
           "60 požadavků za minutu",
-          "1 000 požadavků za den včetně (REST + MCP dohromady; jeden live MCP call se počítá jako 2–3)",
+          "1 000 požadavků za den včetně (REST + MCP dohromady; jedno živé volání MCP se počítá jako 2–3)",
           "Webhook notifikace"
         ],
         "highlightFeatures": [
