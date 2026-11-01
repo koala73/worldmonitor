@@ -112,6 +112,34 @@ describe('feedback gateway public access', { concurrency: 1 }, () => {
     assert.equal(convexCalls.length, 0);
   });
 
+  it('gives a browser caller CORS headers on the 413', async () => {
+    const { entry } = await load();
+    const big = JSON.stringify({ ...valid, actual: 'x'.repeat(25 * 1024) });
+    const res = await entry(post(big, { Origin: 'https://www.worldmonitor.app' }));
+    assert.equal(res.status, 413);
+    assert.equal(res.headers.get('access-control-allow-origin'), 'https://www.worldmonitor.app');
+  });
+
+  it('answers a body that fails mid-read with 400, not an unhandled 500', async () => {
+    const { entry, convexCalls } = await load();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"kind":'));
+        controller.error(new Error('client aborted'));
+      },
+    });
+    const aborted = new Request(URL_, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-real-ip': '203.0.113.7' },
+      body: stream,
+      // @ts-expect-error Node requires duplex for a streamed request body.
+      duplex: 'half',
+    });
+    const res = await entry(aborted);
+    assert.equal(res.status, 400);
+    assert.equal(convexCalls.length, 0);
+  });
+
   it('accepts the largest valid CJK report under the cap', async () => {
     const { entry } = await load();
     const res = await entry(post(JSON.stringify({

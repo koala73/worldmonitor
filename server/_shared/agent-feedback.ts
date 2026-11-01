@@ -15,6 +15,7 @@ import type { Duration } from '@upstash/ratelimit';
 import { SENSITIVE_URL_PARAM_RE, scrubUrl } from '../../shared/sensitive-url-params';
 import { stripNotificationControlChars, URL_TOKEN_PATTERN } from './notify-fields';
 import { checkScopedRateLimit } from './rate-limit';
+import { rateLimitKeyForIp } from './client-ip';
 
 export const FEEDBACK_KINDS = ['bug', 'missing_capability', 'data_quality', 'security'] as const;
 export type FeedbackKind = (typeof FEEDBACK_KINDS)[number];
@@ -80,9 +81,13 @@ function sanitize(value: string): string {
   return stripNotificationControlChars(value).replace(/\s+/g, ' ').trim();
 }
 
+// In u-mode a valid pair is one code point, so only a lone surrogate matches.
+const LONE_SURROGATE_RE = /\p{Cs}/u;
+
 function optionalText(raw: unknown): string | undefined | null {
   if (raw === undefined || raw === null) return undefined;
-  if (typeof raw !== 'string') return null;
+  // A lone surrogate is not valid UTF-8 and Convex refuses it: name the field.
+  if (typeof raw !== 'string' || LONE_SURROGATE_RE.test(raw)) return null;
   const clean = sanitize(raw);
   return clean.length === 0 ? undefined : clean;
 }
@@ -158,10 +163,21 @@ export function parseFeedbackReport(
 
 const FEEDBACK_EXTRA_URL_PARAM_RE = /^(key|api_key|apikey|secret|password|sig|signature|code|x-amz-[a-z0-9-]*)$/i;
 
+// After "Bearer" or "Authorization:" the next word is often prose ("the bearer
+// token is rejected", "Authorization: missing"). Only a value shaped like a
+// credential is removed: 8+ token characters with a digit, a token symbol, or
+// an uppercase letter past the first character.
+const AUTH_VALUE_PATTERNS: readonly RegExp[] = [
+  /(\bAuthorization"?\s*[:=]\s*"?(?:(?:Bearer|Basic|Token)\s+)?)([^\s",;}]+)/gi,
+  /(\bBearer\s+)([^\s",;}]+)/gi,
+];
+
+function isTokenShaped(value: string): boolean {
+  return value.length >= 8 && /^[A-Za-z0-9._~+/=-]+$/.test(value) && /[0-9._~+/=-]|.[A-Z]/.test(value);
+}
+
 const CREDENTIAL_PATTERNS: readonly RegExp[] = [
-  /\bAuthorization"?\s*[:=]\s*"?(?:(?:Bearer|Basic|Token)\s+)?[^\s",;}]+/gi,
   /\b(?:x-api-key|x-worldmonitor-key)"?\s*[:=]\s*"?[^\s",;}]+/gi,
-  /\bBearer\s+[^\s",;}]+/gi,
   /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
   // Real shapes only, so identifiers like wm_api_usage survive.
   /\bwm_[a-f0-9]{40}\b/gi,
@@ -198,6 +214,11 @@ function redactUrlToken(token: string): string {
 /** Scrubs URL credentials, credential shapes, then email addresses, in that order. */
 export function redactFeedbackText(value: string): { text: string; redacted: boolean } {
   let text = value.replace(URL_TOKEN_PATTERN, (token) => redactUrlToken(token));
+  for (const pattern of AUTH_VALUE_PATTERNS) {
+    text = text.replace(pattern, (match, prefix: string, value: string) => (
+      isTokenShaped(value) ? `${prefix}${FEEDBACK_REDACTED}` : match
+    ));
+  }
   for (const pattern of CREDENTIAL_PATTERNS) text = text.replace(pattern, FEEDBACK_REDACTED);
   text = text.replace(EMAIL_RE, FEEDBACK_EMAIL_PLACEHOLDER);
   return { text, redacted: text !== value };
@@ -248,26 +269,12 @@ async function sha256Hex(input: string): Promise<string> {
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function expandIpv6(ip: string): string[] | null {
-  const [head, tail = ''] = ip.split('::');
-  if (ip.split('::').length > 2) return null;
-  const left = head ? head.split(':') : [];
-  const right = tail ? tail.split(':') : [];
-  if (!ip.includes('::') && left.length !== 8) return null;
-  const fill = ip.includes('::') ? 8 - left.length - right.length : 0;
-  if (fill < 0) return null;
-  const groups = [...left, ...Array<string>(fill).fill('0'), ...right];
-  return groups.every((g) => /^[0-9a-f]{1,4}$/i.test(g)) ? groups.map((g) => g.toLowerCase()) : null;
-}
-
-/** Per-IP bucket key: the address itself, or its /64 for IPv6 (Decision 2). */
+/**
+ * Per-IP bucket key: the address itself, or its /64 for IPv6 (Decision 2).
+ * The outer endpoint limiter's own key, so the two can never disagree.
+ */
 export function feedbackIpKey(ip: string): string {
-  const trimmed = ip.trim();
-  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(trimmed);
-  if (mapped) return mapped[1]!;
-  if (!trimmed.includes(':')) return trimmed;
-  const groups = expandIpv6(trimmed.replace(/%.*$/, ''));
-  return groups ? `${groups.slice(0, 4).join(':')}::/64` : trimmed;
+  return rateLimitKeyForIp(ip.trim());
 }
 
 /** Decision 3: one canonical encoding, absent fields written as null. */

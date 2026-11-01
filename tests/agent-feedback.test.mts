@@ -21,6 +21,7 @@ import {
   type FeedbackLimitCheck,
   type FeedbackReport,
 } from '../server/_shared/agent-feedback.ts';
+import { rateLimitKeyForIp } from '../server/_shared/client-ip.ts';
 
 const originalEnv = { ...process.env };
 const originalWarn = console.warn;
@@ -62,6 +63,10 @@ describe('parseFeedbackReport', () => {
     ['requestId', { ...valid, requestId: 'a'.repeat(129) }],
     ['clientName', { ...valid, clientName: 'c'.repeat(81) }],
     ['surface', { ...valid, surface: 's'.repeat(201) }],
+    // A lone surrogate is not valid UTF-8; Convex would refuse it as a 503.
+    ['summary', { ...valid, summary: 'broken \uD800 text' }],
+    ['actual', { ...valid, actual: 'tail \uDC00' }],
+    ['surface', { ...valid, surface: '\uD83D' }],
   ] as const) {
     it(`rejects ${field} by name`, () => {
       assert.deepEqual(parseFeedbackReport(input as Record<string, unknown>), { ok: false, field });
@@ -128,6 +133,17 @@ describe('redactFeedbackText', () => {
     });
   }
 
+  it('keeps prose about auth: only a token-shaped value after Bearer or Authorization is redacted', () => {
+    for (const text of [
+      'the bearer token is rejected with 401',
+      'Bearer of bad news: the quote is stale',
+      'Authorization: missing',
+      'Authorization: required for this route',
+    ]) {
+      assert.deepEqual(redactFeedbackText(text), { text, redacted: false }, text);
+    }
+  });
+
   it('leaves ordinary text, identifiers, and harmless URLs alone', () => {
     const text = 'get_market_data returned [] in wm_api_usage for https://www.worldmonitor.app/docs?page=2 at 10:00';
     assert.deepEqual(redactFeedbackText(text), { text, redacted: false });
@@ -161,6 +177,15 @@ describe('hashes and identity', () => {
     assert.equal(feedbackIpKey('::ffff:203.0.113.7'), '203.0.113.7');
     assert.equal(feedbackIpKey('2001:db8:1:2::1'), feedbackIpKey('2001:db8:1:2:ffff:ffff:ffff:ffff'));
     assert.notEqual(feedbackIpKey('2001:db8:1:2::1'), feedbackIpKey('2001:db8:1:3::1'));
+  });
+
+  it('uses the same key as the outer per-IP limiter', () => {
+    assert.equal(feedbackIpKey('2001:0db8:0001:0002::1'), feedbackIpKey('2001:db8:1:2::1'));
+    assert.equal(feedbackIpKey('::ffff:c000:201'), '192.0.2.1');
+    assert.notEqual(feedbackIpKey('::ffff:c000:201'), feedbackIpKey('::ffff:c000:202'));
+    for (const ip of ['203.0.113.7', '::ffff:c000:201', '2001:db8:1:2::1', '64:ff9b::192.0.2.1']) {
+      assert.equal(feedbackIpKey(ip), rateLimitKeyForIp(ip), ip);
+    }
   });
 });
 
