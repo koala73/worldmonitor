@@ -194,6 +194,13 @@ describe('country deep-dive regional energy block', () => {
     expect(rows(body)).toEqual([['Regular gasolineRetail price', '6.49 BRL per litre', '—', '20 Sep 2026 · not recent']]);
   });
 
+  it('shows the error note when a failed feed is the only energy data', () => {
+    const { panel, body } = fixture();
+    panel.updateEnergyProfile(profile([feed({ status: 'error', error: 'cache_read_failed', observations: [], observedAt: 0 })]));
+    expect(body.textContent).not.toContain('Energy data unavailable for this country.');
+    expect(body.querySelector('.cdp-regional-energy summary')?.textContent).toContain('Latest reading could not be loaded');
+  });
+
   it('keeps the date column when series report different dates', () => {
     const { panel, body } = fixture();
     panel.updateEnergyProfile(profile([feed({

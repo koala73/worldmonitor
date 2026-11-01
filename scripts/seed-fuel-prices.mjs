@@ -652,6 +652,14 @@ const REGIONAL_FUEL_SOURCES = [
 ];
 export const REGIONAL_FUEL_CURRENCIES = [...new Set(REGIONAL_FUEL_SOURCES.map(s => s.currency))];
 
+// getSharedFxRates fetches only the first five currencies from Yahoo when the shared
+// cache lacks them; the rest use SHARED_FX_FALLBACKS. Currencies with no fallback go
+// first so their countries are not dropped for want of a rate.
+export const FUEL_FX_CURRENCIES = (() => {
+  const all = [...new Set(['MYR', 'EUR', 'MXN', 'PLN', 'CZK', 'DKK', 'HUF', 'RON', 'SEK', 'BGN', 'BRL', 'NZD', 'GBP', ...REGIONAL_FUEL_CURRENCIES])];
+  return [...all.filter(c => SHARED_FX_FALLBACKS[c] == null), ...all.filter(c => SHARED_FX_FALLBACKS[c] != null)];
+})();
+
 // snapshots maps a feed id to its cached record (or null). Returns fuel-panel
 // entries with each fuel's newest retail price, or none when it is stale, its
 // unit changed or the record belongs to another feed.
@@ -754,7 +762,7 @@ async function main() {
 const prevSnapshot = await readSeedSnapshot(`${CANONICAL_KEY}:prev`);
 
 const fxSymbols = {};
-for (const ccy of new Set(['MYR', 'EUR', 'MXN', 'PLN', 'CZK', 'DKK', 'HUF', 'RON', 'SEK', 'BGN', 'BRL', 'NZD', 'GBP', ...REGIONAL_FUEL_CURRENCIES])) {
+for (const ccy of FUEL_FX_CURRENCIES) {
   fxSymbols[ccy] = `${ccy}USD=X`;
 }
 

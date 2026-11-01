@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCREStationPrices, validateFuel, withFuelRetry, fetchUS_EIA, regionalFuelEntries } from '../scripts/seed-fuel-prices.mjs';
+import { parseCREStationPrices, validateFuel, withFuelRetry, fetchUS_EIA, regionalFuelEntries, FUEL_FX_CURRENCIES } from '../scripts/seed-fuel-prices.mjs';
+import { SHARED_FX_FALLBACKS } from '../scripts/_seed-utils.mjs';
 
 test('withFuelRetry returns the first success without retrying', async () => {
   let calls = 0;
@@ -254,4 +255,13 @@ test('regionalFuelEntries skips stale, missing and unexpected-unit series', () =
   assert.deepEqual(entries.map(e => e.code), ['FJ']);
   assert.equal(entries[0].gasoline, null);
   assert.equal(entries[0].diesel.localPrice, 3.86);
+});
+
+test('FX currencies without a fallback rate are requested first, inside the point-of-use budget', () => {
+  // getSharedFxRates fetches at most five currencies from Yahoo when the shared cache is cold
+  // or missing them; later ones fall back to SHARED_FX_FALLBACKS, so rows without one would vanish.
+  const withoutFallback = FUEL_FX_CURRENCIES.filter(c => SHARED_FX_FALLBACKS[c] == null);
+  for (const c of ['GTQ', 'FJD', 'PGK']) assert.ok(withoutFallback.includes(c), c);
+  assert.ok(withoutFallback.length <= 5, `only five point-of-use FX requests fit; ${withoutFallback.length} lack a fallback`);
+  assert.deepEqual(FUEL_FX_CURRENCIES.slice(0, withoutFallback.length), withoutFallback);
 });
