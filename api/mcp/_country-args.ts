@@ -1,4 +1,4 @@
-import { resolveCountryArg } from '../../shared/country-code-resolve-arabic';
+import { resolveCountryArg } from '../../shared/country-code-resolve-localized';
 import { RpcValidationError } from './billing-denial';
 
 /** Bound on the caller-supplied value echoed back in a resolution failure. */
@@ -20,7 +20,7 @@ export function echoCountryInput(raw: unknown): string {
 export { resolveCountryArg };
 
 export const COUNTRY_ARG_HINT =
-  'Pass an ISO 3166-1 alpha-2 code (e.g. "IQ"), an alpha-3 code ("IRQ"), or a country name in English ("Iraq") or Arabic ("العراق").';
+  'Pass an ISO 3166-1 alpha-2 code (e.g. "IQ"), an alpha-3 code ("IRQ"), or a country name in any supported dashboard locale (e.g. English "Iraq", Arabic "العراق", German "Deutschland", Chinese "中国").';
 
 export function requireCountryCode(raw: unknown, operation: string, field = 'country_code'): string {
   const resolved = resolveCountryArg(raw);

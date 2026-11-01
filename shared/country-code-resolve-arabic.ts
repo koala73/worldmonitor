@@ -1,5 +1,4 @@
 import ARABIC_COUNTRY_NAMES from './country-names-ar.json';
-import { resolveCountryCode } from './country-code-resolve';
 
 /**
  * Arabic country names for caller-supplied country arguments (#9722).
@@ -77,46 +76,4 @@ export function resolveArabicCountryName(raw: unknown): string | null {
   if (!trimmed || trimmed.length > MAX_DESIGNATOR_LENGTH || !ARABIC_SCRIPT.test(trimmed)) return null;
   const hit = ARABIC_NAME_TO_ISO2[normalizeArabicCountryToken(trimmed)];
   return typeof hit === 'string' && ISO2_PATTERN.test(hit) ? hit : null;
-}
-
-/**
- * Resolve a caller-supplied country argument: an alpha-2 or alpha-3 code, an
- * English name or alias, or an Arabic name.
- *
- * Input containing Arabic script never reaches the English ladder: its
- * trailing-parenthetical step would answer "السعودية (IR)" with IR, because
- * the English side cannot see that the base names Saudi Arabia. Here both sides
- * are resolved and must agree.
- */
-export function resolveCountryArg(raw: unknown): string | null {
-  if (typeof raw !== 'string' || !ARABIC_SCRIPT.test(raw)) return resolveCountryCode(raw);
-  const trimmed = raw.trim();
-  if (trimmed.length > MAX_DESIGNATOR_LENGTH) return null;
-  const whole = resolveArabicCountryName(trimmed);
-  if (whole) return whole;
-  const parenthetical = trimmed.match(/^([^(]*)\(([^)]*)\)$/);
-  if (!parenthetical) return null;
-  const base = (parenthetical[1] ?? '').trim();
-  const inner = (parenthetical[2] ?? '').trim();
-  if (!base || !inner) return null;
-  const fromBase = resolveArabicCountryName(base) ?? resolveCountryCode(base);
-  const fromInner = resolveArabicCountryName(inner) ?? resolveCountryCode(inner);
-  // Two sides that each name a country are only an answer when they agree.
-  if (fromBase && fromInner) return fromBase === fromInner ? fromBase : null;
-
-  // Otherwise the parenthetical is usually a word lifted out of the name:
-  // "السودان (جنوب)" is "جنوب السودان" (South Sudan), not Sudan. Try it at
-  // every position in the base; any exact key is that country.
-  const baseWords = normalizeArabicCountryToken(base).split(' ').filter(Boolean);
-  const innerKey = normalizeArabicCountryToken(inner);
-  if (innerKey) {
-    for (let at = 0; at <= baseWords.length; at++) {
-      const key = [...baseWords.slice(0, at), innerKey, ...baseWords.slice(at)].join(' ');
-      const hit = ARABIC_NAME_TO_ISO2[key];
-      if (typeof hit === 'string' && ISO2_PATTERN.test(hit)) return hit;
-    }
-  }
-  // A modifier that neither names a country nor completes the name may change
-  // which country is meant, so it is not dropped: report the input unresolved.
-  return null;
 }

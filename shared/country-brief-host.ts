@@ -39,8 +39,8 @@ const countryRiskDirectReadSchema = z.object({ country_code: z.string().min(2).m
 export function normalizeCountryDirectRead(
   name: 'get_country_brief' | 'get_country_risk',
   args: Record<string, unknown>,
-  // The MCP layer passes its Arabic-aware resolver; the default keeps the
-  // Arabic name table out of the browser bundles that import this module.
+  // The MCP layer passes its localized resolver; the default keeps the
+  // localized name tables out of the browser bundles that import this module.
   resolveCountry: (raw: unknown) => string | null = resolveCountryCode,
 ): Record<string, unknown> | null {
   const parsed = (name === 'get_country_brief' ? countryBriefDirectReadSchema : countryRiskDirectReadSchema).safeParse(args);

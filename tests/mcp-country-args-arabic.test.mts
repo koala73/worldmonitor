@@ -21,6 +21,7 @@ import {
 import { isAssignedCountryCode, resolveCountryCode } from '../shared/country-code-resolve.ts';
 import { normalizeArabicCountryToken, resolveArabicCountryName } from '../shared/country-code-resolve-arabic.ts';
 import ARABIC_NAMES from '../shared/country-names-ar.json' with { type: 'json' };
+import LOCALIZED_NAMES from '../shared/country-names-localized.json' with { type: 'json' };
 import { buildArabicCountryNames } from '../scripts/build-country-names-ar.mjs';
 import { mcpHandler } from '../api/mcp.ts';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
@@ -287,6 +288,21 @@ describe('MCP tools accept Arabic country arguments end to end', () => {
     assert.ok(risk, `no downstream call: ${JSON.stringify(urls)}`);
     assert.match(risk, /country_code=SA(?:&|$)/);
   });
+
+  for (const [locale, names] of Object.entries(LOCALIZED_NAMES.locales)) {
+    it(`get_country_risk sends DE downstream for a ${locale} country name`, async () => {
+      const urls: string[] = [];
+      globalThis.fetch = async (input: unknown) => {
+        urls.push(String(input));
+        return Response.json({ countryCode: 'DE', countryName: 'Germany', fetchedAt: 0 });
+      };
+      const body = await callTool('get_country_risk', { country_code: names.DE[0] }) as { error?: unknown };
+      assert.equal(body.error, undefined, JSON.stringify(body));
+      const risk = urls.find((url) => url.includes('/api/intelligence/v1/get-country-risk'));
+      assert.ok(risk, `no downstream call for ${locale}`);
+      assert.match(risk, /country_code=DE(?:&|$)/);
+    });
+  }
 
   it('get_country_risk returns Invalid params naming an unknown Arabic value', async () => {
     globalThis.fetch = async () => { throw new Error('must not fetch'); };
