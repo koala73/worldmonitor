@@ -246,3 +246,41 @@ describe('report_issue — report text never reaches a log line', () => {
     assert.deepEqual(lines.filter((line) => line.includes(canary)), []);
   });
 });
+
+// Phase 7: an error that suggests a bug or a missing capability tells the agent
+// where to report it. Known states (refusals, validation, outages) do not.
+describe('error guidance', () => {
+  const call = async (name, args = {}) => {
+    const res = await dispatchToolsCall(reportRequest(), { kind: 'free' }, makeProDeps().deps, { id: 9, params: { name, arguments: args } }, {});
+    return res.json();
+  };
+
+  it('points an unknown tool call at report_issue', async () => {
+    const body = await call('get_weather_forecast');
+    assert.equal(body.error.code, -32602);
+    assert.equal(body.error.data?.reportWith, 'report_issue');
+  });
+
+  it('points an unexpected tool failure at report_issue', async () => {
+    const { TOOL_REGISTRY } = await import('../api/mcp/registry/index.ts');
+    const tool = TOOL_REGISTRY.find((t) => t.name === 'get_sources');
+    const original = tool._execute;
+    tool._execute = async () => { throw new Error('synthetic failure'); };
+    try {
+      const body = await call('get_sources');
+      assert.equal(body.error.code, -32603);
+      assert.equal(body.error.data?.reportWith, 'report_issue');
+    } finally {
+      tool._execute = original;
+    }
+  });
+
+  it('does not point a refused or invalid report back at report_issue', async () => {
+    limiter = { mode: 'throw' };
+    const refused = (await report({ kind: 'bug', summary: 'Limiter down.' })).body;
+    assert.equal(refused.error.code, -32603);
+    assert.equal(refused.error.data?.reportWith, undefined);
+    const invalid = (await report({ kind: 'nope', summary: 'x' })).body;
+    assert.equal(invalid.error.data?.reportWith, undefined);
+  });
+});

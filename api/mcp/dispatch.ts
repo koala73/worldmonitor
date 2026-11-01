@@ -438,6 +438,13 @@ function quotaBackendUnavailableResponse(
 
 const REGISTERED_TOOL_NAMES: ReadonlySet<string> = new Set(TOOL_REGISTRY.map((tool) => tool.name));
 
+// #8721 phase 7: an error that suggests a bug (an unexpected tool failure) or
+// a missing capability (an unknown tool) names the tool that takes a report.
+// The handler's exit adds `requestId` beside it (api/mcp/request-id.ts). Known
+// states, such as billing denials, rate limits, validation errors, source
+// outages and report_issue's own refusals, do not carry it.
+const REPORT_GUIDANCE = { reportWith: REPORT_ISSUE_TOOL } as const;
+
 /**
  * Who is calling `report_issue`, from the request and the auth context only
  * (threat model, "Entry paths"). Keyed means a Pro or `wm_` principal that
@@ -535,7 +542,7 @@ export async function dispatchToolsCall(
     }
     // Cap the echoed tool name — same reflection-amplification class as the
     // handler.ts method echo (see a2a.ts Greptile #4824 precedent).
-    return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders);
+    return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders, { ...REPORT_GUIDANCE });
   }
   if (resolved.kind === 'invalid') {
     if (deferredBurst) {
@@ -1354,6 +1361,7 @@ export async function dispatchToolsCall(
     if (err instanceof RpcValidationError) {
       return invalidArguments('Invalid params', { violations: err.violations });
     }
-    return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders);
+    return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders,
+      tool.name === REPORT_ISSUE_TOOL ? undefined : { ...REPORT_GUIDANCE });
   }
 }

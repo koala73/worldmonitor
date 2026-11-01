@@ -133,7 +133,7 @@ describe('validation body budget (#6559 follow-up)', () => {
     const serialized = JSON.stringify(parsed);
     assert.equal(parsed.error.code, -32603);
     assert.equal(parsed.error.message, 'Internal error: data fetch failed');
-    assert.equal(parsed.error.data, undefined);
+    assert.deepEqual(parsed.error.data, { reportWith: 'report_issue' }, 'only the report guidance, never body text');
     assert.ok(!serialized.includes(secret));
     assert.ok(!serialized.includes('tail_field'));
   });
@@ -221,7 +221,7 @@ describe('MCP RPC ValidationError preservation', () => {
     const body = await res.json();
     assert.equal(body.error?.code, -32603);
     assert.equal(body.error?.message, 'Internal error: data fetch failed');
-    assert.equal(body.error?.data, undefined);
+    assert.deepEqual(body.error?.data, { reportWith: 'report_issue' }, 'only the report guidance, never body text');
     assert.ok(!JSON.stringify(body).includes('wm_live_secret'));
     assert.ok(!JSON.stringify(body).includes('<html>'));
   });
@@ -237,7 +237,7 @@ describe('MCP RPC ValidationError preservation', () => {
     );
     const body = await res.json();
     assert.equal(body.error?.code, -32603);
-    assert.equal(body.error?.data, undefined);
+    assert.deepEqual(body.error?.data, { reportWith: 'report_issue' }, 'only the report guidance, never body text');
     assert.ok(!JSON.stringify(body).includes('upstream exploded'));
   });
 
@@ -442,7 +442,7 @@ describe('MCP RPC ValidationError preservation on the observed-downstream path',
     const body = await res.json();
     assert.equal(body.error?.code, -32603);
     assert.equal(body.error?.message, 'Internal error: data fetch failed');
-    assert.equal(body.error?.data, undefined);
+    assert.deepEqual(body.error?.data, { reportWith: 'report_issue' }, 'only the report guidance, never body text');
     assert.ok(!JSON.stringify(body).includes('wm_live_secret'));
     assert.ok(!JSON.stringify(body).includes('<html>'));
   });
@@ -461,7 +461,7 @@ describe('MCP RPC ValidationError preservation on the observed-downstream path',
     );
     const body = await res.json();
     assert.equal(body.error?.code, -32603);
-    assert.equal(body.error?.data, undefined);
+    assert.deepEqual(body.error?.data, { reportWith: 'report_issue' }, 'only the report guidance, never body text');
   });
 
   // An explicit-null `code`/`error` alongside violations must not read as a
@@ -532,7 +532,7 @@ describe('MCP RPC ValidationError preservation on the observed-downstream path',
     );
     const body = await res.json();
     assert.equal(body.error?.code, -32603);
-    assert.equal(body.error?.data, undefined);
+    assert.deepEqual(body.error?.data, { reportWith: 'report_issue' }, 'only the report guidance, never body text');
     assert.ok(!JSON.stringify(body).includes('upstream exploded'));
   });
 
