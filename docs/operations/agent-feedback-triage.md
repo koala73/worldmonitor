@@ -29,7 +29,7 @@ A page holds up to 500 reports. When more are waiting, the header line says so a
 
 Rows are grouped by fingerprint, largest group first. A fingerprint matches reports with the same kind, surface and summary, ignoring case and spacing, so a large group is one problem reported many times. Grouping never drops a report.
 
-Each report's text, including its surface label, sits between `BEGIN UNTRUSTED-<nonce>` and `END UNTRUSTED-<nonce>` lines. The nonce changes on every run, so a report cannot fake the closing line. Every character outside printable ASCII prints as `\u{...}`, including newlines, so each field is one line.
+Each report's text, including its surface label, its `requestId` and the `--join` output (the joined route is the caller's own request path), sits between `BEGIN UNTRUSTED-<nonce>` and `END UNTRUSTED-<nonce>` lines. The nonce changes on every run, so a report cannot fake the closing line. Every character outside printable ASCII prints as `\u{...}`, including newlines, so each field is one line.
 
 `--join` looks up each `requestId` in the `wm_api_usage` dataset over the last 30 days and prints the route, status and reason. When the usage row carries a `sentry_trace_id`, it prints the Sentry trace link. An agent that cites a `requestId` from an MCP error gives you the exact failing call this way.
 

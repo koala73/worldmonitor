@@ -111,6 +111,11 @@ export function formatQueue({ rows, more, continueCursor }, { status, nonce, joi
     for (const row of group.rows) {
       lines.push(`- ${row.reportId} kind=${row.kind} status=${row.status} auth=${row.authKind} received=${new Date(row.receivedAt).toISOString()}${row.redacted ? ' redacted=yes' : ''}`);
       lines.push(`  surfaceType=${row.surfaceType}`);
+      lines.push(`  BEGIN ${nonce}`);
+      // The surface label, the reported requestId and the joined usage route
+      // (the caller's own request path) are caller text, so they sit inside
+      // the markers.
+      lines.push(`  surface: ${escapeTerminal(row.surfaceName)}`);
       if (row.requestId) {
         lines.push(`  requestId=${escapeTerminal(row.requestId)}`);
         const joined = joins.get(row.requestId);
@@ -127,9 +132,6 @@ export function formatQueue({ rows, more, continueCursor }, { status, nonce, joi
           }
         }
       }
-      lines.push(`  BEGIN ${nonce}`);
-      // The surface label is caller text too, so it sits inside the markers.
-      lines.push(`  surface: ${escapeTerminal(row.surfaceName)}`);
       for (const field of TEXT_FIELDS) {
         if (row[field] !== undefined && row[field] !== null) lines.push(`  ${field}: ${escapeTerminal(row[field])}`);
       }
