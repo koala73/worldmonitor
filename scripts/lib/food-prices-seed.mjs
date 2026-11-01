@@ -6,6 +6,9 @@ import { collectFoodSource } from './food-prices-fetch.mjs';
 import { mergeHistory } from './food-prices.mjs';
 import { isMainModule } from './main-module.mjs';
 
+// Fetch-phase time beyond the collection budget, for the last-good snapshot read and the merge.
+export const FOOD_FETCH_MARGIN_MS = 15_000;
+
 export function mergeFoodSnapshot(previous, incoming) {
   const latestDate = rows => (rows ?? []).map(row => row.date).sort().at(-1) ?? '';
   if (incoming.observations.length && latestDate(previous?.observations) > latestDate(incoming.observations)) {
@@ -38,7 +41,7 @@ export function runFoodPriceSource(id, moduleUrl) {
     recordCount: count, declareRecords: count,
     ttlSeconds: Math.max(45, source.maxContentAgeDays + 14) * 86400,
     // Cover retried staging/canonical/cleanup and freshness writes after the fetch deadline.
-    lockTtlMs: source.fetchBudgetMs + 600_000, fetchPhaseTimeoutMs: source.fetchBudgetMs + 15_000,
+    lockTtlMs: source.fetchBudgetMs + 600_000, fetchPhaseTimeoutMs: source.fetchBudgetMs + FOOD_FETCH_MARGIN_MS,
     sourceVersion: `food-prices-${id}-v1`, schemaVersion: 1,
     maxStaleMin: source.maxFetchAgeDays * DAY_MIN,
     contentMeta: data => tokensToContentMeta([...data.observations.map(row => row.date), ...data.contexts.map(context => context.referenceDate)]),

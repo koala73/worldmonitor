@@ -72,3 +72,21 @@ test('SNIIM prior-week HTTP failures do not block the current basket', async () 
   assert.equal(result.observations.length, 5);
   assert.ok(result.observations.every(row => row.date === '2026-10-28'));
 });
+
+test('each food bundle section leaves its fetch phase the snapshot read and margin, plus the publish reserve', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { extractBundleSections, stripNumericUnderscores } = await import('./helpers/bundle-section-parser.mjs');
+  const { resolveFetchDeadlineMs } = await import('../scripts/_seed-utils.mjs');
+  const { FOOD_FETCH_MARGIN_MS } = await import('../scripts/lib/food-prices-seed.mjs');
+  const sources = JSON.parse(readFileSync(new URL('../shared/food-price-sources.json', import.meta.url), 'utf8'));
+  const sections = extractBundleSections(readFileSync(new URL('../scripts/seed-bundle-macro.mjs', import.meta.url), 'utf8'));
+  for (const source of sources) {
+    const section = sections.find(section => section.script === `seed-food-prices-${source.id}.mjs`);
+    assert.ok(section, source.id);
+    const wanted = source.fetchBudgetMs + FOOD_FETCH_MARGIN_MS;
+    // The runner's section timeout must not clamp runSeed's fetch deadline below the collection
+    // budget plus the margin that covers the last-good snapshot read.
+    assert.equal(resolveFetchDeadlineMs({ fetchPhaseTimeoutMs: wanted, lockTtlMs: source.fetchBudgetMs + 600_000,
+      sectionTimeoutMs: Number(stripNumericUnderscores(section.timeoutMsExpr)) }), wanted, source.id);
+  }
+});

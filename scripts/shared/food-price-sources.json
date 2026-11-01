@@ -152,7 +152,7 @@
     "maxFetchAgeDays": 45,
     "maxContentAgeDays": 100,
     "fetchBudgetMs": 30000,
-    "attribution": "Source: National Statistics Committee of the Republic of Uzbekistan, www.stat.uz (CC BY 4.0)"
+    "attribution": "Source: National Statistics Committee of the Republic of Uzbekistan, www.stat.uz (CC BY 4.0). Modified: product names translated to English and animal feed items omitted."
   },
   {
     "id": "maga",

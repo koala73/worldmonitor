@@ -48,3 +48,12 @@ test('stat.uz collect returns a monthly context dated to the first of the month'
   assert.deepEqual(result.contexts, [{ countryCode: 'UZ', country: 'Uzbekistan', referenceDate: '2026-09-01', title: 'Average prices of selected goods in markets and stores', url: 'https://stat.uz/ru/ofitsialnaya-statistika/prices-and-indexes' }]);
   assert.deepEqual(result.refreshedReports, [{ date: '2026-09-01' }]);
 });
+
+test('stat.uz attribution says the prices were modified, as CC BY 4.0 requires', () => {
+  for (const copy of ['../shared/food-price-sources.json', '../scripts/shared/food-price-sources.json']) {
+    const uz = JSON.parse(readFileSync(new URL(copy, import.meta.url), 'utf8')).find(source => source.id === 'statuz');
+    assert.match(uz.attribution, /CC BY 4\.0/, copy);
+    assert.match(uz.attribution, /translated/i, copy);
+    assert.match(uz.attribution, /animal feed/i, copy);
+  }
+});

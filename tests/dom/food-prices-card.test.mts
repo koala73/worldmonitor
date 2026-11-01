@@ -106,3 +106,14 @@ it('restores focus to the Tunisia table rather than the weekly table after refre
   expect(document.activeElement).toBe(host.querySelector('details [role="region"]'));
   expect(host.querySelector('details')!.open).toBe(true);
 });
+
+it('restores focus to the Uzbekistan table, not the first monthly table, after refresh', () => {
+  const card = new FoodPricesCard(host);
+  const sources = [source(), source({ id: 'onagri', country: 'Tunisia', contextOnly: true }),
+    source({ id: 'statuz', country: 'Uzbekistan', contextOnly: true, prices: [{ ...row, item: 'Rice', currency: 'UZS' }] })];
+  card.update(sources);
+  host.querySelector('details')!.open = true;
+  host.querySelectorAll<HTMLElement>('details [role="region"]')[1]!.focus();
+  card.update(sources);
+  expect(document.activeElement).toBe(host.querySelectorAll('details [role="region"]')[1]);
+});

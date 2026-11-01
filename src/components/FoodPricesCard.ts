@@ -42,9 +42,9 @@ export class FoodPricesCard {
     return h('label', { className: 'food-prices-filter' }, h('span', {}, title), select);
   }
 
-  private table(prices: FoodMarketPrice[], contextOnly: boolean): HTMLElement {
+  private table(prices: FoodMarketPrice[], contextOnly: boolean, sourceId: string): HTMLElement {
     const format = new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 });
-    return h('div', { className: 'food-prices-table-wrap', tabIndex: 0, role: 'region', 'aria-label': label('prices'), 'data-price-table': contextOnly ? 'context' : 'weekly' },
+    return h('div', { className: 'food-prices-table-wrap', tabIndex: 0, role: 'region', 'aria-label': label('prices'), 'data-price-table': contextOnly ? `context:${sourceId}` : 'weekly' },
       h('table', { className: 'food-prices-table' },
         h('thead', {}, h('tr', {}, ...[label('product'), label('price'), ...(contextOnly ? [] : [label('weekly')])].map(text => h('th', { scope: 'col' }, text)))),
         h('tbody', {}, ...prices.map(price => h('tr', {},
@@ -77,7 +77,7 @@ export class FoodPricesCard {
       }), this.market, value => { this.market = value; this.render(); }));
       sections.push(h('div', { className: 'food-prices-filters' }, ...filters), this.sourceNote(source));
       const prices = source.prices.filter(price => JSON.stringify([price.market, price.marketType]) === this.market);
-      sections.push(prices.length ? this.table(prices, false) : h('p', {}, label('unavailable')));
+      sections.push(prices.length ? this.table(prices, false, source.id) : h('p', {}, label('unavailable')));
     } else sections.push(h('p', {}, label('unavailable')));
 
     const giews = this.sources.find(source => source.id === 'giews');
@@ -98,7 +98,7 @@ export class FoodPricesCard {
     }
     for (const source of monthly) {
       context.append(h('h4', {}, `${source.country} · ${source.name}`), this.sourceNote(source));
-      context.append(source.prices.length ? this.table(source.prices, true) : h('p', {}, label('unavailable')));
+      context.append(source.prices.length ? this.table(source.prices, true, source.id) : h('p', {}, label('unavailable')));
     }
     sections.push(context);
     this.host.replaceChildren(...sections);
