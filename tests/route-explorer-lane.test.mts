@@ -321,6 +321,30 @@ describe('get-route-explorer-lane smoke matrix (30 queries)', () => {
   });
 });
 
+describe('US-Northeast Asia lanes (#7990)', () => {
+  for (const toIso2 of ['JP', 'KR']) {
+    it(`US -> ${toIso2} container and bulk use the West Coast lane with no chokepoint`, async () => {
+      for (const cargoType of ['container', 'bulk']) {
+        const res = await computeLane({ fromIso2: 'US', toIso2, hs2: '85', cargoType }, new Map());
+        assert.equal(res.noModeledLane, false);
+        assert.equal(res.primaryRouteId, 'us-west-northeast-asia');
+        assert.deepEqual(res.chokepointExposures, []);
+        assert.deepEqual(res.bypassOptions, []);
+        assert.deepEqual(res.estTransitDaysRange, { min: 10, max: 14 });
+      }
+    });
+
+    it(`US -> ${toIso2} tanker uses the Gulf lane through Panama with its bypass`, async () => {
+      const res = await computeLane({ fromIso2: 'US', toIso2, hs2: '27', cargoType: 'tanker' }, new Map());
+      assert.equal(res.noModeledLane, false);
+      assert.equal(res.primaryRouteId, 'us-gulf-asia-panama');
+      assert.deepEqual(res.chokepointExposures.map((e) => e.chokepointId), ['panama']);
+      assert.deepEqual(res.bypassOptions.map((b) => b.id), ['panama_cape_horn']);
+      assert.deepEqual(res.estTransitDaysRange, { min: 24, max: 32 });
+    });
+  }
+});
+
 describe('route waypoints and chokepoint registries agree', () => {
   // Exposure arithmetic reads registry routeIds, while supplier route risk and
   // lane geometry read route waypoints. A route that crosses a chokepoint in
