@@ -98,8 +98,25 @@ export function resolveCountryArg(raw: unknown): string | null {
   if (!parenthetical) return null;
   const base = (parenthetical[1] ?? '').trim();
   const inner = (parenthetical[2] ?? '').trim();
-  const fromBase = base ? resolveArabicCountryName(base) ?? resolveCountryCode(base) : null;
-  const fromInner = inner ? resolveArabicCountryName(inner) ?? resolveCountryCode(inner) : null;
+  if (!base || !inner) return null;
+  const fromBase = resolveArabicCountryName(base) ?? resolveCountryCode(base);
+  const fromInner = resolveArabicCountryName(inner) ?? resolveCountryCode(inner);
+  // Two sides that each name a country are only an answer when they agree.
   if (fromBase && fromInner) return fromBase === fromInner ? fromBase : null;
-  return fromBase ?? fromInner ?? null;
+
+  // Otherwise the parenthetical is usually a word lifted out of the name:
+  // "السودان (جنوب)" is "جنوب السودان" (South Sudan), not Sudan. Try it at
+  // every position in the base; any exact key is that country.
+  const baseWords = normalizeArabicCountryToken(base).split(' ').filter(Boolean);
+  const innerKey = normalizeArabicCountryToken(inner);
+  if (innerKey) {
+    for (let at = 0; at <= baseWords.length; at++) {
+      const key = [...baseWords.slice(0, at), innerKey, ...baseWords.slice(at)].join(' ');
+      const hit = ARABIC_NAME_TO_ISO2[key];
+      if (typeof hit === 'string' && ISO2_PATTERN.test(hit)) return hit;
+    }
+  }
+  // A modifier that neither names a country nor completes the name may change
+  // which country is meant, so it is not dropped: report the input unresolved.
+  return null;
 }

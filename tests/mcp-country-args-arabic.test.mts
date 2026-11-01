@@ -110,6 +110,12 @@ describe('Arabic spelling variants normalize', () => {
     ['surrounding whitespace', '  مصر  ', 'EG'],
     ['dash or parentheses in a CLDR name', 'الكونغو (كينشاسا)', 'CD'],
     ['Arabic presentation forms', 'ﻣﺼﺮ', 'EG'],
+    // A parenthetical modifier is part of the name, not noise to discard:
+    // dropping it answered "Sudan (South)" with Sudan.
+    ['split name, modifier first', 'السودان (جنوب)', 'SS'],
+    ['split name, modifier last', 'غينيا (الاستوائية)', 'GQ'],
+    ['split name, Arabic base and code', 'العراق (IQ)', 'IQ'],
+    ['split name, English base', 'Iraq (العراق)', 'IQ'],
   ];
   for (const [label, input, expected] of variants) {
     it(`${label}: ${input} -> ${expected}`, () => {
@@ -128,6 +134,9 @@ describe('Arabic inputs that must not resolve', () => {
   const rejects: Array<[string, string]> = [
     ['two countries named together', 'السعودية (إيران)'],
     ['two countries side by side', 'السعودية إيران'],
+    ['a code that contradicts the Arabic name', 'السعودية (IR)'],
+    ['an unresolved modifier on a country', 'السودان (مرحبا)'],
+    ['an unresolved Arabic base on a code', 'مرحبا (IR)'],
     ['a bare ambiguous name', 'كوريا'],
     ['a city, not a country', 'الرياض'],
     ['a demonym', 'السعودي'],
