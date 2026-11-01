@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -35,6 +36,8 @@ test('private bundle replays failure and carried records offline with original c
   const bundle = await readImdFailure(path);
   assert.equal(bundle.runStartedAtMs, now);
   assert.match(bundle.runtime.parserSha256, /^[a-f0-9]{64}$/);
+  const lock = await readFile(new URL('../scripts/package-lock.json', import.meta.url));
+  assert.equal(bundle.runtime.lockSha256, createHash('sha256').update(lock).digest('hex'));
   assert.equal((await stat(path)).mode & 0o777, 0o600);
   t.mock.method(globalThis, 'fetch', () => { throw new Error('network forbidden'); });
   const replay = await replayImdFailure(bundle);

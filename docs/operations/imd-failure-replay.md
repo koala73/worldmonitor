@@ -36,7 +36,7 @@ responses cannot be replayed. Capture errors emit only
 
 The `imd_failure_evidence` log event contains a capture ID and `runStartedAtMs`,
 which comes from the seed runner. The bundle includes Node version, parser source
-and lockfile SHA-256 fingerprints, and `RAILWAY_GIT_COMMIT_SHA` when available.
+and worker `scripts/package-lock.json` SHA-256 fingerprints, and `RAILWAY_GIT_COMMIT_SHA` when available.
 The commit may be null; a successful merge alone does not identify deployed code.
 
 Copy the private bundle to a local checkout of the captured revision, use its

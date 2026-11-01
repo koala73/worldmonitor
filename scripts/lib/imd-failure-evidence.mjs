@@ -12,7 +12,7 @@ const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 async function runtimeIdentity() {
   return {
     parserSha256: hash(await readFile(new URL('./imd-cyclone-marine.mjs', import.meta.url))),
-    lockSha256: hash(await readFile(new URL('../../package-lock.json', import.meta.url))),
+    lockSha256: hash(await readFile(new URL('../package-lock.json', import.meta.url))),
     node: process.version,
     deploymentCommit: /^[a-f0-9]{40}$/i.test(process.env.RAILWAY_GIT_COMMIT_SHA || '') ? process.env.RAILWAY_GIT_COMMIT_SHA : null,
   };
