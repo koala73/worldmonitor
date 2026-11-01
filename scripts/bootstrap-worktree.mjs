@@ -4,6 +4,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readFileSync,
   readlinkSync,
   symlinkSync,
 } from 'node:fs';
@@ -237,6 +238,7 @@ export function installDependencies({
 
   if (dryRun) {
     log(`[worktree] would run: npm ${args.join(' ')}`);
+    if (ignoreScripts) runOwnPostinstall({ dryRun, log, rootDir });
     return { status: 0 };
   }
 
@@ -253,7 +255,36 @@ export function installDependencies({
     throw new Error(`npm ${args.join(' ')} failed with exit code ${result.status}`);
   }
 
+  if (ignoreScripts) runOwnPostinstall({ log, rootDir });
+
   return result;
+}
+
+/**
+ * --ignore-scripts also skips the package's own postinstall, which writes
+ * gitignored files the pre-push hook needs (api/_inventory-facts.generated.js
+ * for the edge bundle check). Run it alone; dependency scripts stay skipped.
+ */
+function hasOwnPostinstall(rootDir) {
+  try {
+    return Boolean(JSON.parse(readFileSync(resolve(rootDir, 'package.json'), 'utf8')).scripts?.postinstall);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+function runOwnPostinstall({ dryRun = false, log, rootDir }) {
+  if (!hasOwnPostinstall(rootDir)) return;
+  if (dryRun) {
+    log('[worktree] would run: npm run postinstall');
+    return;
+  }
+  log('[worktree] running: npm run postinstall');
+  const result = spawnSync('npm', ['run', 'postinstall'], { cwd: rootDir, env: process.env, stdio: 'inherit' });
+  if (result.status !== 0) {
+    throw new Error(`npm run postinstall failed with exit code ${result.status}`);
+  }
 }
 
 /**

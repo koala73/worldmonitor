@@ -156,6 +156,32 @@ describe('worktree bootstrap helper', () => {
     ]);
   });
 
+  // --ignore-scripts skips the root package's own postinstall too, and that
+  // postinstall writes gitignored files the pre-push hook needs
+  // (api/_inventory-facts.generated.js for the edge bundle check). A
+  // test-only worktree then failed its first push. Dependency scripts stay
+  // skipped; the package's own postinstall runs.
+  it('runs the package postinstall after an --ignore-scripts install', () => {
+    const root = makeTempDir();
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ scripts: { postinstall: 'npm run inventory:facts' } }));
+    const logs = [];
+
+    bootstrapWorktree({ dryRun: true, ignoreScripts: true, rootDir: root, skipEnv: true, log: line => logs.push(line) });
+    assert.deepEqual(logs, [
+      '[worktree] would run: npm ci --cache /tmp/worldmonitor-npm-cache --prefer-offline --ignore-scripts',
+      '[worktree] would run: npm run postinstall',
+      '[worktree] bootstrap complete',
+    ]);
+
+    writeFileSync(join(root, 'package.json'), '{}');
+    logs.length = 0;
+    bootstrapWorktree({ dryRun: true, ignoreScripts: true, rootDir: root, skipEnv: true, log: line => logs.push(line) });
+    assert.deepEqual(logs, [
+      '[worktree] would run: npm ci --cache /tmp/worldmonitor-npm-cache --prefer-offline --ignore-scripts',
+      '[worktree] bootstrap complete',
+    ], 'a package without a postinstall runs nothing extra');
+  });
+
   it('seeds pro-test deps when that package is present', () => {
     const root = makeTempDir();
     writeFileSync(join(root, 'package.json'), '{}');
