@@ -5519,9 +5519,9 @@ export class DeckGLMap {
     'no2-activity-countries',
   ]);
 
-  // Hover-only NOTAM shapes (areas and their fallback markers): a click on one
-  // is a click on the country under it.
+  // Area overlays pass clicks through to the country underneath.
   private static readonly AREA_OVERLAY_LAYER_IDS = new Set([
+    'conflict-zones-layer-country-geometry',
     'no2-activity-clusters',
     'notam-airspace-polygons',
     'notam-airspace-circles',
