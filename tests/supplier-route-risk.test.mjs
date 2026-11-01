@@ -44,11 +44,13 @@ describe('computeSupplierRouteRisk', () => {
     });
   }
 
-  it('retains cross-region corridor models and keeps US-Japan unresolved', () => {
+  it('retains cross-region corridor models and keeps Canada-Japan unresolved', () => {
     assert.deepEqual(computeSupplierRouteRisk('QA', 'JP', new Map()).routeIds, ['qatar-asia-lng']);
     assert.ok(computeSupplierRouteRisk('CN', 'DE', new Map()).routeIds.includes('china-europe-suez'));
     assert.ok(computeSupplierRouteRisk('US', 'DE', new Map()).routeIds.includes('transatlantic'));
-    assert.equal(computeSupplierRouteRisk('US', 'JP', new Map()).riskLevel, 'unknown');
+    const canadaJapan = computeSupplierRouteRisk('CA', 'JP', new Map());
+    assert.deepEqual(canadaJapan.routeIds, []);
+    assert.equal(canadaJapan.riskLevel, 'unknown');
   });
 
   it('retains the China-Africa corridor and Malacca exposure for coastal African members', () => {
@@ -162,7 +164,7 @@ describe('missing or non-current disruption evidence', () => {
   });
 
   it('keeps no-route and missing-evidence unknowns distinct', () => {
-    assert.equal(computeSupplierRouteRisk('US', 'JP', new Map(), true).unknownReason, 'no_route');
+    assert.equal(computeSupplierRouteRisk('CA', 'JP', new Map(), true).unknownReason, 'no_route');
     assert.equal(computeSupplierRouteRisk('QA', 'JP', new Map(), true).unknownReason, 'unmeasured');
   });
 
@@ -322,5 +324,56 @@ describe('CSS classes and integration', () => {
     assert.ok(src.includes('cdp-risk-badge'), 'Should render risk badges');
     assert.ok(src.includes('cdp-recommendations'), 'Should render recommendations section');
     assert.ok(src.includes('computeAlternativeSuppliers'), 'Should use computeAlternativeSuppliers');
+  });
+});
+
+// #7990 route coverage: corridors measured as unknown on the 2026-10-29 caches.
+describe('sourced corridor additions', () => {
+  const ids = (risk) => risk.transitChokepoints.map(cp => cp.chokepointId).sort();
+
+  it('Iraqi crude to India crosses Hormuz and stops before Malacca', () => {
+    const risk = computeSupplierRouteRisk('IQ', 'IN', new Map([['hormuz_strait', 80], ['malacca_strait', 0]]), true);
+    assert.ok(risk.routeIds.includes('gulf-asia-oil'));
+    assert.deepEqual(ids(risk), ['hormuz_strait']);
+    assert.equal(risk.riskLevel, 'critical');
+  });
+
+  it('Iraq to Japan carries Hormuz and Malacca, like the other Gulf producers', () => {
+    const iq = computeSupplierRouteRisk('IQ', 'JP', new Map(), true);
+    const sa = computeSupplierRouteRisk('SA', 'JP', new Map(), true);
+    assert.deepEqual(ids(iq), ids(sa));
+    assert.deepEqual(ids(iq), ['hormuz_strait', 'malacca_strait']);
+  });
+
+  for (const importer of ['JP', 'KR']) {
+    it(`US to ${importer} is modeled through both coasts and inherits Panama`, () => {
+      const risk = computeSupplierRouteRisk('US', importer, new Map([['panama', 75]]), true);
+      assert.deepEqual([...risk.routeIds].sort(), ['us-gulf-asia-panama', 'us-west-northeast-asia']);
+      // The West Coast leg crosses no modeled chokepoint; the Gulf leg keeps
+      // Panama, so the pair cannot read safe while Panama is disrupted.
+      assert.deepEqual(ids(risk), ['panama']);
+      assert.equal(risk.riskLevel, 'critical');
+    });
+
+    it(`US to ${importer} is safe only with a current, measured low Panama score`, () => {
+      assert.equal(computeSupplierRouteRisk('US', importer, new Map([['panama', 10]]), true).riskLevel, 'safe');
+      assert.equal(computeSupplierRouteRisk('US', importer, new Map(), true).riskLevel, 'unknown');
+      assert.equal(computeSupplierRouteRisk(importer, 'US', new Map([['panama', 10]]), true).riskLevel, 'safe');
+    });
+  }
+
+  it('leaves unsourced pairs unknown', () => {
+    for (const [exp, imp] of [['CA', 'JP'], ['AU', 'JP'], ['US', 'IN'], ['RU', 'IN']]) {
+      const risk = computeSupplierRouteRisk(exp, imp, new Map(), true);
+      assert.deepEqual(risk.routeIds, [], `${exp}->${imp}`);
+      assert.equal(risk.unknownReason, 'no_route');
+    }
+  });
+
+  it('does not move the existing corridors of the touched countries', () => {
+    assert.deepEqual(computeSupplierRouteRisk('CN', 'US', new Map(), true).routeIds,
+      ['china-us-west', 'china-us-east-suez', 'china-us-east-panama']);
+    assert.deepEqual(computeSupplierRouteRisk('QA', 'JP', new Map(), true).routeIds, ['qatar-asia-lng']);
+    assert.deepEqual(computeSupplierRouteRisk('US', 'DE', new Map(), true).routeIds, ['transatlantic']);
   });
 });

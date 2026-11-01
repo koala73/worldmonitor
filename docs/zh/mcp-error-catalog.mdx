@@ -37,6 +37,7 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
 - **JSON-RPC `error.code`** 是应用层的回答。使用的代码有：`-32000`、`-32001`、`-32002`、`-32003`、`-32004`、`-32029`、`-32700`、`-32600`、`-32601`、`-32602`、`-32603`。MCP `2026-07-28` 请求还可能收到 `-32020`、`-32022`、`-31002` 和 `-31029`，见 [MCP 2026-07-28 请求](#mcp-2026-07-28-请求)。`-32000` 是已退役别名主机传输的文档化迁移代码（HTTP 410 / `canonical_endpoint_required`），不是协议 bug。列表之外的任何代码才是协议 bug —— 请提交 issue。
 - **软行为信封**是高频失败模式。`tools/call` 在 JSON-RPC 层成功（HTTP 200，无 `error` 字段），但位于 `result.content[0].text` 中的 JSON 携带了一个 `_budget_exceeded` 或 `_jmespath_error` 判别字段。只检查 JSON-RPC 信封的客户端会默默地把这些当作成功 —— 请解析 `result.content[0].text`，并在将该负载作为数据消费前检查是否存在前导下划线 `_` 键。
 - **已执行的调用仍计费。** `_budget_exceeded`、`_jmespath_error` 和工具执行错误（`-32603`）都发生在工具已运行之后，因此它们会消耗 Pro 每日配额槽位。只有预分发失败（如每日上限拒绝或配额预留服务失败）才不消耗槽位。
+- **每个错误都携带 `error.data.requestId`。** 它是平台请求 ID（`x-vercel-id` 头），与本次调用使用记录中的 `request_id` 一致。提交支持请求或问题报告时请附上它，以便定位失败的调用。它会加入错误已有的 `data` 中，因此下文描述的负载也都包含它；下文称“不带 `data`”的错误，其 `data` 只有 `requestId`。只有请求在没有平台请求 ID 的情况下到达服务器（例如本地开发服务器）时才会缺失。
 - **两条 401 路径都设置了 `WWW-Authenticate`**，包含 `realm="worldmonitor"` 以及指向所调用路由的受保护资源文档的 `resource_metadata` 指针：`/mcp` 对应 `/.well-known/oauth-protected-resource/mcp`，`/api/mcp` 对应 `/.well-known/oauth-protected-resource/api/mcp`。支持 RFC 9728 的客户端（Claude Desktop、MCP Inspector）会凭此头自动跳转 OAuth 流程，无需进一步干预。
 
 ## JSON-RPC 错误代码

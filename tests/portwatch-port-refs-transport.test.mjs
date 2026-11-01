@@ -131,7 +131,9 @@ describe('PortWatch reference pagination recovery', () => {
         else process.env.PROXY_URL = previousProxy;
       });
       const proxyUtils = createRequire(import.meta.url)('../scripts/_proxy-utils.cjs');
-      const envelope = { error: { code: 400, message: 'Invalid query parameters.', details: ['Invalid paging.'] } };
+      // Not `Invalid query parameters`: that class now earns page retries, and
+      // this case pins the single proxy record of a non-retryable rejection.
+      const envelope = { error: { code: 400, message: 'Cannot perform query.', details: ['Invalid paging.'] } };
       const proxy = t.mock.method(proxyUtils, 'proxyFetch', async () => ({
         ok: status === 200, status, buffer: Buffer.from(JSON.stringify(envelope)),
         contentType: 'application/json', headers: { 'retry-after': '60', 'set-cookie': 'private-cookie' },
@@ -139,7 +141,7 @@ describe('PortWatch reference pagination recovery', () => {
       const transport = paginationTransport(new TypeError('fetch failed'));
 
       await assert.rejects(portwatchSeed.fetchAllPortRefs({ fetchFn: transport.fetchFn }), status === 200
-        ? /ArcGIS error \(via proxy after direct TypeError\): Invalid query parameters\./ : /HTTP 503/);
+        ? /ArcGIS error \(via proxy after direct TypeError\): Cannot perform query\./ : /HTTP 503/);
 
       const records = warnings.filter((line) => line.startsWith('{')).map((line) => JSON.parse(line));
       assert.deepEqual(records.map((record) => record.route), ['direct', 'proxy']);
@@ -157,6 +159,45 @@ describe('PortWatch reference pagination recovery', () => {
       assert.doesNotMatch(warnings.join('\n'), /fixture-user|fixture-password|private-cookie/);
     });
   }
+
+  // proxyFetch applies its timeoutMs to the CONNECT tunnel and again to the
+  // response, so a proxy leg given only `timeoutMs: 50s` could take 100s. The
+  // reference retry guard and the 90s per-country wrap both size the proxy leg
+  // at PROXY_FETCH_TIMEOUT, so the leg needs one deadline across both phases.
+  it('bounds the whole proxy leg, tunnel plus response, to one 50s deadline', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const previousProxy = process.env.PROXY_URL;
+    process.env.PROXY_URL = 'https://fixture-user:fixture-password@proxy.invalid:443';
+    t.after(() => {
+      if (previousProxy === undefined) delete process.env.PROXY_URL;
+      else process.env.PROXY_URL = previousProxy;
+    });
+    t.mock.method(console, 'warn', () => {});
+    const proxyUtils = createRequire(import.meta.url)('../scripts/_proxy-utils.cjs');
+    // A tunnel that is slow to establish and a response that is slow to land:
+    // each phase alone stays under its own 50s timer, so only an overall
+    // deadline on the signal can end the leg at 50s.
+    t.mock.method(proxyUtils, 'proxyFetch', (_url, _config, { signal }) => new Promise((_, reject) => {
+      signal?.addEventListener('abort', () => reject(signal.reason ?? new Error('aborted')), { once: true });
+    }));
+    const transport = paginationTransport(new TypeError('fetch failed'));
+
+    let settled = null;
+    const run = portwatchSeed.fetchAllPortRefs({ fetchFn: transport.fetchFn })
+      .then(() => { settled = 'resolved'; }, (error) => { settled = error; });
+    for (let i = 0; i < 10 && transport.requestedOffsets.length < 2; i += 1) await new Promise(setImmediate);
+    assert.deepEqual(transport.requestedOffsets, [0, 1]);
+
+    t.mock.timers.tick(49_999);
+    for (let i = 0; i < 10; i += 1) await new Promise(setImmediate);
+    assert.equal(settled, null, 'the proxy leg keeps its full 50s');
+
+    t.mock.timers.tick(1);
+    for (let i = 0; i < 10 && settled === null; i += 1) await new Promise(setImmediate);
+    assert.ok(settled instanceof Error, 'the proxy leg must end at 50s');
+    assert.match(String(settled.message), /timeout|abort/i);
+    await run;
+  });
 
   it('parses and retries a rate-limited HTTP 200 page without restarting pagination', async () => {
     assert.equal(typeof arcgisRateLimitFixture.error, 'object');
@@ -234,13 +275,65 @@ describe('PortWatch reference pagination recovery', () => {
     assert.equal(transport.proxyCalls[0][1], 'HTTP 200 rate-limited');
   });
 
-  it('does not retry semantic query errors', async () => {
+  // 2026-11-01: the identical reference query alternated between
+  // `Invalid query parameters` and a full page within seconds, and one such
+  // page on page 2 failed the whole tick (exit 1). The error is intermittent
+  // upstream degradation, not a malformed query, so a page gets bounded retries.
+  it('retries an intermittent invalid_query page and completes pagination', async () => {
+    let secondPageCalls = 0;
+    const requestedOffsets = [];
+    const sleepCalls = [];
+    const fetchFn = async (url) => {
+      const offset = Number(new URL(url).searchParams.get('resultOffset'));
+      requestedOffsets.push(offset);
+      if (offset === 0) return arcgisJson(FIRST_PAGE);
+      secondPageCalls += 1;
+      return secondPageCalls < 3
+        ? arcgisJson({ error: { code: 400, message: 'Cannot perform query. Invalid query parameters.' } })
+        : arcgisJson(FINAL_PAGE);
+    };
+
+    const refs = await portwatchSeed.fetchAllPortRefs({
+      fetchFn,
+      proxyRetryFn: async () => assert.fail('invalid_query retries stay on the direct leg'),
+      sleepFn: async (ms) => { sleepCalls.push(ms); },
+    });
+
+    assert.deepEqual([...refs.keys()].sort(), ['CYP', 'USA']);
+    assert.deepEqual(requestedOffsets, [0, 1, 1, 1]);
+    assert.deepEqual(sleepCalls, [5_000, 5_000]);
+  });
+
+  it('bounds invalid_query retries so a real schema regression still fails the page', async () => {
     const transport = paginationTransport({ error: { message: 'Invalid query parameters.' } });
+    const sleepCalls = [];
     await assert.rejects(portwatchSeed.fetchAllPortRefs({
-      ...transport, sleepFn: async () => assert.fail('semantic errors must not retry'),
+      ...transport, sleepFn: async (ms) => { sleepCalls.push(ms); },
     }), /Invalid query parameters/);
-    assert.deepEqual(transport.requestedOffsets, [0, 1]);
+    assert.deepEqual(transport.requestedOffsets, [0, 1, 1, 1, 1]);
+    assert.deepEqual(sleepCalls, [5_000, 5_000, 5_000]);
     assert.equal(transport.proxyCalls.length, 0);
+  });
+
+  it('declines an invalid_query retry that cannot finish inside the reference budget', async (t) => {
+    const transport = paginationTransport({ error: { message: 'Invalid query parameters.' } });
+    // Each failed attempt plus its cooldown costs 30s of mocked wall clock.
+    // A reference retry may fall back to the proxy, so it must reserve the
+    // full direct + proxy budget (30s + 50s) plus its 5s cooldown = 85s, the
+    // same allowance the per-page check gives a fresh page. Page 2 starts with
+    // 130s left: retries are admitted at 130s and 100s, then declined at 70s.
+    // Reserving only the 30s direct leg would admit a third retry at 70s that
+    // can run up to 15s past the reference slice.
+    let now = 1_000_000;
+    t.mock.method(Date, 'now', () => now);
+    const sleepCalls = [];
+    await assert.rejects(portwatchSeed.fetchAllPortRefs({
+      ...transport,
+      deadlineAt: now + 130_000,
+      sleepFn: async (ms) => { sleepCalls.push(ms); now += 30_000; },
+    }), /Invalid query parameters/);
+    assert.deepEqual(transport.requestedOffsets, [0, 1, 1, 1]);
+    assert.deepEqual(sleepCalls, [5_000, 5_000]);
   });
 
   for (const page of [{}, { features: [], exceededTransferLimit: true }, { features: [], exceededTransferLimit: false }, { features: {}, exceededTransferLimit: false }, { features: [], exceededTransferLimit: 'false' }, FIRST_PAGE]) {

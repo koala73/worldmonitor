@@ -497,6 +497,44 @@ describe('PortWatch last-good and gap reporting', () => {
     assert.equal(sleepCalls.length, 0);
   });
 
+  it('retries one intermittent invalid_query failure on the direct country leg', async () => {
+    let attempts = 0;
+    const sleepCalls = [];
+    const portAccumMap = new Map([['p1', { tanker: 1 }]]);
+    const result = await portwatchSeed.fetchCountryActivityWithRecovery('PRI', {
+      deadlineAt: Date.now() + 90_000,
+      anchorEpochMs: Date.parse('2026-11-01T00:00:00Z'),
+      dateField: 'date',
+      preflightObservation: { status: 'observed', maxDate: '2026-10-30' },
+      fetchAccumFn: async (_iso3, { forceProxy } = {}) => {
+        assert.equal(forceProxy, false);
+        attempts += 1;
+        if (attempts === 1) throw new Error('ArcGIS error: Cannot perform query. Invalid query parameters.');
+        return { portAccumMap, currentWindowRowCount: 3 };
+      },
+      sleepFn: async (ms) => { sleepCalls.push(ms); },
+    });
+    assert.equal(result.portAccumMap, portAccumMap);
+    assert.equal(attempts, 2);
+    assert.deepEqual(sleepCalls, [5_000]);
+  });
+
+  it('stops after one invalid_query retry per country', async () => {
+    let attempts = 0;
+    await assert.rejects(portwatchSeed.fetchCountryActivityWithRecovery('PRI', {
+      deadlineAt: Date.now() + 90_000,
+      anchorEpochMs: Date.parse('2026-11-01T00:00:00Z'),
+      dateField: 'date',
+      preflightObservation: { status: 'observed', maxDate: '2026-10-30' },
+      fetchAccumFn: async () => {
+        attempts += 1;
+        throw new Error('ArcGIS error: Cannot perform query. Invalid query parameters.');
+      },
+      sleepFn: async () => {},
+    }), /Invalid query parameters/);
+    assert.equal(attempts, 2);
+  });
+
   it('bounds repeated rate-limit failures to one retry', async () => {
     const retryRateLimited = portwatchSeed.retryRateLimited;
     let attempts = 0;

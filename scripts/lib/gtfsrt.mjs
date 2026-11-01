@@ -4,6 +4,7 @@
 // GO Transit after #6617, others later). Protobuf parse lives here so tests
 // can exercise it without importing a seeder.
 
+import { withSourceRequestDiagnostics } from './source-request-diagnostics.mjs';
 import { CHROME_UA } from '../_seed-utils.mjs';
 
 export const GTFS_RT_MAX_BYTES = 1_048_576;
@@ -317,13 +318,17 @@ export async function gtfsrtAdapter(feedUrl, options = {}) {
   const maxBytes = options.maxBytes ?? GTFS_RT_MAX_BYTES;
   let response;
   try {
-    response = await fetchImpl(feedUrl, {
-      headers: {
-        'User-Agent': CHROME_UA,
-        Accept: 'application/x-protobuf, application/octet-stream, */*',
-      },
-      redirect: 'error',
-      signal: AbortSignal.timeout(timeoutMs),
+    response = await withSourceRequestDiagnostics({ source: 'gtfsrt' }, async observe => {
+      const result = await fetchImpl(feedUrl, {
+        headers: {
+          'User-Agent': CHROME_UA,
+          Accept: 'application/x-protobuf, application/octet-stream, */*',
+        },
+        redirect: 'error',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      observe(result);
+      return result;
     });
   } catch (error) {
     if (error?.name === 'AbortError') throw new GtfsRtError('TIMEOUT', error.message);

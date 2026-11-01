@@ -2196,31 +2196,31 @@ const SEED_META = {
     },
   },
   emberElectricity:     { key: 'seed-meta:energy:ember',                maxStaleMin: 2880 }, // daily cron (08:00 UTC); 2880min = 48h = 2x interval
-  regionalEnergyPgcb:  { key: 'seed-meta:energy:regional-pgcb', maxStaleMin: 180, maxContentAgeMin: 720, activationKey: 'seed-activated:energy:regional-pgcb',
+  regionalEnergyPgcb:  { key: 'seed-meta:energy:regional-pgcb', maxStaleMin: 180, firstPublicationMaxWaitMin: 180, maxContentAgeMin: 720, activationKey: 'seed-activated:energy:regional-pgcb',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-pgcb' } },
-  regionalEnergyPetrobangla: { key: 'seed-meta:energy:regional-petrobangla', maxStaleMin: 4320, maxContentAgeMin: 7200, activationKey: 'seed-activated:energy:regional-petrobangla',
+  regionalEnergyPetrobangla: { key: 'seed-meta:energy:regional-petrobangla', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 7200, activationKey: 'seed-activated:energy:regional-petrobangla',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-petrobangla' } },
-  regionalEnergyNiso: { key: 'seed-meta:energy:regional-niso', maxStaleMin: 1080, maxContentAgeMin: 7200, activationKey: 'seed-activated:energy:regional-niso',
+  regionalEnergyNiso: { key: 'seed-meta:energy:regional-niso', maxStaleMin: 1080, firstPublicationMaxWaitMin: 1080, maxContentAgeMin: 7200, activationKey: 'seed-activated:energy:regional-niso',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-niso' } },
-  regionalEnergyEskom: { key: 'seed-meta:energy:regional-eskom', maxStaleMin: 4320, maxContentAgeMin: 10080, activationKey: 'seed-activated:energy:regional-eskom',
+  regionalEnergyEskom: { key: 'seed-meta:energy:regional-eskom', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 10080, activationKey: 'seed-activated:energy:regional-eskom',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-eskom' } },
-  regionalEnergyCammesa: { key: 'seed-meta:energy:regional-cammesa', maxStaleMin: 180, maxContentAgeMin: 720, activationKey: 'seed-activated:energy:regional-cammesa',
+  regionalEnergyCammesa: { key: 'seed-meta:energy:regional-cammesa', maxStaleMin: 180, firstPublicationMaxWaitMin: 180, maxContentAgeMin: 720, activationKey: 'seed-activated:energy:regional-cammesa',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-cammesa' } },
-  regionalEnergyGse: { key: 'seed-meta:energy:regional-gse', maxStaleMin: 4320, maxContentAgeMin: 129600, activationKey: 'seed-activated:energy:regional-gse',
+  regionalEnergyGse: { key: 'seed-meta:energy:regional-gse', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 129600, activationKey: 'seed-activated:energy:regional-gse',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-gse' } },
-  regionalEnergyOns: { key: 'seed-meta:energy:regional-ons', maxStaleMin: 2160, maxContentAgeMin: 7200, activationKey: 'seed-activated:energy:regional-ons',
+  regionalEnergyOns: { key: 'seed-meta:energy:regional-ons', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 7200, activationKey: 'seed-activated:energy:regional-ons',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-ons' } },
-  regionalEnergyAnp: { key: 'seed-meta:energy:regional-anp', maxStaleMin: 4320, maxContentAgeMin: 172800, activationKey: 'seed-activated:energy:regional-anp',
+  regionalEnergyAnp: { key: 'seed-meta:energy:regional-anp', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 172800, activationKey: 'seed-activated:energy:regional-anp',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-anp' } },
-  regionalEnergyEvn: { key: 'seed-meta:energy:regional-evn', maxStaleMin: 1080, maxContentAgeMin: 4320, activationKey: 'seed-activated:energy:regional-evn',
+  regionalEnergyEvn: { key: 'seed-meta:energy:regional-evn', maxStaleMin: 1080, firstPublicationMaxWaitMin: 1080, maxContentAgeMin: 4320, activationKey: 'seed-activated:energy:regional-evn',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-evn' } },
-  regionalEnergyKorem: { key: 'seed-meta:energy:regional-korem', maxStaleMin: 1080, maxContentAgeMin: 4320, activationKey: 'seed-activated:energy:regional-korem',
+  regionalEnergyKorem: { key: 'seed-meta:energy:regional-korem', maxStaleMin: 1080, firstPublicationMaxWaitMin: 1080, maxContentAgeMin: 4320, activationKey: 'seed-activated:energy:regional-korem',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-korem' } },
-  regionalEnergyCoes: { key: 'seed-meta:energy:regional-coes', maxStaleMin: 180, maxContentAgeMin: 360, activationKey: 'seed-activated:energy:regional-coes',
+  regionalEnergyCoes: { key: 'seed-meta:energy:regional-coes', maxStaleMin: 180, firstPublicationMaxWaitMin: 180, maxContentAgeMin: 360, activationKey: 'seed-activated:energy:regional-coes',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-coes' } },
-  regionalEnergyIccc: { key: 'seed-meta:energy:regional-iccc', maxStaleMin: 2160, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-iccc',
+  regionalEnergyIccc: { key: 'seed-meta:energy:regional-iccc', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-iccc',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-iccc' } },
-  regionalEnergyFccc: { key: 'seed-meta:energy:regional-fccc', maxStaleMin: 2160, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-fccc',
+  regionalEnergyFccc: { key: 'seed-meta:energy:regional-fccc', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-fccc',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-fccc' } },
   cryptoSectors:        { key: 'seed-meta:market:crypto-sectors',             maxStaleMin: 120 }, // relay loop every ~30min; 120min = 2h = 4x interval
   ddosAttacks:          { key: 'seed-meta:cf:radar:ddos',                    maxStaleMin: 60 }, // seed-internet-outages publishes the payload before advancing this clock; outages cron ~15min; 60 = 4x interval
@@ -2732,6 +2732,20 @@ function fredRatesRolloutCommands(now, vercelEnv = process.env.VERCEL_ENV) {
     ['SET', FRED_RATES_ROLLOUT_DEADLINE_KEY, String(candidateUntil), 'NX'],
     ['GET', FRED_RATES_ROLLOUT_DEADLINE_KEY],
   ];
+}
+
+const REGIONAL_ENERGY_ROLLOUT_NAMES = Object.keys(SEED_META)
+  .filter(name => SEED_META[name].firstPublicationMaxWaitMin != null);
+
+function regionalEnergyRolloutCommands(now, vercelEnv = process.env.VERCEL_ENV) {
+  if (vercelEnv !== 'production') return [];
+  return REGIONAL_ENERGY_ROLLOUT_NAMES.flatMap(name => {
+    const deadlineKey = `health:rollout-deadline:${STANDALONE_KEYS[name]}`;
+    return [
+      ['SET', deadlineKey, String(now + SEED_META[name].firstPublicationMaxWaitMin * 60_000), 'NX'],
+      ['GET', deadlineKey],
+    ];
+  });
 }
 
 function parseFredRatesRolloutUntil(results) {
@@ -3710,7 +3724,8 @@ function classifyKey(name, redisKey, opts, ctx) {
   //      so the window is visible instead of silent.
   // The content-freshness grace below has none of those bounds, which is why it
   // takes the opposite policy on the same unknown state.
-  let isOnDemand = !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name)
+  let isOnDemand = seedCfg?.firstPublicationMaxWaitMin == null
+    && !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name)
     && ctx.activationStates?.get(name) !== true;
   // Unlike ON_DEMAND, runtime rollout windows need no per-registry opt-in
   // (`allowOnDemand`): each window is bounded by a deployment-relative deadline
@@ -5802,6 +5817,7 @@ export async function handleHealth(req, ctx, options = {}) {
   const allMetaKeys = Object.values(SEED_META).map(s => s.key);
   const activationEntries = Object.entries(ACTIVATION_MARKERS);
   const fredRolloutCommands = fredRatesRolloutCommands(now);
+  const regionalRolloutCommands = regionalEnergyRolloutCommands(now);
 
   // STRLEN for data keys avoids loading large blobs into memory (OOM prevention).
   // NEG_SENTINEL ('__WM_NEG__') is 10 bytes — strlenIsData() rejects exactly
@@ -5826,6 +5842,7 @@ export async function handleHealth(req, ctx, options = {}) {
       ['GET', sweepKey(STANDALONE_KEYS.educationAttainment)],
       ['HEXISTS', sweepKey(FIVE_FACTOR_SCORECARD_READ_MODEL_KEY), 'metadata'],
       ...fredRolloutCommands,
+      ...regionalRolloutCommands,
     ];
     if (!getRedisCredentials()) throw new Error('Redis not configured');
     if (budget.exhausted()) return deadlineFallback();
@@ -5941,6 +5958,14 @@ export async function handleHealth(req, ctx, options = {}) {
   const rolloutPendingUntilMs = new Map();
   if (fredRatesRolloutUntil !== null) {
     rolloutPendingUntilMs.set('fredRatesSeeder', fredRatesRolloutUntil);
+  }
+  const regionalRolloutOffset = fredRolloutOffset + fredRolloutCommands.length;
+  if (regionalRolloutCommands.length > 0) {
+    REGIONAL_ENERGY_ROLLOUT_NAMES.forEach((name, index) => {
+      const offset = regionalRolloutOffset + index * 2;
+      const until = parseFredRatesRolloutUntil(results.slice(offset, offset + 2));
+      if (until !== null) rolloutPendingUntilMs.set(name, until);
+    });
   }
   // Rare second round trip: only while a writer lags a key-version bump.
   const keyVersionRollouts = keyVersionRolloutCandidates(
@@ -6315,6 +6340,7 @@ export const __testing__ = {
   writerKeyVersionBehind,
   keyVersionRolloutCommands,
   fredRatesRolloutCommands,
+  regionalEnergyRolloutCommands,
   parseFredRatesRolloutUntil,
   STALE_CONTENT_GRACE_MS,
   STALE_CONTENT_GRACE_STATE_KEY,
