@@ -128,6 +128,11 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     notes: "Waitlist rows matching verified account email after Clerk subject is confirmed",
   },
   {
+    target: "agentFeedback",
+    action: "delete",
+    notes: "Agent feedback reports filed by this user as a keyed MCP caller (principalId)",
+  },
+  {
     target: "contactMessages",
     action: "delete",
     notes: "Contact form rows matching verified account email",
