@@ -55,6 +55,7 @@
     "resources": [
       "../api",
       "../shared/llm-health-providers.js",
+      "../shared/desktop-key-access.js",
       "sidecar/local-api-server.mjs",
       "sidecar/package.json",
       "sidecar/node",

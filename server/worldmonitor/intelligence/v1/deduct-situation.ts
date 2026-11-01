@@ -121,7 +121,9 @@ export async function deductSituation(
     }
 
     const [queryHash, frameworkHashFull, predictionBootstrap] = await Promise.all([
-        sha256Hex(query.toLowerCase() + '|' + geoContext.toLowerCase()),
+        // JSON keeps the field boundary: a bare '|' join hashed ("a|b", "") and
+        // ("a", "b|") as the same text.
+        sha256Hex(JSON.stringify([query.toLowerCase(), geoContext.toLowerCase()])),
         framework ? sha256Hex(framework) : Promise.resolve(''),
         getCachedJson(PREDICTION_BOOTSTRAP_KEY, true).catch(() => null),
     ]);
@@ -138,7 +140,7 @@ export async function deductSituation(
     // caller's answer comes only from their allowed providers and is cached
     // apart from the shared entry.
     const aiRouting = await resolveAiRouting(ctx.request);
-    const cacheKey = `deduct:situation:v2:${queryHash.slice(0, 16)}${frameworkHash ? ':fw' + frameworkHash : ''}${predictionHash ? ':pm' + predictionHash : ''}${aiRoutingCacheSuffix(aiRouting)}`;
+    const cacheKey = `deduct:situation:v3:${queryHash.slice(0, 16)}${frameworkHash ? ':fw' + frameworkHash : ''}${predictionHash ? ':pm' + predictionHash : ''}${aiRoutingCacheSuffix(aiRouting)}`;
 
     const { mode, systemPrompt, userPrompt } = buildDeductionPrompt({ query, geoContext, predictionContext });
 

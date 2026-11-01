@@ -672,6 +672,19 @@ const STANDALONE_KEYS = {
   portwatchChokepointsRef:  'portwatch:chokepoints:ref:v1',
   chokepointFlows:          'energy:chokepoint-flows:v1',
   emberElectricity:         'energy:ember:v1:_all',
+  regionalEnergyPgcb:       'energy:regional:pgcb:v1',
+  regionalEnergyPetrobangla: 'energy:regional:petrobangla:v1',
+  regionalEnergyNiso:       'energy:regional:niso:v1',
+  regionalEnergyEskom:      'energy:regional:eskom:v1',
+  regionalEnergyCammesa:    'energy:regional:cammesa:v1',
+  regionalEnergyGse:        'energy:regional:gse:v1',
+  regionalEnergyOns:        'energy:regional:ons:v1',
+  regionalEnergyAnp:        'energy:regional:anp:v1',
+  regionalEnergyEvn:        'energy:regional:evn:v1',
+  regionalEnergyKorem:      'energy:regional:korem:v1',
+  regionalEnergyCoes:       'energy:regional:coes:v1',
+  regionalEnergyIccc:       'energy:regional:iccc:v1',
+  regionalEnergyFccc:       'energy:regional:fccc:v1',
   resilienceIntervals:      'resilience:intervals:v12:US',
   sprPolicies:              'energy:spr-policies:v1',
   pipelinesGas:             'energy:pipelines:gas:v1',
@@ -1553,7 +1566,14 @@ const SEED_META = {
   // change cannot narrow the alarm scope without health noticing.
   portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160, minRecordCount: 174, requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 10 * 24 * 60 }, contentFreshnessActivation: 'portwatchContentFreshness' },
   corridorrisk:        { key: 'seed-meta:supply_chain:corridorrisk',         maxStaleMin: 120 },
-  chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits', maxStaleMin: 30, minRecordCount: 5 }, // measured canonical waterways; September 9 pulse had 5/13
+  // Gate-to-gate counting (#9551) only measures straits AISStream's shore
+  // receivers can see. A 2026-10-31 probe and 42h of gate journals found zero
+  // positions at the narrows of Hormuz, Suez, Bab el-Mandeb, Malacca, Panama,
+  // Taiwan, Bosporus, Korea, Kerch and Lombok; the old 5/13 came from 2° circles
+  // counting nearby port traffic. Dover, Gibraltar and Cape are the measurable
+  // set: the floor is three, and composeChokepointTransitsCoverage requires
+  // those three by name. PortWatch supplies the rest.
+  chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits', maxStaleMin: 30, minRecordCount: 3 },
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
   usniFleet:           { key: 'seed-meta:military:usni-fleet',               maxStaleMin: 720 }, // relay loop every 6h; 720 = 2× interval (was 480 = 1.3×, too tight)
   aisGaps:             {
@@ -2176,6 +2196,32 @@ const SEED_META = {
     },
   },
   emberElectricity:     { key: 'seed-meta:energy:ember',                maxStaleMin: 2880 }, // daily cron (08:00 UTC); 2880min = 48h = 2x interval
+  regionalEnergyPgcb:  { key: 'seed-meta:energy:regional-pgcb', maxStaleMin: 180, firstPublicationMaxWaitMin: 180, maxContentAgeMin: 720, activationKey: 'seed-activated:energy:regional-pgcb',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-pgcb' } },
+  regionalEnergyPetrobangla: { key: 'seed-meta:energy:regional-petrobangla', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 7200, activationKey: 'seed-activated:energy:regional-petrobangla',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-petrobangla' } },
+  regionalEnergyNiso: { key: 'seed-meta:energy:regional-niso', maxStaleMin: 1080, firstPublicationMaxWaitMin: 1080, maxContentAgeMin: 7200, activationKey: 'seed-activated:energy:regional-niso',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-niso' } },
+  regionalEnergyEskom: { key: 'seed-meta:energy:regional-eskom', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 10080, activationKey: 'seed-activated:energy:regional-eskom',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-eskom' } },
+  regionalEnergyCammesa: { key: 'seed-meta:energy:regional-cammesa', maxStaleMin: 180, firstPublicationMaxWaitMin: 180, maxContentAgeMin: 720, activationKey: 'seed-activated:energy:regional-cammesa',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-cammesa' } },
+  regionalEnergyGse: { key: 'seed-meta:energy:regional-gse', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 129600, activationKey: 'seed-activated:energy:regional-gse',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-gse' } },
+  regionalEnergyOns: { key: 'seed-meta:energy:regional-ons', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 7200, activationKey: 'seed-activated:energy:regional-ons',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-ons' } },
+  regionalEnergyAnp: { key: 'seed-meta:energy:regional-anp', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 172800, activationKey: 'seed-activated:energy:regional-anp',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-anp' } },
+  regionalEnergyEvn: { key: 'seed-meta:energy:regional-evn', maxStaleMin: 1080, firstPublicationMaxWaitMin: 1080, maxContentAgeMin: 4320, activationKey: 'seed-activated:energy:regional-evn',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-evn' } },
+  regionalEnergyKorem: { key: 'seed-meta:energy:regional-korem', maxStaleMin: 1080, firstPublicationMaxWaitMin: 1080, maxContentAgeMin: 4320, activationKey: 'seed-activated:energy:regional-korem',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-korem' } },
+  regionalEnergyCoes: { key: 'seed-meta:energy:regional-coes', maxStaleMin: 180, firstPublicationMaxWaitMin: 180, maxContentAgeMin: 360, activationKey: 'seed-activated:energy:regional-coes',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-coes' } },
+  regionalEnergyIccc: { key: 'seed-meta:energy:regional-iccc', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-iccc',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-iccc' } },
+  regionalEnergyFccc: { key: 'seed-meta:energy:regional-fccc', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-fccc',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-fccc' } },
   cryptoSectors:        { key: 'seed-meta:market:crypto-sectors',             maxStaleMin: 120 }, // relay loop every ~30min; 120min = 2h = 4x interval
   ddosAttacks:          { key: 'seed-meta:cf:radar:ddos',                    maxStaleMin: 60 }, // seed-internet-outages publishes the payload before advancing this clock; outages cron ~15min; 60 = 4x interval
   economicStress:       { key: 'seed-meta:economic:stress-index',            maxStaleMin: 180 }, // computed in seed-economy afterPublish; cron ~1h; 180min = 3x interval
@@ -2321,6 +2367,20 @@ if (!IRAN_EVENTS_ENABLED) {
 // chronic outage went undetected until a user noticed the panel was stuck on
 // "Loading...". Removed marketImplications below.
 const ON_DEMAND_KEYS = new Set([
+  'regionalEnergyPgcb',
+  'regionalEnergyPetrobangla',
+  'regionalEnergyNiso',
+  'regionalEnergyEskom',
+  'regionalEnergyCammesa',
+  'regionalEnergyGse',
+  'regionalEnergyOns',
+  'regionalEnergyAnp',
+  'regionalEnergyEvn',
+  'regionalEnergyKorem',
+  'regionalEnergyCoes',
+  'regionalEnergyIccc',
+  'regionalEnergyFccc',
+
   'globalTendersColombiaSecop',
   'globalTendersKenyaPpip',
   'globalTendersSouthAfricaEtenders',
@@ -2513,6 +2573,20 @@ const ON_DEMAND_KEYS = new Set([
 // publish; when the marker exists the key leaves ON_DEMAND softening and
 // normal EMPTY/STALE_SEED rules apply.
 const ACTIVATION_MARKERS = {
+  regionalEnergyPgcb: SEED_META.regionalEnergyPgcb.activationKey,
+  regionalEnergyPetrobangla: SEED_META.regionalEnergyPetrobangla.activationKey,
+  regionalEnergyNiso: SEED_META.regionalEnergyNiso.activationKey,
+  regionalEnergyEskom: SEED_META.regionalEnergyEskom.activationKey,
+  regionalEnergyCammesa: SEED_META.regionalEnergyCammesa.activationKey,
+  regionalEnergyGse: SEED_META.regionalEnergyGse.activationKey,
+  regionalEnergyOns: SEED_META.regionalEnergyOns.activationKey,
+  regionalEnergyAnp: SEED_META.regionalEnergyAnp.activationKey,
+  regionalEnergyEvn: SEED_META.regionalEnergyEvn.activationKey,
+  regionalEnergyKorem: SEED_META.regionalEnergyKorem.activationKey,
+  regionalEnergyCoes: SEED_META.regionalEnergyCoes.activationKey,
+  regionalEnergyIccc: SEED_META.regionalEnergyIccc.activationKey,
+  regionalEnergyFccc: SEED_META.regionalEnergyFccc.activationKey,
+
   globalTendersColombiaSecop: SEED_META.globalTendersColombiaSecop.activationKey,
   globalTendersKenyaPpip: SEED_META.globalTendersKenyaPpip.activationKey,
   globalTendersSouthAfricaEtenders: SEED_META.globalTendersSouthAfricaEtenders.activationKey,
@@ -2658,6 +2732,20 @@ function fredRatesRolloutCommands(now, vercelEnv = process.env.VERCEL_ENV) {
     ['SET', FRED_RATES_ROLLOUT_DEADLINE_KEY, String(candidateUntil), 'NX'],
     ['GET', FRED_RATES_ROLLOUT_DEADLINE_KEY],
   ];
+}
+
+const REGIONAL_ENERGY_ROLLOUT_NAMES = Object.keys(SEED_META)
+  .filter(name => SEED_META[name].firstPublicationMaxWaitMin != null);
+
+function regionalEnergyRolloutCommands(now, vercelEnv = process.env.VERCEL_ENV) {
+  if (vercelEnv !== 'production') return [];
+  return REGIONAL_ENERGY_ROLLOUT_NAMES.flatMap(name => {
+    const deadlineKey = `health:rollout-deadline:${STANDALONE_KEYS[name]}`;
+    return [
+      ['SET', deadlineKey, String(now + SEED_META[name].firstPublicationMaxWaitMin * 60_000), 'NX'],
+      ['GET', deadlineKey],
+    ];
+  });
 }
 
 function parseFredRatesRolloutUntil(results) {
@@ -3636,7 +3724,8 @@ function classifyKey(name, redisKey, opts, ctx) {
   //      so the window is visible instead of silent.
   // The content-freshness grace below has none of those bounds, which is why it
   // takes the opposite policy on the same unknown state.
-  let isOnDemand = !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name)
+  let isOnDemand = seedCfg?.firstPublicationMaxWaitMin == null
+    && !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name)
     && ctx.activationStates?.get(name) !== true;
   // Unlike ON_DEMAND, runtime rollout windows need no per-registry opt-in
   // (`allowOnDemand`): each window is bounded by a deployment-relative deadline
@@ -4521,6 +4610,20 @@ function composeChinaDecisionSignalsStatus(entry, _chinaCoverageEntry, now) {
 // with the input detail attached for diagnosis. A dead input is never
 // contained: containment means the served payload is merely old, while scores
 // built without a signal are wrong.
+// The straits AISStream's receivers reach (2026-10-31 probe). Named, not
+// counted: a lit Taiwan must not stand in for a dark Gibraltar.
+const AIS_MEASURABLE_TRANSIT_IDS = Object.freeze(['dover_strait', 'gibraltar', 'cape_of_good_hope']);
+
+function composeChokepointTransitsCoverage(entry, rawMeta) {
+  if (!entry || entry.status !== 'OK') return entry;
+  const missing = unwrapEnvelope(parseRedisValue(rawMeta)).data?.transitCoverage?.missing;
+  const missingMeasurable = Array.isArray(missing)
+    ? AIS_MEASURABLE_TRANSIT_IDS.filter((id) => missing.includes(id))
+    : [...AIS_MEASURABLE_TRANSIT_IDS];
+  if (missingMeasurable.length === 0) return entry;
+  return { ...entry, status: 'COVERAGE_PARTIAL', missingMeasurable };
+}
+
 function composeRiskScoresInputHealth(entry, rawMeta, checks, now, containmentEvidenceByName) {
   if (!entry) return entry;
   const meta = unwrapEnvelope(parseRedisValue(rawMeta)).data;
@@ -5714,6 +5817,7 @@ export async function handleHealth(req, ctx, options = {}) {
   const allMetaKeys = Object.values(SEED_META).map(s => s.key);
   const activationEntries = Object.entries(ACTIVATION_MARKERS);
   const fredRolloutCommands = fredRatesRolloutCommands(now);
+  const regionalRolloutCommands = regionalEnergyRolloutCommands(now);
 
   // STRLEN for data keys avoids loading large blobs into memory (OOM prevention).
   // NEG_SENTINEL ('__WM_NEG__') is 10 bytes — strlenIsData() rejects exactly
@@ -5738,6 +5842,7 @@ export async function handleHealth(req, ctx, options = {}) {
       ['GET', sweepKey(STANDALONE_KEYS.educationAttainment)],
       ['HEXISTS', sweepKey(FIVE_FACTOR_SCORECARD_READ_MODEL_KEY), 'metadata'],
       ...fredRolloutCommands,
+      ...regionalRolloutCommands,
     ];
     if (!getRedisCredentials()) throw new Error('Redis not configured');
     if (budget.exhausted()) return deadlineFallback();
@@ -5854,6 +5959,14 @@ export async function handleHealth(req, ctx, options = {}) {
   if (fredRatesRolloutUntil !== null) {
     rolloutPendingUntilMs.set('fredRatesSeeder', fredRatesRolloutUntil);
   }
+  const regionalRolloutOffset = fredRolloutOffset + fredRolloutCommands.length;
+  if (regionalRolloutCommands.length > 0) {
+    REGIONAL_ENERGY_ROLLOUT_NAMES.forEach((name, index) => {
+      const offset = regionalRolloutOffset + index * 2;
+      const until = parseFredRatesRolloutUntil(results.slice(offset, offset + 2));
+      if (until !== null) rolloutPendingUntilMs.set(name, until);
+    });
+  }
   // Rare second round trip: only while a writer lags a key-version bump.
   const keyVersionRollouts = keyVersionRolloutCandidates(
     [BOOTSTRAP_KEYS, STANDALONE_KEYS], keyStrens, keyErrors, keyMetaValues, keyMetaErrors, evaluationNow,
@@ -5946,6 +6059,10 @@ export async function handleHealth(req, ctx, options = {}) {
     checks.chinaDecisionSignals,
     checks.chinaCoverage,
     evaluationNow,
+  );
+  checks.chokepointTransits = composeChokepointTransitsCoverage(
+    checks.chokepointTransits,
+    keyMetaValues.get(SEED_META.chokepointTransits.key),
   );
   checks.riskScores = composeRiskScoresInputHealth(
     checks.riskScores,
@@ -6201,6 +6318,7 @@ export default async function handler(req, ctx) {
 // 2026-05-04 health-readiness plan, Sprint 1 test plan (Codex round 2 P1).
 export const __testing__ = {
   composeContractsFinderHealth,
+  composeChokepointTransitsCoverage,
   composeRiskScoresInputHealth,
   readSeedMeta,
   classifyKey,
@@ -6222,6 +6340,7 @@ export const __testing__ = {
   writerKeyVersionBehind,
   keyVersionRolloutCommands,
   fredRatesRolloutCommands,
+  regionalEnergyRolloutCommands,
   parseFredRatesRolloutUntil,
   STALE_CONTENT_GRACE_MS,
   STALE_CONTENT_GRACE_STATE_KEY,

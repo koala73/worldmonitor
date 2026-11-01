@@ -1,9 +1,8 @@
-import { COUNTRY_ARG_HINT, echoCountryInput, requireCountryCode } from '../_country-args';
+import { COUNTRY_ARG_HINT, echoCountryInput, requireCountryCode, resolveCountryArg } from '../_country-args';
 import COUNTRY_BBOXES from '../../../shared/country-bboxes.js';
 import { countryBox, splitCountryBox } from '../../../shared/country-bbox';
 import type { ListMilitaryFlightsResponse } from '../../../src/generated/server/worldmonitor/military/v1/service_server';
 import type { TrackAircraftResponse } from '../../../src/generated/server/worldmonitor/aviation/v1/service_server';
-import { resolveCountryCode } from '../../../shared/country-code-resolve';
 import { countryMentionTerms, mentionsCountry } from '../../../shared/country-mention.js';
 import { isBriefRelevantTitle } from '../../../shared/brief-relevance.js';
 import { isOpenSkyProvider } from '../../../shared/provider-redistribution';
@@ -19,7 +18,7 @@ import MINING_SITES_RAW from '../../../shared/mining-sites.js';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { argStr } from '../filters';
 import { buildAuthHeaders } from '../auth';
-import { assertToolFetchOk, BillingDenialError, parseSafeRpcViolations, RpcValidationError, throwIfBillingDenial } from '../billing-denial';
+import { assertToolFetchOk, BillingDenialError, parseSafeRpcViolations, RpcValidationError, throwIfBillingDenial, UpstreamHttpError } from '../billing-denial';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
 import {
   assertMcpToolFetchOk,
@@ -1684,7 +1683,7 @@ export const RPC_TOOLS: ToolDef[] = [
         panel_request: { type: 'string', maxLength: 160, description: 'Server-issued country-panel request token, supplied by the embedded view.' },
         refresh: { type: 'boolean', description: 'For a paid MCP allowance, start a new country allocation and reread loaded sources. Requires request_id and no panel_request. Does not force AI generation.' },
         request_id: { type: 'string', format: 'uuid', description: 'Required UUID for an explicit paid refresh. Retrying the same UUID reuses that allocation.' },
-        country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or English country name ("Iraq")' },
+        country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or country name in any supported dashboard locale (e.g. "Iraq", "العراق", "Deutschland", "中国")' },
         framework: { type: 'string', description: 'Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT)' },
         allow_stale: { type: 'boolean', description: 'Ground the brief on a retained (stale) news digest when the live rebuild has failed. Defaults to false, which drops the stale grounding and returns an ungrounded brief rather than failing; time-sensitive automated decisions should leave this disabled. Retained content is at most six hours old.' },
       },
@@ -1900,7 +1899,7 @@ export const RPC_TOOLS: ToolDef[] = [
         } catch {
           code = detail.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
         }
-        throw new Error(`get-country-intel-brief HTTP ${res.status}${code ? `: ${code}` : ''}`);
+        throw new UpstreamHttpError(`get-country-intel-brief HTTP ${res.status}${code ? `: ${code}` : ''}`, res.status);
       }
       const result = await res.json() as Record<string, unknown>;
       const resultSources = collectMcpBriefSources(Array.isArray(result.sources) ? result.sources as DigestItemForBrief[] : [], 6);
@@ -1935,7 +1934,7 @@ export const RPC_TOOLS: ToolDef[] = [
         panel_request: { type: 'string', maxLength: 160, description: 'Server-issued same-country panel request token for loaded reads.' },
         refresh: { type: 'boolean', description: 'For a paid MCP allowance, start a new country allocation and reread loaded sources. Requires request_id and no panel_request. Does not force AI generation.' },
         request_id: { type: 'string', format: 'uuid', description: 'Required UUID for an explicit paid refresh. Retrying the same UUID reuses that allocation.' },
-        country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or English country name ("Iraq")' },
+        country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or country name in any supported dashboard locale (e.g. "Iraq", "العراق", "Deutschland", "中国")' },
         history_days: { type: 'integer', minimum: 1, maximum: 90, description: 'Optional UTC daily CII history depth, 1-90 days. Gaps remain gaps; only current-methodology points contribute to change.' },
       },
       required: ['country_code'],
@@ -2028,7 +2027,7 @@ export const RPC_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         panel_request: { type: 'string', maxLength: 160, description: 'Server-issued country-panel request token, supplied by the embedded view.' },
-        country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or English country name ("Iraq")' },
+        country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or country name in any supported dashboard locale (e.g. "Iraq", "العراق", "Deutschland", "中国")' },
         window_hours: { type: 'integer', minimum: 0, maximum: 168, description: 'Look-back window in hours. 0 or omitted means the default 168 (7 days), which is what the UI shows. The upstream coverage query is pinned to 7 days, so a larger value is rejected rather than silently returning the same events.' },
         limit: { type: 'integer', minimum: 0, maximum: 500, description: 'Maximum timeline events to return, keeping the most recent. 0 or omitted means the default 200.' },
       },
@@ -2711,7 +2710,7 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         country_code: {
           type: 'string',
-          description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or English country name ("Iraq")',
+          description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or country name in any supported dashboard locale (e.g. "Iraq", "العراق", "Deutschland", "中国")',
         },
         type: {
           type: 'string',
@@ -2757,7 +2756,7 @@ export const RPC_TOOLS: ToolDef[] = [
       // Resolve before the bbox lookup: truncation used to yield a VALID code
       // for the wrong country, so this guard passed and served Iran's airspace
       // for a request that said "Iraq" (WORLDMONITOR-Y2).
-      const code = resolveCountryCode(params.country_code);
+      const code = resolveCountryArg(params.country_code);
       if (!code) {
         return { error: `Could not resolve ${JSON.stringify(echoCountryInput(params.country_code))} to a country. ${COUNTRY_ARG_HINT}` };
       }
@@ -2778,7 +2777,7 @@ export const RPC_TOOLS: ToolDef[] = [
           if (!auth) return null;
           const response = await fetchMcpDownstream(url, { headers: { ...auth, 'User-Agent': UA }, signal: AbortSignal.timeout(8_000) }, execution);
           throwIfBillingDenial(response, operation);
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          if (!response.ok) throw new UpstreamHttpError(`HTTP ${response.status}`, response.status);
           return response.json() as Promise<T>;
         }));
         // A failure in one half must not hide a billing denial in the other.
@@ -2878,7 +2877,7 @@ export const RPC_TOOLS: ToolDef[] = [
         view: { type: 'string', enum: ['traffic', 'ports'], default: 'traffic', description: 'Live AIS traffic or scheduled PortWatch tanker activity by port.' },
         country_code: {
           type: 'string',
-          description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or English country name ("Iraq")',
+          description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or country name in any supported dashboard locale (e.g. "Iraq", "العراق", "Deutschland", "中国")',
         },
       },
       required: ['country_code'],
@@ -2921,7 +2920,7 @@ export const RPC_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     _execute: async (params, base, context, execution) => {
       // Resolve before the bbox lookup — see the get_airspace note above.
-      const code = resolveCountryCode(params.country_code);
+      const code = resolveCountryArg(params.country_code);
       if (!code) {
         return { error: `Could not resolve ${JSON.stringify(echoCountryInput(params.country_code))} to a country. ${COUNTRY_ARG_HINT}` };
       }
@@ -2965,7 +2964,7 @@ export const RPC_TOOLS: ToolDef[] = [
       if (!res.ok) {
         throwIfBillingDenial(res, endpoint);
         const detail = (await res.text().catch(() => '')).slice(0, 200);
-        throw new Error(`${endpoint} HTTP ${res.status}${detail ? ` — ${detail}` : ''}`);
+        throw new UpstreamHttpError(`${endpoint} HTTP ${res.status}${detail ? ` — ${detail}` : ''}`, res.status);
       }
       const data = await res.json() as VesselResp;
       if (portsView) {

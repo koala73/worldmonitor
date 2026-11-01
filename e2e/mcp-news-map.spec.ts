@@ -16,7 +16,7 @@ const payload = { categories: {
 }, feedStatuses: {}, generatedAt: new Date().toISOString() };
 const hazards = { structuredContent: { data: {
   earthquakes: { earthquakes: [
-    { id: 'fixture-quake', place: 'Fixture Berlin', magnitude: 5.1, depthKm: 10, location: { latitude: 52.5, longitude: 13.4 }, occurredAt: Date.now(), sourceUrl: 'https://example.com/quake', source: 'USGS fixture', category: 'earthquake' },
+    { id: 'fixture-quake', place: 'Fixture Berlin', magnitude: 5.1, depthKm: 10, location: { latitude: 52.5, longitude: 13.4 }, occurredAt: Date.now(), sourceUrl: 'https://example.com/quake', source: 'usgs' },
     { id: 'invalid-quake', location: { latitude: 999, longitude: 13.4 } },
   ] },
   events: { dataAvailable: true, events: [{ id: 'fixture-flood', title: 'Fixture flood', category: 'floods', categoryTitle: 'Floods', lat: 50, lon: 10, date: Date.now(), sourceUrl: 'https://example.com/flood', sourceName: 'Fixture', closed: false }] },
@@ -92,7 +92,8 @@ document.documentElement.dataset.cspViolations='0';document.addEventListener('se
     await page.goto(origin);
     await page.setContent(`<iframe title="WorldMonitor plugin" style="border:0;width:100%;height:1000px" sandbox="allow-scripts"></iframe><script>
       const frame=document.querySelector('iframe');window.calls=[];window.addEventListener('message',e=>{if(e.source!==frame.contentWindow)return;const m=e.data;window.calls.push(m);const send=o=>frame.contentWindow.postMessage({jsonrpc:'2.0',...o},'*');
-      if(m.method==='ui/initialize')send(window.rejectInit?{id:m.id,error:{code:-32000,message:'Fixture initialization failed'}}:{id:m.id,result:{hostCapabilities:{},hostContext:{theme:'dark'}}});
+      if(m.method==='ui/initialize')send(window.rejectInit?{id:m.id,error:{code:-32000,message:'Fixture initialization failed'}}:{id:m.id,result:{hostCapabilities:{serverTools:{}},hostContext:{theme:'dark'}}});
+      if(m.method==='tools/call')send(m.params.name==='get_natural_disasters'?{id:m.id,result:${JSON.stringify(hazards)}}:{id:m.id,result:{isError:true,content:[{type:'text',text:'Unexpected tool'}]}});
       if(m.method==='ui/notifications/initialized')send({method:'ui/notifications/tool-result',params:{structuredContent:${JSON.stringify(mapPayload)}}});});frame.srcdoc=${JSON.stringify(strictHtml).replace(/</g, '\\u003c')};</script>`);
     const app = page.frameLocator('iframe');
     await expect(app.locator('.panel')).toHaveCount(12);
@@ -114,7 +115,10 @@ document.documentElement.dataset.cspViolations='0';document.addEventListener('se
     await page.screenshot({ path: testInfo.outputPath('news-map-2d-csp.png'), fullPage: true });
     await app.locator('#pluginMapLayers').getByLabel('Military Bases', { exact: true }).check();
     await expect(app.locator('#pluginMapStatus')).toContainText('reference data');
-    await page.evaluate(() => document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', id: 'fixture-globe', method: 'tools/call', params: { name: 'apply_news_view', arguments: { renderer: 'globe', map_layers: ['bases', 'cables'] } } }, '*'));
+    await app.locator('#pluginMapLayers').getByLabel('Natural Events', { exact: true }).check();
+    await app.locator('#pluginMapLayers').getByLabel('Fires', { exact: true }).check();
+    await expect(app.locator('#pluginMapStatus')).toContainText('earthquakes: 1 valid, 1 skipped; events: 1 valid, 0 skipped; fires: 1 valid, 0 skipped');
+    await page.evaluate(() => document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', id: 'fixture-globe', method: 'tools/call', params: { name: 'apply_news_view', arguments: { renderer: 'globe', map_layers: ['natural', 'fires', 'bases', 'cables'] } } }, '*'));
     await expect.poll(() => page.evaluate(() => (window as any).calls.find((call: any) => call.id === 'fixture-globe')?.result?.structuredContent?.renderer?.mode)).toBe('globe');
     await expect(app.locator('#mapContainer canvas').first()).toBeVisible();
     await expect.poll(() => textureReferrers.length).toBeGreaterThan(0);
@@ -128,6 +132,10 @@ document.documentElement.dataset.cspViolations='0';document.addEventListener('se
     })).toBe(true);
     await expect(app.locator('#mapDimensionToggle button[data-mode="globe"]')).toHaveClass(/active/);
     await expect(app.locator('#pluginMapLayers').getByLabel('Undersea Cables', { exact: true })).toBeChecked();
+    await expect(app.locator('#pluginMapLayers').getByLabel('Natural Events', { exact: true })).toBeChecked();
+    await expect(app.locator('#pluginMapLayers').getByLabel('Fires', { exact: true })).toBeChecked();
+    await expect(app.locator('#mapContainer').getByTitle('M5.1 — Fixture Berlin', { exact: true })).toBeVisible();
+    await expect(app.locator('#mapContainer').getByTitle('Fire — Fixture', { exact: true })).toBeVisible();
     await expect(app.locator('html')).toHaveAttribute('data-csp-violations', '0');
     expect(errors).toEqual([]);
     await page.screenshot({ path: testInfo.outputPath('domain-maps-globe.png'), fullPage: true });

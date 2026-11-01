@@ -134,34 +134,37 @@ async function encryptSlackWebhook(webhookUrl: string): Promise<string> {
 }
 
 /**
- * Allow-list of hostnames every major browser's push service uses.
+ * Allow-list of push-service hosts. A PushSubscription's endpoint is assigned
+ * by the browser's push platform, so constraining it is safe, and without the
+ * constraint the relay's sendWebPush() would POST to any URL a PRO user
+ * submits. Fail-closed: a browser on an unlisted push service is rejected
+ * until the list widens.
  *
- * A PushSubscription's endpoint URL is assigned by the browser's
- * push platform — users can't pick it. That means we CAN safely
- * constrain accepted endpoints to known push-service hosts and
- * reject anything else before it hits Convex storage (and later
- * the relay's outbound fetch). Without this allow-list the relay's
- * sendWebPush() becomes a server-side-request primitive for any
- * PRO user: they could submit `https://internal.example.com/admin`
- * as their endpoint and the relay would faithfully POST to it.
+ * Source of truth: pushpad/known-push-services (built from ~200M real
+ * subscriptions). jmt17.google.com is what Chromium issues by default on
+ * every non-STABLE channel; android.googleapis.com serves older Chrome
+ * subscriptions. The default port only, so a listed host can't be aimed at
+ * another service on the same machine.
  *
- * Sources (verified 2026-04-18):
- *   - Chrome / Edge / Brave:  fcm.googleapis.com
- *   - Firefox:                updates.push.services.mozilla.com
- *   - Safari (macOS 13+):     web.push.apple.com
- *   - Windows Notification:   *.notify.windows.com (wns2-*, etc.)
- *
- * If a future browser ships a new push service we'll need to widen
- * this list — fail-closed is the right default.
+ * The relay's web-push sends with legacy url.parse(), which disagrees with
+ * WHATWG on `localhost%2epush.apple.com` and on hosts holding `{`, `'` or `;`.
+ * Only a canonical endpoint with a letters-digits-hyphens host and no
+ * userinfo parses the same in both. Browsers always emit those.
  */
-function isAllowedPushEndpointHost(host: string): boolean {
-  const h = host.toLowerCase();
-  if (h === 'fcm.googleapis.com') return true;
-  if (h === 'updates.push.services.mozilla.com') return true;
-  if (h === 'web.push.apple.com') return true;
-  if (h.endsWith('.web.push.apple.com')) return true;
-  if (h.endsWith('.notify.windows.com')) return true;
-  return false;
+const PUSH_SERVICE_HOSTS = new Set([
+  'fcm.googleapis.com',
+  'android.googleapis.com',
+  'jmt17.google.com',
+  'updates.push.services.mozilla.com',
+]);
+const PUSH_SERVICE_DOMAIN_SUFFIXES = ['.push.apple.com', '.notify.windows.com'];
+const LDH_HOSTNAME = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+
+function isAllowedPushEndpoint(endpoint: string, u: URL): boolean {
+  if (u.href !== endpoint || u.port !== '' || u.username !== '' || u.password !== '') return false;
+  if (!LDH_HOSTNAME.test(u.hostname)) return false;
+  return PUSH_SERVICE_HOSTS.has(u.hostname)
+    || PUSH_SERVICE_DOMAIN_SUFFIXES.some((suffix) => u.hostname.endsWith(suffix));
 }
 
 // Resolves true when the welcome event was queued. Failures are logged and
@@ -722,7 +725,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           if (u.protocol !== 'https:') {
             return finish(json({ error: 'endpoint must be https' }, 400, corsHeaders));
           }
-          if (!isAllowedPushEndpointHost(u.hostname)) {
+          if (!isAllowedPushEndpoint(endpoint, u)) {
             return finish(json(
               { error: 'endpoint host is not a recognised push service' },
               400,

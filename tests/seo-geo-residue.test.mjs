@@ -538,7 +538,7 @@ describe('GEO residue #7616 (U1 agent surfaces)', () => {
     const productFacts = step('scripts/generate-public-product-facts.mjs');
     assert.ok(productFacts < step('npm run inventory:facts'), 'product facts must be regenerated before inventory:facts');
     assert.ok(productFacts < step('npm run build:llms-full'), 'product facts must be regenerated before build:llms-full');
-    assert.ok(step('npm run resilience:coverage') < step('node --import tsx --test'));
+    assert.ok(step('npm run resilience:coverage') < step('node scripts/run-data-tests.mjs'));
     const staged = workflow.slice(workflow.indexOf('git add "$snapshot_path"'), workflow.indexOf('git commit'));
     for (const path of [
       ...RESILIENCE_COVERAGE_SURFACES.map((surface) => surface.path),

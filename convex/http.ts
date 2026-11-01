@@ -578,6 +578,97 @@ http.route({
   }),
 });
 
+// Agent feedback channel (#8721). Only the edge may write, after
+// admitFeedbackReport has charged the caller's buckets. The body is already
+// validated, sanitized, redacted, and hashed there; this checks shape only and
+// never echoes field content (threat model, Decision 7).
+const FEEDBACK_STRING_FIELDS = ["kind", "surfaceType", "surfaceName", "summary", "fingerprint", "retryKey", "reporterKey", "authKind"] as const;
+const FEEDBACK_OPTIONAL_STRING_FIELDS = ["expected", "actual", "requestId", "clientName", "principalId", "ipHash", "uaHash"] as const;
+const FEEDBACK_KINDS = new Set(["bug", "missing_capability", "data_quality", "security"]);
+const FEEDBACK_SURFACE_TYPES = new Set(["mcp_tool", "rpc", "other"]);
+const FEEDBACK_AUTH_KINDS = new Set(["anonymous", "keyed"]);
+
+async function requireConvexSharedSecret(request: Request): Promise<boolean> {
+  const expected = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+  const provided = request.headers.get("x-convex-shared-secret") ?? "";
+  return Boolean(expected) && await timingSafeEqualStrings(provided, expected);
+}
+
+http.route({
+  path: "/api/internal-submit-feedback",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await requireConvexSharedSecret(request))) {
+      return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+    const body = await parseJsonObjectBody<Record<string, unknown>>(request);
+    if (!body
+      || FEEDBACK_STRING_FIELDS.some((f) => typeof body[f] !== "string")
+      || FEEDBACK_OPTIONAL_STRING_FIELDS.some((f) => body[f] !== undefined && typeof body[f] !== "string")
+      || typeof body.redacted !== "boolean"
+      || !FEEDBACK_KINDS.has(body.kind as string)
+      || !FEEDBACK_SURFACE_TYPES.has(body.surfaceType as string)
+      || !FEEDBACK_AUTH_KINDS.has(body.authKind as string)) {
+      return Response.json({ error: "INVALID_FEEDBACK" }, { status: 400 });
+    }
+    const pick = (f: string) => body[f] as string | undefined;
+    try {
+      const result = await ctx.runMutation(internal.agentFeedback.submit, {
+        kind: body.kind as "bug" | "missing_capability" | "data_quality" | "security",
+        surfaceType: body.surfaceType as "mcp_tool" | "rpc" | "other",
+        surfaceName: body.surfaceName as string,
+        summary: body.summary as string,
+        expected: pick("expected"),
+        actual: pick("actual"),
+        requestId: pick("requestId"),
+        clientName: pick("clientName"),
+        redacted: body.redacted as boolean,
+        fingerprint: body.fingerprint as string,
+        retryKey: body.retryKey as string,
+        reporterKey: body.reporterKey as string,
+        authKind: body.authKind as "anonymous" | "keyed",
+        principalId: pick("principalId"),
+        ipHash: pick("ipHash"),
+        uaHash: pick("uaHash"),
+      });
+      return Response.json({ reportId: result.reportId, status: result.status, retried: result.retried });
+    } catch (error) {
+      const code = extractConvexErrorCode(error);
+      if (code === "rate_limited") return Response.json({ error: code }, { status: 429 });
+      // A deleted or deleting account is final, so the edge must not retry it.
+      if (code === "ACCOUNT_DELETION_IN_PROGRESS") return Response.json({ error: code }, { status: 403 });
+      if (code === "INVALID_FEEDBACK") {
+        const parsed = parseConvexErrorData(error) as { field?: unknown } | null;
+        const field = typeof parsed?.field === "string" ? parsed.field : undefined;
+        return Response.json({ error: code, field }, { status: 400 });
+      }
+      return Response.json({ error: "FEEDBACK_STORAGE_FAILED" }, { status: 503 });
+    }
+  }),
+});
+
+// Lets the edge return an earlier report for a retry before charging any
+// admission bucket (Decision 3).
+http.route({
+  path: "/api/internal-find-feedback-retry",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await requireConvexSharedSecret(request))) {
+      return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+    const body = await parseJsonObjectBody<{ retryKey?: unknown }>(request);
+    if (!body || typeof body.retryKey !== "string" || !/^[0-9a-f]{64}$/.test(body.retryKey)) {
+      return Response.json({ error: "INVALID_FEEDBACK", field: "retryKey" }, { status: 400 });
+    }
+    try {
+      const found = await ctx.runQuery(internal.agentFeedback.findRetry, { retryKey: body.retryKey });
+      return Response.json({ found });
+    } catch {
+      return Response.json({ error: "FEEDBACK_STORAGE_FAILED" }, { status: 503 });
+    }
+  }),
+});
+
 http.route({
   path: "/api/internal-register-interest",
   method: "POST",

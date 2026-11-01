@@ -94,6 +94,8 @@ let countryRows = null;
 let lockUnavailable = false;
 /** HTTP status the LNG origin requests answer with; the recorded response when null. */
 let lngStatus = null;
+/** When set, every reporter call answers this status (a refused key or an exhausted quota). */
+let reporterStatus = null;
 
 /**
  * One heading's world-export rows: the reporter totals a `flowCode=X` request
@@ -161,6 +163,7 @@ beforeEach(() => {
   countryRows = null;
   lockUnavailable = false;
   lngStatus = null;
+  reporterStatus = null;
 
   process.env.UPSTASH_REDIS_REST_URL = REDIS_URL;
   process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
@@ -208,6 +211,7 @@ beforeEach(() => {
       if (isWorldExports && worldStatus) return new Response('{}', { status: worldStatus });
       if (isWorldExports && worldEmpty) return respond({ count: 0, data: [] });
       if (rateLimitEverything) return new Response('{}', { status: 429 });
+      if (reporterStatus && !isWorldExports && !isLng) return new Response('{"statusCode":403,"message":"Out of call volume quota."}', { status: reporterStatus });
       if (failSecondBatch && countryCallCount > 1) return new Response('{}', { status: 403 });
       if (transientEverything) return new Response('{}', { status: 503 });
       if (providerDefect === 'malformed') return respond({ count: 1, unexpected: true });
@@ -794,4 +798,80 @@ test('the write pipeline flushes on accumulated bytes, not only on the command c
   const bytes = first.filter(c => c[0] === 'SET').reduce((sum, c) => sum + c[2].length, 0);
   assert.ok(bytes >= 1_048_576, `the flush must be driven by real bytes, saw ${bytes}`);
   assert.ok(bytes < 2 * 1_048_576, `the flush must fire at the 1 MB ceiling, not a multiple of it (${bytes})`);
+});
+
+// #7990: the October 2026 runs stopped writing at the same place in the
+// country roster (requests ~252 and ~253), so the same tail of ~74 reporters
+// went unrefreshed run after run until MAX_PRESERVE_RUNS let them expire.
+const reporterOf = (href) => new URL(href).searchParams.get('reporterCode');
+/** A real seed-meta records every registry country; these start as refreshed. */
+const ROSTER = Object.keys(JSON.parse(readFileSync(new URL('../scripts/shared/country-port-clusters.json', import.meta.url), 'utf8')))
+  .filter(k => k !== '_comment' && k.length === 2);
+const priorRun = (overrides, preserveStreaks = {}) => JSON.stringify({
+  fetchedAt: Date.now() - 40 * 24 * 60 * 60 * 1000,
+  recordCount: 110,
+  status: 'ok',
+  preserveStreaks,
+  countryCoverage: { ...Object.fromEntries(ROSTER.map(iso2 => [iso2, { state: 'observed' }])), ...overrides },
+});
+
+test('reporters the previous run did not refresh are fetched before the ones it did', async () => {
+  priorMeta = priorRun({
+    US: { state: 'observed' }, CN: { state: 'observed' },
+    SZ: { state: 'unavailable' }, MU: { state: 'unavailable' },
+  }, { SZ: 1, MU: 2 });
+  // Every reporter answers on the first period, so none spends a fallback request.
+  countriesWithData = 197;
+  // Room for exactly two reporters after the run-level reservation.
+  await main({ requestBudget: RESERVED_REQUESTS + 4 });
+  const order = [...new Set(reporterUrls().map(reporterOf))];
+  // MU is one run from ageing out, so it goes before SZ; both go before US.
+  assert.deepEqual(order, ['480', '748']);
+});
+
+test('a reporter the previous run never reached counts as not refreshed', async () => {
+  // The run that wrote this meta ended before TL; it recorded no state for it.
+  priorMeta = priorRun({ US: { state: 'observed' }, TL: { state: 'not_attempted' } });
+  countriesWithData = 197;
+  await main({ requestBudget: RESERVED_REQUESTS + 2 });
+  assert.deepEqual([...new Set(reporterUrls().map(reporterOf))], ['626']);
+});
+
+test('without prior coverage the registry order is kept', async () => {
+  countriesWithData = 197;
+  await main({ requestBudget: RESERVED_REQUESTS + 2 });
+  assert.deepEqual([...new Set(reporterUrls().map(reporterOf))], ['842']);
+});
+
+for (const status of [401, 403]) {
+  test(`consecutive HTTP ${status} refusals end the run instead of spending a request per reporter`, async () => {
+    reporterStatus = status;
+    await main();
+    assert.equal(reporterUrls().length, MAX_CONSECUTIVE_RATE_LIMITED_FETCHES,
+      `made ${reporterUrls().length} refused reporter calls`);
+    const meta = writtenMeta();
+    assert.equal(meta.status, 'partial');
+    const states = Object.values(meta.countryCoverage).map(c => c.state);
+    assert.equal(states.filter(s => s === 'unavailable').length, MAX_CONSECUTIVE_RATE_LIMITED_FETCHES);
+    // Unreached reporters stay distinguishable from refused ones.
+    assert.ok(states.filter(s => s === 'not_attempted').length > 150);
+  });
+}
+
+test('two budget-cut runs in a row refresh every reporter the first one missed', async () => {
+  countriesWithData = 197;
+  // ~250 usable requests, as in both October 2026 runs: 123 reporters.
+  const budget = RESERVED_REQUESTS + 123 * 2;
+  await main({ requestBudget: budget });
+  const first = new Set(reporterUrls().map(reporterOf));
+  const meta = writtenMeta();
+  // The next run reads that meta, past the freshness gate.
+  priorMeta = JSON.stringify({ ...meta, fetchedAt: Date.now() - 40 * 24 * 60 * 60 * 1000 });
+  comtradeUrls = [];
+  countryCallCount = 0;
+  await main({ requestBudget: budget });
+  const second = new Set(reporterUrls().map(reporterOf));
+  const missedByFirst = ROSTER.length - first.size;
+  assert.ok(missedByFirst > 0, 'the budget must cut the first run short');
+  assert.equal(new Set([...first, ...second]).size, ROSTER.length, 'two runs must cover the roster');
 });

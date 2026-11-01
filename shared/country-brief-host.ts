@@ -36,10 +36,16 @@ const countryBriefDirectReadSchema = z.object({
 }).strict();
 const countryRiskDirectReadSchema = z.object({ country_code: z.string().min(2).max(100), history_days: historyDays }).strict();
 
-export function normalizeCountryDirectRead(name: 'get_country_brief' | 'get_country_risk', args: Record<string, unknown>): Record<string, unknown> | null {
+export function normalizeCountryDirectRead(
+  name: 'get_country_brief' | 'get_country_risk',
+  args: Record<string, unknown>,
+  // The MCP layer passes its localized resolver; the default keeps the
+  // localized name tables out of the browser bundles that import this module.
+  resolveCountry: (raw: unknown) => string | null = resolveCountryCode,
+): Record<string, unknown> | null {
   const parsed = (name === 'get_country_brief' ? countryBriefDirectReadSchema : countryRiskDirectReadSchema).safeParse(args);
   if (!parsed.success) return null;
-  const country = resolveCountryCode(parsed.data.country_code);
+  const country = resolveCountry(parsed.data.country_code);
   if (!country) return null;
   const original = parsed.data as { framework?: unknown; allow_stale?: unknown };
   let framework = '';

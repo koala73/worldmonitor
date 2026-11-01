@@ -55,6 +55,8 @@ import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from 
 import { emitTelemetry, principalIdForLog } from './telemetry';
 import { classifyAgentClientHints, sanitizeClientName } from '../../shared/agent-client-source';
 import { hashKeySync } from '../../server/_shared/usage-identity';
+import { deriveRequestId } from '../../server/_shared/usage';
+import { attachRequestIdToErrors } from './request-id';
 import {
   createMcpUsage,
   emitMcpRequestEvent,
@@ -564,7 +566,9 @@ async function maybeStreamJsonRpcResponse(req: Request, owner: string | null, re
   if (!sessionId) return response;
 
   const streamId = crypto.randomUUID();
-  const responseBody = await response.text();
+  // Framed here, before mcpHandler's exit step can see JSON, so the error
+  // request id is stamped now for the live stream and the replay buffer.
+  const responseBody = await (await attachRequestIdToErrors(response, deriveRequestId(req))).text();
   // A single `message` event carrying the fully-computed JSON-RPC response. The
   // body is already resolved (`await response.text()` above) before the stream
   // is constructed, so there is no slow-result window a separate priming event
@@ -855,6 +859,8 @@ export async function mcpHandler(
   let res: Response;
   try {
     res = await mcpHandlerInner(req, deps, usage, exchange, ctx);
+    // Before modern shaping, which may re-frame a JSON body as SSE.
+    res = await attachRequestIdToErrors(res, deriveRequestId(req));
     if (usage.era === 'modern') {
       res = await shapeModernResponse(res, {
         method: exchange.method,

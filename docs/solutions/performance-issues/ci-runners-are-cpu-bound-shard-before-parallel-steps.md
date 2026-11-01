@@ -179,6 +179,12 @@ same blob at the same moment took 12-62s on PR #9626. The job now sets
   runner, so one run's totals mostly show which runners were fast. The final
   split uses each spec's median over six runs (three on main, three on the
   PR): 237/238/238/240 of 953 test-seconds.
+- **The balance drifts as specs grow.** By November 2026 the same split
+  measured 275/262/243/195 of 975 test-seconds (per-spec medians of six runs:
+  three on main, three on PRs). Shard 2 was the last Test job to finish in
+  most runs. The repack keeps shard 3 and moves 7 small specs:
+  244/246/243/245. `country-brief` (207s) and `dashboard-news-request-budget`
+  (191s) are each most of a shard, so the small specs fill the remainder.
 - **Removing sleeps does not free the seconds they held on CI.** Locally the
   flag set 0.3-0.6s after the first digest. On a runner each 8s wait saved only
   1-5s; the flag time there was not logged. The spec's other tests got slower (3.9s to

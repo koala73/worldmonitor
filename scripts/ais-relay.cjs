@@ -10534,7 +10534,10 @@ async function seedChokepointTransits() {
   const payload = { transits, transitCoverage, fetchedAt: now };
   const ok = await envelopeWrite(CHOKEPOINT_TRANSIT_KEY, payload, CHOKEPOINT_TRANSIT_TTL, { recordCount: covered, sourceVersion: 'chokepoint-transits' });
   if (!ok) throw new Error('Transit count publication failed');
-  await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: covered, transitCoverage }, 604800);
+  // Health names the measurable straits from this transitCoverage, so a dropped
+  // write must fail the tick instead of leaving the previous coverage in place.
+  const metaOk = await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: covered, transitCoverage }, 604800);
+  if (!metaOk) throw new Error('Transit coverage metadata write failed');
   console.log(`[Transit] Seeded ${covered}/${canonical.length} measured chokepoints (missing: ${missing.join(', ')})`);
 }
 
@@ -12509,6 +12512,9 @@ function fetchViaProxy(targetUrl, proxy) {
 const ICAO_API_KEY = process.env.ICAO_API_KEY;
 const notamCache = { data: null, ts: 0 };
 const NOTAM_CACHE_TTL = 30 * 60 * 1000; // 30 min
+// Comma-separated ICAO location indicators. The value is pasted into the ICAO
+// query string after the API key, so nothing else may get through.
+const NOTAM_LOCATIONS_RE = /^[A-Z0-9]{4}(?:,[A-Z0-9]{4}){0,199}$/;
 
 function handleNotamProxyRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -12516,6 +12522,10 @@ function handleNotamProxyRequest(req, res) {
   if (!locations) {
     return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
       JSON.stringify({ error: 'Missing locations parameter' }));
+  }
+  if (!NOTAM_LOCATIONS_RE.test(locations)) {
+    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Invalid locations parameter' }));
   }
   if (!ICAO_API_KEY) {
     return sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, runSeed, CHROME_UA } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, CHROME_UA, readSeedSnapshot } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -345,14 +345,69 @@ async function attachBaselines(result, chokepoints, fetchBaselineFn, window, ret
   }
 }
 
+// How long a chokepoint's last successful fetch may stand in for a failed one.
+// Matches the energy:chokepoint-flows:v1 TTL, the longest window a consumer
+// already accepts for this data. Each entry keeps its own fetchedAt, so an
+// entry carried run after run still expires on schedule.
+export const CARRY_FORWARD_MAX_AGE_MS = 3 * DAY_MS;
+
+/**
+ * Fill chokepoints this run failed to fetch from the previous snapshot.
+ *
+ * ArcGIS rejects a different subset of chokepoints on most runs. Publishing
+ * only the survivors replaced the complete set, so a chokepoint that failed
+ * once vanished downstream: chokepoint-flows lost its status, the relay wrote
+ * zero-state rows, and seed-supply-vulnerability refused to publish (WM
+ * 2026-10-31). A fresh entry always wins. A carried entry is marked
+ * `carriedForward: true` and keeps its original fetchedAt. Legacy entries
+ * without one are aged by the snapshot envelope; an entry with no provable
+ * age is not carried.
+ */
+export function mergeWithPrevious(fresh, previous, chokepointIds, nowMs = Date.now()) {
+  const result = { ...fresh };
+  const carried = [];
+  const expired = [];
+  const prior = previous?.data && typeof previous.data === 'object' ? previous.data : {};
+  const snapshotFetchedAt = Number(previous?.meta?.fetchedAt);
+  for (const id of chokepointIds) {
+    if (result[id]) continue;
+    const entry = prior[id];
+    if (!entry?.history?.length) continue;
+    const fetchedAt = Number.isFinite(entry.fetchedAt) ? entry.fetchedAt : snapshotFetchedAt;
+    if (!Number.isFinite(fetchedAt) || nowMs - fetchedAt > CARRY_FORWARD_MAX_AGE_MS) {
+      expired.push(id);
+      continue;
+    }
+    result[id] = { ...entry, fetchedAt, carriedForward: true };
+    carried.push(id);
+  }
+  return { result, carried, expired };
+}
+
 export async function fetchAll({ fetchDeadlineAtMs = null } = {}) {
-  const sinceEpoch = Date.now() - HISTORY_DAYS * DAY_MS;
-  const result = await runFetchPipeline(CHOKEPOINTS, sinceEpoch, fetchAllPages, 500, {
+  const nowMs = Date.now();
+  const sinceEpoch = nowMs - HISTORY_DAYS * DAY_MS;
+  const fresh = await runFetchPipeline(CHOKEPOINTS, sinceEpoch, fetchAllPages, 500, {
     fetchBaselineFn: fetchBaselineStats,
     baselineWindow: baselineWindow(),
     fetchDeadlineAtMs,
   });
-  if (Object.keys(result).length === 0) throw new Error('No chokepoints returned data');
+  if (Object.keys(fresh).length === 0) throw new Error('No chokepoints returned data');
+  for (const entry of Object.values(fresh)) entry.fetchedAt = nowMs;
+  const previous = await readSeedSnapshot(CANONICAL_KEY, { strict: true, includeEnvelopeMeta: true });
+  const { result, carried, expired } = mergeWithPrevious(
+    fresh,
+    previous,
+    CHOKEPOINTS.map(cp => cp.id),
+    nowMs,
+  );
+  if (carried.length > 0) {
+    console.warn(`[PortWatch] Carried ${carried.length} chokepoint(s) from the previous snapshot: ${carried.join(', ')}`);
+  }
+  if (expired.length > 0) {
+    console.warn(`[PortWatch] Previous entry too old to carry (>${CARRY_FORWARD_MAX_AGE_MS / DAY_MS}d), dropping: ${expired.join(', ')}`);
+  }
+  console.log(`[PortWatch] ${Object.keys(fresh).length} fresh + ${carried.length} carried of ${CHOKEPOINTS.length} chokepoints`);
   return result;
 }
 

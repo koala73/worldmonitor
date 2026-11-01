@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser';
 import { decodeHtmlEntities } from './_html-entities.mjs';
+import { recordTenderBucket } from './_global-tender-receipts.mjs';
 import { dedupeTenders, isOpenOpportunity, normalizePublicTender, safeOfficialUrl } from './_global-tenders.mjs';
 
 const DAY = 86_400_000;
@@ -86,7 +87,10 @@ function ocdsRecords(releases, { source, countryCode, region, noticeUrl }) {
 async function detailsInBatches(items, readDetail) {
   const results = [];
   for (let offset = 0; offset < Math.min(items.length, MAX_DETAILS); offset += 4) {
-    results.push(...await Promise.all(items.slice(offset, offset + 4).map(readDetail)));
+    const settled = await Promise.allSettled(items.slice(offset, offset + 4).map(readDetail));
+    const failed = settled.find(result => result.status === 'rejected');
+    if (failed) throw failed.reason;
+    results.push(...settled.map(result => result.value));
   }
   return results.flat();
 }
@@ -204,12 +208,17 @@ export async function fetchBulgaria({ now = Date.now(), fetchJsonFn, fetchTextFn
   const readText = reader(fetchTextFn);
   // Day D's bucket appears around 06:00 UTC on D+1 and answers 403 until then,
   // so the early-UTC runs read the day before instead of failing.
-  let base = `https://storage.eop.bg/open-data-${isoDay(now - DAY)}/`;
+  const bucket = { requestedDate: isoDay(now - DAY), attemptedDates: [isoDay(now - DAY)], selectedDate: null, fallbackStatus: null };
+  recordTenderBucket(bucket);
+  let base = `https://storage.eop.bg/open-data-${bucket.requestedDate}/`;
   let listingXml;
   try {
     listingXml = await readText(base);
   } catch (error) {
     if (![403, 404].includes(error?.status)) throw error;
+    bucket.fallbackStatus = error.status;
+    bucket.attemptedDates.push(isoDay(now - 2 * DAY));
+    recordTenderBucket(bucket);
     base = `https://storage.eop.bg/open-data-${isoDay(now - 2 * DAY)}/`;
     listingXml = await readText(base);
   }
@@ -219,8 +228,11 @@ export async function fetchBulgaria({ now = Date.now(), fetchJsonFn, fetchTextFn
   const key = files.map((entry) => entry.Key).find((name) => typeof name === 'string' && name.includes('OCDS') && name.endsWith('.json'));
   requireRow(key, source);
   const payload = await read(`${base}${encodeURIComponent(key)}`);
-  return finish(source, ocdsRecords(rows(payload?.releases, 'releases'), { source, countryCode: 'BG', region: 'Europe',
+  const result = finish(source, ocdsRecords(rows(payload?.releases, 'releases'), { source, countryCode: 'BG', region: 'Europe',
     noticeUrl: (release) => `https://app.eop.bg/today/${encodeURIComponent(release.tender.id)}` }), now);
+  bucket.selectedDate = bucket.attemptedDates.at(-1);
+  recordTenderBucket(bucket);
+  return result;
 }
 
 export async function fetchLatvia({ now = Date.now(), fetchJsonFn } = {}) {

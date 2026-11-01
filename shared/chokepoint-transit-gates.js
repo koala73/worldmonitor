@@ -28,9 +28,12 @@ export const CHOKEPOINT_TRANSIT_GATES = Object.freeze({
   'Taiwan Strait': { a: [[25.2, 120.3, 0.35]], b: [[23.9, 119.0, 0.35]] },
   // Off Cape Point; south of Cape Agulhas. Cape Town and Mossel Bay lie outside.
   'Cape of Good Hope': { a: [[-34.5, 17.8, 0.5]], b: [[-35.2, 20.5, 0.6]] },
-  // Atlantic side west of Tarifa and Tangier; Mediterranean side east of
-  // Gibraltar and Ceuta, so the Algeciras, Tangier and Ceuta ferries stay out.
-  'Gibraltar Strait': { a: [[35.95, -6.15, 0.2]], b: [[36.0, -5.0, 0.2]] },
+  // Atlantic side just west of Tarifa, across both lanes; Mediterranean side
+  // east of Gibraltar and Ceuta, so the Algeciras, Tangier and Ceuta ferries
+  // never reach both. AISStream's receivers stop at about 5.7W: the first
+  // Atlantic gate (6.35W-5.95W) saw 23 rows in 42h against 2,982 on the
+  // Mediterranean side, so it sits at the western edge of coverage instead.
+  'Gibraltar Strait': { a: [[35.92, -5.67, 0.07]], b: [[36.0, -5.0, 0.2]] },
   // Black Sea entrance; the strait between Arnavutkoy and Cengelkoy, north of
   // the Kabatas-Uskudar ferry crossings.
   'Bosporus Strait': { a: [[41.2, 29.11, 0.05]], b: [[41.065, 29.05, 0.02]] },

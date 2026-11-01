@@ -39,7 +39,7 @@ import type { BypassCorridor, CargoType } from '../../../_shared/bypass-corridor
 import { TIER_RANK } from './_insurance-tier';
 import COUNTRY_PORT_CLUSTERS from '../../../../scripts/shared/country-port-clusters.json';
 import { TRADE_ROUTES } from '../../../../src/config/trade-routes';
-import { PORTS } from '../../../../src/config/ports';
+import { buildLane } from '../../../../src/config/trade-route-lanes';
 import {
   TRANSIT_DAYS_BY_ROUTE_ID,
   TRANSIT_DAYS_FALLBACK,
@@ -117,40 +117,6 @@ function rangeOf(tuple: readonly [number, number]): NumberRange {
 
 function geoPoint(lon: number, lat: number): GeoPoint {
   return { lon, lat };
-}
-
-/**
- * Resolve coordinates for a `TradeRoute.waypoints` entry. Waypoints are string
- * IDs that can refer to either a `PORTS` entry or a chokepoint (via
- * `CHOKEPOINT_REGISTRY`). We try both in that order.
- */
-function lookupWaypointCoord(waypointId: string): GeoPoint | null {
-  const port = PORTS.find((p) => p.id === waypointId);
-  if (port) return geoPoint(port.lon, port.lat);
-  const cp = CHOKEPOINT_REGISTRY.find((c) => c.id === waypointId);
-  if (cp) return geoPoint(cp.lon, cp.lat);
-  return null;
-}
-
-/**
- * Build the primaryRouteGeometry polyline from a trade-route definition. We
- * use `from` → `waypoints[]` → `to` in sequence, dropping any waypoint we
- * can't resolve. Returns an empty array when `routeId` is empty or unknown.
- */
-function buildRouteGeometry(routeId: string): GeoPoint[] {
-  if (!routeId) return [];
-  const route = TRADE_ROUTES.find((r) => r.id === routeId);
-  if (!route) return [];
-  const coords: GeoPoint[] = [];
-  const fromCoord = lookupWaypointCoord(route.from);
-  if (fromCoord) coords.push(fromCoord);
-  for (const wp of route.waypoints) {
-    const c = lookupWaypointCoord(wp);
-    if (c) coords.push(c);
-  }
-  const toCoord = lookupWaypointCoord(route.to);
-  if (toCoord) coords.push(toCoord);
-  return coords;
 }
 
 /**
@@ -248,8 +214,14 @@ export async function computeLane(
   }
 
   const primaryRouteSet = new Set(primaryRouteId ? [primaryRouteId] : []);
+  // A modeled lane reports only the chokepoints between its two ends; the
+  // no-lane fallback keeps the origin route's full list, as before.
+  const lane = noModeledLane ? null : buildLane(primaryRouteId, fromIso2, toIso2);
+  const onLane = (cp: { id: string; geoId: string }) =>
+    !lane || lane.waypointIds.has(cp.id) || lane.waypointIds.has(cp.geoId);
   const chokepointExposures: ChokepointExposureSummary[] = CHOKEPOINT_REGISTRY
     .filter((cp) => cp.routeIds.some((r) => primaryRouteSet.has(r)))
+    .filter(onLane)
     .map((cp) => {
       const overlap = cp.routeIds.filter((r) => primaryRouteSet.has(r)).length;
       const exposurePct = Math.round((overlap / Math.max(cp.routeIds.length, 1)) * 100);
@@ -289,7 +261,7 @@ export async function computeLane(
     hs2,
     cargoType,
     primaryRouteId: noModeledLane ? '' : primaryRouteId,
-    primaryRouteGeometry: noModeledLane ? [] : buildRouteGeometry(primaryRouteId),
+    primaryRouteGeometry: lane ? lane.geometry : [],
     chokepointExposures: noModeledLane ? [] : chokepointExposures,
     bypassOptions: noModeledLane ? [] : bypassOptions,
     warRiskTier: noModeledLane ? 'WAR_RISK_TIER_NORMAL' : warRiskTier,

@@ -144,6 +144,12 @@ World Monitor 同时为智能体、脚本和浏览器而构建：
 
 ---
 
+## 支持
+
+World Monitor 的 Web 应用和 API 运行在 [Vercel](https://vercel.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor) 上。感谢 Vercel 对本项目的慷慨支持。
+
+---
+
 ## 数据源
 
 WorldMonitor 汇聚来自地缘政治、金融、能源、气候、航空、网络、军事、基础设施和新闻情报领域的外部上游主机。精选信息流和新鲜度监控详情，请参阅完整的[数据源目录](https://www.worldmonitor.app/docs/zh/data-sources)，其中说明提供商、信息流层级和采集方法。

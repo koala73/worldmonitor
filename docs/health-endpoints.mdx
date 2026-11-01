@@ -45,8 +45,8 @@ The top-level `status` describes user-visible platform availability, not perfect
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "dataStatus": "OK | DEGRADED | CRITICAL",
   "summary": {
-    "total": 349,
-    "ok": 348,
+    "total": 362,
+    "ok": 361,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 1,
@@ -182,6 +182,10 @@ NHC current-point identity rejections log a bounded `[NHC identity]` diagnostic 
 New successful EONET observations can remain available for 18 hours. This is an availability policy, not an extension of the 540-minute health limit. Failed attempts retain the original success time and absolute expiry; older nine-hour snapshots keep their existing deadlines. RPC, bootstrap Redis reads, MCP, and the climate-disaster seeder remove expired EONET records before filtering, while preserving healthy companion records. Legacy payloads without expiry metadata remain readable. Data already delivered to a browser follows its existing cache behavior; this policy does not schedule client-side removal.
 
 EONET acquisition keeps a 15-second header deadline and the shared 30.5-second request budget, including retry delay. A progressing body can use the remaining budget, but five seconds without a decoded body chunk aborts the attempt. Decoded responses are limited to 2 MiB. These limits address local acquisition behavior; they do not establish the cause of upstream delays. GDACS and NHC retention and transport limits are unchanged.
+
+Natural-event publishers emit one `natural_source_receipt` JSON log from the post-publication hook. It contains the run ID, Railway service, deployment and revision when available, canonical count, source freshness clock, and the same per-type health map returned for seed metadata. Successful, retained, and unavailable sources keep their actual success and expiry clocks. The receipt describes the published source state. Pair it with the subsequent `seed_complete` for that run to confirm execution completed. Completion alone does not prove metadata persistence. Check for a `WARNING: seed-meta write` message and verify the stored metadata, since the dedicated worker can complete after a best-effort metadata write fails. Logs remain available only for the hosting platform's retention period; this does not add a Redis archive. Both the dedicated worker and climate bundle use the hook.
+
+Request-failure `progress` includes a local request UUID and UTC start time for each observed redirect hop. HTTP responses add status, a recognized content type, and bounded `x-request-id` or `cf-ray` values when present. The local UUID is not sent upstream. Provider correlation requires the response ID or the request timestamp and worker identity. Bodies, cookies, authorization headers, URLs, and peer addresses are not logged. No response metadata is invented when headers never arrive. These facts help correlate existing provider traces but cannot alone establish the cause of a pre-header timeout.
 
 Taiwan MND records failed source attempts in its source metadata. One failed attempt is pending only while positive last-good records remain fresh. The same error on the next distinct attempt warns. The pending deadline is 210 minutes after the first failure, or the last-good freshness deadline if earlier. A different error does not extend that deadline. Health reads do not advance the failure count.
 
@@ -931,9 +935,9 @@ fi
 
 ## Capture a source repair
 
-`scripts/capture-seed-recovery.mjs` records read-only recovery evidence for `wildfires`, `physicalDivergence`, and `crossStraitActivityTaiwanMnd`. It writes a local JSON checkpoint and a Markdown view. It does not run a seeder or change Railway or Redis.
+`scripts/capture-seed-recovery.mjs` records read-only recovery evidence for `wildfires`, `physicalDivergence`, `crossStraitActivityTaiwanMnd`, and `yieldCurveAu`. It writes a local JSON checkpoint and a Markdown view. It does not run a seeder or change Railway or Redis.
 
-Use Node.js 24, an authenticated Railway CLI, `WM_API_KEY` (or `WORLDMONITOR_API_KEY`), and the existing Upstash REST credentials. The command uses `loadEnvFile()` and reads only the registered source metadata keys. Run it from a checkout that contains the required and deployed Git commits; missing ancestry is unverified.
+Use Node.js 24, an authenticated Railway CLI, `WM_API_KEY` (or `WORLDMONITOR_API_KEY`), and the existing Upstash REST credentials. The command uses `loadEnvFile()` and reads only registered source keys. For AU, these include metadata, the completion marker, canonical data, and reader shards. Run it from a checkout that contains the required and deployed Git commits; missing ancestry is unverified.
 
 Use the repair's merge commit on `main`, then start before the first run you intend to count. A PR branch SHA can lose its ancestry after a squash merge. Set a concrete UTC deadline once:
 
@@ -953,6 +957,29 @@ The first successful capture fixes the baseline success time. Resume the same ch
 | `wildfires` | Three distinct consecutive successful runs, full 27-request coverage, zero source failures, and a successful run that used the primary retry | 60 minutes from deployment confirmation |
 | `crossStraitActivityTaiwanMnd` | Two separate three-hour member runs that advance Taiwan's success time and clear its error | 6 hours 30 minutes from deployment confirmation |
 | `physicalDivergence` | One successful publication with two records, future `inputFreshUntil`, and healthy status | Through 09:25 UTC on the first eligible schedule day |
+| `yieldCurveAu` | One schedule-aligned AU completion with matching run ID, canonical envelope, latest shard, all year shards, and healthy status | A fixed operator-selected deadline after an eligible daily 10:00 UTC run |
+
+For AU, use `--source yieldCurveAu` with the required merge commit. The recorder
+checks the configured cron against the registry and permits a container start
+before 10:05 UTC. It binds the completion marker's run ID to the AU log entry.
+It compares every historical shard with canonical data and preserves the source
+date separately from publication time. An absent current-year shard is allowed
+only when canonical data has no observations for that year.
+
+Choose an execution deadline before the content boundary. For example, use
+10:20 UTC after a verified eligible 10:00 slot, then resume after the run finishes
+but before that deadline. Resume after the deadline only to record failure.
+First confirm AU is due under the bundle's 80-percent daily interval gate;
+an earlier off-schedule publication can make the next slot legitimately skip AU.
+A missing completion or inaccessible evidence produces a failed or unverified
+checkpoint, even while content remains fresh. Give that result to the existing
+incident owner. The recorder does not send alerts or install a schedule.
+
+The AU checkpoint stores sanitized deployment and run evidence locally. It does
+not prove the scheduler's trigger identity, direct provider parity, or authenticated
+RPC parity. Do not retry denied access or substitute credentials to obtain it.
+Retain the original incident deadline separately when new source content advances
+the derived content boundary. A passing checkpoint is not ongoing monitoring.
 
 Wildfire acceptance targets the primary-retry repair in [PR #7701](https://github.com/koala73/worldmonitor/pull/7701). Its producer emits `trying primary retry`. An older producer's `trying secondary` message does not prove that repair. Use #7701's merge commit as the required revision after it merges.
 

@@ -67,6 +67,13 @@ const INTERNATIONAL_HOST_SUFFIXES = [
 // Host → ISO 3166-1 alpha-2, 'EU', or null (international).
 // Only hosts that cannot be inferred from a real ccTLD or government suffix.
 const HOST_ORIGINS = Object.freeze({
+  'api.cammesa.com': 'AR',
+  'admin.gse.com.ge': 'GE',
+  'erp.powergrid.gov.bd': 'BD',
+  'petrobangla.org.bd': 'BD',
+  'niggrid.org': 'NG',
+  'eskom.co.za': 'ZA',
+  'dados.ons.org.br': 'BR',
   'www.datos.gov.co': 'CO',
   // Editorial hosts used by site-scoped news searches. These are catalogued
   // as publishers in their own right; the shared search endpoint is a
