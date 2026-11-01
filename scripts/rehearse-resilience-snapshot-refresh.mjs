@@ -58,14 +58,31 @@ function pick(record, fields) {
   return Object.fromEntries(fields.filter((field) => field in record).map((field) => [field, record[field]]));
 }
 
-// Pairs 0-1, 2-3, ... so every country moves exactly one place and nothing
-// wraps from the top of the table to the bottom. An odd tail rotates three.
-function neighbourOrder(length) {
-  if (length < 2) return Array.from({ length }, (_, index) => index);
-  const order = Array.from({ length }, (_, index) => (index % 2 === 0 ? index + 1 : index - 1));
-  if (length % 2 === 1) {
-    const last = length - 1;
-    [order[last - 2], order[last - 1], order[last]] = [last, last - 2, last - 1];
+// Pairs each row with the nearest unpaired row below it that shows a
+// different value, so every country moves a place or two and its displayed
+// score changes. Ties are common: 169 scores at one decimal share about 139
+// values, and a plain 0-1, 2-3 pairing left 15 tied pairs whose pinned scores
+// passed the rehearsal. A row left over at the tail joins the last pair it can
+// form a three-way rotation with. Values must be sorted, as ranked scores are.
+function neighbourOrder(values) {
+  const order = values.map((_, index) => index);
+  const pairs = [];
+  const paired = new Set();
+  const leftovers = [];
+  values.forEach((value, index) => {
+    if (paired.has(index)) return;
+    const partner = values.findIndex((other, at) => at > index && !paired.has(at) && other !== value);
+    if (partner === -1) return leftovers.push(index);
+    paired.add(index).add(partner);
+    pairs.push([index, partner]);
+    [order[index], order[partner]] = [partner, index];
+  });
+  for (const index of leftovers) {
+    const pair = pairs.findLast(([a, b]) => values[a] !== values[index] && values[b] !== values[index]);
+    if (!pair) throw new Error(`no row with a different value to rotate row ${index} with`);
+    const [a, b] = pair;
+    [order[a], order[b], order[index]] = [b, index, a];
+    pairs.splice(pairs.indexOf(pair), 1);
   }
   return order;
 }
@@ -93,9 +110,9 @@ export function driftResilienceSnapshot(snapshot, { targetDate, keepReadings = M
   drifted.totals = { ...drifted.totals, rankedCountries: drifted.items.length, greyedOutCount: drifted.greyedOut.length };
 
   // Ranked readings stay in place so ranks and score order hold; countries
-  // trade places with their neighbour.
+  // trade places with their nearest neighbour of a different score.
   const itemIdentities = drifted.items.map((item) => pick(item, IDENTITY_FIELDS));
-  const itemOrder = neighbourOrder(drifted.items.length);
+  const itemOrder = neighbourOrder(drifted.items.map((item) => item.overallScore));
   drifted.items = drifted.items.map((item, index) => ({ ...item, ...itemIdentities[itemOrder[index]] }));
 
   // Greyed-out rows are ordered by country code, so the headline figures move

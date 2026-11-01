@@ -13,6 +13,7 @@ import {
   readRehearsedStep,
   refreshScripts,
 } from '../scripts/rehearse-resilience-snapshot-refresh.mjs';
+import { MICROSTATE_COVERAGE_STORY_CODES } from '../scripts/microstate-coverage-stories.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REHEARSAL_WORKFLOW_PATH = '.github/workflows/resilience-snapshot-rehearsal.yml';
@@ -85,6 +86,48 @@ describe('resilience snapshot refresh rehearsal', () => {
     );
     assert.notEqual(byCode(withStory.greyedOut, 'AD').dimensionCoverage, 0.71, 'the other rows still move');
     assert.deepEqual(original, snapshot(), 'the committed snapshot is not mutated');
+  });
+
+  it('changes every published figure of every country in the committed snapshot', () => {
+    const file = readdirSync(resolve(repoRoot, 'docs/snapshots'))
+      .filter((name) => /^resilience-ranking-\d{4}-\d{2}-\d{2}\.json$/.test(name))
+      .sort()
+      .at(-1);
+    const original = JSON.parse(readFileSync(resolve(repoRoot, 'docs/snapshots', file), 'utf8'));
+    const drifted = driftResilienceSnapshot(original, { targetDate: '2099-01-01' });
+    const before = new Map([...original.items, ...original.greyedOut].map((row) => [row.countryCode, row]));
+    const unchanged = [];
+    for (const row of drifted.items) {
+      const was = before.get(row.countryCode);
+      if (row.overallScore === was.overallScore) unchanged.push(`${row.countryCode} score ${row.overallScore}`);
+      if (row.rank === was.rank) unchanged.push(`${row.countryCode} rank ${row.rank}`);
+      assert.ok(Math.abs(row.rank - was.rank) <= 4, `${row.countryCode} stays near its band (${was.rank} -> ${row.rank})`);
+    }
+    for (const row of drifted.greyedOut) {
+      const was = before.get(row.countryCode);
+      if (MICROSTATE_COVERAGE_STORY_CODES.includes(row.countryCode)) continue;
+      if (Math.round(row.dimensionCoverage * 100) === Math.round(was.dimensionCoverage * 100)) {
+        unchanged.push(`${row.countryCode} coverage`);
+      }
+      if (row.overallScore === was.overallScore) unchanged.push(`${row.countryCode} score ${row.overallScore}`);
+    }
+    assert.deepEqual(unchanged, [], 'a test pinned to any of these figures would pass the rehearsal');
+  });
+
+  it('moves every ranked score past ties and an odd ranked count', () => {
+    const scores = [70, 60, 60, 60, 50, 40, 40, 30];
+    const original = {
+      ...snapshot(),
+      items: scores.map((score, index) => country(`C${index}`, { rank: index + 1, overallScore: score, dimensionCoverage: 0.8, headlineEligible: true })),
+    };
+    const drifted = driftResilienceSnapshot(original, { targetDate: '2026-12-01' });
+    assert.equal(drifted.items.length, 7);
+    assert.deepEqual(drifted.items.map((row) => row.overallScore), scores.slice(0, 7), 'score order holds');
+    assert.deepEqual(drifted.items.map((row) => row.countryCode).sort(), scores.slice(0, 7).map((_, index) => `C${index}`), 'each country appears once');
+    for (const row of drifted.items) {
+      const was = byCode(original.items, row.countryCode);
+      assert.notEqual(row.overallScore, was.overallScore, `${row.countryCode} shows a different score`);
+    }
   });
 
   it('replays the refresh workflow rebuild-and-verify step', () => {
