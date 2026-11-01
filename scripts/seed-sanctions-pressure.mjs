@@ -11,9 +11,9 @@ import { projectCountrySanctions } from './shared/country-sanctions-signals.mjs'
 import { loadEnvFile, runSeed, verifySeedKey, readSeedSnapshot, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 import { fetchOfacSourceResponse } from './_sanctions-source.mjs';
 import { buildSanctionsChanges } from './_sanctions-changes.mjs';
-import { CSL_ROW_ID, CSL_SOURCES, ingestCslEntries } from './_csl-sanctions.mjs';
+import { CSL_ROW_ID, CSL_SOURCES, CSL_TIMEOUT_MS, ingestCslEntries } from './_csl-sanctions.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
-import { SANCTIONS_MAX_CONTENT_AGE_MIN, SANCTIONS_SOURCE_VERSION, SEMA_SOURCE, ingestSemaEntries, mergeSanctionEntries, ofacRegistrationToIdentifier, sanctionsListContentMeta } from './_sema-sanctions.mjs';
+import { SANCTIONS_MAX_CONTENT_AGE_MIN, SANCTIONS_SOURCE_VERSION, SEMA_SOURCE, SEMA_TIMEOUT_MS, ingestSemaEntries, mergeSanctionEntries, ofacRegistrationToIdentifier, sanctionsListContentMeta } from './_sema-sanctions.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -671,9 +671,11 @@ async function fetchSanctionsPressure() {
   }
   const outcomes = {};
   const deadlineAt = fetchStartedAt + FETCH_PHASE_TIMEOUT_MS - CSL_DEADLINE_MARGIN_MS;
+  // SEMA and CSL run after OFAC; runSeed discards the whole run at the phase timeout.
+  const ofacDeadlineAt = deadlineAt - CSL_TIMEOUT_MS - SEMA_TIMEOUT_MS;
   for (const source of OFAC_SOURCES) {
     try {
-      const result = await fetchSource(source, { deadlineAt });
+      const result = await fetchSource(source, { deadlineAt: ofacDeadlineAt });
       outcomes[source.label] = { records: result.entries, publishedAt: result.datasetDate || 0, quarantinedCount: 0, error: null };
     } catch (err) {
       console.warn(`  OFAC ${source.label} fetch failed: ${err?.message || err}`);

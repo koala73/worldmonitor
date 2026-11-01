@@ -58,17 +58,28 @@ function timeoutError() {
   return new DOMException('The operation was aborted due to timeout', 'TimeoutError');
 }
 
+// Returns the time left before the caller's deadline, or throws once too little
+// is left to start another wait.
+function budgetMs(remainingMs, lastError) {
+  const remaining = remainingMs();
+  if (remaining > OFAC_MIN_BODY_TIMEOUT_MS) return remaining;
+  const suffix = lastError ? ` after ${describeFetchError(lastError)}` : '';
+  throw nonRetryableError(`OFAC fetch deadline reached${suffix}`);
+}
+
 async function fetchDirectWithRetry(url, {
   bodyTimeoutMs,
   fetchFn,
   headerTimeoutMs,
   maxAttempts,
+  remainingMs,
   sleepFn,
 }) {
   let lastError;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const headerBudgetMs = Math.min(headerTimeoutMs, budgetMs(remainingMs, lastError));
     const controller = new AbortController();
-    const headerTimer = setTimeout(() => controller.abort(timeoutError()), headerTimeoutMs);
+    const headerTimer = setTimeout(() => controller.abort(timeoutError()), headerBudgetMs);
     try {
       const response = await fetchFn(url, {
         headers: { 'User-Agent': CHROME_UA, Accept: OFAC_ACCEPT },
@@ -90,7 +101,7 @@ async function fetchDirectWithRetry(url, {
       clearTimeout(headerTimer);
       lastError = error;
       if (error?.nonRetryable || attempt === maxAttempts) break;
-      await sleepFn(Math.max(500 * attempt, error.retryAfterMs ?? 0));
+      await sleepFn(Math.min(Math.max(500 * attempt, error.retryAfterMs ?? 0), budgetMs(remainingMs, error)));
     }
   }
   throw lastError;
@@ -112,10 +123,12 @@ function trustedSignedDownloadUrl(location, sourceUrl) {
 async function fetchRedirectViaProxy(sourceUrl, {
   proxyFetchFn,
   proxyUrl,
+  remainingMs,
   sleepFn,
 }) {
   let lastError;
   for (let attempt = 0; attempt < OFAC_PROXY_MAX_ATTEMPTS; attempt += 1) {
+    const timeoutMs = Math.min(OFAC_PROXY_TIMEOUT_MS, budgetMs(remainingMs, lastError));
     const proxyConfig = parseProxyConfigForAttempt(proxyUrl, attempt);
     if (!proxyConfig) throw nonRetryableError('OFAC proxy configuration is invalid');
     try {
@@ -123,7 +136,7 @@ async function fetchRedirectViaProxy(sourceUrl, {
         accept: OFAC_ACCEPT,
         headers: { 'User-Agent': CHROME_UA },
         maxResponseBytes: OFAC_PROXY_BOOTSTRAP_MAX_BYTES,
-        timeoutMs: OFAC_PROXY_TIMEOUT_MS,
+        timeoutMs,
       });
       if (OFAC_REDIRECT_STATUSES.has(result.status) && result.location) {
         return trustedSignedDownloadUrl(result.location, sourceUrl);
@@ -139,7 +152,7 @@ async function fetchRedirectViaProxy(sourceUrl, {
       // recognizes only `nonRetryable`, so preserve that contract on escape.
       if (error?.proxyConnect) error.nonRetryable = true;
       if (error?.proxyConnect || error?.nonRetryable || attempt === OFAC_PROXY_MAX_ATTEMPTS - 1) break;
-      await sleepFn(500 * (attempt + 1));
+      await sleepFn(Math.min(500 * (attempt + 1), budgetMs(remainingMs, error)));
     }
   }
   throw lastError;
@@ -154,8 +167,8 @@ async function fetchRedirectViaProxy(sourceUrl, {
  * host-validated, then fetched directly so the SAX consumer retains O(1)
  * response-body memory.
  *
- * `deadlineAt` (epoch ms) is the caller's wall-clock limit. The body budget
- * shrinks to fit it.
+ * `deadlineAt` (epoch ms) is the caller's wall-clock limit. Every header,
+ * body, proxy and retry wait shrinks to fit it, and no new wait starts after it.
  */
 export async function fetchOfacSourceResponse(sourceUrl, {
   fetchFn = globalThis.fetch,
@@ -166,11 +179,13 @@ export async function fetchOfacSourceResponse(sourceUrl, {
   bodyTimeoutMs = OFAC_BODY_TIMEOUT_MS,
   deadlineAt = Infinity,
 } = {}) {
+  const remainingMs = () => deadlineAt - Date.now();
   const download = {
-    bodyTimeoutMs: () => Math.min(bodyTimeoutMs, Math.max(deadlineAt - Date.now(), OFAC_MIN_BODY_TIMEOUT_MS)),
+    bodyTimeoutMs: () => Math.min(bodyTimeoutMs, Math.max(remainingMs(), OFAC_MIN_BODY_TIMEOUT_MS)),
     fetchFn,
     headerTimeoutMs,
     maxAttempts: OFAC_DIRECT_MAX_ATTEMPTS,
+    remainingMs,
     sleepFn,
   };
   let directError;
@@ -187,6 +202,7 @@ export async function fetchOfacSourceResponse(sourceUrl, {
     const signedUrl = await fetchRedirectViaProxy(sourceUrl, {
       proxyFetchFn,
       proxyUrl,
+      remainingMs,
       sleepFn,
     });
     return await fetchDirectWithRetry(signedUrl, download);
