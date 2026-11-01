@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { __testing__, buildPublicTool } from '../api/mcp.ts';
 
 const DOC = readFileSync(new URL('../docs/mcp-tools-reference.mdx', import.meta.url), 'utf8');
-const UNIVERSAL_ARGS = new Set(['summary', 'jmespath', 'response_mode']);
+const UNIVERSAL_ARGS = new Set(['summary', 'jmespath', 'response_mode', 'spoken_language']);
 
 function typeText(schema) {
   if (!schema || typeof schema !== 'object') return 'unknown';
@@ -123,6 +123,7 @@ describe('MCP tools reference docs — cache tool parameter parity', () => {
     assert.match(DOC, /Every tool accepts `jmespath`/);
     assert.match(DOC, /Every cache tool also accepts `summary`/);
     assert.match(DOC, /accept `response_mode`/);
+    assert.match(DOC, /`spoken_language` \(`"en"` or `"ar"`\)/);
     // The spoken roster is the registry; the reference names every member.
     for (const tool of __testing__.TOOL_REGISTRY) {
       if (tool._spoken) assert.match(sectionForTool(tool.name), /Spoken mode:/, `${tool.name}: documents response_mode: "spoken"`);

@@ -2,7 +2,7 @@ import { RpcValidationError } from './billing-denial';
 import { argBool } from './filters';
 import { JMESPATH_SCHEMA } from './jmespath';
 import { SUMMARY_SCHEMA } from './registry';
-import { RESPONSE_MODE_SCHEMA } from './spoken';
+import { RESPONSE_MODE_SCHEMA, SPOKEN_LANGUAGE_SCHEMA } from './spoken';
 import { z } from 'zod';
 import type { ToolDef } from './types';
 
@@ -103,9 +103,20 @@ export function validateToolArgs(tool: ToolDef, args: unknown): asserts args is 
       ...tool.inputSchema.properties,
       jmespath: JMESPATH_SCHEMA,
       ...(tool._execute === undefined ? { summary: SUMMARY_SCHEMA } : {}),
-      ...(tool._spoken ? { response_mode: RESPONSE_MODE_SCHEMA } : {}),
+      ...(tool._spoken ? { response_mode: RESPONSE_MODE_SCHEMA, spoken_language: SPOKEN_LANGUAGE_SCHEMA } : {}),
     },
   } as Schema, args);
+  // `spoken_language` (#9722) picks the wording of the spoken sentences, so
+  // it means nothing without them: an agent that asked for Arabic and got the
+  // full English-keyed payload back would not know its request was ignored.
+  if (args !== null && typeof args === 'object' && !Array.isArray(args) && 'spoken_language' in args) {
+    const record = args as Record<string, unknown>;
+    if (!tool._spoken) {
+      violations.push({ field: 'spoken_language', description: 'This tool has no spoken mode. Only tools that list response_mode in their input schema accept spoken_language.' });
+    } else if (record.response_mode !== 'spoken') {
+      violations.push({ field: 'spoken_language', description: 'Applies only with response_mode "spoken". Add response_mode: "spoken", or omit spoken_language.' });
+    }
+  }
   // `response_mode` (#9722) is only advertised where a narrator exists. The
   // schema walk above cannot reject it elsewhere (unknown keys pass unless a
   // tool closes additionalProperties), and a voice agent must not get the

@@ -220,7 +220,7 @@ Universal arguments:
 
 - Every tool accepts `jmespath` (string), an optional server-side projection applied after per-tool filters and `summary`.
 - Every cache tool also accepts `summary` (boolean), which returns counts plus 3-item samples instead of full lists.
-- Seven analytical tools accept `response_mode` (`"full"` or `"spoken"`), which replaces the payload with a short spoken-style answer plus citations. See [Spoken mode](#spoken-mode-for-voice-agents).
+- Seven analytical tools accept `response_mode` (`"full"` or `"spoken"`), which replaces the payload with a short spoken-style answer plus citations, and `spoken_language` (`"en"` or `"ar"`), which sets the language of that answer. See [Spoken mode](#spoken-mode-for-voice-agents).
 - The per-tool tables below list only tool-specific arguments declared by the registry; the universal injected arguments are intentionally documented once here.
 
 ### Spoken mode for voice agents
@@ -233,6 +233,7 @@ The response replaces the documented payload with:
 {
   "tool": "get_country_risk",
   "spoken": "Iraq scores 62 out of 100 on the instability index, and the trend is rising. The largest contribution comes from armed conflict, at 72. The travel advisory is reconsider travel, and 132 sanctioned entities are linked to the country.",
+  "language": "en",
   "citations": [
     { "source": "WorldMonitor Composite Instability Index (v14)", "asOf": "2026-11-01T08:40:00.000Z", "stale": false }
   ],
@@ -246,6 +247,7 @@ The response replaces the documented payload with:
 - Freshness is spoken, not only flagged: a stale cache snapshot, a last-known-good world brief, an old risk reading, a partial media read or a failed upstream read each change the wording, and `stale` is `true` on the envelope and its citations. Both describe the data the sentences read aloud. A bundle tool's full-mode `cached_at` is its oldest key and its `stale` covers every key, so a static reference table or a dataset the sentences do not mention never sets the spoken age or caveat. `asOf` is the time of the narrated data, or `null` when the payload carries none.
 - The full payload is omitted. Call again without `response_mode` (or with a `jmespath` projection) when you need the documented shape.
 - `jmespath` applies to the envelope, so `{"response_mode": "spoken", "jmespath": "spoken"}` returns only the sentence. `summary: true` cannot be combined with the spoken mode, because the sentences are built from the full lists.
+- `spoken_language: "ar"` returns the sentences in Modern Standard Arabic, and `language` on the envelope says which language was spoken (`"en"` by default). The Arabic answer comes from the same template data path, so it speaks the same numbers, caveats and freshness as the English one, and its `citations`, `stale` and `asOf` are identical. Countries, chokepoints, risk levels, dimensions and categories are named in Arabic. Numbers stay in Western digits. Headline, market and forecast titles keep their published language, except that a media-perspective headline published in Arabic is read as published. `get_country_risk {"country_code": "IQ", "response_mode": "spoken", "spoken_language": "ar"}` begins "درجة العراق على مؤشر عدم الاستقرار 62 من 100، والاتجاه تصاعدي." `spoken_language` is rejected with `-32602` without `response_mode: "spoken"` and on tools without the spoken mode.
 
 ## Markets & economy
 

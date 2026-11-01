@@ -1,7 +1,7 @@
 import { loadToolAliases } from '../alias';
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../constants';
 import { JMESPATH_SCHEMA } from '../jmespath';
-import { RESPONSE_MODE_SCHEMA } from '../spoken';
+import { RESPONSE_MODE_SCHEMA, SPOKEN_LANGUAGE_SCHEMA } from '../spoken';
 import { advertisedOutputSchema } from '../structured-content';
 import type { McpAccessClass, PublicToolShape, ToolDef } from '../types';
 import { compressDescription, utf8ByteLength } from '../utils';
@@ -101,6 +101,9 @@ for (const tool of TOOL_REGISTRY) {
   if (props && 'response_mode' in props) {
     throw new Error(`api/mcp/registry/index.ts: tool "${tool.name}" declares its own 'response_mode' property — collides with the RESPONSE_MODE_SCHEMA injection for tools with a _spoken narrator. Remove the per-tool declaration.`);
   }
+  if (props && 'spoken_language' in props) {
+    throw new Error(`api/mcp/registry/index.ts: tool "${tool.name}" declares its own 'spoken_language' property — collides with the SPOKEN_LANGUAGE_SCHEMA injection for tools with a _spoken narrator. Remove the per-tool declaration.`);
+  }
 }
 
 // Shared public-shape builder (v1.5.0). SINGLE source of truth for what
@@ -157,7 +160,10 @@ export function buildPublicTool(
   // Spoken mode (#9722) is advertised only where a narrator exists; the
   // validator rejects it elsewhere rather than silently returning the full
   // payload to a voice agent that asked for sentences.
-  if (tool._spoken) clonedProperties.response_mode = structuredClone(RESPONSE_MODE_SCHEMA);
+  if (tool._spoken) {
+    clonedProperties.response_mode = structuredClone(RESPONSE_MODE_SCHEMA);
+    clonedProperties.spoken_language = structuredClone(SPOKEN_LANGUAGE_SCHEMA);
+  }
 
   const description = opts.compressDescriptions
     ? compressDescription(tool.description, TOOL_DESCRIPTION_MAX_BYTES)

@@ -69,6 +69,20 @@ const ARABIC_NAME_TO_ISO2: Record<string, string> = (() => {
   return index;
 })();
 
+/**
+ * The Arabic name to speak or print for an alpha-2 code: the first, CLDR,
+ * entry for that code ("الإمارات العربية المتحدة"), or null when the code has
+ * no Arabic name. Used by the Arabic spoken mode (#9722).
+ */
+export function arabicCountryDisplayName(code: unknown): string | null {
+  if (typeof code !== 'string') return null;
+  const iso2 = code.trim().toUpperCase();
+  if (!ISO2_PATTERN.test(iso2)) return null;
+  const names = (ARABIC_COUNTRY_NAMES.names as Record<string, string[]>)[iso2];
+  const name = Array.isArray(names) ? names[0] : undefined;
+  return typeof name === 'string' && name.trim() ? name.trim() : null;
+}
+
 /** Resolve an Arabic country name to alpha-2, or null. Latin input is never matched. */
 export function resolveArabicCountryName(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;

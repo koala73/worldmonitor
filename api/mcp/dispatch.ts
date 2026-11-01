@@ -48,7 +48,7 @@ import { filterConflictPanelEvents, isOrdinaryMarketDefault, presentConflictEven
 import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_ALIASES, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
-import { buildSpokenEnvelope, recordStaleFreshnessKeys } from './spoken';
+import { buildSpokenEnvelope, recordStaleFreshnessKeys, spokenLanguageOf } from './spoken';
 import { applyDeprecationNotice, buildStructuredContent } from './structured-content';
 import {
   principalIdForLog,
@@ -669,6 +669,14 @@ export async function dispatchToolsCall(
       if (p.arguments?.response_mode !== undefined && !tool._spoken) {
         throw new RpcValidationError(tool.name, [{ field: 'response_mode', description: 'This tool has no spoken mode. Only tools that list response_mode in their input schema accept it.' }]);
       }
+      if (p.arguments?.spoken_language !== undefined) {
+        if (!tool._spoken) {
+          throw new RpcValidationError(tool.name, [{ field: 'spoken_language', description: 'This tool has no spoken mode. Only tools that list response_mode in their input schema accept spoken_language.' }]);
+        }
+        if (p.arguments.response_mode !== 'spoken') {
+          throw new RpcValidationError(tool.name, [{ field: 'spoken_language', description: 'Applies only with response_mode "spoken". Add response_mode: "spoken", or omit spoken_language.' }]);
+        }
+      }
     } else validateToolArgs(tool, aliasArguments ?? (p.arguments === undefined ? {} : p.arguments));
   } catch (error) {
     if (!(error instanceof RpcValidationError)) throw error;
@@ -686,8 +694,10 @@ export async function dispatchToolsCall(
   // `response_mode` (#9722) only shapes the response after execution, like
   // `jmespath`, so neither the tool, the panel admission schemas nor the panel
   // read scope ever see it. Validated above against the tool's narrator.
+  // `spoken_language` picks the sentence wording and is stripped the same way.
   const spokenRequested = p.arguments?.response_mode === 'spoken';
-  const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request' && key !== 'response_mode'));
+  const spokenLanguage = spokenLanguageOf(p.arguments?.spoken_language);
+  const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request' && key !== 'response_mode' && key !== 'spoken_language'));
   let sourceArguments = callArguments;
   // Callers without a dedicated panel allowance (API allowances, operator keys)
   // cannot hold a forecast panel_request; they read original evidence at the
@@ -1137,7 +1147,7 @@ export async function dispatchToolsCall(
     // attribution rider below is still built from the full payload.
     const narratedFrom = result;
     if (spokenRequested && tool._spoken && result && typeof result === 'object' && !Array.isArray(result)) {
-      result = buildSpokenEnvelope(tool, result as Record<string, unknown>, callArguments);
+      result = buildSpokenEnvelope(tool, result as Record<string, unknown>, callArguments, Date.now(), spokenLanguage);
     }
     let { text: projectedText, value: projectedValue, failed } = applyJmespath(result, jmespathArg);
     // A news-panel token reading Natural map data keeps its full geometry.
