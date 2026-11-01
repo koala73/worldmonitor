@@ -668,3 +668,21 @@ test('evidence sink failure cannot change page results or carry', async () => {
     captureFailure: async () => { throw new Error('disk full'); } });
   assert.deepEqual(captured, baseline);
 });
+
+test('future-dated parsed inputs are retained without changing rejection or carry', async () => {
+  const previous = assembleImdSnapshot({ pageResults: parsedResults(), now: NOW });
+  const captures = [];
+  const misdated = pageFixture('seaBulletin', 'bay-of-bengal').replaceAll('UTC of 2026-10-16', 'UTC of 2026-10-18');
+  const fetchFn = async (url) => {
+    const { id, page } = ALL_PAGES.find(({ page }) => page.url === url);
+    return new Response(page.key === 'bay-of-bengal' ? misdated : pageFixture(id, page.key));
+  };
+  const snapshot = await fetchImdCycloneMarine({ fetchFn, previous, now: NOW, delayMs: 0,
+    captureFailure: async (bundle) => captures.push(bundle) });
+  assert.equal(captures.length, 1);
+  assert.equal(captures[0].result.status, 'parsed');
+  assert.equal(Buffer.from(captures[0].attempts[0].bodyBase64, 'base64').toString(), misdated);
+  assert.deepEqual(captures[0].previous, previous);
+  assert.equal(snapshot.products.seaBulletin.pages['bay-of-bengal'].reason, 'BULLETIN_FUTURE_DATED');
+  assert.deepEqual(snapshot.seaBulletins.filter((row) => row.page === 'bay-of-bengal'), previous.seaBulletins.filter((row) => row.page === 'bay-of-bengal'));
+});

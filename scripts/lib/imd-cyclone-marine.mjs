@@ -770,7 +770,8 @@ export async function fetchImdCycloneMarine({
       const attempts = captureFailure ? [] : undefined;
       const result = await fetchImdBulletinPage(id, page, { fetchFn, userAgent, delayMs, sleep, evidence: attempts });
       pageResults[id][page.key] = result;
-      if (captureFailure && (result.status === 'failed' || result.primaryFailure)) {
+      if (captureFailure && (result.status === 'failed' || result.primaryFailure
+        || (result.status === 'parsed' && isFutureDated(result.bulletin, now)))) {
         try {
           await captureFailure({ schemaVersion: 1, productId: id, pageKey: page.key, now, previous, attempts, result });
         } catch {
