@@ -171,7 +171,6 @@ describe('CSL ingest', () => {
   });
 });
 
-
 describe('CSL transport diagnostics', () => {
   it('retains a nested native cause code without exposing its message', async () => {
     const cause = Object.assign(new Error('https://user:secret@proxy.test/?token=secret'), { code: 'ECONNRESET' });
@@ -185,5 +184,7 @@ describe('CSL transport diagnostics', () => {
     assert.deepEqual(result, { lists: {}, error: 'fetch failed' });
     const long = await ingestCslEntries({ fetchFn: async () => { throw new Error('x'.repeat(600) + '\nsecret'); } });
     assert.equal(long.error, 'x'.repeat(512));
+    const multiline = await ingestCslEntries({ fetchFn: async () => { throw new Error('fetch\nfailed\r\x1b'); } });
+    assert.equal(multiline.error, 'fetch failed  ');
   });
 });
