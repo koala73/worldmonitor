@@ -163,9 +163,13 @@ type ChokepointRow = {
 };
 const RISK_RANK: Record<string, number> = { critical: 4, high: 3, elevated: 2, moderate: 1, low: 0 };
 
-function chokepointRows(data: Record<string, unknown>): ChokepointRow[] {
+// `flowsKnown` is false when the snapshot carries no flow map at all (a
+// `dataset` filter left it out, or the cache read failed). An absent map must
+// not read as "nothing is disrupted"; only an explicit `disrupted: false` may.
+function chokepointRows(data: Record<string, unknown>): { rows: ChokepointRow[]; flowsKnown: boolean } {
   const summaries = record(record(data['transit-summaries'])?.summaries) ?? {};
-  const flows = record(data['chokepoint-flows']) ?? {};
+  const flowMap = record(data['chokepoint-flows']);
+  const flows = flowMap ?? {};
   const names = new Map<string, string>();
   for (const entry of (Array.isArray(record(data['chokepoint-baselines'])?.chokepoints) ? record(data['chokepoint-baselines'])!.chokepoints as unknown[] : [])) {
     const row = record(entry);
@@ -174,7 +178,7 @@ function chokepointRows(data: Record<string, unknown>): ChokepointRow[] {
     for (const key of [row.id, row.relayId]) if (typeof key === 'string' && key) names.set(key, name);
   }
   const ids = [...new Set([...Object.keys(summaries), ...Object.keys(flows)])];
-  return ids.map((id) => {
+  const rows = ids.map((id) => {
     const summary = record(summaries[id]);
     const flow = record(flows[id]);
     return {
@@ -191,6 +195,7 @@ function chokepointRows(data: Record<string, unknown>): ChokepointRow[] {
       disrupted: flow?.disrupted === true,
     };
   });
+  return { rows, flowsKnown: flowMap !== null };
 }
 
 function flowClause(row: ChokepointRow, subject: string): string | null {
@@ -215,7 +220,7 @@ export const spokenChokepointStatus: SpokenNarrator = (result, _args, now) => {
   const baselines = record(data['chokepoint-baselines']);
   const baselineSource = text(baselines?.source);
   if (baselineSource) citations.push({ source: baselineSource, asOf: toIso(baselines?.updatedAt), stale: freshness.stale });
-  const rows = chokepointRows(data);
+  const { rows, flowsKnown } = chokepointRows(data);
   if (rows.length === 0) {
     return {
       sentences: ['No chokepoint data is loaded in this snapshot.', 'Try again shortly, or call without a chokepoint filter.'],
@@ -231,6 +236,7 @@ export const spokenChokepointStatus: SpokenNarrator = (result, _args, now) => {
     const flow = flowClause(row, 'Oil flow');
     if (flow) sentences.push(`${flow}${row.disrupted ? ', and it is flagged as disrupted' : ''}.`);
     else if (row.disrupted) sentences.push('Oil flow through it is flagged as disrupted.');
+    else if (!flowsKnown) sentences.push('Oil flow and disruption status were not included in this snapshot.');
     if (row.countsAvailable && row.todayTotal !== null) {
       const change = row.wowChangePct !== null && Math.round(Math.abs(row.wowChangePct)) > 0
         ? `, ${row.wowChangePct > 0 ? 'up' : 'down'} ${spokenPercent(Math.abs(row.wowChangePct))} on last week`
@@ -241,9 +247,11 @@ export const spokenChokepointStatus: SpokenNarrator = (result, _args, now) => {
     }
   } else {
     const disrupted = rows.filter((row) => row.disrupted);
-    sentences.push(disrupted.length === 0
-      ? `None of the ${spokenInteger(rows.length)} monitored chokepoints is flagged as disrupted.`
-      : `Of ${spokenInteger(rows.length)} monitored chokepoints, ${disrupted.length === 1 ? '1 is' : `${spokenInteger(disrupted.length)} are`} flagged as disrupted: ${joinList(disrupted.map((row) => row.name))}.`);
+    sentences.push(!flowsKnown
+      ? `${spokenCount(rows.length, 'monitored chokepoint')} are in this snapshot, but disruption status was not included.`
+      : disrupted.length === 0
+        ? `None of the ${spokenInteger(rows.length)} monitored chokepoints is flagged as disrupted.`
+        : `Of ${spokenInteger(rows.length)} monitored chokepoints, ${disrupted.length === 1 ? '1 is' : `${spokenInteger(disrupted.length)} are`} flagged as disrupted: ${joinList(disrupted.map((row) => row.name))}.`);
     const riskiest = [...rows].filter((row) => row.riskLevel).sort((a, b) => (RISK_RANK[b.riskLevel] ?? -1) - (RISK_RANK[a.riskLevel] ?? -1) || (b.incidents ?? 0) - (a.incidents ?? 0))[0];
     sentences.push(riskiest
       ? `The highest risk level is ${riskiest.riskLevel}, at ${riskiest.name}${incidentsClause(riskiest)}.`
@@ -288,12 +296,13 @@ export const spokenPredictionMarkets: SpokenNarrator = (result, _args, now) => {
   const fallback: SpokenCitation = { source: 'WorldMonitor prediction markets', asOf: freshness.asOf, stale: freshness.stale };
   if (total === 0) {
     return {
-      sentences: [`No prediction markets match those filters as of ${freshness.ago}.`, 'Try a broader query or another category.'],
+      sentences: [`No prediction markets match those filters${freshness.asOf === null ? '' : ` as of ${freshness.ago}`}.`, 'Try a broader query or another category.'],
       caveat: freshness.caveat, citations: [fallback], stale: freshness.stale, asOf: freshness.asOf,
     };
   }
   const counts = buckets.map(({ bucket, markets }) => markets.length === 0 ? `none in ${bucket}` : `${spokenInteger(markets.length)} ${bucket}`);
-  const sentences = [`Prediction markets as of ${freshness.ago} track ${spokenCount(total, 'contract')}: ${joinList(counts)}.`];
+  // With no `cached_at` the stale caveat already says the time is unknown.
+  const sentences = [`Prediction markets${freshness.asOf === null ? '' : ` as of ${freshness.ago}`} track ${spokenCount(total, 'contract')}: ${joinList(counts)}.`];
   const spokenMarkets: Record<string, unknown>[] = [];
   const populated = buckets.filter((entry) => entry.markets.length > 0);
   const lead = populated[0]!;
@@ -413,9 +422,11 @@ export const spokenMediaPerspective: SpokenNarrator = (result, args, _now) => {
     `Over ${windowPhrase}, ${spokenCount(total, 'headline')} from ${spokenCount(outlets, 'outlet')} covered ${name}: ${countPhrase(own)} from its own press, ${countPhrase(foreignFacing)} from its foreign-facing media and ${countPhrase(outside)} from outside coverage.`,
   ];
   const labelled = framing.favorable + framing.neutral + framing.critical + framing.hostile;
+  // Stance is a model's reading of each headline, not WorldMonitor's view;
+  // the sentence says so, as the tool description does.
   sentences.push(labelled === 0
-    ? 'None of the headlines carry a stance label yet.'
-    : `Of the ${spokenCount(labelled, 'headline')} with a labelled stance, ${spokenInteger(framing.favorable)} were favorable, ${spokenInteger(framing.neutral)} neutral and ${spokenInteger(framing.critical + framing.hostile)} critical or hostile.`);
+    ? 'No model stance labels are available for these headlines yet.'
+    : `Of the ${spokenCount(labelled, 'headline')} a model labelled for stance, ${spokenInteger(framing.favorable)} read as favorable, ${spokenInteger(framing.neutral)} neutral and ${spokenInteger(framing.critical + framing.hostile)} critical or hostile.`);
   headlines.sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0));
   const latest = headlines[0];
   if (latest) sentences.push(`The most recent is from ${latest.outlet}: ${latest.title}.`);
@@ -468,11 +479,22 @@ export const spokenResilienceIndicators: SpokenNarrator = (result, args, _now) =
     sentences.push(`Its strongest areas are ${at(dimensions[0]!)} and ${at(dimensions[1]!)}, and its weakest are ${at(weakest[0]!)} and ${at(weakest[1]!)}.`);
   }
   const indicators = (Array.isArray(result.indicators) ? result.indicators : []).map(record).filter((i): i is Record<string, unknown> => i !== null);
-  const observed = indicators.filter((indicator) => text(indicator.state) === 'observed').length;
-  if (indicators.length > 0) {
-    sentences.push(observed === indicators.length
-      ? `All ${spokenCount(indicators.length, 'indicator')} are directly observed.`
-      : `${spokenInteger(observed)} of ${spokenCount(indicators.length, 'indicator')} are directly observed; the rest are imputed or missing.`);
+  // Retired, inactive and not-applicable rows are deliberate exclusions, not
+  // data gaps, so they leave the count; failed sources are named as such.
+  const active = indicators.filter((indicator) => !['inactive', 'retired', 'not-applicable'].includes(text(indicator.state)));
+  const stateCount = (state: string) => active.filter((indicator) => text(indicator.state) === state).length;
+  const observed = stateCount('observed');
+  if (active.length > 0) {
+    const gaps: string[] = [];
+    const imputed = stateCount('imputed') + stateCount('fallback');
+    const failed = stateCount('source-failure');
+    const missing = active.length - observed - imputed - failed;
+    if (imputed > 0) gaps.push(`${spokenInteger(imputed)} imputed`);
+    if (failed > 0) gaps.push(`${spokenInteger(failed)} from a failed source`);
+    if (missing > 0) gaps.push(`${spokenInteger(missing)} missing`);
+    sentences.push(observed === active.length
+      ? `All ${spokenCount(active.length, 'active indicator')} are directly observed.`
+      : `${spokenInteger(observed)} of ${spokenCount(active.length, 'active indicator')} are directly observed, with ${joinList(gaps)}.`);
   }
   const seen = new Set<string>();
   for (const indicator of indicators) {

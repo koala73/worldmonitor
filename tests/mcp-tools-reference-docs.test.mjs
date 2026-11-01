@@ -125,7 +125,7 @@ describe('MCP tools reference docs — cache tool parameter parity', () => {
     assert.match(DOC, /accept `response_mode`/);
     // The spoken roster is the registry; the reference names every member.
     for (const tool of __testing__.TOOL_REGISTRY) {
-      if (tool._spoken) assert.match(DOC, new RegExp(`### \`${tool.name}\`[\\s\\S]*?Spoken mode:`), `${tool.name}: documents response_mode: "spoken"`);
+      if (tool._spoken) assert.match(sectionForTool(tool.name), /Spoken mode:/, `${tool.name}: documents response_mode: "spoken"`);
     }
   });
 

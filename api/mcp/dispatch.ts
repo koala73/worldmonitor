@@ -652,8 +652,14 @@ export async function dispatchToolsCall(
   try {
     // Legacy-shaped alias arguments only pass the target's refinements; every
     // other call, including a target-shaped alias, meets the full input schema.
-    if (aliasArguments && aliasArgumentsShape === 'legacy') tool._validateArgs?.(aliasArguments);
-    else validateToolArgs(tool, aliasArguments ?? (p.arguments === undefined ? {} : p.arguments));
+    if (aliasArguments && aliasArgumentsShape === 'legacy') {
+      tool._validateArgs?.(aliasArguments);
+      // A legacy-shaped alias skips the schema walk, which is where an
+      // unsupported `response_mode` is otherwise refused (#9722).
+      if (p.arguments?.response_mode !== undefined && !tool._spoken) {
+        throw new RpcValidationError(tool.name, [{ field: 'response_mode', description: 'This tool has no spoken mode. Only tools that list response_mode in their input schema accept it.' }]);
+      }
+    } else validateToolArgs(tool, aliasArguments ?? (p.arguments === undefined ? {} : p.arguments));
   } catch (error) {
     if (!(error instanceof RpcValidationError)) throw error;
     if (deferredBurst) {

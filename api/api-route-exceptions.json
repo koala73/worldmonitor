@@ -143,6 +143,20 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/spoken.ts",
+      "category": "internal-helper",
+      "reason": "response_mode \"spoken\" mechanism for MCP tools (#9722): the response_mode input schema, the sentence-and-citations envelope builder and the speech helpers narrators share. Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/spoken-narrators.ts",
+      "category": "internal-helper",
+      "reason": "Per-tool spoken narrators (#9722): deterministic sentence templates over each analytical tool's documented payload, declared as _spoken on the registry entries. Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/source-unavailable.ts",
       "category": "internal-helper",
       "reason": "Typed analysis-source outage propagation for MCP composite tools: preserves bounded cache-key diagnostics in JSON-RPC error.data without exposing source payloads. Pure helper module for the external-protocol MCP handler family above — exports no route.",

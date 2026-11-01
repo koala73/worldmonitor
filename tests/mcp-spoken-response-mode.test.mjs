@@ -170,6 +170,9 @@ const RESILIENCE = {
     { id: 'education-attainment', dimension: 'socialCohesion', state: 'imputed', retrievedAt: iso(NOW - 12 * 24 * 60 * MIN), sources: [{ key: 'wb', name: 'World Bank WDI', url: 'https://data.worldbank.org/indicator/SE.TER.CUAT.BA.ZS' }] },
     { id: 'fiscal-space', dimension: 'macroFiscal', state: 'observed', retrievedAt: iso(NOW - 9 * 24 * 60 * MIN), sources: [{ key: 'imf', name: 'IMF WEO', url: 'https://www.imf.org/weo' }] },
     { id: 'cyber-index', dimension: 'cyberDigital', state: 'observed', sources: [] },
+    // Deliberate exclusions, not data gaps: they must not count as missing.
+    { id: 'legacy-tariff-row', dimension: 'tradePolicy', state: 'retired', reason: 'retired', sources: [] },
+    { id: 'island-only', dimension: 'logisticsSupply', state: 'not-applicable', sources: [] },
   ],
 };
 
@@ -330,7 +333,7 @@ describe('spoken narrators build 2-3 plain sentences from the structured payload
     assertSpeakable(out, 'media perspective');
     assert.equal(out.spoken,
       'Over the past 72 hours, 18 headlines from 5 outlets covered Saudi Arabia: 12 from its own press, none from its foreign-facing media and 6 from outside coverage. '
-      + 'Of the 16 headlines with a labelled stance, 5 were favorable, 7 neutral and 4 critical or hostile. '
+      + 'Of the 16 headlines a model labelled for stance, 5 read as favorable, 7 neutral and 4 critical or hostile. '
       + 'The most recent is from Arab News: Kingdom unveils budget.');
     assert.equal(out.citations[0].source, 'Arab News');
     assert.equal(out.citations[0].url, 'https://example.com/budget');
@@ -341,10 +344,50 @@ describe('spoken narrators build 2-3 plain sentences from the structured payload
     const partial = narrate('get_media_perspective', spokenMediaPerspective, { ...MEDIA, state: 'partial' }, { subject_country: 'SA' });
     assertSpeakable(partial, 'media partial');
     assert.match(partial.spoken, /critical or hostile\. Some feeds were unavailable, so this is a partial view\.$/);
+    const unlabelled = narrate('get_media_perspective', spokenMediaPerspective, { ...MEDIA, groups: MEDIA.groups.map((g) => ({ ...g, framing: { favorable: 0, neutral: 0, critical: 0, hostile: 0, unlabeled: g.headlineCount } })) }, { subject_country: 'SA' });
+    assert.match(unlabelled.spoken, /No model stance labels are available for these headlines yet\./);
     assert.equal(partial.stale, true);
     const down = narrate('get_media_perspective', spokenMediaPerspective, { ...MEDIA, groups: [], state: 'unavailable' }, { subject_country: 'SA' });
     assertSpeakable(down, 'media unavailable');
     assert.equal(down.spoken, 'Media coverage for Saudi Arabia is unavailable right now. Please try again later.');
+  });
+
+  it('get_resilience_indicators names failed sources and missing rows separately from imputed ones', () => {
+    const indicators = [
+      { id: 'a', state: 'observed', sources: [] }, { id: 'b', state: 'source-failure', sources: [] },
+      { id: 'c', state: 'missing', sources: [] }, { id: 'd', state: 'fallback', sources: [] }, { id: 'e', state: 'inactive', sources: [] },
+    ];
+    const out = narrate('get_resilience_indicators', spokenResilienceIndicators, { ...RESILIENCE, indicators }, { country_code: 'DE' });
+    assertSpeakable(out, 'resilience states');
+    assert.match(out.spoken, /1 of 4 active indicators are directly observed, with 1 imputed, 1 from a failed source and 1 missing\.$/);
+  });
+
+  it('get_chokepoint_status does not read an absent flow map as nothing disrupted', () => {
+    const noFlows = { ...CHOKEPOINTS, data: { ...CHOKEPOINTS.data, 'chokepoint-flows': null } };
+    const overview = narrate('get_chokepoint_status', spokenChokepointStatus, noFlows, { dataset: ['transit-summaries'] });
+    assertSpeakable(overview, 'chokepoint overview without flows');
+    assert.match(overview.spoken, /^4 monitored chokepoints are in this snapshot, but disruption status was not included\. /);
+    assert.doesNotMatch(overview.spoken, /None of the|flagged as disrupted/);
+    const single = narrate('get_chokepoint_status', spokenChokepointStatus, { ...hormuzOnly(CHOKEPOINTS), data: { ...hormuzOnly(CHOKEPOINTS).data, 'chokepoint-flows': null } }, { chokepoint: 'hormuz' });
+    assertSpeakable(single, 'single chokepoint without flows');
+    assert.match(single.spoken, /Oil flow and disruption status were not included in this snapshot\./);
+  });
+
+  it('every narration stays within the 500-character bound on long inputs, keeping whole sentences and the caveat', () => {
+    const longTitle = (n) => `Forecast number ${n} about a very long chain of maritime, energy and insurance consequences across several regions and many months`;
+    const long = {
+      ...FORECASTS, stale: true, cached_at: iso(NOW - 3 * 60 * MIN),
+      data: { predictions: { generatedAt: NOW - 3 * 60 * MIN, predictions: [
+        { id: 'a', domain: 'supply_chain', region: 'Eastern Mediterranean and the Red Sea approaches', probability: 0.81, title: longTitle(1), change24h: 0.02 },
+        { id: 'b', domain: 'infrastructure', region: 'Gulf of Aden and the Bab el-Mandeb corridor', probability: 0.64, title: longTitle(2), change24h: -0.04 },
+      ] } },
+    };
+    const out = narrate('get_forecast_predictions', spokenForecastPredictions, long);
+    assertSpeakable(out, 'long forecasts');
+    assert.match(out.spoken, /flagged as stale, so some figures may be out of date\.$/, 'the caveat survives the cut');
+    const many = { ...CHOKEPOINTS, data: { ...CHOKEPOINTS.data, 'chokepoint-flows': Object.fromEntries(Array.from({ length: 14 }, (_, i) => [`very_long_chokepoint_name_number_${i}_on_a_distant_coast`, { currentMbd: 1 + i, baselineMbd: 10, flowRatio: 0.5, disrupted: true, source: 'portwatch-dwt' }])) } };
+    const crowded = narrate('get_chokepoint_status', spokenChokepointStatus, many);
+    assertSpeakable(crowded, 'many disrupted chokepoints');
   });
 
   it('get_resilience_indicators names the strongest and weakest dimensions in plain words', () => {
@@ -353,7 +396,7 @@ describe('spoken narrators build 2-3 plain sentences from the structured payload
     assert.equal(out.spoken,
       "Germany's resilience breakdown covers 4 dimensions, using data from September 2026. "
       + 'Its strongest areas are public finances at 81 and social cohesion at 77, and its weakest are cyber and digital at 45 and energy at 58. '
-      + '3 of 4 indicators are directly observed; the rest are imputed or missing.');
+      + '3 of 4 active indicators are directly observed, with 1 imputed.');
     assert.deepEqual(out.citations.map((c) => c.source), ['WorldMonitor resilience score', 'World Bank WDI', 'IMF WEO']);
     assert.equal(out.citations[1].url, 'https://data.worldbank.org/indicator/EG.ELC.LOSS.ZS');
   });

@@ -29,7 +29,7 @@ export const RESPONSE_MODE_SCHEMA: { type: 'string'; enum: string[]; description
 };
 
 export const SPOKEN_MAX_CHARS = 500;
-const SPOKEN_MAX_SENTENCES = 3;
+export const SPOKEN_MAX_SENTENCES = 3;
 
 export interface SpokenCitation {
   source: string;
@@ -71,10 +71,9 @@ export function buildSpokenEnvelope(
   const narration = tool._spoken(result, args, now);
   const spoken = narration.sentences.map(cleanSpeech).filter((sentence) => sentence.length > 0);
   const caveat = narration.caveat === undefined ? undefined : cleanSpeech(narration.caveat);
-  const kept = caveat ? [...spoken.slice(0, SPOKEN_MAX_SENTENCES - 1), caveat] : spoken.slice(0, SPOKEN_MAX_SENTENCES);
   return {
     tool: tool.name,
-    spoken: kept.join(' '),
+    spoken: fitSpeech(spoken, caveat),
     citations: narration.citations.map((citation) => ({
       source: citation.source,
       ...(citation.title === undefined ? {} : { title: citation.title }),
@@ -85,6 +84,38 @@ export function buildSpokenEnvelope(
     stale: narration.stale,
     asOf: narration.asOf,
   };
+}
+
+/**
+ * Keep the narration within the documented bounds: at most three sentences
+ * and SPOKEN_MAX_CHARS characters. A caveat is always spoken and takes the
+ * last slot. Over the character limit, trailing body sentences go first
+ * (never below two sentences in total); if one sentence is still too long,
+ * the longest body sentence is cut at a word boundary and closed with a full
+ * stop, so the listener hears complete sentences, not a mid-word cutoff.
+ */
+export function fitSpeech(sentences: string[], caveat?: string): string {
+  const body = caveat ? sentences.slice(0, SPOKEN_MAX_SENTENCES - 1) : sentences.slice(0, SPOKEN_MAX_SENTENCES);
+  const minBody = caveat ? 1 : 2;
+  const assemble = () => (caveat ? [...body, caveat] : body).join(' ');
+  while (body.length > minBody && assemble().length > SPOKEN_MAX_CHARS) body.pop();
+  let excess = assemble().length - SPOKEN_MAX_CHARS;
+  while (excess > 0 && body.length > 0) {
+    const longest = body.reduce((best, sentence, index) => (sentence.length > body[best]!.length ? index : best), 0);
+    const shortened = shortenSentence(body[longest]!, body[longest]!.length - excess);
+    if (shortened === body[longest]) break;
+    body[longest] = shortened;
+    excess = assemble().length - SPOKEN_MAX_CHARS;
+  }
+  return assemble();
+}
+
+function shortenSentence(sentence: string, limit: number): string {
+  if (sentence.length <= limit) return sentence;
+  const cut = sentence.slice(0, Math.max(1, limit - 1));
+  const space = cut.lastIndexOf(' ');
+  const head = (space > 0 ? cut.slice(0, space) : cut).replace(/[\s,;:\-–—]+$/, '');
+  return head.length > 0 ? `${head}.` : sentence;
 }
 
 // ---------------------------------------------------------------------------
