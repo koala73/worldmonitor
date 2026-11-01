@@ -3294,6 +3294,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         ? afterPublishResult.completionState
         : (contractState || 'LEGACY');
     logSeedResult(domain, recordCount, durationMs, {
+      runId,
       payloadBytes,
       contractMode,
       state: completionState,
