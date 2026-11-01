@@ -131,6 +131,13 @@ describe('advanceHistory', () => {
     assert.deepEqual(state.change, { since: '2026-08-31', delta: 46171 });
   });
 
+  it('reports no change for a report older than the newest stored one, and keeps the history', () => {
+    const stored = [['2026-08-31', 426448], ['2026-09-30', 472619]];
+    const state = advanceHistory(stored, '2026-08-31', 426448);
+    assert.equal(state.change, undefined);
+    assert.deepEqual(state.history, stored);
+  });
+
   it('keeps a bounded history and ignores malformed points', () => {
     let points = [['bad'], null];
     for (let m = 1; m <= 12; m++) points = advanceHistory(points, `2026-${String(m).padStart(2, '0')}-01`, m).history;

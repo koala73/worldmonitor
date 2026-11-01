@@ -252,8 +252,10 @@ export function dedupeSeries(points) {
 export function advanceHistory(previousPoints, date, individuals) {
   const points = Array.isArray(previousPoints) ? previousPoints.filter((p) => Array.isArray(p) && p.length === 2) : [];
   const last = points.at(-1);
+  // A report older than the newest stored one is stale: no change, history untouched.
+  if (last && date < last[0]) return { history: points.slice(-HISTORY_POINTS), change: undefined };
   if (!last || date > last[0]) points.push([date, individuals]);
-  else if (date === last[0]) points[points.length - 1] = [date, individuals];
+  else points[points.length - 1] = [date, individuals];
   const trimmed = points.slice(-HISTORY_POINTS);
   const prior = trimmed.length >= 2 ? trimmed.at(-2) : null;
   return {
