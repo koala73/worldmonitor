@@ -2640,10 +2640,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       assert.ok(body.result?.content, `bad country_code ${JSON.stringify(bad)} must return a result, not -32603`);
       assert.equal(body.error, undefined);
       const payload = JSON.parse(body.result.content[0].text);
-      assert.equal(
+      assert.match(
         payload.error,
-        'country_code must be a two-letter ISO code (e.g. "ae")',
-        `${JSON.stringify(bad)} must be rejected by the strict-shape guard`,
+        /^Could not resolve "/,
+        `${JSON.stringify(bad)} must be rejected by whole-value country resolution`,
       );
     }
   });

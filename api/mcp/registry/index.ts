@@ -1,6 +1,7 @@
 import { loadToolAliases } from '../alias';
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../constants';
 import { JMESPATH_SCHEMA } from '../jmespath';
+import { RESPONSE_MODE_SCHEMA } from '../spoken';
 import { advertisedOutputSchema } from '../structured-content';
 import type { McpAccessClass, PublicToolShape, ToolDef } from '../types';
 import { compressDescription, utf8ByteLength } from '../utils';
@@ -16,6 +17,7 @@ import { COST_SHOCK_TOOLS } from './cost-shock-tools';
 import { PUBLIC_DOMAIN_TOOLS } from './public-domain-tools';
 import { TARIFF_TOOLS } from './tariff-tools';
 import { WEBCAM_TOOLS } from './webcam-tools';
+import { FEEDBACK_TOOLS } from './feedback-tools';
 
 // Merged tool registry — cache tools first (no `_execute`), then RPC tools
 // (with `_execute`), then the NLP utilities. Order is observable: `tools/list`
@@ -23,7 +25,7 @@ import { WEBCAM_TOOLS } from './webcam-tools';
 // returns the available-list sorted before responding. NLP_TOOLS is appended
 // last so extracting it from rpc-tools.ts left every other tool's position
 // unchanged. SOURCE_TOOLS is appended after it for the same reason.
-export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS, ...NEWS_DASHBOARD_TOOLS, ...MACRO_TOOLS, ...STOCK_TOOLS, ...COST_SHOCK_TOOLS, ...PUBLIC_DOMAIN_TOOLS, ...COUNTRY_VIEW_TOOLS, ...TARIFF_TOOLS, ...WEBCAM_TOOLS];
+export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS, ...NEWS_DASHBOARD_TOOLS, ...MACRO_TOOLS, ...STOCK_TOOLS, ...COST_SHOCK_TOOLS, ...PUBLIC_DOMAIN_TOOLS, ...COUNTRY_VIEW_TOOLS, ...TARIFF_TOOLS, ...WEBCAM_TOOLS, ...FEEDBACK_TOOLS];
 export const RETIRED_TOOLS: ToolDef[] = [...RETIRED_RPC_TOOLS];
 
 export const FREE_TIER_TOOL_NAMES: ReadonlySet<string> = new Set(
@@ -96,6 +98,9 @@ for (const tool of TOOL_REGISTRY) {
   if (tool._execute === undefined && props && 'summary' in props) {
     throw new Error(`api/mcp/registry/index.ts: cache tool "${tool.name}" declares its own 'summary' property — collides with universal SUMMARY_SCHEMA injection. Remove the per-tool declaration.`);
   }
+  if (props && 'response_mode' in props) {
+    throw new Error(`api/mcp/registry/index.ts: tool "${tool.name}" declares its own 'response_mode' property — collides with the RESPONSE_MODE_SCHEMA injection for tools with a _spoken narrator. Remove the per-tool declaration.`);
+  }
 }
 
 // Shared public-shape builder (v1.5.0). SINGLE source of truth for what
@@ -149,6 +154,10 @@ export function buildPublicTool(
   // a tool advertising no `jmespath` is exactly the state that made the old
   // roster's gaps invisible.
   clonedProperties.jmespath = structuredClone(JMESPATH_SCHEMA);
+  // Spoken mode (#9722) is advertised only where a narrator exists; the
+  // validator rejects it elsewhere rather than silently returning the full
+  // payload to a voice agent that asked for sentences.
+  if (tool._spoken) clonedProperties.response_mode = structuredClone(RESPONSE_MODE_SCHEMA);
 
   const description = opts.compressDescriptions
     ? compressDescription(tool.description, TOOL_DESCRIPTION_MAX_BYTES)
@@ -171,6 +180,7 @@ export function buildPublicTool(
     // strict client whatever the response kind (api/mcp/structured-content.ts).
     outputSchema: advertisedOutputSchema(structuredClone(tool.outputSchema), {
       permitDeprecation: TOOL_ALIASES.targetNames().has(tool.name),
+      permitSpoken: tool._spoken !== undefined,
     }),
     // Per-tool annotations declared on each registry entry (v1.7.0).
     // Deep-cloned so a mutating client can't poison the registry literal —

@@ -1,0 +1,13 @@
+{
+  "name": "worldmonitor",
+  "version": "2.11.6",
+  "description": "Live global intelligence: source-attributed news, country risk, conflicts, markets, energy and maritime chokepoints from the World Monitor MCP server.",
+  "mcpServers": {
+    "worldmonitor": {
+      "httpUrl": "https://worldmonitor.app/mcp"
+    },
+    "worldmonitor-docs": {
+      "httpUrl": "https://www.worldmonitor.app/docs/mcp"
+    }
+  }
+}

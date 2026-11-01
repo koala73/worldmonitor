@@ -16,6 +16,7 @@ const DEPLOYMENT = '8b1d7d2b-8a36-473b-9fa8-1eeb7a911b2d';
 const at = (minutes) => new Date(Date.parse(START) + minutes * 60_000).toISOString();
 const env = { WM_API_KEY: 'private-health-key', UPSTASH_REDIS_REST_URL: 'https://redis.example', UPSTASH_REDIS_REST_TOKEN: 'private-redis-key' };
 const config = {
+  yieldCurveAu: ['seed-bundle-yield-curves', '0 10 * * *', 'economic', 'Yield-Curve-AU'],
   wildfires: ['seed-fire-detections', '*/10 * * * *', 'wildfire', ''],
   physicalDivergence: ['seed-bundle-macro', '0 8,9 * * *', 'market', 'Physical-Premiums'],
   crossStraitActivityTaiwanMnd: ['seed-bundle-derived-signals', '*/5 * * * *', 'military', 'Cross-Strait-Activity'],
@@ -337,4 +338,102 @@ globalThis.fetch = async (url, options) => {
     assert.ok(!`${passed.stdout}${passed.stderr}${readFileSync(output)}`.includes('private-'));
     assert.ok(existsSync(output.replace('.json', '.md')));
   } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+function auStorage(minutes = 183) {
+  const fetchedAt = Date.parse(at(minutes));
+  const curves = [{ date: '2013-05-20', tenors: { '10y': 3.2 } }, { date: '2026-09-02', tenors: { '2y': 4.9, '10y': 5.2 } }];
+  const seed = { fetchedAt, recordCount: 2, newestItemAt: Date.parse('2026-09-02'), maxContentAgeMin: 14400, sourceVersion: 'rba-f2-csv-v1', state: 'OK' };
+  const envelope = (rows) => ({ data: { curves: structuredClone(rows) }, _seed: { ...seed, recordCount: rows.length } });
+  const values = {
+    'economic:yield-curve:au:v1': envelope(curves),
+    'economic:yield-curve:au:v1:latest': envelope(curves.slice(-1)),
+    'seed-completion:economic:yield-curve-au': { fetchedAt, completedAt: fetchedAt + 1000, runId: `${fetchedAt - 1000}-abc123` },
+  };
+  for (let year = 2013; year <= 2026; year++) values[`economic:yield-curve:au:v1:${year}`] = envelope(curves.filter((row) => row.date.startsWith(`${year}-`)));
+  return { meta: { ...seed, fetchedAt: fetchedAt + 500 }, values };
+}
+
+test('AU projects full stored parity and separate content and publication clocks', () => {
+  const { meta, values } = auStorage();
+  const health = { checkedAt: at(184), checks: { yieldCurveAu: { status: 'OK' } } };
+  const result = projectSource('yieldCurveAu', health, meta, values, at(184));
+  assert.equal(result.newestItemAt, '2026-09-02T00:00:00.000Z');
+  assert.equal(result.contentDeadline, '2026-09-12T00:00:30.000Z');
+  assert.equal(result.lastSuccessAt, at(183));
+  assert.equal(result.runId, `${Date.parse(at(183)) - 1000}-abc123`);
+  assert.equal(result.storedParity, true);
+  for (const mutate of [
+    (data) => { data['economic:yield-curve:au:v1:2013'].data.curves[0].tenors['10y'] = 0; },
+    (data) => { data['economic:yield-curve:au:v1:latest']._seed.fetchedAt++; },
+    (data) => { data['seed-completion:economic:yield-curve-au'].fetchedAt++; },
+    (data) => { delete data['economic:yield-curve:au:v1:2014']; },
+  ]) {
+    const changed = structuredClone(values);
+    mutate(changed);
+    assert.throws(() => projectSource('yieldCurveAu', health, meta, changed, at(184)), /SOURCE_METADATA_UNVERIFIED/);
+  }
+});
+
+test('AU accepts only a matching run ID with schedule alignment, never completion time alone', () => {
+  const { meta, values } = auStorage();
+  const health = { checkedAt: at(184), checks: { yieldCurveAu: { status: 'OK' } } };
+  const source = projectSource('yieldCurveAu', health, meta, values, at(184));
+  const deployment = { id: DEPLOYMENT, commit: COMMIT, ancestry: 'yes', createdAt: at(-20), cronSchedule: '0 10 * * *' };
+  const runId = source.runId;
+  const event = { event: 'seed_complete', domain: 'economic', timestamp: at(183 + 1 / 60), durationMs: 2000, state: 'OK' };
+  const rows = [
+    { timestamp: at(182), message: 'Starting Container' },
+    { timestamp: at(183 - 1 / 60), message: `[Yield-Curve-AU] Run ID: ${runId}` },
+    { timestamp: event.timestamp, message: `[Yield-Curve-AU] ${JSON.stringify(event)}` },
+  ];
+  const runs = projectRuns('yieldCurveAu', rows, deployment, at(184));
+  assert.equal(runs[0].runId, runId);
+  assert.equal(runs[0].scheduled, true);
+  const input = { ...record(), source: 'yieldCurveAu', deadline: at(190), observations: [
+    { observedAt: START, deployment, source: { ...source, lastSuccessAt: BASELINE, healthCheckedAt: START }, runs: [] },
+    { observedAt: at(184), deployment, source, runs },
+  ] };
+  assert.equal(evaluateRecovery(input).status, 'passed');
+  input.observations[1].runs[0].scheduled = false;
+  assert.equal(evaluateRecovery(input).status, 'unverified');
+  input.observations[1].runs[0].scheduled = true;
+  input.observations[1].runs[0].runId = '1790000000000-other';
+  assert.equal(evaluateRecovery(input).status, 'unverified');
+  input.observations[1].runs = [];
+  assert.equal(evaluateRecovery(input).status, 'unverified');
+  input.observations.push({ observedAt: at(191), error: 'AUTHENTICATION_FAILED' });
+  assert.equal(evaluateRecovery(input).status, 'failed');
+});
+
+test('AU capture reads only its registered storage keys and preserves the projected receipt', async () => {
+  const data = fixture('yieldCurveAu', 184);
+  data.logs = [];
+  const stored = auStorage();
+  const deps = dependencies(data);
+  const result = await captureObservation({ ...record(), source: 'yieldCurveAu' }, {
+    ...deps,
+    async fetchFn(url, options) {
+      if (String(url).endsWith('/api/health')) return new Response(JSON.stringify(data.health));
+      const commands = JSON.parse(options.body);
+      assert.equal(commands.length, 18);
+      assert.ok(commands.every(([command, key]) => command === 'GET' && (key.includes('yield-curve:au:') || key.endsWith('yield-curve-au'))));
+      return new Response(JSON.stringify(commands.map(([, key]) => ({ result: JSON.stringify(
+        key === 'seed-meta:economic:yield-curve-au' ? stored.meta : stored.values[key],
+      ) }))));
+    },
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.source.storedParity, true);
+  assert.equal(result.source.runId, stored.values['seed-completion:economic:yield-curve-au'].runId);
+  assert.deepEqual(result.runs, []);
+});
+
+test('AU permits an unpublished new calendar year but still requires historical shards', () => {
+  const { meta, values } = auStorage();
+  const observedAt = '2027-01-01T00:01:00.000Z';
+  const health = { checkedAt: observedAt, checks: { yieldCurveAu: { status: 'STALE_CONTENT' } } };
+  assert.equal(projectSource('yieldCurveAu', health, meta, values, observedAt).storedParity, true);
+  delete values['economic:yield-curve:au:v1:2026'];
+  assert.throws(() => projectSource('yieldCurveAu', health, meta, values, observedAt), /SOURCE_METADATA_UNVERIFIED/);
 });

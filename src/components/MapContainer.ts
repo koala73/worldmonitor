@@ -1823,6 +1823,13 @@ export class MapContainer {
     this.deckGLMap?.highlightRoute(routeIds);
   }
 
+  public highlightLane(
+    lane: { routeId: string; path: [number, number][]; chokepointIds: string[] },
+    occluder?: { left: number; right: number },
+  ): void {
+    this.deckGLMap?.highlightLane(lane, occluder);
+  }
+
   public clearHighlightedRoute(): void {
     this.deckGLMap?.clearHighlightedRoute();
   }

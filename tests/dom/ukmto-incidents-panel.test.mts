@@ -35,3 +35,20 @@ it('separates unavailable, empty and stale states and escapes report text', () =
   document.querySelector<HTMLButtonElement>('button[data-id]')!.click();
   expect(select).toHaveBeenCalledWith(26, 56);
 });
+
+it('credits both publishers and omits a publication time the source does not carry', () => {
+  const panel = new UkmtoIncidentsPanel();
+  panel.setData({ incidents: [{ id: 'ukmto-186', incidentNumber: 186, incidentType: 'Attack', place: 'Strait of Hormuz',
+    description: 'Tanker struck.', occurredAt: Date.parse('2026-10-29T17:50:00Z'), reportedAt: 0,
+    location: { latitude: 26.38, longitude: 56.33 } }], fetchedAt: Date.now(), dataAvailable: true, stale: false });
+  expect(document.body.textContent).toContain('ukmto.occurred: 2026-10-29 17:50 UTC');
+  expect(document.body.textContent).not.toContain('ukmto.reported:');
+  expect(document.body.textContent).not.toContain('1970');
+  const links = [...document.querySelectorAll<HTMLAnchorElement>('.ukmto-attribution a')].map(link => link.href);
+  expect(links).toEqual([
+    'https://www.ukmto.org/recent-incidents',
+    'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/',
+    'https://hormuz.data-tracking.net/',
+    'https://creativecommons.org/licenses/by/4.0/',
+  ]);
+});

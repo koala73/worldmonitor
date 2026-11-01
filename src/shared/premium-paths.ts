@@ -55,9 +55,7 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/resilience/v1/get-resilience-ranking',
   '/api/resilience/v1/get-food-stocks',
   '/api/resilience/v1/get-demographics-capability',
-  '/api/scorecard/v1/get-five-factor-scorecard',
-  '/api/scorecard/v1/list-five-factor-scorecards',
-  '/api/scorecard/v1/get-bloc-scorecard',
+  // The five-factor scorecard went free (#9742); it is no longer in this set.
   '/api/supply-chain/v1/get-country-chokepoint-index',
   '/api/supply-chain/v1/get-bypass-options',
   '/api/supply-chain/v1/get-country-cost-shock',

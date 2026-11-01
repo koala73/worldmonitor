@@ -36,6 +36,7 @@ import { getAuthState } from '@/services/auth-state';
 import { trackGateHit, track, type UmamiEvent } from '@/services/analytics';
 
 import { TRADE_ROUTES } from '@/config/trade-routes';
+import { buildLane } from '@/config/trade-route-lanes';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 
@@ -51,8 +52,15 @@ const CARGO_TO_ROUTE_CATEGORY: Record<string, string> = {
 
 const ROUTE_CATEGORY_MAP = new Map(TRADE_ROUTES.map((r) => [r.id, r.category]));
 
+interface MapLane {
+  routeId: string;
+  path: [number, number][];
+  chokepointIds: string[];
+}
+
 interface MapRef {
   highlightRoute(routeIds: string[]): void;
+  highlightLane(lane: MapLane, occluder?: { left: number; right: number }): void;
   clearHighlightedRoute(): void;
   setBypassRoutes(corridors: Array<{ fromPort: [number, number]; toPort: [number, number] }>): void;
   clearBypassRoutes(): void;
@@ -61,6 +69,7 @@ interface MapRef {
 
 interface TestHook {
   lastHighlightedRouteIds?: string[];
+  lastHighlightedLane?: MapLane;
   lastBypassRoutes?: Array<{ fromPort: [number, number]; toPort: [number, number] }>;
   lastClearHighlight?: number;
   lastClearBypass?: number;
@@ -292,13 +301,36 @@ export class RouteExplorer {
 
   // ─── Map integration ──────────────────────────────────────────────────
 
+  /** Highlight one lane, fitting it beside the explorer panel rather than under it. */
+  private showLane(lane: MapLane): void {
+    if (!this.mapRef) return;
+    const surface = this.root?.querySelector<HTMLElement>('.re-modal__surface');
+    const box = surface?.getBoundingClientRect();
+    this.mapRef.highlightLane(lane, box && box.width > 0 ? { left: box.left, right: box.right } : undefined);
+    const hook = typeof window !== 'undefined' ? window.__routeExplorerTestHook : undefined;
+    if (hook) {
+      hook.lastHighlightedLane = lane;
+      hook.lastHighlightedRouteIds = [lane.routeId];
+    }
+  }
+
   private applyMapState(data: GetRouteExplorerLaneResponse): void {
     if (!this.mapRef || data.noModeledLane || !data.primaryRouteId) return;
+    const hook = typeof window !== 'undefined' ? window.__routeExplorerTestHook : undefined;
+    // Draw the pair's own lane when the server sent one, so a lane that ends
+    // in India or Korea does not light up the route on to Singapore or
+    // Rotterdam, nor pulse chokepoints it never reaches.
+    if (data.primaryRouteGeometry.length >= 2) {
+      this.showLane({
+        routeId: data.primaryRouteId,
+        path: data.primaryRouteGeometry.map((p) => [p.lon, p.lat] as [number, number]),
+        chokepointIds: data.chokepointExposures.map((e) => e.chokepointId),
+      });
+      return;
+    }
     this.mapRef.zoomToRoutes([data.primaryRouteId]);
     this.mapRef.highlightRoute([data.primaryRouteId]);
-    if (typeof window !== 'undefined' && window.__routeExplorerTestHook) {
-      window.__routeExplorerTestHook.lastHighlightedRouteIds = [data.primaryRouteId];
-    }
+    if (hook) hook.lastHighlightedRouteIds = [data.primaryRouteId];
   }
 
   private handleBypassSelect(option: BypassCorridorOption): void {
@@ -383,10 +415,20 @@ export class RouteExplorer {
       return (catA === cargoCategory ? 0 : 1) - (catB === cargoCategory ? 0 : 1);
     });
     const routeId = ranked[0] ?? '';
-    if (routeId) {
-      this.mapRef.highlightRoute([routeId]);
-      this.mapRef.zoomToRoutes([routeId]);
+    if (!routeId) return;
+    // Same lane the server draws for subscribers: the pair's own stretch of
+    // the route, not the whole route through to its fixed end port.
+    const lane = buildLane(routeId, this.state.fromIso2, this.state.toIso2);
+    if (lane.geometry.length >= 2) {
+      this.showLane({
+        routeId,
+        path: lane.geometry.map((p) => [p.lon, p.lat] as [number, number]),
+        chokepointIds: [...lane.waypointIds],
+      });
+      return;
     }
+    this.mapRef.highlightRoute([routeId]);
+    this.mapRef.zoomToRoutes([routeId]);
   }
 
   private showActiveTab(): void {
@@ -653,7 +695,7 @@ export class RouteExplorer {
         e.preventDefault();
         if (this.laneData?.primaryRouteId && this.mapRef) {
           this.mapRef.clearHighlightedRoute();
-          this.mapRef.highlightRoute([this.laneData.primaryRouteId]);
+          this.applyMapState(this.laneData);
         }
         return;
       case '?': e.preventDefault(); this.openHelp(); return;

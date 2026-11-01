@@ -464,7 +464,7 @@ export function parseImdKeralaPdfText(text) {
   return parseImdBulletinHtml(`<div>${escapeHtml(header)}</div>${metadata}${tables.join('')}`, 'coastalBulletin');
 }
 
-async function parseImdKeralaPdf(bytes) {
+async function parseImdKeralaPdf(bytes, evidence) {
   if (bytes.subarray(0, 5).toString() !== '%PDF-') fail('BULLETIN_PDF_INVALID');
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const task = getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, useSystemFonts: false, verbosity: 0 });
@@ -474,6 +474,7 @@ async function parseImdKeralaPdf(bytes) {
     const page = await doc.getPage(1);
     const content = await page.getTextContent();
     const text = content.items.map((item) => `${item.str || ''}${item.hasEOL ? '\n' : ' '}`).join('');
+    if (evidence && text.length <= 64_000) evidence.extractedText = text;
     return parseImdKeralaPdfText(text);
   } finally {
     await task.destroy();
@@ -706,31 +707,41 @@ export async function fetchImdBulletinPage(productId, page, {
   timeoutMs = IMD_TIMEOUT_MS,
   delayMs = IMD_PAGE_DELAY_MS,
   sleep = defaultSleep,
+  evidence,
 } = {}) {
   if (!isAllowedImdUrl(page.url)) return { status: 'failed', reason: 'UNTRUSTED_SOURCE_HOST' };
+  async function acquire(url, accept) {
+    const attempt = { url, status: null, contentType: null, bodyBase64: null };
+    evidence?.push(attempt);
+    try {
+      const response = await fetchFn(url, {
+        headers: { Accept: accept, 'User-Agent': userAgent },
+        redirect: 'error',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      attempt.status = response.status;
+      attempt.contentType = (response.headers?.get?.('content-type') || '').slice(0, 256);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (accept === 'application/pdf' && !/^application\/pdf(?:;|$)/i.test(attempt.contentType)) fail('BULLETIN_PDF_INVALID');
+      const bytes = await readBoundedBytes(response, maxBytes);
+      if (evidence) attempt.bodyBase64 = bytes.toString('base64');
+      return { bytes, attempt };
+    } catch (err) {
+      attempt.failure = pageFailureReason(err);
+      throw err;
+    }
+  }
   try {
-    const response = await fetchFn(page.url, {
-      headers: { Accept: 'text/html', 'User-Agent': userAgent },
-      redirect: 'error',
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const html = new TextDecoder('utf-8').decode(await readBoundedBytes(response, maxBytes));
-    return { status: 'parsed', bulletin: parseImdBulletinHtml(html, productId) };
+    const { bytes } = await acquire(page.url, 'text/html');
+    return { status: 'parsed', bulletin: parseImdBulletinHtml(new TextDecoder('utf-8').decode(bytes), productId) };
   } catch (err) {
     const primary = { status: 'failed', reason: pageFailureReason(err) };
     const registered = IMD_PRODUCTS[productId]?.pages?.find((entry) => entry.key === page.key && entry.url === page.url);
     if (!registered?.fallbackUrl || !isAllowedImdUrl(registered.fallbackUrl)) return primary;
     try {
       await sleep(delayMs);
-      const response = await fetchFn(registered.fallbackUrl, {
-        headers: { Accept: 'application/pdf', 'User-Agent': userAgent },
-        redirect: 'error',
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      if (!/^application\/pdf(?:;|$)/i.test(response.headers?.get?.('content-type') || '')) fail('BULLETIN_PDF_INVALID');
-      const bulletin = await parseImdKeralaPdf(await readBoundedBytes(response, maxBytes));
+      const { bytes, attempt } = await acquire(registered.fallbackUrl, 'application/pdf');
+      const bulletin = await parseImdKeralaPdf(bytes, evidence ? attempt : undefined);
       return { status: 'parsed', bulletin, sourceUrl: registered.fallbackUrl, fallbackUsed: true, primaryFailure: primary.reason };
     } catch (fallbackError) {
       return { ...primary, fallbackFailure: pageFailureReason(fallbackError) };
@@ -747,6 +758,7 @@ export async function fetchImdCycloneMarine({
   userAgent = CHROME_UA,
   delayMs = IMD_PAGE_DELAY_MS,
   sleep = defaultSleep,
+  captureFailure,
 } = {}) {
   const pageResults = {};
   let first = true;
@@ -755,7 +767,17 @@ export async function fetchImdCycloneMarine({
     for (const page of IMD_PRODUCTS[id].pages) {
       if (!first) await sleep(delayMs);
       first = false;
-      pageResults[id][page.key] = await fetchImdBulletinPage(id, page, { fetchFn, userAgent, delayMs, sleep });
+      const attempts = captureFailure ? [] : undefined;
+      const result = await fetchImdBulletinPage(id, page, { fetchFn, userAgent, delayMs, sleep, evidence: attempts });
+      pageResults[id][page.key] = result;
+      if (captureFailure && (result.status === 'failed' || result.primaryFailure
+        || (result.status === 'parsed' && isFutureDated(result.bulletin, now)))) {
+        try {
+          await captureFailure({ schemaVersion: 1, productId: id, pageKey: page.key, now, previous, attempts, result });
+        } catch {
+          console.warn('imd-cyclone-marine: failure evidence unavailable');
+        }
+      }
     }
   }
   return assembleImdSnapshot({ pageResults, previous, now });

@@ -40,7 +40,7 @@ test.describe('collapsed-map cohort first paint (#5159)', () => {
       const sample = (): void => {
         const sec = document.getElementById('mapSection');
         if (sec) {
-          const frames = window.__wmMapFrames;
+          const frames = window.__wmMapFrames!;
           const collapsed = sec.classList.contains('collapsed');
           const last = frames[frames.length - 1];
           if (!last || last.collapsed !== collapsed) {

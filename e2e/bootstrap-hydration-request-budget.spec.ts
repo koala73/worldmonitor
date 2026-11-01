@@ -47,14 +47,8 @@ const NATURAL_EVENT = {
   categoryTitle: 'Severe Storms', lat: 12.5, lon: -70.1,
   date: '2026-08-01T00:00:00Z', closed: false,
 };
-// Field names come from the generated FireDetection contract
-// (src/generated/client/worldmonitor/wildfire/v1/service_client.ts:22-39), NOT
-// from the snake_case shape in tests/bootstrap-hydration-reuse.test.mts. That
-// unit fixture only ever reaches fetchAllFires(), whose sole gate is
-// `fireDetections.length > 0`, so it never notices the mismatch. The browser
-// goes one step further into data-loader's `new Date(f.detectedAt)`, which
-// throws RangeError on a missing field and kills the satellite-fires surface —
-// leaving the request counter green over a dead consumer.
+// The browser renders detectedAt, so this fixture uses the generated
+// FireDetection fields rather than the older snake_case service-test shape.
 const FIRE_DETECTION = {
   id: 'fire-1', region: 'BR', brightness: 330.5, frp: 12.5,
   confidence: 'FIRE_CONFIDENCE_HIGH', satellite: 'NOAA-20',
@@ -150,7 +144,7 @@ const HYDRATION_DATASETS: readonly HydrationDataset[] = [
     key: 'wildfires',
     tier: 'slow',
     rpcGlob: '**/api/wildfire/v1/list-fire-detections*',
-    payload: { fireDetections: [FIRE_DETECTION], fetchedAt: 1_754_000_000, dataAvailable: true },
+    payload: { fireDetections: [FIRE_DETECTION], fetchedAt: Date.now(), dataAvailable: true },
   },
   {
     key: 'sanctionsPressure',

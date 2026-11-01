@@ -101,6 +101,16 @@ const SOURCES = [
   ['canada-buys', 'CanadaBuys'],
   ['gets', 'GETS'],
   ['world-bank', 'World Bank'],
+  ['colombia-secop', 'Colombia SECOP II'],
+  ['kenya-ppip', 'Kenya PPIP'],
+  ['south-africa-etenders', 'South Africa eTenders'],
+  ['chile-mercado-publico', 'Chile Mercado Público'],
+  ['brazil-pncp', 'Brazil PNCP'],
+  ['ukraine-prozorro', 'Ukraine Prozorro'],
+  ['bulgaria-eop', 'Bulgaria EOP'],
+  ['latvia-iub', 'Latvia IUB'],
+  ['poland-bzp', 'Poland BZP'],
+  ['pakistan-ppra', 'Pakistan PPRA'],
 ] as const;
 
 const SORTS = [

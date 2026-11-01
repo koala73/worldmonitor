@@ -136,6 +136,7 @@ describe('prediction MCP card parity with the website presentation', () => {
     assert.equal(doc.querySelectorAll('.mkt').length, 6);
     const more = doc.querySelector('.mkt-more');
     assert.ok(more, 'loaded rows beyond six must remain reachable');
+    assert.equal(more.textContent, 'Show 2 more');
     more.click();
     assert.equal(doc.querySelectorAll('.mkt').length, 8);
     assert.match(doc.getElementById('groups').textContent, /Contract 8/);
@@ -170,14 +171,15 @@ describe('prediction MCP card parity with the website presentation', () => {
     geo.querySelector('.mkt-more').click();
     assert.equal(geo.querySelectorAll('.mkt').length, 8);
     assert.equal(tech.querySelectorAll('.mkt').length, 6);
-    assert.match(geo.querySelector('.mkt-count').textContent, /8 of 8/);
+    assert.equal(geo.querySelector('.mkt-count').textContent, '8 markets');
     tech.querySelector('.mkt-more').click();
     assert.equal(tech.querySelectorAll('.mkt').length, 8);
     assert.match(tech.textContent, /Tech 8/);
   });
   it('states when a summary sample contains fewer markets than the reported count', async () => {
     const { doc } = await mount({ count: 40, sample: [market] });
-    assert.match(doc.querySelector('.mkt-count').textContent, /1 of 40/);
+    assert.equal(doc.querySelector('.mkt-count').textContent, '40 markets');
+    assert.equal(doc.querySelector('.mkt-coverage').textContent, 'Showing 1 of 40; the rest were not included in this response.');
     assert.equal(doc.querySelector('.mkt-more'), null);
   });
   it('renders whole-envelope structured projections and expands every loaded category without reads', async () => {
@@ -195,7 +197,7 @@ describe('prediction MCP card parity with the website presentation', () => {
     assert.match(doc.getElementById('groups').textContent, /Polymarket/);
     assert.match(doc.querySelector('.mkt').textContent, /Yes —No —/);
     assert.equal(doc.querySelector('.mkt').querySelector('.pbar'), null);
-    assert.equal(doc.getElementById('foot').textContent, `Snapshot: ${full.cached_at} (stale)`);
+    assert.equal(doc.getElementById('foot').textContent, 'Updated 3 Oct 2026, 16:00 UTC (out of date)');
     const [geo, tech] = doc.querySelectorAll('.mgroup');
     geo.querySelector('.mkt-more').click();
     assert.equal(geo.querySelectorAll('.mkt').length, 8);
@@ -214,11 +216,12 @@ describe('prediction MCP card parity with the website presentation', () => {
     const summary = { ...full, data: summarizeData(full.data) };
     sendResult({ content: [{ type: 'text', text: JSON.stringify(summary) }], structuredContent: buildStructuredContent(summary, { reshaped: true, rider: null }) });
     assert.equal(doc.querySelectorAll('.mkt').length, 3);
-    assert.match(doc.querySelector('.mkt-count').textContent, /3 of 8 markets/);
+    assert.equal(doc.querySelector('.mkt-count').textContent, '8 markets');
+    assert.match(doc.querySelector('.mkt-coverage').textContent, /^Showing 3 of 8;/);
     assert.equal(doc.querySelector('.mkt-more'), null);
     assert.equal(doc.querySelector('.mkt-title').href, market.url);
     assert.match(doc.querySelector('.mkt').textContent, /Polymarket.*Yes —No —/);
-    assert.equal(doc.getElementById('foot').textContent, `Snapshot: ${full.cached_at} (stale)`);
+    assert.equal(doc.getElementById('foot').textContent, 'Updated 3 Oct 2026, 16:00 UTC (out of date)');
   });
   it('clears earlier contracts and metadata for projections that omit the contract shape', async () => {
     const { doc, send, sendResult } = await mount([market]);
@@ -228,7 +231,7 @@ describe('prediction MCP card parity with the website presentation', () => {
       sendResult({ structuredContent: buildStructuredContent(projection, { reshaped: true, rider: null }) });
       assert.equal(doc.querySelectorAll('.mkt').length, 0);
       assert.match(doc.getElementById('groups').textContent, /Prediction data unavailable/);
-      assert.match(doc.getElementById('foot').textContent, /Snapshot time unavailable/);
+      assert.match(doc.getElementById('foot').textContent, /Update time unknown/);
     }
   });
 });
@@ -239,13 +242,13 @@ describe('prediction returned-category coverage and freshness', () => {
   it('distinguishes returned empty arrays from omitted or malformed categories', async () => {
     const { doc, send } = await mount([]);
     send(envelope({ geopolitical: [], tech: [], finance: [] }));
-    assert.match(doc.getElementById('groups').textContent, /No prediction contracts in this returned snapshot/);
+    assert.match(doc.getElementById('groups').textContent, /No markets in this response/);
     assert.equal(doc.querySelector('.mkt-coverage'), null);
     for (const bootstrap of [{ tech: [] }, { geopolitical: [], tech: [], finance: 'unreadable' }]) {
       send(envelope(bootstrap));
-      assert.match(doc.querySelector('.mkt-coverage').textContent, /Unavailable or omitted categories: .*Finance/);
-      assert.match(doc.getElementById('groups').textContent, /No contracts in the available returned categories/);
-      assert.doesNotMatch(doc.getElementById('groups').textContent, /No prediction contracts in this returned snapshot/);
+      assert.match(doc.querySelector('.mkt-coverage').textContent, /Finance markets were not included or could not be loaded\./);
+      assert.match(doc.getElementById('groups').textContent, /No markets in the categories that loaded/);
+      assert.doesNotMatch(doc.getElementById('groups').textContent, /No markets in this response/);
     }
     send(envelope({}));
     assert.match(doc.getElementById('groups').textContent, /Prediction data unavailable/);
@@ -256,26 +259,31 @@ describe('prediction returned-category coverage and freshness', () => {
       sendResult({ structuredContent: { projection: envelope({ tech: raw }) } });
       assert.equal(doc.querySelectorAll('.mkt').length, 1);
       assert.equal(doc.querySelector('.mkt-title').href, market.url);
-      assert.equal(doc.querySelector('.mkt-coverage').textContent, 'Unavailable or omitted categories: Geopolitical, Finance.');
+      assert.ok([...doc.querySelectorAll('.mkt-coverage')].some(node => node.textContent === 'Geopolitical and Finance markets were not included or could not be loaded.'));
     }
   });
   it('does not treat a positive summary count with no display sample as empty', async () => {
     const { doc, send } = await mount([]);
     send(envelope({ geopolitical: { count: 14, sample: [] }, tech: [], finance: [] }));
-    assert.match(doc.getElementById('groups').textContent, /Geopolitical summary reports 14 contracts but supplied no display sample/);
-    assert.doesNotMatch(doc.getElementById('groups').textContent, /No prediction contracts|No contracts in the available/);
+    assert.match(doc.getElementById('groups').textContent, /Geopolitical: 14 markets reported, but none were included to show\./);
+    assert.doesNotMatch(doc.getElementById('groups').textContent, /No markets in this response|No markets in the categories/);
     send(envelope({ tech: { count: 14 } }));
-    assert.match(doc.getElementById('groups').textContent, /Tech summary reports 14 contracts but supplied no display sample/);
-    assert.doesNotMatch(doc.getElementById('groups').textContent, /No prediction contracts/);
+    assert.match(doc.getElementById('groups').textContent, /Tech: 14 markets reported, but none were included to show\./);
+    assert.doesNotMatch(doc.getElementById('groups').textContent, /No prediction markets/);
   });
   it('shows unknown freshness and source notices independently of snapshot presence', async () => {
     const { doc, send } = await mount([]);
     send({ ...envelope({ tech: [market] }), cached_at: null, stale: true, freshnessUnknown: true });
     assert.equal(doc.querySelectorAll('.mkt').length, 1);
-    assert.match(doc.getElementById('foot').textContent, /Snapshot time unavailable.*stale.*Freshness could not be verified/);
+    assert.equal(doc.getElementById('foot').textContent, 'Update time unknown (out of date) · Freshness could not be checked');
     send({ ...envelope({ tech: [market], degraded: true, error: '<img onerror=alert(1)>' }), freshnessUnknown: true });
-    assert.match(doc.getElementById('foot').textContent, /Snapshot: 2026-10-04T20:00:00Z.*Freshness could not be verified.*Source degraded.*<img/);
+    assert.equal(doc.getElementById('foot').textContent, 'Updated 4 Oct 2026, 20:00 UTC · Freshness could not be checked · Some market sources failed · A market source reported an error');
     assert.equal(doc.getElementById('foot').querySelector('img'), null);
+    for (const [error, expected] of [['kalshi_fetch_failed', 'Kalshi could not be reached'], ['polymarket_fetch_failed', 'Polymarket could not be reached'],
+      ['constructor_fetch_failed', 'A market source reported an error'], ['_fetch_failed', 'A market source reported an error']]) {
+      send(envelope({ tech: [], geopolitical: [], finance: [market], error }));
+      assert.equal(doc.getElementById('foot').textContent, 'Updated 4 Oct 2026, 20:00 UTC · ' + expected, error);
+    }
   });
   it('replaces earlier coverage and unknown freshness after an authoritative returned recovery', async () => {
     const { doc, send } = await mount([]);
@@ -283,7 +291,7 @@ describe('prediction returned-category coverage and freshness', () => {
     assert.ok(doc.querySelector('.mkt-coverage'));
     send(envelope({ geopolitical: [], tech: [], finance: [] }));
     assert.equal(doc.querySelector('.mkt-coverage'), null);
-    assert.match(doc.getElementById('groups').textContent, /No prediction contracts in this returned snapshot/);
-    assert.equal(doc.getElementById('foot').textContent, 'Snapshot: 2026-10-04T20:00:00Z');
+    assert.match(doc.getElementById('groups').textContent, /No markets in this response/);
+    assert.equal(doc.getElementById('foot').textContent, 'Updated 4 Oct 2026, 20:00 UTC');
   });
 });

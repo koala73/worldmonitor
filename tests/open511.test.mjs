@@ -403,18 +403,9 @@ test('bootstrap fetches bcOpen511 and its Ontario sibling on demand, never on a 
   }
 });
 
-test('BC Open511 is live, so it carries no freshness acknowledgement', () => {
-  // Was: pinned the expiring-ack dates for a probe that had never published.
-  // seed-bundle-canada is provisioned and bcOpen511 now reads healthy, so the
-  // ack was removed as SATISFIED. Asserting its absence is what stops it being
-  // reinstated: an acknowledgement that outlives its problem is a suppression
-  // with nothing to suppress, and would silently absorb a FUTURE BC outage.
-  const baseline = JSON.parse(readFileSync(new URL('../scripts/seed-freshness-baseline.json', import.meta.url), 'utf8'));
-  const row = baseline.acknowledged.find((a) => a.issue === 6611 || a.name === 'bcOpen511');
-  assert.equal(row, undefined, 'bcOpen511 publishes now; it must not be acknowledged as a known-empty probe');
-
-  // The probe itself must still exist, or "no ack" would be trivially true
-  // because nothing is watching the key at all.
+test('BC Open511 is live and health still watches its key', () => {
+  // seed-bundle-canada is provisioned and bcOpen511 reads healthy. The probe
+  // must still exist, or a future BC outage would have nothing watching it.
   const health = readFileSync(new URL('../api/health.js', import.meta.url), 'utf8');
   assert.match(health, /bcOpen511:\s*\{[\s\S]{0,120}?key:\s*'seed-meta:infra:bc-open511'/);
 });

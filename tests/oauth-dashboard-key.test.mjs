@@ -4,6 +4,11 @@ import handler from '../api/oauth/authorize.js';
 import tokenEndpoint from '../api/oauth/token.ts';
 import { resolveBearerToContext } from '../api/_oauth-token.js';
 import { sha256Hex } from '../api/_crypto.js';
+import { OAUTH_BIND_COOKIE, hashOAuthBindValue } from '../api/oauth/_browser-binding.js';
+
+// The consenting browser's binding cookie; the seeded nonce stores its hash.
+const BIND_VALUE = 'b'.repeat(43);
+const BIND_COOKIE_HEADER = `${OAUTH_BIND_COOKIE}=${BIND_VALUE}`;
 
 const key = `wm_${'b'.repeat(40)}`;
 const originalFetch = globalThis.fetch;
@@ -60,10 +65,10 @@ afterEach(() => {
 
 async function consent(apiKey = key, xhr = true) {
   const challenge = Buffer.from(await sha256Hex('a'.repeat(64)), 'hex').toString('base64url');
-  store.set('oauth:nonce:test', JSON.stringify({ client_id: 'client', redirect_uri: 'https://client.test/callback', code_challenge: challenge, state: 'state' }));
+  store.set('oauth:nonce:test', JSON.stringify({ client_id: 'client', redirect_uri: 'https://client.test/callback', code_challenge: challenge, state: 'state', bind_hash: await hashOAuthBindValue(BIND_VALUE) }));
   store.set('oauth:client:client', JSON.stringify({ redirect_uris: ['https://client.test/callback'] }));
   return handler(new Request('https://api.worldmonitor.app/oauth/authorize', {
-    method: 'POST', body: new URLSearchParams({ _nonce: 'test', _js: xhr ? '1' : '', api_key: apiKey }),
+    method: 'POST', headers: { cookie: BIND_COOKIE_HEADER }, body: new URLSearchParams({ _nonce: 'test', _js: xhr ? '1' : '', api_key: apiKey }),
   }));
 }
 
@@ -111,7 +116,7 @@ it('reports validation failure as retryable', async () => {
   assert.equal(store.has('oauth:nonce:test'), false);
   validation = { id: 'key_dashboard', userId: 'user_dashboard' };
   const recovered = await handler(new Request('https://api.worldmonitor.app/oauth/authorize', {
-    method: 'POST', body: new URLSearchParams({ _nonce: retry.nonce, _js: '1', api_key: key }),
+    method: 'POST', headers: { cookie: BIND_COOKIE_HEADER }, body: new URLSearchParams({ _nonce: retry.nonce, _js: '1', api_key: key }),
   }));
   assert.equal(recovered.status, 200);
   assert.equal(new URL((await recovered.json()).location).hostname, 'client.test');

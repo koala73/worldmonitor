@@ -151,7 +151,7 @@ describe('immutable native-autodeploy fleet', () => {
     source: { repo, image: null },
   });
 
-  it('ships the 90-service fleet including the provisioned NO2 activity seeder', () => {
+  it('ships the 92-service fleet including the provisioned regional energy bundle', () => {
     // 84 -> 85: seed-live-video-resolved (service 11581ac4, cron 0 */6 * * *)
     // was provisioned after #8596 merged. 85 -> 86: verification-desk
     // (service 1f732679, always-on, desk.worldmonitor.app) enrolled by #9083.
@@ -160,7 +160,11 @@ describe('immutable native-autodeploy fleet', () => {
     // d295b2c7, cron 30 0 * * *) was provisioned after #9435 merged. 88 -> 89:
     // seed-notam-nms (service 4aa3db57, cron */5 * * * *) was provisioned
     // after #9637 merged. 89 -> 90: seed-no2-activity (service 359e5bd7,
-    // cron 20 6 * * *) was provisioned before #9722's PR merged. The roster is not a baseline to be
+    // cron 20 6 * * *) was provisioned before #9722's PR merged. 90 -> 91:
+    // seed-ukmto-incidents (service fa702bee, cron */30 * * * *) was
+    // provisioned after #9858 merged. 91 -> 92: seed-bundle-regional-energy
+    // (service 441a7f0d, cron */15 * * * *) was provisioned after #9852 merged.
+    // The roster is not a baseline to be
     // quieted — every mismatch is red — but it must list every repo-backed
     // service, or a service whose GitHub source detaches vanishes before
     // repository filtering and both read-only monitors report healthy. An
@@ -169,9 +173,9 @@ describe('immutable native-autodeploy fleet', () => {
     // NOTE: acceptedHead/acceptedRunId still name the pre-provisioning run; a
     // fresh reconciliation should re-stamp them.
     const fleet = readExpectedRepositoryFleet();
-    assert.equal(fleet.length, 90);
-    assert.equal(new Set(fleet.map((service) => service.id)).size, 90);
-    assert.equal(new Set(fleet.map((service) => service.name)).size, 90);
+    assert.equal(fleet.length, 92);
+    assert.equal(new Set(fleet.map((service) => service.id)).size, 92);
+    assert.equal(new Set(fleet.map((service) => service.name)).size, 92);
     assert.deepEqual(
       fleet.map((service) => service.name),
       [...fleet.map((service) => service.name)].sort(),

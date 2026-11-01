@@ -158,7 +158,8 @@ const MAP = [
   [/:\/api\/intelligence\/v1\/(get-country-intel-brief|get-regime-history|get-country-coverage)$/, { cap: 'intel.country_brief' }],
   [/:\/api\/intelligence\/v1\/(get-regional-snapshot|get-regional-brief)$/,   { cap: 'intel.regional' }],
   [/:\/api\/resilience\/v1\//,                            { cap: 'resilience.scores' }],
-  [/:\/api\/scorecard\/v1\//,                             { cap: 'resilience.scores', note: 'five-factor scorecards' }],
+  // Five-factor scorecard (/api/scorecard/v1/) went free (#9742) — no gate
+  // rule is produced for it any more, so it carries no capability here.
   [/:\/api\/supply-chain\/v1\/(get-country-chokepoint-index|get-bypass-options)$/, { cap: 'supplychain.chokepoints' }],
   [/:\/api\/supply-chain\/v1\/(get-route-explorer-lane|get-route-impact)$/,        { cap: 'supplychain.routes' }],
   [/:\/api\/supply-chain\/v1\/(get-country-cost-shock|get-multi-sector-cost-shock|get-sector-dependency|get-country-products)$/, { cap: 'supplychain.costshock' }],
@@ -227,8 +228,6 @@ const SITE_MAP = [
   [/server\/gateway\.ts/,                     { cap: 'embed.panels', note: 'wme_ key accepted on the RPC paths a paid embed panel declares (EMBED_KEY_RPC_PATHS) — the data read behind the entitlement answer' , preds: ['embedAccess'] }],
   // --- false positive: data LOD tier, not an entitlement tier ---
   [/list-military-bases\.ts/,                 { exclude: 'meta.tier is a base-importance LOD tier for zoom filtering, NOT an entitlement tier' , preds: ['tier'] }],
-  // --- false positive: publisher source-credibility tier, not an entitlement tier ---
-  [/api\/mcp\/ui\/news-intelligence-app\.ts/,   { exclude: 'publisher.tier is a declared source-credibility tier (1-4) shown beside news publishers, NOT an entitlement tier' , preds: ['tier'] }],
   // --- server route enforcement points of already-mapped API paths ---
   [/server\/worldmonitor\/supply-chain\/v1\/(get-country-chokepoint-index|get-bypass-options)/, { cap: 'supplychain.chokepoints', note: 'enforcement point' , preds: ['isCallerPremium'] }],
   [/server\/worldmonitor\/supply-chain\/v1\/(get-route-explorer-lane|get-route-impact)/,        { cap: 'supplychain.routes', note: 'enforcement point' , preds: ['isCallerPremium'] }],
@@ -329,7 +328,6 @@ const SITE_BASELINE = {
   "api/mcp/auth.ts::apiAccess": 1,
   "api/mcp/auth.ts::tier": 1,
   "api/mcp/skill-extension/generated.ts::tier": 1,
-  "api/mcp/ui/news-intelligence-app.ts::tier": 1,
   "api/me/entitlement.ts::isCallerPremium": 1,
   "api/notification-channels.ts::tier": 1,
   "api/v2/shipping/webhooks/[subscriberId].ts::resolvePremiumCallerIdentity": 1,

@@ -1,0 +1,28 @@
+{
+  "name": "worldmonitor",
+  "displayName": "World Monitor",
+  "version": "1.0.1",
+  "description": "Source-backed global intelligence in Claude: world news briefs, country risk, armed conflict, maritime chokepoints, natural hazards and market snapshots from the World Monitor MCP server, with skills that keep sources, observation times and data gaps in every answer.",
+  "author": {
+    "name": "World Monitor",
+    "email": "support@worldmonitor.app",
+    "url": "https://www.worldmonitor.app"
+  },
+  "homepage": "https://www.worldmonitor.app/docs/mcp-overview",
+  "privacyPolicyUrl": "https://www.worldmonitor.app/docs/privacy",
+  "termsOfServiceUrl": "https://www.worldmonitor.app/legal/terms.pdf",
+  "supportUrl": "https://www.worldmonitor.app/support.md",
+  "documentationUrl": "https://www.worldmonitor.app/docs/mcp-quickstart",
+  "repository": "https://github.com/koala73/worldmonitor",
+  "license": "AGPL-3.0-only",
+  "keywords": [
+    "geopolitics",
+    "country-risk",
+    "conflict",
+    "shipping",
+    "chokepoints",
+    "natural-disasters",
+    "markets",
+    "news"
+  ]
+}

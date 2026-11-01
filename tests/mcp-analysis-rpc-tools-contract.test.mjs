@@ -67,7 +67,7 @@ describe('wave-2a analysis tools registry contract', () => {
     const params = {
       get_signal_convergence: ['lat', 'lon', 'radius_km', 'min_domains'],
       get_focal_points: ['country_code', 'limit'],
-      simulate_infrastructure_cascade: ['source_id', 'source_ids', 'cut_cables_through', 'disruption_level'],
+      simulate_infrastructure_cascade: ['source_id', 'source_ids', 'cut_cables_through', 'disruption_level', 'countries'],
       get_military_surge: ['theater'],
     };
     for (const [name, keys] of Object.entries(params)) {

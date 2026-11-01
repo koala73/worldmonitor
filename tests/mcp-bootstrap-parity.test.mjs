@@ -69,6 +69,11 @@ const EXCLUDED_FROM_MCP = new Map([
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:world-bank',
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
+  ...['colombia-secop', 'kenya-ppip', 'south-africa-etenders', 'chile-mercado-publico', 'brazil-pncp',
+    'ukraine-prozorro', 'bulgaria-eop', 'latvia-iub', 'poland-bzp', 'pakistan-ppra'].map((source) => [
+    `economic:global-tenders:v1:source:${source}`,
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.',
+  ]),
   ['military:cross-strait-activity:v1:source:taiwan-mnd',
     'operational: Taiwan MND transport status, errors, and last-success time consumed by api/health.js; #5580 owns final MCP composition for the separately attributed official activity records.'],
   ['maritime:ais-gaps:v1',
@@ -407,6 +412,10 @@ const EXCLUDED_FROM_MCP = new Map([
   // (could be a follow-up tool).
   ['energy:spine:v1:_countries',
     'deferred: per-country energy spine index; covered indirectly via get_energy_intelligence headline aggregates. Future expanded per-country energy tool would expose this.'],
+  ...['pgcb', 'petrobangla', 'niso', 'eskom', 'cammesa', 'gse', 'ons', 'anp', 'evn', 'korem', 'coes', 'iccc', 'fccc', 'mem'].map(id => [
+    `energy:regional:${id}:v1`,
+    'deferred: country-specific regional observations exposed by get-country-energy-profile; the MCP energy tool provides headline aggregates. A future per-country energy tool can expose these series.',
+  ]),
   ['energy:exposure:v1:index',
     'deferred: OWID energy-mix exposure index; get_energy_intelligence covers the headline energy bundle. Future detailed energy-mix tool would expose this.'],
   ['energy:mix:v1:_all',

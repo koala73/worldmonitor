@@ -116,7 +116,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['www.economia-sniim.gob.mx', 'finance'],
   ['www.onagri.nat.tn', 'finance'],
   ['www.pbs.gov.pk', 'finance'],
-  ['sccd.royalnavy.mod.uk', 'infrastructure'],
+  ['hormuz.data-tracking.net', 'infrastructure'],
   ['Alberta Emergency Alert', 'environment'],
   ['B.C. Evacuation Orders and Alerts', 'environment'],
   ['SaskAlert', 'environment'],
@@ -207,7 +207,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
 // Keep the hostname as the traceability link, but never make it do double duty
 // as the visible provider title.
 const SOURCE_NAME_OVERRIDES = new Map([
-  ['sccd.royalnavy.mod.uk', 'UK Maritime Trade Operations (UKMTO)'],
+  ['hormuz.data-tracking.net', 'UK Maritime Trade Operations (UKMTO) via hormuz.data-tracking.net'],
   ['acleddata.com', 'ACLED'],
   ['factchecktools.googleapis.com', 'Google Fact Check Tools API'],
   ['adsb.lol', 'ADSB.lol'],

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "worldmonitor",
+  "displayName": "WorldMonitor",
+  "version": "2.11.6",
+  "description": "Live global intelligence for your agent: source-attributed news, country risk, conflicts, markets, energy and maritime chokepoints.",
+  "logo": "public/favico/worldmonitor-icon-1024.png",
+  "suggestedPrompts": [
+    "Show today's world headlines with sources and coverage",
+    "Check the current risk picture for Taiwan and its main drivers",
+    "Which maritime chokepoints are disrupted right now and what is the energy exposure?"
+  ],
+  "author": {
+    "name": "WorldMonitor",
+    "email": "support@worldmonitor.app",
+    "url": "https://www.worldmonitor.app"
+  },
+  "homepage": "https://www.worldmonitor.app/docs/gemini-antigravity",
+  "repository": "https://github.com/koala73/worldmonitor",
+  "license": "AGPL-3.0-only",
+  "keywords": ["geopolitics", "news", "country-risk", "markets", "energy", "shipping", "mcp"]
+}

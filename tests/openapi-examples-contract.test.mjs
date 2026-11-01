@@ -651,7 +651,7 @@ function honeypotRequestViolations(spec, label) {
 describe('OpenAPI examples contract', () => {
   // Bump these exact surface counts when adding or removing proto services/RPCs.
   it('audits the known service operation surface', () => {
-    assert.equal(serviceSpecs.length, 38, `expected 38 service specs, found ${serviceSpecs.length}`);
+    assert.equal(serviceSpecs.length, 39, `expected 39 service specs, found ${serviceSpecs.length}`);
     const total = serviceSpecs.reduce((sum, file) => {
       const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
       return sum + operationEntries(spec).length;

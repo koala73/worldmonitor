@@ -26,6 +26,7 @@ import {
   buildBundle,
   collapseSoftLineBreaks,
   dropDefaultParameterRequired,
+  dropDuplicateOperationSummaries,
   dropUnreferencedSecuritySchemes,
   shortenGeneratedSuccessDescriptions,
   trimResponseExampleLists,
@@ -47,6 +48,27 @@ import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const buildScriptPath = resolve(root, 'scripts/build-openapi-json.mjs');
+
+describe('duplicate generated operation summaries', () => {
+  it('removes only exact operationId copies and leaves schemas and custom summaries intact', () => {
+    const spec = {
+      paths: {
+        '/example': {
+          get: { operationId: 'GetExample', summary: 'GetExample', responses: { 200: { description: 'OK' } } },
+          post: { operationId: 'PostExample', summary: 'Create an example' },
+          'x-metadata': { operationId: 'Metadata', summary: 'Metadata' },
+        },
+        '/missing-id': { get: { summary: 'Useful summary' }, post: { operationId: '', summary: '' } },
+      },
+      components: { schemas: { Example: { type: 'object', properties: { value: { type: 'number' } } } } },
+    };
+    const expected = structuredClone(spec);
+    delete expected.paths['/example'].get.summary;
+    assert.deepEqual(dropDuplicateOperationSummaries(spec), { dropped: 1 });
+    assert.deepEqual(spec, expected);
+    assert.deepEqual(dropDuplicateOperationSummaries(spec), { dropped: 0 });
+  });
+});
 
 // Leave headroom under the ~1 MB cap: the spec sat at ~752 KB when the check
 // last passed and ~853 KB deduped today. If this fails, either extend the
@@ -999,8 +1021,9 @@ describe('public OpenAPI dedupe (real bundle)', () => {
 
   it('engages the exact repeated headers and generated scalar/date schemas', () => {
     // #9093 adds two POST operations to the YAML bundle; only submit carries
-    // the 2 idempotency headers (review is exempt from replay).
-    assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 41 });
+    // the 2 idempotency headers (review is exempt from replay). #8721 adds
+    // feedback submit-report, which carries the same 2 headers.
+    assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 43 });
     assert.equal(int64Stats.replacedRefs, 53);
     // Described int64 fields (own comment + generated warning) keep their
     // comment beside the shared $ref; a regression to zero would silently give

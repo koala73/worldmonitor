@@ -1007,10 +1007,18 @@ describe('planned Railway service lifecycle', () => {
       // 359e5bd7-4160-41d6-8792-f4aff20a3006 runs `node seed-no2-activity.mjs`
       // on cron 20 6 * * * with the CDSE credentials. Leaving it planned would
       // exempt a live cron from the watch-path and deploy-drift checks.
+      // seed-bundle-regional-energy (#9842) is deliberately ABSENT now: service
+      // 441a7f0d-b3a7-464a-8328-9638c00c226c runs
+      // `node seed-bundle-regional-energy.mjs` on cron */15 * * * *. Leaving it
+      // planned would exempt a live cron from the watch-path and deploy-drift checks.
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',
-      'seed-ukmto-incidents',
+      // seed-ukmto-incidents (#9832) is deliberately ABSENT now: service
+      // fa702bee-b70c-44de-9aca-9cea889e89fb runs
+      // `node seed-ukmto-incidents.mjs` on cron */30 * * * * against the
+      // hormuz.data-tracking.net republication (#9858). Leaving it planned
+      // would exempt a live cron from the watch-path and deploy-drift checks.
       'seed-weather-alerts',
       // seed-notam-nms (#9637) is deliberately ABSENT now: it landed planned
       // until FAA granted production NMS-API access, and service

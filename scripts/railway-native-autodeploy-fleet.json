@@ -93,6 +93,10 @@
       "name": "seed-bundle-regional"
     },
     {
+      "id": "441a7f0d-b3a7-464a-8328-9638c00c226c",
+      "name": "seed-bundle-regional-energy"
+    },
+    {
       "id": "6893b852-347b-490b-b033-3ce35522ea45",
       "name": "seed-bundle-relay-backup"
     },
@@ -335,6 +339,10 @@
     {
       "id": "dd3097f7-df65-4b0e-89ca-86a5fac7d558",
       "name": "seed-trade-flows"
+    },
+    {
+      "id": "fa702bee-b70c-44de-9aca-9cea889e89fb",
+      "name": "seed-ukmto-incidents"
     },
     {
       "id": "33c8c2a1-ad66-45ec-ac7e-609d69a59455",

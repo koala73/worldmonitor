@@ -7,6 +7,7 @@ import {
   mkdirSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -154,6 +155,97 @@ describe('worktree bootstrap helper', () => {
       '[worktree] verified npm install present; skipping npm ci',
       '[worktree] bootstrap complete',
     ]);
+  });
+
+  // --ignore-scripts skips the root package's own postinstall too, and that
+  // postinstall writes gitignored files the pre-push hook needs
+  // (api/_inventory-facts.generated.js for the edge bundle check). A
+  // test-only worktree then failed its first push. Dependency scripts stay
+  // skipped; the package's own postinstall runs.
+  it('runs the package postinstall after an --ignore-scripts install', () => {
+    const root = makeTempDir();
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ scripts: { postinstall: 'npm run inventory:facts' } }));
+    const logs = [];
+
+    bootstrapWorktree({ dryRun: true, ignoreScripts: true, rootDir: root, skipEnv: true, log: line => logs.push(line) });
+    assert.deepEqual(logs, [
+      '[worktree] would run: npm ci --cache /tmp/worldmonitor-npm-cache --prefer-offline --ignore-scripts',
+      '[worktree] would run: npm run postinstall',
+      '[worktree] bootstrap complete',
+    ]);
+
+    writeFileSync(join(root, 'package.json'), '{}');
+    logs.length = 0;
+    bootstrapWorktree({ dryRun: true, ignoreScripts: true, rootDir: root, skipEnv: true, log: line => logs.push(line) });
+    assert.deepEqual(logs, [
+      '[worktree] would run: npm ci --cache /tmp/worldmonitor-npm-cache --prefer-offline --ignore-scripts',
+      '[worktree] bootstrap complete',
+    ], 'a package without a postinstall runs nothing extra');
+  });
+
+  // The dry-run test above checks the plan; this one runs it. A fake npm on
+  // PATH records each call's directory and arguments, so the spawn's cwd, the
+  // order after npm ci, and the failure path are all exercised.
+  describe('postinstall after an --ignore-scripts install (real spawn)', () => {
+    const withFakeNpm = (t, { failOn = '' } = {}) => {
+      const bin = makeTempDir('wm-fake-npm-');
+      const record = join(bin, 'calls.log');
+      writeFileSync(join(bin, 'npm'), [
+        '#!/bin/sh',
+        `printf '%s %s\\n' "$(pwd -P)" "$*" >> '${record}'`,
+        failOn ? `case "$*" in *'${failOn}'*) exit 7 ;; esac` : '',
+        'exit 0',
+        '',
+      ].join('\n'), { mode: 0o755 });
+      const previousPath = process.env.PATH;
+      process.env.PATH = `${bin}:${previousPath}`;
+      t.after(() => { process.env.PATH = previousPath; });
+      return () => (existsSync(record) ? readFileSync(record, 'utf8').trim().split('\n') : []);
+    };
+    const makeRoot = (pkg) => {
+      const root = makeTempDir();
+      writeFileSync(join(root, 'package.json'), JSON.stringify(pkg));
+      return { root, real: realpathSync(root), cacheDir: join(root, '.npm-cache') };
+    };
+    const withPostinstall = { scripts: { postinstall: 'node gen.mjs' } };
+
+    it('runs npm ci, then the postinstall, in the package root', (t) => {
+      const calls = withFakeNpm(t);
+      const { root, real, cacheDir } = makeRoot(withPostinstall);
+      bootstrapWorktree({ cacheDir, ignoreScripts: true, rootDir: root, skipEnv: true, log: quiet });
+      assert.deepEqual(calls(), [
+        `${real} ci --cache ${cacheDir} --prefer-offline --ignore-scripts`,
+        `${real} run postinstall`,
+      ]);
+    });
+
+    it('runs nothing extra without --ignore-scripts', (t) => {
+      const calls = withFakeNpm(t);
+      const { root, real, cacheDir } = makeRoot(withPostinstall);
+      bootstrapWorktree({ cacheDir, rootDir: root, skipEnv: true, log: quiet });
+      assert.deepEqual(calls(), [`${real} ci --cache ${cacheDir} --prefer-offline`]);
+    });
+
+    it('fails the bootstrap when the postinstall fails', (t) => {
+      withFakeNpm(t, { failOn: 'run postinstall' });
+      const { root, cacheDir } = makeRoot(withPostinstall);
+      assert.throws(
+        () => bootstrapWorktree({ cacheDir, ignoreScripts: true, rootDir: root, skipEnv: true, log: quiet }),
+        /npm run postinstall failed with exit code 7/,
+      );
+    });
+
+    // A worktree bootstrapped before this fix has node_modules but no
+    // generated files. Re-running the test-only bootstrap must repair it
+    // without --force-install.
+    it('runs the postinstall when an existing install is kept', (t) => {
+      const calls = withFakeNpm(t);
+      const { root, real, cacheDir } = makeRoot(withPostinstall);
+      mkdirSync(join(root, 'node_modules'));
+      writeFileSync(join(root, 'node_modules', '.package-lock.json'), '{}');
+      bootstrapWorktree({ cacheDir, ignoreScripts: true, rootDir: root, skipEnv: true, log: quiet });
+      assert.deepEqual(calls(), [`${real} run postinstall`]);
+    });
   });
 
   it('seeds pro-test deps when that package is present', () => {

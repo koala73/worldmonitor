@@ -225,6 +225,21 @@ async function seedPersonalRow(
       reason: "bounce",
       suppressedAt: now,
     });
+    await ctx.db.insert("agentFeedback", {
+      kind: "bug",
+      surfaceType: "mcp_tool",
+      surfaceName: "get_market_data",
+      summary: "Quotes are empty",
+      redacted: false,
+      fingerprint: "f".repeat(64),
+      retryKey: "e".repeat(64),
+      reporterKey: `principal:${userId}`,
+      authKind: "keyed",
+      principalId: userId,
+      status: "received",
+      receivedAt: now,
+      updatedAt: now,
+    });
   });
 }
 
@@ -407,6 +422,9 @@ describe("account deletion — Convex cascade", () => {
     expect(await rowsForUser(t, "entitlements", USER_A.subject)).toHaveLength(0);
     expect(await rowsForUser(t, "followedCountries", USER_A.subject)).toHaveLength(0);
     expect(await rowsForUser(t, "customers", USER_A.subject)).toHaveLength(0);
+    const feedbackPrincipals = await t.run(async (ctx) =>
+      (await ctx.db.query("agentFeedback").collect()).map((r) => r.principalId));
+    expect(feedbackPrincipals).toEqual([USER_B.subject]);
 
     expect(await rowsForUser(t, "users", USER_B.subject)).toHaveLength(1);
     expect(await rowsForUser(t, "userPreferences", USER_B.subject)).toHaveLength(1);

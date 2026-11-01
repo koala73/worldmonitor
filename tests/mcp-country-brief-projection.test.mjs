@@ -42,12 +42,12 @@ function assertBrief(doc) {
   assert.equal(doc.getElementById('title').textContent, 'Finland Brief');
   assert.equal(doc.querySelectorAll('#brief .para').length, 2);
   assert.equal(doc.querySelector('#brief .ev-ref')?.textContent, 'E2');
-  assert.match(doc.querySelector('#brief .ev-ref').title, /Fiscal space: 28\/100 \(as of 2026-09-01\)/);
+  assert.match(doc.querySelector('#brief .ev-ref').title, /Fiscal space: 28\/100 \(as of 1 Sep 2026\)/);
   assert.match(doc.getElementById('brief').textContent, /\[E9\]/);
   assert.deepEqual([...doc.querySelectorAll('#sources a')].map(node => node.href), ['https://example.com/finland']);
   assert.deepEqual([...doc.querySelectorAll('#evidence a')].map(node => node.href), ['https://www.worldmonitor.app/country/FI']);
   assert.equal(doc.querySelectorAll('#evidence .ev-row').length, 3);
-  assert.equal(doc.getElementById('foot').textContent, 'Generated 2026-09-23T00:00:00.000Z');
+  assert.equal(doc.getElementById('foot').textContent, 'Generated 23 Sep 2026, 00:00 UTC');
   assert.doesNotMatch(doc.body.textContent, /hidden-controlled-model/);
 }
 function assertCleared(doc) {

@@ -14,6 +14,7 @@ Machine-readable version for agents: [`/support.md`](https://www.worldmonitor.ap
 | General support, account or billing issues | [support@worldmonitor.app](mailto:support@worldmonitor.app) |
 | Enterprise, sales, custom quotas | [enterprise@worldmonitor.app](mailto:enterprise@worldmonitor.app) |
 | Bug reports & feature requests | [GitHub issues](https://github.com/koala73/worldmonitor/issues) (public, open source) |
+| Agent-reported failures, missing tools, wrong data | MCP tool [`report_issue`](/mcp-tools-reference#report_issue) or `POST /api/feedback/v1/submit-report`, credential-free. A person reads every report; no reply is sent. |
 | Service status & incidents | [status.worldmonitor.app](https://status.worldmonitor.app) — email subscription available |
 | Security vulnerabilities | See [security.txt](https://www.worldmonitor.app/.well-known/security.txt) |
 
@@ -25,7 +26,7 @@ The in-app contact form on [/pro](https://www.worldmonitor.app/pro) (`POST /api/
 - **Pro Business** — priority support on the same channels. No formal SLA.
 - **Enterprise** — dedicated support with committed response times, agreed per contract.
 
-When writing about an API issue, include your key prefix (never the full key), the endpoint, and any request IDs or `X-RateLimit-*` header values you received.
+When writing about an API issue, include your key prefix (never the full key), the endpoint, and any request IDs or `X-RateLimit-*` header values you received. An MCP error's request ID is `error.data.requestId`; a REST response's is the `x-vercel-id` header.
 
 ## Before you write in
 

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import type {} from '../src/e2e/china-activity-nowcast-panel-harness';
 
 test.describe('China activity nowcast panel', () => {
   test('explains the comparison safely at narrow and desktop widths', async ({ page }) => {

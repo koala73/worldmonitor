@@ -5,7 +5,7 @@ import { jsonResponse } from '../_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { resolveBearerToContext } from '../_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
-import { timingSafeIncludes } from '../_crypto.js';
+import { getOperatorKeys, timingSafeIncludes } from '../_crypto.js';
 // @ts-expect-error — JS module, no declaration file
 import { getClientRateLimitKey, hasCloudflareTransitProof } from '../_client-ip.js';
 // @ts-expect-error — JS module, no declaration file
@@ -443,7 +443,7 @@ export async function resolveAuthContext(
       }),
     };
   }
-  const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
+  const validKeys = getOperatorKeys();
   if (await timingSafeIncludes(candidateKey, validKeys)) {
     return { ok: true, context: { kind: 'env_key', apiKey: candidateKey } };
   }

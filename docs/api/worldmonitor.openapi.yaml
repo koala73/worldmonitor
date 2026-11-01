@@ -12132,6 +12132,152 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/feedback/v1/submit-report:
+        post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
+            tags:
+                - FeedbackService
+            summary: SubmitReport
+            description: SubmitReport stores one structured report for human review and returns its id. Anonymous, tightly rate-limited, never acted on automatically.
+            operationId: SubmitReport
+            security: []
+            requestBody:
+                content:
+                    application/json:
+                        example:
+                            "actual": "example"
+                            "clientName": "WorldMonitor Analyst"
+                            "expected": "example"
+                            "kind": "example"
+                            "requestId": "example-id"
+                            "summary": "Example WorldMonitor observation."
+                            "surface": "example"
+                        schema:
+                            $ref: '#/components/schemas/worldmonitor_feedback_v1_SubmitReportRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
+                        Idempotent-Replayed:
+                            schema:
+                                type: boolean
+                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
+                    content:
+                        application/json:
+                            example:
+                                "advisoryUrl": "https://example.com/worldmonitor"
+                                "notice": "example"
+                                "reportId": "example-id"
+                                "status": "example"
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_feedback_v1_SubmitReportResponse'
+                "400":
+                    description: Validation error, invalid Idempotency-Key header, or malformed JSON request body
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/forecast/v1/get-forecasts:
         get:
             tags:
@@ -19049,6 +19195,7 @@ paths:
                                       "importTankerDwt": 1.5
                                       "lat": 40.7128
                                       "lon": -74.006
+                                "stale": true
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_intelligence_v1_CountryPortActivityResponse'
                 "400":
@@ -30379,12 +30526,9 @@ paths:
             tags:
                 - ScorecardService
             summary: GetFiveFactorScorecard
-            description: PRO-gated. Requires entitlement tier >= 1.
+            description: GetFiveFactorScorecard returns the cached five-factor scorecard for one country.
             operationId: GetFiveFactorScorecard
-            security:
-                - WorldMonitorKey: []
-                - ApiKeyHeader: []
-                - BearerAuth: []
+            security: []
             parameters:
                 - name: countryCode
                   in: query
@@ -30462,23 +30606,6 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/ValidationError'
                                     - $ref: '#/components/schemas/JmespathProjectionError'
-                "401":
-                    description: Missing or invalid API key.
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/UnauthorizedError'
-                "403":
-                    description: PRO entitlement access denied.
-                    headers:
-                        X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
-                            schema:
-                                type: string
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ForbiddenError'
                 "429":
                     description: Rate limit exceeded.
                     headers:
@@ -30504,31 +30631,6 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
-                "503":
-                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
-                    headers:
-                        Retry-After:
-                            description: Seconds to wait before retrying (1-60).
-                            schema:
-                                type: string
-                        X-Billing-Verification:
-                            description: Billing-verification state that produced this response (matches the body `code`).
-                            schema:
-                                type: string
-                        X-Validation-Mode:
-                            description: Present with value degraded when user API-key validation is temporarily unavailable.
-                            schema:
-                                type: string
-                        X-RateLimit-Mode:
-                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
-                            schema:
-                                type: string
-                    content:
-                        application/json:
-                            schema:
-                                oneOf:
-                                    - $ref: '#/components/schemas/BillingVerificationError'
-                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -30542,12 +30644,9 @@ paths:
             tags:
                 - ScorecardService
             summary: ListFiveFactorScorecards
-            description: PRO-gated. Requires entitlement tier >= 1.
+            description: ListFiveFactorScorecards returns compact summaries of all cached five-factor country scorecards.
             operationId: ListFiveFactorScorecards
-            security:
-                - WorldMonitorKey: []
-                - ApiKeyHeader: []
-                - BearerAuth: []
+            security: []
             parameters:
                 - name: jmespath
                   in: query
@@ -30588,23 +30687,6 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/ValidationError'
                                     - $ref: '#/components/schemas/JmespathProjectionError'
-                "401":
-                    description: Missing or invalid API key.
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/UnauthorizedError'
-                "403":
-                    description: PRO entitlement access denied.
-                    headers:
-                        X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
-                            schema:
-                                type: string
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ForbiddenError'
                 "429":
                     description: Rate limit exceeded.
                     headers:
@@ -30630,31 +30712,6 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
-                "503":
-                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
-                    headers:
-                        Retry-After:
-                            description: Seconds to wait before retrying (1-60).
-                            schema:
-                                type: string
-                        X-Billing-Verification:
-                            description: Billing-verification state that produced this response (matches the body `code`).
-                            schema:
-                                type: string
-                        X-Validation-Mode:
-                            description: Present with value degraded when user API-key validation is temporarily unavailable.
-                            schema:
-                                type: string
-                        X-RateLimit-Mode:
-                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
-                            schema:
-                                type: string
-                    content:
-                        application/json:
-                            schema:
-                                oneOf:
-                                    - $ref: '#/components/schemas/BillingVerificationError'
-                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -30668,12 +30725,9 @@ paths:
             tags:
                 - ScorecardService
             summary: GetBlocScorecard
-            description: PRO-gated. Requires entitlement tier >= 1.
+            description: GetBlocScorecard returns the five-factor scorecard for a named bloc or a custom group of 2-30 countries.
             operationId: GetBlocScorecard
-            security:
-                - WorldMonitorKey: []
-                - ApiKeyHeader: []
-                - BearerAuth: []
+            security: []
             parameters:
                 - name: preset
                   in: query
@@ -30778,23 +30832,6 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/ValidationError'
                                     - $ref: '#/components/schemas/JmespathProjectionError'
-                "401":
-                    description: Missing or invalid API key.
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/UnauthorizedError'
-                "403":
-                    description: PRO entitlement access denied.
-                    headers:
-                        X-Billing-Verification:
-                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
-                            schema:
-                                type: string
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ForbiddenError'
                 "429":
                     description: Rate limit exceeded.
                     headers:
@@ -30820,31 +30857,6 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
-                "503":
-                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
-                    headers:
-                        Retry-After:
-                            description: Seconds to wait before retrying (1-60).
-                            schema:
-                                type: string
-                        X-Billing-Verification:
-                            description: Billing-verification state that produced this response (matches the body `code`).
-                            schema:
-                                type: string
-                        X-Validation-Mode:
-                            description: Present with value degraded when user API-key validation is temporarily unavailable.
-                            schema:
-                                type: string
-                        X-RateLimit-Mode:
-                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
-                            schema:
-                                type: string
-                    content:
-                        application/json:
-                            schema:
-                                oneOf:
-                                    - $ref: '#/components/schemas/BillingVerificationError'
-                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -47155,6 +47167,57 @@ components:
                 value:
                     type: number
                     format: double
+        worldmonitor_feedback_v1_SubmitReportRequest:
+            type: object
+            properties:
+                kind:
+                    type: string
+                    maxLength: 32
+                    description: bug | missing_capability | data_quality | security.
+                surface:
+                    type: string
+                    maxLength: 200
+                    description: 'What the report is about: an MCP tool name (get_market_data), an API path (/api/market/v1/list-market-quotes), or a short label. A name that does not exist yet is fine.'
+                summary:
+                    type: string
+                    maxLength: 300
+                    description: One-line description of the problem.
+                expected:
+                    type: string
+                    maxLength: 2000
+                    description: What you expected to happen.
+                actual:
+                    type: string
+                    maxLength: 2000
+                    description: What happened instead.
+                requestId:
+                    type: string
+                    maxLength: 128
+                    description: Request id of the failing call (the x-vercel-id response header, or data.requestId in an MCP error), so the report joins to our logs.
+                clientName:
+                    type: string
+                    maxLength: 80
+                    description: Name of the calling client or agent, for display only.
+            required:
+                - kind
+                - summary
+            description: 'SubmitReportRequest is one structured report from an agent. Do not include credentials: they are redacted before storage. For a security report, do not include exploit details; use the private advisory form.'
+        worldmonitor_feedback_v1_SubmitReportResponse:
+            type: object
+            properties:
+                reportId:
+                    type: string
+                    description: Report id to quote in any follow-up.
+                status:
+                    type: string
+                    description: received, or private for a security report.
+                advisoryUrl:
+                    type: string
+                    description: 'Security reports only: the private advisory form, where exploit details belong.'
+                notice:
+                    type: string
+                    description: 'Security reports only: a reminder not to send exploit details through this channel.'
+            description: SubmitReportResponse acknowledges a stored report.
         worldmonitor_forecast_v1_GetForecastsRequest:
             type: object
             properties:
@@ -51597,6 +51660,63 @@ components:
                     format: int32
                 importShareSource:
                     type: string
+                regionalEnergyFeeds:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_intelligence_v1_RegionalEnergyFeed'
+        worldmonitor_intelligence_v1_RegionalEnergyFeed:
+            type: object
+            properties:
+                sourceId:
+                    type: string
+                name:
+                    type: string
+                sourceUrl:
+                    type: string
+                licence:
+                    type: string
+                status:
+                    type: string
+                    description: |-
+                        available, partial, stale, unavailable, or error. Partial means that the
+                         latest series have different freshness states. It is not a risk rating.
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Unix epoch milliseconds; zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Latest observation period in Unix epoch milliseconds; zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
+                dataUrls:
+                    type: array
+                    items:
+                        type: string
+                observations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_intelligence_v1_RegionalEnergyObservation'
+                error:
+                    type: string
+                    description: Stable failure code. Empty for a valid record, including retained stale data.
+        worldmonitor_intelligence_v1_RegionalEnergyObservation:
+            type: object
+            properties:
+                metric:
+                    type: string
+                period:
+                    type: string
+                    description: 'Source reporting period: YYYY-MM, YYYY-MM-DD, or a UTC ISO timestamp.'
+                value:
+                    type: number
+                    format: double
+                unit:
+                    type: string
+                area:
+                    type: string
+                    description: Provider coverage, product, or cross-border partner. Empty means national.
+                stale:
+                    type: boolean
         worldmonitor_intelligence_v1_ComputeEnergyShockScenarioRequest:
             type: object
             properties:
@@ -51926,6 +52046,11 @@ components:
                     type: string
                 available:
                     type: boolean
+                stale:
+                    type: boolean
+                    description: |-
+                        True when IMF PortWatch has not refreshed this country for seven days or
+                         more. The ports are its last data, served for up to 30 days.
         worldmonitor_intelligence_v1_PortActivityEntry:
             type: object
             properties:

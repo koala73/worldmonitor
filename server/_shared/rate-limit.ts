@@ -605,6 +605,9 @@ interface EndpointRatePolicy {
 // using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
+  '/api/scorecard/v1/get-five-factor-scorecard': { limit: 30, window: '60 s' },
+  '/api/scorecard/v1/get-bloc-scorecard': { limit: 30, window: '60 s' },
+  '/api/scorecard/v1/list-five-factor-scorecards': { limit: 30, window: '60 s' },
   // #9094 /verify fact-check lookup: public, and a cache miss spends the
   // Google Fact Check Tools API quota.
   '/api/news/v1/search-fact-checks': { limit: 20, window: '60 s' },
@@ -768,6 +771,10 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/leads/v1/register-interest': { limit: 5, window: '1 h' },
   // #9093 reader error reports: anonymous writes to the review queue.
   '/api/news/v1/submit-error-report': { limit: 5, window: '1 h' },
+  // #8721 agent feedback: coarse outer guard only. The real model is the five
+  // buckets in admitFeedbackReport (server/_shared/agent-feedback.ts), which
+  // the MCP report_issue tool shares.
+  '/api/feedback/v1/submit-report': { limit: 20, window: '1 h' },
   // #9093 /trust page read: public and CDN-cached, bounded per IP.
   '/api/news/v1/list-label-changes': { limit: 60, window: '60 s' },
   // Operator review: secret-gated, but still bounded against secret guessing.
@@ -1028,6 +1035,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/news/v1/submit-error-report': {
     reason: 'Anonymous error reports write to the review queue (#9093).',
+  },
+  '/api/feedback/v1/submit-report': {
+    reason: 'Anonymous agent feedback writes to Convex and can email the owner (#8721).',
   },
   '/api/news/v1/list-error-reports': {
     reason: 'Operator review is gated by a shared secret; the limit bounds guessing (#9093).',

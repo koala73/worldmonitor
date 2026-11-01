@@ -1,5 +1,6 @@
 import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requireUserId, resolveUserId } from "./lib/auth";
 import { mergeEntitlementFeatures } from "./lib/entitlements";
@@ -172,6 +173,13 @@ export const revokeEmbedKey = mutation({
     }
 
     await ctx.db.patch(args.keyId, { revokedAt: Date.now() });
+    // Drop the edge's 60 s validation entry so the key is denied now. Scheduled
+    // only when Redis is configured, matching the user-key revoke path.
+    if (process.env.UPSTASH_REDIS_REST_URL || process.env.UPSTASH_REDIS_REST_TOKEN) {
+      await ctx.scheduler.runAfter(0, internal.payments.cacheActions.invalidateEmbedKeyCaches, {
+        keyHashes: [key.keyHash],
+      });
+    }
     return { ok: true, keyHash: key.keyHash };
   },
 });

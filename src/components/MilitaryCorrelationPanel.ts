@@ -95,6 +95,12 @@ export class MilitaryCorrelationPanel extends CorrelationPanel {
       )));
     }
 
+    if (model.japanCoverageLabel) {
+      children.push(h('div', {
+        className: 'cross-strait-japan-coverage',
+        style: 'font-size:calc(9px * var(--wm-panel-effective-scale, 1));line-height:1.4;margin:5px 0;opacity:0.8;',
+      }, model.japanCoverageLabel));
+    }
     if (model.japan.length > 0) {
       children.push(h('div', {
         style: 'font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;margin:5px 0 3px;',

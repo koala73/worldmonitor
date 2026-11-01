@@ -5,7 +5,7 @@ import { readExistsFlags, readJsonFromUpstash, readRawJsonFromUpstash, redisPipe
 import { unwrapEnvelope } from '../_seed-envelope.js';
 import { chokepointCacheIdentity, chokepointSourcePolicy, type ChokepointPanelRead } from './_chokepoint-snapshot';
 import { newsIntelligenceFreshness, newsIntelligenceReuseUntil, type NewsIntelligencePanelRead } from './_news-intelligence-snapshot';
-import { resolveCountryFilter } from './_country-args';
+import { resolveCountryArg, resolveCountryFilter } from './_country-args';
 import { validateToolArgs } from './_validate-args';
 import { filterNaturalDisastersPanelData, naturalDisastersReuseUntil, type NaturalDisastersPanelRead } from './_natural-disasters-reuse';
 import { isAppOwnedRedisKey } from '../_redis-key-ownership.js';
@@ -15,10 +15,13 @@ import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
 import { OPERATOR_KEY_DAILY_CEILINGS, reportHighUsageIfCrossed } from '../../server/_shared/high-usage-alarm';
 import { hashKeySync } from '../../server/_shared/usage-identity';
 import { readAccountAllowance } from './_account-allowance';
-import { applyPerMinuteLimit, getMcpBillingVerificationDenial, wwwAuthHeader } from './auth';
-import { BillingDenialError, RpcValidationError, ToolBackoffError } from './billing-denial';
+import { applyPerMinuteLimit, getMcpBillingVerificationDenial, runContextPreChecks, wwwAuthHeader } from './auth';
+import { getClientIp } from '../../server/_shared/client-ip';
+import { FeedbackRejectedError, REPORT_ISSUE_TOOL } from './registry/feedback-tools';
+import { BillingDenialError, RpcValidationError, ToolBackoffError, UpstreamHttpError } from './billing-denial';
 import {
   BothSourcesFailedError,
+  ToolFetchError,
   createMcpToolExecutionContext,
   downstreamErrorTags,
 } from './downstream';
@@ -45,6 +48,7 @@ import { filterConflictPanelEvents, isOrdinaryMarketDefault, presentConflictEven
 import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_ALIASES, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
+import { buildSpokenEnvelope, recordStaleFreshnessKeys } from './spoken';
 import { applyDeprecationNotice, buildStructuredContent } from './structured-content';
 import {
   principalIdForLog,
@@ -224,6 +228,13 @@ async function executeCacheTool(
     evaluatedAt,
     activationStates,
   );
+  // Per-check verdicts for the spoken narrators (#9722): the bundle verdict
+  // above cannot say WHICH key is stale, and a narrator must caveat only the
+  // data it reads aloud. Same evaluator, one check at a time.
+  const failedFreshnessChecks = (indices: number[]) => indices
+    .filter(index => evaluateFreshness([freshnessChecks[index]!], [metas[index]], evaluatedAt, activationStates).stale)
+    .map(index => freshnessChecks[index]!.key);
+  let staleCheckKeys = failedFreshnessChecks(freshnessIndices);
 
   if (tool.name === 'get_forecast_predictions') {
     const index = labels.indexOf('predictions');
@@ -283,6 +294,7 @@ async function executeCacheTool(
     const indices = labels.flatMap((label, index) => required.includes(label) ? [index] : []);
     const freshness = evaluateFreshness(indices.map(index => freshnessChecks[index]!), indices.map(index => metas[index]), evaluatedAt, activationStates);
     cached_at = freshness.cached_at; stale = freshness.stale; contentFreshnessPendingUntil = freshness.contentFreshnessPendingUntil;
+    staleCheckKeys = failedFreshnessChecks(indices);
     freshnessUnknown = indices.some(index => !metaOutcomes[index]!.ok);
     unreadable = indices.filter(index => !dataReads[index]!.ok).map(index => labels[index]!);
     activationUnknown &&= required.includes('_countries');
@@ -336,7 +348,7 @@ async function executeCacheTool(
   if (panel !== 'news-intelligence' && panel !== 'chokepoints' && argBool(params.summary)) result = tool._summarize ? tool._summarize(result) : summarizeData(result);
 
   const intelligenceFreshness = panel === 'news-intelligence' ? newsIntelligenceFreshness(data, unwrapped.map(value => value._seed), metas, evaluatedAt) : undefined;
-  return { reuseUntil, value: {
+  const value: CacheToolValue = {
     ...(tool.name === 'get_conflict_events' ? { conflict_source: projectConflictSourceObservation(metas[freshnessChecks.findIndex(check => check.key === 'seed-meta:conflict:ucdp-events')]) } : {}),
     cached_at,
     stale: stale || intelligenceFreshness?.stale === true || chokepointPolicy?.stale === true,
@@ -346,7 +358,9 @@ async function executeCacheTool(
     ...(contentFreshnessPendingUntil === undefined ? {} : { contentFreshnessPendingUntil }),
     ...(lockedKeys.length > 0 ? { locked: lockedKeys.map(key => cacheKeyLabel(tool, key)), upgradeUrl: MCP_UPGRADE_URL } : {}),
     data: result,
-  } };
+  };
+  recordStaleFreshnessKeys(value, staleCheckKeys);
+  return { reuseUntil, value };
 }
 
 function filterCacheToolData(tool: CacheToolDef, data: Record<string, unknown>, params: Record<string, unknown>, panel?: CachePanelDomain): Record<string, unknown> {
@@ -434,6 +448,48 @@ function quotaBackendUnavailableResponse(
   );
 }
 
+const REGISTERED_TOOL_NAMES: ReadonlySet<string> = new Set(TOOL_REGISTRY.map((tool) => tool.name));
+
+// #8721 phase 7: an error that suggests a bug (an unexpected tool failure) or
+// a missing capability (an unknown tool) names the tool that takes a report.
+// The handler's exit adds `requestId` beside it (api/mcp/request-id.ts). Known
+// states, such as billing denials, rate limits, validation errors, source
+// outages and report_issue's own refusals, do not carry it.
+const REPORT_GUIDANCE = { reportWith: REPORT_ISSUE_TOOL } as const;
+/** Downstream statuses that mean "busy or down", not "broken": no report hint. */
+const UPSTREAM_EXPECTED_STATUSES = new Set([429, 502, 503, 504]);
+
+/**
+ * Who is calling `report_issue`, from the request and the auth context only
+ * (threat model, "Entry paths"). Keyed means a Pro or `wm_` principal that
+ * passes the same entitlement pre-check paid tools run, and is not on the
+ * free-account allowance (Decision 2). Every other caller, including one whose
+ * pre-check fails or is unavailable, reports anonymously: a lapsed key loses
+ * the keyed bucket, never the ability to report.
+ */
+async function resolveFeedbackCaller(
+  req: Request,
+  context: McpAuthContext,
+  deps: McpHandlerDeps,
+  resourceMetadataUrl: string,
+  corsHeaders: Record<string, string>,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<NonNullable<McpToolExecutionContext['feedbackCaller']>> {
+  let principalId: string | undefined;
+  if (context.kind === 'pro' || context.kind === 'user_key') {
+    // A pre-check that throws (entitlement store unreachable) is "unavailable":
+    // the caller reports anonymously rather than failing the report.
+    const check = await runContextPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx).catch(() => null);
+    if (check?.ok && check.freeAccountAllowance !== true) principalId = context.userId;
+  }
+  return {
+    clientIp: getClientIp(req),
+    userAgent: req.headers.get('user-agent') ?? '',
+    ...(principalId ? { principalId } : {}),
+    isKnownTool: (name) => REGISTERED_TOOL_NAMES.has(name),
+  };
+}
+
 export async function dispatchToolsCall(
   req: Request,
   context: McpAuthContext,
@@ -500,7 +556,7 @@ export async function dispatchToolsCall(
     }
     // Cap the echoed tool name — same reflection-amplification class as the
     // handler.ts method echo (see a2a.ts Greptile #4824 precedent).
-    return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders);
+    return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders, { ...REPORT_GUIDANCE });
   }
   if (resolved.kind === 'invalid') {
     if (deferredBurst) {
@@ -606,8 +662,14 @@ export async function dispatchToolsCall(
   try {
     // Legacy-shaped alias arguments only pass the target's refinements; every
     // other call, including a target-shaped alias, meets the full input schema.
-    if (aliasArguments && aliasArgumentsShape === 'legacy') tool._validateArgs?.(aliasArguments);
-    else validateToolArgs(tool, aliasArguments ?? (p.arguments === undefined ? {} : p.arguments));
+    if (aliasArguments && aliasArgumentsShape === 'legacy') {
+      tool._validateArgs?.(aliasArguments);
+      // A legacy-shaped alias skips the schema walk, which is where an
+      // unsupported `response_mode` is otherwise refused (#9722).
+      if (p.arguments?.response_mode !== undefined && !tool._spoken) {
+        throw new RpcValidationError(tool.name, [{ field: 'response_mode', description: 'This tool has no spoken mode. Only tools that list response_mode in their input schema accept it.' }]);
+      }
+    } else validateToolArgs(tool, aliasArguments ?? (p.arguments === undefined ? {} : p.arguments));
   } catch (error) {
     if (!(error instanceof RpcValidationError)) throw error;
     if (deferredBurst) {
@@ -621,7 +683,11 @@ export async function dispatchToolsCall(
   let panelUsage: PanelUsage | undefined;
   let panelRead: Awaited<ReturnType<typeof authorizePanelRead>> | undefined;
   const suppliedPanel = p.arguments?.panel_request;
-  const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request'));
+  // `response_mode` (#9722) only shapes the response after execution, like
+  // `jmespath`, so neither the tool, the panel admission schemas nor the panel
+  // read scope ever see it. Validated above against the tool's narrator.
+  const spokenRequested = p.arguments?.response_mode === 'spoken';
+  const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request' && key !== 'response_mode'));
   let sourceArguments = callArguments;
   // Callers without a dedicated panel allowance (API allowances, operator keys)
   // cannot hold a forecast panel_request; they read original evidence at the
@@ -656,7 +722,7 @@ export async function dispatchToolsCall(
         const parsed = (tool.name === 'get_country_brief' ? countryBriefDirectViewSchema : countryRiskDirectViewSchema).safeParse(view);
         if (!parsed.success) throw new PanelRequestError('Supply valid country arguments and a request_id for refresh.', 'invalid');
         const { refresh, request_id, ...filters } = parsed.data;
-        const normalized = normalizeCountryDirectRead(tool.name, filters);
+        const normalized = normalizeCountryDirectRead(tool.name, filters, resolveCountryArg);
         if (!normalized) throw new PanelRequestError('Supply a recognized country and analysis.', 'invalid');
         sourceArguments = normalized;
         if (suppliedPanel !== undefined && refresh) throw new PanelRequestError('Refresh the country without a reader token.', 'invalid');
@@ -997,6 +1063,9 @@ export async function dispatchToolsCall(
       if (startUpgradeResult) execution.startUpgradeResult = startUpgradeResult;
       if (panelRead?.panel === 'forecasts') execution.panelScope = 'forecasts';
       if (perToolForecastRead) execution.perToolForecastRead = true;
+      if (tool.name === REPORT_ISSUE_TOOL) {
+        execution.feedbackCaller = await resolveFeedbackCaller(req, context, deps, resourceMetadataUrl ?? '', corsHeaders, ctx);
+      }
       if (tool._execute) result = await tool._execute(
         aliasArguments ?? (dedicatedPanel && (tool.name === 'get_country_brief' || tool.name === 'get_country_risk') ? sourceArguments : forecastReaderArguments),
         execution.downstreamOrigin,
@@ -1061,11 +1130,20 @@ export async function dispatchToolsCall(
       && result && typeof result === 'object') {
       result = presentDefaultMarketData(result as Record<string, unknown>, tool._outputBudgetBytes);
     }
+    // Spoken mode (#9722): the finished payload becomes the narrator's
+    // sentence-and-citations envelope. It sits here, after every filter and
+    // presentation step and before the projection, so `jmespath` projects
+    // the envelope (`jmespath: "spoken"` returns only the sentence) and the
+    // attribution rider below is still built from the full payload.
+    const narratedFrom = result;
+    if (spokenRequested && tool._spoken && result && typeof result === 'object' && !Array.isArray(result)) {
+      result = buildSpokenEnvelope(tool, result as Record<string, unknown>, callArguments);
+    }
     let { text: projectedText, value: projectedValue, failed } = applyJmespath(result, jmespathArg);
     // A news-panel token reading Natural map data keeps its full geometry.
     const newsMapRead = tool.name === 'get_natural_disasters' && panelRead !== undefined && panelRead.panel !== 'disasters';
     let fitCoverage: unknown;
-    if (tool._fitToBudget && !newsMapRead
+    if (tool._fitToBudget && !newsMapRead && !spokenRequested
       && result && typeof result === 'object'
       && (failed === 'projection_too_large' || utf8ByteLength(projectedText) > tool._outputBudgetBytes)) {
       const presented = tool._fitToBudget(result as Record<string, unknown>, tool._outputBudgetBytes, callArguments);
@@ -1096,7 +1174,7 @@ export async function dispatchToolsCall(
     // No `jmespath` argument → no rider and byte-identical output, because the
     // unprojected payload already carries its attribution inline.
     const rider = jmespathUsed && tool._attribution !== undefined
-      ? buildAttributionRider(result, tool._attribution)
+      ? buildAttributionRider(narratedFrom, tool._attribution)
       : null;
     let text = rider === null ? projectedText : mergeAttributionRider(projectedText, rider);
     if (fitCoverage !== undefined) {
@@ -1211,9 +1289,12 @@ export async function dispatchToolsCall(
     // Sentry/log alerts don't page on ordinary billing churn.
     const isExpectedDenial = err instanceof BillingDenialError;
     const isExpectedSourceOutage = err instanceof McpSourceUnavailableError;
+    // A refused report (its own limits, a degraded limiter, a deleted account)
+    // is an expected state the feedback buckets exist to produce.
+    const isExpectedRefusal = err instanceof FeedbackRejectedError;
     const downstreamTags = downstreamErrorTags(err);
     const isBothFailed = err instanceof BothSourcesFailedError;
-    const log = isClient4xx || isExpectedDenial || isExpectedSourceOutage ? console.warn : console.error;
+    const log = isClient4xx || isExpectedDenial || isExpectedSourceOutage || isExpectedRefusal ? console.warn : console.error;
     log('[mcp] tool execution error:', err);
     captureSilentError(err, {
       tags: {
@@ -1237,7 +1318,7 @@ export async function dispatchToolsCall(
       // Split the api/mcp catch-all (WORLDMONITOR-T8) into per-tool,
       // per-status groups — see api/mcp/error-fingerprint.ts.
       fingerprint: mcpErrorFingerprint('tool-execution', tool.name, err),
-      ...(isClient4xx || isExpectedDenial || isExpectedSourceOutage ? { level: 'warning' as const } : {}),
+      ...(isClient4xx || isExpectedDenial || isExpectedSourceOutage || isExpectedRefusal ? { level: 'warning' as const } : {}),
     });
     recordToolCall(usage, {
       tool: telemetryTool,
@@ -1279,6 +1360,19 @@ export async function dispatchToolsCall(
         err.status,
       );
     }
+    if (err instanceof FeedbackRejectedError) {
+      // A security report's refusal keeps the advisory URL (Decision 13).
+      const data = err.advisoryUrl ? { advisoryUrl: err.advisoryUrl, notice: err.notice } : undefined;
+      if (err.status === 403) return rpcError(id, -32002, err.publicMessage, corsHeaders, data, 403);
+      return rpcError(
+        id,
+        err.status === 429 ? -32029 : -32603,
+        err.publicMessage,
+        { ...corsHeaders, 'Retry-After': err.status === 429 ? '3600' : '60' },
+        data,
+        err.status,
+      );
+    }
     if (err instanceof McpSourceUnavailableError) {
       return rpcError(
         id,
@@ -1300,6 +1394,12 @@ export async function dispatchToolsCall(
     if (err instanceof RpcValidationError) {
       return invalidArguments('Invalid params', { violations: err.violations });
     }
-    return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders);
+    // Only an unexpected failure points at report_issue. An upstream rate limit
+    // or outage is an ordinary state; a report would spend the caller's
+    // allowance on noise.
+    const isExpectedUpstreamState = isBothFailed
+      || ((err instanceof ToolFetchError || err instanceof UpstreamHttpError) && UPSTREAM_EXPECTED_STATUSES.has(err.status));
+    return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders,
+      tool.name === REPORT_ISSUE_TOOL || isExpectedUpstreamState ? undefined : { ...REPORT_GUIDANCE });
   }
 }

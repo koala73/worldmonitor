@@ -3,10 +3,10 @@ import { COUNTRY_SIGNAL_BYTES, countrySignalResponseSchema, countrySignalOutcome
 import { RAW_SIGNAL_READS, RAW_SIGNAL_FAMILIES, RAW_SIGNAL_BODY_BYTES, RAW_SIGNAL_ENVELOPE_BYTES, failedRawSignal, validateRawSignal, assembleRawSignals, type RawSignalsValue } from '../../../shared/country-raw-signals';
 import { COUNTRY_READERS, countryReaderSchema, countryViewSchema, panelAdmissionSchema, type CountryReader } from '../../../shared/country-brief-host';
 import { BRIEF_TOPICS } from '../../../shared/country-brief-sections';
-import { resolveCountryCode } from '../../../shared/country-code-resolve';
+import { resolveCountryArg } from '../_country-args';
 import { normalizeFoodStocksCommodity } from '../../../server/worldmonitor/resilience/v1/_food-stocks-query';
 import { buildAuthHeaders } from '../auth';
-import { assertToolFetchOk, BillingDenialError, RpcValidationError, throwIfBillingDenial } from '../billing-denial';
+import { assertToolFetchOk, BillingDenialError, RpcValidationError, throwIfBillingDenial, UpstreamHttpError } from '../billing-denial';
 import { readBoundedResponseBody } from '../bounded-body';
 import { fetchMcpDownstream } from '../downstream';
 import type { ToolDef } from '../types';
@@ -16,7 +16,7 @@ const COUNTRY_SECTION_BUDGET_BYTES = 524288;
 
 function countryViewArguments(params: Record<string, unknown>) {
   const parsed = countryViewSchema.safeParse(Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'jmespath')));
-  const countryCode = parsed.success ? resolveCountryCode(parsed.data.country_code) : null;
+  const countryCode = parsed.success ? resolveCountryArg(parsed.data.country_code) : null;
   if (!parsed.success || !countryCode) throw new RpcValidationError('open_country_brief', [{ field: 'country_code', description: 'Supply a recognized country and topic.' }]);
   return { countryCode, topic: parsed.data.topic };
 }
@@ -266,7 +266,7 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
       const body = response.body?.pipeThrough(new TransformStream<Uint8Array, Uint8Array>(), { signal: deadline });
       const bytes = await beforeSignalsDeadline(readBoundedResponseBody({ headers: response.headers, body }, COUNTRY_SIGNAL_BYTES), deadline);
       deadline.throwIfAborted();
-      if (!response.ok) throw new Error(`Country Signals HTTP ${response.status}`);
+      if (!response.ok) throw new UpstreamHttpError(`Country Signals HTTP ${response.status}`, response.status);
       const value = countrySignalResponseSchema.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)));
       if (value.countryCode !== values.country_code || value.family !== values.family || value.windowIndex !== values.window_index) throw new Error('Country signal response identity mismatch');
       if (values.family === 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE') { if (!value.flightPage || value.outcomeJson) throw new Error('Invalid flight page'); }

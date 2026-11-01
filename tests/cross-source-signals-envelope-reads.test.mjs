@@ -171,6 +171,16 @@ describe('readAllSourceKeys envelope handling', () => {
     assert.equal('seismology:earthquakes:v1' in data, false);
   });
 
+  it('retains shipping through three missed ticks and rejects it after the 19h budget', async (t) => {
+    t.mock.method(Date, 'now', () => now);
+    const key = 'supply_chain:shipping:v2';
+    for (const [ageMin, present] of [[720, true], [1080, true], [1140, true], [1141, false]]) {
+      stubPipeline({ [key]: JSON.stringify(seedEnvelope({ indices: [] }, now - ageMin * 60_000)) });
+      const data = await readAllSourceKeys();
+      assert.equal(key in data, present, `shipping at ${ageMin} minutes`);
+    }
+  });
+
   it('keeps recent OREF waves when the quiet-history envelope is older than 15 minutes', async () => {
     const payload = {
       history: [{ timestamp: iso(HOUR), alerts: [{ data: ['Tel Aviv'] }] }],
