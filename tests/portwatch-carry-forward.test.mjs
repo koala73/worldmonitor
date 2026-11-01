@@ -71,6 +71,16 @@ test('ids outside the chokepoint list, empty histories and a missing snapshot ar
   assert.deepEqual(mergeWithPrevious({ suez: entry(NOW) }, null, ['suez'], NOW).carried, []);
 });
 
+// WM 2026-11-01: Korea Strait failed every run after the snapshot had already
+// lost it, so there was nothing to carry and nothing said so.
+test('a chokepoint missing from both this run and the previous snapshot is reported', () => {
+  const previous = { data: { suez: entry(NOW - HOUR) }, meta: { fetchedAt: NOW - HOUR } };
+  const { result, carried, absent } = mergeWithPrevious({}, previous, ['suez', 'korea_strait'], NOW);
+  assert.deepEqual(carried, ['suez']);
+  assert.deepEqual(absent, ['korea_strait']);
+  assert.equal(result.korea_strait, undefined);
+});
+
 // A failed read must not look like a cold start: publishing the fresh subset
 // would overwrite the stored entries this change exists to keep.
 test('fetchAll refuses to publish when the previous snapshot cannot be read', async (t) => {
