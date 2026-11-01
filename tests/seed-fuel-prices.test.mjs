@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCREStationPrices, validateFuel, withFuelRetry, fetchUS_EIA, regionalFuelEntries, FUEL_FX_CURRENCIES } from '../scripts/seed-fuel-prices.mjs';
+import { readFileSync } from 'node:fs';
+import { zipSync, strToU8 } from 'fflate';
+import { parseCREStationPrices, validateFuel, withFuelRetry, fetchUS_EIA, regionalFuelEntries, FUEL_FX_CURRENCIES, latestComComFuelDataUrl, readXlsxFirstSheet, parseNzComComFuel } from '../scripts/seed-fuel-prices.mjs';
 import { SHARED_FX_FALLBACKS } from '../scripts/_seed-utils.mjs';
 
 test('withFuelRetry returns the first success without retrying', async () => {
@@ -123,15 +125,14 @@ test('validateFuel accepts when only a TOLERATED source (Brazil) failed', () => 
   );
 });
 
-test('validateFuel accepts when only TOLERATED New Zealand failed (Incapsula bot-wall)', () => {
-  // MBIE moved behind an Incapsula JS bot-wall ~2026-05-20 — unreachable by plain
-  // fetch from any IP (residential/datacenter/proxy). It must not gate the whole
+test('validateFuel accepts when only TOLERATED New Zealand failed', () => {
+  // A missed fortnightly Commerce Commission file must not gate the whole
   // multi-source publish, or fuel-prices goes STALE_SEED while ≥30 countries +
   // US/GB/MY are present. Same rationale as Brazil.
   assert.equal(
     validateFuel({ countries: HEALTHY_COUNTRIES, failedSources: ['New Zealand'] }),
     true,
-    'NZ MBIE is JS-bot-walled; must not gate publish (≥30 countries + US/GB/MY still required)',
+    'NZ must not gate publish (≥30 countries + US/GB/MY still required)',
   );
 });
 
@@ -270,4 +271,81 @@ test('EUR stays inside the five cold-cache FX requests, since every EU row is pr
   assert.ok(FUEL_FX_CURRENCIES.slice(0, 5).includes('EUR'), FUEL_FX_CURRENCIES.slice(0, 5).join(','));
   // EU rows are all published as EUR, so a BGN quote is never used.
   assert.ok(!FUEL_FX_CURRENCIES.includes('BGN'));
+});
+
+// New Zealand: the Commerce Commission's fuel price monitoring spreadsheet replaces the
+// Incapsula-walled MBIE CSV (#4010). The fixture is the real published file (CC BY 4.0).
+const COMCOM_XLSX = readFileSync(new URL('./fixtures/fuel-prices/comcom-nz-data-to-2026-10-27.xlsx', import.meta.url));
+const NZ_NOW = Date.parse('2026-11-01T12:00:00Z');
+
+test('latestComComFuelDataUrl picks the newest data spreadsheet linked from the monitoring page', () => {
+  const html = `
+    <a href="/assets/Uploads/Fuel-price-monitoring-29-October-2026.pdf">report</a>
+    <a href="/assets/Uploads/Fuel-price-monitoring-Data-to-13-October-2026.xlsx">older data</a>
+    <a href="/assets/Uploads/Fuel-price-monitoring-Data-to-27-October-2026.xlsx">data</a>
+    <a href="/assets/Uploads/Fuel-price-monitoring-Data-to-9-September-2026.xlsx">oldest</a>`;
+  assert.equal(latestComComFuelDataUrl(html), 'https://www.comcom.govt.nz/assets/Uploads/Fuel-price-monitoring-Data-to-27-October-2026.xlsx');
+  assert.equal(latestComComFuelDataUrl('<a href="/assets/Uploads/report.pdf">x</a>'), null);
+});
+
+test('readXlsxFirstSheet reads the x:-prefixed OpenXML workbook ExcelJS rejects', () => {
+  const rows = readXlsxFirstSheet(COMCOM_XLSX);
+  assert.deepEqual(rows[0], ['DATE', 'FUEL_TYPE', 'REFINED_COSTS', 'RETAIL_PRICES_AVG']);
+  assert.equal(rows.length, 808);
+  assert.deepEqual(rows.at(-1).slice(0, 2), ['27/10/2026', 'Diesel']);
+  assert.equal(Number(rows.at(-1)[3]), 322.2);
+});
+
+test('readXlsxFirstSheet keeps empty cells in their columns and reads inline strings', () => {
+  const sheet = '<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+    + '<row r="1"><c r="A1" t="inlineStr"><is><t>A</t></is></c><c r="C1" t="s"><v>0</v></c></row>'
+    + '<row r="2"><c r="B2"><v>1.5</v></c></row></sheetData></worksheet>';
+  const strings = '<?xml version="1.0"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><si><r><t>C</t></r><r><t>!</t></r></si></sst>';
+  const workbook = '<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>';
+  const rels = '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/data.xml"/></Relationships>';
+  const bytes = zipSync({
+    'xl/workbook.xml': strToU8(workbook),
+    'xl/_rels/workbook.xml.rels': strToU8(rels),
+    'xl/worksheets/data.xml': strToU8(sheet),
+    'xl/sharedStrings.xml': strToU8(strings),
+  });
+  assert.deepEqual(readXlsxFirstSheet(bytes), [['A', '', 'C!'], ['', '1.5']]);
+});
+
+test('parseNzComComFuel takes the latest day with both regular petrol (91) and diesel', () => {
+  const entry = parseNzComComFuel(readXlsxFirstSheet(COMCOM_XLSX), NZ_NOW);
+  assert.deepEqual(entry, {
+    code: 'NZ', name: 'New Zealand', currency: 'NZD', flag: '🇳🇿',
+    gasoline: { localPrice: 3.587, grade: 'Regular 91', source: 'comcom.govt.nz', observedAt: '2026-10-27' },
+    diesel: { localPrice: 3.222, grade: 'Diesel', source: 'comcom.govt.nz', observedAt: '2026-10-27' },
+  });
+});
+
+test('parseNzComComFuel rejects a changed layout, stale data and implausible prices', () => {
+  const header = ['DATE', 'FUEL_TYPE', 'REFINED_COSTS', 'RETAIL_PRICES_AVG'];
+  const day = (date, petrol, diesel) => [[date, '91', '300', String(petrol)], [date, 'Diesel', '250', String(diesel)]];
+  assert.equal(parseNzComComFuel([['DATE', 'FUEL', 'COST', 'PRICE'], ...day('27/10/2026', 358.7, 322.2)], NZ_NOW), null);
+  assert.equal(parseNzComComFuel([header, ...day('20/09/2026', 358.7, 322.2)], NZ_NOW), null, 'older than 35 days');
+  assert.equal(parseNzComComFuel([header, ...day('27/10/2026', 3.587, 3.222)], NZ_NOW), null, 'NZD/L where c/L expected');
+  // The newest day lacks diesel, so the day before is used for both fuels.
+  const mixed = parseNzComComFuel([header, ...day('26/10/2026', 350, 320), ['27/10/2026', '91', '300', '358.7']], NZ_NOW);
+  assert.equal(mixed.gasoline.observedAt, '2026-10-26');
+  assert.equal(mixed.diesel.localPrice, 3.2);
+  // A newest day with a blank, non-numeric or out-of-range price is skipped, not
+  // published with a null fuel.
+  for (const bad of ['', 'n/a', 3.587]) {
+    const fallback = parseNzComComFuel([header, ...day('26/10/2026', 350, 320), ...day('27/10/2026', bad, 322.2)], NZ_NOW);
+    assert.equal(fallback.gasoline.observedAt, '2026-10-26', `newest 91 price ${JSON.stringify(bad)}`);
+    assert.equal(fallback.gasoline.localPrice, 3.5);
+    assert.equal(fallback.diesel.localPrice, 3.2);
+  }
+});
+
+test('readXlsxFirstSheet rejects a cell reference past the last Excel column', () => {
+  // Without a bound, r="AAAAAAAA2" pads the row to ~8e9 cells and exhausts the heap.
+  const ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+  const bytes = zipSync({
+    'xl/worksheets/sheet1.xml': strToU8(`<worksheet ${ns}><sheetData><row r="2"><c r="AAAAAAAA2"><v>1</v></c></row></sheetData></worksheet>`),
+  });
+  assert.throws(() => readXlsxFirstSheet(bytes), /column/);
 });

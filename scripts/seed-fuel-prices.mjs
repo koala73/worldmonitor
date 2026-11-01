@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import ExcelJS from 'exceljs';
+import { unzipSync, strFromU8 } from 'fflate';
 import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, getSharedFxRates, SHARED_FX_FALLBACKS, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -12,7 +13,7 @@ if (_proxyAuth) {
   const hostHint = _proxyAuth.split('@').pop().split(':')[0];
   console.log(`  [PROXY] configured via PROXY_URL (host=${hostHint})`);
 } else {
-  console.warn(`  [PROXY] NOT configured — PROXY_URL empty; datacenter-blocked sources (NZ/BR/MX) will fail`);
+  console.warn(`  [PROXY] NOT configured — PROXY_URL empty; datacenter-blocked sources (BR/MX) will fail`);
 }
 
 async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -64,7 +65,7 @@ async function fetchWithProxyFallback(url, { timeoutMs = 20_000, accept = 'text/
 }
 
 // Proxy-first: try proxy, fall back to direct. Use for sources known to block
-// datacenter IPs (NZ MBIE via Cloudflare, gov.br TLS failures from Railway,
+// datacenter IPs (gov.br TLS failures from Railway,
 // MX CRE with intermittent IPv4 routing). Saves a failed direct call every run.
 async function fetchWithProxyPreferred(url, { timeoutMs = 20_000, accept = 'text/csv,text/plain,*/*' } = {}) {
   if (_proxyAuth) {
@@ -513,54 +514,138 @@ async function fetchBrazil() {
   }
 }
 
-async function fetchNewZealand() {
-  // Direct MBIE CSV. Filter: Variable='Board price', Region='National', latest week.
-  // Fuel: 'Regular Petrol' -> gasoline, 'Diesel' -> diesel. Unit: NZD/litre.
-  const url = 'https://www.mbie.govt.nz/assets/Data-Files/Energy/Weekly-fuel-price-monitoring/weekly-table.csv';
-  try {
-    console.log(`  [NZ] CSV: ${url}`);
-    // MBIE's CDN 403s Railway datacenter IPs (Cloudflare IP reputation). Proxy-preferred + retry.
-    const resp = await withFuelRetry('NZ', () => fetchWithProxyPreferred(url, { timeoutMs: 30000 }));
-    const text = await resp.text();
-    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-    if (lines.length < 2) return [];
+// New Zealand: the Commerce Commission's fuel price monitoring data (CC BY 4.0).
+// MBIE's weekly CSV, the previous source, sits behind an Incapsula JS bot wall
+// (#4010). The regulator publishes a spreadsheet of daily national average retail
+// prices (NZ c/L) with each fortnightly report, under a dated file name, so the
+// newest link is read from the reports page.
+const COMCOM_ORIGIN = 'https://www.comcom.govt.nz';
+const COMCOM_FUEL_PAGE = `${COMCOM_ORIGIN}/regulated-industries/fuel/quarterly-monitoring-reports/`;
+const HONEST_UA = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
+const NZ_MAX_AGE_DAYS = 35;
+const XLSX_MAX_COLUMNS = 16_384;
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 
-    // MBIE data uses simple numeric values — no quoted commas in value fields, bare split is safe.
-    // Live header (as of 2026): Week,Date,Fuel,Variable,Value,Unit,Status — no Region column.
-    // Values are in NZD c/L (cents per litre) — divide by 100 for NZD/L.
-    const header = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim().toLowerCase());
-    const weekIdx = header.indexOf('week');
-    const varIdx = header.indexOf('variable');
-    const fuelIdx = header.indexOf('fuel');
-    const valIdx = header.indexOf('value');
-    if ([weekIdx, varIdx, fuelIdx, valIdx].includes(-1)) {
-      console.warn('  [NZ] CSV header missing expected columns:', header.join(','));
+export function latestComComFuelDataUrl(html) {
+  let best = null;
+  for (const m of String(html).matchAll(/href="(\/assets\/[^"]*?Fuel-price-monitoring-Data-to-(\d{1,2})-([A-Za-z]+)-(\d{4})\.xlsx)"/g)) {
+    const month = MONTHS.indexOf(m[3].toLowerCase());
+    if (month < 0) continue;
+    const time = Date.UTC(Number(m[4]), month, Number(m[2]));
+    if (!best || time > best.time) best = { time, url: COMCOM_ORIGIN + m[1] };
+  }
+  return best?.url ?? null;
+}
+
+function xmlText(s) {
+  return s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, e) => {
+    const k = e.toLowerCase();
+    if (k[0] === '#') return String.fromCodePoint(k[1] === 'x' ? parseInt(k.slice(2), 16) : parseInt(k.slice(1), 10));
+    return { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }[k];
+  });
+}
+
+function joinedText(xml) {
+  return [...xml.matchAll(/<(?:\w+:)?t\b[^>]*>([\s\S]*?)<\/(?:\w+:)?t>/g)].map(m => xmlText(m[1])).join('');
+}
+
+// Reads the first worksheet as rows of strings. ExcelJS cannot load workbooks whose
+// SpreadsheetML elements carry a namespace prefix (<x:worksheet>, as the OpenXML SDK
+// writes them), so this reads the parts directly and accepts either form.
+export function readXlsxFirstSheet(bytes) {
+  const files = unzipSync(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+  const part = name => (files[name] ? strFromU8(files[name]) : null);
+  let sheetPath = 'xl/worksheets/sheet1.xml';
+  const workbook = part('xl/workbook.xml');
+  const rels = part('xl/_rels/workbook.xml.rels');
+  const firstSheetId = workbook?.match(/<(?:\w+:)?sheet\b[^>]*?\br:id="([^"]+)"/)?.[1];
+  if (firstSheetId && rels) {
+    const target = [...rels.matchAll(/<Relationship\b[^>]*>/g)].map(m => m[0])
+      .find(tag => tag.includes(`Id="${firstSheetId}"`))?.match(/Target="([^"]+)"/)?.[1];
+    if (target) sheetPath = target.startsWith('/') ? target.slice(1) : `xl/${target}`;
+  }
+  const sheet = part(sheetPath);
+  if (!sheet) throw new Error(`worksheet ${sheetPath} missing`);
+  const shared = [...(part('xl/sharedStrings.xml') ?? '').matchAll(/<(?:\w+:)?si\b[^>]*>([\s\S]*?)<\/(?:\w+:)?si>/g)].map(m => joinedText(m[1]));
+  const rows = [];
+  for (const rowMatch of sheet.matchAll(/<(?:\w+:)?row\b[^>]*>([\s\S]*?)<\/(?:\w+:)?row>/g)) {
+    const row = [];
+    let position = 0;
+    for (const cell of rowMatch[1].matchAll(/<(?:\w+:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?c>)/g)) {
+      const attrs = cell[1];
+      const ref = attrs.match(/\br="([A-Z]+)\d+"/)?.[1];
+      const col = ref ? [...ref].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1 : position;
+      // Excel stops at column XFD (16,384). A larger index would pad the row
+      // until the heap runs out, which no try/catch can recover from.
+      if (col >= XLSX_MAX_COLUMNS) throw new Error(`cell column ${ref ?? col} is past the last Excel column`);
+      position = col + 1;
+      const body = cell[2] ?? '';
+      const type = attrs.match(/\bt="([^"]+)"/)?.[1];
+      const raw = body.match(/<(?:\w+:)?v>([\s\S]*?)<\/(?:\w+:)?v>/)?.[1];
+      let value = '';
+      if (type === 's' && raw != null) value = shared[Number(raw)] ?? '';
+      else if (type === 'inlineStr') value = joinedText(body);
+      else if (raw != null) value = xmlText(raw);
+      while (row.length < col) row.push('');
+      row[col] = value;
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+// rows: [DATE, FUEL_TYPE, REFINED_COSTS, RETAIL_PRICES_AVG], DATE as d/mm/yyyy and
+// prices in NZ cents per litre. Returns the latest day carrying both 91 and diesel.
+export function parseNzComComFuel(rows, nowMs = Date.now()) {
+  const header = (rows?.[0] ?? []).map(h => String(h).trim().toUpperCase());
+  if (header.join('|') !== 'DATE|FUEL_TYPE|REFINED_COSTS|RETAIL_PRICES_AVG') return null;
+  const byDay = new Map();
+  for (const [date, fuel, , retail] of rows.slice(1)) {
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(date ?? '').trim());
+    if (!m) continue;
+    const iso = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    const day = byDay.get(iso) ?? {};
+    // Blank cells read as '' and must stay missing, not become 0.
+    day[String(fuel).trim()] = String(retail ?? '').trim() === '' ? NaN : Number(retail);
+    byDay.set(iso, day);
+  }
+  // NZ pump prices run roughly 150-500 c/L; anything far outside means a unit
+  // change or a bad cell. Only a day where both prices pass is used, so a bad
+  // newest row falls back to the day before instead of publishing a null fuel.
+  const plausible = cents => Number.isFinite(cents) && cents >= 50 && cents <= 1000;
+  const latest = [...byDay.keys()].sort().reverse().find(iso => plausible(byDay.get(iso)['91']) && plausible(byDay.get(iso).Diesel));
+  if (!latest || nowMs - Date.parse(`${latest}T00:00:00Z`) > NZ_MAX_AGE_DAYS * 86_400_000) return null;
+  const litre = cents => +(cents / 100).toFixed(4);
+  return {
+    code: 'NZ', name: 'New Zealand', currency: 'NZD', flag: '🇳🇿',
+    gasoline: { localPrice: litre(byDay.get(latest)['91']), grade: 'Regular 91', source: 'comcom.govt.nz', observedAt: latest },
+    diesel: { localPrice: litre(byDay.get(latest).Diesel), grade: 'Diesel', source: 'comcom.govt.nz', observedAt: latest },
+  };
+}
+
+async function fetchComCom(url, accept) {
+  const r = await globalThis.fetch(url, { headers: { 'User-Agent': HONEST_UA, Accept: accept }, signal: AbortSignal.timeout(30_000) });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r;
+}
+
+async function fetchNewZealand() {
+  try {
+    const page = await withFuelRetry('NZ', () => fetchComCom(COMCOM_FUEL_PAGE, 'text/html'));
+    const url = latestComComFuelDataUrl(await page.text());
+    if (!url) {
+      console.warn('  [NZ] no fuel price data spreadsheet linked from the Commerce Commission page');
       return [];
     }
-
-    const rows = lines.slice(1).map(l => l.split(',').map(c => c.replace(/^"|"$/g, '').trim()));
-    // All rows are national averages (no region column); filter to Board price only
-    const boardRows = rows.filter(r => r[varIdx] === 'Board price');
-    if (!boardRows.length) return [];
-
-    const maxWeek = boardRows.map(r => r[weekIdx]).filter(Boolean).sort().at(-1);
-    const latest = boardRows.filter(r => r[weekIdx] === maxWeek);
-
-    const gasRow = latest.find(r => r[fuelIdx] === 'Regular Petrol');
-    const dslRow = latest.find(r => r[fuelIdx] === 'Diesel');
-    // Values are c/L — divide by 100 to get NZD/L
-    const gasPrice = gasRow ? (parseFloat(gasRow[valIdx]) || null) && +(parseFloat(gasRow[valIdx]) / 100).toFixed(4) : null;
-    const dslPrice = dslRow ? (parseFloat(dslRow[valIdx]) || null) && +(parseFloat(dslRow[valIdx]) / 100).toFixed(4) : null;
-
-    const dateIdx = header.indexOf('date');
-    const obsDate = dateIdx >= 0 ? (latest[0]?.[dateIdx] ?? maxWeek) : maxWeek;
-
-    console.log(`  [NZ] Gasoline=${gasPrice} NZD/L, Diesel=${dslPrice} NZD/L (week=${maxWeek})`);
-    return [{
-      code: 'NZ', name: 'New Zealand', currency: 'NZD', flag: '🇳🇿',
-      gasoline: gasPrice != null ? { localPrice: gasPrice, grade: 'Regular', source: 'mbie.govt.nz', observedAt: obsDate } : null,
-      diesel: dslPrice != null ? { localPrice: dslPrice, grade: 'Diesel', source: 'mbie.govt.nz', observedAt: obsDate } : null,
-    }];
+    console.log(`  [NZ] XLSX: ${url}`);
+    const resp = await withFuelRetry('NZ', () => fetchComCom(url, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,*/*'));
+    const entry = parseNzComComFuel(readXlsxFirstSheet(new Uint8Array(await resp.arrayBuffer())));
+    if (!entry) {
+      console.warn('  [NZ] spreadsheet layout changed or latest day older than 35 days');
+      return [];
+    }
+    console.log(`  [NZ] Gasoline=${entry.gasoline?.localPrice} NZD/L, Diesel=${entry.diesel?.localPrice} NZD/L (${entry.gasoline?.observedAt ?? entry.diesel?.observedAt})`);
+    return [entry];
   } catch (err) {
     console.warn(`  [NZ] fetchNewZealand error: ${err.message}`);
     return [];
@@ -716,19 +801,11 @@ export function parseCREStationPrices(xml) {
 // working route is found, gating publish on Brazil's freshness means every
 // run exits 1 → Railway "Deployment crashed" banner + STALE_SEED flip.
 //
-// New Zealand (MBIE) joined this set 2026-06-01: mbie.govt.nz moved its ENTIRE
-// domain (apex, data page, and the weekly-table.csv asset) behind an Incapsula
-// (Imperva) JS bot-wall ~2026-05-20. It now returns HTTP 200 text/html (~212B,
-// `_Incapsula_Resource` stub) instead of the CSV — verified blocked from a
-// residential IP, a datacenter IP, AND the Decodo residential proxy, so the
-// older "proxy-preferred + retry" path (written for an IP-reputation 403)
-// cannot pass it. A plain fetch can't solve a JS challenge from any IP, and
-// data.govt.nz / figure.nz fallbacks are also Incapsula-walled. Until NZ is
-// restored via a headless/challenge-solver fetch (tracked separately), gating
-// publish on NZ rejected the whole multi-source fuel-prices snapshot every run
-// (validation failed → seed-meta never refreshed → 12d STALE_SEED), even though
-// ≥30 countries + US/GB/MY were present. fetchNewZealand() still runs and
-// carries NZ automatically the moment the source returns CSV again.
+// New Zealand stays tolerated: MBIE's weekly CSV went behind an Incapsula JS
+// bot wall ~2026-05-20 (#4010) and gating on NZ left the whole snapshot stale
+// for 12 days. NZ now comes from the Commerce Commission's fortnightly data
+// spreadsheet, which has no wall, but one regulator file published every two
+// weeks is still not worth failing a 35-country publish over.
 // Regional feeds (FJ, PG, GT and the ANP backup for BR) come from other
 // seeders' Redis keys. A missing or stale feed drops those rows but must not
 // block the multi-country snapshot.

@@ -1645,7 +1645,7 @@ export class DataLoaderManager implements AppModule {
       // Digest branch: server already aggregated feeds — map proto items to client types
       if (digest?.categories && category in digest.categories) {
         recordSelectedFreshness(digestServedStale);
-        this.setNewsRefreshDegraded(category, false);
+        this.setNewsRefreshDegraded(category, digestServedStale);
         const delivered = (digest.categories[category]?.items ?? []).map(protoItemToNewsItem);
         const items = delivered.filter(i => enabledNames.has(i.source));
 
@@ -1908,7 +1908,7 @@ export class DataLoaderManager implements AppModule {
 
     if (digest?.categories && 'intel' in digest.categories) {
       recordSelectedFreshness(digestServedStale);
-      this.setNewsRefreshDegraded('intel', false);
+      this.setNewsRefreshDegraded('intel', digestServedStale);
       // Digest branch for intel
       const intel = (digest.categories['intel']?.items ?? [])
         .map(protoItemToNewsItem)
