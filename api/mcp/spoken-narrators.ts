@@ -371,21 +371,24 @@ export const spokenPredictionMarkets: SpokenNarrator = (result, _args, now) => {
 // ---------------------------------------------------------------------------
 // get_forecast_predictions
 // ---------------------------------------------------------------------------
-function forecastClause(row: Record<string, unknown>): string {
+function forecastClause(row: Record<string, unknown>, speakChange = true): string {
   const probability = finite(row.probability);
   const domain = text(row.domain).replace(/[_-]+/g, ' ');
   const region = cleanTitle(row.region);
   let clause = `${probability === null ? 'an unknown probability' : spokenPercent(Math.round(probability * 100))} for ${cleanTitle(row.title)}`;
   if (domain || region) clause += `, a${domain ? ` ${domain}` : ''} forecast${region ? ` for ${region}` : ''}`;
-  const change = finite(row.change24h);
+  const change = speakChange ? finite(row.change24h) : null;
   if (change !== null && Math.round(Math.abs(change) * 100) > 0) clause += `, ${spokenPoints(change * 100)} in the past day`;
   return clause;
 }
 
-// The bundle's `cached_at` and `stale` also cover the probability trail,
-// which is not read aloud; the caveat follows the predictions check alone.
-// Key and 90-minute budget mirror this tool's _freshnessChecks.
+// The bundle's `cached_at` and `stale` also cover the probability trail; the
+// caveat follows the predictions check alone. The trail feeds only the
+// 24-hour move (attachForecastHistory), so that move is spoken only while the
+// trail check passes, or, with no per-check verdicts, while the bundle is
+// fresh. Keys and the 90-minute budget mirror this tool's _freshnessChecks.
 const FORECAST_PREDICTIONS_CHECK = 'seed-meta:forecast:predictions';
+const FORECAST_TRAIL_CHECK = 'seed-meta:forecast:probability-trail';
 const FORECAST_STALE_MS = 90 * 60_000;
 
 export const spokenForecastPredictions: SpokenNarrator = (result, _args, now) => {
@@ -396,6 +399,7 @@ export const spokenForecastPredictions: SpokenNarrator = (result, _args, now) =>
   const stale = failed !== null
     ? failed.includes(FORECAST_PREDICTIONS_CHECK)
     : generatedMs === null ? result.stale === true : now - generatedMs > FORECAST_STALE_MS;
+  const trailFresh = failed !== null ? !failed.includes(FORECAST_TRAIL_CHECK) : result.stale !== true;
   const rows = (Array.isArray(node?.predictions) ? node.predictions as unknown[] : [])
     .map(record)
     .filter((row): row is Record<string, unknown> => row !== null)
@@ -411,9 +415,9 @@ export const spokenForecastPredictions: SpokenNarrator = (result, _args, now) =>
   const ago = generatedMs === null ? 'at an unknown time' : spokenAgo(generatedMs, now);
   const sentences = [
     `WorldMonitor currently publishes ${spokenCount(rows.length, 'forecast')}, generated ${ago}; these are AI assessments, not guarantees.`,
-    `The highest probability is ${forecastClause(rows[0]!)}.`,
+    `The highest probability is ${forecastClause(rows[0]!, trailFresh)}.`,
   ];
-  if (rows.length > 1) sentences.push(`Next is ${forecastClause(rows[1]!)}.`);
+  if (rows.length > 1) sentences.push(`Next is ${forecastClause(rows[1]!, trailFresh)}.`);
   return {
     sentences,
     // The first sentence already speaks the generation age.

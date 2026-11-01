@@ -3197,7 +3197,7 @@ Rows also carry `firstSeenAt` (ISO time), `firstSeenProbability`, `change24h` an
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **1.5 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
-- **Spoken mode:** `response_mode: "spoken"` returns 2-3 sentences: the number of published forecasts and their age, then the two highest-probability forecasts as percentages with domain, region and the 24-hour move. Citations carry the forecast titles and `generatedAt`.
+- **Spoken mode:** `response_mode: "spoken"` returns 2-3 sentences: the number of published forecasts and their age, then the two highest-probability forecasts as percentages with domain, region and the 24-hour move (omitted while the probability trail it comes from is stale). A caveat follows only when the predictions themselves are stale. Citations carry the forecast titles and `generatedAt`.
 
 <CodeGroup>
 

@@ -397,6 +397,13 @@ describe('spoken narrators build 2-3 plain sentences from the structured payload
     const out = narrate('get_forecast_predictions', spokenForecastPredictions, attributed);
     assert.equal(out.spoken, fallback.spoken);
     assert.equal(out.stale, false);
+    // change24h is derived from the trail, so a stale trail drops the move
+    // instead of speaking it unqualified.
+    assert.doesNotMatch(out.spoken, /in the past day/);
+    assert.doesNotMatch(fallback.spoken, /in the past day/);
+    const trailFresh = structuredClone(trailStale);
+    recordStaleFreshnessKeys(trailFresh, ['seed-meta:some-other-check']);
+    assert.match(narrate('get_forecast_predictions', spokenForecastPredictions, trailFresh).spoken, /up 3 points in the past day/);
   });
 
   it('get_forecast_predictions caveats stale forecasts without repeating a wrong age', () => {
