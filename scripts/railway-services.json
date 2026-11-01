@@ -1261,6 +1261,7 @@
       "scripts/_climate-news-helpers.mjs",
       "scripts/_env-file.mjs",
       "scripts/_global-tender-feeds.mjs",
+      "scripts/_global-tender-receipts.mjs",
       "scripts/_global-tenders.mjs",
       "scripts/_html-entities.mjs",
       "scripts/_proxy-utils.cjs",

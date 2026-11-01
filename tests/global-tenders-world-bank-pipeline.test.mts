@@ -5,6 +5,7 @@ import { listGlobalTenders } from '../server/worldmonitor/economic/v1/list-globa
 import type { ListGlobalTendersRequest, ServerContext } from '../src/generated/server/worldmonitor/economic/v1/service_server';
 import { __testing__ as health } from '../api/health.js';
 import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
+import { createTenderReceipt, TENDER_RECEIPTS_KEY } from '../scripts/_global-tender-receipts.mjs';
 
 const NOW = Date.parse('2026-09-11T14:00:00Z');
 const KEY = 'economic:global-tenders:v1';
@@ -22,6 +23,7 @@ const REQUEST: ListGlobalTendersRequest = {
 function fixture(t: TestContext) {
   const values = new Map<string, string>();
   const expires = new Map<string, number>();
+  const receipts: ReturnType<typeof createTenderReceipt>[] = [];
   const logs: string[] = [];
   const state = { now: NOW, payload: structuredClone(PAYLOAD) as unknown, mode: 'ok', attempts: 0,
     siblingCalls: 0, siblingFailed: false, rejectWrite: '', rejectRead: false };
@@ -57,7 +59,16 @@ function fixture(t: TestContext) {
     if (op === 'EXISTS') return get(key) == null ? 0 : 1;
     if (op === 'EXPIRE') { if (get(key) == null) return 0; expires.set(key, state.now + Number(value) * 1000); return 1; }
     if (op === 'DEL') return Number(values.delete(key));
-    if (op === 'EVAL') return 1;
+    if (op === 'EVAL') {
+      if (cmd[3] === TENDER_RECEIPTS_KEY) {
+        const receipt = JSON.parse(String(cmd[5]));
+        const index = receipts.findIndex(entry => entry.runId === receipt.runId);
+        if (index < 0) receipts.unshift(receipt);
+        else receipts[index] = receipt;
+        receipts.splice(Number(cmd[6]));
+      }
+      return 1;
+    }
     throw new Error(`Unexpected Redis command ${op}`);
   };
   t.mock.method(globalThis, 'fetch', async (url, options = {}) => {
@@ -70,7 +81,8 @@ function fixture(t: TestContext) {
       }
       const body = JSON.parse(String(options.body));
       const cmds = Array.isArray(body[0]) ? body : [body];
-      if (cmds.some((cmd: string[]) => cmd[0] === 'SET' && cmd[1] === state.rejectWrite)) return new Response('{}', { status: 403 });
+      if (cmds.some((cmd: string[]) => (cmd[0] === 'SET' && cmd[1] === state.rejectWrite)
+        || (cmd[0] === 'EVAL' && cmd[3] === state.rejectWrite))) return new Response('{}', { status: 403 });
       const results = cmds.map((cmd: Array<string | number>) => ({ result: command(cmd) }));
       return Response.json(Array.isArray(body[0]) ? results : results[0]);
     }
@@ -99,7 +111,7 @@ function fixture(t: TestContext) {
     keyStrens: new Map([[SOURCE_KEY, get(SOURCE_KEY)?.length ?? 0]]), keyErrors: new Map(),
     keyMetaValues: new Map([[SOURCE_META, get(SOURCE_META)]]), keyMetaErrors: new Map(), now: state.now,
   });
-  return { state, values, read, run, rpc, sourceHealth, logs };
+  return { state, values, read, run, rpc, sourceHealth, logs, receipts };
 }
 
 test('actual producer/cache/RPC chain retries a failed body before publication', async t => {
@@ -112,6 +124,11 @@ test('actual producer/cache/RPC chain retries a failed body before publication',
   assert.equal(response.sourceStatuses[0].state, 'ok');
   assert.equal(f.sourceHealth().status, 'OK');
   assert.equal(f.read(COMPLETE).fetchedAt, f.read(KEY)._seed.fetchedAt);
+  assert.equal(f.receipts.length, 1, 'confirmation updates the same natural run');
+  assert.equal(f.receipts[0].publication.state, 'published');
+  assert.equal(f.receipts[0].publication.seedRunId, f.read(COMPLETE).runId);
+  assert.ok(Date.parse(f.receipts[0].publication.publishedAt) >= f.read(KEY)._seed.fetchedAt);
+  assert.equal(f.receipts[0].sources[0].requests[0].failure, 'TimeoutError');
 });
 
 test('repeated HTTP 500 retains usable records and source clocks independently of the aggregate, then recovers', async t => {
@@ -130,6 +147,11 @@ test('repeated HTTP 500 retains usable records and source clocks independently o
     assert.equal(f.read(SOURCE_META).lastAttemptAt, new Date(f.state.now).toISOString());
     assert.equal(f.sourceHealth().status, 'OK', 'retained rows inside the 24h source budget are not an alarm');
     assert.equal(f.read(KEY)._seed.fetchedAt, f.state.now);
+    assert.equal(f.receipts[0].sources[0].outcome, 'error');
+    assert.equal(f.receipts[0].sources[0].effectiveState, 'stale');
+    assert.equal(f.receipts[0].sources[0].retainedCount, 1);
+    assert.equal(f.receipts[0].sources[0].fetchedCount, 0);
+    assert.equal(Date.parse(f.receipts[0].sources[0].lastSuccessfulAt), NOW);
     const freshness = await readSectionFreshness({ canonicalKey: KEY, completionMetaKey: COMPLETE }, async key => f.read(key));
     assert.equal(freshness.fetchedAt, f.state.now);
     assert.ok(f.state.now + 60 * 60_000 - freshness.fetchedAt >= 0.8 * 60 * 60_000, 'next hourly run remains due');
@@ -144,6 +166,8 @@ test('repeated HTTP 500 retains usable records and source clocks independently o
   assert.equal(f.read(SOURCE_META).fetchedAt, f.state.now);
   assert.equal(f.read(SOURCE_META).consecutiveFailures, 0);
   assert.equal(f.read(SOURCE_META).error, undefined);
+  assert.equal(f.receipts.length, 4, 'recovery preserves earlier failure receipts');
+  assert.equal(f.receipts[1].sources[0].failure, 'HTTP_500');
 });
 
 for (const payload of [null, { procnotices: [{}] }, { total: 2, procnotices: PAYLOAD.procnotices }]) {
@@ -223,6 +247,9 @@ test('an initial all-source failure writes actionable source health without cano
   assert.equal((await f.rpc()).availability, 'unavailable');
   assert.notEqual(f.sourceHealth().status, 'OK');
   assert.equal(f.logs.some(line => line.includes('seed_complete')), false);
+  assert.equal(f.receipts.length, 1);
+  assert.equal(f.receipts[0].publication.state, 'unconfirmed');
+  assert.equal(f.receipts[0].publication.publishedAt, null);
 });
 
 test('failed source-status write prevents a new aggregate completion attestation', async t => {
@@ -233,7 +260,32 @@ test('failed source-status write prevents a new aggregate completion attestation
   f.state.rejectWrite = SOURCE_META;
   await assert.rejects(f.run(), /403|exit 1/);
   assert.deepEqual(f.read(COMPLETE), completed);
+  assert.equal(f.receipts[0].publication.state, 'unconfirmed');
+  assert.equal(f.receipts[1].publication.state, 'published');
   assert.equal(await readSectionFreshness({ canonicalKey: KEY, completionMetaKey: COMPLETE }, async key => f.read(key)), null);
+});
+
+test('a failed history write does not repeat provider calls or publish a new canonical value', async t => {
+  const f = fixture(t);
+  await f.run();
+  const prior = f.read(KEY);
+  f.state.now += 60 * 60_000;
+  f.state.rejectWrite = TENDER_RECEIPTS_KEY;
+  await assert.rejects(f.run(), /403/);
+  assert.equal(f.state.attempts, 2);
+  assert.deepEqual(f.read(KEY), prior);
+  assert.equal(f.receipts.length, 1);
+});
+
+test('a failed history write cannot hide all-source failure from source health', async t => {
+  const f = fixture(t);
+  f.state.mode = '500';
+  f.state.siblingFailed = true;
+  f.state.rejectWrite = TENDER_RECEIPTS_KEY;
+  await assert.rejects(f.run(), /exit 75/);
+  assert.equal(f.read(SOURCE_META)?.sourceState, 'error');
+  assert.equal(f.state.attempts, 3, 'only the existing World Bank request retry budget is used');
+  assert.equal(f.read(KEY), null);
 });
 
 test('a failed canonical read cannot publish an aggregate that silently drops retained World Bank data', async t => {
