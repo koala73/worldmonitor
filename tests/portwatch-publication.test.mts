@@ -122,9 +122,9 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
       const iso3 = where.match(/ISO3='([^']+)'/)[1];
       const iso2 = countries.find(([code]) => code === iso3)[1];
       if (u.searchParams.has('outStatistics')) return Response.json({ features: [{ attributes: { max_date: mode === 'zero' ? null : currentDate } }] });
-      if (mode === 'expiry-during-run') {
+      if (mode.startsWith('expiry-during-')) {
         activityCountries.add(iso2);
-        if (activityCountries.size > 6) now = ${now} + 1000;
+        if (activityCountries.size > (mode === 'expiry-during-first-batch' ? 0 : 6)) now = ${now} + 1000;
         if (iso3 !== countries[1][0]) return Response.json({ error: { code: 400, message: 'Cannot perform query. Invalid query parameters.' } });
       }
       // #8501: ArcGIS answers a throttled activity query with HTTP 200 and an
@@ -311,40 +311,47 @@ test('a bad second activity page retains the entire country payload and success 
   assert.equal((await readCountry(t, result.redis, code)).ports[0].tankerCalls30d, 12);
 });
 
-test('coverage excludes countries that expire during later batches without rewriting last-good clocks', () => {
-  const input = fixtures();
-  for (const [, code] of countries) {
-    input[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
-    input[`${PREFIX}${code}`].asof = '2026-09-08';
-    input[`${PREFIX}${code}`].refreshFailure = { code: 'invalid_query', consecutiveFailures: 4, lastAttemptAt: NOW - DAY / 2 };
-  }
-  const failed = countries[0][1];
-  const deferred = countries.at(-1)![1];
-  for (const code of [failed, deferred]) input[`${PREFIX}${code}`].cacheWrittenAt = NOW - 7 * DAY + 1000;
-  input[`${PREFIX}${failed}`].refreshAttemptedAt = 1;
-  input[`${PREFIX}${deferred}`].refreshAttemptedAt = NOW;
-
-  const result = runProducer(input, 'expiry-during-run');
-  assert.equal(result.error, null);
-  assert.equal(result.publishBlocked, true);
-  const coverage = result.redis[META].coverage;
-  assert.equal(coverage.published, 172, 'both countries reach the seven-day limit before coverage is built');
-  assert.deepEqual(coverage.missingCountries, [failed, deferred].sort());
-  assert.equal(coverage.retainedCountryCount, 171);
-  assert.equal(coverage.currentCountryCount, 1);
-  assert.equal(coverage.oldestCountryCacheWrittenAt, NOW - DAY);
-  assert.match(result.logs, /171 stale-served, 2 expired, 0 missing/);
-  for (const code of [failed, deferred]) {
-    const retained = result.redis[`${PREFIX}${code}`];
-    for (const key of ['ports', 'cacheWrittenAt', 'fetchedAt', 'asof', 'contentAsOfChangedAt']) {
-      assert.deepEqual(retained[key], input[`${PREFIX}${code}`][key], `${code} preserves ${key}`);
+for (const mode of ['expiry-during-first-batch', 'expiry-during-later-batches']) {
+  test(`${mode} excludes expired coverage without rewriting last-good clocks`, () => {
+    const input = fixtures();
+    for (const [, code] of countries) {
+      input[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
+      input[`${PREFIX}${code}`].asof = '2026-09-08';
+      input[`${PREFIX}${code}`].refreshFailure = { code: 'invalid_query', consecutiveFailures: 4, lastAttemptAt: NOW - DAY / 2 };
     }
-  }
-  assert.equal(result.redis[`${PREFIX}${failed}`].refreshAttemptedAt, NOW, 'the failed attempt started before expiry');
-  assert.equal(result.redis[`${PREFIX}${deferred}`].refreshAttemptedAt, NOW, 'deferral does not advance the attempt cursor');
-  assert.deepEqual(result.redis[CANONICAL], input[CANONICAL]);
-  assert.equal(result.redis[META].fetchedAt, input[META].fetchedAt);
-});
+    const failed = countries[0][1];
+    const deferred = countries.at(-1)![1];
+    const expiring = [...countries.slice(0, 31).map(([, code]) => code), deferred];
+    for (const code of expiring) input[`${PREFIX}${code}`].cacheWrittenAt = NOW - 7 * DAY + 1000;
+    input[`${PREFIX}${failed}`].cacheWrittenAt--;
+    input[`${PREFIX}${failed}`].refreshAttemptedAt = 1;
+    input[`${PREFIX}${deferred}`].refreshAttemptedAt = NOW;
+
+    const result = runProducer(input, mode);
+    assert.equal(result.error, null);
+    assert.equal(result.publishBlocked, true);
+    const coverage = result.redis[META].coverage;
+    const expired = expiring.filter((code) => code !== countries[1][1]).sort();
+    assert.equal(coverage.published, 143, '31 countries reach the seven-day limit without a successful refresh');
+    assert.equal(coverage.complete, false);
+    assert.deepEqual(coverage.missingCountries, expired);
+    assert.equal(coverage.retainedCountryCount, 142);
+    assert.equal(coverage.currentCountryCount, 1);
+    assert.equal(coverage.oldestCountryCacheWrittenAt, NOW - DAY);
+    assert.match(result.logs, /142 stale-served, 31 expired, 0 missing/);
+    for (const code of [failed, deferred]) {
+      const retained = result.redis[`${PREFIX}${code}`];
+      for (const key of ['ports', 'cacheWrittenAt', 'fetchedAt', 'asof', 'contentAsOfChangedAt']) {
+        assert.deepEqual(retained[key], input[`${PREFIX}${code}`][key], `${code} preserves ${key}`);
+      }
+    }
+    assert.equal(result.redis[`${PREFIX}${failed}`].refreshAttemptedAt, NOW, 'the failed attempt started before expiry');
+    assert.equal(result.redis[`${PREFIX}${deferred}`].refreshAttemptedAt, NOW, 'deferral does not advance the attempt cursor');
+    assert.deepEqual(result.redis[`${PREFIX}${deferred}`].refreshFailure, input[`${PREFIX}${deferred}`].refreshFailure);
+    assert.deepEqual(result.redis[CANONICAL], input[CANONICAL]);
+    assert.equal(result.redis[META].fetchedAt, input[META].fetchedAt);
+  });
+}
 
 // cache-read-transport: the cache GET's fetch itself rejects with the same
 // `TypeError('fetch failed')` an ArcGIS transport failure throws. It is still
