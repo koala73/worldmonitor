@@ -56,6 +56,8 @@ Antigravity 的 OAuth 回调 `https://antigravity.google/oauth-callback` 已在[
 
 提交前需完成控制台签发的域名验证、通过上述开发者模式检查，并使用 Pro 账户进行端到端测试。
 
+域名验证：在控制台的 **MCP and tools setup** 中，于 **Verify domain ownership** 下选择 **Download token**。将下载的 `google-connected-apps.json` 中的令牌复制到 `public/.well-known/google-connected-apps` 的 `verification_tokens` 数组，部署后选择 **Verify domain**。Vercel 以 JSON 格式在 `https://worldmonitor.app/.well-known/google-connected-apps` 提供该文件，直接返回 HTTP 200 且不重定向，符合 Google 的要求。
+
 | 字段 | 值 |
 |---|---|
 | 应用名称 | WorldMonitor |

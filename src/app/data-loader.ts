@@ -22,18 +22,12 @@ import {
   STOCK_CATALOG,
   SITE_VARIANT,
   LAYER_TO_SOURCE,
-  STORAGE_KEYS,
   isPanelInVariantDefaults,
   digestEditionsFor,
 } from '@/config';
 import { resolveNewsCategories, enabledNewsCategoryKeys, type ResolvedCategory } from '@/config/feed-resolution';
 import { variantShipsOrUserEnabled } from './panel-data-gate';
-import {
-  countRepresentedSources,
-  mergeRotatedNewsItems,
-  nextRotationCycle,
-  selectRotatingFeedWindow,
-} from '@/app/news-feed-rotation';
+import { mergeSourceFairNewsItems } from '@/app/news-source-merge';
 import {
   runNewsLoadPass,
   newsWorkListSignature,
@@ -141,7 +135,7 @@ import { getResilienceRanking } from '@/services/resilience';
 import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
 import { getNo2ActivityData } from '@/services/no2-activity';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
-import { debounce, getCircuitBreakerCooldownInfo, loadFromStorage, saveToStorage } from '@/utils';
+import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
 import { addLocalDays, localYmd } from '@/utils/local-date';
 import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -494,29 +488,16 @@ export class DataLoaderManager implements AppModule {
   private readonly digestFirstPaintGraceMs = 1500;
   private readonly digestBreakerCooldownMs = 5 * 60 * 1000;
   private readonly persistedDigestMaxAgeMs = 6 * 60 * 60 * 1000;
-  private readonly perFeedFallbackCategoryFeedLimit = 3;
-  private readonly perFeedFallbackIntelFeedLimit = 6;
-  private readonly perFeedFallbackBatchSize = 2;
+  private readonly outageFallbackCategoryFeedLimit = 3;
+  private readonly outageFallbackIntelFeedLimit = 6;
+  private readonly outageFallbackBatchSize = 2;
   /**
-   * Ceiling on a custom category's ACCUMULATED item set (#5873).
-   *
-   * A custom category rotates through its sources `perFeedFallbackCategoryFeedLimit`
-   * at a time and merges each cycle into what the panel already shows, so unlike
-   * every other path its item set is not one snapshot. 40 is twice the server
-   * digest's `MAX_ITEMS_PER_CATEGORY` (20) — enough headroom for a full rotation
-   * lap of a ten-source category to stay represented at once, while keeping the
-   * panel, `ctx.allNews` and the clustering input the same order of magnitude as
-   * a digest-backed category.
+   * Ceiling on a cross-edition panel's merged item set. A category placed in
+   * several editions gets up to 20 items (`MAX_ITEMS_PER_CATEGORY`) from each
+   * edition's digest; 40 keeps the panel, `ctx.allNews` and the clustering
+   * input the same order of magnitude as a single-digest category.
    */
   private readonly customCategoryMergedItemLimit = 40;
-  /**
-   * Reachable source count for custom categories.
-   *
-   * Coverage is derived when the category is rendered, after the active time
-   * range has filtered its items. Keeping only the denominator here prevents a
-   * stale pre-filter count from surviving time-range changes.
-   */
-  private readonly customNewsSourceTotals = new Map<string, number>();
   private lastGoodDigest: ScopedDigest<ListFeedDigestResponse> | null = null;
   private readonly digestPersistenceQueue = new DigestPersistenceQueue<ListFeedDigestResponse>({
     cacheMaxAgeMs: this.persistedDigestMaxAgeMs,
@@ -709,7 +690,10 @@ export class DataLoaderManager implements AppModule {
         );
         if (!resp.ok) return null;
         const data = await resp.json() as ListFeedDigestResponse;
-        return countDigestCategories(data) > 0 ? data : null;
+        if (countDigestCategories(data) === 0) return null;
+        // As for the home digest (#7084), a stale replay must not restart the saved copy's clock.
+        if (data.coverage?.servedStale !== true) this.persistDigest(digestCacheKey(edition, language), data);
+        return data;
       } catch (e) {
         console.warn(`[News] ${edition} digest fetch for a cross-edition panel failed:`, e);
         return null;
@@ -722,14 +706,14 @@ export class DataLoaderManager implements AppModule {
     return promise;
   }
 
-  /**
-   * Items for a cross-edition panel, read from every other edition whose
-   * digest carries `category` (a key such as `markets` is placed in both the
-   * finance and commodity editions). Returns null unless EVERY such edition's
-   * digest arrived and carries the category: a partial set would silently drop
-   * the missing edition's sources, so the caller falls back to fetching the
-   * full reachable feed set instead.
-   */
+  /** The live edition digest, else the copy a previous page load saved. */
+  private async selectEditionDigest(edition: string, language: string): Promise<SelectedNewsDigest | null> {
+    const live = await this.fetchEditionDigest(edition, language);
+    if (live) return { digest: live, servedStale: live.coverage?.servedStale === true };
+    const saved = await this.readSavedDigest(digestCacheKey(edition, language));
+    return saved ? { digest: saved, servedStale: true } : null;
+  }
+
   /**
    * Cached rows of the enabled sources in `feeds` that this language's digest
    * fetches but that have no item in `delivered` (#9796). Never rejects.
@@ -778,16 +762,25 @@ export class DataLoaderManager implements AppModule {
     });
   }
 
-  private async crossEditionCategoryItems(category: string): Promise<{ items: NewsItem[]; servedStale: boolean } | null> {
+  /**
+   * Items for a cross-edition panel, read from every other edition whose
+   * digest carries `category` (a key such as `markets` is placed in both the
+   * finance and commodity editions), live or saved. `complete` is false when
+   * some of those digests are unavailable; null means all of them are.
+   */
+  private async crossEditionCategoryItems(
+    category: string,
+  ): Promise<{ items: NewsItem[]; servedStale: boolean; complete: boolean } | null> {
     const editions = digestEditionsFor(category).filter(edition => edition !== SITE_VARIANT);
     if (editions.length === 0) return null;
     const language = getCurrentLanguage();
-    const digests = await Promise.all(editions.map(edition => this.fetchEditionDigest(edition, language)));
-    const carrying = digests.filter((d): d is ListFeedDigestResponse => !!d?.categories && category in d.categories);
-    if (carrying.length !== editions.length) return null;
+    const selections = await Promise.all(editions.map(edition => this.selectEditionDigest(edition, language)));
+    const carrying = selections.filter((s): s is SelectedNewsDigest => !!s?.digest.categories && category in s.digest.categories);
+    if (carrying.length === 0) return null;
     return {
-      items: carrying.flatMap(d => (d.categories[category]?.items ?? []).map(protoItemToNewsItem)),
-      servedStale: carrying.some(d => d.coverage?.servedStale === true),
+      items: carrying.flatMap(s => (s.digest.categories[category]?.items ?? []).map(protoItemToNewsItem)),
+      servedStale: carrying.some(s => s.servedStale),
+      complete: carrying.length === editions.length,
     };
   }
 
@@ -818,7 +811,7 @@ export class DataLoaderManager implements AppModule {
       const data = await resp.json() as ListFeedDigestResponse;
       const catCount = countDigestCategories(data);
       // A 200 carrying no categories is an outage wearing a success status: every
-      // preset category renders empty behind it, because per-feed fallback is off
+      // preset category renders empty behind it, because there is no outage fallback
       // on web. Throwing routes it into the catch below, which is the whole point
       // — the breaker counts it, `lastGoodDigest` keeps the real digest it had, and
       // `digest:last-good` is left alone instead of being poisoned for 6 hours with
@@ -959,24 +952,32 @@ export class DataLoaderManager implements AppModule {
     });
   }
 
-  private async loadPersistedDigest(key = this.digestCacheKey()): Promise<ListFeedDigestResponse | null> {
+  private async readSavedDigest(key: string): Promise<ListFeedDigestResponse | null> {
     try {
       const envelope = await getPersistentCache<ListFeedDigestResponse>(key);
-      if (!envelope) return null;
-      if (Date.now() - envelope.updatedAt > this.persistedDigestMaxAgeMs) return null;
-      // Do not let an IndexedDB read started for a previous language complete
-      // into the new language's in-memory fallback.
-      if (key !== this.digestCacheKey()) return null;
-      this.lastGoodDigest = retainRicherScopedDigest(this.lastGoodDigest, key, envelope.data);
+      if (!envelope || Date.now() - envelope.updatedAt > this.persistedDigestMaxAgeMs) return null;
       return envelope.data;
     } catch { return null; }
   }
 
-  private isPerFeedFallbackEnabled(): boolean {
-    // Desktop: server digest has fewer categories than client FEEDS config.
-    // Enable per-feed RSS fallback so missing categories fetch directly.
-    if (isDesktopRuntime()) return true;
-    return isFeatureEnabled('newsPerFeedFallback');
+  private async loadPersistedDigest(key = this.digestCacheKey()): Promise<ListFeedDigestResponse | null> {
+    const data = await this.readSavedDigest(key);
+    // Do not let an IndexedDB read started for a previous language complete
+    // into the new language's in-memory fallback.
+    if (!data || key !== this.digestCacheKey()) return null;
+    this.lastGoodDigest = retainRicherScopedDigest(this.lastGoodDigest, key, data);
+    return data;
+  }
+
+  /**
+   * The outage fallback (KTD9): when no digest carries a category and the panel
+   * has no items, fetch a few catalog feeds directly. Desktop only, where the
+   * sidecar fetches publishers itself; `newsOutageFallback` turns it off. Web
+   * never fetches feeds directly: every browser on one digest outage would land
+   * on the shared proxy at once.
+   */
+  private isNewsOutageFallbackEnabled(): boolean {
+    return isDesktopRuntime() && isFeatureEnabled('newsOutageFallback');
   }
 
   private getStaleNewsItems(category: string): NewsItem[] {
@@ -988,51 +989,6 @@ export class DataLoaderManager implements AppModule {
   private selectLimitedFeeds<T>(feeds: T[], maxFeeds: number): T[] {
     if (feeds.length <= maxFeeds) return feeds;
     return feeds.slice(0, maxFeeds);
-  }
-
-  /**
-   * Rotation cycle of a custom category's capped per-feed window, persisted so
-   * it survives a reload (#5873).
-   *
-   * In-memory-only state would restart every custom category at window 0 on
-   * every page load, which for the common short session is indistinguishable
-   * from the fixed prefix this replaced: sources 4..N would still never be
-   * fetched. Reads are defensive — a hand-edited or older-schema value must not
-   * reach `selectRotatingFeedWindow` as a NaN start.
-   */
-  private readNewsRotationCycles(): Record<string, number> {
-    const stored = loadFromStorage<Record<string, number>>(STORAGE_KEYS.newsFeedRotation, {});
-    return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
-  }
-
-  private newsRotationCycle(category: string): number {
-    const cycle = this.readNewsRotationCycles()[category];
-    return typeof cycle === 'number' && Number.isFinite(cycle) && cycle >= 0 ? Math.trunc(cycle) : 0;
-  }
-
-  /**
-   * Advance and persist a custom category's rotation cycle.
-   *
-   * Written AFTER the window for this cycle has been selected, and pruned to
-   * the custom categories still in the work-list so a panel the user has since
-   * removed can't leave its entry behind forever.
-   */
-  private advanceNewsRotationCycle(category: string, feedCount: number): void {
-    const keep = new Set(
-      this.resolveEnabledNewsCategories()
-        .filter(({ isCustom }) => isCustom)
-        .map(({ key }) => key),
-    );
-    keep.add(category);
-
-    const next: Record<string, number> = {};
-    for (const [key, value] of Object.entries(this.readNewsRotationCycles())) {
-      if (keep.has(key) && typeof value === 'number' && Number.isFinite(value) && value >= 0) {
-        next[key] = Math.trunc(value);
-      }
-    }
-    next[category] = nextRotationCycle(this.newsRotationCycle(category), feedCount);
-    saveToStorage(STORAGE_KEYS.newsFeedRotation, next);
   }
 
   private shouldShowIntelligenceNotifications(): boolean {
@@ -1626,11 +1582,6 @@ export class DataLoaderManager implements AppModule {
     return this.ctx.newsCategoryPanelKeys.get(category) ?? category;
   }
 
-  private clearNewsSourceCoverage(category: string): void {
-    this.customNewsSourceTotals.delete(category);
-    this.callPanel(this.newsPanelKey(category), 'setSourceCoverage', null);
-  }
-
   private setNewsRefreshDegraded(category: string, degraded: boolean): void {
     this.callPanel(this.newsPanelKey(category), 'setRefreshDegraded', degraded);
   }
@@ -1638,13 +1589,6 @@ export class DataLoaderManager implements AppModule {
   renderNewsForCategory(category: string, items: NewsItem[]): void {
     this.ctx.newsByCategory[category] = items;
     const filteredItems = this.filterItemsByTimeRange(items);
-    const sourceTotal = this.customNewsSourceTotals.get(category);
-    if (sourceTotal !== undefined) {
-      this.callPanel(this.newsPanelKey(category), 'setSourceCoverage', {
-        covered: countRepresentedSources(filteredItems),
-        total: sourceTotal,
-      });
-    }
 
     const panel = this.ctx.newsPanels[category];
     if (!panel) return;
@@ -1666,25 +1610,15 @@ export class DataLoaderManager implements AppModule {
   }
 
   // `isCustom` marks a category from a user-added panel that isn't in the
-  // active variant's preset. The per-variant server digest never carries it, so
-  // it skips the digest-availability gate and fetches directly client-side —
-  // still capped by perFeedFallbackCategoryFeedLimit like any other per-feed
-  // fallback, because nothing bounds how many custom categories a session has
-  // (#5376). The cost is borne only by users who customize.
-  //
-  // That cap is a degraded-mode ceiling for a preset category but the STEADY
-  // STATE for a custom one, so the two diverge in how they spend it (#5873):
-  // a custom category rotates its window across cycles and merges each cycle
-  // into what the panel already shows, and reports the resulting source
-  // coverage on the panel badge. A preset category keeps the fixed prefix and
-  // whole-set replace — it is digest-backed in the normal case, and its
-  // fallback lasts only as long as the outage.
+  // active variant's preset. The active edition's digest does not carry it, so
+  // it reads the digests of the editions that do. Every panel reads only
+  // digests; the one direct fetch left is the desktop outage fallback (KTD9).
   private async loadNewsCategory(
     category: string,
     feeds: typeof FEEDS.politics,
     digestSelection: SelectedNewsDigest | null,
     isCustom = false,
-    options: NewsCategoryLoadOptions = { allowDigestPendingFallback: false, recordBaselineSample: true },
+    options: NewsCategoryLoadOptions = { recordBaselineSample: true, digestPending: false },
     generation = this.newsLoadGeneration,
     recordSelectedFreshness: (servedStale: boolean) => void = () => undefined,
   ): Promise<NewsItem[]> {
@@ -1697,7 +1631,6 @@ export class DataLoaderManager implements AppModule {
       if (enabledFeeds.length === 0) {
         recordSelectedFreshness(false);
         delete this.ctx.newsByCategory[category];
-        this.clearNewsSourceCoverage(category);
         if (panel) {
           panel.showError(t('common.allSourcesDisabled'));
         }
@@ -1709,28 +1642,9 @@ export class DataLoaderManager implements AppModule {
       }
       const enabledNames = new Set(enabledFeeds.map(f => f.name));
 
-      // The feeds a direct fetch would actually attempt. `fetchCategoryFeeds`
-      // drops feeds whose declared `lang` isn't the current UI language, so for
-      // a rotating custom category the enabled set is the wrong denominator on
-      // both counts: `europe` declares 47 feeds but only 6 are fetchable for an
-      // English user, so rotating over all 47 would spend ~7 of every 8
-      // twenty-minute cycles fetching nothing, and the coverage badge would sit
-      // at "6/47 sources" permanently — a fresh version of the same lie #5873 is
-      // about. Preset categories keep the full enabled set: they are
-      // digest-backed, and `enabledNames` (which filters digest items by source)
-      // must stay language-blind because the server does not language-filter.
-      const reachableFeeds = isCustom ? filterFeedsByLanguage(enabledFeeds, getCurrentLanguage()) : enabledFeeds;
-      if (isCustom) {
-        this.customNewsSourceTotals.set(category, reachableFeeds.length);
-      }
-
       // Digest branch: server already aggregated feeds — map proto items to client types
       if (digest?.categories && category in digest.categories) {
         recordSelectedFreshness(digestServedStale);
-        // The digest carries every enabled source for the category, so there is
-        // no partial coverage to disclose — clear any badge a prior custom-path
-        // load left behind.
-        this.clearNewsSourceCoverage(category);
         this.setNewsRefreshDegraded(category, false);
         const delivered = (digest.categories[category]?.items ?? []).map(protoItemToNewsItem);
         const items = delivered.filter(i => enabledNames.has(i.source));
@@ -1789,17 +1703,16 @@ export class DataLoaderManager implements AppModule {
 
       // Cross-edition panel: read the digests of the editions that carry this
       // category and merge them, source-fair, up to the custom-panel limit.
-      // Sources no digest carries yet (`browserOnly`, still on the migration
-      // list) keep the rotating direct fetch below, merged onto these items.
-      let crossEditionCarry: NewsItem[] | null = null;
-      let crossEditionFill: Promise<NewsItem[]> | null = null;
-      let crossEditionServedStale = false;
-      let rotationFeeds = reachableFeeds;
       if (isCustom) {
         const crossEdition = await this.crossEditionCategoryItems(category);
         if (crossEdition) {
-          recordSelectedFreshness(crossEdition.servedStale);
-          this.setNewsRefreshDegraded(category, false);
+          // While a carrying edition's digest is missing, its sources keep the
+          // panel's last items instead of dropping out.
+          const deliveredSources = new Set(crossEdition.items.map(i => i.source));
+          const carried = crossEdition.complete ? [] : this.getStaleNewsItems(category)
+            .filter(i => enabledNames.has(i.source) && !deliveredSources.has(i.source));
+          recordSelectedFreshness(crossEdition.servedStale || carried.length > 0);
+          this.setNewsRefreshDegraded(category, crossEdition.servedStale || carried.length > 0);
           const digestItems = crossEdition.items.filter(i => enabledNames.has(i.source));
           void ingestTrendingHeadlines(digestItems.map(i => ({
             title: i.title,
@@ -1816,90 +1729,63 @@ export class DataLoaderManager implements AppModule {
             checkBatchForBreakingAlerts(digestItems);
           }
           this.flashMapForNews(digestItems);
-          // A source is digest-served only if this language's digest carries
-          // it: a server-side language restriction (`digestLang`) can exclude
-          // a source the browser still reaches.
-          const digestLanguage = getCurrentLanguage();
-          const directFeeds = reachableFeeds.filter(f => !digestCarriesFeed(f, digestLanguage));
-          const items = mergeRotatedNewsItems([], digestItems, {
+          const items = mergeSourceFairNewsItems([...digestItems, ...carried], {
             maxItems: this.customCategoryMergedItemLimit,
             enabledSources: enabledNames,
           });
-          // #9796: the cached rows of digest-served sources no carrying
-          // edition's top items include, for the panel's free slots. Directly
-          // fetched sources are not digest-served, so the two never overlap.
-          // Read from every enabled source, as the digest items above are: a
-          // source the browser limits to another language can still be in
-          // this language's digest.
+          this.renderNewsForCategory(category, items);
+          // #9796: the cached rows of enabled sources no carrying edition's
+          // top items include, for the panel's free slots.
           if (items.length < this.customCategoryMergedItemLimit) {
             const editions = digestEditionsFor(category).filter(edition => edition !== SITE_VARIANT);
-            crossEditionFill = this.sourceRowsBelowCap(category, editions, crossEdition.items, enabledFeeds);
+            this.fillAfterRender(category, generation, items,
+              this.sourceRowsBelowCap(category, editions, crossEdition.items, enabledFeeds), this.customCategoryMergedItemLimit);
           }
-          if (directFeeds.length === 0) {
-            // Every reachable source is digest-served, so there is no partial
-            // source coverage to disclose on the badge.
-            this.clearNewsSourceCoverage(category);
-            this.renderNewsForCategory(category, items);
-            if (crossEditionFill) {
-              this.fillAfterRender(category, generation, items, crossEditionFill, this.customCategoryMergedItemLimit);
-            }
-            this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
-              status: 'ok',
-              itemCount: items.length,
-            });
-            return items;
-          }
-          crossEditionCarry = digestItems;
-          crossEditionServedStale = crossEdition.servedStale;
-          rotationFeeds = directFeeds;
+          this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
+            status: 'ok',
+            itemCount: items.length,
+          });
+          return items;
         }
       }
 
-      // Preset categories: serve last-known-good while the digest is briefly
-      // unavailable. Custom categories are NEVER in the digest, so this branch
-      // would fire on every refresh after the first load — getStaleNewsItems
-      // reads ctx.newsByCategory, which the prior cycle's direct fetch already
-      // populated — and freeze the panel on stale headlines. Skip it for them
-      // and fall through to the direct fetch; the panel keeps showing its
-      // current batch until fresh data lands (no blank flash).
+      // No digest carries the category in this load: an outage, or a cold
+      // digest still building. Keep the panel's last items while it has any.
       const staleItems = this.getStaleNewsItems(category).filter(i => enabledNames.has(i.source));
-
-      // For a custom category that same set is not "stale headlines to freeze
-      // on" but the CARRY-OVER this cycle accumulates onto: the rotation window
-      // only ever fetches perFeedFallbackCategoryFeedLimit sources, so the
-      // sources it did NOT fetch this time live here (#5873). Snapshotted here,
-      // before any render — renderNewsForCategory overwrites
-      // ctx.newsByCategory, which is what getStaleNewsItems reads, so reading
-      // it later would fold each partial render back into itself.
-      const rotationNames = new Set(rotationFeeds.map(f => f.name));
-      const carryOver = !isCustom
-        ? []
-        : crossEditionCarry
-          // Earlier direct fetches of the browser-only sources, plus this
-          // cycle's digest items (which supersede any older copies).
-          ? [...staleItems.filter(i => rotationNames.has(i.source)), ...crossEditionCarry]
-          : staleItems;
-
-      /**
-       * What to actually paint for a given set of freshly fetched items.
-       *
-       * Identity for a preset category — its fallback replaces wholesale, as
-       * before. For a custom one it merges onto the carry-over. Source coverage
-       * is published by renderNewsForCategory after time-range filtering, so
-       * the badge describes what is actually visible.
-       */
-      const mergeForRender = (freshItems: NewsItem[]): NewsItem[] => {
-        if (!isCustom) return freshItems;
-        return mergeRotatedNewsItems(carryOver, freshItems, {
-          maxItems: this.customCategoryMergedItemLimit,
-          enabledSources: enabledNames,
+      if (staleItems.length > 0) {
+        recordSelectedFreshness(true);
+        console.warn(`[News] Digest missing for "${category}", serving stale headlines (${staleItems.length})`);
+        this.setNewsRefreshDegraded(category, true);
+        this.renderNewsForCategory(category, staleItems);
+        this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
+          status: 'ok',
+          itemCount: staleItems.length,
         });
-      };
+        return staleItems;
+      }
 
-      // Show the digest items now; the direct fetch below only adds to them.
-      if (crossEditionCarry) this.renderNewsForCategory(category, mergeForRender([]));
+      // The home digest is still in flight: leave the panel loading. The load
+      // pass reloads this category once it settles.
+      if (options.digestPending && !isCustom) return [];
 
-      // Per-feed fallback: fetch each feed individually (first load or digest unavailable)
+      recordSelectedFreshness(false);
+      if (!this.isNewsOutageFallbackEnabled()) {
+        console.warn(`[News] Digest missing for "${category}", outage fallback off`);
+        this.renderNewsForCategory(category, []);
+        this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
+          status: 'error',
+          errorMessage: 'Digest unavailable',
+        });
+        return [];
+      }
+
+      // Desktop outage fallback (KTD9): a capped, fixed prefix of the catalog
+      // feeds this UI language can read, so an outage's repeated attempts
+      // fetch the same few feeds.
+      const reachableFeeds = filterFeedsByLanguage(enabledFeeds, getCurrentLanguage());
+      const fallbackFeeds = this.selectLimitedFeeds(reachableFeeds, this.outageFallbackCategoryFeedLimit);
+      console.warn(`[News] Digest missing for "${category}", outage fallback fetching ${fallbackFeeds.length}/${reachableFeeds.length} feeds`);
+
       const renderIntervalMs = 100;
       let lastRenderTime = 0;
       let renderTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -1914,10 +1800,7 @@ export class DataLoaderManager implements AppModule {
 
       const scheduleRender = (partialItems: NewsItem[]) => {
         if (!panel) return;
-        // Merge BEFORE queueing, not at flush time: rendering the raw partial
-        // would blank the carried-over sources for one frame and then bring
-        // them back, which is the churn the merge exists to avoid.
-        pendingItems = mergeForRender(partialItems);
+        pendingItems = partialItems;
         const elapsed = Date.now() - lastRenderTime;
         if (elapsed >= renderIntervalMs) {
           if (renderTimeout) {
@@ -1936,102 +1819,20 @@ export class DataLoaderManager implements AppModule {
         }
       };
 
-      if (!isCustom && staleItems.length > 0) {
-        recordSelectedFreshness(true);
-        console.warn(`[News] Digest missing for "${category}", serving stale headlines (${staleItems.length})`);
-        this.renderNewsForCategory(category, staleItems);
-        this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
-          status: 'ok',
-          itemCount: staleItems.length,
-        });
-        return staleItems;
-      }
-
-      // The per-feed-fallback flag is the kill switch for the digest-down
-      // thundering herd (every preset category fetching at once), so it does NOT
-      // apply to custom categories: those are NEVER in the digest by design and
-      // direct fetch is their only path — gating them here would leave a
-      // customized panel permanently empty rather than degraded. Their blast
-      // radius is bounded by the feed cap below instead.
-      if (!isCustom && !this.isPerFeedFallbackEnabled() && !options.allowDigestPendingFallback) {
-        recordSelectedFreshness(false);
-        console.warn(`[News] Digest missing for "${category}", limited per-feed fallback disabled`);
-        this.renderNewsForCategory(category, []);
-        this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
-          status: 'error',
-          errorMessage: 'Digest unavailable',
-        });
-        return [];
-      }
-
-      // Every per-feed fallback is capped, custom categories included. They used
-      // to fetch their full feed set on the theory that a handful of customized
-      // panels carried "no thundering-herd risk" — three of them firing on every
-      // load, uncapped, was 19 direct proxy round-trips (#5376). Nothing bounds
-      // how many custom categories a session can have, so the cap has to be
-      // unconditional.
-      //
-      // WHICH feeds the cap buys is where the two diverge. A preset category
-      // takes the fixed prefix: its fallback is transient, and re-fetching the
-      // same feeds is what makes an outage's repeated attempts idempotent. A
-      // custom category is the ONLY consumer of its feeds and is never in the
-      // digest, so a fixed prefix made the cap PERMANENT — feeds 4..N were
-      // unreachable on every load and every refresh (#5873). It rotates
-      // instead: same request budget, advanced by the cap each cycle, so every
-      // source is reached within ceil(N / cap) cycles.
-      //
-      // Direct feeds merged onto a stale cross-edition digest keep the digest's
-      // stale state: the combined panel still carries replayed items.
-      recordSelectedFreshness(crossEditionCarry ? crossEditionServedStale : false);
-      const rotationCycle = isCustom ? this.newsRotationCycle(category) : 0;
-      const fallbackFeeds = isCustom
-        ? selectRotatingFeedWindow(rotationFeeds, this.perFeedFallbackCategoryFeedLimit, rotationCycle)
-        : this.selectLimitedFeeds(enabledFeeds, this.perFeedFallbackCategoryFeedLimit);
-      if (isCustom) {
-        // Advanced as soon as the window is claimed rather than after the fetch
-        // resolves, so a cycle that fails outright still moves on instead of
-        // retrying the same failing window forever.
-        this.advanceNewsRotationCycle(category, rotationFeeds.length);
-        console.warn(`[News] Custom category "${category}" (not in variant preset), fetching ${fallbackFeeds.length}/${rotationFeeds.length} feeds directly (rotation cycle ${rotationCycle})`);
-      } else if (options.allowDigestPendingFallback) {
-        console.warn(`[News] Digest still pending for "${category}", using limited per-feed fallback (${fallbackFeeds.length}/${enabledFeeds.length} feeds)`);
-      } else if (fallbackFeeds.length < enabledFeeds.length) {
-        console.warn(`[News] Digest missing for "${category}", using limited per-feed fallback (${fallbackFeeds.length}/${enabledFeeds.length} feeds)`);
-      } else {
-        console.warn(`[News] Digest missing for "${category}", using per-feed fallback (${fallbackFeeds.length} feeds)`);
-      }
-
       const { fetchCategoryFeeds, getFeedFailures } = await getRssModule();
-      const fetchedItems = await fetchCategoryFeeds(fallbackFeeds, {
-        batchSize: this.perFeedFallbackBatchSize,
+      const items = await fetchCategoryFeeds(fallbackFeeds, {
+        batchSize: this.outageFallbackBatchSize,
         onBatch: (partialItems) => {
           scheduleRender(partialItems);
-          // Map flashes and breaking-news alerts fire on the FRESH batch only.
-          // Feeding them the merged set would re-flash and re-alert on every
-          // rotation cycle for headlines the user has already seen.
           this.flashMapForNews(partialItems);
           if (this.isCurrentNewsLoad(generation)) checkBatchForBreakingAlerts(partialItems);
         },
       });
 
-      // Everything downstream — render, empty-state, baseline, status count and
-      // the value that lands in ctx.allNews — reads the MERGED set, because for
-      // a custom category that is what the panel actually shows. Using the raw
-      // fetch would report this cycle's three sources as the whole category and
-      // hand clustering a set the user isn't looking at. The #9796 source rows,
-      // requested alongside the direct fetch, take only the slots left free.
-      const merged = mergeForRender(fetchedItems);
-      const fillRows = crossEditionFill ? await crossEditionFill : [];
-      // A newer load may have rendered while this one waited for the rows.
-      if (crossEditionFill && !this.isCurrentNewsLoad(generation)) {
-        if (renderTimeout) clearTimeout(renderTimeout);
-        return merged;
-      }
-      const items = fillRows.length > 0 ? fillFreeSlots(merged, fillRows, this.customCategoryMergedItemLimit) : merged;
       const failures = getFeedFailures();
       const failedFeeds = fallbackFeeds.filter(f => failures.has(f.name));
-      const windowFailed = fallbackFeeds.length > 0 && failedFeeds.length === fallbackFeeds.length;
-      this.setNewsRefreshDegraded(category, windowFailed);
+      const allFailed = fallbackFeeds.length > 0 && failedFeeds.length === fallbackFeeds.length;
+      this.setNewsRefreshDegraded(category, allFailed);
       this.renderNewsForCategory(category, items);
       if (panel) {
         if (renderTimeout) {
@@ -2045,7 +1846,7 @@ export class DataLoaderManager implements AppModule {
           panel.showError(`${t('common.noNewsAvailable')} (${names} failed)`);
         }
 
-        if (options.recordBaselineSample && !windowFailed) {
+        if (options.recordBaselineSample && !allFailed) {
           try {
             const baseline = await updateBaseline(`news:${category}`, items.length);
             const deviation = calculateDeviation(items.length, baseline);
@@ -2055,7 +1856,7 @@ export class DataLoaderManager implements AppModule {
       }
 
       const feedLabel = category.charAt(0).toUpperCase() + category.slice(1);
-      if (windowFailed) {
+      if (allFailed) {
         const names = failedFeeds.map(f => f.name).join(', ');
         this.ctx.statusPanel?.updateFeed(feedLabel, {
           status: 'error',
@@ -2078,37 +1879,17 @@ export class DataLoaderManager implements AppModule {
         errorMessage: String(error),
       });
       this.ctx.statusPanel?.updateApi('RSS2JSON', { status: 'error' });
-      // A preset category drops its items: its next successful load replaces
-      // them wholesale from the digest, so holding stale ones only risks
-      // presenting them as current.
-      //
-      // A custom category's stored items are its ACCUMULATED rotation coverage,
-      // built one capped window per 20-minute cycle (#5873). Dropping them
-      // sends the next cycle back to carry-over-less, so a single transient
-      // error — a chunk-load hiccup is enough — silently restarts the hour it
-      // takes to cover a ten-source panel. Keep them: the next cycle merges
-      // onto them, and the status panel already reports the error.
-      if (!isCustom) {
-        recordSelectedFreshness(false);
-        delete this.ctx.newsByCategory[category];
-        return [];
-      }
-
-      recordSelectedFreshness(true);
-      this.setNewsRefreshDegraded(category, true);
-      const enabledNames = new Set(
-        (feeds ?? [])
-          .filter(feed => !this.ctx.disabledSources.has(feed.name))
-          .map(feed => feed.name),
-      );
-      return this.getStaleNewsItems(category).filter(item => enabledNames.has(item.source));
+      // The next successful load replaces the items wholesale from a digest,
+      // so holding stale ones only risks presenting them as current.
+      recordSelectedFreshness(false);
+      delete this.ctx.newsByCategory[category];
+      return [];
     }
   }
 
   private async loadIntelNews(
     digestSelection: SelectedNewsDigest | null,
-    allowDigestPendingFallback: boolean,
-    options: NewsIntelLoadOptions = { recordBaselineSample: true },
+    options: NewsIntelLoadOptions = { recordBaselineSample: true, digestPending: false },
     generation = this.newsLoadGeneration,
     recordSelectedFreshness: (servedStale: boolean) => void = () => undefined,
   ): Promise<NewsItem[]> {
@@ -2127,6 +1908,7 @@ export class DataLoaderManager implements AppModule {
 
     if (digest?.categories && 'intel' in digest.categories) {
       recordSelectedFreshness(digestServedStale);
+      this.setNewsRefreshDegraded('intel', false);
       // Digest branch for intel
       const intel = (digest.categories['intel']?.items ?? [])
         .map(protoItemToNewsItem)
@@ -2160,6 +1942,7 @@ export class DataLoaderManager implements AppModule {
     if (staleIntel.length > 0) {
       recordSelectedFreshness(true);
       console.warn(`[News] Intel digest missing, serving stale headlines (${staleIntel.length})`);
+      this.setNewsRefreshDegraded('intel', true);
       this.renderNewsForCategory('intel', staleIntel);
       if (intelPanel && options.recordBaselineSample) {
         try {
@@ -2172,26 +1955,24 @@ export class DataLoaderManager implements AppModule {
       return staleIntel;
     }
 
-    if (!this.isPerFeedFallbackEnabled() && !allowDigestPendingFallback) {
+    if (options.digestPending) return [];
+
+    if (!this.isNewsOutageFallbackEnabled()) {
       recordSelectedFreshness(false);
-      console.warn('[News] Intel digest missing, limited per-feed fallback disabled');
+      console.warn('[News] Intel digest missing, outage fallback off');
       delete this.ctx.newsByCategory['intel'];
       this.ctx.statusPanel?.updateFeed('Intel', { status: 'error', errorMessage: 'Digest unavailable' });
       return [];
     }
 
     recordSelectedFreshness(false);
-    const fallbackIntelFeeds = this.selectLimitedFeeds(enabledIntelSources, this.perFeedFallbackIntelFeedLimit);
-    if (allowDigestPendingFallback) {
-      console.warn(`[News] Intel digest still pending, using limited per-feed fallback (${fallbackIntelFeeds.length}/${enabledIntelSources.length} feeds)`);
-    } else if (fallbackIntelFeeds.length < enabledIntelSources.length) {
-      console.warn(`[News] Intel digest missing, using limited per-feed fallback (${fallbackIntelFeeds.length}/${enabledIntelSources.length} feeds)`);
-    }
+    const fallbackIntelFeeds = this.selectLimitedFeeds(enabledIntelSources, this.outageFallbackIntelFeedLimit);
+    console.warn(`[News] Intel digest missing, outage fallback fetching ${fallbackIntelFeeds.length}/${enabledIntelSources.length} feeds`);
 
     let intel: NewsItem[];
     try {
       const { fetchCategoryFeeds } = await getRssModule();
-      intel = await fetchCategoryFeeds(fallbackIntelFeeds, { batchSize: this.perFeedFallbackBatchSize });
+      intel = await fetchCategoryFeeds(fallbackIntelFeeds, { batchSize: this.outageFallbackBatchSize });
     } catch (e) {
       recordSelectedFreshness(false);
       delete this.ctx.newsByCategory['intel'];
@@ -2217,8 +1998,8 @@ export class DataLoaderManager implements AppModule {
    * Panel-driven, not variant-driven: the active variant's preset categories
    * PLUS any extra categories required by enabled news panels the user added
    * beyond the preset (e.g. Tech panels customized into `full`). Custom
-   * categories aren't in the per-variant server digest, so they're flagged
-   * `isCustom` and fetched directly client-side in loadNewsCategory().
+   * categories aren't in the active edition's digest, so they're flagged
+   * `isCustom` and read from the editions that carry them in loadNewsCategory().
    */
   private resolveEnabledNewsCategories(): ResolvedCategory[] {
     return resolveNewsCategories(
@@ -2398,8 +2179,6 @@ export class DataLoaderManager implements AppModule {
         digestPromise,
         fallbackDigest: fallbackSelection,
         digestGraceMs: this.digestFirstPaintGraceMs,
-        allowPendingPerFeedFallback: this.isPerFeedFallbackEnabled(),
-        hasDigestCategory: (selection, key) => Boolean(selection.digest.categories && key in selection.digest.categories),
         loadCategory: ({ key, feeds, isCustom }, selection, options) => (
           this.loadNewsCategory(
             key,
@@ -2412,10 +2191,9 @@ export class DataLoaderManager implements AppModule {
           )
         ),
         loadIntel: loadsIntel
-          ? (selection, allowDigestPendingFallback, options) => (
+          ? (selection, options) => (
             this.loadIntelNews(
               selection,
-              allowDigestPendingFallback,
               options,
               generation,
               servedStale => { intelServedStale = servedStale; },
@@ -2433,7 +2211,7 @@ export class DataLoaderManager implements AppModule {
     const { categoryItemsByKey, intelItems } = newsPass;
 
     // An older load can finish after a newer request because digest and
-    // per-feed fallbacks have independent latency. It must not replace the
+    // the outage fallback have independent latency. It must not replace the
     // newer request's data or the notification freshness paired with it.
     if (!this.isCurrentNewsLoad(generation)) return;
 
@@ -2466,15 +2244,15 @@ export class DataLoaderManager implements AppModule {
     // A digest outage lands none of those, and it has two shapes. The obvious one
     // is a failed request. The one that bites is a 200 carrying an empty or partial
     // `categories` map — non-null, so a plain null check would call it landed. Both
-    // render every preset category empty on web (`newsPerFeedFallback` is off), and
+    // render every preset category empty on web (web has no outage fallback), and
     // recording either would make the gate treat an empty dashboard as "already
     // loaded" and suppress every retry until RefreshScheduler's 20-minute tick.
     // Leaving the signature unset keeps the next trigger a real retry — the recovery
     // the pre-gate double-load provided by accident, now deliberate.
     //
-    // Coverage is measured over PRESET categories only: a custom category succeeds
-    // on its own direct-fetch path, so counting it would let one customized panel
-    // mask an outage for every other category in the work-list.
+    // Coverage is measured over PRESET categories only: a custom category reads
+    // other editions' digests, so counting it would let one customized panel
+    // mask an outage of this edition's digest for every other category.
     //
     // Set here rather than in a `finally` so a load that threw on the way in stays
     // retryable too, and before the post-load intelligence tail so a failure there

@@ -52,7 +52,7 @@ interface DigestLoaderInternals {
     feeds: Array<{ name: string }>,
     digest: SelectedNewsDigest | null,
     isCustom: boolean,
-    options: { allowDigestPendingFallback: boolean; recordBaselineSample: boolean },
+    options: { recordBaselineSample: boolean },
     generation: number,
   ): Promise<unknown[]>;
 }
@@ -415,7 +415,7 @@ describe('digest coverage follows the selected browser response', () => {
         [{ name: 'source-0' }],
         selected,
         false,
-        { allowDigestPendingFallback: false, recordBaselineSample: false },
+        { recordBaselineSample: false },
         generation,
       );
 

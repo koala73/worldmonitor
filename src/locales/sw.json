@@ -1970,8 +1970,6 @@
       "sortBy": "Panga kwa",
       "sortNewest": "Mpya zaidi",
       "sortRelevance": "Umuhimu",
-      "sourceCoverage": "{{covered}}/{{total}} sources",
-      "sourceCoverageHint": "Showing {{covered}} of {{total}} enabled sources — this panel rotates through its sources on each refresh",
       "translationUnavailable": "Tafsiri haipatikani. Kagua mipangilio ya mtoa huduma wako wa AI na ujaribu tena."
     },
     "mobileNav": {
