@@ -422,7 +422,7 @@ export function buildCrossStraitActivityPanelModel(
   const japanObservations = snapshot.observations.filter((row) => row.sourceId === 'japan-mod');
   const japanSource = snapshot.sources.find((source) => source.id === 'japan-mod');
   const japanCoverageLabel = japanSource?.transportPath === 'x_api'
-    ? `Japan X discovery is ${japanSource.transportStatus === 'fresh' ? 'current' : 'unavailable'}. ${japanObservations.length} reviewed report${japanObservations.length === 1 ? '' : 's'} in this snapshot. New posts require review before they update these counts.`
+    ? `Japan X discovery: last success ${japanSource.lastSuccessAt ?? 'not recorded'}.${japanSource.transportStatus === 'fresh' ? '' : ' Latest check unavailable.'} ${japanObservations.length} reviewed report${japanObservations.length === 1 ? '' : 's'} in this snapshot. New posts require review before they update these counts.`
     : null;
   const japan = japanObservations
     .sort((a, b) => b.reportingDay.localeCompare(a.reportingDay))

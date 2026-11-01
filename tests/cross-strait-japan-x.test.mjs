@@ -160,13 +160,20 @@ test('budget denial retries after one hour in the same slot and preserves the ge
 test('public Japan coverage distinguishes discovery from reviewed reports without exposing candidates', async () => {
   const snapshot = projectCrossStraitActivityBootstrap(publishableSnapshot(await fetchOutcome()));
   const model = buildCrossStraitActivityPanelModel(snapshot);
-  assert.match(model.japanCoverageLabel, /X discovery is current/);
+  assert.match(model.japanCoverageLabel, /X discovery: last success/);
+  const japanSource = snapshot.sources.find(row => row.id === 'japan-mod');
+  japanSource.lastSuccessAt = '2026-01-01T00:00:00.000Z';
+  const oldLabel = buildCrossStraitActivityPanelModel(snapshot).japanCoverageLabel;
+  assert.match(oldLabel, /last success 2026-01-01T00:00:00.000Z/);
+  assert.doesNotMatch(oldLabel, /current/);
+  japanSource.lastSuccessAt = null;
+  assert.match(buildCrossStraitActivityPanelModel(snapshot).japanCoverageLabel, /last success not recorded/);
   assert.match(model.japanCoverageLabel, /2 reviewed reports/);
   assert.match(model.japanCoverageLabel, /New posts require review/);
   snapshot.observations = snapshot.observations.filter(row => row.sourceId !== 'japan-mod');
   assert.match(buildCrossStraitActivityPanelModel(snapshot).japanCoverageLabel, /0 reviewed reports/);
   snapshot.sources.find(row => row.id === 'japan-mod').transportStatus = 'error';
-  assert.doesNotMatch(buildCrossStraitActivityPanelModel(snapshot).japanCoverageLabel, /discovery is current/);
+  assert.match(buildCrossStraitActivityPanelModel(snapshot).japanCoverageLabel, /Latest check unavailable/);
   snapshot.sources.find(row => row.id === 'japan-mod').transportPath = 'proxy';
   assert.equal(buildCrossStraitActivityPanelModel(snapshot).japanCoverageLabel, null);
 });
