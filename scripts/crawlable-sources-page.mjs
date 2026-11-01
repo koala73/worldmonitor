@@ -138,6 +138,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['api.rainviewer.com', 'environment'],
   // #9094: locates published fact-checks for /verify and verify_claim.
   ['factchecktools.googleapis.com', 'news'],
+  ['api.tineye.com', 'news'],
   // BestTime live busyness is the fallback feed for the PizzINT (Pentagon pizza) panel.
   ['besttime.app', 'military'],
   // Turkey's crude imports by origin for the energy shock model.
@@ -222,6 +223,7 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['hormuz.data-tracking.net', 'UK Maritime Trade Operations (UKMTO) via hormuz.data-tracking.net'],
   ['acleddata.com', 'ACLED'],
   ['factchecktools.googleapis.com', 'Google Fact Check Tools API'],
+  ['api.tineye.com', 'TinEye reverse image search API'],
   ['adsb.lol', 'ADSB.lol'],
   ['aerotime.aero', 'AeroTime'],
   ['agentskills.io', 'Agent Skills'],

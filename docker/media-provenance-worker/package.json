@@ -1,0 +1,14 @@
+{
+  "name": "worldmonitor-media-provenance-worker",
+  "private": true,
+  "description": "Dependencies of scripts/media-provenance-worker.mjs (#9096), installed by Dockerfile.media-provenance-worker.",
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1012.0",
+    "@contentauth/c2pa-node": "0.9.9",
+    "sharp": "0.35.5"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

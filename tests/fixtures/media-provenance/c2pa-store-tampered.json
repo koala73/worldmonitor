@@ -1,0 +1,114 @@
+{
+  "active_manifest": "urn:c2pa:c1b9af99-bb3a-4810-a214-2d4ecf733356",
+  "manifests": {
+    "urn:c2pa:c1b9af99-bb3a-4810-a214-2d4ecf733356": {
+      "claim_generator_info": [
+        {
+          "name": "WorldMonitor test fixture",
+          "version": "1.0",
+          "org.contentauth.c2pa_rs": "0.91.0"
+        }
+      ],
+      "title": "plain.jpg",
+      "instance_id": "xmp.iid:89285229-c925-446e-8618-5f0cd0db8509",
+      "thumbnail": {
+        "format": "image/jpeg",
+        "identifier": "self#jumbf=/c2pa/urn:c2pa:c1b9af99-bb3a-4810-a214-2d4ecf733356/c2pa.assertions/c2pa.thumbnail.claim"
+      },
+      "assertions": [
+        {
+          "label": "c2pa.actions.v2",
+          "data": {
+            "actions": [
+              {
+                "action": "c2pa.created",
+                "softwareAgent": {
+                  "name": "Example Image Model"
+                },
+                "digitalSourceType": "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"
+              },
+              {
+                "action": "c2pa.cropped",
+                "softwareAgent": {
+                  "name": "Example Editor"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "signature_info": {
+        "alg": "Es256",
+        "issuer": "Example Newsroom (test)",
+        "common_name": "Example Newsroom Signer",
+        "cert_serial_number": "96798912038906688033001746085329564112677991828"
+      },
+      "label": "urn:c2pa:c1b9af99-bb3a-4810-a214-2d4ecf733356",
+      "claim_version": 2
+    }
+  },
+  "validation_status": [
+    {
+      "code": "signingCredential.untrusted",
+      "url": "self#jumbf=/c2pa/urn:c2pa:c1b9af99-bb3a-4810-a214-2d4ecf733356/c2pa.signature",
+      "explanation": "signing certificate untrusted"
+    },
+    {
+      "code": "assertion.dataHash.mismatch",
+      "url": "self#jumbf=/c2pa/urn:c2pa:c1b9af99-bb3a-4810-a214-2d4ecf733356/c2pa.assertions/c2pa.hash.data",
+      "explanation": "asset hash error, name: jumbf manifest, error: hash verification( Hashes do not match )"
+    }
+  ],
+  "validation_results": {
+    "activeManifest": {
+      "success": [
+        {
+          "code": "claimSignature.insideValidity",
+          "url": "self#jumbf=/c2pa/urn:c2pa:c1b9af99-bb3a-4810-a214-2d4ecf733356/c2pa.signature",
+          "explanation": "claim signature valid"
+        },
+        {
+          "code": "claimSignature.validated",
+          "url": "self#jumbf=/c2pa/urn:c2pa:c1b9af99-bb3a-4810-a214-2d4ecf733356/c2pa.signature",
+          "explanation": "claim signature valid"
+        },
+        {
+          "code": "assertion.hashedURI.match",
+          "url": "self#jumbf=/c2pa/urn:c2pa:c1b9af99-bb3a-4810-a214-2d4ecf733356/c2pa.assertions/c2pa.hash.data",
+          "explanation": "hashed uri matched: self#jumbf=c2pa.assertions/c2pa.hash.data"
+        },
+        {
+          "code": "assertion.hashedURI.match",
+          "url": "self#jumbf=/c2pa/urn:c2pa:c1b9af99-bb3a-4810-a214-2d4ecf733356/c2pa.assertions/c2pa.thumbnail.claim",
+          "explanation": "hashed uri matched: self#jumbf=c2pa.assertions/c2pa.thumbnail.claim"
+        },
+        {
+          "code": "assertion.hashedURI.match",
+          "url": "self#jumbf=/c2pa/urn:c2pa:c1b9af99-bb3a-4810-a214-2d4ecf733356/c2pa.assertions/c2pa.actions.v2",
+          "explanation": "hashed uri matched: self#jumbf=c2pa.assertions/c2pa.actions.v2"
+        }
+      ],
+      "informational": [
+        {
+          "code": "signingCredential.ocsp.skipped",
+          "url": "self#jumbf=/c2pa/urn:c2pa:c1b9af99-bb3a-4810-a214-2d4ecf733356/c2pa.signature",
+          "explanation": "OCSP fetching skipped"
+        }
+      ],
+      "failure": [
+        {
+          "code": "signingCredential.untrusted",
+          "url": "self#jumbf=/c2pa/urn:c2pa:c1b9af99-bb3a-4810-a214-2d4ecf733356/c2pa.signature",
+          "explanation": "signing certificate untrusted"
+        },
+        {
+          "code": "assertion.dataHash.mismatch",
+          "url": "self#jumbf=/c2pa/urn:c2pa:c1b9af99-bb3a-4810-a214-2d4ecf733356/c2pa.assertions/c2pa.hash.data",
+          "explanation": "asset hash error, name: jumbf manifest, error: hash verification( Hashes do not match )"
+        }
+      ]
+    },
+    "specVersion": "2.4.0"
+  },
+  "validation_state": "Invalid"
+}

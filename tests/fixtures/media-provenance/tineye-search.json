@@ -1,0 +1,37 @@
+{
+  "code": 200,
+  "messages": [],
+  "stats": { "timestamp": "1760616000.00", "query_time": "1.23", "total_backlinks": 5, "total_results": 3 },
+  "results": {
+    "matches": [
+      {
+        "image_url": "https://img.example.net/photo-large.jpg",
+        "domain": "example.net",
+        "score": 88.2,
+        "width": 1200,
+        "height": 900,
+        "backlinks": [
+          { "url": "https://img.example.net/photo-large.jpg", "backlink": "https://example.net/news/2026/10/14/story", "crawl_date": "2026-10-14" },
+          { "url": "https://img.example.net/photo-large.jpg", "backlink": "https://example.net/gallery/1", "crawl_date": "2026-10-15" }
+        ]
+      },
+      {
+        "image_url": "https://cdn.example.org/a.jpg",
+        "domain": "example.org",
+        "score": 80.1,
+        "backlinks": [
+          { "url": "https://cdn.example.org/a.jpg", "backlink": "https://example.org/2024/03/03/first", "crawl_date": "2024-03-03" },
+          { "url": "https://cdn.example.org/a.jpg", "backlink": "javascript:alert(1)", "crawl_date": "2023-01-01" },
+          { "url": "https://cdn.example.org/a.jpg", "backlink": "https://example.org/undated", "crawl_date": "" }
+        ]
+      },
+      {
+        "image_url": "https://example.com/c.jpg",
+        "domain": "example.com",
+        "backlinks": [
+          { "url": "https://example.com/c.jpg", "backlink": "https://example.net/news/2026/10/14/story", "crawl_date": "2026-10-16" }
+        ]
+      }
+    ]
+  }
+}

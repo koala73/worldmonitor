@@ -49,5 +49,6 @@ export const LABELS = {
   'supplychain.routes':['Route Explorer','Lane-level route explorer and impact'],
   'support.priority':['Priority support','Faster support response'],
   'trade.flows':['Trade flows & tariffs','Comtrade flows and tariff trends'],
+  'verify.media':['Image and video checks','Content credentials and earliest copy for a media link on /verify'],
   'widgets.custom':['Custom widget builder','Build your own panels'],
 };

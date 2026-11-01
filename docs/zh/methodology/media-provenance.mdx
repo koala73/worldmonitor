@@ -1,0 +1,62 @@
+---
+title: "图片与视频核查"
+description: "了解 WorldMonitor 如何在 /verify 页面核查图片或视频链接：读取文件的 C2PA 内容凭证，并列出 TinEye 见过的最早副本。它只报告证据，从不判定媒体是真是假。"
+---
+
+_本方法论由 World Monitor 创始人 [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/) 维护。已发布的修订记录在[更正日志](/zh/corrections)中。_
+
+## 从这里开始
+
+在 [/verify](https://www.worldmonitor.app/verify) 粘贴一个图片或视频链接，WorldMonitor Pro 用户会得到两个问题的答案：
+
+1. **文件的内容凭证说了什么？** 谁签署了它、用的是哪台相机或哪个应用、对它做过哪些操作，以及签署者是否声明它由生成式 AI 制作。
+2. **这张图片以前在哪里出现过？** TinEye 爬虫找到的最早副本，按时间从早到晚排列，附页面和日期。
+
+WorldMonitor 只报告它找到的内容。它从不说媒体是真实的、伪造的、被篡改的或原创的，也从不判定是谁最先发布的。
+
+## 内容凭证（C2PA）
+
+内容凭证是部分相机、手机和编辑应用附加到文件上的签名记录，由 [C2PA 标准](https://c2pa.org/) 定义。WorldMonitor 使用开源库 `@contentauth/c2pa-node` 读取凭证，并报告：
+
+| 字段 | 含义 |
+|---|---|
+| 签署者 | 签名证书上所列的机构。 |
+| 签署者信任 | 证书可追溯到本次核查所用的 C2PA 信任列表时为 `trusted`；不能追溯时为 `untrusted`；未配置信任列表时为 `unknown`。 |
+| 制作工具 | 写入凭证的相机、手机或应用。 |
+| 操作步骤 | 凭证所列的操作（创建、裁剪、编辑等），按签署者的声明列出。 |
+| AI 声明 | 仅当某项操作声明了 IPTC `trainedAlgorithmicMedia` 或 `compositeWithTrainedAlgorithmicMedia` 来源类型时显示。WorldMonitor 报告的是声明，本身不检测 AI。 |
+| 签署后被修改 | 仅当验证结果显示文件已不再匹配签名哈希时显示。它说明文件在签署后发生了变化，但不说明是如何修改、由谁修改。 |
+
+**没有凭证是常见结果。** 大多数网站和即时通讯应用会在上传图片时删除凭证，截图也从不带有凭证。缺少凭证并不能说明图片是否被编辑过。
+
+## 最早副本（TinEye）
+
+对于图片，WorldMonitor 会把一份副本发送给 [TinEye API](https://tineye.com/)，并按时间从早到晚列出 TinEye 见过该图片的页面。日期是 **TinEye 爬虫首次在该页面看到这张图片的时间**，不是发布日期，最早的页面也不一定是来源。
+
+视频不做搜索：最早副本搜索只覆盖图片。MP4 和 MOV 文件仍会读取内容凭证。
+
+搜索结果会是以下状态之一：
+
+| 状态 | 含义 |
+|---|---|
+| `ok` | 搜索已运行。没有副本表示 TinEye 没有见过这张图片。 |
+| `unsupported-media` | 文件是视频。 |
+| `not-configured` | 服务器没有配置 TinEye 密钥。 |
+| `cap-reached` | 本月搜索预算已用完，下个月恢复。 |
+| `unavailable` | 搜索无法运行。 |
+
+## 限制与保护措施
+
+- **仅限 Pro。** 每张新图片都可能产生一次付费的 TinEye 搜索。搜索受每月预算限制（`TINEYE_MONTHLY_CAP_USD`，默认 50 美元）；达到上限时，核查会明确说明，而不是悄悄跳过搜索。同一文件再次核查时，结果来自 30 天缓存。
+- **仅限公开链接。** 由工作进程自行下载文件，并拒绝私有地址、本地地址和云元数据地址，重定向和 DNS 解析之后也同样检查。超过 25 MB 的文件，以及按字节判断不是 JPEG、PNG、WebP、GIF、AVIF、HEIC、TIFF、MP4 或 MOV 的文件，都会被拒绝。
+- **隐私。** 发送给 TinEye 的副本会重新编码，并删除全部元数据，包括 EXIF 位置信息和内容凭证，长边缩小到最多 2,000 像素。提交的文件保留 30 天后删除。
+- **时间限制。** 4 分钟后仍没有结果的核查会报告为失败。一个文件如果三次导致工作进程停止，会报告为失败，不再重新核查。
+
+## 审核人员
+
+在 `/trust/review/` 审核读者报告的运营人员，可以使用审核密钥，对读者随报告提交的链接运行同样的核查。参见[修订与更正日志](/zh/corrections)。
+
+## API
+
+- `POST /api/news/v1/check-media-provenance`（Pro）将 `url` 加入核查队列，并以 `202 Accepted` 返回 `job_id`。
+- `GET /api/news/v1/get-media-provenance?job_id=…` 返回 `pending`、带原因的 `failed`，或带结果的 `done`。只有发起核查的调用方可以读取结果。

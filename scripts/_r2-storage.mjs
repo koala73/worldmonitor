@@ -2,15 +2,21 @@
 
 import { createHash } from 'node:crypto';
 
-let _S3Client, _PutObjectCommand, _GetObjectCommand;
+let _S3Client, _PutObjectCommand, _GetObjectCommand, _DeleteObjectCommand;
 async function loadS3SDK() {
   if (!_S3Client) {
     const sdk = await import('@aws-sdk/client-s3');
     _S3Client = sdk.S3Client;
     _PutObjectCommand = sdk.PutObjectCommand;
     _GetObjectCommand = sdk.GetObjectCommand;
+    _DeleteObjectCommand = sdk.DeleteObjectCommand;
   }
-  return { S3Client: _S3Client, PutObjectCommand: _PutObjectCommand, GetObjectCommand: _GetObjectCommand };
+  return {
+    S3Client: _S3Client,
+    PutObjectCommand: _PutObjectCommand,
+    GetObjectCommand: _GetObjectCommand,
+    DeleteObjectCommand: _DeleteObjectCommand,
+  };
 }
 
 // ── S3-mode timeout guards (issue #4786) ─────────────────────────────────
@@ -336,7 +342,83 @@ async function getR2JsonObject(config, key) {
   });
 }
 
+function r2ApiObjectUrl(config, key) {
+  const encodedKey = key.split('/').map(part => encodeURIComponent(part)).join('/');
+  return `${config.apiBaseUrl}/accounts/${config.accountId}/r2/buckets/${config.bucket}/objects/${encodedKey}`;
+}
+
+// Writes a binary object (#9096 stores submitted media files for 30 days).
+async function putR2BinaryObject(config, key, body, contentType) {
+  if (config.mode === 'api') {
+    return withR2Retry(async () => {
+      const resp = await fetch(r2ApiObjectUrl(config, key), {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${config.apiToken}`, 'Content-Type': contentType },
+        body,
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        const error = new Error(`Cloudflare R2 API upload failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
+        error.status = resp.status;
+        throw error;
+      }
+      return { bucket: config.bucket, key, bytes: body.length };
+    }, { op: 'put', key });
+  }
+
+  return withR2Retry(async () => {
+    const { PutObjectCommand } = await loadS3SDK();
+    const client = await getR2StorageClient(config);
+    await withSettleTimeout(
+      client.send(new PutObjectCommand({
+        Bucket: config.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+        CacheControl: 'no-store',
+      }), { abortSignal: AbortSignal.timeout(_s3TimeoutMs) }),
+      _s3TimeoutMs,
+      `R2 s3 put ${key}`,
+    );
+    return { bucket: config.bucket, key, bytes: body.length };
+  }, { op: 'put', key });
+}
+
+// Deletes an object; a missing object counts as deleted.
+async function deleteR2Object(config, key) {
+  if (config.mode === 'api') {
+    return withR2Retry(async () => {
+      const resp = await fetch(r2ApiObjectUrl(config, key), {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${config.apiToken}` },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!resp.ok && resp.status !== 404) {
+        const text = await resp.text().catch(() => '');
+        const error = new Error(`Cloudflare R2 API delete failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
+        error.status = resp.status;
+        throw error;
+      }
+      return true;
+    }, { op: 'delete', key });
+  }
+
+  return withR2Retry(async () => {
+    const { DeleteObjectCommand } = await loadS3SDK();
+    const client = await getR2StorageClient(config);
+    await withSettleTimeout(
+      client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key }), { abortSignal: AbortSignal.timeout(_s3TimeoutMs) }),
+      _s3TimeoutMs,
+      `R2 s3 delete ${key}`,
+    );
+    return true;
+  }, { op: 'delete', key });
+}
+
 export {
+  putR2BinaryObject,
+  deleteR2Object,
   resolveR2StorageConfig,
   getR2StorageClient,
   getR2JsonObject,

@@ -64,11 +64,12 @@ We share personal data only with the service providers below, which process it o
 | Railway | Container hosting for our background services: alert and digest delivery, the data relay (including the widget builder), and our Umami analytics instance and its database | Alert and digest content and the destination identifiers it is delivered to, prompts you send to the widget builder, and the Umami analytics events stored in its database (including, for signed-in users, your account identifier, plan, and subscription status) |
 | Mintlify | Documentation site hosting (`worldmonitor.app/docs`, including this page) | IP address and user agent of documentation page requests |
 | Vercel | Application and API hosting, and web analytics | IP address, user agent, and request metadata, and the content of API requests and responses in transit |
-| Cloudflare | Content delivery, edge security, bot challenges (Turnstile), web analytics, and object storage (R2) | IP address, user agent, request metadata, and Turnstile challenge signals |
+| Cloudflare | Content delivery, edge security, bot challenges (Turnstile), web analytics, and object storage (R2) | IP address, user agent, request metadata, Turnstile challenge signals, and image and video files submitted for a media check on /verify (deleted after 30 days) |
 | Axiom | Application logging and observability | IP address and approximate location (city, region), user agent, referrer, request metadata, and your account identifier |
 | Anthropic | AI model provider for analysis, briefings, and the widget builder | The text of your AI queries and the context sent with them |
 | OpenRouter | AI model routing for analysis and forecasts; it passes each request to the model provider it routes to | The text of your AI queries and the context sent with them |
 | Resend | Transactional email delivery | Recipient email address and the email's content |
+| TinEye (Idée Inc.) | Earliest-copy search for an image a Pro user submits on /verify | A re-encoded copy of the submitted image with all metadata removed |
 
 We give at least 30 days' notice before a new subprocessor starts processing personal data, as set out in section 8 of the [Data Processing Addendum](/dpa).
 
@@ -84,7 +85,7 @@ We use the information above to operate and secure the Service, authenticate use
 
 ## Data retention
 
-We keep account and subscription data for as long as your account is active and as needed to meet legal, tax, and security obligations. Diagnostic and log data is retained on a rolling basis for a limited period. When you delete your account, we delete or anonymize associated personal data, except where we must retain it by law.
+Image and video files submitted for a media check on /verify are kept for 30 days, then deleted. We keep account and subscription data for as long as your account is active and as needed to meet legal, tax, and security obligations. Diagnostic and log data is retained on a rolling basis for a limited period. When you delete your account, we delete or anonymize associated personal data, except where we must retain it by law.
 
 ## Your rights
 

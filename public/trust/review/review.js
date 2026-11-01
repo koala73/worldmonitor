@@ -45,6 +45,87 @@
       });
   }
 
+  // #9096: the same wording as shared/media-provenance-contract.js
+  // (tests/dom/trust-review-page.test.mts holds them equal).
+  var MEDIA_WORDING = {
+    noCredentials: 'No content credentials found. Most sites remove them when images are uploaded, so this is common and says nothing about whether the media was edited.',
+    unreadableCredentials: 'The file has content credentials that could not be read.',
+    untrustedSigner: 'Signed, but the signer is not on the C2PA trust list this check uses.',
+    unknownTrust: 'Signed. The signer could not be checked against a trust list.',
+    aiDeclared: 'The credentials say this was made with a generative AI model.',
+    changedAfterSigning: 'The credentials do not match the file: it was changed after it was signed. This does not say how or by whom.',
+    failedValidation: 'The credentials failed validation: the signature or what they declare could not be confirmed. This does not say how the media was made or changed.',
+    earliestNone: 'TinEye has not seen this image anywhere.',
+    earliestUnsupported: 'The earliest-copy search covers images only.',
+    earliestNotConfigured: 'The earliest-copy search is not set up on this server.',
+    earliestCapReached: 'The earliest-copy search has reached its monthly limit. It is available again next month.',
+    earliestUnavailable: 'The earliest-copy search could not run right now.'
+  };
+  var MEDIA_POLL_MS = 2000;
+  var MEDIA_POLL_LIMIT = 150;
+
+  function mediaLines(result) {
+    var lines = [];
+    var c = result.credentials || {};
+    if (c.state === 'found') {
+      var signer = c.signer || c.signerCommonName || 'an unnamed signer';
+      // Only a trusted signer is stated as fact; otherwise the name is what the certificate says.
+      lines.push(c.signerTrust === 'trusted'
+        ? 'Content credentials found: signed by ' + signer + '.'
+        : 'Content credentials found. They name the signer as ' + signer + '.');
+      lines.push(c.signerTrust === 'trusted' ? 'The signer is on the C2PA trust list this check uses.'
+        : c.signerTrust === 'untrusted' ? MEDIA_WORDING.untrustedSigner : MEDIA_WORDING.unknownTrust);
+      if (c.contentChangedAfterSigning) lines.push(MEDIA_WORDING.changedAfterSigning);
+      else if (c.validationState === 'invalid') lines.push(MEDIA_WORDING.failedValidation);
+      if (c.declaresAiGeneration) lines.push(MEDIA_WORDING.aiDeclared);
+      if (c.claimGenerator) lines.push('Made with: ' + c.claimGenerator);
+      (c.actions || []).forEach(function (a) {
+        lines.push('Declared step: ' + a.action + (a.softwareAgent ? ' with ' + a.softwareAgent : ''));
+      });
+    } else {
+      lines.push(c.state === 'none' ? MEDIA_WORDING.noCredentials : MEDIA_WORDING.unreadableCredentials);
+    }
+    var e = result.earliest || {};
+    if (e.state === 'ok' && e.copies && e.copies.length) {
+      lines.push('Earliest copy TinEye has seen: ' + e.copies[0].crawlDate + ', ' + e.copies[0].domain + '.');
+    } else {
+      lines.push({ ok: MEDIA_WORDING.earliestNone, 'unsupported-media': MEDIA_WORDING.earliestUnsupported,
+        'not-configured': MEDIA_WORDING.earliestNotConfigured, 'cap-reached': MEDIA_WORDING.earliestCapReached }[e.state]
+        || MEDIA_WORDING.earliestUnavailable);
+    }
+    return lines.concat(result.caveats || []);
+  }
+
+  function checkMedia(report, button, box) {
+    button.disabled = true;
+    box.replaceChildren(el('p', '', 'Checking the file… This can take a few minutes.'));
+    var polls = 0;
+    function show(lines, isError) {
+      box.replaceChildren();
+      lines.forEach(function (line) { box.appendChild(el('p', isError ? 'error' : '', line)); });
+      button.disabled = false;
+    }
+    function poll(statusUrl) {
+      if (polls++ >= MEDIA_POLL_LIMIT) { show(['The check is taking too long. Try again later.'], true); return; }
+      setTimeout(function () {
+        api(statusUrl, { method: 'GET' }).then(function (body) {
+          if (body.status === 'done' && body.result) show(mediaLines(body.result), false);
+          else if (body.status === 'failed') show([body.error || 'The check could not be completed.'], true);
+          else poll(statusUrl);
+        }).catch(function (err) { show([err.message], true); });
+      }, MEDIA_POLL_MS);
+    }
+    api('/api/news/v1/check-report-media', { method: 'POST', body: JSON.stringify({ reportId: report.id }) })
+      .then(function (job) {
+        if (typeof job.statusUrl !== 'string' || job.statusUrl.indexOf('/api/news/v1/get-report-media?') !== 0) {
+          show(['The check could not be started.'], true);
+          return;
+        }
+        poll(job.statusUrl);
+      })
+      .catch(function (err) { show([err.message], true); });
+  }
+
   function renderReport(report) {
     var item = el('li', 'report');
     var meta = el('div', 'meta');
@@ -66,6 +147,15 @@
     if (report.contact) meta.appendChild(el('span', '', 'Reply to: ' + report.contact));
     item.appendChild(meta);
     item.appendChild(el('p', 'message', report.message));
+    if (report.url) {
+      var mediaButton = el('button', 'media-check', 'Check image or video');
+      mediaButton.type = 'button';
+      var mediaBox = el('div', 'media-result');
+      mediaBox.setAttribute('aria-live', 'polite');
+      mediaButton.addEventListener('click', function () { checkMedia(report, mediaButton, mediaBox); });
+      item.appendChild(mediaButton);
+      item.appendChild(mediaBox);
+    }
 
     if (report.status !== 'pending') {
       if (report.publicNote) item.appendChild(el('p', 'note-label', 'Public note: ' + report.publicNote));

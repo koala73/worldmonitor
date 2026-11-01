@@ -1,0 +1,150 @@
+syntax = "proto3";
+
+package worldmonitor.news.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// CheckMediaProvenanceRequest names the image or video to check.
+message CheckMediaProvenanceRequest {
+  // Public http(s) URL of the image or video file, up to 2048 characters. The worker fetches it; private and local addresses are refused.
+  string url = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 2048
+  ];
+}
+
+// CheckReportMediaRequest names the reader report whose link to check. Operators only.
+message CheckReportMediaRequest {
+  // Report id; the check uses the link the reader submitted with it.
+  string report_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 64
+  ];
+}
+
+// MediaCheckJob is an accepted media check. A successful enqueue returns HTTP 202 Accepted with a Location header pointing at the status endpoint; treat any 2xx as success.
+message MediaCheckJob {
+  // Generated job id of the form `media:{epoch_ms}:{32 hex}`.
+  string job_id = 1;
+  // Always "pending" at enqueue time.
+  string status = 2;
+  // Server-computed URL to poll for the result.
+  string status_url = 3;
+}
+
+// GetMediaProvenanceRequest polls one media check.
+message GetMediaProvenanceRequest {
+  // Job id returned by the check.
+  string job_id = 1 [
+    (sebuf.http.query) = { name: "job_id" },
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 64
+  ];
+}
+
+// MediaCredentialAction is one action the content credentials declare, as written by the signer.
+message MediaCredentialAction {
+  // C2PA action, e.g. c2pa.created, c2pa.edited, c2pa.cropped.
+  string action = 1;
+  // Software or device the credentials name for the action; empty when none.
+  string software_agent = 2;
+  // IPTC digital source type URI the credentials declare; empty when none.
+  string digital_source_type = 3;
+}
+
+// MediaCredentials is what the file's C2PA content credentials say. WorldMonitor reports them; it does not judge the media.
+message MediaCredentials {
+  // found | none | unreadable. none is common: most sites remove credentials on upload, and it says nothing about editing.
+  string state = 1;
+  // Organisation on the signing certificate; empty when the certificate names none.
+  string signer = 2;
+  // Common name on the signing certificate.
+  string signer_common_name = 3;
+  // trusted | untrusted | unknown. trusted means the certificate chains to a configured C2PA trust anchor.
+  string signer_trust = 4;
+  // Camera, phone or app that wrote the credentials.
+  string claim_generator = 5;
+  // Signing time from a timestamp authority, ISO 8601; empty when the credentials carry none.
+  string signed_at = 6;
+  // Actions in the order the credentials list them.
+  repeated MediaCredentialAction actions = 7;
+  // True when an action declares a generative-AI digital source type. Reported from the credentials, never detected by WorldMonitor.
+  bool declares_ai_generation = 8;
+  // Number of source files (ingredients) the credentials list.
+  int32 ingredient_count = 9;
+  // valid | invalid | trusted, the C2PA validation state; empty when no credentials were found.
+  string validation_state = 10;
+  // True only when validation reports that the file no longer matches the signed hash: it changed after signing.
+  bool content_changed_after_signing = 11;
+  // C2PA validation failure codes, verbatim.
+  repeated string failure_codes = 12;
+}
+
+// MediaEarliestCopy is one place an earliest-copy search found the image, oldest first.
+message MediaEarliestCopy {
+  // Domain of the page.
+  string domain = 1;
+  // Page that showed the image.
+  string page_url = 2;
+  // When the search provider's crawler first saw the image there, YYYY-MM-DD. Not a publication date.
+  string crawl_date = 3;
+}
+
+// MediaEarliestAppearance is the earliest copies a reverse image search has seen.
+message MediaEarliestAppearance {
+  // ok | unsupported-media | not-configured | cap-reached | unavailable. ok with no copies means the provider has not seen the image.
+  string state = 1;
+  // Search provider, e.g. TinEye.
+  string provider = 2;
+  // Copies oldest first, at most 10.
+  repeated MediaEarliestCopy copies = 3;
+  // Matches the provider reported in total.
+  int32 total_matches = 4;
+  // When the search ran, ISO 8601. A cached search shows when it first ran.
+  string searched_at = 5;
+}
+
+// MediaProvenance is the result of one media check.
+message MediaProvenance {
+  // The URL submitted.
+  string url = 1;
+  // Detected media type, e.g. image/jpeg, video/mp4.
+  string media_type = 2;
+  // File size in bytes.
+  int64 bytes = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // SHA-256 of the file, hex.
+  string sha256 = 4;
+  // When the file was fetched, ISO 8601.
+  string fetched_at = 5;
+  // Content credentials found in the file.
+  MediaCredentials credentials = 6;
+  // Earliest copies a reverse image search has seen.
+  MediaEarliestAppearance earliest = 7;
+  // Fixed reminders shown with every result.
+  repeated string caveats = 8;
+}
+
+// GetMediaProvenanceResponse is the state of one media check.
+message GetMediaProvenanceResponse {
+  // pending | done | failed.
+  string status = 1;
+  // The result when status is done.
+  MediaProvenance result = 2;
+  // Why the check failed, in plain English, when status is failed.
+  string error = 3;
+}
+
+// GetReportMediaRequest polls a media check an operator started. Operators only.
+message GetReportMediaRequest {
+  // Job id returned by CheckReportMedia.
+  string job_id = 1 [
+    (sebuf.http.query) = { name: "job_id" },
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 64
+  ];
+}

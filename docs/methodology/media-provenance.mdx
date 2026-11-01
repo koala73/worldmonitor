@@ -1,0 +1,62 @@
+---
+title: "Image and Video Checks"
+description: "How WorldMonitor checks an image or video link on /verify: it reads the file's C2PA content credentials and lists the earliest copies TinEye has seen. It reports evidence and never calls media genuine or fake."
+---
+
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
+
+## Start here
+
+Paste a link to an image or video on [/verify](https://www.worldmonitor.app/verify) and, with WorldMonitor Pro, the page answers two questions:
+
+1. **What do the file's content credentials say?** Who signed it, with which camera or app, what was done to it, and whether the signer declares it was made with generative AI.
+2. **Where has the image been seen before?** The earliest copies TinEye's crawler has found, oldest first, with the page and the date.
+
+WorldMonitor reports what it found. It never says that media is authentic, fake, manipulated or original, and it never decides who first published it.
+
+## Content credentials (C2PA)
+
+Content credentials are a signed record that some cameras, phones and editing apps attach to a file, defined by the [C2PA standard](https://c2pa.org/). WorldMonitor reads them with the open-source `@contentauth/c2pa-node` library and reports:
+
+| Field | What it means |
+|---|---|
+| Signer | The organisation named on the signing certificate. |
+| Signer trust | `trusted` when the certificate chains to the C2PA trust list the check uses; `untrusted` when it does not; `unknown` when no trust list is configured. |
+| Made with | The camera, phone or app that wrote the credentials. |
+| Steps | The actions the credentials list (created, cropped, edited…), as the signer declared them. |
+| AI declaration | Shown only when an action declares the IPTC `trainedAlgorithmicMedia` or `compositeWithTrainedAlgorithmicMedia` source type. WorldMonitor reports the declaration; it does not detect AI itself. |
+| Changed after signing | Shown only when validation reports that the file no longer matches the signed hash. It says the file changed after signing, not how or by whom. |
+
+**No credentials is the ordinary result.** Most websites and messaging apps remove credentials when an image is uploaded, and screenshots never carry them. A missing credential says nothing about whether an image was edited.
+
+## Earliest copy (TinEye)
+
+For images, WorldMonitor sends a copy to the [TinEye API](https://tineye.com/) and lists the pages where TinEye has seen it, oldest first. The date is when **TinEye's crawler first saw the image on that page**. It is not a publication date, and the oldest page is not necessarily the source.
+
+Video is not searched: the earliest-copy search covers images only. Credentials are still read from MP4 and MOV files.
+
+The search reports one of these states:
+
+| State | Meaning |
+|---|---|
+| `ok` | The search ran. No copies means TinEye has not seen the image. |
+| `unsupported-media` | The file is a video. |
+| `not-configured` | The server has no TinEye key. |
+| `cap-reached` | The monthly search budget is spent; searches resume next month. |
+| `unavailable` | The search could not run. |
+
+## Limits and safeguards
+
+- **Pro only.** Each new image can spend a paid TinEye search. Searches are capped by a monthly budget (`TINEYE_MONTHLY_CAP_USD`, $50 by default); at the cap, the check says so instead of skipping the search silently. A repeat of the same file is answered from a 30-day cache.
+- **Public links only.** The worker downloads the file itself and refuses private, local and cloud-metadata addresses, including after redirects and DNS resolution. Files over 25 MB, and anything that is not a JPEG, PNG, WebP, GIF, AVIF, HEIC, TIFF, MP4 or MOV file by its bytes, are refused.
+- **Privacy.** The copy sent to TinEye is re-encoded with all metadata removed, including EXIF location and the credentials, and scaled down to at most 2,000 pixels on its longer side. The submitted file is kept for 30 days, then deleted.
+- **Time limit.** A check with no result after 4 minutes is reported as failed. A file that stops the worker three times is reported as failed instead of being checked again.
+
+## For reviewers
+
+Operators reviewing reader reports at `/trust/review/` can run the same check on the link a reader submitted with a report, using the review key. See [Revision and Corrections Log](/corrections#reporting-an-error).
+
+## API
+
+- `POST /api/news/v1/check-media-provenance` (Pro) queues a check of `url` and answers `202 Accepted` with a `job_id`.
+- `GET /api/news/v1/get-media-provenance?job_id=…` returns `pending`, `failed` with a reason, or `done` with the result. Only the caller who started a check can read it.

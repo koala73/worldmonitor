@@ -314,3 +314,190 @@ describe('/verify page bootstrap', () => {
     expect(document.querySelector('.vc-card')?.classList.contains('vc-corroborated')).toBe(true);
   });
 });
+
+describe('/verify media check (#9096)', () => {
+  const doneResult = {
+    url: 'https://example.com/a.jpg',
+    mediaType: 'image/jpeg',
+    bytes: 204_800,
+    sha256: 'a'.repeat(64),
+    fetchedAt: '2026-10-16T12:00:00.000Z',
+    credentials: {
+      state: 'found', signer: '<img src=x onerror="window.__pwned=1">Newsroom', signerCommonName: 'CN', signerTrust: 'trusted',
+      claimGenerator: 'Camera <b>App</b>', signedAt: '2026-10-15T08:30:00Z',
+      actions: [{ action: 'c2pa.created', softwareAgent: 'Model', digitalSourceType: '' }, { action: 'c2pa.cropped', softwareAgent: '', digitalSourceType: '' }],
+      declaresAiGeneration: true, ingredientCount: 1, validationState: 'trusted', contentChangedAfterSigning: false, failureCodes: [],
+    },
+    earliest: {
+      state: 'ok', provider: 'TinEye', totalMatches: 4, searchedAt: '2026-10-16T12:00:01.000Z',
+      copies: [
+        { domain: 'example.org', pageUrl: 'https://example.org/first', crawlDate: '2024-03-03' },
+        { domain: 'evil.example', pageUrl: 'javascript:alert(1)', crawlDate: '2025-01-01' },
+      ],
+    },
+    caveats: ['Caveat A.', 'Caveat B.'],
+  };
+
+  it('recognises a pasted media link, not a claim that mentions one', async () => {
+    const { isMediaCheckInput } = await import('@/services/media-provenance');
+    expect(isMediaCheckInput('  https://example.com/a.jpg ')).toBe(true);
+    expect(isMediaCheckInput('Is https://example.com/a.jpg real?')).toBe(false);
+    expect(isMediaCheckInput('ftp://example.com/a.jpg')).toBe(false);
+    expect(isMediaCheckInput('Panama earthquake kills 200')).toBe(false);
+  });
+
+  it('renders the result escaped, oldest copy first, with no verdict wording', async () => {
+    const { renderMediaCheckHtml } = await import('@/components/media-card');
+    const host = document.createElement('div');
+    host.innerHTML = renderMediaCheckHtml({ kind: 'done', result: doneResult as never });
+    expect(host.querySelector('img')).toBeNull();
+    expect(host.querySelector('.mc-headline strong')?.textContent).toBe('<img src=x onerror="window.__pwned=1">Newsroom');
+    expect(host.textContent).toContain('The credentials say this was made with a generative AI model.');
+    expect(host.textContent).toContain('Earliest copy TinEye has seen: 2024-03-03, example.org');
+    expect(host.querySelector('a[href^="javascript"]')).toBeNull();
+    expect(host.querySelectorAll('.mc-copies li')).toHaveLength(2);
+    expect([...host.querySelectorAll('.vc-caveat')].map((n) => n.textContent)).toEqual(['Caveat A.', 'Caveat B.']);
+    expect(host.textContent).not.toMatch(/\b(authentic|fake|verified|original)\b/i);
+  });
+
+  it('treats missing credentials as ordinary and names every unavailable state', async () => {
+    const { renderMediaCheckHtml } = await import('@/components/media-card');
+    const { MEDIA_WORDING } = await import('../../shared/media-provenance-contract.js');
+    const host = document.createElement('div');
+    const none = { ...doneResult, credentials: { ...doneResult.credentials, state: 'none' }, earliest: { ...doneResult.earliest, state: 'cap-reached', copies: [] } };
+    host.innerHTML = renderMediaCheckHtml({ kind: 'done', result: none as never });
+    expect(host.textContent).toContain(MEDIA_WORDING.noCredentials);
+    expect(host.textContent).toContain(MEDIA_WORDING.earliestCapReached);
+    const unverified = { ...doneResult, credentials: { ...doneResult.credentials, signer: 'Reuters', signerTrust: 'unknown' } };
+    host.innerHTML = renderMediaCheckHtml({ kind: 'done', result: unverified as never });
+    expect(host.querySelector('.mc-headline')?.textContent).toBe('Content credentials found. They name the signer as Reuters.');
+    const invalid = { ...doneResult, credentials: { ...doneResult.credentials, validationState: 'invalid', failureCodes: ['claimSignature.mismatch'] } };
+    host.innerHTML = renderMediaCheckHtml({ kind: 'done', result: invalid as never });
+    expect(host.querySelector('.mc-warning')?.textContent).toBe(MEDIA_WORDING.failedValidation);
+    host.innerHTML = renderMediaCheckHtml({ kind: 'done', result: { ...invalid, credentials: { ...invalid.credentials, contentChangedAfterSigning: true } } as never });
+    expect([...host.querySelectorAll('.mc-warning')].map((n) => n.textContent)).toEqual([MEDIA_WORDING.changedAfterSigning]);
+    host.innerHTML = renderMediaCheckHtml({ kind: 'needs-sign-in' });
+    expect(host.querySelector('[data-media-signin]')).not.toBeNull();
+    host.innerHTML = renderMediaCheckHtml({ kind: 'needs-pro' });
+    expect(host.querySelector('a.mc-upgrade')?.getAttribute('href')).toBe('/pro');
+  });
+
+  it('queues the check, polls its status URL and maps the access answers', async () => {
+    const { checkMediaUrl } = await import('@/services/media-provenance');
+    const statusUrl = '/api/news/v1/get-media-provenance?job_id=media%3A1%3Aabc';
+    const replies = [
+      new Response(JSON.stringify({ jobId: 'media:1:abc', status: 'pending', statusUrl }), { status: 200 }),
+      new Response(JSON.stringify({ status: 'pending', error: '' })),
+      new Response(JSON.stringify({ status: 'done', error: '', result: doneResult })),
+    ];
+    const seen: Array<[string, RequestInit | undefined]> = [];
+    const outcome = await checkMediaUrl(' https://example.com/a.jpg ', {
+      fetch: async (input, init) => { seen.push([input, init]); return replies.shift()!; },
+      sleep: async () => {},
+    });
+    expect(outcome.kind).toBe('done');
+    expect(seen[0]![0]).toBe('/api/news/v1/check-media-provenance');
+    expect(JSON.parse(String(seen[0]![1]!.body))).toEqual({ url: 'https://example.com/a.jpg' });
+    expect(seen.slice(1).map(([url]) => url)).toEqual([statusUrl, statusUrl]);
+
+    const once = (status: number, body: unknown = {}) => ({ fetch: async () => new Response(JSON.stringify(body), { status }), sleep: async () => {} });
+    expect(await checkMediaUrl('https://example.com/a.jpg', once(401))).toEqual({ kind: 'needs-sign-in' });
+    expect(await checkMediaUrl('https://example.com/a.jpg', once(403))).toEqual({ kind: 'needs-pro' });
+    expect(await checkMediaUrl('https://example.com/a.jpg', once(400, { violations: [{ field: 'url', description: 'url must use http or https' }] })))
+      .toEqual({ kind: 'failed', error: 'Url must use http or https.' });
+    expect(await checkMediaUrl('https://example.com/a.jpg', once(200, { statusUrl: 'https://evil.example/poll' }))).toEqual({ kind: 'unavailable' });
+  });
+});
+
+function submitForm(): void {
+  (document.getElementById('verifyForm') as HTMLFormElement).dispatchEvent(new Event('submit', { cancelable: true }));
+}
+
+describe('/verify page media flow (#9096)', () => {
+  it('fills in a media link from a shared URL but checks it only on a click', async () => {
+    const check = vi.fn(async () => ({ kind: 'unavailable' as const }));
+    vi.doMock('@/services/media-provenance', async (original) => ({
+      ...(await original<typeof import('@/services/media-provenance')>()),
+      ensureSignedInState: async () => true,
+      checkMediaUrl: check,
+    }));
+    history.replaceState(null, '', `/verify?claim=${encodeURIComponent('https://example.com/a.jpg')}`);
+    await import('@/verify-main');
+    expect((document.getElementById('claimInput') as HTMLTextAreaElement).value).toBe('https://example.com/a.jpg');
+    expect(document.getElementById('digestStatus')?.textContent).toContain('Check image or video');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(check).not.toHaveBeenCalled();
+    submitForm();
+    await vi.waitFor(() => expect(check).toHaveBeenCalledOnce());
+  });
+
+  beforeEach(() => {
+    vi.resetModules();
+    document.body.innerHTML = pageBody();
+    vi.stubGlobal('fetch', vi.fn(defaultFetch));
+  });
+
+  afterEach(() => {
+    vi.doUnmock('@/services/media-provenance');
+    vi.unstubAllGlobals();
+    history.replaceState(null, '', '/');
+    document.body.innerHTML = '';
+  });
+
+  it('asks a signed-out visitor to sign in, and runs no coverage or fact-check lookup', async () => {
+    const openSignIn = vi.fn(async () => {});
+    vi.doMock('@/services/media-provenance', async (original) => ({
+      ...(await original<typeof import('@/services/media-provenance')>()),
+      ensureSignedInState: async () => false,
+      openMediaSignIn: openSignIn,
+    }));
+    history.replaceState(null, '', `/verify?claim=${encodeURIComponent('https://example.com/a.jpg')}`);
+    await import('@/verify-main');
+    submitForm();
+    await vi.waitFor(() => expect(document.querySelector('[data-media-signin]')).not.toBeNull());
+    expect(document.querySelector('.vc-card')).toBeNull();
+    expect(vi.mocked(globalThis.fetch).mock.calls.some(([input]) => String(input).startsWith(FACT_CHECKS_URL))).toBe(false);
+    (document.querySelector('[data-media-signin]') as HTMLButtonElement).click();
+    expect(openSignIn).toHaveBeenCalledOnce();
+    expect((document.getElementById('claimInput') as HTMLTextAreaElement).value).toBe('https://example.com/a.jpg');
+    expect(document.getElementById('verifySubmit')?.textContent).toBe('Check image or video');
+  });
+
+  it('shows the result for a signed-in caller', async () => {
+    vi.doMock('@/services/media-provenance', async (original) => {
+      const actual = await original<typeof import('@/services/media-provenance')>();
+      return {
+        ...actual,
+        ensureSignedInState: async () => true,
+        premiumMediaFetch: async () => async () => new Response('{}', { status: 403 }),
+      };
+    });
+    history.replaceState(null, '', `/verify?claim=${encodeURIComponent('https://example.com/a.jpg')}`);
+    await import('@/verify-main');
+    submitForm();
+    await vi.waitFor(() => expect(document.querySelector('a.mc-upgrade')).not.toBeNull());
+    expect((document.getElementById('verifySubmit') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('reports the check as unavailable when the signed-in client fails to load', async () => {
+    vi.doMock('@/services/media-provenance', async (original) => ({
+      ...(await original<typeof import('@/services/media-provenance')>()),
+      ensureSignedInState: async () => true,
+      premiumMediaFetch: async () => { throw new Error('chunk load failed'); },
+    }));
+    history.replaceState(null, '', `/verify?claim=${encodeURIComponent('https://example.com/a.jpg')}`);
+    await import('@/verify-main');
+    submitForm();
+    await vi.waitFor(() => expect(document.getElementById('result')?.textContent).toContain('could not run right now'));
+  });
+
+  it('raises the length limit before a long link is pasted, so it is not cut', async () => {
+    await import('@/verify-main');
+    const input = document.getElementById('claimInput') as HTMLTextAreaElement;
+    expect(input.maxLength).toBeLessThan(2048);
+    const paste = new Event('paste', { cancelable: true }) as Event & { clipboardData: unknown };
+    paste.clipboardData = { getData: () => `https://cdn.example.com/a.jpg?sig=${'x'.repeat(900)}` };
+    input.dispatchEvent(paste);
+    expect(input.maxLength).toBe(2048);
+  });
+});

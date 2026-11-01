@@ -336,6 +336,8 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/military/v1/list-military-bases": "Map viewport feed; needs a bounding box and zoom",
   "/api/military/v1/list-military-flights": "Map viewport feed; needs a bounding box",
   "/api/natural/v1/list-natural-events": "Same data as bootstrap key naturalEvents",
+  "/api/news/v1/get-media-provenance": "Pro-only (401 for the anonymous widget session)",
+  "/api/news/v1/get-report-media": "Operator media check result (#9096), secret-gated",
   "/api/news/v1/list-error-reports": "Operator review queue (#9093), secret-gated",
   "/api/news/v1/list-label-changes": "Trust-page label history (#9093), not a widget data source",
   "/api/news/v1/list-media-perspective": "Coverage grouped by outlet country and audience for agents (get_media_perspective), not a widget data source",
