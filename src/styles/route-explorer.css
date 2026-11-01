@@ -104,7 +104,7 @@
 }
 .re-picker__item:hover { background: var(--bg-hover, #1f2937); }
 .re-picker__item--active {
-  background: var(--accent-bg, #1f3a5f);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
   outline: 2px solid var(--accent, #58a6ff);
 }
 
@@ -140,7 +140,7 @@
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   padding: 1px 5px;
   border-radius: 3px;
-  background: var(--accent-bg, #1f3a5f);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
   color: var(--accent, #58a6ff);
 }
 
@@ -185,7 +185,7 @@
   color: var(--text-dim, #8b949e);
 }
 .re-tabstrip__tab--active .re-tabstrip__digit {
-  background: var(--accent-bg, #1f3a5f);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
   color: var(--accent, #58a6ff);
 }
 
@@ -389,7 +389,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: var(--accent-bg, #1f3a5f);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
   color: var(--accent, #58a6ff);
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
