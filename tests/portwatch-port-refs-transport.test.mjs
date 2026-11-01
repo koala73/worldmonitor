@@ -131,7 +131,9 @@ describe('PortWatch reference pagination recovery', () => {
         else process.env.PROXY_URL = previousProxy;
       });
       const proxyUtils = createRequire(import.meta.url)('../scripts/_proxy-utils.cjs');
-      const envelope = { error: { code: 400, message: 'Invalid query parameters.', details: ['Invalid paging.'] } };
+      // Not `Invalid query parameters`: that class now earns page retries, and
+      // this case pins the single proxy record of a non-retryable rejection.
+      const envelope = { error: { code: 400, message: 'Cannot perform query.', details: ['Invalid paging.'] } };
       const proxy = t.mock.method(proxyUtils, 'proxyFetch', async () => ({
         ok: status === 200, status, buffer: Buffer.from(JSON.stringify(envelope)),
         contentType: 'application/json', headers: { 'retry-after': '60', 'set-cookie': 'private-cookie' },
@@ -139,7 +141,7 @@ describe('PortWatch reference pagination recovery', () => {
       const transport = paginationTransport(new TypeError('fetch failed'));
 
       await assert.rejects(portwatchSeed.fetchAllPortRefs({ fetchFn: transport.fetchFn }), status === 200
-        ? /ArcGIS error \(via proxy after direct TypeError\): Invalid query parameters\./ : /HTTP 503/);
+        ? /ArcGIS error \(via proxy after direct TypeError\): Cannot perform query\./ : /HTTP 503/);
 
       const records = warnings.filter((line) => line.startsWith('{')).map((line) => JSON.parse(line));
       assert.deepEqual(records.map((record) => record.route), ['direct', 'proxy']);
@@ -234,13 +236,63 @@ describe('PortWatch reference pagination recovery', () => {
     assert.equal(transport.proxyCalls[0][1], 'HTTP 200 rate-limited');
   });
 
-  it('does not retry semantic query errors', async () => {
+  // 2026-11-01: the identical reference query alternated between
+  // `Invalid query parameters` and a full page within seconds, and one such
+  // page on page 2 failed the whole tick (exit 1). The error is intermittent
+  // upstream degradation, not a malformed query, so a page gets bounded retries.
+  it('retries an intermittent invalid_query page and completes pagination', async () => {
+    let secondPageCalls = 0;
+    const requestedOffsets = [];
+    const sleepCalls = [];
+    const fetchFn = async (url) => {
+      const offset = Number(new URL(url).searchParams.get('resultOffset'));
+      requestedOffsets.push(offset);
+      if (offset === 0) return arcgisJson(FIRST_PAGE);
+      secondPageCalls += 1;
+      return secondPageCalls < 3
+        ? arcgisJson({ error: { code: 400, message: 'Cannot perform query. Invalid query parameters.' } })
+        : arcgisJson(FINAL_PAGE);
+    };
+
+    const refs = await portwatchSeed.fetchAllPortRefs({
+      fetchFn,
+      proxyRetryFn: async () => assert.fail('invalid_query retries stay on the direct leg'),
+      sleepFn: async (ms) => { sleepCalls.push(ms); },
+    });
+
+    assert.deepEqual([...refs.keys()].sort(), ['CYP', 'USA']);
+    assert.deepEqual(requestedOffsets, [0, 1, 1, 1]);
+    assert.deepEqual(sleepCalls, [5_000, 5_000]);
+  });
+
+  it('bounds invalid_query retries so a real schema regression still fails the page', async () => {
     const transport = paginationTransport({ error: { message: 'Invalid query parameters.' } });
+    const sleepCalls = [];
     await assert.rejects(portwatchSeed.fetchAllPortRefs({
-      ...transport, sleepFn: async () => assert.fail('semantic errors must not retry'),
+      ...transport, sleepFn: async (ms) => { sleepCalls.push(ms); },
     }), /Invalid query parameters/);
-    assert.deepEqual(transport.requestedOffsets, [0, 1]);
+    assert.deepEqual(transport.requestedOffsets, [0, 1, 1, 1, 1]);
+    assert.deepEqual(sleepCalls, [5_000, 5_000, 5_000]);
     assert.equal(transport.proxyCalls.length, 0);
+  });
+
+  it('declines an invalid_query retry that cannot finish inside the reference budget', async (t) => {
+    const transport = paginationTransport({ error: { message: 'Invalid query parameters.' } });
+    // Each failed attempt plus its cooldown costs 30s of mocked wall clock.
+    // Page 2 starts with 82s left. Retry 1 (needs 5s + 30s) fits with 82s
+    // left and retry 2 with 52s; retry 3 is declined with 22s left, so the
+    // page fails after 3 attempts instead of being killed mid-flight by the
+    // reference deadline. Unbounded by the deadline it would take 4.
+    let now = 1_000_000;
+    t.mock.method(Date, 'now', () => now);
+    const sleepCalls = [];
+    await assert.rejects(portwatchSeed.fetchAllPortRefs({
+      ...transport,
+      deadlineAt: now + 82_000,
+      sleepFn: async (ms) => { sleepCalls.push(ms); now += 30_000; },
+    }), /Invalid query parameters/);
+    assert.deepEqual(transport.requestedOffsets, [0, 1, 1, 1]);
+    assert.deepEqual(sleepCalls, [5_000, 5_000]);
   });
 
   for (const page of [{}, { features: [], exceededTransferLimit: true }, { features: [], exceededTransferLimit: false }, { features: {}, exceededTransferLimit: false }, { features: [], exceededTransferLimit: 'false' }, FIRST_PAGE]) {
