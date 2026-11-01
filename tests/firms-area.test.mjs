@@ -76,12 +76,13 @@ describe('NASA FIRMS Area API sequence', () => {
     for (const failure of [deep[0], new AggregateError(Array.from({ length: 50 }, () => ({ code: 'ECONNRESET', syscall: 'read', family: 4 })))]) {
       const { logger, messages } = captureLogger();
       await assert.rejects(fetchFirmsRegionSource('key', 'Ukraine', MONITORED_REGIONS.Ukraine, FIRMS_SOURCES[0], {
-        fetchFn: async () => ({ ok: true, text: async () => { throw failure; } }),
+        fetchFn: async () => ({ ok: true, status: 200, text: async () => { throw failure; } }),
         sleepFn: async () => {}, logger,
       }));
       const events = messages.log.map(JSON.parse);
       assert.equal(events.length, 2);
       assert.ok(events.every(event => event.phase === 'body' && event.transport.length <= 8));
+      assert.ok(events.every(event => event.httpStatus === 200));
       assert.ok(events.every(event => !event.transport.some(entry => entry.code === 'EPIPE')));
       if (failure === deep[0]) assert.equal(events[0].transport.length, 0);
       else assert.ok(events[0].transport.length > 0);

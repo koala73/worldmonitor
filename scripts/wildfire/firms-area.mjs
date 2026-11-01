@@ -116,11 +116,13 @@ export async function fetchFirmsRegionSource(apiKey, regionName, bbox, source, {
   for (let index = 0; index < labels.length; index++) {
     const startedAt = performance.now();
     let phase = 'request';
+    let responseStatus;
     try {
       const response = await fetchFn(buildAreaUrl(FIRMS_API_BASE_URL, apiKey, source, bbox), {
         headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
         signal: AbortSignal.timeout(30_000),
       });
+      responseStatus = response.status;
       if (!response.ok) {
         const error = new Error('FIRMS request failed');
         error.status = response.status;
@@ -130,6 +132,7 @@ export async function fetchFirmsRegionSource(apiKey, regionName, bbox, source, {
       return parseCsv(await response.text());
     } catch (error) {
       try {
+        const status = responseStatus ?? error?.status;
         logger.log(JSON.stringify({
           event: 'firms_attempt_failure',
           runId: diagnosticContext?.runId ?? null,
@@ -138,7 +141,7 @@ export async function fetchFirmsRegionSource(apiKey, regionName, bbox, source, {
           source: FIRMS_SOURCES.includes(source) ? source : null,
           region: Object.hasOwn(MONITORED_REGIONS, regionName) ? regionName : null,
           attempt: index + 1, phase, durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
-          httpStatus: Number.isInteger(error?.status) && error.status >= 100 && error.status <= 599 ? error.status : null,
+          httpStatus: Number.isInteger(status) && status >= 100 && status <= 599 ? status : null,
           timeout: error?.name === 'TimeoutError' || error?.name === 'AbortError',
           transport: transportDetails(error),
         }));
