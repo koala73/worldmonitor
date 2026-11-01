@@ -93,8 +93,10 @@ describe('MCP error envelopes carry data.requestId', () => {
   });
 
   it('leaves a successful result unchanged', async () => {
-    const { json, text } = await post({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
-    assert.ok(Array.isArray(json.result?.tools));
+    // ping, not tools/list: a tool schema may legitimately name a requestId
+    // field (report_issue does), so the listing is no test of the stamp.
+    const { json, text } = await post({ jsonrpc: '2.0', id: 1, method: 'ping' });
+    assert.deepEqual(json.result, {});
     assert.equal(text.includes('requestId'), false);
   });
 
