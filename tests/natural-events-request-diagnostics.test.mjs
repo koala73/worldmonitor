@@ -101,7 +101,7 @@ test('request events without body-chunk telemetry leave byte measurements unknow
   const progress = await withSourceRequestDiagnostics(snapshot => {
     const request = {};
     channel('undici:request:create').publish({ request });
-    channel('undici:request:headers').publish({ request });
+    channel('undici:request:headers').publish({ request, response: { statusCode: 200, headers: [] } });
     channel('undici:request:trailers').publish({ request });
     return snapshot();
   });
@@ -111,4 +111,38 @@ test('request events without body-chunk telemetry leave byte measurements unknow
   assert.equal(progress.wireBodyBytes, null);
   assert.equal(progress.firstBodyByteMs, null);
   assert.equal(progress.lastBodyByteMs, null);
+});
+
+test('HTTP diagnostics retain bounded response facts and correlation without private headers or bodies', async t => {
+  const origin = await fixture(t, (_req, res) => {
+    res.writeHead(404, { 'Content-Type': 'text/html; private=secret', 'X-Request-Id': 'request-123', 'Set-Cookie': 'secret=session', 'X-Private': 'secret' });
+    res.end('private response');
+  });
+  const a = await observe(origin);
+  const b = await observe(origin);
+  assert.equal(a.progress.statusCode, 404);
+  assert.equal(a.progress.contentType, 'text/html');
+  assert.equal(a.progress.responseRequestId, 'request-123');
+  assert.match(a.progress.requestId, /^[a-f0-9-]{36}$/);
+  assert.notEqual(a.progress.requestId, b.progress.requestId);
+  assert.ok(Number.isFinite(Date.parse(a.progress.startedAt)));
+  assert.doesNotMatch(JSON.stringify(a.progress), /secret|private|127\.0\.0\.1/);
+});
+
+test('response correlation rejects oversized and unsafe header values and resets on redirect', async t => {
+  const origin = await fixture(t, (req, res) => {
+    if (req.url === '/redirect') {
+      res.writeHead(302, { Location: '/final', 'X-Request-Id': 'old-hop' });
+      res.end();
+      return;
+    }
+    res.writeHead(404, { 'X-Request-Id': 'x'.repeat(129), 'CF-Ray': 'unsafe value', 'Content-Type': 'private/secret' });
+    res.end('{}');
+  });
+  const result = await observe(`${origin}/redirect`);
+  assert.equal(result.progress.requestCount, 2);
+  assert.equal(result.progress.statusCode, 404);
+  assert.equal(result.progress.responseRequestId, undefined);
+  assert.equal(result.progress.cfRay, undefined);
+  assert.equal(result.progress.contentType, undefined);
 });

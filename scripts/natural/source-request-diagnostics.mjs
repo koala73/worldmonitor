@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { channel } from 'node:diagnostics_channel';
+import { randomUUID } from 'node:crypto';
 
 const scope = new AsyncLocalStorage();
 const requests = new WeakMap();
@@ -17,6 +18,8 @@ const listeners = [
     state.request = request;
     state.progress = {
       observed: true,
+      requestId: randomUUID(),
+      startedAt: new Date().toISOString(),
       requestCount: state.progress.requestCount + 1,
       requestSendObserved: false,
       responseHeadersObserved: false,
@@ -30,8 +33,21 @@ const listeners = [
   ['undici:client:sendHeaders', ({ request }) => update(request, progress => {
     progress.requestSendObserved = true;
   })],
-  ['undici:request:headers', ({ request }) => update(request, progress => {
+  ['undici:request:headers', ({ request, response }) => update(request, progress => {
     progress.responseHeadersObserved = true;
+    progress.statusCode = response.statusCode;
+    const headers = response.headers;
+    for (let i = 0; i < headers.length; i += 2) {
+      const name = headers[i].toString().toLowerCase();
+      if (name !== 'content-type' && name !== 'x-request-id' && name !== 'cf-ray') continue;
+      const value = headers[i + 1].toString();
+      if (name === 'content-type') {
+        const type = value.split(';', 1)[0].trim().toLowerCase();
+        if (['application/json', 'text/html', 'text/plain', 'application/problem+json'].includes(type)) progress.contentType = type;
+      } else if (/^[a-zA-Z0-9_-]{1,128}$/.test(value)) {
+        progress[name === 'cf-ray' ? 'cfRay' : 'responseRequestId'] = value;
+      }
+    }
   })],
   ['undici:request:bodyChunkReceived', ({ request, chunk }) => {
     const state = requests.get(request);
