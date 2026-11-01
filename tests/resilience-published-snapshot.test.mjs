@@ -145,9 +145,22 @@ describe('published resilience snapshot freshness', () => {
     assert.match(workflow, /gh pr list --state all/);
     assert.match(workflow, /gh pr create/);
     assert.doesNotMatch(workflow, /push --force/);
-    assert.match(workflow, /tests\/seo-geo-residue\.test\.mjs/);
-
     const parsed = YAML.parse(workflow);
+    const verify = parsed.jobs.refresh.steps.find((step) => step.name === 'Rebuild and verify published artifacts');
+    const consumers = new RegExp(verify.env.SNAPSHOT_CONSUMERS);
+    for (const suite of [
+      'crawlable-corpus.test.mjs',
+      'seo-geo-residue.test.mjs',
+      'sitemap-generation.test.mjs',
+      'resilience-ranking-snapshot.test.mts',
+      'ai-search-product-facts.test.mjs',
+      'country-corpus-slugs-freshness.test.mjs',
+    ]) {
+      assert.match(readFileSync(join(repoRoot, 'tests', suite), 'utf8'), consumers, `the refresh must verify ${suite}`);
+    }
+    assert.match(verify.run, /grep -lE "\$SNAPSHOT_CONSUMERS" tests\/\*\.test\.mjs tests\/\*\.test\.mts/);
+    assert.match(verify.run, /node scripts\/run-data-tests\.mjs --built-output=exclude "\$\{suites\[@\]\}"/);
+
     const checkout = parsed.jobs.refresh.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
     assert.equal(
       checkout?.with?.ref,
