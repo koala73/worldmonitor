@@ -146,3 +146,28 @@ test('response correlation rejects oversized and unsafe header values and resets
   assert.equal(result.progress.cfRay, undefined);
   assert.equal(result.progress.contentType, undefined);
 });
+
+test('informational headers do not leak into final response facts', async () => {
+  const result = await withSourceRequestDiagnostics(snapshot => {
+    const request = {};
+    channel('undici:request:create').publish({ request });
+    channel('undici:request:headers').publish({ request, response: { statusCode: 103, headers: [Buffer.from('x-request-id'), Buffer.from('early')] } });
+    assert.equal(snapshot().responseHeadersObserved, false);
+    channel('undici:request:headers').publish({ request, response: { statusCode: 404, headers: [] } });
+    return snapshot();
+  });
+  assert.equal(result.statusCode, 404);
+  assert.equal(result.responseRequestId, undefined);
+});
+
+test('HTTP/2 header objects retain correlation without treating a length header as an array', async () => {
+  const result = await withSourceRequestDiagnostics(snapshot => {
+    const request = {};
+    channel('undici:request:create').publish({ request });
+    channel('undici:request:headers').publish({ request, response: { statusCode: 404, headers: { 'x-request-id': 'h2-request', 'content-type': 'application/json', length: '1' } } });
+    return snapshot();
+  });
+  assert.equal(result.statusCode, 404);
+  assert.equal(result.responseRequestId, 'h2-request');
+  assert.equal(result.contentType, 'application/json');
+});

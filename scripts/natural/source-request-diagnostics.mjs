@@ -34,13 +34,17 @@ const listeners = [
     progress.requestSendObserved = true;
   })],
   ['undici:request:headers', ({ request, response }) => update(request, progress => {
+    if (response.statusCode < 200) return;
     progress.responseHeadersObserved = true;
     progress.statusCode = response.statusCode;
     const headers = response.headers;
-    for (let i = 0; i < headers.length; i += 2) {
-      const name = headers[i].toString().toLowerCase();
+    const entries = Array.isArray(headers)
+      ? headers.flatMap((name, i) => i % 2 === 0 ? [[name, headers[i + 1]]] : [])
+      : Object.entries(headers);
+    for (const [rawName, rawValue] of entries) {
+      const name = rawName.toString().toLowerCase();
       if (name !== 'content-type' && name !== 'x-request-id' && name !== 'cf-ray') continue;
-      const value = headers[i + 1].toString();
+      const value = rawValue.toString();
       if (name === 'content-type') {
         const type = value.split(';', 1)[0].trim().toLowerCase();
         if (['application/json', 'text/html', 'text/plain', 'application/problem+json'].includes(type)) progress.contentType = type;
