@@ -22,17 +22,20 @@ Issue #9722 asked for Arabic voice answers. The seven MCP tools with `response_m
 ## Guidance
 
 **1. Keep one data path per narrator and swap only the phrase set.** Each narrator in `api/mcp/spoken-narrators.ts` reads the payload once, picks values, caveats and freshness verdicts once, and takes its wording from a per-language object (`COUNTRY_RISK_PHRASES.en` / `.ar` and the other `*_PHRASES` objects). Don't write a second Arabic narrator. Two narrators drift: one gains a stale caveat or a new field, and the other doesn't. The tests in `tests/mcp-spoken-response-mode.test.mjs` enforce the invariant across languages:
+
 - every number in the Arabic answer appears in the English answer;
 - `citations`, `stale` and `asOf` are identical.
 
 The English output stayed byte-identical: the existing spoken tests passed unchanged.
 
 **2. Arabic templates avoid number-noun agreement, and where they can't, a CLDR plural picks the form.** Arabic changes the counted noun with the number: dual, a 3–10 plural, an 11–99 singular, and 100+. A template can't inflect for every count. So:
+
 - Most sentences put the number after a "عدد X" construction (`وعدد الكيانات الخاضعة للعقوبات والمرتبطة بالبلد 132`), where agreement doesn't apply.
 - Ages, points and hours have to be spoken with their noun. For those, `arabicCount` (`api/mcp/spoken.ts:222`) switches on `new Intl.PluralRules('ar').select(n)`:
   - `one` and `two` return the noun alone (ساعة, ساعتين);
   - `many` and `other` speak the number with the singular;
   - everything else, `few` and zero included, falls to the plural.
+
 - A slip found in review: "من أصل 13 ممرات" (13 takes the singular). The fix was to drop the noun ("من أصل 13"), not to add another inflection.
 
 Digits stay Western (`ar-u-nu-latn` at `api/mcp/spoken.ts:279`), because every Arabic TTS voice reads them. A percent sign is spoken as "في المئة" (`cleanSpeech`, `api/mcp/spoken.ts:165`).
@@ -40,6 +43,7 @@ Digits stay Western (`ar-u-nu-latn` at `api/mcp/spoken.ts:279`), because every A
 **3. Data text keeps its own language, and its cleanup follows the spoken language.** Headline, market and forecast titles are data. They stay as published, and citations keep the English rendering in both languages. `get_media_perspective` reads a headline published in Arabic (`titleLanguage === 'ar'`) as published (`spoken-narrators.ts:753`). It keeps a separate `spokenTitle` so the citation `title` doesn't change by language. The first version cleaned that Arabic headline with the English rules, so `%` was spoken as "percent" and `٪` passed through unread. Greptile caught it on #9986, and the fix was test-first: `cleanTitle(headline.title, 120, 'ar')`. Rule: text cleanup takes the **answer's** language, not the language the code author expected the data to be in.
 
 **4. A response-shaping argument is stripped before any schema sees it, and rejected wherever it can't apply.** `spoken_language` changes the envelope, not the query:
+
 - It is advertised only on narrator tools (`_validate-args.ts:106`).
 - It is removed from `callArguments` alongside `response_mode` and `panel_request` (`dispatch.ts:700`). Without that, strict tool and panel schemas reject it. The prediction-market path is the strict case the tests cover.
 - It is rejected with `-32602` on a tool without a narrator, and without `response_mode: "spoken"` (`_validate-args.ts:112-117`).
