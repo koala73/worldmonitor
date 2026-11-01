@@ -16,6 +16,7 @@ import {
   xPostBudgetServiceStatus,
 } from '../scripts/lib/x-post-budget.cjs';
 import { pollXFeed } from '../scripts/lib/x-news-accounts.cjs';
+import { fetchJapanXOutcome } from '../scripts/cross-strait-activity/japan-x.mjs';
 import { MAX_COMPANY_MONITORING_X_RETURNED_POSTS } from '../scripts/lib/company-monitoring-x-provider.mjs';
 
 const DAY_KEY = 'intelligence:x-post-budget:v1:day:2026-09-02';
@@ -816,6 +817,29 @@ describe('X Post budget key scope', () => {
     const third = await budget.reserve(japanRead(1));
     assert.equal(third.allowed, false, 'one read per slot');
     assert.equal(redis.store.get(COVERAGE_HOLD_KEY), String(DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS));
+  });
+
+  it('Japan retries a denied read through real admission but never spends an accounted slot twice', async () => {
+    const nowMs = Date.parse('2026-09-02T12:00:00.000Z');
+    const redis = makeRedis({ [DAY_KEY]: 650, [MONTH_KEY]: 9000,
+      [COVERAGE_HOLD_KEY]: 50, [COVERAGE_MODEL_KEY]: 'fixed-slots-v1:555' }, nowMs);
+    const budget = sharedModelBudget(redis, nowMs);
+    let requests = 0;
+    const fetchFn = async () => { requests++; return Response.json({ meta: { result_count: 0 } }); };
+    const first = await fetchJapanXOutcome({ token: 'test', now: nowMs, budget, fetchFn });
+    assert.equal(first.ok, false);
+    assert.equal(requests, 0);
+    redis.store.set(DAY_KEY, '550');
+    const recovered = await fetchJapanXOutcome({ token: 'test', now: nowMs + 3600000, budget, fetchFn,
+      previousSource: { xDiscovery: first.xDiscovery } });
+    assert.equal(recovered.ok, true);
+    assert.equal(requests, 1);
+    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '25');
+    const replay = await fetchJapanXOutcome({ token: 'test', now: nowMs + 7200000, budget, fetchFn,
+      previousSource: { xDiscovery: first.xDiscovery } });
+    assert.equal(replay.ok, false);
+    assert.equal(requests, 1, 'a stale failed snapshot cannot reuse the accounted slot');
+    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '25');
   });
 
   it('keeps every producer admissible on the day the larger model deploys', async () => {

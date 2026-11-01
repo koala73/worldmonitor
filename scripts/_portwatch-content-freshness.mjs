@@ -94,19 +94,25 @@ export function isCriticalContentRefreshDue({
 //
 //   0 decision-critical (CN/HK) — bounded at two countries, so reserving them
 //     costs the rest of the queue almost nothing;
-//   1 never-cached — no usable prior payload at all, so the country is ALREADY
-//     out of coverage. #4293 put these first and they must stay ahead of the
-//     expiring tier, whose members are at least still publishable today;
+//   1 out of coverage — never cached, or cached longer ago than
+//     PORTWATCH_MAX_CACHE_AGE_MS. Either way the country is ALREADY missing
+//     from the publication and one successful fetch restores it. #4293 put
+//     never-cached countries first; they must stay ahead of the expiring tier,
+//     whose members are at least still publishable today. Ordered
+//     oldest-attempt-first so a country that keeps failing rotates behind the
+//     others in this tier instead of holding the head slot every run;
 //   2 expiring — inside PORTWATCH_EXPIRY_PRIORITY_LEAD_MINUTES of the hard
 //     cache expiry, ordered closest-to-the-cliff first. Losing a country is
 //     irreversible; serving it a window stale is not, so the cliff outranks
 //     rotation fairness (#8501);
 //   3 everything else — oldest-ATTEMPT-first, the durable rotation cursor.
 //
-// A payload already past PORTWATCH_MAX_CACHE_AGE_MS is deliberately NOT in the
-// expiring tier: it is unpublishable whatever we do this run, and promoting it
-// would spend a scarce slot that a still-saveable country needs. It falls to
-// tier 3 and competes on the ordinary rotation cursor.
+// An expired payload used to fall to tier 3 on the theory that it was
+// "unpublishable whatever we do this run". A fresh fetch makes it publishable.
+// In tier 3 its recent failed attempts sorted it behind countries that were
+// still being published: on 2026-11-01 none of 10 expired countries got one of
+// the 30 slots, 15 slots went to published countries, and the run exited 1 at
+// 164/174 coverage.
 export function orderColdFetchQueue(
   needsFetch,
   criticalCountries = PORTWATCH_DECISION_CRITICAL_COUNTRIES,
@@ -138,9 +144,13 @@ export function orderColdFetchQueue(
     return Number.NEGATIVE_INFINITY;
   };
   const stableId = (item) => String(item?.iso2 || item?.iso3 || '');
+  const isExpired = (item) => {
+    const writtenAt = cachedAt(item);
+    return writtenAt !== null && now - writtenAt >= maxCacheAgeMs;
+  };
   const priority = (item) => {
     if (critical.has(item?.iso2)) return 0;
-    if (cachedAt(item) === null) return 1;
+    if (cachedAt(item) === null || isExpired(item)) return 1;
     return isExpiring(item) ? 2 : 3;
   };
   return [...needsFetch].sort((a, b) => {

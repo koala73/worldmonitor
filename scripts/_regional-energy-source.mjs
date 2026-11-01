@@ -200,6 +200,7 @@ export function regionalEnergySeedOptions(id) {
     recordCount: data => data.observations.length,
     validateFn: data => data.sourceId === id && data.observations.length > 0,
     emptyDataIsFailure: true,
+    recordInitialFetchFailure: true,
     maxStaleMin: feed.intervalMin * 3,
     contentMeta: regionalEnergyContentMeta,
     maxContentAgeMin: feed.maxContentAgeMin,

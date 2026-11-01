@@ -2793,6 +2793,17 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error(`  FETCH FAILED: ${err.message || err}${cause}`);
 
+    if (opts.recordInitialFetchFailure === true) {
+      try {
+        const { url, token } = getRedisCredentials();
+        await redisCommand(url, token, ['SET', `seed-meta:${domain}:${resource}`, JSON.stringify({
+          status: 'error', firstFailureAt: startMs, recordCount: 0, runId,
+        }), 'NX']);
+      } catch {
+        console.warn(`  [${domain}:${resource}] initial failure receipt could not be stored`);
+      }
+    }
+
     const preserved = await preserveExistingKeys();
 
     if (
@@ -3295,6 +3306,9 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         : (contractState || 'LEGACY');
     logSeedResult(domain, recordCount, durationMs, {
       runId,
+      canonicalKey,
+      fetchedAt: envelopeMeta?.fetchedAt ?? meta?.fetchedAt ?? null,
+      ...(contentAgeOptedIn ? { newestItemAt: contentNewestAt, oldestItemAt: contentOldestAt, maxContentAgeMin } : {}),
       payloadBytes,
       contractMode,
       state: completionState,

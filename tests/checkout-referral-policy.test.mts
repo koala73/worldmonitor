@@ -22,7 +22,17 @@
  */
 
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
+// A successful web redirect holds the checkout guard until the page leaves
+// or a 15 s timer fires. Return the buyer from the back-forward cache after
+// each test so that timer never outlives it.
+type PageShowListener = (event: { persisted: boolean }) => void;
+const pageShowListeners = new Set<PageShowListener>();
+afterEach(() => {
+  for (const fn of [...pageShowListeners]) fn({ persisted: true });
+  pageShowListeners.clear();
+});
+
 import { build, type Plugin } from 'esbuild';
 
 interface HarnessState {
@@ -54,8 +64,12 @@ function resetHarness(storedReferral: string | null = null): void {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: {
-      addEventListener: () => {},
-      removeEventListener: () => {},
+      addEventListener: (type: string, fn: PageShowListener) => {
+        if (type === 'pageshow') pageShowListeners.add(fn);
+      },
+      removeEventListener: (type: string, fn: PageShowListener) => {
+        if (type === 'pageshow') pageShowListeners.delete(fn);
+      },
       setInterval: () => 1,
       clearInterval: () => {},
       location: {

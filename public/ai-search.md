@@ -65,7 +65,7 @@ Coverage reconciled: 2026-11-01. Every figure below is generated from this repos
 - 100 MCP tools; use `tools/list` for the live inventory
 - 28 supported interface languages
 - 31 countries scored by the Country Instability Index (CII v14)
-- 196-country rankable universe for the Country Resilience Index, of which 170 are ranked in the published snapshot captured 2026-08-29
+- 196-country rankable universe for the Country Resilience Index, of which 169 are ranked in the published snapshot captured 2026-11-01
 - 13 maritime chokepoints with AIS-based transit intelligence
 - 98 submarine cable routes
 - 159 pipelines and LNG assets
