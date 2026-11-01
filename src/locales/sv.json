@@ -2628,6 +2628,8 @@
       "market": "Marknad",
       "retail": "Detaljhandel",
       "wholesale": "Partihandel",
+      "farmgate": "Gårdspris",
+      "export": "Export",
       "prices": "Livsmedelspriser",
       "product": "Produkt",
       "price": "Pris / enhet",

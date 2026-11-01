@@ -48,6 +48,8 @@ message FoodPriceSource {
   string status = 10;
   repeated FoodMarketPrice prices = 11;
   repeated FoodSecurityContext contexts = 12;
+  // Citation the publisher asks for (for example a licence or required credit). Empty when none is stated.
+  string attribution = 13;
 }
 
 message GetFoodPricesRequest {}

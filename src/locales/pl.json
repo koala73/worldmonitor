@@ -3052,6 +3052,8 @@
       "market": "Rynek",
       "retail": "Detal",
       "wholesale": "Hurt",
+      "farmgate": "Cena skupu",
+      "export": "Eksport",
       "prices": "Ceny żywności",
       "product": "Produkt",
       "price": "Cena / jednostka",

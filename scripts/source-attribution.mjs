@@ -93,6 +93,12 @@ const publisherMetadataFeed = (provider) => ({
  * become a provider rename or regroup.
  */
 export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
+  uzstat: Object.freeze({
+    provider: 'stat.uz',
+    memberHosts: Object.freeze(['api.siat.stat.uz', 'stat.uz']),
+    reason: 'The stat.uz prices page publishes the SDMX dataset that its SIAT API host serves; both are the Uzbekistan Statistics Agency.',
+    reviewReference: 'Issue #9892 food-price batch 2 (PR #9993 review)',
+  }),
   jodi: Object.freeze({
     provider: 'www.jodidata.org',
     memberHosts: Object.freeze(['www.jodidata.org', 'api.publisher.jodidata.org']),
@@ -189,6 +195,33 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 });
 
 const PROVIDER_OVERRIDES = {
+  // Food-price publishers (#9892) whose own terms we recorded at onboarding.
+  'stat.uz': {
+    provider: 'stat.uz',
+    identityGroup: 'uzstat',
+    license: 'CC BY 4.0 (stat.uz site footer and ODI open-data certificate); a link to www.stat.uz is required',
+    attribution: 'Source: National Statistics Committee of the Republic of Uzbekistan, www.stat.uz (CC BY 4.0). Link https://stat.uz.',
+    status: 'reviewed',
+  },
+  'api.siat.stat.uz': {
+    provider: 'stat.uz',
+    identityGroup: 'uzstat',
+    license: 'CC BY 4.0 (stat.uz site footer and ODI open-data certificate); a link to www.stat.uz is required',
+    attribution: 'Source: National Statistics Committee of the Republic of Uzbekistan, www.stat.uz (CC BY 4.0). Link https://stat.uz.',
+    status: 'reviewed',
+  },
+  'simaniger.net': {
+    provider: 'simaniger.net',
+    license: 'SIMA Niger asks for the citation "SIMA Niger" and to be contacted before commercial use or mass extraction; polled one weekly bulletin per run',
+    attribution: 'Cite "SIMA Niger" and link the weekly cereal bulletin.',
+    status: 'terms-review',
+  },
+  'ammancity.gov.jo': {
+    provider: 'ammancity.gov.jo',
+    license: 'Site footer: "All rights reserved © 2001 - 2026 - Greater Amman Municipality"; displayed with attribution under the free-dashboard posture',
+    attribution: 'Credit Greater Amman Municipality and link the Central Market price page.',
+    status: 'terms-review',
+  },
   'www.jodidata.org': { provider: 'www.jodidata.org', identityGroup: 'jodi' },
   'api.publisher.jodidata.org': { provider: 'www.jodidata.org', identityGroup: 'jodi' },
   'api.adsb.lol': { provider: 'adsb.lol' },
@@ -983,10 +1016,12 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '68bc5750134cdb616d47fd6899af0e6a7f8f2af8399b140d7ec5e3e86ec52510',
-  // 2026-10-24: add Shanghai Financial Portal as a distinct official
-  // republisher. Preserve PBOC source credit under /BQSM/index.html section 2.
-  reason: 'Preserve all reviewed provider identities and add Shanghai Financial Portal as a distinct official M2 republisher with PBOC source attribution. The 2026-10-24 review of its copyright statement section 2 permits the facts-only source contract with original source credit.',
+  sha256: '9bf8f767070c1b27e966921de9258c1076b8f4ba6554194b51cd0732d476532b',
+  // 2026-11-01 (#9892): group stat.uz with its SIAT API host and record the
+  // stated terms of stat.uz (CC BY 4.0), SIMA Niger and Amman Central Market.
+  // 2026-10-24: added Shanghai Financial Portal as a distinct official M2
+  // republisher; PBOC source credit is preserved under /BQSM/index.html section 2.
+  reason: 'Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892).',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe

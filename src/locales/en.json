@@ -3103,6 +3103,8 @@
       "market": "Market",
       "retail": "Retail",
       "wholesale": "Wholesale",
+      "farmgate": "Farmgate",
+      "export": "Export",
       "prices": "Food prices",
       "product": "Product",
       "price": "Price / unit",

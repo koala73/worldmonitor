@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
   parsePihps, parsePbs, parseDa, parseCbsl, parseSniim, parseOnagri,
-  parseGiews, mergeHistory, discoverReports, giewsCountries,
+  parseGiews, mergeHistory, discoverReports, giewsCountries, plainText,
 } from '../scripts/lib/food-prices.mjs';
 
 const fixture = name => readFileSync(new URL(`./fixtures/food-prices/${name}`, import.meta.url), 'utf8');
@@ -140,4 +140,14 @@ test('PDF parsers reject reordered or shifted price-column headers', () => {
   const cbsl = JSON.parse(fixture('cbsl.json'));
   cbsl[0].filter(item => item.text === 'Today').forEach(item => { item.x -= 40; });
   assert.throws(() => parseCbsl(cbsl, '2026-10-29'), /column layout changed/);
+});
+
+test('plainText strips markup in linear time when tags or script blocks never close', () => {
+  assert.equal(plainText('<p>Rice &amp; beans</p><script>x()</script><STYLE>p{}</STYLE> <b>kg</b>'), 'Rice & beans kg');
+  assert.equal(plainText('a <script>never closed'), 'a never closed');
+  for (const hostile of ['<div x'.repeat(100000), '<script>'.repeat(60000), '<style a'.repeat(60000)]) {
+    const started = performance.now();
+    plainText(hostile);
+    assert.ok(performance.now() - started < 1000, `${hostile.slice(0, 8)} took ${Math.round(performance.now() - started)} ms`);
+  }
 });

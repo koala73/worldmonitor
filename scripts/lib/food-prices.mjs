@@ -1,6 +1,25 @@
 import { decodeHtmlEntities } from '../_html-entities.mjs';
 
-export const plainText = value => decodeHtmlEntities(String(value).replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+// Drops closed <script>/<style> blocks. Once a tag has no closing element left, later openers of it are
+// kept for the tag pass, so publisher pages cannot force a rescan per opener (CWE-1333).
+function dropBlocks(text) {
+  const lower = text.toLowerCase();
+  const closed = {};
+  let out = '';
+  let at = 0;
+  for (const match of lower.matchAll(/<(script|style)\b[^<>]*>/g)) {
+    const tag = match[1];
+    if (match.index < at || closed[tag] === -1) continue;
+    if (closed[tag] === undefined || closed[tag] < match.index) closed[tag] = lower.indexOf(`</${tag}>`, match.index);
+    if (closed[tag] === -1) continue;
+    out += text.slice(at, match.index);
+    at = closed[tag] + tag.length + 3;
+  }
+  return out + text.slice(at);
+}
+
+// [^<>] keeps an unclosed '<' from scanning to the end of the page once per '<'.
+export const plainText = value => decodeHtmlEntities(dropBlocks(String(value)).replace(/<[^<>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
 const EN_MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 const FR_MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 const pad = value => String(value).padStart(2, '0');
@@ -140,9 +159,28 @@ export function parseCbsl(pages, date) {
   });
 }
 
+// Returns [openingTag, inner] for each <name …>…</name>. Openers stop at the next '<' or '>', and each
+// closing tag is found through a forward-only pointer, so unclosed or malformed publisher markup costs
+// one pass instead of a rescan per opener (CWE-1333). An element nested in a matched one is skipped.
+export function htmlElements(html, names) {
+  const lower = html.toLowerCase();
+  const closes = names.map(name => ({ tag: `</${name}>`, at: 0 }));
+  const result = [];
+  let consumed = 0;
+  for (const match of html.matchAll(new RegExp(`<(?:${names.join('|')})\\b[^<>]*>`, 'gi'))) {
+    if (match.index < consumed) continue;
+    const start = match.index + match[0].length;
+    for (const close of closes) if (close.at !== -1 && close.at < start) close.at = lower.indexOf(close.tag, start);
+    const next = closes.filter(close => close.at !== -1).sort((a, b) => a.at - b.at)[0];
+    if (!next) break;
+    consumed = next.at + next.tag.length;
+    result.push([match[0], html.slice(start, next.at)]);
+  }
+  return result;
+}
+
 function tableRows(html) {
-  return [...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map(match =>
-    [...match[1].matchAll(/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(cell => plainText(cell[1])));
+  return htmlElements(html, ['tr']).map(([, row]) => htmlElements(row, ['td', 'th']).map(([, cell]) => plainText(cell)));
 }
 
 export function parseSniim(html, item, expectedDate) {
@@ -183,8 +221,9 @@ export function parseGiews(html, country) {
 
 export function giewsCountries(html) {
   const countries = new Map();
-  for (const match of html.matchAll(/<option\b[^>]*value=["']country\.jsp\?[^"']*code=([A-Z]{3})[^"']*["'][^>]*>([\s\S]*?)<\/option>/gi)) {
-    countries.set(match[1], { code: match[1], name: plainText(match[2]) });
+  for (const [open, inner] of htmlElements(html, ['option'])) {
+    const code = /value=["']country\.jsp\?[^"']*code=([A-Z]{3})[^"']*["']/i.exec(open)?.[1];
+    if (code) countries.set(code, { code, name: plainText(inner) });
   }
   return [...countries.values()];
 }
@@ -208,7 +247,10 @@ export function discoverReports(html, source) {
     }
   }
   const hasAnnexReports = reports.size > 0;
-  for (const match of html.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+  for (const [open, inner] of htmlElements(html, ['a'])) {
+    const href = /href=["']([^"']+)["']/i.exec(open)?.[1];
+    if (!href) continue;
+    const match = [open, href, inner];
     let url;
     try { url = new URL(decodeHtmlEntities(match[1]), base); } catch { continue; }
     if (url.hostname !== new URL(base).hostname || url.protocol !== 'https:') continue;

@@ -3032,6 +3032,8 @@
       "market": "Mercato",
       "retail": "Dettaglio",
       "wholesale": "Ingrosso",
+      "farmgate": "Prezzo alla produzione",
+      "export": "Esportazione",
       "prices": "Prezzi alimentari",
       "product": "Prodotto",
       "price": "Prezzo / unità",

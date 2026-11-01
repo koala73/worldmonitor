@@ -1,42 +1,103 @@
 import { Agent, Dispatcher1Wrapper } from 'undici';
 import { setTimeout as delay } from 'node:timers/promises';
+import { rootCertificates } from 'node:tls';
 import sources from '../shared/food-price-sources.json' with { type: 'json' };
 import { CHROME_UA } from '../_seed-utils.mjs';
 import { decodeHtmlEntities } from '../_html-entities.mjs';
 import {
-  discoverReports, giewsCountries, isoDate, parseCbsl, parseDa, parseGiews,
+  discoverReports, giewsCountries, htmlElements, isoDate, parseCbsl, parseDa, parseGiews,
   parseOnagri, parsePbs, parsePihps, parseSniim, plainText,
 } from './food-prices.mjs';
+import { FOOD_PRICE_ADAPTERS } from './food-prices-adapters/index.mjs';
 
 const DAY = 86400000;
 const dated = (now, offset) => new Date(now.getTime() + offset * DAY).toISOString().slice(0, 10);
 const dmy = date => date.split('-').reverse().join('/');
 const SNIIM_QUERY = 'https://www.economia-sniim.gob.mx/nuevo/Consultas/MercadosNacionales/PreciosDeMercado/Agricolas/ConsultaFrutasYHortalizas.aspx?SubOpcion=4';
 
-async function pdfPages(bytes) {
+export async function pdfPages(bytes, { maxItems = 200_000 } = {}) {
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const task = getDocument({ data: new Uint8Array(bytes), useSystemFonts: true, isEvalSupported: false });
   try {
     const doc = await task.promise;
-    if (doc.numPages > 25) throw new Error('food PDF page limit exceeded');
+    if (doc.numPages > 40) throw new Error('food PDF page limit exceeded');
+    // A small compressed content stream can expand into millions of text items, and getTextContent()
+    // would hold them all. Stream each page and keep nothing past the budget (CWE-770). Real documents
+    // in these feeds stay in the hundreds per page. The stream is drained rather than cancelled:
+    // destroying the document with a text stream in flight never settles.
     const pages = [];
-    for (let i = 1; i <= doc.numPages; i++) {
-      const content = await (await doc.getPage(i)).getTextContent();
-      pages.push(content.items.filter(item => item.str?.trim()).map(item => ({ text: item.str, x: item.transform[4], y: item.transform[5] })));
+    let total = 0;
+    for (let i = 1; i <= doc.numPages && total <= maxItems; i++) {
+      const reader = (await doc.getPage(i)).streamTextContent().getReader();
+      const page = [];
+      for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+        total += chunk.value.items.length;
+        if (total > maxItems) continue;
+        for (const item of chunk.value.items) if (item.str?.trim()) page.push({ text: item.str, x: item.transform[4], y: item.transform[5] });
+      }
+      pages.push(page);
     }
+    if (total > maxItems) throw new Error('food PDF text item limit exceeded');
     return pages;
   } finally { await task.destroy(); }
 }
 
-function links(html, base) {
-  return [...html.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)].flatMap(match => {
-    try { return [{ url: new URL(decodeHtmlEntities(match[1]), base).href, text: plainText(match[2]) }]; } catch { return []; }
+// The largest real sheet across the three workbook feeds is about 1.3k rows and 30 columns.
+const MAX_SHEET_ROWS = 20_000;
+const MAX_SHEET_COLUMNS = 512;
+
+export async function readWorkbook(bytes) {
+  const { unzipSync } = await import('fflate');
+  let expanded = 0;
+  unzipSync(new Uint8Array(bytes), { filter: file => {
+    expanded += file.originalSize;
+    if (expanded > 50_000_000) throw new Error('food workbook exceeds expansion limit');
+    return false;
+  } });
+  const { default: ExcelJS } = await import('exceljs');
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load(bytes);
+  return book.worksheets.map(sheet => {
+    // includeEmpty materialises one array per row up to the last used row, so a lone far-away cell
+    // would allocate a million rows; refuse the sheet first (CWE-770).
+    if (sheet.rowCount > MAX_SHEET_ROWS || sheet.columnCount > MAX_SHEET_COLUMNS) throw new Error('food workbook sheet exceeds size limit');
+    const rows = [];
+    sheet.eachRow({ includeEmpty: true }, row => rows.push(row.values.slice(1).map(cell => cell?.result ?? cell)));
+    return rows;
   });
 }
 
-function selectOptions(html, name) {
-  const select = new RegExp(`<select\\b[^>]*name=["']${name}["'][^>]*>([\\s\\S]*?)<\\/select>`, 'i').exec(html)?.[1] ?? '';
-  return [...select.matchAll(/<option\b[^>]*value=["']([^"']+)["'][^>]*>([\s\S]*?)<\/option>/gi)].map(match => ({ id: decodeHtmlEntities(match[1]), name: plainText(match[2]) }));
+// Finds each opening tag, then the next </a> through a forward-only pointer, so an anchor that never
+// closes cannot make every later opener rescan the page (CWE-1333).
+export function links(html, base) {
+  const lower = html.toLowerCase();
+  const result = [];
+  let consumed = 0;
+  let close = 0;
+  for (const match of html.matchAll(/<a\b[^<>]*?href=["']([^"'<>]+)["'][^<>]*>/gi)) {
+    if (match.index < consumed) continue;
+    const start = match.index + match[0].length;
+    if (close !== -1 && close < start) close = lower.indexOf('</a>', start);
+    if (close === -1) break;
+    consumed = close + 4;
+    try { result.push({ url: new URL(decodeHtmlEntities(match[1]), base).href, text: plainText(html.slice(start, close)) }); } catch { /* Skip hrefs that do not parse. */ }
+  }
+  return result;
+}
+
+export function selectOptions(html, name) {
+  const select = htmlElements(html, ['select']).find(([open]) => new RegExp(`name=["']${name}["']`, 'i').test(open))?.[1] ?? '';
+  return htmlElements(select, ['option']).flatMap(([open, inner]) => {
+    const value = /value=["']([^"']+)["']/i.exec(open)?.[1];
+    return value ? [{ id: decodeHtmlEntities(value), name: plainText(inner) }] : [];
+  });
+}
+
+// Fetch exposes header bytes as Latin-1; some publishers send raw UTF-8 file names in Location.
+export function utf8Header(value) {
+  if (!value || !/[\x80-\xff]/.test(value) || /[^\x00-\xff]/.test(value)) return value;
+  const decoded = Buffer.from(value, 'latin1').toString('utf8');
+  return decoded.includes('\uFFFD') ? value : decoded;
 }
 
 async function readBytes(response, limit = 8_000_000) {
@@ -63,28 +124,39 @@ async function readBytes(response, limit = 8_000_000) {
 export async function collectFoodSource(id, { now = new Date(), fetchFn = (...args) => globalThis.fetch(...args), pause = delay, budgetMs = 230_000 } = {}) {
   const source = sources.find(source => source.id === id);
   if (!source) throw new Error('unknown food-price source');
-  const agent = new Agent({ connect: { family: 4, timeout: 15_000 } });
+  const adapter = FOOD_PRICE_ADAPTERS[id];
+  const agent = new Agent({ connect: { family: 4, timeout: 15_000, ...(adapter?.ca ? { ca: [...rootCertificates, ...adapter.ca] } : {}) } });
   const dispatcher = new Dispatcher1Wrapper(agent);
   const deadline = Date.now() + budgetMs;
   let requested = false;
-  const host = new URL(source.url).hostname;
-  const get = async (url, binary = false) => {
+  const hosts = new Set([new URL(source.url).hostname, ...(source.hosts ?? [])]);
+  const protocols = source.allowHttp ? ['https:', 'http:'] : ['https:'];
+  const cookies = new Map();
+  const request = async (url, { binary = false, method = 'GET', body, headers = {} } = {}) => {
     if (requested) await pause(id === 'pihps' ? 500 : 250);
     requested = true;
     let target = new URL(url);
     for (let redirects = 0; redirects <= 4; redirects++) {
-      if (target.protocol !== 'https:' || target.hostname !== host || target.username || target.password) throw new Error('food source URL left its publisher');
+      if (!protocols.includes(target.protocol) || !hosts.has(target.hostname) || target.username || target.password) throw new Error('food source URL left its publisher');
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new Error('food source fetch budget exceeded');
+      const jar = [...cookies].map(([name, value]) => `${name}=${value}`).join('; ');
       const response = await fetchFn(target.href, {
-        headers: { 'User-Agent': CHROME_UA, Accept: '*/*' },
+        method, body,
+        headers: { 'User-Agent': CHROME_UA, Accept: '*/*', ...(jar ? { Cookie: jar } : {}), ...headers },
         dispatcher, redirect: 'manual', signal: AbortSignal.timeout(Math.min(20_000, remaining)),
       });
+      for (const cookie of response.headers.getSetCookie?.() ?? []) {
+        const [pair] = cookie.split(';');
+        const at = pair.indexOf('=');
+        if (at > 0) cookies.set(pair.slice(0, at).trim(), pair.slice(at + 1).trim());
+      }
       if ([301, 302, 303, 307, 308].includes(response.status)) {
-        const location = response.headers.get('location');
+        const location = utf8Header(response.headers.get('location'));
         await response.body?.cancel();
         if (!location) throw new Error('food source redirect missing location');
         target = new URL(location, target);
+        if (response.status === 303 || (method === 'POST' && response.status !== 307 && response.status !== 308)) { method = 'GET'; body = undefined; }
         continue;
       }
       if (!response.ok) {
@@ -96,12 +168,22 @@ export async function collectFoodSource(id, { now = new Date(), fetchFn = (...ar
     }
     throw new Error('food source redirect limit exceeded');
   };
+  const get = (url, binary = false) => request(url, { binary });
   try {
     let observations = [];
-    const refreshedReports = [];
+    let refreshedReports = [];
     let contexts = [];
     let reportUrl = source.url;
-    if (id === 'pihps') {
+    if (adapter) {
+      const result = await adapter.collect({
+        get: (url, options = {}) => request(url, options), now, dated, pdfPages, readWorkbook, links, selectOptions,
+        warn: message => console.warn(`${id}: ${message}`),
+      });
+      observations = result.observations ?? [];
+      contexts = result.contexts ?? [];
+      refreshedReports = result.refreshedReports ?? [];
+      reportUrl = result.reportUrl ?? source.url;
+    } else if (id === 'pihps') {
       const base = 'https://www.bi.go.id/hargapangan/WebSite/TabelHarga/';
       const payload = JSON.parse(await get(`${base}GetRefCommodityAndCategory`));
       const commodities = payload.data?.filter(item => /^com_\d+$/.test(item.id));
@@ -126,23 +208,7 @@ export async function collectFoodSource(id, { now = new Date(), fetchFn = (...ar
           if (id === 'pbs') {
             const annex = /\.xlsx$/i.test(report.url) ? report : links(await get(report.url), report.url).find(link => /\/annex[^/]*\.xlsx$/i.test(new URL(link.url).pathname));
             if (!annex) throw new Error('PBS annex workbook link missing');
-            const bytes = await get(annex.url, true);
-            const { unzipSync } = await import('fflate');
-            let expanded = 0;
-            unzipSync(new Uint8Array(bytes), { filter: file => {
-              expanded += file.originalSize;
-              if (expanded > 50_000_000) throw new Error('PBS workbook exceeds expansion limit');
-              return false;
-            } });
-            const { default: ExcelJS } = await import('exceljs');
-            const book = new ExcelJS.Workbook();
-            await book.xlsx.load(bytes);
-            const sheets = book.worksheets.map(sheet => {
-              const rows = [];
-              sheet.eachRow({ includeEmpty: true }, row => rows.push(row.values.slice(1).map(cell => cell?.result ?? cell)));
-              return rows;
-            });
-            rows = parsePbs(sheets);
+            rows = parsePbs(await readWorkbook(await get(annex.url, true)));
           } else {
             const pages = await pdfPages(await get(report.url, true));
             rows = id === 'da' ? parseDa(pages.slice(0, 3), report.date) : parseCbsl([pages[1] ?? []], report.date);

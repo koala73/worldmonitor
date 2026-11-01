@@ -3052,6 +3052,8 @@
       "market": "Trh",
       "retail": "Maloobchod",
       "wholesale": "Velkoobchod",
+      "farmgate": "Výkupní cena",
+      "export": "Vývoz",
       "prices": "Ceny potravin",
       "product": "Produkt",
       "price": "Cena / jednotka",

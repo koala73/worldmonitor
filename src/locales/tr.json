@@ -3012,6 +3012,8 @@
       "market": "Pazar",
       "retail": "Perakende",
       "wholesale": "Toptan",
+      "farmgate": "Çiftlik kapısı",
+      "export": "İhracat",
       "prices": "Gıda fiyatları",
       "product": "Ürün",
       "price": "Fiyat / birim",

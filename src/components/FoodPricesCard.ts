@@ -81,7 +81,7 @@ export class FoodPricesCard {
     } else sections.push(h('p', {}, label('unavailable')));
 
     const giews = this.sources.find(source => source.id === 'giews');
-    const tunisia = this.sources.find(source => source.id === 'onagri');
+    const monthly = this.sources.filter(source => source.contextOnly && source.id !== 'giews');
     const context = h('details', { className: 'food-prices-context' }, h('summary', {}, label('context')));
     if (wasOpen) context.setAttribute('open', '');
     context.append(h('p', { className: 'food-prices-note' }, label('contextNote')));
@@ -96,9 +96,9 @@ export class FoodPricesCard {
         context.append(h('p', {}, sourceLink(brief.url, brief.title), h('small', {}, `${label(brief.status)} · ${label('report')}: ${brief.referenceDate || label('unavailable')}`)));
       } else context.append(h('p', {}, label('unavailable')));
     }
-    if (tunisia) {
-      context.append(h('h4', {}, `${tunisia.country} · ${tunisia.name}`), this.sourceNote(tunisia));
-      context.append(tunisia.prices.length ? this.table(tunisia.prices, true) : h('p', {}, label('unavailable')));
+    for (const source of monthly) {
+      context.append(h('h4', {}, `${source.country} · ${source.name}`), this.sourceNote(source));
+      context.append(source.prices.length ? this.table(source.prices, true) : h('p', {}, label('unavailable')));
     }
     sections.push(context);
     this.host.replaceChildren(...sections);
@@ -110,6 +110,7 @@ export class FoodPricesCard {
   private sourceNote(source: FoodPriceSource): HTMLElement {
     return h('p', { className: 'food-prices-source', role: 'status' },
       sourceLink(source.url, source.name), ` · ${label(source.status)}`,
-      h('small', {}, `${label('report')}: ${source.latestReportDate || '—'} · ${label('checked')}: ${source.fetchedAt ? source.fetchedAt.slice(0, 10) : '—'}`));
+      h('small', {}, `${label('report')}: ${source.latestReportDate || '—'} · ${label('checked')}: ${source.fetchedAt ? source.fetchedAt.slice(0, 10) : '—'}`),
+      ...(source.attribution ? [h('small', { className: 'food-prices-attribution' }, source.attribution)] : []));
   }
 }

@@ -721,6 +721,7 @@ export interface FoodPriceSource {
   status: string;
   prices: FoodMarketPrice[];
   contexts: FoodSecurityContext[];
+  attribution: string;
 }
 
 export interface FoodMarketPrice {

@@ -380,6 +380,20 @@
       ]
     },
     {
+      "host": "ammancity.gov.jo",
+      "provider": "ammancity.gov.jo",
+      "kind": "structured",
+      "observed": true,
+      "license": "Site footer: \"All rights reserved © 2001 - 2026 - Greater Amman Municipality\"; displayed with attribution under the free-dashboard posture",
+      "attribution": "Credit Greater Amman Municipality and link the Central Market price page.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/amman.mjs"
+        }
+      ]
+    },
+    {
       "host": "amna.gr",
       "provider": "amna.gr",
       "kind": "feed",
@@ -1212,6 +1226,20 @@
         },
         {
           "path": "server/worldmonitor/market/v1/stock-news-search.ts"
+        }
+      ]
+    },
+    {
+      "host": "api.siat.stat.uz",
+      "provider": "stat.uz",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (stat.uz site footer and ODI open-data certificate); a link to www.stat.uz is required",
+      "attribution": "Source: National Statistics Committee of the Republic of Uzbekistan, www.stat.uz (CC BY 4.0). Link https://stat.uz.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/statuz.mjs"
         }
       ]
     },
@@ -7638,6 +7666,20 @@
       ]
     },
     {
+      "host": "precios.maga.gob.gt",
+      "provider": "precios.maga.gob.gt",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit precios.maga.gob.gt and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/maga.mjs"
+        }
+      ]
+    },
+    {
       "host": "prnewswire.com",
       "provider": "PR Newswire",
       "kind": "feed",
@@ -8814,6 +8856,20 @@
       ]
     },
     {
+      "host": "simaniger.net",
+      "provider": "simaniger.net",
+      "kind": "structured",
+      "observed": true,
+      "license": "SIMA Niger asks for the citation \"SIMA Niger\" and to be contacted before commercial use or mass extraction; polled one weekly bulletin per run",
+      "attribution": "Cite \"SIMA Niger\" and link the weekly cereal bulletin.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/sima.mjs"
+        }
+      ]
+    },
+    {
       "host": "simpleflying.com",
       "provider": "simpleflying.com",
       "kind": "structured",
@@ -8917,6 +8973,48 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "stat.gov.kg",
+      "provider": "stat.gov.kg",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit stat.gov.kg and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/nsckg.mjs"
+        }
+      ]
+    },
+    {
+      "host": "stat.gov.kz",
+      "provider": "stat.gov.kz",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit stat.gov.kz and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/statkz.mjs"
+        }
+      ]
+    },
+    {
+      "host": "stat.uz",
+      "provider": "stat.uz",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (stat.uz site footer and ODI open-data certificate); a link to www.stat.uz is required",
+      "attribution": "Source: National Statistics Committee of the Republic of Uzbekistan, www.stat.uz (CC BY 4.0). Link https://stat.uz.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/statuz.mjs"
         }
       ]
     },
@@ -9343,6 +9441,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "tcb.gov.bd",
+      "provider": "tcb.gov.bd",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit tcb.gov.bd and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/tcb.mjs"
         }
       ]
     },
@@ -10062,6 +10174,20 @@
         },
         {
           "path": "scripts/seed-ucdp-events.mjs"
+        }
+      ]
+    },
+    {
+      "host": "ugandacoffee.go.ug",
+      "provider": "ugandacoffee.go.ug",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit ugandacoffee.go.ug and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/ucda.mjs"
         }
       ]
     },
@@ -13018,6 +13144,20 @@
       ]
     },
     {
+      "host": "www.nabc.go.th",
+      "provider": "www.nabc.go.th",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.nabc.go.th and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/nabc.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.naftemporiki.gr",
       "provider": "www.naftemporiki.gr",
       "kind": "feed",
@@ -13220,6 +13360,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.ocpv-ci.com",
+      "provider": "www.ocpv-ci.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.ocpv-ci.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/ocpv.mjs"
         }
       ]
     },
@@ -14424,6 +14578,20 @@
       "references": [
         {
           "path": "scripts/seed-resilience-static.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.viwanda.go.tz",
+      "provider": "www.viwanda.go.tz",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.viwanda.go.tz and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/mit.mjs"
         }
       ]
     },

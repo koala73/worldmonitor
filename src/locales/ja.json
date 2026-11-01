@@ -2992,6 +2992,8 @@
       "market": "市場",
       "retail": "小売",
       "wholesale": "卸売",
+      "farmgate": "農家庭先",
+      "export": "輸出",
       "prices": "食品価格",
       "product": "商品",
       "price": "価格 / 単位",

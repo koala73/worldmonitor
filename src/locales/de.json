@@ -3012,6 +3012,8 @@
       "market": "Markt",
       "retail": "Einzelhandel",
       "wholesale": "Großhandel",
+      "farmgate": "Erzeugerpreis",
+      "export": "Export",
       "prices": "Lebensmittelpreise",
       "product": "Erzeugnis",
       "price": "Preis / Einheit",
