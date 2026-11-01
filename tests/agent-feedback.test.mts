@@ -130,6 +130,11 @@ describe('redactFeedbackText', () => {
     ['bare password field', 'login password=hunter2 failed', 'hunter2'],
     ['lowercase value in a full Authorization header', 'Authorization: Bearer mysecrettoken', 'mysecrettoken'],
     ['long lowercase Bearer value', 'sent Bearer abcdefghijklmnop', 'abcdefghijklmnop'],
+    ['credential field in a JSON body', '{"api_key": "SECRET123456"}', 'SECRET123456'],
+    ['credential field in a config line', 'api_key: SECRET123456', 'SECRET123456'],
+    ['backticked credential field', 'ran `api_key=SECRET123456` and got 401', 'SECRET123456'],
+    ['quoted value in a name=value field', 'curl -d api_key="SECRET123456" /api/x', 'SECRET123456'],
+    ['single-quoted JSON-ish field', "{'client_secret': 'Abc.def-123'}", 'Abc.def-123'],
   ];
   for (const [name, input, secret] of cases) {
     it(`redacts a ${name}`, () => {
@@ -150,6 +155,24 @@ describe('redactFeedbackText', () => {
     ]) {
       assert.deepEqual(redactFeedbackText(text), { text, redacted: false }, text);
     }
+  });
+
+  it('keeps prose after a credential name and a colon: only a token-shaped value goes', () => {
+    for (const text of [
+      'token: expired after an hour',
+      'key: the dashboard broke',
+      'password: required',
+      'code: 500 from the gateway',
+      'secret: unknown',
+    ]) {
+      assert.deepEqual(redactFeedbackText(text), { text, redacted: false }, text);
+    }
+  });
+
+  it('keeps the field shape around a redacted value', () => {
+    assert.equal(redactFeedbackText('{"api_key": "SECRET123456"}').text, '{"api_key": "[redacted]"}');
+    assert.equal(redactFeedbackText('api_key: SECRET123456').text, 'api_key: [redacted]');
+    assert.equal(redactFeedbackText('`api_key=SECRET123456`').text, '`api_key=[redacted]`');
   });
 
   it('keeps non-credential query fields and numeric codes', () => {
