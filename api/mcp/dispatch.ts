@@ -48,6 +48,7 @@ import { filterConflictPanelEvents, isOrdinaryMarketDefault, presentConflictEven
 import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_ALIASES, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
+import { buildSpokenEnvelope } from './spoken';
 import { applyDeprecationNotice, buildStructuredContent } from './structured-content';
 import {
   principalIdForLog,
@@ -666,7 +667,11 @@ export async function dispatchToolsCall(
   let panelUsage: PanelUsage | undefined;
   let panelRead: Awaited<ReturnType<typeof authorizePanelRead>> | undefined;
   const suppliedPanel = p.arguments?.panel_request;
-  const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request'));
+  // `response_mode` (#9722) only shapes the response after execution, like
+  // `jmespath`, so neither the tool, the panel admission schemas nor the panel
+  // read scope ever see it. Validated above against the tool's narrator.
+  const spokenRequested = p.arguments?.response_mode === 'spoken';
+  const callArguments = Object.fromEntries(Object.entries(p.arguments ?? {}).filter(([key]) => key !== 'panel_request' && key !== 'response_mode'));
   let sourceArguments = callArguments;
   // Callers without a dedicated panel allowance (API allowances, operator keys)
   // cannot hold a forecast panel_request; they read original evidence at the
@@ -1109,11 +1114,20 @@ export async function dispatchToolsCall(
       && result && typeof result === 'object') {
       result = presentDefaultMarketData(result as Record<string, unknown>, tool._outputBudgetBytes);
     }
+    // Spoken mode (#9722): the finished payload becomes the narrator's
+    // sentence-and-citations envelope. It sits here, after every filter and
+    // presentation step and before the projection, so `jmespath` projects
+    // the envelope (`jmespath: "spoken"` returns only the sentence) and the
+    // attribution rider below is still built from the full payload.
+    const narratedFrom = result;
+    if (spokenRequested && tool._spoken && result && typeof result === 'object' && !Array.isArray(result)) {
+      result = buildSpokenEnvelope(tool, result as Record<string, unknown>, callArguments);
+    }
     let { text: projectedText, value: projectedValue, failed } = applyJmespath(result, jmespathArg);
     // A news-panel token reading Natural map data keeps its full geometry.
     const newsMapRead = tool.name === 'get_natural_disasters' && panelRead !== undefined && panelRead.panel !== 'disasters';
     let fitCoverage: unknown;
-    if (tool._fitToBudget && !newsMapRead
+    if (tool._fitToBudget && !newsMapRead && !spokenRequested
       && result && typeof result === 'object'
       && (failed === 'projection_too_large' || utf8ByteLength(projectedText) > tool._outputBudgetBytes)) {
       const presented = tool._fitToBudget(result as Record<string, unknown>, tool._outputBudgetBytes, callArguments);
@@ -1144,7 +1158,7 @@ export async function dispatchToolsCall(
     // No `jmespath` argument → no rider and byte-identical output, because the
     // unprojected payload already carries its attribution inline.
     const rider = jmespathUsed && tool._attribution !== undefined
-      ? buildAttributionRider(result, tool._attribution)
+      ? buildAttributionRider(narratedFrom, tool._attribution)
       : null;
     let text = rider === null ? projectedText : mergeAttributionRider(projectedText, rider);
     if (fitCoverage !== undefined) {

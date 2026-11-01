@@ -1,6 +1,8 @@
 import { RpcValidationError } from './billing-denial';
+import { argBool } from './filters';
 import { JMESPATH_SCHEMA } from './jmespath';
 import { SUMMARY_SCHEMA } from './registry';
+import { RESPONSE_MODE_SCHEMA } from './spoken';
 import { z } from 'zod';
 import type { ToolDef } from './types';
 
@@ -101,8 +103,22 @@ export function validateToolArgs(tool: ToolDef, args: unknown): asserts args is 
       ...tool.inputSchema.properties,
       jmespath: JMESPATH_SCHEMA,
       ...(tool._execute === undefined ? { summary: SUMMARY_SCHEMA } : {}),
+      ...(tool._spoken ? { response_mode: RESPONSE_MODE_SCHEMA } : {}),
     },
   } as Schema, args);
+  // `response_mode` (#9722) is only advertised where a narrator exists. The
+  // schema walk above cannot reject it elsewhere (unknown keys pass unless a
+  // tool closes additionalProperties), and a voice agent must not get the
+  // full payload back when it asked for sentences. The spoken sentences are
+  // built from the full lists, so the `summary` reshaping is refused with it.
+  if (args !== null && typeof args === 'object' && !Array.isArray(args) && 'response_mode' in args) {
+    const record = args as Record<string, unknown>;
+    if (!tool._spoken) {
+      violations.push({ field: 'response_mode', description: 'This tool has no spoken mode. Only tools that list response_mode in their input schema accept it.' });
+    } else if (record.response_mode === 'spoken' && argBool(record.summary)) {
+      violations.push({ field: 'summary', description: 'Cannot be combined with response_mode "spoken": the spoken sentences are built from the full payload. Omit summary.' });
+    }
+  }
   if (violations.length) throw new RpcValidationError(tool.name, violations);
   tool._validateArgs?.(Object.fromEntries(Object.entries(args as Record<string, unknown>).filter(([key]) => key !== 'panel_request')));
 }

@@ -1,4 +1,5 @@
 import { COUNTRY_ARG_HINT, echoCountryInput, requireCountryCode, resolveCountryArg } from '../_country-args';
+import { spokenCountryRisk, spokenResilienceIndicators, spokenWorldBrief } from '../spoken-narrators';
 import COUNTRY_BBOXES from '../../../shared/country-bboxes.js';
 import { countryBox, splitCountryBox } from '../../../shared/country-bbox';
 import type { ListMilitaryFlightsResponse } from '../../../src/generated/server/worldmonitor/military/v1/service_server';
@@ -1619,6 +1620,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // ui:// app shell (rendered inline by an MCP-Apps host). Single source of
     // truth — the ui:// resource is registered in ../ui/registry.ts.
     _uiResourceUri: WORLD_BRIEF_UI_URI,
+    _spoken: spokenWorldBrief,
     _fitToBudget: fitWorldBriefToBudget,
     _execute: async (_params, base, context, execution) => {
       const UA = 'worldmonitor-mcp-edge/1.0';
@@ -1993,6 +1995,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // ui:// app shell (rendered inline by an MCP-Apps host). Single source of
     // truth — the ui:// resource is registered in ../ui/registry.ts.
     _uiResourceUri: COUNTRY_RISK_UI_URI,
+    _spoken: spokenCountryRisk,
     _execute: async (params, base, context, execution) => {
       const days = ciiHistoryDays(params.history_days, 'history_days');
       const code = requireCountryCode(params.country_code, 'get-country-risk');
@@ -2436,6 +2439,7 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _spoken: spokenResilienceIndicators,
     _coverageKeys: [
       'resilience:low-carbon-generation:v1',
       'resilience:power-losses:v1',

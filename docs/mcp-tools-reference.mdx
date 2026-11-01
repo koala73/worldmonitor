@@ -90,10 +90,13 @@ Schemas are emitted **unconditionally** on every `tools/list`, regardless of the
     { "required": ["projection"] },
     { "required": ["data", "_attribution"] },
     { "required": ["_budget_exceeded"] },
-    { "required": ["_jmespath_error"] }
+    { "required": ["_jmespath_error"] },
+    { "required": ["spoken", "citations"] }
   ]
 }
 ```
+
+The last branch appears only on tools that accept `response_mode` (see [Spoken mode](#spoken-mode-for-voice-agents) below).
 
 | Response | `content[0].text` | `structuredContent` |
 |---|---|---|
@@ -101,6 +104,7 @@ Schemas are emitted **unconditionally** on every `tools/list`, regardless of the
 | `jmespath` projection, or a cache tool's `summary: true` | the reshaped value (any JSON value) | `{ "projection": <that value> }`, because the field must be an object |
 | Projection on a licence-bearing tool | `{ "data": …, "_attribution": … }` | the same object |
 | `_budget_exceeded` or `_jmespath_error` | the envelope | the same envelope |
+| `response_mode: "spoken"` | the spoken envelope `{ "tool", "spoken", "citations", "stale", "asOf" }` | the same envelope |
 
 The text is byte-identical to what earlier versions returned, so a client that reads only `content[0].text` sees no change. To read a tool's documented shape programmatically, take `outputSchema.anyOf[0]`.
 
@@ -216,7 +220,32 @@ Universal arguments:
 
 - Every tool accepts `jmespath` (string), an optional server-side projection applied after per-tool filters and `summary`.
 - Every cache tool also accepts `summary` (boolean), which returns counts plus 3-item samples instead of full lists.
+- Seven analytical tools accept `response_mode` (`"full"` or `"spoken"`), which replaces the payload with a short spoken-style answer plus citations. See [Spoken mode](#spoken-mode-for-voice-agents).
 - The per-tool tables below list only tool-specific arguments declared by the registry; the universal injected arguments are intentionally documented once here.
+
+### Spoken mode for voice agents
+
+`response_mode: "spoken"` serves voice and avatar agents that read an answer aloud. It is accepted by `get_country_risk`, `get_world_brief`, `get_chokepoint_status`, `get_forecast_predictions`, `get_prediction_markets`, `get_media_perspective` and `get_resilience_indicators`; each advertises the argument in its `inputSchema` and the envelope branch in its `outputSchema`. Any other tool rejects the argument with `-32602` (`violations[].field === "response_mode"`), as does an unknown mode value. The default, `"full"`, is byte-identical to omitting the argument.
+
+The response replaces the documented payload with:
+
+```json
+{
+  "tool": "get_country_risk",
+  "spoken": "Iraq scores 62 out of 100 on the instability index, and the trend is rising. The largest contribution comes from armed conflict, at 72. The travel advisory is reconsider travel, and 132 sanctioned entities are linked to the country.",
+  "citations": [
+    { "source": "WorldMonitor Composite Instability Index (v14)", "asOf": "2026-11-01T08:40:00.000Z", "stale": false }
+  ],
+  "stale": false,
+  "asOf": "2026-11-01T08:40:00.000Z"
+}
+```
+
+- `spoken` is 2-3 sentences, at most 500 characters, built from the tool's structured fields by a fixed template: no model call, so the same data always reads the same way, and every number spoken is one the payload carries. Percentages are read as "41 percent", moves as "down 3 points", ages as "about 25 minutes ago". The text carries no markdown, links, parentheses, raw codes or field names.
+- `citations[]` carries `source`, optional `title` and `url`, `asOf` (ISO-8601 or `null`) and `stale`, so the agent can show or log where the sentences came from.
+- Freshness is spoken, not only flagged: a stale cache snapshot, a last-known-good world brief, an old risk reading, a partial media read or a failed upstream read each change the wording, and `stale` is `true` on the envelope and its citations.
+- The full payload is omitted. Call again without `response_mode` (or with a `jmespath` projection) when you need the documented shape.
+- `jmespath` applies to the envelope, so `{"response_mode": "spoken", "jmespath": "spoken"}` returns only the sentence. `summary: true` cannot be combined with the spoken mode, because the sentences are built from the full lists.
 
 ## Markets & economy
 
@@ -941,6 +970,7 @@ Explain one country's Country Resilience Index score across the complete 72-row 
 - **Access:** `subscription` — requires a Pro subscription on both the REST and MCP paths.
 - **Kind:** request-local trace of the scorer branch that actually ran; it is not a second scoring implementation.
 - **Freshness:** reads the immutable trace generation referenced by the six-hour public score cache. The trace lives in a separate seven-hour sidecar so score and ranking reads stay small.
+- **Spoken mode:** `response_mode: "spoken"` returns 2-3 sentences: the number of scored dimensions and the data snapshot month, the two strongest and two weakest dimensions in plain words, and how many indicators are directly observed. Citations are the score plus each distinct indicator source with URL and retrieval time.
 
 This tool does not accept `jmespath`. Both runtimes reject a non-empty projection with JSON-RPC `-32602` or HTTP 400, because a projection could detach a permitted raw value from the attribution and retrieval fields that authorize redistributing it.
 
@@ -1054,6 +1084,7 @@ Return seeded prediction-market contracts from multiple venues with current prob
 - **Usage notices:** An explicit authorized receipt read also reads the current daily allowance without reserving another unit. If the counter is unavailable or unconfirmed, contracts remain available without a numeric notice. A previous opening notice does not prove later accounting.
 - **Kind:** cache read from the Redis bootstrap cache.
 - **Freshness budget:** up to **1.5 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Spoken mode:** `response_mode: "spoken"` returns 2-3 sentences: contracts per bucket after your filters, then the leading market in the first two populated buckets (or the top two in one bucket) with `yesPrice` as a percentage and the 24-hour move in points. Citations carry venue, title and URL. Cannot be combined with `summary`.
 
 <CodeGroup>
 
@@ -1363,6 +1394,7 @@ Optional `history_days` adds `ciiHistory` with up to 90 UTC daily closes. The la
 - **API endpoints:** `GET /api/intelligence/v1/get-country-risk`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** live RPC on an uncached execution. Accepted paid originals replay within the same-country admission. Edge-runtime timeout: **8.0s**. CII time does not prove advisory or sanctions freshness.
+- **Spoken mode:** `response_mode: "spoken"` returns 2-3 sentences with the score out of 100, the trend, the largest component, the advisory and the sanctions count, and says when the reading is old or the upstream read failed. Citations name the index and its methodology version.
 
 <CodeGroup>
 
@@ -1588,6 +1620,7 @@ Coverage comes from WorldMonitor's cached feeds (up to 96 hours) and is mostly E
 - **API endpoints:** `GET /api/news/v1/list-media-perspective`
 - **Access:** `subscription` — requires a Pro subscription.
 - **Kind:** RPC tool with an 8-second downstream timeout over cached feeds; no fetch from publishers and no request-time LLM call. Large outputs keep every group and trim headlines inside each; compare `headlines` with `headlineCount` to see what was left out.
+- **Spoken mode:** `response_mode: "spoken"` returns 2-3 sentences: headlines and outlets over the window split into the country's own press, its foreign-facing media and outside coverage, the labelled stance counts, and the most recent headline. `state: "partial"` adds a caveat; `"unavailable"` says so. Citations are the most recent headlines with outlet, URL and time.
 
 ### `get_news_intelligence`
 
@@ -2294,6 +2327,7 @@ Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min ca
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget (per slice):** `stale: true` flags when ANY contributing slice exceeds its individual budget — **30 min** for live transit summaries (relay), **36 h** for PortWatch port activity, **12 h** for chokepoint flows, **14 d** for the PortWatch chokepoint reference, and up to **~400 d** for the static chokepoint registry / geographic baselines. The bundle's `cached_at` reflects the oldest contributing seed; `stale: true` doesn't mean ALL the data is old.
 - **Per-country content freshness (PortWatch slice):** `stale: true` also flags when a decision-critical country's own observation (`CN`/`HK`) is older than **72 h**, even though the run's heartbeat is fresh and all 174 countries are published. The seeder reuses a cached country payload while upstream `max(date)` has not advanced, so transport age and record count both read healthy while an individual country's data is days old. This mirrors the `STALE_CONTENT` verdict on `/api/health` for the same seed key — see [Health endpoints](/health-endpoints). `stale` stays a single boolean, so it does not say which dimension tripped; `/api/health` names the stale country.
+- **Spoken mode:** `response_mode: "spoken"` returns 2-3 sentences. With a `chokepoint` filter: risk level, 7-day incidents, oil flow against baseline and today's transits. Without one: how many chokepoints are disrupted and which, the highest risk level, and the flow through the disrupted one. A stale snapshot replaces the last sentence with the caveat. Citations name the monitor and the baseline source.
 
 <CodeGroup>
 
@@ -3088,6 +3122,7 @@ Citation-grounded world intelligence brief from the same precomputed `news:insig
 - **Sources:** returns the bounded `worldBriefSources` array published with the seeded payload in producer order. URLs are copied from explicit source records, not generated at MCP execution time; empty URL fallbacks are retained so citation indexes cannot shift.
 - **Corroboration:** each entry in `headlines` has an index-aligned entry in `topStories` (`topStories[i]` describes `headlines[i]`) carrying `sourceCount`, `uniqueSourceCount`, `corroborationSourceCount`, `entityCorroboration`, `sourceTier`, and the contributing outlet names in `sources` (capped at 12). All of it is published by the insights seeder, so nothing is computed per request. Note that this per-story `sources` is a list of outlet names, unlike the tool's top-level `sources`, which carries citation records. `memberTitles` is deliberately not returned here — it is available on `get_news_intelligence`, which has a larger output budget.
 - **Source provenance:** each `topStories[i]` also carries `sourceProvenance`, index-aligned with its `sources` (`sourceProvenance[j]` describes `sources[j]`). Each entry gives the outlet's declared `tier` (1–4, or `null` when unregistered), `risk`, `type`, whether each was declared and reviewed (`riskDeclared`, `typeDeclared`, `riskReviewed`, `typeReviewed`), `stateAffiliated` when the registry records an affiliation, `knownBiases` (curated perspective labels; an empty array means no label is recorded, not that the outlet is neutral), an optional `note`, and the outlet profile: `homeCountry`, `audience` (`domestic`, `international` or `diaspora`), `language` and `ownershipClass`, each `null` when no profile is recorded. This is the same per-outlet record `get_news_clusters` returns, without `summary`, and it shows a story that mixes a tier-1 wire with a high-risk or state-affiliated outlet, which `sourceTier` alone hides. Stories without an outlet list carry no provenance. If a response would exceed the output budget, every `note` is dropped first, then the four outlet profile fields, and only if that is not enough, every `sourceProvenance` list; `transportCoverage` then names the trimmed field with `omission_reason: "output_budget"`. Outlet names and `sourceTier` are always returned.
+- **Spoken mode:** `response_mode: "spoken"` returns 2-3 sentences: the brief's age (with the stale wording when it is served as last-known-good) and the first three headlines, read from `headlines`, never from the prose. Citations are the producer's `sources` records with URL and publication time.
 
 <CodeGroup>
 
@@ -3157,6 +3192,7 @@ Rows also carry `firstSeenAt` (ISO time), `firstSeenProbability`, `change24h` an
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **1.5 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Spoken mode:** `response_mode: "spoken"` returns 2-3 sentences: the number of published forecasts and their age, then the two highest-probability forecasts as percentages with domain, region and the 24-hour move. Citations carry the forecast titles and `generatedAt`.
 
 <CodeGroup>
 

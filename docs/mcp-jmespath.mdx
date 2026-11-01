@@ -43,6 +43,7 @@ The count above is an example, not a fixed catalog size. These channel mappings 
 | Array projection | `["a", "b"]` | `{ "projection": ["a", "b"] }` |
 | Object projection | `{ "providerCount": 3 }` | `{ "projection": { "providerCount": 3 } }` |
 | Cache tool with `summary: true` | The summary object | `{ "projection": <summary> }` |
+| `response_mode: "spoken"` on a tool that supports it | The spoken envelope (`spoken`, `citations`, `stale`, `asOf`); a `jmespath` then projects that envelope | The same envelope, or `{ "projection": … }` when projected |
 | Invalid expression or no matching field, without attribution | `{ "_jmespath_error": "...", "original_keys": [...] }` | The same envelope |
 | Projection with an attribution rider | `{ "data": <value>, "_attribution": <rider> }` | The same envelope |
 | Projection of fitted output, without attribution | `{ "projection": <value>, "transportCoverage": <coverage> }` | The same envelope |

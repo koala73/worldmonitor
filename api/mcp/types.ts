@@ -4,6 +4,7 @@
 
 import type { BillingVerificationStatus } from '../../server/_shared/entitlement-check';
 import type { McpBudget } from './quota';
+import type { SpokenNarrator } from './spoken';
 
 // ---------------------------------------------------------------------------
 // Auth-context shape passed into tool _execute. U7 widened the previous
@@ -126,6 +127,14 @@ export interface BaseToolDef {
   // projection cannot separate the values from the attribution that licenses
   // their redistribution.
   _attribution?: string;
+  // `response_mode: "spoken"` (#9722). A tool that declares a narrator
+  // advertises `response_mode` in its input schema and the spoken branch in
+  // its output schema; the dispatcher replaces the finished payload with the
+  // narrator's 2-3 sentence envelope (api/mcp/spoken.ts). Declared HERE, on
+  // the tool, so the roster is the registry itself. The narrator sees the
+  // same payload a full call would serialize (after filters and fit), and
+  // must read every number it speaks from that payload.
+  _spoken?: SpokenNarrator;
   // U7 (R7, R9): membership in the always-free subset — servable to an
   // uncredentialed caller, consuming no quota for any principal. Declared HERE,
   // on the tool itself, so the roster and the tool definition cannot drift

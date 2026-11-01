@@ -1,3 +1,4 @@
+import { spokenChokepointStatus, spokenForecastPredictions, spokenPredictionMarkets } from '../spoken-narrators';
 import { CROSS_BORDER_SOURCES, projectCrossBorderSnapshots } from '../../../server/worldmonitor/displacement/v1/cross-border-data';
 import { screenSanctions } from '../../../server/_shared/sanctions-screen';
 import { COUNTRY_HISTORY_TOOL } from './country-history-tool';
@@ -2498,6 +2499,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       }
       return data;
     },
+    _spoken: spokenPredictionMarkets,
     _cacheKeys: ['prediction:markets-bootstrap:v1'],
     _freshnessChecks: [{ key: 'seed-meta:prediction:markets', maxStaleMin: 90 }],
     _apiPaths: [
@@ -4102,6 +4104,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     // MCP Apps (`io.modelcontextprotocol/ui`): links the tool to its interactive
     // ui:// app shell. Single source of truth — registered in ../ui/registry.ts.
     _uiResourceUri: CHOKEPOINT_MONITOR_UI_URI,
+    _spoken: spokenChokepointStatus,
     _cacheKeys: [
       'supply_chain:transit-summaries:v1',          // STANDALONE_KEYS::transitSummaries
       'supply_chain:chokepoint_transits:v1',        // STANDALONE_KEYS::chokepointTransits
@@ -4342,6 +4345,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       }
       return { predictions: data.predictions };
     },
+    _spoken: spokenForecastPredictions,
     _cacheKeys: ['forecast:predictions:v2', 'forecast:scorecard:v1', 'seed-meta:forecast:scorecard', 'forecast:probability-trail:v1'],
     _cacheLabels: { 'forecast:predictions:v2': 'predictions', 'forecast:scorecard:v1': 'scorecard', 'seed-meta:forecast:scorecard': 'scorecardMeta', 'forecast:probability-trail:v1': 'probabilityTrail' },
     _freshnessChecks: [{ key: 'seed-meta:forecast:predictions', maxStaleMin: 90 }, { key: 'seed-meta:forecast:probability-trail', maxStaleMin: 90 }],
