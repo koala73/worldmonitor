@@ -173,11 +173,19 @@ function health(redis: Record<string, any>, now = NOW) {
   });
 }
 
+// Save the real globals once per test. A second read in the same test would
+// otherwise save the first read's fakes, and its cleanup (run after the first)
+// would reinstall them for every later test.
+const readerGlobalsSaved = new WeakSet<object>();
+
 async function readCountry(t: any, redis: Record<string, any>, code: string, now = NOW) {
-  const realFetch = globalThis.fetch;
-  const realNow = Date.now;
-  const env = { ...process.env };
-  t.after(() => { globalThis.fetch = realFetch; Date.now = realNow; process.env = env; });
+  if (!readerGlobalsSaved.has(t)) {
+    readerGlobalsSaved.add(t);
+    const realFetch = globalThis.fetch;
+    const realNow = Date.now;
+    const env = { ...process.env };
+    t.after(() => { globalThis.fetch = realFetch; Date.now = realNow; process.env = env; });
+  }
   installRedis(redis);
   Date.now = () => now;
   return getCountryPortActivity({} as never, { countryCode: code });
