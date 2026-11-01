@@ -73,6 +73,7 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
       if (u.origin === 'https://redis.example') {
         if (mode.startsWith('cache-read-') && u.pathname === '/pipeline'
           && JSON.parse(init.body).some(([verb]) => verb === 'GET')) {
+          if (mode === 'cache-read-transport') throw new TypeError('fetch failed');
           const replies = JSON.parse(init.body).map(() => ({ result: null }));
           if (mode === 'cache-read-short') return Response.json(replies.slice(1));
           if (mode === 'cache-read-envelope') return Response.json({ result: replies });
@@ -83,6 +84,13 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
         if (mode === 'canonical-expired' && u.pathname === '/pipeline'
           && JSON.parse(init.body).some(([verb]) => verb === 'EXPIRE')) {
           state.redis.delete('${CANONICAL}');
+        }
+        if (mode === 'reference-page-country-unconfirmed' && u.pathname === '/pipeline'
+          && JSON.parse(init.body).some(([verb]) => verb === 'EXPIRE')) {
+          const response = await state.fetchImpl(url, init);
+          const results = await response.json();
+          results[results.length - 1] = {};
+          return Response.json(results);
         }
         if (mode === 'canonical-unconfirmed' && u.pathname === '/pipeline'
           && JSON.parse(init.body).some(([verb]) => verb === 'EXPIRE')) {
@@ -105,7 +113,7 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
       if (!u.pathname.endsWith('/query')) return Response.json({ fields: [{ name: 'date', type: 'esriFieldTypeDateOnly' }] });
       const offset = Number(u.searchParams.get('resultOffset'));
       if (u.pathname.includes('PortWatch_ports_database')) {
-        if (offset > 0 && mode === 'reference-page') return Response.json({ exceededTransferLimit: true });
+        if (offset > 0 && mode.startsWith('reference-page')) return Response.json({ exceededTransferLimit: true });
         const page = countries.slice(offset, offset + 100);
         return Response.json({ features: page.map(([iso3, iso2]) => ({ attributes: { portid: iso2, ISO3: iso3, lat: 1, lon: 2 } })), exceededTransferLimit: offset + page.length < countries.length });
       }
@@ -233,6 +241,18 @@ test('reference-page failure records diagnostics without replacing last-good key
   for (const [, code] of countries) assert.deepEqual(result.redis[`${PREFIX}${code}`], input[`${PREFIX}${code}`]);
 });
 
+// The upstream path writes only seed-meta, so every prior country key survives
+// solely on its TTL extension. Redis failing to confirm one is our fault and
+// stays a crash (PR #9959 review). A key EXPIRE reports missing (0) is not a
+// write failure, and a crash would not bring it back.
+test('an upstream failure with an unconfirmed country TTL extension stays a crash', () => {
+  const input = fixtures();
+  const result = runProducer(input, 'reference-page-country-unconfirmed');
+  assert.match(result.error, /incomplete page/);
+  assert.equal(result.publishBlocked, false);
+  assert.match(result.logs, /TTL extension unconfirmed for 1 key/);
+});
+
 test('a failed first run does not invent a successful observation timestamp', () => {
   const result = runProducer({}, 'reference-page');
   assert.equal(result.error, null);
@@ -262,11 +282,16 @@ test('a bad second activity page retains the entire country payload and success 
   assert.equal((await readCountry(t, result.redis, code)).ports[0].tankerCalls30d, 12);
 });
 
-for (const mode of ['cache-read-failure', 'cache-read-short', 'cache-read-envelope', 'cache-read-missing', 'cache-read-type']) {
+// cache-read-transport: the cache GET's fetch itself rejects with the same
+// `TypeError('fetch failed')` an ArcGIS transport failure throws. It is still
+// our Redis fault, so it must stay a crash rather than ride the upstream
+// publish-blocked path (PR #9959 review).
+for (const mode of ['cache-read-failure', 'cache-read-short', 'cache-read-envelope', 'cache-read-missing', 'cache-read-type', 'cache-read-transport']) {
   test(`${mode} cannot erase an unreadable last-good country`, () => {
     const input = fixtures();
     const result = runProducer(input, mode);
-    assert.match(result.error, /cache read/);
+    assert.match(result.error, /cache read|Redis pipeline/);
+    assert.equal(result.publishBlocked, false);
     for (const [, code] of countries) assert.deepEqual(result.redis[`${PREFIX}${code}`], input[`${PREFIX}${code}`]);
     assert.equal(result.redis[META].fetchedAt, input[META].fetchedAt);
     assert.equal(result.redis[META].sourceState, 'error');

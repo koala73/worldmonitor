@@ -138,6 +138,10 @@ describe('publication block classification (#8501)', () => {
     for (const error of [
       new Error('Redis pipeline failed: HTTP 500 — boom'),
       new Error('PortWatch cache read failed'),
+      // A Redis transport rejection is tagged at its source, because its bare
+      // shape matches an ArcGIS transport failure.
+      Object.assign(new Error('Redis pipeline failed: fetch failed'), { portwatchOwnFault: true }),
+      Object.assign(new TypeError('fetch failed'), { portwatchOwnFault: true }),
       new TypeError("Cannot read properties of undefined (reading 'size')"),
       new ReferenceError('fetchAl is not defined'),
       'not an error object',

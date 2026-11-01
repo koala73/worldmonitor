@@ -1098,19 +1098,36 @@ export function withPerCountryTimeout(doWork, iso3, timeoutMs = PER_COUNTRY_TIME
   return Promise.race([work, guard]).finally(() => clearTimeout(timer));
 }
 
+// Every Redis failure leaves here tagged as ours. A bare transport rejection
+// is `TypeError('fetch failed')` or a TimeoutError, the same shapes an ArcGIS
+// transport failure throws, and isUpstreamFetchFailure must not mistake a
+// cache-read fault for an upstream outage (PR #9959 review).
+function redisFault(message, cause) {
+  return Object.assign(new Error(`Redis pipeline failed: ${message}`, { cause }), { portwatchOwnFault: true });
+}
+
 async function redisPipeline(commands) {
   const { url, token } = getRedisCredentials();
-  const resp = await fetch(`${url}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-    body: JSON.stringify(commands),
-    signal: AbortSignal.timeout(30_000),
-  });
+  let resp;
+  try {
+    resp = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+      body: JSON.stringify(commands),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (error) {
+    throw redisFault(error?.message || String(error), error);
+  }
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
-    throw new Error(`Redis pipeline failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
+    throw redisFault(`HTTP ${resp.status} — ${text.slice(0, 200)}`);
   }
-  return resp.json();
+  try {
+    return await resp.json();
+  } catch (error) {
+    throw redisFault(`invalid JSON response (${error?.message || error})`, error);
+  }
 }
 
 export async function publishPortActivitySnapshot(
@@ -2091,6 +2108,7 @@ export function classifyPublicationBlock(input) {
 export function isUpstreamFetchFailure(error, signal) {
   if (signal?.aborted) return false;
   if (!(error instanceof Error)) return false;
+  if (error.portwatchOwnFault === true) return false;
   if (error instanceof ReferenceError || error instanceof SyntaxError || error instanceof RangeError) return false;
   const message = String(error.message || '');
   if (/^Redis |PortWatch cache read/.test(message)) return false;
@@ -2323,7 +2341,17 @@ export async function main() {
     // 00:00Z reference page) is upstream, like a coverage shortfall: once
     // last-good is confirmed retained and the failure metadata is written,
     // /api/health owns the alarm instead of a Railway crash.
-    const lastGoodRetained = !hadPriorCanonical || retention?.extendedKeys?.includes(CANONICAL_KEY) === true;
+    // This path writes only seed-meta, so every prior key survives on its TTL
+    // extension alone. A key Redis could not confirm is our fault and stays a
+    // crash. A key EXPIRE reports missing (0) had already expired: that is
+    // not a write failure, and a crash would not restore it.
+    const unconfirmedKeys = retention?.unconfirmedKeys ?? [];
+    if (retention && unconfirmedKeys.length > 0) {
+      console.error(`  TTL extension unconfirmed for ${unconfirmedKeys.length} key(s): ${unconfirmedKeys.slice(0, 5).join(', ')}`);
+    }
+    const lastGoodRetained = retention !== null
+      && unconfirmedKeys.length === 0
+      && (!hadPriorCanonical || retention.extendedKeys?.includes(CANONICAL_KEY) === true);
     if (upstreamFailure && previousRead && lastGoodRetained && !shutdownController.signal.aborted) {
       console.warn(
         `  UPSTREAM FAILURE: ${err.message}. Last-good retained and failure metadata written; ` +
