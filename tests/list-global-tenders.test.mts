@@ -35,6 +35,12 @@ test('Pakistan cross-feed duplicates collapse after filtering and before paginat
   assert.equal(filterAndPaginateTenders(records, { ...request, source: 'pakistan-epads' }).total, 1);
   assert.equal(filterAndPaginateTenders(records, { ...request, buyer: 'other agency' }).total, 1);
   assert.equal(filterAndPaginateTenders(records.map((record) => ({ ...record, source: 'sam' })), request).total, 4);
+  const pair = records.slice(0, 2);
+  const distinct = tender('different-deadline', { ...pair[1], id: 'different-deadline', deadline: '2099-02-02T12:00:00Z' });
+  assert.equal(filterAndPaginateTenders([...pair, distinct], { ...request, country: '' }).total, 2);
+  const ambiguous = { ...pair[1], id: 'another-ppra' };
+  assert.equal(filterAndPaginateTenders([...pair, ambiguous], request).total, 3);
+  assert.equal(filterAndPaginateTenders(pair.map((record) => ({ ...record, deadline: '' })), request).total, 2);
 });
 
 test('filters by country, query, category, money and deadline without treating missing values as matches', () => {

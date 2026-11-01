@@ -86,19 +86,25 @@ function compareTenders(sort: string, left: GlobalTender, right: GlobalTender): 
 }
 
 function dedupePakistanNotices(tenders: GlobalTender[]): GlobalTender[] {
-  const seen = new Map<string, string>();
+  const matches = new Map<string, GlobalTender[]>();
   const identity = (value: string) => value.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-  return tenders.filter((tender) => {
-    if (!['pakistan-epads', 'pakistan-ppra'].includes(tender.source)) return true;
+  for (const tender of tenders) {
+    if (!['pakistan-epads', 'pakistan-ppra'].includes(tender.source)) continue;
     const buyer = identity(tender.buyer || '');
     const title = identity(tender.title);
-    if (!buyer || !title) return true;
-    const key = JSON.stringify([buyer, title]);
-    const source = seen.get(key);
-    if (source && source !== tender.source) return false;
-    seen.set(key, tender.source);
-    return true;
-  });
+    const deadline = asTimestamp(tender.deadline, Number.NaN);
+    if (!buyer || !title || !Number.isFinite(deadline)) continue;
+    const key = JSON.stringify([buyer, title, deadline]);
+    const group = matches.get(key) || [];
+    group.push(tender);
+    matches.set(key, group);
+  }
+  const duplicates = new Set<GlobalTender>();
+  for (const group of matches.values()) {
+    const [first, second] = group;
+    if (group.length === 2 && first && second && first.source !== second.source) duplicates.add(second);
+  }
+  return tenders.filter((tender) => !duplicates.has(tender));
 }
 
 export function filterAndPaginateTenders(tenders: GlobalTender[], req: ListGlobalTendersRequest): Pick<ListGlobalTendersResponse, 'tenders' | 'nextCursor' | 'total' | 'appliedFilters' | 'countryCoverage'> {

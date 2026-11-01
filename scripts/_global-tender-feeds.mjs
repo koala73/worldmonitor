@@ -311,26 +311,36 @@ function pakistanDate(value) {
 function sessionReader(fetchResponseFn) {
   const cookies = new Map();
   let origin;
-  return reader(async (url, options) => {
-    const target = new URL(url);
-    origin ??= target.origin;
-    if (target.origin !== origin) throw new Error('Procurement session cannot change publisher origin');
-    const response = await fetchResponseFn(url, {
-      ...options,
-      headers: { Accept: 'text/html', ...(cookies.size ? { Cookie: [...cookies].map(([key, value]) => `${key}=${value}`).join('; ') } : {}), ...options.headers },
-    });
-    for (const cookie of response.headers.getSetCookie()) {
-      const pair = cookie.split(';', 1)[0];
-      const equals = pair.indexOf('=');
-      if (equals > 0) cookies.set(pair.slice(0, equals), pair.slice(equals + 1));
+  const read = reader(fetchResponseFn);
+  return async (url, options = {}) => {
+    for (let hop = 0; hop <= 3; hop++) {
+      const target = new URL(url);
+      origin ??= target.origin;
+      if (target.origin !== origin) throw new Error('Procurement session cannot change publisher origin');
+      const response = await read(target.href, {
+        ...options, redirect: 'manual',
+        headers: { Accept: 'text/html', ...(cookies.size ? { Cookie: [...cookies].map(([key, value]) => `${key}=${value}`).join('; ') } : {}), ...options.headers },
+      });
+      for (const cookie of response.headers.getSetCookie()) {
+        const pair = cookie.split(';', 1)[0];
+        const equals = pair.indexOf('=');
+        if (equals > 0) cookies.set(pair.slice(0, equals), pair.slice(equals + 1));
+      }
+      const body = await readTenderBody(response, 'text');
+      if (![301, 302, 303, 307, 308].includes(response.status)) return body;
+      const location = response.headers.get('Location');
+      if (!location || hop === 3) throw new Error('Procurement session redirect limit or missing location');
+      url = new URL(location, target).href;
+      if (response.status === 303 || ([301, 302].includes(response.status) && options.method === 'POST')) {
+        options = { ...options, method: 'GET', body: undefined };
+      }
     }
-    return readTenderBody(response, 'text');
-  });
+  };
 }
 
 export async function fetchPakistanEpads({ now = Date.now(), fetchTextFn } = {}) {
   const source = 'pakistan-epads';
-  const read = reader(fetchTextFn);
+  const read = reader((url, options) => fetchTextFn(url, { ...options, redirect: 'error' }));
   const html = await read('https://epads.gov.pk/', { headers: { Accept: 'text/html' } });
   requireRow(/Procurement Title/.test(html) && /table-border-bottom-0/.test(html), source);
   const tenderRows = tableRows(html).filter(({ html: row }) => /\/opportunities\/federal\/procurements\//.test(row));

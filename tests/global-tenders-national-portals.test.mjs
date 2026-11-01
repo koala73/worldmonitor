@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { fetchPakistanEpads, fetchGeorgia, fetchArmenia, fetchPakistan } from '../scripts/_global-tender-feeds.mjs';
 import { tracksTenderFreshness, safeOfficialUrl } from '../scripts/_global-tenders.mjs';
 import { createTenderReceipt, observeTenderSource, observeTenderRequest } from '../scripts/_global-tender-receipts.mjs';
+import { __testing__ as seeder } from '../scripts/seed-global-tenders.mjs';
 
 const NOW = Date.parse('2026-11-01T12:00:00Z');
 const epads = (closing = 'Tuesday, November 10, 2026 10:30 AM') => `<table><thead><th>Procurement Title</th></thead><tbody class="table-border-bottom-0"><tr>
@@ -30,6 +31,7 @@ function sessionTransport(list, detail) {
   const fetchResponseFn = async (url, options) => {
     const target = new URL(url);
     requests.push({ url: target, options });
+    assert.equal(options.redirect, 'manual');
     if (requests.length === 1) return new Response('<html>Home</html>', { headers: { 'Set-Cookie': 'anonymous=one; Path=/; HttpOnly' } });
     assert.equal(options.headers.Cookie, 'anonymous=one');
     assert.equal(options.maxRetries, 0);
@@ -89,6 +91,43 @@ test('Georgia uses an anonymous session and detail closing time rather than the 
   assert.equal(result.records[0].officialUrl, 'https://tenders.procurement.gov.ge/public/?go=123&lang=en');
   assert.deepEqual(result.records[0].categoryCodes, ['45200000']);
   assert.doesNotMatch(JSON.stringify(result), /abc123|anonymous/);
+});
+
+test('publisher sessions follow bounded same-origin redirects without requesting other origins', async () => {
+  for (const destination of ['http://127.0.0.1/private', 'http://169.254.169.254/', 'https://attacker.example/']) {
+    let calls = 0;
+    await assert.rejects(fetchGeorgia({ now: NOW, fetchResponseFn: async (_url, options) => {
+      calls++;
+      assert.equal(options.redirect, 'manual');
+      return new Response('', { status: 302, headers: { Location: destination } });
+    } }), /publisher origin/);
+    assert.equal(calls, 1);
+  }
+  let calls = 0;
+  await assert.rejects(fetchGeorgia({ now: NOW, fetchResponseFn: async () => {
+    calls++;
+    return new Response('', { status: 302, headers: { Location: '?loop=1' } });
+  } }), /redirect limit/);
+  assert.equal(calls, 4);
+  const transport = sessionTransport(armeniaList, armenia());
+  const result = await fetchArmenia({ now: NOW, fetchResponseFn: async (url, options) => {
+    if (new URL(url).pathname.endsWith('changeLanguage.do')) {
+      assert.equal(options.redirect, 'manual');
+      return new Response('', { status: 302, headers: { Location: '/epps/english.do' } });
+    }
+    if (new URL(url).pathname.endsWith('english.do')) return new Response('<html lang="en"></html>');
+    return transport.fetchResponseFn(url, options);
+  } });
+  assert.equal(result.records.length, 1);
+});
+
+test('the seed transport exposes redirects only to explicit manual callers', async (t) => {
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {
+    assert.equal(options.redirect, 'manual');
+    return new Response('', { status: 302, headers: { Location: '/home' } });
+  });
+  const response = await seeder.fetchResponse('https://www.armeps.am/epps/changeLanguage.do', { redirect: 'manual', maxRetries: 0 });
+  assert.equal(response.status, 302);
 });
 
 test('Georgia excludes later-stage and cancelled notices and rejects incomplete detail responses', async () => {

@@ -97,7 +97,7 @@ async function fetchResponse(url, options = {}, transport = fetchResponseTranspo
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, ...(fetchOptions.headers || {}) },
       timeoutMs,
     }, transport);
-    if (!response.ok) {
+    if (!response.ok && !(fetchOptions.redirect === 'manual' && [301, 302, 303, 307, 308].includes(response.status))) {
       // Reuse the repository retry contract: 408 and 429 remain retryable, permanent
       // 4xx responses fail fast, and Retry-After is capped before it reaches withRetry.
       const error = httpRetryError(response);
@@ -120,7 +120,7 @@ function createSamFetchJson(httpsGetFn = httpsGet) {
   return async (url, options = {}) => readTenderBody(await fetchResponse(url, options, transport), 'json');
 }
 
-export const __testing__ = { createSamFetchJson, writeSourceStatus };
+export const __testing__ = { createSamFetchJson, writeSourceStatus, fetchResponse };
 
 async function fetchText(url, options = {}) {
   return readTenderBody(await fetchResponse(url, { ...options, headers: { Accept: 'application/rss+xml, application/xml, text/xml', ...(options.headers || {}) } }), 'text');
