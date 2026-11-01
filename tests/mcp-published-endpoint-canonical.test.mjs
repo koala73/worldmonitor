@@ -66,7 +66,7 @@ const WRONG_MCP_URLS = [
   },
   {
     label: 'a host spelling that is not the canonical one (case, port or trailing dot)',
-    re: new RegExp(`https://(?!worldmonitor\\.app/)${APEX}${HOST_TAIL}/mcp${PATH_END}`, 'g'),
+    re: new RegExp(`[hH][tT][tT][pP][sS]://(?!worldmonitor\\.app/)${APEX}${HOST_TAIL}/mcp${PATH_END}`, 'g'),
   },
 ];
 
@@ -122,6 +122,8 @@ describe('wrong-MCP-URL matcher', () => {
       'https://worldmonitor.app:443/mcp',
       'https://worldmonitor.app./mcp',
       'https://worldmonitor.app:443/api/mcp',
+      'HTTPS://worldmonitor.app:8443/mcp',
+      'Https://worldmonitor.app./mcp',
     ]) {
       assert.ok(findWrongMcpUrls(`"url": "${url}"`).length > 0, url);
     }
