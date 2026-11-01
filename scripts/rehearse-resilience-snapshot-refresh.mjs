@@ -58,31 +58,43 @@ function pick(record, fields) {
   return Object.fromEntries(fields.filter((field) => field in record).map((field) => [field, record[field]]));
 }
 
-// Pairs each row with the nearest unpaired row below it that shows a
-// different value, so every country moves a place or two and its displayed
-// score changes. Ties are common: 169 scores at one decimal share about 139
-// values, and a plain 0-1, 2-3 pairing left 15 tied pairs whose pinned scores
-// passed the rehearsal. A row left over at the tail joins the last pair it can
-// form a three-way rotation with. Values must be sorted, as ranked scores are.
+// Every country moves a few places to a row showing a different value, so its
+// displayed score changes. Ties are common: 169 scores at one decimal share
+// about 139 values, and a plain 0-1, 2-3 swap left 15 tied pairs whose pinned
+// scores passed the rehearsal. Values must be sorted, so ties sit in runs.
+// Consecutive runs group into blocks at least twice their longest run, and
+// each row takes the row its longest run further on, wrapping inside the
+// block: rows that far apart cannot share a run. Blocks stay local, so
+// countries keep their band. Returns, for each row, the row whose identity
+// it takes.
 function neighbourOrder(values) {
-  const order = values.map((_, index) => index);
-  const pairs = [];
-  const paired = new Set();
-  const leftovers = [];
+  const runs = [];
   values.forEach((value, index) => {
-    if (paired.has(index)) return;
-    const partner = values.findIndex((other, at) => at > index && !paired.has(at) && other !== value);
-    if (partner === -1) return leftovers.push(index);
-    paired.add(index).add(partner);
-    pairs.push([index, partner]);
-    [order[index], order[partner]] = [partner, index];
+    if (index > 0 && value === values[index - 1]) runs.at(-1).size += 1;
+    else runs.push({ start: index, size: 1 });
   });
-  for (const index of leftovers) {
-    const pair = pairs.findLast(([a, b]) => values[a] !== values[index] && values[b] !== values[index]);
-    if (!pair) throw new Error(`no row with a different value to rotate row ${index} with`);
-    const [a, b] = pair;
-    [order[a], order[b], order[index]] = [b, index, a];
-    pairs.splice(pairs.indexOf(pair), 1);
+  const blocks = [];
+  let open = null;
+  const close = () => {
+    if (open.size < 2 * open.longest) return;
+    blocks.push(open);
+    open = null;
+  };
+  for (const run of runs) {
+    open ??= { start: run.start, size: 0, longest: 0 };
+    open.size += run.size;
+    open.longest = Math.max(open.longest, run.size);
+    close();
+  }
+  while (open) {
+    const previous = blocks.pop();
+    if (!previous) throw new Error('too many ranked countries share a score for every displayed score to move');
+    open = { start: previous.start, size: previous.size + open.size, longest: Math.max(previous.longest, open.longest) };
+    close();
+  }
+  const order = [];
+  for (const { start, size, longest } of blocks) {
+    for (let offset = 0; offset < size; offset += 1) order[start + offset] = start + ((offset + longest) % size);
   }
   return order;
 }

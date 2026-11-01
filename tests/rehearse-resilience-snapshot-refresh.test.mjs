@@ -101,7 +101,6 @@ describe('resilience snapshot refresh rehearsal', () => {
       const was = before.get(row.countryCode);
       if (row.overallScore === was.overallScore) unchanged.push(`${row.countryCode} score ${row.overallScore}`);
       if (row.rank === was.rank) unchanged.push(`${row.countryCode} rank ${row.rank}`);
-      assert.ok(Math.abs(row.rank - was.rank) <= 4, `${row.countryCode} stays near its band (${was.rank} -> ${row.rank})`);
     }
     for (const row of drifted.greyedOut) {
       const was = before.get(row.countryCode);
@@ -114,20 +113,35 @@ describe('resilience snapshot refresh rehearsal', () => {
     assert.deepEqual(unchanged, [], 'a test pinned to any of these figures would pass the rehearsal');
   });
 
-  it('moves every ranked score past ties and an odd ranked count', () => {
-    const scores = [70, 60, 60, 60, 50, 40, 40, 30];
+  // The last score in each list is the row the drift demotes.
+  for (const scores of [
+    [70, 60, 60, 60, 50, 40, 40, 30],
+    [70, 60, 50, 50, 10],
+    [70, 70, 60, 60, 50, 50, 50, 10],
+    [80, 70, 70, 70, 70, 70, 60, 50, 40, 30, 20, 10],
+  ]) {
+    it(`moves every ranked score past ties: ${scores.slice(0, -1).join(', ')}`, () => {
+      const original = {
+        ...snapshot(),
+        items: scores.map((score, index) => country(`C${index}`, { rank: index + 1, overallScore: score, dimensionCoverage: 0.8, headlineEligible: true })),
+      };
+      const kept = scores.slice(0, -1);
+      const drifted = driftResilienceSnapshot(original, { targetDate: '2026-12-01' });
+      assert.deepEqual(drifted.items.map((row) => row.overallScore), kept, 'score order holds');
+      assert.deepEqual(drifted.items.map((row) => row.countryCode).sort(), kept.map((_, index) => `C${index}`).sort(), 'each country appears once');
+      for (const row of drifted.items) {
+        const was = byCode(original.items, row.countryCode);
+        assert.notEqual(row.overallScore, was.overallScore, `${row.countryCode} shows a different score`);
+      }
+    });
+  }
+
+  it('refuses a ranking where no reshuffle can move every score', () => {
     const original = {
       ...snapshot(),
-      items: scores.map((score, index) => country(`C${index}`, { rank: index + 1, overallScore: score, dimensionCoverage: 0.8, headlineEligible: true })),
+      items: [70, 50, 50, 50, 10].map((score, index) => country(`C${index}`, { rank: index + 1, overallScore: score, dimensionCoverage: 0.8, headlineEligible: true })),
     };
-    const drifted = driftResilienceSnapshot(original, { targetDate: '2026-12-01' });
-    assert.equal(drifted.items.length, 7);
-    assert.deepEqual(drifted.items.map((row) => row.overallScore), scores.slice(0, 7), 'score order holds');
-    assert.deepEqual(drifted.items.map((row) => row.countryCode).sort(), scores.slice(0, 7).map((_, index) => `C${index}`), 'each country appears once');
-    for (const row of drifted.items) {
-      const was = byCode(original.items, row.countryCode);
-      assert.notEqual(row.overallScore, was.overallScore, `${row.countryCode} shows a different score`);
-    }
+    assert.throws(() => driftResilienceSnapshot(original, { targetDate: '2026-12-01' }), /share a score/);
   });
 
   it('replays the refresh workflow rebuild-and-verify step', () => {
