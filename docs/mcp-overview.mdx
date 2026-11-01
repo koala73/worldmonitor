@@ -97,6 +97,7 @@ Dynamic Client Registration is **not** open to arbitrary redirects. A `redirect_
 | Mistral Le Chat | `https://callback.mistral.ai/v1/integrations_auth/oauth2_callback` |
 | Devin | `https://api.devin.ai/mcp/oauth/callback` ([Devin MCP docs](https://docs.devin.ai/work-with-devin/mcp)) |
 | Google Antigravity | `https://antigravity.google/oauth-callback` ([Antigravity MCP docs](https://antigravity.google/docs/mcp)) |
+| Gemini (Connected Apps and custom apps) | Any path under `/r/` or `/a/` on `https://oauth-redirect.googleusercontent.com`, `https://oauth-redirect-sandbox.googleusercontent.com`, or `https://oauth-redirect-test.googleusercontent.com`. Google generates the rest of the path for each app or user. No query, fragment, port, or percent-encoding ([Google OAuth guide](https://developers.google.com/connected-apps/mcp/oauth)) |
 | Vercel Connect | `https://connect.vercel.com/callback` ([Vercel Connect provider docs](https://vercel.com/docs/connect/providers)) |
 | Glama | `https://glama.ai/api/app/mcp/oauth/callback` (connectors and test profiles), `https://glama.ai/mcp/inspector/oauth/callback` ([Glama MCP Inspector](https://glama.ai/mcp/inspector)) |
 | Make.com | `https://www.make.com/oauth/cb/mcp` ([Make MCP client](https://apps.make.com/mcp-client)) |
@@ -110,7 +111,7 @@ Dynamic Client Registration is **not** open to arbitrary redirects. A `redirect_
 | Skydive | `https://www.skydive.com/api/v1/external-oauth/callback` ([client metadata](https://www.skydive.com/api/v1/external-oauth/client-metadata)) |
 | MCPJam | `https://app.mcpjam.com/oauth/callback`, `https://score.mcpjam.com/oauth/callback` ([client metadata](https://www.mcpjam.com/.well-known/oauth/client-metadata.json)) |
 
-Claude Code, Cursor desktop, VS Code desktop, Codex, Gemini CLI, goose, Zed, and MCP Inspector use the loopback form. Notion, Linear, Lovable, Factory, Conductor, Skydive, and MCPJam prefer Client ID Metadata Documents and now connect that way (see below); their callbacks stay listed for clients that still register. A registration may list up to 8 `redirect_uris`, and one unlisted entry rejects the whole request with `400 invalid_redirect_uri`. Clients with per-user or per-tenant callbacks, such as Gemini custom apps and Microsoft Copilot Studio, cannot be exact-matched and are not supported.
+Claude Code, Cursor desktop, VS Code desktop, Codex, Gemini CLI, goose, Zed, and MCP Inspector use the loopback form. Notion, Linear, Lovable, Factory, Conductor, Skydive, and MCPJam prefer Client ID Metadata Documents and now connect that way (see below); their callbacks stay listed for clients that still register. A registration may list up to 8 `redirect_uris`, and one unlisted entry rejects the whole request with `400 invalid_redirect_uri`. Gemini is the one prefix match, on the six prefixes Google publishes. Other clients with per-user or per-tenant callbacks, such as Microsoft Copilot Studio, cannot be exact-matched and are not supported.
 
 ### Client ID Metadata Documents
 

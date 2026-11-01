@@ -3,7 +3,7 @@ title: "Gemini 与 Antigravity：连接 WorldMonitor"
 description: "了解如何在 Google Antigravity 中连接 WorldMonitor 托管 MCP 服务器，以及 Gemini 自定义应用的 OAuth 限制和 Connected Apps 与 Antigravity Marketplace 的上架准备信息。"
 ---
 
-WorldMonitor 为所有客户端提供同一个托管 MCP 服务器：`https://worldmonitor.app/mcp`，使用 Streamable HTTP 传输，并通过 OAuth 2.1 登录（PKCE、动态客户端注册和客户端 ID 元数据文档）。Antigravity 使用与其他受支持客户端相同的服务器、工具和权限。下文介绍 Gemini 的上架准备；目前尚不支持其自定义应用的 OAuth 回调。仅限 Pro 的工具仍然仅限 Pro。认证、配额和工具列表见 [MCP 服务器概览](/zh/mcp-overview)。
+WorldMonitor 为所有客户端提供同一个托管 MCP 服务器：`https://worldmonitor.app/mcp`，使用 Streamable HTTP 传输，并通过 OAuth 2.1 登录（PKCE、动态客户端注册和客户端 ID 元数据文档）。Antigravity 使用与其他受支持客户端相同的服务器、工具和权限。Gemini 自定义应用与 Connected Apps 通过 Google 的 OAuth 回调登录，重定向 URI 允许列表已接受这些回调。仅限 Pro 的工具仍然仅限 Pro。认证、配额和工具列表见 [MCP 服务器概览](/zh/mcp-overview)。
 
 ## Google Antigravity
 
@@ -29,10 +29,12 @@ Marketplace 上架后，可使用 `agy plugin install worldmonitor@antigravity-p
 ```json
 {
   "mcpServers": {
-    "worldmonitor": { "url": "https://worldmonitor.app/mcp" }
+    "worldmonitor": { "serverUrl": "https://worldmonitor.app/mcp" }
   }
 }
 ```
+
+Antigravity 的 [MCP 文档](https://antigravity.google/docs/mcp)对远程服务器使用 `serverUrl`，也接受 `url`；插件自带的 `mcp_config.json` 使用 `url`。
 
 Antigravity 的 OAuth 回调 `https://antigravity.google/oauth-callback` 已在[重定向 URI 允许列表](/zh/mcp-overview#redirect-uri-允许列表)中。
 
@@ -40,15 +42,19 @@ Antigravity 的 OAuth 回调 `https://antigravity.google/oauth-callback` 已在[
 
 ### 开发者模式（自定义应用）
 
-WorldMonitor 的[重定向 URI 允许列表](/zh/mcp-overview#redirect-uri-允许列表)目前尚不支持 Gemini 自定义应用的 OAuth 回调，因此该流程尚不能用于需要认证的工具调用。公开的工具发现成功并不能证明登录或付费访问可用。
+按照 Google 的[开发者模式指南](https://developers.google.com/connected-apps/mcp/dev-mode/usage)操作：选择 **+ Create new**，将 `https://worldmonitor.app/mcp` 填入 MCP Server URL，接受安全提示并连接。Gemini 通过动态客户端注册登记 `https://oauth-redirect.googleusercontent.com/r/` 或 `/a/` 下的回调，[重定向 URI 允许列表](/zh/mcp-overview#redirect-uri-允许列表)接受这些回调。
 
-在实现并验证回调支持后，按照 Google 的[开发者模式指南](https://developers.google.com/connected-apps/mcp/dev-mode/usage)操作：选择 **+ Create new**，将 `https://worldmonitor.app/mcp` 填入 MCP Server URL，接受安全提示并连接。
+首次在开发者模式中运行时请检查以下几点，它们尚未在 Gemini 上测试：
+
+- **登录完成**，且 Pro 账户可以调用仅限 Pro 的工具。
+- **连接在两次令牌刷新后仍然有效。** Google 要求服务器每次刷新都返回同一个刷新令牌。WorldMonitor 每次刷新都会签发新令牌，并在旧刷新令牌被重复使用时吊销整个令牌族。如果 Gemini 一直使用第一个刷新令牌，第二次刷新会断开用户连接。
+- **令牌请求成功。** WorldMonitor 将所有客户端注册为公共客户端（`token_endpoint_auth_method: none`）。如果 Gemini 发送客户端密钥，请确认令牌请求仍然成功。
 
 ### Connected App 上架信息
 
 在 [Google Connected Console](https://connected.google.com/console) 注册 WorldMonitor 时使用以下值。
 
-提交前需完成控制台签发的域名验证、确认 Google 为此应用提供的 OAuth 重定向 URI 可被接受，并使用 Pro 账户进行端到端测试。
+提交前需完成控制台签发的域名验证、通过上述开发者模式检查，并使用 Pro 账户进行端到端测试。
 
 | 字段 | 值 |
 |---|---|
