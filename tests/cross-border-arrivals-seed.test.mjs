@@ -263,6 +263,23 @@ describe('fetchCrossBorderArrivals', () => {
     }
   });
 
+  it('keeps the history of a country missing from today\'s report, and drops one silent for over 180 days', async () => {
+    stub((url) => {
+      if (url.pathname.endsWith('/timeseries')) return Response.json({ data: { timeseries: [] } });
+      if (url.searchParams.get('sv_id') === '63') return Response.json({ data: [row({ individuals: 959126 })] });
+      return new Response('gone', { status: 404 });
+    });
+    const data = await fetchCrossBorderArrivals({
+      nowMs: Date.parse('2026-10-08T00:00:00Z'),
+      previousHistory: {
+        'sudan|outflow|Refugees from Sudan|Libya': [['2026-09-21', 469703]],
+        'sudan|outflow|Refugees from Sudan|Uganda': [['2026-03-31', 80000]],
+      },
+    });
+    assert.deepEqual(data.history['sudan|outflow|Refugees from Sudan|Libya'], [['2026-09-21', 469703]]);
+    assert.equal(data.history['sudan|outflow|Refugees from Sudan|Uganda'], undefined);
+  });
+
   it('keeps the 30-day history TTL when a failed run preserves the stored keys', async () => {
     const { seedOptions, ARRIVALS_HISTORY_KEY } = await import('../scripts/seed-cross-border-arrivals.mjs');
     const history = seedOptions.extraKeys.find((ek) => ek.key === ARRIVALS_HISTORY_KEY);

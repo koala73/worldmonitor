@@ -30,6 +30,7 @@ export const ARRIVALS_ACTIVATION_KEY = 'seed-activated:displacement:cross-border
 // Per-country report history, kept out of the public payload.
 export const ARRIVALS_HISTORY_KEY = 'displacement:cross-border:history:v1';
 const HISTORY_TTL_SECONDS = 30 * 24 * 60 * 60;
+const HISTORY_RETENTION_DAYS = 180;
 const ODP = 'https://data.unhcr.org/population/get';
 const CACHE_TTL_SECONDS = 3 * 24 * 60 * 60;
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -399,10 +400,13 @@ export async function fetchCrossBorderArrivals({ nowMs = Date.now(), previousHis
       }
     }
   }));
-  // A situation that failed today keeps its history, so one bad day does not reset its change figures.
-  const failedIds = new Set(SITUATIONS.filter((s) => !results.some((r) => r.id === s.id)).map((s) => s.id));
+  // A country missing today (failed situation, or left out of one report) keeps its history,
+  // so its change figure resumes when it reappears. Entries silent for HISTORY_RETENTION_DAYS expire.
+  const retainFrom = daysAgo(nowMs, HISTORY_RETENTION_DAYS);
   for (const [key, points] of Object.entries(history ?? {})) {
-    if (failedIds.has(key.split('|')[0]) && !(key in nextHistory)) nextHistory[key] = points;
+    if (key in nextHistory || !Array.isArray(points)) continue;
+    const lastDate = points.at(-1)?.[0];
+    if (typeof lastDate === 'string' && lastDate >= retainFrom) nextHistory[key] = points;
   }
   if (failures.length) console.warn(`  ODP: ${failures.length} situation(s) unavailable: ${failures.join('; ')}`);
   results.sort((a, b) => SITUATIONS.findIndex((s) => s.id === a.id) - SITUATIONS.findIndex((s) => s.id === b.id));
