@@ -10,11 +10,11 @@ import {
 } from './_proxy-utils.cjs';
 
 const OFAC_ACCEPT = 'application/xml, text/xml, */*';
-const OFAC_SIGNED_DOWNLOAD_TIMEOUT_MS = 45_000;
-// Native fetch follows the bootstrap redirect before returning the streaming
-// XML Response, so this signal remains attached during body consumption. Keep
-// the healthy direct path on the full bounded download budget.
-const OFAC_DIRECT_TIMEOUT_MS = OFAC_SIGNED_DOWNLOAD_TIMEOUT_MS;
+// Native fetch keeps its signal attached while the caller streams the body, so
+// the headers and the 128 MB SDN body get separate deadlines on one controller.
+const OFAC_HEADER_TIMEOUT_MS = 45_000;
+const OFAC_BODY_TIMEOUT_MS = 120_000;
+const OFAC_MIN_BODY_TIMEOUT_MS = 1_000;
 const OFAC_PROXY_TIMEOUT_MS = 10_000;
 const OFAC_PROXY_BOOTSTRAP_MAX_BYTES = 64 * 1024;
 const OFAC_DIRECT_MAX_ATTEMPTS = 2;
@@ -54,20 +54,31 @@ function terminalFetchError(error) {
   return nonRetryableError(String(error));
 }
 
+function timeoutError() {
+  return new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+}
+
 async function fetchDirectWithRetry(url, {
+  bodyTimeoutMs,
   fetchFn,
+  headerTimeoutMs,
   maxAttempts,
   sleepFn,
-  timeoutMs,
 }) {
   let lastError;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const headerTimer = setTimeout(() => controller.abort(timeoutError()), headerTimeoutMs);
     try {
       const response = await fetchFn(url, {
         headers: { 'User-Agent': CHROME_UA, Accept: OFAC_ACCEPT },
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: controller.signal,
       });
-      if (response.ok) return response;
+      clearTimeout(headerTimer);
+      if (response.ok) {
+        setTimeout(() => controller.abort(timeoutError()), bodyTimeoutMs()).unref();
+        return response;
+      }
       const error = httpRetryError(response, { maxRetryAfterMs: 5_000 });
       try {
         await response.body?.cancel();
@@ -76,6 +87,7 @@ async function fetchDirectWithRetry(url, {
       }
       throw error;
     } catch (error) {
+      clearTimeout(headerTimer);
       lastError = error;
       if (error?.nonRetryable || attempt === maxAttempts) break;
       await sleepFn(Math.max(500 * attempt, error.retryAfterMs ?? 0));
@@ -141,21 +153,29 @@ async function fetchRedirectViaProxy(sourceUrl, {
  * proxy is used only for that small redirect response. The signed S3 URL is
  * host-validated, then fetched directly so the SAX consumer retains O(1)
  * response-body memory.
+ *
+ * `deadlineAt` (epoch ms) is the caller's wall-clock limit. The body budget
+ * shrinks to fit it.
  */
 export async function fetchOfacSourceResponse(sourceUrl, {
   fetchFn = globalThis.fetch,
   proxyFetchFn = proxyFetch,
   proxyUrl = resolveOfacProxyUrl(),
   sleepFn = sleep,
+  headerTimeoutMs = OFAC_HEADER_TIMEOUT_MS,
+  bodyTimeoutMs = OFAC_BODY_TIMEOUT_MS,
+  deadlineAt = Infinity,
 } = {}) {
+  const download = {
+    bodyTimeoutMs: () => Math.min(bodyTimeoutMs, Math.max(deadlineAt - Date.now(), OFAC_MIN_BODY_TIMEOUT_MS)),
+    fetchFn,
+    headerTimeoutMs,
+    maxAttempts: OFAC_DIRECT_MAX_ATTEMPTS,
+    sleepFn,
+  };
   let directError;
   try {
-    return await fetchDirectWithRetry(sourceUrl, {
-      fetchFn,
-      maxAttempts: OFAC_DIRECT_MAX_ATTEMPTS,
-      sleepFn,
-      timeoutMs: OFAC_DIRECT_TIMEOUT_MS,
-    });
+    return await fetchDirectWithRetry(sourceUrl, download);
   } catch (error) {
     directError = error;
   }
@@ -169,12 +189,7 @@ export async function fetchOfacSourceResponse(sourceUrl, {
       proxyUrl,
       sleepFn,
     });
-    return await fetchDirectWithRetry(signedUrl, {
-      fetchFn,
-      maxAttempts: OFAC_DIRECT_MAX_ATTEMPTS,
-      sleepFn,
-      timeoutMs: OFAC_SIGNED_DOWNLOAD_TIMEOUT_MS,
-    });
+    return await fetchDirectWithRetry(signedUrl, download);
   } catch (error) {
     // The helper owns the complete bounded recovery ladder. Do not let
     // runSeed's outer withRetry replay the same direct/proxy sequence.

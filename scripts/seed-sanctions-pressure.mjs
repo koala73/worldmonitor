@@ -232,10 +232,10 @@ function buildProgramPressure(entries) {
  * → accumulate only the minimal data structures needed for output.
  * Peak heap is proportional to the number of entries/parties, not the XML size.
  */
-async function fetchSource(source) {
+async function fetchSource(source, { deadlineAt } = {}) {
   console.log(`  Fetching OFAC ${source.label}...`);
   const t0 = Date.now();
-  const response = await fetchOfacSourceResponse(source.url);
+  const response = await fetchOfacSourceResponse(source.url, { deadlineAt });
 
   return new Promise((resolve, reject) => {
     // strict=true: case-sensitive tag names. xmlns=false: we strip prefixes manually.
@@ -670,9 +670,10 @@ async function fetchSanctionsPressure() {
     console.warn('  Sanctions change history unavailable; preserving history and its baseline.');
   }
   const outcomes = {};
+  const deadlineAt = fetchStartedAt + FETCH_PHASE_TIMEOUT_MS - CSL_DEADLINE_MARGIN_MS;
   for (const source of OFAC_SOURCES) {
     try {
-      const result = await fetchSource(source);
+      const result = await fetchSource(source, { deadlineAt });
       outcomes[source.label] = { records: result.entries, publishedAt: result.datasetDate || 0, quarantinedCount: 0, error: null };
     } catch (err) {
       console.warn(`  OFAC ${source.label} fetch failed: ${err?.message || err}`);
@@ -685,7 +686,7 @@ async function fetchSanctionsPressure() {
     quarantinedCount: sema.error ? null : sema.quarantined.length, error: sema.error };
   if (sema.error) console.warn(`  SEMA fetch failed: ${sema.error}`);
   // One bulk download covers all six CSL lists; a failed download fails each list.
-  const csl = await ingestCslEntries({ deadlineAt: fetchStartedAt + FETCH_PHASE_TIMEOUT_MS - CSL_DEADLINE_MARGIN_MS });
+  const csl = await ingestCslEntries({ deadlineAt });
   if (csl.error) console.warn(`  CSL fetch failed: ${csl.error}`);
   for (const source of CSL_SOURCES) {
     const list = csl.lists[source];
