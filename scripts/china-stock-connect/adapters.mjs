@@ -12,6 +12,7 @@
 // survives, so the snapshot states that unavailability explicitly rather than
 // labelling turnover as a flow.
 
+import { retainLastFailure } from '../_last-failure.mjs';
 import {
   assertMetadataResponse,
   errorCodeFor,
@@ -872,6 +873,10 @@ function sourceState(contract, outcome, previousSource, generatedAt) {
     tradeDate: ok ? outcome.observations[0]?.tradeDate ?? null : null,
     checkedAt: generatedAt,
     lastSuccessAt,
+    lastFailure: retainLastFailure(previousSource?.lastFailure, ok ? null : {
+      ...outcome, checkedAt: generatedAt, lastSuccessAt,
+      errorCode: outcome?.errorCode ?? 'FETCH_FAILED',
+    }),
     ...(outcome?.probedDates?.length ? { probedDates: outcome.probedDates } : {}),
     ...(outcome?.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
     ...(outcome?.proxyFailureReason
