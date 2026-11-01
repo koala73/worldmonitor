@@ -2465,6 +2465,15 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_five_factor_scorecard',
+    // Resolve country selectors before dispatch reserves allowance; _execute repeats it.
+    _validateArgs: params => {
+      if (params.country_code != null && params.country_code !== '') {
+        requireCountryCode(params.country_code, 'get-five-factor-scorecard');
+      }
+      if (Array.isArray(params.members)) {
+        for (const member of params.members) requireCountryCode(member, 'get-five-factor-scorecard', 'members');
+      }
+    },
     title: 'Five-factor country scorecard',
     _outputBudgetBytes: 1_048_576,
     description: 'Return the frozen v1 food, energy, demographics, technology, and defense scorecard for exactly one country or bloc. Select a country_code, one official preset, or a custom members list. Read every hasScore, available, and hasValue flag before numeric fields; zero is a proto3 placeholder when its flag is false. Requires a WorldMonitor subscription.',

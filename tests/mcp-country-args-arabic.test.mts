@@ -28,6 +28,7 @@ import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { normalizeCountryDirectRead } from '../shared/country-brief-host.ts';
 import { buildArticlePrompts } from '../server/worldmonitor/news/v1/_shared.ts';
 import { HMAC_SECRET, callBody, makePipelineMock } from './helpers/mcp-pro-deps.mjs';
+import { installRedis } from './helpers/fake-upstash-redis.mts';
 
 const AR = new Intl.DisplayNames(['ar'], { type: 'region' });
 
@@ -464,17 +465,25 @@ describe('country tools that accepted only ISO-2 resolve names through the share
 
   it('get_consumer_prices resolves the seeded UAE by name', async () => {
     const consumer = tool('get_consumer_prices');
-    for (const input of ['الإمارات', 'United Arab Emirates', 'ARE']) {
-      // No Redis in this suite: the read fails after validation, which is the point.
-      const outcome = await (consumer._execute!({ country_code: input }, BASE, CTX, {}) as Promise<{ error?: string }>)
-        .then((value) => value, (error: Error) => ({ error: `threw ${error.message}` }));
-      assert.ok(!String(outcome?.error ?? '').startsWith('Could not resolve'), `${input}: ${outcome?.error}`);
-      assert.ok(!String(outcome?.error ?? '').includes('two-letter'), `${input}: ${outcome?.error}`);
+    const savedEnv = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN, vercel: process.env.VERCEL_ENV };
+    const overview = { basketIndex: 101.2 };
+    installRedis({ 'consumer-prices:overview:ae': overview });
+    try {
+      for (const input of ['الإمارات', 'United Arab Emirates', 'ARE', 'ae']) {
+        const result = await consumer._execute!({ country_code: input }, BASE, CTX, {}) as { error?: string; country_code?: string; data?: { overview?: unknown } };
+        assert.equal(result.error, undefined, `${input}: ${result.error}`);
+        assert.equal(result.country_code, 'ae', input);
+        assert.deepEqual(result.data?.overview, overview, input);
+      }
+      const unknown = await consumer._execute!({ country_code: 'كوريا' }, BASE, CTX, {}) as { error?: string };
+      assert.match(String(unknown.error), /^Could not resolve "كوريا"/);
+      const unsupported = await consumer._execute!({ country_code: 'مصر' }, BASE, CTX, {}) as { error?: string };
+      assert.equal(unsupported.error, 'Country not yet supported. Available: ae');
+    } finally {
+      for (const [key, value] of [['UPSTASH_REDIS_REST_URL', savedEnv.url], ['UPSTASH_REDIS_REST_TOKEN', savedEnv.token], ['VERCEL_ENV', savedEnv.vercel]] as const) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
     }
-    const unknown = await consumer._execute!({ country_code: 'كوريا' }, BASE, CTX, {}) as { error?: string };
-    assert.match(String(unknown.error), /^Could not resolve "كوريا"/);
-    const unsupported = await consumer._execute!({ country_code: 'مصر' }, BASE, CTX, {}) as { error?: string };
-    assert.equal(unsupported.error, 'Country not yet supported. Available: ae');
   });
 
   it('get_mineral_production resolves the producer filter', async () => {
