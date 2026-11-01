@@ -228,6 +228,11 @@ export function chokepointsFromCsv(text, sinceEpoch, window) {
     const cells = line.split(',');
     const id = idByName.get(cells[col.portname]);
     if (!id) continue;
+    // A cut-off or non-numeric row would publish NaN counts; reject the
+    // export so the caller falls back to the query service.
+    if (cells.length < columns.length || CSV_NUMERIC_FIELDS.some(name => cells[col[name]] !== '' && !Number.isFinite(Number(cells[col[name]])))) {
+      throw new Error(`CSV export has a malformed row for ${cells[col.portname]}`);
+    }
     const date = cells[col.date].replaceAll('/', '-');
     if (date >= window.from && date < baselineEndDay && cells[col.n_total] !== '') {
       (baselineTotals[id] ??= []).push(Number(cells[col.n_total]));
@@ -437,24 +442,36 @@ export function mergeWithPrevious(fresh, previous, chokepointIds, nowMs = Date.n
   const carried = [];
   const expired = [];
   const absent = [];
+  const keptNewer = [];
   const prior = previous?.data && typeof previous.data === 'object' ? previous.data : {};
   const snapshotFetchedAt = Number(previous?.meta?.fetchedAt);
   for (const id of chokepointIds) {
-    if (result[id]) continue;
     const entry = prior[id];
+    const fetchedAt = Number.isFinite(entry?.fetchedAt) ? entry.fetchedAt : snapshotFetchedAt;
+    const carryable = entry?.history?.length > 0
+      && Number.isFinite(fetchedAt) && nowMs - fetchedAt <= CARRY_FORWARD_MAX_AGE_MS;
+    if (result[id]) {
+      // The cached CSV export can trail a query-fallback run; never let it
+      // move a chokepoint's history backward.
+      const freshLast = result[id].history?.at(-1)?.date ?? '';
+      if (carryable && entry.history.at(-1).date > freshLast) {
+        result[id] = { ...entry, fetchedAt, carriedForward: true };
+        keptNewer.push(id);
+      }
+      continue;
+    }
     if (!entry?.history?.length) {
       absent.push(id);
       continue;
     }
-    const fetchedAt = Number.isFinite(entry.fetchedAt) ? entry.fetchedAt : snapshotFetchedAt;
-    if (!Number.isFinite(fetchedAt) || nowMs - fetchedAt > CARRY_FORWARD_MAX_AGE_MS) {
+    if (!carryable) {
       expired.push(id);
       continue;
     }
     result[id] = { ...entry, fetchedAt, carriedForward: true };
     carried.push(id);
   }
-  return { result, carried, expired, absent };
+  return { result, carried, expired, absent, keptNewer };
 }
 
 async function fetchFresh(sinceEpoch, window, fetchDeadlineAtMs) {
@@ -462,7 +479,15 @@ async function fetchFresh(sinceEpoch, window, fetchDeadlineAtMs) {
     const fresh = chokepointsFromCsv(await fetchCsvExport(fetchDeadlineAtMs), sinceEpoch, window);
     const noBaseline = Object.keys(fresh).filter(id => !fresh[id].baseline);
     console.log(`[PortWatch] source=hub-csv: ${Object.keys(fresh).length} chokepoints${noBaseline.length ? `, baseline withheld for ${noBaseline.join(', ')}` : ''}`);
-    return fresh;
+    const missing = CHOKEPOINTS.filter(cp => !fresh[cp.id]);
+    if (missing.length === 0) return fresh;
+    console.warn(`[PortWatch] CSV export lacks ${missing.map(cp => cp.id).join(', ')}; querying ArcGIS for them`);
+    const queried = await runFetchPipeline(missing, sinceEpoch, fetchAllPages, 500, {
+      fetchBaselineFn: fetchBaselineStats,
+      baselineWindow: window,
+      fetchDeadlineAtMs,
+    });
+    return { ...fresh, ...queried };
   } catch (e) {
     console.warn(`[PortWatch] source=arcgis-query (csv failed: ${e?.message || e})`);
     return runFetchPipeline(CHOKEPOINTS, sinceEpoch, fetchAllPages, 500, {
@@ -480,7 +505,7 @@ export async function fetchAll({ fetchDeadlineAtMs = null } = {}) {
   if (Object.keys(fresh).length === 0) throw new Error('No chokepoints returned data');
   for (const entry of Object.values(fresh)) entry.fetchedAt = nowMs;
   const previous = await readSeedSnapshot(CANONICAL_KEY, { strict: true, includeEnvelopeMeta: true });
-  const { result, carried, expired, absent } = mergeWithPrevious(
+  const { result, carried, expired, absent, keptNewer } = mergeWithPrevious(
     fresh,
     previous,
     CHOKEPOINTS.map(cp => cp.id),
@@ -491,6 +516,9 @@ export async function fetchAll({ fetchDeadlineAtMs = null } = {}) {
   }
   if (expired.length > 0) {
     console.warn(`[PortWatch] Previous entry too old to carry (>${CARRY_FORWARD_MAX_AGE_MS / DAY_MS}d), dropping: ${expired.join(', ')}`);
+  }
+  if (keptNewer.length > 0) {
+    console.warn(`[PortWatch] Previous history is newer than this run, keeping it: ${keptNewer.join(', ')}`);
   }
   if (absent.length > 0) {
     console.warn(`[PortWatch] No previous entry to carry, missing from this publish: ${absent.join(', ')}`);
