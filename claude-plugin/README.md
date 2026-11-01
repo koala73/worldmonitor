@@ -19,7 +19,7 @@ World Monitor is a real-time global intelligence service covering geopolitics, a
 
 ## Account and access
 
-The first tool call asks you to sign in to World Monitor through OAuth. A free account can use the cached-data tools within a small daily allowance. The AI-written world brief, country assessments and country risk scores need a World Monitor subscription; when a tool is not available on your account, the skills say which part could not load and answer with what did. Plans and limits are described at https://www.worldmonitor.app/docs/mcp-overview.
+The first tool call asks you to sign in to World Monitor through OAuth. A free account can use the cached-data tools within a small daily allowance. The AI-written world brief, country assessments and country risk scores need a World Monitor subscription; when a tool is not available on your account, the skills say which part could not load and answer with what did. Plans and limits: https://www.worldmonitor.app/docs/mcp-overview
 
 ## What the plugin runs and sends
 

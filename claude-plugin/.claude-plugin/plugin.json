@@ -10,6 +10,9 @@
   },
   "homepage": "https://www.worldmonitor.app/docs/mcp-overview",
   "privacyPolicyUrl": "https://www.worldmonitor.app/docs/privacy",
+  "termsOfServiceUrl": "https://www.worldmonitor.app/legal/terms.pdf",
+  "supportUrl": "https://www.worldmonitor.app/support.md",
+  "documentationUrl": "https://www.worldmonitor.app/docs/mcp-quickstart",
   "repository": "https://github.com/koala73/worldmonitor",
   "license": "AGPL-3.0-only",
   "keywords": [

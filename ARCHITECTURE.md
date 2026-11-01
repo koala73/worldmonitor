@@ -441,6 +441,7 @@ Runs before every `git push`:
 | `rust-sdk.yml` | Path-filtered PR, push to main | Formats, lints, tests, packages, and builds documentation for the Rust SDK (`sdk/rust/`) |
 | `publish-rust.yml` | Manual from main, existing `rust-vX.Y.Z` tag | Defaults to a dry run. Verifies tag version and main ancestry, then optionally publishes the exact verified Rust SDK commit through crates.io OIDC. The first release requires a manual maintainer publish |
 | `publish-mcp-registry.yml` | Push to main (manifest inputs), daily cron, published release, manual | Derives the public MCP Registry manifest from the server card, validates it with the pinned publisher, and publishes it through the `mcp-registry-publish` environment; publication is idempotent and fails closed when a published version's payload changed |
+| `mirror-claude-plugin.yml` | Push to main (`claude-plugin/**`, this workflow), manual | Copies `claude-plugin/` to `koala73/worldmonitor-plugins`, the repository the Claude directory tracks (its validator rejects this repository's size); pushes with the `PLUGINS_MIRROR_DEPLOY_KEY` write deploy key and skips when the mirror already matches |
 | `test-linux-app.yml` | Twice-weekly schedule (Mon/Thu 05:23 UTC), manual | Desktop Canary (Linux): installed-app build + launch, hard-fails on crashed app, unreachable sidecar, or blank render (#5902). Builds with the same pinned Rust release as `build-desktop.yml` |
 
 The Railway `umami` runtime is built from `Dockerfile.umami`, which pins the
