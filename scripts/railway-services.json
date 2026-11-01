@@ -444,6 +444,7 @@
       "scripts/_country-resolver.mjs",
       "scripts/_env-file.mjs",
       "scripts/_portwatch-content-freshness.mjs",
+      "scripts/_portwatch-request-diagnostics.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
@@ -1147,6 +1148,7 @@
     "service": "seed-bundle-portwatch",
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
+      "scripts/_portwatch-request-diagnostics.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
@@ -1184,6 +1186,7 @@
       "scripts/_country-resolver.mjs",
       "scripts/_env-file.mjs",
       "scripts/_portwatch-content-freshness.mjs",
+      "scripts/_portwatch-request-diagnostics.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
