@@ -10,7 +10,8 @@ name: Resilience Snapshot Rehearsal
 # the path filter admits any test change and the script's --base check skips
 # PRs whose changed tests the refresh would not select.
 # tests/rehearse-resilience-snapshot-refresh.test.mjs asserts the filter covers
-# every trigger file.
+# every script the refresh step runs (through npm scripts) and every other
+# trigger file.
 
 on:
   pull_request:
@@ -23,6 +24,8 @@ on:
       - 'scripts/crawlable-*.mjs'
       - 'scripts/microstate-coverage-stories.mjs'
       - 'scripts/generate-public-product-facts.mjs'
+      - 'scripts/generate-inventory-facts.mjs'
+      - 'scripts/generate-country-corpus-slugs.mjs'
       - 'scripts/sync-resilience-coverage.mjs'
       - 'scripts/run-data-tests.mjs'
       - 'scripts/rehearse-resilience-snapshot-refresh.mjs'

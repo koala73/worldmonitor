@@ -11,6 +11,7 @@ import {
   driftResilienceSnapshot,
   needsRehearsal,
   readRehearsedStep,
+  refreshScripts,
 } from '../scripts/rehearse-resilience-snapshot-refresh.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -93,7 +94,7 @@ describe('resilience snapshot refresh rehearsal', () => {
     assert.ok(step.env.SNAPSHOT_CONSUMERS, 'the step carries the pattern that selects its verify suites');
   });
 
-  it('rehearses a change to a verify suite, a trigger script or the snapshot, and nothing else', () => {
+  it('rehearses a change to a verify suite, a refresh script, a corpus module or the snapshot, and nothing else', () => {
     const consumers = 'resilienceSnapshot|crawlable-corpus';
     const sources = {
       'tests/crawlable-corpus.test.mjs': "read(repoRoot, manifest.sources.resilienceSnapshot)",
@@ -102,7 +103,12 @@ describe('resilience snapshot refresh rehearsal', () => {
     const readSource = (path) => sources[path] ?? null;
     assert.equal(needsRehearsal(['tests/crawlable-corpus.test.mjs'], { consumers, readSource }), true);
     assert.equal(needsRehearsal(['docs/snapshots/resilience-ranking-2026-12-01.json'], { consumers, readSource }), true);
-    assert.equal(needsRehearsal(['scripts/build-crawlable-corpus.mjs'], { consumers, readSource }), true);
+    assert.equal(needsRehearsal(['scripts/crawlable-developments.mjs'], { consumers, readSource }), true);
+    assert.equal(
+      needsRehearsal(['scripts/generate-inventory-facts.mjs'], { consumers, readSource, entryScripts: ['scripts/generate-inventory-facts.mjs'] }),
+      true,
+      'a script the refresh step runs',
+    );
     assert.equal(needsRehearsal(['tests/unrelated.test.mjs', 'src/app/App.ts'], { consumers, readSource }), false);
     assert.equal(needsRehearsal(['tests/deleted.test.mjs'], { consumers, readSource }), false, 'a deleted suite cannot pin anything');
   });
@@ -119,11 +125,22 @@ describe('resilience snapshot refresh rehearsal', () => {
     ]) {
       assert.ok(paths.includes(required), `${REHEARSAL_WORKFLOW_PATH} must run when ${required} changes`);
     }
+    // Every script the refresh step runs, followed through npm scripts, so a
+    // generator added to the refresh cannot change unrehearsed (#9972 review).
+    const step = readRehearsedStep(readFileSync(resolve(repoRoot, REFRESH_WORKFLOW_PATH), 'utf8'));
+    const entryScripts = refreshScripts(step.run, JSON.parse(readFileSync(resolve(repoRoot, 'package.json'), 'utf8')).scripts);
+    for (const script of [
+      'scripts/build-crawlable-corpus.mjs',
+      'scripts/generate-country-corpus-slugs.mjs',
+      'scripts/generate-inventory-facts.mjs',
+      'scripts/run-data-tests.mjs',
+    ]) {
+      assert.ok(entryScripts.includes(script), `refreshScripts must find ${script}`);
+    }
     const triggerFiles = ['scripts', '.github/workflows', 'docs/snapshots']
       .flatMap((dir) => readdirSync(resolve(repoRoot, dir)).map((name) => `${dir}/${name}`))
       .filter((file) => REHEARSAL_TRIGGERS.some((trigger) => trigger.test(file)));
-    assert.ok(triggerFiles.includes('scripts/build-crawlable-corpus.mjs'));
-    for (const file of triggerFiles) {
+    for (const file of [...entryScripts, ...triggerFiles]) {
       assert.ok(paths.some((glob) => matchesGlob(file, glob)), `${REHEARSAL_WORKFLOW_PATH} must run when ${file} changes`);
     }
     const steps = rehearsal.jobs.rehearse.steps.map((step) => step.run ?? '').join('\n');

@@ -17,12 +17,14 @@
 // pinned to this month's figures fails on the PR that added the pin.
 //
 // Usage: node scripts/rehearse-resilience-snapshot-refresh.mjs [--keep] [--base <ref>]
-// Locally it needs a clean tree and restores it afterwards; --keep leaves the
-// drifted snapshot and rebuilt artifacts in place. --base exits early when no
-// file changed since <ref> can affect the refresh.
+// It needs a clean tree and runs in a temporary checkout of HEAD; --keep runs
+// in place and leaves the drifted snapshot and rebuilt artifacts for
+// inspection. --base exits early when no file changed since <ref> can affect
+// the refresh.
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
@@ -42,12 +44,13 @@ const GREY_HEADLINE_FIELDS = [
   'overallScore', 'overallScoreRaw', 'level', 'lowConfidence', 'dimensionCoverage', 'imputationShare',
   'baselineScore', 'stressScore', 'stressFactor', 'trend', 'change30d',
 ];
-// Non-test files whose change can break the refresh. Tests are matched by the
-// workflow's SNAPSHOT_CONSUMERS pattern instead, the same rule that selects
-// them for verification.
+// Files whose change can break the refresh besides the scripts its step runs
+// (refreshScripts derives those) and the tests it selects (matched by the
+// workflow's SNAPSHOT_CONSUMERS pattern): the snapshot, the corpus modules
+// the build imports, and this machinery.
 export const REHEARSAL_TRIGGERS = [
   /^docs\/snapshots\/resilience-ranking-[^/]+\.json$/,
-  /^scripts\/(build-crawlable-corpus|build-sitemap|build-llms-full|build-ai-search|crawlable-[\w-]+|microstate-coverage-stories|generate-public-product-facts|sync-resilience-coverage|run-data-tests|rehearse-resilience-snapshot-refresh)\.mjs$/,
+  /^scripts\/(crawlable-[\w-]+|microstate-coverage-stories|rehearse-resilience-snapshot-refresh)\.mjs$/,
   /^\.github\/workflows\/(resilience-snapshot-refresh|resilience-snapshot-rehearsal)\.yml$/,
 ];
 
@@ -136,12 +139,32 @@ export function readRehearsedStep(workflowText) {
 }
 
 /**
- * Whether a change can break the refresh: a trigger file, or a test whose
- * source the refresh would select for verification.
+ * The repository scripts a step's run script executes, directly or through
+ * `npm run`, following package.json scripts recursively.
  */
-export function needsRehearsal(changedFiles, { consumers, readSource }) {
+export function refreshScripts(run, packageScripts) {
+  const found = new Set();
+  const visited = new Set();
+  const walk = (text) => {
+    for (const [, file] of text.matchAll(/\b(scripts\/[\w./-]+\.m[jt]s)\b/g)) found.add(file);
+    for (const [, name] of text.matchAll(/\bnpm run (?:--silent )?([\w:-]+)/g)) {
+      if (visited.has(name)) continue;
+      visited.add(name);
+      walk(packageScripts[name] ?? '');
+    }
+  };
+  walk(run);
+  return [...found].sort();
+}
+
+/**
+ * Whether a change can break the refresh: a script its step runs, a trigger
+ * file, or a test whose source the refresh would select for verification.
+ */
+export function needsRehearsal(changedFiles, { consumers, readSource, entryScripts = [] }) {
   const pattern = new RegExp(consumers);
   return changedFiles.some((file) => {
+    if (entryScripts.includes(file)) return true;
     if (REHEARSAL_TRIGGERS.some((trigger) => trigger.test(file))) return true;
     if (!/^tests\/[^/]+\.test\.m[jt]s$/.test(file)) return false;
     const source = readSource(file);
@@ -170,43 +193,50 @@ function main() {
   if (baseIndex !== -1) {
     const base = args[baseIndex + 1];
     const changed = git(['diff', '--name-only', `${base}...HEAD`]).split('\n').filter(Boolean);
-    if (!needsRehearsal(changed, { consumers: step.env.SNAPSHOT_CONSUMERS, readSource: readOrNull })) {
+    const entryScripts = refreshScripts(step.run, JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8')).scripts);
+    if (!needsRehearsal(changed, { consumers: step.env.SNAPSHOT_CONSUMERS, readSource: readOrNull, entryScripts })) {
       console.log(`[rehearse-resilience] no change since ${base} reaches the monthly refresh; skipping`);
       return;
     }
   }
   if (!keep && git(['status', '--porcelain']).trim()) {
-    throw new Error('rehearsal rewrites committed artifacts and restores them afterwards; commit or set aside local changes first (or pass --keep)');
+    throw new Error('rehearsal runs on a temporary checkout of HEAD; commit local changes first (or pass --keep to run in place)');
   }
 
-  const committed = readdirSync(join(REPO_ROOT, SNAPSHOT_DIR)).filter((name) => SNAPSHOT_RE.test(name)).sort().at(-1);
-  if (!committed) throw new Error(`no resilience-ranking snapshot in ${SNAPSHOT_DIR}`);
-  const snapshot = JSON.parse(readFileSync(join(REPO_ROOT, SNAPSHOT_DIR, committed), 'utf8'));
-  // Today, as the refresh dates its capture. On the day of a refresh the
-  // date cannot move, so the drifted snapshot replaces the committed one.
-  const targetDate = new Date().toISOString().slice(0, 10);
-  const drifted = driftResilienceSnapshot(snapshot, { targetDate });
-  const driftedName = `resilience-ranking-${targetDate}.json`;
+  // The rebuild also writes ignored outputs (country pages, the corpus JSON,
+  // inventory facts) that git restore cannot reset, so a normal run happens
+  // in a throwaway checkout of HEAD and leaves no invented figures behind.
+  // --keep runs in place and leaves everything for inspection.
+  const workDir = keep ? REPO_ROOT : mkdtempSync(join(tmpdir(), 'wm-resilience-rehearsal-'));
+  if (!keep) {
+    git(['worktree', 'add', '--detach', '--quiet', workDir, 'HEAD']);
+    symlinkSync(join(REPO_ROOT, 'node_modules'), join(workDir, 'node_modules'), 'dir');
+  }
 
   let failed = false;
   try {
-    writeFileSync(join(REPO_ROOT, SNAPSHOT_DIR, driftedName), `${JSON.stringify(drifted, null, 2)}\n`);
+    const committed = readdirSync(join(workDir, SNAPSHOT_DIR)).filter((name) => SNAPSHOT_RE.test(name)).sort().at(-1);
+    if (!committed) throw new Error(`no resilience-ranking snapshot in ${SNAPSHOT_DIR}`);
+    const snapshot = JSON.parse(readFileSync(join(workDir, SNAPSHOT_DIR, committed), 'utf8'));
+    // Today, as the refresh dates its capture. On the day of a refresh the
+    // date cannot move, so the drifted snapshot replaces the committed one.
+    const targetDate = new Date().toISOString().slice(0, 10);
+    const drifted = driftResilienceSnapshot(snapshot, { targetDate });
+    const driftedName = `resilience-ranking-${targetDate}.json`;
+    writeFileSync(join(workDir, SNAPSHOT_DIR, driftedName), `${JSON.stringify(drifted, null, 2)}\n`);
     console.log(
       `[rehearse-resilience] ${committed} -> ${driftedName} (ranked ${snapshot.items.length} -> ${drifted.items.length}, `
-      + 'every country given its neighbour\'s figures)',
+      + 'every country given a neighbour\'s figures)',
     );
     console.log(`[rehearse-resilience] ${step.name}`);
     const result = spawnSync('bash', ['-eo', 'pipefail', '-c', step.run], {
-      cwd: REPO_ROOT,
+      cwd: workDir,
       stdio: 'inherit',
       env: { ...process.env, ...step.env },
     });
     failed = result.status !== 0;
   } finally {
-    if (!keep) {
-      git(['restore', '--source=HEAD', '--staged', '--worktree', '--', '.']);
-      git(['clean', '-fdq', '--', SNAPSHOT_DIR]);
-    }
+    if (!keep) git(['worktree', 'remove', '--force', workDir]);
   }
 
   if (failed) {
