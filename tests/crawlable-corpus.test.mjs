@@ -2840,9 +2840,11 @@ describe('crawlable corpus generator', () => {
       // the snapshot's name and date.
       assert.ok(norway.includes(`data-snapshot-source="${manifest.sources.resilienceSnapshot}"`));
       assert.match(norway, /Source: World Monitor Country Resilience Index snapshot, \w+ \d{1,2}, \d{4}\./);
-      assert.match(
-        norway,
-        /<span>Overall score<\/span><strong>75\.4<\/strong>/,
+      const snapshotNorway = JSON.parse(read(repoRoot, manifest.sources.resilienceSnapshot))
+        .items.find((item) => item.countryCode === 'NO');
+      assert.equal(snapshotNorway?.headlineEligible, true, 'Norway is the headline-eligible fixture country');
+      assert.ok(
+        norway.includes(`<span>Overall score</span><strong>${snapshotNorway.overallScore.toFixed(1).replace(/\.0$/, '')}</strong>`),
         'headline-eligible countries must retain their published score',
       );
       assert.doesNotMatch(norway, /id="app"/, 'country page must be raw static HTML, not the SPA shell');
@@ -3609,9 +3611,14 @@ describe('crawlable corpus generator', () => {
       assert.match(taiwan, /population of at least 200,000/);
       assert.match(taiwan, /coverage falls below 55%/);
       assert.match(taiwan, /imputation share exceeds 40%/);
+      const taiwanSnapshot = JSON.parse(read(repoRoot, manifest.sources.resilienceSnapshot)).greyedOut
+        .find((item) => item.countryCode === 'TW');
+      assert.ok(taiwanSnapshot, 'Taiwan is the greyed-out fixture country');
+      const taiwanCoverage = `coverage is ${Math.round(taiwanSnapshot.dimensionCoverage * 100)}%`;
+      const taiwanImputation = `imputation share is ${Math.round(taiwanSnapshot.imputationShare * 100)}%`;
       const taiwanWhy = unpublishedHeadingParagraph(taiwan, 'Why Taiwan is unpublished');
-      assert.match(taiwanWhy, /coverage is 38%/);
-      assert.match(taiwanWhy, /imputation share is 42%/);
+      assert.ok(taiwanWhy.includes(taiwanCoverage), taiwanWhy);
+      assert.ok(taiwanWhy.includes(taiwanImputation), taiwanWhy);
       assert.doesNotMatch(
         taiwanWhy,
         /Ranking requires coverage of at least 65%/,
@@ -3623,8 +3630,8 @@ describe('crawlable corpus generator', () => {
         /Cyber and digital capacity \(100%\)|Macro-fiscal position \(95%\)/,
         'available-evidence copy must name a strongest observed dimension, not only weak usable rows',
       );
-      assert.match(taiwan, /coverage is 38%/);
-      assert.match(taiwan, /imputation share is 42%/);
+      assert.ok(taiwan.includes(taiwanCoverage));
+      assert.ok(taiwan.includes(taiwanImputation));
       assert.match(taiwan, /World Bank/);
       assert.match(taiwan, /WHO/);
       assert.match(taiwan, /Nearest ranked comparators:/);
@@ -3939,7 +3946,7 @@ describe('crawlable corpus generator', () => {
       const andorraDataset = JSON.parse(read(outDir, 'countries/andorra/resilience.json'));
       assert.equal(andorraDataset.confidence, 'standard');
       assert.equal(andorraDataset.sourceStatus, 'unpublished');
-      assert.match(andorra, /coverage is 69%/);
+      assert.ok(andorra.includes(`coverage is ${Math.round(countryByCode.get('AD').dimensionCoverage * 100)}%`));
       assert.match(andorra, /recorded population of at least 200,000/);
       assert.match(andorra, /<span>Confidence<\/span><strong>Standard<\/strong>/);
       assert.doesNotMatch(andorra, /flagged low-confidence/);

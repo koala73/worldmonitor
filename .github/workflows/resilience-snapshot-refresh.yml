@@ -66,6 +66,11 @@ jobs:
           node scripts/freeze-resilience-ranking.mjs
       - name: Rebuild and verify published artifacts
         if: steps.reconcile.outputs.skip != 'true'
+        env:
+          # Every data suite whose source names an artifact this job rewrites.
+          # A hand-picked list skipped crawlable-corpus.test.mjs and the bot
+          # opened a red PR (#9954).
+          SNAPSHOT_CONSUMERS: 'docs/snapshots|resilience-ranking|resilienceSnapshot|crawlable-corpus|llms-full|llms\.txt|ai-search\.md|sitemap|product-facts|product-catalog|country-corpus-slugs|depth-stats|variant-meta'
         run: |
           # Product facts carry the snapshot's ranked/universe pair (the depth
           # band and the blog glossary's CRI definition, which llms-full
@@ -87,15 +92,10 @@ jobs:
           # llms-full corpus does. Omitting it here would leave the committed
           # figures a month stale and turn the drift test red on main.
           npm run build:ai-search
-          node --import tsx --test \
-            tests/resilience-published-snapshot.test.mjs \
-            tests/resilience-ranking-snapshot.test.mts \
-            tests/sitemap-generation.test.mjs \
-            tests/seo-geo-residue.test.mjs \
-            tests/seo-landing-metadata.test.mjs \
-            tests/public-product-facts.test.mjs \
-            tests/ai-search-product-facts.test.mjs \
-            tests/country-corpus-slugs-freshness.test.mjs
+          mapfile -t suites < <(grep -lE "$SNAPSHOT_CONSUMERS" tests/*.test.mjs tests/*.test.mts)
+          # No built-output filter: it drops whole suites such as
+          # public-product-facts, which skip only their build-only cases here.
+          node scripts/run-data-tests.mjs "${suites[@]}"
       - name: Commit the monthly snapshot
         if: steps.reconcile.outputs.skip != 'true'
         env:
