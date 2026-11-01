@@ -264,7 +264,8 @@ async function readPreviousHistory() {
   try {
     const creds = getOptionalUpstashCreds();
     if (!creds) return {};
-    const raw = await upstashCommand(creds, ['GET', ARRIVALS_HISTORY_KEY]);
+    // upstashCommand returns the whole Upstash body; the stored string is its `result`.
+    const { result: raw } = await upstashCommand(creds, ['GET', ARRIVALS_HISTORY_KEY]);
     const value = typeof raw === 'string' ? JSON.parse(raw) : raw;
     const data = value?.data ?? value;
     return data?.history && typeof data.history === 'object' ? data.history : {};
