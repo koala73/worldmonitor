@@ -15,6 +15,38 @@ function response(status, body = '<xml/>', headers = {}) {
   return new Response(body, { status, headers });
 }
 
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Native fetch keeps the request signal attached while the body streams, so an
+// abort after the headers arrive errors the body mid-read. Mirror that here.
+function slowBodyFetch({ chunks, chunkDelayMs }) {
+  return async (_url, { signal }) => {
+    let sent = 0;
+    const stream = new ReadableStream({
+      start(controller) {
+        signal.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+      },
+      async pull(controller) {
+        await delay(chunkDelayMs);
+        if (signal.aborted) return;
+        if (sent === chunks) return controller.close();
+        sent += 1;
+        controller.enqueue(new TextEncoder().encode('<chunk/>'));
+      },
+    });
+    return new Response(stream, { status: 200 });
+  };
+}
+
+function neverRespondingFetch(calls) {
+  return (_url, { signal }) => {
+    calls.push(Date.now());
+    return new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+  };
+}
+
 describe('OFAC source transport recovery', () => {
   it('returns a healthy direct response without touching the proxy', async () => {
     let proxyCalls = 0;
@@ -369,5 +401,63 @@ describe('OFAC source transport recovery', () => {
       }),
       (error) => error.message === 'fetch failed (UND_ERR_CONNECT_TIMEOUT)' && error.nonRetryable === true,
     );
+  });
+});
+
+describe('OFAC source download deadlines', () => {
+  const noProxy = { proxyUrl: '', sleepFn: async () => {} };
+
+  it('lets a body that outlasts the header timeout finish inside the body budget', { timeout: 5_000 }, async () => {
+    const result = await fetchOfacSourceResponse(SOURCE_URL, {
+      ...noProxy,
+      fetchFn: slowBodyFetch({ chunks: 8, chunkDelayMs: 25 }),
+      headerTimeoutMs: 50,
+      bodyTimeoutMs: 2_000,
+    });
+
+    assert.equal(await result.text(), '<chunk/>'.repeat(8));
+  });
+
+  it('aborts a body that exceeds the body budget', { timeout: 5_000 }, async () => {
+    const startedAt = Date.now();
+    const result = await fetchOfacSourceResponse(SOURCE_URL, {
+      ...noProxy,
+      fetchFn: slowBodyFetch({ chunks: 100, chunkDelayMs: 20 }),
+      headerTimeoutMs: 50,
+      bodyTimeoutMs: 200,
+    });
+
+    await assert.rejects(result.text(), (error) => error.name === 'TimeoutError');
+    assert.ok(Date.now() - startedAt < 1_000, 'the body must stop near its 200 ms budget, not after the full 2 s stream');
+  });
+
+  it('caps the body budget at the caller deadline', { timeout: 10_000 }, async () => {
+    const startedAt = Date.now();
+    const result = await fetchOfacSourceResponse(SOURCE_URL, {
+      ...noProxy,
+      fetchFn: slowBodyFetch({ chunks: 100, chunkDelayMs: 50 }),
+      headerTimeoutMs: 50,
+      bodyTimeoutMs: 8_000,
+      deadlineAt: startedAt + 1_200,
+    });
+
+    await assert.rejects(result.text(), (error) => error.name === 'TimeoutError');
+    const elapsed = Date.now() - startedAt;
+    assert.ok(elapsed >= 1_000 && elapsed < 2_500, `body should stop near the 1.2 s deadline, stopped after ${elapsed} ms`);
+  });
+
+  it('still aborts missing headers at the header timeout and retries once', { timeout: 5_000 }, async () => {
+    const calls = [];
+
+    await assert.rejects(
+      fetchOfacSourceResponse(SOURCE_URL, {
+        ...noProxy,
+        fetchFn: neverRespondingFetch(calls),
+        headerTimeoutMs: 50,
+        bodyTimeoutMs: 2_000,
+      }),
+      (error) => error.name === 'TimeoutError' && error.nonRetryable === true,
+    );
+    assert.equal(calls.length, 2);
   });
 });
