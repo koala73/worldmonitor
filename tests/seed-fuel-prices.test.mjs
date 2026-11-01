@@ -326,9 +326,26 @@ test('parseNzComComFuel rejects a changed layout, stale data and implausible pri
   const day = (date, petrol, diesel) => [[date, '91', '300', String(petrol)], [date, 'Diesel', '250', String(diesel)]];
   assert.equal(parseNzComComFuel([['DATE', 'FUEL', 'COST', 'PRICE'], ...day('27/10/2026', 358.7, 322.2)], NZ_NOW), null);
   assert.equal(parseNzComComFuel([header, ...day('20/09/2026', 358.7, 322.2)], NZ_NOW), null, 'older than 35 days');
-  assert.equal(parseNzComComFuel([header, ...day('27/10/2026', 3.587, 322.2)], NZ_NOW).gasoline, null, 'NZD/L where c/L expected');
+  assert.equal(parseNzComComFuel([header, ...day('27/10/2026', 3.587, 3.222)], NZ_NOW), null, 'NZD/L where c/L expected');
   // The newest day lacks diesel, so the day before is used for both fuels.
   const mixed = parseNzComComFuel([header, ...day('26/10/2026', 350, 320), ['27/10/2026', '91', '300', '358.7']], NZ_NOW);
   assert.equal(mixed.gasoline.observedAt, '2026-10-26');
   assert.equal(mixed.diesel.localPrice, 3.2);
+  // A newest day with a blank, non-numeric or out-of-range price is skipped, not
+  // published with a null fuel.
+  for (const bad of ['', 'n/a', 3.587]) {
+    const fallback = parseNzComComFuel([header, ...day('26/10/2026', 350, 320), ...day('27/10/2026', bad, 322.2)], NZ_NOW);
+    assert.equal(fallback.gasoline.observedAt, '2026-10-26', `newest 91 price ${JSON.stringify(bad)}`);
+    assert.equal(fallback.gasoline.localPrice, 3.5);
+    assert.equal(fallback.diesel.localPrice, 3.2);
+  }
+});
+
+test('readXlsxFirstSheet rejects a cell reference past the last Excel column', () => {
+  // Without a bound, r="AAAAAAAA2" pads the row to ~8e9 cells and exhausts the heap.
+  const ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+  const bytes = zipSync({
+    'xl/worksheets/sheet1.xml': strToU8(`<worksheet ${ns}><sheetData><row r="2"><c r="AAAAAAAA2"><v>1</v></c></row></sheetData></worksheet>`),
+  });
+  assert.throws(() => readXlsxFirstSheet(bytes), /column/);
 });

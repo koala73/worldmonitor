@@ -523,6 +523,7 @@ const COMCOM_ORIGIN = 'https://www.comcom.govt.nz';
 const COMCOM_FUEL_PAGE = `${COMCOM_ORIGIN}/regulated-industries/fuel/quarterly-monitoring-reports/`;
 const HONEST_UA = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
 const NZ_MAX_AGE_DAYS = 35;
+const XLSX_MAX_COLUMNS = 16_384;
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 
 export function latestComComFuelDataUrl(html) {
@@ -574,6 +575,9 @@ export function readXlsxFirstSheet(bytes) {
       const attrs = cell[1];
       const ref = attrs.match(/\br="([A-Z]+)\d+"/)?.[1];
       const col = ref ? [...ref].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1 : position;
+      // Excel stops at column XFD (16,384). A larger index would pad the row
+      // until the heap runs out, which no try/catch can recover from.
+      if (col >= XLSX_MAX_COLUMNS) throw new Error(`cell column ${ref ?? col} is past the last Excel column`);
       position = col + 1;
       const body = cell[2] ?? '';
       const type = attrs.match(/\bt="([^"]+)"/)?.[1];
@@ -601,19 +605,21 @@ export function parseNzComComFuel(rows, nowMs = Date.now()) {
     if (!m) continue;
     const iso = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
     const day = byDay.get(iso) ?? {};
-    day[String(fuel).trim()] = Number(retail);
+    // Blank cells read as '' and must stay missing, not become 0.
+    day[String(fuel).trim()] = String(retail ?? '').trim() === '' ? NaN : Number(retail);
     byDay.set(iso, day);
   }
-  const latest = [...byDay.keys()].sort().reverse().find(iso => byDay.get(iso)['91'] != null && byDay.get(iso).Diesel != null);
+  // NZ pump prices run roughly 150-500 c/L; anything far outside means a unit
+  // change or a bad cell. Only a day where both prices pass is used, so a bad
+  // newest row falls back to the day before instead of publishing a null fuel.
+  const plausible = cents => Number.isFinite(cents) && cents >= 50 && cents <= 1000;
+  const latest = [...byDay.keys()].sort().reverse().find(iso => plausible(byDay.get(iso)['91']) && plausible(byDay.get(iso).Diesel));
   if (!latest || nowMs - Date.parse(`${latest}T00:00:00Z`) > NZ_MAX_AGE_DAYS * 86_400_000) return null;
-  // NZ pump prices run roughly 150-500 c/L; anything far outside means a unit change.
-  const litre = cents => (Number.isFinite(cents) && cents >= 50 && cents <= 1000 ? +(cents / 100).toFixed(4) : null);
-  const gas = litre(byDay.get(latest)['91']);
-  const dsl = litre(byDay.get(latest).Diesel);
+  const litre = cents => +(cents / 100).toFixed(4);
   return {
     code: 'NZ', name: 'New Zealand', currency: 'NZD', flag: '🇳🇿',
-    gasoline: gas != null ? { localPrice: gas, grade: 'Regular 91', source: 'comcom.govt.nz', observedAt: latest } : null,
-    diesel: dsl != null ? { localPrice: dsl, grade: 'Diesel', source: 'comcom.govt.nz', observedAt: latest } : null,
+    gasoline: { localPrice: litre(byDay.get(latest)['91']), grade: 'Regular 91', source: 'comcom.govt.nz', observedAt: latest },
+    diesel: { localPrice: litre(byDay.get(latest).Diesel), grade: 'Diesel', source: 'comcom.govt.nz', observedAt: latest },
   };
 }
 
