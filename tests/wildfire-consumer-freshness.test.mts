@@ -5,6 +5,11 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import ts from 'typescript';
+import bootstrap from '../api/bootstrap.js';
+import { assembleBootstrapTierPayload } from '../scripts/publish-bootstrap-tiers.mjs';
+import { compactWildfireDashboardPayload } from '../scripts/_wildfire-dashboard.mjs';
+import { mergeWildfireSourcesWithBc, wildfirePublishData } from '../scripts/wildfire/bc-fire-points.mjs';
+import { buildEnvelope } from '../scripts/_seed-envelope-source.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const originalFetch = globalThis.fetch;
@@ -17,6 +22,7 @@ type ConsumerContext = {
 };
 type Harness = {
   Loader: new (ctx: ConsumerContext) => { loadFirmsData: () => Promise<void> };
+  fetchAllFires: () => Promise<{ skipped?: boolean; totalCount: number }>;
   bootstrapTesting: { seedHydrationCacheForTests: (data: Record<string, unknown>) => void };
   calls: { errors: unknown[][]; updates: unknown[][]; signals: unknown[][] };
 };
@@ -32,6 +38,7 @@ before(async () => {
     stdin: {
       contents: `
         import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from './src/services/wildfires/index.ts';
+        export { fetchAllFires };
         export { __testing__ as bootstrapTesting } from './src/services/bootstrap.ts';
         export const calls = { errors: [], updates: [], signals: [] };
         const dataFreshness = {
@@ -112,4 +119,78 @@ it('fresh to expired to recovered clears every wildfire consumer before reportin
   assert.equal(harness.calls.signals.at(-1)?.length, 1);
   assert.deepEqual(statusCalls.at(-1), ['FIRMS', { status: 'ok' }]);
   assert.equal(harness.calls.updates.length, 2);
+});
+
+
+it('real seeder envelopes hydrate through Redis and CDN without renewing or inventing source clocks', async (t) => {
+  const key = 'wildfire:fires-bootstrap:v1';
+  const env = { UPSTASH_REDIS_REST_URL: 'https://redis.test', UPSTASH_REDIS_REST_TOKEN: 'fixture-token' };
+  for (const [name, value] of Object.entries({ ...env, BOOTSTRAP_R2_SHADOW_MEASURE: '0' })) {
+    const original = process.env[name];
+    process.env[name] = value;
+    t.after(() => {
+      if (original === undefined) delete process.env[name];
+      else process.env[name] = original;
+    });
+  }
+  let now = originalNow() + 24 * 60 * 60 * 1000;
+  Date.now = () => now;
+  for (const transport of ['redis', 'cdn']) {
+    now += 7 * 60 * 60 * 1000;
+    const merged = await mergeWildfireSourcesWithBc({
+      fetchFirms: async () => ({ fireDetections: [{
+        id: 'synthetic-fire', region: 'BR', brightness: 330, frp: 12,
+        confidence: 'FIRE_CONFIDENCE_HIGH', location: { latitude: -10, longitude: -55 },
+        detectedAt: now - 60_000, dayNight: 'N',
+      }] }),
+      fetchCwfis: async () => ({ fireDetections: [] }),
+      fetchBcWildfire: async () => ({ fireDetections: [] }),
+    });
+    const data = compactWildfireDashboardPayload(wildfirePublishData(merged));
+    assert.equal(data.fetchedAt, undefined);
+    assert.equal(data.dataAvailable, undefined);
+    for (const fetchedAt of [0, now - 6 * 60 * 60 * 1000 - 1, now - 60_000]) {
+      const stored = fetchedAt === 0 ? data : buildEnvelope({
+        fetchedAt, recordCount: 1, sourceVersion: 'private-fixture-version', schemaVersion: 1,
+        state: 'OK', groupId: 'private-group-id', data,
+      });
+      let reads = 0;
+      const fetchFn = async (input: RequestInfo | URL, init?: RequestInit) => {
+        reads += 1;
+        assert.equal(new URL(String(input)).origin, 'https://redis.test');
+        const commands = JSON.parse(String(init?.body));
+        assert.ok(commands.every(([command]: string[]) => command === 'GET'));
+        return Response.json(commands.map(([, requestedKey]: string[]) => ({
+          result: requestedKey === key ? JSON.stringify(stored) : null,
+        })));
+      };
+      globalThis.fetch = fetchFn as typeof fetch;
+      const body = transport === 'redis'
+        ? await (await bootstrap(new Request('https://api.worldmonitor.app/api/bootstrap?tier=slow&public=1'))).json()
+        : await assembleBootstrapTierPayload({ wildfires: key }, { env, fetchFn });
+      const payload = JSON.parse(JSON.stringify(body.data.wildfires));
+      assert.equal(reads, 1, 'one existing pipeline, no metadata lookup');
+      assert.equal(payload.fetchedAt, fetchedAt || undefined, 'retain the source clock or unknown absence');
+      assert.equal(payload.dataAvailable, fetchedAt ? true : undefined);
+      assert.deepEqual(Object.keys(payload).sort(), fetchedAt
+        ? ['dataAvailable', 'fetchedAt', 'fireDetections', 'pagination']
+        : ['fireDetections', 'pagination']);
+      assert.ok(!JSON.stringify(payload).includes('private-'));
+      let rpcCalls = 0;
+      globalThis.fetch = (async () => {
+        rpcCalls += 1;
+        return Response.json({ fireDetections: [], fetchedAt: 0, dataAvailable: false });
+      }) as typeof fetch;
+      harness.bootstrapTesting.seedHydrationCacheForTests({ wildfires: payload });
+      const result = await harness.fetchAllFires();
+      if (fetchedAt === now - 60_000) {
+        assert.equal(result.totalCount, 1);
+        assert.equal((await harness.fetchAllFires()).totalCount, 1);
+        assert.equal(rpcCalls, 0, `${transport} fresh seeder data hydrates and stays reusable`);
+      } else {
+        assert.equal(result.skipped, true);
+        assert.equal(rpcCalls, 1, `${transport} stale or unknown data cannot suppress recovery`);
+      }
+    }
+  }
 });
