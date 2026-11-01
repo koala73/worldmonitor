@@ -394,7 +394,7 @@ export async function fetchAll({ fetchDeadlineAtMs = null } = {}) {
   });
   if (Object.keys(fresh).length === 0) throw new Error('No chokepoints returned data');
   for (const entry of Object.values(fresh)) entry.fetchedAt = nowMs;
-  const previous = await readSeedSnapshot(CANONICAL_KEY, { includeEnvelopeMeta: true });
+  const previous = await readSeedSnapshot(CANONICAL_KEY, { strict: true, includeEnvelopeMeta: true });
   const { result, carried, expired } = mergeWithPrevious(
     fresh,
     previous,

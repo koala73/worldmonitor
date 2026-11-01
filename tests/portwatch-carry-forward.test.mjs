@@ -10,7 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CARRY_FORWARD_MAX_AGE_MS, mergeWithPrevious } from '../scripts/seed-portwatch.mjs';
+import { CARRY_FORWARD_MAX_AGE_MS, fetchAll, mergeWithPrevious } from '../scripts/seed-portwatch.mjs';
 
 const NOW = Date.parse('2026-11-01T01:06:00Z');
 const HOUR = 60 * 60 * 1000;
@@ -69,4 +69,27 @@ test('ids outside the chokepoint list, empty histories and a missing snapshot ar
   };
   assert.deepEqual(mergeWithPrevious({}, previous, ['suez'], NOW).result, {});
   assert.deepEqual(mergeWithPrevious({ suez: entry(NOW) }, null, ['suez'], NOW).carried, []);
+});
+
+// A failed read must not look like a cold start: publishing the fresh subset
+// would overwrite the stored entries this change exists to keep.
+test('fetchAll refuses to publish when the previous snapshot cannot be read', async (t) => {
+  const env = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.startsWith('https://redis.test')) return new Response('upstream error', { status: 503 });
+    if (url.includes('outStatistics')) return Response.json({ features: [] });
+    return Response.json({ features: [{ attributes: { date: Date.parse('2026-10-25'), n_total: 10 } }] });
+  };
+  t.after(() => {
+    globalThis.fetch = realFetch;
+    if (env.url === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+    else process.env.UPSTASH_REDIS_REST_URL = env.url;
+    if (env.token === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    else process.env.UPSTASH_REDIS_REST_TOKEN = env.token;
+  });
+  await assert.rejects(fetchAll(), /Redis snapshot read failed/);
 });
