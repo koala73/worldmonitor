@@ -640,9 +640,17 @@ export function retargetStackedChildren({ event, gh } = {}) {
           });
         }
         // Either way the child is closed unmerged, so its open children are stranded.
+        // A failed lookup must not drop the notices for later children.
+        let openChildren;
+        try {
+          openChildren = listChildren('open', child.head.ref);
+        } catch (error) {
+          failures.push(`open children of #${child.number}: lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+          continue;
+        }
         closedPlan.push(...planStackRetargets({
           closedPull: child,
-          openChildren: listChildren('open', child.head.ref),
+          openChildren,
           repository,
           defaultBranch,
         }).map((item) => ({ ...item, parent: child })));

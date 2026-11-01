@@ -1062,7 +1062,7 @@ describe('retargetStackedChildren executor', () => {
     assert.equal(reads, 2);
     assert.equal(log.filter(entry => entry.path.endsWith('/rerun')).length, 1);
   });
-  function fakeGh(children, { failPatch = new Set(), failRerun = false, closedChildren = [], openByBase = {}, existingBranches = [], failClosedList = false, failRefLookup = false } = {}) {
+  function fakeGh(children, { failPatch = new Set(), failRerun = false, closedChildren = [], openByBase = {}, existingBranches = [], failClosedList = false, failRefLookup = false, failOpenBases = [] } = {}) {
     const log = [];
     const gh = (args, options = {}) => {
       const path = args.find(arg => arg.startsWith('repos/'));
@@ -1070,6 +1070,7 @@ describe('retargetStackedChildren executor', () => {
       log.push({ method, path, input: options.input ? JSON.parse(options.input) : undefined });
       if (path.includes('/pulls?state=open&base=')) {
         const base = decodeURIComponent(new URL(path, 'https://api.github.test').searchParams.get('base'));
+        if (failOpenBases.includes(base)) throw new Error(`open list for ${base} refused`);
         return JSON.stringify([openByBase[base] ?? children]);
       }
       if (path.includes('/pulls?state=closed&base=')) {
@@ -1256,6 +1257,22 @@ describe('retargetStackedChildren executor', () => {
     });
     const result = retargetStackedChildren({ event: pullEvent(PARENT_9950, { action: 'closed' }), gh });
     assert.deepEqual(result.plan.map(item => [item.number, item.action]), [[9958, 'closed-by-base-deletion']]);
+  });
+
+  it('keeps flagging later closed children when one child\'s open-children lookup fails', () => {
+    const sibling = { ...CHILD_9958, number: 9960, head: { ...CHILD_9958.head, ref: 'feat/mcp-sibling', sha: '4'.repeat(40) } };
+    const { gh, log } = fakeGh([], {
+      closedChildren: [CHILD_9958, sibling],
+      failOpenBases: ['feat/mcp-report-issue'],
+    });
+    const result = retargetStackedChildren({ event: pullEvent(PARENT_9950, { action: 'closed' }), gh });
+    assert.equal(result.exitCode, 1);
+    assert.match(result.annotation, /open children of #9958: lookup failed/);
+    assert.deepEqual(result.plan.map(item => [item.number, item.action]), [
+      [9958, 'closed-by-base-deletion'],
+      [9960, 'closed-by-base-deletion'],
+    ]);
+    assert.ok(log.some(entry => entry.path.endsWith('/issues/9960/comments')));
   });
 
   it('still strands open grandchildren when the base-branch lookup fails', () => {
