@@ -128,6 +128,8 @@ describe('redactFeedbackText', () => {
     ['bare query field', 'api_key=SECRETVALUE2&symbol=AAPL', 'SECRETVALUE2'],
     ['query on a bare name', 'x?key=SECRETVALUE3', 'SECRETVALUE3'],
     ['bare password field', 'login password=hunter2 failed', 'hunter2'],
+    ['lowercase value in a full Authorization header', 'Authorization: Bearer mysecrettoken', 'mysecrettoken'],
+    ['long lowercase Bearer value', 'sent Bearer abcdefghijklmnop', 'abcdefghijklmnop'],
   ];
   for (const [name, input, secret] of cases) {
     it(`redacts a ${name}`, () => {
@@ -143,6 +145,8 @@ describe('redactFeedbackText', () => {
       'Bearer of bad news: the quote is stale',
       'Authorization: missing',
       'Authorization: required for this route',
+      'Authorization: Bearer of bad news',
+      'bearer authentication fails',
     ]) {
       assert.deepEqual(redactFeedbackText(text), { text, redacted: false }, text);
     }

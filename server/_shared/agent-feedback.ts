@@ -171,17 +171,27 @@ const BARE_CREDENTIAL_PARAM_RE = /^(token|access_token|id_token|refresh_token|au
 const BARE_QUERY_FIELD_RE = /(^|[\s"'(?&#;,])([A-Za-z][A-Za-z0-9_.-]*)=([^\s&"'<>#;,)]+)/g;
 
 // After "Bearer" or "Authorization:" the next word is often prose ("the bearer
-// token is rejected", "Authorization: missing"). Only a value shaped like a
-// credential is removed: 8+ token characters with a digit, a token symbol, or
-// an uppercase letter past the first character.
-const AUTH_VALUE_PATTERNS: readonly RegExp[] = [
-  /(\bAuthorization"?\s*[:=]\s*"?(?:(?:Bearer|Basic|Token)\s+)?)([^\s",;}]+)/gi,
-  /(\bBearer\s+)([^\s",;}]+)/gi,
-];
+// token is rejected", "Authorization: missing"). A full header line, with a
+// scheme after "Authorization:", is unambiguous: any token value of 6+ goes.
+// Otherwise only a credential-shaped value goes: 8+ token characters with a
+// digit, a token symbol, or a capital past the first character, or an
+// all-lowercase run of 16+, which prose rarely produces.
+const TOKEN_CHARS_RE = /^[A-Za-z0-9._~+/=-]+$/;
+
+function isHeaderValue(value: string): boolean {
+  return value.length >= 6 && TOKEN_CHARS_RE.test(value);
+}
 
 function isTokenShaped(value: string): boolean {
-  return value.length >= 8 && /^[A-Za-z0-9._~+/=-]+$/.test(value) && /[0-9._~+/=-]|.[A-Z]/.test(value);
+  if (value.length < 8 || !TOKEN_CHARS_RE.test(value)) return false;
+  return /[0-9._~+/=-]|.[A-Z]/.test(value) || value.length >= 16;
 }
+
+const AUTH_VALUE_PATTERNS: ReadonlyArray<[RegExp, (value: string) => boolean]> = [
+  [/(\bAuthorization"?\s*[:=]\s*"?(?:Bearer|Basic|Token)\s+)([^\s",;}]+)/gi, isHeaderValue],
+  [/(\bAuthorization"?\s*[:=]\s*"?)([^\s",;}]+)/gi, isTokenShaped],
+  [/(\bBearer\s+)([^\s",;}]+)/gi, isTokenShaped],
+];
 
 const CREDENTIAL_PATTERNS: readonly RegExp[] = [
   /\b(?:x-api-key|x-worldmonitor-key)"?\s*[:=]\s*"?[^\s",;}]+/gi,
@@ -224,9 +234,9 @@ export function redactFeedbackText(value: string): { text: string; redacted: boo
   text = text.replace(BARE_QUERY_FIELD_RE, (match, lead: string, name: string, fieldValue: string) => (
     BARE_CREDENTIAL_PARAM_RE.test(name) && !/^\d+$/.test(fieldValue) ? `${lead}${name}=${FEEDBACK_REDACTED}` : match
   ));
-  for (const pattern of AUTH_VALUE_PATTERNS) {
+  for (const [pattern, isCredential] of AUTH_VALUE_PATTERNS) {
     text = text.replace(pattern, (match, prefix: string, value: string) => (
-      isTokenShaped(value) ? `${prefix}${FEEDBACK_REDACTED}` : match
+      isCredential(value) ? `${prefix}${FEEDBACK_REDACTED}` : match
     ));
   }
   for (const pattern of CREDENTIAL_PATTERNS) text = text.replace(pattern, FEEDBACK_REDACTED);
