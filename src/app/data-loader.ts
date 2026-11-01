@@ -3777,6 +3777,7 @@ export class DataLoaderManager implements AppModule {
    * `ctx.panels[key]?.set...()` is silently dropped there.
    */
   private deliverOutagesToPanel(outages: InternetOutage[]): void {
+    if (this.ctx.isDestroyed) return;
     this.callPanel('internet-disruptions', 'setOutages', outages);
     // Deliveries can overlap (hydration pass, map layer, refresh). Only the
     // newest one commits, so an older request that fails into the breaker's
@@ -3814,6 +3815,7 @@ export class DataLoaderManager implements AppModule {
       dataFreshness.recordUpdate('outages', outages.length);
       this.deliverOutagesToPanel(outages);
     } catch (error) {
+      if (this.ctx.isDestroyed) return;
       this.callPanel('internet-disruptions', 'showError');
       this.ctx.map?.setLayerReady('outages', false);
       this.ctx.statusPanel?.updateFeed('NetBlocks', { status: 'error' });

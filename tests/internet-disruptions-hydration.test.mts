@@ -64,6 +64,16 @@ describe('internet-disruptions panel hydration', () => {
     assert.equal(guards.length, 2, 'both callbacks must drop superseded results and anything resolving after teardown');
   });
 
+  it('queues nothing for the panel after teardown', async () => {
+    const source = await readFile(DATA_LOADER, 'utf8');
+    const deliver = extractMethod(source, 'deliverOutagesToPanel');
+    assert.match(deliver, /^\s*private deliverOutagesToPanel\([^)]*\): void \{\n\s*if \(this\.ctx\.isDestroyed\) return;\n\s*this\.callPanel\('internet-disruptions', 'setOutages'/,
+      'teardown clears the shared pendingCalls queue; a later setOutages would replay into the next app instance');
+    const loadOutages = extractMethod(source, 'loadOutages');
+    assert.match(loadOutages, /catch \(error\) \{\n\s*if \(this\.ctx\.isDestroyed\) return;\n\s*this\.callPanel\('internet-disruptions', 'showError'\)/,
+      'the error path must not queue showError after teardown');
+  });
+
   it('refreshes outages on variants without the intelligence refresh', async () => {
     const app = await readFile(new URL('../src/App.ts', import.meta.url), 'utf8');
     const block = app.match(/if \(SITE_VARIANT === 'full'\) \{\s*this\.refreshScheduler\.scheduleRefresh\('intelligence'[\s\S]*?\n {4}\} else \{([\s\S]*?)\n {4}\}/);
