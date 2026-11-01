@@ -209,6 +209,12 @@ matches the platform suffix never wins.
 
 Caches the 302 for 5 minutes (`s-maxage=300`, `stale-while-revalidate=60`, `stale-if-error=600`).
 
+### `POST /api/feedback/v1/submit-report`
+
+Lets an agent report a bug, a missing capability, bad data, or a security concern. No key is needed, and REST callers are always treated as anonymous. Send `kind` (`bug`, `missing_capability`, `data_quality`, or `security`), `summary` (up to 300 characters), and optionally `surface` (a tool name or API path, even one that does not exist yet), `expected`, `actual`, `requestId` (the failing call's `x-vercel-id`), and `clientName`. The response returns a `reportId`.
+
+Credentials and email addresses are redacted before storage, so do not rely on sending them. A human reads every report, and nothing is acted on automatically. For `kind: security` the response adds `advisoryUrl`. Send exploit details through that private [advisory form](https://github.com/koala73/worldmonitor/security/advisories/new), not here. Bodies over 24 KB return 413. See [rate limits](/usage-rate-limits) for the per-IP budget. Part of `FeedbackService`.
+
 ### `POST /api/leads/v1/submit-contact`
 
 Public enterprise contact form. Turnstile-verified, rate-limited per IP. Part of `LeadsService`.

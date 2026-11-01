@@ -168,6 +168,7 @@ ICAO addresses must normalize to six lowercase hexadecimal characters. Callsigns
 | `POST /api/scenario/v1/run-scenario` (queue depth) | 100 in-flight | — | Global |
 | `POST /api/leads/v1/register-interest` | 5 | 60 min | Per IP + Turnstile (desktop sources require signed HMAC bypass) |
 | `POST /api/leads/v1/submit-contact` | 3 | 60 min | Per IP + Turnstile |
+| `POST /api/feedback/v1/submit-report` | 5 | 60 min | Per IP (IPv6 by /64), shared with MCP `report_issue`; also 100/h across all anonymous reports and 30/day for security reports; fail-closed (503 when the limiter is unavailable) |
 
 Other write endpoints (`/api/brief/share-url`, `/api/notification-channels`, `/api/create-checkout`, etc.) fall back to the default per-IP limit above.
 

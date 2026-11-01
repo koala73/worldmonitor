@@ -4874,6 +4874,9 @@
           "path": "scripts/seed-research.mjs"
         },
         {
+          "path": "server/_shared/agent-feedback.ts"
+        },
+        {
           "path": "src/app/desktop-updater.ts"
         },
         {

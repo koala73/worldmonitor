@@ -595,6 +595,12 @@ export const PUBLIC_NO_AUTH_RPC_PATHS = new Set<string>([
   // endpoint limit (server/_shared/rate-limit.ts), and a bounded review queue
   // that refuses rather than evicts. Reports are never applied automatically.
   '/api/news/v1/submit-error-report',
+  // #8721 agent feedback: agents without a key are the reporters we most want
+  // (threat model Decision 1), so REST callers are always anonymous. Gates:
+  // the 24 KB body cap, the outer per-IP endpoint limit, and
+  // admitFeedbackReport's fail-closed buckets. Reports are never acted on
+  // automatically.
+  '/api/feedback/v1/submit-report',
   // #9093 /trust page: public label history and today's counts. Read-only,
   // public coverage metadata; a visitor who lands on /trust directly has no
   // session cookie. Bounded by a per-IP endpoint limit and the 'fast' CDN tier.
