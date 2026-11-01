@@ -376,7 +376,14 @@
     "requiredEnv": [
       "UPSTASH_REDIS_REST_URL",
       "UPSTASH_REDIS_REST_TOKEN",
-      "TINEYE_API_KEY"
+      "TINEYE_API_KEY",
+      "CLOUDFLARE_R2_ACCOUNT_ID",
+      "CLOUDFLARE_R2_ACCESS_KEY_ID",
+      "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+      [
+        "CLOUDFLARE_R2_MEDIA_BUCKET",
+        "CLOUDFLARE_R2_BUCKET"
+      ]
     ],
     "cronSchedule": null,
     "watchPatterns": [
