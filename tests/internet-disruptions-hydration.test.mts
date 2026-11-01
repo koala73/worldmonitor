@@ -60,8 +60,8 @@ describe('internet-disruptions panel hydration', () => {
   it('lets only the newest delivery commit anomaly and DDoS results', async () => {
     const body = extractMethod(await readFile(DATA_LOADER, 'utf8'), 'deliverOutagesToPanel');
     assert.match(body, /const generation = \+\+this\.outageAuxGeneration;/);
-    const guards = body.match(/if \(generation !== this\.outageAuxGeneration\) return;/g) ?? [];
-    assert.equal(guards.length, 2, 'both the anomalies and the DDoS callbacks must drop superseded results');
+    const guards = body.match(/if \(this\.ctx\.isDestroyed \|\| generation !== this\.outageAuxGeneration\) return;/g) ?? [];
+    assert.equal(guards.length, 2, 'both callbacks must drop superseded results and anything resolving after teardown');
   });
 
   it('refreshes outages on variants without the intelligence refresh', async () => {

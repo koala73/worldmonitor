@@ -3780,15 +3780,16 @@ export class DataLoaderManager implements AppModule {
     this.callPanel('internet-disruptions', 'setOutages', outages);
     // Deliveries can overlap (hydration pass, map layer, refresh). Only the
     // newest one commits, so an older request that fails into the breaker's
-    // empty fallback cannot overwrite a newer success.
+    // empty fallback cannot overwrite a newer success. After teardown nothing
+    // commits: callPanel would queue into the shared pendingCalls map.
     const generation = ++this.outageAuxGeneration;
     fetchTrafficAnomalies().then(r => {
-      if (generation !== this.outageAuxGeneration) return;
+      if (this.ctx.isDestroyed || generation !== this.outageAuxGeneration) return;
       this.ctx.map?.setTrafficAnomalies(r.anomalies);
       this.callPanel('internet-disruptions', 'setAnomalies', r.anomalies);
     }).catch(() => {});
     fetchDdosAttacks().then(r => {
-      if (generation !== this.outageAuxGeneration) return;
+      if (this.ctx.isDestroyed || generation !== this.outageAuxGeneration) return;
       this.ctx.map?.setDdosLocations(r.topTargetLocations ?? []);
       this.callPanel('internet-disruptions', 'setDdos', r);
     }).catch(() => {});
