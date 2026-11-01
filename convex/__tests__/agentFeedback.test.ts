@@ -494,3 +494,54 @@ describe("HTTP routes", () => {
     expect((await t.fetch("/api/internal-submit-feedback", post("/", report(), SECRET))).status).toBe(429);
   });
 });
+
+describe("listForTriage", () => {
+  test("lists one status newest first, without reporter identifiers", async () => {
+    const t = convexTest(schema, modules);
+    const first = await t.mutation(internal.agentFeedback.submit, report({ summary: "first" }));
+    vi.setSystemTime(NOW + 1000);
+    const second = await t.mutation(internal.agentFeedback.submit, report({
+      summary: "second",
+      authKind: "keyed",
+      principalId: "user_1",
+      reporterKey: "principal:user_1",
+    }));
+    await t.mutation(internal.agentFeedback.transition, { reportId: first.reportId, to: "triaged" });
+
+    const received = await t.query(internal.agentFeedback.listForTriage, { status: "received" });
+    expect(received.more).toBe(false);
+    expect(received.rows.map((row) => row.reportId)).toEqual([second.reportId]);
+    const [row] = received.rows;
+    expect(row).toMatchObject({
+      summary: "second",
+      authKind: "keyed",
+      kind: "bug",
+      surfaceName: "get_market_data",
+      receivedAt: NOW + 1000,
+    });
+    for (const field of ["principalId", "ipHash", "uaHash", "reporterKey", "retryKey"]) {
+      expect(row).not.toHaveProperty(field);
+    }
+
+    const triaged = await t.query(internal.agentFeedback.listForTriage, { status: "triaged" });
+    expect(triaged.rows.map((r) => r.reportId)).toEqual([first.reportId]);
+  });
+
+  test("caps the page and says more rows are waiting", async () => {
+    const t = convexTest(schema, modules);
+    for (let i = 0; i < 4; i += 1) {
+      vi.setSystemTime(NOW + i);
+      await t.mutation(internal.agentFeedback.submit, report({ summary: `row ${i}` }));
+    }
+    const page = await t.query(internal.agentFeedback.listForTriage, { status: "received", limit: 3 });
+    expect(page.rows.map((r) => r.summary)).toEqual(["row 3", "row 2", "row 1"]);
+    expect(page.more).toBe(true);
+  });
+
+  test("refuses a terminal status and an out-of-range limit", async () => {
+    const t = convexTest(schema, modules);
+    await expect(t.query(internal.agentFeedback.listForTriage, { status: "filed" as never })).rejects.toThrow();
+    await expect(t.query(internal.agentFeedback.listForTriage, { status: "received", limit: 0 })).rejects.toThrow();
+    await expect(t.query(internal.agentFeedback.listForTriage, { status: "received", limit: 501 })).rejects.toThrow();
+  });
+});

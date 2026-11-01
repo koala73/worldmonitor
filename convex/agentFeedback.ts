@@ -335,6 +335,49 @@ export const notifySecurityReport = internalAction({
   },
 });
 
+export const FEEDBACK_TRIAGE_MAX_LIMIT = 500;
+
+/**
+ * One page of an open queue for the operator triage script (phase 8), newest
+ * first. Only open statuses are listed; a terminal row has nothing left to
+ * decide. Reporter identifiers (principal, IP and UA hashes, reporter and
+ * retry keys) stay in the table: triage needs the report, not who sent it.
+ * Every returned text field is attacker-controlled; the script escapes it.
+ */
+export const listForTriage = internalQuery({
+  args: {
+    status: v.union(v.literal("received"), v.literal("triaged"), v.literal("private")),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { status, limit = 200 }) => {
+    if (!Number.isInteger(limit) || limit < 1 || limit > FEEDBACK_TRIAGE_MAX_LIMIT) invalid("limit");
+    const page = await ctx.db
+      .query("agentFeedback")
+      .withIndex("by_status_received", (q) => q.eq("status", status))
+      .order("desc")
+      .take(limit + 1);
+    return {
+      more: page.length > limit,
+      rows: page.slice(0, limit).map((row) => ({
+        reportId: row._id,
+        kind: row.kind,
+        status: row.status,
+        surfaceType: row.surfaceType,
+        surfaceName: row.surfaceName,
+        summary: row.summary,
+        expected: row.expected,
+        actual: row.actual,
+        requestId: row.requestId,
+        clientName: row.clientName,
+        redacted: row.redacted,
+        fingerprint: row.fingerprint,
+        authKind: row.authKind,
+        receivedAt: row.receivedAt,
+      })),
+    };
+  },
+});
+
 /**
  * Security rows nobody has been told about: held back by the daily cap, or
  * scheduled more than FEEDBACK_NOTIFY_GRACE_MS ago and never delivered.
