@@ -96,6 +96,51 @@ describe('light-theme semantic text', () => {
     });
   }
 
+  /**
+   * Badges and chips tint their background with a translucent color. Judge the
+   * text against that tint laid over each light surface it can sit on, down to
+   * the findings dropdown's --border-subtle. A `[data-theme="light"] <selector>`
+   * rule that replaces the background is used instead of the base rule's.
+   */
+  it('text on a translucent tint meets 4.5:1 over every light surface', () => {
+    const rgb = (hex) => [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16));
+    const hex = (c) => `#${c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+    const over = ([c, a], base) => hex(c.map((v, k) => v * a + base[k] * (1 - a)));
+    /** Every translucent layer in a background value, as [rgb, alpha]. */
+    const layers = (value) => [
+      ...[...value.matchAll(/rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)/g)]
+        .map((m) => [[+m[1], +m[2], +m[3]], +m[4]]),
+      ...[...value.matchAll(/color-mix\(\s*in srgb\s*,\s*var\(--([\w-]+)\)\s*(\d+)%\s*,\s*transparent\s*\)/g)]
+        .filter((m) => /^#[0-9a-f]{6}$/i.test(light[`--${m[1]}`] ?? ''))
+        .map((m) => [rgb(light[`--${m[1]}`]), +m[2] / 100]),
+    ];
+    const lightRules = new Map(rules(main).filter((r) => r.selector.startsWith('[data-theme="light"] '))
+      .map((r) => [r.selector.slice('[data-theme="light"] '.length), r.body]));
+    const bases = ['--surface', '--bg-secondary', '--border-subtle'].map((s) => [s, rgb(light[s])]);
+    const failures = [];
+    let checked = 0;
+    for (const [file, css] of Object.entries(sheets)) {
+      for (const { selector, body } of rules(css)) {
+        const token = body.match(/(?<![-\w])color\s*:\s*var\(--([\w-]+-text),/);
+        if (!token || !(`--${token[1]}` in light)) continue;
+        const own = (b) => b?.match(/(?<![-\w])background(?:-color)?\s*:\s*([^;]+)/)?.[1];
+        const background = own(lightRules.get(selector)) ?? own(body);
+        const tints = background ? layers(background) : [];
+        if (tints.length === 0) continue;
+        checked += 1;
+        const text = light[`--${token[1]}`];
+        for (const tint of tints) {
+          for (const [name, base] of bases) {
+            const ratio = contrast(text, over(tint, base));
+            if (ratio < 4.5) failures.push(`${file} ${selector}: ${text} on ${background.trim()} over ${name} is ${ratio.toFixed(2)}:1`);
+          }
+        }
+      }
+    }
+    assert.ok(checked > 80, `only ${checked} tinted text rules found; the scan is broken`);
+    assert.deepEqual(failures, []);
+  });
+
   it('surfaces that stay dark reset every -text token', () => {
     const resets = rules(main).filter((r) => ALWAYS_DARK.every((s) => r.selector.includes(s)));
     assert.equal(resets.length, 1, `expected one rule naming ${ALWAYS_DARK.join(', ')}`);

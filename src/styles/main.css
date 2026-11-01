@@ -174,21 +174,21 @@
 
   /* Semantic colors used as TEXT. The values above stay bright for fills,
      borders and map markers but are 3.2-3.6:1 on white; text rules read
-     var(--X-text, var(--X)) and get these darker shades: red-700,
-     orange-700, and green/amber a step past -700 so they clear 4.5:1 on
-     --bg-secondary too. Dark leaves them undefined so the fallback applies;
+     var(--X-text, var(--X)) and get these Tailwind -800 shades, which also
+     clear 4.5:1 on the translucent badge tints over every light surface.
+     Dark leaves them undefined so the fallback applies;
      always-dark surfaces reset them (see .update-toast below).
      tests/light-semantic-text.test.mjs checks all of this. */
-  --red-text: #b91c1c;
-  --semantic-critical-text: #b91c1c;
-  --status-unavailable-text: #b91c1c;
-  --semantic-high-text: #c2410c;
-  --yellow-text: #b05109;
-  --semantic-elevated-text: #b05109;
-  --status-cached-text: #b05109;
-  --green-text: #157d3c;
-  --semantic-positive-text: #157d3c;
-  --status-live-text: #157d3c;
+  --red-text: #991b1b;
+  --semantic-critical-text: #991b1b;
+  --status-unavailable-text: #991b1b;
+  --semantic-high-text: #9a3412;
+  --yellow-text: #92400e;
+  --semantic-elevated-text: #92400e;
+  --status-cached-text: #92400e;
+  --green-text: #166534;
+  --semantic-positive-text: #166534;
+  --status-live-text: #166534;
 
   /* Backgrounds */
   --bg: #f8f9fa;
@@ -966,6 +966,12 @@ canvas,
 .cached-mode-banner--unavailable .cached-mode-banner__badge {
   border-color: rgba(239, 68, 68, 0.45);
   color: var(--status-unavailable-text, var(--status-unavailable));
+}
+
+/* The black chip darkens the amber banner below 4.5:1 for the badge text in
+   light; a white chip lifts it instead. */
+[data-theme="light"] .cached-mode-banner__badge {
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .cached-mode-banner__text {
