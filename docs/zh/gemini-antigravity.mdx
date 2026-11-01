@@ -67,6 +67,16 @@ Antigravity 的 OAuth 回调 `https://antigravity.google/oauth-callback` 已在[
 | 隐私政策 URL | `https://www.worldmonitor.app/docs/privacy` |
 | 网站 URL | `https://www.worldmonitor.app` |
 
+## Gemini CLI
+
+仓库根目录提供 Gemini CLI 扩展清单 `gemini-extension.json`，通过 Streamable HTTP 添加相同的两个服务器。Gemini CLI 使用 `httpUrl` 表示 Streamable HTTP；其 `url` 键表示 SSE。
+
+```bash
+gemini extensions install https://github.com/koala73/worldmonitor
+```
+
+首次调用工具时会打开浏览器登录。Gemini CLI 使用 `localhost` 回调进行注册，[重定向 URI 允许列表](/zh/mcp-overview#redirect-uri-允许列表)接受该回调。运行 `/mcp auth worldmonitor` 可重新登录。
+
 ## 相关链接
 
 - [MCP 快速入门](/zh/mcp-quickstart)

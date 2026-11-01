@@ -80,6 +80,16 @@ Example prompts:
 - @WorldMonitor summarize the current risk picture for Taiwan
 - Check which shipping chokepoints are disrupted on WorldMonitor
 
+## Gemini CLI
+
+The repository root holds a Gemini CLI extension manifest, `gemini-extension.json`. It adds the same two servers over Streamable HTTP. Gemini CLI uses `httpUrl` for Streamable HTTP; its `url` key means SSE.
+
+```bash
+gemini extensions install https://github.com/koala73/worldmonitor
+```
+
+The first tool call opens a browser to sign in. Gemini CLI registers with a `localhost` callback, which the [redirect URI allowlist](/mcp-overview#redirect-uri-allowlist) accepts. Run `/mcp auth worldmonitor` to sign in again.
+
 ## Related
 
 - [MCP quickstart](/mcp-quickstart)
