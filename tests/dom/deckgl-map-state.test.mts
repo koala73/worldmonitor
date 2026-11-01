@@ -23,6 +23,17 @@ vi.mock('@/services/generated-rpc-clients', async (importOriginal) => ({
   MilitaryServiceClient: class { listMilitaryBases = listMilitaryBases; },
 }));
 
+// Lane-color tests force premium; every other test keeps the real gate.
+const premium = vi.hoisted(() => ({ forced: undefined as boolean | undefined }));
+vi.mock('@/services/panel-gating', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/panel-gating')>();
+  return {
+    ...actual,
+    hasPremiumAccess: (...args: Parameters<typeof actual.hasPremiumAccess>) =>
+      premium.forced ?? actual.hasPremiumAccess(...args),
+  };
+});
+
 type Handler = (event?: unknown) => void;
 type FlyToCall = { options: { center?: [number, number]; zoom?: number }; eventData?: Record<string, unknown> };
 
@@ -683,13 +694,48 @@ describe('DeckGLMap route explorer lane highlight', () => {
     expect(fit).toHaveBeenCalledWith([[50.16, 18.9], [72.9, 26.64]], expect.anything());
   });
 
-  it('fits a lane across the antimeridian the short way round', async () => {
+  // renderWorldCopies is false, so bounds past 180° would be clamped to a view
+  // without the American end. Plain bounds keep both ends on screen.
+  it('fits a lane across the antimeridian inside the single rendered world', async () => {
     const { map, fake } = await mapWith(tradeRoutesOn());
     const fit = vi.spyOn(fake, 'fitBounds');
     map.highlightLane({ routeId: 'us-west-northeast-asia', path: [[-118.2, 33.7], [129.04, 35.1]], chokepointIds: [] });
     const [[minLng], [maxLng]] = (fit.mock.calls[0] as unknown[] | undefined)?.[0] as [[number, number], [number, number]];
-    expect(minLng).toBe(129.04);
-    expect(maxLng).toBeCloseTo(241.8, 5);
+    expect(minLng).toBe(-118.2);
+    expect(maxLng).toBe(129.04);
+  });
+
+  it('colors the lane from live scores and scenarios on its own chokepoints only', async () => {
+    premium.forced = true;
+    try {
+      const { map } = await mapWith(tradeRoutesOn());
+      const state = map as unknown as {
+        storedChokepointData: { chokepoints: { id: string; disruptionScore: number }[] } | null;
+        tradeRoutePalette(): Record<'active' | 'disrupted' | 'highRisk' | 'scenario', number[]>;
+      };
+      const palette = state.tradeRoutePalette();
+      const laneColor = () => layer(map, 'highlighted-lane-layer')?.props.getSourceColor;
+      const scored = (scores: Record<string, number>) => {
+        state.storedChokepointData = { chokepoints: Object.entries(scores).map(([id, disruptionScore]) => ({ id, disruptionScore })) };
+      };
+
+      map.highlightLane(gulfLane);
+      expect(laneColor()).toEqual(palette.active);
+      scored({ hormuz_strait: 80 });
+      expect(laneColor()).toEqual(palette.disrupted);
+      scored({ hormuz_strait: 50 });
+      expect(laneColor()).toEqual(palette.highRisk);
+      // Malacca lies past India: its disruption does not color this lane.
+      scored({ malacca_strait: 95 });
+      expect(laneColor()).toEqual(palette.active);
+
+      map.setScenarioState({ disruptedChokepointIds: ['malacca_strait'], affectedIso2s: [] } as never);
+      expect(laneColor()).toEqual(palette.active);
+      map.setScenarioState({ disruptedChokepointIds: ['hormuz_strait'], affectedIso2s: [] } as never);
+      expect(laneColor()).toEqual(palette.scenario);
+    } finally {
+      premium.forced = undefined;
+    }
   });
 
   it('fits the lane beside a panel drawn over the map, not under it', async () => {

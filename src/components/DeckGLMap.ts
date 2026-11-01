@@ -7292,11 +7292,18 @@ export class DeckGLMap {
   private createHighlightedLaneLayer(): ArcLayer<BypassArcDatum> | null {
     const lane = this.highlightedLane;
     if (!lane || lane.path.length < 2) return null;
-    const { active, disrupted, highRisk } = this.tradeRoutePalette();
-    const status = TRADE_ROUTES_LIST.find((r) => r.id === lane.routeId)?.status;
-    const color = !hasPremiumAccess(getAuthState())
-      ? active
-      : status === 'disrupted' ? disrupted : status === 'high_risk' ? highRisk : active;
+    const { active, disrupted, highRisk, scenario } = this.tradeRoutePalette();
+    // Same rules as the route arcs (refreshTradeRouteStatus, setScenarioState),
+    // applied to the lane's own chokepoints only: a disruption past the
+    // destination does not color a lane that never reaches it.
+    const scores = new Map((this.storedChokepointData?.chokepoints ?? []).map((cp) => [cp.id, cp.disruptionScore ?? 0]));
+    const maxScore = lane.chokepointIds.reduce((max, id) => Math.max(max, scores.get(id) ?? 0), 0);
+    const scenarioHit = (this.scenarioState?.disruptedChokepointIds ?? []).some((id) => lane.chokepointIds.includes(id));
+    const color = scenarioHit
+      ? scenario
+      : !hasPremiumAccess(getAuthState())
+        ? active
+        : maxScore >= 70 ? disrupted : maxScore > 30 ? highRisk : active;
     const legs: BypassArcDatum[] = [];
     for (let i = 1; i < lane.path.length; i++) legs.push({ source: lane.path[i - 1]!, target: lane.path[i]! });
     return new ArcLayer<BypassArcDatum>({
@@ -7916,16 +7923,17 @@ export class DeckGLMap {
   }
 
   /**
-   * Fit the view to a set of [lon, lat] positions. When the positions span
-   * more than 180° of longitude the short way round crosses the antimeridian
-   * (a US to Korea lane), so western longitudes are shifted by 360°.
+   * Fit the view to a set of [lon, lat] positions. Both map initializers set
+   * `renderWorldCopies: false`, so the camera is held inside one world: a lane
+   * across the antimeridian (US to Korea) cannot be framed the short way
+   * round, and bounds shifted past 180° are clamped to a view that drops one
+   * end. Plain -180..180 bounds keep both ends on screen.
    * `occluder` is the screen box of a panel drawn over the map's left edge
    * (the route explorer); the fit keeps the positions clear of it.
    */
   private fitToPositions(positions: [number, number][], occluder?: { left: number; right: number }): void {
     if (!this.maplibreMap || positions.length === 0) return;
-    let lons = positions.map(([lon]) => lon);
-    if (Math.max(...lons) - Math.min(...lons) > 180) lons = lons.map((lon) => (lon < 0 ? lon + 360 : lon));
+    const lons = positions.map(([lon]) => lon);
     const lats = positions.map(([, lat]) => lat);
     const PAD = 60;
     let left = PAD;
