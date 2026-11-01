@@ -235,8 +235,11 @@ test('a failed first run does not invent a successful observation timestamp', ()
 
 test('a bad second activity page retains the entire country payload and success clocks', async (t) => {
   const input = fixtures();
+  // Expired countries now outrank every published one for cold-fetch slots, so
+  // keep the whole fixture published; otherwise the 144 expired fixtures take
+  // all 30 slots and the country under test is never fetched.
+  for (const [, iso2] of countries) input[`${PREFIX}${iso2}`].cacheWrittenAt = NOW - DAY;
   const code = countries[0][1];
-  input[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
   input[`${PREFIX}${code}`].refreshAttemptedAt = 1;
   const result = runProducer(input, 'activity-page');
   const retained = result.redis[`${PREFIX}${code}`];

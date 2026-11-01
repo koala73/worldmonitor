@@ -40,8 +40,78 @@ describe('root dependency cache (#8710)', () => {
     const cache = action.runs.steps.find((step) => step.id === 'node-modules');
     assert.match(cache.uses, /^actions\/cache\/restore@[a-f0-9]{40}$/);
     assert.equal(cache.with.path, 'node_modules');
-    assert.equal(cache.with.key, "node-modules-v2-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'package.json', '.npmrc', 'vendor/braces/**', 'vendor/stream-json/**') }}");
+    assert.equal(cache.with.key, "node-modules-v3-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', '.npmrc', 'vendor/braces/**', 'vendor/stream-json/**', 'vendor/vercel-og/**') }}-${{ steps.install-inputs.outputs.hash }}");
     assert.equal(cache.with['restore-keys'], undefined);
+  });
+
+  // The key hashes only the package.json fields an install reads. Hashing the
+  // whole file made every scripts-only edit a miss in every job: run
+  // 41229529882 reinstalled in 16 jobs for one changed test:e2e command. The
+  // dependency fields stay in the key so a hit cannot mask a manifest that is
+  // out of sync with the lockfile (#8716): that edit still misses, and npm ci
+  // then fails on the mismatch.
+  describe('install-input hash', () => {
+    const hashStep = () => {
+      const steps = readAction().runs.steps;
+      const step = steps.find((s) => s.id === 'install-inputs');
+      assert.ok(step, 'the action must hash the install inputs of package.json');
+      assert.equal(step.shell, 'bash');
+      assert.ok(steps.indexOf(step) < steps.findIndex((s) => s.id === 'node-modules'), 'the hash must exist before the restore reads it');
+      return step;
+    };
+    const hashOf = (manifest: Record<string, unknown>) => {
+      const dir = mkdtempSync(resolve(tmpdir(), 'wm-install-inputs-'));
+      try {
+        const output = resolve(dir, 'github-output');
+        writeFileSync(resolve(dir, 'package.json'), JSON.stringify(manifest, null, 2));
+        writeFileSync(output, '');
+        execFileSync('bash', ['-c', hashStep().run], { cwd: dir, env: { ...process.env, GITHUB_OUTPUT: output } });
+        const match = /^hash=([a-f0-9]{64})$/m.exec(readFileSync(output, 'utf8'));
+        assert.ok(match, 'the step must publish a sha256 hash output');
+        return match[1];
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const base = {
+      name: 'fixture',
+      version: '1.0.0',
+      scripts: { postinstall: 'npm run inventory:facts', test: 'node --test' },
+      dependencies: { a: '^1.0.0', b: '^2.0.0' },
+      devDependencies: { c: '^3.0.0' },
+      overrides: { d: '4.0.0' },
+    };
+
+    it('ignores edits that cannot change node_modules', () => {
+      const same = hashOf(base);
+      assert.equal(hashOf({ ...base, scripts: { ...base.scripts, test: 'node --test --shard=1/2', lint: 'biome lint' } }), same);
+      assert.equal(hashOf({ ...base, version: '1.0.1', description: 'changed' }), same);
+      assert.equal(hashOf({ ...base, dependencies: { b: '^2.0.0', a: '^1.0.0' } }), same, 'key order is not an input');
+    });
+
+    it('changes when a dependency field or an install lifecycle script changes', () => {
+      const same = hashOf(base);
+      const variants: Record<string, unknown>[] = [
+        { ...base, dependencies: { ...base.dependencies, a: '^1.1.0' } },
+        { ...base, devDependencies: {} },
+        { ...base, optionalDependencies: { e: '1.0.0' } },
+        { ...base, peerDependencies: { f: '1.0.0' } },
+        { ...base, overrides: { d: '4.0.1' } },
+        { ...base, peerDependenciesMeta: { f: { optional: true } } },
+        { ...base, workspaces: ['packages/*'] },
+        { ...base, bundleDependencies: ['a'] },
+        { ...base, bundledDependencies: ['b'] },
+        // npm ci reads allowScripts to decide which dependency install scripts run.
+        { ...base, allowScripts: { esbuild: false } },
+        { ...base, devEngines: { runtime: { name: 'node', version: '24' } } },
+        // Every event npm ci runs for the root package (npm lib/commands/ci.js).
+        ...['preinstall', 'install', 'postinstall', 'prepublish', 'preprepare', 'prepare', 'postprepare']
+          .map((hook) => ({ ...base, scripts: { ...base.scripts, [hook]: 'node changed.mjs' } })),
+      ];
+      const hashes = variants.map(hashOf);
+      for (const hash of hashes) assert.notEqual(hash, same);
+      assert.equal(new Set(hashes).size, hashes.length);
+    });
   });
 
   it('saves the clean install immediately on a successful miss, before consumers run', () => {
@@ -96,9 +166,11 @@ describe('root dependency cache (#8710)', () => {
   // and use the action's miss-only fallback. Jobs with another npm install
   // (blog-site, pro-test, including through build:pro) keep setup-node's
   // cache for it and turn the action's off, so a miss restores it once.
+  // unit-shards restores its nested installed trees instead (see the
+  // 'unit-shard nested dependency cache' block), so it is in the first group.
   for (const [workflowText, jobIds, setupCache] of [
-    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke'], undefined],
-    [testWorkflow, ['unit-shards', 'unit-built-output', 'variant-smoke-pro-webmcp'], 'npm'],
+    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards'], undefined],
+    [testWorkflow, ['unit-built-output', 'variant-smoke-pro-webmcp'], 'npm'],
     [read(resolve(workflowsDir, 'perf-style-layout-budget.yml')), ['measure'], undefined],
     [lintCodeWorkflow, ['biome', 'markdown'], undefined],
     [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck'], 'npm'],
@@ -120,6 +192,72 @@ describe('root dependency cache (#8710)', () => {
       });
     }
   }
+});
+
+describe('unit-shard nested dependency cache', () => {
+  // Each shard installed blog-site/ and scripts/ from setup-node's npm
+  // download cache (4-9s to restore four lockfiles' downloads), then ran both
+  // installs (7-10s). The installed trees are restored instead, keyed on
+  // every file that decides their contents, and installed only on a miss.
+  const steps = YAML.parse(testWorkflow).jobs['unit-shards'].steps
+    .flatMap((step: { parallel?: unknown[] }) => step.parallel ?? [step]);
+  const restore = steps.find((step) => step.id === 'nested-deps');
+  const blogInstall = steps.find((step) => step.run === 'npm run ci:blog-site');
+  const scriptsInstall = steps.find((step) => step.run === 'npm ci --prefix scripts --ignore-scripts --no-audit --no-fund');
+  const save = steps.find((step) => step.uses?.startsWith('actions/cache/save@') && step.with?.key === '${{ steps.nested-deps.outputs.cache-primary-key }}');
+  const tests = steps.find((step) => step.run?.includes('npm run test:data'));
+  const miss = "steps.nested-deps.outputs.cache-hit != 'true'";
+
+  it('restores both installed trees before the tests', () => {
+    assert.ok(restore?.uses?.startsWith('actions/cache/restore@'));
+    assert.deepEqual(restore.with.path.trim().split('\n'), ['blog-site/node_modules', 'scripts/node_modules']);
+    assert.ok(steps.indexOf(restore) < steps.indexOf(tests));
+  });
+
+  it('keys the trees on every install input', () => {
+    const key = restore.with.key;
+    assert.match(key, /^nested-deps-v1-\$\{\{ runner\.os \}\}-\$\{\{ runner\.arch \}\}-node24-/);
+    for (const input of [
+      'blog-site/package.json',
+      'blog-site/package-lock.json',
+      'blog-site/.npmrc',
+      'scripts/package.json',
+      'scripts/package-lock.json',
+      'scripts/.npmrc',
+      '.npmrc',
+      'vendor/http-cache-semantics/**',
+    ]) {
+      assert.ok(key.includes(`'${input}'`), `nested-deps key must hash ${input}`);
+    }
+  });
+
+  it('installs and saves only on a miss, after the restore', () => {
+    for (const step of [blogInstall, scriptsInstall, save]) {
+      assert.ok(step, 'nested install and save steps must exist');
+      assert.equal(step.if, miss);
+      assert.ok(steps.indexOf(restore) < steps.indexOf(step));
+    }
+    assert.ok(steps.indexOf(blogInstall) < steps.indexOf(save));
+    assert.ok(steps.indexOf(scriptsInstall) < steps.indexOf(save));
+    assert.equal(save.with.path, restore.with.path);
+  });
+
+  // A restored tree skips both installs, so the tests must still notice a
+  // tree that lacks what they need, and a changed install command must
+  // change the key.
+  it('keeps the scripts/ presence guard on the test step', () => {
+    assert.equal(tests.env?.WM_EXPECT_SCRIPTS_DEPS, '1');
+  });
+
+  it('versions the key with the blog-site install command', () => {
+    const scripts = JSON.parse(read(resolve(root, 'package.json'))).scripts;
+    assert.equal(
+      scripts['ci:blog-site'],
+      'cross-env npm_config_allow_scripts= npm --prefix blog-site ci --prefer-offline',
+      'ci:blog-site changed: bump nested-deps-vN in the unit-shards cache key, then update this string',
+    );
+    assert.match(restore.with.key, /^nested-deps-v1-/);
+  });
 });
 
 describe('shipped desktop Node coverage (#5909, #9906)', () => {

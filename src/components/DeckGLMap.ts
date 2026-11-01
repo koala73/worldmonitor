@@ -702,6 +702,7 @@ export class DeckGLMap {
   private tradeReducedMotionMedia: MediaQueryList | null = null;
   private storedChokepointData: GetChokepointStatusResponse | null = null;
   private highlightedRouteIds: Set<string> = new Set();
+  private highlightedLane: { routeId: string; path: [number, number][]; chokepointIds: string[] } | null = null;
   private highlightedMarkers: HighlightedMarker[] = [];
   private bypassArcData: BypassArcDatum[] = [];
   private scenarioState: ScenarioVisualState | null = null;
@@ -2423,6 +2424,8 @@ export class DeckGLMap {
       layers.push(this.createTradeRoutesLayer());
       layers.push(this.createTradeRouteTripsLayer());
       layers.push(this.createTradeChokepointsLayer());
+      const hlLane = this.createHighlightedLaneLayer();
+      if (hlLane) layers.push(hlLane);
       const hlMarkers = this.createHighlightedChokepointMarkers();
       if (hlMarkers) layers.push(hlMarkers);
       const bypassArcs = this.createBypassArcsLayer();
@@ -7014,11 +7017,18 @@ export class DeckGLMap {
     });
   }
 
+  private tradeRoutePalette(): Record<'active' | 'disrupted' | 'highRisk' | 'scenario', [number, number, number, number]> {
+    const light = getCurrentTheme() === 'light';
+    return {
+      active: light ? [30, 100, 180, 200] : [100, 200, 255, 160],
+      disrupted: light ? [200, 40, 40, 220] : [255, 80, 80, 200],
+      highRisk: light ? [200, 140, 20, 200] : [255, 180, 50, 180],
+      scenario: light ? [220, 100, 20, 230] : [255, 140, 50, 210],
+    };
+  }
+
   private createTradeRoutesLayer(): ArcLayer<TradeRouteSegment> {
-    const active: [number, number, number, number] = getCurrentTheme() === 'light' ? [30, 100, 180, 200] : [100, 200, 255, 160];
-    const disrupted: [number, number, number, number] = getCurrentTheme() === 'light' ? [200, 40, 40, 220] : [255, 80, 80, 200];
-    const highRisk: [number, number, number, number] = getCurrentTheme() === 'light' ? [200, 140, 20, 200] : [255, 180, 50, 180];
-    const scenario: [number, number, number, number] = getCurrentTheme() === 'light' ? [220, 100, 20, 230] : [255, 140, 50, 210];
+    const { active, disrupted, highRisk, scenario } = this.tradeRoutePalette();
     const colorFor = (status: string): [number, number, number, number] =>
       status === 'disrupted' ? disrupted : status === 'high_risk' ? highRisk : active;
 
@@ -7028,7 +7038,7 @@ export class DeckGLMap {
       ? new Set(this.scenarioState.disruptedChokepointIds)
       : null;
 
-    const hlActive = this.highlightedRouteIds.size > 0;
+    const hlActive = this.highlightedRouteIds.size > 0 || Boolean(this.highlightedLane);
     const hlIds = this.highlightedRouteIds;
 
     const dimColor = (c: [number, number, number, number]): [number, number, number, number] =>
@@ -7084,7 +7094,7 @@ export class DeckGLMap {
       ? new Set(this.scenarioState.disruptedChokepointIds)
       : null;
 
-    const hlActive = this.highlightedRouteIds.size > 0;
+    const hlActive = this.highlightedRouteIds.size > 0 || Boolean(this.highlightedLane);
     const hlIds = this.highlightedRouteIds;
 
     const colorForRoute = (routeId: string, status: string): [number, number, number, number] => {
@@ -7232,12 +7242,12 @@ export class DeckGLMap {
   }
 
   private rebuildHighlightedMarkers(): void {
-    if (this.highlightedRouteIds.size === 0) { this.highlightedMarkers = []; return; }
-    const cpIds = new Set<string>();
+    const cpIds = new Set<string>(this.highlightedLane?.chokepointIds ?? []);
     for (const routeId of this.highlightedRouteIds) {
       const waypoints = ROUTE_WAYPOINTS_MAP.get(routeId);
       if (waypoints) for (const wp of waypoints) cpIds.add(wp);
     }
+    if (cpIds.size === 0) { this.highlightedMarkers = []; return; }
     this.highlightedMarkers = STRATEGIC_WATERWAYS
       .filter(w => cpIds.has(w.id))
       .map(w => {
@@ -7275,6 +7285,39 @@ export class DeckGLMap {
         getRadius: [this.tradeAnimationTime],
         getFillColor: [this.storedChokepointData],
       },
+    });
+  }
+
+  /** The route explorer's lane: only the part of its route between the two countries. */
+  private createHighlightedLaneLayer(): ArcLayer<BypassArcDatum> | null {
+    const lane = this.highlightedLane;
+    if (!lane || lane.path.length < 2) return null;
+    const { active, disrupted, highRisk, scenario } = this.tradeRoutePalette();
+    // Same rules as the route arcs (refreshTradeRouteStatus, setScenarioState),
+    // applied to the lane's own chokepoints only: a disruption past the
+    // destination does not color a lane that never reaches it.
+    const scores = new Map((this.storedChokepointData?.chokepoints ?? []).map((cp) => [cp.id, cp.disruptionScore ?? 0]));
+    const maxScore = lane.chokepointIds.reduce((max, id) => Math.max(max, scores.get(id) ?? 0), 0);
+    const scenarioHit = (this.scenarioState?.disruptedChokepointIds ?? []).some((id) => lane.chokepointIds.includes(id));
+    const color = scenarioHit
+      ? scenario
+      : !hasPremiumAccess(getAuthState())
+        ? active
+        : maxScore >= 70 ? disrupted : maxScore > 30 ? highRisk : active;
+    const legs: BypassArcDatum[] = [];
+    for (let i = 1; i < lane.path.length; i++) legs.push({ source: lane.path[i - 1]!, target: lane.path[i]! });
+    return new ArcLayer<BypassArcDatum>({
+      id: 'highlighted-lane-layer',
+      data: legs,
+      getSourcePosition: (d) => d.source,
+      getTargetPosition: (d) => d.target,
+      getSourceColor: color,
+      getTargetColor: color,
+      getWidth: 6,
+      widthMinPixels: 1,
+      widthMaxPixels: 8,
+      greatCircle: true,
+      pickable: false,
     });
   }
 
@@ -7833,14 +7876,33 @@ export class DeckGLMap {
 
   public highlightRoute(routeIds: string[]): void {
     this.highlightedRouteIds = new Set(routeIds);
+    this.highlightedLane = null;
     this.rebuildHighlightedMarkers();
     this.buildTradeTrips();
     this.render();
   }
 
+  /**
+   * Highlight one country pair's lane instead of its whole route: every route
+   * is dimmed, the lane's own path is drawn, only its chokepoints pulse, and
+   * the view fits the lane.
+   */
+  public highlightLane(
+    lane: { routeId: string; path: [number, number][]; chokepointIds: string[] },
+    occluder?: { left: number; right: number },
+  ): void {
+    this.highlightedRouteIds = new Set();
+    this.highlightedLane = { routeId: lane.routeId, path: [...lane.path], chokepointIds: [...lane.chokepointIds] };
+    this.rebuildHighlightedMarkers();
+    this.buildTradeTrips();
+    this.fitToPositions(lane.path, occluder);
+    this.render();
+  }
+
   public clearHighlightedRoute(): void {
-    if (this.highlightedRouteIds.size === 0) return;
+    if (this.highlightedRouteIds.size === 0 && !this.highlightedLane) return;
     this.highlightedRouteIds.clear();
+    this.highlightedLane = null;
     this.rebuildHighlightedMarkers();
     this.buildTradeTrips();
     this.render();
@@ -7858,6 +7920,33 @@ export class DeckGLMap {
     if (this.bypassArcData.length === 0) return;
     this.bypassArcData = [];
     this.render();
+  }
+
+  /**
+   * Fit the view to a set of [lon, lat] positions. Both map initializers set
+   * `renderWorldCopies: false`, so the camera is held inside one world: a lane
+   * across the antimeridian (US to Korea) cannot be framed the short way
+   * round, and bounds shifted past 180° are clamped to a view that drops one
+   * end. Plain -180..180 bounds keep both ends on screen.
+   * `occluder` is the screen box of a panel drawn over the map's left edge
+   * (the route explorer); the fit keeps the positions clear of it.
+   */
+  private fitToPositions(positions: [number, number][], occluder?: { left: number; right: number }): void {
+    if (!this.maplibreMap || positions.length === 0) return;
+    const lons = positions.map(([lon]) => lon);
+    const lats = positions.map(([, lat]) => lat);
+    const PAD = 60;
+    let left = PAD;
+    if (occluder) {
+      const box = this.container.getBoundingClientRect();
+      const covered = occluder.right - Math.max(box.left, occluder.left);
+      // Only a panel over the left edge that still leaves room for the lane moves the fit.
+      if (occluder.left <= box.left + 1 && covered > 0 && box.width - covered >= 3 * PAD) left = covered + PAD;
+    }
+    this.maplibreMap.fitBounds(
+      [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+      { padding: { top: PAD, bottom: PAD, right: PAD, left }, duration: 1000 },
+    );
   }
 
   public zoomToRoutes(routeIds: string[]): void {

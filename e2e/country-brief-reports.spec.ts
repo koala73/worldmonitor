@@ -384,7 +384,9 @@ test('commodity decision brief desktop dark preserves presentation and all commo
       await expect(paper).toContainText('hospital helium supplier share');
       await expect(paper.locator('[data-origin="QA"]')).toContainText('Strait of Hormuz');
       expect(snapshot.candidates.find((c: { origin: string }) => c.origin === 'QA').routeState).toBe('exposed');
-      expect(snapshot.candidates.find((c: { origin: string }) => c.origin === 'US').routeState).toBe('unknown');
+      // US-Japan is modeled through both coasts (Panama, not Hormuz).
+      expect(snapshot.candidates.find((c: { origin: string }) => c.origin === 'US').routeState).toBe('not_on_modeled_route');
+      expect(snapshot.candidates.find((c: { origin: string }) => c.origin === 'US').transitChokepoints).toEqual(['panama']);
       await expect(paper.locator('[data-origin="US"]')).toContainText('39.2%');
       await expect(paper).toContainText('999 (Unknown partner');
       // U5: the hub badge sits outside the collapsed details, so it is visible
@@ -392,11 +394,11 @@ test('commodity decision brief desktop dark preserves presentation and all commo
       await expect(paper.locator('[data-origin="NL"]')).toContainText('Possible transit hub');
       await expect(paper.locator('[data-origin="US"]')).not.toContainText('Possible transit hub');
       expect(snapshot.candidates.find((c: { origin: string }) => c.origin === 'NL').transitHub).toBe(true);
-      // NL is the only origin whose modeled route avoids the blocked chokepoint,
-      // so the hub preference (which never crosses route-state tiers) cannot
-      // skip it: the action names NL and says the flag was unavoidable there.
-      expect(snapshot.action.text).toContain("Validate NL's");
-      expect(snapshot.action.text).toContain('Every eligible origin with this route state is flagged a possible transit hub');
+      // US and NL both have modeled routes that avoid the blocked chokepoint.
+      // US holds the larger share and is not a possible hub, so the action
+      // names US; NL keeps its hub flag in the evidence.
+      expect(snapshot.action.text).toContain("Validate US's");
+      expect(snapshot.action.text).not.toContain('Every eligible origin with this route state is flagged');
     } else if (commodity === 'wheat') {
       expect(snapshot.candidates.map((c: { origin: string }) => c.origin)).toEqual(['AU']);
       expect(snapshot.candidates[0].routeState).toBe('unknown');

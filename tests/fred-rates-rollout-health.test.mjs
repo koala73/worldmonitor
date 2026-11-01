@@ -317,7 +317,7 @@ test('production handleHealth parses FRED rollout slots without softening partia
   try {
     const absent = await readProductionHealth(null);
     const absentCommands = absent.getSweepCommands();
-    assert.deepEqual(absentCommands.slice(-2), [
+    assert.deepEqual(absentCommands.filter(command => command[1] === FRED_RATES_ROLLOUT_DEADLINE_KEY), [
       ['SET', FRED_RATES_ROLLOUT_DEADLINE_KEY, String(UNTIL), 'NX'],
       ['GET', FRED_RATES_ROLLOUT_DEADLINE_KEY],
     ]);

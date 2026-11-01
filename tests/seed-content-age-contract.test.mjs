@@ -280,26 +280,37 @@ test('content-meta throwing → treated as null, runSeed continues, newestItemAt
 test('content-meta with valid timestamps → newestItemAt/oldestItemAt populated', async () => {
   const NEWEST = 1700000000000;
   const OLDEST = 1690000000000;
-  await runWithExitTrap(() =>
-    runSeed('test', 'valid-timestamps', 'test:valid-timestamps:v1', async () => ({ items: [{ ts: NEWEST }, { ts: OLDEST }] }), {
-      validateFn: (d) => d?.items?.length >= 1,
-      ttlSeconds: 3600,
-      declareRecords: (d) => d.items.length,
-      sourceVersion: 'valid-ts-v1',
-      schemaVersion: 1,
-      maxStaleMin: 1440,
-      contentMeta: (d) => ({
-        newestItemAt: Math.max(...d.items.map((i) => i.ts)),
-        oldestItemAt: Math.min(...d.items.map((i) => i.ts)),
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(' '));
+  try {
+    await runWithExitTrap(() =>
+      runSeed('test', 'valid-timestamps', 'test:valid-timestamps:v1', async () => ({ items: [{ ts: NEWEST }, { ts: OLDEST }] }), {
+        validateFn: (d) => d?.items?.length >= 1,
+        ttlSeconds: 3600,
+        declareRecords: (d) => d.items.length,
+        sourceVersion: 'valid-ts-v1',
+        schemaVersion: 1,
+        maxStaleMin: 1440,
+        contentMeta: (d) => ({
+          newestItemAt: Math.max(...d.items.map((i) => i.ts)),
+          oldestItemAt: Math.min(...d.items.map((i) => i.ts)),
+        }),
+        maxContentAgeMin: 1440,
       }),
-      maxContentAgeMin: 1440,
-    }),
-  );
+    );
 
-  const meta = lastMetaSetBody('valid-timestamps');
-  assert.equal(meta.newestItemAt, NEWEST);
-  assert.equal(meta.oldestItemAt, OLDEST);
-  assert.equal(meta.maxContentAgeMin, 1440);
+    const meta = lastMetaSetBody('valid-timestamps');
+    assert.equal(meta.newestItemAt, NEWEST);
+    assert.equal(meta.oldestItemAt, OLDEST);
+    assert.equal(meta.maxContentAgeMin, 1440);
+    const receipt = logs.map(line => { try { return JSON.parse(line); } catch { return null; } }).find(row => row?.event === 'seed_complete');
+    assert.equal(receipt.newestItemAt, NEWEST);
+    assert.equal(receipt.oldestItemAt, OLDEST);
+    assert.equal(receipt.maxContentAgeMin, 1440);
+    assert.equal(receipt.canonicalKey, 'test:valid-timestamps:v1');
+    assert.equal(typeof receipt.runId, 'string');
+  } finally { console.log = originalLog; }
 });
 
 test('runSeed passes one run clock and publishes null for a persisted future GDELT stamp', async () => {
@@ -458,4 +469,36 @@ test('legacy: seeder without contentMeta writes seed-meta in legacy shape (no co
   assert.ok(!('newestItemAt' in meta), 'newestItemAt absent — legacy shape preserved');
   assert.ok(!('oldestItemAt' in meta), 'oldestItemAt absent');
   assert.ok(!('maxContentAgeMin' in meta), 'maxContentAgeMin absent — opt-in signal NOT set for legacy seeders');
+});
+
+test('initial fetch failure records an error with NX and no success timestamp', async () => {
+  const result = await runWithExitTrap(() => runSeed('test', 'first-failure', 'test:first-failure:v1', async () => {
+    throw new Error('provider unavailable');
+  }, { recordInitialFetchFailure: true }));
+  assert.equal(result.exitCode, 75);
+  const command = recordedCalls.map(c => c.body).find(c => Array.isArray(c)
+    && c[0] === 'SET' && c[1] === 'seed-meta:test:first-failure');
+  assert.ok(command);
+  assert.equal(command.at(-1), 'NX');
+  assert.equal(command.length, 4);
+  const meta = JSON.parse(command[2]);
+  assert.equal(meta.status, 'error');
+  assert.equal(typeof meta.firstFailureAt, 'number');
+  assert.equal(meta.fetchedAt, undefined);
+  assert.equal(meta.recordCount, 0);
+  assert.equal(JSON.stringify(meta).includes('provider unavailable'), false);
+});
+
+
+test('legacy completion receipt preserves the published acquisition clock', async () => {
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(' '));
+  try {
+    await runWithExitTrap(() => runSeed('test', 'legacy-receipt', 'test:legacy-receipt:v1', async () => ({ items: [1] })));
+    const receipt = logs.map(line => { try { return JSON.parse(line); } catch { return null; } }).find(row => row?.event === 'seed_complete');
+    const meta = lastMetaSetBody('legacy-receipt');
+    assert.equal(typeof meta.fetchedAt, 'number');
+    assert.equal(receipt.fetchedAt, meta.fetchedAt);
+  } finally { console.log = originalLog; }
 });

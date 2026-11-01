@@ -376,12 +376,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            pro-test/package-lock.json
-            blog-site/package-lock.json
-            scripts/package-lock.json
       # tests/pizzint-history-redis.test.mjs is the only place the PizzINT
       # archive's Lua runs against a real server: the relay harness stubs the
       # EVAL and the proxy command-gate test only matches the script TEXT. That
@@ -394,26 +388,50 @@ jobs:
       # fails the shard if the binaries are missing.
       #
       # It runs before install-root-deps, not beside it: both composite actions
-      # use actions/cache, which this job does not reference at the top level,
-      # so in a parallel group the runner downloaded it twice at once and one
-      # copy failed ("Could not find file .../actions/cache/<sha>/examples.md",
-      # run 39936254975). Run in turn, the second reuses the first download.
+      # use actions/cache, and when a job does not reference it at the top
+      # level, a parallel group made the runner download it twice at once and
+      # one copy failed ("Could not find file .../actions/cache/<sha>/examples.md",
+      # run 39936254975). This job now references actions/cache/restore and
+      # save directly, so the runner fetches them at setup; keep the steps
+      # sequential anyway.
       - name: Install Redis for the archive Lua suite
         uses: ./.github/actions/install-redis
       - uses: ./.github/actions/install-root-deps
+      # The two nested trees are restored whole, like the root tree. Restoring
+      # setup-node's npm download cache for them cost 4-9s per shard, and the
+      # two installs another 7-10s. The key hashes every file that decides
+      # their contents; bump the version when an install command below (or
+      # ci:blog-site in package.json) changes.
+      - name: Restore blog-site and scripts/ dependencies
+        id: nested-deps
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          # setup-node restores the npm cache for this job's other install.
-          npm-cache: 'false'
+          path: |
+            blog-site/node_modules
+            scripts/node_modules
+          key: nested-deps-v1-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('blog-site/package.json', 'blog-site/package-lock.json', 'blog-site/.npmrc', 'scripts/package.json', 'scripts/package-lock.json', 'scripts/.npmrc', '.npmrc', 'vendor/http-cache-semantics/**') }}
       - name: Install blog-site deps for SEO contract tests
         # Unit-only nested install; keeps postinstall free of blog-site.
-        # Needed so blog-seo-contract can load astro.config.mjs.
+        # tests/dependency-backports.test.mjs checks the patched source Astro
+        # installs, and skips that check when blog-site/node_modules is absent.
+        if: steps.nested-deps.outputs.cache-hit != 'true'
         run: npm run ci:blog-site
       - name: Install scripts/ deps for the seeder link check
         # Railway seeders install scripts/package-lock.json, not the root tree.
         # tests/nixpacks-seeder-import-graph.test.mjs links their named package
         # imports against this install (#9608 shipped an undici 8 import to an
-        # undici 7 container with every suite green).
+        # undici 7 container with every suite green). WM_EXPECT_SCRIPTS_DEPS
+        # below fails the shard if a restored tree is missing it.
+        if: steps.nested-deps.outputs.cache-hit != 'true'
         run: npm ci --prefix scripts --ignore-scripts --no-audit --no-fund
+      - name: Save blog-site and scripts/ dependencies
+        if: steps.nested-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            blog-site/node_modules
+            scripts/node_modules
+          key: ${{ steps.nested-deps.outputs.cache-primary-key }}
       - name: Data tests without built output
         # No build here: the unit-built-output job builds dist/ and public/pro/
         # once and runs every suite that names them. The marker stays set, so a
