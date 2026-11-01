@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCREStationPrices, validateFuel, withFuelRetry, fetchUS_EIA } from '../scripts/seed-fuel-prices.mjs';
+import { parseCREStationPrices, validateFuel, withFuelRetry, fetchUS_EIA, regionalFuelEntries, FUEL_FX_CURRENCIES } from '../scripts/seed-fuel-prices.mjs';
+import { SHARED_FX_FALLBACKS } from '../scripts/_seed-utils.mjs';
 
 test('withFuelRetry returns the first success without retrying', async () => {
   let calls = 0;
@@ -187,4 +188,80 @@ test('validateFuel rejects null/undefined/empty', () => {
   assert.equal(validateFuel(undefined), false);
   assert.equal(validateFuel({}), false);
   assert.equal(validateFuel({ countries: [] }), false);
+});
+
+// Fiji, Papua New Guinea and Guatemala prices come from the regional energy
+// feeds already in Redis (#9893); Brazil's ANP feed backs up the direct fetch.
+const obs = (period, value, unit, area, metric = 'fuel.retail_price') => ({ metric, period, value, unit, area });
+const NOW = Date.parse('2026-11-02T12:00:00Z');
+
+test('regionalFuelEntries maps the newest regional retail prices to fuel-panel rows', () => {
+  const entries = regionalFuelEntries({
+    mem: { sourceId: 'mem', observations: [
+      obs('2026-10-28', 32.07, 'GTQ/gal', 'Gasolina Regular; Guatemala City'),
+      obs('2026-10-27', 32.5, 'GTQ/gal', 'Gasolina Regular; Guatemala City'),
+      obs('2026-10-28', 42.69, 'GTQ/gal', 'Diésel; Guatemala City'),
+      obs('2026-10-28', 26.99, 'GTQ/gal', 'Bunker; Guatemala City', 'fuel.price'),
+    ] },
+    fccc: { sourceId: 'fccc', observations: [
+      obs('2026-11-01', 3.7, 'FJD/l', 'Motor Spirit; Schedule 1'),
+      obs('2026-11-01', 3.9, 'FJD/l', 'Motor Spirit; Schedule 2'),
+      obs('2026-11-01', 3.86, 'FJD/l', 'Diesel; Schedule 1'),
+    ] },
+    iccc: { sourceId: 'iccc', observations: [
+      obs('2026-10-08', 4.69, 'PGK/l', 'Petrol; Port Moresby'),
+      obs('2026-10-08', 5.9, 'PGK/l', 'Diesel; Port Moresby'),
+      obs('2026-10-08', 7.31, 'PGK/l', 'Diesel; Port Moresby', 'fuel.retail_price.unsubsidized'),
+    ] },
+    anp: { sourceId: 'anp', observations: [
+      obs('2026-10-24', 6.49, 'BRL/l', 'GASOLINA COMUM'),
+      obs('2026-10-24', 6.99, 'BRL/l', 'OLEO DIESEL'),
+      obs('2026-10-24', 7.32, 'BRL/l', 'OLEO DIESEL S10'),
+    ] },
+  }, NOW);
+  const by = Object.fromEntries(entries.map(e => [e.code, e]));
+  assert.deepEqual(Object.keys(by).sort(), ['BR', 'FJ', 'GT', 'PG']);
+
+  // MEM publishes per US gallon; the panel is per litre.
+  assert.equal(by.GT.currency, 'GTQ');
+  assert.equal(by.GT.gasoline.localPrice, 8.472);
+  assert.equal(by.GT.gasoline.observedAt, '2026-10-28');
+  assert.equal(by.GT.gasoline.source, 'mem.gob.gt');
+  assert.equal(by.GT.diesel.localPrice, 11.2775);
+  assert.equal(by.FJ.gasoline.localPrice, 3.7, 'Schedule 1: Viti Levu, the main schedule');
+  assert.equal(by.FJ.diesel.localPrice, 3.86);
+  assert.equal(by.PG.diesel.localPrice, 5.9, 'retail, not the unsubsidised price');
+  assert.equal(by.PG.gasoline.localPrice, 4.69);
+  assert.equal(by.BR.gasoline.localPrice, 6.49);
+  assert.equal(by.BR.diesel.localPrice, 6.99);
+});
+
+test('validateFuel tolerates an unavailable regional feed set', () => {
+  const countries = [{ code: 'US' }, { code: 'GB' }, { code: 'MY' }, ...Array.from({ length: 27 }, (_, i) => ({ code: `EU${i}` }))];
+  assert.equal(validateFuel({ countries, failedSources: ['Regional feeds'] }), true);
+});
+
+test('regionalFuelEntries skips stale, missing and unexpected-unit series', () => {
+  const entries = regionalFuelEntries({
+    // A Guatemala price three months old is not shown as current.
+    mem: { sourceId: 'mem', observations: [obs('2026-08-01', 32, 'GTQ/gal', 'Gasolina Regular; Guatemala City')] },
+    // A changed unit is not converted by guesswork.
+    iccc: { sourceId: 'iccc', observations: [obs('2026-10-08', 469, 'toea/l', 'Petrol; Port Moresby')] },
+    // Diesel only: the row keeps an empty gasoline cell.
+    fccc: { sourceId: 'fccc', observations: [obs('2026-11-01', 3.86, 'FJD/l', 'Diesel; Schedule 1')] },
+    // A record for another source is ignored.
+    anp: { sourceId: 'mem', observations: [obs('2026-10-24', 6.49, 'BRL/l', 'GASOLINA COMUM')] },
+  }, NOW);
+  assert.deepEqual(entries.map(e => e.code), ['FJ']);
+  assert.equal(entries[0].gasoline, null);
+  assert.equal(entries[0].diesel.localPrice, 3.86);
+});
+
+test('FX currencies without a fallback rate are requested first, inside the point-of-use budget', () => {
+  // getSharedFxRates fetches at most five currencies from Yahoo when the shared cache is cold
+  // or missing them; later ones fall back to SHARED_FX_FALLBACKS, so rows without one would vanish.
+  const withoutFallback = FUEL_FX_CURRENCIES.filter(c => SHARED_FX_FALLBACKS[c] == null);
+  for (const c of ['GTQ', 'FJD', 'PGK']) assert.ok(withoutFallback.includes(c), c);
+  assert.ok(withoutFallback.length <= 5, `only five point-of-use FX requests fit; ${withoutFallback.length} lack a fallback`);
+  assert.deepEqual(FUEL_FX_CURRENCIES.slice(0, withoutFallback.length), withoutFallback);
 });

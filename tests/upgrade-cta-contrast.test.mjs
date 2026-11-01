@@ -210,6 +210,42 @@ describe('upgrade CTAs are readable in both themes', () => {
   }
 });
 
+/**
+ * Status text drawn in a semantic color (error red, positive green, elevated
+ * orange/amber). The light palette's raw values sit at 3.2-3.6:1 on white, so
+ * text reads the light-only `--X-text` shades first (tests/light-semantic-text.test.mjs).
+ */
+const STATUS_TEXT = [
+  ['main.css', '.panel-summary-error'],
+  ['main.css', '.gdelt-trend-value.negative'],
+  ['main.css', '.gdelt-trend-value.positive'],
+  ['main.css', '.telegram-intel-preview-card.is-error'],
+  ['main.css', '.insights-convergence .insights-section-title'],
+  ['main.css', '.insight-badge.velocity.elevated'],
+  ['main.css', '.history-event.cyclical'],
+  ['country-deep-dive.css', '.cdp-maritime-anomaly'],
+];
+
+describe('semantic status text is readable in both themes', () => {
+  for (const [file, selector] of STATUS_TEXT) {
+    it(selector, () => {
+      const base = rules(sheets[file]).filter((r) => r.selector === selector && declaration(r.body, 'color')).pop();
+      assert.ok(base, `${selector} declares no text color in ${file}`);
+      const ownBackground = declaration(base.body, 'background');
+      // Translucent tints sit on the panel surface; judge them against it.
+      const background = ownBackground && !/transparent|rgba\(|hsla\(/.test(ownBackground) ? ownBackground : 'var(--surface)';
+      const text = declaration(base.body, 'color');
+      for (const [name, theme] of themesFor(file)) {
+        const [fg] = colors(text, theme);
+        for (const bg of colors(background, theme)) {
+          const ratio = contrast(fg, bg);
+          assert.ok(ratio >= 4.5, `${selector} (${name}): text ${fg} on ${bg} is ${ratio.toFixed(2)}:1`);
+        }
+      }
+    });
+  }
+});
+
 describe('accent and green backgrounds keep readable text in both themes', () => {
   const failures = [];
   const judged = [];

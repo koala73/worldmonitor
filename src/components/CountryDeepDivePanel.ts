@@ -93,10 +93,11 @@ const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_DIVERSIFIABLE:            { text: 'Diversifiable',   cls: 'cdp-dep-ok' },
 };
 import { toApiUrl } from '@/services/runtime';
-import type { ComputeEnergyShockScenarioResponse, CrudeShareBaseline, ProductImpact } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import type { ComputeEnergyShockScenarioResponse, CrudeShareBaseline, ProductImpact, RegionalEnergyFeed } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { overlayHistory, type OverlayCloseOrigin } from '@/utils/overlay-history';
 import type { GetDefenseIndustrialBaseResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
+import { regionalFeedStatusNote, regionalFeedTitle, regionalLatestPeriod, regionalSeriesRows } from './regional-energy-presentation';
 
 
 type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
@@ -1419,9 +1420,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!data.jodiGasAvailable) sourceNotes.push(this.el('p', 'cdp-economic-source', 'JODI gas data not supplied in this profile.'));
     if (!data.ieaStocksAvailable) sourceNotes.push(this.el('p', 'cdp-economic-source', 'IEA oil stocks data not supplied in this profile.'));
 
+    // Feeds the server could not find for this country come back 'unavailable'; errors still render a note.
+    const regionalFeeds = (data.regionalEnergyFeeds ?? []).filter(feed => feed.status !== 'unavailable');
     const hasAny = data.mixAvailable || data.jodiOilAvailable || data.ieaStocksAvailable
       || data.jodiGasAvailable || data.gasStorageAvailable || data.electricityAvailable
-      || data.emberAvailable || data.sprAvailable || data.importShareAvailable;
+      || data.emberAvailable || data.sprAvailable || data.importShareAvailable
+      || regionalFeeds.length > 0;
 
     if (!hasAny) {
       this.energyBody.append(this.makeEmpty('Energy data unavailable for this country.'), ...sourceNotes);
@@ -1728,12 +1732,67 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.energyBody!.append(section);
     }
 
+    if (regionalFeeds.length) this.energyBody.append(this.renderRegionalEnergyFeeds(regionalFeeds));
+
     if (data.jodiOilAvailable || data.jodiGasAvailable) {
       this.energyBody.append(this.renderShockScenarioWidget());
     }
 
     this.energyBody.append(...sourceNotes);
     this.renderAtlasExposure();
+  }
+
+  private renderRegionalEnergyFeeds(feeds: RegionalEnergyFeed[]): HTMLElement {
+    const section = this.el('div', 'cdp-regional-energy');
+    section.append(this.el('div', 'cdp-subtitle', 'National energy data'));
+    for (const feed of feeds) {
+      const rows = regionalSeriesRows(feed);
+      const details = this.el('details', 'cdp-regional-energy-feed');
+      details.open = rows.length > 0 && rows.length <= 10;
+      const summary = this.el('summary');
+      summary.append(this.el('span', 'cdp-regional-energy-name', regionalFeedTitle(feed)));
+      const facts = [regionalLatestPeriod(feed), rows.length ? `${rows.length} series` : ''].filter(Boolean);
+      if (facts.length) summary.append(this.el('span', 'cdp-regional-energy-meta', facts.join(' · ')));
+      const note = regionalFeedStatusNote(feed.status);
+      if (note) summary.append(this.el('span', 'cdp-regional-energy-note', note));
+      details.append(summary);
+
+      if (rows.length) {
+        const table = this.el('table', 'cdp-maritime-table cdp-regional-energy-table');
+        // The summary already names the latest date; repeat it per row only when rows differ or lag.
+        const showDate = rows.some(row => row.stale) || new Set(rows.map(row => row.period)).size > 1;
+        const headRow = this.el('tr');
+        for (const heading of ['Series', 'Latest', 'Change', ...(showDate ? ['Date'] : [])]) headRow.append(this.el('th', '', heading));
+        const thead = this.el('thead');
+        thead.append(headRow);
+        const tbody = this.el('tbody');
+        for (const row of rows) {
+          const tr = this.el('tr', row.stale ? 'cdp-regional-energy-stale' : '');
+          if (row.stale) tr.title = 'Not updated recently';
+          const label = this.el('td', '', row.label);
+          if (row.detail) label.append(this.el('div', 'cdp-regional-energy-detail', row.detail));
+          const change = this.el('td', 'cdp-regional-energy-change', row.change);
+          if (row.changeTitle) change.title = row.changeTitle;
+          tr.append(label, this.el('td', 'cdp-regional-energy-value', row.latest), change);
+          if (showDate) tr.append(this.el('td', '', row.stale ? `${row.period} · not recent` : row.period));
+          tbody.append(tr);
+        }
+        table.append(thead, tbody);
+        const scroll = this.el('div', 'cdp-regional-energy-scroll');
+        scroll.append(table);
+        details.append(scroll);
+      }
+
+      const source = this.el('div', 'cdp-economic-source', 'Source: ');
+      const link = this.el('a', '', regionalFeedTitle(feed));
+      link.href = feed.sourceUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      source.append(link);
+      details.append(source);
+      section.append(details);
+    }
+    return section;
   }
 
   private renderAtlasExposure(hostRefresh = false): void {

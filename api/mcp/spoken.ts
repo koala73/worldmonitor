@@ -1,4 +1,5 @@
 import { displayNameForIso2 } from '../../server/_shared/country-normalize';
+import { arabicCountryDisplayName } from '../../shared/country-code-resolve-arabic';
 import { isPlainObject } from './utils';
 
 // ---------------------------------------------------------------------------
@@ -28,6 +29,25 @@ export const RESPONSE_MODE_SCHEMA: { type: 'string'; enum: string[]; description
   description: '"spoken" returns 2-3 plain-language sentences for text-to-speech plus structured citations instead of the full payload; "full" (default) returns the documented shape.',
 };
 
+// `spoken_language` (#9722, "Arabic queries and answers over MCP"). The
+// narrators keep one data path and pick their sentence wording by language,
+// so an Arabic answer speaks exactly the numbers the English one does.
+// Numbers stay in Western digits, which every Arabic TTS voice reads.
+// Headlines, market and forecast titles are data, not template text, and stay
+// in the language they were published in.
+export const SPOKEN_LANGUAGES = ['en', 'ar'] as const;
+export type SpokenLanguage = (typeof SPOKEN_LANGUAGES)[number];
+
+export const SPOKEN_LANGUAGE_SCHEMA: { type: 'string'; enum: string[]; description: string } = {
+  type: 'string',
+  enum: [...SPOKEN_LANGUAGES],
+  description: 'Language of the spoken sentences, used only with response_mode "spoken": "en" (default) or "ar" (Modern Standard Arabic). Numbers stay in Western digits; headline and market titles keep their source language.',
+};
+
+export function spokenLanguageOf(value: unknown): SpokenLanguage {
+  return value === 'ar' ? 'ar' : 'en';
+}
+
 export const SPOKEN_MAX_CHARS = 500;
 export const SPOKEN_MAX_SENTENCES = 3;
 
@@ -51,11 +71,17 @@ export interface SpokenNarration {
   asOf: string | null;
 }
 
-export type SpokenNarrator = (result: Record<string, unknown>, args: Record<string, unknown>, now: number) => SpokenNarration;
+export type SpokenNarrator = (
+  result: Record<string, unknown>,
+  args: Record<string, unknown>,
+  now: number,
+  lang: SpokenLanguage,
+) => SpokenNarration;
 
 export interface SpokenEnvelope {
   tool: string;
   spoken: string;
+  language: SpokenLanguage;
   citations: SpokenCitation[];
   stale: boolean;
   asOf: string | null;
@@ -66,14 +92,16 @@ export function buildSpokenEnvelope(
   result: Record<string, unknown>,
   args: Record<string, unknown>,
   now = Date.now(),
+  lang: SpokenLanguage = 'en',
 ): SpokenEnvelope {
   if (!tool._spoken) throw new Error(`${tool.name} has no spoken narrator`);
-  const narration = tool._spoken(result, args, now);
-  const spoken = narration.sentences.map(cleanSpeech).filter((sentence) => sentence.length > 0);
-  const caveat = narration.caveat === undefined ? undefined : cleanSpeech(narration.caveat);
+  const narration = tool._spoken(result, args, now, lang);
+  const spoken = narration.sentences.map((sentence) => cleanSpeech(sentence, lang)).filter((sentence) => sentence.length > 0);
+  const caveat = narration.caveat === undefined ? undefined : cleanSpeech(narration.caveat, lang);
   return {
     tool: tool.name,
     spoken: fitSpeech(spoken, caveat),
+    language: lang,
     citations: narration.citations.map((citation) => ({
       source: citation.source,
       ...(citation.title === undefined ? {} : { title: citation.title }),
@@ -126,28 +154,30 @@ function shortenSentence(sentence: string, limit: number): string {
 // ---------------------------------------------------------------------------
 
 /** Final pass over one sentence: strip markup and links, settle punctuation. */
-export function cleanSpeech(text: string): string {
+export function cleanSpeech(text: string, lang: SpokenLanguage = 'en'): string {
+  // Arabic prose takes the Arabic comma, and a percent sign is read "في المئة".
+  const comma = lang === 'ar' ? '،' : ',';
   let out = text
     .replace(/https?:\/\/\S+|www\.\S+/gi, '')
     .replace(/\[\d+\]/g, '')
     .replace(/[*_`#|<>{}[\]]/g, '')
-    .replace(/\s*\(([^)]*)\)/g, (_match, inner: string) => (inner.trim() ? `, ${inner.trim()}` : ''))
-    .replace(/%/g, ' percent')
+    .replace(/\s*\(([^)]*)\)/g, (_match, inner: string) => (inner.trim() ? `${comma} ${inner.trim()}` : ''))
+    .replace(/[%٪]/g, lang === 'ar' ? ' في المئة' : ' percent')
     .replace(/\b(?:[A-Z]\.){2,}/g, (abbr) => abbr.replace(/\./g, ''))
-    .replace(/\s+,/g, ',')
-    .replace(/,\s*,/g, ',')
+    .replace(/\s+([,،])/g, '$1')
+    .replace(/([,،])\s*[,،]/g, '$1')
     .replace(/\s+/g, ' ')
     .trim();
   if (out.length === 0) return out;
-  out = out.replace(/[,;:]+$/, '');
-  if (!/[.!?]$/.test(out)) out += '.';
+  out = out.replace(/[,;:،؛]+$/, '');
+  if (!/[.!?؟]$/.test(out)) out += '.';
   return out;
 }
 
 /** A title or headline as it can sit inside a sentence: no markup, no terminal punctuation, bounded. */
-export function cleanTitle(value: unknown, maxChars = 120): string {
+export function cleanTitle(value: unknown, maxChars = 120, lang: SpokenLanguage = 'en'): string {
   if (typeof value !== 'string') return '';
-  let title = cleanSpeech(value).replace(/[.!?]+$/, '').trim();
+  let title = cleanSpeech(value, lang).replace(/[.!?؟]+$/, '').trim();
   if (title.length > maxChars) {
     const cut = title.slice(0, maxChars);
     const space = cut.lastIndexOf(' ');
@@ -168,13 +198,55 @@ export function spokenNumber(value: number): string {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
-export function spokenPercent(value: number): string {
-  return `${spokenNumber(value)} percent`;
+export function spokenPercent(value: number, lang: SpokenLanguage = 'en'): string {
+  return `${spokenNumber(value)} ${lang === 'ar' ? 'في المئة' : 'percent'}`;
+}
+
+/**
+ * The forms an Arabic noun takes after a number, by CLDR plural category:
+ * one (1, the noun alone, "ساعة"), two (2, the dual, "ساعتين"), few (3-10,
+ * the plural, "ساعات"), many (11-99, singular accusative, "ساعة"), and other
+ * (100 and up, singular genitive; defaults to `many`). Zero takes the plural.
+ */
+export interface ArabicCountForms {
+  one: string;
+  two: string;
+  few: string;
+  many: string;
+  other?: string;
+}
+
+const ARABIC_PLURAL = new Intl.PluralRules('ar');
+
+/** "ساعة", "ساعتين", "3 ساعات", "15 ساعة": a counted Arabic noun with its number where the grammar speaks one. */
+export function arabicCount(count: number, forms: ArabicCountForms): string {
+  const n = Math.round(Math.abs(count));
+  switch (ARABIC_PLURAL.select(n)) {
+    case 'one': return forms.one;
+    case 'two': return forms.two;
+    case 'many': return `${spokenInteger(n)} ${forms.many}`;
+    case 'other': return `${spokenInteger(n)} ${forms.other ?? forms.many}`;
+    default: return `${spokenInteger(n)} ${forms.few}`;
+  }
+}
+
+const AR_POINTS: ArabicCountForms = { one: 'نقطة واحدة', two: 'نقطتين', few: 'نقاط', many: 'نقطة' };
+const AR_MINUTES: ArabicCountForms = { one: 'دقيقة', two: 'دقيقتين', few: 'دقائق', many: 'دقيقة' };
+const AR_HOURS: ArabicCountForms = { one: 'ساعة', two: 'ساعتين', few: 'ساعات', many: 'ساعة' };
+const AR_DAYS: ArabicCountForms = { one: 'يوم', two: 'يومين', few: 'أيام', many: 'يومًا', other: 'يوم' };
+
+/** Hours as an Arabic phrase: "ساعة", "ساعتين", "72 ساعة". */
+export function arabicHours(hours: number): string {
+  return arabicCount(hours, AR_HOURS);
 }
 
 /** A move in whole points: "up 3 points", "down 1 point", or "unchanged". */
-export function spokenPoints(delta: number): string {
+export function spokenPoints(delta: number, lang: SpokenLanguage = 'en'): string {
   const points = Math.round(Math.abs(delta));
+  if (lang === 'ar') {
+    if (points === 0) return 'دون تغيير';
+    return `${delta > 0 ? 'بارتفاع' : 'بانخفاض'} ${arabicCount(points, AR_POINTS)}`;
+  }
   if (points === 0) return 'unchanged';
   return `${delta > 0 ? 'up' : 'down'} ${points} ${points === 1 ? 'point' : 'points'}`;
 }
@@ -184,25 +256,33 @@ export function spokenCount(count: number, singular: string, plural = `${singula
 }
 
 /** Relative age for speech: "moments ago", "about 25 minutes ago", "about 2 hours ago", "about 3 days ago". */
-export function spokenAgo(then: number, now: number): string {
+export function spokenAgo(then: number, now: number, lang: SpokenLanguage = 'en'): string {
   const minutes = Math.max(0, Math.round((now - then) / 60_000));
+  const hours = Math.round(minutes / 60);
+  const days = Math.round(hours / 24);
+  if (lang === 'ar') {
+    if (minutes < 2) return 'قبل لحظات';
+    if (minutes < 60) return `قبل نحو ${arabicCount(minutes, AR_MINUTES)}`;
+    if (hours < 48) return `قبل نحو ${arabicCount(hours, AR_HOURS)}`;
+    return `قبل نحو ${arabicCount(days, AR_DAYS)}`;
+  }
   if (minutes < 2) return 'moments ago';
   if (minutes < 60) return `about ${minutes} minutes ago`;
-  const hours = Math.round(minutes / 60);
   if (hours < 48) return `about ${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
-  const days = Math.round(hours / 24);
   return `about ${days} days ago`;
 }
 
-export function spokenMonthYear(value: unknown): string | null {
+export function spokenMonthYear(value: unknown, lang: SpokenLanguage = 'en'): string | null {
   const ms = toEpochMs(value);
   if (ms === null) return null;
-  return new Date(ms).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  // `nu-latn` keeps the year in Western digits, like every other number spoken.
+  return new Date(ms).toLocaleDateString(lang === 'ar' ? 'ar-u-nu-latn' : 'en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 }
 
-/** "a", "a and b", "a, b and c". */
-export function joinList(items: string[]): string {
+/** "a", "a and b", "a, b and c"; in Arabic "أ وب", "أ، ب وج" (the conjunction attaches to its word). */
+export function joinList(items: string[], lang: SpokenLanguage = 'en'): string {
   if (items.length <= 1) return items[0] ?? '';
+  if (lang === 'ar') return `${items.slice(0, -1).join('، ')} و${items[items.length - 1]}`;
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
@@ -216,11 +296,16 @@ export function humanizeId(id: string): string {
     .join(' ');
 }
 
-export function countryName(code: unknown, fallback?: unknown): string {
+export function countryName(code: unknown, fallback?: unknown, lang: SpokenLanguage = 'en'): string {
+  if (lang === 'ar') {
+    const arabic = arabicCountryDisplayName(code);
+    if (arabic) return arabic;
+  }
   const name = displayNameForIso2(code);
   if (name) return name;
   if (typeof fallback === 'string' && fallback.trim()) return fallback.trim();
-  return typeof code === 'string' && code.trim() ? code.trim().toUpperCase() : 'this country';
+  if (typeof code === 'string' && code.trim()) return code.trim().toUpperCase();
+  return lang === 'ar' ? 'هذا البلد' : 'this country';
 }
 
 /** Epoch milliseconds from an ISO string, an epoch number, or null when unparseable or non-positive. */
@@ -251,15 +336,22 @@ export function text(value: unknown): string {
 }
 
 /** Cache-tool freshness, read from the standard `{cached_at, stale}` envelope. */
-export function cacheFreshness(result: Record<string, unknown>, now: number): { asOf: string | null; stale: boolean; caveat?: string; ago: string } {
+export function cacheFreshness(result: Record<string, unknown>, now: number, lang: SpokenLanguage = 'en'): { asOf: string | null; stale: boolean; caveat?: string; ago: string } {
   const asOf = toIso(result.cached_at);
   const stale = result.stale === true;
   const cachedMs = toEpochMs(result.cached_at);
-  const ago = cachedMs === null ? 'at an unknown time' : spokenAgo(cachedMs, now);
-  const caveat = stale
-    ? `This snapshot was taken ${ago} and is flagged as stale, so some figures may be out of date.`
-    : undefined;
+  const ago = cachedMs === null ? unknownTime(lang) : spokenAgo(cachedMs, now, lang);
+  const caveat = !stale
+    ? undefined
+    : lang === 'ar'
+      ? `أُخذت هذه اللقطة ${ago} وهي مصنفة على أنها قديمة، لذا قد لا تكون بعض الأرقام محدّثة.`
+      : `This snapshot was taken ${ago} and is flagged as stale, so some figures may be out of date.`;
   return { asOf, stale, caveat, ago };
+}
+
+/** The phrase for an unknown time, in the place a relative age would stand. */
+export function unknownTime(lang: SpokenLanguage = 'en'): string {
+  return lang === 'ar' ? 'في وقت غير معروف' : 'at an unknown time';
 }
 
 // A bundle's `cached_at` is the OLDEST fetch across its keys and its `stale`

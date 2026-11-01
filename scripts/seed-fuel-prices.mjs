@@ -621,6 +621,82 @@ async function fetchUK_DESNZ() {
   }
 }
 
+// Retail prices the regional energy feeds already publish under
+// energy:regional:<id>:v1 (scripts/_regional-energy-source.mjs, #9893). Reading
+// them from Redis keeps each provider fetched once. ANP backs up fetchBrazil,
+// which runs first and wins when it succeeds.
+const LITRES_PER_US_GALLON = 3.785411784;
+const REGIONAL_FUEL_SOURCES = [
+  {
+    id: 'mem', code: 'GT', name: 'Guatemala', currency: 'GTQ', flag: '🇬🇹', source: 'mem.gob.gt', maxAgeDays: 21,
+    // Averages MEM monitors in Guatemala City, per US gallon.
+    gasoline: { area: 'Gasolina Regular; Guatemala City', unit: 'GTQ/gal', grade: 'Regular', perLitre: 1 / LITRES_PER_US_GALLON },
+    diesel: { area: 'Diésel; Guatemala City', unit: 'GTQ/gal', grade: 'Diesel', perLitre: 1 / LITRES_PER_US_GALLON },
+  },
+  {
+    // Schedule 1 is Viti Levu within 3 km of a public road, the main schedule.
+    id: 'fccc', code: 'FJ', name: 'Fiji', currency: 'FJD', flag: '🇫🇯', source: 'fccc.gov.fj', maxAgeDays: 45,
+    gasoline: { area: 'Motor Spirit; Schedule 1', unit: 'FJD/l', grade: 'Motor Spirit' },
+    diesel: { area: 'Diesel; Schedule 1', unit: 'FJD/l', grade: 'Diesel' },
+  },
+  {
+    id: 'iccc', code: 'PG', name: 'Papua New Guinea', currency: 'PGK', flag: '🇵🇬', source: 'iccc.gov.pg', maxAgeDays: 45,
+    gasoline: { area: 'Petrol; Port Moresby', unit: 'PGK/l', grade: 'Petrol' },
+    diesel: { area: 'Diesel; Port Moresby', unit: 'PGK/l', grade: 'Diesel' },
+  },
+  {
+    id: 'anp', code: 'BR', name: 'Brazil', currency: 'BRL', flag: '🇧🇷', source: 'gov.br/anp', maxAgeDays: 21,
+    gasoline: { area: 'GASOLINA COMUM', unit: 'BRL/l', grade: 'Regular' },
+    diesel: { area: 'OLEO DIESEL', unit: 'BRL/l', grade: 'Diesel' },
+  },
+];
+export const REGIONAL_FUEL_CURRENCIES = [...new Set(REGIONAL_FUEL_SOURCES.map(s => s.currency))];
+
+// getSharedFxRates fetches only the first five currencies from Yahoo when the shared
+// cache lacks them; the rest use SHARED_FX_FALLBACKS. Currencies with no fallback go
+// first so their countries are not dropped for want of a rate.
+export const FUEL_FX_CURRENCIES = (() => {
+  const all = [...new Set(['MYR', 'EUR', 'MXN', 'PLN', 'CZK', 'DKK', 'HUF', 'RON', 'SEK', 'BGN', 'BRL', 'NZD', 'GBP', ...REGIONAL_FUEL_CURRENCIES])];
+  return [...all.filter(c => SHARED_FX_FALLBACKS[c] == null), ...all.filter(c => SHARED_FX_FALLBACKS[c] != null)];
+})();
+
+// snapshots maps a feed id to its cached record (or null). Returns fuel-panel
+// entries with each fuel's newest retail price, or none when it is stale, its
+// unit changed or the record belongs to another feed.
+export function regionalFuelEntries(snapshots, nowMs = Date.now()) {
+  const entries = [];
+  for (const src of REGIONAL_FUEL_SOURCES) {
+    const record = snapshots?.[src.id];
+    if (record?.sourceId !== src.id || !Array.isArray(record.observations)) continue;
+    const pick = fuel => {
+      const newest = record.observations
+        .filter(p => p?.metric === 'fuel.retail_price' && p.area === fuel.area && p.unit === fuel.unit
+          && Number.isFinite(p.value) && p.value > 0 && /^\d{4}-\d{2}-\d{2}$/.test(p.period ?? ''))
+        .sort((a, b) => b.period.localeCompare(a.period))[0];
+      if (!newest || nowMs - Date.parse(`${newest.period}T00:00:00Z`) > src.maxAgeDays * 86400000) return null;
+      return { localPrice: +(newest.value * (fuel.perLitre ?? 1)).toFixed(4), grade: fuel.grade, source: src.source, observedAt: newest.period };
+    };
+    const gasoline = pick(src.gasoline), diesel = pick(src.diesel);
+    if (!gasoline && !diesel) continue;
+    entries.push({ code: src.code, name: src.name, currency: src.currency, flag: src.flag, gasoline, diesel });
+  }
+  return entries;
+}
+
+// GTQ, FJD and PGK have no shared fallback rate. Without a live quote a row
+// would publish with no USD price, so it is left out.
+async function fetchRegionalFuel(fxRates) {
+  const snapshots = {};
+  for (const { id } of REGIONAL_FUEL_SOURCES) snapshots[id] = await readSeedSnapshot(`energy:regional:${id}:v1`);
+  const entries = regionalFuelEntries(snapshots).filter(e => {
+    if (fxRates[e.currency] ?? SHARED_FX_FALLBACKS[e.currency]) return true;
+    console.warn(`  [${e.code}] no ${e.currency}/USD rate — skipping`);
+    return false;
+  });
+  for (const e of entries) console.log(`  [${e.code}] Gasoline=${e.gasoline?.localPrice} ${e.currency}/L (${e.gasoline?.observedAt}), Diesel=${e.diesel?.localPrice} ${e.currency}/L (${e.diesel?.observedAt}) via ${e.gasoline?.source ?? e.diesel?.source}`);
+  return entries;
+}
+
 // Pure helpers exported for unit testing. Must stay above the isMain guard
 // so `import` from tests doesn't trigger the imperative seed run below.
 
@@ -652,7 +728,10 @@ export function parseCREStationPrices(xml) {
 // (validation failed → seed-meta never refreshed → 12d STALE_SEED), even though
 // ≥30 countries + US/GB/MY were present. fetchNewZealand() still runs and
 // carries NZ automatically the moment the source returns CSV again.
-const TOLERATED_FAILURES = new Set(['Brazil', 'New Zealand']);
+// Regional feeds (FJ, PG, GT and the ANP backup for BR) come from other
+// seeders' Redis keys. A missing or stale feed drops those rows but must not
+// block the multi-country snapshot.
+const TOLERATED_FAILURES = new Set(['Brazil', 'New Zealand', 'Regional feeds']);
 
 // Publish gate. Exported so tests can lock in the contract.
 //
@@ -683,7 +762,7 @@ async function main() {
 const prevSnapshot = await readSeedSnapshot(`${CANONICAL_KEY}:prev`);
 
 const fxSymbols = {};
-for (const ccy of ['MYR', 'EUR', 'MXN', 'PLN', 'CZK', 'DKK', 'HUF', 'RON', 'SEK', 'BGN', 'BRL', 'NZD', 'GBP']) {
+for (const ccy of FUEL_FX_CURRENCIES) {
   fxSymbols[ccy] = `${ccy}USD=X`;
 }
 
@@ -698,9 +777,10 @@ const fetchResults = await Promise.allSettled([
   fetchBrazil(),
   fetchNewZealand(),
   fetchUK_DESNZ(),
+  fetchRegionalFuel(fxRates),
 ]);
 
-const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ'];
+const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ', 'Regional feeds'];
 let successfulSources = 0;
 const failedSources = [];
 

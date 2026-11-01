@@ -1991,6 +1991,15 @@ export async function fetchAll(progress, {
     console.warn(`  [port-activity] ${errors.length} country errors: ${errors.slice(0, 5).join('; ')}${errors.length > 5 ? ' ...' : ''}`);
   }
 
+  const completedAt = Date.now();
+  for (const [iso2, payload] of countryData) {
+    if (classifyDeferredPayload(payload, completedAt).status !== 'expired') continue;
+    countryData.delete(iso2);
+    retryState.set(iso2, payload);
+    if (payload.staleAsof === true) servedStaleCount--;
+    droppedTooOldCount++;
+  }
+
   const countries = [...countryData.keys()];
   const coverage = buildCoverageReport({
     eligibleCountries: eligibleIso3.map((iso3) => iso3ToIso2.get(iso3)),

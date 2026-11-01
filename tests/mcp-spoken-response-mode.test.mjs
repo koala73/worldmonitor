@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import Ajv2020 from 'ajv/dist/2020.js';
 
 import {
+  CHOKEPOINT_NAMES_AR,
   spokenChokepointStatus,
   spokenCountryRisk,
   spokenForecastPredictions,
@@ -20,7 +21,17 @@ import {
   spokenResilienceIndicators,
   spokenWorldBrief,
 } from '../api/mcp/spoken-narrators.ts';
-import { SPOKEN_MAX_CHARS, buildSpokenEnvelope, recordStaleFreshnessKeys } from '../api/mcp/spoken.ts';
+import {
+  SPOKEN_MAX_CHARS,
+  arabicCount,
+  buildSpokenEnvelope,
+  cleanSpeech,
+  joinList,
+  recordStaleFreshnessKeys,
+  spokenAgo,
+  spokenPoints,
+} from '../api/mcp/spoken.ts';
+import { CHOKEPOINT_REGISTRY } from '../server/_shared/chokepoint-registry.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -207,8 +218,39 @@ function assertSpeakable(envelope, label) {
   assert.ok(envelope.asOf === null || typeof envelope.asOf === 'string', `${label}: asOf`);
 }
 
-function narrate(name, narrator, result, args = {}) {
-  return buildSpokenEnvelope({ name, _spoken: narrator }, result, args, NOW);
+function narrate(name, narrator, result, args = {}, lang = 'en') {
+  return buildSpokenEnvelope({ name, _spoken: narrator }, result, args, NOW, lang);
+}
+
+// Arabic answers (`spoken_language: "ar"`, #9722). The sentence splitter above
+// keys on Latin capitals, so Arabic text gets its own invariants.
+const ARABIC = /\p{Script=Arabic}/u;
+const numbersIn = (text) => new Set(text.match(/\d+(?:\.\d+)?/g) ?? []);
+
+// `titles` are data quoted in their source language (headlines, market and
+// forecast titles); they are removed before the template-word check.
+function assertSpeakableArabic(envelope, english, label, titles = []) {
+  const text = envelope.spoken;
+  const template = titles.reduce((rest, title) => rest.split(title).join(' '), text);
+  assert.equal(envelope.language, 'ar', `${label}: language`);
+  assert.match(text, ARABIC, `${label}: Arabic script`);
+  const count = text.split(/(?<=\.)\s+/).filter((s) => s.length > 0).length;
+  assert.ok(count >= 2 && count <= 3, `${label}: expected 2-3 sentences, got ${count}: ${text}`);
+  assert.ok(text.length <= SPOKEN_MAX_CHARS, `${label}: ${text.length} chars exceeds ${SPOKEN_MAX_CHARS}`);
+  assert.doesNotMatch(text, /https?:\/\/|www\./, `${label}: no URLs in speech`);
+  assert.doesNotMatch(text, /[*_`#|<>[\]{}()%٪]/, `${label}: no markdown, brackets, parentheses or percent signs in speech`);
+  assert.doesNotMatch(template, /\b(?:percent|points?|ago|the|and|is|of|for|in)\b/i, `${label}: no English template words`);
+  assert.match(text, /\.$/, `${label}: ends with a full stop`);
+  // The same data path: every number the Arabic answer speaks, the English
+  // answer speaks too (the English one may also say "7 days" where Arabic
+  // says "السبعة").
+  for (const number of numbersIn(text)) {
+    assert.ok(numbersIn(english.spoken).has(number), `${label}: ${number} is not in the English answer: ${english.spoken}`);
+  }
+  // Citations are data, not wording: identical in both languages.
+  assert.deepEqual(envelope.citations, english.citations, `${label}: citations`);
+  assert.equal(envelope.stale, english.stale, `${label}: stale`);
+  assert.equal(envelope.asOf, english.asOf, `${label}: asOf`);
 }
 
 describe('spoken narrators build 2-3 plain sentences from the structured payload', () => {
@@ -496,6 +538,124 @@ describe('spoken narrators build 2-3 plain sentences from the structured payload
 // Dispatch: the mode is advertised, validated, and shaped like every other
 // non-documented response so a strict client accepts it.
 // ---------------------------------------------------------------------------
+describe('spoken_language "ar": the same narration in Modern Standard Arabic (#9722)', () => {
+  const NARRATIONS = [
+    ['get_country_risk', spokenCountryRisk, COUNTRY_RISK, {}],
+    ['get_country_risk stale', spokenCountryRisk, { ...COUNTRY_RISK, fetchedAt: NOW - 9 * 60 * MIN }, {}],
+    ['get_country_risk unavailable', spokenCountryRisk, { ...COUNTRY_RISK, upstreamUnavailable: true }, {}],
+    ['get_world_brief', spokenWorldBrief, WORLD_BRIEF, {}, WORLD_BRIEF.headlines.map((h) => h.replace('U.S.', 'US'))],
+    ['get_world_brief stale', spokenWorldBrief, { ...WORLD_BRIEF, stale: true, ageMinutes: 300 }, {}, WORLD_BRIEF.headlines.map((h) => h.replace('U.S.', 'US'))],
+    ['get_chokepoint_status one', spokenChokepointStatus, hormuzOnly(CHOKEPOINTS), {}],
+    ['get_chokepoint_status all', spokenChokepointStatus, CHOKEPOINTS, {}],
+    ['get_chokepoint_status empty', spokenChokepointStatus, { ...CHOKEPOINTS, data: {} }, {}],
+    ['get_prediction_markets', spokenPredictionMarkets, PREDICTION_MARKETS, {}, [...MARKETS_BOOTSTRAP.geopolitical, ...MARKETS_BOOTSTRAP.tech].map((m) => m.title.replace(/\?$/, ''))],
+    ['get_prediction_markets stale', spokenPredictionMarkets, { ...PREDICTION_MARKETS, stale: true }, {}, MARKETS_BOOTSTRAP.geopolitical.map((m) => m.title.replace(/\?$/, ''))],
+    ['get_forecast_predictions', spokenForecastPredictions, FORECASTS, {}, ['Energy repricing risk from Red Sea maritime disruption', 'Gulf tanker insurance premiums rise', 'Red Sea', 'Gulf']],
+    ['get_media_perspective', spokenMediaPerspective, MEDIA, {}, ['Arab News']],
+    ['get_media_perspective partial', spokenMediaPerspective, { ...MEDIA, state: 'partial' }, {}, ['Arab News']],
+    ['get_resilience_indicators', spokenResilienceIndicators, RESILIENCE, {}],
+  ];
+
+  for (const [label, narrator, payload, args, titles = []] of NARRATIONS) {
+    it(`${label}: speakable Arabic with the English answer's numbers, citations and freshness`, () => {
+      const name = label.split(' ')[0];
+      const english = narrate(name, narrator, payload, args);
+      const arabic = narrate(name, narrator, payload, args, 'ar');
+      assert.equal(english.language, 'en');
+      assertSpeakableArabic(arabic, english, label, titles);
+    });
+  }
+
+  it('get_country_risk reads the score, trend, driver, advisory and sanctions in Arabic', () => {
+    assert.equal(
+      narrate('get_country_risk', spokenCountryRisk, COUNTRY_RISK, {}, 'ar').spoken,
+      'درجة العراق على مؤشر عدم الاستقرار 62 من 100، والاتجاه تصاعدي. أكبر مساهمة تأتي من النزاع المسلح، بدرجة 72. '
+        + 'تحذير السفر الحالي يدعو إلى إعادة النظر في السفر، وعدد الكيانات الخاضعة للعقوبات والمرتبطة بالبلد 132.',
+    );
+  });
+
+  it('get_chokepoint_status names the chokepoint in Arabic and keeps the flow figures', () => {
+    assert.equal(
+      narrate('get_chokepoint_status', spokenChokepointStatus, hormuzOnly(CHOKEPOINTS), {}, 'ar').spoken,
+      'مستوى المخاطر في مضيق هرمز حرج، وعدد الحوادث خلال الأيام السبعة الماضية 627. '
+        + 'تدفق النفط 2.6 مليون برميل يوميًا مقابل 21 في الوضع الطبيعي، أي نحو 12 في المئة من المعتاد، وهو مصنف على أنه متعطل. '
+        + 'عدد السفن التي عبرت اليوم 41، بانخفاض 12 في المئة عن الأسبوع الماضي.',
+    );
+  });
+
+  it('get_media_perspective reads an Arabic-language headline as published and an English one as written', () => {
+    const arabic = narrate('get_media_perspective', spokenMediaPerspective, MEDIA, {}, 'ar');
+    assert.match(arabic.spoken, /^خلال آخر 72 ساعة، بلغ عدد العناوين التي تناولت المملكة العربية السعودية 18،/);
+    assert.match(arabic.spoken, /أحدثها من Arab News: المملكة تكشف عن الميزانية\.$/);
+    // English keeps the English rendering of the same headline.
+    assert.match(narrate('get_media_perspective', spokenMediaPerspective, MEDIA).spoken, /Arab News: Kingdom unveils budget\.$/);
+  });
+
+  it('an Arabic headline with a percent sign reads "في المئة" in Arabic, while its citation keeps the English rendering', () => {
+    for (const sign of ['%', '٪']) {
+      const media = structuredClone(MEDIA);
+      Object.assign(media.groups[0].headlines[0], { title: `التضخم يرتفع إلى 3${sign}`, englishTitle: 'Inflation rises to 3%' });
+      const arabic = narrate('get_media_perspective', spokenMediaPerspective, media, {}, 'ar');
+      assert.match(arabic.spoken, /أحدثها من Arab News: التضخم يرتفع إلى 3 في المئة\.$/, sign);
+      assert.equal(arabic.citations[0].title, 'Inflation rises to 3 percent', sign);
+    }
+    // The English answer reads either sign as "percent".
+    assert.equal(cleanSpeech('up 3٪'), 'up 3 percent.');
+  });
+
+  it('get_resilience_indicators names dimensions and the data month in Arabic', () => {
+    assert.equal(
+      narrate('get_resilience_indicators', spokenResilienceIndicators, RESILIENCE, { country_code: 'DE' }, 'ar').spoken,
+      'يغطي تفصيل مؤشر الصمود عن ألمانيا أبعادًا عددها 4، استنادًا إلى بيانات سبتمبر 2026. '
+        + 'أقوى المجالات المالية العامة بدرجة 81 والتماسك الاجتماعي بدرجة 77، وأضعفها الأمن السيبراني والرقمي بدرجة 45 والطاقة بدرجة 58. '
+        + 'عدد المؤشرات النشطة المرصودة مباشرة 3 من أصل 4، والباقي: 1 مقدّرة إحصائيًا.',
+    );
+  });
+
+  it('a stale caveat displaces the third sentence in Arabic too', () => {
+    const stale = narrate('get_prediction_markets', spokenPredictionMarkets, { ...PREDICTION_MARKETS, stale: true }, {}, 'ar');
+    assert.match(stale.spoken, / أُخذت هذه اللقطة قبل نحو 30 دقيقة وهي مصنفة على أنها قديمة، لذا قد لا تكون بعض الأرقام محدّثة\.$/);
+    assert.equal(stale.stale, true);
+  });
+
+  it('every chokepoint in the registry has an Arabic name', () => {
+    for (const point of CHOKEPOINT_REGISTRY) {
+      assert.match(CHOKEPOINT_NAMES_AR[point.id] ?? '', ARABIC, `${point.id} needs an Arabic name in CHOKEPOINT_NAMES_AR`);
+    }
+  });
+
+  it('arabicCount picks the noun form by CLDR plural category', () => {
+    const hours = { one: 'ساعة', two: 'ساعتين', few: 'ساعات', many: 'ساعة' };
+    assert.equal(arabicCount(1, hours), 'ساعة');
+    assert.equal(arabicCount(2, hours), 'ساعتين');
+    assert.equal(arabicCount(3, hours), '3 ساعات');
+    assert.equal(arabicCount(10, hours), '10 ساعات');
+    assert.equal(arabicCount(11, hours), '11 ساعة');
+    assert.equal(arabicCount(99, hours), '99 ساعة');
+    assert.equal(arabicCount(0, hours), '0 ساعات');
+    const days = { one: 'يوم', two: 'يومين', few: 'أيام', many: 'يومًا', other: 'يوم' };
+    assert.equal(arabicCount(15, days), '15 يومًا');
+    assert.equal(arabicCount(100, days), '100 يوم');
+    assert.equal(arabicCount(103, days), '103 أيام');
+  });
+
+  it('ages, moves, lists and punctuation read in Arabic', () => {
+    assert.equal(spokenAgo(NOW - MIN, NOW, 'ar'), 'قبل لحظات');
+    assert.equal(spokenAgo(NOW - 2 * MIN, NOW, 'ar'), 'قبل نحو دقيقتين');
+    assert.equal(spokenAgo(NOW - 25 * MIN, NOW, 'ar'), 'قبل نحو 25 دقيقة');
+    assert.equal(spokenAgo(NOW - 60 * MIN, NOW, 'ar'), 'قبل نحو ساعة');
+    assert.equal(spokenAgo(NOW - 5 * 60 * MIN, NOW, 'ar'), 'قبل نحو 5 ساعات');
+    assert.equal(spokenAgo(NOW - 3 * 24 * 60 * MIN, NOW, 'ar'), 'قبل نحو 3 أيام');
+    assert.equal(spokenPoints(3, 'ar'), 'بارتفاع 3 نقاط');
+    assert.equal(spokenPoints(-1, 'ar'), 'بانخفاض نقطة واحدة');
+    assert.equal(spokenPoints(0.2, 'ar'), 'دون تغيير');
+    assert.equal(joinList(['أ', 'ب', 'ج'], 'ar'), 'أ، ب وج');
+    assert.equal(cleanSpeech('النسبة 12% (تقديرية)', 'ar'), 'النسبة 12 في المئة، تقديرية.');
+    // English is unchanged by the language parameter's default.
+    assert.equal(cleanSpeech('share 12% (est)'), 'share 12 percent, est.');
+  });
+});
+
 describe('tools/call response_mode: "spoken" through the MCP handler', () => {
   let mod;
   let handler;
@@ -726,6 +886,62 @@ describe('tools/call response_mode: "spoken" through the MCP handler', () => {
       assertSpeakable(text, `dispatch ${name}`);
       assert.equal(text.tool, name);
       assert.equal(strictClientVerdict(publicTools.get(name), body.result), null, name);
+    }
+  });
+
+  it('advertises spoken_language beside response_mode, and only there', () => {
+    for (const tool of registry) {
+      const pub = publicTools.get(tool.name);
+      const expected = SPOKEN_TOOLS.includes(tool.name);
+      assert.equal('spoken_language' in pub.inputSchema.properties, expected, `${tool.name}: spoken_language advertised`);
+      if (expected) assert.deepEqual(pub.inputSchema.properties.spoken_language.enum, ['en', 'ar']);
+    }
+  });
+
+  it('spoken_language "ar" answers in Arabic through dispatch, and the argument never reaches the tool', async () => {
+    stub('get_country_risk', async (params) => {
+      assert.equal(params.spoken_language, undefined, 'the language is not forwarded to the tool');
+      return COUNTRY_RISK;
+    });
+    const { body } = await call('get_country_risk', { country_code: 'IQ', response_mode: 'spoken', spoken_language: 'ar' });
+    assert.equal(body.error, undefined, JSON.stringify(body.error ?? {}));
+    const text = JSON.parse(body.result.content[0].text);
+    assert.equal(text.language, 'ar');
+    assert.match(text.spoken, /^درجة العراق على مؤشر عدم الاستقرار 62 من 100/);
+    assert.equal(strictClientVerdict(publicTools.get('get_country_risk'), body.result), null);
+  });
+
+  it('spoken_language passes the strict prediction-market argument path', async () => {
+    redisKeys.set('prediction:markets-bootstrap:v1', MARKETS_BOOTSTRAP);
+    redisKeys.set('seed-meta:prediction:markets', { fetchedAt: NOW - 30 * MIN, recordCount: 3 });
+    const { body } = await call('get_prediction_markets', { response_mode: 'spoken', spoken_language: 'ar' });
+    assert.equal(body.error, undefined, JSON.stringify(body.error ?? {}));
+    const text = JSON.parse(body.result.content[0].text);
+    assert.equal(text.language, 'ar');
+    assert.match(text.spoken, /^عدد العقود في أسواق التنبؤ/);
+  });
+
+  it('a spoken English call reports language "en"', async () => {
+    stub('get_country_risk', async () => COUNTRY_RISK);
+    const { body } = await call('get_country_risk', { country_code: 'IQ', response_mode: 'spoken' });
+    assert.equal(JSON.parse(body.result.content[0].text).language, 'en');
+  });
+
+  it('rejects spoken_language without response_mode "spoken", on a tool without a narrator, and an unknown language', async () => {
+    stub('get_country_risk', async () => COUNTRY_RISK);
+    const cases = [
+      ['get_country_risk', { country_code: 'IQ', spoken_language: 'ar' }, /only with response_mode "spoken"/],
+      ['get_country_risk', { country_code: 'IQ', response_mode: 'full', spoken_language: 'ar' }, /only with response_mode "spoken"/],
+      ['get_sources', { spoken_language: 'ar' }, /no spoken mode/i],
+      ['get_country_risk', { country_code: 'IQ', response_mode: 'spoken', spoken_language: 'fr' }, /en, ar/],
+    ];
+    stub('get_sources', async () => ({ view: 'summary', summary: { providerCount: 1 }, providers: [] }));
+    for (const [name, args, pattern] of cases) {
+      const { body } = await call(name, args);
+      assert.equal(body.error?.code, -32602, `${name} ${JSON.stringify(args)}: ${JSON.stringify(body)}`);
+      const violation = body.error.data.violations.find((v) => v.field === 'spoken_language');
+      assert.ok(violation, JSON.stringify(body.error));
+      assert.match(violation.description, pattern);
     }
   });
 });
