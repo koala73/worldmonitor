@@ -52,6 +52,9 @@ describe('Chokepoint Monitor local route details', () => {
         assert.equal(details[1].querySelector('summary').getAttribute('aria-label'), 'Route details for Suez Canal');
         const before = messages.filter(message => message.method === 'ui/notifications/size-changed').length;
         control.click();
+        await document.defaultView.happyDOM.waitUntilComplete();
+        const afterOpen = messages.filter(message => message.method === 'ui/notifications/size-changed').length;
+        assert.ok(afterOpen > before, 'Opening the first route must update host height');
         assert.equal(details[0].open, true);
         assert.equal(details[1].open, false);
         assert.deepEqual(values(details[0]), {
@@ -62,7 +65,19 @@ describe('Chokepoint Monitor local route details', () => {
         control.click();
         assert.equal(details[0].open, false);
         await document.defaultView.happyDOM.waitUntilComplete();
-        assert.ok(messages.filter(message => message.method === 'ui/notifications/size-changed').length > before, 'Disclosure changes must update host height');
+        const afterClose = messages.filter(message => message.method === 'ui/notifications/size-changed').length;
+        assert.ok(afterClose > afterOpen, 'Closing the first route must update host height');
+        details[1].querySelector('summary').click();
+        await document.defaultView.happyDOM.waitUntilComplete();
+        assert.equal(details[1].open, true);
+        assert.equal(details[0].open, false);
+        const afterSecondOpen = messages.filter(message => message.method === 'ui/notifications/size-changed').length;
+        assert.ok(afterSecondOpen > afterClose, 'Opening the second route must update host height');
+        details[1].querySelector('summary').click();
+        await document.defaultView.happyDOM.waitUntilComplete();
+        assert.equal(details[1].open, false);
+        assert.equal(details[0].open, false);
+        assert.ok(messages.filter(message => message.method === 'ui/notifications/size-changed').length > afterSecondOpen, 'Closing the second route must update host height');
       });
     }
   });
