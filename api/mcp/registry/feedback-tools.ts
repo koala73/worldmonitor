@@ -143,7 +143,8 @@ export const FEEDBACK_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     // Decision 4: MCP arguments are parsed before the tool runs, so the 24 KB
     // byte cap REST enforces while reading is enforced here instead, before
-    // any Redis or Convex work.
+    // any feedback bucket or Convex call. The handler's request-level limits
+    // (body size, free-tier and burst limiters) have already run by then.
     _validateArgs: (params) => {
       if (utf8ByteLength(JSON.stringify(params)) > FEEDBACK_MAX_BODY_BYTES) {
         throw new RpcValidationError(REPORT_ISSUE_TOOL, [{

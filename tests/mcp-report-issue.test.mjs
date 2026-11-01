@@ -219,13 +219,38 @@ describe('report_issue — refusals', () => {
     assert.equal(convexCalls.length, 0);
   });
 
-  it(`rejects arguments over the 24 KB cap before any Redis or Convex work`, async () => {
+  // The handler's own free-tier and burst limiters run before dispatch, so
+  // the guarantee is narrower than "no Redis": no feedback bucket and no
+  // Convex call for an oversized report.
+  it('rejects arguments over the 24 KB cap before any feedback bucket or Convex call', async () => {
     // Every declared field is capped well under 24 KB, so the oversized body
     // rides in the universal jmespath argument, which has no schema cap here.
     const { body } = await report({ kind: 'bug', summary: 'Too big.', jmespath: `a${'b'.repeat(FEEDBACK_MAX_BODY_BYTES)}` });
     assert.equal(body.error.code, -32602);
     assert.equal(convexCalls.length, 0, 'no Convex call');
     assert.equal(limiterCalls.length, 0, 'no limiter call');
+  });
+
+  it('holds the cap on the real anonymous path through mcpHandler', async () => {
+    const { mcpHandler } = await import('../api/mcp/handler.ts');
+    const res = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'x-real-ip': '203.0.113.7',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 11,
+        method: 'tools/call',
+        params: { name: 'report_issue', arguments: { kind: 'bug', summary: 'Too big.', jmespath: `a${'b'.repeat(FEEDBACK_MAX_BODY_BYTES)}` } },
+      }),
+    }), makeProDeps().deps);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32602, JSON.stringify(body).slice(0, 300));
+    assert.equal(convexCalls.length, 0, 'no Convex call');
+    assert.equal(limiterCalls.length, 0, 'no feedback bucket call');
   });
 });
 
