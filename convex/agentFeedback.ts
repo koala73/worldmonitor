@@ -9,6 +9,7 @@ import {
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { ResendSendError, sendResendEmail } from "./lib/resendEmail";
+import { assertAccountWritable } from "./accountDeletion/guard";
 import {
   agentFeedbackKindValidator,
   agentFeedbackStatusValidator,
@@ -53,7 +54,9 @@ export const FEEDBACK_SECURITY_EMAILS_PER_DAY = 20;
 // A scheduled send older than this without `notifiedAt` is treated as failed
 // and picked up by the digest.
 export const FEEDBACK_NOTIFY_GRACE_MS = HOUR_MS;
-const DIGEST_BATCH = 200;
+// At the edge's 30 security reports a day this covers a month of failed
+// sends in one digest. A larger backlog is reported and drains the next day.
+const DIGEST_BATCH = 1000;
 
 // Decision 10: retention from `receivedAt` for every status.
 export const FEEDBACK_RETENTION_MS: Record<Doc<"agentFeedback">["status"], number> = {
@@ -183,6 +186,10 @@ export const submit = internalMutation({
     const requestId = clip(args.requestId, FEEDBACK_MAX_REQUEST_ID);
     if (requestId !== undefined && !REQUEST_ID_RE.test(requestId)) invalid("requestId");
     const principalId = clip(args.principalId, MAX_PRINCIPAL_ID);
+    // The deletion cascade visits this table once and completed deletions keep
+    // the fence, so a keyed write reads it in this transaction. Otherwise a
+    // report admitted before deletion could land after the cascade passed.
+    if (principalId !== undefined) await assertAccountWritable(ctx, principalId);
 
     const retry = await findRecentRetry(ctx, args.retryKey, now);
     if (retry) return { reportId: retry._id, status: retry.status, retried: true };
@@ -336,33 +343,35 @@ export const listUnannouncedSecurity = internalQuery({
   args: { now: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const now = args.now ?? Date.now();
-    const rows = await ctx.db
+    const pending: Array<{ reportId: Id<"agentFeedback">; receivedAt: number }> = [];
+    let more = false;
+    // Streams the index instead of taking a fixed prefix, so rows that are
+    // not eligible (inside the grace window) never hide later ones.
+    for await (const row of ctx.db
       .query("agentFeedback")
       .withIndex("by_kind_notified_received", (q) =>
         q.eq("kind", "security").eq("notifiedAt", undefined),
-      )
-      .take(DIGEST_BATCH * 2);
-    return rows
-      // A row the owner already closed needs no announcement.
-      .filter((row) => row.status === "private")
-      .filter((row) =>
-        row.notifyScheduledAt === undefined ||
-        row.notifyScheduledAt < now - FEEDBACK_NOTIFY_GRACE_MS,
-      )
-      .slice(0, DIGEST_BATCH)
-      .map((row) => ({ reportId: row._id, receivedAt: row.receivedAt }));
+      )) {
+      // Closing sets notifiedAt; this also skips rows closed before it did.
+      if (row.status !== "private") continue;
+      if (row.notifyScheduledAt !== undefined && row.notifyScheduledAt >= now - FEEDBACK_NOTIFY_GRACE_MS) continue;
+      if (pending.length === DIGEST_BATCH) {
+        more = true;
+        break;
+      }
+      pending.push({ reportId: row._id, receivedAt: row.receivedAt });
+    }
+    return { pending, more };
   },
 });
 
 export const sendSecurityDigest = internalAction({
   args: { now: v.optional(v.number()) },
   handler: async (ctx, args): Promise<{ listed: number }> => {
-    const pending: Array<{ reportId: Id<"agentFeedback">; receivedAt: number }> = await ctx.runQuery(
-      internal.agentFeedback.listUnannouncedSecurity,
-      {
-        now: args.now,
-      },
-    );
+    const { pending, more }: {
+      pending: Array<{ reportId: Id<"agentFeedback">; receivedAt: number }>;
+      more: boolean;
+    } = await ctx.runQuery(internal.agentFeedback.listUnannouncedSecurity, { now: args.now });
     if (pending.length === 0) return { listed: 0 };
     const rows = pending
       .map((p) => `<tr><td>${escapeHtml(p.reportId)}</td><td>${escapeHtml(new Date(p.receivedAt).toISOString())}</td></tr>`)
@@ -371,6 +380,7 @@ export const sendSecurityDigest = internalAction({
         <p style="font-size: 16px; font-weight: bold;">${pending.length} agent security report(s) not yet announced</p>
         <p style="font-size: 12px;">Held back by the daily email cap, or the first notice failed.</p>
         <table style="font-size: 14px; line-height: 1.8;">${rows}</table>
+        ${more ? `<p style="font-size: 12px;">More reports are waiting. They will be listed in tomorrow's digest.</p>` : ""}
         <p style="font-size: 12px;">${TRIAGE_HINT}</p>
       </div>`;
     const sent = await sendOwnerEmail(
@@ -422,8 +432,8 @@ export const transition = internalMutation({
       }
       // Decision 10: a filed row keeps id, kind, surface, fingerprint, and the
       // issue number for a year. The text now lives in the GitHub issue, and
-      // the reporter's network identity goes with it. principalId stays so
-      // account deletion can still find a keyed reporter's row.
+      // every reporter identifier goes with it, so the row holds nothing that
+      // account deletion would need to find.
       await ctx.db.patch(row._id, {
         status: "filed",
         issueNumber: args.issueNumber,
@@ -432,6 +442,7 @@ export const transition = internalMutation({
         actual: undefined,
         clientName: undefined,
         requestId: undefined,
+        principalId: undefined,
         ipHash: undefined,
         uaHash: undefined,
         reporterKey: FILED_TOMBSTONE,
@@ -454,7 +465,13 @@ export const transition = internalMutation({
       });
       return { status: "dismissed" as const };
     }
-    await ctx.db.patch(row._id, { status: args.to, updatedAt: now });
+    // Closing a private row means the owner has seen it: stamp notifiedAt so
+    // closed rows leave the digest index instead of accumulating there.
+    await ctx.db.patch(row._id, {
+      status: args.to,
+      updatedAt: now,
+      ...(args.to === "closed" && row.notifiedAt === undefined ? { notifiedAt: now } : {}),
+    });
     return { status: args.to };
   },
 });

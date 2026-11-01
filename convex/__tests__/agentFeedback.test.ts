@@ -124,6 +124,24 @@ describe("submit", () => {
     expect(await rows(t)).toHaveLength(0);
   });
 
+  test.each(["pending", "complete", "failed"] as const)(
+    "a keyed report for an account with a %s deletion is refused and stores nothing",
+    async (status) => {
+      const t = convexTest(schema, modules);
+      await t.run((ctx) => ctx.db.insert("accountDeletions", {
+        userId: "user_gone", userIdHash: "a".repeat(64), source: "self", status,
+        step: "complete", dodoSubscriptionIds: [], startedAt: 1, updatedAt: 1,
+      }));
+      await expect(t.mutation(internal.agentFeedback.submit, report({
+        authKind: "keyed", principalId: "user_gone", reporterKey: "principal:user_gone", ipHash: undefined,
+      }))).rejects.toThrow("ACCOUNT_DELETION_IN_PROGRESS");
+      expect(await rows(t)).toHaveLength(0);
+      // Anonymous reports carry no account and are unaffected.
+      await t.mutation(internal.agentFeedback.submit, report());
+      expect(await rows(t)).toHaveLength(1);
+    },
+  );
+
   test("caps a single reporter per hour behind the edge limiter", async () => {
     const t = convexTest(schema, modules);
     for (let i = 0; i < FEEDBACK_REPORTER_HOURLY_CAP; i++) {
@@ -248,6 +266,39 @@ describe("security reports", () => {
     expect(await t.action(internal.agentFeedback.sendSecurityDigest, {})).toEqual({ listed: 0 });
     expect(bodies).toHaveLength(1);
   });
+
+  test("ineligible rows ahead in the index never hide an eligible one", async () => {
+    vi.stubEnv("RESEND_API_KEY", "synthetic-resend");
+    const bodies: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      bodies.push(String(init.body));
+      return Response.json({ id: "synthetic-email" });
+    }));
+    const t = convexTest(schema, modules);
+    const late = await t.run(async (ctx) => {
+      const base = { ...security(), status: "private" as const, updatedAt: NOW };
+      // 450 older rows that are not eligible: closed before closing stamped
+      // notifiedAt, or still inside the grace window.
+      for (let i = 0; i < 300; i++) {
+        await ctx.db.insert("agentFeedback", { ...base, status: "closed", receivedAt: NOW - 5 * DAY + i });
+      }
+      for (let i = 0; i < 150; i++) {
+        await ctx.db.insert("agentFeedback", { ...base, receivedAt: NOW - 4 * DAY + i, notifyScheduledAt: NOW - 1000 });
+      }
+      return ctx.db.insert("agentFeedback", { ...base, receivedAt: NOW - 1000 });
+    });
+    expect(await t.action(internal.agentFeedback.sendSecurityDigest, {})).toEqual({ listed: 1 });
+    expect(bodies[0]).toContain(late);
+  });
+
+  test("closing a private row takes it out of the digest index", async () => {
+    const t = convexTest(schema, modules);
+    const { reportId } = await t.mutation(internal.agentFeedback.submit, security());
+    await t.mutation(internal.agentFeedback.transition, { reportId, to: "closed" });
+    const [row] = await rows(t);
+    expect(row.notifiedAt).toBe(NOW);
+    expect(await t.action(internal.agentFeedback.sendSecurityDigest, { now: NOW + DAY })).toEqual({ listed: 0 });
+  });
 });
 
 describe("transition", () => {
@@ -260,21 +311,23 @@ describe("transition", () => {
     await t.mutation(internal.agentFeedback.transition, { reportId, to: "filed", issueNumber: 9999 });
     const [row] = await rows(t);
     expect(row).toMatchObject({ status: "filed", issueNumber: 9999, surfaceName: "get_market_data", fingerprint: hex("a") });
-    // Decision 10: text and network identity go; reporter keys are tombstoned.
-    for (const field of ["summary", "expected", "actual", "clientName", "requestId", "ipHash", "uaHash"] as const) {
+    // Decision 10: text and every reporter identifier go; keys are tombstoned.
+    for (const field of ["summary", "expected", "actual", "clientName", "requestId", "principalId", "ipHash", "uaHash"] as const) {
       expect(row[field]).toBeUndefined();
     }
     expect(row.reporterKey).toBe("filed");
     expect(row.retryKey).toBe("filed");
   });
 
-  test("a filed keyed row keeps principalId so account deletion still finds it", async () => {
+  test("a filed keyed row drops principalId (Decision 10)", async () => {
     const t = convexTest(schema, modules);
     const { reportId } = await t.mutation(internal.agentFeedback.submit, report({
       authKind: "keyed", principalId: "user_1", reporterKey: "principal:user_1", ipHash: undefined,
     }));
     await t.mutation(internal.agentFeedback.transition, { reportId, to: "filed", issueNumber: 1 });
-    expect((await rows(t))[0].principalId).toBe("user_1");
+    const [row] = await rows(t);
+    expect(row.principalId).toBeUndefined();
+    expect(row).toMatchObject({ status: "filed", issueNumber: 1, authKind: "keyed" });
   });
 
   test("security rows can only be closed", async () => {
@@ -416,6 +469,20 @@ describe("HTTP routes", () => {
     const text = await response.text();
     expect(JSON.parse(text)).toEqual({ error: "INVALID_FEEDBACK", field: "requestId" });
     expect(text).not.toContain("SECRET");
+  });
+
+  test("maps a deleted account to a final 403", async () => {
+    vi.stubEnv("CONVEX_SERVER_SHARED_SECRET", SECRET);
+    const t = convexTest(schema, modules);
+    await t.run((ctx) => ctx.db.insert("accountDeletions", {
+      userId: "user_gone", userIdHash: "a".repeat(64), source: "self", status: "complete",
+      step: "complete", dodoSubscriptionIds: [], startedAt: 1, updatedAt: 1,
+    }));
+    const response = await t.fetch("/api/internal-submit-feedback", post("/", report({
+      authKind: "keyed", principalId: "user_gone", reporterKey: "principal:user_gone", ipHash: undefined,
+    }), SECRET));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "ACCOUNT_DELETION_IN_PROGRESS" });
   });
 
   test("maps the reporter cap to 429", async () => {

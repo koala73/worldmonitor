@@ -635,6 +635,8 @@ http.route({
     } catch (error) {
       const code = extractConvexErrorCode(error);
       if (code === "rate_limited") return Response.json({ error: code }, { status: 429 });
+      // A deleted or deleting account is final, so the edge must not retry it.
+      if (code === "ACCOUNT_DELETION_IN_PROGRESS") return Response.json({ error: code }, { status: 403 });
       if (code === "INVALID_FEEDBACK") {
         const parsed = parseConvexErrorData(error) as { field?: unknown } | null;
         const field = typeof parsed?.field === "string" ? parsed.field : undefined;
