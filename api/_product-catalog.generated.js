@@ -177,7 +177,7 @@ export const PUBLIC_PRODUCT_FACTS = {
     "alertOrigins": 5,
     "chokepoints": 13,
     "instabilityCountries": 31,
-    "resilienceRanked": 170,
+    "resilienceRanked": 169,
     "submarineCables": 98,
     "pipelinesLng": 159,
     "aiDatacenters": 313,
@@ -188,7 +188,7 @@ export const PUBLIC_PRODUCT_FACTS = {
     "languages": 28
   },
   "resilienceCoverage": {
-    "ranked": 170,
+    "ranked": 169,
     "universe": 196
   }
 };
