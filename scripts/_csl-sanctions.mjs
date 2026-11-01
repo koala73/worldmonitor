@@ -5,6 +5,7 @@
 // Tests import this module, not the seeder (which runs runSeed on load).
 
 import { createRequire } from 'node:module';
+import { withSourceRequestDiagnostics } from './lib/source-request-diagnostics.mjs';
 import { CHROME_UA } from './_seed-utils.mjs';
 import { normalizeName, readResponseLimited } from './_sema-sanctions.mjs';
 
@@ -140,14 +141,17 @@ export async function ingestCslEntries({
   const budget = cslFetchBudget(deadlineAt, Date.now(), timeoutMs);
   if (!budget) return { lists: {}, error: 'CSL_FETCH_DEADLINE' };
   try {
-    const response = await fetchFn(CSL_URL, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      redirect: 'error',
-      signal: AbortSignal.timeout(budget),
+    return await withSourceRequestDiagnostics({ source: 'csl' }, async observe => {
+      const response = await fetchFn(CSL_URL, {
+        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+        redirect: 'error',
+        signal: AbortSignal.timeout(budget),
+      });
+      observe(response);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const { text } = await readResponseLimited(response, maxBytes);
+      return parseCslPayload(JSON.parse(text), now);
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const { text } = await readResponseLimited(response, maxBytes);
-    return parseCslPayload(JSON.parse(text), now);
   } catch (err) {
     const code = err?.cause?.code;
     const cause = typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? ` (cause: ${code})` : '';

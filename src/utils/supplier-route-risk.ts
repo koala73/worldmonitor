@@ -99,6 +99,8 @@ const CORRIDOR_REGIONS: Record<string, readonly [string, string]> = {
   'china-africa': ['east-asia', 'sub-saharan-africa'],
   'cpec-route': ['south-asia', 'east-asia'],
   'transatlantic': ['north-america', 'europe'],
+  'us-west-northeast-asia': ['north-america', 'east-asia'],
+  'us-gulf-asia-panama': ['north-america', 'east-asia'],
 };
 
 const chokepointByRoute = new Map<string, string[]>();

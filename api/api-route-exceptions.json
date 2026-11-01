@@ -353,6 +353,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/request-id.ts",
+      "category": "external-protocol",
+      "reason": "Stamps error.data.requestId on MCP JSON-RPC error envelopes at the handler's single exit (#8721 phase 5). Pure helper for the external-protocol MCP handler family; exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/modern.ts",
       "category": "external-protocol",
       "reason": "MCP 2026-07-28 (modern era) envelope detection and per-request _meta/header validation for the /mcp handler. Part of the same external-protocol transport, not a JSON data API.",

@@ -2200,6 +2200,7 @@
       "scripts/_sema-sanctions.mjs",
       "scripts/_upstash-rest.mjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/source-request-diagnostics.mjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
