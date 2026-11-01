@@ -5,7 +5,7 @@ import { readExistsFlags, readJsonFromUpstash, readRawJsonFromUpstash, redisPipe
 import { unwrapEnvelope } from '../_seed-envelope.js';
 import { chokepointCacheIdentity, chokepointSourcePolicy, type ChokepointPanelRead } from './_chokepoint-snapshot';
 import { newsIntelligenceFreshness, newsIntelligenceReuseUntil, type NewsIntelligencePanelRead } from './_news-intelligence-snapshot';
-import { resolveCountryFilter } from './_country-args';
+import { resolveCountryArg, resolveCountryFilter } from './_country-args';
 import { validateToolArgs } from './_validate-args';
 import { filterNaturalDisastersPanelData, naturalDisastersReuseUntil, type NaturalDisastersPanelRead } from './_natural-disasters-reuse';
 import { isAppOwnedRedisKey } from '../_redis-key-ownership.js';
@@ -656,7 +656,7 @@ export async function dispatchToolsCall(
         const parsed = (tool.name === 'get_country_brief' ? countryBriefDirectViewSchema : countryRiskDirectViewSchema).safeParse(view);
         if (!parsed.success) throw new PanelRequestError('Supply valid country arguments and a request_id for refresh.', 'invalid');
         const { refresh, request_id, ...filters } = parsed.data;
-        const normalized = normalizeCountryDirectRead(tool.name, filters);
+        const normalized = normalizeCountryDirectRead(tool.name, filters, resolveCountryArg);
         if (!normalized) throw new PanelRequestError('Supply a recognized country and analysis.', 'invalid');
         sourceArguments = normalized;
         if (suppliedPanel !== undefined && refresh) throw new PanelRequestError('Refresh the country without a reader token.', 'invalid');

@@ -2,7 +2,7 @@ import { isCountryDirectOriginalReusable } from './_country-direct-snapshot';
 import { countryActivityQueries } from '../../shared/country-activity-query';
 import { z } from 'zod';
 import { countryReaderSchema, COUNTRY_READERS, countryViewSchema, normalizeCountryDirectRead, type PanelAdmission } from '../../shared/country-brief-host';
-import { resolveCountryCode } from '../../shared/country-code-resolve';
+import { resolveCountryArg } from './_country-args';
 import { chokepointPanelReadSchema, chokepointPanelViewSchema, conflictPanelReadSchema, conflictPanelViewSchema, disasterPanelReadSchema, disasterPanelViewSchema, forecastCaseReadSchema, forecastPanelReadSchema, forecastPanelViewSchema, marketPanelReadSchema, marketPanelViewSchema, newsIntelligencePanelReadSchema, newsIntelligencePanelViewSchema, predictionPanelReadSchema, predictionPanelViewSchema, worldBriefPanelReadSchema, worldBriefPanelViewSchema, type ChokepointPanelAdmission, type ConflictPanelAdmission, type DisasterPanelAdmission, type ForecastPanelAdmission, type MarketPanelAdmission, type NewsIntelligencePanelAdmission, type NewsPanelAdmission, type PredictionPanelAdmission, type WorldBriefPanelAdmission } from '../../shared/panel-admission';
 import { parseNewsDashboardRequest } from '../../shared/plugin-news-view';
 import { forecastTheaterReadSchema, reusableForecastTheaterResult } from '../../shared/forecast-theaters';
@@ -58,7 +58,7 @@ async function tuple(pipeline: PipelineFn, command: Array<string | number>): Pro
 
 export async function admitCountryPanel(context: McpAuthContext, budget: McpBudget | undefined, pipeline: PipelineFn, args: Record<string, unknown>, now = Date.now()): Promise<PanelAdmission> {
   const parsed = countryViewSchema.safeParse(args);
-  const country = parsed.success ? resolveCountryCode(parsed.data.country_code) : null;
+  const country = parsed.success ? resolveCountryArg(parsed.data.country_code) : null;
   if (!parsed.success || !country) throw new PanelRequestError('Supply a recognized country and topic.', 'invalid');
   return { ...await admitPanel(context, budget, pipeline, country, parsed.data, now), countryCode: country };
 }
@@ -193,13 +193,13 @@ function checkReadScope(name: string, args: Record<string, unknown>, country: st
     return;
   }
   if (name === 'get_country_brief' || name === 'get_country_risk') {
-    const normalized = normalizeCountryDirectRead(name, args);
+    const normalized = normalizeCountryDirectRead(name, args, resolveCountryArg);
     if (!normalized || normalized.country_code !== country) throw new PanelRequestError('Panel request does not cover this country or analysis.', 'invalid');
     return;
   }
   if (name === 'get_country_coverage') {
     const allowed = z.object({ country_code: z.string() }).strict().safeParse(args);
-    if (!allowed.success || resolveCountryCode(allowed.data.country_code) !== country) throw new PanelRequestError('Panel request does not cover this country.', 'invalid');
+    if (!allowed.success || resolveCountryArg(allowed.data.country_code) !== country) throw new PanelRequestError('Panel request does not cover this country.', 'invalid');
     return;
   }
   if (name !== 'get_country_brief_section') throw new PanelRequestError('Panel request does not cover this tool.', 'invalid');
@@ -255,7 +255,7 @@ export async function authorizePanelRead(context: McpAuthContext, pipeline: Pipe
           ? disasterPanelReadSchema.parse(args)
           : scope.panel === 'forecasts' && name === 'get_forecast_predictions'
             ? forecastPanelReadSchema.parse(args)
-            : (name === 'get_country_brief' || name === 'get_country_risk') ? normalizeCountryDirectRead(name, args)! : args;
+            : (name === 'get_country_brief' || name === 'get_country_risk') ? normalizeCountryDirectRead(name, args, resolveCountryArg)! : args;
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify([name, canonicalArguments(cacheArguments)])));
   const hash = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
   const cacheKey = `${key}:data:${hash}`;

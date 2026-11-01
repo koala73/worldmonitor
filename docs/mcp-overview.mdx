@@ -308,6 +308,12 @@ The server exposes a registry of tools. Most are cache-reads over pre-seeded Red
 For per-tool parameters, freshness budgets, timeouts, and concrete `curl` examples, see the [MCP Tools Reference](/mcp-tools-reference). For payload projection — every tool accepts an optional `jmespath` argument that typically cuts response size by 80-95% — see the [JMESPath guide](/mcp-jmespath).
 </Tip>
 
+### Arabic arguments and summaries
+
+Every argument that takes a country accepts an Arabic country name as well as an ISO code or English name: `"السعودية"`, `"المملكة العربية السعودية"`, `"الإمارات"`, `"مصر"`. Names come from CLDR plus common short and official forms. Matching ignores diacritics and tatweel, the article `ال`, and hamza, taa marbuta and alef maqsura spelling variants. A name that could mean more than one country, such as `"كوريا"`, returns Invalid params rather than a guess.
+
+For an Arabic summary, pass headlines (for example the `headlines` of `get_world_brief`) to `analyze_news_headlines` with `lang: "ar"`; `mode: "translate"` renders one headline in Arabic. `get_world_brief` and `get_country_brief` themselves return English text.
+
 ### Markets & economy
 
 | Tool | Description |
@@ -396,7 +402,7 @@ Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed 
 
 | Tool | Description |
 |------|-------------|
-| `get_airspace` | Live ADS-B over a country. Params: `country_code` (alpha-2, alpha-3, or English country name), `type` (`all`/`civilian`/`military`). |
+| `get_airspace` | Live ADS-B over a country. Params: `country_code` (alpha-2, alpha-3, or English or Arabic country name), `type` (`all`/`civilian`/`military`). |
 | `get_maritime_activity` | AIS density zones, dark-ship events, chokepoint congestion per country. Params: `country_code`. |
 | `get_aviation_status` | FAA airport delays, NOTAM closures, tracked military aircraft. |
 | `get_infrastructure_status` | Cloudflare Radar outages, major cloud/internet service status. |
