@@ -27,8 +27,10 @@ tags:
 
 ## Problem
 
-IMF PortWatch's ArcGIS service started rejecting refresh queries for about a
-quarter of the countries (`invalid_query`, HTTP 200 with an ArcGIS 400 body).
+IMF PortWatch's ArcGIS service started rejecting refresh queries
+(`invalid_query`, HTTP 200 with an ArcGIS 400 body): 28 of 174 countries
+failed to refresh on the 2026-11-01 12:00Z run, and ten of them had no
+payload under seven days old.
 The seeder correctly kept last-good data and refused to publish an incomplete
 canonical set, but it then exited 1. Railway paints any non-zero exit as
 CRASHED, so every 12-hour tick sent a "Deploy Crashed!" email for an outage no
