@@ -3904,6 +3904,7 @@ paths:
                                       "importTankerDwt": 1.5
                                       "lat": 40.7128
                                       "lon": -74.006
+                                "stale": true
                             schema:
                                 $ref: '#/components/schemas/CountryPortActivityResponse'
                 "400":
@@ -10137,6 +10138,11 @@ components:
                     type: string
                 available:
                     type: boolean
+                stale:
+                    type: boolean
+                    description: |-
+                        True when IMF PortWatch has not refreshed this country for seven days or
+                         more. The ports are its last data, served for up to 30 days.
         PortActivityEntry:
             type: object
             properties:

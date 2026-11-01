@@ -570,6 +570,9 @@
           "path": "scripts/seed-forecasts.mjs"
         },
         {
+          "path": "scripts/triage-agent-feedback.mjs"
+        },
+        {
           "path": "server/_shared/usage.ts"
         }
       ]

@@ -15,10 +15,13 @@ import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
 import { OPERATOR_KEY_DAILY_CEILINGS, reportHighUsageIfCrossed } from '../../server/_shared/high-usage-alarm';
 import { hashKeySync } from '../../server/_shared/usage-identity';
 import { readAccountAllowance } from './_account-allowance';
-import { applyPerMinuteLimit, getMcpBillingVerificationDenial, wwwAuthHeader } from './auth';
-import { BillingDenialError, RpcValidationError, ToolBackoffError } from './billing-denial';
+import { applyPerMinuteLimit, getMcpBillingVerificationDenial, runContextPreChecks, wwwAuthHeader } from './auth';
+import { getClientIp } from '../../server/_shared/client-ip';
+import { FeedbackRejectedError, REPORT_ISSUE_TOOL } from './registry/feedback-tools';
+import { BillingDenialError, RpcValidationError, ToolBackoffError, UpstreamHttpError } from './billing-denial';
 import {
   BothSourcesFailedError,
+  ToolFetchError,
   createMcpToolExecutionContext,
   downstreamErrorTags,
 } from './downstream';
@@ -434,6 +437,48 @@ function quotaBackendUnavailableResponse(
   );
 }
 
+const REGISTERED_TOOL_NAMES: ReadonlySet<string> = new Set(TOOL_REGISTRY.map((tool) => tool.name));
+
+// #8721 phase 7: an error that suggests a bug (an unexpected tool failure) or
+// a missing capability (an unknown tool) names the tool that takes a report.
+// The handler's exit adds `requestId` beside it (api/mcp/request-id.ts). Known
+// states, such as billing denials, rate limits, validation errors, source
+// outages and report_issue's own refusals, do not carry it.
+const REPORT_GUIDANCE = { reportWith: REPORT_ISSUE_TOOL } as const;
+/** Downstream statuses that mean "busy or down", not "broken": no report hint. */
+const UPSTREAM_EXPECTED_STATUSES = new Set([429, 502, 503, 504]);
+
+/**
+ * Who is calling `report_issue`, from the request and the auth context only
+ * (threat model, "Entry paths"). Keyed means a Pro or `wm_` principal that
+ * passes the same entitlement pre-check paid tools run, and is not on the
+ * free-account allowance (Decision 2). Every other caller, including one whose
+ * pre-check fails or is unavailable, reports anonymously: a lapsed key loses
+ * the keyed bucket, never the ability to report.
+ */
+async function resolveFeedbackCaller(
+  req: Request,
+  context: McpAuthContext,
+  deps: McpHandlerDeps,
+  resourceMetadataUrl: string,
+  corsHeaders: Record<string, string>,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<NonNullable<McpToolExecutionContext['feedbackCaller']>> {
+  let principalId: string | undefined;
+  if (context.kind === 'pro' || context.kind === 'user_key') {
+    // A pre-check that throws (entitlement store unreachable) is "unavailable":
+    // the caller reports anonymously rather than failing the report.
+    const check = await runContextPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx).catch(() => null);
+    if (check?.ok && check.freeAccountAllowance !== true) principalId = context.userId;
+  }
+  return {
+    clientIp: getClientIp(req),
+    userAgent: req.headers.get('user-agent') ?? '',
+    ...(principalId ? { principalId } : {}),
+    isKnownTool: (name) => REGISTERED_TOOL_NAMES.has(name),
+  };
+}
+
 export async function dispatchToolsCall(
   req: Request,
   context: McpAuthContext,
@@ -500,7 +545,7 @@ export async function dispatchToolsCall(
     }
     // Cap the echoed tool name — same reflection-amplification class as the
     // handler.ts method echo (see a2a.ts Greptile #4824 precedent).
-    return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders);
+    return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders, { ...REPORT_GUIDANCE });
   }
   if (resolved.kind === 'invalid') {
     if (deferredBurst) {
@@ -997,6 +1042,9 @@ export async function dispatchToolsCall(
       if (startUpgradeResult) execution.startUpgradeResult = startUpgradeResult;
       if (panelRead?.panel === 'forecasts') execution.panelScope = 'forecasts';
       if (perToolForecastRead) execution.perToolForecastRead = true;
+      if (tool.name === REPORT_ISSUE_TOOL) {
+        execution.feedbackCaller = await resolveFeedbackCaller(req, context, deps, resourceMetadataUrl ?? '', corsHeaders, ctx);
+      }
       if (tool._execute) result = await tool._execute(
         aliasArguments ?? (dedicatedPanel && (tool.name === 'get_country_brief' || tool.name === 'get_country_risk') ? sourceArguments : forecastReaderArguments),
         execution.downstreamOrigin,
@@ -1211,9 +1259,12 @@ export async function dispatchToolsCall(
     // Sentry/log alerts don't page on ordinary billing churn.
     const isExpectedDenial = err instanceof BillingDenialError;
     const isExpectedSourceOutage = err instanceof McpSourceUnavailableError;
+    // A refused report (its own limits, a degraded limiter, a deleted account)
+    // is an expected state the feedback buckets exist to produce.
+    const isExpectedRefusal = err instanceof FeedbackRejectedError;
     const downstreamTags = downstreamErrorTags(err);
     const isBothFailed = err instanceof BothSourcesFailedError;
-    const log = isClient4xx || isExpectedDenial || isExpectedSourceOutage ? console.warn : console.error;
+    const log = isClient4xx || isExpectedDenial || isExpectedSourceOutage || isExpectedRefusal ? console.warn : console.error;
     log('[mcp] tool execution error:', err);
     captureSilentError(err, {
       tags: {
@@ -1237,7 +1288,7 @@ export async function dispatchToolsCall(
       // Split the api/mcp catch-all (WORLDMONITOR-T8) into per-tool,
       // per-status groups — see api/mcp/error-fingerprint.ts.
       fingerprint: mcpErrorFingerprint('tool-execution', tool.name, err),
-      ...(isClient4xx || isExpectedDenial || isExpectedSourceOutage ? { level: 'warning' as const } : {}),
+      ...(isClient4xx || isExpectedDenial || isExpectedSourceOutage || isExpectedRefusal ? { level: 'warning' as const } : {}),
     });
     recordToolCall(usage, {
       tool: telemetryTool,
@@ -1279,6 +1330,19 @@ export async function dispatchToolsCall(
         err.status,
       );
     }
+    if (err instanceof FeedbackRejectedError) {
+      // A security report's refusal keeps the advisory URL (Decision 13).
+      const data = err.advisoryUrl ? { advisoryUrl: err.advisoryUrl, notice: err.notice } : undefined;
+      if (err.status === 403) return rpcError(id, -32002, err.publicMessage, corsHeaders, data, 403);
+      return rpcError(
+        id,
+        err.status === 429 ? -32029 : -32603,
+        err.publicMessage,
+        { ...corsHeaders, 'Retry-After': err.status === 429 ? '3600' : '60' },
+        data,
+        err.status,
+      );
+    }
     if (err instanceof McpSourceUnavailableError) {
       return rpcError(
         id,
@@ -1300,6 +1364,12 @@ export async function dispatchToolsCall(
     if (err instanceof RpcValidationError) {
       return invalidArguments('Invalid params', { violations: err.violations });
     }
-    return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders);
+    // Only an unexpected failure points at report_issue. An upstream rate limit
+    // or outage is an ordinary state; a report would spend the caller's
+    // allowance on noise.
+    const isExpectedUpstreamState = isBothFailed
+      || ((err instanceof ToolFetchError || err instanceof UpstreamHttpError) && UPSTREAM_EXPECTED_STATUSES.has(err.status));
+    return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders,
+      tool.name === REPORT_ISSUE_TOOL || isExpectedUpstreamState ? undefined : { ...REPORT_GUIDANCE });
   }
 }

@@ -211,6 +211,8 @@ export interface CountryPortActivityData {
     anomalySignal: boolean;
   }[];
   fetchedAt: string;
+  // The API's last data for a country PortWatch has not refreshed in 7+ days.
+  stale?: boolean;
 }
 
 export interface CountryBriefPanel {

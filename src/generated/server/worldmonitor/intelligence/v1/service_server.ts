@@ -1064,6 +1064,7 @@ export interface CountryPortActivityResponse {
   ports: PortActivityEntry[];
   fetchedAt: string;
   available: boolean;
+  stale: boolean;
 }
 
 export interface PortActivityEntry {

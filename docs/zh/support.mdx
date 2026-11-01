@@ -14,6 +14,7 @@ description: "World Monitor 的所有支持渠道汇总 — 邮件、GitHub Issu
 | 一般支持、账户或账单问题 | [support@worldmonitor.app](mailto:support@worldmonitor.app) |
 | 企业、销售、定制配额 | [enterprise@worldmonitor.app](mailto:enterprise@worldmonitor.app) |
 | 错误报告与功能请求 | [GitHub issues](https://github.com/koala73/worldmonitor/issues)（公开，开源） |
+| 智能体上报的故障、缺失工具与错误数据 | MCP 工具 [`report_issue`](/zh/mcp-tools-reference#report_issue) 或 `POST /api/feedback/v1/submit-report`，无需凭据。每份报告都由人工阅读，不会回复。 |
 | 服务状态与事故 | [status.worldmonitor.app](https://status.worldmonitor.app) — 提供邮件订阅 |
 | 安全漏洞 | 参见 [security.txt](https://www.worldmonitor.app/.well-known/security.txt) |
 
@@ -25,7 +26,7 @@ description: "World Monitor 的所有支持渠道汇总 — 邮件、GitHub Issu
 - **Pro Business** — 在相同渠道上提供优先支持。无正式 SLA。
 - **Enterprise** — 专属支持，提供承诺的响应时间，按合同约定。
 
-在反馈 API 问题时，请附上你的密钥前缀（切勿提供完整密钥）、端点，以及你收到的任何请求 ID 或 `X-RateLimit-*` 标头值。
+在反馈 API 问题时，请附上你的密钥前缀（切勿提供完整密钥）、端点，以及你收到的任何请求 ID 或 `X-RateLimit-*` 标头值。MCP 错误的请求 ID 是 `error.data.requestId`，REST 响应的请求 ID 是 `x-vercel-id` 头。
 
 ## 联系我们之前
 

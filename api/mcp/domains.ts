@@ -145,6 +145,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_mcp_allowance: 'meta',
   start_upgrade: 'meta',
   describe_tool: 'meta',
+  report_issue: 'meta',
   open_news_dashboard: 'meta',
   analyze_news_headlines: 'meta',
   classify_event: 'meta',

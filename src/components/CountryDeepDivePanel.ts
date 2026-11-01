@@ -2475,6 +2475,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     this.maritimeBody.replaceChildren();
 
+    if (data.stale) {
+      this.maritimeBody.append(this.el('p', 'cdp-measure-note cdp-maritime-stale',
+        'Out of date: IMF PortWatch has not updated this country for over a week. These are the latest figures available.'));
+    }
+
     const table = this.el('table', 'cdp-maritime-table');
     const thead = this.el('thead');
     const headerRow = this.el('tr');

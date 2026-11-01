@@ -3272,7 +3272,7 @@ A provider is a host; an outlet is a public editorial source identity. Only 3 of
 - **Truncation is visible.** Enumerated views return `matched` alongside `returned`; the full provider inventory does not fit one response.
 - **API endpoints:** none — committed-registry read, no upstream call.
 - **Kind:** deterministic local compute. No LLM, no freshness budget.
-- **Access: free.** This is the one tool callable with **no credentials at all**, so an agent can see what WorldMonitor covers before anyone signs up. It consumes no quota for any principal and carries `_meta["worldmonitor/access"]: "free"` in `tools/list`, which is how a client that reads schemas rather than prose can tell. Uncredentialed calls take their own per-IP ceiling, tighter than the discovery limit, and that ceiling fails closed — if it can't be reached, the call is refused rather than served. Every other tool carries either `"free-account"` (direct cache reads, callable by any signed-in account within the allowance) or `"subscription"` (Pro-only — every tool with server-side execute logic, including a few that never fetch upstream). Each tool section on this page states its class on its **Access** line.
+- **Access: free.** This is the one data tool callable with **no credentials at all**, so an agent can see what WorldMonitor covers before anyone signs up. The only other credential-free tool is [`report_issue`](#report_issue), which stores a report and reads no data. It consumes no quota for any principal and carries `_meta["worldmonitor/access"]: "free"` in `tools/list`, which is how a client that reads schemas rather than prose can tell. Uncredentialed calls take their own per-IP ceiling, tighter than the discovery limit, and that ceiling fails closed — if it can't be reached, the call is refused rather than served. Every other tool carries either `"free-account"` (direct cache reads, callable by any signed-in account within the allowance) or `"subscription"` (Pro-only — every tool with server-side execute logic, including a few that never fetch upstream). Each tool section on this page states its class on its **Access** line.
 
 ---
 
@@ -3340,6 +3340,30 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `report_issue`
+
+Stores one report for the WorldMonitor maintainers: a bug, a missing capability, wrong or stale data, or a security concern. It is the MCP twin of [`POST /api/feedback/v1/submit-report`](/api-platform) and runs the same validation, redaction and limits. A person reads every report. Nothing is published, nothing is acted on automatically, and no reply is sent.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `kind` | string | yes | `bug`, `missing_capability`, `data_quality`, or `security`. |
+| `summary` | string | yes | One sentence, up to 300 characters. This is the report text, not the universal cache-tool `summary` flag. |
+| `surface` | string | no | What the report is about: a tool name, a REST path, or a short label for something that does not exist yet. Up to 200 characters. |
+| `expected` | string | no | What you expected. Up to 2,000 characters. |
+| `actual` | string | no | What happened instead. Up to 2,000 characters. |
+| `requestId` | string | no | The failing call's request id: `error.data.requestId` from an MCP error, or the `x-vercel-id` header of a REST response. Letters, digits, `:`, `_` and `-`, up to 128 characters. |
+| `clientName` | string | no | Your client or agent name. Up to 80 characters. |
+
+**Response:** `{ reportId, status }`. `status` is `received`, or `private` for a security report. A security report also carries `advisoryUrl` and `notice`. Resending the same report within 10 minutes returns the first `reportId` instead of storing a duplicate.
+
+- **Access: free.** No credentials are needed. A Pro or API account whose entitlement check passes reports under its own budget; every other caller, including a free account or a key whose check fails, reports anonymously. Identity always comes from the request's credentials, never from the arguments.
+- **Limits:** 5 reports per hour per IP for anonymous callers and 30 per day per account, plus service-wide ceilings. Arguments over 24 KB are rejected before any feedback limit or storage call. The tool spends no daily allowance.
+- **Redaction:** credentials and email addresses are replaced before storage. Secrets and personal data do not belong in a report.
+- **Security reports:** a `security` report only flags that a vulnerability exists. Send the details through the private [advisory form](https://github.com/koala73/worldmonitor/security/advisories/new).
+- **Errors:** `-32602` names the invalid field. `-32029` at HTTP 429 with `Retry-After: 3600` means a limit is spent. `-32603` at HTTP 503 with `Retry-After: 60` means the limiter or the store is unavailable, and the report was not stored. `-32002` at HTTP 403 means the account is being deleted. A refused security report keeps `advisoryUrl` in `error.data`.
+- **Annotations:** not read-only (it writes a row), not destructive (it only inserts), not idempotent (the same report outside the 10-minute window is stored again), closed world.
+- **API endpoints:** none. The report goes straight to storage.
 
 ### `open_news_dashboard`
 
