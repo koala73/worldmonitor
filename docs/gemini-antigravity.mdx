@@ -56,6 +56,8 @@ These values are used when registering WorldMonitor in the [Google Connected Con
 
 Before submitting, complete console-issued domain verification, pass the Developer Mode checks above, and test end to end with a Pro account.
 
+Domain verification: in the console's **MCP and tools setup**, select **Download token** under **Verify domain ownership**. Copy the token from the downloaded `google-connected-apps.json` into the `verification_tokens` array of `public/.well-known/google-connected-apps`, deploy, then select **Verify domain**. Vercel serves the file at `https://worldmonitor.app/.well-known/google-connected-apps` as JSON with HTTP 200 and no redirect, as Google requires.
+
 | Field | Value |
 |---|---|
 | Connected app name | WorldMonitor |
