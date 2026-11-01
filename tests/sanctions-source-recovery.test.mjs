@@ -519,6 +519,34 @@ describe('OFAC source caller deadline', () => {
       `proxy timeout ${timeouts[0].timeoutMs} ms exceeds the ${timeouts[0].remaining} ms left`);
   });
 
+  it('ends the whole proxy request, tunnel and response, within one timeout', { timeout: 10_000 }, async () => {
+    // proxyFetch starts a fresh timeoutMs timer for the response after the
+    // tunnel opens, so only a signal passed by the caller bounds both phases.
+    const deadlineAt = Date.now() + 2_500;
+    const startedAt = Date.now();
+    let budget;
+
+    await assert.rejects(fetchOfacSourceResponse(SOURCE_URL, {
+      fetchFn: async (url) => String(url) === SOURCE_URL ? response(403, 'blocked') : response(200),
+      proxyFetchFn: async (_url, _proxyConfig, options) => {
+        budget ??= options.timeoutMs;
+        return new Promise((_resolve, reject) => {
+          const stall = setTimeout(() => reject(new Error('proxy stub stalled')), 2 * options.timeoutMs);
+          options.signal?.addEventListener('abort', () => {
+            clearTimeout(stall);
+            reject(options.signal.reason);
+          }, { once: true });
+        });
+      },
+      proxyUrl,
+      sleepFn: async () => {},
+      deadlineAt,
+    }));
+
+    const elapsed = Date.now() - startedAt;
+    assert.ok(elapsed < budget + 500, `proxy request ran ${elapsed} ms against a ${budget} ms budget`);
+  });
+
   it('never sleeps past the deadline between retries', async () => {
     const sleeps = [];
     const deadlineAt = Date.now() + 3_000;
