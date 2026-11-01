@@ -45,11 +45,12 @@ const longDate = value => {
 };
 
 export function discoverStatkz(html, links) {
+  const seen = new Set();
   return links(html, INDEX).flatMap(link => {
     const match = link.text.toLowerCase().startsWith(`${SERIES} (`) ? /\(\s*as(?: of)? (\d{1,2}) ([A-Za-z]+) (\d{4})\s*\)$/i.exec(link.text) : null;
     const date = match ? isoDate(match[3], MONTHS.indexOf(match[2].toLowerCase()) + 1, match[1]) : '';
     return date && /^\/api\/iblock\/element\/\d+\/file\/en\/$/.test(new URL(link.url).pathname) && new URL(link.url).hostname === 'stat.gov.kz' ? [{ date, url: link.url }] : [];
-  }).filter((report, i, all) => all.findIndex(other => other.url === report.url) === i).sort((a, b) => b.date.localeCompare(a.date));
+  }).filter(report => !seen.has(report.url) && seen.add(report.url)).sort((a, b) => b.date.localeCompare(a.date));
 }
 
 export function parseStatkz(sheets, expectedDate) {

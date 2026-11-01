@@ -78,11 +78,34 @@ export function parsePbs(sheets) {
   return result;
 }
 
-function pdfRows(items) {
+// First index whose element satisfies `test`, for an array where `test` turns true once and stays
+// true. Lets parsers pick a band of publisher items by position without rescanning the page.
+export function firstIndex(sorted, test) {
+  let low = 0;
+  let high = sorted.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (test(sorted[mid])) high = mid;
+    else low = mid + 1;
+  }
+  return low;
+}
+
+// The earliest element whose key is closest to `value`, for elements sorted by ascending key.
+export function nearest(sorted, key, value) {
+  const at = firstIndex(sorted, element => key(element) >= value);
+  const below = sorted[at - 1];
+  const above = sorted[at];
+  const best = !above || (below && value - key(below) <= key(above) - value) ? below : above;
+  return sorted[firstIndex(sorted, element => key(element) >= key(best))];
+}
+
+export function pdfRows(items) {
   const rows = [];
   for (const item of [...items].filter(item => item.text.trim()).sort((a, b) => b.y - a.y || a.x - b.x)) {
-    let row = rows.find(row => Math.abs(row.y - item.y) < 1.5);
-    if (!row) rows.push(row = { y: item.y, items: [] });
+    // Items arrive by descending y and rows sit more than 1.5 apart, so only the newest row can match.
+    let row = rows.at(-1);
+    if (!row || Math.abs(row.y - item.y) >= 1.5) rows.push(row = { y: item.y, items: [] });
     row.items.push(item);
   }
   return rows.map(row => ({ ...row, items: row.items.sort((a, b) => a.x - b.x) }));

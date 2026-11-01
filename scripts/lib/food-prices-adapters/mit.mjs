@@ -1,4 +1,4 @@
-import { isoDate } from '../food-prices.mjs';
+import { firstIndex, isoDate } from '../food-prices.mjs';
 
 const MIT_INDEX_URL = 'https://www.viwanda.go.tz/documents/product-prices-domestic';
 
@@ -50,16 +50,17 @@ export function parseMit(page, expectedDate) {
     if (!crop || crop.x < headers[i * 2].x - 5 || crop.x >= headers[i * 2 + 1].x) throw new Error('mit crop columns format changed');
   }
   const top = headers[0].y;
-  const values = page.filter(item => item.x >= 110 && item.y < top && /^(?:[\d,]+|NA)$/.test(item.text.trim()));
+  // Sorted once by height so each market row takes its band of cells without rescanning the page.
+  const values = page.filter(item => item.x >= 110 && item.y < top && /^(?:[\d,]+|NA)$/.test(item.text.trim())).sort((a, b) => a.y - b.y);
   const result = [];
   for (const row of mitRows(page.filter(item => item.x < 110 && item.y < top))) {
     const regionName = row.items.filter(item => item.x < 60).map(item => item.text.trim()).join(' ');
     const district = row.items.filter(item => item.x >= 60).map(item => item.text.trim()).join(' ');
     if (/^(?:CHANZO:|IDARA\b)/.test(regionName) || (!regionName && !district)) continue;
     if (!regionName || !district) throw new Error('mit market row format changed');
-    const cells = values.filter(item => item.y >= row.y - 1 && item.y <= row.y + 4);
     const columns = new Map();
-    for (const cell of cells) {
+    for (let i = firstIndex(values, item => item.y >= row.y - 1); i < values.length && values[i].y <= row.y + 4; i++) {
+      const cell = values[i];
       const column = headers.findLastIndex(header => header.x <= cell.x + 3);
       if (column < 0 || columns.has(column)) throw new Error('mit price cell layout changed');
       columns.set(column, cell.text.trim());

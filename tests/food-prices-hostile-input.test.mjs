@@ -4,14 +4,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import ExcelJS from 'exceljs';
-import { discoverReports, giewsCountries, htmlElements, parseSniim } from '../scripts/lib/food-prices.mjs';
+import { discoverReports, giewsCountries, htmlElements, parseSniim, pdfRows } from '../scripts/lib/food-prices.mjs';
 import { pdfPages, readWorkbook, selectOptions } from '../scripts/lib/food-prices-fetch.mjs';
 import { ammanFormState } from '../scripts/lib/food-prices-adapters/amman.mjs';
 import { parseMaga } from '../scripts/lib/food-prices-adapters/maga.mjs';
-import { mitRows } from '../scripts/lib/food-prices-adapters/mit.mjs';
+import { mitRows, parseMit } from '../scripts/lib/food-prices-adapters/mit.mjs';
 import { nuxtData } from '../scripts/lib/food-prices-adapters/nabc.mjs';
-import { ocpvRows } from '../scripts/lib/food-prices-adapters/ocpv.mjs';
+import { ocpvRows, parseOcpv } from '../scripts/lib/food-prices-adapters/ocpv.mjs';
 import { simaRows } from '../scripts/lib/food-prices-adapters/sima.mjs';
+import { discoverStatkz } from '../scripts/lib/food-prices-adapters/statkz.mjs';
 import { parseTcbIndex } from '../scripts/lib/food-prices-adapters/tcb.mjs';
 import { parseUcda } from '../scripts/lib/food-prices-adapters/ucda.mjs';
 
@@ -47,7 +48,7 @@ test('page parsers stay linear on unclosed rows, cells, options, anchors and scr
 
 test('PDF row grouping stays linear and keeps the rows it found before', () => {
   const items = Array.from({ length: 200000 }, (_, i) => ({ text: 'x', x: i % 7, y: 100000 - i * 2 }));
-  for (const [name, group] of [['MIT', mitRows], ['OCPV', ocpvRows], ['SIMA', simaRows]]) {
+  for (const [name, group] of [['DA/CBSL', pdfRows], ['MIT', mitRows], ['OCPV', ocpvRows], ['SIMA', simaRows]]) {
     quick(name, () => group(items));
     assert.deepEqual(group([{ text: 'b', x: 2, y: 10 }, { text: 'a', x: 1, y: 10.4 }, { text: 'c', x: 1, y: 8 }, { text: 'd', x: 1, y: 7 }])
       .map(row => row.items.map(item => item.text).join('')), ['ab', 'cd'], name);
@@ -110,4 +111,54 @@ test('PDF text extraction stops once a document exceeds the item budget', async 
   assert.equal(pages[0].length, 300);
   assert.equal(pages[0][0].text, 'x0');
   await assert.rejects(pdfPages(textPdf(3000), { maxItems: 1000 }), /text item limit/);
+});
+
+// One OCPV region block per header: a header row, its region name above it and one price row below.
+function ocpvPage(blocks) {
+  const items = [
+    { text: 'PRIX A LA CONSOMMATION', x: 0, y: 2e6 }, { text: 'UNITE : F CFA/KG', x: 0, y: 2e6 - 2 },
+    { text: 'SPECULATIONS', x: 0, y: 2e6 - 4 }, { text: 'SEMAINE ALLANT DU 1 AU 7 JANVIER 2026', x: 0, y: 2e6 - 6 },
+  ];
+  for (let k = 0; k < blocks; k++) {
+    const y = 1e6 - k * 100;
+    items.push({ text: 'mini', x: 300, y }, { text: 'maxi', x: 320, y }, { text: 'moy', x: 340, y },
+      { text: `ZONE${k}`, x: 310, y: y + 30 }, { text: 'mil', x: 10, y: y - 20 }, { text: '100', x: 340, y: y - 20 });
+  }
+  return items;
+}
+
+test('OCPV region blocks are matched in one pass, not one page scan per header', () => {
+  assert.deepEqual(parseOcpv([ocpvPage(3)]).map(row => [row.item, row.market, row.price]),
+    [['Millet', 'Zone0', 100], ['Millet', 'Zone1', 100], ['Millet', 'Zone2', 100]]);
+  quick('OCPV headers', () => parseOcpv([ocpvPage(20000)]));
+});
+
+// A MIT page with `rows` market rows, each carrying all sixteen price cells.
+function mitPage(rows) {
+  const crops = ['Maize (Mahindi)', 'Rice (Mchele)', 'Sorghum (Mtama)', 'Bulrush Millet (Uwele)', 'Finger Millet (Ulezi)', 'Wheat Grain (Ngano)', 'Beans (Maharage)', 'Irish Potatoes (Viazi'];
+  const top = 1e6;
+  const items = [{ text: 'BEI ZA JUMLA MAZAO MAKUU YA CHAKULA NCHINI (TZS / KILO 100) 3 March, 2026', x: 0, y: top + 40 }];
+  for (let i = 0; i < 16; i++) items.push({ text: i % 2 ? 'Max Price' : 'Min Price', x: 120 + i * 20, y: top });
+  crops.forEach((label, i) => items.push({ text: label, x: 120 + i * 40, y: top + 20 }));
+  for (let r = 0; r < rows; r++) {
+    const y = top - 10 - r * 6;
+    items.push({ text: 'Arusha', x: 10, y }, { text: `Market${r}`, x: 70, y });
+    for (let i = 0; i < 16; i++) items.push({ text: '1,000', x: 120 + i * 20, y });
+  }
+  return items;
+}
+
+test('MIT price cells are bucketed by row once, not rescanned per market row', () => {
+  const rows = parseMit(mitPage(2), '2026-03-03');
+  assert.equal(rows.length, 32);
+  assert.deepEqual([rows[0].market, rows[0].item, rows[0].price, rows.at(-1).market], ['Market0, Arusha', 'Maize (low)', 1000, 'Market1, Arusha']);
+  quick('MIT market rows', () => parseMit(mitPage(10000), '2026-03-03'));
+});
+
+test('stat.gov.kz discovery dedupes report links in linear time', () => {
+  const title = 'Price index and average prices for socially important food products in the Republic of Kazakhstan (as 2 September 2026)';
+  const many = Array.from({ length: N }, (_, i) => ({ text: title, url: `https://stat.gov.kz/api/iblock/element/${i}/file/en/` }));
+  const twice = [many[0], many[1], many[0]];
+  assert.deepEqual(discoverStatkz('', () => twice).map(report => report.url), [many[0].url, many[1].url]);
+  quick('stat.gov.kz links', () => discoverStatkz('', () => many));
 });

@@ -1,4 +1,4 @@
-import { isoDate } from '../food-prices.mjs';
+import { firstIndex, isoDate, nearest } from '../food-prices.mjs';
 
 const BASE = 'https://www.ocpv-ci.com/';
 const FR_MONTHS = ['JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET', 'AOUT', 'SEPTEMBRE', 'OCTOBRE', 'NOVEMBRE', 'DECEMBRE'];
@@ -63,21 +63,25 @@ export function parseOcpv(pages) {
   for (const items of pages) {
     const rows = ocpvRows(items);
     const headers = rows.filter(row => row.items.some(item => item.text === 'moy'));
+    // Region names sorted once by height; rows already run top to bottom. Each header then takes its
+    // band by binary search instead of rescanning the page.
+    const nameItems = items.filter(item => item.x >= 200 && !/^(?:Prix|SPECULATIONS)$/.test(item.text)).sort((a, b) => a.y - b.y);
     for (const [index, header] of headers.entries()) {
       const labels = header.items.map(item => item.text);
       if (labels.length % 3 || labels.some((label, i) => label !== ['mini', 'maxi', 'moy'][i % 3])) throw new Error('ocpv food PDF column layout changed');
       const triples = [];
       for (let i = 0; i < header.items.length; i += 3) triples.push({ columns: header.items.slice(i, i + 3), names: [] });
-      for (const item of items.filter(item => item.y > header.y + 15 && item.y < header.y + 55 && item.x >= 200 && !/^(?:Prix|SPECULATIONS)$/.test(item.text))) {
-        const center = item.x + item.text.length * 2.4;
-        const nearest = triples.reduce((best, triple) => Math.abs((triple.columns[0].x + triple.columns[2].x) / 2 - center) < Math.abs((best.columns[0].x + best.columns[2].x) / 2 - center) ? triple : best);
-        nearest.names.push(item);
+      const tripleCenter = triple => (triple.columns[0].x + triple.columns[2].x) / 2;
+      for (let i = firstIndex(nameItems, item => item.y > header.y + 15); i < nameItems.length && nameItems[i].y < header.y + 55; i++) {
+        const item = nameItems[i];
+        nearest(triples, tripleCenter, item.x + item.text.length * 2.4).names.push(item);
       }
       if (triples.some(triple => !triple.names.length)) throw new Error('ocpv food PDF region header changed');
       for (const triple of triples) triple.market = regionName(triple.names.sort((a, b) => b.y - a.y || a.x - b.x).map(item => item.text).join(' '));
       const columns = triples.flatMap(triple => triple.columns.map((column, i) => ({ x: column.x, triple, moy: i === 2 })));
       const next = headers[index + 1];
-      for (const row of rows.filter(row => row.y < header.y - 5 && (!next || row.y > next.y + 55))) {
+      for (let r = firstIndex(rows, row => row.y < header.y - 5); r < rows.length && (!next || rows[r].y > next.y + 55); r++) {
+        const row = rows[r];
         const label = row.items.filter(item => item.x < 200).map(item => item.text).join(' ').trim();
         const numbers = row.items.filter(item => item.x >= 200).reduce((merged, item) => {
           const last = merged.at(-1);
@@ -88,7 +92,7 @@ export function parseOcpv(pages) {
         }, []);
         if (!label || !numbers.length || numbers.some(number => !/^\d+$/.test(number.text))) continue;
         for (const number of numbers) {
-          const column = columns.reduce((best, column) => Math.abs(column.x - number.x) < Math.abs(best.x - number.x) ? column : best);
+          const column = nearest(columns, column => column.x, number.x);
           if (Math.abs(column.x - number.x) > 12) throw new Error('ocpv food PDF column layout changed');
           const price = Number(number.text);
           if (column.moy && price > 0) result.push({ item: itemName(label), market: column.triple.market, marketType: 'retail', unit: 'kg', currency: 'XOF', date, price, origin: '' });
