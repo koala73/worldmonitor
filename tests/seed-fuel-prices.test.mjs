@@ -265,3 +265,9 @@ test('FX currencies without a fallback rate are requested first, inside the poin
   assert.ok(withoutFallback.length <= 5, `only five point-of-use FX requests fit; ${withoutFallback.length} lack a fallback`);
   assert.deepEqual(FUEL_FX_CURRENCIES.slice(0, withoutFallback.length), withoutFallback);
 });
+
+test('EUR stays inside the five cold-cache FX requests, since every EU row is priced in EUR', () => {
+  assert.ok(FUEL_FX_CURRENCIES.slice(0, 5).includes('EUR'), FUEL_FX_CURRENCIES.slice(0, 5).join(','));
+  // EU rows are all published as EUR, so a BGN quote is never used.
+  assert.ok(!FUEL_FX_CURRENCIES.includes('BGN'));
+});

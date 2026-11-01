@@ -654,9 +654,10 @@ export const REGIONAL_FUEL_CURRENCIES = [...new Set(REGIONAL_FUEL_SOURCES.map(s 
 
 // getSharedFxRates fetches only the first five currencies from Yahoo when the shared
 // cache lacks them; the rest use SHARED_FX_FALLBACKS. Currencies with no fallback go
-// first so their countries are not dropped for want of a rate.
+// first so their countries are not dropped for want of a rate, then EUR, which prices
+// every EU row. (EU rows are all published as EUR, so no BGN quote is needed.)
 export const FUEL_FX_CURRENCIES = (() => {
-  const all = [...new Set(['MYR', 'EUR', 'MXN', 'PLN', 'CZK', 'DKK', 'HUF', 'RON', 'SEK', 'BGN', 'BRL', 'NZD', 'GBP', ...REGIONAL_FUEL_CURRENCIES])];
+  const all = [...new Set(['EUR', 'MYR', 'MXN', 'PLN', 'CZK', 'DKK', 'HUF', 'RON', 'SEK', 'BRL', 'NZD', 'GBP', ...REGIONAL_FUEL_CURRENCIES])];
   return [...all.filter(c => SHARED_FX_FALLBACKS[c] == null), ...all.filter(c => SHARED_FX_FALLBACKS[c] != null)];
 })();
 
