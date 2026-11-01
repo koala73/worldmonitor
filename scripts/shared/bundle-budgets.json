@@ -95,7 +95,7 @@
       "files": 1
     },
     "web-origin": {
-      "raw": 1994,
+      "raw": 867,
       "files": 1
     }
   },
@@ -109,7 +109,7 @@
         "files": 1
       },
       "ai-flow-settings": {
-        "raw": 2123,
+        "raw": 2155,
         "files": 1
       },
       "analysis-framework-store": {
@@ -185,19 +185,11 @@
         "files": 1
       },
       "persistent-cache": {
-        "raw": 3904,
+        "raw": 3936,
         "files": 1
       },
       "pinned-webcams": {
         "raw": 2183,
-        "files": 1
-      },
-      "premium-fetch": {
-        "raw": 4890,
-        "files": 1
-      },
-      "premium-intent": {
-        "raw": 651,
         "files": 1
       },
       "sanitize": {
