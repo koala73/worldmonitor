@@ -23,6 +23,7 @@ vi.mock('@/services/analysis-worker', () => ({
 }));
 
 await import('@/app/data-loader');
+const { INTEL_SOURCES } = await import('@/config');
 
 interface SelectedNewsDigest {
   digest: ListFeedDigestResponse;
@@ -454,7 +455,8 @@ describe('digest coverage follows the selected browser response', () => {
     }
 
     function withIntel(body: ListFeedDigestResponse): ListFeedDigestResponse {
-      return { ...body, categories: { ...body.categories, intel: body.categories.politics! } };
+      const items = body.categories.politics!.items.map(item => ({ ...item, source: INTEL_SOURCES[0]!.name }));
+      return { ...body, categories: { ...body.categories, intel: { items } } };
     }
 
     async function selectHomeDigest(kind: 'fresh' | 'server-stale' | 'retained' | 'persisted') {
@@ -495,8 +497,9 @@ describe('digest coverage follows the selected browser response', () => {
     ] as const)('a %s home digest marks the intel panel cached=%s', async (kind, cached) => {
       const { internal, panels, selected, generation } = await selectHomeDigest(kind);
 
-      await internal.loadIntelNews(selected, { recordBaselineSample: false }, generation);
+      const intel = await internal.loadIntelNews(selected, { recordBaselineSample: false }, generation);
 
+      expect(intel).toHaveLength(2);
       expect(panels.intel.setRefreshDegraded).toHaveBeenLastCalledWith(cached);
     });
 
