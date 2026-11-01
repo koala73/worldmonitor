@@ -140,7 +140,7 @@ Repair: `orderCountriesForRun` fetches reporters the previous run did not refres
 
 ## Route coverage measured on live caches, 2026-11-01
 
-Origins from the live 2026-10-29 canonical payloads, run through `computeSupplierRouteRisk`. "Share" is the share of listed origins with a modeled route.
+Origins from the live 2026-10-29 canonical payloads, run through `computeSupplierRouteRisk`. "Modeled origins" counts listed origins: `3/4` means three of four listed origins have a modeled route. "Share modeled" is weighted by import value: `38.3% of 77.0%` means the origins with a modeled route hold 38.3% of import value, out of the 77.0% that the listed origins hold together. The share after each unknown origin is that origin's own share of import value.
 
 | Selection | Modeled origins | Share modeled | Unknown origins |
 | --- | --- | --- | --- |
@@ -153,4 +153,4 @@ Origins from the live 2026-10-29 canonical payloads, run through `computeSupplie
 | KR HS2804 | 4/5 | 64.5% of 83.3% | US |
 | IN HS2709 | 2/5 | 25.4% of 82.0% | RU, IQ, US |
 
-All unknown origins render as Unknown, never Safe, and keep their shares, which meets the acceptance rule. Closing these gaps means adding corridors to `TRADE_ROUTES` and `nearestRouteIds`, which also moves the map layer, the route explorer and the seeded chokepoint-exposure scores. That is a model extension, not a defect repair, so it is not part of this change. Two gaps have strong geographic grounds: Iraq to India (Basra crude exits through Hormuz) and US to Japan/Korea. For US to Japan/Korea, a West Coast leg has no modeled chokepoint, while Gulf Coast cargo such as helium passes through Panama, so a West-Coast-only route would understate exposure.
+All unknown origins render as Unknown, never Safe, and keep their shares, which meets the acceptance rule. Closing these gaps means adding corridors to `TRADE_ROUTES` and `nearestRouteIds`, which also moves the map layer, the route explorer and the seeded chokepoint-exposure scores. That is a model extension, not a defect repair, so it is not part of this change. Two gaps have strong geographic grounds: Iraq to India (Basra crude exits through Hormuz) and US to Japan/Korea. For US to Japan/Korea, a West Coast leg has no modeled chokepoint, while Gulf Coast cargo such as helium passes through Panama, so a West-Coast-only route would understate exposure. PR #9944 adds those two corridors only and measures how they move the seeded exposure scores.
