@@ -11542,6 +11542,20 @@
       ]
     },
     {
+      "host": "www.comcom.govt.nz",
+      "provider": "www.comcom.govt.nz",
+      "kind": "structured",
+      "observed": true,
+      "license": "Creative Commons Attribution 4.0 International (https://www.comcom.govt.nz/using-our-website/copyright/)",
+      "attribution": "Fuel price monitoring data, Commerce Commission New Zealand, licensed under CC BY 4.0. https://www.comcom.govt.nz/regulated-industries/fuel/quarterly-monitoring-reports/",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-fuel-prices.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.contractsfinder.service.gov.uk",
       "provider": "www.contractsfinder.service.gov.uk",
       "kind": "structured",
@@ -12798,15 +12812,10 @@
       "host": "www.mbie.govt.nz",
       "provider": "www.mbie.govt.nz",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.mbie.govt.nz and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/seed-fuel-prices.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.migracion.gob.pa",

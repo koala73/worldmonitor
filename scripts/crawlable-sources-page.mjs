@@ -395,7 +395,7 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['www.iea.org', 'International Energy Agency (IEA)'],
   ['www.jodidata.org', 'Joint Organisations Data Initiative (JODI)'],
   ['www.gets.govt.nz', 'New Zealand Government Electronic Tenders Service'],
-  ['www.mbie.govt.nz', 'New Zealand Ministry of Business, Innovation and Employment'],
+  ['www.comcom.govt.nz', 'New Zealand Commerce Commission'],
   ['www.mnd.gov.tw', 'Taiwan Ministry of National Defense'],
   ['www.mod.go.jp', 'Japan Ministry of Defense'],
   ['www.ncei.noaa.gov', 'NOAA National Centers for Environmental Information'],
