@@ -21,6 +21,7 @@ on:
       - 'scripts/build-llms-full.mjs'
       - 'scripts/build-ai-search.mjs'
       - 'scripts/crawlable-*.mjs'
+      - 'scripts/microstate-coverage-stories.mjs'
       - 'scripts/generate-public-product-facts.mjs'
       - 'scripts/sync-resilience-coverage.mjs'
       - 'scripts/run-data-tests.mjs'

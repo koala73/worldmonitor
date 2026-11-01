@@ -27,6 +27,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
+import { MICROSTATE_COVERAGE_STORY_CODES } from './microstate-coverage-stories.mjs';
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SNAPSHOT_DIR = 'docs/snapshots';
 const SNAPSHOT_RE = /^resilience-ranking-(\d{4}-\d{2}-\d{2})\.json$/;
@@ -39,7 +41,7 @@ const IDENTITY_FIELDS = ['countryCode', 'countryName', 'identity'];
 // them for verification.
 export const REHEARSAL_TRIGGERS = [
   /^docs\/snapshots\/resilience-ranking-[^/]+\.json$/,
-  /^scripts\/(build-crawlable-corpus|build-sitemap|build-llms-full|build-ai-search|crawlable-[\w-]+|generate-public-product-facts|sync-resilience-coverage|run-data-tests|rehearse-resilience-snapshot-refresh)\.mjs$/,
+  /^scripts\/(build-crawlable-corpus|build-sitemap|build-llms-full|build-ai-search|crawlable-[\w-]+|microstate-coverage-stories|generate-public-product-facts|sync-resilience-coverage|run-data-tests|rehearse-resilience-snapshot-refresh)\.mjs$/,
   /^\.github\/workflows\/(resilience-snapshot-refresh|resilience-snapshot-rehearsal)\.yml$/,
 ];
 
@@ -77,7 +79,7 @@ function redate(value, from, to) {
  * refresh routinely moves moved: the capture date, the ranked count, and every
  * country's score, rank, coverage and imputation share. Pure.
  */
-export function driftResilienceSnapshot(snapshot, { targetDate }) {
+export function driftResilienceSnapshot(snapshot, { targetDate, keepReadings = MICROSTATE_COVERAGE_STORY_CODES }) {
   const drifted = redate(structuredClone(snapshot), snapshot.capturedAt, targetDate);
 
   const demoted = drifted.items.pop();
@@ -94,11 +96,15 @@ export function driftResilienceSnapshot(snapshot, { targetDate }) {
   // Greyed-out rows are ordered by country code, so the readings move instead.
   // Neighbours by code often share a coverage figure (Andorra and Antigua both
   // hold 71%), so each row takes the reading half the list away in coverage
-  // order, which differs wherever the list's coverage does.
+  // order, which differs wherever the list's coverage does. Countries with a
+  // hand-written coverage story keep their own readings: the build fails by
+  // design when a story's cited gaps stop matching its country's data, and
+  // that needs a human rewrite, not a test fix.
   const greyReadings = drifted.greyedOut.map((entry) => omit(entry, IDENTITY_FIELDS));
   const byCoverage = greyReadings.map((_, index) => index)
+    .filter((index) => !keepReadings.includes(drifted.greyedOut[index].countryCode))
     .sort((a, b) => greyReadings[a].dimensionCoverage - greyReadings[b].dimensionCoverage);
-  const greyOrder = [];
+  const greyOrder = greyReadings.map((_, index) => index);
   byCoverage.forEach((index, position) => {
     greyOrder[index] = byCoverage[(position + Math.floor(byCoverage.length / 2)) % byCoverage.length];
   });

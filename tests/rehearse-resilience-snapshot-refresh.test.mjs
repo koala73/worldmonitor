@@ -74,6 +74,14 @@ describe('resilience snapshot refresh rehearsal', () => {
       );
     }
     assert.ok(drifted.greyedOut.every((row) => row.headlineEligible === false));
+
+    const withStory = driftResilienceSnapshot(original, { targetDate: '2026-12-01', keepReadings: ['AG'] });
+    assert.deepEqual(
+      byCode(withStory.greyedOut, 'AG'),
+      byCode(original.greyedOut, 'AG'),
+      'a coverage-story country keeps its readings, so its story still matches its gaps',
+    );
+    assert.notEqual(byCode(withStory.greyedOut, 'AD').dimensionCoverage, 0.71, 'the other rows still move');
     assert.deepEqual(original, snapshot(), 'the committed snapshot is not mutated');
   });
 

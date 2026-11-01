@@ -101,6 +101,8 @@ const MICROSTATE_COVERAGE_STORIES = Object.freeze({
   },
 });
 
+export const MICROSTATE_COVERAGE_STORY_CODES = Object.freeze(Object.keys(MICROSTATE_COVERAGE_STORIES));
+
 function sameSourceFamilies(actual, expected) {
   const normalize = (values) => [...new Set(values || [])].sort();
   return JSON.stringify(normalize(actual)) === JSON.stringify(normalize(expected));
