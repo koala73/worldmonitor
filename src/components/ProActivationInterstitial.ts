@@ -1407,6 +1407,10 @@ function reportActivationStepFailure(
 ): void {
   if (!isFlowAccountCurrent(options)) return;
   void scheduleSentryInit();
+  // PushRegistrationError's hostname names which push service the server refused.
+  const endpointHost = err instanceof Error && 'endpointHost' in err && typeof err.endpointHost === 'string'
+    ? err.endpointHost
+    : '';
   enqueueSentryCall((s) => s.captureException(
     err instanceof Error ? err : new Error(String(err)),
     {
@@ -1415,6 +1419,7 @@ function reportActivationStepFailure(
         step,
         stage,
         activation_path: options.onlyIfUnactivated ? 'retro' : 'day0',
+        ...(endpointHost ? { push_endpoint_host: endpointHost } : {}),
       },
     },
   ));

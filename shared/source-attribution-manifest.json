@@ -5493,15 +5493,10 @@
       "host": "internal.example.com",
       "provider": "Internal example placeholder",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: documentation/test placeholder",
       "attribution": "Excluded from the provider count: placeholder URL.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "api/notification-channels.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "investing.com",
