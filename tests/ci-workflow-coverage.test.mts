@@ -40,8 +40,78 @@ describe('root dependency cache (#8710)', () => {
     const cache = action.runs.steps.find((step) => step.id === 'node-modules');
     assert.match(cache.uses, /^actions\/cache\/restore@[a-f0-9]{40}$/);
     assert.equal(cache.with.path, 'node_modules');
-    assert.equal(cache.with.key, "node-modules-v2-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'package.json', '.npmrc', 'vendor/braces/**', 'vendor/stream-json/**') }}");
+    assert.equal(cache.with.key, "node-modules-v3-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', '.npmrc', 'vendor/braces/**', 'vendor/stream-json/**', 'vendor/vercel-og/**') }}-${{ steps.install-inputs.outputs.hash }}");
     assert.equal(cache.with['restore-keys'], undefined);
+  });
+
+  // The key hashes only the package.json fields an install reads. Hashing the
+  // whole file made every scripts-only edit a miss in every job: run
+  // 41229529882 reinstalled in 16 jobs for one changed test:e2e command. The
+  // dependency fields stay in the key so a hit cannot mask a manifest that is
+  // out of sync with the lockfile (#8716): that edit still misses, and npm ci
+  // then fails on the mismatch.
+  describe('install-input hash', () => {
+    const hashStep = () => {
+      const steps = readAction().runs.steps;
+      const step = steps.find((s) => s.id === 'install-inputs');
+      assert.ok(step, 'the action must hash the install inputs of package.json');
+      assert.equal(step.shell, 'bash');
+      assert.ok(steps.indexOf(step) < steps.findIndex((s) => s.id === 'node-modules'), 'the hash must exist before the restore reads it');
+      return step;
+    };
+    const hashOf = (manifest: Record<string, unknown>) => {
+      const dir = mkdtempSync(resolve(tmpdir(), 'wm-install-inputs-'));
+      try {
+        const output = resolve(dir, 'github-output');
+        writeFileSync(resolve(dir, 'package.json'), JSON.stringify(manifest, null, 2));
+        writeFileSync(output, '');
+        execFileSync('bash', ['-c', hashStep().run], { cwd: dir, env: { ...process.env, GITHUB_OUTPUT: output } });
+        const match = /^hash=([a-f0-9]{64})$/m.exec(readFileSync(output, 'utf8'));
+        assert.ok(match, 'the step must publish a sha256 hash output');
+        return match[1];
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const base = {
+      name: 'fixture',
+      version: '1.0.0',
+      scripts: { postinstall: 'npm run inventory:facts', test: 'node --test' },
+      dependencies: { a: '^1.0.0', b: '^2.0.0' },
+      devDependencies: { c: '^3.0.0' },
+      overrides: { d: '4.0.0' },
+    };
+
+    it('ignores edits that cannot change node_modules', () => {
+      const same = hashOf(base);
+      assert.equal(hashOf({ ...base, scripts: { ...base.scripts, test: 'node --test --shard=1/2', lint: 'biome lint' } }), same);
+      assert.equal(hashOf({ ...base, version: '1.0.1', description: 'changed' }), same);
+      assert.equal(hashOf({ ...base, dependencies: { b: '^2.0.0', a: '^1.0.0' } }), same, 'key order is not an input');
+    });
+
+    it('changes when a dependency field or an install lifecycle script changes', () => {
+      const same = hashOf(base);
+      const variants: Record<string, unknown>[] = [
+        { ...base, dependencies: { ...base.dependencies, a: '^1.1.0' } },
+        { ...base, devDependencies: {} },
+        { ...base, optionalDependencies: { e: '1.0.0' } },
+        { ...base, peerDependencies: { f: '1.0.0' } },
+        { ...base, overrides: { d: '4.0.1' } },
+        { ...base, peerDependenciesMeta: { f: { optional: true } } },
+        { ...base, workspaces: ['packages/*'] },
+        { ...base, bundleDependencies: ['a'] },
+        { ...base, bundledDependencies: ['b'] },
+        // npm ci reads allowScripts to decide which dependency install scripts run.
+        { ...base, allowScripts: { esbuild: false } },
+        { ...base, devEngines: { runtime: { name: 'node', version: '24' } } },
+        // Every event npm ci runs for the root package (npm lib/commands/ci.js).
+        ...['preinstall', 'install', 'postinstall', 'prepublish', 'preprepare', 'prepare', 'postprepare']
+          .map((hook) => ({ ...base, scripts: { ...base.scripts, [hook]: 'node changed.mjs' } })),
+      ];
+      const hashes = variants.map(hashOf);
+      for (const hash of hashes) assert.notEqual(hash, same);
+      assert.equal(new Set(hashes).size, hashes.length);
+    });
   });
 
   it('saves the clean install immediately on a successful miss, before consumers run', () => {
