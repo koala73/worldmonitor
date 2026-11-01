@@ -75,12 +75,16 @@ evaluation (PR #9964: 41 checks passed, including `gate`).
 
 ```bash
 git fetch origin main
+before=$(git rev-parse HEAD)
 git rebase origin/main
+# Already on main's tip: the rebase is a no-op and pushing the same SHA starts no checks.
+[ "$(git rev-parse HEAD)" = "$before" ] && git commit --allow-empty -m "ci: re-run checks on a fresh head"
 git push --force-with-lease origin <branch>
 ```
 
-Do not re-run the old run. An empty commit also works, but a rebase also clears the
-gate's base-drift check and gives tests that compare against `origin/main` a matching tree.
+Prefer the rebase when main has moved: it also clears the gate's base-drift check and gives
+tests that compare against `origin/main` a matching tree. Re-running the old run does make
+fresh check runs visible, but it tests the stale merge tree (see What Didn't Work).
 
 No change to Deploy Gate. The window is one hour a year, and only pushes whose suite is
 created before 09:00 UTC with jobs created after it are affected (a few minutes of pushes).
