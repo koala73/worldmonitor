@@ -196,8 +196,11 @@ export async function obtainSubscriptionPayload(
 
 /** Carries the endpoint's hostname (never its path, which holds the registration token). */
 export class PushRegistrationError extends Error {
-  constructor(message: string, readonly endpointHost: string) {
+  readonly endpointHost: string;
+
+  constructor(message: string, endpointHost: string) {
     super(message);
+    this.endpointHost = endpointHost;
   }
 }
 

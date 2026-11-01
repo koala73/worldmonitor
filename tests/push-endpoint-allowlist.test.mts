@@ -96,8 +96,7 @@ describe('set-web-push endpoint allow-list', () => {
     'https://updates.push.services.mozilla.com/wpush/v2/token-e',
     'https://web.push.apple.com/token-f',
     'https://api.push.apple.com/token-g',
-    'https://wns2-par02p.notify.windows.com/w/?token=token-h',
-    'https://fcm.googleapis.com:443/fcm/send/token-i',
+    'https://wns2-par02p.notify.windows.com/w/?token=BQYAAA%2bX%3d',
   ];
 
   for (const endpoint of accepted) {
@@ -119,6 +118,12 @@ describe('set-web-push endpoint allow-list', () => {
     'https://fcm.googleapis.com:8443/fcm/send/x',
     'https://internal.example.com/admin',
     'https://permanently-removed.invalid/fcm/send/x',
+    // The relay's web-push sends with legacy url.parse(), which keeps `%2e`
+    // out of the hostname: these would connect to `localhost` and `redis`.
+    'https://localhost%2epush.apple.com/x',
+    'https://redis%2enotify.windows.com/x',
+    'https://fcm.googleapis.com:0443/fcm/send/x',
+    'https://fcm.googleapis.com:443/fcm/send/x',
   ];
 
   for (const endpoint of rejected) {

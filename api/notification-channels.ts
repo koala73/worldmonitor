@@ -145,6 +145,10 @@ async function encryptSlackWebhook(webhookUrl: string): Promise<string> {
  * non-STABLE channel; android.googleapis.com serves older Chrome
  * subscriptions. The default port only, so a listed host can't be aimed at
  * another service on the same machine.
+ *
+ * The endpoint must already be in canonical form: the relay's web-push sends
+ * with legacy url.parse(), which reads `localhost%2epush.apple.com` as host
+ * `localhost`. Browsers always emit canonical endpoints.
  */
 const PUSH_SERVICE_HOSTS = new Set([
   'fcm.googleapis.com',
@@ -154,8 +158,8 @@ const PUSH_SERVICE_HOSTS = new Set([
 ]);
 const PUSH_SERVICE_DOMAIN_SUFFIXES = ['.push.apple.com', '.notify.windows.com'];
 
-function isAllowedPushEndpoint(u: URL): boolean {
-  if (u.port !== '') return false;
+function isAllowedPushEndpoint(endpoint: string, u: URL): boolean {
+  if (u.href !== endpoint || u.port !== '') return false;
   return PUSH_SERVICE_HOSTS.has(u.hostname)
     || PUSH_SERVICE_DOMAIN_SUFFIXES.some((suffix) => u.hostname.endsWith(suffix));
 }
@@ -718,7 +722,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           if (u.protocol !== 'https:') {
             return finish(json({ error: 'endpoint must be https' }, 400, corsHeaders));
           }
-          if (!isAllowedPushEndpoint(u)) {
+          if (!isAllowedPushEndpoint(endpoint, u)) {
             return finish(json(
               { error: 'endpoint host is not a recognised push service' },
               400,
