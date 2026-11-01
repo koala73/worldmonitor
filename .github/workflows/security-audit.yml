@@ -24,7 +24,7 @@ jobs:
     name: audit-lockfile
     runs-on: ubuntu-latest
     # Eleven bounded audits plus setup and verdict upload.
-    timeout-minutes: 105
+    timeout-minutes: 115
     env:
       # Authenticate advisory lookups used to date findings for the grace clock.
       GITHUB_TOKEN: ${{ github.token }}
@@ -60,6 +60,8 @@ jobs:
             /demos/verification-desk/package-lock.json
             /integrations/zapier/package.json
             /integrations/zapier/package-lock.json
+            /docker/media-provenance-worker/package.json
+            /docker/media-provenance-worker/package-lock.json
       # The introduced-vs-inherited split needs the base commit in the object
       # DB. checkout leaves a shallow merge ref, so fetch just that one commit.
       - name: Fetch base commit
