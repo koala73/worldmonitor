@@ -283,7 +283,7 @@ it('country hooks reject unresolved filters while retaining aliases and Eurostat
       for (const value of ['Atlantis', 'sud', 'IQ']) assert.doesNotThrow(() => tool._validateArgs({ [field]: value }), tool.name);
       continue;
     }
-    if (['get_food_stocks', 'search_intel_history', 'get_intel_timeline', 'get_similar_events', 'open_news_dashboard'].includes(tool.name)) {
+    if (['search_intel_history', 'get_intel_timeline', 'get_similar_events', 'open_news_dashboard'].includes(tool.name)) {
       assert.throws(() => tool._validateArgs({ [field]: 'Atlantis' }), RpcValidationError, tool.name);
       assert.doesNotThrow(() => tool._validateArgs({ [field]: 'IQ' }), tool.name);
       assert.throws(() => tool._validateArgs({ [field]: 'IRQ' }), RpcValidationError, tool.name);

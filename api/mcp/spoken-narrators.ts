@@ -19,6 +19,7 @@ import {
   type SpokenCitation,
   type SpokenNarrator,
 } from './spoken';
+import { resolveCountryArg } from './_country-args';
 
 // Per-tool narrators for `response_mode: "spoken"` (api/mcp/spoken.ts). Each
 // reads the tool's documented payload shape and returns 2-3 sentences plus
@@ -456,7 +457,8 @@ const DIMENSION_LABELS: Record<string, string> = {
 };
 
 export const spokenResilienceIndicators: SpokenNarrator = (result, args, _now) => {
-  const code = text(result.countryCode) || text(args.country_code).toUpperCase();
+  // The tool accepts country names (#9722); speak the resolved country, never the raw argument.
+  const code = text(result.countryCode) || resolveCountryArg(args.country_code) || '';
   const name = countryName(code);
   const dataVersion = text(result.dataVersion);
   const asOf = toIso(dataVersion);

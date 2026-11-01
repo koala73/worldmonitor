@@ -382,3 +382,192 @@ describe('analyze_news_headlines returns Arabic summaries on request', () => {
     assert.match(systemPrompt, /Output the summary in AR language\./);
   });
 });
+
+// Tools that once accepted only ISO-2 (#9722). Production answered
+// get_resilience_indicators {country_code: "مصر"} with -32602 "countryCode
+// must be an assigned ISO 3166-1 alpha-2 code" after every other country tool
+// had moved to the shared resolver.
+describe('country tools that accepted only ISO-2 resolve names through the shared resolver', () => {
+  const originalFetch = globalThis.fetch;
+  const CTX = { kind: 'env_key', apiKey: 'fixture-key' } as const;
+  const BASE = 'https://www.worldmonitor.app';
+  const tool = (name: string) => {
+    const found = TOOL_REGISTRY.find((t) => t.name === name);
+    assert.ok(found, `missing tool ${name}`);
+    return found;
+  };
+  const resolving: Array<[string, string]> = [
+    ['مصر', 'EG'],
+    ['الإمارات', 'AE'],
+    ['Egypt', 'EG'],
+    ['EGY', 'EG'],
+    [' eg ', 'EG'],
+  ];
+
+  afterEach(() => { globalThis.fetch = originalFetch; });
+
+  async function downstreamCountry(name: string, params: Record<string, unknown>): Promise<string | null> {
+    const urls: URL[] = [];
+    globalThis.fetch = async (input: unknown) => { urls.push(new URL(String(input))); return Response.json({}); };
+    tool(name)._validateArgs?.(params);
+    await tool(name)._execute!(params, BASE, CTX, {});
+    assert.equal(urls.length, 1, `${name}: ${urls.length} fetches`);
+    return urls[0]!.searchParams.get('countryCode');
+  }
+
+  for (const name of ['get_resilience_indicators', 'get_demographics_capability', 'get_food_stocks', 'get_five_factor_scorecard']) {
+    for (const [input, expected] of resolving) {
+      it(`${name}: ${input.trim()} -> ${expected}`, async () => {
+        assert.equal(await downstreamCountry(name, { country_code: input }), expected);
+      });
+    }
+
+    for (const input of ['كوريا', 'مرحبا', 'Narnia']) {
+      it(`${name}: rejects ${input} with the resolver's message before fetching`, async () => {
+        globalThis.fetch = async () => { throw new Error('must not fetch'); };
+        const run = async () => {
+          tool(name)._validateArgs?.({ country_code: input });
+          await tool(name)._execute!({ country_code: input }, BASE, CTX, {});
+        };
+        await assert.rejects(run, (error: Error) => {
+          const violations = (error as unknown as { violations: Array<{ field: string; description: string }> }).violations;
+          assert.equal(error.name, 'RpcValidationError');
+          assert.equal(violations[0]?.field, 'country_code');
+          assert.ok(violations[0]?.description.includes(`"${input}"`), violations[0]?.description);
+          assert.ok(violations[0]?.description.includes(COUNTRY_ARG_HINT), violations[0]?.description);
+          return true;
+        });
+      });
+    }
+
+    it(`${name}: the country_code description carries the shared hint`, () => {
+      const property = (tool(name).inputSchema as { properties: Record<string, { description: string; pattern?: string }> }).properties.country_code!;
+      assert.ok(property.description.includes(COUNTRY_ARG_HINT), property.description);
+      assert.equal(property.pattern, undefined, 'a schema pattern would make strict clients reject names before the call');
+    });
+  }
+
+  it('get_food_stocks keeps the WORLD aggregate', async () => {
+    assert.equal(await downstreamCountry('get_food_stocks', { country_code: 'world' }), 'WORLD');
+  });
+
+  it('get_five_factor_scorecard resolves custom bloc members', async () => {
+    const urls: URL[] = [];
+    globalThis.fetch = async (input: unknown) => { urls.push(new URL(String(input))); return Response.json({}); };
+    await tool('get_five_factor_scorecard')._execute!({ members: ['مصر', 'Saudi Arabia', 'ARE'] }, BASE, CTX, {});
+    assert.deepEqual(urls[0]!.searchParams.getAll('members'), ['EG', 'SA', 'AE']);
+    await assert.rejects(
+      tool('get_five_factor_scorecard')._execute!({ members: ['مصر', 'كوريا'] }, BASE, CTX, {}),
+      { name: 'RpcValidationError' },
+    );
+  });
+
+  it('get_consumer_prices resolves the seeded UAE by name', async () => {
+    const consumer = tool('get_consumer_prices');
+    for (const input of ['الإمارات', 'United Arab Emirates', 'ARE']) {
+      // No Redis in this suite: the read fails after validation, which is the point.
+      const outcome = await (consumer._execute!({ country_code: input }, BASE, CTX, {}) as Promise<{ error?: string }>)
+        .then((value) => value, (error: Error) => ({ error: `threw ${error.message}` }));
+      assert.ok(!String(outcome?.error ?? '').startsWith('Could not resolve'), `${input}: ${outcome?.error}`);
+      assert.ok(!String(outcome?.error ?? '').includes('two-letter'), `${input}: ${outcome?.error}`);
+    }
+    const unknown = await consumer._execute!({ country_code: 'كوريا' }, BASE, CTX, {}) as { error?: string };
+    assert.match(String(unknown.error), /^Could not resolve "كوريا"/);
+    const unsupported = await consumer._execute!({ country_code: 'مصر' }, BASE, CTX, {}) as { error?: string };
+    assert.equal(unsupported.error, 'Country not yet supported. Available: ae');
+  });
+
+  it('get_mineral_production resolves the producer filter', async () => {
+    const urls: URL[] = [];
+    globalThis.fetch = async (input: unknown) => { urls.push(new URL(String(input))); return Response.json({}); };
+    tool('get_mineral_production')._validateArgs?.({ iso2: 'تشيلي' });
+    await tool('get_mineral_production')._execute!({ commodity: 'copper', iso2: 'تشيلي' }, BASE, CTX, {});
+    assert.equal(urls[0]!.searchParams.get('iso2'), 'CL');
+    assert.throws(() => tool('get_mineral_production')._validateArgs!({ iso2: 'مرحبا' }), { name: 'RpcValidationError' });
+  });
+});
+
+describe('get_resilience_indicators accepts Arabic names end to end', () => {
+  const ENV_KEY = 'operator_test_key_resilience_arabic';
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+
+  function makeDeps() {
+    const pipe = makePipelineMock();
+    return {
+      resolveBearerToContext: async () => null,
+      validateProMcpToken: async () => null,
+      getEntitlements: async () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: true, apiAccess: true }, validUntil: Date.now() + 86_400_000 }),
+      validateUserApiKey: async () => null,
+      guardUserApiKeyValidation: async () => null,
+      redisPipeline: pipe.pipeline,
+    };
+  }
+
+  async function callTool(params: Record<string, unknown>) {
+    const request = new Request('https://worldmonitor.app/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': ENV_KEY },
+      body: JSON.stringify(callBody('get_resilience_indicators', params, 1)),
+    });
+    const response = await mcpHandler(request, makeDeps());
+    assert.equal(response.status, 200, 'transport status');
+    return response.json() as Promise<{ error?: { code: number }; result?: { content: Array<{ text: string }> } }>;
+  }
+
+  beforeEach(() => {
+    process.env.WORLDMONITOR_VALID_KEYS = ENV_KEY;
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    delete process.env.MCP_TELEMETRY;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    console.log = () => {};
+    console.warn = () => {};
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    console.log = originalLog;
+    console.warn = originalWarn;
+    Object.keys(process.env).forEach((key) => { if (!(key in originalEnv)) delete process.env[key]; });
+    Object.assign(process.env, originalEnv);
+  });
+
+  const PAYLOAD = {
+    countryCode: 'EG', methodology: 'm', formula: 'd6', dataVersion: '2026-09-01', schemaVersion: '2',
+    dimensions: [
+      { id: 'energy', score: 58, active: true, reconciliationAvailable: true },
+      { id: 'macroFiscal', score: 41, active: true, reconciliationAvailable: true },
+    ],
+    indicators: [{ id: 'power-losses', dimension: 'energy', state: 'observed', sources: [] }],
+  };
+
+  for (const responseMode of [undefined, 'spoken']) {
+    it(`"مصر" reaches the RPC as EG${responseMode ? ' in spoken mode' : ''}`, async () => {
+      const urls: string[] = [];
+      globalThis.fetch = async (input: unknown) => { urls.push(String(input)); return Response.json(PAYLOAD); };
+      const body = await callTool({ country_code: 'مصر', ...(responseMode ? { response_mode: responseMode } : {}) });
+      assert.equal(body.error, undefined, JSON.stringify(body));
+      const rpc = urls.find((url) => url.includes('/api/resilience/v1/get-resilience-indicators'));
+      assert.ok(rpc, `no downstream call: ${JSON.stringify(urls)}`);
+      assert.match(rpc, /countryCode=EG(?:&|$)/);
+      if (responseMode) assert.match(JSON.parse(body.result!.content[0]!.text).spoken, /^Egypt's resilience breakdown/);
+    });
+  }
+
+  it('the spoken narration names the resolved country when the payload omits it', async () => {
+    globalThis.fetch = async () => Response.json({ ...PAYLOAD, countryCode: '' });
+    const body = await callTool({ country_code: 'مصر', response_mode: 'spoken' });
+    assert.equal(body.error, undefined, JSON.stringify(body));
+    assert.match(JSON.parse(body.result!.content[0]!.text).spoken, /^Egypt's resilience breakdown/);
+  });
+
+  it('"كوريا" returns Invalid params without a downstream call', async () => {
+    globalThis.fetch = async () => { throw new Error('must not fetch'); };
+    const body = await callTool({ country_code: 'كوريا' });
+    assert.equal(body.error?.code, -32602, JSON.stringify(body));
+    assert.ok(JSON.stringify(body.error).includes('كوريا'), JSON.stringify(body.error));
+  });
+});

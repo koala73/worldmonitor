@@ -723,14 +723,9 @@ function intelTimelineScope(params: Record<string, unknown>) {
 }
 
 function foodStocksCountry(params: Record<string, unknown>): string {
-  const country = typeof params.country_code === 'string' ? params.country_code.trim().toUpperCase() : '';
-  if (!/^(?:[A-Z]{2}|WORLD|WLD|_WORLD)$/.test(country)) {
-    throw new RpcValidationError('get-food-stocks', [{
-      field: 'country_code',
-      description: 'country_code is required and must be a 2-letter ISO 3166-1 alpha-2 code or WORLD',
-    }]);
-  }
-  return country;
+  const world = typeof params.country_code === 'string' ? params.country_code.trim().toUpperCase() : '';
+  if (/^(?:WORLD|WLD|_WORLD)$/.test(world)) return world;
+  return requireCountryCode(params.country_code, 'get-food-stocks');
 }
 
 function procurementPageSize(value: unknown): number {
@@ -2227,13 +2222,13 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     title: 'Cereal stocks-to-use ratios',
     _outputBudgetBytes: 131072,
-    description: 'USDA PSD cereal stocks-to-use by marketing year. Ask for a country (ISO-2) plus optional commodity (wheat, corn, rice, soybeans, barley, palmOil), or country_code=WORLD for the global balance. Returns ending stocks, production, use, and the stocks-to-use ratio. Marketing years are not calendar years and must not be compared across countries as if they were.',
+    description: 'USDA PSD cereal stocks-to-use by marketing year. Ask for a country plus optional commodity (wheat, corn, rice, soybeans, barley, palmOil), or country_code=WORLD for the global balance. Returns ending stocks, production, use, and the stocks-to-use ratio. Marketing years are not calendar years and must not be compared across countries as if they were.',
     inputSchema: {
       type: 'object',
       properties: {
         country_code: {
           type: 'string',
-          description: 'ISO 3166-1 alpha-2 country code (e.g. "EG") or "WORLD" for the global balance sheet.',
+          description: `"WORLD" for the global balance sheet, or one country. ${COUNTRY_ARG_HINT}`,
         },
         commodity: {
           type: 'string',
@@ -2312,15 +2307,16 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_demographics_capability',
+    _validateArgs: params => { requireCountryCode(params.country_code, 'get-demographics-capability'); },
     title: 'Country demographics capability',
     _outputBudgetBytes: 32768,
-    description: 'Return one country\'s demographic-capability observations from UN WPP, World Bank/UNESCO UIS and ILOSTAT: age structure, education and industrial-workforce groups, each reported independently with observation year, source, unit and an explicit available flag (a missing metric is marked unavailable rather than filled with zero). Annual statistics from seeded data, not estimates or projections. Requires a paid plan; one downstream fetch, weight 2 on API plans. country_code is ISO 3166-1 alpha-2, case-insensitive. Read-only.',
+    description: 'Return one country\'s demographic-capability observations from UN WPP, World Bank/UNESCO UIS and ILOSTAT: age structure, education and industrial-workforce groups, each reported independently with observation year, source, unit and an explicit available flag (a missing metric is marked unavailable rather than filled with zero). Annual statistics from seeded data, not estimates or projections. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
         country_code: {
           type: 'string',
-          description: 'Required ISO 3166-1 alpha-2 country code (for example "DE"). Case-insensitive.',
+          description: `Required. ${COUNTRY_ARG_HINT}`,
         },
       },
       required: ['country_code'],
@@ -2382,7 +2378,7 @@ export const RPC_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _coverageKeys: ['demographics:capability:v1'],
     _execute: async (params, base, context, execution) => {
-      const countryCode = String(params.country_code ?? '').trim().toUpperCase();
+      const countryCode = requireCountryCode(params.country_code, 'get-demographics-capability');
       const url = `${base}/api/resilience/v1/get-demographics-capability?countryCode=${encodeURIComponent(countryCode)}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
       const res = await fetchMcpDownstream(url, {
@@ -2398,6 +2394,7 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_resilience_indicators',
+    _validateArgs: params => { requireCountryCode(params.country_code, 'get-resilience-indicators'); },
     title: 'Resilience score breakdown by indicator',
     _outputBudgetBytes: 262144,
     // Raw values here are redistribution-permitted (decideIndicatorRawRedistribution
@@ -2407,13 +2404,13 @@ export const RPC_TOOLS: ToolDef[] = [
     // `observationProvenance` is deliberately not selected because it is not
     // part of the licence claim.
     _attribution: 'indicators[].{indicatorId: id, retrievedAt: retrievedAt, sources: sources[].{key: key, name: name, attribution: attribution, license: license, url: url, licenseUrl: licenseUrl, attributionUrl: attributionUrl}}',
-    description: 'Explain one country\'s resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. 51 indicators update annually; 11 move with current events (realtime or daily feeds such as the news threat score and Reddit velocity), so a short-term score change can come from those. Answers why a country scores as it does, indicator by indicator; carries no instability index, travel advisory, sanctions status, story list or narrative. Requires an ISO-2 country code and a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.',
+    description: 'Explain one country\'s resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. 51 indicators update annually; 11 move with current events (realtime or daily feeds such as the news threat score and Reddit velocity), so a short-term score change can come from those. Answers why a country scores as it does, indicator by indicator; carries no instability index, travel advisory, sanctions status, story list or narrative. Requires a country and a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
         country_code: {
           type: 'string',
-          description: 'Required ISO 3166-1 alpha-2 country code (for example "DE"). Case-insensitive.',
+          description: `Required. ${COUNTRY_ARG_HINT}`,
         },
       },
       required: ['country_code'],
@@ -2452,7 +2449,7 @@ export const RPC_TOOLS: ToolDef[] = [
       'resilience:recovery:import-hhi:v1',
     ],
     _execute: async (params, base, context, execution) => {
-      const countryCode = String(params.country_code ?? '').trim().toUpperCase();
+      const countryCode = requireCountryCode(params.country_code, 'get-resilience-indicators');
       const url = `${base}/api/resilience/v1/get-resilience-indicators?countryCode=${encodeURIComponent(countryCode)}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
       const res = await fetchMcpDownstream(url, {
@@ -2476,8 +2473,7 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         country_code: {
           type: 'string',
-          pattern: '^[A-Za-z]{2}$',
-          description: 'ISO 3166-1 alpha-2 country code. Mutually exclusive with preset and members.',
+          description: `Mutually exclusive with preset and members. ${COUNTRY_ARG_HINT}`,
         },
         preset: {
           type: 'string',
@@ -2489,8 +2485,8 @@ export const RPC_TOOLS: ToolDef[] = [
           minItems: 2,
           maxItems: 30,
           uniqueItems: true,
-          items: { type: 'string', pattern: '^[A-Z]{2}$' },
-          description: 'Custom bloc of 2-30 unique uppercase ISO-2 member codes. Mutually exclusive with country_code and preset.',
+          items: { type: 'string' },
+          description: 'Custom bloc of 2-30 unique member countries, each an ISO alpha-2 or alpha-3 code or a country name in any dashboard locale. Mutually exclusive with country_code and preset.',
         },
       },
       required: [],
@@ -2504,10 +2500,11 @@ export const RPC_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _coverageKeys: ['scorecard:five-factor:v1', 'seed-meta:scorecard:five-factor'],
     _execute: async (params, base, context, execution) => {
-      const countryCode = argStr(params.country_code).trim().toUpperCase();
+      // Not argStr: it lowercases, and the resolver echoes the caller's value.
+      const rawCountry = typeof params.country_code === 'string' ? params.country_code.trim() : '';
       const preset = argStr(params.preset).trim().toUpperCase();
       const members = Array.isArray(params.members) ? params.members : [];
-      const selectors = Number(countryCode.length > 0) + Number(preset.length > 0) + Number(members.length > 0);
+      const selectors = Number(rawCountry.length > 0) + Number(preset.length > 0) + Number(members.length > 0);
       if (selectors !== 1) {
         throw new RpcValidationError('get-five-factor-scorecard', [{
           field: 'selection',
@@ -2517,19 +2514,13 @@ export const RPC_TOOLS: ToolDef[] = [
 
       const q = new URLSearchParams();
       let path: string;
-      if (countryCode) {
-        if (!/^[A-Z]{2}$/.test(countryCode)) {
-          throw new RpcValidationError('get-five-factor-scorecard', [{
-            field: 'country_code',
-            description: 'must be an ISO 3166-1 alpha-2 country code.',
-          }]);
-        }
+      if (rawCountry) {
         path = '/api/scorecard/v1/get-five-factor-scorecard';
-        q.set('countryCode', countryCode);
+        q.set('countryCode', requireCountryCode(rawCountry, 'get-five-factor-scorecard'));
       } else {
         path = '/api/scorecard/v1/get-bloc-scorecard';
         if (preset) q.set('preset', preset);
-        else members.forEach((member) => q.append('members', String(member)));
+        else members.forEach((member) => q.append('members', requireCountryCode(member, 'get-five-factor-scorecard', 'members')));
       }
 
       const url = `${base}${path}?${q.toString()}`;
@@ -2579,7 +2570,7 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         country_code: {
           type: 'string',
-          description: 'ISO 3166-1 alpha-2 country code. Currently supported: AE (case-insensitive).',
+          description: `Currently supported: AE (United Arab Emirates). ${COUNTRY_ARG_HINT}`,
         },
       },
       required: ['country_code'],
@@ -2625,13 +2616,13 @@ export const RPC_TOOLS: ToolDef[] = [
       if (!params.country_code || typeof params.country_code !== 'string') {
         return { error: 'country_code is required' };
       }
-      const code = params.country_code.toLowerCase();
-      // Strict ISO 3166-1 alpha-2 shape: exactly two lowercase letters.
-      // Without this, .slice(0,2) would silently truncate inputs like
-      // "aexxx" or "AE-DXB" to "ae" and serve AE data — masking client bugs.
-      if (!/^[a-z]{2}$/.test(code)) {
-        return { error: 'country_code must be a two-letter ISO code (e.g. "ae")' };
+      // Whole-value resolution: "aexxx" or "AE-DXB" stays unresolved rather
+      // than being truncated to "ae" and served AE data.
+      const resolved = resolveCountryArg(params.country_code);
+      if (!resolved) {
+        return { error: `Could not resolve ${JSON.stringify(echoCountryInput(params.country_code))} to a country. ${COUNTRY_ARG_HINT}` };
       }
+      const code = resolved.toLowerCase();
       if (!SUPPORTED_CONSUMER_PRICES_COUNTRIES.has(code)) {
         return { error: 'Country not yet supported. Available: ae' };
       }
@@ -3293,6 +3284,7 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_mineral_production',
+    _validateArgs: params => { if (params.iso2 != null && params.iso2 !== '') requireCountryCode(params.iso2, 'get-mineral-production', 'iso2'); },
     title: 'Mineral mining and refining shares',
     _outputBudgetBytes: 131072,
     description: 'Who mines and who refines a commodity, with country shares and HHI. Answers "who refines cobalt" or "what does Chile produce". USGS Mineral Commodity Summaries plus BGS fill. Mine and deposit locations are a separate dataset.',
@@ -3300,7 +3292,7 @@ export const RPC_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         commodity: { type: 'string', description: 'Commodity id or label, e.g. "cobalt", "lithium", "ree"' },
-        iso2: { type: 'string', description: 'ISO 3166-1 alpha-2 producer filter, e.g. "CL"' },
+        iso2: { type: 'string', description: `Optional producer-country filter. ${COUNTRY_ARG_HINT}` },
         stage: { type: 'string', enum: ['mine', 'refinery'], description: 'Mine or refinery/smelter stage. Omit for both.' },
       },
       required: [],
@@ -3319,7 +3311,7 @@ export const RPC_TOOLS: ToolDef[] = [
     _execute: async (params, base, context, execution) => {
       const qs = new URLSearchParams();
       if (params.commodity) qs.set('commodity', String(params.commodity));
-      if (params.iso2) qs.set('iso2', String(params.iso2).toUpperCase());
+      if (params.iso2) qs.set('iso2', requireCountryCode(params.iso2, 'get-mineral-production', 'iso2'));
       if (params.stage) qs.set('stage', String(params.stage));
       const url = `${base}/api/supply-chain/v1/get-mineral-production${qs.size ? `?${qs}` : ''}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);

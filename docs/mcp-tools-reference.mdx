@@ -789,7 +789,7 @@ Per-country consumer-prices intelligence: 30-day overview, category-level inflat
 
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
-| `country_code` | string | **yes** | ISO 3166-1 alpha-2 country code. Currently supported: AE (case-insensitive). |
+| `country_code` | string | **yes** | ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale (e.g. `"Egypt"`, `"مصر"`). Currently supported: AE (United Arab Emirates). |
 
 - **API endpoints:** `GET /api/consumer-prices/v1/get-consumer-price-freshness`, `GET /api/consumer-prices/v1/get-consumer-price-overview`, `GET /api/consumer-prices/v1/list-consumer-price-categories`, `GET /api/consumer-prices/v1/list-consumer-price-movers`, `GET /api/consumer-prices/v1/list-retailer-price-spreads`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
@@ -819,12 +819,12 @@ USDA PSD cereal stocks-to-use by marketing year. Ask for a country plus optional
 
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
-| `country_code` | string | yes | ISO 3166-1 alpha-2, or `WORLD` for the global balance. |
+| `country_code` | string | yes | ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale (e.g. `"Egypt"`, `"مصر"`), or `WORLD` for the global balance. |
 | `commodity` | string | no | `wheat`, `corn`, `rice`, `soybeans`, `barley`, or `palmOil` (note the camelCase). Empty = all six. |
 
 - **API endpoints:** `GET /api/resilience/v1/get-food-stocks`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
-- **Kind:** RPC proxy — the handler owns WORLD vs ISO-2 and commodity filtering.
+- **Kind:** RPC proxy — the MCP layer resolves the country to ISO-2; the handler owns WORLD vs ISO-2 and commodity filtering.
 - **Freshness budget:** oldest world marketing year present (WASDE monthly cycle; 60-day fetch-age / 120-day content-age).
 
 **Reading a zero.** Check `hasStocksToUse` before reporting `stocksToUse`, and
@@ -862,7 +862,7 @@ Country age structure, education capacity, and industrial-workforce observations
 
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
-| `country_code` | string | yes | ISO 3166-1 alpha-2 country code, for example `DE`. Case-insensitive. |
+| `country_code` | string | yes | ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale (e.g. `"Egypt"`, `"مصر"`). |
 
 - **API endpoint:** `GET /api/resilience/v1/get-demographics-capability`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
@@ -894,9 +894,9 @@ Return the frozen v1 scorecard for exactly one country or bloc. Choose one of a 
 
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
-| `country_code` | string | one selector | ISO 3166-1 alpha-2 country code. Case-insensitive. |
+| `country_code` | string | one selector | ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale (e.g. `"Egypt"`, `"مصر"`). |
 | `preset` | string | one selector | `USMCA`, `EU27`, `BRICS`, `GCC`, `ASEAN`, or `NATO`. |
-| `members` | string[] | one selector | Custom bloc of 2–30 unique uppercase ISO-2 codes. |
+| `members` | string[] | one selector | Custom bloc of 2–30 unique member countries, each a code or name in the same forms as `country_code`. |
 
 - **API endpoints:** `GET /api/scorecard/v1/get-five-factor-scorecard`, `GET /api/scorecard/v1/get-bloc-scorecard` — free for anonymous REST callers, unlike this MCP tool.
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument; use `jmespath` to trim evidence.
@@ -964,7 +964,7 @@ Explain one country's Country Resilience Index score across the complete 72-row 
 
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
-| `country_code` | string | yes | ISO 3166-1 alpha-2 country code, for example `DE`. Case-insensitive. |
+| `country_code` | string | yes | ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale (e.g. `"Egypt"`, `"مصر"`). |
 
 - **API endpoint:** `GET /api/resilience/v1/get-resilience-indicators`
 - **Access:** `subscription` — requires a Pro subscription on both the REST and MCP paths.
@@ -1002,7 +1002,7 @@ Country shares of mine and refinery production, plus HHI, from the annual USGS M
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
 | `commodity` | string | no | Commodity id or label (`cobalt`, `lithium`, `ree`, …) |
-| `iso2` | string | no | ISO 3166-1 alpha-2 producer filter |
+| `iso2` | string | no | Producer-country filter: ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale (e.g. `"Egypt"`, `"مصر"`) |
 | `stage` | string: mine / refinery | no | Restrict to one stage |
 
 - **API endpoints:** `GET /api/supply-chain/v1/get-mineral-production`

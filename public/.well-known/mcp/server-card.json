@@ -450,7 +450,7 @@
     },
     {
       "name": "get_food_stocks",
-      "description": "USDA PSD cereal stocks-to-use by marketing year. Ask for a country (ISO-2) plus optional commodity (wheat, corn, rice, soybeans, barley, palmOil), or country_code=WORLD for the global balance. Returns ending stocks, production, use, and the stocks-to-use ratio. Marketing years are not calendar years and must not be compared across countries as if they were.",
+      "description": "USDA PSD cereal stocks-to-use by marketing year. Ask for a country plus optional commodity (wheat, corn, rice, soybeans, barley, palmOil), or country_code=WORLD for the global balance. Returns ending stocks, production, use, and the stocks-to-use ratio. Marketing years are not calendar years and must not be compared across countries as if they were.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"
@@ -458,7 +458,7 @@
     },
     {
       "name": "get_demographics_capability",
-      "description": "Return one country's demographic-capability observations from UN WPP, World Bank/UNESCO UIS and ILOSTAT: age structure, education and industrial-workforce groups, each reported independently with observation year, source, unit and an explicit available flag (a missing metric is marked unavailable rather than filled with zero). Annual statistics from seeded data, not estimates or projections. Requires a paid plan; one downstream fetch, weight 2 on API plans. country_code is ISO 3166-1 alpha-2, case-insensitive. Read-only.",
+      "description": "Return one country's demographic-capability observations from UN WPP, World Bank/UNESCO UIS and ILOSTAT: age structure, education and industrial-workforce groups, each reported independently with observation year, source, unit and an explicit available flag (a missing metric is marked unavailable rather than filled with zero). Annual statistics from seeded data, not estimates or projections. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"
@@ -466,7 +466,7 @@
     },
     {
       "name": "get_resilience_indicators",
-      "description": "Explain one country's resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. 51 indicators update annually; 11 move with current events (realtime or daily feeds such as the news threat score and Reddit velocity), so a short-term score change can come from those. Answers why a country scores as it does, indicator by indicator; carries no instability index, travel advisory, sanctions status, story list or narrative. Requires an ISO-2 country code and a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.",
+      "description": "Explain one country's resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. 51 indicators update annually; 11 move with current events (realtime or daily feeds such as the news threat score and Reddit velocity), so a short-term score change can come from those. Answers why a country scores as it does, indicator by indicator; carries no instability index, travel advisory, sanctions status, story list or narrative. Requires a country and a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"
