@@ -1,6 +1,6 @@
 {
   "name": "worldmonitor",
-  "version": "2.11.6",
+  "version": "2.11.7",
   "description": "Live global intelligence: source-attributed news, country risk, conflicts, markets, energy and maritime chokepoints from the World Monitor MCP server.",
   "mcpServers": {
     "worldmonitor": {

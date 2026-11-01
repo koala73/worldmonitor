@@ -2,7 +2,7 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "worldmonitor",
   "displayName": "WorldMonitor",
-  "version": "2.11.6",
+  "version": "2.11.7",
   "description": "Live global intelligence for your agent: source-attributed news, country risk, conflicts, markets, energy and maritime chokepoints.",
   "logo": "public/favico/worldmonitor-icon-1024.png",
   "suggestedPrompts": [
