@@ -950,6 +950,25 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
   });
 
   describe('request discipline', () => {
+    it('preserves SSE request counts when both transport routes fail', async () => {
+      let proxyCalls = 0;
+      const { snapshot, log } = await fetchWithFixtures({
+        overrides: [['queryMargin.do', () => { throw new Error('timeout'); }]],
+        sseProxyUrl: 'http://user:pw@exit.example:7001',
+        proxyRequestFn: async () => {
+          proxyCalls += 1;
+          throw new Error('timeout');
+        },
+      });
+      const directCalls = log.filter((entry) => entry.url.includes('queryMargin.do')).length;
+      assert.equal(directCalls, 1);
+      assert.equal(proxyCalls, 1);
+      const source = snapshot.sources.find((entry: { id: string }) => entry.id === 'sse-margin');
+      assert.equal(source.transportStatus, 'error');
+      assert.equal(source.requestCount, directCalls + proxyCalls);
+      assert.equal(source.lastFailure.requestCount, directCalls + proxyCalls);
+    });
+
     it('always pins a date on SZSE report requests', async () => {
       const { log } = await fetchWithFixtures();
       const reportCalls = log.filter((entry) => entry.url.includes('ShowReport'));

@@ -625,25 +625,27 @@ function outcomeFrom(contract, { observations, routing, requestCount, probedDate
 
 async function fetchSseSource(contract, { fetchFn, proxyFetchFn, normalize }) {
   const budget = requestBudget(contract);
-  const { payload, routing } = await fetchThroughLadder(
-    sseRequestUrl(contract),
-    contract,
-    {
-      fetchFn,
-      proxyFetchFn,
-      headers: REQUEST_HEADERS.sse,
-      directTimeoutMs: SSE_DIRECT_TIMEOUT_MS,
-      proxyTimeoutMs: SSE_PROXY_TIMEOUT_MS,
-      proxyRetryDelayMs: SZSE_PROXY_RETRY_DELAY_MS,
-      budget,
-    },
-  );
-  const normalized = normalize(payload);
-  const observations = normalized === null
-    ? []
-    : Array.isArray(normalized) ? normalized : [normalized];
-  if (observations.length === 0) throw sourceError('EMPTY_RESULT');
-  return outcomeFrom(contract, { observations, routing, requestCount: budget.count });
+  return withSourceContext(async () => {
+    const { payload, routing } = await fetchThroughLadder(
+      sseRequestUrl(contract),
+      contract,
+      {
+        fetchFn,
+        proxyFetchFn,
+        headers: REQUEST_HEADERS.sse,
+        directTimeoutMs: SSE_DIRECT_TIMEOUT_MS,
+        proxyTimeoutMs: SSE_PROXY_TIMEOUT_MS,
+        proxyRetryDelayMs: SZSE_PROXY_RETRY_DELAY_MS,
+        budget,
+      },
+    );
+    const normalized = normalize(payload);
+    const observations = normalized === null
+      ? []
+      : Array.isArray(normalized) ? normalized : [normalized];
+    if (observations.length === 0) throw sourceError('EMPTY_RESULT');
+    return outcomeFrom(contract, { observations, routing, requestCount: budget.count });
+  }, budget, []);
 }
 
 async function withSourceContext(run, budget, probedDates) {
