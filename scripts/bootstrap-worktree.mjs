@@ -92,7 +92,9 @@ Options:
   --skip-install      Do not run npm ci, even when installation is not verified.
   --force-install     Run npm ci even when node_modules already exists.
   --hooks-only        Normalize core.hooksPath, then exit without other bootstrap work.
-  --ignore-scripts    Pass --ignore-scripts to npm ci for docs/test-only work.
+  --ignore-scripts    Pass --ignore-scripts to npm ci for docs/test-only work, then
+                      run only the root package's own postinstall (it writes the
+                      generated files the pre-push hook needs).
   --dry-run           Print what would happen without changing files.
   -h, --help          Show this help text.`);
 }
@@ -522,6 +524,9 @@ export function bootstrapWorktree(options = {}) {
     } else {
       assertNodeModulesNotSymlink(rootDir, 'node_modules');
       log('[worktree] verified npm install present; skipping npm ci');
+      // A kept install may come from an --ignore-scripts run that predates
+      // the postinstall step, so its generated files can be missing.
+      if (options.ignoreScripts) runOwnPostinstall({ dryRun: options.dryRun, log, rootDir });
     }
 
     const proTestRoot = resolve(rootDir, 'pro-test');

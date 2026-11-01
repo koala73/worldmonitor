@@ -388,10 +388,12 @@ jobs:
       # fails the shard if the binaries are missing.
       #
       # It runs before install-root-deps, not beside it: both composite actions
-      # use actions/cache, which this job does not reference at the top level,
-      # so in a parallel group the runner downloaded it twice at once and one
-      # copy failed ("Could not find file .../actions/cache/<sha>/examples.md",
-      # run 39936254975). Run in turn, the second reuses the first download.
+      # use actions/cache, and when a job does not reference it at the top
+      # level, a parallel group made the runner download it twice at once and
+      # one copy failed ("Could not find file .../actions/cache/<sha>/examples.md",
+      # run 39936254975). This job now references actions/cache/restore and
+      # save directly, so the runner fetches them at setup; keep the steps
+      # sequential anyway.
       - name: Install Redis for the archive Lua suite
         uses: ./.github/actions/install-redis
       - uses: ./.github/actions/install-root-deps
@@ -407,10 +409,11 @@ jobs:
           path: |
             blog-site/node_modules
             scripts/node_modules
-          key: nested-deps-v1-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('blog-site/package.json', 'blog-site/package-lock.json', 'scripts/package.json', 'scripts/package-lock.json', 'scripts/.npmrc', '.npmrc', 'vendor/http-cache-semantics/**') }}
+          key: nested-deps-v1-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('blog-site/package.json', 'blog-site/package-lock.json', 'blog-site/.npmrc', 'scripts/package.json', 'scripts/package-lock.json', 'scripts/.npmrc', '.npmrc', 'vendor/http-cache-semantics/**') }}
       - name: Install blog-site deps for SEO contract tests
         # Unit-only nested install; keeps postinstall free of blog-site.
-        # Needed so blog-seo-contract can load astro.config.mjs.
+        # tests/dependency-backports.test.mjs checks the patched source Astro
+        # installs, and skips that check when blog-site/node_modules is absent.
         if: steps.nested-deps.outputs.cache-hit != 'true'
         run: npm run ci:blog-site
       - name: Install scripts/ deps for the seeder link check

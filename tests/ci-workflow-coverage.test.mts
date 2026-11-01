@@ -96,6 +96,8 @@ describe('root dependency cache (#8710)', () => {
   // and use the action's miss-only fallback. Jobs with another npm install
   // (blog-site, pro-test, including through build:pro) keep setup-node's
   // cache for it and turn the action's off, so a miss restores it once.
+  // unit-shards restores its nested installed trees instead (see the
+  // 'unit-shard nested dependency cache' block), so it is in the first group.
   for (const [workflowText, jobIds, setupCache] of [
     [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards'], undefined],
     [testWorkflow, ['unit-built-output', 'variant-smoke-pro-webmcp'], 'npm'],
@@ -148,6 +150,7 @@ describe('unit-shard nested dependency cache', () => {
     for (const input of [
       'blog-site/package.json',
       'blog-site/package-lock.json',
+      'blog-site/.npmrc',
       'scripts/package.json',
       'scripts/package-lock.json',
       'scripts/.npmrc',
@@ -167,6 +170,23 @@ describe('unit-shard nested dependency cache', () => {
     assert.ok(steps.indexOf(blogInstall) < steps.indexOf(save));
     assert.ok(steps.indexOf(scriptsInstall) < steps.indexOf(save));
     assert.equal(save.with.path, restore.with.path);
+  });
+
+  // A restored tree skips both installs, so the tests must still notice a
+  // tree that lacks what they need, and a changed install command must
+  // change the key.
+  it('keeps the scripts/ presence guard on the test step', () => {
+    assert.equal(tests.env?.WM_EXPECT_SCRIPTS_DEPS, '1');
+  });
+
+  it('versions the key with the blog-site install command', () => {
+    const scripts = JSON.parse(read(resolve(root, 'package.json'))).scripts;
+    assert.equal(
+      scripts['ci:blog-site'],
+      'cross-env npm_config_allow_scripts= npm --prefix blog-site ci --prefer-offline',
+      'ci:blog-site changed: bump nested-deps-vN in the unit-shards cache key, then update this string',
+    );
+    assert.match(restore.with.key, /^nested-deps-v1-/);
   });
 });
 
