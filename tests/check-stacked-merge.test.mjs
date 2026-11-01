@@ -1062,13 +1062,17 @@ describe('retargetStackedChildren executor', () => {
     assert.equal(reads, 2);
     assert.equal(log.filter(entry => entry.path.endsWith('/rerun')).length, 1);
   });
-  function fakeGh(children, { failPatch = new Set(), failRerun = false } = {}) {
+  function fakeGh(children, { failPatch = new Set(), failRerun = false, closedChildren = [], openByBase = {} } = {}) {
     const log = [];
     const gh = (args, options = {}) => {
       const path = args.find(arg => arg.startsWith('repos/'));
       const method = args.includes('--method') ? args[args.indexOf('--method') + 1] : 'GET';
       log.push({ method, path, input: options.input ? JSON.parse(options.input) : undefined });
-      if (path.includes('/pulls?state=open&base=')) return JSON.stringify([children]);
+      if (path.includes('/pulls?state=open&base=')) {
+        const base = decodeURIComponent(new URL(path, 'https://api.github.test').searchParams.get('base'));
+        return JSON.stringify([openByBase[base] ?? children]);
+      }
+      if (path.includes('/pulls?state=closed&base=')) return JSON.stringify([closedChildren]);
       if (method === 'PATCH') {
         const number = Number(path.split('/').at(-1));
         if (failPatch.has(number)) throw new Error(`patch ${number} refused`);
@@ -1154,7 +1158,92 @@ describe('retargetStackedChildren executor', () => {
     const { gh, log } = fakeGh([]);
     const result = retargetStackedChildren({ event: pullEvent(PARENT_8518, { action: 'closed' }), gh });
     assert.equal(result.exitCode, 0);
-    assert.equal(log.length, 1);
+    assert.deepEqual(log.map(entry => entry.path), [
+      'repos/koala73/worldmonitor/pulls?state=open&base=feat%2Flive-news-session-v2&per_page=100',
+      'repos/koala73/worldmonitor/pulls?state=closed&base=feat%2Flive-news-session-v2&per_page=100',
+    ]);
+  });
+
+  // #9950 → #9958 → #9962: #9950 merged, its branch was deleted 29 s later,
+  // and GitHub closed #9958 instead of retargeting it — 10 s before this job
+  // listed open children. #9962 stayed open on #9958's branch with a green
+  // guard and merged into it a minute later (#9963).
+  const PARENT_9950 = Object.freeze({
+    number: 9950,
+    title: 'feat(feedback): add POST /api/feedback/v1/submit-report',
+    html_url: 'https://github.com/koala73/worldmonitor/pull/9950',
+    state: 'closed',
+    merged: true,
+    merged_at: '2026-11-01T07:49:53Z',
+    base: { ref: 'main', repo: { full_name: 'koala73/worldmonitor' } },
+    head: { ref: 'feat/agent-feedback-rest', sha: '1'.repeat(40), repo: { full_name: 'koala73/worldmonitor' } },
+  });
+  const CHILD_9958 = Object.freeze({
+    number: 9958,
+    title: 'feat(mcp): add report_issue, the agent feedback tool',
+    html_url: 'https://github.com/koala73/worldmonitor/pull/9958',
+    state: 'closed',
+    merged: false,
+    merged_at: null,
+    closed_at: '2026-11-01T07:50:23Z',
+    base: { ref: 'feat/agent-feedback-rest', repo: { full_name: 'koala73/worldmonitor' } },
+    head: { ref: 'feat/mcp-report-issue', sha: '2'.repeat(40), repo: { full_name: 'koala73/worldmonitor' } },
+  });
+  const GRANDCHILD_9962 = Object.freeze({
+    number: 9962,
+    title: 'feat(mcp): point unexpected errors at report_issue',
+    state: 'open',
+    merged: false,
+    merged_at: null,
+    base: { ref: 'feat/mcp-report-issue', repo: { full_name: 'koala73/worldmonitor' } },
+    head: { ref: 'feat/mcp-report-guidance', sha: '3'.repeat(40), repo: { full_name: 'koala73/worldmonitor' } },
+  });
+
+  it('flags a child GitHub closed on base deletion and strands its open children (#9963)', () => {
+    const { gh, log } = fakeGh([], {
+      closedChildren: [CHILD_9958],
+      openByBase: { 'feat/mcp-report-issue': [GRANDCHILD_9962] },
+    });
+    const result = retargetStackedChildren({ event: pullEvent(PARENT_9950, { action: 'closed' }), gh });
+    assert.equal(result.exitCode, 0);
+    assert.equal(log.filter(entry => entry.method === 'PATCH').length, 0);
+    assert.deepEqual(result.plan.map(item => [item.number, item.action]), [[9958, 'closed-by-base-deletion'], [9962, 'strand']]);
+    const comments = log.filter(entry => entry.path.endsWith('/comments'));
+    assert.deepEqual(comments.map(entry => entry.path), [
+      'repos/koala73/worldmonitor/issues/9958/comments',
+      'repos/koala73/worldmonitor/issues/9962/comments',
+    ]);
+    assert.match(comments[0].input.body, /#9950/);
+    assert.match(comments[0].input.body, /`feat\/agent-feedback-rest`/);
+    assert.match(comments[0].input.body, /--base main/);
+    assert.match(comments[1].input.body, /#9958/);
+    assert.match(comments[1].input.body, /closed without merging/);
+    // The grandchild's guard reruns against the live base, which now fails.
+    assert.deepEqual(log.filter(entry => entry.path.endsWith('/rerun')).map(entry => entry.path), [
+      'repos/koala73/worldmonitor/actions/runs/333333/rerun',
+    ]);
+  });
+
+  it('ignores children closed before the parent merged, merged children, and fork heads', () => {
+    const { gh, log } = fakeGh([], {
+      closedChildren: [
+        { ...CHILD_9958, closed_at: '2026-10-30T10:00:00Z' },
+        { ...CHILD_9958, merged: true, merged_at: '2026-11-01T07:50:20Z' },
+        { ...CHILD_9958, head: { ...CHILD_9958.head, repo: { full_name: 'contributor/worldmonitor' } } },
+      ],
+      openByBase: { 'feat/mcp-report-issue': [GRANDCHILD_9962] },
+    });
+    const result = retargetStackedChildren({ event: pullEvent(PARENT_9950, { action: 'closed' }), gh });
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(result.plan, []);
+    assert.equal(log.length, 2);
+  });
+
+  it('does not list closed children when the parent was closed without merging', () => {
+    const { gh, log } = fakeGh([], { closedChildren: [CHILD_9958] });
+    const closed = { ...PARENT_9950, merged: false, merged_at: null };
+    retargetStackedChildren({ event: pullEvent(closed, { action: 'closed' }), gh });
+    assert.equal(log.some(entry => entry.path.includes('state=closed')), false);
   });
 
   it('never queries or writes for a fork head', () => {

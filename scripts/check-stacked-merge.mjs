@@ -499,6 +499,14 @@ export function checkClosedPull({ event, gh, git, issues, sleep } = {}) {
 }
 
 function retargetComment({ closedPull, item }) {
+  if (item.action === 'closed-by-base-deletion') {
+    return [
+      `Parent ${pullLabel(closedPull)} merged into \`${item.to}\` and its branch \`${item.from}\` was deleted, so GitHub closed this PR instead of retargeting it.`,
+      'Its changes have not reached the default branch, and any PR based on this branch now merges into a dead end.',
+      '',
+      `To land it, restore \`${item.from}\` (\`git push origin <sha>:refs/heads/${item.from}\`), reopen this PR, and run \`gh pr edit ${item.number} --base ${item.to}\`, or open a new PR from this branch. See #7006.`,
+    ].join('\n');
+  }
   if (item.action === 'retarget') {
     return [
       `Parent ${pullLabel(closedPull)} merged into \`${item.to}\`, but its branch \`${item.from}\` was not deleted, so GitHub did not retarget this PR.`,
@@ -540,15 +548,43 @@ export function retargetStackedChildren({ event, gh } = {}) {
   if (!headRef) {
     return { ok: true, reason: 'no-stacked-base', exitCode: 0, plan: [], failures: [], warnings: [] };
   }
-  const openChildren = flattenGhPages(gh([
+  const listChildren = (state, base) => flattenGhPages(gh([
     'api', '--paginate', '--slurp',
-    `repos/${repository}/pulls?state=open&base=${encodeURIComponent(headRef)}&per_page=100`,
+    `repos/${repository}/pulls?state=${state}&base=${encodeURIComponent(base)}&per_page=100`,
   ]));
-  const plan = planStackRetargets({ closedPull, openChildren, repository, defaultBranch });
+  const plan = planStackRetargets({
+    closedPull, openChildren: listChildren('open', headRef), repository, defaultBranch,
+  }).map((item) => ({ ...item, parent: closedPull }));
+  // Deleting a merged branch by hand (delete_branch_on_merge is off) can make
+  // GitHub close its children instead of retargeting them, before this job
+  // lists open ones. Their own open children then sit on a dead branch with a
+  // stale green guard (#9950 → #9958 → #9962, #9963).
+  if (isMergedPull(closedPull)) {
+    const mergedAt = Date.parse(closedPull.merged_at);
+    for (const child of listChildren('closed', headRef)) {
+      if (isMergedPull(child) || !(Date.parse(child.closed_at) >= mergedAt)
+        || child.base?.ref !== headRef
+        || (child.base?.repo?.full_name && child.base.repo.full_name !== repository)
+        || !stackedBaseRef({ closedPull: child, repository, defaultBranch })) continue;
+      plan.push({
+        number: child.number,
+        action: 'closed-by-base-deletion',
+        from: headRef,
+        to: closedPull.base.ref,
+        parent: closedPull,
+      });
+      plan.push(...planStackRetargets({
+        closedPull: child,
+        openChildren: listChildren('open', child.head.ref),
+        repository,
+        defaultBranch,
+      }).map((item) => ({ ...item, parent: child })));
+    }
+  }
   const failures = [];
   const warnings = [];
-  for (const item of plan) {
-    let applied = item.action === 'strand';
+  for (const { parent, ...item } of plan) {
+    let applied = item.action !== 'retarget';
     if (item.action === 'retarget') {
       try {
         gh(
@@ -564,7 +600,7 @@ export function retargetStackedChildren({ event, gh } = {}) {
       try {
         gh(
           ['api', `repos/${repository}/issues/${item.number}/comments`, '--input', '-'],
-          { input: JSON.stringify({ body: retargetComment({ closedPull, item }) }) },
+          { input: JSON.stringify({ body: retargetComment({ closedPull: parent, item }) }) },
         );
       } catch (error) {
         warnings.push(`#${item.number}: comment failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -589,7 +625,7 @@ export function retargetStackedChildren({ event, gh } = {}) {
     ok: failures.length === 0,
     reason: 'stacked-children-reconciled',
     exitCode: failures.length > 0 ? 1 : 0,
-    plan,
+    plan: plan.map(({ parent, ...item }) => item),
     failures,
     warnings,
     ...(failures.length > 0 && {
