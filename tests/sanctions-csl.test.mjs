@@ -184,6 +184,8 @@ describe('CSL transport diagnostics', () => {
     assert.deepEqual(result, { lists: {}, error: 'fetch failed' });
     const long = await ingestCslEntries({ fetchFn: async () => { throw new Error('x'.repeat(600) + '\nsecret'); } });
     assert.equal(long.error, 'x'.repeat(512));
+    const longCause = await ingestCslEntries({ fetchFn: async () => { throw new Error('x'.repeat(600), { cause: { code: 'ECONNRESET' } }); } });
+    assert.equal(longCause.error, 'x'.repeat(492) + ' (cause: ECONNRESET)');
     const multiline = await ingestCslEntries({ fetchFn: async () => { throw new Error('fetch\nfailed\r\x1b'); } });
     assert.equal(multiline.error, 'fetch failed  ');
   });

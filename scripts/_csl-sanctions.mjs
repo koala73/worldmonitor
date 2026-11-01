@@ -151,8 +151,8 @@ export async function ingestCslEntries({
   } catch (err) {
     const code = err?.cause?.code;
     const cause = typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? ` (cause: ${code})` : '';
-    const error = `${String(err?.message || err || 'CSL_FETCH_FAILED')}${cause}`
-      .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').slice(0, 512);
+    const error = String(err?.message || err || 'CSL_FETCH_FAILED')
+      .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').slice(0, 512 - cause.length) + cause;
     return { lists: {}, error };
   }
 }
