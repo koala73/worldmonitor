@@ -494,3 +494,87 @@ describe("HTTP routes", () => {
     expect((await t.fetch("/api/internal-submit-feedback", post("/", report(), SECRET))).status).toBe(429);
   });
 });
+
+describe("listForTriage", () => {
+  test("lists one status newest first, without reporter identifiers", async () => {
+    const t = convexTest(schema, modules);
+    const first = await t.mutation(internal.agentFeedback.submit, report({ summary: "first" }));
+    vi.setSystemTime(NOW + 1000);
+    const second = await t.mutation(internal.agentFeedback.submit, report({
+      summary: "second",
+      authKind: "keyed",
+      principalId: "user_1",
+      reporterKey: "principal:user_1",
+    }));
+    await t.mutation(internal.agentFeedback.transition, { reportId: first.reportId, to: "triaged" });
+
+    const received = await t.query(internal.agentFeedback.listForTriage, { status: "received" });
+    expect(received.more).toBe(false);
+    expect(received.rows.map((row) => row.reportId)).toEqual([second.reportId]);
+    const [row] = received.rows;
+    expect(row).toMatchObject({
+      summary: "second",
+      authKind: "keyed",
+      kind: "bug",
+      surfaceName: "get_market_data",
+      receivedAt: NOW + 1000,
+    });
+    for (const field of ["principalId", "ipHash", "uaHash", "reporterKey", "retryKey"]) {
+      expect(row).not.toHaveProperty(field);
+    }
+
+    const triaged = await t.query(internal.agentFeedback.listForTriage, { status: "triaged" });
+    expect(triaged.rows.map((r) => r.reportId)).toEqual([first.reportId]);
+  });
+
+  test("caps the page and says more rows are waiting", async () => {
+    const t = convexTest(schema, modules);
+    for (let i = 0; i < 4; i += 1) {
+      vi.setSystemTime(NOW + i);
+      await t.mutation(internal.agentFeedback.submit, report({ summary: `row ${i}` }));
+    }
+    const page = await t.query(internal.agentFeedback.listForTriage, { status: "received", limit: 3 });
+    expect(page.rows.map((r) => r.summary)).toEqual(["row 3", "row 2", "row 1"]);
+    expect(page.more).toBe(true);
+    // A flood of newer reports must not hide older ones: the cursor reaches them.
+    expect(typeof page.continueCursor).toBe("string");
+    const rest = await t.query(internal.agentFeedback.listForTriage, {
+      status: "received",
+      limit: 3,
+      cursor: page.continueCursor,
+    });
+    expect(rest.rows.map((r) => r.summary)).toEqual(["row 0"]);
+    expect(rest.more).toBe(false);
+    expect(rest.continueCursor).toBeNull();
+  });
+
+  test("refuses a terminal status and an out-of-range limit", async () => {
+    const t = convexTest(schema, modules);
+    await expect(t.query(internal.agentFeedback.listForTriage, { status: "filed" as never })).rejects.toThrow();
+    await expect(t.query(internal.agentFeedback.listForTriage, { status: "received", limit: 0 })).rejects.toThrow();
+    await expect(t.query(internal.agentFeedback.listForTriage, { status: "received", limit: 501 })).rejects.toThrow();
+  });
+});
+
+describe("getForTriage", () => {
+  test("reads one open public report by id, however old", async () => {
+    const t = convexTest(schema, modules);
+    const old = await t.mutation(internal.agentFeedback.submit, report({ summary: "old one" }));
+    for (let i = 0; i < 3; i += 1) {
+      vi.setSystemTime(NOW + 1 + i);
+      await t.mutation(internal.agentFeedback.submit, report({ summary: `newer ${i}` }));
+    }
+    const row = await t.query(internal.agentFeedback.getForTriage, { reportId: old.reportId });
+    expect(row).toMatchObject({ reportId: old.reportId, summary: "old one", status: "received" });
+    expect(row).not.toHaveProperty("ipHash");
+  });
+
+  test("returns null for a security report or a closed row", async () => {
+    const t = convexTest(schema, modules);
+    const security = await t.mutation(internal.agentFeedback.submit, report({ kind: "security", summary: "vuln" }));
+    expect(await t.query(internal.agentFeedback.getForTriage, { reportId: security.reportId })).toBeNull();
+    const dismissed = await t.mutation(internal.agentFeedback.submit, report({ summary: "noise" }));
+    await t.mutation(internal.agentFeedback.transition, { reportId: dismissed.reportId, to: "dismissed", reason: "spam" });
+    expect(await t.query(internal.agentFeedback.getForTriage, { reportId: dismissed.reportId })).toBeNull();
+  });
+});

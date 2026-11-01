@@ -21,7 +21,9 @@
 *Could not find public function for 'accountDeletion/sideEffects:recordExternalFailure'*
 *Could not find public function for 'accountDeletion/sideEffects:runExternalErase'*
 *Could not find public function for 'agentFeedback:findRetry'*
+*Could not find public function for 'agentFeedback:getForTriage'*
 *Could not find public function for 'agentFeedback:getSecurityNotice'*
+*Could not find public function for 'agentFeedback:listForTriage'*
 *Could not find public function for 'agentFeedback:listUnannouncedSecurity'*
 *Could not find public function for 'agentFeedback:markNotified'*
 *Could not find public function for 'agentFeedback:notifySecurityReport'*

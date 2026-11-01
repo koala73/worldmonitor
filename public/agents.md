@@ -38,8 +38,8 @@ World Monitor is a real-time global intelligence dashboard: curated news feeds, 
 
 ## Crawl & content-usage policy
 
-- **robots.txt** (https://www.worldmonitor.app/robots.txt): AI search/assistant agents (GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-User, Claude-SearchBot, PerplexityBot, Perplexity-User, Google-Extended, Applebot-Extended, DuckAssistBot, MistralAI-User) are explicitly allowed; bulk training-only scrapers (CCBot, Bytespider, anthropic-ai) are disallowed. `/api/` is off-limits to crawlers except the allowlisted story/OG/llms.txt/product-catalog routes.
-- **Content-Signal:** `ai-train=no, search=yes, ai-input=yes` — declared as a robots.txt group directive and as an origin-wide HTTP response header. Search indexing and assistant grounding/citation are welcome; bulk model training is opted out.
+- **robots.txt** (https://www.worldmonitor.app/robots.txt): AI search, training and assistant agents (OAI-SearchBot, GPTBot, ChatGPT-User, Claude-SearchBot, ClaudeBot, Claude-User, PerplexityBot, Perplexity-User, Google-Extended, Applebot-Extended, DuckAssistBot, MistralAI-User) are explicitly allowed; bulk scrapers with no citation path (CCBot, Bytespider) are disallowed. Other crawlers follow the `User-agent: *` rules. `/api/` is off-limits to crawlers except the allowlisted story/OG/llms.txt/product-catalog routes.
+- **Content-Signal:** `ai-train=yes, search=yes, ai-input=yes` — declared as a robots.txt group directive and as an origin-wide HTTP response header. Search indexing, assistant grounding/citation and model training are all welcome. Third-party data shown on World Monitor keeps its upstream licence; this preference covers World Monitor's own content.
 - **User-Agent:** always send a descriptive `User-Agent` (e.g. `mytool/1.0 (+https://yoursite.example)`). Default HTTP-library UAs (`curl/*`, `python-requests/*`, empty strings) may get a 403 from the edge firewall — a 403 does NOT mean the endpoint is missing; retry with a real UA.
 
 ## Rate limits & plans

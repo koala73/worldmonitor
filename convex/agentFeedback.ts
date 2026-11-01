@@ -335,6 +335,72 @@ export const notifySecurityReport = internalAction({
   },
 });
 
+export const FEEDBACK_TRIAGE_MAX_LIMIT = 500;
+
+/** The fields triage needs. Reporter identifiers stay in the table. */
+function triageRow(row: Doc<"agentFeedback">) {
+  return {
+    reportId: row._id,
+    kind: row.kind,
+    status: row.status,
+    surfaceType: row.surfaceType,
+    surfaceName: row.surfaceName,
+    summary: row.summary,
+    expected: row.expected,
+    actual: row.actual,
+    requestId: row.requestId,
+    clientName: row.clientName,
+    redacted: row.redacted,
+    fingerprint: row.fingerprint,
+    authKind: row.authKind,
+    receivedAt: row.receivedAt,
+  };
+}
+
+/**
+ * One page of an open queue for the operator triage script (phase 8), newest
+ * first. Only open statuses are listed; a terminal row has nothing left to
+ * decide. `cursor` continues from the previous page's `continueCursor`, so a
+ * flood of newer reports cannot push older ones out of reach before they
+ * expire. Reporter identifiers (principal, IP and UA hashes, reporter and
+ * retry keys) stay in the table: triage needs the report, not who sent it.
+ * Every returned text field is attacker-controlled; the script escapes it.
+ */
+export const listForTriage = internalQuery({
+  args: {
+    status: v.union(v.literal("received"), v.literal("triaged"), v.literal("private")),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, { status, limit = 200, cursor = null }) => {
+    if (!Number.isInteger(limit) || limit < 1 || limit > FEEDBACK_TRIAGE_MAX_LIMIT) invalid("limit");
+    const page = await ctx.db
+      .query("agentFeedback")
+      .withIndex("by_status_received", (q) => q.eq("status", status))
+      .order("desc")
+      .paginate({ numItems: limit, cursor });
+    return {
+      more: !page.isDone,
+      continueCursor: page.isDone ? null : page.continueCursor,
+      rows: page.page.map(triageRow),
+    };
+  },
+});
+
+/**
+ * One open, public report by id, for drafting a GitHub issue. A security
+ * report (`private`) or a closed row returns null: a security report's
+ * details never go into a public issue.
+ */
+export const getForTriage = internalQuery({
+  args: { reportId: v.id("agentFeedback") },
+  handler: async (ctx, { reportId }) => {
+    const row = await ctx.db.get(reportId);
+    if (!row || row.kind === "security" || (row.status !== "received" && row.status !== "triaged")) return null;
+    return triageRow(row);
+  },
+});
+
 /**
  * Security rows nobody has been told about: held back by the daily cap, or
  * scheduled more than FEEDBACK_NOTIFY_GRACE_MS ago and never delivered.
