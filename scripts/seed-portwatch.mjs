@@ -234,6 +234,9 @@ export function chokepointsFromCsv(text, sinceEpoch, window) {
       throw new Error(`CSV export has a malformed row for ${cells[col.portname]}`);
     }
     const date = cells[col.date].replaceAll('/', '-');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || formatDate(Date.parse(`${date}T00:00:00Z`)) !== date) {
+      throw new Error(`CSV export has an invalid date for ${cells[col.portname]}`);
+    }
     if (date >= window.from && date < baselineEndDay && cells[col.n_total] !== '') {
       (baselineTotals[id] ??= []).push(Number(cells[col.n_total]));
     }
@@ -474,20 +477,27 @@ export function mergeWithPrevious(fresh, previous, chokepointIds, nowMs = Date.n
   return { result, carried, expired, absent, keptNewer };
 }
 
-async function fetchFresh(sinceEpoch, window, fetchDeadlineAtMs) {
+const lastHistoryDate = entry => entry?.history?.at(-1)?.date ?? '';
+
+async function fetchFresh(sinceEpoch, window, fetchDeadlineAtMs, prior) {
   try {
     const fresh = chokepointsFromCsv(await fetchCsvExport(fetchDeadlineAtMs), sinceEpoch, window);
     const noBaseline = Object.keys(fresh).filter(id => !fresh[id].baseline);
     console.log(`[PortWatch] source=hub-csv: ${Object.keys(fresh).length} chokepoints${noBaseline.length ? `, baseline withheld for ${noBaseline.join(', ')}` : ''}`);
-    const missing = CHOKEPOINTS.filter(cp => !fresh[cp.id]);
-    if (missing.length === 0) return fresh;
-    console.warn(`[PortWatch] CSV export lacks ${missing.map(cp => cp.id).join(', ')}; querying ArcGIS for them`);
-    const queried = await runFetchPipeline(missing, sinceEpoch, fetchAllPages, 500, {
+    // Query what the export lacks, and what it trails: the cached export can
+    // end before history an earlier query-fallback run already published.
+    const candidates = CHOKEPOINTS.filter(cp => !fresh[cp.id] || lastHistoryDate(prior[cp.id]) > lastHistoryDate(fresh[cp.id]));
+    if (candidates.length === 0) return fresh;
+    console.warn(`[PortWatch] CSV export lacks or trails ${candidates.map(cp => cp.id).join(', ')}; querying ArcGIS for them`);
+    const queried = await runFetchPipeline(candidates, sinceEpoch, fetchAllPages, 500, {
       fetchBaselineFn: fetchBaselineStats,
       baselineWindow: window,
       fetchDeadlineAtMs,
     });
-    return { ...fresh, ...queried };
+    for (const [id, entry] of Object.entries(queried)) {
+      if (lastHistoryDate(entry) > lastHistoryDate(fresh[id])) fresh[id] = entry;
+    }
+    return fresh;
   } catch (e) {
     console.warn(`[PortWatch] source=arcgis-query (csv failed: ${e?.message || e})`);
     return runFetchPipeline(CHOKEPOINTS, sinceEpoch, fetchAllPages, 500, {
@@ -501,10 +511,11 @@ async function fetchFresh(sinceEpoch, window, fetchDeadlineAtMs) {
 export async function fetchAll({ fetchDeadlineAtMs = null } = {}) {
   const nowMs = Date.now();
   const sinceEpoch = nowMs - HISTORY_DAYS * DAY_MS;
-  const fresh = await fetchFresh(sinceEpoch, baselineWindow(nowMs), fetchDeadlineAtMs);
+  const previous = await readSeedSnapshot(CANONICAL_KEY, { strict: true, includeEnvelopeMeta: true });
+  const prior = previous?.data && typeof previous.data === 'object' ? previous.data : {};
+  const fresh = await fetchFresh(sinceEpoch, baselineWindow(nowMs), fetchDeadlineAtMs, prior);
   if (Object.keys(fresh).length === 0) throw new Error('No chokepoints returned data');
   for (const entry of Object.values(fresh)) entry.fetchedAt = nowMs;
-  const previous = await readSeedSnapshot(CANONICAL_KEY, { strict: true, includeEnvelopeMeta: true });
   const { result, carried, expired, absent, keptNewer } = mergeWithPrevious(
     fresh,
     previous,
