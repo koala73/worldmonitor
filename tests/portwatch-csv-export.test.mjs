@@ -62,6 +62,22 @@ test('untracked ports and chokepoints with no rows in the history window are lef
   assert.deepEqual(Object.keys(result).sort(), ['korea_strait', 'suez']);
 });
 
+function mangleKoreaRow(mangle) {
+  const lines = CSV.split('\n');
+  const columns = lines[0].replace(/^\uFEFF/, '').trim().split(',');
+  const i = lines.findIndex(line => line.startsWith('2026/10/25') && line.includes(',Korea Strait,'));
+  const cells = lines[i].split(',');
+  lines[i] = mangle(cells, Object.fromEntries(columns.map((name, n) => [name, n]))).join(',');
+  return lines.join('\n');
+}
+const TRUNCATED_ROW_CSV = mangleKoreaRow((cells, col) => cells.slice(0, col.portname + 1));
+const NON_NUMERIC_CSV = mangleKoreaRow((cells, col) => { cells[col.n_total] = 'N/A'; return cells; });
+
+test('a tracked row that is cut short or holds a non-numeric count rejects the export', () => {
+  assert.throws(() => chokepointsFromCsv(TRUNCATED_ROW_CSV, SINCE, WINDOW), /malformed row for Korea Strait/);
+  assert.throws(() => chokepointsFromCsv(NON_NUMERIC_CSV, SINCE, WINDOW), /malformed row for Korea Strait/);
+});
+
 test('an export without the expected header or chokepoint rows is rejected', () => {
   assert.throws(() => chokepointsFromCsv('<html>maintenance</html>', SINCE, WINDOW), /missing column/);
   const header = CSV.split('\n')[0];
@@ -97,11 +113,19 @@ function stubNetwork(t, hubResponse) {
   return calls;
 }
 
-test('fetchAll reads the CSV export and sends no ArcGIS queries when it succeeds', async (t) => {
+const queriedNames = calls => new Set(calls
+  .filter(u => u.includes(QUERY_HOST))
+  .map(u => decodeURIComponent(u.replaceAll('+', ' ')).match(/portname='([^']+)'/)?.[1]));
+
+test('fetchAll reads the CSV export and queries ArcGIS only for the chokepoints it lacks', async (t) => {
   const calls = stubNetwork(t, () => new Response(CSV, { status: 200 }));
   const result = await fetchAll();
   assert.equal(calls.filter(u => u.includes(HUB_HOST)).length, 1);
-  assert.deepEqual(calls.filter(u => u.includes(QUERY_HOST)), []);
+  const queried = queriedNames(calls);
+  assert.equal(queried.has('Korea Strait'), false, 'Korea Strait came from the CSV');
+  assert.equal(queried.has('Suez Canal'), false, 'Suez Canal came from the CSV');
+  assert.equal(queried.has('Strait of Hormuz'), true, 'a chokepoint absent from the CSV is queried');
+  assert.equal(Object.keys(result).length, 13, 'the publish clears validateFn instead of failing on a partial export');
   assert.equal(result.korea_strait.history.length, 174);
   assert.equal(result.korea_strait.baseline.avgDaily, 222.1);
   assert.equal(result.korea_strait.fetchedAt, NOW);
@@ -110,6 +134,7 @@ test('fetchAll reads the CSV export and sends no ArcGIS queries when it succeeds
 for (const [label, hubResponse] of [
   ['the download fails', () => new Response('unavailable', { status: 503 })],
   ['the body is not the export', () => new Response('<html>maintenance</html>', { status: 200 })],
+  ['a tracked row is malformed', () => new Response(NON_NUMERIC_CSV, { status: 200 })],
 ]) {
   test(`fetchAll falls back to the ArcGIS query pipeline when ${label}`, async (t) => {
     const calls = stubNetwork(t, hubResponse);

@@ -83,6 +83,27 @@ test('a chokepoint missing from both this run and the previous snapshot is repor
 
 // A failed read must not look like a cold start: publishing the fresh subset
 // would overwrite the stored entries this change exists to keep.
+test('a fresh entry that ends before the previous one keeps the newer previous history', () => {
+  // The CSV export is cached, so it can trail a query-fallback run.
+  const fresh = { suez: entry(NOW), panama: entry(NOW) };
+  const newer = entry(NOW - 6 * HOUR, { history: [{ date: '2026-10-25', total: 50 }, { date: '2026-10-28', total: 60 }] });
+  const previous = { data: { suez: newer, panama: entry(NOW - 6 * HOUR) }, meta: { fetchedAt: NOW - 6 * HOUR } };
+  const { result, carried, keptNewer } = mergeWithPrevious(fresh, previous, ['suez', 'panama'], NOW);
+  assert.equal(result.suez.history.at(-1).date, '2026-10-28');
+  assert.equal(result.suez.fetchedAt, NOW - 6 * HOUR, 'the kept entry keeps its own age');
+  assert.equal(result.suez.carriedForward, true);
+  assert.deepEqual(keptNewer, ['suez']);
+  assert.deepEqual(carried, []);
+  assert.equal(result.panama.fetchedAt, NOW, 'an equally recent fresh entry still wins');
+});
+
+test('a newer previous entry past the carry-forward limit does not displace fresh data', () => {
+  const newer = entry(NOW - CARRY_FORWARD_MAX_AGE_MS - 1, { history: [{ date: '2026-10-28', total: 60 }] });
+  const { result, keptNewer } = mergeWithPrevious({ suez: entry(NOW) }, { data: { suez: newer } }, ['suez'], NOW);
+  assert.equal(result.suez.fetchedAt, NOW);
+  assert.deepEqual(keptNewer, []);
+});
+
 test('fetchAll refuses to publish when the previous snapshot cannot be read', async (t) => {
   const env = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
