@@ -219,6 +219,20 @@ describe(`MCP eval: ${EVAL_CASE.id}`, () => {
     );
   });
 
+  it('rejects bad countries in _validateArgs, before dispatch reserves quota', () => {
+    const tool = findTool('simulate_infrastructure_cascade');
+    assert.equal(typeof tool._validateArgs, 'function');
+    for (const countries of [['Atlantis'], ['ZZ'], ['AE', 'XX']]) {
+      assert.throws(
+        () => tool._validateArgs({ countries }),
+        (error) => error.name === 'RpcValidationError' && error.violations[0].field === 'countries',
+        `${JSON.stringify(countries)} must be rejected`,
+      );
+    }
+    tool._validateArgs({ countries: ['AE', 'Saudi Arabia', 'SAU'] });
+    tool._validateArgs({});
+  });
+
   it('reports a resolvable country with no seeded cable landing as zero exposure', async () => {
     install();
     const result = await findTool('simulate_infrastructure_cascade')._execute({ countries: ['Switzerland'] }, '', {}, {});

@@ -1,5 +1,6 @@
 import { RpcValidationError } from '../billing-denial';
 import { requireCountryCode } from '../_country-args';
+import { isAssignedCountryCode } from '../../../shared/country-code-resolve';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 import { CII_MOVERS_OUTPUT_SCHEMA, ciiHistoryDays, readCiiMovers } from '../_cii-history';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
@@ -82,7 +83,17 @@ function resolveExposureCountries(raw: unknown): string[] {
       description: `Pass at most ${MAX_EXPOSURE_COUNTRIES} countries.`,
     }]);
   }
-  const codes = values.map((value) => requireCountryCode(value, 'simulate-infrastructure-cascade', 'countries').toUpperCase());
+  const codes = values.map((value) => {
+    const code = requireCountryCode(value, 'simulate-infrastructure-cascade', 'countries').toUpperCase();
+    // Shape alone admits unassigned codes such as ZZ, which would read as a real country with no cables.
+    if (!isAssignedCountryCode(code)) {
+      throw new RpcValidationError('simulate-infrastructure-cascade', [{
+        field: 'countries',
+        description: `${JSON.stringify(code)} is not an assigned ISO 3166-1 country code.`,
+      }]);
+    }
+    return code;
+  });
   return [...new Set(codes)];
 }
 
@@ -599,6 +610,8 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       required: ['cached_at', 'stale', 'data'],
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    // Dispatch runs this before reserving quota, so a bad country costs nothing.
+    _validateArgs: (params) => { resolveExposureCountries(params.countries); },
     _execute: async (params) => {
       const exposureCountries = resolveExposureCountries(params.countries);
       const wantsExposure = exposureCountries.length > 0;
