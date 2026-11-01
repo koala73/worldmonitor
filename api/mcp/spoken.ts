@@ -162,7 +162,7 @@ export function cleanSpeech(text: string, lang: SpokenLanguage = 'en'): string {
     .replace(/\[\d+\]/g, '')
     .replace(/[*_`#|<>{}[\]]/g, '')
     .replace(/\s*\(([^)]*)\)/g, (_match, inner: string) => (inner.trim() ? `${comma} ${inner.trim()}` : ''))
-    .replace(/%/g, lang === 'ar' ? ' في المئة' : ' percent')
+    .replace(/[%٪]/g, lang === 'ar' ? ' في المئة' : ' percent')
     .replace(/\b(?:[A-Z]\.){2,}/g, (abbr) => abbr.replace(/\./g, ''))
     .replace(/\s+([,،])/g, '$1')
     .replace(/([,،])\s*[,،]/g, '$1')
@@ -175,9 +175,9 @@ export function cleanSpeech(text: string, lang: SpokenLanguage = 'en'): string {
 }
 
 /** A title or headline as it can sit inside a sentence: no markup, no terminal punctuation, bounded. */
-export function cleanTitle(value: unknown, maxChars = 120): string {
+export function cleanTitle(value: unknown, maxChars = 120, lang: SpokenLanguage = 'en'): string {
   if (typeof value !== 'string') return '';
-  let title = cleanSpeech(value).replace(/[.!?]+$/, '').trim();
+  let title = cleanSpeech(value, lang).replace(/[.!?؟]+$/, '').trim();
   if (title.length > maxChars) {
     const cut = title.slice(0, maxChars);
     const space = cut.lastIndexOf(' ');

@@ -591,6 +591,18 @@ describe('spoken_language "ar": the same narration in Modern Standard Arabic (#9
     assert.match(narrate('get_media_perspective', spokenMediaPerspective, MEDIA).spoken, /Arab News: Kingdom unveils budget\.$/);
   });
 
+  it('an Arabic headline with a percent sign reads "في المئة" in Arabic, while its citation keeps the English rendering', () => {
+    for (const sign of ['%', '٪']) {
+      const media = structuredClone(MEDIA);
+      Object.assign(media.groups[0].headlines[0], { title: `التضخم يرتفع إلى 3${sign}`, englishTitle: 'Inflation rises to 3%' });
+      const arabic = narrate('get_media_perspective', spokenMediaPerspective, media, {}, 'ar');
+      assert.match(arabic.spoken, /أحدثها من Arab News: التضخم يرتفع إلى 3 في المئة\.$/, sign);
+      assert.equal(arabic.citations[0].title, 'Inflation rises to 3 percent', sign);
+    }
+    // The English answer reads either sign as "percent".
+    assert.equal(cleanSpeech('up 3٪'), 'up 3 percent.');
+  });
+
   it('get_resilience_indicators names dimensions and the data month in Arabic', () => {
     assert.equal(
       narrate('get_resilience_indicators', spokenResilienceIndicators, RESILIENCE, { country_code: 'DE' }, 'ar').spoken,

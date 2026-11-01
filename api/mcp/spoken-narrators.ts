@@ -750,7 +750,7 @@ export const spokenMediaPerspective: SpokenNarrator = (result, args, _now, lang 
       // every other headline is read in its English rendering, as in English.
       // Citations keep the English rendering in both languages: they describe
       // the source, not the wording of the answer.
-      const original = lang === 'ar' && text(headline.titleLanguage) === 'ar' ? cleanTitle(headline.title) : '';
+      const original = lang === 'ar' && text(headline.titleLanguage) === 'ar' ? cleanTitle(headline.title, 120, 'ar') : '';
       headlines.push({ outlet: text(headline.outlet) || say.anOutlet, title, spokenTitle: original || title, url: text(headline.link), publishedAt: toEpochMs(headline.publishedAt) });
     }
   }
