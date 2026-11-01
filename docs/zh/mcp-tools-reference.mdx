@@ -1310,6 +1310,7 @@ curl -s https://worldmonitor.app/mcp \
 | `category` | string（枚举） | 将聚类限制为一个完整摘要类别（`politics`、`us`、`europe`、`middleeast`、`tech`、`ai`、`finance`、`commodities`、`gov`、`africa`、`latam`、`asia`、`energy`、`thinktanks`、`crisis`、`layoffs`、`science`、`intel`）。结果中以 `category` 回显（省略时为 `null`）。未知值返回 `headlineCount: 0`，并以 `note` 列出当前摘要中存在的类别。 |
 
 - **交叉印证：** 每个簇都带有 `corroboration`，形如 `{ state, publishers }`。`state` 取值为 `corroborated`（两个及以上发布方家族，且并非全部为第 4 层级）、`single-publisher`、`tier4-only`（两个及以上家族，且每个都是已声明的第 4 层级聚合站或博客）或 `unknown`；`publishers` 统计不同的发布方家族，`state` 为 `unknown` 时为 `null`。新闻面板、地图弹窗和摘要为该故事显示相同的判定。实时提醒只携带该故事的发布方数量，因此只报告 `single-publisher` 或 `corroborated`，从不报告 `tier4-only`。它描述的是报道覆盖面，而非准确性：任何状态都不表示某条说法为真或为假。旁边的 `publishers` 名单列出每个发布方及其声明层级。
+- **来源溯源：** 每个簇都带有主媒体的 `primarySourceProvenance`，以及与 `sources` 按下标对齐的 `sourceProvenance`（`sourceProvenance[j]` 描述 `sources[j]`）。每一项给出该媒体声明的 `tier`（1–4，未登记时为 `null`）、`risk`、`type`，以及它们是否已声明和已审核（`riskDeclared`、`typeDeclared`、`riskReviewed`、`typeReviewed`）；登记了关联方时给出 `stateAffiliated`，另有 `knownBiases`（空数组表示尚未记录标签，并不代表该媒体中立）、可选的 `note`、按固定顺序列出全部事实的 `summary` 字符串，以及媒体概况：`homeCountry`、`audience`（`domestic`、`international` 或 `diaspora`）、`language` 和 `ownershipClass`，未记录概况时均为 `null`。智能体无需调用 `get_sources`，即可对同时包含一级通讯社和高风险或国家关联媒体的簇进行加权。溯源采用失败即关闭：尚未审核的媒体会报告 `risk: "unknown"` 并附上说明，绝不会默认为低风险。
 - **API 端点：** `GET /api/news/v1/list-feed-digest`
 - **类型：** 确定性本地计算 —— 每次调用对约 150-200 条摘要头条运行聚类（上游为 CDN/Redis 缓存，15 分钟节奏）。
 - **配额：** 标准 —— 每次调用消耗 MCP 每日预留。
