@@ -422,6 +422,7 @@ export class DataLoaderManager implements AppModule {
 
   private mapFlashCache: Map<string, number> = new Map();
   private readonly MAP_FLASH_COOLDOWN_MS = 10 * 60 * 1000;
+  private outageAuxGeneration = 0;
   private readonly applyTimeRangeFilterToNewsPanelsDebounced = debounce(() => {
     this.applyTimeRangeFilterToNewsPanels();
   }, 120);
@@ -3777,11 +3778,17 @@ export class DataLoaderManager implements AppModule {
    */
   private deliverOutagesToPanel(outages: InternetOutage[]): void {
     this.callPanel('internet-disruptions', 'setOutages', outages);
+    // Deliveries can overlap (hydration pass, map layer, refresh). Only the
+    // newest one commits, so an older request that fails into the breaker's
+    // empty fallback cannot overwrite a newer success.
+    const generation = ++this.outageAuxGeneration;
     fetchTrafficAnomalies().then(r => {
+      if (generation !== this.outageAuxGeneration) return;
       this.ctx.map?.setTrafficAnomalies(r.anomalies);
       this.callPanel('internet-disruptions', 'setAnomalies', r.anomalies);
     }).catch(() => {});
     fetchDdosAttacks().then(r => {
+      if (generation !== this.outageAuxGeneration) return;
       this.ctx.map?.setDdosLocations(r.topTargetLocations ?? []);
       this.callPanel('internet-disruptions', 'setDdos', r);
     }).catch(() => {});

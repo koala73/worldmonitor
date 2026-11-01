@@ -57,6 +57,23 @@ describe('internet-disruptions panel hydration', () => {
     });
   }
 
+  it('lets only the newest delivery commit anomaly and DDoS results', async () => {
+    const body = extractMethod(await readFile(DATA_LOADER, 'utf8'), 'deliverOutagesToPanel');
+    assert.match(body, /const generation = \+\+this\.outageAuxGeneration;/);
+    const guards = body.match(/if \(generation !== this\.outageAuxGeneration\) return;/g) ?? [];
+    assert.equal(guards.length, 2, 'both the anomalies and the DDoS callbacks must drop superseded results');
+  });
+
+  it('refreshes outages on variants without the intelligence refresh', async () => {
+    const app = await readFile(new URL('../src/App.ts', import.meta.url), 'utf8');
+    const block = app.match(/if \(SITE_VARIANT === 'full'\) \{\s*this\.refreshScheduler\.scheduleRefresh\('intelligence'[\s\S]*?\n {4}\} else \{([\s\S]*?)\n {4}\}/);
+    assert.ok(block, 'the intelligence refresh needs an else branch for the other variants');
+    assert.match(block[1], /scheduleRefresh\('internet-disruptions'/);
+    assert.match(block[1], /delete this\.state\.intelligenceCache\.outages;\s*return this\.dataLoader\.loadOutages\(\);/,
+      'loadOutages serves intelligenceCache.outages, so the refresh must drop it first');
+    assert.match(block[1], /this\.isPanelNearViewport\('internet-disruptions'\)/);
+  });
+
   it('queues every panel update through callPanel', async () => {
     const body = extractMethod(await readFile(DATA_LOADER, 'utf8'), 'deliverOutagesToPanel');
     for (const method of ['setOutages', 'setAnomalies', 'setDdos']) {
