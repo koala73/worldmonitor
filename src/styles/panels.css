@@ -220,7 +220,7 @@
 
 .china-corridor-status--partial,
 .china-corridor-status--stale {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .china-corridor-status--unavailable {
@@ -230,7 +230,7 @@
 .china-corridor-renderer-hint {
   margin: 0;
   padding: 6px 8px;
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   line-height: 1.4;
   background: color-mix(in srgb, var(--semantic-elevated) 8%, transparent);
@@ -840,7 +840,7 @@
 }
 
 .climate-warm {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .climate-cold {
@@ -865,12 +865,12 @@
 
 .severity-extreme {
   background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .severity-moderate {
   background: color-mix(in srgb, var(--semantic-high) 15%, transparent);
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .severity-normal {
@@ -989,17 +989,17 @@
 
 .disp-crisis {
   background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .disp-high {
   background: color-mix(in srgb, var(--semantic-high) 15%, transparent);
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .disp-elevated {
   background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent);
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .disp-count {
@@ -1111,17 +1111,17 @@
 }
 
 .ucdp-deaths-state {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   font-weight: 600;
 }
 
 .ucdp-deaths-nonstate {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   font-weight: 600;
 }
 
 .ucdp-deaths-onesided {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   font-weight: 600;
 }
 
@@ -1180,7 +1180,7 @@
 .wm-dl-title {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
-  color: var(--green);
+  color: var(--green-text, var(--green));
   text-transform: uppercase;
   letter-spacing: 0.5px;
   display: flex;
@@ -1231,7 +1231,7 @@
 .wm-dl-btn.mac {
   background: color-mix(in srgb, var(--green) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--green) 20%, transparent);
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .wm-dl-btn.mac:hover {
@@ -1251,7 +1251,7 @@
 .wm-dl-btn.linux {
   background: color-mix(in srgb, var(--semantic-elevated) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--semantic-elevated) 18%, transparent);
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .wm-dl-btn.linux:hover {
@@ -1400,7 +1400,7 @@
 
 .giving-unverified {
   display: block;
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
 }
@@ -1512,15 +1512,15 @@
 }
 
 .sa-summary-item.sa-level-dnt .sa-summary-count {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .sa-summary-item.sa-level-reconsider .sa-summary-count {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .sa-summary-item.sa-level-caution .sa-summary-count {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .sa-filters {
@@ -1603,17 +1603,17 @@
 
 .sa-badge.sa-level-dnt {
   background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .sa-badge.sa-level-reconsider {
   background: color-mix(in srgb, var(--semantic-high) 15%, transparent);
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .sa-badge.sa-level-caution {
   background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent);
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .sa-badge.sa-level-normal {
@@ -1712,7 +1712,7 @@
 
 .oref-danger {
   background: color-mix(in srgb, var(--semantic-critical) 12%, transparent);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .oref-status-icon {
@@ -2427,7 +2427,7 @@
 .ops-closed {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   grid-column: 3 / -1;
 }
 
@@ -2934,7 +2934,7 @@ body.panel-drag-active .map-bottom-grid:empty::after {
   flex: 1; font-family: var(--font-body-base, system-ui, sans-serif);
   font-size: calc(13px * var(--wm-panel-effective-scale, 1)); line-height: 1.6; color: var(--text-secondary);
 }
-.deduction-result.error { color: var(--red); padding: 12px 0; font-size: calc(12px * var(--wm-panel-effective-scale, 1)); }
+.deduction-result.error { color: var(--red-text, var(--red)); padding: 12px 0; font-size: calc(12px * var(--wm-panel-effective-scale, 1)); }
 
 /* Section: Verdict (Bottom line) */
 .ds-verdict {
@@ -2949,7 +2949,7 @@ body.panel-drag-active .map-bottom-grid:empty::after {
   margin-bottom: 8px;
 }
 .ds-section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-.ds-verdict .ds-section-label { color: var(--yellow); margin-bottom: 6px; }
+.ds-verdict .ds-section-label { color: var(--yellow-text, var(--yellow)); margin-bottom: 6px; }
 .ds-verdict .ds-section-label::after { background: color-mix(in srgb, var(--yellow) 20%, transparent); }
 
 /* Section: Evidence (What we know) */
@@ -2969,11 +2969,11 @@ body.panel-drag-active .map-bottom-grid:empty::after {
   border-left: 2px solid var(--green);
   padding: 10px 12px; border-radius: 0 5px 5px 0; margin-bottom: 12px;
 }
-.ds-primary .ds-section-label { color: var(--green); margin-bottom: 6px; }
+.ds-primary .ds-section-label { color: var(--green-text, var(--green)); margin-bottom: 6px; }
 .ds-primary .ds-section-label::after { background: color-mix(in srgb, var(--green) 20%, transparent); }
 .ds-prob-badge {
   background: color-mix(in srgb, var(--green) 18%, transparent);
-  color: var(--green); border-radius: 20px; padding: 1px 7px;
+  color: var(--green-text, var(--green)); border-radius: 20px; padding: 1px 7px;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1)); font-weight: 700; font-family: var(--font-mono);
   letter-spacing: 0.04em; white-space: nowrap;
 }
@@ -3040,9 +3040,9 @@ body.panel-drag-active .map-bottom-grid:empty::after {
   color: var(--text-muted);
 }
 
-.te-stat-spike .te-stat-val { color: var(--semantic-critical); }
-.te-stat-persistent .te-stat-val { color: var(--semantic-high); }
-.te-stat-elevated .te-stat-val { color: var(--semantic-elevated); }
+.te-stat-spike .te-stat-val { color: var(--semantic-critical-text, var(--semantic-critical)); }
+.te-stat-persistent .te-stat-val { color: var(--semantic-high-text, var(--semantic-high)); }
+.te-stat-elevated .te-stat-val { color: var(--semantic-elevated-text, var(--semantic-elevated)); }
 .te-stat-conflict .te-stat-val { color: color-mix(in srgb, var(--semantic-critical) 75%, var(--text-dim)); }
 .te-stat-strategic .te-stat-val { color: color-mix(in srgb, var(--semantic-elevated) 75%, var(--text-dim)); }
 
@@ -3112,19 +3112,19 @@ body.panel-drag-active .map-bottom-grid:empty::after {
 
 .te-badge-spike {
   background: color-mix(in srgb, var(--semantic-critical) 18%, transparent);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   border-color: color-mix(in srgb, var(--semantic-critical) 32%, transparent);
 }
 
 .te-badge-persistent {
   background: color-mix(in srgb, var(--semantic-high) 15%, transparent);
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   border-color: color-mix(in srgb, var(--semantic-high) 28%, transparent);
 }
 
 .te-badge-elevated {
   background: color-mix(in srgb, var(--semantic-elevated) 13%, transparent);
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   border-color: color-mix(in srgb, var(--semantic-elevated) 25%, transparent);
 }
 
@@ -3185,7 +3185,7 @@ body.panel-drag-active .map-bottom-grid:empty::after {
   font-variant-numeric: tabular-nums;
 }
 
-.te-delta.pos { color: var(--semantic-critical); font-weight: 600; }
+.te-delta.pos { color: var(--semantic-critical-text, var(--semantic-critical)); font-weight: 600; }
 .te-delta.neg { color: var(--semantic-normal); font-weight: 600; }
 
 .te-persist {
@@ -3213,7 +3213,7 @@ body.panel-drag-active .map-bottom-grid:empty::after {
 
 .te-badge-conf-medium {
   background: color-mix(in srgb, var(--semantic-elevated) 11%, transparent);
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   border-color: color-mix(in srgb, var(--semantic-elevated) 20%, transparent);
 }
 
@@ -3339,12 +3339,12 @@ body.panel-drag-active .map-bottom-grid:empty::after {
   border-radius: 3px;
   flex-shrink: 0;
   background: color-mix(in srgb, var(--semantic-high) 15%, transparent);
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   border: 1px solid color-mix(in srgb, var(--semantic-high) 25%, transparent);
 }
 .hub-breaking.geo {
   background: color-mix(in srgb, var(--semantic-critical) 15%, transparent);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   border-color: color-mix(in srgb, var(--semantic-critical) 25%, transparent);
 }
 
@@ -3364,7 +3364,7 @@ body.panel-drag-active .map-bottom-grid:empty::after {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
 }
-.hub-trend.rising { color: var(--semantic-critical); }
+.hub-trend.rising { color: var(--semantic-critical-text, var(--semantic-critical)); }
 .hub-trend.falling { color: var(--semantic-normal); }
 
 .geo-hub-type,
@@ -3381,8 +3381,8 @@ body.panel-drag-active .map-bottom-grid:empty::after {
   text-align: right;
   flex-shrink: 0;
 }
-.hub-score.geo { color: var(--semantic-high); }
-.geo-hub-item.high .hub-score.geo { color: var(--semantic-critical); }
+.hub-score.geo { color: var(--semantic-high-text, var(--semantic-high)); }
+.geo-hub-item.high .hub-score.geo { color: var(--semantic-critical-text, var(--semantic-critical)); }
 
 .hub-top-story,
 a.hub-top-story {

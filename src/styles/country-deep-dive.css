@@ -394,15 +394,15 @@
 }
 
 .cdp-score-value.cii-elevated {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .cdp-score-value.cii-high {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .cdp-score-value.cii-critical {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .cdp-trend {
@@ -485,7 +485,7 @@
 
 .cdp-maritime-anomaly {
   margin-left: 4px;
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
@@ -625,31 +625,31 @@
 }
 
 .cdp-signal-chip.chip-conflict {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   background: color-mix(in srgb, var(--semantic-critical) 12%, transparent);
   border-color: color-mix(in srgb, var(--semantic-critical) 35%, transparent);
 }
 
 .cdp-signal-chip.chip-military {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   background: color-mix(in srgb, var(--semantic-high) 12%, transparent);
   border-color: color-mix(in srgb, var(--semantic-high) 35%, transparent);
 }
 
 .cdp-signal-chip.chip-outage {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent);
   border-color: color-mix(in srgb, var(--semantic-elevated) 35%, transparent);
 }
 
 .cdp-signal-chip.chip-climate {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent);
   border-color: color-mix(in srgb, var(--semantic-elevated) 35%, transparent);
 }
 
 .cdp-signal-chip.chip-quake {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   background: color-mix(in srgb, var(--semantic-high) 12%, transparent);
   border-color: color-mix(in srgb, var(--semantic-high) 35%, transparent);
 }
@@ -661,13 +661,13 @@
 }
 
 .cdp-signal-chip.chip-protest {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   background: color-mix(in srgb, var(--semantic-high) 12%, transparent);
   border-color: color-mix(in srgb, var(--semantic-high) 35%, transparent);
 }
 
 .cdp-signal-chip.chip-advisory {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent);
   border-color: color-mix(in srgb, var(--semantic-elevated) 35%, transparent);
 }
@@ -718,13 +718,13 @@
 }
 
 .cdp-chip-warn {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   background: color-mix(in srgb, var(--semantic-high) 12%, transparent);
   border-color: color-mix(in srgb, var(--semantic-high) 35%, transparent);
 }
 
 .cdp-chip-danger {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   background: color-mix(in srgb, var(--semantic-critical) 12%, transparent);
   border-color: color-mix(in srgb, var(--semantic-critical) 35%, transparent);
 }
@@ -806,7 +806,7 @@
 }
 
 .cdp-state-badge {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   background: color-mix(in srgb, var(--semantic-high) 12%, transparent);
   border-color: color-mix(in srgb, var(--semantic-high) 35%, transparent);
 }
@@ -823,19 +823,19 @@
 }
 
 .cdp-severity-badge.sev-critical {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   background: color-mix(in srgb, var(--semantic-critical) 12%, transparent);
   border-color: color-mix(in srgb, var(--semantic-critical) 35%, transparent);
 }
 
 .cdp-severity-badge.sev-high {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   background: color-mix(in srgb, var(--semantic-high) 12%, transparent);
   border-color: color-mix(in srgb, var(--semantic-high) 35%, transparent);
 }
 
 .cdp-severity-badge.sev-medium {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent);
   border-color: color-mix(in srgb, var(--semantic-elevated) 35%, transparent);
 }
@@ -1032,11 +1032,11 @@
 }
 
 .cdp-trend-token.trend-up {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .cdp-trend-token.trend-down {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .cdp-trend-token.trend-flat {
@@ -1048,7 +1048,7 @@
 }
 
 .cdp-trend-token.trend-market-down {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .cdp-trend-token.trend-market-flat {
@@ -1363,7 +1363,7 @@
 }
 
 .resilience-widget__confidence--low {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .resilience-widget__preview {
@@ -1623,9 +1623,9 @@
 }
 
 .cdp-pro-badge-normal { background: color-mix(in srgb, var(--semantic-normal) 20%, transparent); color: var(--semantic-normal); }
-.cdp-pro-badge-elevated { background: color-mix(in srgb, var(--semantic-elevated) 20%, transparent); color: var(--semantic-elevated); }
-.cdp-pro-badge-high { background: color-mix(in srgb, var(--semantic-high) 20%, transparent); color: var(--semantic-high); }
-.cdp-pro-badge-critical { background: color-mix(in srgb, var(--semantic-critical) 20%, transparent); color: var(--semantic-critical); }
+.cdp-pro-badge-elevated { background: color-mix(in srgb, var(--semantic-elevated) 20%, transparent); color: var(--semantic-elevated-text, var(--semantic-elevated)); }
+.cdp-pro-badge-high { background: color-mix(in srgb, var(--semantic-high) 20%, transparent); color: var(--semantic-high-text, var(--semantic-high)); }
+.cdp-pro-badge-critical { background: color-mix(in srgb, var(--semantic-critical) 20%, transparent); color: var(--semantic-critical-text, var(--semantic-critical)); }
 
 .cdp-pro-flow-table {
   width: 100%;
@@ -1650,7 +1650,7 @@
 }
 
 .cdp-pro-trend-up { color: var(--semantic-normal); }
-.cdp-pro-trend-down { color: var(--semantic-critical); }
+.cdp-pro-trend-down { color: var(--semantic-critical-text, var(--semantic-critical)); }
 
 .cdp-pro-exposure-item {
   display: flex;
@@ -2061,7 +2061,7 @@
 .cdp-topic-nav button { flex: 0 0 auto; background: none; border: 0; padding: 14px 0; font-size: 12px; color: var(--text-muted); cursor: pointer; }
 .cdp-topic-nav button[aria-current="page"] { color: var(--text); box-shadow: inset 0 -2px var(--green); }
 .cdp-load-status { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; padding: 13px 0; font-size: 11px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
-.cdp-load-status [role="status"] { color: var(--green); }
+.cdp-load-status [role="status"] { color: var(--green-text, var(--green)); }
 .cdp-export-primary { background: var(--green); color: #0a0a0a; border-color: var(--green); padding: 0 14px; }
 .cdp-export-primary:hover { filter: brightness(1.08); }
 .cdp-overview-lead { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; padding: 28px 0; }
@@ -2078,12 +2078,12 @@
 .cdp-trend { text-transform: capitalize; }
 .cdp-assessment-text { font-size: calc(14px * var(--wm-panel-effective-scale, 1)); line-height: 1.8; max-width: 80ch; }
 .cdp-shell[data-brief-topic="overview"] .cdp-assessment-text { font-size: calc(16px * var(--wm-panel-effective-scale, 1)); }
-.cdp-inline-action { color: var(--green); border: 0; padding: 4px 0; background: none; cursor: pointer; text-align: left; font-size: 12px; text-decoration: underline; text-underline-offset: 4px; }
+.cdp-inline-action { color: var(--green-text, var(--green)); border: 0; padding: 4px 0; background: none; cursor: pointer; text-align: left; font-size: 12px; text-decoration: underline; text-underline-offset: 4px; }
 .cdp-reading-grid { display: grid; grid-template-columns: 175px minmax(0, 1fr); gap: 30px; align-items: start; }
 .cdp-shell[data-brief-topic="overview"] .cdp-reading-grid { grid-template-columns: minmax(0, 1fr); }
 .cdp-section-index { position: sticky; top: 14px; display: flex; flex-direction: column; padding-top: 22px; max-height: 75vh; overflow-y: auto; }
 .cdp-section-index button { background: none; border: 0; text-align: left; font-size: 12px; line-height: 1.5; padding: 8px 0; color: var(--text-muted); cursor: pointer; }
-.cdp-section-index button:hover { color: var(--green); }
+.cdp-section-index button:hover { color: var(--green-text, var(--green)); }
 .cdp-explore { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 22px 0; border-top: 1px solid var(--border); }
 .cdp-explore button { display: flex; flex-direction: column; gap: 8px; padding: 18px; border: 1px solid var(--border); border-radius: 5px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
 .cdp-explore button:hover { border-color: var(--green); }
@@ -2113,7 +2113,7 @@
 .cdp-debt-meter span { display: block; height: 100%; background: var(--green); }
 .cdp-debt-meter::after { content: ''; position: absolute; left: 50%; top: -4px; bottom: -4px; width: 1px; background: var(--text-muted); }
 .cdp-debt-scale { display: flex; justify-content: space-between; font-size: 10px; }
-.cdp-data-quality { font-size: 12px; color: var(--semantic-elevated); }
+.cdp-data-quality { font-size: 12px; color: var(--semantic-elevated-text, var(--semantic-elevated)); }
 .cdp-data-quality summary, .cdp-tariff-history summary { cursor: pointer; padding: 10px 0; }
 .cdp-data-quality p { color: var(--text-muted); overflow-wrap: anywhere; }
 .cdp-tariff-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 35px; align-items: center; }
@@ -2127,14 +2127,14 @@
 .cdp-scorecard-tabs .cdp-scorecard-pillar { display: flex; flex-direction: column; min-width: 0; border: 0; border-inline-end: 1px solid var(--border); border-radius: 0; background: none; padding: 20px 16px; text-align: left; cursor: pointer; gap: 12px; }
 .cdp-scorecard-tabs .cdp-scorecard-pillar:last-child { border-inline-end: 0; }
 .cdp-scorecard-pillar[aria-selected="true"] { background: color-mix(in srgb, var(--green) 7%, transparent); box-shadow: inset 0 3px var(--green); }
-.cdp-scorecard-pillar[aria-selected="true"] .cdp-scorecard-pillar-name { color: var(--green); }
+.cdp-scorecard-pillar[aria-selected="true"] .cdp-scorecard-pillar-name { color: var(--green-text, var(--green)); }
 .cdp-scorecard-score { font-size: calc(32px * var(--wm-panel-effective-scale, 1)); line-height: 1.1; letter-spacing: -.8px; }
 .is-insufficient .cdp-scorecard-score { font-size: 14px; line-height: 1.5; letter-spacing: 0; }
 .cdp-scorecard-marks { display: flex; gap: 4px; width: 100%; margin: 2px 0 5px; }
 .cdp-scorecard-marks i { flex: 1; height: 5px; background: var(--border); border-radius: 2px; }
 .cdp-scorecard-marks .is-filled { background: var(--green); }
 .cdp-scorecard-coverage { margin-top: auto; padding: 0; color: var(--text-muted); font-size: 11px; }
-.cdp-scorecard-coverage.is-partial { color: var(--semantic-elevated); }
+.cdp-scorecard-coverage.is-partial { color: var(--semantic-elevated-text, var(--semantic-elevated)); }
 .cdp-scorecard-factor-evidence { padding: 22px; border: 1px solid var(--border); border-top: 0; border-radius: 0 0 5px 5px; }
 .cdp-shell[data-brief-mode="summary"] .cdp-five-factor-scorecard[data-evidence-expanded="false"] .cdp-scorecard-evidence { display: none; }
 .cdp-scorecard-evidence-heading { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; align-items: baseline; margin-bottom: 12px; }
@@ -2145,7 +2145,7 @@
 .cdp-scorecard-input-value { width: 30%; text-align: left; }
 .cdp-scorecard-inputs .cdp-economic-source { margin: 0; font-size: 11px; }
 .cdp-scorecard-footer { padding-top: 12px; font-size: 11px; line-height: 1.7; color: var(--text-muted); }
-.cdp-scorecard-footer a { color: var(--green); }
+.cdp-scorecard-footer a { color: var(--green-text, var(--green)); }
 
 @container country-brief (max-width: 900px) {
   .cdp-shell[data-brief-topic="overview"] .cdp-overview-lead { grid-template-columns: minmax(0, 1fr); gap: 20px; }
@@ -2224,12 +2224,12 @@
 .operational-scenario > span { display: block; color: var(--text-muted); font-size: 11px; margin-bottom: 10px; }
 .operational-scenario strong { display: block; font-size: 25px; line-height: 1.2; letter-spacing: -.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .operational-scenario-alt { border-inline-start: 1px solid var(--border); background: color-mix(in srgb, var(--green) 6%, transparent); }
-.operational-scenario-alt strong { color: var(--green); }
+.operational-scenario-alt strong { color: var(--green-text, var(--green)); }
 .operational-summary .operational-unmet { grid-column: 1 / -1; margin: 0; padding: 12px 16px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.7; font-variant-numeric: tabular-nums; }
 .operational-unmet > span { display: block; color: var(--text-muted); }
 .operational-cost, .operational-note { margin: 12px 0; font-size: 11px; line-height: 1.6; color: var(--text-muted); }
 .operational-error, .operational-import-status { margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 5px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
-.operational-error { color: var(--semantic-critical); border-color: color-mix(in srgb, var(--semantic-critical) 35%, var(--border)); }
+.operational-error { color: var(--semantic-critical-text, var(--semantic-critical)); border-color: color-mix(in srgb, var(--semantic-critical) 35%, var(--border)); }
 .operational-error:empty, .operational-import-status:empty { display: none; }
 .operational-method { padding: 14px 0; border-top: 1px solid var(--border-subtle); font-size: 12px; line-height: 1.65; color: var(--text-muted); }
 .operational-method summary { cursor: pointer; color: var(--text-secondary); font-weight: 600; }
@@ -2266,7 +2266,7 @@
 .cdp-output-controls label { display: grid; gap: 8px; width: 100%; }
 .cdp-output-controls :is(button, select) { border: 1px solid var(--border); padding: 10px; border-radius: 5px; color: var(--text); background: var(--surface); cursor: pointer; }
 .cdp-output-controls select { max-width: 100%; font: inherit; }
-.cdp-output-feedback { color: var(--green); }
+.cdp-output-feedback { color: var(--green-text, var(--green)); }
 .cdp-output-paper { container: country-brief / inline-size; --bg: #fff; --panel-bg: #fff; --surface: #f4f6f5; --surface-hover: #e8eeea; --border: #ccd6d0; --border-subtle: #e0e6e2; --text: #17251c; --text-secondary: #344a3c; --text-dim: #344a3c; --text-muted: #55645b; --text-faint: #66746c; --green: #16a34a; --accent: #17251c; --semantic-normal: #15803d; --semantic-elevated: #946200; --semantic-high: #b45309; --semantic-critical: #b91c1c; background: var(--bg); color: var(--text); min-width: 0; padding: 28px; border-radius: 5px; font: 14px/1.65 'Nunito', sans-serif; overflow-wrap: anywhere; }
 .cdp-output-paper h1 { font-size: 30px; margin: 8px 0 14px; }
 .cdp-output-paper .cdp-expanded-only { display: block; }
@@ -2311,7 +2311,7 @@
 .cdp-commodity-paper h3 { font-size: 14px; line-height: 1.4; margin: 0; }
 .cdp-commodity-eyebrow { color: var(--text-muted); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
 .cdp-commodity-assumption { font-size: 12px; color: var(--text-secondary); }
-.cdp-commodity-assumption strong { color: var(--semantic-elevated); font-weight: 600; }
+.cdp-commodity-assumption strong { color: var(--semantic-elevated-text, var(--semantic-elevated)); font-weight: 600; }
 .cdp-commodity-note { font-size: 11px; color: var(--text-muted); }
 .cdp-commodity-section-title { margin: 20px 0 12px; font-size: 12px; letter-spacing: .5px; text-transform: uppercase; color: var(--text-secondary); }
 .cdp-commodity-candidates { display: grid; gap: 10px; }
@@ -2321,7 +2321,7 @@
 .cdp-commodity-share strong { font-size: 24px; font-weight: 600; line-height: 1.15; letter-spacing: -.6px; }
 .cdp-commodity-share span { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
 .cdp-commodity-route-state { display: inline-block; border: 1px solid var(--border-strong, var(--border)); border-radius: 4px; padding: 2px 7px; font-size: 10px; color: var(--text-secondary); }
-.cdp-commodity-route-state[data-state="exposed"] { color: var(--semantic-elevated); border-color: color-mix(in srgb, var(--semantic-elevated) 45%, transparent); background: color-mix(in srgb, var(--semantic-elevated) 8%, transparent); }
+.cdp-commodity-route-state[data-state="exposed"] { color: var(--semantic-elevated-text, var(--semantic-elevated)); border-color: color-mix(in srgb, var(--semantic-elevated) 45%, transparent); background: color-mix(in srgb, var(--semantic-elevated) 8%, transparent); }
 .cdp-commodity-paper .cdp-commodity-route { color: var(--text-secondary); font-size: 12px; margin: 8px 0 12px; }
 .cdp-commodity-details { font-size: 11px; color: var(--text-muted); }
 .cdp-commodity-details summary { cursor: pointer; color: var(--text-secondary); padding: 8px 0; min-height: 32px; }
@@ -2333,12 +2333,12 @@
 .cdp-commodity-details h3 { margin: 12px 0 4px; font-size: 12px; color: var(--text-secondary); }
 .cdp-commodity-details ul { padding-inline-start: 18px; }
 .cdp-commodity-details li { margin-bottom: 8px; }
-.cdp-commodity-details a { color: var(--green); text-underline-offset: 3px; }
+.cdp-commodity-details a { color: var(--green-text, var(--green)); text-underline-offset: 3px; }
 .cdp-commodity-action { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
 .cdp-commodity-action .cdp-commodity-section-title { margin-top: 0; }
 .cdp-commodity-method { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 8px; }
 .cdp-commodity-empty { padding: 20px; border: 1px dashed var(--border); border-radius: 6px; color: var(--text-muted); }
-.cdp-commodity-hub { display: block; margin-top: 4px; font-size: 10px; color: var(--semantic-elevated); }
+.cdp-commodity-hub { display: block; margin-top: 4px; font-size: 10px; color: var(--semantic-elevated-text, var(--semantic-elevated)); }
 .cdp-commodity-paper .cdp-commodity-more { margin: 0; align-self: center; }
 @container country-brief (min-width: 800px) {
   .cdp-commodity-preview .cdp-commodity-candidates { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }

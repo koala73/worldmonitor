@@ -213,7 +213,7 @@ describe('upgrade CTAs are readable in both themes', () => {
 /**
  * Status text drawn in a semantic color (error red, positive green, elevated
  * orange/amber). The light palette's raw values sit at 3.2-3.6:1 on white, so
- * the light theme darkens them in one `[data-theme="light"] :is(...)` rule.
+ * text reads the light-only `--X-text` shades first (tests/light-semantic-text.test.mjs).
  */
 const STATUS_TEXT = [
   ['main.css', '.panel-summary-error'],
@@ -226,12 +226,6 @@ const STATUS_TEXT = [
   ['country-deep-dive.css', '.cdp-maritime-anomaly'],
 ];
 
-/** The light-theme rule that overrides a selector's text color, if any. */
-function lightOverride(selector) {
-  return rules(mainCss).find((r) => r.selector.startsWith('[data-theme="light"] :is(')
-    && r.selector.slice(r.selector.indexOf('(') + 1, -1).split(',').map((s) => s.trim()).includes(selector));
-}
-
 describe('semantic status text is readable in both themes', () => {
   for (const [file, selector] of STATUS_TEXT) {
     it(selector, () => {
@@ -240,9 +234,8 @@ describe('semantic status text is readable in both themes', () => {
       const ownBackground = declaration(base.body, 'background');
       // Translucent tints sit on the panel surface; judge them against it.
       const background = ownBackground && !/transparent|rgba\(|hsla\(/.test(ownBackground) ? ownBackground : 'var(--surface)';
-      const override = lightOverride(selector);
+      const text = declaration(base.body, 'color');
       for (const [name, theme] of themesFor(file)) {
-        const text = name === 'light' && override ? declaration(override.body, 'color') : declaration(base.body, 'color');
         const [fg] = colors(text, theme);
         for (const bg of colors(background, theme)) {
           const ratio = contrast(fg, bg);

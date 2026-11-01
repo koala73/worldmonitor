@@ -101,6 +101,18 @@
   --red: #C48B9F;
   --green: #6B8F5E;
   --yellow: #C4A35A;
+
+  /* Keep this palette for text too: undo main.css's light -text shades. */
+  --red-text: initial;
+  --green-text: initial;
+  --yellow-text: initial;
+  --semantic-critical-text: initial;
+  --semantic-high-text: initial;
+  --semantic-elevated-text: initial;
+  --semantic-positive-text: initial;
+  --status-live-text: initial;
+  --status-cached-text: initial;
+  --status-unavailable-text: initial;
 }
 
 /* ---------- Happy Dark Mode ---------- */

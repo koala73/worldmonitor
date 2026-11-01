@@ -172,6 +172,24 @@
   --yellow: #d97706;
   /* Tailwind amber-600 (was #ffaa00) */
 
+  /* Semantic colors used as TEXT. The values above stay bright for fills,
+     borders and map markers but are 3.2-3.6:1 on white; text rules read
+     var(--X-text, var(--X)) and get these darker shades: red-700,
+     orange-700, and green/amber a step past -700 so they clear 4.5:1 on
+     --bg-secondary too. Dark leaves them undefined so the fallback applies;
+     always-dark surfaces reset them (see .update-toast below).
+     tests/light-semantic-text.test.mjs checks all of this. */
+  --red-text: #b91c1c;
+  --semantic-critical-text: #b91c1c;
+  --status-unavailable-text: #b91c1c;
+  --semantic-high-text: #c2410c;
+  --yellow-text: #b05109;
+  --semantic-elevated-text: #b05109;
+  --status-cached-text: #b05109;
+  --green-text: #157d3c;
+  --semantic-positive-text: #157d3c;
+  --status-live-text: #157d3c;
+
   /* Backgrounds */
   --bg: #f8f9fa;
   --bg-secondary: #f0f1f3;
@@ -435,7 +453,7 @@ canvas,
 }
 
 .variant-option.active {
-  color: var(--green);
+  color: var(--green-text, var(--green));
   background: rgba(68, 255, 136, 0.1);
   pointer-events: none;
 }
@@ -497,7 +515,7 @@ canvas,
 }
 
 .mission-preset-button--active {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .mission-preset-button--suggested {
@@ -512,7 +530,7 @@ canvas,
   height: 14px;
   border-radius: 50%;
   background: rgba(68, 255, 136, 0.12);
-  color: var(--green);
+  color: var(--green-text, var(--green));
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
 }
 
@@ -641,7 +659,7 @@ canvas,
   height: 26px;
   border-radius: 50%;
   background: rgba(68, 255, 136, 0.12);
-  color: var(--green);
+  color: var(--green-text, var(--green));
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 800;
 }
@@ -670,7 +688,7 @@ canvas,
 }
 
 .mission-preset-card__check {
-  color: var(--green);
+  color: var(--green-text, var(--green));
   font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   font-weight: 800;
   text-align: center;
@@ -702,6 +720,21 @@ canvas,
 }
 
 /* Update toast notification */
+/* Dark in both themes: drop the light theme's darker text shades here so
+   var(--X-text, var(--X)) falls back to the bright values. */
+:is(.update-toast, .passkey-offer-prompt, .re-modal) {
+  --red-text: initial;
+  --green-text: initial;
+  --yellow-text: initial;
+  --semantic-critical-text: initial;
+  --semantic-high-text: initial;
+  --semantic-elevated-text: initial;
+  --semantic-positive-text: initial;
+  --status-live-text: initial;
+  --status-cached-text: initial;
+  --status-unavailable-text: initial;
+}
+
 .update-toast {
   position: fixed;
   top: 12px;
@@ -737,7 +770,7 @@ canvas,
   height: 36px;
   border-radius: 8px;
   background: rgba(68, 255, 136, 0.12);
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .update-toast-body {
@@ -848,11 +881,11 @@ canvas,
 }
 
 .status-indicator--cached {
-  color: var(--status-cached);
+  color: var(--status-cached-text, var(--status-cached));
 }
 
 .status-indicator--unavailable {
-  color: var(--status-unavailable);
+  color: var(--status-unavailable-text, var(--status-unavailable));
 }
 
 .status-dot {
@@ -926,13 +959,13 @@ canvas,
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--status-cached);
+  color: var(--status-cached-text, var(--status-cached));
   background: rgba(0, 0, 0, 0.12);
 }
 
 .cached-mode-banner--unavailable .cached-mode-banner__badge {
   border-color: rgba(239, 68, 68, 0.45);
-  color: var(--status-unavailable);
+  color: var(--status-unavailable-text, var(--status-unavailable));
 }
 
 .cached-mode-banner__text {
@@ -1350,7 +1383,7 @@ canvas,
   padding: 4px 10px;
   background: color-mix(in srgb, var(--green) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--green) 30%, transparent);
-  color: var(--green);
+  color: var(--green-text, var(--green));
   font-family: inherit;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   cursor: pointer;
@@ -1363,7 +1396,7 @@ canvas,
 .download-btn:hover {
   background: color-mix(in srgb, var(--green) 18%, transparent);
   border-color: var(--green);
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .download-dropdown {
@@ -2162,12 +2195,12 @@ body.panel-resize-active iframe {
 }
 
 .panel-header-error .panel-title {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .panel-header-error .panel-count {
   background: rgba(255, 80, 80, 0.3);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .header-clock {
@@ -2274,7 +2307,7 @@ body.panel-resize-active iframe {
 .panel-freshness-stale,
 .panel-freshness-very_stale {
   border-color: color-mix(in srgb, var(--semantic-elevated) 45%, var(--border));
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .panel-freshness-no_data,
@@ -2284,7 +2317,7 @@ body.panel-resize-active iframe {
 
 .panel-freshness-error {
   border-color: color-mix(in srgb, var(--semantic-critical) 45%, var(--border));
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 @keyframes severity-pulse {
@@ -2404,7 +2437,7 @@ body.panel-resize-active iframe {
 
 .panel-header .panel-close-btn:hover {
   background: color-mix(in srgb, var(--semantic-critical) 15%, transparent);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 /* On touch devices, always show the close button */
@@ -2493,7 +2526,7 @@ body.panel-resize-active iframe {
 }
 
 .panel-data-badge.live {
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
   border-color: rgba(86, 217, 130, 0.45);
   background: rgba(86, 217, 130, 0.12);
   padding-left: 16px;
@@ -2515,13 +2548,13 @@ body.panel-resize-active iframe {
 }
 
 .panel-data-badge.cached {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   border-color: rgba(245, 191, 89, 0.45);
   background: rgba(245, 191, 89, 0.12);
 }
 
 .panel-data-badge.unavailable {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   border-color: rgba(255, 139, 139, 0.45);
   background: rgba(255, 139, 139, 0.12);
 }
@@ -2635,7 +2668,7 @@ body.panel-resize-active iframe {
 }
 
 .panel-summary-error {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .panel-info-wrapper {
@@ -2958,7 +2991,7 @@ body.panel-resize-active iframe {
   padding: 4px 8px;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   min-height: auto;
-  color: var(--red);
+  color: var(--red-text, var(--red));
   background: transparent;
   border: 1px solid var(--border);
   cursor: pointer;
@@ -2975,7 +3008,7 @@ body.panel-resize-active iframe {
 .live-news-manage-remove-in-form {
   font-weight: 600;
   border-color: var(--red);
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .live-news-manage-remove-in-form:hover {
@@ -3004,7 +3037,7 @@ body.panel-resize-active iframe {
 }
 
 .live-news-manage-row-remove-x:hover {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .live-news-manage-edit {
@@ -3070,7 +3103,7 @@ body.panel-resize-active iframe {
 
 .live-news-manage-save:hover {
   border-color: var(--green);
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .live-news-manage-cancel:hover {
@@ -3453,23 +3486,23 @@ body.panel-resize-active iframe {
 }
 
 .live-news-manage-card:hover .live-news-manage-card-action {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .live-news-manage-card.added .live-news-manage-card-action {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .live-news-manage-card:hover .live-news-manage-card-action {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .live-news-manage-card.added .live-news-manage-card-action {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .live-news-manage-card.added:hover .live-news-manage-card-action {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 /* Tab count badge */
@@ -3714,7 +3747,7 @@ body.panel-resize-active iframe {
 }
 
 .live-mute-btn.unmuted {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .live-mute-btn:disabled {
@@ -4900,7 +4933,7 @@ a.item-title:hover {
 .publisher-roster .publisher-same-copy {
   flex-basis: 100%;
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .tier-chip {
@@ -4913,7 +4946,7 @@ a.item-title:hover {
 
 .tier-chip.tier-1 {
   background: rgba(0, 255, 136, 0.15);
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .tier-chip.tier-2 {
@@ -4923,7 +4956,7 @@ a.item-title:hover {
 
 .tier-chip.tier-3 {
   background: rgba(255, 170, 0, 0.15);
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
 }
 
 .tier-legend {
@@ -4956,7 +4989,7 @@ a.item-title:hover {
 
 .tier-badge.tier-1 {
   background: linear-gradient(135deg, rgba(0, 255, 136, 0.25), rgba(0, 200, 100, 0.15));
-  color: var(--green);
+  color: var(--green-text, var(--green));
   border: 1px solid rgba(0, 255, 136, 0.4);
 }
 
@@ -5056,12 +5089,12 @@ a.item-title:hover {
 
 .velocity-badge.elevated {
   background: rgba(255, 170, 0, 0.2);
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
 }
 
 .velocity-badge.spike {
   background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
-  color: var(--red);
+  color: var(--red-text, var(--red));
   animation: pulse-velocity 1.5s infinite;
 }
 
@@ -5084,11 +5117,11 @@ a.item-title:hover {
 }
 
 .sentiment-badge.negative {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .sentiment-badge.positive {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 /* Deviation indicators */
@@ -5102,12 +5135,12 @@ a.item-title:hover {
 
 .deviation-indicator.elevated {
   background: rgba(255, 170, 0, 0.2);
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
 }
 
 .deviation-indicator.spike {
   background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
-  color: var(--red);
+  color: var(--red-text, var(--red));
   animation: pulse-alert 1s infinite;
 }
 
@@ -5265,7 +5298,7 @@ a.item-title:hover {
 .suppress-keyword-btn {
   border: 1px solid rgba(255, 140, 66, 0.5);
   background: rgba(255, 140, 66, 0.12);
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   padding: 4px 8px;
   border-radius: 4px;
@@ -5454,12 +5487,12 @@ a.item-title:hover {
   text-align: center;
   margin-top: 8px;
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-  color: var(--green);
+  color: var(--green-text, var(--green));
   font-weight: bold;
 }
 
 .playback-time.historical {
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
 }
 
 .playback-controls {
@@ -5715,7 +5748,7 @@ body.playback-mode .status-dot {
 
 .time-btn:hover {
   border-color: var(--green);
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .time-btn.active {
@@ -5762,7 +5795,7 @@ body.playback-mode .status-dot {
 }
 
 .layer-toggles:not(.deckgl-layer-toggles) .layer-toggle.active {
-  color: var(--green);
+  color: var(--green-text, var(--green));
   border-color: var(--green);
 }
 
@@ -5785,7 +5818,7 @@ body.playback-mode .status-dot {
 .layer-toggles:not(.deckgl-layer-toggles) .layer-toggle.loading {
   animation: layer-loading 0.8s ease-in-out infinite;
   border-color: var(--yellow);
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
 }
 
 .layer-toggles:not(.deckgl-layer-toggles) .layer-explain-btn {
@@ -5811,7 +5844,7 @@ body.playback-mode .status-dot {
 .layer-toggles:not(.deckgl-layer-toggles) .layer-explain-btn:hover,
 .layer-toggles:not(.deckgl-layer-toggles) .layer-explain-btn:focus-visible,
 .layer-toggles:not(.deckgl-layer-toggles) .layer-explain-btn.active {
-  color: var(--green);
+  color: var(--green-text, var(--green));
   border-color: var(--green);
   background: var(--overlay-subtle);
   outline: none;
@@ -5936,7 +5969,7 @@ body.playback-mode .status-dot {
   font-weight: bold;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: var(--green);
+  color: var(--green-text, var(--green));
   margin-bottom: 6px;
   padding-left: 4px;
   border-left: 2px solid var(--green);
@@ -5965,7 +5998,7 @@ body.playback-mode .status-dot {
 
 .layer-help-note {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
   font-style: italic;
   padding: 2px 6px;
   margin-top: 2px;
@@ -6515,7 +6548,7 @@ body.playback-mode .status-dot {
 }
 
 .stat-value.alert {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   font-weight: bold;
 }
 
@@ -6646,7 +6679,7 @@ body.playback-mode .status-dot {
   position: absolute;
   transform: translate(-50%, -50%) scale(var(--label-scale, 1));
   transform-origin: center;
-  color: var(--red);
+  color: var(--red-text, var(--red));
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: bold;
   text-transform: uppercase;
@@ -6662,7 +6695,7 @@ body.playback-mode .status-dot {
 }
 
 .conflict-label-overlay:hover {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   text-shadow:
     0 0 6px var(--bg),
     0 0 12px var(--bg),
@@ -6788,11 +6821,11 @@ body.playback-mode .status-dot {
 }
 
 .base-marker.china .base-label {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .base-marker.russia .base-label {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .base-marker.uk .base-label {
@@ -6804,7 +6837,7 @@ body.playback-mode .status-dot {
 }
 
 .base-marker.india .base-label {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .base-marker.italy .base-label {
@@ -6911,7 +6944,7 @@ body.playback-mode .status-dot {
 }
 
 .port-marker.port-lng .port-label {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .port-marker.port-naval .port-label {
@@ -6972,7 +7005,7 @@ body.playback-mode .status-dot {
   transform-origin: top center;
   white-space: nowrap;
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   text-shadow: 0 0 4px var(--bg), 0 0 8px var(--bg);
   font-weight: bold;
   margin-top: 2px;
@@ -7037,7 +7070,7 @@ body.playback-mode .status-dot {
 
 .nat-event-magnitude {
   font-size: calc(7px * var(--wm-panel-effective-scale, 1));
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
   text-shadow: 0 0 4px var(--bg);
   font-weight: bold;
 }
@@ -7048,11 +7081,11 @@ body.playback-mode .status-dot {
 }
 
 .nat-event-marker.wildfires .nat-event-label {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .nat-event-marker.volcanoes .nat-event-label {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .nat-event-marker.floods .nat-event-label {
@@ -7064,7 +7097,7 @@ body.playback-mode .status-dot {
 }
 
 .nat-event-marker.drought .nat-event-label {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .nat-event-marker.dustHaze .nat-event-label {
@@ -7076,7 +7109,7 @@ body.playback-mode .status-dot {
 }
 
 .nat-event-marker.tempExtremes .nat-event-label {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .nat-event-marker.seaLakeIce .nat-event-label {
@@ -7097,7 +7130,7 @@ body.playback-mode .status-dot {
 }
 
 .popup-header.nat-event .popup-title {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .popup-header.nat-event.severeStorms {
@@ -7113,7 +7146,7 @@ body.playback-mode .status-dot {
 }
 
 .popup-header.nat-event.wildfires .popup-title {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .popup-header.nat-event.volcanoes {
@@ -7121,7 +7154,7 @@ body.playback-mode .status-dot {
 }
 
 .popup-header.nat-event.volcanoes .popup-title {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .popup-header.nat-event.floods {
@@ -7181,7 +7214,7 @@ body.playback-mode .status-dot {
   transform-origin: top center;
   white-space: nowrap;
   font-size: calc(7px * var(--wm-panel-effective-scale, 1));
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   text-shadow: 0 0 4px var(--bg), 0 0 8px var(--bg);
   font-weight: bold;
   text-transform: uppercase;
@@ -7189,7 +7222,7 @@ body.playback-mode .status-dot {
 }
 
 .nuclear-marker.contested .nuclear-label {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 @keyframes nuclear-pulse {
@@ -7244,7 +7277,7 @@ body.playback-mode .status-dot {
   transform-origin: top center;
   white-space: nowrap;
   font-size: calc(6px * var(--wm-panel-effective-scale, 1));
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
   text-shadow: 0 0 4px var(--bg), 0 0 8px var(--bg);
   font-weight: bold;
   text-transform: uppercase;
@@ -7392,11 +7425,11 @@ body.playback-mode .status-dot {
 }
 
 .sector-change.up {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .sector-change.down {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 /* Heatmap bar chart */
@@ -7444,11 +7477,11 @@ body.playback-mode .status-dot {
 }
 
 .heatmap-bar-value.positive {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .heatmap-bar-value.negative {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 /* Markets */
@@ -7605,11 +7638,11 @@ body.playback-mode .status-dot {
 }
 
 .market-change.up {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .market-change.down {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .market-change--7d {
@@ -7881,11 +7914,11 @@ body.playback-mode .status-dot {
 }
 
 .commodity-change.up {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .commodity-change.down {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .liquidity-shifts-panel {
@@ -8551,7 +8584,7 @@ a.prediction-link:hover {
 }
 
 .config-error-message {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   padding: 8px;
   text-align: center;
@@ -8563,7 +8596,7 @@ a.prediction-link:hover {
   margin-top: 6px;
   padding: 2px 10px;
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   background: rgba(255, 210, 124, 0.1);
   border: 1px solid rgba(255, 210, 124, 0.3);
   border-radius: 3px;
@@ -8742,13 +8775,13 @@ a.prediction-link:hover {
 }
 
 .pro-activation-status.status-verified {
-  color: var(--green);
+  color: var(--green-text, var(--green));
   background: color-mix(in srgb, var(--green) 12%, transparent);
   border-color: color-mix(in srgb, var(--green) 40%, transparent);
 }
 
 .pro-activation-status.status-failed {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   background: color-mix(in srgb, var(--semantic-critical) 12%, transparent);
   border-color: color-mix(in srgb, var(--semantic-critical) 40%, transparent);
 }
@@ -8759,7 +8792,7 @@ a.prediction-link:hover {
 
 .pro-activation-status.status-blocked,
 .pro-activation-status.status-unavailable {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   border-color: color-mix(in srgb, var(--semantic-high) 40%, transparent);
 }
 
@@ -8979,7 +9012,7 @@ a.prediction-link:hover {
   border-bottom-color: var(--border-strong);
   border-radius: 4px;
   background: var(--bg);
-  color: var(--green);
+  color: var(--green-text, var(--green));
   font-family: inherit;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 800;
@@ -9004,7 +9037,7 @@ a.prediction-link:hover {
   border: none;
   font-size: inherit;
   font-weight: 600;
-  color: var(--green);
+  color: var(--green-text, var(--green));
   cursor: pointer;
 }
 
@@ -9197,7 +9230,7 @@ a.prediction-link:hover {
   letter-spacing: 0.05em;
   padding: 1px 4px;
   border: 1px solid var(--green);
-  color: var(--green);
+  color: var(--green-text, var(--green));
   opacity: 0.7;
   flex-shrink: 0;
 }
@@ -9305,7 +9338,7 @@ a.prediction-link:hover {
   margin-right: auto;
   min-height: 14px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  color: var(--green);
+  color: var(--green-text, var(--green));
   opacity: 0;
   transition: opacity 0.15s ease;
 }
@@ -9327,7 +9360,7 @@ a.prediction-link:hover {
 }
 
 .panels-save-layout {
-  color: var(--green);
+  color: var(--green-text, var(--green));
   border-color: rgba(68, 255, 136, 0.35);
 }
 
@@ -9497,7 +9530,7 @@ a.prediction-link:hover {
 .popup-title {
   font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
-  color: var(--red);
+  color: var(--red-text, var(--red));
   letter-spacing: 0.5px;
   flex: 1;
   overflow: hidden;
@@ -9506,11 +9539,11 @@ a.prediction-link:hover {
 }
 
 .popup-header.hotspot-popup .popup-title {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .popup-header.earthquake .popup-title {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .popup-header.ais .popup-title {
@@ -9543,7 +9576,7 @@ a.prediction-link:hover {
 }
 
 .popup-badge.high {
-  color: var(--red);
+  color: var(--red-text, var(--red));
   background: none;
 }
 
@@ -9552,7 +9585,7 @@ a.prediction-link:hover {
 }
 
 .popup-badge.critical {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   background: none;
 }
 
@@ -9561,7 +9594,7 @@ a.prediction-link:hover {
 }
 
 .popup-badge.medium {
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
   background: none;
 }
 
@@ -9570,7 +9603,7 @@ a.prediction-link:hover {
 }
 
 .popup-badge.elevated {
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
   background: none;
 }
 
@@ -9623,7 +9656,7 @@ a.prediction-link:hover {
 
 .popup-subtitle {
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--green);
+  color: var(--green-text, var(--green));
   margin-bottom: 8px;
   letter-spacing: 0.4px;
 }
@@ -9664,7 +9697,7 @@ a.prediction-link:hover {
 
 .stat-value {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .popup-section {
@@ -9840,7 +9873,7 @@ a.prediction-link:hover {
   padding-left: 12px;
   margin-bottom: 3px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .popup-list li::before {
@@ -9878,7 +9911,7 @@ a.prediction-link:hover {
 .popup-news-item .news-source,
 .signal-article-item .news-source {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  color: var(--red);
+  color: var(--red-text, var(--red));
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -9950,7 +9983,7 @@ a.prediction-link:hover {
   align-items: center;
   gap: 6px;
   margin-bottom: 8px;
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .section-header.usni .section-label {
@@ -9986,7 +10019,7 @@ a.prediction-link:hover {
 }
 
 .usni-link {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   text-decoration: none;
   opacity: 0.8;
   transition: opacity 0.15s;
@@ -10029,7 +10062,7 @@ a.prediction-link:hover {
 }
 
 .popup-stat.warning .stat-value {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   font-weight: 600;
 }
 
@@ -10039,7 +10072,7 @@ a.prediction-link:hover {
 
 .popup-link {
   display: inline-block;
-  color: var(--green);
+  color: var(--green-text, var(--green));
   text-decoration: none;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   margin-top: 8px;
@@ -10071,7 +10104,7 @@ a.prediction-link:hover {
   transform-origin: top center;
   white-space: nowrap;
   font-size: calc(7px * var(--wm-panel-effective-scale, 1));
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
   text-shadow: 0 0 4px var(--bg), 0 0 8px var(--bg);
   font-style: italic;
   opacity: 0.8;
@@ -10232,11 +10265,11 @@ a.prediction-link:hover {
 }
 
 .map-legend-icon.ship {
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
 }
 
 .map-legend-icon.nuke {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .map-legend-icon.base {
@@ -10244,19 +10277,19 @@ a.prediction-link:hover {
 }
 
 .map-legend-icon.cable {
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
 }
 
 .map-legend-icon.conflict {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .map-legend-icon.earthquake {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .map-legend-icon.apt {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .legend-dot {
@@ -10561,27 +10594,27 @@ a.prediction-link:hover {
 
 .weather-icon {
   font-size: calc(16px * var(--wm-panel-effective-scale, 1));
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   text-shadow: 0 0 4px rgba(255, 170, 0, 0.8);
 }
 
 .weather-marker.extreme .weather-icon {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   text-shadow: 0 0 6px rgba(255, 0, 0, 0.9);
   animation: weather-pulse 1s ease-in-out infinite;
 }
 
 .weather-marker.severe .weather-icon {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   text-shadow: 0 0 5px rgba(255, 102, 0, 0.8);
 }
 
 .weather-marker.moderate .weather-icon {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .weather-marker.minor .weather-icon {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .weather-label {
@@ -10784,11 +10817,11 @@ a.prediction-link:hover {
 }
 
 .spaceport-marker.active .spaceport-label {
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
 }
 
 .spaceport-marker.planned .spaceport-label {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 /* Spaceport popup header */
@@ -10858,11 +10891,11 @@ a.prediction-link:hover {
 }
 
 .mineral-marker.producing .mineral-label {
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
 }
 
 .mineral-marker.developing .mineral-label {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 /* Mineral popup header */
@@ -10929,7 +10962,7 @@ a.prediction-link:hover {
   opacity: 0;
   transition: opacity 0.2s ease;
   margin-top: 2px;
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
 }
 
 .startup-hub-marker:hover .startup-hub-label {
@@ -11029,7 +11062,7 @@ a.prediction-link:hover {
 }
 
 .cloud-region-marker.aws .cloud-region-label {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .cloud-region-marker.gcp .cloud-region-label {
@@ -11140,7 +11173,7 @@ a.prediction-link:hover {
 }
 
 .tech-hq-marker.faang .tech-hq-label {
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
   opacity: 1;
 }
 
@@ -11240,7 +11273,7 @@ a.prediction-link:hover {
 }
 
 .cluster-summary .summary-item.faang {
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
 }
 
 .cluster-summary .summary-item.unicorn {
@@ -11252,7 +11285,7 @@ a.prediction-link:hover {
 }
 
 .cluster-summary .summary-item.soon {
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
 }
 
 .cluster-list {
@@ -11272,7 +11305,7 @@ a.prediction-link:hover {
 }
 
 .cluster-list .cluster-item.faang {
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
 }
 
 .cluster-list .cluster-item.unicorn {
@@ -11284,11 +11317,11 @@ a.prediction-link:hover {
 }
 
 .cluster-list .cluster-item.urgent {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .cluster-list .cluster-item.soon {
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
 }
 
 /* Accelerator Markers */
@@ -11343,15 +11376,15 @@ a.prediction-link:hover {
 }
 
 .accelerator-marker.accelerator .accelerator-label {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .accelerator-marker.incubator .accelerator-label {
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
 }
 
 .accelerator-marker.studio .accelerator-label {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 /* Accelerator popup header */
@@ -11400,7 +11433,7 @@ a.prediction-link:hover {
 
 .notable-list {
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 /* Economic Panel */
@@ -11498,12 +11531,12 @@ a.prediction-link:hover {
 
 .macro-summary-change.positive,
 .energy-summary-change.positive {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .macro-summary-change.negative,
 .energy-summary-change.negative {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .macro-summary-change.neutral,
@@ -11529,11 +11562,11 @@ a.prediction-link:hover {
 }
 
 .macro-summary-state--warning {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .macro-summary-state--negative {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .macro-summary-state--neutral {
@@ -11568,7 +11601,7 @@ a.prediction-link:hover {
   padding: 7px 9px;
   border: 1px solid color-mix(in srgb, var(--semantic-elevated) 55%, var(--border));
   background: color-mix(in srgb, var(--semantic-elevated) 7%, transparent);
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   line-height: 1.35;
 }
@@ -11687,11 +11720,11 @@ a.prediction-link:hover {
 }
 
 .indicator-value .change.positive {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .indicator-value .change.negative {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .indicator-date {
@@ -11919,7 +11952,7 @@ a.prediction-link:hover {
 }
 
 .sanctions-pill-new {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   border-color: rgba(245, 158, 11, 0.35);
   background: rgba(245, 158, 11, 0.08);
 }
@@ -11953,7 +11986,7 @@ a.prediction-link:hover {
 }
 
 .radiation-confidence-medium {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   border-color: rgba(245, 158, 11, 0.35);
   background: rgba(245, 158, 11, 0.08);
 }
@@ -11985,13 +12018,13 @@ a.prediction-link:hover {
 }
 
 .radiation-severity-elevated {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   border-color: rgba(234, 179, 8, 0.35);
   background: rgba(234, 179, 8, 0.08);
 }
 
 .radiation-severity-spike {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   border-color: rgba(239, 68, 68, 0.35);
   background: rgba(239, 68, 68, 0.08);
 }
@@ -12001,7 +12034,7 @@ a.prediction-link:hover {
 }
 
 .radiation-freshness-recent {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .radiation-freshness-historical {
@@ -12065,7 +12098,7 @@ a.prediction-link:hover {
 .spending-total {
   font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .spending-period {
@@ -12108,7 +12141,7 @@ a.prediction-link:hover {
 .award-amount {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .award-recipient {
@@ -12214,7 +12247,7 @@ a.prediction-link:hover {
 }
 
 .global-procurement-apply {
-  color: var(--green);
+  color: var(--green-text, var(--green));
   border-color: color-mix(in srgb, var(--green) 40%, var(--border));
 }
 
@@ -12264,7 +12297,7 @@ a.prediction-link:hover {
 
 .global-procurement-card a.award-agency {
   display: inline-block;
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 @media (max-width: 900px) {
@@ -12285,7 +12318,7 @@ a.prediction-link:hover {
 .economic-warning {
   padding: 6px 10px;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   background: rgba(255, 170, 50, 0.08);
   border-bottom: 1px solid rgba(255, 170, 50, 0.15);
 }
@@ -12346,17 +12379,17 @@ a.prediction-link:hover {
 
 .trade-status.status-active {
   background: rgba(255, 80, 80, 0.15);
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .trade-status.status-notified {
   background: rgba(255, 170, 50, 0.15);
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .trade-status.status-terminated {
   background: rgba(68, 255, 136, 0.1);
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .sc-status-dot {
@@ -12751,11 +12784,11 @@ a.prediction-link:hover {
 }
 
 .trade-flow-change.change-positive {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .trade-flow-change.change-negative {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 /* Intelligence Command Deck (Cmd+K) */
@@ -13850,7 +13883,7 @@ a.prediction-link:hover {
 }
 
 .popup-description.alert {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   font-weight: bold;
 }
 
@@ -13918,7 +13951,7 @@ a.prediction-link:hover {
   gap: 5px;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   letter-spacing: 0.5px;
   text-transform: uppercase;
   white-space: nowrap;
@@ -14723,7 +14756,7 @@ a.prediction-link:hover {
 }
 
 .pizzint-tension-trend.falling {
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
 }
 
 .pizzint-tension-trend.stable {
@@ -14858,7 +14891,7 @@ a.prediction-link:hover {
 
 .mobile-menu-account-icon {
   width: 20px;
-  color: var(--green);
+  color: var(--green-text, var(--green));
   font-size: calc(18px * var(--wm-panel-effective-scale, 1));
   text-align: center;
 }
@@ -14925,7 +14958,7 @@ a.prediction-link:hover {
 }
 
 .mobile-menu-check {
-  color: var(--green);
+  color: var(--green-text, var(--green));
   font-size: calc(14px * var(--wm-panel-effective-scale, 1));
 }
 
@@ -14935,7 +14968,7 @@ a.prediction-link:hover {
 }
 
 .mobile-menu-item.active {
-  color: var(--green);
+  color: var(--green-text, var(--green));
   background: rgba(68, 255, 136, 0.06);
 }
 
@@ -14954,7 +14987,7 @@ a.prediction-link:hover {
 }
 
 .mobile-menu-footer-links a:hover {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .mobile-menu-version {
@@ -15040,11 +15073,11 @@ a.prediction-link:hover {
 }
 
 .region-sheet-option.active {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .region-sheet-check {
-  color: var(--green);
+  color: var(--green-text, var(--green));
   font-size: calc(16px * var(--wm-panel-effective-scale, 1));
   min-width: 20px;
   text-align: right;
@@ -15590,8 +15623,8 @@ a.prediction-link:hover {
   color: var(--text-dim);
 }
 
-.gdelt-trend-value.positive { color: var(--green); }
-.gdelt-trend-value.negative { color: var(--red); }
+.gdelt-trend-value.positive { color: var(--green-text, var(--green)); }
+.gdelt-trend-value.negative { color: var(--red-text, var(--red)); }
 
 /* Hotspot GDELT Context */
 .hotspot-gdelt-context {
@@ -15726,7 +15759,7 @@ a.prediction-link:hover {
 }
 
 .cii-header .trend-up {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
@@ -15824,7 +15857,7 @@ a.prediction-link:hover {
 .cii-learning-banner .learning-title {
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: bold;
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -16040,11 +16073,11 @@ a.prediction-link:hover {
 }
 
 .readiness-score.high {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .readiness-score.medium {
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
 }
 
 .readiness-score.low {
@@ -16375,7 +16408,7 @@ a.prediction-link:hover {
 
 .cascade-redundancy-capacity {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  color: var(--green);
+  color: var(--green-text, var(--green));
   font-weight: bold;
 }
 
@@ -16559,7 +16592,7 @@ a.prediction-link:hover {
 .risk-rank {
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: bold;
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
   min-width: 14px;
 }
 
@@ -16744,7 +16777,7 @@ a.prediction-link:hover {
 .risk-no-data-title {
   font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   font-weight: bold;
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   margin-bottom: 4px;
 }
 
@@ -16771,7 +16804,7 @@ a.prediction-link:hover {
 
 .risk-warning-text {
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   font-weight: 500;
 }
 
@@ -16808,12 +16841,12 @@ a.prediction-link:hover {
 
 .risk-status-learning .risk-warning-icon,
 .risk-status-learning .risk-status-icon {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .risk-status-learning .risk-warning-text,
 .risk-status-learning .risk-status-text {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .risk-status-cached {
@@ -16823,7 +16856,7 @@ a.prediction-link:hover {
 
 .risk-status-cached .risk-status-icon,
 .risk-status-cached .risk-status-text {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .risk-status-learning .learning-progress-mini {
@@ -17038,7 +17071,7 @@ a.prediction-link:hover {
 }
 
 .change-label.rising {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .change-label.falling {
@@ -17135,7 +17168,7 @@ a.prediction-link:hover {
 }
 
 .history-event.cyclical {
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
   font-style: italic;
 }
 
@@ -17194,7 +17227,7 @@ a.prediction-link:hover {
 }
 
 .signal-context-item.actionable .context-label {
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
 }
 
 .signal-context-item.confidence-note {
@@ -17352,13 +17385,13 @@ a.prediction-link:hover {
 
 .propaganda-badge.high {
   background: rgba(255, 60, 60, 0.2);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   border: 1px solid rgba(255, 60, 60, 0.3);
 }
 
 .propaganda-badge.medium {
   background: rgba(255, 170, 0, 0.15);
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   border: 1px solid rgba(255, 170, 0, 0.3);
 }
 
@@ -17487,7 +17520,7 @@ a.prediction-link:hover {
 
 .intel-findings-badge.status-high .findings-count {
   background: rgba(255, 149, 0, 0.3);
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .intel-findings-badge.pulse {
@@ -17586,12 +17619,12 @@ a.prediction-link:hover {
 
 .findings-badge.high {
   background: rgba(255, 149, 0, 0.2);
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .findings-badge.critical {
   background: rgba(255, 59, 48, 0.3);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   animation: critical-pulse 1.5s ease-in-out infinite;
 }
 
@@ -17728,13 +17761,13 @@ a.prediction-link:hover {
 
 .finding-confidence.critical {
   background: rgba(255, 59, 48, 0.3);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   animation: critical-pulse 1.5s ease-in-out infinite;
 }
 
 .finding-confidence.high {
   background: rgba(255, 149, 0, 0.2);
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .finding-confidence.medium {
@@ -17917,12 +17950,12 @@ a.prediction-link:hover {
 
 .findings-modal-item-priority.critical {
   background: rgba(255, 59, 48, 0.3);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .findings-modal-item-priority.high {
   background: rgba(255, 149, 0, 0.2);
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .findings-modal-item-priority.medium {
@@ -18070,14 +18103,14 @@ a.prediction-link:hover {
 .today-badge {
   font-size: calc(7px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
   margin-top: 2px;
 }
 
 .soon-badge {
   font-size: calc(7px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
   margin-top: 2px;
 }
 
@@ -18450,15 +18483,15 @@ a.prediction-link:hover {
 }
 
 .service-status-summary .summary-item.operational .summary-count {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .service-status-summary .summary-item.degraded .summary-count {
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
 }
 
 .service-status-summary .summary-item.outage .summary-count {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .service-status-filters {
@@ -18526,15 +18559,15 @@ a.prediction-link:hover {
 }
 
 .service-status-item.operational .status-icon {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .service-status-item.degraded .status-icon {
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
 }
 
 .service-status-item.outage .status-icon {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .service-status-item.unknown .status-icon {
@@ -18543,17 +18576,17 @@ a.prediction-link:hover {
 
 .service-status-item .status-badge.operational {
   background: rgba(0, 200, 83, 0.15);
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .service-status-item .status-badge.degraded {
   background: rgba(255, 170, 0, 0.15);
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
 }
 
 .service-status-item .status-badge.outage {
   background: rgba(255, 82, 82, 0.15);
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .service-status-item .status-badge.unknown {
@@ -18565,7 +18598,7 @@ a.prediction-link:hover {
   text-align: center;
   padding: 12px;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--green);
+  color: var(--green-text, var(--green));
   background: rgba(0, 200, 83, 0.1);
   border-radius: 4px;
   margin-top: 8px;
@@ -18744,7 +18777,7 @@ a.prediction-link:hover {
 
 .deckgl-time-slider .time-btn:hover {
   border-color: var(--green);
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .deckgl-time-slider .time-btn.active {
@@ -18927,7 +18960,7 @@ a.prediction-link:hover {
 }
 
 .deckgl-layer-toggles .layer-toggle.loading .toggle-label {
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
   animation: layer-loading 0.8s ease-in-out infinite;
 }
 
@@ -18941,7 +18974,7 @@ a.prediction-link:hover {
 }
 
 .deckgl-layer-toggles .layer-toggle.has-data .toggle-label {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .deckgl-layer-toggles .layer-toggle.has-data {
@@ -18972,7 +19005,7 @@ a.prediction-link:hover {
 .deckgl-layer-toggles .layer-explain-btn:hover,
 .deckgl-layer-toggles .layer-explain-btn:focus-visible,
 .deckgl-layer-toggles .layer-explain-btn.active {
-  color: var(--green);
+  color: var(--green-text, var(--green));
   border-color: var(--green);
   background: var(--overlay-subtle);
   outline: none;
@@ -19052,7 +19085,7 @@ a.prediction-link:hover {
   padding: 2px 6px;
   border: 1px solid rgba(68, 255, 136, 0.35);
   border-radius: 3px;
-  color: var(--green);
+  color: var(--green-text, var(--green));
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -19061,7 +19094,7 @@ a.prediction-link:hover {
 
 .layer-explanation-status.fallback {
   border-color: rgba(255, 193, 7, 0.35);
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
 }
 
 .layer-explanation-purpose {
@@ -19186,7 +19219,7 @@ a.prediction-link:hover {
   padding: 2px 8px;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
-  color: var(--green);
+  color: var(--green-text, var(--green));
   background: rgba(74, 222, 128, 0.1);
   border: 1px solid rgba(74, 222, 128, 0.2);
   border-radius: 3px;
@@ -19583,7 +19616,7 @@ a.prediction-link:hover {
   right: 170px;
   z-index: 99;
   background: rgba(0, 200, 100, 0.15);
-  color: var(--green);
+  color: var(--green-text, var(--green));
   padding: 2px 6px;
   border-radius: 2px;
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
@@ -19680,7 +19713,7 @@ a.prediction-link:hover {
 }
 
 .cluster-summary.error {
-  color: var(--red);
+  color: var(--red-text, var(--red));
   border-left-color: var(--red);
 }
 
@@ -19843,7 +19876,7 @@ a.prediction-link:hover {
 }
 
 .insights-error {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 /* Insights Panel - Loading Status */
@@ -20002,7 +20035,7 @@ a.prediction-link:hover {
 }
 
 .insight-stat.alert .insight-stat-value {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 /* Insights Panel - Stories */
@@ -20045,7 +20078,7 @@ a.prediction-link:hover {
 
 .insight-badge.confirmed {
   background: rgba(74, 222, 128, 0.15);
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .insight-badge.multi {
@@ -20055,22 +20088,22 @@ a.prediction-link:hover {
 
 .insight-badge.velocity {
   background: rgba(251, 191, 36, 0.15);
-  color: var(--yellow);
+  color: var(--yellow-text, var(--yellow));
 }
 
 .insight-badge.velocity.elevated {
   background: rgba(251, 146, 60, 0.15);
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .insight-badge.velocity.high {
   background: rgba(239, 68, 68, 0.15);
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .insight-badge.alert {
   background: rgba(239, 68, 68, 0.15);
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 /* Sentiment Dots */
@@ -20133,7 +20166,7 @@ a.prediction-link:hover {
 }
 
 .sentiment-label.negative {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .sentiment-label.neutral {
@@ -20141,7 +20174,7 @@ a.prediction-link:hover {
 }
 
 .sentiment-label.positive {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .sentiment-tone {
@@ -20152,11 +20185,11 @@ a.prediction-link:hover {
 }
 
 .sentiment-tone.negative {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .sentiment-tone.positive {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 /* ML-Detected Stories Section */
@@ -20196,7 +20229,7 @@ a.prediction-link:hover {
 }
 
 .insights-convergence .insights-section-title {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .convergence-zone {
@@ -20479,7 +20512,7 @@ a.prediction-link:hover {
 .unified-settings-region-pill.active {
   background: rgba(68, 255, 136, 0.08);
   border-color: rgba(68, 255, 136, 0.4);
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 /* Coverage presets (#5956) — one-click theater source sets in Sources settings.
@@ -20508,7 +20541,7 @@ a.prediction-link:hover {
 .unified-settings-preset-chip:hover,
 .unified-settings-preset-chip:focus-visible {
   border-color: rgba(68, 255, 136, 0.4);
-  color: var(--green);
+  color: var(--green-text, var(--green));
   background: rgba(68, 255, 136, 0.06);
 }
 
@@ -21593,12 +21626,12 @@ body.has-breaking-alert .panels-grid {
 
 .posture-critical {
   background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .posture-elevated {
   background: rgba(255, 170, 0, 0.2);
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .posture-normal {
@@ -21765,7 +21798,7 @@ body.has-breaking-alert .panels-grid {
 
 .posture-strike {
   background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   padding: 2px 8px;
   border-radius: 3px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
@@ -21777,7 +21810,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .trend-up {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .trend-down {
@@ -21866,7 +21899,7 @@ body.has-breaking-alert .panels-grid {
   padding: 8px 12px;
   margin-bottom: 12px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   text-align: center;
 }
 
@@ -21943,7 +21976,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .posture-stage.active {
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
 }
 
 .posture-stage.complete {
@@ -22091,7 +22124,7 @@ body.has-breaking-alert .panels-grid {
 
 .signal-chip.protest {
   border-color: rgba(255, 170, 0, 0.3);
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .signal-chip.military {
@@ -22101,7 +22134,7 @@ body.has-breaking-alert .panels-grid {
 
 .signal-chip.outage {
   border-color: rgba(255, 100, 100, 0.3);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .signal-chip.quake {
@@ -22122,7 +22155,7 @@ body.has-breaking-alert .panels-grid {
 
 .signal-chip.stock.stock-down {
   border-color: rgba(255, 68, 68, 0.3);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .intel-brief-loading {
@@ -22277,7 +22310,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .verdict-cash .verdict-value {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .verdict-detail {
@@ -22338,7 +22371,7 @@ body.has-breaking-alert .panels-grid {
 
 .badge-bearish {
   background: rgba(244, 67, 54, 0.2);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .badge-neutral {
@@ -22433,7 +22466,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .etf-summary-value.flow-outflow {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .etf-table-wrap {
@@ -22476,7 +22509,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .etf-flow.flow-outflow {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .etf-flow.flow-neutral {
@@ -22524,12 +22557,12 @@ body.has-breaking-alert .panels-grid {
 
 .health-caution .health-label {
   background: rgba(255, 152, 0, 0.2);
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .health-warning .health-label {
   background: rgba(244, 67, 54, 0.2);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .health-detail {
@@ -22603,12 +22636,12 @@ body.has-breaking-alert .panels-grid {
 
 .peg-slight .peg-badge {
   background: rgba(255, 152, 0, 0.2);
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .peg-off .peg-badge {
   background: rgba(244, 67, 54, 0.2);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .peg-dev {
@@ -22652,7 +22685,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .change-negative {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .change-neutral {
@@ -22694,14 +22727,14 @@ body.has-breaking-alert .panels-grid {
 }
 
 .runtime-alert-missing {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
 .runtime-open-settings-btn {
   border: 1px solid rgba(125, 227, 157, 0.45);
   background: rgba(125, 227, 157, 0.08);
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
   border-radius: 4px;
   padding: 5px 10px;
   font: inherit;
@@ -22777,18 +22810,18 @@ body.has-breaking-alert .panels-grid {
 
 .runtime-pill.ok,
 .runtime-secret-status.ok {
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
 }
 
 .runtime-pill.warn,
 .runtime-secret-status.warn,
 .runtime-feature-fallback.fallback {
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
 }
 
 .runtime-pill.staged,
 .runtime-secret-status.staged {
-  color: var(--status-live);
+  color: var(--status-live-text, var(--status-live));
   opacity: 0.7;
 }
 
@@ -22978,7 +23011,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .cb-trend.trend-up {
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .cb-trend.trend-down {
@@ -22994,7 +23027,7 @@ body.has-breaking-alert .panels-grid {
   padding: 2px 8px;
   border-radius: 4px;
   background: rgba(255, 170, 0, 0.12);
-  color: var(--semantic-elevated);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
   border: 1px solid rgba(255, 170, 0, 0.25);
 }
 
@@ -23173,12 +23206,12 @@ body.has-breaking-alert .panels-grid {
 
 .signal-chip.climate {
   border-color: rgba(255, 150, 50, 0.3);
-  color: var(--semantic-high);
+  color: var(--semantic-high-text, var(--semantic-high));
 }
 
 .signal-chip.conflict {
   border-color: rgba(255, 80, 80, 0.3);
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 /* Brief Text */
@@ -23716,28 +23749,9 @@ body.map-width-resizing {
 }
 
 .telegram-intel-preview-card.is-error {
-  color: var(--red);
+  color: var(--red-text, var(--red));
   border-color: color-mix(in srgb, var(--red) 35%, var(--border));
   background: color-mix(in srgb, var(--red) 9%, var(--surface));
-}
-
-/* Status text in a semantic color. On white the light palette's raw values are
-   3.2-3.6:1, so light mode pulls each 30% toward the text color (5:1 and up).
-   tests/upgrade-cta-contrast.test.mjs (STATUS_TEXT) checks both themes. */
-[data-theme="light"] :is(.panel-summary-error, .gdelt-trend-value.negative, .telegram-intel-preview-card.is-error) {
-  color: color-mix(in srgb, var(--red) 70%, var(--text));
-}
-
-[data-theme="light"] :is(.gdelt-trend-value.positive) {
-  color: color-mix(in srgb, var(--green) 70%, var(--text));
-}
-
-[data-theme="light"] :is(.insights-convergence .insights-section-title, .insight-badge.velocity.elevated) {
-  color: color-mix(in srgb, var(--semantic-high) 70%, var(--text));
-}
-
-[data-theme="light"] :is(.history-event.cyclical, .cdp-maritime-anomaly) {
-  color: color-mix(in srgb, var(--semantic-elevated) 70%, var(--text));
 }
 
 .telegram-intel-preview-copy {
@@ -23764,7 +23778,7 @@ body.map-width-resizing {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .telegram-intel-watchlist-pills {
@@ -24732,7 +24746,7 @@ body.map-width-resizing {
 }
 .auth-signup-link:hover {
   border-color: var(--green);
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 .auth-signup-link:focus-visible {
   outline: none;
@@ -24755,7 +24769,7 @@ body.map-width-resizing {
 }
 .auth-settings-btn:hover {
   border-color: var(--green);
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 .auth-settings-btn:focus-visible {
   outline: none;
@@ -25528,7 +25542,7 @@ body.map-width-resizing {
 }
 
 .debt-growth.debt-growth-high {
-  color: var(--red);
+  color: var(--red-text, var(--red));
   font-weight: 600;
 }
 
@@ -26434,7 +26448,7 @@ body.map-width-resizing {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
 }
-.chat-msg-error { color: var(--yellow) !important; }
+.chat-msg-error { color: var(--yellow-text, var(--yellow)) !important; }
 .chat-msg-streaming .chat-msg-body { opacity: 0.75; }
 .chat-streaming-dot {
   display: inline-block;
@@ -26904,7 +26918,7 @@ body.map-width-resizing {
 .api-keys-error,
 .embed-keys-error {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   margin-bottom: 8px;
 }
 
@@ -26973,7 +26987,7 @@ body.map-width-resizing {
 
 .api-keys-item-revoked-badge,
 .embed-keys-item-revoked-badge {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   font-weight: 600;
 }
 
@@ -27005,7 +27019,7 @@ body.map-width-resizing {
 .embed-keys-revoke-btn {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   padding: 4px 10px;
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   flex-shrink: 0;
 }
 
@@ -27181,7 +27195,7 @@ body.map-width-resizing {
 
 .mcp-clients-error {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   margin-bottom: 8px;
 }
 
@@ -27239,14 +27253,14 @@ body.map-width-resizing {
 }
 
 .mcp-clients-item-revoked-badge {
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   font-weight: 600;
 }
 
 .mcp-clients-revoke-btn {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   padding: 4px 10px;
-  color: var(--semantic-critical);
+  color: var(--semantic-critical-text, var(--semantic-critical));
   flex-shrink: 0;
 }
 
@@ -28042,7 +28056,7 @@ body.map-width-resizing {
 }
 
 .dashboard-tab.active .dashboard-tab-label {
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .dashboard-tab-close {
@@ -28056,7 +28070,7 @@ body.map-width-resizing {
 }
 
 .dashboard-tab-close:hover {
-  color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 .dashboard-tab-rename {
@@ -28087,7 +28101,7 @@ body.map-width-resizing {
 }
 
 .dashboard-tab-add:hover {
-  color: var(--green);
+  color: var(--green-text, var(--green));
   border-color: var(--green);
 }
 
@@ -28851,7 +28865,7 @@ body.map-width-resizing {
   margin: 8px 0 0;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   letter-spacing: 0.3px;
-  color: var(--green);
+  color: var(--green-text, var(--green));
 }
 
 .passkey-offer-status:empty {
