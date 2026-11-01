@@ -1583,7 +1583,7 @@ canvas,
 
 .map-dim-btn.active {
   background: var(--green);
-  color: var(--bg);
+  color: #0a0a0a;
 }
 
 .map-header-actions {
@@ -1614,7 +1614,7 @@ canvas,
 .map-pin-btn.active {
   background: var(--green);
   border-color: var(--green);
-  color: var(--bg);
+  color: #0a0a0a;
 }
 
 .map-pin-btn.active:hover {
@@ -5486,7 +5486,7 @@ a.item-title:hover {
 
 .playback-btn.playback-live {
   background: var(--green);
-  color: var(--bg);
+  color: #0a0a0a;
   font-weight: bold;
 }
 
@@ -7650,7 +7650,7 @@ body.playback-mode .status-dot {
 .wl-pill.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #000;
+  color: var(--bg);
 }
 
 .wl-search {
@@ -8337,7 +8337,7 @@ a.prediction-link:hover {
   padding: 6px;
   background: var(--green);
   border: none;
-  color: var(--bg);
+  color: #0a0a0a;
   font-family: inherit;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: bold;
@@ -8689,7 +8689,7 @@ a.prediction-link:hover {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 800;
   letter-spacing: 1.5px;
-  color: var(--bg);
+  color: #0a0a0a;
   background: var(--green);
   padding: 3px 8px;
   border-radius: 4px;
@@ -8851,7 +8851,7 @@ a.prediction-link:hover {
 }
 
 .pro-activation-summary-line.status-verified .pro-activation-summary-icon {
-  color: var(--bg);
+  color: #0a0a0a;
   background: var(--green);
   border-color: var(--green);
 }
@@ -9167,7 +9167,7 @@ a.prediction-link:hover {
 .panel-toggle-item.active .panel-toggle-checkbox {
   background: var(--green);
   border-color: var(--green);
-  color: var(--bg);
+  color: #0a0a0a;
 }
 
 .panel-toggle-label {
@@ -9285,7 +9285,7 @@ a.prediction-link:hover {
 .source-toggle-item.active .source-toggle-checkbox {
   background: var(--green);
   border-color: var(--green);
-  color: var(--bg);
+  color: #0a0a0a;
 }
 
 .source-toggle-label {
@@ -14132,7 +14132,7 @@ a.prediction-link:hover {
 .new-tag {
   display: inline-block;
   background: var(--green);
-  color: var(--bg);
+  color: #0a0a0a;
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
   font-weight: bold;
   padding: 1px 4px;
@@ -16259,7 +16259,7 @@ a.prediction-link:hover {
   background: var(--green);
   border: none;
   border-radius: 4px;
-  color: var(--bg);
+  color: #0a0a0a;
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-weight: bold;
   cursor: pointer;
@@ -18750,7 +18750,7 @@ a.prediction-link:hover {
 .deckgl-time-slider .time-btn.active {
   background: var(--green);
   border-color: var(--green);
-  color: var(--bg);
+  color: #0a0a0a;
   font-weight: bold;
 }
 
@@ -23856,7 +23856,7 @@ body.map-width-resizing {
 
 .live-indicator {
   background: var(--green);
-  color: var(--bg);
+  color: #0a0a0a;
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
   font-weight: 900;
   padding: 1px 4px;
@@ -23940,13 +23940,13 @@ body.map-width-resizing {
   text-decoration: none;
   font-weight: 500;
   padding: 4px 8px;
-  border: 1px solid var(--accent-dim);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
   border-radius: 4px;
   transition: all 0.2s;
 }
 
 .telegram-follow-btn:hover {
-  background: var(--accent-dim);
+  background: var(--accent);
   color: var(--bg);
 }
 
@@ -24043,13 +24043,13 @@ body.map-width-resizing {
   text-decoration: none;
   font-weight: 500;
   padding: 4px 8px;
-  border: 1px solid var(--accent-dim);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
   border-radius: 4px;
   transition: all 0.2s;
 }
 
 .x-intel-follow-btn:hover {
-  background: var(--accent-dim);
+  background: var(--accent);
   color: var(--bg);
 }
 
@@ -24310,7 +24310,7 @@ body.map-width-resizing {
 
 .widget-chat-msg.user {
   align-self: flex-end;
-  background: var(--accent-dim);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
   color: var(--text);
 }
 
@@ -24772,7 +24772,7 @@ body.map-width-resizing {
   border-radius: 50%;
   border: 2px solid var(--border);
   background: var(--accent);
-  color: #fff;
+  color: var(--bg);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -24795,7 +24795,7 @@ body.map-width-resizing {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  color: #fff;
+  color: inherit;
   font-weight: 600;
   line-height: 1;
   flex-shrink: 0;
@@ -24963,7 +24963,7 @@ body.map-width-resizing {
 }
 .auth-profile-save-btn {
   background: var(--accent);
-  color: #fff;
+  color: var(--bg);
 }
 .auth-profile-save-btn:disabled { opacity: 0.5; cursor: default; }
 .auth-profile-cancel-btn {
@@ -26604,7 +26604,7 @@ body.map-width-resizing {
   width: 100%;
   padding: 8px 16px;
   background: var(--green);
-  color: var(--bg);
+  color: #0a0a0a;
   border: none;
   border-radius: 4px;
   font-weight: 600;

@@ -74,14 +74,17 @@ describe('publication block classification (#8501)', () => {
     assert.match(block.reason, /24/);
   });
 
-  it('keeps a hard failure when a country actually fell out of coverage', () => {
+  it('blocks publication without a crash when a country fell out of coverage', () => {
+    // 2026-11-01: ArcGIS degradation left 10 countries past the 7-day cache
+    // limit and every 12h tick exited 1. Last-good is retained and the meta
+    // records the shortfall, so /api/health owns the alarm, not Railway.
     const block = classifyPublicationBlock({
       ...stalledRotation,
       countryCount: 173,
       coverage: { ...stalledRotation.coverage, complete: false },
     });
     assert.equal(block?.kind, 'coverage_shortfall');
-    assert.equal(block.exitCode, 1);
+    assert.equal(block.exitCode, PUBLISH_BLOCKED_EXIT_CODE);
   });
 
   it('refuses the soft outcome when the coverage object contradicts its own complete flag', () => {
@@ -118,6 +121,35 @@ describe('publication block classification (#8501)', () => {
     });
     assert.equal(block?.kind, 'rotation_incomplete');
     assert.match(block.reason, /invalid_query, rate_limited/);
+  });
+
+  it('treats ArcGIS and network failures as upstream, and our own faults as crashes', () => {
+    const { isUpstreamFetchFailure } = portwatchSeed;
+    const live = new AbortController().signal;
+    // Upstream: the shapes ArcGIS and its transports actually threw on 2026-11-01.
+    for (const error of [
+      new Error('ArcGIS error: Cannot perform query. Invalid query parameters.'),
+      Object.assign(new Error('ArcGIS incomplete page: reference page 2'), { refreshFailureCode: 'incomplete_page' }),
+      new Error('ArcGIS proxy leg timeout after 50000ms'),
+      new Error('Proxy CONNECT: HTTP/1.1 522 Server Error'),
+      new TypeError('fetch failed'),
+    ]) assert.equal(isUpstreamFetchFailure(error, live), true, error.message);
+    // Ours: Redis/cache reads, programming errors, a SIGTERM-aborted run.
+    for (const error of [
+      new Error('Redis pipeline failed: HTTP 500 — boom'),
+      new Error('PortWatch cache read failed'),
+      // A Redis transport rejection is tagged at its source, because its bare
+      // shape matches an ArcGIS transport failure.
+      Object.assign(new Error('Redis pipeline failed: fetch failed'), { portwatchOwnFault: true }),
+      Object.assign(new TypeError('fetch failed'), { portwatchOwnFault: true }),
+      new TypeError("Cannot read properties of undefined (reading 'size')"),
+      new ReferenceError('fetchAl is not defined'),
+      'not an error object',
+    ]) assert.equal(isUpstreamFetchFailure(error, live), false, String(error?.message ?? error));
+    const aborted = new AbortController();
+    aborted.abort(new Error('SIGTERM'));
+    assert.equal(isUpstreamFetchFailure(new Error('ArcGIS error: x'), aborted.signal), false,
+      'an aborted run never reached a verdict and stays a crash');
   });
 
   it('keeps a hard failure when the run made no upstream contact at all', () => {

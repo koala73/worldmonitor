@@ -192,6 +192,12 @@ Geo-IP 回显：根据调用方 IP 的 CDN 国家头返回 `{ "country": "<ISO2>
 
 将 302 缓存 5 分钟(`s-maxage=300`、`stale-while-revalidate=60`、`stale-if-error=600`)。
 
+### `POST /api/feedback/v1/submit-report`
+
+供 agent 报告缺陷、缺失的能力、错误数据或安全问题。无需密钥，REST 调用方一律按匿名处理。请求需包含 `kind`（`bug`、`missing_capability`、`data_quality` 或 `security`）和 `summary`（最多 300 个字符），可选 `surface`（工具名或 API 路径，尚不存在的也可以）、`expected`、`actual`、`requestId`（失败调用的 `x-vercel-id`）和 `clientName`。响应返回 `reportId`。
+
+凭据和邮箱地址在存储前会被脱敏，请不要依赖发送这些内容。每份报告都由人工阅读，不会被自动执行。`kind: security` 的响应会附带 `advisoryUrl`。漏洞利用细节请通过私密的[安全公告表单](https://github.com/koala73/worldmonitor/security/advisories/new)提交，不要发到这里。请求体超过 24 KB 返回 413。按 IP 的额度见[速率限制](/zh/usage-rate-limits)。属于 `FeedbackService` 的一部分。
+
 ### `POST /api/leads/v1/submit-contact`
 
 公开的企业联系表单。通过 Turnstile 验证,按 IP 限流。属于 `LeadsService` 的一部分。

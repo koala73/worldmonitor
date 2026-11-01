@@ -1,6 +1,14 @@
 /* Route Explorer modal — full-screen overlay with query bar + tabs + map */
 
+/* The surface is dark in both themes (#0d1117, below), so the theme tokens it
+   reads keep their dark-theme values here. Without this the light theme puts
+   #111 accents and pale panels on the dark modal. */
 .re-modal {
+  --accent: #fff;
+  --bg-secondary: #111;
+  --surface: #141414;
+  --text-dim: #888;
+  --semantic-elevated: #ffaa00;
   position: fixed;
   inset: 0;
   z-index: 9000;

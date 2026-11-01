@@ -1098,19 +1098,36 @@ export function withPerCountryTimeout(doWork, iso3, timeoutMs = PER_COUNTRY_TIME
   return Promise.race([work, guard]).finally(() => clearTimeout(timer));
 }
 
+// Every Redis failure leaves here tagged as ours. A bare transport rejection
+// is `TypeError('fetch failed')` or a TimeoutError, the same shapes an ArcGIS
+// transport failure throws, and isUpstreamFetchFailure must not mistake a
+// cache-read fault for an upstream outage (PR #9959 review).
+function redisFault(message, cause) {
+  return Object.assign(new Error(`Redis pipeline failed: ${message}`, { cause }), { portwatchOwnFault: true });
+}
+
 async function redisPipeline(commands) {
   const { url, token } = getRedisCredentials();
-  const resp = await fetch(`${url}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-    body: JSON.stringify(commands),
-    signal: AbortSignal.timeout(30_000),
-  });
+  let resp;
+  try {
+    resp = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+      body: JSON.stringify(commands),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (error) {
+    throw redisFault(error?.message || String(error), error);
+  }
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
-    throw new Error(`Redis pipeline failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
+    throw redisFault(`HTTP ${resp.status} — ${text.slice(0, 200)}`);
   }
-  return resp.json();
+  try {
+    return await resp.json();
+  } catch (error) {
+    throw redisFault(`invalid JSON response (${error?.message || error})`, error);
+  }
 }
 
 export async function publishPortActivitySnapshot(
@@ -2023,23 +2040,27 @@ export function shouldAdvanceCanonicalForRun({
     && upstreamContactCount > 0;
 }
 
-// Why a run that cannot advance the canonical list could not, split into the
-// two outcomes that deserve different exit codes (#8501).
+// Why a run that cannot advance the canonical list could not, split into two
+// kinds so logs and health tell them apart (#8501).
 //
 // `rotation_incomplete` is the run where every expected country is still
 // published and usable and the ONLY unmet advance condition is that some
-// countries failed to refresh — the twice-daily ArcGIS throttle. Nothing was
-// lost: TTLs were extended, the canonical list retained, the failure recorded
-// in seed-meta for the freshness monitor to alarm on. Throwing there turned a
-// partially-successful rotation into a Railway "Deploy Crashed!" every 12h.
+// countries failed to refresh — the twice-daily ArcGIS throttle.
 //
 // `coverage_shortfall` is everything else: a country fell out of coverage (a
 // payload crossed MAX_CACHE_AGE_MS, or never had one), the reference feed came
-// back short, or the run made no upstream contact at all. Those stay exit 1.
+// back short, or the run made no upstream contact at all.
 //
-// Defining the soft case as "shouldAdvanceCanonicalForRun would pass but for
-// refreshFailures" keeps the two functions from drifting: any new advance
-// condition is automatically a hard failure until someone decides otherwise.
+// Both exit PUBLISH_BLOCKED_EXIT_CODE. Each is an upstream outcome after
+// last-good was retained and the failure written to seed-meta, and /api/health
+// alarms on it (SEED_ERROR / COVERAGE_PARTIAL). Exit 1 was a Railway "Deploy
+// Crashed!" every 12h for an ArcGIS outage no redeploy can fix (2026-11-01).
+// main() still exits 1 for its own faults: an aborted run, an unconfirmed
+// canonical retention, and Redis/cache failures.
+//
+// Defining the rotation case as "shouldAdvanceCanonicalForRun would pass but
+// for refreshFailures" keeps the two functions from drifting: any new advance
+// condition falls to coverage_shortfall until someone decides otherwise.
 export function classifyPublicationBlock(input) {
   if (shouldAdvanceCanonicalForRun(input)) return null;
   const refreshFailures = input?.coverage?.refreshFailures ?? [];
@@ -2066,14 +2087,33 @@ export function classifyPublicationBlock(input) {
         + 'every country remains published and usable',
     };
   }
+  // A shortfall is still an upstream outcome with last-good retained; main()
+  // has already rejected the aborted and canonical-at-risk states, which stay
+  // exit 1. The kind stays distinct so logs and tests can tell the two apart.
   return {
     kind: 'coverage_shortfall',
-    exitCode: 1,
+    exitCode: PUBLISH_BLOCKED_EXIT_CODE,
     reason: `usable coverage ${input?.countryCount ?? 0}/${input?.coverage?.target ?? 0}, `
       + `reference ${input?.referenceCountryCount ?? 0}, `
       + `upstream contacts ${input?.upstreamContactCount ?? 0}, `
       + `${refreshFailures.length} refresh failures`,
   };
+}
+
+// Whether an error thrown out of fetchAll is the upstream's failure (ArcGIS,
+// its proxy path, or the network to it) rather than ours. Ours stay exit 1:
+// Redis/cache reads, a run aborted by SIGTERM, and programming errors. Only an
+// upstream failure may end as publish-blocked, and only after main() confirms
+// last-good was retained.
+export function isUpstreamFetchFailure(error, signal) {
+  if (signal?.aborted) return false;
+  if (!(error instanceof Error)) return false;
+  if (error.portwatchOwnFault === true) return false;
+  if (error instanceof ReferenceError || error instanceof SyntaxError || error instanceof RangeError) return false;
+  const message = String(error.message || '');
+  if (/^Redis |PortWatch cache read/.test(message)) return false;
+  if (error instanceof TypeError && !/fetch failed/i.test(message)) return false;
+  return true;
 }
 
 // The process exit code for a completed run, as the isMain wrapper applies it.
@@ -2123,6 +2163,8 @@ export async function main() {
   let previousMeta;
   let previousRead = false;
   let failureRecorded = false;
+  let hadPriorCanonical = false;
+  let upstreamFailure = false;
 
   // Shared progress object so the SIGTERM handler can report which batch /
   // stage we died in and what per-country errors have fired so far.
@@ -2172,7 +2214,21 @@ export async function main() {
     previousRead = true;
     prevCountryKeys = Array.isArray(prevIso2List) ? prevIso2List.map(iso2 => `${KEY_PREFIX}${iso2}`) : [];
 
+    hadPriorCanonical = prevIso2List !== null;
+
     console.log(`  Fetching port activity data (60d: last30 + prev30 windows)...`);
+    let fetched;
+    try {
+      fetched = await fetchAll(progress, {
+        signal: shutdownController.signal,
+        expectedCountries: Array.isArray(prevIso2List) ? prevIso2List : [],
+        runDeadlineAt: startedAt + RUN_DISPATCH_DEADLINE_MS,
+        refsDeadlineAt: startedAt + REF_FETCH_DEADLINE_MS,
+      });
+    } catch (fetchError) {
+      upstreamFailure = isUpstreamFetchFailure(fetchError, shutdownController.signal);
+      throw fetchError;
+    }
     const {
       countries,
       countryData,
@@ -2183,12 +2239,7 @@ export async function main() {
       cacheHitCount,
       retryState,
       coverage,
-    } = await fetchAll(progress, {
-      signal: shutdownController.signal,
-      expectedCountries: Array.isArray(prevIso2List) ? prevIso2List : [],
-      runDeadlineAt: startedAt + RUN_DISPATCH_DEADLINE_MS,
-      refsDeadlineAt: startedAt + REF_FETCH_DEADLINE_MS,
-    });
+    } = fetched;
 
     console.log(`  Assembled ${countryData.size} usable country payloads; persistence pending`);
 
@@ -2250,20 +2301,26 @@ export async function main() {
       //     canonical list and the product surface goes dark — so this must
       //     stay the loud exit 1 it was, not a green publish-blocked tick.
       const canonicalAtRisk = prevIso2List !== null && !canonicalTtlExtended;
-      const block = shutdownController.signal.aborted
-        ? { kind: 'coverage_shortfall', reason: 'run aborted before coverage was decided' }
-        : canonicalAtRisk
-        ? { kind: 'coverage_shortfall', reason: 'canonical retention unconfirmed; its TTL may not have been extended' }
-        : classifyPublicationBlock(advanceInput);
-      if (block?.kind === 'rotation_incomplete') {
-        console.warn(
-          `  ROTATION INCOMPLETE: ${block.reason}. Canonical retained and recovery state written; ` +
-          `exiting ${block.exitCode} so the bundle reports publish-blocked rather than a crash. ` +
-          'The seed-meta freshness monitor owns the alarm if this persists.',
-        );
-        return { publishBlocked: true };
+      if (shutdownController.signal.aborted) {
+        throw new Error('Incomplete PortWatch coverage; run aborted before coverage was decided');
       }
-      throw new Error(`Incomplete PortWatch coverage; canonical retained — ${block?.reason ?? 'unknown'}`);
+      if (canonicalAtRisk) {
+        throw new Error('Incomplete PortWatch coverage; canonical retention unconfirmed; its TTL may not have been extended');
+      }
+      // Every remaining block is an upstream shortfall with last-good retained
+      // and failure metadata written: either a refresh rotation that did not
+      // finish (#8501) or countries that fell out of coverage because ArcGIS
+      // would not refresh them. Neither is a fault this process can fix, so
+      // neither paints Railway CRASHED; /api/health reports the key as
+      // SEED_ERROR / COVERAGE_PARTIAL and owns the alarm.
+      const block = classifyPublicationBlock(advanceInput);
+      const label = block?.kind === 'rotation_incomplete' ? 'ROTATION INCOMPLETE' : 'COVERAGE SHORTFALL';
+      console.warn(
+        `  ${label}: ${block?.reason ?? 'unknown'}. Last-good retained and recovery state written; ` +
+        `exiting ${PUBLISH_BLOCKED_EXIT_CODE} so the bundle reports publish-blocked rather than a crash. ` +
+        '/api/health owns the alarm while this persists.',
+      );
+      return { publishBlocked: true };
     }
 
     logSeedResult('supply_chain', countryData.size, Date.now() - startedAt, { source: 'portwatch-ports' });
@@ -2271,13 +2328,37 @@ export async function main() {
     console.log(`\n=== Done (${Date.now() - startedAt}ms) ===`);
   } catch (err) {
     console.error(`  SEED FAILED: ${err.message}`);
-    await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL).catch(() => {});
+    const retention = await extendExistingTtlDetailed([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL)
+      .catch(() => null);
     if (previousRead && !failureRecorded) {
       await publishPortActivitySnapshot({
         countryData: new Map(),
         canonicalAdvances: false,
         metaPayload: buildPortActivityFailureMeta(previousMeta, { reason: err }),
       });
+    }
+    // An ArcGIS failure before coverage could be assessed (the 2026-11-01
+    // 00:00Z reference page) is upstream, like a coverage shortfall: once
+    // last-good is confirmed retained and the failure metadata is written,
+    // /api/health owns the alarm instead of a Railway crash.
+    // This path writes only seed-meta, so every prior key survives on its TTL
+    // extension alone. A key Redis could not confirm is our fault and stays a
+    // crash. A key EXPIRE reports missing (0) had already expired: that is
+    // not a write failure, and a crash would not restore it.
+    const unconfirmedKeys = retention?.unconfirmedKeys ?? [];
+    if (retention && unconfirmedKeys.length > 0) {
+      console.error(`  TTL extension unconfirmed for ${unconfirmedKeys.length} key(s): ${unconfirmedKeys.slice(0, 5).join(', ')}`);
+    }
+    const lastGoodRetained = retention !== null
+      && unconfirmedKeys.length === 0
+      && (!hadPriorCanonical || retention.extendedKeys?.includes(CANONICAL_KEY) === true);
+    if (upstreamFailure && previousRead && lastGoodRetained && !shutdownController.signal.aborted) {
+      console.warn(
+        `  UPSTREAM FAILURE: ${err.message}. Last-good retained and failure metadata written; ` +
+        `exiting ${PUBLISH_BLOCKED_EXIT_CODE} so the bundle reports publish-blocked rather than a crash. ` +
+        '/api/health owns the alarm while this persists.',
+      );
+      return { publishBlocked: true };
     }
     throw err;
   } finally {

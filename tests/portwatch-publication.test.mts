@@ -73,6 +73,7 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
       if (u.origin === 'https://redis.example') {
         if (mode.startsWith('cache-read-') && u.pathname === '/pipeline'
           && JSON.parse(init.body).some(([verb]) => verb === 'GET')) {
+          if (mode === 'cache-read-transport') throw new TypeError('fetch failed');
           const replies = JSON.parse(init.body).map(() => ({ result: null }));
           if (mode === 'cache-read-short') return Response.json(replies.slice(1));
           if (mode === 'cache-read-envelope') return Response.json({ result: replies });
@@ -83,6 +84,13 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
         if (mode === 'canonical-expired' && u.pathname === '/pipeline'
           && JSON.parse(init.body).some(([verb]) => verb === 'EXPIRE')) {
           state.redis.delete('${CANONICAL}');
+        }
+        if (mode === 'reference-page-country-unconfirmed' && u.pathname === '/pipeline'
+          && JSON.parse(init.body).some(([verb]) => verb === 'EXPIRE')) {
+          const response = await state.fetchImpl(url, init);
+          const results = await response.json();
+          results[results.length - 1] = {};
+          return Response.json(results);
         }
         if (mode === 'canonical-unconfirmed' && u.pathname === '/pipeline'
           && JSON.parse(init.body).some(([verb]) => verb === 'EXPIRE')) {
@@ -105,7 +113,7 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
       if (!u.pathname.endsWith('/query')) return Response.json({ fields: [{ name: 'date', type: 'esriFieldTypeDateOnly' }] });
       const offset = Number(u.searchParams.get('resultOffset'));
       if (u.pathname.includes('PortWatch_ports_database')) {
-        if (offset > 0 && mode === 'reference-page') return Response.json({ exceededTransferLimit: true });
+        if (offset > 0 && mode.startsWith('reference-page')) return Response.json({ exceededTransferLimit: true });
         const page = countries.slice(offset, offset + 100);
         return Response.json({ features: page.map(([iso3, iso2]) => ({ attributes: { portid: iso2, ISO3: iso3, lat: 1, lon: 2 } })), exceededTransferLimit: offset + page.length < countries.length });
       }
@@ -178,7 +186,11 @@ async function readCountry(t: any, redis: Record<string, any>, code: string, now
 test('natural 168-to-60 expiry cliff preserves publication and reports incomplete recovery', async (t) => {
   const input = fixtures();
   const result = runProducer(input);
-  assert.match(result.error, /Incomplete PortWatch coverage/);
+  // Countries fell out of coverage, but last-good is retained: publish-blocked
+  // (bundle exit 0) with /api/health owning the alarm, not a Railway crash.
+  assert.equal(result.error, null);
+  assert.equal(result.publishBlocked, true);
+  assert.match(result.logs, /COVERAGE SHORTFALL: usable coverage 60\/174/);
   assert.match(result.logs, /60\/174 usable countries/);
   assert.doesNotMatch(result.logs, /Seeded 60 countries/);
   assert.match(result.logs, /60 usable country payloads assembled.*persistence pending/);
@@ -216,17 +228,35 @@ test('natural 168-to-60 expiry cliff preserves publication and reports incomplet
 test('reference-page failure records diagnostics without replacing last-good keys', () => {
   const input = fixtures();
   const result = runProducer(input, 'reference-page');
-  assert.match(result.error, /incomplete page/);
+  assert.equal(result.error, null);
+  assert.equal(result.publishBlocked, true);
+  assert.match(result.logs, /UPSTREAM FAILURE: ArcGIS incomplete page/);
   assert.deepEqual(result.redis[CANONICAL], input[CANONICAL]);
   assert.equal(result.redis[META].fetchedAt, input[META].fetchedAt);
   assert.equal(result.redis[META].errorCode, 'PORTWATCH_INCOMPLETE_PAGE');
+  // No crash means health must carry the alarm.
+  assert.equal(health(result.redis).status, 'SEED_ERROR');
+  assert.equal(health(result.redis).errorCode, 'PORTWATCH_INCOMPLETE_PAGE');
   assert.equal(result.redis[META].coverage.completionRatio, null);
   for (const [, code] of countries) assert.deepEqual(result.redis[`${PREFIX}${code}`], input[`${PREFIX}${code}`]);
 });
 
+// The upstream path writes only seed-meta, so every prior country key survives
+// solely on its TTL extension. Redis failing to confirm one is our fault and
+// stays a crash (PR #9959 review). A key EXPIRE reports missing (0) is not a
+// write failure, and a crash would not bring it back.
+test('an upstream failure with an unconfirmed country TTL extension stays a crash', () => {
+  const input = fixtures();
+  const result = runProducer(input, 'reference-page-country-unconfirmed');
+  assert.match(result.error, /incomplete page/);
+  assert.equal(result.publishBlocked, false);
+  assert.match(result.logs, /TTL extension unconfirmed for 1 key/);
+});
+
 test('a failed first run does not invent a successful observation timestamp', () => {
   const result = runProducer({}, 'reference-page');
-  assert.match(result.error, /incomplete page/);
+  assert.equal(result.error, null);
+  assert.equal(result.publishBlocked, true);
   assert.equal(result.redis[CANONICAL], undefined);
   assert.equal(result.redis[META].fetchedAt, undefined);
   assert.equal(result.redis[META].recordCount, undefined);
@@ -252,11 +282,16 @@ test('a bad second activity page retains the entire country payload and success 
   assert.equal((await readCountry(t, result.redis, code)).ports[0].tankerCalls30d, 12);
 });
 
-for (const mode of ['cache-read-failure', 'cache-read-short', 'cache-read-envelope', 'cache-read-missing', 'cache-read-type']) {
+// cache-read-transport: the cache GET's fetch itself rejects with the same
+// `TypeError('fetch failed')` an ArcGIS transport failure throws. It is still
+// our Redis fault, so it must stay a crash rather than ride the upstream
+// publish-blocked path (PR #9959 review).
+for (const mode of ['cache-read-failure', 'cache-read-short', 'cache-read-envelope', 'cache-read-missing', 'cache-read-type', 'cache-read-transport']) {
   test(`${mode} cannot erase an unreadable last-good country`, () => {
     const input = fixtures();
     const result = runProducer(input, mode);
-    assert.match(result.error, /cache read/);
+    assert.match(result.error, /cache read|Redis pipeline/);
+    assert.equal(result.publishBlocked, false);
     for (const [, code] of countries) assert.deepEqual(result.redis[`${PREFIX}${code}`], input[`${PREFIX}${code}`]);
     assert.equal(result.redis[META].fetchedAt, input[META].fetchedAt);
     assert.equal(result.redis[META].sourceState, 'error');
@@ -268,7 +303,8 @@ for (const raw of ['{broken', 'null', '[]']) {
     const input = fixtures();
     const key = `${PREFIX}${countries[0][1]}`;
     const failed = runProducer(input, 'corrupt-failure', NOW, raw);
-    assert.match(failed.error, /Incomplete PortWatch coverage/);
+    assert.equal(failed.error, null);
+    assert.equal(failed.publishBlocked, true);
     assert.equal(failed.rawRedis[key], raw, 'failed repair must preserve original bytes');
     assert.equal(failed.redis[META].fetchedAt, input[META].fetchedAt);
     assert.ok(countries.some(([, code]) => code !== countries[0][1]
@@ -323,7 +359,8 @@ test('12-hour rolling recovery stays complete across daily advances within the o
     const refreshed = new Set(activityRequests.map((query: URLSearchParams) => query.get('where')!.match(/ISO3='([^']+)'/)![1]));
     assert.ok(refreshed.size <= 30, 'do not increase countries attempted per run');
     assert.ok(activityRequests.length <= 60, 'two one-page windows per country, no duplicate activity requests');
-    if (result.error) {
+    assert.equal(result.error, null, 'an upstream shortfall is publish-blocked, never a crash');
+    if (result.publishBlocked) {
       assert.equal(recovered, false, 'daily updates must not invalidate recovered coverage');
       assert.deepEqual(result.redis[CANONICAL], state[CANONICAL]);
       assert.equal(result.redis[META].fetchedAt, state[META].fetchedAt);
@@ -365,7 +402,8 @@ test('the 120-of-174 crash backlog recovers through persisted bounded batches', 
     const result = runProducer(state, 'complete', now);
     assert.equal(result.redis[META].coverage.published, covered);
     if (covered < 174) {
-      assert.match(result.error, /Incomplete PortWatch coverage/);
+      assert.equal(result.error, null);
+      assert.equal(result.publishBlocked, true);
       assert.deepEqual(result.redis[CANONICAL], state[CANONICAL]);
       assert.equal(result.redis[META].fetchedAt, state[META].fetchedAt);
     } else {
@@ -461,7 +499,8 @@ test('durable rotation replaces the snapshot only after complete validated recov
     const now = NOW + run * PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES * 60_000;
     const result = runProducer(state, 'complete', now);
     state = result.redis;
-    if (result.error) {
+    assert.equal(result.error, null);
+    if (result.publishBlocked) {
       assert.deepEqual(state[CANONICAL], input[CANONICAL]);
       assert.equal(state[META].fetchedAt, input[META].fetchedAt);
       continue;
@@ -498,7 +537,8 @@ test('complete verified zero activity is a successful observation, not a source 
 for (const canonical of [null, []]) {
   test(`partial cold start reports ${canonical === null ? 'absent' : 'empty'} canonical list`, () => {
     const result = runProducer(canonical === null ? {} : { [CANONICAL]: canonical, [META]: { recordCount: 60 } });
-    assert.match(result.error, /Incomplete PortWatch coverage/);
+    assert.equal(result.error, null);
+    assert.equal(result.publishBlocked, true);
     assert.match(result.logs, canonical === null
       ? /Recovery state saved; no prior canonical list; usable coverage 30\/174; full publication blocked/
       : /Recovery state saved; canonical list retained at 0 countries; usable coverage 30\/174; full publication blocked/);
