@@ -70,9 +70,13 @@ describe('PortWatch diagnostic safety', () => {
     const lines = [];
     t.mock.method(console, 'warn', (line) => lines.push(line));
     const error = Object.freeze(Object.assign(new Error('proxy CONNECT failed'), {
+      status: 522,
+      proxyConnect: true,
       proxyFailure: { stage: 'proxy_connect', httpStatus: null, proxyConnectStatus: 522 },
     }));
     createPortwatchRequestTrace('https://services.example/query', 'proxy').fail(error, { phase: 'fetch' });
-    assert.deepEqual(JSON.parse(lines[0]).causes[0].proxyFailure, error.proxyFailure);
+    const record = JSON.parse(lines[0]);
+    assert.deepEqual(record.causes[0].proxyFailure, error.proxyFailure);
+    assert.equal(record.status, null, 'a gateway CONNECT rejection is not an origin HTTP response');
   });
 });

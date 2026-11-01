@@ -89,7 +89,7 @@ export function createPortwatchRequestTrace(url, route) {
           startedAt: new Date(started).toISOString(),
           finishedAt: new Date(finished).toISOString(),
           durationMs: Math.max(0, finished - started),
-          status: response?.status ?? error?.status ?? null,
+          status: response?.status ?? (error?.proxyConnect ? null : error?.status ?? null),
           headers,
           causes: errorCauses(error),
         };
