@@ -209,3 +209,4 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 - [Source Code](https://github.com/koala73/worldmonitor): GitHub repository (AGPL-3.0)
 - [Releases](https://github.com/koala73/worldmonitor/releases): All desktop releases for macOS, Windows, and Linux
 - [Issues](https://github.com/koala73/worldmonitor/issues): Bug reports and feature requests
+- [Agent issue reports](https://www.worldmonitor.app/docs/mcp-tools-reference#report_issue): Agents report a failed call, a missing tool, or wrong data with the credential-free MCP tool `report_issue` or `POST /api/feedback/v1/submit-report`, citing the failed call's request id (`error.data.requestId` or `x-vercel-id`)
