@@ -1340,7 +1340,7 @@ export const RPC_TOOLS: ToolDef[] = [
     name: 'get_procurement_opportunities',
     title: 'Public procurement opportunities',
     _outputBudgetBytes: 65536,
-    description: 'Search open public-procurement notices aggregated from official sources (SAM.gov, TED, Contracts Finder, CanadaBuys, GETS, World Bank) and return compact records: title, buyer, country, source, deadline, estimated value, automationFit and a link, without descriptions or submission and eligibility payloads. Paged: page_size defaults to 10 (maximum 25) and nextCursor continues the same filters and sort. automationFit is keyword-relevance evidence only, never bidding eligibility, and participationMode "unknown" stays unknown; sourceStatuses and countryCoverage report which sources answered. Requires a paid plan; one live downstream fetch, weight 2 on API plans. Read-only.',
+    description: 'Search open public-procurement notices aggregated from official national and multilateral sources (including SAM.gov, TED, Pakistan EPADS, Georgia SPA and Armenia ARMEPS) and return compact records: title, buyer, country, source, deadline, estimated value, automationFit and a link, without descriptions or submission and eligibility payloads. Paged: page_size defaults to 10 (maximum 25) and nextCursor continues the same filters and sort. automationFit is keyword-relevance evidence only, never bidding eligibility, and participationMode "unknown" stays unknown; sourceStatuses and countryCoverage report which sources answered. Requires a paid plan; one live downstream fetch, weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -3897,6 +3897,20 @@
       ]
     },
     {
+      "host": "epads.gov.pk",
+      "provider": "epads.gov.pk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit epads.gov.pk and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "epms.ppra.gov.pk",
       "provider": "epms.ppra.gov.pk",
       "kind": "structured",
@@ -9476,6 +9490,20 @@
       ]
     },
     {
+      "host": "tenders.procurement.gov.ge",
+      "provider": "tenders.procurement.gov.ge",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit tenders.procurement.gov.ge and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "test",
       "provider": "test",
       "kind": "structured",
@@ -11015,6 +11043,20 @@
       "references": [
         {
           "path": "scripts/comparison-shortlist.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.armeps.am",
+      "provider": "www.armeps.am",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.armeps.am and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
         }
       ]
     },

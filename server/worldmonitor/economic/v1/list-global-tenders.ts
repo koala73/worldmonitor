@@ -85,6 +85,22 @@ function compareTenders(sort: string, left: GlobalTender, right: GlobalTender): 
   return asTimestamp(right.publishedAt || right.updatedAt, 0) - asTimestamp(left.publishedAt || left.updatedAt, 0) || byId;
 }
 
+function dedupePakistanNotices(tenders: GlobalTender[]): GlobalTender[] {
+  const seen = new Map<string, string>();
+  const identity = (value: string) => value.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  return tenders.filter((tender) => {
+    if (!['pakistan-epads', 'pakistan-ppra'].includes(tender.source)) return true;
+    const buyer = identity(tender.buyer || '');
+    const title = identity(tender.title);
+    if (!buyer || !title) return true;
+    const key = JSON.stringify([buyer, title]);
+    const source = seen.get(key);
+    if (source && source !== tender.source) return false;
+    seen.set(key, tender.source);
+    return true;
+  });
+}
+
 export function filterAndPaginateTenders(tenders: GlobalTender[], req: ListGlobalTendersRequest): Pick<ListGlobalTendersResponse, 'tenders' | 'nextCursor' | 'total' | 'appliedFilters' | 'countryCoverage'> {
   const countries = new Set([req.country, ...(req.countries || [])].map((value) => normalized(value)).filter(Boolean));
   const region = normalized(req.region);
@@ -122,7 +138,7 @@ export function filterAndPaginateTenders(tenders: GlobalTender[], req: ListGloba
     minAutomationScore !== null && 'min_automation_score',
   ].filter((value): value is string => Boolean(value));
 
-  const filtered = tenders.filter((tender) => {
+  const filtered = dedupePakistanNotices(tenders.filter((tender) => {
     const amount = tender.money?.amount;
     const deadline = asTimestamp(tender.deadline, Number.NaN);
     const published = asTimestamp(tender.publishedAt, Number.NaN);
@@ -141,7 +157,7 @@ export function filterAndPaginateTenders(tenders: GlobalTender[], req: ListGloba
       && (!category || [...tender.categoryCodes, ...tender.sectors].some((value) => normalized(value).includes(category)))
       && (minAutomationScore === null || (tender.automationFit?.score || 0) >= minAutomationScore)
       && matchesText(tender, query);
-  }).sort((left, right) => compareTenders(sort, left, right));
+  }).sort((left, right) => compareTenders(sort, left, right)));
 
   // A snapshot cannot establish that a country has no opportunities or that no
   // adapter supports it. It can only establish that this request has (or lacks)

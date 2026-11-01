@@ -256,7 +256,8 @@ test('JSON adapters reject schema drift and malformed rows instead of clearing l
 });
 
 test('each added source accepts valid empty responses and has a strict official URL scope', async () => {
-  for (const [source, fetchSource] of ADDITIONAL_TENDER_ADAPTERS.filter(([, fn]) => ![fetchBulgaria, fetchPakistan].includes(fn))) {
+  for (const [source, fetchSource] of ADDITIONAL_TENDER_ADAPTERS.filter(([source, fn]) => ![fetchBulgaria, fetchPakistan].includes(fn)
+    && !['pakistan-epads', 'georgia-spa', 'armenia-armeps'].includes(source))) {
     const result = await fetchSource({ now: NOW, fetchJsonFn: async () => [fetchColombia, fetchLatvia, fetchPoland].includes(fetchSource)
       ? [] : fetchSource === fetchSouthAfrica ? { releases: [] } : { data: [] } });
     assert.equal(result.status.state, 'ok', source);

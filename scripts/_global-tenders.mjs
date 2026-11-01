@@ -28,6 +28,9 @@ const OFFICIAL_SOURCE_HOSTS = {
   'latvia-iub': ['eis.gov.lv', 'pvs.iub.gov.lv'],
   'poland-bzp': ['ezamowienia.gov.pl'],
   'pakistan-ppra': ['epms.ppra.gov.pk'],
+  'pakistan-epads': ['epads.gov.pk'],
+  'georgia-spa': ['tenders.procurement.gov.ge'],
+  'armenia-armeps': ['www.armeps.am', 'armeps.am'],
 };
 
 // A failed source keeps its last-good open tenders for a day: procurement
@@ -38,7 +41,7 @@ export const TENDER_SOURCE_RETENTION_MS = 24 * 60 * 60_000;
 export function tracksTenderFreshness(source) {
   return ['contracts-finder', 'world-bank', 'colombia-secop', 'kenya-ppip', 'south-africa-etenders',
     'chile-mercado-publico', 'brazil-pncp', 'ukraine-prozorro', 'bulgaria-eop', 'latvia-iub',
-    'poland-bzp', 'pakistan-ppra'].includes(source);
+    'poland-bzp', 'pakistan-ppra', 'pakistan-epads', 'georgia-spa', 'armenia-armeps'].includes(source);
 }
 
 function string(value) { return typeof value === 'string' ? value.trim() : ''; }

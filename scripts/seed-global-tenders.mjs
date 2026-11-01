@@ -420,7 +420,7 @@ const SOURCE_ADAPTERS = [
   ['gets', fetchGets],
   ['world-bank', fetchWorldBank],
   ...ADDITIONAL_TENDER_ADAPTERS.map(([source, fetchSource]) => [source,
-    (options) => fetchSource({ ...options, fetchJsonFn: fetchJson, fetchTextFn: fetchText })]),
+    (options) => fetchSource({ ...options, fetchJsonFn: fetchJson, fetchTextFn: fetchText, fetchResponseFn: fetchResponse })]),
 ];
 
 export async function fetchGlobalTenders({ previousSnapshot = null, adapters = SOURCE_ADAPTERS, now = Date.now(), receipt } = {}) {
@@ -512,7 +512,7 @@ export async function main({ adapters, now } = {}) {
     validateFn: validate,
     ttlSeconds: CACHE_TTL_SECONDS,
     declareRecords,
-    sourceVersion: 'global-tenders-16-sources-v3',
+    sourceVersion: 'global-tenders-19-sources-v4',
     schemaVersion: 1,
     maxStaleMin: 180,
     zeroIsValid: true,

@@ -555,6 +555,9 @@ const STANDALONE_KEYS = {
   globalTendersLatviaIub:       'economic:global-tenders:v1:source:latvia-iub',
   globalTendersPolandBzp:       'economic:global-tenders:v1:source:poland-bzp',
   globalTendersPakistanPpra:    'economic:global-tenders:v1:source:pakistan-ppra',
+  globalTendersPakistanEpads:   'economic:global-tenders:v1:source:pakistan-epads',
+  globalTendersGeorgiaSpa:      'economic:global-tenders:v1:source:georgia-spa',
+  globalTendersArmeniaArmeps:   'economic:global-tenders:v1:source:armenia-armeps',
   crossStraitActivityTaiwanMnd: 'military:cross-strait-activity:v1:source:taiwan-mnd',
   crossStraitActivityJapanMod:  'military:cross-strait-activity:v1:source:japan-mod',
   defensePatents:        'patents:defense:latest',
@@ -1392,6 +1395,21 @@ const SEED_META = {
     key: 'seed-meta:economic:global-tenders:pakistan-ppra', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:pakistan-ppra',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:pakistan-ppra' },
+  },
+  globalTendersPakistanEpads: {
+    key: 'seed-meta:economic:global-tenders:pakistan-epads', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:pakistan-epads',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9894, activationKey: 'seed-activated:economic:global-tenders:pakistan-epads' },
+  },
+  globalTendersGeorgiaSpa: {
+    key: 'seed-meta:economic:global-tenders:georgia-spa', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:georgia-spa',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9894, activationKey: 'seed-activated:economic:global-tenders:georgia-spa' },
+  },
+  globalTendersArmeniaArmeps: {
+    key: 'seed-meta:economic:global-tenders:armenia-armeps', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:armenia-armeps',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9894, activationKey: 'seed-activated:economic:global-tenders:armenia-armeps' },
   },
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
   techEventsSeeder: {
@@ -2449,6 +2467,9 @@ const ON_DEMAND_KEYS = new Set([
   'globalTendersLatviaIub',
   'globalTendersPolandBzp',
   'globalTendersPakistanPpra',
+  'globalTendersPakistanEpads',
+  'globalTendersGeorgiaSpa',
+  'globalTendersArmeniaArmeps',
   'ukmtoIncidents',
   // Deployment-order bridge: Vercel can ship this reader before Railway's
   // hourly bundle publishes the first summary. The seeder writes a durable
@@ -2656,6 +2677,9 @@ const ACTIVATION_MARKERS = {
   globalTendersLatviaIub: SEED_META.globalTendersLatviaIub.activationKey,
   globalTendersPolandBzp: SEED_META.globalTendersPolandBzp.activationKey,
   globalTendersPakistanPpra: SEED_META.globalTendersPakistanPpra.activationKey,
+  globalTendersPakistanEpads: SEED_META.globalTendersPakistanEpads.activationKey,
+  globalTendersGeorgiaSpa: SEED_META.globalTendersGeorgiaSpa.activationKey,
+  globalTendersArmeniaArmeps: SEED_META.globalTendersArmeniaArmeps.activationKey,
   ukmtoIncidents: 'seed-activated:maritime:ukmto-incidents',
   chinaCoverage: 'seed-activated:health:china-coverage',
   // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).
@@ -3143,6 +3167,7 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   'globalTendersColombiaSecop', 'globalTendersKenyaPpip', 'globalTendersSouthAfricaEtenders',
   'globalTendersChileMercadoPublico', 'globalTendersBrazilPncp', 'globalTendersUkraineProzorro',
   'globalTendersBulgariaEop', 'globalTendersLatviaIub', 'globalTendersPolandBzp', 'globalTendersPakistanPpra',
+  'globalTendersPakistanEpads', 'globalTendersGeorgiaSpa', 'globalTendersArmeniaArmeps',
   // retailer-spread is SUPPRESSED to an explicit 0 by the aggregate job when a
   // market's retailers share < MIN_SPREAD_ITEMS (4) common basket items —
   // consumer-prices-core/src/jobs/aggregate.ts writes `retailer_spread_pct: 0`

@@ -75,6 +75,7 @@ const HOST_ORIGINS = Object.freeze({
   'eskom.co.za': 'ZA',
   'dados.ons.org.br': 'BR',
   'www.datos.gov.co': 'CO',
+  'www.armeps.am': 'AM',
   // Editorial hosts used by site-scoped news searches. These are catalogued
   // as publishers in their own right; the shared search endpoint is a
   // separate provider.

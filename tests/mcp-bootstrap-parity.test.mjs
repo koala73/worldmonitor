@@ -70,7 +70,8 @@ const EXCLUDED_FROM_MCP = new Map([
   ['economic:global-tenders:v1:source:world-bank',
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ...['colombia-secop', 'kenya-ppip', 'south-africa-etenders', 'chile-mercado-publico', 'brazil-pncp',
-    'ukraine-prozorro', 'bulgaria-eop', 'latvia-iub', 'poland-bzp', 'pakistan-ppra'].map((source) => [
+    'ukraine-prozorro', 'bulgaria-eop', 'latvia-iub', 'poland-bzp', 'pakistan-ppra',
+    'pakistan-epads', 'georgia-spa', 'armenia-armeps'].map((source) => [
     `economic:global-tenders:v1:source:${source}`,
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.',
   ]),

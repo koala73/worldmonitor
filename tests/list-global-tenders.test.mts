@@ -13,6 +13,30 @@ const tender = (id: string, overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+test('Pakistan cross-feed duplicates collapse after filtering and before pagination', () => {
+  const records = [
+    tender('epads', { source: 'pakistan-epads', countryCode: 'PK', buyer: 'Public Agency', title: 'Cloud & data platform' }),
+    tender('ppra', { source: 'pakistan-ppra', countryCode: 'PK', buyer: 'PUBLIC  AGENCY', title: 'Cloud & Data Platform.' }),
+    tender('other', { source: 'pakistan-ppra', countryCode: 'PK', buyer: 'Other Agency', title: 'Cloud & data platform' }),
+    tender('unknown', { source: 'pakistan-ppra', countryCode: 'PK', buyer: '', title: 'Cloud & data platform' }),
+  ];
+  const request = { country: 'PK', countries: [], region: '', source: '', status: '', deadlineFrom: '', deadlineTo: '', minValue: 0, maxValue: 0, currency: '', category: '', query: '', pageSize: 1, cursor: '', sort: 'closing_soon', buyer: '', publishedFrom: '', publishedTo: '', minAutomationScore: 0 };
+  const first = filterAndPaginateTenders(records, request);
+  assert.equal(first.total, 3);
+  const pages = [first.tenders[0].id];
+  let cursor = first.nextCursor;
+  while (cursor) {
+    const page = filterAndPaginateTenders(records, { ...request, cursor });
+    pages.push(...page.tenders.map((record) => record.id));
+    cursor = page.nextCursor;
+  }
+  assert.deepEqual(pages, ['epads', 'other', 'unknown']);
+  assert.equal(filterAndPaginateTenders(records, { ...request, source: 'pakistan-ppra' }).total, 3);
+  assert.equal(filterAndPaginateTenders(records, { ...request, source: 'pakistan-epads' }).total, 1);
+  assert.equal(filterAndPaginateTenders(records, { ...request, buyer: 'other agency' }).total, 1);
+  assert.equal(filterAndPaginateTenders(records.map((record) => ({ ...record, source: 'sam' })), request).total, 4);
+});
+
 test('filters by country, query, category, money and deadline without treating missing values as matches', () => {
   const result = filterAndPaginateTenders([
     tender('a'),
