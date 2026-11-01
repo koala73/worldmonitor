@@ -72,10 +72,12 @@ Antigravity 的 OAuth 回调 `https://antigravity.google/oauth-callback` 已在[
 仓库根目录提供 Gemini CLI 扩展清单 `gemini-extension.json`，通过 Streamable HTTP 添加相同的两个服务器。Gemini CLI 使用 `httpUrl` 表示 Streamable HTTP；其 `url` 键表示 SSE。
 
 ```bash
-gemini extensions install https://github.com/koala73/worldmonitor
+gemini extensions install https://github.com/koala73/worldmonitor --ref main
 ```
 
-首次调用工具时会打开浏览器登录。Gemini CLI 使用 `localhost` 回调进行注册，[重定向 URI 允许列表](/zh/mcp-overview#redirect-uri-允许列表)接受该回调。运行 `/mcp auth worldmonitor` 可重新登录。
+不加 `--ref` 时，Gemini CLI 会从最新 GitHub 发布版的源码归档安装，而 v2.11.6 及更早的发布版尚不包含该清单。加上 `--ref main` 后，Gemini CLI 找不到名为 `main` 的发布版，会询问是否改用 `git clone` 安装；请选择是。自 v2.11.6 之后的第一个发布版起，不加 `--ref` 也可安装。
+
+启动 Gemini CLI，并在浏览器打开时登录：WorldMonitor 在连接时返回 OAuth 质询，因此登录发生在启动时，早于任何工具调用。Gemini CLI 使用 `localhost` 回调进行注册，[重定向 URI 允许列表](/zh/mcp-overview#redirect-uri-允许列表)接受该回调。运行 `/mcp auth worldmonitor` 可重新登录。
 
 ## 相关链接
 

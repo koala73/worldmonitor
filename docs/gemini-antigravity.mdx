@@ -85,10 +85,12 @@ Example prompts:
 The repository root holds a Gemini CLI extension manifest, `gemini-extension.json`. It adds the same two servers over Streamable HTTP. Gemini CLI uses `httpUrl` for Streamable HTTP; its `url` key means SSE.
 
 ```bash
-gemini extensions install https://github.com/koala73/worldmonitor
+gemini extensions install https://github.com/koala73/worldmonitor --ref main
 ```
 
-The first tool call opens a browser to sign in. Gemini CLI registers with a `localhost` callback, which the [redirect URI allowlist](/mcp-overview#redirect-uri-allowlist) accepts. Run `/mcp auth worldmonitor` to sign in again.
+Without `--ref`, Gemini CLI installs from the latest GitHub release's source archive, and releases up to v2.11.6 predate the manifest. With `--ref main`, Gemini CLI finds no release tagged `main` and asks whether to install with `git clone` instead; answer yes. From the first release after v2.11.6, the command also works without `--ref`.
+
+Start Gemini CLI and sign in when the browser opens: WorldMonitor answers the connection with an OAuth challenge, so sign-in happens at startup, before any tool call. Gemini CLI registers with a `localhost` callback, which the [redirect URI allowlist](/mcp-overview#redirect-uri-allowlist) accepts. Run `/mcp auth worldmonitor` to sign in again.
 
 ## Related
 
