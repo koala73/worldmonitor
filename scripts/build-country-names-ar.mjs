@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Builds shared/country-names-ar.json: Arabic names for every country code the
+ * Builds shared/country-names-ar.json (and its scripts/shared/ mirror): Arabic names for every country code the
  * MCP country resolver accepts (shared/country-code-resolve.ts).
  *
  *   node scripts/build-country-names-ar.mjs           write the file
@@ -16,7 +16,12 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const OUTPUT = new URL('../shared/country-names-ar.json', import.meta.url);
+// scripts/shared/ mirrors every shared/*.json byte for byte
+// (tests/edge-functions.test.mjs), so both copies are written.
+const OUTPUTS = [
+  new URL('../shared/country-names-ar.json', import.meta.url),
+  new URL('./shared/country-names-ar.json', import.meta.url),
+];
 const ISO3_TO_ISO2 = JSON.parse(readFileSync(new URL('../shared/iso3-to-iso2.json', import.meta.url), 'utf8'));
 
 // Mirrors ASSIGNED_ISO2_OUTSIDE_GEOJSON in shared/country-code-resolve.ts. The
@@ -100,14 +105,14 @@ function serialize(data) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const next = serialize(buildArabicCountryNames());
   if (process.argv.includes('--check')) {
-    const current = readFileSync(OUTPUT, 'utf8');
-    if (current !== next) {
-      console.error('shared/country-names-ar.json is stale. Run: node scripts/build-country-names-ar.mjs');
+    const stale = OUTPUTS.filter((output) => readFileSync(output, 'utf8') !== next);
+    if (stale.length) {
+      console.error('country-names-ar.json is stale. Run: node scripts/build-country-names-ar.mjs');
       process.exit(1);
     }
-    console.log('shared/country-names-ar.json is current.');
+    console.log('country-names-ar.json is current.');
   } else {
-    writeFileSync(OUTPUT, next);
-    console.log('Wrote shared/country-names-ar.json');
+    for (const output of OUTPUTS) writeFileSync(output, next);
+    console.log('Wrote shared/country-names-ar.json and scripts/shared/country-names-ar.json');
   }
 }
