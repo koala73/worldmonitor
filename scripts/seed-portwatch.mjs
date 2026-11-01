@@ -480,6 +480,9 @@ export function mergeWithPrevious(fresh, previous, chokepointIds, nowMs = Date.n
 const lastHistoryDate = entry => entry?.history?.at(-1)?.date ?? '';
 
 async function fetchFresh(sinceEpoch, window, fetchDeadlineAtMs, prior) {
+  // Past the deadline runSeed has already given up on this run, so a query
+  // could not publish and would only spend the per-IP ArcGIS rate limit.
+  const pastDeadline = () => Number.isFinite(fetchDeadlineAtMs) && Date.now() >= fetchDeadlineAtMs;
   try {
     const fresh = chokepointsFromCsv(await fetchCsvExport(fetchDeadlineAtMs), sinceEpoch, window);
     const noBaseline = Object.keys(fresh).filter(id => !fresh[id].baseline);
@@ -487,7 +490,7 @@ async function fetchFresh(sinceEpoch, window, fetchDeadlineAtMs, prior) {
     // Query what the export lacks, and what it trails: the cached export can
     // end before history an earlier query-fallback run already published.
     const candidates = CHOKEPOINTS.filter(cp => !fresh[cp.id] || lastHistoryDate(prior[cp.id]) > lastHistoryDate(fresh[cp.id]));
-    if (candidates.length === 0) return fresh;
+    if (candidates.length === 0 || pastDeadline()) return fresh;
     console.warn(`[PortWatch] CSV export lacks or trails ${candidates.map(cp => cp.id).join(', ')}; querying ArcGIS for them`);
     const queried = await runFetchPipeline(candidates, sinceEpoch, fetchAllPages, 500, {
       fetchBaselineFn: fetchBaselineStats,
@@ -499,6 +502,7 @@ async function fetchFresh(sinceEpoch, window, fetchDeadlineAtMs, prior) {
     }
     return fresh;
   } catch (e) {
+    if (pastDeadline()) throw e;
     console.warn(`[PortWatch] source=arcgis-query (csv failed: ${e?.message || e})`);
     return runFetchPipeline(CHOKEPOINTS, sinceEpoch, fetchAllPages, 500, {
       fetchBaselineFn: fetchBaselineStats,
