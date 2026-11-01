@@ -29,6 +29,7 @@ export const ARRIVALS_CANONICAL_KEY = 'displacement:cross-border:v1';
 export const ARRIVALS_ACTIVATION_KEY = 'seed-activated:displacement:cross-border';
 // Per-country report history, kept out of the public payload.
 export const ARRIVALS_HISTORY_KEY = 'displacement:cross-border:history:v1';
+const HISTORY_TTL_SECONDS = 30 * 24 * 60 * 60;
 const ODP = 'https://data.unhcr.org/population/get';
 const CACHE_TTL_SECONDS = 3 * 24 * 60 * 60;
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -261,16 +262,23 @@ export function advanceHistory(previousPoints, date, individuals) {
 }
 
 async function readPreviousHistory() {
+  const creds = getOptionalUpstashCreds();
+  if (!creds) return {};
+  // A failed read must fail the run: starting fresh would publish over the stored history.
+  let raw;
   try {
-    const creds = getOptionalUpstashCreds();
-    if (!creds) return {};
     // upstashCommand returns the whole Upstash body; the stored string is its `result`.
-    const { result: raw } = await upstashCommand(creds, ['GET', ARRIVALS_HISTORY_KEY]);
+    ({ result: raw } = await upstashCommand(creds, ['GET', ARRIVALS_HISTORY_KEY]));
+  } catch (err) {
+    throw new Error(`cross-border history read failed: ${err?.message || err}`);
+  }
+  if (raw == null) return {}; // first run, or the key expired
+  try {
     const value = typeof raw === 'string' ? JSON.parse(raw) : raw;
     const data = value?.data ?? value;
     return data?.history && typeof data.history === 'object' ? data.history : {};
   } catch (err) {
-    console.warn(`  WARN: previous cross-border history unreadable, starting fresh: ${err?.message || err}`);
+    console.warn(`  WARN: stored cross-border history is not JSON, starting fresh: ${err?.message || err}`);
     return {};
   }
 }
@@ -446,11 +454,13 @@ export const seedOptions = {
   extraKeys: [{
     key: ARRIVALS_HISTORY_KEY,
     // Outlives the canonical key so a few failed days do not reset the change figures.
-    ttl: 30 * 24 * 60 * 60,
+    ttl: HISTORY_TTL_SECONDS,
     transform: (data) => ({ history: data?.history ?? {} }),
     allowPrePublishFields: ['history'],
     declareRecords: (data) => Object.keys(data?.history ?? {}).length,
   }],
+  // A failed run would otherwise cut the history back to the canonical key's TTL.
+  preserveKeyTtls: [{ key: ARRIVALS_HISTORY_KEY, ttlSeconds: HISTORY_TTL_SECONDS }],
   afterPublish: markActivated,
 };
 

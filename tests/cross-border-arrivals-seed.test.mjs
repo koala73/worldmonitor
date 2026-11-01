@@ -245,6 +245,30 @@ describe('fetchCrossBorderArrivals', () => {
     }
   });
 
+  it('fails the run rather than start fresh when the history read fails, so the stored history survives', async () => {
+    const env = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    try {
+      stub((url) => {
+        if (url.origin === 'https://redis.test') return new Response('unavailable', { status: 503 });
+        return Response.json({ data: [row({ individuals: 959126 })] });
+      });
+      await assert.rejects(fetchCrossBorderArrivals({ nowMs: Date.parse('2026-10-08T00:00:00Z') }), /history/);
+    } finally {
+      for (const [name, value] of [['UPSTASH_REDIS_REST_URL', env.url], ['UPSTASH_REDIS_REST_TOKEN', env.token]]) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+
+  it('keeps the 30-day history TTL when a failed run preserves the stored keys', async () => {
+    const { seedOptions, ARRIVALS_HISTORY_KEY } = await import('../scripts/seed-cross-border-arrivals.mjs');
+    const history = seedOptions.extraKeys.find((ek) => ek.key === ARRIVALS_HISTORY_KEY);
+    assert.deepEqual(seedOptions.preserveKeyTtls, [{ key: ARRIVALS_HISTORY_KEY, ttlSeconds: history.ttl }]);
+  });
+
   it('fails validation when too few situations answer', async () => {
     stub(() => new Response('gone', { status: 404 }));
     const data = await fetchCrossBorderArrivals({ nowMs: Date.now(), previousHistory: {} });
