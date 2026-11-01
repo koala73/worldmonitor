@@ -2,6 +2,7 @@ import type { EffectiveTariffRate } from '@/generated/client/worldmonitor/trade/
 import type { CountrySignalCounts } from '@/types';
 import type { CountryScore } from '@/services/country-instability';
 import type { GetDefenseIndustrialBaseResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
+import type { RegionalEnergyFeed } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import type { PredictionMarket } from '@/services/prediction';
 import type { NewsItem } from '@/types';
 import type { GetCountryChokepointIndexResponse, GetCountryVulnerabilitiesResponse, SectorExposureSummary, CountryProductsResponse, MultiSectorShockResponse } from '@/services/supply-chain';
@@ -195,6 +196,7 @@ export interface CountryEnergyProfileData {
   sprSource: string;
   sprAsOf: string;
   sprAvailable: boolean;
+  regionalEnergyFeeds?: RegionalEnergyFeed[];
 }
 
 export interface CountryPortActivityData {

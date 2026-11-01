@@ -2363,3 +2363,17 @@
 .country-history-detail ul { padding-left: 18px; }
 .country-history-detail li { margin-block: 7px; }
 .country-history-detail a { color: var(--accent); }
+.cdp-regional-energy { margin-top: 10px; }
+.cdp-regional-energy-feed { border-top: 1px solid var(--border-subtle); padding: 2px 0 6px; }
+.cdp-regional-energy-feed summary { cursor: pointer; padding: 8px 0; min-height: 32px; color: var(--text-secondary); font-size: calc(12px * var(--wm-panel-effective-scale, 1)); }
+.cdp-regional-energy-name { font-weight: 600; color: var(--text); margin-inline-end: 8px; }
+.cdp-regional-energy-meta, .cdp-regional-energy-note { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); margin-inline-end: 8px; }
+.cdp-regional-energy-meta { color: var(--text-muted); }
+.cdp-regional-energy-note { color: var(--semantic-elevated); }
+.cdp-regional-energy-scroll { overflow-x: auto; }
+.cdp-regional-energy-table td { vertical-align: top; }
+.cdp-regional-energy-value, .cdp-regional-energy-change { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cdp-regional-energy-value { color: var(--text); }
+.cdp-regional-energy-detail { color: var(--text-muted); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin-top: 2px; }
+.cdp-regional-energy-stale td, .cdp-regional-energy-stale .cdp-regional-energy-value { color: var(--text-muted); }
+.cdp-regional-energy-feed .cdp-economic-source a { color: var(--green); text-underline-offset: 3px; }
