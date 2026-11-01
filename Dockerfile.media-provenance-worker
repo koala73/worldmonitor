@@ -15,9 +15,13 @@ WORKDIR /app
 COPY docker/media-provenance-worker/package.json docker/media-provenance-worker/package-lock.json ./
 # The download script must run from its own package directory: run from /app
 # it treats /app as the package and tries to build the Rust source instead.
+# The native binding is not in the npm tarball: the script downloads it from the
+# upstream GitHub release, so its digest is pinned and a changed asset fails the
+# build. Re-pin when the c2pa-node version or the platform changes (x86_64 linux,
+# 0.9.9: index.node inside c2pa-node_x86_64-unknown-linux-gnu-v0.9.9.zip).
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
   && cd node_modules/@contentauth/c2pa-node && node scripts/postinstall.cjs && cd /app \
-  && test -s node_modules/@contentauth/c2pa-node/dist/index.node
+  && echo "2ed61756a4439f9cb80b18e17aa7566a7b0b57d111866a1307482478a27514c1  node_modules/@contentauth/c2pa-node/dist/index.node" | sha256sum -c -
 
 COPY scripts/ ./scripts/
 

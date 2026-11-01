@@ -68,6 +68,9 @@ export function mediaUrlProblem(raw) {
 
 /** ISO base-media brands of an MP4 video; any other ftyp file (audio, raw photos) is not checked. */
 const MP4_VIDEO_BRANDS = ['isom', 'iso2', 'iso3', 'iso4', 'iso5', 'iso6', 'mp41', 'mp42', 'avc1', 'M4V ', 'mmp4', 'dash', '3gp4', '3gp5', '3gp6'];
+/** Upper bound on the ftyp box read when sniffing; real boxes are far smaller. */
+const FTYP_MAX_BYTES = 1024;
+
 /** Major brands of an audio-only file, which also lists MP4 brands as compatible. */
 const MP4_AUDIO_BRANDS = ['M4A ', 'M4B ', 'M4P ', 'F4A ', 'F4B '];
 
@@ -86,7 +89,9 @@ export function sniffMediaType(bytes) {
   if ((b[0] === 0x49 && b[1] === 0x49 && b[2] === 0x2a && b[3] === 0) || (b[0] === 0x4d && b[1] === 0x4d && b[2] === 0 && b[3] === 0x2a)) return 'image/tiff';
   if (ascii(4, 8) === 'ftyp') {
     // The major brand, then the compatible brands up to the end of the ftyp box.
-    const boxEnd = Math.min(b.length, ((b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3]) >>> 0);
+    // The declared size is the publisher's: cap it, since a real ftyp box is a
+    // few dozen bytes and an uncapped loop builds one string per 4 bytes of the file.
+    const boxEnd = Math.min(b.length, ((b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3]) >>> 0, FTYP_MAX_BYTES);
     const brands = [ascii(8, 12)];
     for (let at = 16; at + 4 <= boxEnd; at += 4) brands.push(ascii(at, at + 4));
     const has = (list) => brands.some((brand) => list.includes(brand));

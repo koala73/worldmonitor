@@ -156,6 +156,16 @@ describe('media type sniffing', () => {
     assert.equal(sniffMediaType(ftyp('heic', 'mif1', 'heic')), 'image/heic');
     assert.equal(sniffMediaType(ftyp('mp42', 'isom')), 'video/mp4');
   });
+
+  it('reads only the first kilobyte of an ftyp box, whatever size it declares', () => {
+    const huge = Buffer.alloc(25 * 1024 * 1024);
+    huge.writeUInt32BE(0xffffffff, 0);
+    huge.write('ftypzzzz', 4);
+    huge.write('isom', 25 * 1024 * 1024 - 8);
+    const started = performance.now();
+    assert.equal(sniffMediaType(huge), null, 'a brand past the cap is not read');
+    assert.ok(performance.now() - started < 200, 'no per-byte work over the whole file');
+  });
 });
 
 describe('fetching media', () => {
