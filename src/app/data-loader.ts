@@ -704,14 +704,6 @@ export class DataLoaderManager implements AppModule {
   }
 
   /**
-   * Items for a cross-edition panel, read from every other edition whose
-   * digest carries `category` (a key such as `markets` is placed in both the
-   * finance and commodity editions). Returns null unless EVERY such edition's
-   * digest arrived and carries the category: a partial set would silently drop
-   * the missing edition's sources, so the caller falls back to fetching the
-   * full reachable feed set instead.
-   */
-  /**
    * Cached rows of the enabled sources in `feeds` that this language's digest
    * fetches but that have no item in `delivered` (#9796). Never rejects.
    */
@@ -759,16 +751,25 @@ export class DataLoaderManager implements AppModule {
     });
   }
 
-  private async crossEditionCategoryItems(category: string): Promise<{ items: NewsItem[]; servedStale: boolean } | null> {
+  /**
+   * Items for a cross-edition panel, read from every other edition whose
+   * digest carries `category` (a key such as `markets` is placed in both the
+   * finance and commodity editions). `complete` is false when some of those
+   * digests did not arrive; null means none did.
+   */
+  private async crossEditionCategoryItems(
+    category: string,
+  ): Promise<{ items: NewsItem[]; servedStale: boolean; complete: boolean } | null> {
     const editions = digestEditionsFor(category).filter(edition => edition !== SITE_VARIANT);
     if (editions.length === 0) return null;
     const language = getCurrentLanguage();
     const digests = await Promise.all(editions.map(edition => this.fetchEditionDigest(edition, language)));
     const carrying = digests.filter((d): d is ListFeedDigestResponse => !!d?.categories && category in d.categories);
-    if (carrying.length !== editions.length) return null;
+    if (carrying.length === 0) return null;
     return {
       items: carrying.flatMap(d => (d.categories[category]?.items ?? []).map(protoItemToNewsItem)),
       servedStale: carrying.some(d => d.coverage?.servedStale === true),
+      complete: carrying.length === editions.length,
     };
   }
 
@@ -1690,8 +1691,13 @@ export class DataLoaderManager implements AppModule {
       if (isCustom) {
         const crossEdition = await this.crossEditionCategoryItems(category);
         if (crossEdition) {
-          recordSelectedFreshness(crossEdition.servedStale);
-          this.setNewsRefreshDegraded(category, false);
+          // While a carrying edition's digest is missing, its sources keep the
+          // panel's last items instead of dropping out.
+          const deliveredSources = new Set(crossEdition.items.map(i => i.source));
+          const carried = crossEdition.complete ? [] : this.getStaleNewsItems(category)
+            .filter(i => enabledNames.has(i.source) && !deliveredSources.has(i.source));
+          recordSelectedFreshness(crossEdition.servedStale || carried.length > 0);
+          this.setNewsRefreshDegraded(category, !crossEdition.complete);
           const digestItems = crossEdition.items.filter(i => enabledNames.has(i.source));
           void ingestTrendingHeadlines(digestItems.map(i => ({
             title: i.title,
@@ -1708,7 +1714,7 @@ export class DataLoaderManager implements AppModule {
             checkBatchForBreakingAlerts(digestItems);
           }
           this.flashMapForNews(digestItems);
-          const items = mergeSourceFairNewsItems(digestItems, {
+          const items = mergeSourceFairNewsItems([...digestItems, ...carried], {
             maxItems: this.customCategoryMergedItemLimit,
             enabledSources: enabledNames,
           });
