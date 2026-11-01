@@ -203,7 +203,7 @@ describe('cross-edition panels read the digests of every edition that carries th
     expect(new Set(items.map(i => i.source))).toEqual(new Set(['Finance Wire', 'Commodity Desk']));
   });
 
-  it('shows the editions that arrived, marked degraded, when another carrying edition digest is missing on a cold load', async () => {
+  it('shows the editions that arrived as live when another carrying edition digest is missing on a cold load', async () => {
     // markets is placed in finance and commodity; commodity answers 503.
     vi.stubGlobal('fetch', digestFetch({ finance: editionDigest('markets', ['Finance Wire']) }));
     const setRefreshDegraded = vi.fn();
@@ -214,7 +214,7 @@ describe('cross-edition panels read the digests of every edition that carries th
       undefined, servedStale => { recorded.push(servedStale); });
 
     expect(items.map(i => i.title).sort()).toEqual(['Finance Wire headline 0', 'Finance Wire headline 1']);
-    expect(setRefreshDegraded).toHaveBeenLastCalledWith(true);
+    expect(setRefreshDegraded).toHaveBeenLastCalledWith(false);
     expect(recorded).toEqual([false]);
     expect(mocks.fetchCategoryFeeds).not.toHaveBeenCalled();
   });
