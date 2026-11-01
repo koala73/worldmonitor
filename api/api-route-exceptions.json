@@ -255,6 +255,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/feedback-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP report_issue tool definition. It adapts the shared agent feedback write path (server/_shared/agent-feedback.ts) to MCP and exports no standalone JSON data route; the REST twin is the FeedbackService sebuf RPC.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/index.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY merge + buildPublicTool + SUMMARY_SCHEMA + TOOL_LIST_RESPONSE precompute + collision guard. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
