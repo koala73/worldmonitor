@@ -461,3 +461,73 @@ describe('OFAC source download deadlines', () => {
     assert.equal(calls.length, 2);
   });
 });
+
+describe('OFAC source caller deadline', () => {
+  const proxyUrl = 'http://user:pass@proxy.test:8000';
+  const redirect = { ok: false, status: 302, location: SIGNED_S3_URL, buffer: Buffer.alloc(0), contentType: '' };
+
+  it('aborts missing headers at the deadline and starts nothing after it', { timeout: 20_000 }, async () => {
+    const calls = [];
+    let proxyCalls = 0;
+    const startedAt = Date.now();
+
+    await assert.rejects(
+      fetchOfacSourceResponse(SOURCE_URL, {
+        fetchFn: neverRespondingFetch(calls),
+        proxyFetchFn: async () => { proxyCalls += 1; return redirect; },
+        proxyUrl,
+        sleepFn: async () => {},
+        headerTimeoutMs: 4_000,
+        deadlineAt: startedAt + 1_500,
+      }),
+      (error) => error.nonRetryable === true && /OFAC fetch deadline reached/.test(error.message),
+    );
+
+    const elapsed = Date.now() - startedAt;
+    assert.ok(elapsed >= 1_000 && elapsed < 3_000, `headers should abort near the 1.5 s deadline, stopped after ${elapsed} ms`);
+    assert.equal(calls.length, 1, 'no direct retry may start after the deadline');
+    assert.equal(proxyCalls, 0, 'no proxy bootstrap may start after the deadline');
+  });
+
+  it('caps the proxy bootstrap timeout at the time left before the deadline', async () => {
+    const timeouts = [];
+    const deadlineAt = Date.now() + 5_000;
+
+    const result = await fetchOfacSourceResponse(SOURCE_URL, {
+      fetchFn: async (url) => String(url) === SOURCE_URL ? response(403, 'blocked') : response(200),
+      proxyFetchFn: async (_url, _proxyConfig, options) => {
+        timeouts.push({ timeoutMs: options.timeoutMs, remaining: deadlineAt - Date.now() });
+        return redirect;
+      },
+      proxyUrl,
+      sleepFn: async () => {},
+      deadlineAt,
+    });
+
+    assert.equal(result.status, 200);
+    assert.equal(timeouts.length, 1);
+    assert.ok(timeouts[0].timeoutMs <= timeouts[0].remaining,
+      `proxy timeout ${timeouts[0].timeoutMs} ms exceeds the ${timeouts[0].remaining} ms left`);
+  });
+
+  it('never sleeps past the deadline between retries', async () => {
+    const sleeps = [];
+    const deadlineAt = Date.now() + 3_000;
+    let attempts = 0;
+
+    const result = await fetchOfacSourceResponse(SOURCE_URL, {
+      fetchFn: async () => {
+        attempts += 1;
+        return attempts === 1 ? response(429, 'rate limited', { 'retry-after': '5' }) : response(200);
+      },
+      proxyUrl: '',
+      sleepFn: async (delayMs) => { sleeps.push({ delayMs, remaining: deadlineAt - Date.now() }); },
+      deadlineAt,
+    });
+
+    assert.equal(result.status, 200);
+    assert.equal(sleeps.length, 1);
+    assert.ok(sleeps[0].delayMs <= sleeps[0].remaining,
+      `retry sleep ${sleeps[0].delayMs} ms exceeds the ${sleeps[0].remaining} ms left`);
+  });
+});
