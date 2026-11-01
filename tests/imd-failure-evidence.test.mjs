@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createImdFailureCapture, replayImdFailure, readImdFailure, IMD_EVIDENCE_MAX_BYTES } from '../scripts/lib/imd-failure-evidence.mjs';
-import { fetchImdCycloneMarine, IMD_PRODUCTS, parseImdBulletinHtml, assembleImdSnapshot } from '../scripts/lib/imd-cyclone-marine.mjs';
+import { fetchImdBulletinPage, fetchImdCycloneMarine, IMD_PRODUCTS, parseImdBulletinHtml, assembleImdSnapshot } from '../scripts/lib/imd-cyclone-marine.mjs';
 
 const now = Date.parse('2026-10-16T11:00:00Z');
 const fixture = (name) => readFile(new URL(`./fixtures/imd/${name}`, import.meta.url));
@@ -49,6 +49,11 @@ test('private bundle replays failure and carried records offline with original c
   const expired = await replayImdFailure({ ...bundle, now: Date.parse('2026-10-16T22:00:00Z') });
   assert.equal(expired.records.length, 0);
   assert.equal(replay.runtimeMatches, true);
+  const sea = IMD_PRODUCTS.seaBulletin.pages[0];
+  const expectedEmpty = await fetchImdBulletinPage('seaBulletin', sea, { fetchFn: async () => new Response(null, { status: 204 }) });
+  const emptyReplay = await replayImdFailure({ ...bundle, productId: 'seaBulletin', pageKey: sea.key,
+    attempts: [{ url: sea.url, status: 204, contentType: '', bodyBase64: '' }] });
+  assert.deepEqual(emptyReplay.result, expectedEmpty);
   await assert.rejects(replayImdFailure({ ...bundle, runtime: { ...bundle.runtime, parserSha256: 'wrong' } }), /revision/);
   await assert.rejects(replayImdFailure({ ...bundle, attempts: bundle.attempts.map((a) => ({ ...a, bodyBase64: null })) }), /incomplete/);
   await assert.rejects(replayImdFailure({ ...bundle, attempts: [{ ...bundle.attempts[0], status: 999 }] }), /invalid/);

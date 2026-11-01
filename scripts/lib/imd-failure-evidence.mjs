@@ -101,7 +101,8 @@ export async function replayImdFailure(bundle, { allowRevisionMismatch = false }
       if (attempt.failure === 'IMD_FETCH_TIMEOUT') error.name = 'TimeoutError';
       throw error;
     }
-    const body = attempt.bodyBase64 === null ? null : Buffer.from(attempt.bodyBase64, 'base64');
+    const body = attempt.bodyBase64 === null || [204, 205, 304].includes(attempt.status)
+      ? null : Buffer.from(attempt.bodyBase64, 'base64');
     return new Response(body, { status: attempt.status, headers: { 'content-type': attempt.contentType || '' } });
   };
   const result = await fetchImdBulletinPage(bundle.productId, registered.page, { fetchFn, delayMs: 0 });
