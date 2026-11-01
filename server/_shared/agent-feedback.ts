@@ -165,10 +165,17 @@ const FEEDBACK_EXTRA_URL_PARAM_RE = /^(key|api_key|apikey|secret|password|sig|si
 
 // URL_TOKEN_PATTERN needs a scheme or a dotted host, so a relative path
 // ("GET /api/x?api_key=..."), a bare "api_key=...&symbol=AAPL", or "x?key=..."
-// never reaches the URL scrub. This pass catches name=value fields anywhere,
-// limited to credential names; an all-digit value ("code=500") is kept.
+// never reaches the URL scrub. These passes catch a credential field anywhere,
+// however a report pastes it: name=value, name="value", `name=value`, a JSON
+// body ("api_key": "...") or a config line (api_key: ...). They are limited to
+// credential names. After "=" any value goes except an all-digit one
+// ("code=500"). After ":" the next word is often prose ("token: expired"), so
+// only a token-shaped value goes, the same rule as a bare "Authorization:".
 const BARE_CREDENTIAL_PARAM_RE = /^(token|access_token|id_token|refresh_token|auth_token|api_key|apikey|key|secret|client_secret|password|passwd|sig|signature|code|license_key|x-amz-[a-z0-9-]*)$/i;
-const BARE_QUERY_FIELD_RE = /(^|[\s"'(?&#;,])([A-Za-z][A-Za-z0-9_.-]*)=([^\s&"'<>#;,)]+)/g;
+const FIELD_LEAD = String.raw`(^|[\s"'(\[{?&#;,\x60])(["']?)([A-Za-z][A-Za-z0-9_.-]*)\2`;
+const FIELD_VALUE = String.raw`(["']?)([^\s&"'<>#;,)}\]\x60]+)`;
+const BARE_QUERY_FIELD_RE = new RegExp(`${FIELD_LEAD}(=)${FIELD_VALUE}`, 'g');
+const COLON_FIELD_RE = new RegExp(`${FIELD_LEAD}(\\s*:\\s*)${FIELD_VALUE}`, 'g');
 
 // After "Bearer" or "Authorization:" the next word is often prose ("the bearer
 // token is rejected", "Authorization: missing"). A full header line, with a
@@ -231,9 +238,19 @@ function redactUrlToken(token: string): string {
 /** Scrubs URL credentials, credential shapes, then email addresses, in that order. */
 export function redactFeedbackText(value: string): { text: string; redacted: boolean } {
   let text = value.replace(URL_TOKEN_PATTERN, (token) => redactUrlToken(token));
-  text = text.replace(BARE_QUERY_FIELD_RE, (match, lead: string, name: string, fieldValue: string) => (
-    BARE_CREDENTIAL_PARAM_RE.test(name) && !/^\d+$/.test(fieldValue) ? `${lead}${name}=${FEEDBACK_REDACTED}` : match
-  ));
+  for (const [pattern, isCredential] of [
+    [BARE_QUERY_FIELD_RE, (fieldValue: string) => !/^\d+$/.test(fieldValue)],
+    [COLON_FIELD_RE, isTokenShaped],
+  ] as const) {
+    text = text.replace(
+      pattern,
+      (match, lead: string, nameQuote: string, name: string, separator: string, valueQuote: string, fieldValue: string) => (
+        BARE_CREDENTIAL_PARAM_RE.test(name) && isCredential(fieldValue)
+          ? `${lead}${nameQuote}${name}${nameQuote}${separator}${valueQuote}${FEEDBACK_REDACTED}`
+          : match
+      ),
+    );
+  }
   for (const [pattern, isCredential] of AUTH_VALUE_PATTERNS) {
     text = text.replace(pattern, (match, prefix: string, value: string) => (
       isCredential(value) ? `${prefix}${FEEDBACK_REDACTED}` : match
