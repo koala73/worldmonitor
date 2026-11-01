@@ -490,6 +490,12 @@ Hosted connectors classify a server by how this first request is answered. One t
 
 The edge relay through which a browser panel talks to a **caller-chosen** remote MCP server: the panel names the server URL and supplies any credential headers, and the proxy performs the MCP handshake and tool call on its behalf so the browser never contacts the remote directly. Because the remote is the caller's choice, its answers are the caller's outcome, not the proxy's: a credential refusal, a JSON-RPC error object answered on a successful HTTP status (how MCP servers express quota, unknown tool, or invalid params), and a remote timeout are all **upstream verdicts**. An upstream verdict is relayed to the caller and recorded in the proxy's audit log, but it is not a proxy defect and does not page. What does page is a failure the proxy itself produced — a transport fault, a malformed stream, an unclassified throw. Downstream reporters cannot tell a relayed verdict from an origin failure by status code alone, so a relayed timeout is marked on the response for them. See also: Discovery Read vs. Transport Operation, Error Telemetry & Suppression.
 
+### Spoken Mode
+
+An MCP tool answer shaped for a voice agent to read aloud. It is a short templated narration, two or three sentences long, built from the tool's own result without a model call. It comes with the citations and freshness verdict the narration relies on. A caller asks for it per call. Only tools that have a narrator offer it, and the narration can be requested in more than one language.
+
+The load-bearing rule: every language comes from the same narration logic, and only the wording differs. Two answers to one call give the same numbers, caveats, citations and freshness verdict, so a listener never hears a stale warning in one language that the other leaves out. Upstream text that is spoken as part of the answer, such as a headline, stays in its published language, but it is cleaned for speech by the rules of the answer's language. The arguments that choose spoken mode and its language shape the response only, and the tool itself never receives them. See also: MCP Server Card.
+
 ## Structured Data & Entity Graph
 
 ### Canonical Entity Node
