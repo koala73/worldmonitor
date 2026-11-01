@@ -308,10 +308,26 @@ async function arcgisProxyRetry(url, reason, { signal } = {}) {
     const proxyAuth = resolveProxyForConnect();
     if (!proxyAuth) throw new Error(`ArcGIS direct ${reason} + no proxy configured for ${url.slice(0, 80)}`);
     console.warn(`  [portwatch] ${reason} — retrying via proxy: ${url.slice(0, 80)}`);
-    const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, {
-      accept: 'application/json', timeoutMs: PROXY_FETCH_TIMEOUT, signal,
-      onErrorResponse: (result) => { response = result; phase = 'http'; },
-    });
+    // proxyFetch applies timeoutMs to the CONNECT tunnel and again to the
+    // response, so on its own the leg could run 2 x PROXY_FETCH_TIMEOUT. The
+    // per-country wrap and the reference retry guard both size the proxy leg
+    // at PROXY_FETCH_TIMEOUT, so one deadline on the signal covers both phases.
+    const legController = new AbortController();
+    const legTimer = setTimeout(
+      () => legController.abort(new Error(`ArcGIS proxy leg timeout after ${PROXY_FETCH_TIMEOUT}ms`)),
+      PROXY_FETCH_TIMEOUT,
+    );
+    let buffer;
+    try {
+      ({ buffer } = await httpsProxyFetchRaw(url, proxyAuth, {
+        accept: 'application/json',
+        timeoutMs: PROXY_FETCH_TIMEOUT,
+        signal: signal ? AbortSignal.any([signal, legController.signal]) : legController.signal,
+        onErrorResponse: (result) => { response = result; phase = 'http'; },
+      }));
+    } finally {
+      clearTimeout(legTimer);
+    }
     phase = 'json';
     proxied = JSON.parse(buffer.toString('utf8'));
     phase = 'arcgis';

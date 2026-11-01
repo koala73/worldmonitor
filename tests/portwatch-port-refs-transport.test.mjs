@@ -160,6 +160,45 @@ describe('PortWatch reference pagination recovery', () => {
     });
   }
 
+  // proxyFetch applies its timeoutMs to the CONNECT tunnel and again to the
+  // response, so a proxy leg given only `timeoutMs: 50s` could take 100s. The
+  // reference retry guard and the 90s per-country wrap both size the proxy leg
+  // at PROXY_FETCH_TIMEOUT, so the leg needs one deadline across both phases.
+  it('bounds the whole proxy leg, tunnel plus response, to one 50s deadline', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const previousProxy = process.env.PROXY_URL;
+    process.env.PROXY_URL = 'https://fixture-user:fixture-password@proxy.invalid:443';
+    t.after(() => {
+      if (previousProxy === undefined) delete process.env.PROXY_URL;
+      else process.env.PROXY_URL = previousProxy;
+    });
+    t.mock.method(console, 'warn', () => {});
+    const proxyUtils = createRequire(import.meta.url)('../scripts/_proxy-utils.cjs');
+    // A tunnel that is slow to establish and a response that is slow to land:
+    // each phase alone stays under its own 50s timer, so only an overall
+    // deadline on the signal can end the leg at 50s.
+    t.mock.method(proxyUtils, 'proxyFetch', (_url, _config, { signal }) => new Promise((_, reject) => {
+      signal?.addEventListener('abort', () => reject(signal.reason ?? new Error('aborted')), { once: true });
+    }));
+    const transport = paginationTransport(new TypeError('fetch failed'));
+
+    let settled = null;
+    const run = portwatchSeed.fetchAllPortRefs({ fetchFn: transport.fetchFn })
+      .then(() => { settled = 'resolved'; }, (error) => { settled = error; });
+    for (let i = 0; i < 10 && transport.requestedOffsets.length < 2; i += 1) await new Promise(setImmediate);
+    assert.deepEqual(transport.requestedOffsets, [0, 1]);
+
+    t.mock.timers.tick(49_999);
+    for (let i = 0; i < 10; i += 1) await new Promise(setImmediate);
+    assert.equal(settled, null, 'the proxy leg keeps its full 50s');
+
+    t.mock.timers.tick(1);
+    for (let i = 0; i < 10 && settled === null; i += 1) await new Promise(setImmediate);
+    assert.ok(settled instanceof Error, 'the proxy leg must end at 50s');
+    assert.match(String(settled.message), /timeout|abort/i);
+    await run;
+  });
+
   it('parses and retries a rate-limited HTTP 200 page without restarting pagination', async () => {
     assert.equal(typeof arcgisRateLimitFixture.error, 'object');
     assert.equal(
