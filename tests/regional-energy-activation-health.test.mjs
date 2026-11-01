@@ -25,7 +25,7 @@ test('first fetch error is visible inside rollout grace without a success clock'
 });
 test('regional deadlines use persistent NX and existing budgets capped at one day', () => {
   const commands = regionalEnergyRolloutCommands(now, 'production');
-  assert.equal(commands.length, 26);
+  assert.equal(commands.length, 28);
   const cammesa = commands.find(c => c[0] === 'SET' && c[1].includes(':cammesa:'));
   assert.deepEqual(cammesa.slice(2), [String(now + 180 * 60000), 'NX']);
   const anp = commands.find(c => c[0] === 'SET' && c[1].includes(':anp:'));

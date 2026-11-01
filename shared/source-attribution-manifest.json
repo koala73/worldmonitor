@@ -6420,6 +6420,20 @@
       ]
     },
     {
+      "host": "mem.gob.gt",
+      "provider": "mem.gob.gt",
+      "kind": "structured",
+      "observed": true,
+      "license": "Data licence unconfirmed; robots content-signal ai-train=no, use=reference",
+      "attribution": "Credit the Ministerio de Energía y Minas de Guatemala and link to https://mem.gob.gt/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "mempool.space",
       "provider": "mempool.space",
       "kind": "structured",

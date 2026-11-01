@@ -1,7 +1,7 @@
 # Regional energy feeds
 
 `get-country-energy-profile?country_code=BD` now includes `regionalEnergyFeeds`.
-The same field serves NG, ZA, AR, GE, BR, VN, KZ, PE, PG and FJ. Other
+The same field serves NG, ZA, AR, GE, BR, VN, KZ, PE, PG, FJ and GT. Other
 countries return an empty list. Existing energy fields keep their meaning. No card or import-risk score
 is added.
 
@@ -20,16 +20,34 @@ is added.
 | COES | PE | Half-hourly SEIN executed demand and its daily and weekly schedules (MW) | 1 hour |
 | ICCC | PG | Monthly Port Moresby retail prices, unsubsidised prices and subsidy components (PGK/l) | 12 hours |
 | FCCC | FJ | Monthly approved retail fuel prices by schedule (FJD/l) and LPG prices by schedule and pack size | 12 hours |
+| MEM | GT | Daily average prices monitored in Guatemala City: gasolines and diesel (GTQ/gal), LPG (GTQ per 25 lb cylinder and per lb); bunker, AvGas and Jet A-1 (GTQ/gal) | 12 hours |
 
 These are bounded source slices, not a mirror of every provider dataset. PGCB's
 demand and load-shedding cells are commented out in the source and are omitted.
 NISO's hourly GenCo details, CAMMESA regional/marginal-cost data and ONS plant
 and reservoir datasets are outside this initial path.
 
-Batch 2 (#9893) adds VN, KZ, PE, PG and FJ. Jamaica's Petrojam and Guatemala's
-MEM, also listed in that issue, refuse the WorldMonitor User-Agent and are not
-collected: Petrojam returns HTTP 403, and MEM began serving a Cloudflare
-challenge on 2026-10-31. EVN reports rooftop solar as both a sales estimate and
+Batch 2 (#9893) adds VN, KZ, PE, PG, FJ and GT. Jamaica's Petrojam, also listed
+in that issue, returns HTTP 403 to every request, including `robots.txt`, and is
+not collected.
+
+Since 2026-10-31 MEM's pages, sitemaps and REST API answer automated clients
+with a Cloudflare challenge. The seeder does not request them. It reads only the
+upload files those pages link to, which MEM serves normally, and its robots file
+allows the WorldMonitor User-Agent (`use=reference`). WordPress gives each
+re-upload of the daily workbook within a month the next suffix
+(`Precios-Promedio-Nacionales-Diarios-2026-3.xlsx`). The seeder probes this
+month's and last month's upload folders with HEAD requests and reads the
+highest suffix. Only a 404 counts as absent; a challenge or outage fails the run
+and retains last-good data. Despite the file name, the workbook's prices are
+averages monitored in Guatemala City, and the feed labels them that way. Bunker,
+AvGas and Jet A-1 are published as `fuel.price`, not retail prices. The
+exchange-rate column is not read. The workbook notes a temporary Q8.00/gal
+diesel and Q5.00/gal gasoline support from 28 April to 5 July 2026, and a tax
+exemption from 1 October 2026 (Decreto 22-2026); the prices include both.
+Uploads can be about two weeks apart, so the content budget is 21 days.
+
+EVN reports rooftop solar as both a sales estimate and
 a terminal estimate; each is kept with its basis in the area.
 KOREM's peak is the portal's latest daily consumption maximum. ICCC and FCCC
 state all rights reserved, and FCCC's robots file signals `use=reference`; the
@@ -108,7 +126,7 @@ Slow or failed sources retain last-good data.
 After an authorized rollout, confirm the Railway service, schedule and image commit,
 then observe two natural scheduling rotations and at least one daily run. Check logs for
 `Regional-Energy-` and `regional-`, health metadata/record counts, and the profile
-for each of BD, NG, ZA, AR, GE, BR, VN, KZ, PE, PG and FJ. Require source-dated values and valid
+for each of BD, NG, ZA, AR, GE, BR, VN, KZ, PE, PG, FJ and GT. Require source-dated values and valid
 attribution; do not count a green build or a fresh fetch alone as acceptance.
 Monthly feeds need a later natural publication to prove report rollover.
 

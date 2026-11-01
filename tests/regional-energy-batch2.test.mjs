@@ -12,6 +12,7 @@ import {
   COES_DEMAND_URL, coesDemandBody, parseCoes,
   discoverPngFuelPosts, parsePngFuelPost,
   discoverFijiFuelPdfs, parseFijiFuel,
+  memWorkbookUrl, parseMemPriceRows,
   pdfItems, buildFeedSnapshot, inEffect,
 } from '../scripts/lib/regional-energy-feeds.mjs';
 
@@ -218,6 +219,97 @@ describe('Fiji FCCC fuel prices', () => {
     const served = buildFeedSnapshot('fccc', nov, 'https://fccc.gov.fj/x.pdf', Date.parse('2026-10-31T12:30:00Z'));
     // Content age starts at Fiji's local midnight, not a UTC midnight 12 hours ahead.
     assert.equal(regionalEnergyContentMeta(served, Date.parse('2026-10-31T12:30:00Z')).newestItemAt, Date.parse('2026-10-31T12:00:00Z'));
+  });
+});
+
+describe('Guatemala MEM fuel prices', () => {
+  const capture = json('mem-daily.json');
+  // ExcelJS reads date cells as Date objects; the fixture stores them as { date }.
+  const sheetRows = () => capture.rows.map(row => row.map(v => (v && typeof v === 'object' && v.date ? new Date(v.date) : v)));
+  const city = label => `${label}; Guatemala City`;
+  const workbook = async (rows = sheetRows()) => {
+    const { default: ExcelJS } = await import('exceljs');
+    const book = new ExcelJS.Workbook();
+    const sheet = book.addWorksheet(capture.sheet);
+    rows.forEach(row => sheet.addRow(row));
+    return Buffer.from(await book.xlsx.writeBuffer());
+  };
+  // Serves the upload folder: listed files answer HEAD and GET, anything else is 404.
+  function uploads(files, overrides = {}) {
+    const calls = [];
+    const fetchFn = async (url, options) => {
+      calls.push({ url, method: options.method ?? 'GET' });
+      assert.match(options.headers['User-Agent'], /^WorldMonitor\/1\.0/);
+      assert.equal(options.redirect, 'manual');
+      if (Object.hasOwn(overrides, url)) return overrides[url];
+      if (!Object.hasOwn(files, url)) return new Response('', { status: 404 });
+      return new Response(options.method === 'HEAD' ? null : files[url]);
+    };
+    return { fetchFn, calls };
+  }
+
+  it('reads the Guatemala City price table by header and unit', () => {
+    const points = parseMemPriceRows(sheetRows());
+    assertUnique(points);
+    const d = '2026-10-28';
+    assert.equal(value(points, 'fuel.retail_price', d, city('Gasolina Superior')), 34.49);
+    assert.equal(value(points, 'fuel.retail_price', d, city('Gasolina Regular')), 32.07);
+    assert.equal(value(points, 'fuel.retail_price', d, city('Diésel')), 42.69);
+    assert.equal(value(points, 'fuel.retail_price', d, city('GLP 25 lb cylinder')), 126);
+    assert.equal(value(points, 'fuel.retail_price', d, city('GLP')), 5.04);
+    assert.equal(value(points, 'fuel.retail_price', '2026-10-26', city('GLP 25 lb cylinder')), 124.67);
+    assert.equal(value(points, 'fuel.price', d, city('Bunker')), 26.99);
+    assert.equal(value(points, 'fuel.price', d, city('AvGas')), 74.75);
+    assert.equal(value(points, 'fuel.price', d, city('Jet A-1')), 53.79);
+    assert.deepEqual([...new Set(points.map(p => p.unit))].sort(), ['GTQ/25lb', 'GTQ/gal', 'GTQ/lb']);
+    // The exchange-rate column is not an energy price.
+    assert.ok(!points.some(p => /USD/.test(p.unit)));
+    // Only the newest 31 days are read; the snapshot keeps eight per series.
+    assert.ok(points.every(p => p.period >= '2026-09-27' && p.period <= d));
+  });
+
+  it('rejects a changed table instead of guessing at columns', () => {
+    const edit = (match, replace) => sheetRows().map(row => row.map(v => (v === match ? replace : v)));
+    assert.throws(() => parseMemPriceRows(edit('Gasolina Regular', 'Gasolina Normal')), /Changed MEM price header/);
+    assert.throws(() => parseMemPriceRows(edit('GTQ/LB', 'GTQ/KG')), /Changed MEM price header/);
+    assert.throws(() => parseMemPriceRows(edit('PRECIOS  PROMEDIO MONITOREADOS EN CIUDAD CAPITAL', 'PRECIOS PROMEDIO NACIONALES')), /Changed MEM price area/);
+    assert.throws(() => parseMemPriceRows(edit(34.49, 'n/d')), /Invalid energy measurement/);
+    assert.throws(() => parseMemPriceRows(edit(126, -126)), /Invalid MEM price/);
+    assert.throws(() => parseMemPriceRows(sheetRows().filter(row => !(row[0] instanceof Date))), /No MEM price rows/);
+    // A stray blank row inside the table does not hide the newer days below it.
+    const rows = sheetRows();
+    rows.splice(rows.findIndex(row => row[0] instanceof Date) + 5, 0, []);
+    assert.equal(value(parseMemPriceRows(rows), 'fuel.retail_price', '2026-10-28', city('Gasolina Superior')), 34.49);
+  });
+
+  it('finds the newest upload of the month by suffix and reads only upload files', async () => {
+    const bytes = await workbook();
+    const oct = n => memWorkbookUrl(2026, 10, 2026, n);
+    assert.equal(oct(0), 'https://mem.gob.gt/wp-content/uploads/2026/10/Precios-Promedio-Nacionales-Diarios-2026.xlsx');
+    assert.equal(oct(3), 'https://mem.gob.gt/wp-content/uploads/2026/10/Precios-Promedio-Nacionales-Diarios-2026-3.xlsx');
+    const files = { [oct(0)]: 'old', [oct(1)]: 'old', [oct(2)]: 'old', [oct(3)]: bytes };
+    const { fetchFn, calls } = uploads(files);
+    // Nothing uploaded yet in November: fall back to October's newest file.
+    const data = await fetchRegionalEnergyFeed('mem', { fetchFn, nowMs: Date.parse('2026-11-01T12:00:00Z') });
+    assert.equal(data.dataUrls.at(-1), oct(3));
+    assert.equal(data.observedAt, '2026-10-28T00:00:00.000Z');
+    assert.ok(calls.every(c => c.url.startsWith('https://mem.gob.gt/wp-content/uploads/')), 'MEM pages and REST API are never requested');
+    assert.deepEqual(calls.filter(c => c.method === 'GET').map(c => c.url), [oct(3)]);
+    assert.equal(regionalEnergyContentMeta(data, Date.parse('2026-11-01T12:00:00Z')).newestItemAt, Date.parse('2026-10-28T00:00:00Z'));
+
+    // A November upload wins, and October is not probed.
+    const nov = memWorkbookUrl(2026, 11, 2026, 0);
+    const later = uploads({ ...files, [nov]: bytes });
+    const current = await fetchRegionalEnergyFeed('mem', { fetchFn: later.fetchFn, nowMs: Date.parse('2026-11-03T18:00:00Z') });
+    assert.equal(current.dataUrls.at(-1), nov);
+    assert.ok(!later.calls.some(c => c.url.includes('/2026/10/')));
+  });
+
+  it('fails on a challenged upload instead of reading it as missing', async () => {
+    const oct = memWorkbookUrl(2026, 10, 2026, 0);
+    const { fetchFn } = uploads({}, { [memWorkbookUrl(2026, 11, 2026, 0)]: new Response('', { status: 403 }), [oct]: new Response(null) });
+    await assert.rejects(fetchRegionalEnergyFeed('mem', { fetchFn, nowMs: Date.parse('2026-11-01T12:00:00Z') }), /mem provider HTTP 403/);
+    await assert.rejects(fetchRegionalEnergyFeed('mem', { fetchFn: uploads({}).fetchFn, nowMs: Date.parse('2026-11-01T12:00:00Z') }), /Missing MEM daily price workbook/);
   });
 });
 

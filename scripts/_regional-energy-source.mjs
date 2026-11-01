@@ -13,18 +13,19 @@ import {
   COES_DEMAND_URL, coesDemandBody, parseCoes,
   ICCC_INDEX_URL, discoverPngFuelPosts, parsePngFuelPost,
   FCCC_INDEX_URL, discoverFijiFuelPdfs, parseFijiFuel,
+  MEM_MAX_UPLOADS_PER_MONTH, memUploadFolders, memWorkbookUrl, parseMemPriceRows,
 } from './lib/regional-energy-feeds.mjs';
 
 const USER_AGENT = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
-// The national price sheet uses about a dozen columns.
-const ANP_SHEET_COLUMNS = 64;
+// The ANP national price sheet uses about a dozen columns, MEM's ten.
+const SHEET_COLUMNS = 64;
 const DOWNLOAD_HOSTS = new Set([
   'erp.powergrid.gov.bd', 'petrobangla.org.bd', 'www.niggrid.org',
   'www.eskom.co.za', 'api.cammesa.com', 'admin.gse.com.ge',
   'dados.ons.org.br', 'ons-aws-prod-opendata.s3.amazonaws.com',
   'www.gov.br', 'objectstorage.ap-dcc-gazipur-1.oraclecloud15.com',
   'evn.com.vn', 'portal.korem.kz', 'www.coes.org.pe',
-  'iccc.gov.pg', 'fccc.gov.fj',
+  'iccc.gov.pg', 'fccc.gov.fj', 'mem.gob.gt',
 ]);
 export const regionalEnergyKey = id => `energy:regional:${id}:v1`;
 export const regionalEnergyMetaKey = id => `seed-meta:energy:regional-${id}`;
@@ -47,15 +48,53 @@ function sourceFetch(url, options) {
   return undiciFetch(url, { ...options, dispatcher: issuerAgents.get(issuer) });
 }
 
+// Loads one worksheet as arrays of cell values within the first SHEET_COLUMNS.
+async function readSheetRows(bytes, sheetName, source) {
+  // ZIP headers are not trusted: inflate each entry with a bounded output
+  // before ExcelJS inflates the same bytes without one.
+  try {
+    assertZipExpansionWithin(bytes, 50_000_000);
+  } catch (err) {
+    throw new Error(/expands past/.test(err.message) ? `${source} workbook exceeds size budget` : `${source} workbook is ${err.message}`);
+  }
+  const { default: ExcelJS } = await import('exceljs');
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load(bytes);
+  const sheet = book.getWorksheet(sheetName);
+  if (!sheet) throw new Error(`Missing ${source} price sheet`);
+  // ExcelJS indexes row values by column, so copying row.values would
+  // allocate up to a far-right cell. Copy only cells within the price table.
+  const sheetRows = [];
+  sheet.eachRow(row => {
+    const values = [];
+    row.eachCell((cell, column) => { if (column <= SHEET_COLUMNS) values[column - 1] = cell.value; });
+    sheetRows.push(Array.from(values));
+  });
+  return sheetRows;
+}
+
 export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs = Date.now() } = {}) {
   const feed = feeds.find(f => f.id === id);
   if (!feed) throw new Error(`Unknown regional energy feed ${id}`);
   const downloaded = [];
+  const approved = url => {
+    if (url.protocol !== 'https:' || url.username || url.password || url.port || !DOWNLOAD_HOSTS.has(url.hostname)) throw new Error('Unapproved regional energy URL');
+  };
+  // Probes a file a provider names predictably. Only 404 means absent: a
+  // challenge, redirect or outage fails the run rather than skipping a file.
+  const exists = async input => {
+    const url = new URL(input);
+    approved(url);
+    const response = await fetchFn(url.href, { method: 'HEAD', headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(25000), redirect: 'manual' });
+    if (response.status === 404) return false;
+    if (!response.ok) throw new Error(`${id} provider HTTP ${response.status}`);
+    return true;
+  };
   // `form` sends a urlencoded POST body; a redirect would drop it, so a POST must not redirect.
   const read = async (input, format = 'text', form = undefined) => {
     let url = new URL(input);
     for (let hop = 0; hop < 4; hop++) {
-      if (url.protocol !== 'https:' || url.username || url.password || url.port || !DOWNLOAD_HOSTS.has(url.hostname)) throw new Error('Unapproved regional energy URL');
+      approved(url);
       const request = form === undefined
         ? { headers: { 'User-Agent': USER_AGENT } }
         : { method: 'POST', body: form, headers: { 'User-Agent': USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } };
@@ -126,28 +165,25 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
     const pricePage = await read('https://www.gov.br/anp/pt-br/assuntos/precos-e-defesa-da-concorrencia/precos/levantamento-de-precos-de-combustiveis-ultimas-semanas-pesquisadas');
     const priceUrl = [...pricePage.matchAll(/href="([^"]+)"/g)].find(m => /\/resumo[_-]semanal[_-]lpc[_-].+\.xlsx$/.test(m[1]))?.[1];
     if (!priceUrl) throw new Error('Missing ANP weekly price workbook');
-    const bytes = await read(priceUrl, 'bytes');
-    // ZIP headers are not trusted: inflate each entry with a bounded output
-    // before ExcelJS inflates the same bytes without one.
-    try {
-      assertZipExpansionWithin(bytes, 50_000_000);
-    } catch (err) {
-      throw new Error(/expands past/.test(err.message) ? 'ANP workbook exceeds size budget' : `ANP workbook is ${err.message}`);
-    }
-    const { default: ExcelJS } = await import('exceljs');
-    const book = new ExcelJS.Workbook();
-    await book.xlsx.load(bytes);
-    const sheet = book.getWorksheet('BRASIL');
-    if (!sheet) throw new Error('Missing national ANP price sheet');
-    // ExcelJS indexes row values by column, so copying row.values would
-    // allocate up to a far-right cell. Copy only cells within the price table.
-    const sheetRows = [];
-    sheet.eachRow(row => {
-      const values = [];
-      row.eachCell((cell, column) => { if (column <= ANP_SHEET_COLUMNS) values[column - 1] = cell.value; });
-      sheetRows.push(Array.from(values));
-    });
+    const sheetRows = await readSheetRows(await read(priceUrl, 'bytes'), 'BRASIL', 'ANP');
     points = [...trade, ...parseAnpPriceRows(sheetRows)];
+  }
+  if (id === 'mem') {
+    // Newest folder first; within a folder the highest suffix is the newest upload.
+    let url;
+    for (const folder of memUploadFolders(nowMs)) {
+      for (const nameYear of folder.nameYears) {
+        for (let n = 0; n <= MEM_MAX_UPLOADS_PER_MONTH; n++) {
+          const candidate = memWorkbookUrl(folder.year, folder.month, nameYear, n);
+          if (!(await exists(candidate))) break;
+          url = candidate;
+        }
+        if (url) break;
+      }
+      if (url) break;
+    }
+    if (!url) throw new Error('Missing MEM daily price workbook');
+    points = parseMemPriceRows(await readSheetRows(await read(url, 'bytes'), 'PUBLICACIÓN WEB', 'MEM'));
   }
   if (id === 'evn') points = parseEvn(await read(discoverEvnPost(await read(feed.sourceUrl))));
   if (id === 'korem') {

@@ -889,6 +889,7 @@
       "scripts/seed-regional-energy-gse.mjs",
       "scripts/seed-regional-energy-iccc.mjs",
       "scripts/seed-regional-energy-korem.mjs",
+      "scripts/seed-regional-energy-mem.mjs",
       "scripts/seed-regional-energy-niso.mjs",
       "scripts/seed-regional-energy-ons.mjs",
       "scripts/seed-regional-energy-petrobangla.mjs",

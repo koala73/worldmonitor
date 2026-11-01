@@ -22,3 +22,9 @@ time. `coes.json` wraps the unmodified response with its capture time and POST
 request. `korem.json` maps each requested
 portal URL to its response. `fccc-items-*.json` hold the text items extracted
 from every page of the FCCC release PDFs.
+
+`mem-daily.json` was captured on 2026-11-01 from MEM's
+`Precios-Promedio-Nacionales-Diarios-2026-3.xlsx` upload with the WorldMonitor
+User-Agent. It holds the worksheet's cell values: the title and header rows,
+the newest 40 dated rows and the source and note rows. Dates are stored as
+`{ "date": ISO }`; the tests rebuild a workbook from these rows.

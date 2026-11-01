@@ -21,6 +21,7 @@ const SECTIONS = [
   { label: 'Regional-Energy-coes', script: 'seed-regional-energy-coes.mjs', seedMetaKey: 'energy:regional-coes', canonicalKey: 'energy:regional:coes:v1', completionMetaKey: 'seed-completion:energy:regional-coes', expectedSourceVersion: 'regional-energy-coes-v1', intervalMs: 3600000, timeoutMs: 120_000 },
   { label: 'Regional-Energy-iccc', script: 'seed-regional-energy-iccc.mjs', seedMetaKey: 'energy:regional-iccc', canonicalKey: 'energy:regional:iccc:v1', completionMetaKey: 'seed-completion:energy:regional-iccc', expectedSourceVersion: 'regional-energy-iccc-v1', intervalMs: 43200000, timeoutMs: 120_000 },
   { label: 'Regional-Energy-fccc', script: 'seed-regional-energy-fccc.mjs', seedMetaKey: 'energy:regional-fccc', canonicalKey: 'energy:regional:fccc:v1', completionMetaKey: 'seed-completion:energy:regional-fccc', expectedSourceVersion: 'regional-energy-fccc-v1', intervalMs: 43200000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-mem', script: 'seed-regional-energy-mem.mjs', seedMetaKey: 'energy:regional-mem', canonicalKey: 'energy:regional:mem:v1', completionMetaKey: 'seed-completion:energy:regional-mem', expectedSourceVersion: 'regional-energy-mem-v1', intervalMs: 43200000, timeoutMs: 120_000 },
 ];
 
 // A null claim means another run holds the lease, credentials are absent, or

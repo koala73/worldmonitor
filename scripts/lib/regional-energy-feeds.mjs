@@ -688,6 +688,73 @@ export function parseFijiFuel(items) {
   return [...points.values()];
 }
 
+// ---- Guatemala MEM: daily average fuel prices monitored in Guatemala City (XLSX) ----
+
+// Since 2026-10-31 MEM's pages, sitemaps and REST API answer automated clients
+// with a Cloudflare challenge; the files they link to are served normally. The
+// seeder reads only those files. WordPress names each re-upload of the workbook
+// within a month with the next suffix: -2026.xlsx, -2026-1.xlsx, -2026-2.xlsx, ...
+const MEM_HOST = 'mem.gob.gt';
+export const MEM_MAX_UPLOADS_PER_MONTH = 31;
+export const memWorkbookUrl = (folderYear, folderMonth, nameYear, n) =>
+  `https://${MEM_HOST}/wp-content/uploads/${folderYear}/${pad2(folderMonth)}/Precios-Promedio-Nacionales-Diarios-${nameYear}${n ? `-${n}` : ''}.xlsx`;
+
+// Upload folders to search, newest first: this month and last month in
+// Guatemala time (UTC-6). A January folder may still hold last year's workbook.
+export function memUploadFolders(nowMs) {
+  const local = new Date(nowMs - 6 * 3600000);
+  const year = local.getUTCFullYear(), month = local.getUTCMonth() + 1;
+  return [[year, month], month === 1 ? [year - 1, 12] : [year, month - 1]]
+    .map(([y, m]) => ({ year: y, month: m, nameYears: m === 1 ? [y, y - 1] : [y] }));
+}
+
+const MEM_AREA = 'PRECIOS PROMEDIO MONITOREADOS EN CIUDAD CAPITAL';
+// [header, unit] as printed, then the published metric, label and unit. The
+// exchange-rate column (GTQ/USD) is not an energy price and is not read.
+const MEM_COLUMNS = [
+  ['Gasolina Superior', 'GTQ/GALON', 'fuel.retail_price', 'Gasolina Superior', 'GTQ/gal'],
+  ['Gasolina Regular', 'GTQ/GALON', 'fuel.retail_price', 'Gasolina Regular', 'GTQ/gal'],
+  ['Aceite Combustible Diésel', 'GTQ/GALON', 'fuel.retail_price', 'Diésel', 'GTQ/gal'],
+  ['Bunker', 'GTQ/GALON', 'fuel.price', 'Bunker', 'GTQ/gal'],
+  ['GLP', 'GTQ/CIL 25 LB', 'fuel.retail_price', 'GLP 25 lb cylinder', 'GTQ/25lb'],
+  ['GLP', 'GTQ/LB', 'fuel.retail_price', 'GLP', 'GTQ/lb'],
+  ['Gasolina de Aviación (AvGas)', 'GTQ/GALON', 'fuel.price', 'AvGas', 'GTQ/gal'],
+  ['Kerosene de Aviación (JET A-1)', 'GTQ/GALON', 'fuel.price', 'Jet A-1', 'GTQ/gal'],
+];
+// The workbook runs from 2013; only the newest month can reach a snapshot.
+const MEM_WINDOW_DAYS = 31;
+const memLabel = v => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : v);
+
+export function parseMemPriceRows(sheetRows) {
+  const headerAt = sheetRows.findIndex(row => memLabel(row[0]) === 'FECHA');
+  if (headerAt < 0) throw new Error('Changed MEM price header');
+  if (!sheetRows.slice(0, headerAt).some(row => row.some(v => memLabel(v) === MEM_AREA))) throw new Error('Changed MEM price area');
+  const header = sheetRows[headerAt].map(memLabel), units = (sheetRows[headerAt + 1] ?? []).map(memLabel);
+  const expected = [['FECHA', 'Unidades:'], ['Tipo de Cambio', 'GTQ/USD'], ...MEM_COLUMNS.map(c => [c[0], c[1]])];
+  if (expected.some(([h, u], i) => header[i] !== h || units[i] !== u)) throw new Error('Changed MEM price header');
+  const dated = [];
+  // A blank row inside the table is skipped; the first other undated row is the source footer.
+  for (const row of sheetRows.slice(headerAt + 2)) {
+    if (row[0] instanceof Date) dated.push(row);
+    else if (row.some(v => v != null && v !== '')) break;
+  }
+  if (!dated.length) throw new Error('No MEM price rows');
+  const newest = Math.max(...dated.map(row => row[0].getTime()));
+  const points = new Map();
+  for (const row of dated.filter(r => newest - r[0].getTime() < MEM_WINDOW_DAYS * 86400000)) {
+    const period = validDay(row[0].toISOString().slice(0, 10));
+    MEM_COLUMNS.forEach(([, , metric, name, unit], i) => {
+      const raw = row[i + 2];
+      // Columns start at different dates (aviation fuels from 2025-09); a blank cell is no observation.
+      if (raw == null || raw === '') return;
+      const point = observation(metric, period, raw, unit, `${name}; Guatemala City`);
+      if (point.value <= 0) throw new Error('Invalid MEM price');
+      addUnique(points, point);
+    });
+  }
+  return required([...points.values()]);
+}
+
 // Feeds flagged publishesAhead in the registry post schedules, day-ahead
 // auction results or price releases before the period they describe. The
 // snapshot keeps only what is already in effect; every other feed treats a

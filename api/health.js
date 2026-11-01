@@ -685,6 +685,7 @@ const STANDALONE_KEYS = {
   regionalEnergyCoes:       'energy:regional:coes:v1',
   regionalEnergyIccc:       'energy:regional:iccc:v1',
   regionalEnergyFccc:       'energy:regional:fccc:v1',
+  regionalEnergyMem:        'energy:regional:mem:v1',
   resilienceIntervals:      'resilience:intervals:v12:US',
   sprPolicies:              'energy:spr-policies:v1',
   pipelinesGas:             'energy:pipelines:gas:v1',
@@ -2222,6 +2223,8 @@ const SEED_META = {
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-iccc' } },
   regionalEnergyFccc: { key: 'seed-meta:energy:regional-fccc', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-fccc',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-fccc' } },
+  regionalEnergyMem: { key: 'seed-meta:energy:regional-mem', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 30240, activationKey: 'seed-activated:energy:regional-mem',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-mem' } },
   cryptoSectors:        { key: 'seed-meta:market:crypto-sectors',             maxStaleMin: 120 }, // relay loop every ~30min; 120min = 2h = 4x interval
   ddosAttacks:          { key: 'seed-meta:cf:radar:ddos',                    maxStaleMin: 60 }, // seed-internet-outages publishes the payload before advancing this clock; outages cron ~15min; 60 = 4x interval
   economicStress:       { key: 'seed-meta:economic:stress-index',            maxStaleMin: 180 }, // computed in seed-economy afterPublish; cron ~1h; 180min = 3x interval
@@ -2380,6 +2383,7 @@ const ON_DEMAND_KEYS = new Set([
   'regionalEnergyCoes',
   'regionalEnergyIccc',
   'regionalEnergyFccc',
+  'regionalEnergyMem',
 
   'globalTendersColombiaSecop',
   'globalTendersKenyaPpip',
@@ -2586,6 +2590,7 @@ const ACTIVATION_MARKERS = {
   regionalEnergyCoes: SEED_META.regionalEnergyCoes.activationKey,
   regionalEnergyIccc: SEED_META.regionalEnergyIccc.activationKey,
   regionalEnergyFccc: SEED_META.regionalEnergyFccc.activationKey,
+  regionalEnergyMem: SEED_META.regionalEnergyMem.activationKey,
 
   globalTendersColombiaSecop: SEED_META.globalTendersColombiaSecop.activationKey,
   globalTendersKenyaPpip: SEED_META.globalTendersKenyaPpip.activationKey,

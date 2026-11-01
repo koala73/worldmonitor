@@ -141,5 +141,15 @@
     "script": "seed-regional-energy-fccc.mjs",
     "publishesAhead": true,
     "utcOffsetMin": 720
+  },
+  {
+    "id": "mem",
+    "countryCode": "GT",
+    "name": "Guatemala MEM fuel prices",
+    "sourceUrl": "https://mem.gob.gt/que-hacemos/hidrocarburos/comercializacion-downstream/precios-combustible-nacionales/",
+    "licence": "Data licence unconfirmed; robots content-signal ai-train=no, use=reference",
+    "intervalMin": 720,
+    "maxContentAgeMin": 30240,
+    "script": "seed-regional-energy-mem.mjs"
   }
 ]
