@@ -279,16 +279,18 @@ describe('PortWatch reference pagination recovery', () => {
   it('declines an invalid_query retry that cannot finish inside the reference budget', async (t) => {
     const transport = paginationTransport({ error: { message: 'Invalid query parameters.' } });
     // Each failed attempt plus its cooldown costs 30s of mocked wall clock.
-    // Page 2 starts with 82s left. Retry 1 (needs 5s + 30s) fits with 82s
-    // left and retry 2 with 52s; retry 3 is declined with 22s left, so the
-    // page fails after 3 attempts instead of being killed mid-flight by the
-    // reference deadline. Unbounded by the deadline it would take 4.
+    // A reference retry may fall back to the proxy, so it must reserve the
+    // full direct + proxy budget (30s + 50s) plus its 5s cooldown = 85s, the
+    // same allowance the per-page check gives a fresh page. Page 2 starts with
+    // 130s left: retries are admitted at 130s and 100s, then declined at 70s.
+    // Reserving only the 30s direct leg would admit a third retry at 70s that
+    // can run up to 15s past the reference slice.
     let now = 1_000_000;
     t.mock.method(Date, 'now', () => now);
     const sleepCalls = [];
     await assert.rejects(portwatchSeed.fetchAllPortRefs({
       ...transport,
-      deadlineAt: now + 82_000,
+      deadlineAt: now + 130_000,
       sleepFn: async (ms) => { sleepCalls.push(ms); now += 30_000; },
     }), /Invalid query parameters/);
     assert.deepEqual(transport.requestedOffsets, [0, 1, 1, 1]);

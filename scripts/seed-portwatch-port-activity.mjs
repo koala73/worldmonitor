@@ -581,6 +581,9 @@ export async function fetchAllPortRefs({
         sleepFn,
         label: `reference page ${page}`,
         deadlineAt,
+        // A retried page can still fall back to the proxy, so reserve the same
+        // direct + proxy budget the per-page check above reserves.
+        minAttemptMs: FETCH_TIMEOUT + PROXY_FETCH_TIMEOUT,
         invalidQueryRetries: MAX_REFERENCE_INVALID_QUERY_RETRIES,
       },
     );
