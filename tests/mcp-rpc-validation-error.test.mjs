@@ -532,7 +532,8 @@ describe('MCP RPC ValidationError preservation on the observed-downstream path',
     );
     const body = await res.json();
     assert.equal(body.error?.code, -32603);
-    assert.deepEqual(body.error?.data, { reportWith: 'report_issue' }, 'only the report guidance, never body text');
+    // A 502 is an upstream outage, not a bug to report: no data, no body text.
+    assert.equal(body.error?.data, undefined);
     assert.ok(!JSON.stringify(body).includes('upstream exploded'));
   });
 

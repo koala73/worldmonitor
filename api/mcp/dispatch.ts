@@ -21,6 +21,7 @@ import { FeedbackRejectedError, REPORT_ISSUE_TOOL } from './registry/feedback-to
 import { BillingDenialError, RpcValidationError, ToolBackoffError } from './billing-denial';
 import {
   BothSourcesFailedError,
+  ToolFetchError,
   createMcpToolExecutionContext,
   downstreamErrorTags,
 } from './downstream';
@@ -444,6 +445,8 @@ const REGISTERED_TOOL_NAMES: ReadonlySet<string> = new Set(TOOL_REGISTRY.map((to
 // states, such as billing denials, rate limits, validation errors, source
 // outages and report_issue's own refusals, do not carry it.
 const REPORT_GUIDANCE = { reportWith: REPORT_ISSUE_TOOL } as const;
+/** Downstream statuses that mean "busy or down", not "broken": no report hint. */
+const UPSTREAM_EXPECTED_STATUSES = new Set([429, 502, 503, 504]);
 
 /**
  * Who is calling `report_issue`, from the request and the auth context only
@@ -1361,7 +1364,12 @@ export async function dispatchToolsCall(
     if (err instanceof RpcValidationError) {
       return invalidArguments('Invalid params', { violations: err.violations });
     }
+    // Only an unexpected failure points at report_issue. An upstream rate limit
+    // or outage is an ordinary state; a report would spend the caller's
+    // allowance on noise.
+    const isExpectedUpstreamState = isBothFailed
+      || (err instanceof ToolFetchError && UPSTREAM_EXPECTED_STATUSES.has(err.status));
     return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders,
-      tool.name === REPORT_ISSUE_TOOL ? undefined : { ...REPORT_GUIDANCE });
+      tool.name === REPORT_ISSUE_TOOL || isExpectedUpstreamState ? undefined : { ...REPORT_GUIDANCE });
   }
 }

@@ -300,6 +300,33 @@ describe('error guidance', () => {
     }
   });
 
+  it('does not point an upstream rate limit or outage at report_issue', async () => {
+    // Expected states: a report would spend the caller's allowance on noise.
+    const { TOOL_REGISTRY } = await import('../api/mcp/registry/index.ts');
+    const { ToolFetchError, BothSourcesFailedError } = await import('../api/mcp/downstream.ts');
+    const tool = TOOL_REGISTRY.find((t) => t.name === 'get_sources');
+    const original = tool._execute;
+    const failures = [
+      new ToolFetchError('search-intel-history', 429, 'rate_limited', 'json_error'),
+      new ToolFetchError('search-intel-history', 503, 'unavailable', 'json_error'),
+      new ToolFetchError('search-intel-history', 502, 'bad_gateway', 'html_error'),
+      new BothSourcesFailedError(new Error('timeout'), new Error('timeout')),
+    ];
+    try {
+      for (const failure of failures) {
+        tool._execute = async () => { throw failure; };
+        const body = await call('get_sources');
+        assert.equal(body.error.code, -32603, failure.message);
+        assert.equal(body.error.data?.reportWith, undefined, failure.message);
+      }
+      // A downstream bug (500) still points at report_issue.
+      tool._execute = async () => { throw new ToolFetchError('search-intel-history', 500, 'internal', 'json_error'); };
+      assert.equal((await call('get_sources')).error.data?.reportWith, 'report_issue');
+    } finally {
+      tool._execute = original;
+    }
+  });
+
   it('does not point a refused or invalid report back at report_issue', async () => {
     limiter = { mode: 'throw' };
     const refused = (await report({ kind: 'bug', summary: 'Limiter down.' })).body;
