@@ -15,7 +15,7 @@ Summarize World Monitor's curated market snapshot.
 
 ## Steps
 
-1. Call `get_market_data` with `asset_class: ["equity", "commodity", "crypto"]`. Add `"sectors"` or `"sentiment"` when the user asks for sector performance or market mood. Pass `symbols` (for example `["AAPL", "GC=F", "BTC"]`) when the user names instruments.
+1. Call `get_market_data` with `asset_class: ["equity", "commodity", "crypto"]` and `limit: 0`. The default cap of 30 per list follows catalog order, not size of move, so a capped list can hide the biggest movers. Add `"sectors"` or `"sentiment"` when the user asks for sector performance or market mood. Pass `symbols` (for example `["AAPL", "GC=F", "BTC"]`) when the user names instruments.
 2. For each asset class list the largest gainers and losers. The `change` field is already a percent change, so report it as a percent.
 3. Point out correlated moves or single-name outliers that stand out in the data.
 

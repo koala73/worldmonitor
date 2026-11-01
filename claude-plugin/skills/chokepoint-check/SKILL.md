@@ -17,7 +17,7 @@ Report the current state of one or all of the 13 maritime chokepoints World Moni
 ## Steps
 
 1. Call `get_chokepoint_status` with `dataset: ["transit-summaries"]`. Add `chokepoint` with a lowercase name fragment (`"hormuz"`, `"suez"`, `"malacca"`, `"bab"`, `"panama"`) when the user names one.
-2. For each chokepoint report today's transits (total, tanker and cargo), the week-over-week change, the risk level, incidents in the last seven days and the risk narrative.
+2. For each chokepoint report today's transits (total, tanker and cargo), the week-over-week change, the risk level and incidents in the last seven days. The tool withholds the risk narrative (`riskSummary` is always empty); do not write one, and do not read the empty field as low risk.
 3. When the user asks about oil or gas supply, also call `get_energy_intelligence` and add active disruptions that mention the chokepoint.
 
 ## Rules

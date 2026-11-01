@@ -15,9 +15,9 @@ Report recent natural hazards from World Monitor's seeded feeds.
 
 ## Steps
 
-1. Call `get_natural_disasters`. Narrow it with `dataset` (`earthquakes`, `wildfires`, `other`) when the user names a hazard type. For a place, pass `lat`, `lon` and `radius_km` (up to 2000). Use `since_days: 7` unless the user asks for another window, and `active_only: true` for events still under way.
+1. Call `get_natural_disasters`. When the user names a hazard type, pass `dataset` as an array: `["earthquakes"]`, `["wildfires"]` or `["other"]`. For a place, pass `lat`, `lon` and `radius_km` (up to 2000). Use `since_days: 7` unless the user asks for another window, and `active_only: true` for events still under way.
 2. For earthquakes give magnitude, location, depth and time. For wildfires give location and detection time. For other events give type, location and whether the event is still active.
-3. Sort by severity, then by time.
+3. Sort by severity, then by time. Each list is capped at 30 items by default; when a list comes back with exactly 30, say there may be more and offer a narrower area or window.
 
 ## Rules
 

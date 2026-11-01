@@ -1,7 +1,7 @@
 {
   "name": "worldmonitor",
   "displayName": "World Monitor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Source-backed global intelligence in Claude: world news briefs, country risk, armed conflict, maritime chokepoints, natural hazards and market snapshots from the World Monitor MCP server, with skills that keep sources, observation times and data gaps in every answer.",
   "author": {
     "name": "World Monitor",

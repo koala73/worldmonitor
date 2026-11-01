@@ -17,7 +17,7 @@ Answer "what is happening in the world right now" with World Monitor's precomput
 ## Steps
 
 1. Call `get_world_brief` with no arguments. It returns one written brief and an index-aligned `topStories` list with each story's corroboration evidence.
-2. If the call is refused because the account has no subscription, call `get_news_intelligence` with `alerts_only: true` and build a short list of the alert-flagged top stories instead. Tell the user this is the story feed, not the written brief.
+2. If the call is refused because the account has no subscription, call `get_news_intelligence` with no filters. Its `topStories` are the eight stories the World Monitor dashboard selects worldwide. Build the list from those and tell the user this is the story feed, not the written brief.
 3. Present at most eight items, most important first. For each one give the headline in your own words, the primary source, and how many independent sources corroborate it when the result says so.
 
 ## Rules

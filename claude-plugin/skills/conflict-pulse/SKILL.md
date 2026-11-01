@@ -16,9 +16,9 @@ Report current conflict activity from event-level data, then add the alert-flagg
 
 ## Steps
 
-1. Call `get_conflict_events`. For one country pass `country` with its English name (for example `"Sudan"`). For a region pass `lat`, `lon` and `radius_km`. Use `min_fatalities: 1` and `since_days: 14` unless the user asks for another window.
-2. Call `get_news_intelligence` with `alerts_only: true`. Add `country` as the ISO alpha-2 code when the question is about one country.
-3. Group the events by location. For each group give the date range, number of events, best-estimate fatalities and the parties named in the data.
+1. Call `get_conflict_events` with `since_days: 14` (or the window the user asks for) and `limit: 0`, so event counts are not cut at the default 30 per list. For one country pass `country` with its English name (for example `"Sudan"`). For a region pass `lat`, `lon` and `radius_km`. Add `min_fatalities: 1` only when the user asks about deadly events; unrest events often record zero or unknown fatalities.
+2. Call `get_news_intelligence` with `alerts_only: true`. Add `country` as the ISO alpha-2 code when the question is about one country. If no alert-flagged stories come back, call it again without `alerts_only`.
+3. Group the events by location. For each group give the date range, number of events, best-estimate fatalities and the parties named in the data. If the result reports that output was truncated or simplified, say the counts are partial.
 4. Add the news stories that match those locations, with their sources.
 
 ## Rules

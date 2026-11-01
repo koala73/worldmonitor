@@ -30,21 +30,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check out repository
+      # Always mirror the current main, not the triggering SHA: a re-run of an
+      # older job would otherwise copy an older bundle over a newer mirror.
+      - name: Check out current main
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: main
+          persist-credentials: false
 
       - name: Push claude-plugin/ to the mirror
         env:
           DEPLOY_KEY: ${{ secrets.PLUGINS_MIRROR_DEPLOY_KEY }}
-          SOURCE_SHA: ${{ github.sha }}
+          # GitHub's published ed25519 host key (docs: githubs-ssh-key-fingerprints).
+          GITHUB_HOST_KEY: github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
         run: |
           set -euo pipefail
           test -n "${DEPLOY_KEY}"
+          SOURCE_SHA="$(git rev-parse HEAD)"
           install -m 700 -d ~/.ssh
           printf '%s\n' "${DEPLOY_KEY}" > ~/.ssh/mirror_key
           chmod 600 ~/.ssh/mirror_key
-          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
-          export GIT_SSH_COMMAND="ssh -i ~/.ssh/mirror_key -o IdentitiesOnly=yes"
+          printf '%s\n' "${GITHUB_HOST_KEY}" > ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/mirror_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
 
           git clone --depth 1 git@github.com:koala73/worldmonitor-plugins.git mirror
           rm -rf mirror/claude-plugin
