@@ -11,6 +11,7 @@
  * empty-state work.
  */
 
+import { readFileSync } from 'node:fs';
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -317,5 +318,51 @@ describe('get-route-explorer-lane smoke matrix (30 queries)', () => {
         `chokepoint ${exp.chokepointId} is not on the primary route ${res.primaryRouteId}`,
       );
     }
+  });
+});
+
+describe('route waypoints and chokepoint registries agree', () => {
+  // Exposure arithmetic reads registry routeIds, while supplier route risk and
+  // lane geometry read route waypoints. A route that crosses a chokepoint in
+  // one source and not the other draws a lane through the canal with no
+  // chokepoint on it (US→JP tanker via us-gulf-asia-panama, #7990).
+  it('lists every waypoint route in that chokepoint registry entry, and back', async () => {
+    const { TRADE_ROUTES } = await import('../src/config/trade-routes.ts');
+    const { CHOKEPOINT_REGISTRY } = await import('../server/_shared/chokepoint-registry.ts');
+    const byWaypoint = new Map<string, { id: string; routeIds: string[] }>();
+    for (const cp of CHOKEPOINT_REGISTRY) {
+      byWaypoint.set(cp.id, cp);
+      byWaypoint.set(cp.geoId, cp);
+    }
+    const mismatches: string[] = [];
+    for (const route of TRADE_ROUTES) {
+      for (const waypoint of route.waypoints) {
+        const cp = byWaypoint.get(waypoint);
+        if (cp && !cp.routeIds.includes(route.id)) mismatches.push(`${route.id} crosses ${cp.id} but is not in its routeIds`);
+      }
+    }
+    for (const cp of CHOKEPOINT_REGISTRY) {
+      for (const routeId of cp.routeIds) {
+        const route = TRADE_ROUTES.find((r) => r.id === routeId);
+        if (!route) mismatches.push(`${cp.id} lists unknown route ${routeId}`);
+        else if (!route.waypoints.includes(cp.id) && !route.waypoints.includes(cp.geoId)) {
+          mismatches.push(`${cp.id} lists ${routeId}, whose waypoints do not include it`);
+        }
+      }
+    }
+    assert.deepEqual(mismatches, []);
+  });
+
+  it('keeps the browser and seeder registry routeIds equal to the server registry', async () => {
+    const { CHOKEPOINT_REGISTRY: server } = await import('../server/_shared/chokepoint-registry.ts');
+    const { CHOKEPOINT_REGISTRY: browser } = await import('../src/config/chokepoint-registry.ts');
+    const expected = Object.fromEntries(server.map((cp) => [cp.id, [...cp.routeIds].sort()]));
+    assert.deepEqual(Object.fromEntries(browser.map((cp) => [cp.id, [...cp.routeIds].sort()])), expected);
+    const seederSource = readFileSync(new URL('../scripts/seed-hs2-chokepoint-exposure.mjs', import.meta.url), 'utf8');
+    const seeder: Record<string, string[]> = {};
+    for (const match of seederSource.matchAll(/^ {2}\{ id: '([a-z0-9_]+)'[^\n]*routeIds: \[([^\]]*)\]/gm)) {
+      seeder[match[1]] = match[2].split(',').map((entry) => entry.trim().replace(/'/g, '')).filter(Boolean).sort();
+    }
+    assert.deepEqual(seeder, expected);
   });
 });
