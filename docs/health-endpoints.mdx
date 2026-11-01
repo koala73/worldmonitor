@@ -933,7 +933,7 @@ fi
 
 `scripts/capture-seed-recovery.mjs` records read-only recovery evidence for `wildfires`, `physicalDivergence`, `crossStraitActivityTaiwanMnd`, and `yieldCurveAu`. It writes a local JSON checkpoint and a Markdown view. It does not run a seeder or change Railway or Redis.
 
-Use Node.js 24, an authenticated Railway CLI, `WM_API_KEY` (or `WORLDMONITOR_API_KEY`), and the existing Upstash REST credentials. The command uses `loadEnvFile()` and reads only the registered source metadata keys. Run it from a checkout that contains the required and deployed Git commits; missing ancestry is unverified.
+Use Node.js 24, an authenticated Railway CLI, `WM_API_KEY` (or `WORLDMONITOR_API_KEY`), and the existing Upstash REST credentials. The command uses `loadEnvFile()` and reads only registered source keys. For AU, these include metadata, the completion marker, canonical data, and reader shards. Run it from a checkout that contains the required and deployed Git commits; missing ancestry is unverified.
 
 Use the repair's merge commit on `main`, then start before the first run you intend to count. A PR branch SHA can lose its ancestry after a squash merge. Set a concrete UTC deadline once:
 
@@ -963,7 +963,8 @@ date separately from publication time. An absent current-year shard is allowed
 only when canonical data has no observations for that year.
 
 Choose an execution deadline before the content boundary. For example, use
-10:20 UTC after a verified eligible 10:00 slot, then resume after that deadline.
+10:20 UTC after a verified eligible 10:00 slot, then resume after the run finishes
+but before that deadline. Resume after the deadline only to record failure.
 First confirm AU is due under the bundle's 80-percent daily interval gate;
 an earlier off-schedule publication can make the next slot legitimately skip AU.
 A missing completion or inaccessible evidence produces a failed or unverified
