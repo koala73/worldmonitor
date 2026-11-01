@@ -620,7 +620,15 @@ export function retargetStackedChildren({ event, gh } = {}) {
         && stackedBaseRef({ closedPull: child, repository, defaultBranch }));
       // Only a deleted base explains the closure; a child closed by hand while
       // the branch still exists gets no recovery comment.
-      const baseDeleted = closedChildren.length > 0 && !branchExists({ gh, repository, ref: headRef });
+      // A failed lookup only withholds that comment; the stranding below still runs.
+      let baseDeleted = false;
+      if (closedChildren.length > 0) {
+        try {
+          baseDeleted = !branchExists({ gh, repository, ref: headRef });
+        } catch (error) {
+          failures.push(`${headRef}: branch lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
       for (const child of closedChildren) {
         if (baseDeleted) {
           closedPlan.push({

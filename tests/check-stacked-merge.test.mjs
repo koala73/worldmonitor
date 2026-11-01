@@ -1062,7 +1062,7 @@ describe('retargetStackedChildren executor', () => {
     assert.equal(reads, 2);
     assert.equal(log.filter(entry => entry.path.endsWith('/rerun')).length, 1);
   });
-  function fakeGh(children, { failPatch = new Set(), failRerun = false, closedChildren = [], openByBase = {}, existingBranches = [], failClosedList = false } = {}) {
+  function fakeGh(children, { failPatch = new Set(), failRerun = false, closedChildren = [], openByBase = {}, existingBranches = [], failClosedList = false, failRefLookup = false } = {}) {
     const log = [];
     const gh = (args, options = {}) => {
       const path = args.find(arg => arg.startsWith('repos/'));
@@ -1077,6 +1077,7 @@ describe('retargetStackedChildren executor', () => {
         return JSON.stringify([closedChildren]);
       }
       if (path.includes('/git/matching-refs/heads/')) {
+        if (failRefLookup) throw new Error('ref lookup refused');
         const prefix = decodeURIComponent(path.split('/git/matching-refs/heads/')[1]);
         return JSON.stringify([existingBranches.filter(name => name.startsWith(prefix)).map(name => ({ ref: `refs/heads/${name}` }))]);
       }
@@ -1255,6 +1256,19 @@ describe('retargetStackedChildren executor', () => {
     });
     const result = retargetStackedChildren({ event: pullEvent(PARENT_9950, { action: 'closed' }), gh });
     assert.deepEqual(result.plan.map(item => [item.number, item.action]), [[9958, 'closed-by-base-deletion']]);
+  });
+
+  it('still strands open grandchildren when the base-branch lookup fails', () => {
+    const { gh, log } = fakeGh([], {
+      closedChildren: [CHILD_9958],
+      openByBase: { 'feat/mcp-report-issue': [GRANDCHILD_9962] },
+      failRefLookup: true,
+    });
+    const result = retargetStackedChildren({ event: pullEvent(PARENT_9950, { action: 'closed' }), gh });
+    assert.equal(result.exitCode, 1);
+    assert.match(result.annotation, /feat\/agent-feedback-rest: branch lookup failed/);
+    assert.deepEqual(result.plan.map(item => [item.number, item.action]), [[9962, 'strand']]);
+    assert.ok(log.some(entry => entry.path.endsWith('333333/rerun')));
   });
 
   it('retargets open children before the closed-child lookup, and reports that lookup failing', () => {
