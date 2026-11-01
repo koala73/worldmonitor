@@ -32,7 +32,8 @@ async function post(body, extraHeaders = {}) {
     body: typeof body === 'string' ? body : JSON.stringify(body),
   }), deps);
   const text = await res.text();
-  return { res, text, json: text ? JSON.parse(text) : null };
+  const isJson = /application\/json/.test(res.headers.get('content-type') ?? '');
+  return { res, text, json: text && isJson ? JSON.parse(text) : null };
 }
 
 function modernBody(id, method, params = {}) {
@@ -72,6 +73,15 @@ describe('MCP error envelopes carry data.requestId', () => {
     const { json } = await post({ jsonrpc: '2.0', id: 7, method: 'no/such' });
     assert.equal(json.id, 7);
     assert.ok(json.error, JSON.stringify(json));
+    assert.equal(json.error.data.requestId, REQUEST_ID);
+  });
+
+  it('adds it to a legacy session error framed as SSE', async () => {
+    const { res, text } = await post({ jsonrpc: '2.0', id: 9, method: 'no/such' }, { 'Mcp-Session-Id': 'session-rid-test' });
+    assert.match(res.headers.get('content-type') ?? '', /text\/event-stream/);
+    const data = text.split('\n').filter((line) => line.startsWith('data: ')).map((line) => line.slice(6)).join('\n');
+    const json = JSON.parse(data);
+    assert.equal(json.id, 9);
     assert.equal(json.error.data.requestId, REQUEST_ID);
   });
 
@@ -164,11 +174,13 @@ describe('attachRequestIdToErrors', () => {
     assert.equal(JSON.parse(text).error.data.requestId, REQUEST_ID);
   });
 
-  it('passes through a JSON body that does not parse', async () => {
-    const res = await attachRequestIdToErrors(new Response('not json', {
+  it('passes through a JSON body that does not parse, even one naming "error"', async () => {
+    const original = new Response('{"error":', {
       status: 500, headers: { 'Content-Type': 'application/json' },
-    }), REQUEST_ID);
+    });
+    const res = await attachRequestIdToErrors(original, REQUEST_ID);
+    assert.equal(res, original);
     assert.equal(res.status, 500);
-    assert.equal(await res.text(), 'not json');
+    assert.equal(await res.text(), '{"error":');
   });
 });
