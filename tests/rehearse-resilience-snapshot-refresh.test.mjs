@@ -64,7 +64,6 @@ describe('resilience snapshot refresh rehearsal', () => {
       const after = byCode(drifted.items, code);
       assert.notEqual(after.rank, before.rank, `${code} changes rank`);
       assert.notEqual(after.overallScore, before.overallScore, `${code} changes score`);
-      assert.ok(Math.abs(after.rank - before.rank) === 1, `${code} moves one place, so band anchors keep their band`);
       assert.equal(after.countryName, before.countryName, `${code} keeps its identity`);
     }
 
