@@ -7,8 +7,14 @@ const mocks = vi.hoisted(() => ({
   fetchCategoryFeeds: vi.fn(),
   checkBatchForBreakingAlerts: vi.fn(),
   ingestHeadlines: vi.fn(),
+  saved: new Map<string, { data: unknown; updatedAt: number }>(),
 }));
 
+vi.mock('@/services/persistent-cache', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/persistent-cache')>(),
+  getPersistentCache: async (key: string) => mocks.saved.get(key) ?? null,
+  setPersistentCache: async (key: string, data: unknown) => { mocks.saved.set(key, { data, updatedAt: Date.now() }); },
+}));
 vi.mock('@/services/analysis-worker', () => ({
   analysisWorker: { clusterNews: vi.fn(), analyzeCorrelations: vi.fn() },
 }));
@@ -102,6 +108,7 @@ describe('cross-edition panels read the digests of every edition that carries th
     mocks.fetchCategoryFeeds.mockReset();
     mocks.checkBatchForBreakingAlerts.mockReset();
     mocks.ingestHeadlines.mockReset();
+    mocks.saved.clear();
   });
 
   it('merges a markets panel from both the finance and commodity digests', async () => {
@@ -263,6 +270,30 @@ describe('cross-edition panels read the digests of every edition that carries th
 
     expect(items.map(i => i.title).sort()).toEqual(first.map(i => i.title).sort());
     expect(recorded).toEqual([true]);
+    expect(mocks.fetchCategoryFeeds).not.toHaveBeenCalled();
+  });
+
+  it('serves the edition digests a previous page load saved, marked cached, when they are down on a new page load', async () => {
+    vi.stubGlobal('fetch', digestFetch({
+      finance: editionDigest('markets', ['Finance Wire']),
+      commodity: editionDigest('markets', ['Commodity Desk']),
+    }));
+    const firstPage = await makeLoader();
+    const first = await firstPage.loadNewsCategory('markets', feeds(['Finance Wire', 'Commodity Desk']), null, true, OPTIONS);
+    await vi.waitFor(() => expect(mocks.saved.size).toBe(2));
+
+    vi.stubGlobal('fetch', digestFetch({}));
+    const setRefreshDegraded = vi.fn();
+    const secondPage = await makeLoader({ markets: { setRefreshDegraded } });
+    const recorded: boolean[] = [];
+
+    const items = await secondPage.loadNewsCategory('markets', feeds(['Finance Wire', 'Commodity Desk']), null, true, OPTIONS,
+      undefined, servedStale => { recorded.push(servedStale); });
+
+    expect(items.map(i => i.title).sort()).toEqual(first.map(i => i.title).sort());
+    expect(setRefreshDegraded).toHaveBeenLastCalledWith(true);
+    expect(recorded).toEqual([true]);
+    expect(mocks.checkBatchForBreakingAlerts).not.toHaveBeenCalledWith(expect.arrayContaining([expect.anything()]));
     expect(mocks.fetchCategoryFeeds).not.toHaveBeenCalled();
   });
 });
