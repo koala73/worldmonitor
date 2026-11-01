@@ -55,6 +55,8 @@ import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from 
 import { emitTelemetry, principalIdForLog } from './telemetry';
 import { classifyAgentClientHints, sanitizeClientName } from '../../shared/agent-client-source';
 import { hashKeySync } from '../../server/_shared/usage-identity';
+import { deriveRequestId } from '../../server/_shared/usage';
+import { attachRequestIdToErrors } from './request-id';
 import {
   createMcpUsage,
   emitMcpRequestEvent,
@@ -855,6 +857,8 @@ export async function mcpHandler(
   let res: Response;
   try {
     res = await mcpHandlerInner(req, deps, usage, exchange, ctx);
+    // Before modern shaping, which may re-frame a JSON body as SSE.
+    res = await attachRequestIdToErrors(res, deriveRequestId(req));
     if (usage.era === 'modern') {
       res = await shapeModernResponse(res, {
         method: exchange.method,
