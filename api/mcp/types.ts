@@ -132,8 +132,9 @@ export interface BaseToolDef {
   // its output schema; the dispatcher replaces the finished payload with the
   // narrator's 2-3 sentence envelope (api/mcp/spoken.ts). Declared HERE, on
   // the tool, so the roster is the registry itself. The narrator sees the
-  // same payload a full call would serialize (after filters and fit), and
-  // must read every number it speaks from that payload.
+  // payload a full call would serialize after filters and presentation but
+  // before any output-budget fit (the envelope is small, so the fit is
+  // skipped), and must read every number it speaks from that payload.
   _spoken?: SpokenNarrator;
   // U7 (R7, R9): membership in the always-free subset — servable to an
   // uncredentialed caller, consuming no quota for any principal. Declared HERE,
