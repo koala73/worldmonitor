@@ -469,20 +469,29 @@ describe('OFAC source caller deadline', () => {
   it('aborts missing headers at the deadline and starts nothing after it', { timeout: 20_000 }, async () => {
     const calls = [];
     let proxyCalls = 0;
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => { warnings.push(args.join(' ')); };
     const startedAt = Date.now();
 
-    await assert.rejects(
-      fetchOfacSourceResponse(SOURCE_URL, {
-        fetchFn: neverRespondingFetch(calls),
-        proxyFetchFn: async () => { proxyCalls += 1; return redirect; },
-        proxyUrl,
-        sleepFn: async () => {},
-        headerTimeoutMs: 4_000,
-        deadlineAt: startedAt + 1_500,
-      }),
-      (error) => error.nonRetryable === true && /OFAC fetch deadline reached/.test(error.message),
-    );
+    try {
+      await assert.rejects(
+        fetchOfacSourceResponse(SOURCE_URL, {
+          fetchFn: neverRespondingFetch(calls),
+          proxyFetchFn: async () => { proxyCalls += 1; return redirect; },
+          proxyUrl,
+          sleepFn: async () => {},
+          headerTimeoutMs: 4_000,
+          deadlineAt: startedAt + 1_500,
+        }),
+        (error) => error.nonRetryable === true && /OFAC fetch deadline reached/.test(error.message),
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
 
+    assert.deepEqual(warnings.filter((w) => /via proxy/.test(w)), [],
+      'a deadline stop must not log a proxy retry that never happens');
     const elapsed = Date.now() - startedAt;
     assert.ok(elapsed >= 1_000 && elapsed < 3_000, `headers should abort near the 1.5 s deadline, stopped after ${elapsed} ms`);
     assert.equal(calls.length, 1, 'no direct retry may start after the deadline');

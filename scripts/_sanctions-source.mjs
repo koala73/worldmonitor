@@ -64,7 +64,7 @@ function budgetMs(remainingMs, lastError) {
   const remaining = remainingMs();
   if (remaining > OFAC_MIN_BODY_TIMEOUT_MS) return remaining;
   const suffix = lastError ? ` after ${describeFetchError(lastError)}` : '';
-  throw nonRetryableError(`OFAC fetch deadline reached${suffix}`);
+  throw Object.assign(nonRetryableError(`OFAC fetch deadline reached${suffix}`), { deadlineReached: true });
 }
 
 async function fetchDirectWithRetry(url, {
@@ -195,7 +195,7 @@ export async function fetchOfacSourceResponse(sourceUrl, {
     directError = error;
   }
 
-  if (!proxyUrl) throw terminalFetchError(directError);
+  if (!proxyUrl || directError?.deadlineReached) throw terminalFetchError(directError);
   console.warn(`  OFAC direct fetch failed (${describeFetchError(directError)}); retrying redirect bootstrap via proxy`);
 
   try {
