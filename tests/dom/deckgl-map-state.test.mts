@@ -687,7 +687,7 @@ describe('DeckGLMap route explorer lane highlight', () => {
     const { map, fake } = await mapWith(tradeRoutesOn());
     const fit = vi.spyOn(fake, 'fitBounds');
     map.highlightLane({ routeId: 'us-west-northeast-asia', path: [[-118.2, 33.7], [129.04, 35.1]], chokepointIds: [] });
-    const [[minLng], [maxLng]] = fit.mock.calls[0]?.[0] as unknown as [[number, number], [number, number]];
+    const [[minLng], [maxLng]] = (fit.mock.calls[0] as unknown[] | undefined)?.[0] as [[number, number], [number, number]];
     expect(minLng).toBe(129.04);
     expect(maxLng).toBeCloseTo(241.8, 5);
   });
@@ -699,7 +699,7 @@ describe('DeckGLMap route explorer lane highlight', () => {
       { left: 0, right: 1000, top: 0, bottom: 800, width: 1000, height: 800, x: 0, y: 0, toJSON: () => ({}) } as DOMRect,
     );
     const fit = vi.spyOn(fake, 'fitBounds');
-    const padding = () => (fit.mock.lastCall?.[1] as unknown as { padding: { left: number; right: number } }).padding;
+    const padding = () => ((fit.mock.lastCall as unknown[] | undefined)?.[1] as { padding: { left: number; right: number } }).padding;
 
     map.highlightLane(gulfLane, { left: 0, right: 520 });
     expect(padding()).toEqual({ top: 60, bottom: 60, right: 60, left: 580 });
