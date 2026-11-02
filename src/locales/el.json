@@ -2845,17 +2845,17 @@
       "infoTooltip": "Κατάσταση ζωντανής σύνδεσης για τα επτά παγκόσμια σημεία ασφυξίας πετρελαίου και φυσικού αερίου. Εκτιμήσεις ροής βαθμονομημένες από τη χωρητικότητα πλοίων Portwatch + παρατηρήσεις παρακολούθησης πλοίων. Δείτε /docs/methodology/chokepoints για μεθοδολογία.",
       "unknown": "άγνωστο",
       "shortName": {
-        "hormuzStrait": "Hormuz",
-        "malaccaStrait": "Malacca",
-        "suez": "Suez",
-        "babElMandeb": "Bab el-Mandeb",
+        "hormuzStrait": "Ορμούζ",
+        "malaccaStrait": "Μαλάκκα",
+        "suez": "Σουέζ",
+        "babElMandeb": "Μπαμπ ελ-Μαντέμπ",
         "bosphorus": "Τουρκικά Στενά",
-        "panama": "Panama",
+        "panama": "Παναμάς",
         "doverStrait": "Στενό του Ντόβερ"
       },
       "flow": {
         "mbd": "{{value}} mb/d",
-        "pctOfBaseline": "{{pct}}% of baseline"
+        "pctOfBaseline": "{{pct}}% της βάσης αναφοράς"
       },
       "errors": {
         "unavailable": "Η κατάσταση σημείου συμφόρησης δεν είναι διαθέσιμη",
