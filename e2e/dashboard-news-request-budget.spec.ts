@@ -103,7 +103,9 @@ async function fireHydrationTrigger(page: Page): Promise<void> {
       w.__wmResizeCount = (w.__wmResizeCount ?? 0) + 1;
     });
   });
-  await page.setViewportSize({ width: 1180, height: 800 });
+  // Alternate sizes so a second call still changes the viewport and fires.
+  const width = page.viewportSize()?.width === 1180 ? 1220 : 1180;
+  await page.setViewportSize({ width, height: 800 });
   await page.waitForFunction(
     () => ((window as unknown as { __wmResizeCount?: number }).__wmResizeCount ?? 0) > 0,
   );
@@ -490,6 +492,13 @@ test.describe('dashboard news request budget (#5376)', () => {
     } finally {
       lossWatch.dispose();
     }
+    // Whether a boot fan-out trigger lands after the empty load settles is a
+    // race: when the first digest settles late, every fan-out trigger has
+    // already run and nothing else asks for news for the rest of the poll
+    // (6 of 8 local runs). Deliver one trigger after the fan-out so the
+    // assertion tests the hydration gate, not the boot timing.
+    await settleAfterInitialFanout(page);
+    await fireHydrationTrigger(page);
     await expect
       .poll(
         () => log.digestUrls.length,
@@ -800,16 +809,21 @@ test.describe('dashboard news request budget (#5376)', () => {
       lossWatch.dispose();
     }
     await settleAfterInitialFanout(page);
+    // As in the empty-200 test above: a boot fan-out trigger only sometimes
+    // lands after the failed load settles (1 of 8 local runs), so deliver one.
+    await fireHydrationTrigger(page);
 
     // Attempt 1 was served 503, so that load rendered every category empty. A
     // second attempt is the whole point: it is served 200 and the dashboard
     // recovers within the page load instead of waiting out the refresh interval.
-    expect(
-      log.digestUrls.length,
-      `a news load that landed nothing must stay retryable — the first digest was 503, ` +
-        `so a later trigger has to try again rather than be skipped as already-loaded ` +
-        `(attempts: ${log.digestUrls.length})`,
-    ).toBeGreaterThanOrEqual(2);
+    await expect
+      .poll(() => log.digestUrls.length, {
+        message:
+          'a news load that landed nothing must stay retryable — the first digest was 503, ' +
+          'so a later trigger has to try again rather than be skipped as already-loaded',
+        timeout: 10_000,
+      })
+      .toBeGreaterThanOrEqual(2);
 
     // ...and having recovered, it must settle: the successful load records the
     // work-list, so the gate stops the retries rather than looping every trigger.
