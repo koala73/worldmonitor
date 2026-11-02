@@ -89,6 +89,38 @@ describe('hasAttachment', () => {
     }
   });
 
+  it('stays linear on a hostile body at the GitHub size cap (CWE-1333)', () => {
+    const cap = 65_536;
+    const fill = (unit) => unit.repeat(Math.ceil(cap / unit.length)).slice(0, cap);
+    const bodies = [
+      `![a](${'x'.repeat(cap)}`,
+      `![a]( ${' x'.repeat(cap / 2)}`,
+      `![${'a'.repeat(cap)}`,
+      `![a][${'b'.repeat(cap)}`,
+      `![a][b]\n[b]:${' '.repeat(cap)}`,
+      fill('![x]('),
+      fill('![x]( '),
+      fill('![x][y]'),
+      fill('![x][]\n'),
+      fill('[x]:\n'),
+      fill('<img '),
+      fill('<img src'),
+      `${fill('![a][b]')}\n[c]: https://example.com/shot.png`,
+    ];
+    for (const body of bodies) {
+      const started = performance.now();
+      assert.equal(hasAttachment(body), false);
+      const took = performance.now() - started;
+      assert.ok(took < 200, `${JSON.stringify(body.slice(0, 12))}... took ${Math.round(took)}ms`);
+    }
+  });
+
+  it('treats an alt text, label or img tag beyond the bound as not an attachment', () => {
+    assert.equal(hasAttachment(`![${'a'.repeat(301)}](https://example.com/shot.png)`), false);
+    assert.equal(hasAttachment(`![${'a'.repeat(300)}](https://example.com/shot.png)`), true);
+    assert.equal(hasAttachment(`<img ${'x'.repeat(2049)} src="https://example.com/shot.png">`), false);
+  });
+
   it('does not count a reference image whose definition is missing, empty, or for another label', () => {
     const unresolved = [
       '![shot][image]',

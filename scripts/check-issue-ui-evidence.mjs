@@ -40,25 +40,35 @@ const UI_WORD_RE = /\bui\b/i;
 // `[ref]: url` definition exists, so an undefined reference is not evidence.
 // The definition's destination may sit on the line after the label, but a
 // blank line ends the definition.
+//
+// The body is attacker-controlled and up to 65,536 characters, so every
+// variable-length run is bounded (CWE-1333): an alt text, label or `img`
+// tag longer than the bound is not an attachment, and a body made of
+// thousands of unclosed `![x](` or `<img ` starts costs linear time.
 const ATTACHMENT_RES = [
   /https?:\/\/github\.com\/user-attachments\/(?:assets|files)\//i,
   /https?:\/\/(?:private-)?user-images\.githubusercontent\.com\//i,
   /https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/assets\/\d+\//i,
-  /!\[[^\]]*\]\s*\([^)]*\S[^)]*\)/,
-  /<img\b[^>]*\bsrc\s*=/i,
+  /!\[[^\]]{0,300}\]\s{0,16}\([ \t]{0,16}[^)\s][^)]{0,2048}\)/,
+  /<img\b[^>]{0,2048}\bsrc\s{0,16}=/i,
 ];
-const REFERENCE_IMAGE_RE = /!\[([^\]]*)\]\s*\[([^\]]*)\]/g;
+const REFERENCE_IMAGE_RE = /!\[([^\]]{0,300})\]\s{0,16}\[([^\]]{0,300})\]/g;
+const REFERENCE_DEFINITION_RE = /^ {0,3}\[([^\]]{1,300})\]:[ \t]{0,16}(?:\r?\n[ \t]{0,16})?\S/gm;
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
+// One linear pass collects every defined label, then each reference image is
+// a set lookup; building a regex per reference would rescan the body per
+// match, quadratic on a body of repeated `![a][b]`.
 function hasResolvedReferenceImage(text) {
+  if (!REFERENCE_IMAGE_RE.test(text)) return false;
+  REFERENCE_IMAGE_RE.lastIndex = 0;
+  const defined = new Set();
+  for (const match of text.matchAll(REFERENCE_DEFINITION_RE)) {
+    defined.add(match[1].trim().toLowerCase());
+  }
+  if (defined.size === 0) return false;
   for (const match of text.matchAll(REFERENCE_IMAGE_RE)) {
-    const label = (match[2] || match[1]).trim();
-    if (!label) continue;
-    const definition = new RegExp(`^ {0,3}\\[${escapeRegExp(label)}\\]:[ \\t]*(?:\\r?\\n[ \\t]*)?\\S`, 'im');
-    if (definition.test(text)) return true;
+    const label = (match[2] || match[1]).trim().toLowerCase();
+    if (label && defined.has(label)) return true;
   }
   return false;
 }
