@@ -479,13 +479,14 @@ const ALBANIA_EXPORT_PAGE = 'https://www.app.gov.al/eksportimi-i-procedurave-te-
 
 // APP regenerates one CSV per publication year every day (about 7.6 MB and
 // 23k rows by November, served at roughly 160 KB/s), so the current year is
-// one long read within the shared budget. January also reads the previous
-// year, whose late-December procedures still close in the new year.
+// one long read within the shared budget. January through March also read the
+// previous year, whose late-year procedures can stay open for up to 90 days;
+// two concurrent exports measured 60 s wall, inside the 70 s timeout.
 export async function fetchAlbania({ now = Date.now(), fetchTextFn } = {}) {
   const source = 'albania-app';
   const read = reader(fetchTextFn, 70_000);
   const today = new Date(now);
-  const years = [today.getUTCFullYear(), ...(today.getUTCMonth() === 0 ? [today.getUTCFullYear() - 1] : [])];
+  const years = [today.getUTCFullYear(), ...(today.getUTCMonth() <= 2 ? [today.getUTCFullYear() - 1] : [])];
   const files = await Promise.all(years.map((year) => read(`https://www.app.gov.al/GetData/ExportDocument?year=${year}`,
     { headers: { Accept: 'text/csv, text/plain, */*' } })));
   const records = files.flatMap((csv) => {
@@ -513,6 +514,8 @@ export async function fetchAlbania({ now = Date.now(), fetchTextFn } = {}) {
   return finish(source, records, now);
 }
 
+const DGCP_PROCESSES_URL = 'https://datosabiertos.dgcp.gob.do/api-dgcp/v1/procesos';
+
 // The open-data API lists processes newest first with no total count and a
 // 60 requests/minute limit; two pages of 200 cover the published processes of
 // the last few days, which is where every open process lives.
@@ -520,15 +523,18 @@ export async function fetchDominicanRepublic({ now = Date.now(), fetchJsonFn } =
   const source = 'dominican-republic-dgcp';
   const read = reader(fetchJsonFn);
   const records = [];
-  for (let page = 1; page <= 2 && records.length < MAX_RECORDS; page++) {
-    const payload = await read(urlWithParams('https://datosabiertos.dgcp.gob.do/api-dgcp/v1/procesos', { page, limit: 200 }));
+  // Only still-open published processes count toward the sample; awarded,
+  // closed-stage and already-expired rows neither fill it nor fail the page.
+  const open = () => records.filter((record) => isOpenOpportunity(record, now)).length;
+  for (let page = 1; page <= 2 && open() < MAX_RECORDS; page++) {
+    const payload = await read(urlWithParams(DGCP_PROCESSES_URL, { page, limit: 200 }));
     requireRow(payload?.hasError === false, source);
     const content = rows(payload.payload?.content, 'content');
     for (const raw of content) {
-      requireRow(text(raw?.codigo_proceso) && text(raw?.titulo) && text(raw?.estado_proceso)
-        && Number.isFinite(Date.parse(raw?.fecha_publicacion)), source);
-      if (raw.estado_proceso !== 'Proceso publicado') continue;
-      requireRow(Number.isFinite(Date.parse(raw.fecha_fin_recepcion_ofertas)) && safeOfficialUrl(raw.url, source), source);
+      requireRow(text(raw?.codigo_proceso) && text(raw?.estado_proceso), source);
+      if (raw.estado_proceso !== 'Proceso publicado' || open() >= MAX_RECORDS) continue;
+      requireRow(text(raw.titulo) && Number.isFinite(Date.parse(raw.fecha_publicacion))
+        && Number.isFinite(Date.parse(raw.fecha_fin_recepcion_ofertas)) && safeOfficialUrl(raw.url, source), source);
       records.push(normalizePublicTender({ source, sourceNoticeId: raw.codigo_proceso, officialUrl: raw.url,
         countryCode: 'DO', region: 'North America', title: raw.titulo, description: raw.descripcion, buyer: raw.unidad_compra,
         publishedAt: raw.fecha_publicacion, deadline: raw.fecha_fin_recepcion_ofertas, status: 'open',
@@ -548,7 +554,9 @@ export async function fetchMalaysia({ now = Date.now(), fetchJsonFn } = {}) {
     { type: 'advertisements', category: 'tender', itemsPerPage: MAX_RECORDS, page: 1 }));
   requireRow(typeof payload?.html === 'string' && Number.isSafeInteger(payload.total) && Number.isSafeInteger(payload.lastPage), source);
   const cards = payload.html.split(/<div\b[^>]*x-data="\{ selected: false, open: true \}"/).slice(1);
-  if (!cards.length && payload.total !== 0) throw new Error('Malaysia response missing tender cards');
+  // A page that renders fewer cards than the publisher's own total promises is
+  // a partial render or a changed card marker, not a smaller catalogue.
+  if (cards.length !== Math.min(MAX_RECORDS, payload.total)) throw new Error('Malaysia response missing tender cards');
   const field = (card, label) => card.match(new RegExp(`>${label}:</div>\\s*<div\\b[^>]*>([\\s\\S]*?)</div>`))?.[1];
   const records = cards.map((card) => {
     const id = card.match(/select-procurement', \{ id: (\d+) \}/)?.[1];

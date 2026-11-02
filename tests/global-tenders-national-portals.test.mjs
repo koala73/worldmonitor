@@ -255,15 +255,16 @@ test('Albania reads the current-year CSV export and keeps only uncancelled proce
   assert.doesNotMatch(JSON.stringify(result), /WINNER SHPK|K73527402G/);
 });
 
-test('Albania also reads the previous year in January and rejects header drift or malformed rows', async () => {
-  const january = Date.parse('2027-01-05T12:00:00Z');
-  const years = [];
-  const result = await fetchAlbania({ now: january, fetchTextFn: async (url) => {
-    years.push(new URL(url).searchParams.get('year'));
-    return albaniaCsv(albaniaRow({ Data_e_mbylljes: '20.01.2027' }));
-  } });
-  assert.deepEqual(years.sort(), ['2026', '2027']);
-  assert.equal(result.records.length, 1);
+test('Albania also reads the previous year through March and rejects header drift or malformed rows', async () => {
+  for (const [when, expectedYears] of [['2027-01-05', ['2026', '2027']], ['2027-03-31', ['2026', '2027']], ['2027-04-01', ['2027']]]) {
+    const years = [];
+    const result = await fetchAlbania({ now: Date.parse(`${when}T12:00:00Z`), fetchTextFn: async (url) => {
+      years.push(new URL(url).searchParams.get('year'));
+      return albaniaCsv(albaniaRow({ Data_e_mbylljes: '20.04.2027' }));
+    } });
+    assert.deepEqual(years.sort(), expectedYears, when);
+    assert.equal(result.records.length, 1, when);
+  }
   await assert.rejects(fetchAlbania({ now: NOW, fetchTextFn: async () => albaniaCsv(albaniaRow()).replace('Data_e_mbylljes', 'Data_mbylljes') }));
   await assert.rejects(fetchAlbania({ now: NOW, fetchTextFn: async () => albaniaCsv(albaniaRow({ Numri_i_references: 'not-a-ref' })) }));
   await assert.rejects(fetchAlbania({ now: NOW, fetchTextFn: async () => albaniaCsv(albaniaRow({ Data_e_mbylljes: '2026-12-03' })) }));
@@ -314,6 +315,20 @@ test('Dominican Republic reads a second full page only while the open sample is 
   assert.equal(calls, 1);
   assert.equal(saturated.records.length, 100);
   await assert.rejects(fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: true, payload: { content: [] } }) }));
+  // A page of published processes whose deadlines already passed must not stop the read.
+  calls = 0;
+  const expired = Array.from({ length: 200 }, (_, index) => dominican({ codigo_proceso: `OLD-${index}`, fecha_fin_recepcion_ofertas: '2026-10-01T09:00:00Z' }));
+  const second = await fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => {
+    calls++;
+    return { hasError: false, payload: { content: calls === 1 ? expired : [dominican({ codigo_proceso: 'LATE-OPEN' })] } };
+  } });
+  assert.equal(calls, 2);
+  assert.deepEqual(second.records.map((record) => record.sourceNoticeId), ['LATE-OPEN']);
+  // Awarded rows missing a title are skipped, not treated as a malformed page.
+  const awarded = await fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [
+    dominican({ codigo_proceso: 'AWARDED', estado_proceso: 'Proceso adjudicado y celebrado', titulo: '', fecha_publicacion: null }), dominican()] } }) });
+  assert.deepEqual(awarded.records.map((record) => record.sourceNoticeId), ['EDENORTE-CCC-PEIN-2026-0031']);
+  await assert.rejects(fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [dominican({ estado_proceso: '' })] } }) }));
   await assert.rejects(fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [dominican({ fecha_fin_recepcion_ofertas: '' })] } }) }));
   await assert.rejects(fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [dominican({ url: 'https://attacker.example/notice' })] } }) }));
   await assert.rejects(fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [dominican({ titulo: '' })] } }) }));
@@ -323,7 +338,7 @@ test('Malaysia parses the JSON-wrapped advert cards without a session cookie or 
   let request;
   const result = await fetchMalaysia({ now: NOW, fetchJsonFn: async (url, options) => {
     request = { url: new URL(url), options };
-    return malaysia([malaysiaCard(), malaysiaCard({ id: '832771', price: 'Tiada Maklumat', codes: '050301', closing: '01/11/2026' })], 967);
+    return malaysia([malaysiaCard(), malaysiaCard({ id: '832771', price: 'Tiada Maklumat', codes: '050301', closing: '01/11/2026' })]);
   } });
   assert.equal(request.url.pathname, '/procurements/fetch');
   assert.equal(request.url.searchParams.get('category'), 'tender');
@@ -345,6 +360,11 @@ test('Malaysia parses the JSON-wrapped advert cards without a session cookie or 
 
 test('Malaysia rejects shells, cards without a closing date and totals that do not match an empty page', async () => {
   await assert.rejects(fetchMalaysia({ now: NOW, fetchJsonFn: async () => ({ html: '<html>Login</html>', total: 967, page: 1, lastPage: 10 }) }), /missing tender cards/);
+  // Fewer rendered cards than the publisher's own total is a partial page, not a smaller catalogue.
+  await assert.rejects(fetchMalaysia({ now: NOW, fetchJsonFn: async () => malaysia([malaysiaCard()], 967) }), /missing tender cards/);
+  await assert.rejects(fetchMalaysia({ now: NOW, fetchJsonFn: async () => malaysia([malaysiaCard(), malaysiaCard({ id: '1' })], 1) }), /missing tender cards/);
+  const small = await fetchMalaysia({ now: NOW, fetchJsonFn: async () => malaysia([malaysiaCard(), malaysiaCard({ id: '832771' })], 2) });
+  assert.equal(small.records.length, 2);
   await assert.rejects(fetchMalaysia({ now: NOW, fetchJsonFn: async () => '<html>Login</html>' }));
   await assert.rejects(fetchMalaysia({ now: NOW, fetchJsonFn: async () => malaysia([malaysiaCard({ closing: '24 Nov 2026' })]) }));
   await assert.rejects(fetchMalaysia({ now: NOW, fetchJsonFn: async () => malaysia([malaysiaCard().replace('Tarikh Tutup Pelawaan:', 'Tarikh Tutup:')]) }));
