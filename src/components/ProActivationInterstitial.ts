@@ -500,7 +500,12 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     const status = currentStatus(step);
     return `
       <div class="pro-activation-step">
-        <span class="pro-activation-status status-${status}">${escapeHtml(statusLabel(status))}</span>
+        ${
+          // A question has no set-up state; "Not set up" above it reads as an error.
+          step.id === 'about'
+            ? ''
+            : `<span class="pro-activation-status status-${status}">${escapeHtml(statusLabel(status))}</span>`
+        }
         <h2 class="pro-activation-heading">${escapeHtml(copy.heading)}</h2>
         <p class="pro-activation-step-body">${escapeHtml(copy.body)}</p>
         ${stepExtrasHtml(step)}

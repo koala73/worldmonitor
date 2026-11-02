@@ -93,7 +93,18 @@ export function mountAboutYouCard(options: AboutYouCardOptions): HTMLElement | n
   closeBtn.setAttribute('aria-label', label('close', 'Close'));
   header.append(title, closeBtn);
 
-  const progress = el('p', 'about-you-card__progress');
+  // The step meter: one segment per question; the count is the text form.
+  const progress = el('div', 'about-you-card__progress');
+  const meter = el('div', 'about-you-card__meter');
+  meter.setAttribute('aria-hidden', 'true');
+  const segments = questions.map(() => {
+    const segment = el('span', 'about-you-card__segment');
+    meter.append(segment);
+    return segment;
+  });
+  const count = el('span', 'about-you-card__count');
+  progress.append(meter, count);
+  progress.hidden = questions.length < 2;
   const body = el('div', 'about-you-card__body');
   const status = el('p', 'about-you-card__status');
   status.setAttribute('role', 'status');
@@ -131,7 +142,7 @@ export function mountAboutYouCard(options: AboutYouCardOptions): HTMLElement | n
     cancelAutosave();
     finished = true;
     body.replaceChildren();
-    progress.textContent = '';
+    progress.hidden = true;
     footer.replaceChildren();
     status.textContent = label('thanks', 'Thanks. This helps us decide what to build next.');
     window.setTimeout(close, THANKS_DISMISS_MS);
@@ -175,6 +186,7 @@ export function mountAboutYouCard(options: AboutYouCardOptions): HTMLElement | n
     const group = el('div', 'about-you-card__options');
     group.setAttribute('role', 'group');
     group.setAttribute('aria-labelledby', legend.id);
+    if (ABOUT_YOU_CHOICE_QUESTIONS[questionId].length > 4) group.dataset.layout = 'grid';
     for (const optionId of ABOUT_YOU_CHOICE_QUESTIONS[questionId]) {
       const option = el(
         'button',
@@ -254,10 +266,13 @@ export function mountAboutYouCard(options: AboutYouCardOptions): HTMLElement | n
 
   function render(): void {
     const questionId = questions[step]!;
-    progress.textContent =
-      questions.length > 1
-        ? label('progress', `${step + 1} of ${questions.length}`, { current: step + 1, total: questions.length })
-        : '';
+    count.textContent = label('progress', `${step + 1} of ${questions.length}`, {
+      current: step + 1,
+      total: questions.length,
+    });
+    segments.forEach((segment, index) => {
+      segment.dataset.state = index < step ? 'done' : index === step ? 'current' : 'todo';
+    });
     status.textContent = '';
     if (isAboutYouChoiceQuestion(questionId)) renderChoice(questionId);
     else renderFreeText();

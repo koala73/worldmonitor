@@ -9126,47 +9126,74 @@ a.prediction-link:hover {
 
 .pro-activation-about {
   display: grid;
-  gap: 12px;
+  gap: 20px;
 }
 
 .pro-activation-about-label {
-  margin: 0 0 6px;
-  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
-  font-weight: 600;
-  color: var(--text);
+  margin: 0 0 8px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  font-weight: 500;
+  color: var(--text-dim);
 }
 
 .pro-activation-about-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
+/* Same chip language as the dashboard About-you card: neutral until chosen,
+   then the signal green with a drawn check. */
 .pro-activation-about-option {
-  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
   padding: 0 12px;
-  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
-  color: var(--text);
-  background: var(--overlay-light);
+  font: inherit;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-secondary, var(--text));
+  background: var(--overlay-subtle);
   border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
-.pro-activation-about-option:hover,
+.pro-activation-about-option:hover {
+  color: var(--text);
+  background: var(--overlay-light);
+  border-color: var(--border-strong);
+}
+
 .pro-activation-about-option[aria-pressed='true'] {
+  color: var(--green-text, var(--green));
   border-color: var(--green);
 }
 
-.pro-activation-about-option[aria-pressed='true'] {
-  background: var(--overlay-medium, var(--overlay-light));
+.pro-activation-about-option[aria-pressed='true']::before {
+  content: '';
+  width: 8px;
+  height: 4px;
+  margin-top: -2px;
+  border-inline-start: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.pro-activation-about-option:focus-visible,
+.pro-activation-about-save:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }
 
 .pro-activation-about-save {
   justify-self: start;
-  min-height: 44px;
+  min-height: 40px;
   padding: 0 16px;
-  font-weight: 600;
+  font: inherit;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  font-weight: 500;
   color: #0a0a0a;
   background: var(--green);
   border: none;
@@ -9175,18 +9202,25 @@ a.prediction-link:hover {
 }
 
 .pro-activation-about-save:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
 .pro-activation-about-status {
-  margin: 0;
+  margin: -8px 0 0;
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
 }
 
 .pro-activation-about-status:empty {
   display: none;
+}
+
+@media (pointer: coarse) {
+  .pro-activation-about-option,
+  .pro-activation-about-save {
+    min-height: 44px;
+  }
 }
 
 @media (max-width: 560px) {

@@ -100,7 +100,7 @@ export async function mountMcpAboutYou(
   section.id = SECTION_ID;
   section.className = 'about-you';
   const summary = document.createElement('summary');
-  summary.textContent = 'Help us improve World Monitor (optional)';
+  summary.textContent = 'Optional: how will you use World Monitor?';
   section.append(summary);
 
   for (const question of QUESTIONS) {
@@ -111,6 +111,7 @@ export async function mountMcpAboutYou(
     label.textContent = question.label;
     const group = document.createElement('div');
     group.className = 'about-you-options';
+    if (Object.keys(question.options).length > 4) group.dataset.layout = 'grid';
     group.setAttribute('role', 'group');
     group.setAttribute('aria-labelledby', labelId);
     for (const optionId of ABOUT_YOU_CHOICE_QUESTIONS[question.id]) {
