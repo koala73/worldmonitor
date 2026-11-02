@@ -471,6 +471,18 @@ export async function collectUmamiSnapshot({ transport, observedAt }) {
 // ---------------------------------------------------------------------------
 
 const SCORECARD_WINDOWS = Object.freeze({ '28d': 28, '90d': 90 });
+/**
+ * Characters of an upstream reason quoted in the scorecard reason; the rest is
+ * in the snapshot. Three such quotes stay far under the 4 KB limit even in
+ * multi-byte text.
+ */
+const MAX_QUOTED_REASON = 300;
+const brief = (text) => {
+  const characters = [...String(text ?? '')];
+  return characters.length <= MAX_QUOTED_REASON
+    ? characters.join('')
+    : `${characters.slice(0, MAX_QUOTED_REASON).join('')}... (see the snapshot)`;
+};
 
 /**
  * Shape a snapshot for `sources.referrals` of
@@ -496,13 +508,16 @@ export function toScorecardReferralExport(snapshot, { classification }) {
     endDate: window.endDate,
     metrics: label === window.label ? { ...nullMetrics, sessions } : nullMetrics,
   }));
+  // A partial section's reason lists every failed day. It is stated once below,
+  // bounded, rather than repeated per family, so the whole reason stays inside
+  // the collector's 4 KB limit however many days failed.
   const families = classification.families.map(({ id, hostSuffixes }) => {
     const measured = referrers.referrerFamilies?.[id];
     const value = !measured
-      ? `not measured (${referrers.reason ?? 'the Umami collector has no rule for it'})`
+      ? 'not measured'
       : measured.visitorDays === null
-        ? `unavailable (${measured.reason})`
-        : `${measured.visitorDays}${measured.availability === 'available' ? '' : ` (${measured.availability}: ${measured.reason})`}`;
+        ? `unavailable (${brief(measured.reason)})`
+        : `${measured.visitorDays}${measured.availability === 'available' ? '' : ` (${measured.availability})`}`;
     // Where the classification and the Umami host rules disagree, say so: the
     // count above follows the Umami rules.
     const elsewhere = hostSuffixes
@@ -511,14 +526,21 @@ export function toScorecardReferralExport(snapshot, { classification }) {
       .map(([host, family]) => `${host} counts as ${family}`);
     return `${id} ${value}${elsewhere.length > 0 ? ` [${elsewhere.join(', ')}]` : ''}`;
   });
+  const sectionNotes = [
+    ['Referrer', referrers],
+    ['Channel (the unknown_direct source)', snapshot.channels],
+  ]
+    .filter(([, section]) => section && section.availability !== 'available')
+    .map(([name, section]) => `${name} counts are ${section.availability}: ${brief(section.reason)}`);
   const notes = [
     sessions === null
-      ? `sessions is null: Umami totals are ${totals.availability} (${totals.reason ?? 'no visits count was returned'}).`
+      ? `sessions is null: Umami totals are ${totals.availability} (${brief(totals.reason ?? 'no visits count was returned')}).`
       : 'sessions is Umami `visits`, summed over 28 one-day queries, so a visit that spans midnight UTC counts on both days. Umami visitors are visitor-days and are not reported as sessions.',
     `${REFERRAL_METRICS.filter((metric) => metric !== 'sessions').join(', ')} are null: the weekly Umami collection reads no landing-page or event breakdown.`,
     'The 90d window is null: Umami keeps 30 days of raw events.',
     'There are no referrer by landing-page segments: Umami referrer counts are visitor-days with no landing-page dimension.',
     `Referrer families, ${window.label} visitor-days by the Umami collector's host rules: ${families.join('; ')}.`,
+    ...sectionNotes.map((note) => (/[.!?]$/.test(note) ? note : `${note}.`)),
   ];
   return {
     status: sessions === null ? 'unavailable' : 'partial',

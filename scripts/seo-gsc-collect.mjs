@@ -1739,7 +1739,9 @@ export function toScorecardSearchExport(snapshot, { querySet = null } = {}) {
       : sentence(`indexedPages is null: the URL Inspection sample is not a complete count of the ${sample.declared} declared URLs (${snapshot.indexation.reason ?? 'no reason recorded'})`),
   ];
   const windows = performance.windows.map((window) => {
-    const site = window.siteTotals?.status === 'available' ? window.siteTotals.all : null;
+    // `all` is null only when the by-property view itself failed. A failed
+    // brand or non-brand split makes siteTotals partial but leaves it valid.
+    const site = window.siteTotals?.all ?? null;
     if (!site) notes.push(`${window.label}: no by-property site totals, so the window metrics are null (${window.siteTotals?.reason ?? 'not collected'}).`);
     const truncated = window.status !== 'available';
     if (truncated) notes.push(`${sentence(`${window.label}: ${window.reason}`)} Families with no page row in this window get no row.`);

@@ -293,10 +293,33 @@ function deriveWindows(raw) {
 const inWindow = (date, window) => date >= window.startDate && date <= window.endDate;
 const sumOf = (rows, field) => rows.reduce((total, row) => total + row[field], 0);
 
-function buildTraffic({ rows, reason }, windows) {
-  if (rows === null) return unavailable(METHODS.traffic, reason);
-  if (rows.length === 0) return unavailable(METHODS.traffic, 'Bing returned no daily rows');
-  const gaps = [];
+/**
+ * One row per date. A date Bing repeats verbatim counts once; a date whose
+ * rows disagree is left out, since neither row can be trusted over the other.
+ * Counting rows instead of dates would read either case as a complete window
+ * and double-count it.
+ */
+function onePerDate(rows) {
+  const unique = [];
+  const conflicting = [];
+  for (const [date, group] of groupBy(rows, (row) => row.date)) {
+    const [first] = group;
+    if (group.every((row) => row.impressions === first.impressions && row.clicks === first.clicks)) {
+      unique.push(first);
+    } else {
+      conflicting.push(date);
+    }
+  }
+  return { rows: unique.sort(byDate('date')), conflicting: conflicting.sort() };
+}
+
+function buildTraffic({ rows: rawRows, reason }, windows) {
+  if (rawRows === null) return unavailable(METHODS.traffic, reason);
+  if (rawRows.length === 0) return unavailable(METHODS.traffic, 'Bing returned no daily rows');
+  const { rows, conflicting } = onePerDate(rawRows);
+  const gaps = conflicting.length > 0
+    ? [`Bing returned conflicting rows for ${conflicting.join(', ')}, so those days are left out`]
+    : [];
   const byWindow = {};
   for (const window of windows) {
     const slice = rows.filter((row) => inWindow(row.date, window));

@@ -163,6 +163,18 @@ describe('weekly baseline: Search Console', () => {
     for (const family of empty) assert.equal(rows90.some((row) => row.pageFamily === family), false, family);
   });
 
+  it('keeps the by-property total when only a brand split failed', async () => {
+    const gsc = await gscSnapshot();
+    const window = windowOf(gsc.performance, '28d');
+    // buildSiteTotals reports partial with a valid `all` when brand or non-brand fails.
+    window.siteTotals = { ...window.siteTotals, status: 'partial', reason: 'the brand view was truncated', brand: null };
+    const { baseline } = build({ gsc });
+    const metrics = windowOf(baseline.search.googleSearchConsole, '28d').metrics;
+    assert.equal(metrics.impressions, window.siteTotals.all.impressions);
+    assert.equal(metrics.clicks, window.siteTotals.all.clicks);
+    assert.doesNotMatch(baseline.search.googleSearchConsole.reason, /no by-property site totals/);
+  });
+
   it('keeps the window null when site totals are missing, even beside reviewed query rows', async () => {
     const gsc = await gscSnapshot();
     const window = windowOf(gsc.performance, '28d');
@@ -339,6 +351,25 @@ describe('weekly baseline: Umami referrals', () => {
     assert.match(referrals.reason, /chatgpt 45;/);
     assert.match(referrals.reason, /google_search_ai unavailable \(Google AI Overviews/);
     assert.match(referrals.reason, /bing\.com counts as search/);
+  });
+
+  it('stays within the reason limit when many referrer days failed', async () => {
+    const snapshots = await allSnapshots();
+    // Ten failed days, each with a long upstream message, as an HTTP 524 run can produce.
+    const longReason = `missing 10 of 28 days: ${Array.from({ length: 10 }, (_, index) => (
+      `2026-10-${String(index + 10).padStart(2, '0')}: metrics?type=referrer failed with HTTP 524 after 3 attempts (origin timed out behind the proxy)`
+    )).join('; ')}. Sums leave out what is missing.`;
+    const { referrers } = snapshots.umami;
+    referrers.availability = 'partial';
+    referrers.reason = longReason;
+    for (const family of ['chatgpt', 'perplexity', 'claude', 'copilot_bing', 'other_ai_search']) {
+      referrers.referrerFamilies[family] = { ...referrers.referrerFamilies[family], availability: 'partial', reason: longReason };
+    }
+    const { baseline } = build(snapshots);
+    const { reason } = baseline.referrals;
+    assert.ok(Buffer.byteLength(reason) <= 4096, `reason is ${Buffer.byteLength(reason)} bytes`);
+    assert.equal(reason.split('HTTP 524').length - 1 <= 10, true, 'the shared failure is stated once');
+    assert.match(reason, /chatgpt 45 \(partial\)/);
   });
 
   it('leaves sessions null when a day of totals is missing', async () => {
