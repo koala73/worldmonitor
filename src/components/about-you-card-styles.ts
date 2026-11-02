@@ -14,6 +14,10 @@ export const ABOUT_YOU_CARD_CSS = `
   z-index: 4000; /* above panels, below the mission picker and modals */
   box-sizing: border-box;
   width: min(360px, calc(100vw - 32px));
+  /* A short desktop window must not push the close button off the top. */
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: 12px;

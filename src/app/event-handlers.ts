@@ -94,7 +94,12 @@ import {
   trackGateHit,
   trackLayoutCustomized,
 } from '@/services/analytics';
-import { bindPromptToAccount, decideAboutYouPrompt, waitForActivationPromptDecision } from '@/services/onboarding-prompt';
+import {
+  bindPromptToAccount,
+  decideAboutYouPrompt,
+  isPasskeyOfferPresent,
+  waitForActivationPromptDecision,
+} from '@/services/onboarding-prompt';
 import { detectPlatform, allButtons, buttonsForPlatform } from '@/components/DownloadBanner';
 import type { Platform } from '@/components/DownloadBanner';
 import { isOpenableExternalUrl, openExternalUrl } from '@/services/external-navigation';
@@ -992,11 +997,12 @@ export class EventHandlerManager implements AppModule {
       status,
       activation,
       missionPickerDue: false,
-      modalOpen: isModalOpen(document),
+      // A passkey offer counts as an open prompt: one prompt per load (KTD6).
+      modalOpen: isModalOpen(document) || isPasskeyOfferPresent(document),
     });
     if (decision.kind === 'none') return;
     const { mountAboutYouCard } = await import('@/components/AboutYouCard');
-    if (!stillCurrent() || isModalOpen(document)) return;
+    if (!stillCurrent() || isModalOpen(document) || isPasskeyOfferPresent(document)) return;
     const card = mountAboutYouCard({
       mode: decision.mode,
       questions: decision.questions,

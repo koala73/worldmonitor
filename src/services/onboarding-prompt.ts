@@ -131,3 +131,27 @@ export function bindPromptToAccount(
     stop();
   };
 }
+
+/**
+ * The About-you card and the passkey offer are both non-modal bottom-corner
+ * surfaces, so `isModalOpen` sees neither. On mobile they share the area above
+ * the tab bar, and the passkey offer sits on top. Each one treats the other as
+ * blocking: the passkey offer defers or hides until the card closes, and the
+ * card abstains for this load when an offer is present. A hidden offer still
+ * counts, because it restores itself when its overlay closes.
+ *
+ * The card id is repeated rather than imported: services must not import
+ * components. `tests/dom/passkey-offer-controller-overlay-retry.test.mts` mounts
+ * the card by `ABOUT_YOU_CARD_ID`, so drift fails that test.
+ */
+export interface PromptProbeDocument {
+  querySelector: (selector: string) => unknown;
+}
+
+export function isAboutYouCardPresent(doc: PromptProbeDocument): boolean {
+  return doc.querySelector('#wm-about-you-card') != null;
+}
+
+export function isPasskeyOfferPresent(doc: PromptProbeDocument): boolean {
+  return doc.querySelector('.passkey-offer-prompt') != null;
+}

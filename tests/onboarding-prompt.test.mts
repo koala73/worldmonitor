@@ -11,6 +11,8 @@ import {
   waitForActivationPromptDecision,
   _resetActivationPromptDecisionForTests,
   bindPromptToAccount,
+  isAboutYouCardPresent,
+  isPasskeyOfferPresent,
   type AboutYouPromptInput,
 } from '../src/services/onboarding-prompt.ts';
 
@@ -162,5 +164,19 @@ describe('bindPromptToAccount', () => {
     dispose();
     assert.equal(h.prompt.removed, 1);
     assert.equal(h.unsubscribed(), 1);
+  });
+});
+
+describe('onboarding surface probes', () => {
+  const doc = (present: string[]) => ({ querySelector: (sel: string) => (present.includes(sel) ? {} : null) });
+
+  it('isAboutYouCardPresent finds the card by its id', () => {
+    assert.equal(isAboutYouCardPresent(doc(['#wm-about-you-card'])), true);
+    assert.equal(isAboutYouCardPresent(doc([])), false);
+  });
+
+  it('isPasskeyOfferPresent counts a hidden offer too, because it restores itself', () => {
+    assert.equal(isPasskeyOfferPresent(doc(['.passkey-offer-prompt'])), true);
+    assert.equal(isPasskeyOfferPresent(doc([])), false);
   });
 });
