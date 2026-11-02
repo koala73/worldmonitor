@@ -12048,6 +12048,22 @@ a.prediction-link:hover {
   color: var(--text-secondary);
 }
 
+@media (max-width: 768px) {
+  .radiation-table th,
+  .radiation-table td {
+    padding-inline: 4px;
+  }
+
+  .radiation-reading,
+  .radiation-delta {
+    white-space: normal;
+  }
+
+  .radiation-location {
+    overflow-wrap: anywhere;
+  }
+}
+
 .radiation-freshness,
 .radiation-severity,
 .radiation-badge {

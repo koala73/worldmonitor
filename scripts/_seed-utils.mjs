@@ -2292,7 +2292,12 @@ export function finiteObservation(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-export function parseYahooChart(data, symbol) {
+/**
+ * `previousClose` replaces the chart's own. fetchYahooQuoteChart passes the
+ * last completed session's when Yahoo has rolled the chart to a session that
+ * has not traded, where the chart's own equals the price.
+ */
+export function parseYahooChart(data, symbol, { previousClose = null } = {}) {
   const result = data?.chart?.result?.[0];
   const meta = result?.meta;
   if (!meta) return null;
@@ -2303,7 +2308,7 @@ export function parseYahooChart(data, symbol) {
   if (price == null) return null;
   // A zero previous close makes the percentage change infinite, so it is
   // treated as unusable here exactly as the previous `||` chain did.
-  const prevClose = [meta.chartPreviousClose, meta.previousClose]
+  const prevClose = [previousClose, meta.chartPreviousClose, meta.previousClose]
     .map(finiteObservation)
     .find(value => value != null && value !== 0) ?? price;
   const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;

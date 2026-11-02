@@ -122,6 +122,7 @@ const { recordPizzintHistory } = require('./shared/pizzint-history.cjs');
 const { pizzintVenuePoint } = require('./shared/pizzint-location.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
+const { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } = require('./shared/yahoo-closed-session.cjs');
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
 // Same implementation the RPC handler scores with — see the module header for
 // why it lives in shared/ rather than beside the other scoring helpers.
@@ -3458,7 +3459,14 @@ function _parseYahooChartJson(body) {
         .filter((value) => value != null)
         .map((value) => (value !== 0 ? Number(value.toPrecision(7)) : value))
       : [];
-    return { price, change, sparkline };
+    return {
+      price,
+      change,
+      sparkline,
+      awaitingSessionOpen: awaitsSessionOpen(data),
+      lastTradeAt: meta.regularMarketTime,
+      chart: data,
+    };
   } catch { return null; }
 }
 
@@ -3490,7 +3498,29 @@ function _fetchYahooChartNoProxy(symbol, query = '') {
   });
 }
 
+// A rolled chart's previous close stays the same until the next trade, so one
+// daily-chart request per symbol covers a whole weekend of 5-minute cycles.
+const _previousSessionCloses = new Map();
+
+async function _withPreviousSessionChange(symbol, quote) {
+  let cached = _previousSessionCloses.get(symbol);
+  if (cached?.lastTradeAt !== quote.lastTradeAt) {
+    await sleep(150);
+    const daily = await _fetchYahooChartOnce(symbol, PREVIOUS_SESSION_CHART_QUERY);
+    const close = previousSessionClose(daily?.chart, quote.lastTradeAt);
+    if (!close) return quote;
+    cached = { lastTradeAt: quote.lastTradeAt, close };
+    _previousSessionCloses.set(symbol, cached);
+  }
+  return { ...quote, change: ((quote.price - cached.close) / cached.close) * 100 };
+}
+
 function fetchYahooChartDirect(symbol, query = '') {
+  return _fetchYahooChartOnce(symbol, query)
+    .then((quote) => (!query && quote?.awaitingSessionOpen ? _withPreviousSessionChange(symbol, quote) : quote));
+}
+
+function _fetchYahooChartOnce(symbol, query = '') {
   return _fetchYahooChartNoProxy(symbol, query).then((result) => {
     if (result) return result;
     if (!PROXY_URL) return null;

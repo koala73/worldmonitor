@@ -997,7 +997,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "PRO로 업그레이드하여 생산 단계별 광산 및 정유소 국가 비중과 집중도(생산업체 집중도 지수)를 확인하세요.",
-      "partialTransitCoverage": "통과 데이터 미제공: {{names}}"
+      "partialTransitCoverage": "통과 데이터 미제공: {{names}}",
+      "oilPipelinesUnavailable": "석유 파이프라인 데이터를 사용할 수 없습니다",
+      "gasPipelinesUnavailable": "가스 파이프라인 데이터를 사용할 수 없습니다"
     },
     "tradePolicy": {
       "tariffs": "관세",

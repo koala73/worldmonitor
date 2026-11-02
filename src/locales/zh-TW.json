@@ -997,7 +997,9 @@
       "withheldNote": "W 表示資料隱去",
       "productionCaption": "各國在實際產量中的份額。地圖礦藏圖層顯示資源分佈，此表顯示由誰開採或冶煉。",
       "productionProLocked": "升級至PRO版本以獲取按階段分類的採礦和煉油廠國家份額及集中度（生產商集中度指數）。",
-      "partialTransitCoverage": "過境資料不可用：{{names}}"
+      "partialTransitCoverage": "過境資料不可用：{{names}}",
+      "oilPipelinesUnavailable": "石油管道資料不可用",
+      "gasPipelinesUnavailable": "天然氣管道資料不可用"
     },
     "tradePolicy": {
       "tariffs": "關稅",

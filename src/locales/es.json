@@ -991,7 +991,9 @@
       "withheldNote": "W: dato reservado",
       "productionCaption": "Participación de cada país en la producción real. La capa de yacimientos del mapa muestra dónde están los recursos; esta tabla muestra quién los extrae o refina.",
       "productionProLocked": "Actualiza a PRO para obtener acciones de minas y refinerías por país con concentración (índice de concentración de productores) por etapa.",
-      "partialTransitCoverage": "Datos de tránsito no disponibles para {{names}}"
+      "partialTransitCoverage": "Datos de tránsito no disponibles para {{names}}",
+      "oilPipelinesUnavailable": "Datos de oleoductos no disponibles",
+      "gasPipelinesUnavailable": "Datos de gasoductos no disponibles"
     },
     "tradePolicy": {
       "tariffs": "Aranceles",

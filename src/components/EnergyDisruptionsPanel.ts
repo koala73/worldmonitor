@@ -251,6 +251,10 @@ export class EnergyDisruptionsPanel extends Panel {
         .ed-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
         .ed-empty { text-align: center; color: var(--text-dim, #888); padding: 20px; font-style: italic; }
         .ed-offline { font-family: monospace; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); }
+        @media (max-width: 768px) {
+          .ed-table th, .ed-table td { padding-inline: 4px; }
+          .ed-event, .ed-sub, .ed-asset-id { overflow-wrap: anywhere; }
+        }
       </style>
     `, 'legacy Panel.setContent() migration'));
 

@@ -994,7 +994,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Upgrade na PRO pro podíly zemí dolů a rafinerií s koncentrací (index koncentrace producenta) podle stupně.",
-      "partialTransitCoverage": "{{names}} - údaje o tranzitu nejsou dostupné"
+      "partialTransitCoverage": "{{names}} - údaje o tranzitu nejsou dostupné",
+      "oilPipelinesUnavailable": "Data o ropovodech nejsou dostupná",
+      "gasPipelinesUnavailable": "Data o plynovodech nejsou dostupná"
     },
     "tradePolicy": {
       "tariffs": "Cla",
