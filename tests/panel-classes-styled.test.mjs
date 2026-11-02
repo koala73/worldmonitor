@@ -15,6 +15,10 @@
  *
  * Classes built by interpolation (`impact-${x}`) are skipped; the static ones
  * are what a refactor drops.
+ *
+ * Accent borders must be logical (`border-inline-start`). rtl-overrides.css
+ * loads before panels.css, so a physical `border-left` here wins over the
+ * `[dir="rtl"]` rule at equal specificity and pins the accent to the wrong side.
  */
 
 import { describe, it } from 'node:test';
@@ -53,12 +57,16 @@ function cssFiles(dir) {
   });
 }
 
-const selectors = cssFiles(srcDir)
+const rules = cssFiles(srcDir)
   .filter((url) => !EXCLUDED.has(url.pathname.slice(srcDir.pathname.length)))
   .flatMap((url) => {
     const css = readFileSync(url, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-    return [...css.matchAll(/([^{}]+)\{/g)].flatMap((m) => m[1].split(',').map((s) => s.trim()));
+    return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+      selectors: m[1].split(';').pop().split(',').map((s) => s.trim()),
+      body: m[2],
+    }));
   });
+const selectors = rules.flatMap((rule) => rule.selectors);
 
 const hasClass = (selector, cls) => new RegExp(`\\.${cls}(?![\\w-])`).test(selector);
 
@@ -86,4 +94,14 @@ describe('audit panels style every class they emit', () => {
       assert.deepEqual(unstyled, [], `${relPath} emits classes with no rule under .${roots.join(' or .')}`);
     });
   }
+
+  it('uses logical inline borders under every panel root', () => {
+    const roots = Object.values(PANELS).flatMap((panel) => panel.roots);
+    const scoped = rules.filter((rule) => rule.selectors.some((s) => roots.some((root) => hasClass(s, root))));
+    assert.ok(scoped.length > 50, `expected the panel rules, found ${scoped.length}`);
+    const physical = scoped
+      .filter((rule) => /(^|[;\s])border-(left|right)[\w-]*\s*:/.test(rule.body))
+      .map((rule) => rule.selectors.join(', '));
+    assert.deepEqual(physical, [], 'use border-inline-start/end so [dir="rtl"] flips the accent');
+  });
 });
