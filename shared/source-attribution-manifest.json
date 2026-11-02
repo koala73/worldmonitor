@@ -135,6 +135,9 @@
           "path": "scripts/check-analytics-collector.mjs"
         },
         {
+          "path": "scripts/seo-umami-collect.mjs"
+        },
+        {
           "path": "src/services/analytics.ts"
         }
       ]

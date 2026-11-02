@@ -389,7 +389,6 @@
     "liveNews": "Actualités en direct",
     "markets": "Marchés",
     "map": "Situation mondiale",
-    "techMap": "Tech mondiale",
     "status": "État du système",
     "insights": "Insights IA",
     "strategicPosture": "Posture stratégique IA",
@@ -921,7 +920,10 @@
         "permissive": "Permissif",
         "undefined": "Indéfini"
       },
-      "infoTooltip": "<strong>Réglementation</strong> Actions réglementaires, changements de politique et mises à jour d'application des régulateurs mondiaux : autorités financières, technologiques, énergétiques et commerciales. Source : publications officielles gouvernementales et réglementaires."
+      "infoTooltip": "<strong>Réglementation</strong> Actions réglementaires, changements de politique et mises à jour d'application des régulateurs mondiaux : autorités financières, technologiques, énergétiques et commerciales. Source : publications officielles gouvernementales et réglementaires.",
+      "latestActions": "Dernières actions enregistrées",
+      "otherDeadlines": "Autres échéances de conformité",
+      "daysAgo": "jours écoulés"
     },
     "economic": {
       "indicators": "Indicateurs",
@@ -2083,7 +2085,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Passez à PRO pour les parts de pays des mines et raffineries avec concentration (indice de concentration des producteurs) par étape.",
-      "partialTransitCoverage": "Données de transit indisponibles : {{names}}"
+      "partialTransitCoverage": "Données de transit indisponibles : {{names}}",
+      "oilPipelinesUnavailable": "Données des oléoducs indisponibles",
+      "gasPipelinesUnavailable": "Données des gazoducs indisponibles"
     },
     "positiveNewsFeed": {
       "noStories": "Aucune histoire dans cette catégorie pour le moment"
@@ -4226,5 +4230,29 @@
     "reportedClaims": "Rapports de l’éditeur. Les affirmations peuvent encore faire l’objet d’une enquête.",
     "occurred": "Incident",
     "reported": "Publié"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Carte des marchés mondiaux",
+      "liveNews": "Titres des marchés",
+      "insights": "Insights IA sur les marchés"
+    },
+    "tech": {
+      "map": "Carte mondiale de la tech",
+      "liveNews": "Titres tech"
+    },
+    "commodity": {
+      "map": "Carte des matières premières",
+      "liveNews": "Titres des matières premières",
+      "insights": "Insights IA sur les matières premières"
+    },
+    "energy": {
+      "map": "Carte Atlas de l'énergie",
+      "liveNews": "Titres de l'énergie",
+      "insights": "Insights IA sur l'énergie"
+    },
+    "happy": {
+      "map": "Carte des bonnes nouvelles"
+    }
   }
 }

@@ -391,7 +391,6 @@
     "liveNews": "Wiadomości na żywo",
     "markets": "Rynki",
     "map": "Sytuacja globalna",
-    "techMap": "Globalne technologie",
     "status": "Stan systemu",
     "insights": "Spostrzeżenia AI",
     "strategicPosture": "Strategiczna postawa AI",
@@ -924,7 +923,10 @@
         "permissive": "Permissive",
         "undefined": "Undefined"
       },
-      "infoTooltip": "<strong>Regulacje</strong> Działania regulacyjne, zmiany polityk i aktualizacje egzekwowania od globalnych regulatorów: władze finansowe, technologiczne, energetyczne i handlowe. Źródło: oficjalne publikacje rządowe i regulacyjne."
+      "infoTooltip": "<strong>Regulacje</strong> Działania regulacyjne, zmiany polityk i aktualizacje egzekwowania od globalnych regulatorów: władze finansowe, technologiczne, energetyczne i handlowe. Źródło: oficjalne publikacje rządowe i regulacyjne.",
+      "latestActions": "Ostatnie zarejestrowane działania",
+      "otherDeadlines": "Pozostałe terminy zgodności",
+      "daysAgo": "dni temu"
     },
     "economic": {
       "indicators": "Wskaźniki",
@@ -2078,7 +2080,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Uaktualnij do PRO, aby uzyskać udziały krajów górnictwwa i rafinacji z koncentracją (indeks koncentracji producenta) według etapu.",
-      "partialTransitCoverage": "Dane tranzytu niedostępne: {{names}}"
+      "partialTransitCoverage": "Dane tranzytu niedostępne: {{names}}",
+      "oilPipelinesUnavailable": "Dane dotyczące rurociągów naftowych są niedostępne",
+      "gasPipelinesUnavailable": "Dane dotyczące rurociągów gazowych są niedostępne"
     },
     "positiveNewsFeed": {
       "noStories": "Brak artykułów w tej kategorii"
@@ -4246,5 +4250,29 @@
     "reportedClaims": "Raporty wydawcy. Twierdzenia mogą nadal być badane.",
     "occurred": "Incydent",
     "reported": "Opublikowano"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Globalna Mapa Rynków",
+      "liveNews": "Nagłówki Rynkowe",
+      "insights": "Spostrzeżenia AI o rynkach"
+    },
+    "tech": {
+      "map": "Globalna Mapa Technologii",
+      "liveNews": "Nagłówki Technologiczne"
+    },
+    "commodity": {
+      "map": "Mapa Surowców",
+      "liveNews": "Nagłówki Surowców",
+      "insights": "Spostrzeżenia AI o surowcach"
+    },
+    "energy": {
+      "map": "Atlas Energii",
+      "liveNews": "Nagłówki Energetyczne",
+      "insights": "Spostrzeżenia AI o energii"
+    },
+    "happy": {
+      "map": "Mapa Dobrych Wiadomości"
+    }
   }
 }

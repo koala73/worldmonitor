@@ -479,7 +479,6 @@
     "markets": "Markets",
     "marketImplications": "AI Market Implications",
     "map": "Global Situation",
-    "techMap": "Global Tech",
     "techHubs": "Hot Tech Hubs",
     "status": "System Status",
     "insights": "AI Insights",
@@ -585,6 +584,30 @@
     "climateNews": "Climate News",
     "fx": "Foreign exchange rates",
     "ukmtoIncidents": "UKMTO Incidents"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Global Markets Map",
+      "liveNews": "Market Headlines",
+      "insights": "AI Market Insights"
+    },
+    "tech": {
+      "map": "Global Tech Map",
+      "liveNews": "Tech Headlines"
+    },
+    "commodity": {
+      "map": "Commodity Map",
+      "liveNews": "Commodity Headlines",
+      "insights": "AI Commodity Insights"
+    },
+    "energy": {
+      "map": "Energy Atlas Map",
+      "liveNews": "Energy Headlines",
+      "insights": "AI Energy Insights"
+    },
+    "happy": {
+      "map": "Good News Map"
+    }
   },
   "commands": {
     "prefixes": {
@@ -1024,6 +1047,8 @@
       "countries": "Countries",
       "recentActions": "Recent Regulatory Actions (Last 12 Months)",
       "upcomingDeadlines": "Upcoming Compliance Deadlines",
+      "latestActions": "Latest Recorded Actions",
+      "otherDeadlines": "Other Compliance Deadlines",
       "globalLandscape": "Global Regulatory Landscape",
       "emptyActions": "No recent regulatory actions",
       "emptyDeadlines": "No upcoming compliance deadlines in the next 12 months",
@@ -1035,6 +1060,7 @@
       "actionsCount": "{{count}} actions",
       "deadlinesCount": "{{count}} deadlines",
       "days": "days",
+      "daysAgo": "days ago",
       "activeCount": "Active Regulations ({{count}})",
       "proposedCount": "Proposed Regulations ({{count}})",
       "moreProvisions": "+{{count}} more...",
@@ -1093,6 +1119,8 @@
       "noMinerals": "Mineral data loading...",
       "upstreamUnavailable": "Supply chain data temporarily unavailable — showing cached data",
       "partialTransitCoverage": "{{names}} transit data unavailable",
+      "oilPipelinesUnavailable": "Oil pipeline data unavailable",
+      "gasPipelinesUnavailable": "Gas pipeline data unavailable",
       "spikeAlert": "Spike detected — rate significantly above 52-week average (weekly)",
       "warnings": "warning(s)",
       "aisDisruptions": "Ship tracking disruptions",

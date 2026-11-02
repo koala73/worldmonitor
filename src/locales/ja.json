@@ -385,7 +385,6 @@
     "liveNews": "ライブニュース",
     "markets": "市場",
     "map": "グローバル情勢",
-    "techMap": "グローバルテック",
     "techHubs": "注目テックハブ",
     "status": "システム状態",
     "insights": "AIインサイト",
@@ -927,7 +926,10 @@
         "permissive": "Permissive",
         "undefined": "Undefined"
       },
-      "infoTooltip": "<strong>規制</strong> グローバル規制当局からの規制措置、政策変更、執行更新：金融、テクノロジー、エネルギー、貿易当局。ソース：政府および規制機関の公式出版物。"
+      "infoTooltip": "<strong>規制</strong> グローバル規制当局からの規制措置、政策変更、執行更新：金融、テクノロジー、エネルギー、貿易当局。ソース：政府および規制機関の公式出版物。",
+      "latestActions": "最新の記録されたアクション",
+      "otherDeadlines": "その他のコンプライアンス期限",
+      "daysAgo": "日前"
     },
     "economic": {
       "indicators": "指標",
@@ -994,7 +996,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "PROにアップグレードして、鉱山・精製所の国別シェアおよび段階別の集中度（生産者集中度指数）を確認してください。",
-      "partialTransitCoverage": "通過データが利用できません：{{names}}"
+      "partialTransitCoverage": "通過データが利用できません：{{names}}",
+      "oilPipelinesUnavailable": "石油パイプラインデータが利用不可",
+      "gasPipelinesUnavailable": "ガスパイプラインデータが利用不可"
     },
     "tradePolicy": {
       "tariffs": "関税",
@@ -4186,5 +4190,29 @@
     "reportedClaims": "発行元の報告です。主張は調査中の場合があります。",
     "occurred": "発生",
     "reported": "公開"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "グローバルマーケットマップ",
+      "liveNews": "マーケットヘッドライン",
+      "insights": "AI マーケットインサイト"
+    },
+    "tech": {
+      "map": "グローバルテックマップ",
+      "liveNews": "テックヘッドライン"
+    },
+    "commodity": {
+      "map": "コモディティマップ",
+      "liveNews": "コモディティヘッドライン",
+      "insights": "AIコモディティインサイト"
+    },
+    "energy": {
+      "map": "エネルギーアトラスマップ",
+      "liveNews": "エネルギーヘッドライン",
+      "insights": "AIエネルギーインサイト"
+    },
+    "happy": {
+      "map": "グッドニュースマップ"
+    }
   }
 }

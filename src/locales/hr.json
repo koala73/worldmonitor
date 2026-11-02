@@ -460,7 +460,6 @@
     "markets": "Tržišta",
     "marketImplications": "Implikacije AI na tržištu",
     "map": "Globalna situacija",
-    "techMap": "Globalna tehnologija",
     "techHubs": "Vruća tehnološka središta",
     "status": "Stanje sustava",
     "insights": "AI uvidi",
@@ -1029,7 +1028,10 @@
         "moderate": "Umjerena",
         "permissive": "Dozvoljiva",
         "undefined": "Nedefinisana"
-      }
+      },
+      "latestActions": "Najnovije zabilježene akcije",
+      "otherDeadlines": "Ostali rokovi za usklađenost",
+      "daysAgo": "dana unazad"
     },
     "economic": {
       "indicators": "Pokazatelji",
@@ -1105,7 +1107,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Nadogradite se na PRO za udio rudnika i rafinerija po zemlji s koncentracijom (indeks koncentracije proizvođača) po fazi.",
-      "partialTransitCoverage": "Podaci o tranzitu nedostupni: {{names}}"
+      "partialTransitCoverage": "Podaci o tranzitu nedostupni: {{names}}",
+      "oilPipelinesUnavailable": "Podaci o naftovodima nisu dostupni",
+      "gasPipelinesUnavailable": "Podaci o plinovodima nisu dostupni"
     },
     "tradePolicy": {
       "overview": "Pregled",
@@ -4237,5 +4241,29 @@
     "reportedClaims": "Izvješća izdavača. Tvrdnje mogu još biti pod istragom.",
     "occurred": "Incident",
     "reported": "Objavljeno"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Globalna mapa tržišta",
+      "liveNews": "Vijesti s tržišta",
+      "insights": "AI uvidi o tržištu"
+    },
+    "tech": {
+      "map": "Globalna tehnološka mapa",
+      "liveNews": "Tehnološke vijesti"
+    },
+    "commodity": {
+      "map": "Mapa sirovina",
+      "liveNews": "Vijesti o sirovinama",
+      "insights": "AI uvidi o sirovinama"
+    },
+    "energy": {
+      "map": "Energetski atlas",
+      "liveNews": "Energetske vijesti",
+      "insights": "AI uvidi o energiji"
+    },
+    "happy": {
+      "map": "Mapa dobrih vijesti"
+    }
   }
 }

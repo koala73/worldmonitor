@@ -457,7 +457,6 @@
     "markets": "बाजार",
     "marketImplications": "एआई के बाजार असर",
     "map": "वैश्विक स्थिति",
-    "techMap": "वैश्विक तकनीक",
     "techHubs": "लोकप्रिय तकनीकी केंद्र",
     "status": "सिस्टम की स्थिति",
     "insights": "एआई की जानकारी",
@@ -1022,7 +1021,10 @@
         "moderate": "मध्यम",
         "permissive": "अनुमेय",
         "undefined": "अपरिभाषित"
-      }
+      },
+      "latestActions": "नवीनतम दर्ज कार्रवाई",
+      "otherDeadlines": "अन्य अनुपालन समय सीमाएं",
+      "daysAgo": "दिन पहले"
     },
     "economic": {
       "indicators": "सूचक",
@@ -1098,7 +1100,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "खनन और रिफाइनरी देश शेयर को एकाग्रता के साथ अपग्रेड करने के लिए PRO में अपग्रेड करें (उत्पादक एकाग्रता सूचकांक) चरण द्वारा।",
-      "partialTransitCoverage": "{{names}} के लिए पारगमन डेटा उपलब्ध नहीं है"
+      "partialTransitCoverage": "{{names}} के लिए पारगमन डेटा उपलब्ध नहीं है",
+      "oilPipelinesUnavailable": "तेल पाइपलाइन डेटा उपलब्ध नहीं है",
+      "gasPipelinesUnavailable": "गैस पाइपलाइन डेटा उपलब्ध नहीं है"
     },
     "tradePolicy": {
       "overview": "ओवरव्यू",
@@ -4206,5 +4210,29 @@
     "reportedClaims": "प्रकाशक की रिपोर्ट। दावों की जाँच अभी जारी हो सकती है।",
     "occurred": "घटना",
     "reported": "प्रकाशित"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "वैश्विक बाजार मानचित्र",
+      "liveNews": "बाजार समाचार",
+      "insights": "AI बाजार अंतर्दृष्टि"
+    },
+    "tech": {
+      "map": "वैश्विक प्रौद्योगिकी मानचित्र",
+      "liveNews": "प्रौद्योगिकी समाचार"
+    },
+    "commodity": {
+      "map": "वस्तु मानचित्र",
+      "liveNews": "वस्तु समाचार",
+      "insights": "AI वस्तु अंतर्दृष्टि"
+    },
+    "energy": {
+      "map": "ऊर्जा एटलस मानचित्र",
+      "liveNews": "ऊर्जा समाचार",
+      "insights": "AI ऊर्जा अंतर्दृष्टि"
+    },
+    "happy": {
+      "map": "सकारात्मक समाचार मानचित्र"
+    }
   }
 }

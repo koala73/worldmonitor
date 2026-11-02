@@ -385,7 +385,6 @@
     "liveNews": "실시간 뉴스",
     "markets": "시장",
     "map": "글로벌 상황",
-    "techMap": "글로벌 기술",
     "techHubs": "주요 기술 허브",
     "status": "시스템 상태",
     "insights": "AI 인사이트",
@@ -927,7 +926,10 @@
         "permissive": "허용적",
         "undefined": "미정"
       },
-      "infoTooltip": "<strong>규제</strong> 글로벌 규제 기관의 규제 조치, 정책 변경, 집행 업데이트: 금융, 기술, 에너지, 무역 당국. 출처: 공식 정부 및 규제 기관 간행물."
+      "infoTooltip": "<strong>규제</strong> 글로벌 규제 기관의 규제 조치, 정책 변경, 집행 업데이트: 금융, 기술, 에너지, 무역 당국. 출처: 공식 정부 및 규제 기관 간행물.",
+      "latestActions": "최근 기록된 조치",
+      "otherDeadlines": "기타 준수 기한",
+      "daysAgo": "일 전"
     },
     "economic": {
       "indicators": "경제 지표",
@@ -994,7 +996,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "PRO로 업그레이드하여 생산 단계별 광산 및 정유소 국가 비중과 집중도(생산업체 집중도 지수)를 확인하세요.",
-      "partialTransitCoverage": "통과 데이터 미제공: {{names}}"
+      "partialTransitCoverage": "통과 데이터 미제공: {{names}}",
+      "oilPipelinesUnavailable": "석유 파이프라인 데이터를 사용할 수 없습니다",
+      "gasPipelinesUnavailable": "가스 파이프라인 데이터를 사용할 수 없습니다"
     },
     "tradePolicy": {
       "tariffs": "관세",
@@ -4186,5 +4190,29 @@
     "reportedClaims": "발행자의 보고입니다. 주장은 아직 조사 중일 수 있습니다.",
     "occurred": "사건",
     "reported": "게시"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "글로벌 시장 지도",
+      "liveNews": "시장 헤드라인",
+      "insights": "AI 시장 인사이트"
+    },
+    "tech": {
+      "map": "글로벌 기술 지도",
+      "liveNews": "기술 헤드라인"
+    },
+    "commodity": {
+      "map": "상품 지도",
+      "liveNews": "상품 헤드라인",
+      "insights": "AI 상품 인사이트"
+    },
+    "energy": {
+      "map": "에너지 지도",
+      "liveNews": "에너지 헤드라인",
+      "insights": "AI 에너지 인사이트"
+    },
+    "happy": {
+      "map": "긍정 뉴스 지도"
+    }
   }
 }

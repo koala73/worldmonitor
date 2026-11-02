@@ -389,7 +389,6 @@
     "liveNews": "Noticias en vivo",
     "markets": "Mercados",
     "map": "Situación global",
-    "techMap": "Tech global",
     "status": "Estado del sistema",
     "insights": "Insights de IA",
     "strategicPosture": "Postura estratégica de IA",
@@ -921,7 +920,10 @@
         "permissive": "Permisiva",
         "undefined": "Sin definir"
       },
-      "infoTooltip": "<strong>Regulación</strong> Acciones regulatorias, cambios de políticas y actualizaciones de aplicación de reguladores globales: autoridades financieras, tecnológicas, energéticas y comerciales. Fuente: publicaciones oficiales gubernamentales y regulatorias."
+      "infoTooltip": "<strong>Regulación</strong> Acciones regulatorias, cambios de políticas y actualizaciones de aplicación de reguladores globales: autoridades financieras, tecnológicas, energéticas y comerciales. Fuente: publicaciones oficiales gubernamentales y regulatorias.",
+      "latestActions": "Últimas acciones registradas",
+      "otherDeadlines": "Otros plazos de cumplimiento",
+      "daysAgo": "días atrás"
     },
     "economic": {
       "indicators": "Indicadores",
@@ -988,7 +990,9 @@
       "withheldNote": "W: dato reservado",
       "productionCaption": "Participación de cada país en la producción real. La capa de yacimientos del mapa muestra dónde están los recursos; esta tabla muestra quién los extrae o refina.",
       "productionProLocked": "Actualiza a PRO para obtener acciones de minas y refinerías por país con concentración (índice de concentración de productores) por etapa.",
-      "partialTransitCoverage": "Datos de tránsito no disponibles para {{names}}"
+      "partialTransitCoverage": "Datos de tránsito no disponibles para {{names}}",
+      "oilPipelinesUnavailable": "Datos de oleoductos no disponibles",
+      "gasPipelinesUnavailable": "Datos de gasoductos no disponibles"
     },
     "tradePolicy": {
       "tariffs": "Aranceles",
@@ -4226,5 +4230,29 @@
     "reportedClaims": "Informes del editor. Las afirmaciones pueden seguir bajo investigación.",
     "occurred": "Incidente",
     "reported": "Publicado"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Mapa de Mercados Globales",
+      "liveNews": "Titulares de Mercado",
+      "insights": "Perspectivas de Mercado con IA"
+    },
+    "tech": {
+      "map": "Mapa Global de Tecnología",
+      "liveNews": "Titulares de Tecnología"
+    },
+    "commodity": {
+      "map": "Mapa de Materias Primas",
+      "liveNews": "Titulares de Materias Primas",
+      "insights": "Perspectivas de Materias Primas con IA"
+    },
+    "energy": {
+      "map": "Mapa de Atlas Energético",
+      "liveNews": "Titulares de Energía",
+      "insights": "Perspectivas de Energía con IA"
+    },
+    "happy": {
+      "map": "Mapa de Buenas Noticias"
+    }
   }
 }

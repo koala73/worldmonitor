@@ -839,6 +839,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+@media (max-width: 768px) {
+  .climate-table th,
+  .climate-table td {
+    padding-inline: 4px;
+  }
+
+  .climate-zone {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
 .climate-warm {
   color: var(--semantic-high-text, var(--semantic-high));
 }
@@ -1145,6 +1157,32 @@
 
 .ucdp-country {
   white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .ucdp-table th,
+  .ucdp-table td {
+    padding-inline: 4px;
+  }
+
+  .ucdp-country,
+  .ucdp-deaths,
+  .ucdp-actors {
+    white-space: normal;
+  }
+
+  .ucdp-country,
+  .ucdp-actors {
+    overflow-wrap: anywhere;
+  }
+
+  .ucdp-actors {
+    max-width: none;
+  }
+
+  .ucdp-range {
+    white-space: nowrap;
+  }
 }
 
 /* ----------------------------------------------------------
@@ -4186,6 +4224,17 @@ a.hub-top-story {
 .regulation-panel .timeline-item.impact-low,
 .regulation-panel .deadline-item.normal {
   border-inline-start-color: var(--semantic-normal);
+}
+
+.regulation-panel .deadline-item.passed {
+  border-inline-start-color: var(--text-muted);
+}
+
+.regulation-panel .regulation-note {
+  margin: 0;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  color: var(--text-muted);
 }
 
 .regulation-panel .timeline-marker {

@@ -40,7 +40,7 @@ const PANELS = {
       'type-comprehensive', 'type-sectoral', 'type-voluntary', 'type-proposed',
       'stance-strict', 'stance-moderate', 'stance-permissive', 'stance-undefined',
       'impact-high', 'impact-medium', 'impact-low',
-      'urgent', 'warning', 'normal',
+      'urgent', 'warning', 'normal', 'passed',
     ],
   },
   'components/HormuzPanel.ts': {

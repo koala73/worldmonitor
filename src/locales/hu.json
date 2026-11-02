@@ -457,7 +457,6 @@
     "markets": "Piacok",
     "marketImplications": "AI Piaci Hatások",
     "map": "Globális Helyzet",
-    "techMap": "Globális Technológia",
     "techHubs": "Technológiai Központok",
     "status": "Rendszer Állapota",
     "insights": "AI Insights",
@@ -1022,7 +1021,10 @@
         "moderate": "Mérsékelt",
         "permissive": "Megengedő",
         "undefined": "Meghatározatlan"
-      }
+      },
+      "latestActions": "Legutóbbi rögzített műveletek",
+      "otherDeadlines": "Egyéb megfelelési határidők",
+      "daysAgo": "nappal ezelőtt"
     },
     "economic": {
       "indicators": "Mutatók",
@@ -1098,7 +1100,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Frissítsen PRO-ra az erőmű- és finomítóország-részesedésekhez koncentrációval (szállítói koncentrációs index) szakaszonként.",
-      "partialTransitCoverage": "{{names}} tranzitadatai nem érhetők el"
+      "partialTransitCoverage": "{{names}} tranzitadatai nem érhetők el",
+      "oilPipelinesUnavailable": "Olajvezeték-adatok nem érhetők el",
+      "gasPipelinesUnavailable": "Gázvezeték-adatok nem érhetők el"
     },
     "tradePolicy": {
       "overview": "Áttekintés",
@@ -4206,5 +4210,29 @@
     "reportedClaims": "A kiadó jelentései. Az állítások vizsgálata még folyamatban lehet.",
     "occurred": "Esemény",
     "reported": "Közzétéve"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Globális Piacok Térképe",
+      "liveNews": "Piaci Hírek",
+      "insights": "AI Piaci Elemzések"
+    },
+    "tech": {
+      "map": "Globális Technológiai Térkép",
+      "liveNews": "Technológiai Hírek"
+    },
+    "commodity": {
+      "map": "Árucikkek Térképe",
+      "liveNews": "Árucikkek Hírek",
+      "insights": "AI Árucikkek Elemzések"
+    },
+    "energy": {
+      "map": "Energia Atlasz Térképe",
+      "liveNews": "Energia Hírek",
+      "insights": "AI Energia Elemzések"
+    },
+    "happy": {
+      "map": "Jó Hírek Térképe"
+    }
   }
 }

@@ -9,7 +9,6 @@
     "status": "Systeemstatus",
     "insights": "AI-inzichten",
     "map": "Interactive Map",
-    "techMap": "Mondiale technologie",
     "politics": "Wereldnieuws",
     "us": "Verenigde Staten",
     "europe": "Europa",
@@ -1430,7 +1429,10 @@
         "permissive": "Permissive",
         "undefined": "Undefined"
       },
-      "infoTooltip": "<strong>Regelgeving</strong> Regelgevende acties, beleidswijzigingen en handhavingsupdates van mondiale toezichthouders: financiële, technologische, energie- en handelsautoriteiten. Bron: officiële overheids- en regelgevende publicaties."
+      "infoTooltip": "<strong>Regelgeving</strong> Regelgevende acties, beleidswijzigingen en handhavingsupdates van mondiale toezichthouders: financiële, technologische, energie- en handelsautoriteiten. Bron: officiële overheids- en regelgevende publicaties.",
+      "latestActions": "Laatst geregistreerde acties",
+      "otherDeadlines": "Overige nalevingsdeadlines",
+      "daysAgo": "dagen geleden"
     },
     "etfFlows": {
       "unavailable": "exchangegenoteerde fondsengegevens tijdelijk niet beschikbaar",
@@ -1686,7 +1688,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Upgrade naar PRO voor aandelen mijn- en raffinaderijen per land met concentratie (producentenconcentratie-index) per fase.",
-      "partialTransitCoverage": "{{names}} transitgegevens niet beschikbaar"
+      "partialTransitCoverage": "{{names}} transitgegevens niet beschikbaar",
+      "oilPipelinesUnavailable": "Oliepijplijngegevens niet beschikbaar",
+      "gasPipelinesUnavailable": "Gaspijplijngegevens niet beschikbaar"
     },
     "positiveNewsFeed": {
       "noStories": "Nog geen verhalen in deze categorie"
@@ -4206,5 +4210,29 @@
     "reportedClaims": "Meldingen van de uitgever. Beweringen worden mogelijk nog onderzocht.",
     "occurred": "Incident",
     "reported": "Gepubliceerd"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Wereldwijde marktkaart",
+      "liveNews": "Marktkoppen",
+      "insights": "AI-marktinzichten"
+    },
+    "tech": {
+      "map": "Wereldwijde technologiekaart",
+      "liveNews": "Technologiekoppen"
+    },
+    "commodity": {
+      "map": "Grondstoffenkaart",
+      "liveNews": "Grondstoffenkoppen",
+      "insights": "AI-grondstoffeninzichten"
+    },
+    "energy": {
+      "map": "Energieatlas-kaart",
+      "liveNews": "Energiekoppen",
+      "insights": "AI-energieinzichten"
+    },
+    "happy": {
+      "map": "Goed nieuws-kaart"
+    }
   }
 }

@@ -387,7 +387,6 @@
     "liveNews": "Live-Nachrichten",
     "markets": "Märkte",
     "map": "Globale Lage",
-    "techMap": "Globale Tech",
     "status": "Systemstatus",
     "insights": "KI-Insights",
     "strategicPosture": "KI-Strategische Haltung",
@@ -918,7 +917,10 @@
         "permissive": "Permissiv",
         "undefined": "Undefiniert"
       },
-      "infoTooltip": "<strong>Regulierung</strong> Regulierungsmaßnahmen, Politikänderungen und Durchsetzungsaktualisierungen von globalen Regulierungsbehörden: Finanz-, Technologie-, Energie- und Handelsbehörden. Quelle: offizielle Regierungs- und Regulierungspublikationen."
+      "infoTooltip": "<strong>Regulierung</strong> Regulierungsmaßnahmen, Politikänderungen und Durchsetzungsaktualisierungen von globalen Regulierungsbehörden: Finanz-, Technologie-, Energie- und Handelsbehörden. Quelle: offizielle Regierungs- und Regulierungspublikationen.",
+      "latestActions": "Zuletzt aufgezeichnete Maßnahmen",
+      "otherDeadlines": "Weitere Compliance-Fristen",
+      "daysAgo": "Tage her"
     },
     "economic": {
       "indicators": "Indikatoren",
@@ -985,7 +987,9 @@
       "withheldNote": "W = einbehalten",
       "productionCaption": "Länderanteile der tatsächlichen Produktion. Die Karte zeigt in der Depositen-Ebene, wo sich Rohstoffe befinden; diese Tabelle zeigt, wer sie abbaut oder verarbeitet.",
       "productionProLocked": "Upgrade auf PRO für Bergbau- und Raffinerie-Länderanteile mit Konzentration (Produzentenkonzentrationsindex) nach Stufe.",
-      "partialTransitCoverage": "Transitdaten nicht verfügbar: {{names}}"
+      "partialTransitCoverage": "Transitdaten nicht verfügbar: {{names}}",
+      "oilPipelinesUnavailable": "Ölpipeline-Daten nicht verfügbar",
+      "gasPipelinesUnavailable": "Gaspipeline-Daten nicht verfügbar"
     },
     "tradePolicy": {
       "tariffs": "Zölle",
@@ -4206,5 +4210,29 @@
     "reportedClaims": "Meldungen des Herausgebers. Angaben werden möglicherweise noch untersucht.",
     "occurred": "Vorfall",
     "reported": "Veröffentlicht"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Weltkarte der Märkte",
+      "liveNews": "Markt-Schlagzeilen",
+      "insights": "KI-Markteinblicke"
+    },
+    "tech": {
+      "map": "Weltkarte der Technologie",
+      "liveNews": "Tech-Schlagzeilen"
+    },
+    "commodity": {
+      "map": "Rohstoffkarte",
+      "liveNews": "Rohstoff-Schlagzeilen",
+      "insights": "KI-Rohstoffeinblicke"
+    },
+    "energy": {
+      "map": "Energieatlas-Karte",
+      "liveNews": "Energie-Schlagzeilen",
+      "insights": "KI-Energieeinblicke"
+    },
+    "happy": {
+      "map": "Karte der guten Nachrichten"
+    }
   }
 }

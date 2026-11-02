@@ -457,7 +457,6 @@
     "markets": "Markets",
     "marketImplications": "AI Market Implications",
     "map": "Global Situation",
-    "techMap": "Global Tech",
     "techHubs": "Hot Tech Hubs",
     "status": "System Status",
     "insights": "AI Insights",
@@ -1022,7 +1021,10 @@
         "moderate": "Moderate",
         "permissive": "Permissive",
         "undefined": "Undefined"
-      }
+      },
+      "latestActions": "آخرین اقدامات ثبت‌شده",
+      "otherDeadlines": "سایر موعد‌های انطباق",
+      "daysAgo": "روز پیش"
     },
     "economic": {
       "indicators": "Indicators",
@@ -1098,7 +1100,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "برای سهم کشور معدن و پالایشگاه با تمرکز (شاخص تمرکز تولید‌کننده) بر اساس مرحله، به PRO ارتقا دهید.",
-      "partialTransitCoverage": "داده‌های ترانزیت برای {{names}} در دسترس نیست"
+      "partialTransitCoverage": "داده‌های ترانزیت برای {{names}} در دسترس نیست",
+      "oilPipelinesUnavailable": "داده‌های خط لوله نفت در دسترس نیست",
+      "gasPipelinesUnavailable": "داده‌های خط لوله گاز در دسترس نیست"
     },
     "tradePolicy": {
       "overview": "Overview",
@@ -4206,5 +4210,29 @@
     "reportedClaims": "گزارش‌های ناشر. ادعاها ممکن است همچنان در دست بررسی باشند.",
     "occurred": "رویداد",
     "reported": "انتشار"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "نقشه بازارهای جهانی",
+      "liveNews": "تیتر‌های بازار",
+      "insights": "بینش‌های بازار با هوش مصنوعی"
+    },
+    "tech": {
+      "map": "نقشه تکنولوژی جهانی",
+      "liveNews": "تیتر‌های تکنولوژی"
+    },
+    "commodity": {
+      "map": "نقشه کالاها",
+      "liveNews": "تیتر‌های کالاها",
+      "insights": "بینش‌های کالاها با هوش مصنوعی"
+    },
+    "energy": {
+      "map": "نقشه انرژی",
+      "liveNews": "تیتر‌های انرژی",
+      "insights": "بینش‌های انرژی با هوش مصنوعی"
+    },
+    "happy": {
+      "map": "نقشه اخبار خوب"
+    }
   }
 }

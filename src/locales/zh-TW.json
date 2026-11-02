@@ -385,7 +385,6 @@
     "liveNews": "即時新聞",
     "markets": "市場",
     "map": "全球態勢",
-    "techMap": "全球科技",
     "techHubs": "熱門科技中心",
     "status": "系統狀態",
     "insights": "AI洞察",
@@ -927,7 +926,10 @@
         "permissive": "寬鬆",
         "undefined": "未定義"
       },
-      "infoTooltip": "<strong>監管</strong> 全球監管機構的監管行動、政策變更和執法更新：金融、科技、能源和貿易部門。來源：政府和監管機構官方出版物。"
+      "infoTooltip": "<strong>監管</strong> 全球監管機構的監管行動、政策變更和執法更新：金融、科技、能源和貿易部門。來源：政府和監管機構官方出版物。",
+      "latestActions": "最新記錄的行動",
+      "otherDeadlines": "其他合規截止日期",
+      "daysAgo": "天前"
     },
     "economic": {
       "indicators": "指標",
@@ -994,7 +996,9 @@
       "withheldNote": "W 表示資料隱去",
       "productionCaption": "各國在實際產量中的份額。地圖礦藏圖層顯示資源分佈，此表顯示由誰開採或冶煉。",
       "productionProLocked": "升級至PRO版本以獲取按階段分類的採礦和煉油廠國家份額及集中度（生產商集中度指數）。",
-      "partialTransitCoverage": "過境資料不可用：{{names}}"
+      "partialTransitCoverage": "過境資料不可用：{{names}}",
+      "oilPipelinesUnavailable": "石油管道資料不可用",
+      "gasPipelinesUnavailable": "天然氣管道資料不可用"
     },
     "tradePolicy": {
       "tariffs": "關稅",
@@ -4186,5 +4190,29 @@
     "reportedClaims": "釋出方報告。相關說法可能仍在調查中。",
     "occurred": "事件",
     "reported": "釋出"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "全球市場地圖",
+      "liveNews": "市場頭條",
+      "insights": "AI市場洞察"
+    },
+    "tech": {
+      "map": "全球科技地圖",
+      "liveNews": "科技頭條"
+    },
+    "commodity": {
+      "map": "商品地圖",
+      "liveNews": "商品頭條",
+      "insights": "AI商品洞察"
+    },
+    "energy": {
+      "map": "能源地圖",
+      "liveNews": "能源頭條",
+      "insights": "AI能源洞察"
+    },
+    "happy": {
+      "map": "好訊息地圖"
+    }
   }
 }

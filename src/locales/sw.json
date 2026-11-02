@@ -457,7 +457,6 @@
     "markets": "Masoko",
     "marketImplications": "Athari za Soko la AI",
     "map": "Hali ya Ulimwengu",
-    "techMap": "Global Tech",
     "techHubs": "Hot Tech Hubs",
     "status": "Hali ya Mfumo",
     "insights": "Maarifa ya AI",
@@ -1022,7 +1021,10 @@
         "moderate": "Wastani",
         "permissive": "Ruhusa",
         "undefined": "Haijafafanuliwa"
-      }
+      },
+      "latestActions": "Vitendo vya Mwisho Vilivyorekodiwa",
+      "otherDeadlines": "Makataa Mengine ya Kuzingatia Sheria",
+      "daysAgo": "siku zilizopita"
     },
     "economic": {
       "indicators": "Viashiria",
@@ -1098,7 +1100,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Panda kwa PRO kwa sehemu za nchi ya mgodi na rafinery na mkusanyiko (fahirisi ya mkusanyiko wa uzalishaji) kwa hatua.",
-      "partialTransitCoverage": "{{names}} data ya usafiri haipatikani"
+      "partialTransitCoverage": "{{names}} data ya usafiri haipatikani",
+      "oilPipelinesUnavailable": "Data ya mabomba ya mafuta haipatikani",
+      "gasPipelinesUnavailable": "Data ya mabomba ya gesi haipatikani"
     },
     "tradePolicy": {
       "overview": "Muhtasari",
@@ -4206,5 +4210,29 @@
     "reportedClaims": "Ripoti za mchapishaji. Madai yanaweza kuwa bado yanachunguzwa.",
     "occurred": "Tukio",
     "reported": "Imechapishwa"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Ramani ya Soko la Kimataifa",
+      "liveNews": "Habari za Soko",
+      "insights": "Maarifa ya AI ya Soko"
+    },
+    "tech": {
+      "map": "Ramani ya Teknolojia ya Kimataifa",
+      "liveNews": "Habari za Teknolojia"
+    },
+    "commodity": {
+      "map": "Ramani ya Bidhaa",
+      "liveNews": "Habari za Bidhaa",
+      "insights": "Maarifa ya AI ya Bidhaa"
+    },
+    "energy": {
+      "map": "Ramani ya Nishati",
+      "liveNews": "Habari za Nishati",
+      "insights": "Maarifa ya AI ya Nishati"
+    },
+    "happy": {
+      "map": "Ramani ya Habari Nzuri"
+    }
   }
 }

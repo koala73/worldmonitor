@@ -389,7 +389,6 @@
     "liveNews": "Notizie in diretta",
     "markets": "Mercati",
     "map": "Situazione globale",
-    "techMap": "Tech globale",
     "status": "Stato del sistema",
     "insights": "Approfondimenti IA",
     "strategicPosture": "Postura strategica IA",
@@ -921,7 +920,10 @@
         "permissive": "Permissivo",
         "undefined": "Non definito"
       },
-      "infoTooltip": "<strong>Regolamentazione</strong> Azioni regolatorie, cambiamenti di politica e aggiornamenti sull'applicazione dai regolatori globali: autorità finanziarie, tecnologiche, energetiche e commerciali. Fonte: pubblicazioni ufficiali governative e regolatorie."
+      "infoTooltip": "<strong>Regolamentazione</strong> Azioni regolatorie, cambiamenti di politica e aggiornamenti sull'applicazione dai regolatori globali: autorità finanziarie, tecnologiche, energetiche e commerciali. Fonte: pubblicazioni ufficiali governative e regolatorie.",
+      "latestActions": "Ultimi Provvedimenti Registrati",
+      "otherDeadlines": "Altri Termini di Conformità",
+      "daysAgo": "giorni fa"
     },
     "economic": {
       "indicators": "Indicatori",
@@ -988,7 +990,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Esegui l'upgrade a PRO per quote di paesi di miniere e raffinerie con concentrazione (indice di concentrazione dei produttori) per fase.",
-      "partialTransitCoverage": "Dati di transito non disponibili: {{names}}"
+      "partialTransitCoverage": "Dati di transito non disponibili: {{names}}",
+      "oilPipelinesUnavailable": "Dati sugli oleodotti non disponibili",
+      "gasPipelinesUnavailable": "Dati sui gasdotti non disponibili"
     },
     "tradePolicy": {
       "tariffs": "Dazi",
@@ -4226,5 +4230,29 @@
     "reportedClaims": "Rapporti dell’editore. Le affermazioni potrebbero essere ancora oggetto di indagine.",
     "occurred": "Incidente",
     "reported": "Pubblicato"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Mappa Mercati Globali",
+      "liveNews": "Titoli di Mercato",
+      "insights": "Analisi Mercati AI"
+    },
+    "tech": {
+      "map": "Mappa Tech Globale",
+      "liveNews": "Titoli Tech"
+    },
+    "commodity": {
+      "map": "Mappa Commodity",
+      "liveNews": "Titoli Commodity",
+      "insights": "Analisi Commodity AI"
+    },
+    "energy": {
+      "map": "Mappa Atlante Energetico",
+      "liveNews": "Titoli Energia",
+      "insights": "Analisi Energia AI"
+    },
+    "happy": {
+      "map": "Mappa Buone Notizie"
+    }
   }
 }

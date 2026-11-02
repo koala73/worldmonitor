@@ -391,7 +391,6 @@
     "liveNews": "Živé zprávy",
     "markets": "Trhy",
     "map": "Globální situace",
-    "techMap": "Globální Tech",
     "techHubs": "Horká Tech centra",
     "status": "Stav systému",
     "insights": "AI postřehy",
@@ -924,7 +923,10 @@
         "permissive": "Povolný",
         "undefined": "Nedefinováno"
       },
-      "infoTooltip": "<strong>Regulace</strong> Regulační opatření, změny politik a aktualizace vynucování od globálních regulátorů: finanční, technologické, energetické a obchodní úřady. Zdroj: oficiální vládní a regulační publikace."
+      "infoTooltip": "<strong>Regulace</strong> Regulační opatření, změny politik a aktualizace vynucování od globálních regulátorů: finanční, technologické, energetické a obchodní úřady. Zdroj: oficiální vládní a regulační publikace.",
+      "latestActions": "Poslední zaznamenané akce",
+      "otherDeadlines": "Další termíny pro soulad",
+      "daysAgo": "dní zpátky"
     },
     "economic": {
       "indicators": "Ukazatele",
@@ -991,7 +993,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Upgrade na PRO pro podíly zemí dolů a rafinerií s koncentrací (index koncentrace producenta) podle stupně.",
-      "partialTransitCoverage": "{{names}} - údaje o tranzitu nejsou dostupné"
+      "partialTransitCoverage": "{{names}} - údaje o tranzitu nejsou dostupné",
+      "oilPipelinesUnavailable": "Data o ropovodech nejsou dostupná",
+      "gasPipelinesUnavailable": "Data o plynovodech nejsou dostupná"
     },
     "tradePolicy": {
       "tariffs": "Cla",
@@ -4246,5 +4250,29 @@
     "reportedClaims": "Zprávy vydavatele. Tvrzení mohou být stále vyšetřována.",
     "occurred": "Incident",
     "reported": "Zveřejněno"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Mapa globálních trhů",
+      "liveNews": "Zprávy z trhů",
+      "insights": "AI postřehy o trzích"
+    },
+    "tech": {
+      "map": "Mapa globálních technologií",
+      "liveNews": "Zprávy z technologií"
+    },
+    "commodity": {
+      "map": "Mapa komodit",
+      "liveNews": "Zprávy z komodit",
+      "insights": "AI postřehy o komoditách"
+    },
+    "energy": {
+      "map": "Mapa energetiky",
+      "liveNews": "Zprávy z energetiky",
+      "insights": "AI postřehy o energetice"
+    },
+    "happy": {
+      "map": "Mapa dobrých zpráv"
+    }
   }
 }

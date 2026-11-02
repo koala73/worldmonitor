@@ -9,7 +9,6 @@
     "status": "Status do sistema",
     "insights": "Informações de IA",
     "map": "Interactive Map",
-    "techMap": "Tecnologia Global",
     "politics": "Notícias do mundo",
     "us": "Estados Unidos",
     "europe": "Europa",
@@ -1432,7 +1431,10 @@
         "permissive": "Permissive",
         "undefined": "Undefined"
       },
-      "infoTooltip": "<strong>Regulamentação</strong> Ações regulatórias, mudanças de políticas e atualizações de aplicação de reguladores globais: autoridades financeiras, tecnológicas, energéticas e comerciais. Fonte: publicações oficiais governamentais e regulatórias."
+      "infoTooltip": "<strong>Regulamentação</strong> Ações regulatórias, mudanças de políticas e atualizações de aplicação de reguladores globais: autoridades financeiras, tecnológicas, energéticas e comerciais. Fonte: publicações oficiais governamentais e regulatórias.",
+      "latestActions": "Últimas ações registradas",
+      "otherDeadlines": "Outros Prazos de Conformidade",
+      "daysAgo": "dias atrás"
     },
     "etfFlows": {
       "unavailable": "dados de fundos negociados em bolsa temporariamente indisponíveis",
@@ -1688,7 +1690,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Atualize para PRO para participações de país de mina e refinaria com concentração (índice de concentração de produtor) por estágio.",
-      "partialTransitCoverage": "Dados de trânsito indisponíveis para {{names}}"
+      "partialTransitCoverage": "Dados de trânsito indisponíveis para {{names}}",
+      "oilPipelinesUnavailable": "Dados de oleoduto indisponíveis",
+      "gasPipelinesUnavailable": "Dados de gasoduto indisponíveis"
     },
     "positiveNewsFeed": {
       "noStories": "Ainda não há histórias nesta categoria"
@@ -4226,5 +4230,29 @@
     "reportedClaims": "Relatos do editor. As alegações podem continuar sob investigação.",
     "occurred": "Incidente",
     "reported": "Publicado"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Mapa de Mercados Globais",
+      "liveNews": "Manchetes de Mercado",
+      "insights": "Insights de Mercado com IA"
+    },
+    "tech": {
+      "map": "Mapa Global de Tecnologia",
+      "liveNews": "Manchetes de Tecnologia"
+    },
+    "commodity": {
+      "map": "Mapa de Commodities",
+      "liveNews": "Manchetes de Commodities",
+      "insights": "Insights de Commodities com IA"
+    },
+    "energy": {
+      "map": "Mapa Atlas de Energia",
+      "liveNews": "Manchetes de Energia",
+      "insights": "Insights de Energia com IA"
+    },
+    "happy": {
+      "map": "Mapa de Boas Notícias"
+    }
   }
 }

@@ -389,7 +389,6 @@
     "liveNews": "Știri Live",
     "markets": "Piețe",
     "map": "Situația globală",
-    "techMap": "Global Tech",
     "techHubs": "Hub-uri Tech",
     "status": "Stare sistem",
     "insights": "Analiză AI",
@@ -933,7 +932,10 @@
         "permissive": "Permisiv",
         "undefined": "Nedefinit"
       },
-      "infoTooltip": "<strong>Reglementare</strong> Acțiuni de reglementare, modificări de politici și actualizări de aplicare de la reglementatorii globali: autorități financiare, tehnologice, energetice și comerciale. Sursă: publicații oficiale guvernamentale și de reglementare."
+      "infoTooltip": "<strong>Reglementare</strong> Acțiuni de reglementare, modificări de politici și actualizări de aplicare de la reglementatorii globali: autorități financiare, tehnologice, energetice și comerciale. Sursă: publicații oficiale guvernamentale și de reglementare.",
+      "latestActions": "Ultimele acțiuni înregistrate",
+      "otherDeadlines": "Alte termene de conformitate",
+      "daysAgo": "zile în urmă"
     },
     "economic": {
       "indicators": "Indicatori",
@@ -1000,7 +1002,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Upgrade la PRO pentru ponderi de țară ale minelor și rafinăriilor cu concentrare (indice de concentrare a producătorilor) pe etapă.",
-      "partialTransitCoverage": "Date de tranzit indisponibile pentru {{names}}"
+      "partialTransitCoverage": "Date de tranzit indisponibile pentru {{names}}",
+      "oilPipelinesUnavailable": "Datele conductelor de petrol nu sunt disponibile",
+      "gasPipelinesUnavailable": "Datele conductelor de gaze nu sunt disponibile"
     },
     "tradePolicy": {
       "tariffs": "Tarife vamale",
@@ -4226,5 +4230,29 @@
     "reportedClaims": "Rapoarte ale editorului. Afirmațiile pot fi încă investigate.",
     "occurred": "Incident",
     "reported": "Publicat"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Harta Piețelor Globale",
+      "liveNews": "Titluri de Piață",
+      "insights": "Insight-uri AI pentru Piață"
+    },
+    "tech": {
+      "map": "Harta Tehnologiei Globale",
+      "liveNews": "Titluri Tehnologice"
+    },
+    "commodity": {
+      "map": "Harta Mărfurilor",
+      "liveNews": "Titluri Mărfuri",
+      "insights": "Insight-uri AI pentru Mărfuri"
+    },
+    "energy": {
+      "map": "Atlasul Energetic",
+      "liveNews": "Titluri Energetice",
+      "insights": "Insight-uri AI pentru Energie"
+    },
+    "happy": {
+      "map": "Harta Știrilor Bune"
+    }
   }
 }

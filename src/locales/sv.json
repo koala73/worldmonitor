@@ -9,7 +9,6 @@
     "status": "Systemstatus",
     "insights": "AI-INSIKTER",
     "map": "Interactive Map",
-    "techMap": "Global Teknik",
     "politics": "Världsnyheter",
     "us": "USA",
     "europe": "Europa",
@@ -1430,7 +1429,10 @@
         "permissive": "Permissive",
         "undefined": "Undefined"
       },
-      "infoTooltip": "<strong>Reglering</strong> Regleringsåtgärder, policyändringar och tillsynsuppdateringar från globala tillsynsmyndigheter: finans-, teknik-, energi- och handelsmyndigheter. Källa: officiella statliga och regulatoriska publikationer."
+      "infoTooltip": "<strong>Reglering</strong> Regleringsåtgärder, policyändringar och tillsynsuppdateringar från globala tillsynsmyndigheter: finans-, teknik-, energi- och handelsmyndigheter. Källa: officiella statliga och regulatoriska publikationer.",
+      "latestActions": "Senast registrerade åtgärder",
+      "otherDeadlines": "Övriga efterlevnadsfrister",
+      "daysAgo": "dagar sedan"
     },
     "etfFlows": {
       "unavailable": "data för börshandlade fonder är tillfälligt otillgängligt",
@@ -1686,7 +1688,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Uppgradera till PRO för gruv- och raffinaderiländsandelar med koncentration (producentkoncentrationsindex) per steg.",
-      "partialTransitCoverage": "Transitdata otillgänglig: {{names}}"
+      "partialTransitCoverage": "Transitdata otillgänglig: {{names}}",
+      "oilPipelinesUnavailable": "Data om oljeledningar är inte tillgängliga",
+      "gasPipelinesUnavailable": "Data om gasledningar är inte tillgängliga"
     },
     "positiveNewsFeed": {
       "noStories": "Inga berättelser i denna kategori ännu"
@@ -4206,5 +4210,29 @@
     "reportedClaims": "Utgivarens rapporter. Påståenden kan fortfarande utredas.",
     "occurred": "Incident",
     "reported": "Publicerad"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Världsmarknadskarta",
+      "liveNews": "Marknadsnyheter",
+      "insights": "AI-marknadsinsikter"
+    },
+    "tech": {
+      "map": "Global teknikkarta",
+      "liveNews": "Tekniknyheter"
+    },
+    "commodity": {
+      "map": "Råvarukarta",
+      "liveNews": "Råvarunyheter",
+      "insights": "AI-råvaruinsikter"
+    },
+    "energy": {
+      "map": "Energiatlas-karta",
+      "liveNews": "Energinyheter",
+      "insights": "AI-energiinsikter"
+    },
+    "happy": {
+      "map": "Karta över goda nyheter"
+    }
   }
 }

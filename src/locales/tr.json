@@ -387,7 +387,6 @@
     "liveNews": "Canli Haberler",
     "markets": "Piyasalar",
     "map": "Kuresel Durum",
-    "techMap": "Kuresel Teknoloji",
     "techHubs": "Populer Teknoloji Merkezleri",
     "status": "Sistem Durumu",
     "insights": "Yapay Zeka Analizleri",
@@ -930,7 +929,10 @@
         "permissive": "Permissive",
         "undefined": "Undefined"
       },
-      "infoTooltip": "<strong>Düzenleme</strong> Küresel düzenleyicilerden düzenleyici eylemler, politika değişiklikleri ve uygulama güncellemeleri: finans, teknoloji, enerji ve ticaret otoriteleri. Kaynak: resmi hükümet ve düzenleyici kurum yayınları."
+      "infoTooltip": "<strong>Düzenleme</strong> Küresel düzenleyicilerden düzenleyici eylemler, politika değişiklikleri ve uygulama güncellemeleri: finans, teknoloji, enerji ve ticaret otoriteleri. Kaynak: resmi hükümet ve düzenleyici kurum yayınları.",
+      "latestActions": "En Son Kaydedilen İşlemler",
+      "otherDeadlines": "Diğer Uyum Tarihleri",
+      "daysAgo": "gün önce"
     },
     "economic": {
       "indicators": "Gostergeler",
@@ -997,7 +999,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Madencilik ve rafineri ülke payları için (üretici yoğunlaşma endeksi) aşama bazında yoğunlaşma ile PRO sürümüne yükseltin.",
-      "partialTransitCoverage": "{{names}} transit verileri kullanılamıyor"
+      "partialTransitCoverage": "{{names}} transit verileri kullanılamıyor",
+      "oilPipelinesUnavailable": "Petrol boru hattı verileri kullanılamıyor",
+      "gasPipelinesUnavailable": "Gaz boru hattı verileri kullanılamıyor"
     },
     "tradePolicy": {
       "tariffs": "Gümrük Tarifeleri",
@@ -4206,5 +4210,29 @@
     "reportedClaims": "Yayıncı raporları. İddialar hâlâ araştırılıyor olabilir.",
     "occurred": "Olay",
     "reported": "Yayımlandı"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Küresel Piyasalar Haritası",
+      "liveNews": "Piyasa Başlıkları",
+      "insights": "Yapay Zeka Piyasa İçgörüleri"
+    },
+    "tech": {
+      "map": "Küresel Teknoloji Haritası",
+      "liveNews": "Teknoloji Başlıkları"
+    },
+    "commodity": {
+      "map": "Emtia Haritası",
+      "liveNews": "Emtia Başlıkları",
+      "insights": "Yapay Zeka Emtia İçgörüleri"
+    },
+    "energy": {
+      "map": "Enerji Atlas Haritası",
+      "liveNews": "Enerji Başlıkları",
+      "insights": "Yapay Zeka Enerji İçgörüleri"
+    },
+    "happy": {
+      "map": "İyi Haberler Haritası"
+    }
   }
 }

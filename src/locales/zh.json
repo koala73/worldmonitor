@@ -385,7 +385,6 @@
     "liveNews": "实时新闻",
     "markets": "市场",
     "map": "全球态势",
-    "techMap": "全球科技",
     "techHubs": "热门科技中心",
     "status": "系统状态",
     "insights": "AI洞察",
@@ -927,7 +926,10 @@
         "permissive": "宽松",
         "undefined": "未定义"
       },
-      "infoTooltip": "<strong>监管</strong> 全球监管机构的监管行动、政策变更和执法更新：金融、科技、能源和贸易部门。来源：政府和监管机构官方出版物。"
+      "infoTooltip": "<strong>监管</strong> 全球监管机构的监管行动、政策变更和执法更新：金融、科技、能源和贸易部门。来源：政府和监管机构官方出版物。",
+      "latestActions": "最新记录的行动",
+      "otherDeadlines": "其他合规截止日期",
+      "daysAgo": "天前"
     },
     "economic": {
       "indicators": "指标",
@@ -994,7 +996,9 @@
       "withheldNote": "W 表示数据隐去",
       "productionCaption": "各国在实际产量中的份额。地图矿藏图层显示资源分布，此表显示由谁开采或冶炼。",
       "productionProLocked": "升级至PRO版本以获取按阶段分类的采矿和炼油厂国家份额及集中度（生产商集中度指数）。",
-      "partialTransitCoverage": "过境数据不可用：{{names}}"
+      "partialTransitCoverage": "过境数据不可用：{{names}}",
+      "oilPipelinesUnavailable": "石油管道数据不可用",
+      "gasPipelinesUnavailable": "天然气管道数据不可用"
     },
     "tradePolicy": {
       "tariffs": "关税",
@@ -4186,5 +4190,29 @@
     "reportedClaims": "发布方报告。相关说法可能仍在调查中。",
     "occurred": "事件",
     "reported": "发布"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "全球市场地图",
+      "liveNews": "市场头条",
+      "insights": "AI市场洞察"
+    },
+    "tech": {
+      "map": "全球科技地图",
+      "liveNews": "科技头条"
+    },
+    "commodity": {
+      "map": "商品地图",
+      "liveNews": "商品头条",
+      "insights": "AI商品洞察"
+    },
+    "energy": {
+      "map": "能源地图",
+      "liveNews": "能源头条",
+      "insights": "AI能源洞察"
+    },
+    "happy": {
+      "map": "好消息地图"
+    }
   }
 }
