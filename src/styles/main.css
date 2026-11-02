@@ -2256,7 +2256,8 @@ body.panel-resize-active iframe {
 .panel-col-resize-handle:focus-visible,
 .map-resize-handle:focus-visible,
 .map-width-resize-handle:focus-visible,
-.panel-content:focus-visible {
+.panel-content:focus-visible,
+.table-scroll:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: -2px;
 }
@@ -12157,19 +12158,10 @@ a.prediction-link:hover {
   color: var(--text-secondary);
 }
 
-@media (max-width: 768px) {
-  .radiation-table th,
-  .radiation-table td {
-    padding-inline: 4px;
-  }
-
+@container panel-body (max-width: 480px) {
   .radiation-reading,
   .radiation-delta {
     white-space: normal;
-  }
-
-  .radiation-location {
-    overflow-wrap: anywhere;
   }
 }
 
@@ -26251,7 +26243,7 @@ body.map-width-resizing {
   vertical-align: top;
 }
 
-.gb-table .gb-item-col { min-width: 110px; text-align: left; position: sticky; left: 0; z-index: 2; background: var(--panel-bg); }
+.gb-table .gb-item-col { min-width: 110px; text-align: start; position: sticky; inset-inline-start: 0; z-index: 2; background: var(--panel-bg, var(--surface)); }
 
 .gb-country-header {
   text-align: center;
@@ -26266,10 +26258,10 @@ body.map-width-resizing {
   font-weight: 500;
   min-width: 110px;
   position: sticky;
-  left: 0;
+  inset-inline-start: 0;
   z-index: 2;
-  background: var(--panel-bg);
-  text-align: left;
+  background: var(--panel-bg, var(--surface));
+  text-align: start;
 }
 
 .gb-unit {
