@@ -1429,7 +1429,10 @@
         "permissive": "Permissive",
         "undefined": "Undefined"
       },
-      "infoTooltip": "<strong>Reglering</strong> Regleringsåtgärder, policyändringar och tillsynsuppdateringar från globala tillsynsmyndigheter: finans-, teknik-, energi- och handelsmyndigheter. Källa: officiella statliga och regulatoriska publikationer."
+      "infoTooltip": "<strong>Reglering</strong> Regleringsåtgärder, policyändringar och tillsynsuppdateringar från globala tillsynsmyndigheter: finans-, teknik-, energi- och handelsmyndigheter. Källa: officiella statliga och regulatoriska publikationer.",
+      "latestActions": "Senast registrerade åtgärder",
+      "otherDeadlines": "Övriga efterlevnadsfrister",
+      "daysAgo": "dagar sedan"
     },
     "etfFlows": {
       "unavailable": "data för börshandlade fonder är tillfälligt otillgängligt",

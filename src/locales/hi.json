@@ -1021,7 +1021,10 @@
         "moderate": "मध्यम",
         "permissive": "अनुमेय",
         "undefined": "अपरिभाषित"
-      }
+      },
+      "latestActions": "नवीनतम दर्ज कार्रवाई",
+      "otherDeadlines": "अन्य अनुपालन समय सीमाएं",
+      "daysAgo": "दिन पहले"
     },
     "economic": {
       "indicators": "सूचक",

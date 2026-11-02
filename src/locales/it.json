@@ -920,7 +920,10 @@
         "permissive": "Permissivo",
         "undefined": "Non definito"
       },
-      "infoTooltip": "<strong>Regolamentazione</strong> Azioni regolatorie, cambiamenti di politica e aggiornamenti sull'applicazione dai regolatori globali: autorità finanziarie, tecnologiche, energetiche e commerciali. Fonte: pubblicazioni ufficiali governative e regolatorie."
+      "infoTooltip": "<strong>Regolamentazione</strong> Azioni regolatorie, cambiamenti di politica e aggiornamenti sull'applicazione dai regolatori globali: autorità finanziarie, tecnologiche, energetiche e commerciali. Fonte: pubblicazioni ufficiali governative e regolatorie.",
+      "latestActions": "Ultimi Provvedimenti Registrati",
+      "otherDeadlines": "Altri Termini di Conformità",
+      "daysAgo": "giorni fa"
     },
     "economic": {
       "indicators": "Indicatori",

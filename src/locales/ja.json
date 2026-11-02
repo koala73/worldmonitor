@@ -926,7 +926,10 @@
         "permissive": "Permissive",
         "undefined": "Undefined"
       },
-      "infoTooltip": "<strong>規制</strong> グローバル規制当局からの規制措置、政策変更、執行更新：金融、テクノロジー、エネルギー、貿易当局。ソース：政府および規制機関の公式出版物。"
+      "infoTooltip": "<strong>規制</strong> グローバル規制当局からの規制措置、政策変更、執行更新：金融、テクノロジー、エネルギー、貿易当局。ソース：政府および規制機関の公式出版物。",
+      "latestActions": "最新の記録されたアクション",
+      "otherDeadlines": "その他のコンプライアンス期限",
+      "daysAgo": "日前"
     },
     "economic": {
       "indicators": "指標",

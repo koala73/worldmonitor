@@ -923,7 +923,10 @@
         "permissive": "Povolný",
         "undefined": "Nedefinováno"
       },
-      "infoTooltip": "<strong>Regulace</strong> Regulační opatření, změny politik a aktualizace vynucování od globálních regulátorů: finanční, technologické, energetické a obchodní úřady. Zdroj: oficiální vládní a regulační publikace."
+      "infoTooltip": "<strong>Regulace</strong> Regulační opatření, změny politik a aktualizace vynucování od globálních regulátorů: finanční, technologické, energetické a obchodní úřady. Zdroj: oficiální vládní a regulační publikace.",
+      "latestActions": "Poslední zaznamenané akce",
+      "otherDeadlines": "Další termíny pro soulad",
+      "daysAgo": "dní zpátky"
     },
     "economic": {
       "indicators": "Ukazatele",
