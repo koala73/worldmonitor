@@ -4650,8 +4650,9 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   letter-spacing: 0.5px;
   margin-bottom: 4px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 2px 6px;
 }
 
 .alert-tag {
