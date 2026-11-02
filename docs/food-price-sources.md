@@ -24,6 +24,8 @@ The Food prices panel adds local weekly comparisons to the existing FAO global m
 | mit | [Tanzania Ministry of Industry and Trade](https://www.viwanda.go.tz/documents/product-prices-domestic) | Low and high wholesale prices per 100 kg for 8 crops in about 31 markets | About three reports a week, often uploaded in batches |
 | ucda | [Uganda Coffee Development Authority](https://ugandacoffee.go.ug/) | Farmgate coffee price ranges in UGX/kg and FOT export prices converted from US cents/lb to USD/lb | Business days |
 | amman | [Greater Amman Municipality](https://ammancity.gov.jo/ar/market/prices.aspx) | Central Market most-common wholesale price for local produce; qirsh/kg converted to JOD/kg | Saturday to Thursday |
+| madr | [Algeria Ministry of Agriculture (MADR)](https://madr.gov.dz/mercuriale-des-prix/) | National retail mean for about 19 vegetables, fruit, meat, eggs and milk in DZD per kg, per egg or per litre; the published minimum and maximum bound the mean but are not shown | Working days (Sunday to Thursday) |
+| nsomn | [Mongolia National Statistics Office](https://data.1212.mn/pxweb/en/NSO/NSO__Economy,%20environment__Consumer%20Price%20Index/DT_NSO_0600_001V4.px/) | Ulaanbaatar retail prices for 27 foods and 7 staples in 21 aimag centres, in MNT per published unit; fuel, hay and regional totals excluded | Weekly (Monday reference date) |
 
 Sources added for #9892 run through per-source adapters in `scripts/lib/food-prices-adapters/`. Each adapter keeps the same publisher-host, size, page and budget limits, and may name extra file hosts in its registry entry. Publisher-specific rules:
 
@@ -32,7 +34,9 @@ Sources added for #9892 run through per-source adapters in `scripts/lib/food-pri
 - Amman cards list highest, most common and lowest prices. Rows that break that order are dropped with a warning; a widespread break fails the run as a layout change. Items without an English name are skipped.
 - TCB serves an incomplete certificate chain. Its adapter adds the public Sectigo intermediate for that connection only; certificate verification stays on.
 - Kyrgyzstan's workbook is a legacy `.xls` file larger than the download limit. The adapter reads the two newest sheets with byte-range requests.
-- Uzbekistan data is CC BY 4.0 and must link to www.stat.uz. SIMA asks for the citation "SIMA Niger" and contact before commercial use or mass extraction. Amman's site states all rights reserved. Each registry entry records the requested attribution.
+- Algeria's daily PDFs are discovered from the publisher's WordPress media list, since file names carry varying suffixes (for example `-MCIRMN` when the commerce ministry co-signs). A row whose mean falls outside its own minimum and maximum fails the run as a layout change.
+- Mongolia's weekly tables come from the PXWeb API on data.1212.mn as json-stat2 (www.1212.mn and opendata.1212.mn did not answer our hosts). Each run reads the two newest weeks, so weekly changes appear from the first run; a week that is not seven days before the newest is dropped.
+- Uzbekistan data is CC BY 4.0 and must link to www.stat.uz. SIMA asks for the citation "SIMA Niger" and contact before commercial use or mass extraction. Amman's site states all rights reserved. MADR and the Mongolia NSO state no reuse licence; both are credited by name. Each registry entry records the requested attribution.
 
 Report discovery follows publisher links. The PBS archive's annex date is authoritative, since post slugs can differ from the report date. PDF dates must agree with discovery dates. PDF layout checks, bounded response sizes and same-publisher HTTPS redirects prevent a changed or blocked document from becoming price data. Mexico requests the most recent completed weekday and the same date seven days earlier; missing holiday quotes stay absent. Paginated SNIIM responses fail rather than silently truncate.
 

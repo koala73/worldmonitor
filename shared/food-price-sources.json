@@ -228,5 +228,31 @@
     "maxContentAgeDays": 7,
     "fetchBudgetMs": 60000,
     "attribution": "Greater Amman Municipality"
+  },
+  {
+    "id": "madr",
+    "name": "Algeria MADR retail prices",
+    "country": "Algeria",
+    "countryCode": "DZ",
+    "url": "https://madr.gov.dz/mercuriale-des-prix/",
+    "cadence": "daily",
+    "contextOnly": false,
+    "maxFetchAgeDays": 3,
+    "maxContentAgeDays": 10,
+    "fetchBudgetMs": 60000,
+    "attribution": "Ministry of Agriculture, Rural Development and Fisheries of Algeria (MADR), national retail price list. Modified: product names translated to English."
+  },
+  {
+    "id": "nsomn",
+    "name": "Mongolia NSO weekly prices",
+    "country": "Mongolia",
+    "countryCode": "MN",
+    "url": "https://data.1212.mn/pxweb/en/NSO/NSO__Economy,%20environment__Consumer%20Price%20Index/DT_NSO_0600_001V4.px/",
+    "cadence": "weekly",
+    "contextOnly": false,
+    "maxFetchAgeDays": 10,
+    "maxContentAgeDays": 21,
+    "fetchBudgetMs": 30000,
+    "attribution": "National Statistics Office of Mongolia, www.1212.mn"
   }
 ]
