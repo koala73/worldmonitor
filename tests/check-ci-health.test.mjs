@@ -34,6 +34,8 @@ function run(overrides = {}) {
     status: 'completed',
     conclusion: 'success',
     run_attempt: 1,
+    repository: { full_name: 'o/r' },
+    head_repository: { full_name: 'o/r' },
     ...overrides,
   };
 }
@@ -288,7 +290,7 @@ describe('failing test names', () => {
 describe('flake attribution', () => {
   const flake = (at, failedJobIds, title = 'CI health (flaky): Test / unit-shard (3)') => ({
     kind: 'flaky', title, summary: 's',
-    evidence: [{ url: 'u', sha: 's', at, detail: 'pull request: failed on attempt 1, passed on attempt 2', failedJobIds: [failedJobIds].flat(), pullRequests: [9750] }],
+    evidence: [{ url: 'u', sha: 's', at, detail: 'pull request: failed on attempt 1, passed on attempt 2', failedJobIds: [failedJobIds].flat(), pullRequests: [9750], trustedLog: true }],
   });
   const logs = {
     1: 'test at tests/mcp-modern-era.test.mjs:965:5',
@@ -472,6 +474,31 @@ describe('collection against a fake GitHub API', () => {
     };
     return { gh, paths };
   }
+
+  it('never lets a fork\'s own job log decide that its flake was fixed', () => {
+    const file = 'tests/mcp-modern-era.test.mjs';
+    const scan = (overrides) => {
+      const rerun = run({ id: 7, run_attempt: 2, event: 'pull_request', created_at: '2026-10-29T19:32:00Z', ...overrides });
+      const { gh } = fakeGh({
+        daily: { '2026-10-29': [rerun] },
+        attempts: { '7/1': [job('unit-shard (3)', 'failure', 150, 0, [], 41)], '7/2': [job('unit-shard (3)', 'success', 150, 0, [], 42)] },
+        // The fork prints a recently changed test it never ran.
+        logs: { 41: `test at ${file}:1:1\n` },
+        commits: { [file]: [{ sha: '083a1800f0ffffff', commit: { message: 'test(mcp): freeze the clock (#9863)' } }] },
+      });
+      return checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true });
+    };
+    for (const provenance of [
+      { head_repository: { full_name: 'contributor/r' } },
+      { head_repository: null },
+      { repository: undefined },
+    ]) {
+      const result = scan(provenance);
+      assert.deepEqual(result.skipped, [], JSON.stringify(provenance));
+      assert.match(result.findings[0].evidence[0].detail, /failing: `tests\/mcp-modern-era\.test\.mjs:1:1`$/);
+    }
+    assert.deepEqual(scan({}).skipped, ['CI health (flaky): Test / unit-shard (3)']);
+  });
 
   it('reads every calendar day the overlapping window touches, so nothing falls between weekly scans', () => {
     const { gh, paths } = fakeGh({});

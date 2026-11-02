@@ -6,7 +6,8 @@
 //             request runs count: a re-run tests the same commit, so a flip is
 //             a flake whatever the branch. The failed attempt's log names the
 //             failing tests, and a flake whose named test files have all
-//             changed on main since it failed is not reported (#10013, #10016
+//             changed on main since it failed is not reported, unless the log
+//             came from a fork, which writes its own (#10013, #10016
 //             were filed days after their fixes merged). A recurrence after
 //             that change is newer than it, so it is reported.
 //   timeout   a job on a push to main was cancelled after running 10+ minutes
@@ -169,6 +170,10 @@ export function findFlakyJobs(reruns) {
         ...evidence(run, `${runOrigin(run)}: failed on attempt ${failedAt + 1}, passed on attempt ${attempts.length}`),
         failedJobIds,
         pullRequests: (run.pull_requests ?? []).map((pull) => pull.number).filter(Number.isSafeInteger),
+        // A fork's job log is the contributor's own text: it may name tests in
+        // the issue but never decides that a flake was fixed. Unknown
+        // provenance counts as a fork.
+        trustedLog: Boolean(run.repository?.full_name) && run.head_repository?.full_name === run.repository.full_name,
       });
     }
   }
@@ -182,9 +187,9 @@ export function findFlakyJobs(reruns) {
 //     touching `file` at or after `iso`, ignoring the merge of the flaking pull
 //     request itself, or null
 // A row whose log or history is unreadable, or whose log names no test, is
-// kept: without a name there is nothing to prove the flake was addressed. A
-// fork's run lists no pull request, so its own merge can read as a change; that
-// hides the flake for one scan, until it recurs.
+// kept: without a name there is nothing to prove the flake was addressed. So is
+// a row from a fork, whose log the contributor writes and could fill with any
+// recently changed test.
 export function attributeFlakes(findings, { readLog, changeSince, limit = FLAKE_LOGS_PER_SCAN }) {
   const rows = findings.filter((finding) => finding.kind === 'flaky')
     .flatMap((finding) => finding.evidence)
@@ -212,7 +217,7 @@ export function attributeFlakes(findings, { readLog, changeSince, limit = FLAKE_
     const shown = [...tests].slice(0, TESTS_PER_EVIDENCE);
     const more = tests.size - shown.length;
     row.detail += ` · failing: ${shown.map((test) => `\`${test}\``).join(', ')}${more ? ` and ${more} more` : ''}`;
-    if (!attributed) continue;
+    if (!attributed || !row.trustedLog) continue;
     // The display is capped; the decision reads every named file.
     const files = [...new Set([...tests].map((test) => test.replace(/:\d+(?::\d+)?$/, '')))];
     // A mass failure is a broken run, not one flake: keep it rather than spend
