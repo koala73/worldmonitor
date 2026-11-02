@@ -77,6 +77,16 @@ function searchCommandTitle(query: string, commandId: string): string {
   return document.querySelector(`[data-command="${commandId}"] .search-result-title`)?.textContent?.trim() ?? '';
 }
 
+async function mapHeaderOf(): Promise<string> {
+  vi.stubGlobal('__APP_VERSION__', '0.0.0-test');
+  const container = document.body.appendChild(document.createElement('div'));
+  const layout = Object.create(PanelLayoutManager.prototype) as PanelLayoutManager;
+  Reflect.set(layout, 'ctx', { container, isDesktopApp: false, isMobile: false, panels: {}, panelSettings: {} });
+  // The shell markup is written first; panel creation after it needs a full App and throws here.
+  await layout.renderLayout().catch(() => {});
+  return container.querySelector('#mapSection .panel-title')?.textContent?.trim() ?? '';
+}
+
 function settingsName(key: string): string {
   return PanelLayoutManager.prototype.getLocalizedPanelName(key, key);
 }
@@ -96,6 +106,7 @@ afterEach(async () => {
   for (const panel of panels.splice(0)) panel.destroy();
   document.body.replaceChildren();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   variant.value = 'full';
   await i18next.changeLanguage('en');
 });
@@ -129,11 +140,20 @@ describe('variant panel name overrides', () => {
     expect(searchCommandTitle(name, `panel:${key}`)).toBe(`${en.commands.prefixes.panel}: ${name}`);
   });
 
+  it.each(OVERRIDES.filter(({ key }) => key === 'map'))(
+    'renders the $variant map header as "$name"',
+    async ({ variant: variantName, name }) => {
+      variant.value = variantName;
+      expect(await mapHeaderOf()).toBe(name);
+    },
+  );
+
   it('keeps the generic name on the full variant', async () => {
     variant.value = 'full';
     expect(headerOf('insights')).toBe(en.panels.insights);
     expect(headerOf('live-news')).toBe(en.panels.liveNews);
     expect(settingsName('insights')).toBe(en.panels.insights);
+    expect(await mapHeaderOf()).toBe(en.panels.map);
   });
 
   it('localizes the override name, not the generic panel name', async () => {
