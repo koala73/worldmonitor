@@ -1,0 +1,83 @@
+// The server builds the intel category only into the full edition's digest.
+// An Intel Feed a user added on another edition read its own edition's digest,
+// found no intel there, and returned without rendering, so the panel stayed on
+// its boot "Loading…" state for the whole session.
+import { describe, expect, it, vi } from 'vitest';
+
+import type { AppContext } from '@/app/app-context';
+import { INTEL_SOURCES } from '@/config';
+
+vi.mock('@/config', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/config')>(),
+  SITE_VARIANT: 'tech',
+}));
+vi.mock('@/services/analysis-worker', () => ({
+  analysisWorker: { clusterNews: vi.fn(), analyzeCorrelations: vi.fn() },
+}));
+
+type Selection = { digest: { categories: Record<string, { items: unknown[] }> }; servedStale: boolean } | null;
+
+interface LoaderInternals {
+  loadIntelNews(selection: Selection, options: { recordBaselineSample: boolean; digestPending: boolean }): Promise<unknown[]>;
+  selectEditionDigest(edition: string, language: string): Promise<Selection>;
+  renderNewsForCategory(category: string, items: unknown[]): void;
+}
+
+function protoItem(source: string, title: string) {
+  return {
+    source, title, link: `https://example.com/${encodeURIComponent(title)}`,
+    publishedAt: Date.now(), isAlert: false, importanceScore: 0, credibilityScore: 0.8,
+    corroborationCount: 0, threat: undefined, locationName: '', location: undefined,
+  };
+}
+
+async function techLoader(fullDigest: Selection) {
+  const ctx = {
+    statusPanel: { updateDigestCoverage: vi.fn(), updateFeed: vi.fn(), updateApi: vi.fn() },
+    disabledSources: new Set<string>(),
+    newsCategoryPanelKeys: new Map<string, string>(),
+    newsPanels: {},
+    panels: {},
+    panelSettings: { intel: { name: 'Intel Feed', enabled: true, priority: 1 } },
+    newsByCategory: {},
+    allNews: [],
+    map: { setNewsLocations: vi.fn(), updateHotspotActivity: vi.fn(), flashLocation: vi.fn() },
+  } as unknown as AppContext;
+  const { DataLoaderManager } = await import('@/app/data-loader');
+  const loader = new DataLoaderManager(ctx, { renderCriticalBanner: () => undefined, refreshOpenCountryBrief: () => undefined });
+  const internal = loader as unknown as LoaderInternals;
+  const selectEditionDigest = vi.fn(async () => fullDigest);
+  const renderNewsForCategory = vi.fn();
+  internal.selectEditionDigest = selectEditionDigest;
+  internal.renderNewsForCategory = renderNewsForCategory;
+  return { internal, selectEditionDigest, renderNewsForCategory };
+}
+
+const techDigest: Selection = { digest: { categories: { tech: { items: [] } } }, servedStale: false };
+const options = { recordBaselineSample: false, digestPending: false };
+
+describe('Intel Feed on an edition without an intel digest', () => {
+  it('reads intel from the full edition digest', async () => {
+    const source = INTEL_SOURCES[0]!.name;
+    const full: Selection = {
+      digest: { categories: { intel: { items: [protoItem(source, 'Carrier group moves'), protoItem(source, 'Drills resume')] } } },
+      servedStale: false,
+    };
+    const { internal, selectEditionDigest, renderNewsForCategory } = await techLoader(full);
+
+    const items = await internal.loadIntelNews(techDigest, options);
+
+    expect(selectEditionDigest).toHaveBeenCalledWith('full', expect.any(String));
+    expect(items).toHaveLength(2);
+    expect(renderNewsForCategory).toHaveBeenCalledWith('intel', items);
+  });
+
+  it('renders an empty list instead of leaving the panel loading when no digest has intel', async () => {
+    const { internal, renderNewsForCategory } = await techLoader(null);
+
+    const items = await internal.loadIntelNews(techDigest, options);
+
+    expect(items).toEqual([]);
+    expect(renderNewsForCategory).toHaveBeenCalledWith('intel', []);
+  });
+});
