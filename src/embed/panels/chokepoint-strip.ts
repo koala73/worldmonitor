@@ -22,7 +22,7 @@ function shortName(id: string): string {
     case 'suez': return t('components.chokepointStrip.shortName.suez');
     case 'bab_el_mandeb': return t('components.chokepointStrip.shortName.babElMandeb');
     case 'bosphorus': return t('components.chokepointStrip.shortName.bosphorus');
-    case 'dover_strait': return t('components.chokepointStrip.shortName.danishStraits');
+    case 'dover_strait': return t('components.chokepointStrip.shortName.doverStrait');
     case 'panama': return t('components.chokepointStrip.shortName.panama');
     default: return '';
   }

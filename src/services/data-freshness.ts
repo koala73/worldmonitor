@@ -394,15 +394,21 @@ class DataFreshnessTracker {
   }
 
   /**
+   * Whether every source behind a panel is covered by /api/health, so the panel
+   * can carry a header badge once seed-health evidence arrives.
+   */
+  hasPanelFreshnessSources(panelId: string): boolean {
+    const sourceIds = this.getSourceIdsForPanel(panelId);
+    return sourceIds.length > 0 && sourceIds.every(isHealthMappedSource);
+  }
+
+  /**
    * Get freshness sources that contribute to a panel header badge.
    */
   getSourcesForPanel(panelId: string): PanelFreshnessSource[] {
-    const sourceIds = this.getSourceIdsForPanel(panelId);
-    if (sourceIds.length === 0 || sourceIds.some(sourceId => !isHealthMappedSource(sourceId))) {
-      return [];
-    }
+    if (!this.hasPanelFreshnessSources(panelId)) return [];
 
-    const sources = sourceIds.map(sourceId => this.sources.get(sourceId));
+    const sources = this.getSourceIdsForPanel(panelId).map(sourceId => this.sources.get(sourceId));
     if (sources.some(source => !source || source.freshnessEvidence !== 'seed-health')) {
       return [];
     }

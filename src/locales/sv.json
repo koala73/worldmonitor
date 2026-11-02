@@ -2455,7 +2455,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Turkiska Sunden",
         "panama": "Panama",
-        "danishStraits": "Danska Sunden"
+        "doverStrait": "Doversundet"
       },
       "flow": {
         "mbd": "{{value}} mb/d",
