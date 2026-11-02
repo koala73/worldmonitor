@@ -41,11 +41,20 @@ test('pinned dashboard panels do not overlap their grid neighbours', async ({ pa
 
     // Mount every pinned panel, so the check measures real panels and not the
     // deferred shells that stand in for them below the fold.
+    // The shell is replaced by a new element when the panel mounts, so each
+    // poll re-queries the element instead of holding a handle that detaches.
     for (const id of PINNED_PANELS) {
-      const panel = page.locator(`#panelsGrid > .panel[data-panel="${id}"]`);
-      await expect(panel).toHaveCount(1, { timeout: 60_000 });
-      await panel.scrollIntoViewIfNeeded();
-      await expect(panel).not.toHaveAttribute('data-deferred-panel', 'true', { timeout: 60_000 });
+      await expect
+        .poll(
+          () => page.evaluate((panelId: string) => {
+            const panel = document.querySelector<HTMLElement>(`#panelsGrid > .panel[data-panel="${panelId}"]`);
+            if (!panel) return 'missing';
+            panel.scrollIntoView({ block: 'center' });
+            return panel.dataset.deferredPanel === 'true' ? 'deferred' : 'mounted';
+          }, id),
+          { message: `${id} did not mount`, timeout: 60_000 },
+        )
+        .toBe('mounted');
     }
 
     // The resize separator reports the rows on screen, not the span-2 class.
