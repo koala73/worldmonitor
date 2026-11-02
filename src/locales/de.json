@@ -985,7 +985,9 @@
       "withheldNote": "W = einbehalten",
       "productionCaption": "Länderanteile der tatsächlichen Produktion. Die Karte zeigt in der Depositen-Ebene, wo sich Rohstoffe befinden; diese Tabelle zeigt, wer sie abbaut oder verarbeitet.",
       "productionProLocked": "Upgrade auf PRO für Bergbau- und Raffinerie-Länderanteile mit Konzentration (Produzentenkonzentrationsindex) nach Stufe.",
-      "partialTransitCoverage": "Transitdaten nicht verfügbar: {{names}}"
+      "partialTransitCoverage": "Transitdaten nicht verfügbar: {{names}}",
+      "oilPipelinesUnavailable": "Ölpipeline-Daten nicht verfügbar",
+      "gasPipelinesUnavailable": "Gaspipeline-Daten nicht verfügbar"
     },
     "tradePolicy": {
       "tariffs": "Zölle",

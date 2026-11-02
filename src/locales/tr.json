@@ -997,7 +997,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Madencilik ve rafineri ülke payları için (üretici yoğunlaşma endeksi) aşama bazında yoğunlaşma ile PRO sürümüne yükseltin.",
-      "partialTransitCoverage": "{{names}} transit verileri kullanılamıyor"
+      "partialTransitCoverage": "{{names}} transit verileri kullanılamıyor",
+      "oilPipelinesUnavailable": "Petrol boru hattı verileri kullanılamıyor",
+      "gasPipelinesUnavailable": "Gaz boru hattı verileri kullanılamıyor"
     },
     "tradePolicy": {
       "tariffs": "Gümrük Tarifeleri",

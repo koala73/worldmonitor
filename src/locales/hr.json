@@ -1105,7 +1105,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Nadogradite se na PRO za udio rudnika i rafinerija po zemlji s koncentracijom (indeks koncentracije proizvođača) po fazi.",
-      "partialTransitCoverage": "Podaci o tranzitu nedostupni: {{names}}"
+      "partialTransitCoverage": "Podaci o tranzitu nedostupni: {{names}}",
+      "oilPipelinesUnavailable": "Podaci o naftovinama nisu dostupni",
+      "gasPipelinesUnavailable": "Podaci o plinovinama nisu dostupni"
     },
     "tradePolicy": {
       "overview": "Pregled",
