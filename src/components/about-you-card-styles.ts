@@ -1,6 +1,10 @@
-/* About-you card (src/components/AboutYouCard.ts). Inlined by the lazy chunk,
-   so none of this ships in the dashboard stylesheet. Logical properties keep
-   it docked to the reading-start edge in RTL locales. */
+/**
+ * Styles for the About-you card (src/components/AboutYouCard.ts), injected by
+ * the lazy chunk so none of this ships in the dashboard stylesheet. A string
+ * module rather than a `?inline` CSS import so esbuild-bundled tests can load
+ * the card. Logical properties keep it docked to the reading-start edge in RTL.
+ */
+export const ABOUT_YOU_CARD_CSS = `
 .about-you-card {
   position: fixed;
   inset-block-end: 16px;
@@ -157,3 +161,4 @@
     padding-block-end: max(12px, env(safe-area-inset-bottom));
   }
 }
+`;

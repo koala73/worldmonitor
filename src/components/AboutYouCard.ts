@@ -18,7 +18,7 @@ import {
 import type { ProfileWriteResult } from '@/services/audience-profile';
 import { t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
-import cardCss from '@/styles/about-you-card.css?inline';
+import { ABOUT_YOU_CARD_CSS } from './about-you-card-styles';
 
 export const ABOUT_YOU_CARD_ID = 'wm-about-you-card';
 const STYLE_ID = 'wm-about-you-card-style';
@@ -68,7 +68,7 @@ export function mountAboutYouCard(options: AboutYouCardOptions): HTMLElement | n
   if (!document.getElementById(STYLE_ID)) {
     const style = document.createElement('style');
     style.id = STYLE_ID;
-    style.textContent = cardCss;
+    style.textContent = ABOUT_YOU_CARD_CSS;
     document.head.appendChild(style);
   }
 
