@@ -18,7 +18,12 @@ export function chokepointCoverageWarning(
   const sharedSourcesUp = rows.every((cp) => cp.navigationalWarningsAvailable === true && cp.aisSnapshotAvailable === true);
   const missing = rows.filter((cp) => cp.transitSummary?.dataAvailable !== true);
   if (sharedSourcesUp && missing.length > 0 && missing.length < rows.length) {
-    return t('components.supplyChain.partialTransitCoverage', { names: missing.map((cp) => cp.name).join(', ') });
+    // English first paint has only en.shell.json, and the raw-key healer cannot
+    // restore the names into an interpolated string.
+    return t('components.supplyChain.partialTransitCoverage', {
+      names: missing.map((cp) => cp.name).join(', '),
+      defaultValue: '{{names}} transit data unavailable',
+    });
   }
   return t('components.supplyChain.upstreamUnavailable');
 }
