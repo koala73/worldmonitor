@@ -460,10 +460,9 @@ export class Panel {
     handle.setAttribute('aria-valuemax', '4');
     this.syncKeyboardRowResizeAria();
 
-    // #8276: Refresh ARIA once the panel enters the grid, where its CSS row
-    // span may differ from the detached element's fallback, and again at
-    // viewport breakpoints. Destroy aborts the registration.
-    this.runWhenConnected(() => this.syncKeyboardRowResizeAria());
+    // #8276: notifyConnected() refreshes ARIA once the panel enters the grid,
+    // where its CSS row span may differ from the detached element's fallback.
+    // Refresh again at viewport breakpoints. Destroy aborts the registration.
     registerRowSpanSync(() => {
       if (this.element.isConnected) this.syncKeyboardRowResizeAria();
     }, this.abortController.signal);
@@ -963,6 +962,7 @@ export class Panel {
   }
 
   public notifyConnected(): void {
+    if (!this.destroyed && this.element.isConnected) this.syncKeyboardRowResizeAria();
     this.flushConnectedCallbacks();
   }
 
