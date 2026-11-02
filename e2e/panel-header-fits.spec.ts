@@ -27,6 +27,32 @@ function digest(): string {
 
 interface HeaderFit { panel: number; title: string; titleClipped: boolean; overlaps: string[] }
 
+interface BadgeBox { width: number; height: number; fontSize: string; title: string }
+
+// The freshness badge needs mapped sources and a health poll, so the probe adds
+// one to the politics header. Both badges then render through the real
+// stylesheet: dots below a 300px column, full pills above it.
+function measureBadges(page: Page): Promise<{ freshness: BadgeBox; live: BadgeBox }> {
+  return page.evaluate(() => {
+    const left = document.querySelector<HTMLElement>('#panelsGrid .panel[data-panel="politics"] .panel-header-left')!;
+    let probe = left.querySelector<HTMLElement>('[data-freshness-probe]');
+    if (!probe) {
+      probe = document.createElement('span');
+      probe.className = 'panel-freshness-badge panel-freshness-fresh';
+      probe.dataset.freshnessProbe = '';
+      probe.textContent = '5m ago';
+      probe.title = 'Updated 5 minutes ago';
+      probe.style.display = 'inline-flex';
+      left.appendChild(probe);
+    }
+    const box = (el: HTMLElement): BadgeBox => {
+      const r = el.getBoundingClientRect();
+      return { width: Math.round(r.width), height: Math.round(r.height), fontSize: getComputedStyle(el).fontSize, title: el.title };
+    };
+    return { freshness: box(probe), live: box(document.querySelector<HTMLElement>('#panelsGrid .panel[data-panel="politics"] .panel-data-badge.live')!) };
+  });
+}
+
 function measure(page: Page): Promise<HeaderFit> {
   return page.evaluate(() => {
     const panel = document.querySelector<HTMLElement>('#panelsGrid .panel[data-panel="politics"]')!;
@@ -75,6 +101,17 @@ test('panel headers keep the title readable with nothing overlapping', async ({ 
     const label = `politics header at ${viewport.width}px (panel ${m.panel}px)`;
     expect.soft(m.titleClipped, `${label}: title "${m.title}" is clipped`).toBe(false);
     expect.soft(m.overlaps, `${label}: overlapping header items`).toEqual([]);
+    const badges = await measureBadges(page);
+    if (m.panel <= 300) {
+      for (const [name, b] of Object.entries(badges)) {
+        expect.soft({ width: b.width, height: b.height, fontSize: b.fontSize }, `${label}: ${name} badge is a dot`).toEqual({ width: 8, height: 8, fontSize: '0px' });
+        expect.soft(b.title, `${label}: ${name} dot has a hover label`).not.toBe('');
+      }
+    } else {
+      for (const [name, b] of Object.entries(badges)) {
+        expect.soft(b.width, `${label}: ${name} badge keeps its text`).toBeGreaterThan(20);
+      }
+    }
     await context.close();
   }
 });
