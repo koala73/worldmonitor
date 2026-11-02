@@ -45,7 +45,16 @@ test.describe('China activity nowcast panel', () => {
       'grid-template-columns',
       /^\S+$/,
     );
+    // The method grid, open since the summary click above, follows the same
+    // rule: one column in a dashboard column, several when the panel is wide.
+    const methodGrid = panel.locator('.china-nowcast-method__grid');
+    await expect(methodGrid).toHaveCSS('grid-template-columns', /^\S+$/);
+    const methodOverflow = await methodGrid.evaluate((element) => element.scrollWidth - element.clientWidth);
+    expect(methodOverflow).toBeLessThanOrEqual(1);
     const columnOverflow = await panel.evaluate((element) => element.scrollWidth - element.clientWidth);
     expect(columnOverflow).toBeLessThanOrEqual(1);
+
+    await panel.evaluate((element) => { element.style.width = ''; });
+    await expect(methodGrid).toHaveCSS('grid-template-columns', /.+ .+/);
   });
 });
