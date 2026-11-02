@@ -1871,6 +1871,70 @@ for (const inputKind of ['string', 'URL', 'Request']) test(`blocks handler ${inp
   }
 });
 
+test('allows only Docker mode to fetch configured private WS_RELAY_URL origin', async () => {
+  const originalRelayUrl = process.env.WS_RELAY_URL;
+  let upstreamHits = 0;
+
+  const upstream = createServer((_req, res) => {
+    upstreamHits += 1;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const upstreamPort = await listen(upstream);
+  const relayOrigin = `http://127.0.0.1:${upstreamPort}`;
+
+  const localApi = await setupApiDir({
+    'relay-probe.js': `
+      export default async function handler() {
+        const upstream = await fetch(process.env.WS_RELAY_URL + '/telegram/feed');
+        const payload = await upstream.text();
+        return new Response(payload, {
+          status: upstream.status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  async function runProbe(mode) {
+    const app = await createLocalApiServer({
+      port: 0,
+      apiDir: localApi.apiDir,
+      mode,
+      logger: { log() { }, warn() { }, error() { } },
+    });
+    const { port } = await app.start();
+    try {
+      return await authFetch(`http://127.0.0.1:${port}/api/relay-probe`);
+    } finally {
+      await app.close();
+    }
+  }
+
+  process.env.WS_RELAY_URL = relayOrigin;
+
+  try {
+    const dockerResponse = await runProbe('docker');
+    assert.equal(dockerResponse.status, 200);
+    assert.deepEqual(await dockerResponse.json(), { ok: true });
+    assert.equal(upstreamHits, 1);
+
+    const desktopResponse = await runProbe('desktop-sidecar');
+    assert.equal(desktopResponse.status, 502);
+    const desktopBody = await desktopResponse.json();
+    assert.equal(desktopBody.error, 'Local handler error');
+    assert.match(desktopBody.reason, /SSRF blocked/);
+    assert.equal(upstreamHits, 1);
+  } finally {
+    if (originalRelayUrl === undefined) delete process.env.WS_RELAY_URL;
+    else process.env.WS_RELAY_URL = originalRelayUrl;
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
 test('allows only Docker mode to fetch configured private Redis REST origin', async () => {
   const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
   const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;

@@ -2347,6 +2347,12 @@ export async function createLocalApiServer(options = {}) {
         // passes the SSRF check, so this path is docker-only.
         addConfiguredPrivateOrigin('UPSTASH_REDIS_REST_URL', 'Redis calls will be SSRF-blocked');
 
+        // docker-compose.yml points WS_RELAY_URL at the compose-internal relay
+        // (http://ais-relay:3004). Without trusting it, every relay-backed route
+        // (x-feed, telegram-feed, rss-proxy) is SSRF-blocked and answers 502
+        // "Hostname resolves to a private/reserved IP address".
+        addConfiguredPrivateOrigin('WS_RELAY_URL', 'relay calls will be SSRF-blocked');
+
         // SELF_HOSTING.md documents LLM_API_URL for compose-network or LAN
         // endpoints; OLLAMA_API_URL is the supported desktop runtime setting.
         // Without trusting their exact configured origins, the global SSRF
