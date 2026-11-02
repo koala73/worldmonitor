@@ -329,6 +329,19 @@ test('Dominican Republic reads a second full page only while the open sample is 
     dominican({ codigo_proceso: 'AWARDED', estado_proceso: 'Proceso adjudicado y celebrado', titulo: '', fecha_publicacion: null }), dominican()] } }) });
   assert.deepEqual(awarded.records.map((record) => record.sourceNoticeId), ['EDENORTE-CCC-PEIN-2026-0031']);
   await assert.rejects(fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [dominican({ estado_proceso: '' })] } }) }));
+  // Repeated rows of one process count once, so page two is still read.
+  calls = 0;
+  const repeated = Array.from({ length: 200 }, () => dominican({ codigo_proceso: 'SAME' }));
+  const distinct = await fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => {
+    calls++;
+    return { hasError: false, payload: { content: calls === 1 ? repeated : [dominican({ codigo_proceso: 'OTHER' })] } };
+  } });
+  assert.equal(calls, 2);
+  assert.deepEqual(distinct.records.map((record) => record.sourceNoticeId), ['SAME', 'OTHER']);
+  // An expired published row with an empty title is skipped before field validation.
+  const staleTitle = await fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [
+    dominican({ codigo_proceso: 'STALE', titulo: '', fecha_fin_recepcion_ofertas: '2026-10-01T09:00:00Z' }), dominican()] } }) });
+  assert.deepEqual(staleTitle.records.map((record) => record.sourceNoticeId), ['EDENORTE-CCC-PEIN-2026-0031']);
   await assert.rejects(fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [dominican({ fecha_fin_recepcion_ofertas: '' })] } }) }));
   await assert.rejects(fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [dominican({ url: 'https://attacker.example/notice' })] } }) }));
   await assert.rejects(fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [dominican({ titulo: '' })] } }) }));

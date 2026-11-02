@@ -523,9 +523,10 @@ export async function fetchDominicanRepublic({ now = Date.now(), fetchJsonFn } =
   const source = 'dominican-republic-dgcp';
   const read = reader(fetchJsonFn);
   const records = [];
-  // Only still-open published processes count toward the sample; awarded,
-  // closed-stage and already-expired rows neither fill it nor fail the page.
-  const open = () => records.filter((record) => isOpenOpportunity(record, now)).length;
+  // Only distinct, still-open published processes count toward the sample;
+  // awarded, closed-stage, already-expired and repeated rows neither fill it
+  // nor fail the page.
+  const open = () => dedupeTenders(records).filter((record) => isOpenOpportunity(record, now)).length;
   for (let page = 1; page <= 2 && open() < MAX_RECORDS; page++) {
     const payload = await read(urlWithParams(DGCP_PROCESSES_URL, { page, limit: 200 }));
     requireRow(payload?.hasError === false, source);
@@ -533,8 +534,10 @@ export async function fetchDominicanRepublic({ now = Date.now(), fetchJsonFn } =
     for (const raw of content) {
       requireRow(text(raw?.codigo_proceso) && text(raw?.estado_proceso), source);
       if (raw.estado_proceso !== 'Proceso publicado' || open() >= MAX_RECORDS) continue;
-      requireRow(text(raw.titulo) && Number.isFinite(Date.parse(raw.fecha_publicacion))
-        && Number.isFinite(Date.parse(raw.fecha_fin_recepcion_ofertas)) && safeOfficialUrl(raw.url, source), source);
+      const deadline = Date.parse(raw.fecha_fin_recepcion_ofertas);
+      requireRow(Number.isFinite(deadline), source);
+      if (deadline <= now) continue;
+      requireRow(text(raw.titulo) && Number.isFinite(Date.parse(raw.fecha_publicacion)) && safeOfficialUrl(raw.url, source), source);
       records.push(normalizePublicTender({ source, sourceNoticeId: raw.codigo_proceso, officialUrl: raw.url,
         countryCode: 'DO', region: 'North America', title: raw.titulo, description: raw.descripcion, buyer: raw.unidad_compra,
         publishedAt: raw.fecha_publicacion, deadline: raw.fecha_fin_recepcion_ofertas, status: 'open',
