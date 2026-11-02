@@ -159,6 +159,20 @@ describe('chokepoint partial coverage', () => {
     expect(banners).toEqual(Array(3).fill('Korea Strait, Kerch Strait transit data unavailable'));
   });
 
+  for (const [source, flags] of [
+    ['navigation warnings are', { navigationalWarningsAvailable: false, aisSnapshotAvailable: true }],
+    ['the AIS snapshot is', { navigationalWarningsAvailable: true, aisSnapshotAvailable: false }],
+  ] as const) {
+    it(`keeps the outage banner when ${source} also unavailable`, async () => {
+      const data = coverageResponse(new Set(['korea_strait']));
+      const banners = await coverageBanners({
+        ...data,
+        chokepoints: data.chokepoints.map((cp) => ({ ...cp, ...flags })),
+      });
+      expect(banners).toEqual(Array(3).fill('Supply chain data temporarily unavailable — showing cached data'));
+    });
+  }
+
   it('keeps the outage banner when no chokepoint has transit data', async () => {
     const banners = await coverageBanners(coverageResponse('all'));
     expect(banners).toEqual(Array(3).fill('Supply chain data temporarily unavailable — showing cached data'));
