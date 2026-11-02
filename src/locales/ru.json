@@ -939,7 +939,8 @@
       "latestActions": "Последние записанные действия",
       "otherDeadlines": "Другие сроки соответствия",
       "daysAgo": "дней назад",
-      "revokedCount": "Отменённые нормативные акты ({{count}})"
+      "revokedCount": "Отменённые нормативные акты ({{count}})",
+      "lapsedCount": "Утратившие силу предложения ({{count}})"
     },
     "economic": {
       "indicators": "Индикаторы",

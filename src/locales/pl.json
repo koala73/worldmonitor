@@ -927,7 +927,8 @@
       "latestActions": "Ostatnie zarejestrowane działania",
       "otherDeadlines": "Pozostałe terminy zgodności",
       "daysAgo": "dni temu",
-      "revokedCount": "Uchylone przepisy ({{count}})"
+      "revokedCount": "Uchylone przepisy ({{count}})",
+      "lapsedCount": "Wygasłe propozycje ({{count}})"
     },
     "economic": {
       "indicators": "Wskaźniki",

@@ -143,8 +143,15 @@ describe('AI regulations dataset: dates against the clock', () => {
 describe('AI regulations dataset: sources', () => {
   const https = (url: string | undefined) => typeof url === 'string' && url.startsWith('https://');
 
+  // No primary source was found for this entry's name or date. It keeps its
+  // place until one is, and must not gain a guessed link meanwhile.
+  const UNSOURCED = new Set(['kr-ai-framework']);
+
   it('links every regulation to an https source', () => {
-    for (const r of AI_REGULATIONS) assert.ok(https(r.link), `${r.id} ${r.link}`);
+    for (const r of AI_REGULATIONS) {
+      if (UNSOURCED.has(r.id)) assert.equal(r.link, undefined, r.id);
+      else assert.ok(https(r.link), `${r.id} ${r.link}`);
+    }
   });
 
   it('gives every action an https source', () => {

@@ -930,7 +930,8 @@
       "latestActions": "최근 기록된 조치",
       "otherDeadlines": "기타 준수 기한",
       "daysAgo": "일 전",
-      "revokedCount": "폐지된 규제 ({{count}})"
+      "revokedCount": "폐지된 규제 ({{count}})",
+      "lapsedCount": "폐기된 제안 ({{count}})"
     },
     "economic": {
       "indicators": "경제 지표",

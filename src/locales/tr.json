@@ -933,7 +933,8 @@
       "latestActions": "En Son Kaydedilen İşlemler",
       "otherDeadlines": "Diğer Uyum Tarihleri",
       "daysAgo": "gün önce",
-      "revokedCount": "İptal Edilen Düzenlemeler ({{count}})"
+      "revokedCount": "İptal Edilen Düzenlemeler ({{count}})",
+      "lapsedCount": "Süresi Dolan Teklifler ({{count}})"
     },
     "economic": {
       "indicators": "Gostergeler",

@@ -933,7 +933,8 @@
       "latestActions": "Τελευταίες Καταγεγραμμένες Ενέργειες",
       "otherDeadlines": "Άλλες Προθεσμίες Συμμόρφωσης",
       "daysAgo": "ημέρες πριν",
-      "revokedCount": "Ανακληθέντες Κανονισμοί ({{count}})"
+      "revokedCount": "Ανακληθέντες Κανονισμοί ({{count}})",
+      "lapsedCount": "Ληγμένες Προτάσεις ({{count}})"
     },
     "economic": {
       "indicators": "Δείκτες",

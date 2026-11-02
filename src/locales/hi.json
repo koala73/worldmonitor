@@ -1025,7 +1025,8 @@
       "latestActions": "नवीनतम दर्ज कार्रवाई",
       "otherDeadlines": "अन्य अनुपालन समय सीमाएं",
       "daysAgo": "दिन पहले",
-      "revokedCount": "निरस्त किए गए विनियम ({{count}})"
+      "revokedCount": "निरस्त किए गए विनियम ({{count}})",
+      "lapsedCount": "समाप्त प्रस्ताव ({{count}})"
     },
     "economic": {
       "indicators": "सूचक",

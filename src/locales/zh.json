@@ -930,7 +930,8 @@
       "latestActions": "最新记录的行动",
       "otherDeadlines": "其他合规截止日期",
       "daysAgo": "天前",
-      "revokedCount": "已撤销法规（{{count}}）"
+      "revokedCount": "已撤销法规（{{count}}）",
+      "lapsedCount": "已失效提案 ({{count}})"
     },
     "economic": {
       "indicators": "指标",

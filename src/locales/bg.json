@@ -933,7 +933,8 @@
       "latestActions": "Последни записани действия",
       "otherDeadlines": "Други срокове за съответствие",
       "daysAgo": "дни назад",
-      "revokedCount": "Отменени регулации ({{count}})"
+      "revokedCount": "Отменени регулации ({{count}})",
+      "lapsedCount": "Изтекли предложения ({{count}})"
     },
     "economic": {
       "indicators": "Показатели",
