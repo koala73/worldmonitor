@@ -1899,8 +1899,6 @@ export class DataLoaderManager implements AppModule {
     generation = this.newsLoadGeneration,
     recordSelectedFreshness: (servedStale: boolean) => void = () => undefined,
   ): Promise<NewsItem[]> {
-    const digest = digestSelection?.digest;
-    const digestServedStale = digestSelection?.servedStale ?? true;
     const enabledIntelSources = INTEL_SOURCES.filter(f => !this.ctx.disabledSources.has(f.name));
     const enabledIntelNames = new Set(enabledIntelSources.map(f => f.name));
     const intelPanel = this.ctx.newsPanels['intel'];
@@ -1911,6 +1909,14 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: 0 });
       return [];
     }
+
+    // The server builds intel into the full edition's digest only, so an Intel
+    // Feed added on another edition reads that one.
+    const selection = SITE_VARIANT !== 'full' && !(digestSelection?.digest.categories && 'intel' in digestSelection.digest.categories)
+      ? await this.selectEditionDigest('full', getCurrentLanguage())
+      : digestSelection;
+    const digest = selection?.digest;
+    const digestServedStale = selection?.servedStale ?? true;
 
     if (digest?.categories && 'intel' in digest.categories) {
       recordSelectedFreshness(digestServedStale);
@@ -1966,7 +1972,7 @@ export class DataLoaderManager implements AppModule {
     if (!this.isNewsOutageFallbackEnabled()) {
       recordSelectedFreshness(false);
       console.warn('[News] Intel digest missing, outage fallback off');
-      delete this.ctx.newsByCategory['intel'];
+      this.renderNewsForCategory('intel', []);
       this.ctx.statusPanel?.updateFeed('Intel', { status: 'error', errorMessage: 'Digest unavailable' });
       return [];
     }
