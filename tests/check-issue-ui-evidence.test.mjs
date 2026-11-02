@@ -89,6 +89,11 @@ describe('hasAttachment', () => {
     }
   });
 
+  // The budget is a regression net, not a benchmark: linear shapes take tens
+  // of milliseconds locally and about 250 ms on a loaded CI runner, while the
+  // pre-fix pattern was quadratic and would take many seconds at the cap. A
+  // tight host-tuned bound failed CI at 253 ms; 2 s keeps every runner green
+  // and still fails a quadratic regression by an order of magnitude.
   it('stays linear on a hostile body at the GitHub size cap (CWE-1333)', () => {
     const cap = 65_536;
     const fill = (unit) => unit.repeat(Math.ceil(cap / unit.length)).slice(0, cap);
@@ -111,7 +116,7 @@ describe('hasAttachment', () => {
       const started = performance.now();
       assert.equal(hasAttachment(body), false);
       const took = performance.now() - started;
-      assert.ok(took < 200, `${JSON.stringify(body.slice(0, 12))}... took ${Math.round(took)}ms`);
+      assert.ok(took < 2_000, `${JSON.stringify(body.slice(0, 12))}... took ${Math.round(took)}ms`);
     }
   });
 
