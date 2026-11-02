@@ -148,17 +148,18 @@ export const ABOUT_YOU_CARD_CSS = `
 }
 
 /* Phones: a bottom sheet that never takes more than 40% of the screen, so the
-   map stays usable above it. */
+   map stays usable above it. It sits on top of the fixed .mobile-tab-bar
+   (--wm-bottom-base, which already includes the safe-area inset), not under
+   it, so its last option and Skip are never hidden. */
 @media (max-width: 768px) {
   .about-you-card {
-    inset-block-end: 0;
+    inset-block-end: var(--wm-bottom-base, 0px);
     inset-inline: 0;
     width: auto;
     max-height: 40vh;
     overflow-y: auto;
     border-radius: 10px 10px 0 0;
-    border-block-end: none;
-    padding-block-end: max(12px, env(safe-area-inset-bottom));
+    padding-block-end: 12px;
   }
 }
 `;

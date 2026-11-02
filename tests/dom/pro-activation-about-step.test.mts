@@ -47,7 +47,11 @@ vi.mock('@/components/ProActivationChip', () => ({
   maybeShowFinishSetupChip: () => {},
 }));
 
-import { openProActivationFlow } from '@/components/ProActivationInterstitial';
+import {
+  closeProActivationInterstitial,
+  openProActivationFlow,
+  openProActivationInterstitial,
+} from '@/components/ProActivationInterstitial';
 
 type Captured = Parameters<NonNullable<Parameters<typeof openProActivationFlow>[1]['openInterstitial']>>[0];
 
@@ -96,6 +100,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  closeProActivationInterstitial();
   document.body.replaceChildren();
   profile.status = { status: 'due', answers: {}, keyQuestionsComplete: false, returnDue: false };
 });
@@ -160,6 +165,17 @@ describe('Pro activation About-you step', () => {
     work.click();
     expect(work.getAttribute('aria-pressed')).toBe('false');
     expect(root.querySelector<HTMLButtonElement>('.pro-activation-about-save')!.disabled).toBe(true);
+  });
+
+  it('the frame offers only "Skip for now" beside Save, never a Continue that drops the answers', async () => {
+    const { captured } = await openFlow();
+    const about = captured!.steps.findIndex((step) => step.id === 'about');
+    openProActivationInterstitial({ ...captured!, steps: captured!.steps.slice(about) });
+    const actions = document.querySelector('.pro-activation-actions')!;
+    expect(actions.querySelector('.pro-activation-primary')).toBeNull();
+    const skip = actions.querySelector<HTMLButtonElement>('.pro-activation-skip');
+    expect(skip?.textContent).toBe('Skip for now');
+    expect(document.querySelector('.pro-activation-about-save')).not.toBeNull();
   });
 
   it('skipping the step emits step-skipped and records a profile skip', async () => {

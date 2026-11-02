@@ -145,6 +145,12 @@ export interface ProActivationStepExtra {
    * power step's pointers); a single "Continue" advances (counts as skip).
    */
   replacesPrimaryAction?: boolean;
+  /**
+   * When true the extras render their own confirm button (the About-you Save);
+   * the frame renders only "Skip for now". A "Continue" beside Save would skip
+   * the step and silently drop answers the user had picked.
+   */
+  ownsConfirm?: boolean;
 }
 
 /** Transient UI state for the CURRENT confirmable step only. */
@@ -472,6 +478,7 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     if (state === 'blocked' || state === 'unavailable') return cont('advance-skip');
     // confirmable
     // Power step: the extras' pointers ARE the actions — render only "Continue".
+    if (options.stepExtras?.[step.id]?.ownsConfirm) return skip();
     if (options.stepExtras?.[step.id]?.replacesPrimaryAction) return cont('advance-skip');
     if (transient === 'in-flight') return primary(copy.confirming, 'confirm', true);
     const label =
@@ -1432,7 +1439,7 @@ function buildAboutExtra(options: ProActivationFlowOptions): ProActivationStepEx
       `<div class="pro-activation-about">${groups}<button type="button" class="pro-activation-about-save" disabled>${save}</button><p class="pro-activation-about-status" role="status" aria-live="polite"></p></div>`,
       'pro-activation about-you step; labels escaped via escapeHtml, ids from the shared taxonomy',
     ),
-    replacesPrimaryAction: true,
+    ownsConfirm: true,
     onMount: (root, controls) => {
       const answers: Partial<Record<AboutYouChoiceQuestionId, string>> = {};
       const saveBtn = root.querySelector<HTMLButtonElement>('.pro-activation-about-save');
