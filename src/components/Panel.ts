@@ -83,11 +83,36 @@ function getRowSpan(element: HTMLElement): number {
   if (element.classList.contains('span-3')) return 3;
   if (element.classList.contains('span-2')) return 2;
   if (element.classList.contains('span-1')) return 1;
-  // A natural wide panel already occupies two dashboard rows even when it
-  // has no explicit span-N class. Treat that footprint as the resize baseline
-  // so the first vertical drag changes the visible height instead of being a
-  // no-op against the existing grid-row: span 2 rule.
+
+  // #8276: Use the actual CSS grid span as the resize baseline.
+  // Natural wide video panels may occupy three rows instead of two.
+  // This prevents the first drag from unexpectedly shrinking the panel.
+  if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+    const match = /^span\s+([1-4])(?:\s|$)/.exec(window.getComputedStyle(element).gridRowStart);
+    if (match) return Number(match[1]);
+  }
+
+  // Fallback when the element is not yet attached to the layout.
   return element.classList.contains('panel-wide') ? 2 : 1;
+}
+
+// #8276: A stylesheet can give any panel a natural row span that changes at
+// viewport breakpoints, so every mounted row separator re-reads its span on
+// resize. One shared listener serves all panels instead of one per panel.
+const rowSpanSyncs = new Set<() => void>();
+
+function handleRowSpanViewportResize(): void {
+  for (const sync of rowSpanSyncs) sync();
+}
+
+function registerRowSpanSync(sync: () => void, signal: AbortSignal): void {
+  if (typeof window === 'undefined' || signal.aborted) return;
+  if (rowSpanSyncs.size === 0) window.addEventListener('resize', handleRowSpanViewportResize);
+  rowSpanSyncs.add(sync);
+  signal.addEventListener('abort', () => {
+    rowSpanSyncs.delete(sync);
+    if (rowSpanSyncs.size === 0) window.removeEventListener('resize', handleRowSpanViewportResize);
+  }, { once: true });
 }
 
 function deltaToRowSpan(startSpan: number, deltaY: number): number {
@@ -122,6 +147,7 @@ export class Panel {
   private isResizing = false;
   private startY = 0;
   private startRowSpan = 1;
+  private startRowSpanClasses: string[] = [];
   private onTouchMove: ((e: TouchEvent) => void) | null = null;
   private onTouchEnd: (() => void) | null = null;
   private onTouchCancel: (() => void) | null = null;
@@ -433,6 +459,18 @@ export class Panel {
     handle.setAttribute('aria-valuemin', '1');
     handle.setAttribute('aria-valuemax', '4');
     this.syncKeyboardRowResizeAria();
+
+    // #8276: notifyConnected() refreshes ARIA once the panel enters the grid,
+    // where its CSS row span may differ from the detached element's fallback.
+    // Refresh again at viewport breakpoints. Destroy aborts the registration.
+    registerRowSpanSync(() => {
+      if (this.element.isConnected) this.syncKeyboardRowResizeAria();
+    }, this.abortController.signal);
+
+    // Also refresh the value before keyboard interaction.
+    handle.addEventListener('focus', () => {
+      this.syncKeyboardRowResizeAria();
+    });
     handle.addEventListener('keydown', (e: KeyboardEvent) => {
       const current = getRowSpan(this.element);
       let next: number | null = null;
@@ -491,13 +529,31 @@ export class Panel {
     );
   }
 
+  // Compare span classes, not computed spans: a drag that returns to its start
+  // restores the starting classes, but a breakpoint crossed mid-drag can still
+  // change the natural CSS span, which must not be saved as a manual resize.
+  private rowSpanClassesChangedSinceDragStart(): boolean {
+    const current = ['span-1', 'span-2', 'span-3', 'span-4', 'resized']
+      .filter(token => this.element.classList.contains(token));
+    return current.join(' ') !== this.startRowSpanClasses.join(' ');
+  }
+
+  private updateRowResize(deltaY: number): void {
+    const span = deltaToRowSpan(this.startRowSpan, deltaY);
+    if (span === this.startRowSpan) {
+      this.element.classList.remove('span-1', 'span-2', 'span-3', 'span-4', 'resized');
+      this.element.classList.add(...this.startRowSpanClasses);
+    } else {
+      setSpanClass(this.element, span);
+    }
+  }
+
   private setupResizeHandlers(): void {
     if (!this.resizeHandle) return;
 
     this.onRowMouseMove = (e: MouseEvent) => {
       if (!this.isResizing) return;
-      const deltaY = e.clientY - this.startY;
-      setSpanClass(this.element, deltaToRowSpan(this.startRowSpan, deltaY));
+      this.updateRowResize(e.clientY - this.startY);
     };
 
     this.onRowMouseUp = () => {
@@ -517,9 +573,10 @@ export class Panel {
         window.removeEventListener('blur', this.onRowWindowBlur);
       }
 
-      const currentSpan = getRowSpan(this.element);
-      savePanelSpan(this.panelId, currentSpan);
-      if (currentSpan !== this.startRowSpan) trackLayoutCustomized('panel-resize');
+      if (this.rowSpanClassesChangedSinceDragStart()) {
+        savePanelSpan(this.panelId, getRowSpan(this.element));
+        trackLayoutCustomized('panel-resize');
+      }
       this.syncKeyboardRowResizeAria();
     };
 
@@ -531,6 +588,8 @@ export class Panel {
       this.isResizing = true;
       this.startY = e.clientY;
       this.startRowSpan = getRowSpan(this.element);
+      this.startRowSpanClasses = ['span-1', 'span-2', 'span-3', 'span-4', 'resized']
+        .filter(token => this.element.classList.contains(token));
       this.element.dataset.resizing = 'true';
       this.element.classList.add('resizing');
       document.body.classList.add('panel-resize-active');
@@ -562,6 +621,8 @@ export class Panel {
       this.isResizing = true;
       this.startY = touch.clientY;
       this.startRowSpan = getRowSpan(this.element);
+      this.startRowSpanClasses = ['span-1', 'span-2', 'span-3', 'span-4', 'resized']
+        .filter(token => this.element.classList.contains(token));
       this.element.classList.add('resizing');
       this.element.dataset.resizing = 'true';
       document.body.classList.add('panel-resize-active');
@@ -575,8 +636,7 @@ export class Panel {
       if (!this.isResizing) return;
       const touch = e.touches[0];
       if (!touch) return;
-      const deltaY = touch.clientY - this.startY;
-      setSpanClass(this.element, deltaToRowSpan(this.startRowSpan, deltaY));
+      this.updateRowResize(touch.clientY - this.startY);
     };
 
     this.onTouchEnd = () => {
@@ -590,9 +650,10 @@ export class Panel {
       document.body.classList.remove('panel-resize-active');
       this.resizeHandle?.classList.remove('active');
       this.removeRowTouchDocumentListeners();
-      const currentSpan = getRowSpan(this.element);
-      savePanelSpan(this.panelId, currentSpan);
-      if (currentSpan !== this.startRowSpan) trackLayoutCustomized('panel-resize');
+      if (this.rowSpanClassesChangedSinceDragStart()) {
+        savePanelSpan(this.panelId, getRowSpan(this.element));
+        trackLayoutCustomized('panel-resize');
+      }
       this.syncKeyboardRowResizeAria();
     };
     this.onTouchCancel = this.onTouchEnd;
@@ -803,6 +864,8 @@ export class Panel {
     this._collapsed = collapsed;
     this.content.style.display = collapsed ? 'none' : '';
     this.element.classList.toggle('panel-collapsed', collapsed);
+    // Collapsing can change the CSS row span (#8276), so refresh the separator.
+    this.syncKeyboardRowResizeAria();
     btn.textContent = collapsed ? '▸' : '▾';
     const label = collapsed
       ? (t('components.panel.expandPanel') ?? 'Expand')
@@ -908,6 +971,7 @@ export class Panel {
   }
 
   public notifyConnected(): void {
+    if (!this.destroyed && this.element.isConnected) this.syncKeyboardRowResizeAria();
     this.flushConnectedCallbacks();
   }
 
