@@ -417,7 +417,8 @@ export function collect({ gh, repository, now }) {
       ['current', main.filter((item) => Date.parse(item.created_at) >= currentStart)],
       ['previous', main.filter((item) => Date.parse(item.created_at) < currentStart)],
     ]) {
-      for (const run of spreadSample(runs, SLOWDOWN.samplesPerWindow)) {
+      // Newest first: a finding links the first sample it saw.
+      for (const run of spreadSample(runs, SLOWDOWN.samplesPerWindow).reverse()) {
         for (const job of attemptJobs(run, 1)) {
           const seconds = jobSeconds(job);
           if (job.conclusion !== 'success' || seconds === null) continue;

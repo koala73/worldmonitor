@@ -463,6 +463,8 @@ describe('collection against a fake GitHub API', () => {
     }));
     const { gh, paths } = fakeGh({ successMain });
     checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true });
+    // A finding links the first sample read, which must be the newest run.
+    assert.equal(paths.find((path) => path.includes('/attempts/1/jobs')), 'repos/o/r/actions/runs/5000/attempts/1/jobs?per_page=100');
     const read = paths.map((path) => /runs\/(\d+)\/attempts\/1\/jobs/.exec(path)?.[1]).filter(Boolean).map(Number);
     const ages = read.map((id) => (NOW - Date.parse(successMain[id - 5000].created_at)) / 86_400_000);
     const current = ages.filter((age) => age < 7);
