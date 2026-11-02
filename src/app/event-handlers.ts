@@ -1201,6 +1201,7 @@ export class EventHandlerManager implements AppModule {
     }
 
     if (layer === 'ais') {
+      dataFreshness.setEnabled('ais', isAisConfigured());
       if (enabled) {
         this.ctx.map?.setLayerLoading('ais', true);
         initAisStream();
@@ -1519,6 +1520,7 @@ export class EventHandlerManager implements AppModule {
     }
 
     if (layer === 'ais') {
+      dataFreshness.setEnabled('ais', isAisConfigured());
       if (enabled) {
         this.ctx.map?.setLayerLoading('ais', true);
         initAisStream();
