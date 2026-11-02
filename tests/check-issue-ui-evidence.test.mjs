@@ -1,7 +1,9 @@
-// UI reports need a picture. The issue form cannot require an attachment, so
-// the Issue UI Evidence workflow closes a UI report that has none and reopens
-// it once one is attached. These tests pin the decision, the GitHub writes it
-// performs, and the workflow wiring.
+// UI reports need a picture. The bug report form refuses an empty screenshot
+// field but cannot check that the field holds an image, so the Issue UI
+// Evidence workflow labels a UI report that has none and asks for one, then
+// clears the label once it is attached. It never changes the issue state.
+// These tests pin the decision, the GitHub writes it performs, the workflow
+// wiring, and the form's required field.
 
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -23,8 +25,8 @@ import {
 } from '../scripts/check-issue-ui-evidence.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const workflowPath = resolve(repoRoot, '.github/workflows/issue-ui-evidence.yml');
-const workflow = YAML.parse(readFileSync(workflowPath, 'utf8'));
+const workflow = YAML.parse(readFileSync(resolve(repoRoot, '.github/workflows/issue-ui-evidence.yml'), 'utf8'));
+const bugForm = YAML.parse(readFileSync(resolve(repoRoot, '.github/ISSUE_TEMPLATE/bug_report.yml'), 'utf8'));
 
 const PASTED_IMAGE = 'https://github.com/user-attachments/assets/0d2c7a5e-1b2f-4b8e-9d1f-1a2b3c4d5e6f';
 
@@ -85,18 +87,17 @@ describe('hasAttachment', () => {
 });
 
 describe('decide', () => {
-  it('closes an open UI report with no attachment and posts the explanation', () => {
-    assert.deepEqual(decide(event()), { action: 'close', reason: 'missing-attachment', comment: true });
+  it('nudges a UI report with no attachment', () => {
+    assert.deepEqual(decide(event()), { action: 'nudge', reason: 'missing-attachment' });
   });
 
-  it('re-closes a manually reopened report silently when the label is still on it', () => {
-    const result = decide(event({ labels: [{ name: LABEL }] }));
-    assert.deepEqual(result, { action: 'close', reason: 'missing-attachment', comment: false });
+  it('nudges once: a labelled report that still lacks evidence is left alone on later edits', () => {
+    assert.deepEqual(decide(event({ labels: [{ name: LABEL }] })), { action: 'none', reason: 'already-nudged' });
   });
 
   it('reads the word from the title alone and from the body alone', () => {
-    assert.equal(decide(event({ title: 'Panel overflow', body: 'The UI clips the header count.' })).action, 'close');
-    assert.equal(decide(event({ title: 'UI: header count clipped', body: '' })).action, 'close');
+    assert.equal(decide(event({ title: 'Panel overflow', body: 'The UI clips the header count.' })).action, 'nudge');
+    assert.equal(decide(event({ title: 'UI: header count clipped', body: '' })).action, 'nudge');
     assert.equal(decide(event({ title: 'Panel overflow', body: null })).action, 'none');
   });
 
@@ -114,27 +115,20 @@ describe('decide', () => {
     });
   });
 
-  it('reopens a closed labelled report once the edit adds an attachment', () => {
-    const result = decide({
-      ...event({ state: 'closed', labels: [{ name: LABEL }], body: `Attached: ${PASTED_IMAGE}` }),
-      action: 'edited',
+  it('clears the label once the edit adds an attachment or drops the UI mention', () => {
+    assert.deepEqual(decide({ ...event({ labels: [{ name: LABEL }], body: `Attached: ${PASTED_IMAGE}` }), action: 'edited' }), {
+      action: 'clear',
+      reason: 'attachment-present',
     });
-    assert.deepEqual(result, { action: 'reopen', reason: 'attachment-present' });
+    assert.deepEqual(decide(event({ labels: [LABEL], title: 'feed(rss): 403', body: 'Polls fail.' })), {
+      action: 'clear',
+      reason: 'ui-mention-removed',
+    });
   });
 
-  it('reopens a closed labelled report when the edit drops the UI mention', () => {
-    const result = decide(event({ state: 'closed', labels: [LABEL], title: 'feed(rss): 403', body: 'Polls fail.' }));
-    assert.deepEqual(result, { action: 'reopen', reason: 'ui-mention-removed' });
-  });
-
-  it('only removes the label when a labelled report is already open with evidence', () => {
-    const result = decide(event({ labels: [{ name: LABEL }], body: PASTED_IMAGE }));
-    assert.deepEqual(result, { action: 'unlabel', reason: 'attachment-present' });
-  });
-
-  it('never touches a closed report it did not label, or one it closed that is still missing evidence', () => {
-    assert.deepEqual(decide(event({ state: 'closed' })), { action: 'none', reason: 'closed-by-human' });
-    assert.deepEqual(decide(event({ state: 'closed', labels: [{ name: LABEL }] })), { action: 'none', reason: 'already-closed' });
+  it('never depends on the issue state: a closed report is judged the same way', () => {
+    assert.equal(decide(event({ state: 'closed' })).action, 'nudge');
+    assert.equal(decide(event({ state: 'closed', labels: [{ name: LABEL }], body: PASTED_IMAGE })).action, 'clear');
   });
 
   it('exempts maintainers, bots and pull requests', () => {
@@ -142,7 +136,7 @@ describe('decide', () => {
       assert.deepEqual(decide(event({ author_association: association })), { action: 'none', reason: 'trusted-author' }, association);
     }
     for (const association of ['CONTRIBUTOR', 'FIRST_TIME_CONTRIBUTOR', 'FIRST_TIMER', 'NONE']) {
-      assert.equal(decide(event({ author_association: association })).action, 'close', association);
+      assert.equal(decide(event({ author_association: association })).action, 'nudge', association);
     }
     assert.deepEqual(decide(event({ user: { login: 'github-actions[bot]', type: 'Bot' } })), { action: 'none', reason: 'bot-author' });
     assert.deepEqual(decide(event({ pull_request: { url: 'x' } })), { action: 'none', reason: 'pull-request' });
@@ -161,79 +155,43 @@ describe('apply', () => {
     return { calls, gh };
   };
 
-  it('close: ensures the label exists, applies it, comments, then closes as not planned', () => {
+  it('nudge: ensures the label exists, applies it, and comments; the issue state is never written', () => {
     const { calls, gh } = recorder();
-    apply({ action: 'close', comment: true }, { gh, ...target });
+    apply({ action: 'nudge' }, { gh, ...target });
     assert.deepEqual(calls.map((c) => c.args.slice(0, 4)), [
       ['api', '--method', 'POST', 'repos/koala73/worldmonitor/labels'],
       ['api', '--method', 'POST', 'repos/koala73/worldmonitor/issues/42/labels'],
       ['api', '--method', 'POST', 'repos/koala73/worldmonitor/issues/42/comments'],
-      ['api', '--method', 'PATCH', 'repos/koala73/worldmonitor/issues/42'],
     ]);
     assert.equal(calls[0].input.name, LABEL);
     assert.deepEqual(calls[1].input, { labels: [LABEL] });
-    assert.match(calls[2].input.body, /attach a screenshot/);
+    assert.match(calls[2].input.body, /paste or drag in a screenshot/);
     assert.ok(calls[2].input.body.endsWith(COMMENT_MARKER));
-    assert.deepEqual(calls[3].input, { state: 'closed', state_reason: 'not_planned' });
-    for (const call of calls) assert.ok(call.args.includes('--input'), 'every write sends its payload on stdin');
+    for (const call of calls) {
+      assert.ok(call.args.includes('--input'), 'every write sends its payload on stdin');
+      assert.notEqual(call.args[2], 'PATCH', 'the issue itself is never patched');
+      assert.equal(call.input.state, undefined);
+    }
   });
 
-  it('close without comment skips the explanation', () => {
-    const { calls, gh } = recorder();
-    apply({ action: 'close', comment: false }, { gh, ...target });
-    assert.equal(calls.some((c) => c.args[3].endsWith('/comments')), false);
-    assert.deepEqual(calls.at(-1).input, { state: 'closed', state_reason: 'not_planned' });
-  });
-
-  it('close tolerates a label that already exists and fails on any other label error', () => {
+  it('nudge tolerates a label that already exists and fails on any other label error', () => {
     const existing = (args) => {
       if (args[3].endsWith('/labels') && !args[3].includes('/issues/')) {
         throw new Error('gh api failed (1): HTTP 422: Validation Failed {"code":"already_exists"}');
       }
       return '';
     };
-    assert.equal(apply({ action: 'close', comment: true }, { gh: existing, ...target }).length, 4);
+    assert.equal(apply({ action: 'nudge' }, { gh: existing, ...target }).length, 3);
     const broken = () => { throw new Error('gh api failed (1): HTTP 403: Resource not accessible'); };
-    assert.throws(() => apply({ action: 'close', comment: true }, { gh: broken, ...target }), /HTTP 403/);
+    assert.throws(() => apply({ action: 'nudge' }, { gh: broken, ...target }), /HTTP 403/);
   });
 
-  it('reopen: reopens before removing the label, then says why', () => {
+  it('clear only removes the label, and none writes nothing', () => {
     const { calls, gh } = recorder();
-    apply({ action: 'reopen', reason: 'attachment-present' }, { gh, ...target });
-    assert.deepEqual(calls.map((c) => c.args.slice(0, 4)), [
-      ['api', '--method', 'PATCH', 'repos/koala73/worldmonitor/issues/42'],
+    apply({ action: 'clear' }, { gh, ...target });
+    assert.deepEqual(calls.map((c) => c.args), [
       ['api', '--method', 'DELETE', `repos/koala73/worldmonitor/issues/42/labels/${LABEL}`],
-      ['api', '--method', 'POST', 'repos/koala73/worldmonitor/issues/42/comments'],
     ]);
-    assert.deepEqual(calls[0].input, { state: 'open' });
-    assert.match(calls[2].input.body, /Attachment detected, reopening/);
-    assert.ok(calls[2].input.body.endsWith(COMMENT_MARKER));
-  });
-
-  it('reopen after a failed PATCH leaves the label on, so the next run retries', () => {
-    const calls = [];
-    const gh = (args) => {
-      calls.push(args);
-      if (args[2] === 'PATCH') throw new Error('gh api failed (1): HTTP 502');
-      return '';
-    };
-    assert.throws(() => apply({ action: 'reopen', reason: 'attachment-present' }, { gh, ...target }), /HTTP 502/);
-    assert.equal(calls.some((args) => args[2] === 'DELETE'), false);
-  });
-
-  it('reopen explains a dropped UI mention without claiming an attachment', () => {
-    const { calls, gh } = recorder();
-    apply({ action: 'reopen', reason: 'ui-mention-removed' }, { gh, ...target });
-    const body = calls.at(-1).input.body;
-    assert.match(body, /no longer refers to the UI/);
-    assert.doesNotMatch(body, /Attachment detected/);
-  });
-
-  it('unlabel only removes the label, and none writes nothing', () => {
-    const { calls, gh } = recorder();
-    apply({ action: 'unlabel' }, { gh, ...target });
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].args[2], 'DELETE');
     assert.deepEqual(apply({ action: 'none' }, { gh, ...target }), []);
   });
 });
@@ -263,24 +221,23 @@ describe('main', () => {
     withEvent(event(), (eventPath) => {
       const { calls, gh } = ghReading(issue());
       const decision = main({ GITHUB_EVENT_PATH: eventPath }, gh);
-      assert.equal(decision.action, 'close');
+      assert.equal(decision.action, 'nudge');
       assert.deepEqual(calls[0], ['api', 'repos/koala73/worldmonitor/issues/42']);
-      assert.equal(calls.at(-1)[3], 'repos/koala73/worldmonitor/issues/42');
+      assert.equal(calls.at(-1)[3], 'repos/koala73/worldmonitor/issues/42/comments');
     });
   });
 
-  it('an edit that raced the closing run still reopens: the snapshot is open and unlabelled, the live issue is closed and labelled', () => {
+  it('an edit that raced the labelling run still clears: the snapshot is unlabelled, the live issue is labelled with evidence', () => {
     const edited = { ...event({ body: `Attached: ${PASTED_IMAGE}` }), action: 'edited' };
     withEvent(edited, (eventPath) => {
-      const live = issue({ state: 'closed', labels: [{ name: LABEL }], body: `Attached: ${PASTED_IMAGE}` });
-      const { calls, gh } = ghReading(live);
+      const { calls, gh } = ghReading(issue({ labels: [{ name: LABEL }], body: `Attached: ${PASTED_IMAGE}` }));
       const decision = main({ GITHUB_EVENT_PATH: eventPath }, gh);
-      assert.deepEqual(decision, { action: 'reopen', reason: 'attachment-present' });
-      assert.equal(calls.filter((args) => args[2] === 'PATCH').length, 1);
+      assert.deepEqual(decision, { action: 'clear', reason: 'attachment-present' });
+      assert.equal(calls.filter((args) => args[2] === 'DELETE').length, 1);
     });
   });
 
-  it('a snapshot without evidence does not close an issue whose live body now has it', () => {
+  it('a snapshot without evidence does not nudge an issue whose live body now has it', () => {
     withEvent(event(), (eventPath) => {
       const { calls, gh } = ghReading(issue({ body: PASTED_IMAGE }));
       const decision = main({ GITHUB_EVENT_PATH: eventPath }, gh);
@@ -300,13 +257,23 @@ describe('main', () => {
   });
 });
 
+describe('bug report form', () => {
+  it('refuses submission without the screenshot field, which is the only pre-creation error GitHub can show', () => {
+    const field = bugForm.body.find((entry) => entry.id === 'screenshots');
+    assert.ok(field, 'the form must keep its screenshots field');
+    assert.equal(field.type, 'textarea');
+    assert.equal(field.validations?.required, true);
+    assert.match(field.attributes.description, /screenshot/i);
+  });
+});
+
 describe('issue-ui-evidence workflow', () => {
   const job = workflow.jobs.evidence;
   const pin = (uses) => assert.match(uses, /@[0-9a-f]{40}$/i, `${uses} must be pinned to a commit SHA`);
 
-  it('runs when an issue is opened, edited or reopened, so a screenshot reopens it and a bare manual reopen is re-closed', () => {
+  it('runs when an issue is opened or edited, so an attached screenshot clears the label', () => {
     assert.equal(workflow.name, 'Issue UI Evidence');
-    assert.deepEqual(workflow.on.issues.types, ['opened', 'edited', 'reopened']);
+    assert.deepEqual(workflow.on.issues.types, ['opened', 'edited']);
     assert.deepEqual(Object.keys(workflow.on), ['issues']);
   });
 

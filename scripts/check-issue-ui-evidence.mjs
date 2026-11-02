@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 
-// UI reports need a picture. GitHub issue forms cannot require an attachment
-// (there is no upload field type), so this runs on `issues:
-// opened/edited/reopened`: an issue from outside the maintainer set that
-// mentions the UI and carries no attachment is labelled, told what is
-// missing, and closed as not planned. Editing the issue to attach a
-// screenshot reopens it on the next run.
+// UI reports need a picture. GitHub issue forms cannot verify that a field
+// holds an image (the required screenshot field in the bug report form only
+// refuses an empty box), so this runs on `issues: opened/edited`: an issue
+// from outside the maintainer set that mentions the UI and carries no
+// attachment gets the `needs-screenshot` label and one comment asking for
+// the image. The label clears on the edit that attaches one. The issue is
+// never closed, reopened or otherwise changed.
 //
 // The decision reads the issue as it is now, not the webhook snapshot: an
-// edit that lands while the opened run is still closing the issue would
-// otherwise be judged from a payload that predates the close, and the
-// screenshot would never reopen it. Issue text reaches this script only
-// through the event payload file and the API response, and is sent back to
-// GitHub as JSON on stdin, never through shell interpolation.
+// edit that lands while the opened run is still labelling would otherwise be
+// judged from a payload that predates the label. Issue text reaches this
+// script only through the event payload file and the API response, and is
+// sent back to GitHub as JSON on stdin, never through shell interpolation.
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -21,7 +21,7 @@ import { isMainModule } from './lib/main-module.mjs';
 
 export const LABEL = 'needs-screenshot';
 export const LABEL_COLOR = 'd93f0b';
-export const LABEL_DESCRIPTION = 'UI report closed until a screenshot or recording is attached';
+export const LABEL_DESCRIPTION = 'UI report waiting for a screenshot or recording';
 export const COMMENT_MARKER = '<!-- issue-ui-evidence -->';
 
 const TRUSTED_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
@@ -54,29 +54,21 @@ export function hasAttachment(text) {
   return ATTACHMENT_RES.some((re) => re.test(value));
 }
 
-export function closeComment() {
+export function nudgeComment() {
   return [
-    'This report mentions the UI but has no screenshot or recording attached, so it has been closed for now.',
+    'This report mentions the UI but has no screenshot or recording attached.',
     '',
-    'Please edit the issue description and attach a screenshot of what you are seeing (paste or drag the image into the text box). The issue reopens automatically once an attachment is detected.',
+    `Please edit the issue description and paste or drag in a screenshot of what you are seeing. The \`${LABEL}\` label clears automatically once an attachment is detected.`,
     '',
     COMMENT_MARKER,
   ].join('\n');
 }
 
-export function reopenComment(reason) {
-  const lead = reason === 'ui-mention-removed'
-    ? 'The report no longer refers to the UI, reopening for triage.'
-    : 'Attachment detected, reopening for triage.';
-  return `${lead}\n\n${COMMENT_MARKER}`;
-}
-
 /**
- * Pure decision for one `issues` event. Returns `{ action, reason, comment }`
- * where `action` is `close`, `reopen`, `unlabel` or `none`, and `comment`
- * says whether `close` should post the explanation (it does not when the
- * label is already on the issue, so a manual reopen without a screenshot is
- * re-closed silently instead of repeating the comment).
+ * Pure decision for one `issues` event. Returns `{ action, reason }` where
+ * `action` is `nudge` (label and comment), `clear` (remove the label) or
+ * `none`. A labelled issue that still lacks evidence is left alone so the
+ * comment is posted once, not on every edit.
  */
 export function decide(event) {
   const issue = event?.issue;
@@ -96,26 +88,14 @@ export function decide(event) {
   const text = `${issue.title ?? ''}\n${issue.body ?? ''}`;
   const labels = Array.isArray(issue.labels) ? issue.labels : [];
   const hasLabel = labels.some((label) => (typeof label === 'string' ? label : label?.name) === LABEL);
-  const open = issue.state === 'open';
 
   if (!mentionsUi(text)) {
-    if (hasLabel) {
-      return { action: open ? 'unlabel' : 'reopen', reason: 'ui-mention-removed' };
-    }
-    return { action: 'none', reason: 'no-ui-mention' };
+    return hasLabel ? { action: 'clear', reason: 'ui-mention-removed' } : { action: 'none', reason: 'no-ui-mention' };
   }
-
   if (hasAttachment(text)) {
-    if (hasLabel) {
-      return { action: open ? 'unlabel' : 'reopen', reason: 'attachment-present' };
-    }
-    return { action: 'none', reason: 'attachment-present' };
+    return hasLabel ? { action: 'clear', reason: 'attachment-present' } : { action: 'none', reason: 'attachment-present' };
   }
-
-  if (open) {
-    return { action: 'close', reason: 'missing-attachment', comment: !hasLabel };
-  }
-  return { action: 'none', reason: hasLabel ? 'already-closed' : 'closed-by-human' };
+  return hasLabel ? { action: 'none', reason: 'already-nudged' } : { action: 'nudge', reason: 'missing-attachment' };
 }
 
 function issuePath(repo, number, suffix = '') {
@@ -134,7 +114,8 @@ function ensureLabel({ gh, repo }) {
 
 /**
  * Perform `decision` against the issue. Every write goes through `gh` so the
- * tests can replace it; returns the write calls made, in order.
+ * tests can replace it; returns the write calls made, in order. Only labels
+ * and comments are ever written; the issue state is never touched.
  */
 export function apply(decision, { gh, repo, number }) {
   const calls = [];
@@ -142,32 +123,19 @@ export function apply(decision, { gh, repo, number }) {
     calls.push(args);
     return gh(args, options);
   };
-  const patch = (payload) => run(['api', '--method', 'PATCH', issuePath(repo, number), '--input', '-'], {
-    input: JSON.stringify(payload),
-  });
-  const comment = (body) => run(['api', '--method', 'POST', issuePath(repo, number, '/comments'), '--input', '-'], {
-    input: JSON.stringify({ body }),
-  });
-  const removeLabel = () => run(['api', '--method', 'DELETE', issuePath(repo, number, `/labels/${encodeURIComponent(LABEL)}`)]);
 
   switch (decision.action) {
-    case 'close':
+    case 'nudge':
       ensureLabel({ gh: run, repo });
       run(['api', '--method', 'POST', issuePath(repo, number, '/labels'), '--input', '-'], {
         input: JSON.stringify({ labels: [LABEL] }),
       });
-      if (decision.comment) comment(closeComment());
-      patch({ state: 'closed', state_reason: 'not_planned' });
+      run(['api', '--method', 'POST', issuePath(repo, number, '/comments'), '--input', '-'], {
+        input: JSON.stringify({ body: nudgeComment() }),
+      });
       break;
-    case 'reopen':
-      // Reopen first: the label is what marks a closed issue as ours, so a
-      // reopen that fails after the label is gone would never be retried.
-      patch({ state: 'open' });
-      removeLabel();
-      comment(reopenComment(decision.reason));
-      break;
-    case 'unlabel':
-      removeLabel();
+    case 'clear':
+      run(['api', '--method', 'DELETE', issuePath(repo, number, `/labels/${encodeURIComponent(LABEL)}`)]);
       break;
     default:
       break;

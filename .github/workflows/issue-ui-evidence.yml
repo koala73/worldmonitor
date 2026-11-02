@@ -1,10 +1,9 @@
 name: Issue UI Evidence
 
-# Closes UI reports from outside the maintainer set that arrive without a
-# screenshot, and reopens them once one is attached. Issue forms cannot
-# require an attachment, so this is the enforcement. `reopened` is listed so
-# a manual reopen without a screenshot is re-closed; the script's own API
-# writes use the Actions token and raise no event, so it never loops.
+# Labels UI reports from outside the maintainer set that arrive without a
+# screenshot and asks for one, then clears the label once it is attached.
+# The bug report form already refuses an empty screenshot field; this catches
+# a field filled with text instead of an image. It never closes an issue.
 #
 # Runs trusted default-branch code: the checkout pins the default branch, and
 # the issue title and body reach the script only through the event payload
@@ -12,7 +11,7 @@ name: Issue UI Evidence
 
 on:
   issues:
-    types: [opened, edited, reopened]
+    types: [opened, edited]
 
 permissions:
   contents: read
