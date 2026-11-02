@@ -4375,6 +4375,10 @@ a.hub-top-story {
   --regulation-badge: var(--semantic-critical);
 }
 
+.regulation-panel .stance-undefined .stance-badge {
+  --regulation-badge: var(--text-muted);
+}
+
 .regulation-panel .timeline-item.impact-high .timeline-impact {
   color: var(--semantic-critical-text, var(--semantic-critical));
 }

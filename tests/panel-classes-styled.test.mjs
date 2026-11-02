@@ -13,8 +13,9 @@
  * purpose), so that state is a second root. Shared tab primitives are checked
  * against any dashboard sheet.
  *
- * Classes built by interpolation (`impact-${x}`) are skipped; the static ones
- * are what a refactor drops.
+ * Classes built by interpolation (`impact-${x}`) are invisible to the source
+ * scan, so the modifiers that carry colour are listed explicitly from their
+ * TypeScript unions.
  *
  * Accent borders must be logical (`border-inline-start`). rtl-overrides.css
  * loads before panels.css, so a physical `border-left` here wins over the
@@ -30,7 +31,16 @@ const srcDir = new URL('../src/', import.meta.url);
 const PANELS = {
   'components/DefensePatentsPanel.ts': { roots: ['defense-patents-panel', 'defense-patents-loading'], samples: ['defense-patent-row'] },
   'components/TorontoSafetyPanel.ts': { roots: ['toronto-safety-panel'], samples: ['intel-item'] },
-  'components/RegulationPanel.ts': { roots: ['regulation-panel'], samples: ['timeline-item'] },
+  'components/RegulationPanel.ts': {
+    roots: ['regulation-panel'],
+    samples: ['timeline-item'],
+    modifiers: [
+      'type-comprehensive', 'type-sectoral', 'type-voluntary', 'type-proposed',
+      'stance-strict', 'stance-moderate', 'stance-permissive', 'stance-undefined',
+      'impact-high', 'impact-medium', 'impact-low',
+      'urgent', 'warning', 'normal',
+    ],
+  },
   'components/HormuzPanel.ts': {
     roots: ['hz-dependencies'],
     samples: ['hz-dependency-label', 'hz-dependency-context'],
@@ -81,9 +91,9 @@ function emittedClasses(relPath) {
 }
 
 describe('audit panels style every class they emit', () => {
-  for (const [relPath, { roots, samples, only }] of Object.entries(PANELS)) {
+  for (const [relPath, { roots, samples, only, modifiers = [] }] of Object.entries(PANELS)) {
     it(relPath, () => {
-      const classes = emittedClasses(relPath).filter((cls) => !only || only.test(cls));
+      const classes = [...emittedClasses(relPath).filter((cls) => !only || only.test(cls)), ...modifiers];
       for (const expected of [...roots, ...samples]) {
         assert.ok(classes.includes(expected), `class extraction missed ${expected}: ${classes.join(' ')}`);
       }
