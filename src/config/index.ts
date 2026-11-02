@@ -125,6 +125,8 @@ export {
   COUNTRY_REGULATION_PROFILES,
   getUpcomingDeadlines,
   getRecentActions,
+  getLatestActions,
+  getDeadlinesOutsideWindow,
 } from './ai-regulations';
 // Value re-exports of the tech-geo tables are intentionally NOT on the eager
 // @/config barrel — they pull the ~62KB tech-geo chunk onto the dashboard

@@ -927,7 +927,10 @@
         "permissive": "Thoáng",
         "undefined": "Chưa xác định"
       },
-      "infoTooltip": "<strong>Quy định</strong> Các hành động quản lý, thay đổi chính sách và cập nhật thực thi từ các cơ quan quản lý toàn cầu: tài chính, công nghệ, năng lượng và thương mại. Nguồn: ấn phẩm chính thức của chính phủ và cơ quan quản lý."
+      "infoTooltip": "<strong>Quy định</strong> Các hành động quản lý, thay đổi chính sách và cập nhật thực thi từ các cơ quan quản lý toàn cầu: tài chính, công nghệ, năng lượng và thương mại. Nguồn: ấn phẩm chính thức của chính phủ và cơ quan quản lý.",
+      "latestActions": "Các hành động được ghi nhận mới nhất",
+      "otherDeadlines": "Các thời hạn tuân thủ khác",
+      "daysAgo": "ngày trước"
     },
     "economic": {
       "indicators": "Chỉ số",

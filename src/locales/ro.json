@@ -933,7 +933,10 @@
         "permissive": "Permisiv",
         "undefined": "Nedefinit"
       },
-      "infoTooltip": "<strong>Reglementare</strong> Acțiuni de reglementare, modificări de politici și actualizări de aplicare de la reglementatorii globali: autorități financiare, tehnologice, energetice și comerciale. Sursă: publicații oficiale guvernamentale și de reglementare."
+      "infoTooltip": "<strong>Reglementare</strong> Acțiuni de reglementare, modificări de politici și actualizări de aplicare de la reglementatorii globali: autorități financiare, tehnologice, energetice și comerciale. Sursă: publicații oficiale guvernamentale și de reglementare.",
+      "latestActions": "Ultimele acțiuni înregistrate",
+      "otherDeadlines": "Alte termene de conformitate",
+      "daysAgo": "zile în urmă"
     },
     "economic": {
       "indicators": "Indicatori",

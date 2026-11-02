@@ -484,3 +484,24 @@ export function getRecentActions(months: number = 6): RegulatoryAction[] {
     .filter(action => new Date(action.date) >= cutoffDate)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
+
+// Newest actions regardless of age, for when none fall inside the recent window
+export function getLatestActions(limit: number = 10): RegulatoryAction[] {
+  return [...REGULATORY_ACTIONS]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, limit);
+}
+
+// Deadlines outside the next-12-months window: later ones (soonest first),
+// then passed ones (most recent first)
+export function getDeadlinesOutsideWindow(limit: number = 3): AIRegulation[] {
+  const now = new Date();
+  const oneYearFromNow = new Date();
+  oneYearFromNow.setFullYear(now.getFullYear() + 1);
+  const time = (reg: AIRegulation) => new Date(reg.complianceDeadline!).getTime();
+  const dated = AI_REGULATIONS.filter(reg => reg.complianceDeadline);
+
+  const later = dated.filter(reg => time(reg) > oneYearFromNow.getTime()).sort((a, b) => time(a) - time(b));
+  const passed = dated.filter(reg => time(reg) < now.getTime()).sort((a, b) => time(b) - time(a));
+  return [...later, ...passed].slice(0, limit);
+}

@@ -1022,7 +1022,10 @@
         "moderate": "Moderate",
         "permissive": "Permissive",
         "undefined": "Undefined"
-      }
+      },
+      "latestActions": "آخرین اقدامات ثبت‌شده",
+      "otherDeadlines": "سایر موعد‌های انطباق",
+      "daysAgo": "روز پیش"
     },
     "economic": {
       "indicators": "Indicators",

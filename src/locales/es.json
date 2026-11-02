@@ -921,7 +921,10 @@
         "permissive": "Permisiva",
         "undefined": "Sin definir"
       },
-      "infoTooltip": "<strong>Regulación</strong> Acciones regulatorias, cambios de políticas y actualizaciones de aplicación de reguladores globales: autoridades financieras, tecnológicas, energéticas y comerciales. Fuente: publicaciones oficiales gubernamentales y regulatorias."
+      "infoTooltip": "<strong>Regulación</strong> Acciones regulatorias, cambios de políticas y actualizaciones de aplicación de reguladores globales: autoridades financieras, tecnológicas, energéticas y comerciales. Fuente: publicaciones oficiales gubernamentales y regulatorias.",
+      "latestActions": "Últimas acciones registradas",
+      "otherDeadlines": "Otros plazos de cumplimiento",
+      "daysAgo": "días atrás"
     },
     "economic": {
       "indicators": "Indicadores",

@@ -1022,7 +1022,10 @@
         "moderate": "Mérsékelt",
         "permissive": "Megengedő",
         "undefined": "Meghatározatlan"
-      }
+      },
+      "latestActions": "Legutóbbi rögzített műveletek",
+      "otherDeadlines": "Egyéb megfelelési határidők",
+      "daysAgo": "nappal ezelőtt"
     },
     "economic": {
       "indicators": "Mutatók",

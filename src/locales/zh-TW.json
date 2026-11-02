@@ -927,7 +927,10 @@
         "permissive": "寬鬆",
         "undefined": "未定義"
       },
-      "infoTooltip": "<strong>監管</strong> 全球監管機構的監管行動、政策變更和執法更新：金融、科技、能源和貿易部門。來源：政府和監管機構官方出版物。"
+      "infoTooltip": "<strong>監管</strong> 全球監管機構的監管行動、政策變更和執法更新：金融、科技、能源和貿易部門。來源：政府和監管機構官方出版物。",
+      "latestActions": "最新記錄的行動",
+      "otherDeadlines": "其他合規截止日期",
+      "daysAgo": "天前"
     },
     "economic": {
       "indicators": "指標",

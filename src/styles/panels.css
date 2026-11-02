@@ -4188,6 +4188,17 @@ a.hub-top-story {
   border-inline-start-color: var(--semantic-normal);
 }
 
+.regulation-panel .deadline-item.passed {
+  border-inline-start-color: var(--text-muted);
+}
+
+.regulation-panel .regulation-note {
+  margin: 0;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
 .regulation-panel .timeline-marker {
   flex-shrink: 0;
   display: flex;

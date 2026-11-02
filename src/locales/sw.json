@@ -1022,7 +1022,10 @@
         "moderate": "Wastani",
         "permissive": "Ruhusa",
         "undefined": "Haijafafanuliwa"
-      }
+      },
+      "latestActions": "Vitendo vya Mwisho Vilivyorekodiwa",
+      "otherDeadlines": "Makataa Mengine ya Kuzingatia Sheria",
+      "daysAgo": "siku zilizopita"
     },
     "economic": {
       "indicators": "Viashiria",

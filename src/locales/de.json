@@ -918,7 +918,10 @@
         "permissive": "Permissiv",
         "undefined": "Undefiniert"
       },
-      "infoTooltip": "<strong>Regulierung</strong> Regulierungsmaßnahmen, Politikänderungen und Durchsetzungsaktualisierungen von globalen Regulierungsbehörden: Finanz-, Technologie-, Energie- und Handelsbehörden. Quelle: offizielle Regierungs- und Regulierungspublikationen."
+      "infoTooltip": "<strong>Regulierung</strong> Regulierungsmaßnahmen, Politikänderungen und Durchsetzungsaktualisierungen von globalen Regulierungsbehörden: Finanz-, Technologie-, Energie- und Handelsbehörden. Quelle: offizielle Regierungs- und Regulierungspublikationen.",
+      "latestActions": "Zuletzt aufgezeichnete Maßnahmen",
+      "otherDeadlines": "Weitere Compliance-Fristen",
+      "daysAgo": "Tage her"
     },
     "economic": {
       "indicators": "Indikatoren",

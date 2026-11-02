@@ -1432,7 +1432,10 @@
         "permissive": "Permissive",
         "undefined": "Undefined"
       },
-      "infoTooltip": "<strong>Regulamentação</strong> Ações regulatórias, mudanças de políticas e atualizações de aplicação de reguladores globais: autoridades financeiras, tecnológicas, energéticas e comerciais. Fonte: publicações oficiais governamentais e regulatórias."
+      "infoTooltip": "<strong>Regulamentação</strong> Ações regulatórias, mudanças de políticas e atualizações de aplicação de reguladores globais: autoridades financeiras, tecnológicas, energéticas e comerciais. Fonte: publicações oficiais governamentais e regulatórias.",
+      "latestActions": "Últimas ações registradas",
+      "otherDeadlines": "Outros Prazos de Conformidade",
+      "daysAgo": "dias atrás"
     },
     "etfFlows": {
       "unavailable": "dados de fundos negociados em bolsa temporariamente indisponíveis",

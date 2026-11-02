@@ -1029,7 +1029,10 @@
         "moderate": "Umjerena",
         "permissive": "Dozvoljiva",
         "undefined": "Nedefinisana"
-      }
+      },
+      "latestActions": "Najnovije zabilježene akcije",
+      "otherDeadlines": "Ostali rokovi za usklađenost",
+      "daysAgo": "dana unazad"
     },
     "economic": {
       "indicators": "Pokazatelji",
