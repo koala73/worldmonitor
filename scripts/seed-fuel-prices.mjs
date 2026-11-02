@@ -707,7 +707,7 @@ async function fetchUK_DESNZ() {
 }
 
 // Retail prices the regional energy feeds already publish under
-// energy:regional:<id>:v1 (scripts/_regional-energy-source.mjs, #9893). Reading
+// energy:regional:<id>:v1 (scripts/_regional-energy-source.mjs, #9893, #10051). Reading
 // them from Redis keeps each provider fetched once. ANP backs up fetchBrazil,
 // which runs first and wins when it succeeds.
 const LITRES_PER_US_GALLON = 3.785411784;
@@ -733,6 +733,53 @@ const REGIONAL_FUEL_SOURCES = [
     id: 'anp', code: 'BR', name: 'Brazil', currency: 'BRL', flag: '🇧🇷', source: 'gov.br/anp', maxAgeDays: 21,
     gasoline: { area: 'GASOLINA COMUM', unit: 'BRL/l', grade: 'Regular' },
     diesel: { area: 'OLEO DIESEL', unit: 'BRL/l', grade: 'Diesel' },
+  },
+
+  // Batch 3 (#10051). Timor-Leste's ANP lists every station with no national
+  // price, so it is served on the energy profile only.
+  {
+    id: 'qatarenergy', code: 'QA', name: 'Qatar', currency: 'QAR', flag: '🇶🇦', source: 'qatarenergy.qa', maxAgeDays: 45,
+    gasoline: { area: 'Gasoline Super', unit: 'QAR/l', grade: 'Super 95' },
+    diesel: { area: 'Diesel', unit: 'QAR/l', grade: 'Diesel' },
+  },
+  {
+    id: 'erb', code: 'ZM', name: 'Zambia', currency: 'ZMW', flag: '🇿🇲', source: 'erb.org.zm', maxAgeDays: 45,
+    gasoline: { area: 'Petrol', unit: 'ZMW/l', grade: 'Petrol' },
+    diesel: { area: 'Diesel', unit: 'ZMW/l', grade: 'Diesel' },
+  },
+  {
+    // The NPA lists every marketer; its average row is the headline.
+    id: 'npa', code: 'GH', name: 'Ghana', currency: 'GHS', flag: '🇬🇭', source: 'npa.gov.gh', maxAgeDays: 21,
+    gasoline: { area: 'Regular Petrol RON 91; average of OMCs', unit: 'GHS/l', grade: 'RON 91' },
+    diesel: { area: 'Diesel; average of OMCs', unit: 'GHS/l', grade: 'Diesel' },
+  },
+  {
+    // Prices are set by joint order and hold until the next one, so the age budget is long.
+    id: 'sonabhy', code: 'BF', name: 'Burkina Faso', currency: 'XOF', flag: '🇧🇫', source: 'sonabhy.bf', maxAgeDays: 400,
+    gasoline: { area: 'Super 91; Ouagadougou', unit: 'XOF/l', grade: 'Super 91' },
+    diesel: { area: 'Gazoil; Ouagadougou', unit: 'XOF/l', grade: 'Diesel' },
+  },
+  {
+    id: 'zera', code: 'ZW', name: 'Zimbabwe', currency: 'USD', flag: '🇿🇼', source: 'zera.co.zw', maxAgeDays: 45,
+    gasoline: { area: 'Petrol Blend (E20)', unit: 'USD/l', grade: 'E20' },
+    diesel: { area: 'Diesel (D50)', unit: 'USD/l', grade: 'D50' },
+  },
+  {
+    // The DOE monitors Metro Manila by city; the capital's common price is the headline.
+    id: 'doe', code: 'PH', name: 'Philippines', currency: 'PHP', flag: '🇵🇭', source: 'doe.gov.ph', maxAgeDays: 21,
+    gasoline: { area: 'RON 91; Manila City; common price', unit: 'PHP/l', grade: 'RON 91' },
+    diesel: { area: 'Diesel; Manila City; common price', unit: 'PHP/l', grade: 'Diesel' },
+  },
+  {
+    id: 'creg', code: 'CO', name: 'Colombia', currency: 'COP', flag: '🇨🇴', source: 'creg.gov.co', maxAgeDays: 45,
+    gasoline: { area: 'Gasolina MC; Bogotá', unit: 'COP/gal', grade: 'Regular', perLitre: 1 / LITRES_PER_US_GALLON },
+    diesel: { area: 'ACPM; Bogotá', unit: 'COP/gal', grade: 'Diesel', perLitre: 1 / LITRES_PER_US_GALLON },
+  },
+  {
+    // The Executive's maximum pump prices, which the stations charge.
+    id: 'ursea', code: 'UY', name: 'Uruguay', currency: 'UYU', flag: '🇺🇾', source: 'gub.uy/ursea', maxAgeDays: 45,
+    gasoline: { area: 'Gasolina Súper 95', unit: 'UYU/l', grade: 'Super 95' },
+    diesel: { area: 'Gas Oil 50S', unit: 'UYU/l', grade: 'Diesel 50S' },
   },
 ];
 export const REGIONAL_FUEL_CURRENCIES = [...new Set(REGIONAL_FUEL_SOURCES.map(s => s.currency))];
