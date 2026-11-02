@@ -278,4 +278,65 @@ describe('a source absence stays visible end to end', () => {
     await publishPortActivitySnapshot({ ...base, canonicalAdvances: false }, { fetchFn, credentials });
     assert.equal(sent[1].some((c) => c[0] === 'DEL'), false);
   });
+
+  it('the delete wins over stale retry state for the same country', async () => {
+    const { publishPortActivitySnapshot } = await import('../scripts/seed-portwatch-port-activity.mjs');
+    let commands;
+    const fetchFn = async (_url, init) => {
+      commands = JSON.parse(init.body);
+      return jsonResponse(commands.map(() => ({ result: 'OK' })));
+    };
+    await publishPortActivitySnapshot({
+      countryData: new Map([['CN', { iso2: 'CN', ports: [] }]]),
+      retryState: new Map([['HK', { iso2: 'HK', ports: [] }]]),
+      countries: ['CN'],
+      metaPayload: { fetchedAt: now },
+      canonicalAdvances: true,
+      sourceAbsentCountries: ['HK'],
+    }, { fetchFn, credentials: { url: 'https://redis.example.test', token: 't' } });
+    const hkKey = 'supply_chain:portwatch-ports:v1:HK';
+    const lastHk = commands.filter((c) => c[1] === hkKey).at(-1);
+    assert.deepEqual(lastHk, ['DEL', hkKey]);
+  });
+});
+
+describe('probeSourceAbsences', () => {
+  it('sends no probes when no country observed a max date', async () => {
+    const { probeSourceAbsences } = await import('../scripts/seed-portwatch-port-activity.mjs');
+    let calls = 0;
+    const probes = await probeSourceAbsences({
+      candidates: ['BEL', 'HKG'],
+      tablePopulated: false,
+      probeFn: async () => { calls++; return 'absent'; },
+    });
+    assert.equal(calls, 0);
+    assert.equal(probes.size, 0);
+  });
+
+  it('stops starting waves once the absent count passes the cap', async () => {
+    const { probeSourceAbsences } = await import('../scripts/seed-portwatch-port-activity.mjs');
+    let calls = 0;
+    const candidates = Array.from({ length: 100 }, (_, i) => `C${String(i).padStart(2, '0')}`);
+    const probes = await probeSourceAbsences({
+      candidates,
+      tablePopulated: true,
+      concurrency: 10,
+      max: 15,
+      probeFn: async () => { calls++; return 'absent'; },
+    });
+    // Waves of 10: after the second wave 20 > 15, so the third never starts.
+    assert.equal(calls, 20);
+    assert.equal(selectSourceAbsentCountries({ probes, tablePopulated: true, max: 15 }).suppressed, 'over_cap');
+  });
+
+  it('probes every candidate while under the cap', async () => {
+    const { probeSourceAbsences } = await import('../scripts/seed-portwatch-port-activity.mjs');
+    const probes = await probeSourceAbsences({
+      candidates: ['BEL', 'USA', 'HKG'],
+      tablePopulated: true,
+      concurrency: 2,
+      probeFn: async (iso3) => (iso3 === 'USA' ? 'present' : 'absent'),
+    });
+    assert.deepEqual([...probes], [['BEL', 'absent'], ['USA', 'present'], ['HKG', 'absent']]);
+  });
 });

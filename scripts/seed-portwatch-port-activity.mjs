@@ -1090,6 +1090,32 @@ export async function probeCountrySourceAbsence(iso3, refMap, { signal, fetchFn 
   }
 }
 
+// Probes candidates in waves and skips work whose result the selector would
+// discard: nothing when the table is unobserved, and no further wave once the
+// absent count has passed the cap. Returns a Map keyed by candidate.
+export async function probeSourceAbsences({
+  candidates,
+  tablePopulated,
+  probeFn,
+  signal,
+  concurrency = PREFLIGHT_CONCURRENCY,
+  max = MAX_SOURCE_ABSENT_COUNTRIES,
+}) {
+  const probes = new Map();
+  if (!tablePopulated) return probes;
+  let absentCount = 0;
+  for (let i = 0; i < candidates.length && absentCount <= max; i += concurrency) {
+    if (signal?.aborted) throw signal.reason ?? new Error('aborted');
+    const slice = candidates.slice(i, i + concurrency);
+    const results = await Promise.all(slice.map((candidate) => probeFn(candidate)));
+    slice.forEach((candidate, j) => {
+      probes.set(candidate, results[j]);
+      if (results[j] === 'absent') absentCount++;
+    });
+  }
+  return probes;
+}
+
 // `probes` maps iso2 to a probe result. `tablePopulated` is true when at least
 // one country observed a real max date this run, proving the layer answers
 // with data at all.
@@ -1225,10 +1251,11 @@ export async function publishPortActivitySnapshot(
     commands.push(['SET', CANONICAL_KEY, JSON.stringify(countries), 'EX', TTL]);
     // Readers such as the China corridor towers and get-country-port-activity
     // read per-country keys directly, so a source-absent country's last-good
-    // payload must go in the same transaction that stops naming it. A blocked
-    // run deletes nothing.
+    // payload must go in the same transaction that stops naming it. Queued
+    // after the per-country SETs so the delete wins over any stale state for
+    // the same country. A blocked run deletes nothing.
     for (const iso2 of sourceAbsentCountries) {
-      if (!stateByCountry.has(iso2)) commands.push(['DEL', `${KEY_PREFIX}${iso2}`]);
+      commands.push(['DEL', `${KEY_PREFIX}${iso2}`]);
     }
   }
   if (metaPayload) commands.push(['SET', META_KEY, JSON.stringify(metaPayload), 'EX', TTL]);
@@ -1683,24 +1710,24 @@ export async function fetchAll(progress, {
   // Source-absence probe for every country whose preflight produced no max
   // date. See probeCountrySourceAbsence for why a failed ISO3 preflight is not
   // evidence either way.
-  const absenceCandidates = eligibleIso3.filter((_, i) => !(
-    preflightObservations[i]?.status === 'observed' && preflightObservations[i].maxDate !== null
-  ));
-  const absenceProbes = new Map();
-  for (let i = 0; i < absenceCandidates.length; i += PREFLIGHT_CONCURRENCY) {
-    if (signal?.aborted) throw signal.reason ?? new Error('aborted');
-    const slice = absenceCandidates.slice(i, i + PREFLIGHT_CONCURRENCY);
-    const results = await Promise.all(
-      slice.map((iso3) => probeCountrySourceAbsence(iso3, refsByIso3.get(iso3), { signal })),
-    );
-    slice.forEach((iso3, j) => absenceProbes.set(iso3ToIso2.get(iso3), results[j]));
-  }
+  const hasMaxDate = (o) => o?.status === 'observed' && o.maxDate !== null;
+  const tablePopulated = preflightObservations.some(hasMaxDate);
+  const absenceCandidates = eligibleIso3.filter((_, i) => !hasMaxDate(preflightObservations[i]));
+  const probesByIso3 = await probeSourceAbsences({
+    candidates: absenceCandidates,
+    tablePopulated,
+    signal,
+    probeFn: (iso3) => probeCountrySourceAbsence(iso3, refsByIso3.get(iso3), { signal }),
+  });
+  const absenceProbes = new Map([...probesByIso3].map(([iso3, result]) => [iso3ToIso2.get(iso3), result]));
   const { absent: sourceAbsentCountries, suppressed: absenceSuppressed } = selectSourceAbsentCountries({
     probes: absenceProbes,
-    tablePopulated: preflightObservations.some((o) => o?.status === 'observed' && o.maxDate !== null),
+    tablePopulated,
   });
   const sourceAbsent = new Set(sourceAbsentCountries);
-  if (absenceSuppressed) {
+  if (!tablePopulated && absenceCandidates.length > 0) {
+    console.warn('  [port-activity] No preflight observed a max date; source-absence probes skipped.');
+  } else if (absenceSuppressed) {
     console.warn(`  [port-activity] Source-absence evidence ignored (${absenceSuppressed}); those countries stay refresh failures.`);
   } else if (sourceAbsent.size > 0) {
     console.warn(`  [port-activity] ${sourceAbsent.size} countries have no rows in Daily_Ports_Data and are excluded as source-absent: ${sourceAbsentCountries.join(', ')}`);
