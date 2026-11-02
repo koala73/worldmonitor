@@ -74,6 +74,7 @@ describe('hasAttachment', () => {
       '![shot](https://example.com/shot.png "mobile view")',
       '![shot][image]\n\n[image]: https://example.com/shot.png',
       '![shot][]\n\n[shot]: https://example.com/shot.png',
+      '![Shot][IMAGE]\n\n  [image]: https://example.com/shot.png "title"',
       '<img width="800" alt="panel" src="https://example.com/shot.png" />',
     ];
     for (const text of forms) assert.equal(hasAttachment(text), true, text);
@@ -83,6 +84,18 @@ describe('hasAttachment', () => {
     for (const text of ['see https://www.worldmonitor.app/dashboard', 'screenshot: none', '[link](https://x.y)', '![alt]()', '![alt]', '', undefined]) {
       assert.equal(hasAttachment(text), false, String(text));
     }
+  });
+
+  it('does not count a reference image whose definition is missing, empty, or for another label', () => {
+    const unresolved = [
+      '![shot][image]',
+      '![shot][]',
+      '![shot][image]\n\n[image]:',
+      '![shot][image]\n\n[other]: https://example.com/shot.png',
+      '![shot][]\n\n[image]: https://example.com/shot.png',
+      '![][]',
+    ];
+    for (const text of unresolved) assert.equal(hasAttachment(text), false, text);
   });
 });
 

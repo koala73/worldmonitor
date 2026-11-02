@@ -34,16 +34,32 @@ const UI_WORD_RE = /\bui\b/i;
 
 // Every form an attachment takes in issue text: pasted images and files on
 // the current user-attachments host, the two legacy image hosts, repo-scoped
-// asset links, and raw Markdown or HTML image syntax. The Markdown form
-// covers an inline image with or without a quoted title and the full or
-// collapsed reference forms (`![alt][ref]`, `![alt][]`).
+// asset links, and raw Markdown or HTML image syntax. The inline Markdown
+// form may carry a quoted title. The reference forms (`![alt][ref]`,
+// `![alt][]`) are checked separately: they render only when a matching
+// `[ref]: url` definition exists, so an undefined reference is not evidence.
 const ATTACHMENT_RES = [
   /https?:\/\/github\.com\/user-attachments\/(?:assets|files)\//i,
   /https?:\/\/(?:private-)?user-images\.githubusercontent\.com\//i,
   /https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/assets\/\d+\//i,
-  /!\[[^\]]*\]\s*(?:\([^)]*\S[^)]*\)|\[[^\]]*\])/,
+  /!\[[^\]]*\]\s*\([^)]*\S[^)]*\)/,
   /<img\b[^>]*\bsrc\s*=/i,
 ];
+const REFERENCE_IMAGE_RE = /!\[([^\]]*)\]\s*\[([^\]]*)\]/g;
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasResolvedReferenceImage(text) {
+  for (const match of text.matchAll(REFERENCE_IMAGE_RE)) {
+    const label = (match[2] || match[1]).trim();
+    if (!label) continue;
+    const definition = new RegExp(`^ {0,3}\\[${escapeRegExp(label)}\\]:[ \\t]*\\S`, 'im');
+    if (definition.test(text)) return true;
+  }
+  return false;
+}
 
 export function mentionsUi(text) {
   return UI_WORD_RE.test(String(text ?? ''));
@@ -51,7 +67,7 @@ export function mentionsUi(text) {
 
 export function hasAttachment(text) {
   const value = String(text ?? '');
-  return ATTACHMENT_RES.some((re) => re.test(value));
+  return ATTACHMENT_RES.some((re) => re.test(value)) || hasResolvedReferenceImage(value);
 }
 
 export function nudgeComment() {
