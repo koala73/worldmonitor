@@ -287,7 +287,7 @@ export const REGULATORY_ACTIONS: RegulatoryAction[] = [
   },
   {
     id: 'action-003',
-    date: '2024-01-31',
+    date: '2025-01-14',
     country: 'United States',
     title: 'White House AI Datacenter Infrastructure EO',
     type: 'executive-order',
@@ -458,21 +458,30 @@ export function getRegulationsByCountry(country: string): AIRegulation[] {
   return AI_REGULATIONS.filter(reg => reg.country === country);
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Dataset dates are calendar days ('YYYY-MM-DD' parses as UTC midnight).
+// Compare them with the viewer's local calendar date, also as UTC midnight,
+// so a deadline neither passes nor shifts a day west of UTC.
+function todayAsUtcMidnight(yearOffset: number = 0): number {
+  const now = new Date();
+  return Date.UTC(now.getFullYear() + yearOffset, now.getMonth(), now.getDate());
+}
+
+// Whole calendar days from the viewer's today to a dataset date; negative once passed
+export function daysFromToday(date: string): number {
+  return Math.round((Date.parse(date) - todayAsUtcMidnight()) / DAY_MS);
+}
+
 // Helper function to get upcoming compliance deadlines (next 12 months)
 export function getUpcomingDeadlines(): AIRegulation[] {
-  const now = new Date();
-  const oneYearFromNow = new Date();
-  oneYearFromNow.setFullYear(now.getFullYear() + 1);
+  const today = todayAsUtcMidnight();
+  const oneYearFromToday = todayAsUtcMidnight(1);
+  const time = (reg: AIRegulation) => Date.parse(reg.complianceDeadline!);
 
   return AI_REGULATIONS
-    .filter(reg => {
-      if (!reg.complianceDeadline) return false;
-      const deadline = new Date(reg.complianceDeadline);
-      return deadline >= now && deadline <= oneYearFromNow;
-    })
-    .sort((a, b) => {
-      return new Date(a.complianceDeadline!).getTime() - new Date(b.complianceDeadline!).getTime();
-    });
+    .filter(reg => reg.complianceDeadline && time(reg) >= today && time(reg) <= oneYearFromToday)
+    .sort((a, b) => time(a) - time(b));
 }
 
 // Helper function to get recent regulatory actions (last N months)
@@ -495,13 +504,12 @@ export function getLatestActions(limit: number = 10): RegulatoryAction[] {
 // Deadlines outside the next-12-months window: later ones (soonest first),
 // then passed ones (most recent first)
 export function getDeadlinesOutsideWindow(limit: number = 3): AIRegulation[] {
-  const now = new Date();
-  const oneYearFromNow = new Date();
-  oneYearFromNow.setFullYear(now.getFullYear() + 1);
-  const time = (reg: AIRegulation) => new Date(reg.complianceDeadline!).getTime();
+  const today = todayAsUtcMidnight();
+  const oneYearFromToday = todayAsUtcMidnight(1);
+  const time = (reg: AIRegulation) => Date.parse(reg.complianceDeadline!);
   const dated = AI_REGULATIONS.filter(reg => reg.complianceDeadline);
 
-  const later = dated.filter(reg => time(reg) > oneYearFromNow.getTime()).sort((a, b) => time(a) - time(b));
-  const passed = dated.filter(reg => time(reg) < now.getTime()).sort((a, b) => time(b) - time(a));
+  const later = dated.filter(reg => time(reg) > oneYearFromToday).sort((a, b) => time(a) - time(b));
+  const passed = dated.filter(reg => time(reg) < today).sort((a, b) => time(b) - time(a));
   return [...later, ...passed].slice(0, limit);
 }

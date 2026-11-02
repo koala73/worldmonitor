@@ -112,6 +112,20 @@ describe.each(TIMEZONES)('RegulationPanel Deadlines tab in %s', (tz) => {
     panel.destroy();
   });
 
+  it('keeps a deadline upcoming through its whole calendar day', () => {
+    // 03:00 UTC on Aug 1 is the evening of Jul 31 in Los Angeles.
+    freezeClock('2026-08-01T03:00:00Z');
+    const { panel, content } = mount('deadlines');
+
+    const item = content.querySelector('.deadline-item');
+    const expected = tz === 'America/Los_Angeles' ? '1' : '0';
+    expect(text(content.querySelector('h4'))).toBe('Upcoming Compliance Deadlines');
+    expect(item!.classList.contains('passed')).toBe(false);
+    expect(text(item!.querySelector('.days-until'))).toBe(expected);
+    expect(text(item!.querySelector('.days-label'))).toBe('days');
+    panel.destroy();
+  });
+
   it('lists a deadline more than 12 months out instead of an empty tab', () => {
     freezeClock('2025-01-15T12:00:00Z');
     const { panel, content } = mount('deadlines');

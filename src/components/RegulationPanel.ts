@@ -7,6 +7,7 @@ import {
   getRecentActions,
   getLatestActions,
   getDeadlinesOutsideWindow,
+  daysFromToday,
 } from '@/config';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
@@ -96,7 +97,8 @@ export class RegulationPanel extends Panel {
     const formattedDate = date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'UTC',
     });
 
     const typeIcons: Record<RegulatoryAction['type'], string> = {
@@ -152,16 +154,14 @@ export class RegulationPanel extends Panel {
 
   private renderDeadlineItem(regulation: AIRegulation): string {
     const deadline = new Date(regulation.complianceDeadline!);
-    const now = new Date();
-    const msPerDay = 1000 * 60 * 60 * 24;
-    const passed = deadline.getTime() < now.getTime();
-    const daysUntil = Math.ceil((deadline.getTime() - now.getTime()) / msPerDay);
-    const daysAgo = Math.floor((now.getTime() - deadline.getTime()) / msPerDay);
+    const daysUntil = daysFromToday(regulation.complianceDeadline!);
+    const passed = daysUntil < 0;
 
     const formattedDate = deadline.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
+      timeZone: 'UTC',
     });
 
     const urgencyClass = passed ? 'passed' : daysUntil < 90 ? 'urgent' : daysUntil < 180 ? 'warning' : 'normal';
@@ -169,7 +169,7 @@ export class RegulationPanel extends Panel {
     return `
       <div class="deadline-item ${urgencyClass}">
         <div class="deadline-countdown">
-          <div class="days-until">${passed ? daysAgo : daysUntil}</div>
+          <div class="days-until">${Math.abs(daysUntil)}</div>
           <div class="days-label">${t(passed ? 'components.regulation.daysAgo' : 'components.regulation.days')}</div>
         </div>
         <div class="deadline-content">
@@ -212,7 +212,7 @@ export class RegulationPanel extends Panel {
 
   private renderRegulationCard(regulation: AIRegulation): string {
     const effectiveDate = regulation.effectiveDate
-      ? new Date(regulation.effectiveDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
+      ? new Date(regulation.effectiveDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', timeZone: 'UTC' })
       : 'TBD';
     const regulationLink = regulation.link ? sanitizeUrl(regulation.link) : '';
 
@@ -301,7 +301,7 @@ export class RegulationPanel extends Panel {
             <span class="stat-label">${t('components.regulation.proposed')}</span>
           </div>
           <div class="stat">
-            <span class="stat-value">${new Date(profile.lastUpdated).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+            <span class="stat-value">${new Date(profile.lastUpdated).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })}</span>
             <span class="stat-label">${t('components.regulation.updated')}</span>
           </div>
         </div>
