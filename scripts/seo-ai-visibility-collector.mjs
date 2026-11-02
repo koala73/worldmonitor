@@ -39,7 +39,7 @@ import { isMainModule } from './lib/main-module.mjs';
 const UTC_DAY_MS = 86_400_000;
 const WINDOW_DAYS = Object.freeze({ '28d': 28, '90d': 90 });
 const AVAILABILITY_STATES = new Set(['available', 'partial', 'unavailable']);
-const REFERRER_FAMILIES = new Set([
+export const REFERRER_FAMILIES = new Set([
   'chatgpt',
   'perplexity',
   'google_search_ai',

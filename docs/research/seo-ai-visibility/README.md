@@ -228,6 +228,15 @@ requested one.
 
 ### 4. Referral and outcome reconciliation
 
+The weekly snapshot workflow collects referral aggregates automatically.
+`scripts/seo-umami-collect.mjs --live` reads Umami visitors by channel and by
+referrer domain for the 28 complete UTC days before the run. It writes
+`umami/<date>.json` and a markdown summary, mapping each domain onto the
+referrer families above plus search, social, internal and other.
+`google_search_ai` stays unavailable: AI Overviews and AI Mode send the same
+google.com referrer as web search. The outcome fields below still come from
+exports.
+
 Use read-only aggregate exports from the existing analytics and commerce
 providers. Keep dimensions bounded to referrer family, landing-page family,
 reviewed topic/query cluster, and conversion step. Do not collect prompt text.

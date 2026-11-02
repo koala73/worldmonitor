@@ -3,7 +3,8 @@ name: Weekly Search Console Snapshot
 # Collects the weekly Search Console snapshot (#8606) and opens or updates a
 # review PR with it. The snapshot answers which URLs Google declined and why,
 # and which families earn impressions per indexed page. The same PR carries
-# the Bing Webmaster snapshot (#10024) when BING_WEBMASTER_API_KEY is set.
+# the Bing Webmaster snapshot (#10024) when BING_WEBMASTER_API_KEY is set, and
+# the Umami referral snapshot when UMAMI_API_USERNAME and UMAMI_API_PASSWORD are.
 #
 # Gated on the credential. Until the owner creates the service account and adds
 # GSC_SERVICE_ACCOUNT_JSON plus GSC_PROPERTY, the guard job reports that the run
@@ -120,12 +121,29 @@ jobs:
             exit 0
           fi
           node scripts/seo-bing-collect.mjs --live
+      - name: Collect the Umami referral snapshot
+        id: umami
+        if: steps.collect.outcome == 'success'
+        # Optional and non-blocking, like Bing. The self-hosted instance takes
+        # one to two minutes per 28-day query, so this step has its own bound.
+        continue-on-error: true
+        timeout-minutes: 25
+        env:
+          UMAMI_API_USERNAME: ${{ secrets.UMAMI_API_USERNAME }}
+          UMAMI_API_PASSWORD: ${{ secrets.UMAMI_API_PASSWORD }}
+        run: |
+          if [ -z "${UMAMI_API_USERNAME:-}" ] || [ -z "${UMAMI_API_PASSWORD:-}" ]; then
+            echo "::notice::Skipping Umami: UMAMI_API_USERNAME and UMAMI_API_PASSWORD are not both configured. See issue 10024."
+            exit 0
+          fi
+          node scripts/seo-umami-collect.mjs --live
       - name: Verify the snapshot contract
         if: steps.collect.outcome == 'success'
         run: |
           node --import tsx --test --test-concurrency=1 \
             tests/seo-gsc-collector.test.mjs \
             tests/seo-bing-collector.test.mjs \
+            tests/seo-umami-collector.test.mjs \
             tests/seo-url-taxonomy.test.mjs
       - name: Open the weekly snapshot PR
         if: steps.collect.outcome == 'success'
@@ -135,12 +153,13 @@ jobs:
           BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BING_OUTCOME: ${{ steps.bing.outcome }}
+          UMAMI_OUTCOME: ${{ steps.umami.outcome }}
         run: |
           snapshot_date=$(date -u +%F)
           git switch -c "$BRANCH_NAME"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/research/seo-ai-visibility/gsc docs/research/seo-ai-visibility/bing
+          git add docs/research/seo-ai-visibility/gsc docs/research/seo-ai-visibility/bing docs/research/seo-ai-visibility/umami
           if git diff --cached --quiet; then
             echo "::notice::The collector produced no change to commit."
             exit 0
@@ -157,12 +176,20 @@ jobs:
           else
             bing_note="No Bing Webmaster snapshot this week: BING_WEBMASTER_API_KEY is not configured."
           fi
+          if [ "$UMAMI_OUTCOME" = "failure" ]; then
+            umami_note="The Umami referral collection failed in this run. See the run log."
+          elif [ -f "docs/research/seo-ai-visibility/umami/${snapshot_date}.json" ]; then
+            umami_note="Also carries the Umami referral snapshot: visitors by channel and by referrer family over the 28 complete days before the run. Channel and referrer rows overlap, so their sums are not totals."
+          else
+            umami_note="No Umami referral snapshot this week: UMAMI_API_USERNAME and UMAMI_API_PASSWORD are not both configured."
+          fi
           gh pr create \
             --base main \
             --head "$BRANCH_NAME" \
             --title "chore(seo): Search Console snapshot ${snapshot_date} (#8606)" \
-            --body "$(printf '%s\n\n%s\n\n%s\n\n%s' \
+            --body "$(printf '%s\n\n%s\n\n%s\n\n%s\n\n%s' \
               "Weekly Search Console snapshot. Per-URL index state and per-family search performance, collected from the API rather than transcribed from the UI." \
               "Read the HTML indexability headline, not the raw coverage count: render subresources and machine-readable twins are bucketed separately on purpose. Shares are measured over inspected rows and are never projected onto a reported total." \
               "$bing_note" \
+              "$umami_note" \
               "Collected in ${RUN_URL}. Review and merge by hand; this workflow never merges.")"
