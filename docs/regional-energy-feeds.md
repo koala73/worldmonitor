@@ -1,8 +1,8 @@
 # Regional energy feeds
 
 `get-country-energy-profile?country_code=BD` now includes `regionalEnergyFeeds`.
-The same field serves NG, ZA, AR, GE, BR, VN, KZ, PE, PG, FJ and GT. Other
-countries return an empty list. Existing energy fields keep their meaning. No card or import-risk score
+The same field serves NG, ZA, AR, GE, BR, VN, KZ, PE, PG, FJ, GT, QA, ZM, GH,
+BF, ZW, PH, TL, CO and UY. Other countries return an empty list. Existing energy fields keep their meaning. No card or import-risk score
 is added.
 
 | Source | Country | Observations | Poll interval |
@@ -21,6 +21,15 @@ is added.
 | ICCC | PG | Monthly Port Moresby retail prices, unsubsidised prices and subsidy components (PGK/l) | 12 hours |
 | FCCC | FJ | Monthly approved retail fuel prices by schedule (FJD/l) and LPG prices by schedule and pack size | 12 hours |
 | MEM | GT | Daily average prices monitored in Guatemala City: gasolines and diesel (GTQ/gal), LPG (GTQ per 25 lb cylinder and per lb); bunker, AvGas and Jet A-1 (GTQ/gal) | 12 hours |
+| QatarEnergy | QA | Monthly retail prices for premium and super gasoline and diesel (QAR/l), newest eight months served | 12 hours |
+| ERB | ZM | Monthly uniform pump price and wholesale price to marketers for petrol, diesel and kerosene (ZMW/l) | 12 hours |
+| NPA | GH | Average, lowest and highest ex-pump price across licensed marketers for petrol grades, diesel, kerosene and marine gas oil (GHS/l) and LPG (GHS/kg); crude and product FOB prices behind the price build-up in effect (USD/bbl, USD/MT) | 12 hours |
+| SONABHY | BF | Retail prices fixed by joint order in Ouagadougou and Bobo-Dioulasso: super, diesel, kerosene and DDO (XOF/l), butane by cylinder size | 1 day |
+| ZERA | ZW | Current petrol E20, diesel D50 and LPG prices in USD and ZWG; electricity tariff for the first 50 units | 12 hours |
+| DOE | PH | Weekly Metro Manila monitoring by city: common price, lowest and highest pump price per product (PHP/l) | 12 hours |
+| ANP | TL | Lowest and highest listed petrol and diesel price per municipality and nationally, from the station listing (USD/l) | 1 day |
+| CREG | CO | Regulated regular gasoline and diesel prices by main city and their published average (COP/gal), newest three price changes | 12 hours |
+| URSEA | UY | Maximum pump prices set by the Executive (UYU/l; LPG UYU/kg), the PMIT maximum wholesale price, and URSEA's reference retail and import parity prices | 12 hours |
 
 These are bounded source slices, not a mirror of every provider dataset. PGCB's
 demand and load-shedding cells are commented out in the source and are omitted.
@@ -30,6 +39,37 @@ and reservoir datasets are outside this initial path.
 Batch 2 (#9893) adds VN, KZ, PE, PG, FJ and GT. Jamaica's Petrojam, also listed
 in that issue, returns HTTP 403 to every request, including `robots.txt`, and is
 not collected.
+
+Batch 3 (#10051) adds the fuel-price regulators of QA, ZM, GH, BF, ZW, PH, TL,
+CO and UY. Their parsers live in `scripts/lib/regional-fuel-feeds.mjs`. Two
+sources from that issue are not collected: Kenya's EPRA pump-price page timed
+out on every connection on 2026-11-02, directly and through the US relay
+(Cloudflare 522 from the origin), and Honduras's SEN publishes its weekly price
+cards only as images. The three Balkan grid feeds in the issue are outside
+this fuel-price batch.
+
+The third batch publishes retail prices rather than grid observations, so most
+of its feeds carry `publishesAhead`: a monthly or weekly price is dated from its first day
+and the seeder serves the previous release until that day starts locally.
+ERB posts each month's build-up the evening before; URSEA announces maximum
+prices two days ahead and reference prices about a week ahead; CREG keeps
+every change on one page, so its future table simply waits. ERB prices are
+published per cubic metre and divided by 1,000 for ZMW per litre. The NPA
+ex-pump workbook keeps one sheet per publication day (hundreds of sheets), so
+the seeder streams only its first sheet; its summary rows (average, minimum,
+maximum across marketers) are the observations, not the per-company rows.
+SONABHY's page reads its tariffs from a Strapi CMS on a third-party host; the
+seeder reads the page's Nuxt state to confirm the CMS address before reading
+it, and a changed address fails the run. Burkina Faso prices are set by joint
+order and hold until the next one, so that feed's content budget is 400 days.
+ZERA prints each price in USD and ZWG; the ZWG series carries `in ZWG` in its
+area. The DOE sheet names each product's lowest, highest and common price per
+city; `#N/A` common prices are omitted. ANP's station listing has no national
+price, so the feed publishes the lowest and highest listed price per
+municipality and overall, and Timor-Leste is not a row in the fuel-price panel.
+The fuel-price panel reads QA, ZM, GH, BF, ZW, PH, CO and UY from these feeds
+through `REGIONAL_FUEL_SOURCES` in `scripts/seed-fuel-prices.mjs`, with
+fallback FX rates for ZMW, GHS, XOF and UYU.
 
 Since 2026-10-31 MEM's pages, sitemaps and REST API answer automated clients
 with a Cloudflare challenge. The seeder does not request them. It reads only the
@@ -126,7 +166,7 @@ Slow or failed sources retain last-good data.
 After an authorized rollout, confirm the Railway service, schedule and image commit,
 then observe two natural scheduling rotations and at least one daily run. Check logs for
 `Regional-Energy-` and `regional-`, health metadata/record counts, and the profile
-for each of BD, NG, ZA, AR, GE, BR, VN, KZ, PE, PG, FJ and GT. Require source-dated values and valid
+for each of BD, NG, ZA, AR, GE, BR, VN, KZ, PE, PG, FJ, GT, QA, ZM, GH, BF, ZW, PH, TL, CO and UY. Require source-dated values and valid
 attribution; do not count a green build or a fresh fetch alone as acceptance.
 Monthly feeds need a later natural publication to prove report rollover.
 

@@ -2808,6 +2808,23 @@
       ]
     },
     {
+      "host": "creg.gov.co",
+      "provider": "creg.gov.co",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit the Comisión de Regulación de Energía y Gas and link to https://creg.gov.co/publicaciones/15565/precios-de-combustibles-liquidos/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "cryptoslate.com",
       "provider": "cryptoslate.com",
       "kind": "feed",
@@ -2880,6 +2897,20 @@
       "references": [
         {
           "path": "src/services/billing.ts"
+        }
+      ]
+    },
+    {
+      "host": "d24qbtp4vooyzi.cloudfront.net",
+      "provider": "doe.gov.ph",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public domain unless otherwise stated (site footer)",
+      "attribution": "Credit the Philippine Department of Energy and link to https://doe.gov.ph/data-and-prices/liquid-fuels/retail-pump-prices/ncr-pump-prices.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
         }
       ]
     },
@@ -3435,6 +3466,20 @@
       "references": [
         {
           "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "doe.gov.ph",
+      "provider": "doe.gov.ph",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public domain unless otherwise stated (site footer)",
+      "attribution": "Credit the Philippine Department of Energy and link to https://doe.gov.ph/data-and-prices/liquid-fuels/retail-pump-prices/ncr-pump-prices.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -5836,6 +5881,20 @@
       ]
     },
     {
+      "host": "king-prawn-app-6bsvl.ondigitalocean.app",
+      "provider": "www.sonabhy.bf",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit SONABHY and link to https://www.sonabhy.bf/tarif-hydrocarbures/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "kitco.com",
       "provider": "kitco.com",
       "kind": "feed",
@@ -7036,6 +7095,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "npa.gov.gh",
+      "provider": "npa.gov.gh",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit the National Petroleum Authority of Ghana and link to https://npa.gov.gh/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -11210,6 +11283,23 @@
       ]
     },
     {
+      "host": "www.anp.tl",
+      "provider": "www.anp.tl",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit the Autoridade Nacional do Petróleo of Timor-Leste and link to https://www.anp.tl/category/daily-fuel-price/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "www.ansa.it",
       "provider": "www.ansa.it",
       "kind": "feed",
@@ -12210,6 +12300,23 @@
       ]
     },
     {
+      "host": "www.erb.org.zm",
+      "provider": "www.erb.org.zm",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit the Energy Regulation Board of Zambia and link to https://www.erb.org.zm/category/price-build-up/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "www.eskom.co.za",
       "provider": "www.eskom.co.za",
       "kind": "structured",
@@ -12656,6 +12763,20 @@
         },
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.gub.uy",
+      "provider": "www.gub.uy",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit URSEA (Unidad Reguladora de Servicios de Energía y Agua) and link to https://www.gub.uy/unidad-reguladora-servicios-energia-agua/tematica/hidrocarburos.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -13698,6 +13819,23 @@
       ]
     },
     {
+      "host": "www.qatarenergy.qa",
+      "provider": "www.qatarenergy.qa",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit QatarEnergy and link to https://www.qatarenergy.qa/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "www.radiondekeluka.org",
       "provider": "Radio Ndeke Luka",
       "kind": "feed",
@@ -14086,6 +14224,20 @@
       "references": [
         {
           "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.sonabhy.bf",
+      "provider": "www.sonabhy.bf",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit SONABHY and link to https://www.sonabhy.bf/tarif-hydrocarbures/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -15137,6 +15289,23 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.zera.co.zw",
+      "provider": "www.zera.co.zw",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit the Zimbabwe Energy Regulatory Authority and link to https://www.zera.co.zw/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
