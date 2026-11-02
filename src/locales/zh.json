@@ -926,7 +926,10 @@
         "permissive": "宽松",
         "undefined": "未定义"
       },
-      "infoTooltip": "<strong>监管</strong> 全球监管机构的监管行动、政策变更和执法更新：金融、科技、能源和贸易部门。来源：政府和监管机构官方出版物。"
+      "infoTooltip": "<strong>监管</strong> 全球监管机构的监管行动、政策变更和执法更新：金融、科技、能源和贸易部门。来源：政府和监管机构官方出版物。",
+      "latestActions": "最新记录的行动",
+      "otherDeadlines": "其他合规截止日期",
+      "daysAgo": "天前"
     },
     "economic": {
       "indicators": "指标",

@@ -1027,7 +1027,10 @@
         "moderate": "Помірне",
         "permissive": "Ліберальне",
         "undefined": "Невизначене"
-      }
+      },
+      "latestActions": "Останні записані дії",
+      "otherDeadlines": "Інші строки дотримання вимог",
+      "daysAgo": "днів тому"
     },
     "economic": {
       "indicators": "Індикатори",
