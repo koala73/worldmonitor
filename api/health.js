@@ -3755,6 +3755,14 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     const value = meta?.coverage?.[field];
     return Number.isFinite(value) ? { [field]: value } : {};
   };
+  // Only well-formed ISO2 codes count; the status branch reads this projection
+  // so the verdict and the published list cannot disagree.
+  const sourceAbsentCoverageField = (value) => {
+    const codes = Array.isArray(value)
+      ? value.filter((iso2) => typeof iso2 === 'string' && /^[A-Z]{2}$/.test(iso2)).slice(0, 60)
+      : [];
+    return codes.length > 0 ? { sourceAbsentCountries: codes } : {};
+  };
   const coverage = meta?.coverage && typeof meta.coverage === 'object'
     ? {
         status: typeof meta.coverage.status === 'string' ? meta.coverage.status : null,
@@ -3776,6 +3784,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
         ...finiteCoverageField('reviewedHs2Count'),
         failureReasons: sanitizeCoverageFailureReasons(meta.coverage.failureReasons),
         retailers: coverageRetailers,
+        ...sourceAbsentCoverageField(meta.coverage.sourceAbsentCountries),
       }
     : null;
   const coverageCompletionRatioUsable = Number.isFinite(meta?.coverage?.completionRatio)
@@ -4200,6 +4209,13 @@ function classifyKey(name, redisKey, opts, ctx) {
   // whole corpus, and the named entities are on the wire so an operator sees
   // the stale source family instead of a generic warning.
   else if (contentFreshness?.contentStale) status = 'STALE_CONTENT';
+  // A producer that excluded entities proven absent from its source (PortWatch)
+  // is partial by definition, even when the remaining count still clears
+  // minRecordCount because the reference universe is larger than the floor.
+  // Placed after the freshness verdicts so an absence that can last for weeks
+  // never masks a degraded block or stale critical content; still above the
+  // informational pre-warning and margin statuses.
+  else if (coverage?.sourceAbsentCountries?.length > 0) status = 'COVERAGE_PARTIAL';
   // Pre-breach lead time (reader policy, see CONTENT_AGE_PREWARNING_RATIO in
   // api/_content-age.js). Fires only after every hard fault declined and
   // before COVERAGE_MARGIN_LOW, which is informational: an approaching time

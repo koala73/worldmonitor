@@ -2,7 +2,8 @@ name: Weekly Search Console Snapshot
 
 # Collects the weekly Search Console snapshot (#8606) and opens or updates a
 # review PR with it. The snapshot answers which URLs Google declined and why,
-# and which families earn impressions per indexed page.
+# and which families earn impressions per indexed page. The same PR carries
+# the Bing Webmaster snapshot (#10024) when BING_WEBMASTER_API_KEY is set.
 #
 # Gated on the credential. Until the owner creates the service account and adds
 # GSC_SERVICE_ACCOUNT_JSON plus GSC_PROPERTY, the guard job reports that the run
@@ -104,11 +105,27 @@ jobs:
           GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
           GSC_PROPERTY: ${{ secrets.GSC_PROPERTY }}
         run: node scripts/seo-gsc-collect.mjs --live
+      - name: Collect the Bing Webmaster snapshot
+        id: bing
+        if: steps.collect.outcome == 'success'
+        # Bing is a second source in the same PR, not a gate on it: a missing
+        # key skips this step and a Bing failure leaves the Search Console
+        # snapshot to ship on its own.
+        continue-on-error: true
+        env:
+          BING_WEBMASTER_API_KEY: ${{ secrets.BING_WEBMASTER_API_KEY }}
+        run: |
+          if [ -z "${BING_WEBMASTER_API_KEY:-}" ]; then
+            echo "::notice::Skipping Bing: BING_WEBMASTER_API_KEY is not configured. See issue 10024."
+            exit 0
+          fi
+          node scripts/seo-bing-collect.mjs --live
       - name: Verify the snapshot contract
         if: steps.collect.outcome == 'success'
         run: |
           node --import tsx --test --test-concurrency=1 \
             tests/seo-gsc-collector.test.mjs \
+            tests/seo-bing-collector.test.mjs \
             tests/seo-url-taxonomy.test.mjs
       - name: Open the weekly snapshot PR
         if: steps.collect.outcome == 'success'
@@ -117,12 +134,13 @@ jobs:
           GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
           BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BING_OUTCOME: ${{ steps.bing.outcome }}
         run: |
           snapshot_date=$(date -u +%F)
           git switch -c "$BRANCH_NAME"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/research/seo-ai-visibility/gsc
+          git add docs/research/seo-ai-visibility/gsc docs/research/seo-ai-visibility/bing
           if git diff --cached --quiet; then
             echo "::notice::The collector produced no change to commit."
             exit 0
@@ -132,11 +150,19 @@ jobs:
           # run. A branch left behind by a run whose PR step failed, or by a
           # closed PR, is replaced rather than rejected as non-fast-forward.
           git push --force --set-upstream origin "$BRANCH_NAME"
+          if [ "$BING_OUTCOME" = "failure" ]; then
+            bing_note="The Bing Webmaster collection failed in this run, so this PR carries the Search Console snapshot only. See the run log."
+          elif [ -f "docs/research/seo-ai-visibility/bing/${snapshot_date}.json" ]; then
+            bing_note="Also carries the Bing Webmaster snapshot. Its totals come from daily site rows; its query and page sums are top-100-per-week, not totals."
+          else
+            bing_note="No Bing Webmaster snapshot this week: BING_WEBMASTER_API_KEY is not configured."
+          fi
           gh pr create \
             --base main \
             --head "$BRANCH_NAME" \
             --title "chore(seo): Search Console snapshot ${snapshot_date} (#8606)" \
-            --body "$(printf '%s\n\n%s\n\n%s' \
+            --body "$(printf '%s\n\n%s\n\n%s\n\n%s' \
               "Weekly Search Console snapshot. Per-URL index state and per-family search performance, collected from the API rather than transcribed from the UI." \
               "Read the HTML indexability headline, not the raw coverage count: render subresources and machine-readable twins are bucketed separately on purpose. Shares are measured over inspected rows and are never projected onto a reported total." \
+              "$bing_note" \
               "Collected in ${RUN_URL}. Review and merge by hand; this workflow never merges.")"

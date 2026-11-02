@@ -4865,16 +4865,12 @@ export class DataLoaderManager implements AppModule {
     for (const [layer, sourceIds] of Object.entries(LAYER_TO_SOURCE)) {
       const enabled = this.ctx.mapLayers[layer as keyof MapLayers] ?? false;
       for (const sourceId of sourceIds) {
-        dataFreshness.setEnabled(sourceId as DataSourceId, enabled);
+        dataFreshness.setMapLayerEnabled(sourceId as DataSourceId, enabled);
       }
     }
 
-    if (!isAisConfigured()) {
-      dataFreshness.setEnabled('ais', false);
-    }
-    if (isOutagesConfigured() === false) {
-      dataFreshness.setEnabled('outages', false);
-    }
+    dataFreshness.setEnabled('ais', isAisConfigured());
+    dataFreshness.setEnabled('outages', isOutagesConfigured() !== false);
   }
 
   // Bumped to v2 alongside src/services/rss.ts CACHE_PREFIX (`feed:` →

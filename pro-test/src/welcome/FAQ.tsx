@@ -54,6 +54,7 @@ export const FAQ = () => {
           </details>
         ))}
       </div>
+      <p className="mt-8 text-center text-xs text-wm-muted">{t('welcome.faq.disclaimer')}</p>
     </section>
   );
 };

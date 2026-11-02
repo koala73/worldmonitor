@@ -1890,4 +1890,4 @@ if (isMainModule(import.meta.url, process.argv[1])) {
   });
 }
 
-export { QuotaExhaustedError, DEFAULT_SAMPLE_CAP, isCrawledNotIndexed };
+export { QuotaExhaustedError, DEFAULT_SAMPLE_CAP, isCrawledNotIndexed, markdownCell, number, percent };

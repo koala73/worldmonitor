@@ -1047,6 +1047,93 @@ async function fetchMaxDate(iso3, { signal, dateField } = {}) {
   }
 }
 
+// A country is ABSENT from the source when none of its reference ports has a
+// single Daily_Ports_Data row, which is not the same thing as a refresh
+// failure. IMF republished the layer on 2026-10-28 without ~26 countries
+// (BEL, HKG, QAT, ...) and with only the ObjectId and portid columns indexed.
+// Every ISO3-filtered query for those countries then failed with ArcGIS's
+// generic "Invalid query parameters" 400, the 174-country gate refused to
+// publish, and the whole dataset aged past its health budget
+// (WORLDMONITOR-1AF). The probe counts rows by the indexed portid column, so
+// it still answers on that layer. Only an explicit `count: 0` proves absence.
+// Errors, timeouts and malformed bodies stay `unknown`, which keeps the
+// existing refresh-failure path.
+const SOURCE_ABSENCE_FETCH_TIMEOUT = 10_000;
+const SAFE_PORT_ID = /^[A-Za-z0-9_-]{1,32}$/;
+
+// Above this many absent countries the run trusts none of them: a mass "zero
+// rows" answer looks more like a broken layer than a smaller source, and
+// shrinking the dataset by a fifth on that evidence would be the silent
+// failure the coverage gate exists to prevent.
+export const MAX_SOURCE_ABSENT_COUNTRIES = 35;
+
+export async function probeCountrySourceAbsence(iso3, refMap, { signal, fetchFn } = {}) {
+  const portIds = refMap instanceof Map ? [...refMap.keys()] : [];
+  if (portIds.length === 0 || !portIds.every((id) => SAFE_PORT_ID.test(id))) return 'unknown';
+  const params = new URLSearchParams({
+    where: `portid IN (${portIds.map((id) => `'${id}'`).join(',')})`,
+    returnCountOnly: 'true',
+    f: 'json',
+  });
+  try {
+    const body = await fetchWithTimeout(`${EP3_BASE}?${params}`, {
+      signal,
+      timeoutMs: SOURCE_ABSENCE_FETCH_TIMEOUT,
+      noProxyFallback: true,
+      ...(fetchFn ? { fetchFn } : {}),
+    });
+    if (body?.count === 0) return 'absent';
+    if (Number.isInteger(body?.count) && body.count > 0) return 'present';
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+// Probes candidates in waves and skips work whose result the selector would
+// discard: nothing when the table is unobserved, and no further wave once the
+// absent count has passed the cap. Returns a Map keyed by candidate.
+export async function probeSourceAbsences({
+  candidates,
+  tablePopulated,
+  probeFn,
+  signal,
+  concurrency = PREFLIGHT_CONCURRENCY,
+  max = MAX_SOURCE_ABSENT_COUNTRIES,
+}) {
+  const probes = new Map();
+  if (!tablePopulated) return probes;
+  let absentCount = 0;
+  for (let i = 0; i < candidates.length && absentCount <= max; i += concurrency) {
+    if (signal?.aborted) throw signal.reason ?? new Error('aborted');
+    const slice = candidates.slice(i, i + concurrency);
+    const results = await Promise.all(slice.map((candidate) => probeFn(candidate)));
+    slice.forEach((candidate, j) => {
+      probes.set(candidate, results[j]);
+      if (results[j] === 'absent') absentCount++;
+    });
+  }
+  return probes;
+}
+
+// `probes` maps iso2 to a probe result. `tablePopulated` is true when at least
+// one country observed a real max date this run, proving the layer answers
+// with data at all.
+export function selectSourceAbsentCountries({
+  probes,
+  tablePopulated,
+  max = MAX_SOURCE_ABSENT_COUNTRIES,
+}) {
+  const absent = [...probes]
+    .filter(([, result]) => result === 'absent')
+    .map(([iso2]) => iso2)
+    .sort();
+  if (absent.length === 0) return { absent, suppressed: null };
+  if (!tablePopulated) return { absent: [], suppressed: 'table_unobserved' };
+  if (absent.length > max) return { absent: [], suppressed: 'over_cap' };
+  return { absent, suppressed: null };
+}
+
 export function finalisePortsForCountry(portAccumMap, refMap) {
   const ports = [];
   for (const [portId, a] of portAccumMap) {
@@ -1137,6 +1224,7 @@ export async function publishPortActivitySnapshot(
     countries,
     metaPayload,
     canonicalAdvances,
+    sourceAbsentCountries = [],
   },
   {
     fetchFn = fetch,
@@ -1161,6 +1249,14 @@ export async function publishPortActivitySnapshot(
     ]);
   if (canonicalAdvances) {
     commands.push(['SET', CANONICAL_KEY, JSON.stringify(countries), 'EX', TTL]);
+    // Readers such as the China corridor towers and get-country-port-activity
+    // read per-country keys directly, so a source-absent country's last-good
+    // payload must go in the same transaction that stops naming it. Queued
+    // after the per-country SETs so the delete wins over any stale state for
+    // the same country. A blocked run deletes nothing.
+    for (const iso2 of sourceAbsentCountries) {
+      commands.push(['DEL', `${KEY_PREFIX}${iso2}`]);
+    }
   }
   if (metaPayload) commands.push(['SET', META_KEY, JSON.stringify(metaPayload), 'EX', TTL]);
   if (canonicalAdvances) {
@@ -1493,10 +1589,15 @@ export function buildCoverageReport({
   countryData,
   retryState = new Map(),
   refreshFailures = [],
+  sourceAbsentCountries = [],
 }) {
-  const eligible = [...new Set(eligibleCountries)].sort();
-  const expected = [...new Set([...expectedCountries, ...eligible])].sort();
-  const target = Math.max(PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES, expected.length);
+  const absent = [...new Set(sourceAbsentCountries)].sort();
+  const isPresent = (iso2) => !absent.includes(iso2);
+  const eligible = [...new Set(eligibleCountries)].filter(isPresent).sort();
+  const expected = [...new Set([...expectedCountries, ...eligible])].filter(isPresent).sort();
+  // A proven source absence lowers the floor by exactly that many countries;
+  // any other shrinkage still reads as a shortfall.
+  const target = Math.max(PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES - absent.length, expected.length);
   const missingCountries = expected.filter((iso2) => !countryData.has(iso2));
   const unidentifiedMissingCount = Math.max(0, target - expected.length);
   const failureByCountry = new Map();
@@ -1527,6 +1628,7 @@ export function buildCoverageReport({
     missingCountries,
     unidentifiedMissingCount,
     refreshFailures: failures,
+    sourceAbsentCountries: absent,
   };
 }
 
@@ -1605,6 +1707,32 @@ export async function fetchAll(progress, {
   }
   console.log(`  [port-activity] Preflight maxDate for ${eligibleIso3.length} countries (${((Date.now() - preflightT0) / 1000).toFixed(1)}s)`);
 
+  // Source-absence probe for every country whose preflight produced no max
+  // date. See probeCountrySourceAbsence for why a failed ISO3 preflight is not
+  // evidence either way.
+  const hasMaxDate = (o) => o?.status === 'observed' && o.maxDate !== null;
+  const tablePopulated = preflightObservations.some(hasMaxDate);
+  const absenceCandidates = eligibleIso3.filter((_, i) => !hasMaxDate(preflightObservations[i]));
+  const probesByIso3 = await probeSourceAbsences({
+    candidates: absenceCandidates,
+    tablePopulated,
+    signal,
+    probeFn: (iso3) => probeCountrySourceAbsence(iso3, refsByIso3.get(iso3), { signal }),
+  });
+  const absenceProbes = new Map([...probesByIso3].map(([iso3, result]) => [iso3ToIso2.get(iso3), result]));
+  const { absent: sourceAbsentCountries, suppressed: absenceSuppressed } = selectSourceAbsentCountries({
+    probes: absenceProbes,
+    tablePopulated,
+  });
+  const sourceAbsent = new Set(sourceAbsentCountries);
+  if (!tablePopulated && absenceCandidates.length > 0) {
+    console.warn('  [port-activity] No preflight observed a max date; source-absence probes skipped.');
+  } else if (absenceSuppressed) {
+    console.warn(`  [port-activity] Source-absence evidence ignored (${absenceSuppressed}); those countries stay refresh failures.`);
+  } else if (sourceAbsent.size > 0) {
+    console.warn(`  [port-activity] ${sourceAbsent.size} countries have no rows in Daily_Ports_Data and are excluded as source-absent: ${sourceAbsentCountries.join(', ')}`);
+  }
+
   // See deriveRunAnchorMs for why Date.now() is not the fallback.
   const maxDates = preflightObservations.map((observation) =>
     observation?.status === 'observed' ? observation.maxDate : null,
@@ -1633,6 +1761,7 @@ export async function fetchAll(progress, {
   for (let i = 0; i < eligibleIso3.length; i++) {
     const iso3 = eligibleIso3[i];
     const iso2 = iso3ToIso2.get(iso3);
+    if (sourceAbsent.has(iso2)) continue;
     const preflightObservation = preflightObservations[i];
     const upstreamMaxDate = preflightObservation?.status === 'observed'
       ? preflightObservation.maxDate
@@ -2007,6 +2136,7 @@ export async function fetchAll(progress, {
     countryData,
     retryState,
     refreshFailures,
+    sourceAbsentCountries,
   });
   if (!coverage.complete) {
     const failureCodes = coverage.refreshFailures.length > 0
@@ -2039,7 +2169,10 @@ export function shouldAdvanceCanonicalForRun({
   upstreamContactCount,
   coverage,
 }) {
-  return referenceCountryCount >= PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES
+  const sourceAbsentCount = Array.isArray(coverage?.sourceAbsentCountries)
+    ? coverage.sourceAbsentCountries.length
+    : 0;
+  return referenceCountryCount + sourceAbsentCount >= PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES
     && coverage?.complete === true
     && coverage.refreshFailures.length === 0
     && countryCount === coverage.target
@@ -2283,6 +2416,7 @@ export async function main() {
       countries,
       metaPayload,
       canonicalAdvances,
+      sourceAbsentCountries: coverage.sourceAbsentCountries,
     });
     failureRecorded = !canonicalAdvances;
     let canonicalState = 'no prior canonical list';
