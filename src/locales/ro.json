@@ -389,7 +389,6 @@
     "liveNews": "Știri Live",
     "markets": "Piețe",
     "map": "Situația globală",
-    "techMap": "Global Tech",
     "techHubs": "Hub-uri Tech",
     "status": "Stare sistem",
     "insights": "Analiză AI",
@@ -4228,5 +4227,29 @@
     "reportedClaims": "Rapoarte ale editorului. Afirmațiile pot fi încă investigate.",
     "occurred": "Incident",
     "reported": "Publicat"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Harta Piețelor Globale",
+      "liveNews": "Titluri de Piață",
+      "insights": "Insight-uri AI pentru Piață"
+    },
+    "tech": {
+      "map": "Harta Tehnologiei Globale",
+      "liveNews": "Titluri Tehnologice"
+    },
+    "commodity": {
+      "map": "Harta Mărfurilor",
+      "liveNews": "Titluri Mărfuri",
+      "insights": "Insight-uri AI pentru Mărfuri"
+    },
+    "energy": {
+      "map": "Atlasul Energetic",
+      "liveNews": "Titluri Energetice",
+      "insights": "Insight-uri AI pentru Energie"
+    },
+    "happy": {
+      "map": "Harta Știrilor Bune"
+    }
   }
 }

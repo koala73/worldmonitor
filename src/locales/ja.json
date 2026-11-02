@@ -385,7 +385,6 @@
     "liveNews": "ライブニュース",
     "markets": "市場",
     "map": "グローバル情勢",
-    "techMap": "グローバルテック",
     "techHubs": "注目テックハブ",
     "status": "システム状態",
     "insights": "AIインサイト",
@@ -4188,5 +4187,29 @@
     "reportedClaims": "発行元の報告です。主張は調査中の場合があります。",
     "occurred": "発生",
     "reported": "公開"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "グローバルマーケットマップ",
+      "liveNews": "マーケットヘッドライン",
+      "insights": "AI マーケットインサイト"
+    },
+    "tech": {
+      "map": "グローバルテックマップ",
+      "liveNews": "テックヘッドライン"
+    },
+    "commodity": {
+      "map": "コモディティマップ",
+      "liveNews": "コモディティヘッドライン",
+      "insights": "AIコモディティインサイト"
+    },
+    "energy": {
+      "map": "エネルギーアトラスマップ",
+      "liveNews": "エネルギーヘッドライン",
+      "insights": "AIエネルギーインサイト"
+    },
+    "happy": {
+      "map": "グッドニュースマップ"
+    }
   }
 }

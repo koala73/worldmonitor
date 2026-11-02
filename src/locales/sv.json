@@ -9,7 +9,6 @@
     "status": "Systemstatus",
     "insights": "AI-INSIKTER",
     "map": "Interactive Map",
-    "techMap": "Global Teknik",
     "politics": "Världsnyheter",
     "us": "USA",
     "europe": "Europa",
@@ -4208,5 +4207,29 @@
     "reportedClaims": "Utgivarens rapporter. Påståenden kan fortfarande utredas.",
     "occurred": "Incident",
     "reported": "Publicerad"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Världsmarknadskarta",
+      "liveNews": "Marknadsnyheter",
+      "insights": "AI-marknadsinsikter"
+    },
+    "tech": {
+      "map": "Global teknikkarta",
+      "liveNews": "Tekniknyheter"
+    },
+    "commodity": {
+      "map": "Råvarukarta",
+      "liveNews": "Råvarunyheter",
+      "insights": "AI-råvaruinsikter"
+    },
+    "energy": {
+      "map": "Energiatlas-karta",
+      "liveNews": "Energinyheter",
+      "insights": "AI-energiinsikter"
+    },
+    "happy": {
+      "map": "Karta över goda nyheter"
+    }
   }
 }

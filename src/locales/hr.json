@@ -460,7 +460,6 @@
     "markets": "Tržišta",
     "marketImplications": "Implikacije AI na tržištu",
     "map": "Globalna situacija",
-    "techMap": "Globalna tehnologija",
     "techHubs": "Vruća tehnološka središta",
     "status": "Stanje sustava",
     "insights": "AI uvidi",
@@ -4239,5 +4238,29 @@
     "reportedClaims": "Izvješća izdavača. Tvrdnje mogu još biti pod istragom.",
     "occurred": "Incident",
     "reported": "Objavljeno"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Globalna mapa tržišta",
+      "liveNews": "Vijesti s tržišta",
+      "insights": "AI uvidi o tržištu"
+    },
+    "tech": {
+      "map": "Globalna tehnološka mapa",
+      "liveNews": "Tehnološke vijesti"
+    },
+    "commodity": {
+      "map": "Mapa sirovina",
+      "liveNews": "Vijesti o sirovinama",
+      "insights": "AI uvidi o sirovinama"
+    },
+    "energy": {
+      "map": "Energetski atlas",
+      "liveNews": "Energetske vijesti",
+      "insights": "AI uvidi o energiji"
+    },
+    "happy": {
+      "map": "Mapa dobrih vijesti"
+    }
   }
 }

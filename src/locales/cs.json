@@ -391,7 +391,6 @@
     "liveNews": "Živé zprávy",
     "markets": "Trhy",
     "map": "Globální situace",
-    "techMap": "Globální Tech",
     "techHubs": "Horká Tech centra",
     "status": "Stav systému",
     "insights": "AI postřehy",
@@ -4248,5 +4247,29 @@
     "reportedClaims": "Zprávy vydavatele. Tvrzení mohou být stále vyšetřována.",
     "occurred": "Incident",
     "reported": "Zveřejněno"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Mapa globálních trhů",
+      "liveNews": "Zprávy z trhů",
+      "insights": "AI postřehy o trzích"
+    },
+    "tech": {
+      "map": "Mapa globálních technologií",
+      "liveNews": "Zprávy z technologií"
+    },
+    "commodity": {
+      "map": "Mapa komodit",
+      "liveNews": "Zprávy z komodit",
+      "insights": "AI postřehy o komoditách"
+    },
+    "energy": {
+      "map": "Mapa energetiky",
+      "liveNews": "Zprávy z energetiky",
+      "insights": "AI postřehy o energetice"
+    },
+    "happy": {
+      "map": "Mapa dobrých zpráv"
+    }
   }
 }

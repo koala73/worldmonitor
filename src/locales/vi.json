@@ -385,7 +385,6 @@
     "liveNews": "Tin tức Trực tiếp",
     "markets": "Thị trường",
     "map": "Tình hình Toàn cầu",
-    "techMap": "Công nghệ Toàn cầu",
     "techHubs": "Trung tâm Công nghệ Nổi bật",
     "status": "Trạng thái Hệ thống",
     "insights": "Phân tích AI",
@@ -4188,5 +4187,29 @@
     "reportedClaims": "Báo cáo của bên xuất bản. Các tuyên bố có thể vẫn đang được điều tra.",
     "occurred": "Sự cố",
     "reported": "Đã xuất bản"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Bản đồ Thị trường Toàn cầu",
+      "liveNews": "Tin tức Thị trường",
+      "insights": "Thông tin Thị trường AI"
+    },
+    "tech": {
+      "map": "Bản đồ Công nghệ Toàn cầu",
+      "liveNews": "Tin tức Công nghệ"
+    },
+    "commodity": {
+      "map": "Bản đồ Hàng hóa",
+      "liveNews": "Tin tức Hàng hóa",
+      "insights": "Thông tin Hàng hóa AI"
+    },
+    "energy": {
+      "map": "Bản đồ Năng lượng",
+      "liveNews": "Tin tức Năng lượng",
+      "insights": "Thông tin Năng lượng AI"
+    },
+    "happy": {
+      "map": "Bản đồ Tin tức Tích cực"
+    }
   }
 }

@@ -457,7 +457,6 @@
     "markets": "Markets",
     "marketImplications": "AI Market Implications",
     "map": "Global Situation",
-    "techMap": "Global Tech",
     "techHubs": "Hot Tech Hubs",
     "status": "System Status",
     "insights": "AI Insights",
@@ -4208,5 +4207,29 @@
     "reportedClaims": "گزارش‌های ناشر. ادعاها ممکن است همچنان در دست بررسی باشند.",
     "occurred": "رویداد",
     "reported": "انتشار"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "نقشه بازارهای جهانی",
+      "liveNews": "تیتر‌های بازار",
+      "insights": "بینش‌های بازار با هوش مصنوعی"
+    },
+    "tech": {
+      "map": "نقشه تکنولوژی جهانی",
+      "liveNews": "تیتر‌های تکنولوژی"
+    },
+    "commodity": {
+      "map": "نقشه کالاها",
+      "liveNews": "تیتر‌های کالاها",
+      "insights": "بینش‌های کالاها با هوش مصنوعی"
+    },
+    "energy": {
+      "map": "نقشه انرژی",
+      "liveNews": "تیتر‌های انرژی",
+      "insights": "بینش‌های انرژی با هوش مصنوعی"
+    },
+    "happy": {
+      "map": "نقشه اخبار خوب"
+    }
   }
 }

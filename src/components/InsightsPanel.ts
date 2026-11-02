@@ -17,6 +17,7 @@ import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { SITE_VARIANT } from '@/config';
 import { deletePersistentCache, getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { t } from '@/services/i18n';
+import { getPanelDisplayName } from '@/services/panel-display-name';
 import { isDesktopRuntime } from '@/services/runtime';
 import { getAiFlowSettings, isAnyAiProviderEnabled, subscribeAiFlowChange } from '@/services/ai-flow-settings';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
@@ -72,7 +73,7 @@ export class InsightsPanel extends Panel {
   constructor() {
     super({
       id: 'insights',
-      title: t('panels.insights'),
+      title: getPanelDisplayName('insights'),
       showCount: false,
       infoTooltip: t('components.insights.infoTooltip'),
     });
