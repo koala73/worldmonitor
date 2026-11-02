@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { setImmediate } from 'node:timers/promises';
+import ts from 'typescript';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const componentsDir = resolve(repoRoot, 'src/components');
@@ -90,18 +92,51 @@ describe('panel RPC clients — one module round trip, not two', () => {
 });
 
 describe('first-paint map init — one round trip, not two', () => {
-  // The MapLibre stylesheet chunk and the DeckGL renderer chunk are independent
-  // and both must land before the first map paint. Serializing them put two
-  // round trips on the LCP critical path.
-  const source = read('src/components/MapContainer.ts');
+  const source = ts.createSourceFile('MapContainer.ts', read('src/components/MapContainer.ts'), ts.ScriptTarget.Latest, true);
+  const declaration = source.statements.find(node => ts.isClassDeclaration(node) && node.name?.text === 'MapContainer');
+  const method = declaration.members.find(node => node.name?.getText(source) === 'createDeckGLMap');
+  const javascript = ts.transpileModule(`class Harness { ${method.getText(source)} }`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+  }).outputText.replace("import('./DeckGLMap')", 'loadDeckGL()');
 
-  it('fetches the MapLibre stylesheet and the DeckGL chunk together', () => {
-    assert.match(source, /import\('\.\/DeckGLMap'\)/);
-    assert.doesNotMatch(
-      source,
-      /^\s*await\s+loadMapLibreCss\(\);/m,
-      'await loadMapLibreCss() must not stand alone before the DeckGL import; put both in one '
-        + 'Promise.all so the two chunks load in parallel',
-    );
-  });
+  for (const first of ['stylesheet', 'renderer']) {
+    it(`starts both loads together and waits for both when ${first} finishes first`, async () => {
+      const stylesheet = Promise.withResolvers();
+      const renderer = Promise.withResolvers();
+      const started = [];
+      const events = [];
+      const Harness = new Function('loadMapLibreCss', 'loadDeckGL', 'markLcpDebug', 'console', `${javascript}; return Harness;`)(
+        () => { started.push('stylesheet'); return stylesheet.promise; },
+        () => { started.push('renderer'); return renderer.promise; },
+        () => {},
+        { log() {}, warn() {} },
+      );
+      const map = new Harness();
+      Object.assign(map, {
+        initialState: {},
+        isCurrentRendererInit: () => true,
+        prepareRendererDom: () => events.push('prepare'),
+        rehydrateActiveMap() {},
+        markRendererReady: () => events.push('ready'),
+        initSvgMap: () => assert.fail('successful chunk loads must not fall back to SVG'),
+      });
+      const module = {
+        DeckGLMap: class {
+          constructor() { events.push('construct'); }
+          async whenReady() {}
+        },
+      };
+      const startup = map.createDeckGLMap(1);
+      assert.deepEqual(started, ['stylesheet', 'renderer'], 'both loads must start before either resolves');
+      assert.deepEqual(events, []);
+      if (first === 'stylesheet') stylesheet.resolve();
+      else renderer.resolve(module);
+      await setImmediate();
+      assert.deepEqual(events, [], 'map construction must wait for the remaining chunk');
+      stylesheet.resolve();
+      renderer.resolve(module);
+      await startup;
+      assert.deepEqual(events, ['prepare', 'construct', 'ready']);
+    });
+  }
 });
