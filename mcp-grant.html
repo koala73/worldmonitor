@@ -31,6 +31,15 @@
       .placeholder{color:#333}
       .spinner{display:inline-block;width:.8em;height:.8em;border:2px solid #2a2a2a;border-top-color:#2d8a6e;border-radius:50%;animation:spin .9s linear infinite;vertical-align:-.05em;margin-right:.5em}
       @keyframes spin{to{transform:rotate(360deg)}}
+      .about-you{margin-top:1rem;border:1px solid #1e1e1e;padding:.6rem .75rem}
+      .about-you summary{font-size:.75rem;color:#666;cursor:pointer}
+      .about-you-label{font-size:.75rem;color:#888;margin:.75rem 0 .4rem}
+      .about-you-options{display:flex;flex-wrap:wrap;gap:.35rem}
+      .about-you .about-you-option,.about-you .about-you-not-now{width:auto;margin:0;padding:.55rem .7rem;min-height:44px;font-size:.75rem;background:transparent;color:#aaa;border:1px solid #2a2a2a}
+      .about-you .about-you-option:hover{background:transparent;border-color:#2d8a6e}
+      .about-you .about-you-option[aria-pressed=true]{border-color:#2d8a6e;color:#fff}
+      .about-you .about-you-not-now{margin-top:.75rem;border-color:transparent;color:#666}
+      .about-you .about-you-not-now:hover{background:transparent;color:#aaa}
     </style>
     <!-- No inline scripts — global CSP at vercel.json:92 is hash-based and we
          don't allowlist this page's hashes individually. The bundled module
@@ -63,6 +72,7 @@
         </ul>
         <hr>
         <p style="font-size:.72rem;color:#444;line-height:1.5">Signed in as <span id="userEmail" style="color:#666"></span>. <a href="/settings" style="color:#2d8a6e;text-decoration:none">Manage connected MCP clients →</a></p>
+        <div id="aboutYouMount"></div>
         <button type="button" id="authorizeBtn">Authorize</button>
         <p class="error" id="mintError" role="alert" hidden></p>
       </div>

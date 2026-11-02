@@ -39,6 +39,7 @@ import {
   type GrantMintPhase,
 } from '@/services/mcp-grant-denial';
 import { watchSignInDismissal, type SignInDismissalWatch } from '@/services/sign-in-dismissal';
+import type { McpAboutYouSection } from '@/services/mcp-grant-about-you';
 
 // Apply user's saved theme preference. Inlined here (not the index.html head)
 // because the page's global CSP is hash-allowlisted and adding per-page
@@ -52,6 +53,41 @@ try {
 }
 
 const API_BASE = ''; // same-origin (apex)
+
+/** How long the optional About-you questions may take to appear (KTD7). */
+const ABOUT_YOU_STATUS_TIMEOUT_MS = 3_000;
+let aboutYouStarted = false;
+let aboutYouSection: McpAboutYouSection | null = null;
+
+/**
+ * Add the optional About-you questions under the consent details when the
+ * account has not answered or skipped. Loaded lazily and never awaited by the
+ * consent flow: the card is already on screen, and a slow or failed read
+ * simply renders nothing.
+ */
+async function startAboutYou(): Promise<void> {
+  if (aboutYouStarted) return;
+  const userId = getCurrentClerkUser()?.id;
+  if (!userId) return;
+  aboutYouStarted = true;
+  try {
+    const [profile, view] = await Promise.all([
+      import('@/services/audience-profile'),
+      import('@/services/mcp-grant-about-you'),
+    ]);
+    aboutYouSection = await view.mountMcpAboutYou(
+      $('aboutYouMount'),
+      {
+        loadStatus: () => profile.loadAboutYouStatus(userId),
+        recordAnswers: (answers) => profile.recordAboutYouAnswers(userId, 'mcp-connect', answers),
+        skip: () => profile.skipAboutYou(userId, 'mcp-connect'),
+      },
+      ABOUT_YOU_STATUS_TIMEOUT_MS,
+    );
+  } catch (error) {
+    console.warn('[mcp-grant] About-you questions unavailable', error);
+  }
+}
 
 type ContextResponse = GrantClientContext;
 
@@ -330,6 +366,7 @@ async function loadContextAttempt(
   hide('loading');
   hide('signInView');
   show('consent');
+  void startAboutYou();
 }
 
 async function onAuthorizeClick(nonce: string): Promise<void> {
@@ -344,6 +381,8 @@ async function onAuthorizeClick(nonce: string): Promise<void> {
   btn.disabled = true;
   btn.textContent = 'Authorizing…';
   hide('mintError');
+  // Separate, fire-and-forget write: the mint below never waits on it (KTD7).
+  aboutYouSection?.submit();
 
   let resp: Response;
   mintPhase = 'in_flight';
