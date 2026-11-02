@@ -222,6 +222,33 @@ describe('Panel keyboard resize accessibility', () => {
     }
   });
 
+  it('uses the rendered span when CSS gives a span-2 default more rows', () => {
+    // On desktop the stylesheet gives the CLS-pinned span-2 defaults four rows
+    // (#5332 follow-up). The separator and keyboard resize must start from the
+    // four rows on screen, not the two the class names.
+    const panel = new Panel({ id: 'threat-timeline', title: 'Threat timeline', defaultRowSpan: 2 });
+    const element = panel.getElement();
+    const handle = element.querySelector<HTMLElement>('.panel-resize-handle')!;
+    expect(element.classList.contains('span-2')).toBe(true);
+    element.style.gridRowStart = 'span 4';
+    document.body.appendChild(element);
+    panel.notifyConnected();
+
+    try {
+      expect(handle.getAttribute('aria-valuenow')).toBe('4');
+
+      handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      expect(loadPanelSpans()['threat-timeline']).toBeUndefined();
+      expect(element.classList.contains('span-3')).toBe(false);
+
+      handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+      expect(loadPanelSpans()['threat-timeline']).toBe(3);
+      expect(element.classList.contains('span-3')).toBe(true);
+    } finally {
+      panel.destroy();
+    }
+  });
+
   it('updates separator values when saved dimensions are reset', () => {
     savePanelSpan('resize-reset-probe', 4);
     savePanelColSpan('resize-reset-probe', 3);
