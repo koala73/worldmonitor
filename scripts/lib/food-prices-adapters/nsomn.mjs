@@ -5,6 +5,7 @@ export const AIMAG_TABLE = 'DT_NSO_0300_010V5.px';
 const PRODUCT = 'Бүтээгдэхүүн';
 const REGION = 'Бүс';
 const TIME = 'Хугацаа';
+const MAX_CELLS = 10_000;
 
 const ITEMS = {
   'Flour, highest grade, prepacked, kg': ['Wheat flour (highest grade, packaged)', 'kg'],
@@ -60,7 +61,9 @@ function categories(table, code, size) {
 export function parseNsoTable(table, { market } = {}) {
   const ids = market ? [PRODUCT, TIME] : [PRODUCT, REGION, TIME];
   if (!Array.isArray(table?.id) || table.id.join('|') !== ids.join('|') || !Array.isArray(table.size) || table.size.length !== ids.length
-    || !Array.isArray(table.value) || table.value.length !== table.size.reduce((product, size) => product * size, 1)) {
+    || !Array.isArray(table.value) || table.value.length !== table.size.reduce((product, size) => product * size, 1)
+    // The real tables hold 62 and 550 cells; a far larger cube would expand into millions of rows (CWE-770).
+    || table.value.length > MAX_CELLS) {
     throw new Error('nsomn table shape format changed');
   }
   const strides = ids.map((_, i) => table.size.slice(i + 1).reduce((product, size) => product * size, 1));

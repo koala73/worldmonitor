@@ -110,6 +110,18 @@ test('NSO rejects code lists that do not match the declared cube, so labels cann
   const started = Date.now();
   assert.throws(() => parseNsoTable(amplified, { market: 'Ulaanbaatar' }), /format changed/);
   assert.ok(Date.now() - started < 1000);
+  // A consistent but huge cube (1,000 products x 1,000 weeks) is refused before any row is built.
+  const codes = (prefix, text) => ({
+    label: Object.fromEntries(Array.from({ length: 1000 }, (_, i) => [`${prefix}${i}`, text(i)])),
+    index: Object.fromEntries(Array.from({ length: 1000 }, (_, i) => [`${prefix}${i}`, i])),
+  });
+  const huge = {
+    id: ['Бүтээгдэхүүн', 'Хугацаа'], size: [1000, 1000], value: new Array(1_000_000).fill(1),
+    dimension: { 'Бүтээгдэхүүн': { category: codes('p', () => 'Mutton, kg') }, 'Хугацаа': { category: codes('t', i => new Date(Date.UTC(2000, 0, 1 + i * 7)).toISOString().slice(0, 10)) } },
+  };
+  const hugeStarted = Date.now();
+  assert.throws(() => parseNsoTable(huge, { market: 'Ulaanbaatar' }), /format changed/);
+  assert.ok(Date.now() - hugeStarted < 1000);
   const outside = structuredClone(fixture()[CAPITAL_TABLE]);
   outside.dimension['Хугацаа'].category.index = { 0: 0, 1: 5 };
   assert.throws(() => parseNsoTable(outside, { market: 'Ulaanbaatar' }), /format changed/, 'position outside the declared size');

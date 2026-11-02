@@ -31,6 +31,13 @@ test('MADR rejects a product row whose mean is outside its minimum and maximum',
   assert.throws(() => parseMadr(page, '2026-11-02'), /mean outside its range/);
 });
 
+test('MADR rejects an oversized product label in linear time (CWE-1333)', () => {
+  const page = fixture().pages['2026-11-02'].map(item => (item.text === 'Tomate' ? { ...item, text: `Tomate ${'('.repeat(1)}${' a'.repeat(200_000)}` } : item));
+  const started = Date.now();
+  assert.throws(() => parseMadr(page, '2026-11-02'), /format changed/);
+  assert.ok(Date.now() - started < 500, `took ${Date.now() - started}ms`);
+});
+
 test('MADR discovers dated price PDFs from the WordPress media list, whatever the file-name suffix', () => {
   const reports = discoverMadrReports(fixture().media);
   assert.equal(reports[0].date, '2026-11-02');

@@ -12,6 +12,7 @@ const PRODUCTS = {
   'Viande bovine locale': 'Beef (local)', 'Poulet de chair': 'Chicken (broiler)', 'Œufs': 'Eggs', 'Lait de vache': 'Cow milk',
 };
 const UNITS = { unité: 'piece', litre: 'litre' };
+const MAX_LABEL = 120;
 
 const monthIndex = name => MONTHS.findIndex(pattern => pattern.test(name.toLowerCase())) + 1;
 const textDate = (day, month, year) => (monthIndex(month) ? isoDate(year, monthIndex(month), day) : '');
@@ -64,7 +65,12 @@ export function parseMadr(page, expectedDate) {
     if (!label || values.size !== 3 || [...values.values()].some(value => value === null)) throw new Error('madr product row format changed');
     const [average, high, low] = [0, 1, 2].map(column => values.get(column));
     if (average < low || average > high) throw new Error(`madr ${label} mean outside its range`);
-    const [, name, unitLabel] = /^(.*?)(?:\s*\(([^)]+)\))?$/.exec(label);
+    // Labels are publisher text; real ones are under 30 characters. Split the trailing "(unit)" with index
+    // lookups rather than a backtracking pattern (CWE-1333).
+    if (label.length > MAX_LABEL) throw new Error('madr product label format changed');
+    const open = label.endsWith(')') ? label.lastIndexOf('(') : -1;
+    const name = open > 0 ? label.slice(0, open).trim() : label;
+    const unitLabel = open > 0 ? label.slice(open + 1, -1).trim() : '';
     const unit = unitLabel ? UNITS[unitLabel.toLowerCase()] : 'kg';
     if (!unit) throw new Error(`madr ${label} unit format changed`);
     result.push({ item: PRODUCTS[name] ?? name, market: 'National average', marketType: 'retail', unit, currency: 'DZD', date, price: average, origin: '' });
