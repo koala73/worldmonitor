@@ -617,5 +617,6 @@
   "whyUpgrade.noiseDesc": "AIS anomaly → Brent spike → your Slack in under a minute. Signal, not headlines.",
   "whyUpgrade.noiseTitle": "Know first",
   "whyUpgrade.title": "Why upgrade to World Monitor Pro?",
-  "wired.asFeaturedIn": "As featured in"
+  "wired.asFeaturedIn": "As featured in",
+  "welcome.faq.disclaimer": "World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice. Verify what you see, and consult a qualified professional before decisions where an error could cause loss or harm."
 }

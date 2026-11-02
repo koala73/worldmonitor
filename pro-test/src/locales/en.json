@@ -683,6 +683,7 @@
       "eyebrow": "No catch",
       "title": "What are common questions about World Monitor?",
       "sub": "{{answers}} straight answers on price, data, alerts and AI access. The short version: the dashboard costs $0, needs no account, and the code is open source under AGPL-3.0.",
+      "disclaimer": "World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice. Verify what you see, and consult a qualified professional before decisions where an error could cause loss or harm.",
       "q1": "Is World Monitor really free?",
       "a1": "Yes. The live map costs $0 with no signup and no trial clock: {{mapLayers}} map layer types, every one but Resilience, plus curated feeds, country briefs, breaking alerts and monitoring surfaces. Pro pays for the feeds: it adds WM Analyst, the scenario engine, Route Explorer, scheduled digests, MCP access for AI clients and the Resilience map layer. No ads, and no account means there's no user data to sell.",
       "q2": "What is a global intelligence dashboard?",
