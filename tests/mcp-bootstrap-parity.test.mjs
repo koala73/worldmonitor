@@ -256,6 +256,8 @@ const EXCLUDED_FROM_MCP = new Map([
   ['economic:food-prices:ucda:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#9892).'],
   ['economic:food-prices:amman:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#9892).'],
   ['economic:food-prices:tcb:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#9892).'],
+  ['economic:food-prices:madr:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10050).'],
+  ['economic:food-prices:nsomn:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10050).'],
   ['seed-meta:economic:world-cpi-imf',
     'operational: meta-only health probe for the worldwide IMF CPI payload (~1 MB across 190 countries). GetWorldCpiMonthly serves the data; the payload is too large for the composite economic cache tool (#8538).'],
   ['seed-meta:economic:world-cpi-eurostat',
