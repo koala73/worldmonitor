@@ -176,7 +176,9 @@ seeder 仅在按索引计数证明该国所有参考港口在 PortWatch 的 `Dai
 日期。此类国家没有可判定的内容，因此按名称报告，而不计为过期或缺失。若某国同时被列为
 关键国家和来源缺失，则报告为 `source_absent_overlaps_critical`。若所有固定国家均缺失，
 则没有可判定的内容，该块不报告内容过期。只要 `coverage.sourceAbsentCountries` 非空，
-即使发布数量仍达到 `minRecordCount`，该检查也保持 `COVERAGE_PARTIAL`。seeder 还会在推进
+即使发布数量仍达到 `minRecordCount`，该检查也保持 `COVERAGE_PARTIAL`。内容新鲜度判定
+（块不可用时为 `COVERAGE_DEGRADED`，关键内容过期时为 `STALE_CONTENT`）优先，因此长期
+存在的缺失不会掩盖这些判定。seeder 还会在推进
 发布的同一事务中删除每个缺失国家的单国键，因此读取这些键的调用方不会把其最后一次有效
 载荷当作当前数据。
 

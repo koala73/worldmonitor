@@ -533,7 +533,9 @@ both as critical and as source-absent reads as
 `source_absent_overlaps_critical`. If every pinned country is absent, nothing
 remains to judge and the block does not report stale content. Any non-empty
 `coverage.sourceAbsentCountries` keeps the check at `COVERAGE_PARTIAL`, even when
-the published count still clears `minRecordCount`. The seeder also deletes each
+the published count still clears `minRecordCount`. A content-freshness verdict
+(`COVERAGE_DEGRADED` for an unusable block, `STALE_CONTENT` for stale critical
+content) takes precedence, so a long-lived absence never hides it. The seeder also deletes each
 absent country's per-country key in the same transaction that advances
 publication, so readers of those keys never see its last-good payload as
 current.

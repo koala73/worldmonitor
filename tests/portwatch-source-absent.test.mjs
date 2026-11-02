@@ -225,6 +225,50 @@ describe('a source absence stays visible end to end', () => {
     assert.deepEqual(entry.coverage.sourceAbsentCountries, ['HK']);
   });
 
+  const classifyPortwatch = async (meta) => {
+    const { __testing__ } = await import('../api/health.js');
+    const { classifyKey, STANDALONE_KEYS, SEED_META } = __testing__;
+    return classifyKey('portwatchPortActivity', STANDALONE_KEYS.portwatchPortActivity, { allowOnDemand: true }, {
+      containmentEvidenceByName: new Map(),
+      keyStrens: new Map([[STANDALONE_KEYS.portwatchPortActivity, 1234]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[SEED_META.portwatchPortActivity.key, JSON.stringify(meta)]]),
+      keyMetaErrors: new Map(),
+      activationStates: new Map([['portwatchContentFreshness', true]]),
+      now,
+    });
+  };
+  const fullCountryData = (cnObservedAt) => {
+    const data = new Map(Array.from({ length: 178 }, (_, i) => [`Z${i}`, { contentAsOfChangedAt: now - MINUTE }]));
+    data.set('CN', { contentAsOfChangedAt: cnObservedAt });
+    return data;
+  };
+
+  it('stale critical content keeps its own verdict while a country is absent', async () => {
+    const meta = buildPortActivityMetaPayload({
+      countryData: fullCountryData(now - 11 * 24 * 60 * MINUTE),
+      coverage: { status: 'complete', completionRatio: 1, sourceAbsentCountries: ['HK'] },
+      now: now - MINUTE,
+    });
+    const entry = await classifyPortwatch(meta);
+    assert.equal(entry.status, 'STALE_CONTENT');
+    assert.deepEqual(entry.coverage.sourceAbsentCountries, ['HK']);
+  });
+
+  it('a malformed absence list neither changes the status nor reaches the wire', async () => {
+    const countryData = fullCountryData(now - MINUTE);
+    countryData.set('HK', { contentAsOfChangedAt: now - MINUTE });
+    const meta = buildPortActivityMetaPayload({
+      countryData,
+      coverage: { status: 'complete', completionRatio: 1 },
+      now: now - MINUTE,
+    });
+    meta.coverage.sourceAbsentCountries = ['hk', 7];
+    const entry = await classifyPortwatch(meta);
+    assert.equal(entry.status, 'OK');
+    assert.equal(entry.coverage.sourceAbsentCountries, undefined);
+  });
+
   it('an all-absent critical scope is not reported as stale content', () => {
     const report = buildContentFreshnessReport({
       countryData: new Map([['US', { contentAsOfChangedAt: now - MINUTE }]]),
