@@ -1573,8 +1573,13 @@ export function createDomainGateway(
         isSidecarOllamaTranslation = body.provider === 'ollama' && body.mode === 'translate';
       } catch { /* malformed requests retain the normal authentication path */ }
     }
-    const seedRefreshVerified = await isResilienceRankingSeedRefreshRequest(request, pathname);
-    const relayWarmPingVerified = await isRelayWarmPingRequest(request, pathname);
+    // Both are route-scoped credential checks that read only the request, and
+    // either can short-circuit to `false` without touching the other. This is
+    // the per-request dispatch path, so resolve them together.
+    const [seedRefreshVerified, relayWarmPingVerified] = await Promise.all([
+      isResilienceRankingSeedRefreshRequest(request, pathname),
+      isRelayWarmPingRequest(request, pathname),
+    ]);
     // Resolve the quota policy against the route POST compatibility will use.
     // Keep body validation after auth and abuse limiting; invalid bodies still
     // return before reservation or dispatch.

@@ -277,8 +277,12 @@ export async function signInternalMcpRequest(args: {
 
   const url = args.url instanceof URL ? args.url : new URL(args.url);
   const ts = Math.floor(args.now ?? Date.now() / 1000);
-  const queryHash = await sha256Hex(canonicalQueryString(url));
-  const bodyHash = await sha256Hex(await coerceBodyToString(args.body));
+  // Query and body are hashed independently; overlapping them removes a
+  // serialized await from every internal MCP request this signs.
+  const [queryHash, bodyHash] = await Promise.all([
+    sha256Hex(canonicalQueryString(url)),
+    coerceBodyToString(args.body).then((body) => sha256Hex(body)),
+  ]);
   const payload = buildHmacPayload({
     ts,
     method: args.method,
@@ -534,8 +538,10 @@ export async function verifyInternalMcpRequestDetailed(
   // empty string → SHA-256(""), matching the signer's `coerceBodyToString`.
   const bodyAsString = bodyBytes.length === 0 ? '' : new TextDecoder().decode(bodyBytes);
 
-  const queryHash = await sha256Hex(canonicalGatewayQueryString(url));
-  const bodyHash = await sha256Hex(bodyAsString);
+  const [queryHash, bodyHash] = await Promise.all([
+    sha256Hex(canonicalGatewayQueryString(url)),
+    sha256Hex(bodyAsString),
+  ]);
 
   const expectedPayload = buildHmacPayload({
     ts,

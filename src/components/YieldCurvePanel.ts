@@ -1,17 +1,10 @@
-import type { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { Panel } from './Panel';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
+import { EconomicServiceClient } from '@/services/generated-rpc-clients';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
-let _client: EconomicServiceClient | null = null;
-async function getEconomicClient(): Promise<EconomicServiceClient> {
-  if (!_client) {
-    const { EconomicServiceClient } = await import('@/generated/client/worldmonitor/economic/v1/service_client');
-    const { getRpcBaseUrl } = await import('@/services/rpc-client');
-    _client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
-  }
-  return _client;
-}
+const getEconomicClient = createLazyClient(() => new EconomicServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 type Tab = 'curve' | 'rates';
 
@@ -249,7 +242,7 @@ export class YieldCurvePanel extends Panel {
   public async fetchData(): Promise<boolean> {
     this.showLoading();
     try {
-      const client = await getEconomicClient();
+      const client = getEconomicClient();
       const [fredResp, ecbResp] = await Promise.allSettled([
         client.getFredSeriesBatch({
           seriesIds: [...SERIES_IDS, 'ESTR', 'EURIBOR3M', 'EURIBOR6M', 'EURIBOR1Y'],

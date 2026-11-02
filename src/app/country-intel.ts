@@ -1563,8 +1563,13 @@ export class CountryIntelManager implements AppModule {
     }
     const posturePanel = this.ctx.panels['strategic-posture'] as StrategicPosturePanel | undefined;
     const postures = posturePanel?.getPostures() || [];
-    const aggregator = await getSignalAggregator();
-    const signals = { ...await this.getCountrySignals(code, name), ...this.selectCountryMilitary(code, name).signalCounts };
+    // The aggregator and the per-country signals read different sources, and
+    // both are needed before the story is assembled, so fetch them together.
+    const [aggregator, countrySignals] = await Promise.all([
+      getSignalAggregator(),
+      this.getCountrySignals(code, name),
+    ]);
+    const signals = { ...countrySignals, ...this.selectCountryMilitary(code, name).signalCounts };
     const cluster = aggregator.getCountryClusters().find(c => c.country === code);
     const regional = aggregator.getRegionalConvergence().filter(r => r.countries.includes(code));
     const convergence = cluster ? {
