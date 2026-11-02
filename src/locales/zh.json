@@ -993,7 +993,8 @@
       "stageUnavailable": "该阶段暂无公开数据",
       "withheldNote": "W 表示数据隐去",
       "productionCaption": "各国在实际产量中的份额。地图矿藏图层显示资源分布，此表显示由谁开采或冶炼。",
-      "productionProLocked": "升级至PRO版本以获取按阶段分类的采矿和炼油厂国家份额及集中度（生产商集中度指数）。"
+      "productionProLocked": "升级至PRO版本以获取按阶段分类的采矿和炼油厂国家份额及集中度（生产商集中度指数）。",
+      "partialTransitCoverage": "过境数据不可用：{{names}}"
     },
     "tradePolicy": {
       "tariffs": "关税",

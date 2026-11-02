@@ -996,7 +996,8 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Αναβάθμιση σε PRO για μετοχές χώρας ορυχείου και διυλιστηρίου με συγκέντρωση (δείκτης συγκέντρωσης παραγωγού) ανά στάδιο."
+      "productionProLocked": "Αναβάθμιση σε PRO για μετοχές χώρας ορυχείου και διυλιστηρίου με συγκέντρωση (δείκτης συγκέντρωσης παραγωγού) ανά στάδιο.",
+      "partialTransitCoverage": "Τα δεδομένα διακίνησης για {{names}} δεν είναι διαθέσιμα"
     },
     "tradePolicy": {
       "tariffs": "Δασμοί",
