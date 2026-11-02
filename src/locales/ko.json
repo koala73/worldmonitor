@@ -2836,7 +2836,7 @@
       },
       "flow": {
         "mbd": "{{value}} mb/d",
-        "pctOfBaseline": "{{pct}}% of baseline"
+        "pctOfBaseline": "기준선 대비 {{pct}}%"
       },
       "errors": {
         "unavailable": "초크포인트 상태를 사용할 수 없습니다",
