@@ -746,12 +746,13 @@ describe('Search Console site totals and brand split', () => {
     for (const query of ['world monitor', 'worldmonitor', 'World Monitor app', 'worldmonitor.ap',
       'word monitor', 'world-monitor github', 'ワールドモニター', 'worldmoniter', 'worldmoniter.app',
       'worl monitor', 'woldmonitor', 'world montior', 'wordl monitor', 'world montor', 'world monitar',
-      'world monter', 'wordmonintor', 'world monotor', 'worldmoniteur', 'wordmonitro']) {
+      'world monter', 'wordmonintor', 'world monotor', 'worldmoniteur', 'wordmonitro', 'worldmoniterapp',
+      'worldmonitorapp', 'world monitoring']) {
       assert.equal(isBrandQuery(query), true, query);
     }
     for (const query of ['war monitor', 'warmonitor', 'monitor the situation', 'ww3 monitor',
       'pentagon pizza index', 'osint world map', 'world news', 'world monetary fund', 'world montreal',
-      'word montage', 'world mentor', 'world monuments']) {
+      'word montage', 'world mentor', 'world monuments', 'world monterrey', 'world monteria']) {
       assert.equal(isBrandQuery(query), false, query);
     }
   });
