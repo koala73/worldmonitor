@@ -300,8 +300,9 @@ function runGate(conclusions, {
         check_runs: [...filler.map(toRestRun), ...requiredRuns.map(toRestRun)],
       }]),
     );
-    const sweepNode = (sha, status) => ({
+    const sweepNode = (sha, status, author = 'koala73') => ({
       headRefOid: sha,
+      author: author === null ? null : { login: author },
       commits: {
         nodes: [{
           commit: {
@@ -333,7 +334,7 @@ function runGate(conclusions, {
         data: {
           repository: {
             pullRequests: {
-              nodes: sweepStatuses?.map(({ sha, status }) => sweepNode(sha, status))
+              nodes: sweepStatuses?.map(({ sha, status, author }) => sweepNode(sha, status, author))
                 ?? [sweepNode(SHA, sweepStatus ?? null)],
               pageInfo: { hasNextPage: false, endCursor: 'done' },
             },
@@ -1312,6 +1313,45 @@ describe('deploy gate commit-status description', () => {
       'graphql-sweep-page',
       'rest-failed-runs-page',
     ]);
+    assert.deepEqual(result.posted, []);
+  });
+
+  // GitHub does not fire workflow_run for a run whose actor is the Actions
+  // token, so a PR a scheduled workflow opens with github.token never gets an
+  // event-driven gate (#10007). The sweep is its only writer.
+  it('evaluates a missing gate on a PR opened with the Actions token', () => {
+    const result = runGate(conclusionsFor('success'), {
+      failedRunSha: '0123456789abcdef0123456789abcdef01234567',
+      sweepStatuses: [{ sha: SHA, status: null, author: 'github-actions' }],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls.slice(0, 2), ['graphql-sweep-page', 'graphql-sweep-page']);
+    assert.ok(!result.calls.includes('rest-failed-runs-page'), 'token-authored heads need no failed-run lookup');
+    assert.deepEqual(result.postTargets.at(-1), SHA);
+    assert.deepEqual(result.posted.at(-1), {
+      state: 'success',
+      description: stamped('All required PR gates passed'),
+    });
+  });
+
+  it('posts pending for an Actions-token PR whose checks are still running', () => {
+    const result = runGate({}, {
+      failedRunSha: '0123456789abcdef0123456789abcdef01234567',
+      sweepStatuses: [{ sha: SHA, status: null, author: 'github-actions' }],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posted.at(-1)?.state, 'pending');
+  });
+
+  it('still skips a missing gate on a PR with no author', () => {
+    const result = runGate(conclusionsFor('success'), {
+      failedRunSha: '0123456789abcdef0123456789abcdef01234567',
+      sweepStatuses: [{ sha: SHA, status: null, author: null }],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.posted, []);
   });
 
