@@ -12,7 +12,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppContext } from '@/app/app-context';
 import type { MapLayers } from '@/types';
 
-const mocks = vi.hoisted(() => ({ outagesConfigured: null as boolean | null }));
+const mocks = vi.hoisted(() => ({
+  outagesConfigured: null as boolean | null,
+  aisConfigured: true,
+  outagesFeatureAvailable: true,
+}));
 
 vi.mock('@/services/analysis-worker', () => ({
   analysisWorker: { clusterNews: vi.fn(), analyzeCorrelations: vi.fn() },
@@ -20,12 +24,24 @@ vi.mock('@/services/analysis-worker', () => ({
 vi.mock('@/services', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services')>(),
   isOutagesConfigured: () => mocks.outagesConfigured,
+  isAisConfigured: () => mocks.aisConfigured,
+  initAisStream: vi.fn(),
+  disconnectAisStream: vi.fn(),
 }));
+vi.mock('@/services/runtime-config', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/runtime-config')>();
+  return {
+    ...actual,
+    isFeatureAvailable: (id: Parameters<typeof actual.isFeatureAvailable>[0]) =>
+      id === 'internetOutages' ? mocks.outagesFeatureAvailable : actual.isFeatureAvailable(id),
+  };
+});
 
 const { Panel } = await import('@/components/Panel');
 const { dataFreshness } = await import('@/services/data-freshness');
 const { EventHandlerManager } = await import('@/app/event-handlers');
 const { DataLoaderManager } = await import('@/app/data-loader');
+const { fetchInternetOutages } = await import('@/services/infrastructure');
 
 const LAYER_PANELS = [
   { layer: 'climate', panelId: 'climate', sourceId: 'climate' },
@@ -75,6 +91,7 @@ function makeEventHandlers(mapLayers: Partial<MapLayers>) {
   } as never, {
     loadDataForLayer: vi.fn(),
     clearLayerData: vi.fn(),
+    waitForAisData: vi.fn(),
   } as never);
 }
 
@@ -85,6 +102,8 @@ beforeEach(() => {
   document.body.replaceChildren();
   localStorage.clear();
   mocks.outagesConfigured = null;
+  mocks.aisConfigured = true;
+  mocks.outagesFeatureAvailable = true;
   seedHealthy();
 });
 
@@ -137,5 +156,28 @@ describe('panel freshness badge with its map layer off', () => {
     makeLoader({ outages: true }).syncDataFreshnessWithLayers();
 
     expect(badgeOf('internet-disruptions').status).toBe('disabled');
+  });
+
+  it('reads Disabled once the outage fetch finds the feature unavailable after boot', async () => {
+    makeLoader({ outages: true }).syncDataFreshnessWithLayers();
+    expect(badgeOf('internet-disruptions').status).toBe('fresh');
+
+    mocks.outagesFeatureAvailable = false;
+    await fetchInternetOutages();
+
+    expect(badgeOf('internet-disruptions').status).toBe('disabled');
+  });
+
+  it('marks AIS collectable when its layer turns on after AIS became available', () => {
+    mocks.aisConfigured = false;
+    const mapLayers: Partial<MapLayers> = { ais: false };
+    makeLoader(mapLayers).syncDataFreshnessWithLayers();
+    const handlers = makeEventHandlers(mapLayers);
+
+    mocks.aisConfigured = true;
+    handlers.applyMapLayerChange('ais', true, 'user');
+
+    expect(dataFreshness.getAllSources().find(source => source.id === 'ais')?.status).not.toBe('disabled');
+    handlers.destroy();
   });
 });
