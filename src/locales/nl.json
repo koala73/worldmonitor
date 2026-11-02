@@ -1685,7 +1685,8 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Upgrade naar PRO voor aandelen mijn- en raffinaderijen per land met concentratie (producentenconcentratie-index) per fase."
+      "productionProLocked": "Upgrade naar PRO voor aandelen mijn- en raffinaderijen per land met concentratie (producentenconcentratie-index) per fase.",
+      "partialTransitCoverage": "{{names}} transitgegevens niet beschikbaar"
     },
     "positiveNewsFeed": {
       "noStories": "Nog geen verhalen in deze categorie"

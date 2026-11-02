@@ -2085,7 +2085,8 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "ترقّ إلى PRO للحصول على حصص الدول في المناجم والمصافي مع التركيز (مؤشر تركز الموردين) حسب المرحلة."
+      "productionProLocked": "ترقّ إلى PRO للحصول على حصص الدول في المناجم والمصافي مع التركيز (مؤشر تركز الموردين) حسب المرحلة.",
+      "partialTransitCoverage": "بيانات النقل غير متاحة لـ {{names}}"
     },
     "positiveNewsFeed": {
       "noStories": "لا توجد قصص في هذه الفئة بعد"

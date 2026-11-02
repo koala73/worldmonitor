@@ -996,7 +996,8 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Madencilik ve rafineri ülke payları için (üretici yoğunlaşma endeksi) aşama bazında yoğunlaşma ile PRO sürümüne yükseltin."
+      "productionProLocked": "Madencilik ve rafineri ülke payları için (üretici yoğunlaşma endeksi) aşama bazında yoğunlaşma ile PRO sürümüne yükseltin.",
+      "partialTransitCoverage": "{{names}} transit verileri kullanılamıyor"
     },
     "tradePolicy": {
       "tariffs": "Gümrük Tarifeleri",

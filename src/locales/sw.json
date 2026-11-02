@@ -1097,7 +1097,8 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Panda kwa PRO kwa sehemu za nchi ya mgodi na rafinery na mkusanyiko (fahirisi ya mkusanyiko wa uzalishaji) kwa hatua."
+      "productionProLocked": "Panda kwa PRO kwa sehemu za nchi ya mgodi na rafinery na mkusanyiko (fahirisi ya mkusanyiko wa uzalishaji) kwa hatua.",
+      "partialTransitCoverage": "{{names}} data ya usafiri haipatikani"
     },
     "tradePolicy": {
       "overview": "Muhtasari",
