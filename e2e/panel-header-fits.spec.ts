@@ -53,6 +53,28 @@ function measureBadges(page: Page): Promise<{ freshness: BadgeBox; live: BadgeBo
   });
 }
 
+interface CounterBox { name: string; display: string; width: number }
+
+// The counters the JS shows with an inline display. Below 300px they leave the
+// layout but stay in the accessibility tree, so screen readers keep the values.
+function measureCounters(page: Page): Promise<CounterBox[]> {
+  return page.evaluate(() => {
+    const left = document.querySelector<HTMLElement>('#panelsGrid .panel[data-panel="politics"] .panel-header-left')!;
+    return ['panel-new-badge', 'deviation-indicator', 'panel-count'].map((name) => {
+      let el = left.querySelector<HTMLElement>(`[data-counter-probe="${name}"]`);
+      if (!el) {
+        el = document.createElement('span');
+        el.className = name;
+        el.dataset.counterProbe = name;
+        el.textContent = '14 NEW';
+        el.style.display = 'inline-flex';
+        left.appendChild(el);
+      }
+      return { name, display: getComputedStyle(el).display, width: Math.round(el.getBoundingClientRect().width) };
+    });
+  });
+}
+
 function measure(page: Page): Promise<HeaderFit> {
   return page.evaluate(() => {
     const panel = document.querySelector<HTMLElement>('#panelsGrid .panel[data-panel="politics"]')!;
@@ -101,6 +123,12 @@ test('panel headers keep the title readable with nothing overlapping', async ({ 
     const label = `politics header at ${viewport.width}px (panel ${m.panel}px)`;
     expect.soft(m.titleClipped, `${label}: title "${m.title}" is clipped`).toBe(false);
     expect.soft(m.overlaps, `${label}: overlapping header items`).toEqual([]);
+    const counters = await measureCounters(page);
+    for (const c of counters) {
+      expect.soft(c.display, `${label}: ${c.name} stays in the accessibility tree`).not.toBe('none');
+      if (m.panel <= 300) expect.soft(c.width, `${label}: ${c.name} is visually hidden`).toBeLessThanOrEqual(1);
+      else expect.soft(c.width, `${label}: ${c.name} is shown`).toBeGreaterThan(4);
+    }
     const badges = await measureBadges(page);
     if (m.panel <= 300) {
       for (const [name, b] of Object.entries(badges)) {
