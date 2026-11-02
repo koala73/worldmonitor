@@ -9,8 +9,8 @@
   "methodology_url": "https://www.worldmonitor.app/docs/methodology/chokepoints",
   "readme_url": "https://www.worldmonitor.app/data/v1/chokepoints/README.md",
   "license": {
-    "proposed": "CC-BY-4.0",
-    "status": "proposed-pending-owner-decision"
+    "spdx": "CC-BY-4.0",
+    "url": "https://creativecommons.org/licenses/by/4.0/"
   },
   "attribution": "WorldMonitor (https://www.worldmonitor.app). Scores and statuses are computed by WorldMonitor from IMF PortWatch, NGA Maritime Safety Information, and AIS data via aisstream.io.",
   "chokepoints": [

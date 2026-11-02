@@ -1,11 +1,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 import {
+  ATTRIBUTION,
+  CONSUMED_FIELDS,
+  LICENSE,
   ROW_FIELDS,
   SCHEMA_VERSION,
   WITHHELD_FIELDS,
@@ -16,10 +22,15 @@ import {
   writeSnapshotFiles,
 } from '../scripts/build-open-data-chokepoints.mjs';
 
-const fixtureBody = JSON.parse(
-  readFileSync(new URL('./fixtures/chokepoints-routing-advice-2026-09-10.json', import.meta.url), 'utf8'),
-).body;
+const FIXTURE_2026_09_10 = new URL('./fixtures/chokepoints-routing-advice-2026-09-10.json', import.meta.url);
+const FIXTURE_2026_11_02 = new URL('./fixtures/chokepoints-status-2026-11-02.json', import.meta.url);
+const GENERATOR = fileURLToPath(new URL('../scripts/build-open-data-chokepoints.mjs', import.meta.url));
+const fixtureBody = JSON.parse(readFileSync(FIXTURE_2026_09_10, 'utf8')).body;
+// Captured after #10001 added the PortWatch official_*/baseline_* fields, so it
+// carries every field the endpoint serves today.
+const liveBody = JSON.parse(readFileSync(FIXTURE_2026_11_02, 'utf8')).body;
 const OPTIONS = { snapshotDate: '2026-09-10', generatedAt: '2026-09-10T07:00:00.000Z' };
+const run = promisify(execFile);
 
 const ROW_NAMES = [
   'id',
@@ -114,6 +125,27 @@ describe('open data chokepoint snapshot schema', () => {
     assert.equal(rowSchema.properties.disruption_score.type, 'integer');
     assert.equal(rowSchema.properties.disruption_score.minimum, 0);
     assert.equal(rowSchema.properties.disruption_score.maximum, 100);
+  });
+
+  it('bounds flow_ratio to the 0.0-1.5 clamp its description promises', () => {
+    const flowRatio = buildJsonSchema().properties.chokepoints.items.properties.flow_ratio;
+    assert.deepEqual(flowRatio.type, ['number', 'null']);
+    assert.equal(flowRatio.minimum, 0);
+    assert.equal(flowRatio.maximum, 1.5);
+  });
+
+  it('grants CC BY 4.0 in every file and pins the grant and attribution in the schema', () => {
+    const snapshot = buildSnapshot(fixtureBody, OPTIONS);
+    assert.deepEqual(snapshot.license, { spdx: 'CC-BY-4.0', url: 'https://creativecommons.org/licenses/by/4.0/' });
+    assert.deepEqual(snapshot.license, { ...LICENSE });
+    assert.equal(snapshot.attribution, ATTRIBUTION);
+    assert.match(ATTRIBUTION, /^WorldMonitor \(https:\/\/www\.worldmonitor\.app\)\./);
+    const { license, attribution } = buildJsonSchema().properties;
+    assert.deepEqual(license.required, ['spdx', 'url']);
+    assert.equal(license.additionalProperties, false);
+    assert.equal(license.properties.spdx.const, 'CC-BY-4.0');
+    assert.equal(license.properties.url.const, 'https://creativecommons.org/licenses/by/4.0/');
+    assert.equal(attribution.const, ATTRIBUTION);
   });
 });
 
@@ -213,6 +245,17 @@ describe('open data chokepoint row projection', () => {
     ]);
   });
 
+  it('projects the 2026-11-02 capture, which carries the PortWatch official fields', () => {
+    const snapshot = buildSnapshot(liveBody, { snapshotDate: '2026-11-02', generatedAt: '2026-11-02T10:00:00.000Z' });
+    assert.deepEqual(snapshot.chokepoints.map((row) => row.id), SORTED_IDS);
+    const hormuz = rowById(snapshot, 'hormuz_strait');
+    assert.equal(hormuz.flow_ratio, 0.303);
+    assert.equal(hormuz.flow_source, 'portwatch-dwt');
+    assert.equal(hormuz.transit_data_available, true);
+    assert.equal(snapshot.chokepoints.filter((row) => row.flow_ratio !== null).length, 7);
+    for (const row of snapshot.chokepoints) assert.deepEqual(Object.keys(row), ROW_NAMES);
+  });
+
   it('maps FLOW_SOURCE_UNSPECIFIED to null', () => {
     const cp = minimalChokepoint({
       flowEstimate: { flowRatio: 0.5, disrupted: false, source: 'FLOW_SOURCE_UNSPECIFIED' },
@@ -253,8 +296,8 @@ describe('open data chokepoint withheld fields', () => {
   });
 
   it('keeps every WITHHELD_FIELDS leaf out of the rows', () => {
-    const rows = JSON.stringify(buildSnapshot(fixtureBody, OPTIONS).chokepoints);
-    const input = JSON.stringify(fixtureBody);
+    const rows = JSON.stringify(buildSnapshot(liveBody, { snapshotDate: '2026-11-02', generatedAt: '2026-11-02T10:00:00.000Z' }).chokepoints);
+    const input = JSON.stringify(liveBody);
     const leaves = WITHHELD_FIELDS.map((field) => field.api_field.split('.').at(-1));
     assert.deepEqual(leaves, [
       'incidentCount7d',
@@ -265,6 +308,12 @@ describe('open data chokepoint withheld fields', () => {
       'hazardAlertLevel',
       'hazardAlertName',
       'history',
+      'officialLatestTotal',
+      'officialAvg7d',
+      'baselineAvgDaily',
+      'officialLatestDate',
+      'baselineFrom',
+      'baselineTo',
       'riskSummary',
       'riskReportAction',
       'description',
@@ -276,6 +325,20 @@ describe('open data chokepoint withheld fields', () => {
       assert.equal(input.includes(`"${leaf}"`), true, `capture carries ${leaf}`);
       assert.equal(rows.includes(`"${leaf}"`), false, `rows omit ${leaf}`);
     }
+  });
+
+  it('accounts for every field the live endpoint serves, as consumed or withheld', () => {
+    const leafPaths = (cp) =>
+      Object.entries(cp).flatMap(([key, value]) =>
+        (key === 'transitSummary' || key === 'flowEstimate') && value && typeof value === 'object'
+          ? Object.keys(value).map((inner) => `${key}.${inner}`)
+          : [key],
+      );
+    const served = [...new Set(liveBody.chokepoints.flatMap(leafPaths))].sort();
+    const withheld = WITHHELD_FIELDS.map((field) => field.api_field);
+    assert.deepEqual(CONSUMED_FIELDS.filter((field) => withheld.includes(field)), []);
+    assert.deepEqual(served, [...CONSUMED_FIELDS, ...withheld].sort());
+    assert.ok(served.includes('transitSummary.officialAvg7d'), 'the capture carries the optional 7-day mean on at least one chokepoint');
   });
 });
 
@@ -339,6 +402,15 @@ describe('open data chokepoint fail-closed input', () => {
       () => buildSnapshot(minimalResponse([minimalChokepoint({ name: '' })]), OPTIONS),
       /chokepoint test_strait: name is missing/,
     );
+    const flow = { flowRatio: 1.6, disrupted: false, source: 'portwatch-dwt' };
+    assert.throws(
+      () => buildSnapshot(minimalResponse([minimalChokepoint({ flowEstimate: flow })]), OPTIONS),
+      /chokepoint test_strait: flow_ratio has unexpected value 1\.6/,
+    );
+    assert.equal(
+      buildSnapshot(minimalResponse([minimalChokepoint({ flowEstimate: { ...flow, flowRatio: 1.5 } })]), OPTIONS).chokepoints[0].flow_ratio,
+      1.5,
+    );
   });
 });
 
@@ -385,15 +457,81 @@ describe('open data chokepoint files', () => {
       const newest = await readFile(join(dir, '2026-09-11.json'), 'utf8');
       assert.equal(await readFile(join(dir, 'latest.json'), 'utf8'), newest);
 
-      assert.deepEqual(await writeSnapshotFiles(dir, first), [
-        join(dir, '2026-09-10.json'),
-        join(dir, '2026-09-10.csv'),
+      const rerun = buildSnapshot(fixtureBody, { snapshotDate: '2026-09-11', generatedAt: '2026-09-11T09:00:00.000Z' });
+      await writeSnapshotFiles(dir, rerun);
+      assert.equal(await readFile(join(dir, 'latest.json'), 'utf8'), `${JSON.stringify(rerun, null, 2)}\n`);
+      assert.equal(await readFile(join(dir, '2026-09-11.json'), 'utf8'), await readFile(join(dir, 'latest.json'), 'utf8'));
+
+      assert.deepEqual(await writeSnapshotFiles(dir, buildSnapshot(fixtureBody, { ...OPTIONS, snapshotDate: '2026-09-09' })), [
+        join(dir, '2026-09-09.json'),
+        join(dir, '2026-09-09.csv'),
         join(dir, 'schema.json'),
         join(dir, 'index.json'),
       ]);
-      assert.equal(await readFile(join(dir, 'latest.json'), 'utf8'), newest);
-      assert.deepEqual(JSON.parse(await readFile(join(dir, 'index.json'), 'utf8')), index);
+      assert.deepEqual(JSON.parse(await readFile(join(dir, 'index.json'), 'utf8')), {
+        ...index,
+        dates: ['2026-09-09', '2026-09-10', '2026-09-11'],
+      });
       assert.deepEqual((await readdir(dir)).filter((name) => name.includes('.tmp-')), []);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses to rewrite a dated file once a later snapshot exists', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'open-data-chokepoints-'));
+    try {
+      const first = buildSnapshot(fixtureBody, OPTIONS);
+      await writeSnapshotFiles(dir, first);
+      await writeSnapshotFiles(dir, buildSnapshot(fixtureBody, { ...OPTIONS, snapshotDate: '2026-09-11' }));
+      const before = Object.fromEntries(
+        await Promise.all((await readdir(dir)).sort().map(async (name) => [name, await readFile(join(dir, name), 'utf8')])),
+      );
+
+      const replay = buildSnapshot(
+        { ...fixtureBody, chokepoints: fixtureBody.chokepoints.map((cp) => ({ ...cp, disruptionScore: 0, status: 'green' })) },
+        { ...OPTIONS, generatedAt: '2026-09-12T00:00:00.000Z' },
+      );
+      await assert.rejects(
+        () => writeSnapshotFiles(dir, replay),
+        /refusing to rewrite 2026-09-10\.json: a later snapshot \(2026-09-11\) already exists/,
+      );
+
+      const after = Object.fromEntries(
+        await Promise.all((await readdir(dir)).sort().map(async (name) => [name, await readFile(join(dir, name), 'utf8')])),
+      );
+      assert.deepEqual(after, before);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('open data chokepoint CLI', () => {
+  it('saves the response it used and rebuilds the same snapshot from that file', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'open-data-chokepoints-cli-'));
+    try {
+      const saved = join(dir, 'artifact', 'response.json');
+      const out = join(dir, 'chokepoints');
+      const dryRun = await run(process.execPath, [
+        GENERATOR,
+        '--input', fileURLToPath(FIXTURE_2026_11_02),
+        '--save-input', saved,
+        '--out', out,
+        '--date', '2026-11-02',
+        '--dry-run',
+      ]);
+      assert.match(dryRun.stdout, /^saved input /m);
+      assert.match(dryRun.stdout, /would write .*2026-11-02\.json/);
+      assert.deepEqual(JSON.parse(await readFile(saved, 'utf8')).body, liveBody);
+      await assert.rejects(readdir(out), { code: 'ENOENT' });
+
+      const build = await run(process.execPath, [GENERATOR, '--input', saved, '--out', out, '--date', '2026-11-02']);
+      assert.match(build.stdout, /chokepoints=13 snapshot_date=2026-11-02/);
+      const written = JSON.parse(await readFile(join(out, '2026-11-02.json'), 'utf8'));
+      assert.equal(Number.isNaN(Date.parse(written.generated_at)), false);
+      assert.deepEqual(written, buildSnapshot(liveBody, { snapshotDate: '2026-11-02', generatedAt: written.generated_at }));
+      assert.deepEqual(JSON.parse(await readFile(join(out, 'index.json'), 'utf8')).dates, ['2026-11-02']);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -1,6 +1,6 @@
 # WorldMonitor chokepoint status, daily open dataset
 
-Status: proof of concept. The license is proposed, not granted. See "License" below.
+License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Use it, redistribute it, build on it, and credit WorldMonitor. See "License" below.
 
 One row per maritime chokepoint per UTC day. Each row holds the disruption score, the traffic-light status, the war-risk tier, and the counts and flags that WorldMonitor computes for that chokepoint. WorldMonitor computes every value in this dataset. Raw values from third-party feeds are withheld (see "Withheld fields").
 
@@ -12,13 +12,13 @@ All files are served over HTTPS from `https://www.worldmonitor.app/data/v1/choke
 |------|---------|
 | `latest.json` | The newest snapshot. Same bytes as the newest dated JSON file. |
 | `latest.csv` | The newest snapshot as CSV. Same bytes as the newest dated CSV file. |
-| `YYYY-MM-DD.json` | The snapshot for that UTC date. Never rewritten once a later date exists. |
+| `YYYY-MM-DD.json` | The snapshot for that UTC date. Never rewritten once a later date exists; the generator refuses to. |
 | `YYYY-MM-DD.csv` | The same snapshot as CSV. One header row, then one row per chokepoint. |
 | `schema.json` | JSON Schema (draft 2020-12) for the JSON files. |
 | `index.json` | `{ "schema_version", "dataset", "latest", "dates": [...] }`. Lists every dated file. |
 | `README.md` | This file. |
 
-Caching: `Cache-Control: public, max-age=3600` and a CDN `s-maxage` of 3600 seconds. A new snapshot is visible within one hour of deploy.
+Caching: `Cache-Control: public, max-age=3600` and a CDN `s-maxage` of 3600 seconds with `stale-while-revalidate=600`. A new snapshot is visible within 70 minutes of deploy: up to an hour of CDN freshness, then up to 10 minutes of stale service while the CDN revalidates. Browsers inherit the response `Age`, so they do not add another hour on top.
 
 ### Examples
 
@@ -37,9 +37,9 @@ Concatenate dated CSV files to build a time series. `snapshot_date` is the first
 
 ## Update cadence
 
-One snapshot per UTC day, built from the public `GetChokepointStatus` endpoint (`https://www.worldmonitor.app/api/supply-chain/v1/get-chokepoint-status`). The generator is `scripts/build-open-data-chokepoints.mjs` in the [worldmonitor repository](https://github.com/koala73/worldmonitor). The GitHub Actions workflow `open-data-chokepoints.yml` builds the files and opens a review pull request. The daily schedule is off until the license decision below is made. Until then, files refresh only when a maintainer runs the workflow by hand.
+One snapshot per UTC day, built from the public `GetChokepointStatus` endpoint (`https://www.worldmonitor.app/api/supply-chain/v1/get-chokepoint-status`). The generator is `scripts/build-open-data-chokepoints.mjs` in the [worldmonitor repository](https://github.com/koala73/worldmonitor). The GitHub Actions workflow `open-data-chokepoints.yml` runs daily at 06:23 UTC, builds the files, and opens a review pull request. A maintainer merges it, and the deploy publishes the files. A day whose pull request is not merged has no dated file.
 
-The first dated file, `2026-09-10.json`, was built from a response captured from the production endpoint on 2026-09-10 (`source_fetched_at` in the file). It was not generated on that day.
+The first dated file, `2026-09-10.json`, was built from a response captured from the production endpoint on 2026-09-10 (`source_fetched_at` in the file). It was not generated on that day. `2026-10-14.json` and `2026-11-02.json` were built while the dataset was still a proof of concept; `generated_at` in each file is when it was built.
 
 ## Schema
 
@@ -60,7 +60,7 @@ The first dated file, `2026-09-10.json`, was built from a response captured from
 | `upstream_unavailable` | boolean | True when the endpoint reported that one of its sources was unavailable for the cycle. Rows then carry nulls and false flags where data was missing. |
 | `methodology_url` | string | The public methodology page for the disruption score. |
 | `readme_url` | string | This file. |
-| `license` | object | `{ "proposed": "CC-BY-4.0", "status": "proposed-pending-owner-decision" }` |
+| `license` | object | `{ "spdx": "CC-BY-4.0", "url": "https://creativecommons.org/licenses/by/4.0/" }` |
 | `attribution` | string | The attribution line to reproduce when you redistribute. |
 | `chokepoints` | array | One row per chokepoint, sorted by `id`. |
 
@@ -105,16 +105,18 @@ The endpoint returns more fields than this dataset publishes. These stay out, an
 | `flowEstimate.baselineMbd`, `flowEstimate.currentMbd` | A published reference figure, and a value that reveals it. | U.S. EIA 2023 chokepoint reference levels |
 | `flowEstimate.hazardAlertLevel`, `flowEstimate.hazardAlertName` | Passthrough of a third-party hazard layer. | IMF PortWatch disruptions database |
 | `transitSummary.history`, `directionalDwt` | Raw daily transit counts. | IMF PortWatch |
+| `transitSummary.officialLatestTotal`, `transitSummary.officialAvg7d`, `transitSummary.baselineAvgDaily` | PortWatch's own published daily count, its 7-day mean, and its 12-month baseline mean. | IMF PortWatch |
+| `transitSummary.officialLatestDate`, `transitSummary.baselineFrom`, `transitSummary.baselineTo` | Dates that describe only the three withheld PortWatch figures. | IMF PortWatch |
 | `transitSummary.riskSummary`, `transitSummary.riskReportAction` | Third-party prose. The endpoint already blanks both. | CorridorRisk.io |
 | `description`, `affectedRoutes`, `directions` | Editorial prose and static lists, out of scope for v1. | WorldMonitor |
 
 ## License
 
-Proposed: [Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/).
+The files under `/data/v1/chokepoints/` are published under the [Creative Commons Attribution 4.0 International license (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/). You may copy, redistribute, transform, and build on them for any purpose, including commercially, as long as you credit WorldMonitor as described under "Attribution" and note any changes you made.
 
-This proposal is pending the decision of the WorldMonitor owner. Until the owner records a decision in this file, the files carry no license grant, and the WorldMonitor [EULA](https://www.worldmonitor.app/docs/eula) and the terms of each upstream provider apply. The repository's source-attribution ledger marks every upstream on this path as "terms-review", which means WorldMonitor has not yet confirmed each provider's redistribution terms. Do not redistribute until the status line at the top of this file changes.
+The license covers the values WorldMonitor computes and publishes here. It does not relicense the upstream feeds listed under "Attribution"; raw third-party values stay out of the files (see "Withheld fields"), and anyone who goes to those providers directly is bound by those providers' terms. The license is also separate from the WorldMonitor [EULA](https://www.worldmonitor.app/docs/eula), which governs the application and its API rather than these files.
 
-Both the envelope `license` object and this section change together when the decision lands.
+Every JSON file carries the same grant in its `license` object, and `schema.json` pins that object to `CC-BY-4.0`, so a file whose license differs fails validation.
 
 ## Attribution
 
@@ -136,8 +138,8 @@ Upstream providers whose data informs the computed values, with the links WorldM
 - When `transit_today_counts_available` is false the endpoint still reports zeros. This dataset publishes nulls instead. Do not read a null as zero crossings.
 - `source_fetched_at` is when WorldMonitor last rebuilt the status payload, not when each upstream was observed. WorldMonitor reseeds the PortWatch series at least every 6 hours, caches warnings for 1 hour, and rebuilds AIS transit summaries every 10 minutes.
 - Snapshots are taken once per day. Intraday changes are not recorded.
-- The schedule is off in this proof of concept, so dates may be missing from `index.json`. A missing date means no snapshot, not a quiet day.
-- The `/data/*` path also sends `Content-Signal: ai-train=no, search=yes, ai-input=yes`. That header is a site-wide setting and is not part of the dataset license.
+- Dates can be missing from `index.json`: the first two snapshots predate the daily schedule, and a day whose review pull request was not merged has no file. A missing date means no snapshot, not a quiet day.
+- The `/data/*` path also sends `Content-Signal: ai-train=yes, search=yes, ai-input=yes`. That is the site-wide setting; it agrees with the license here, and training on these files is allowed under the same attribution terms.
 
 ## Versioning and contact
 

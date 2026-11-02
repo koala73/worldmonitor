@@ -57,21 +57,26 @@
     "license": {
       "type": "object",
       "required": [
-        "proposed",
-        "status"
+        "spdx",
+        "url"
       ],
       "additionalProperties": false,
       "properties": {
-        "proposed": {
-          "type": "string"
+        "spdx": {
+          "type": "string",
+          "const": "CC-BY-4.0",
+          "description": "SPDX identifier of the license the files are published under."
         },
-        "status": {
-          "type": "string"
+        "url": {
+          "type": "string",
+          "const": "https://creativecommons.org/licenses/by/4.0/"
         }
       }
     },
     "attribution": {
-      "type": "string"
+      "type": "string",
+      "const": "WorldMonitor (https://www.worldmonitor.app). Scores and statuses are computed by WorldMonitor from IMF PortWatch, NGA Maritime Safety Information, and AIS data via aisstream.io.",
+      "description": "The attribution line to reproduce when you redistribute."
     },
     "chokepoints": {
       "type": "array",
@@ -225,6 +230,8 @@
               "number",
               "null"
             ],
+            "minimum": 0,
+            "maximum": 1.5,
             "description": "Latest 7-day PortWatch average over the preceding baseline window of up to 90 days, clamped to 0.0-1.5. Null when no flow estimate exists."
           },
           "flow_disrupted": {

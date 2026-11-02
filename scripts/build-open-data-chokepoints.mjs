@@ -6,8 +6,11 @@
 // which API fields stay out of the dataset and why.
 //
 // Usage:
-//   node scripts/build-open-data-chokepoints.mjs [--out <dir>] [--date YYYY-MM-DD] [--input <file>] [--dry-run]
+//   node scripts/build-open-data-chokepoints.mjs [--out <dir>] [--date YYYY-MM-DD] [--input <file>] [--save-input <file>] [--dry-run]
 //   API_BASE=https://www.worldmonitor.app WORLDMONITOR_API_KEY=<optional> node scripts/build-open-data-chokepoints.mjs
+//
+// --save-input writes the API response the run used, so a later run can rebuild
+// the same snapshot with --input against a different checkout of the dataset.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -24,6 +27,9 @@ export const DATASET_ID = 'worldmonitor-chokepoint-status';
 export const DEFAULT_API_BASE = 'https://www.worldmonitor.app';
 export const RPC_PATH = '/api/supply-chain/v1/get-chokepoint-status';
 export const DEFAULT_OUT_DIR = 'public/data/v1/chokepoints';
+export const LICENSE = Object.freeze({ spdx: 'CC-BY-4.0', url: 'https://creativecommons.org/licenses/by/4.0/' });
+export const ATTRIBUTION =
+  'WorldMonitor (https://www.worldmonitor.app). Scores and statuses are computed by WorldMonitor from IMF PortWatch, NGA Maritime Safety Information, and AIS data via aisstream.io.';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_USER_AGENT =
@@ -117,6 +123,8 @@ export const ROW_FIELDS = [
     name: 'flow_ratio',
     type: 'number',
     nullable: true,
+    minimum: 0,
+    maximum: 1.5,
     description: 'Latest 7-day PortWatch average over the preceding baseline window of up to 90 days, clamped to 0.0-1.5. Null when no flow estimate exists.',
     from: (cp) => cp.flowEstimate?.flowRatio,
   },
@@ -139,6 +147,7 @@ export const ROW_FIELDS = [
 
 const CORRIDORRISK = 'CorridorRisk.io';
 const EIA_BASELINE = 'U.S. EIA 2023 chokepoint reference levels';
+const PORTWATCH = 'IMF PortWatch';
 const PORTWATCH_DISRUPTIONS = 'IMF PortWatch disruptions database';
 
 export const WITHHELD_FIELDS = [
@@ -149,13 +158,47 @@ export const WITHHELD_FIELDS = [
   { api_field: 'flowEstimate.currentMbd', reason: 'Equals baselineMbd times flowRatio, so it reveals the withheld baseline.', upstream: EIA_BASELINE },
   { api_field: 'flowEstimate.hazardAlertLevel', reason: 'Passthrough of a third-party hazard layer.', upstream: PORTWATCH_DISRUPTIONS },
   { api_field: 'flowEstimate.hazardAlertName', reason: 'Passthrough of a third-party hazard layer.', upstream: PORTWATCH_DISRUPTIONS },
-  { api_field: 'transitSummary.history', reason: 'Raw third-party daily transit counts.', upstream: 'IMF PortWatch' },
+  { api_field: 'transitSummary.history', reason: 'Raw third-party daily transit counts.', upstream: PORTWATCH },
+  { api_field: 'transitSummary.officialLatestTotal', reason: 'Raw third-party daily transit count, republished as-is.', upstream: PORTWATCH },
+  { api_field: 'transitSummary.officialAvg7d', reason: 'Seven-day mean of raw third-party daily counts.', upstream: PORTWATCH },
+  { api_field: 'transitSummary.baselineAvgDaily', reason: 'Twelve-month mean of raw third-party daily counts.', upstream: PORTWATCH },
+  { api_field: 'transitSummary.officialLatestDate', reason: 'Describes only the withheld official count.', upstream: PORTWATCH },
+  { api_field: 'transitSummary.baselineFrom', reason: 'Describes only the withheld baseline mean.', upstream: PORTWATCH },
+  { api_field: 'transitSummary.baselineTo', reason: 'Describes only the withheld baseline mean.', upstream: PORTWATCH },
   { api_field: 'transitSummary.riskSummary', reason: 'Third-party prose. The API already blanks it.', upstream: CORRIDORRISK },
   { api_field: 'transitSummary.riskReportAction', reason: 'Third-party prose. The API already blanks it.', upstream: CORRIDORRISK },
   { api_field: 'description', reason: 'Editorial prose, not data.', upstream: 'WorldMonitor editorial' },
   { api_field: 'affectedRoutes', reason: 'Static reference list, out of v1 scope.', upstream: 'WorldMonitor chokepoint registry' },
   { api_field: 'directions', reason: 'Static reference list, out of v1 scope.', upstream: 'WorldMonitor chokepoint registry' },
-  { api_field: 'directionalDwt', reason: 'Deprecated per-direction tonnage, out of v1 scope.', upstream: 'IMF PortWatch' },
+  { api_field: 'directionalDwt', reason: 'Deprecated per-direction tonnage, out of v1 scope.', upstream: PORTWATCH },
+];
+
+// Every API field a row reads, by dotted path. Together with WITHHELD_FIELDS it
+// accounts for the whole response shape: a field the API adds later has to
+// land in one list or the other before the tests pass.
+export const CONSUMED_FIELDS = [
+  'id',
+  'name',
+  'lat',
+  'lon',
+  'status',
+  'disruptionScore',
+  'warRiskTier',
+  'congestionLevel',
+  'activeWarnings',
+  'aisDisruptions',
+  'navigationalWarningsAvailable',
+  'aisSnapshotAvailable',
+  'transitSummary.dataAvailable',
+  'transitSummary.todayCountsAvailable',
+  'transitSummary.todayTotal',
+  'transitSummary.todayTanker',
+  'transitSummary.todayCargo',
+  'transitSummary.todayOther',
+  'transitSummary.wowChangePct',
+  'flowEstimate.flowRatio',
+  'flowEstimate.disrupted',
+  'flowEstimate.source',
 ];
 
 function projectValue(field, cp) {
@@ -200,9 +243,8 @@ export function buildSnapshot(apiResponse, { snapshotDate, generatedAt } = {}) {
     upstream_unavailable: apiResponse.upstreamUnavailable === true,
     methodology_url: `${DEFAULT_API_BASE}/docs/methodology/chokepoints`,
     readme_url: `${DEFAULT_API_BASE}/data/v1/chokepoints/README.md`,
-    license: { proposed: 'CC-BY-4.0', status: 'proposed-pending-owner-decision' },
-    attribution:
-      'WorldMonitor (https://www.worldmonitor.app). Scores and statuses are computed by WorldMonitor from IMF PortWatch, NGA Maritime Safety Information, and AIS data via aisstream.io.',
+    license: { ...LICENSE },
+    attribution: ATTRIBUTION,
     chokepoints: chokepoints.map(projectRow).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   };
 }
@@ -243,11 +285,14 @@ export function buildJsonSchema() {
     readme_url: { type: 'string' },
     license: {
       type: 'object',
-      required: ['proposed', 'status'],
+      required: ['spdx', 'url'],
       additionalProperties: false,
-      properties: { proposed: { type: 'string' }, status: { type: 'string' } },
+      properties: {
+        spdx: { type: 'string', const: LICENSE.spdx, description: 'SPDX identifier of the license the files are published under.' },
+        url: { type: 'string', const: LICENSE.url },
+      },
     },
-    attribution: { type: 'string' },
+    attribution: { type: 'string', const: ATTRIBUTION, description: 'The attribution line to reproduce when you redistribute.' },
     chokepoints: {
       type: 'array',
       minItems: 1,
@@ -281,11 +326,17 @@ async function existingSnapshotDates(outDir) {
 }
 
 // latest.* only moves forward: replaying an older capture backfills its dated
-// files without regressing what consumers of latest.json see.
+// files without regressing what consumers of latest.json see. A dated file
+// that already exists is replaced only while it is still the newest one, so a
+// same-day rerun can correct today but history behind it never changes.
 async function planSnapshotFiles(outDir, snapshot) {
   const date = snapshot.snapshot_date;
-  const dates = [...new Set([...(await existingSnapshotDates(outDir)), date])].sort();
+  const existing = await existingSnapshotDates(outDir);
+  const dates = [...new Set([...existing, date])].sort();
   const latest = dates.at(-1);
+  if (date !== latest && existing.includes(date)) {
+    throw new Error(`refusing to rewrite ${date}.json: a later snapshot (${latest}) already exists`);
+  }
   const json = toJson(snapshot);
   const csv = toCsv(snapshot);
   const files = [
@@ -355,6 +406,11 @@ async function readSavedResponse(file) {
   return parsed?.body ?? parsed;
 }
 
+async function saveResponse(file, apiBase, body) {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await writeFileAtomic(file, toJson({ capturedAt: new Date().toISOString(), url: `${apiBase}${RPC_PATH}`, body }));
+}
+
 async function main(argv) {
   const { values } = parseArgs({
     args: argv,
@@ -362,18 +418,25 @@ async function main(argv) {
       out: { type: 'string' },
       date: { type: 'string' },
       input: { type: 'string' },
+      'save-input': { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
     },
     strict: true,
   });
   const outDir = values.out ? path.resolve(values.out) : path.join(REPO_ROOT, DEFAULT_OUT_DIR);
+  const apiBase = process.env.API_BASE || DEFAULT_API_BASE;
   const response = values.input
     ? await readSavedResponse(values.input)
     : await fetchChokepointStatus({
-        apiBase: process.env.API_BASE || DEFAULT_API_BASE,
+        apiBase,
         apiKey: process.env.WORLDMONITOR_API_KEY || '',
         userAgent: process.env.USER_AGENT || DEFAULT_USER_AGENT,
       });
+  if (values['save-input']) {
+    const saved = path.resolve(values['save-input']);
+    await saveResponse(saved, apiBase, response);
+    console.log(`saved input ${saved}`);
+  }
   const snapshot = buildSnapshot(response, {
     snapshotDate: values.date ?? new Date().toISOString().slice(0, 10),
     generatedAt: new Date().toISOString(),

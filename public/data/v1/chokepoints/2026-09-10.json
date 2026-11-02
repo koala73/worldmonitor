@@ -2,15 +2,15 @@
   "schema_version": "1.0.0",
   "dataset": "worldmonitor-chokepoint-status",
   "snapshot_date": "2026-09-10",
-  "generated_at": "2026-10-14T12:25:10.469Z",
+  "generated_at": "2026-11-02T09:56:53.721Z",
   "source_url": "https://www.worldmonitor.app/api/supply-chain/v1/get-chokepoint-status",
   "source_fetched_at": "2026-09-10T06:50:30.970Z",
   "upstream_unavailable": false,
   "methodology_url": "https://www.worldmonitor.app/docs/methodology/chokepoints",
   "readme_url": "https://www.worldmonitor.app/data/v1/chokepoints/README.md",
   "license": {
-    "proposed": "CC-BY-4.0",
-    "status": "proposed-pending-owner-decision"
+    "spdx": "CC-BY-4.0",
+    "url": "https://creativecommons.org/licenses/by/4.0/"
   },
   "attribution": "WorldMonitor (https://www.worldmonitor.app). Scores and statuses are computed by WorldMonitor from IMF PortWatch, NGA Maritime Safety Information, and AIS data via aisstream.io.",
   "chokepoints": [
