@@ -168,6 +168,29 @@ describe('panel freshness badge with its map layer off', () => {
     expect(badgeOf('internet-disruptions').status).toBe('disabled');
   });
 
+  it('keeps outages Disabled when a request started before the feature was turned off settles later', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      await gate;
+      return new Response(JSON.stringify({ outages: [{ id: 'gy-1', title: 'Guyana outage', country: 'Guyana' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }));
+    try {
+      const inFlight = fetchInternetOutages();
+      mocks.outagesFeatureAvailable = false;
+      await fetchInternetOutages();
+      release();
+      await inFlight;
+
+      expect(badgeOf('internet-disruptions').status).toBe('disabled');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('marks AIS collectable when its layer turns on after AIS became available', () => {
     mocks.aisConfigured = false;
     const mapLayers: Partial<MapLayers> = { ais: false };
