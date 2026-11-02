@@ -102,12 +102,6 @@ export class RegulationPanel extends Panel {
       'consultation': '💬',
     };
 
-    const impactColors: Record<RegulatoryAction['impact'], string> = {
-      high: getCSSColor('--semantic-critical'),
-      medium: getCSSColor('--semantic-elevated'),
-      low: getCSSColor('--semantic-normal'),
-    };
-
     return `
       <div class="timeline-item impact-${action.impact}">
         <div class="timeline-marker">
@@ -118,7 +112,7 @@ export class RegulationPanel extends Panel {
           <div class="timeline-header-row">
             <span class="timeline-date">${formattedDate}</span>
             <span class="timeline-country">${escapeHtml(action.country)}</span>
-            <span class="timeline-impact" style="color: ${impactColors[action.impact]}">${action.impact.toUpperCase()}</span>
+            <span class="timeline-impact">${action.impact.toUpperCase()}</span>
           </div>
           <h5>${escapeHtml(action.title)}</h5>
           <p>${escapeHtml(action.description)}</p>
@@ -206,13 +200,6 @@ export class RegulationPanel extends Panel {
   }
 
   private renderRegulationCard(regulation: AIRegulation): string {
-    const typeColors: Record<AIRegulation['type'], string> = {
-      comprehensive: getCSSColor('--semantic-low'),
-      sectoral: getCSSColor('--semantic-high'),
-      voluntary: getCSSColor('--semantic-normal'),
-      proposed: getCSSColor('--semantic-elevated'),
-    };
-
     const effectiveDate = regulation.effectiveDate
       ? new Date(regulation.effectiveDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
       : 'TBD';
@@ -222,7 +209,7 @@ export class RegulationPanel extends Panel {
       <div class="regulation-card">
         <div class="regulation-card-header">
           <h5>${escapeHtml(regulation.shortName)}</h5>
-          <span class="regulation-type" style="background-color: ${typeColors[regulation.type]}">${regulation.type}</span>
+          <span class="regulation-type type-${regulation.type}">${regulation.type}</span>
         </div>
         <p class="regulation-full-name">${escapeHtml(regulation.name)}</p>
         <div class="regulation-meta">
@@ -290,7 +277,7 @@ export class RegulationPanel extends Panel {
       <div class="country-card stance-${profile.stance}">
         <div class="country-card-header" style="border-left: 4px solid ${stanceColors[profile.stance]}">
           <h5>${escapeHtml(profile.country)}</h5>
-          <span class="stance-badge" style="background-color: ${stanceColors[profile.stance]}">${profile.stance.toUpperCase()}</span>
+          <span class="stance-badge">${profile.stance.toUpperCase()}</span>
         </div>
         <p class="country-summary">${escapeHtml(profile.summary)}</p>
         <div class="country-stats">

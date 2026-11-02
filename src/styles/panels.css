@@ -3898,3 +3898,682 @@ a.hub-top-story {
   outline: 2px solid var(--text);
   outline-offset: 1px;
 }
+
+/* ----------------------------------------------------------
+   R&D Signal Panel (defense-patents)
+   The wrapper bleeds to the panel edge with its tabs, so the
+   list restores the 8px gutter.
+   ---------------------------------------------------------- */
+.defense-patents-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 100px;
+  padding: 24px 12px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+}
+
+.defense-patents-loading .loading-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.defense-patents-panel .defense-patents-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px;
+}
+
+.defense-patents-panel .defense-patent-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.defense-patents-panel .defense-patent-row:last-child {
+  border-bottom: none;
+}
+
+.defense-patents-panel .patent-icon {
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+}
+
+.defense-patents-panel .patent-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.defense-patents-panel .patent-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.defense-patents-panel .patent-assignee {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text);
+}
+
+.defense-patents-panel .patent-link {
+  flex-shrink: 0;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.defense-patents-panel .patent-link:hover {
+  color: var(--accent);
+}
+
+.defense-patents-panel .patent-title {
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.35;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.defense-patents-panel .patent-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+}
+
+.defense-patents-panel .patent-cpc {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--overlay-subtle);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.defense-patents-panel .patent-date,
+.defense-patents-panel .patent-id {
+  font-variant-numeric: tabular-nums;
+}
+
+.defense-patents-panel .empty-state,
+.toronto-safety-panel .empty-state,
+.regulation-panel .empty-state {
+  padding: 24px 12px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* ----------------------------------------------------------
+   Toronto Safety Panel
+   Rows follow the Security Advisories card.
+   ---------------------------------------------------------- */
+.toronto-safety-panel > .empty-state {
+  padding: 8px 10px 0;
+  text-align: left;
+}
+
+.toronto-safety-panel .toronto-safety-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+}
+
+.toronto-safety-panel .intel-item {
+  padding: 8px;
+  border-radius: 4px;
+  border: 0 solid var(--border);
+  border-inline-start-width: 3px;
+  background: var(--overlay-subtle);
+  overflow-wrap: anywhere;
+}
+
+.toronto-safety-panel .intel-item-title {
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.toronto-safety-panel .intel-item-meta {
+  margin-top: 2px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.toronto-safety-panel .intel-item-summary {
+  margin-top: 2px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.35;
+  color: var(--text-dim);
+}
+
+.toronto-safety-panel .panel-source {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 8px;
+  padding: 6px 0 8px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.toronto-safety-panel .panel-source a {
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.toronto-safety-panel .panel-source a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* ----------------------------------------------------------
+   AI Regulation Panel
+   ---------------------------------------------------------- */
+.regulation-panel .regulation-header h3 {
+  margin: 0;
+  padding: 8px 10px 0;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.regulation-panel .regulation-content {
+  padding: 8px;
+}
+
+.regulation-panel h4 {
+  margin: 0;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.regulation-panel h5 {
+  margin: 0;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.regulation-panel .timeline-view,
+.regulation-panel .deadlines-view,
+.regulation-panel .countries-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.regulation-panel .timeline-header,
+.regulation-panel .deadlines-header,
+.regulation-panel .countries-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 8px;
+}
+
+.regulation-panel .count {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+}
+
+.regulation-panel .timeline-list,
+.regulation-panel .deadlines-list,
+.regulation-panel .regulations-list,
+.regulation-panel .countries-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.regulation-panel .timeline-item,
+.regulation-panel .deadline-item,
+.regulation-panel .regulation-card {
+  padding: 8px;
+  border-radius: 4px;
+  border-inline-start: 3px solid var(--border);
+  background: var(--overlay-subtle);
+  overflow-wrap: anywhere;
+}
+
+.regulation-panel .timeline-item,
+.regulation-panel .deadline-item {
+  display: flex;
+  gap: 8px;
+}
+
+.regulation-panel .timeline-item.impact-high,
+.regulation-panel .deadline-item.urgent {
+  border-inline-start-color: var(--semantic-critical);
+}
+
+.regulation-panel .timeline-item.impact-medium,
+.regulation-panel .deadline-item.warning {
+  border-inline-start-color: var(--semantic-elevated);
+}
+
+.regulation-panel .timeline-item.impact-low,
+.regulation-panel .deadline-item.normal {
+  border-inline-start-color: var(--semantic-normal);
+}
+
+.regulation-panel .timeline-marker {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.regulation-panel .timeline-icon {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+}
+
+.regulation-panel .timeline-line {
+  flex: 1;
+  width: 1px;
+  background: var(--border);
+}
+
+.regulation-panel .timeline-content,
+.regulation-panel .deadline-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.regulation-panel .timeline-header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin-bottom: 3px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+}
+
+.regulation-panel .timeline-date,
+.regulation-panel .deadline-date {
+  font-variant-numeric: tabular-nums;
+}
+
+.regulation-panel .timeline-country,
+.regulation-panel .deadline-country {
+  color: var(--text-dim);
+}
+
+.regulation-panel .timeline-impact {
+  margin-left: auto;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.regulation-panel .timeline-content p,
+.regulation-panel .deadline-name,
+.regulation-panel .regulation-full-name,
+.regulation-panel .country-summary {
+  margin: 3px 0 0;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+
+.regulation-panel .timeline-source {
+  display: block;
+  margin-top: 4px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+}
+
+.regulation-panel .deadline-countdown {
+  flex-shrink: 0;
+  min-width: 40px;
+  text-align: center;
+}
+
+.regulation-panel .days-until {
+  font-size: calc(16px * var(--wm-panel-effective-scale, 1));
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.regulation-panel .days-label {
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.regulation-panel .deadline-meta,
+.regulation-panel .regulation-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  margin-top: 4px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-muted);
+}
+
+.regulation-panel .deadline-penalties,
+.regulation-panel .regulation-description {
+  margin: 4px 0 0;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.regulation-panel .deadline-scope,
+.regulation-panel .regulation-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.regulation-panel .scope-tag {
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+}
+
+.regulation-panel .regulations-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.regulation-panel .regulations-section h4 {
+  margin-bottom: 6px;
+}
+
+.regulation-panel .regulation-card-header,
+.regulation-panel .country-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.regulation-panel .regulation-type,
+.regulation-panel .stance-badge,
+.regulation-panel .status-badge {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* Tinted fills with --text keep 4.5:1 in both themes; a solid semantic fill
+   cannot (light blue and red need light text, light green needs dark). */
+.regulation-panel .regulation-type,
+.regulation-panel .stance-badge {
+  --regulation-badge: var(--text-muted);
+  border: 1px solid color-mix(in srgb, var(--regulation-badge) 45%, transparent);
+  background: color-mix(in srgb, var(--regulation-badge) 15%, transparent);
+  color: var(--text);
+}
+
+.regulation-panel .type-comprehensive {
+  --regulation-badge: var(--semantic-low);
+}
+
+.regulation-panel .type-sectoral {
+  --regulation-badge: var(--semantic-high);
+}
+
+.regulation-panel .type-voluntary,
+.regulation-panel .stance-permissive .stance-badge {
+  --regulation-badge: var(--semantic-normal);
+}
+
+.regulation-panel .type-proposed,
+.regulation-panel .stance-moderate .stance-badge {
+  --regulation-badge: var(--semantic-elevated);
+}
+
+.regulation-panel .stance-strict .stance-badge {
+  --regulation-badge: var(--semantic-critical);
+}
+
+.regulation-panel .stance-undefined .stance-badge {
+  --regulation-badge: var(--text-muted);
+}
+
+.regulation-panel .timeline-item.impact-high .timeline-impact {
+  color: var(--semantic-critical-text, var(--semantic-critical));
+}
+
+.regulation-panel .timeline-item.impact-medium .timeline-impact {
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
+}
+
+.regulation-panel .timeline-item.impact-low .timeline-impact {
+  color: var(--semantic-normal);
+}
+
+.regulation-panel .status-badge {
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.regulation-panel .regulation-provisions {
+  margin-top: 6px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+}
+
+.regulation-panel .regulation-provisions strong {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.regulation-panel .regulation-provisions ul {
+  margin: 3px 0 0;
+  padding-left: 16px;
+  line-height: 1.4;
+}
+
+.regulation-panel .more-provisions {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.regulation-panel .regulation-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.regulation-panel .regulation-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.regulation-panel .stance-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+}
+
+.regulation-panel .legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.regulation-panel .color-box {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--text-muted);
+}
+
+.regulation-panel .color-box.strict {
+  background: var(--semantic-critical);
+}
+
+.regulation-panel .color-box.moderate {
+  background: var(--semantic-elevated);
+}
+
+.regulation-panel .color-box.permissive {
+  background: var(--semantic-normal);
+}
+
+.regulation-panel .color-box.undefined {
+  background: var(--text-muted);
+}
+
+.regulation-panel .country-card {
+  border-radius: 4px;
+  background: var(--overlay-subtle);
+  overflow: hidden;
+}
+
+.regulation-panel .country-card-header {
+  padding: 8px 8px 0;
+}
+
+.regulation-panel .country-summary {
+  padding: 0 8px 0 12px;
+}
+
+.regulation-panel .country-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 6px 8px 8px 12px;
+}
+
+.regulation-panel .stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.regulation-panel .stat-value {
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.regulation-panel .stat-label {
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ----------------------------------------------------------
+   Hormuz Trade Tracker: commodity dependencies
+   ---------------------------------------------------------- */
+.hz-dependencies {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.hz-dependencies .hz-dependencies-title {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hz-dependencies .hz-dependencies-empty {
+  margin-top: 5px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+}
+
+.hz-dependencies .hz-dependencies-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 7px;
+}
+
+.hz-dependencies .hz-dependencies-heading {
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.hz-dependencies .hz-dependencies-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 5px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hz-dependencies .hz-dependency {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hz-dependencies .hz-dependency-label {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text);
+}
+
+.hz-dependencies .hz-dependency-context {
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+}
+
+.hz-dependencies .hz-dependencies-method {
+  margin-top: 7px;
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+}
