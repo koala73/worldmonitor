@@ -188,16 +188,23 @@ test('Voices subtitle dates the press it names', { skip }, async () => {
   assert.ok(sub.split(/\s+/).length >= 40, `Voices subtitle is under 40 words: ${sub}`);
 });
 
-// geo.new's YMYL disclaimer check (EAT-18) reads only the main text, so the
-// welcome page carries the line under its FAQ, once, and not in the footer.
-test('the not-advice line sits inside <main>, under the FAQ, once', { skip }, () => {
+// geo.new's YMYL disclaimer check (EAT-18) reads only the main text, and only
+// about the first 2,500 words of the page (its word count stayed at ~2,506 while
+// the page grew to ~3,100). Under the FAQ the line sat near word 2,930 and was
+// never seen, so it lives under the pricing teaser, once, and not in the footer.
+test('the not-advice line sits early in <main>, under the pricing teaser, once', { skip }, () => {
   const html = welcomeHtml();
   const line = /World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice\./g;
   assert.equal(tagsToText(html, ' ').replace(/\s+/g, ' ').match(line)?.length, 1);
   const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
-  const faq = main.slice(main.indexOf('>What are common questions about World Monitor?</h2>'));
-  assert.match(tagsToText(faq, ' ').replace(/\s+/g, ' '), line);
-  assert.match(tagsToText(faq, ' ').replace(/\s+/g, ' '), /consult a qualified professional/);
+  const pricing = main.slice(main.indexOf('id="pricing"'), main.indexOf('id="faq"'));
+  assert.match(tagsToText(pricing, ' ').replace(/\s+/g, ' '), line);
+  assert.match(tagsToText(pricing, ' ').replace(/\s+/g, ' '), /consult a qualified professional/);
+  const body = html.slice(html.indexOf('<body')).replace(/<(script|style|noscript)[\s\S]*?<\/\1>/g, ' ');
+  const words = tagsToText(body, ' ').split(/\s+/).filter(Boolean);
+  const at = words.join(' ').indexOf('World Monitor is for informational purposes only');
+  const position = words.join(' ').slice(0, at).split(' ').length;
+  assert.ok(position < 2400, `the not-advice line starts at word ${position}, past the ~2,500 words geo.new reads`);
 });
 
 // The FAQ figures live inside <details> answers, which geo.new did not credit

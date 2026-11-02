@@ -664,7 +664,8 @@
       "proF4": "MCP、REST API及官方SDK——一個金鑰下的即時工具",
       "proF5": "自訂小工具構建器，用於您自己的面板",
       "cta": "檢視計劃和定價",
-      "note": "起價 $39.99/月 · 按年計費可免費享受 3 個月"
+      "note": "起價 $39.99/月 · 按年計費可免費享受 3 個月",
+      "disclaimer": "World Monitor 僅供參考，不構成財務、投資、法律、安保或安全建議。請核實您所看到的內容，並在作出錯誤可能導致損失或傷害的決定之前，諮詢具備相應資質的專業人士。"
     },
     "faq": {
       "eyebrow": "無隱藏條件",
@@ -692,7 +693,6 @@
       "q11": "我需要哪種 World Monitor 許可證？",
       "a11": "按誰會使用產出結果來選擇。Pro 的個人許可證供一個人使用 World Monitor 進行自己的研究和決策。Pro Business 允許一名已獲許可的使用者將其用於公司或客戶工作、內部工具和報告。API Starter 覆蓋一個組織內部的 API 使用，不向客戶再分發。API Business 允許該組織將 World Monitor 資料嵌入面向其客戶的產品和服務。Enterprise 覆蓋自訂席位、White-label 和部署。這些訂閱許可證與 AGPL/MIT 原始碼許可證相互獨立。完整條款：worldmonitor.app/docs/terms。",
       "sub": "{{answers}} 個關於價格、資料、告警和 AI 存取權限的直接問答。簡而言之：該 dashboard 費用為 $0，無需註冊帳戶，程式碼以 AGPL-3.0 許可證開源。",
-      "disclaimer": "World Monitor 僅供參考，不構成財務、投資、法律、安保或安全建議。請核實您所看到的內容，並在作出錯誤可能導致損失或傷害的決定之前，諮詢具備相應資質的專業人士。",
       "q12": "追蹤全球新聞中危機與動盪事件的最佳軟體是什麼?",
       "a12": "World Monitor 是一個免費、開源的選項：它將來自 {{providers}} 個具名提供方的 {{feeds}} 條新聞和 OSINT 資訊流彙集到一張即時世界地圖上，提供 {{mapLayers}} 種地圖圖層型別，涵蓋地緣政治、市場、航運、航空和網路安全。它對這些資訊進行關聯分析，使同時出現的多重動盪在登上新聞頭條之前就顯現出來。要將其與其他工具進行比較，請存取 worldmonitor.app/compare/best-geopolitical-risk-dashboards。"
     },

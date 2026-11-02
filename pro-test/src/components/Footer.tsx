@@ -31,8 +31,8 @@ export const Footer = ({ disclaimer = true }: { disclaimer?: boolean }) => (
     </div>
     <LegalFooterNav />
     {/* Mirrors the "not professional advice" clause in docs/terms.mdx. The
-        welcome page shows it under its FAQ instead, inside <main>, where
-        geo.new's YMYL disclaimer check (EAT-18) reads. */}
+        welcome page shows it under its pricing teaser instead, inside <main>,
+        where geo.new's YMYL disclaimer check (EAT-18) reads. */}
     {disclaimer && (
       <p className="max-w-3xl mx-auto mt-4 text-xs text-wm-muted">
         World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice.
