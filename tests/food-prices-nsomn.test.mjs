@@ -96,3 +96,21 @@ test('NSO collect refuses to publish when the two tables disagree on the newest 
     warn: () => {},
   }), /aimag table newest week 2026-10-19 does not match capital week 2026-10-26/);
 });
+
+test('NSO rejects code lists that do not match the declared cube, so labels cannot multiply rows (CWE-770)', () => {
+  // A one-cell cube whose product and time lists repeat known labels 2,000 times each would emit 4,000,000 rows.
+  const repeated = (prefix, text) => ({
+    label: Object.fromEntries(Array.from({ length: 2000 }, (_, i) => [`${prefix}${i}`, text])),
+    index: Object.fromEntries(Array.from({ length: 2000 }, (_, i) => [`${prefix}${i}`, 0])),
+  });
+  const amplified = {
+    id: ['Бүтээгдэхүүн', 'Хугацаа'], size: [1, 1], value: [100],
+    dimension: { 'Бүтээгдэхүүн': { category: repeated('p', 'Mutton, kg') }, 'Хугацаа': { category: repeated('t', '2026-10-26') } },
+  };
+  const started = Date.now();
+  assert.throws(() => parseNsoTable(amplified, { market: 'Ulaanbaatar' }), /format changed/);
+  assert.ok(Date.now() - started < 1000);
+  const outside = structuredClone(fixture()[CAPITAL_TABLE]);
+  outside.dimension['Хугацаа'].category.index = { 0: 0, 1: 5 };
+  assert.throws(() => parseNsoTable(outside, { market: 'Ulaanbaatar' }), /format changed/, 'position outside the declared size');
+});

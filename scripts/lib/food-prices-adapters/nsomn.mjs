@@ -40,13 +40,20 @@ const NOT_FOOD = /petrol|diesel|gasoline|аи-\d|автобензин|hay bale/i
 
 const label = text => String(text ?? '').replace(/\s+/g, ' ').trim();
 
-function categories(table, code) {
+function categories(table, code, size) {
   const category = table.dimension?.[code]?.category;
   if (!category?.label || !category.index) throw new Error(`nsomn ${code} dimension format changed`);
   const positions = Array.isArray(category.index) ? Object.fromEntries(category.index.map((key, i) => [key, i])) : category.index;
-  return Object.entries(category.label).map(([key, text]) => {
-    if (!Number.isInteger(positions[key])) throw new Error(`nsomn ${code} dimension format changed`);
-    return { position: positions[key], text: label(text) };
+  const entries = Object.entries(category.label);
+  // Each code must own one declared position; repeated or extra codes would multiply the row loop
+  // far beyond the declared cells (CWE-770).
+  if (entries.length !== size) throw new Error(`nsomn ${code} dimension format changed`);
+  const seen = new Set();
+  return entries.map(([key, text]) => {
+    const position = positions[key];
+    if (!Number.isInteger(position) || position < 0 || position >= size || seen.has(position)) throw new Error(`nsomn ${code} dimension format changed`);
+    seen.add(position);
+    return { position, text: label(text) };
   });
 }
 
@@ -57,9 +64,10 @@ export function parseNsoTable(table, { market } = {}) {
     throw new Error('nsomn table shape format changed');
   }
   const strides = ids.map((_, i) => table.size.slice(i + 1).reduce((product, size) => product * size, 1));
-  const products = categories(table, PRODUCT);
-  const regions = market ? [{ position: 0, text: market }] : categories(table, REGION).filter(region => !/ region$/i.test(region.text));
-  const times = categories(table, TIME);
+  const catalogue = code => categories(table, code, table.size[ids.indexOf(code)]);
+  const products = catalogue(PRODUCT);
+  const regions = market ? [{ position: 0, text: market }] : catalogue(REGION).filter(region => !/ region$/i.test(region.text));
+  const times = catalogue(TIME);
   if (times.some(time => !/^\d{4}-\d{2}-\d{2}$/.test(time.text) || Number.isNaN(Date.parse(`${time.text}T00:00:00Z`)))) {
     throw new Error('nsomn week label format changed');
   }
