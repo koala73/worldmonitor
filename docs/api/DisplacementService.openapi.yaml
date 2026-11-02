@@ -465,7 +465,7 @@ paths:
             tags:
                 - DisplacementService
             summary: GetPopulationExposure
-            description: GetPopulationExposure lists population and density for 20 priority countries, or estimates people within a radius of a point from the nearest one's average density.
+            description: GetPopulationExposure lists population and density for 20 priority countries, or estimates people near a point from the nearest one's average density.
             operationId: GetPopulationExposure
             parameters:
                 - name: mode

@@ -19,7 +19,7 @@ service ClimateService {
     option (sebuf.http.config) = {path: "/list-climate-anomalies", method: HTTP_METHOD_GET};
   }
 
-  // ListClimateDisasters returns recent floods, cyclones, droughts, heatwaves, wildfires and volcanoes from ReliefWeb, GDACS, NASA EONET and FIRMS, up to 100 per page.
+  // ListClimateDisasters returns recent floods, cyclones, droughts, heatwaves, wildfires and volcanoes from ReliefWeb, GDACS, EONET and FIRMS, up to 100 per page.
   rpc ListClimateDisasters(ListClimateDisastersRequest) returns (ListClimateDisastersResponse) {
     option (sebuf.http.config) = {path: "/list-climate-disasters", method: HTTP_METHOD_GET};
   }

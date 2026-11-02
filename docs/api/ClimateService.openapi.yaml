@@ -165,7 +165,7 @@ paths:
             tags:
                 - ClimateService
             summary: ListClimateDisasters
-            description: ListClimateDisasters returns recent floods, cyclones, droughts, heatwaves, wildfires and volcanoes from ReliefWeb, GDACS, NASA EONET and FIRMS, up to 100 per page.
+            description: ListClimateDisasters returns recent floods, cyclones, droughts, heatwaves, wildfires and volcanoes from ReliefWeb, GDACS, EONET and FIRMS, up to 100 per page.
             operationId: ListClimateDisasters
             parameters:
                 - name: page_size

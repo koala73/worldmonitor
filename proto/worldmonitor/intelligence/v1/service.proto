@@ -116,7 +116,7 @@ service IntelligenceService {
     option (sebuf.http.config) = {path: "/deduct-situation"};
   }
 
-  // ListSatellites returns CelesTrak two-line element sets (TLE) for tracked satellites, for client-side orbit propagation, refreshed every 2 hours and filterable by country.
+  // ListSatellites returns CelesTrak two-line element sets (TLE) for tracked satellites, for client-side propagation, refreshed every 2h and filterable by country.
   rpc ListSatellites(ListSatellitesRequest) returns (ListSatellitesResponse) {
     option (sebuf.http.config) = {
       path: "/list-satellites"
@@ -132,7 +132,7 @@ service IntelligenceService {
     };
   }
 
-  // ListOrefAlerts returns active Israeli Home Front Command Red Alert sirens polled from Tzeva Adom, with oref.org.il as fallback, or alert history in MODE_HISTORY.
+  // ListOrefAlerts returns active Israeli Home Front Command Red Alert sirens from Tzeva Adom, with oref.org.il as fallback, or alert history in MODE_HISTORY.
   rpc ListOrefAlerts(ListOrefAlertsRequest) returns (ListOrefAlertsResponse) {
     option (sebuf.http.config) = {
       path: "/list-oref-alerts"

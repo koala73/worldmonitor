@@ -2242,7 +2242,7 @@ paths:
             tags:
                 - ClimateService
             summary: ListClimateDisasters
-            description: ListClimateDisasters returns recent floods, cyclones, droughts, heatwaves, wildfires and volcanoes from ReliefWeb, GDACS, NASA EONET and FIRMS, up to 100 per page.
+            description: ListClimateDisasters returns recent floods, cyclones, droughts, heatwaves, wildfires and volcanoes from ReliefWeb, GDACS, EONET and FIRMS, up to 100 per page.
             operationId: ListClimateDisasters
             parameters:
                 - name: page_size
@@ -5805,7 +5805,7 @@ paths:
             tags:
                 - ConsumerPricesService
             summary: ListConsumerPriceMovers
-            description: ListConsumerPriceMovers returns up to 10 risers and 10 fallers, the products with the largest price changes in a market over 7d, 30d or 90d, optionally by category.
+            description: ListConsumerPriceMovers returns up to 10 risers and 10 fallers, the products with the largest price changes in a market over 7d, 30d or 90d, by category.
             operationId: ListConsumerPriceMovers
             parameters:
                 - name: market_code
@@ -6853,7 +6853,7 @@ paths:
             tags:
                 - DisplacementService
             summary: GetPopulationExposure
-            description: GetPopulationExposure lists population and density for 20 priority countries, or estimates people within a radius of a point from the nearest one's average density.
+            description: GetPopulationExposure lists population and density for 20 priority countries, or estimates people near a point from the nearest one's average density.
             operationId: GetPopulationExposure
             parameters:
                 - name: mode
@@ -9835,7 +9835,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEuGasStorage
-            description: GetEuGasStorage retrieves EU aggregate gas storage fill % from GIE AGSI+, with day-over-day change, injection or withdrawal trend, and up to five days of history.
+            description: GetEuGasStorage returns EU gas storage fill % from GIE AGSI+, with day-over-day change, injection or withdrawal trend, and up to five days of history.
             operationId: GetEuGasStorage
             parameters:
                 - name: jmespath
@@ -16779,7 +16779,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListSatellites
-            description: ListSatellites returns CelesTrak two-line element sets (TLE) for tracked satellites, for client-side orbit propagation, refreshed every 2 hours and filterable by country.
+            description: ListSatellites returns CelesTrak two-line element sets (TLE) for tracked satellites, for client-side propagation, refreshed every 2h and filterable by country.
             operationId: ListSatellites
             parameters:
                 - name: country
@@ -17027,7 +17027,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListOrefAlerts
-            description: ListOrefAlerts returns active Israeli Home Front Command Red Alert sirens polled from Tzeva Adom, with oref.org.il as fallback, or alert history in MODE_HISTORY.
+            description: ListOrefAlerts returns active Israeli Home Front Command Red Alert sirens from Tzeva Adom, with oref.org.il as fallback, or alert history in MODE_HISTORY.
             operationId: ListOrefAlerts
             parameters:
                 - name: mode
@@ -23311,7 +23311,7 @@ paths:
             tags:
                 - MarketService
             summary: ListDefiTokens
-            description: ListDefiTokens returns USD price with 24h and 7d change for curated DeFi tokens such as Aave, Uniswap, Pendle and Lido, from CoinGecko with CoinPaprika as fallback.
+            description: ListDefiTokens returns USD price with 24h and 7d change for DeFi tokens such as Aave, Uniswap, Pendle and Lido, from CoinGecko with CoinPaprika fallback.
             operationId: ListDefiTokens
             parameters:
                 - name: jmespath
@@ -23426,7 +23426,7 @@ paths:
             tags:
                 - MarketService
             summary: ListAiTokens
-            description: ListAiTokens returns USD price with 24h and 7d change for curated AI crypto tokens such as Bittensor, Render and Fetch.ai, from CoinGecko with CoinPaprika as fallback.
+            description: ListAiTokens returns USD price with 24h and 7d change for AI crypto tokens such as Bittensor, Render and Fetch.ai, from CoinGecko with CoinPaprika fallback.
             operationId: ListAiTokens
             parameters:
                 - name: jmespath
@@ -23541,7 +23541,7 @@ paths:
             tags:
                 - MarketService
             summary: ListOtherTokens
-            description: ListOtherTokens returns USD price with 24h and 7d change for other trending tokens such as Aptos, Sui, Celestia and Ondo, from CoinGecko with CoinPaprika as fallback.
+            description: ListOtherTokens returns USD price with 24h and 7d change for trending tokens such as Aptos, Sui, Celestia and Ondo, from CoinGecko with CoinPaprika fallback.
             operationId: ListOtherTokens
             parameters:
                 - name: jmespath
@@ -24392,7 +24392,7 @@ paths:
             tags:
                 - MarketService
             summary: GetHyperliquidFlow
-            description: GetHyperliquidFlow returns funding, open interest, 24h volume, basis and flow scores for Hyperliquid perps on crypto, metals, oil, gas and FX, polled every 5 minutes.
+            description: GetHyperliquidFlow returns funding, open interest, 24h volume, basis and flow scores for Hyperliquid perps on crypto, metals, oil, gas and FX, every 5 min.
             operationId: GetHyperliquidFlow
             parameters:
                 - name: jmespath
@@ -36553,7 +36553,7 @@ paths:
             tags:
                 - WebcamService
             summary: ListWebcams
-            description: ListWebcams returns Windy webcams in a map bounding box rounded out to whole degrees, from a seeded geo index capped at 2,000 per search, clustered below zoom 9.
+            description: ListWebcams returns Windy webcams in a bounding box rounded out to whole degrees, from a seeded geo index capped at 2,000 per search, clustered below zoom 9.
             operationId: ListWebcams
             parameters:
                 - name: zoom

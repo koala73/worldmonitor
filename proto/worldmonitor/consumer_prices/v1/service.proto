@@ -30,7 +30,7 @@ service ConsumerPricesService {
     option (sebuf.http.config) = {path: "/list-consumer-price-categories", method: HTTP_METHOD_GET};
   }
 
-  // ListConsumerPriceMovers returns up to 10 risers and 10 fallers, the products with the largest price changes in a market over 7d, 30d or 90d, optionally by category.
+  // ListConsumerPriceMovers returns up to 10 risers and 10 fallers, the products with the largest price changes in a market over 7d, 30d or 90d, by category.
   rpc ListConsumerPriceMovers(ListConsumerPriceMoversRequest) returns (ListConsumerPriceMoversResponse) {
     option (sebuf.http.config) = {path: "/list-consumer-price-movers", method: HTTP_METHOD_GET};
   }

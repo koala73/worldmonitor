@@ -118,17 +118,17 @@ service MarketService {
     option (sebuf.http.config) = {path: "/list-crypto-sectors", method: HTTP_METHOD_GET};
   }
 
-  // ListDefiTokens returns USD price with 24h and 7d change for curated DeFi tokens such as Aave, Uniswap, Pendle and Lido, from CoinGecko with CoinPaprika as fallback.
+  // ListDefiTokens returns USD price with 24h and 7d change for DeFi tokens such as Aave, Uniswap, Pendle and Lido, from CoinGecko with CoinPaprika fallback.
   rpc ListDefiTokens(ListDefiTokensRequest) returns (ListDefiTokensResponse) {
     option (sebuf.http.config) = {path: "/list-defi-tokens", method: HTTP_METHOD_GET};
   }
 
-  // ListAiTokens returns USD price with 24h and 7d change for curated AI crypto tokens such as Bittensor, Render and Fetch.ai, from CoinGecko with CoinPaprika as fallback.
+  // ListAiTokens returns USD price with 24h and 7d change for AI crypto tokens such as Bittensor, Render and Fetch.ai, from CoinGecko with CoinPaprika fallback.
   rpc ListAiTokens(ListAiTokensRequest) returns (ListAiTokensResponse) {
     option (sebuf.http.config) = {path: "/list-ai-tokens", method: HTTP_METHOD_GET};
   }
 
-  // ListOtherTokens returns USD price with 24h and 7d change for other trending tokens such as Aptos, Sui, Celestia and Ondo, from CoinGecko with CoinPaprika as fallback.
+  // ListOtherTokens returns USD price with 24h and 7d change for trending tokens such as Aptos, Sui, Celestia and Ondo, from CoinGecko with CoinPaprika fallback.
   rpc ListOtherTokens(ListOtherTokensRequest) returns (ListOtherTokensResponse) {
     option (sebuf.http.config) = {path: "/list-other-tokens", method: HTTP_METHOD_GET};
   }
@@ -163,7 +163,7 @@ service MarketService {
     option (sebuf.http.config) = {path: "/get-gold-intelligence", method: HTTP_METHOD_GET};
   }
 
-  // GetHyperliquidFlow returns funding, open interest, 24h volume, basis and flow scores for Hyperliquid perps on crypto, metals, oil, gas and FX, polled every 5 minutes.
+  // GetHyperliquidFlow returns funding, open interest, 24h volume, basis and flow scores for Hyperliquid perps on crypto, metals, oil, gas and FX, every 5 min.
   rpc GetHyperliquidFlow(GetHyperliquidFlowRequest) returns (GetHyperliquidFlowResponse) {
     option (sebuf.http.config) = {path: "/get-hyperliquid-flow", method: HTTP_METHOD_GET};
   }
