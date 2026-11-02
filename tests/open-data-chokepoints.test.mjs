@@ -382,11 +382,22 @@ describe('open data chokepoint fail-closed input', () => {
     );
   });
 
-  it('refuses a snapshot date that is not YYYY-MM-DD', () => {
+  it('refuses a snapshot date that is not a real calendar day', () => {
+    for (const snapshotDate of ['2026/09/10', '2026-99-99', '2026-02-30', '2026-9-1', undefined]) {
+      assert.throws(
+        () => buildSnapshot(fixtureBody, { snapshotDate, generatedAt: OPTIONS.generatedAt }),
+        new RegExp(`snapshotDate must be a YYYY-MM-DD calendar date, got ${JSON.stringify(snapshotDate) ?? 'undefined'}`.replace(/[/]/g, '\\/')),
+      );
+    }
+  });
+
+  it('refuses a snapshot date after the generation day, so latest cannot be pinned to the future', () => {
     assert.throws(
-      () => buildSnapshot(fixtureBody, { snapshotDate: '2026/09/10', generatedAt: OPTIONS.generatedAt }),
-      /snapshotDate must be YYYY-MM-DD, got "2026\/09\/10"/,
+      () => buildSnapshot(fixtureBody, { snapshotDate: '2026-09-11', generatedAt: '2026-09-10T23:59:59.000Z' }),
+      /snapshotDate 2026-09-11 is after the generation day 2026-09-10; refusing to pin latest to a future date/,
     );
+    assert.equal(buildSnapshot(fixtureBody, { snapshotDate: '2026-09-11', generatedAt: '2026-09-11T00:00:00.000Z' }).snapshot_date, '2026-09-11');
+    assert.equal(buildSnapshot(fixtureBody, { snapshotDate: '2026-09-10', generatedAt: '2026-09-11T00:00:00.000Z' }).snapshot_date, '2026-09-10');
   });
 
   it('refuses a row that would violate the published schema', () => {
@@ -446,7 +457,7 @@ describe('open data chokepoint files', () => {
         dates: ['2026-09-10'],
       });
 
-      await writeSnapshotFiles(dir, buildSnapshot(fixtureBody, { ...OPTIONS, snapshotDate: '2026-09-11' }));
+      await writeSnapshotFiles(dir, buildSnapshot(fixtureBody, { snapshotDate: '2026-09-11', generatedAt: '2026-09-11T07:00:00.000Z' }));
       const index = {
         schema_version: '1.0.0',
         dataset: 'worldmonitor-chokepoint-status',
@@ -483,7 +494,7 @@ describe('open data chokepoint files', () => {
     try {
       const first = buildSnapshot(fixtureBody, OPTIONS);
       await writeSnapshotFiles(dir, first);
-      await writeSnapshotFiles(dir, buildSnapshot(fixtureBody, { ...OPTIONS, snapshotDate: '2026-09-11' }));
+      await writeSnapshotFiles(dir, buildSnapshot(fixtureBody, { snapshotDate: '2026-09-11', generatedAt: '2026-09-11T07:00:00.000Z' }));
       const before = Object.fromEntries(
         await Promise.all((await readdir(dir)).sort().map(async (name) => [name, await readFile(join(dir, name), 'utf8')])),
       );
@@ -613,6 +624,25 @@ describe('open data chokepoint fetch', () => {
         /HTTP 403/,
       );
       assert.equal(forbidden.calls.length, 1);
+
+      const flakySession = stubFetch([
+        { status: 503, body: {} },
+        { status: 200, body: { token: 'tok_retry' } },
+        { status: 200, body: fixtureBody },
+      ]);
+      assert.equal(await fetchChokepointStatus({ apiBase: 'https://example.test', fetchImpl: flakySession.fetchImpl }), fixtureBody);
+      assert.deepEqual(
+        flakySession.calls.map((call) => call.url),
+        ['https://example.test/api/wm-session', 'https://example.test/api/wm-session', 'https://example.test/api/supply-chain/v1/get-chokepoint-status'],
+      );
+      assert.equal(flakySession.calls[2].headers.Cookie, 'wm-session=tok_retry');
+
+      const deniedSession = stubFetch([{ status: 403, body: {} }]);
+      await assert.rejects(
+        fetchChokepointStatus({ apiBase: 'https://example.test', fetchImpl: deniedSession.fetchImpl }),
+        /HTTP 403 for https:\/\/example\.test\/api\/wm-session/,
+      );
+      assert.equal(deniedSession.calls.length, 1);
     } finally {
       if (prior === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
       else process.env.WM_SEED_RETRY_DELAY_MS = prior;

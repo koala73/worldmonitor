@@ -219,13 +219,29 @@ function projectValue(field, cp) {
 
 const projectRow = (cp) => Object.fromEntries(ROW_FIELDS.map((field) => [field.name, projectValue(field, cp)]));
 
-export function buildSnapshot(apiResponse, { snapshotDate, generatedAt } = {}) {
-  if (typeof snapshotDate !== 'string' || !SNAPSHOT_DATE_RE.test(snapshotDate)) {
-    throw new Error(`snapshotDate must be YYYY-MM-DD, got ${JSON.stringify(snapshotDate)}`);
+// A snapshot date is a real UTC calendar day no later than the day generatedAt
+// falls on: a future date would become `latest` and pin latest.* there until
+// the calendar caught up.
+function assertSnapshotDate(snapshotDate, generatedAt) {
+  const parsed = new Date(`${snapshotDate}T00:00:00.000Z`);
+  const calendarDay = SNAPSHOT_DATE_RE.test(snapshotDate) && !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === snapshotDate;
+  if (!calendarDay) {
+    throw new Error(`snapshotDate must be a YYYY-MM-DD calendar date, got ${JSON.stringify(snapshotDate)}`);
   }
+  const today = generatedAt.slice(0, 10);
+  if (snapshotDate > today) {
+    throw new Error(`snapshotDate ${snapshotDate} is after the generation day ${today}; refusing to pin latest to a future date`);
+  }
+}
+
+export function buildSnapshot(apiResponse, { snapshotDate, generatedAt } = {}) {
   if (typeof generatedAt !== 'string' || Number.isNaN(Date.parse(generatedAt))) {
     throw new Error(`generatedAt must be an ISO 8601 timestamp, got ${JSON.stringify(generatedAt)}`);
   }
+  if (typeof snapshotDate !== 'string') {
+    throw new Error(`snapshotDate must be a YYYY-MM-DD calendar date, got ${JSON.stringify(snapshotDate)}`);
+  }
+  assertSnapshotDate(snapshotDate, new Date(generatedAt).toISOString());
   const chokepoints = apiResponse?.chokepoints;
   if (!Array.isArray(chokepoints) || chokepoints.length === 0) {
     throw new Error('chokepoint status response has no chokepoints; refusing to publish an empty snapshot');
@@ -389,11 +405,13 @@ export async function fetchChokepointStatus({
   if (apiKey) {
     headers['X-WorldMonitor-Key'] = apiKey;
   } else {
-    const session = await requestJson(fetchImpl, `${base}/api/wm-session`, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: '{}',
-    });
+    const session = await withRetry(() =>
+      requestJson(fetchImpl, `${base}/api/wm-session`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: '{}',
+      }),
+    );
     const token = String(session?.token ?? '').trim();
     if (!token) throw new Error('wm-session response did not include a token');
     headers.Cookie = `wm-session=${token}`;

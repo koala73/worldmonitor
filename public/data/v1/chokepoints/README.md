@@ -33,7 +33,7 @@ const res = await fetch('https://www.worldmonitor.app/data/v1/chokepoints/latest
 const { snapshot_date, chokepoints } = await res.json();
 ```
 
-Concatenate dated CSV files to build a time series. `snapshot_date` is the first column of every row.
+Concatenate dated CSV files to build a time series. Every file starts with the same header row, so keep the first file's header and drop it from the rest (`tail -n +2`). `snapshot_date` is the first column of every row.
 
 ## Update cadence
 
