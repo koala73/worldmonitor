@@ -189,6 +189,7 @@ function readScroll(page: Page, id: string): Promise<Scroll> {
     const edge = scroller.getBoundingClientRect();
     const labelDrift = Math.round(Math.abs(rtl ? edge.right - label.right : label.left - edge.left));
     scroller.scrollLeft = 0;
+    scroller.dataset.tableScrollProbe = panelId;
     const labelledBy = scroller.getAttribute('aria-labelledby');
     const name = (labelledBy ? document.getElementById(labelledBy)?.textContent : scroller.getAttribute('aria-label')) ?? '';
     return {
@@ -209,9 +210,16 @@ function readScroll(page: Page, id: string): Promise<Scroll> {
 // labels stay legible.
 const PINNED_LABELS = new Set(['grocery-basket']);
 
-function expectCue(s: Scroll, id: string, label: string): void {
+async function expectCue(page: Page, s: Scroll, id: string, label: string): Promise<void> {
   expect.soft(s.keyboard, `${label}: the scroll region is a tab stop`).toBe(true);
   expect.soft(s.name, `${label}: the scroll region has a name`).not.toBe('');
+  // A generic div cannot carry a name, so the wrapper needs a nameable role.
+  // Group, not region: panels avoid adding a landmark each (Panel.ts).
+  if (s.scroller.split(' ').includes('table-scroll')) {
+    const region = page.locator(`[data-table-scroll-probe="${id}"]`);
+    await expect.soft(region, `${label}: the scroll region has a nameable role`).toHaveRole('group');
+    await expect.soft(region, `${label}: the scroll region is named by the panel title`).toHaveAccessibleName(s.name);
+  }
   expect.soft(s.atStart.mask, `${label}: edge fade at the start`).not.toBe('none');
   expect.soft(s.atStart, `${label}: at the start only the trailing edge fades`).toMatchObject({ start: '0px', end: '24px' });
   if (PINNED_LABELS.has(id)) {
@@ -256,7 +264,7 @@ test('panel tables fit a narrow desktop column or scroll with a visible cue', as
       expect(s.panel, `${label}: the panel sits in a sidebar column`).toBeLessThanOrEqual(400);
       if (fit.includes(id)) expect.soft(s.overflow, `${label}: sideways scroll`).toBeLessThanOrEqual(0);
       if (id === 'grocery-basket') expect.soft(s.overflow, `${label}: the country matrix scrolls`).toBeGreaterThan(0);
-      if (s.overflow > 0 || s.cellsPastPanel > 0) expectCue(s, id, label);
+      if (s.overflow > 0 || s.cellsPastPanel > 0) await expectCue(page, s, id, label);
     }
     await context.close();
   }
@@ -282,7 +290,7 @@ test('the table scroll cue follows the reading direction in RTL', async ({ brows
   const s = await readScroll(page, 'grocery-basket');
   const label = `grocery-basket RTL (panel ${s.panel}px, hides ${s.overflow}px)`;
   expect(s.overflow, `${label}: the country matrix scrolls`).toBeGreaterThan(0);
-  expectCue(s, 'grocery-basket', label);
+  await expectCue(page, s, 'grocery-basket', label);
   expect.soft(s.atStart.mask, `${label}: the fade runs from the inline end, which is the left edge`).toContain('to left');
   await context.close();
 });
