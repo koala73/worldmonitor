@@ -921,7 +921,7 @@
       "latestActions": "Zuletzt aufgezeichnete Maßnahmen",
       "otherDeadlines": "Weitere Compliance-Fristen",
       "daysAgo": "Tage her",
-      "revokedCount": "Widerufene Vorschriften ({{count}})"
+      "revokedCount": "Widerrufene Vorschriften ({{count}})"
     },
     "economic": {
       "indicators": "Indikatoren",
