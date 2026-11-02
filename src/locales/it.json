@@ -2856,7 +2856,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Stretti Turchi",
         "panama": "Panama",
-        "danishStraits": "Stretti Danesi"
+        "doverStrait": "Stretto di Dover"
       },
       "flow": {
         "mbd": "{{value}} mb/g",
