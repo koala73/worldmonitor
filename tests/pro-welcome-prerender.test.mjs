@@ -188,10 +188,16 @@ test('Voices subtitle dates the press it names', { skip }, async () => {
   assert.ok(sub.split(/\s+/).length >= 40, `Voices subtitle is under 40 words: ${sub}`);
 });
 
-test('footer says the content is not professional advice', { skip }, () => {
-  const text = tagsToText(welcomeHtml(), ' ').replace(/\s+/g, ' ');
-  assert.match(text, /World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice\./);
-  assert.match(text, /consult a qualified professional/);
+// geo.new's YMYL disclaimer check (EAT-18) reads only the main text, so the
+// welcome page carries the line under its FAQ, once, and not in the footer.
+test('the not-advice line sits inside <main>, under the FAQ, once', { skip }, () => {
+  const html = welcomeHtml();
+  const line = /World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice\./g;
+  assert.equal(tagsToText(html, ' ').replace(/\s+/g, ' ').match(line)?.length, 1);
+  const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
+  const faq = main.slice(main.indexOf('>What are common questions about World Monitor?</h2>'));
+  assert.match(tagsToText(faq, ' ').replace(/\s+/g, ' '), line);
+  assert.match(tagsToText(faq, ' ').replace(/\s+/g, ' '), /consult a qualified professional/);
 });
 
 // The FAQ figures live inside <details> answers, which geo.new did not credit

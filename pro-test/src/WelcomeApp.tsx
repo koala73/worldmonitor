@@ -53,7 +53,7 @@ export default function WelcomeApp() {
         <FAQ />
         <FinalCta />
       </main>
-      <Footer />
+      <Footer disclaimer={false} />
     </div>
   );
 }
