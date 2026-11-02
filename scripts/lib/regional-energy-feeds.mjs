@@ -3,7 +3,7 @@ import Papa from 'papaparse';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const PT_MONTHS = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
-function cleanHtml(source) {
+export function cleanHtml(source) {
   const parts = [];
   let at = 0;
   for (;;) {
@@ -16,10 +16,10 @@ function cleanHtml(source) {
   }
   return parts.join('');
 }
-const text = s => cleanHtml(String(s)).replace(/<[^<>]*>/g, ' ').replace(/&nbsp;|&#160;/g, ' ').replace(/\s+/g, ' ').trim();
+export const text = s => cleanHtml(String(s)).replace(/<[^<>]*>/g, ' ').replace(/&nbsp;|&#160;/g, ' ').replace(/\s+/g, ' ').trim();
 
 // Consume tag tokens once so missing closing tags cannot restart a body scan.
-function blocks(source, names) {
+export function blocks(source, names) {
   const tags = new RegExp(`<(/?)(${names})\\b([^<>]*)>`, 'gi');
   const result = [];
   let opened = null;
@@ -34,9 +34,9 @@ function blocks(source, names) {
   return result;
 }
 const cells = s => blocks(s, 'td|th').map(cell => text(cell.inner));
-const rows = s => blocks(cleanHtml(s), 'tr').map(row => cells(row.inner));
+export const rows = s => blocks(cleanHtml(s), 'tr').map(row => cells(row.inner));
 
-function number(raw, commaDecimal = false) {
+export function number(raw, commaDecimal = false) {
   if (typeof raw === 'number') {
     if (Number.isFinite(raw)) return raw;
     throw new Error('Non-finite energy measurement');
@@ -72,8 +72,8 @@ const iso = (s, offset) => {
   if (!Number.isFinite(result.getTime())) throw new Error('Invalid provider timestamp');
   return result.toISOString();
 };
-const observation = (metric, period, value, unit, area = '') => ({ metric, period, value: number(value), unit, area });
-const required = points => {
+export const observation = (metric, period, value, unit, area = '') => ({ metric, period, value: number(value), unit, area });
+export const required = points => {
   if (!points.length) throw new Error('No observed energy measurements');
   return points;
 };
@@ -234,7 +234,7 @@ async function pdfText(bytes, allPages) {
 export const pdfItems = bytes => pdfText(bytes, false);
 export const pdfAllItems = bytes => pdfText(bytes, true);
 
-const lineItems = (items, y) => items.filter(i => Math.abs(i.y - y) < 1).sort((a, b) => a.x - b.x);
+export const lineItems = (items, y) => items.filter(i => Math.abs(i.y - y) < 1).sort((a, b) => a.x - b.x);
 
 export function parsePetrobangla(items) {
   const fullText = [...items].sort((a, b) => b.y - a.y || a.x - b.x).map(i => i.text).join(' ');
@@ -291,7 +291,7 @@ export function parseGse(items) {
   return required(points);
 }
 
-function publicUrl(value, hosts) {
+export function publicUrl(value, hosts) {
   const url = new URL(value);
   if (url.protocol !== 'https:' || url.username || url.password || url.port || !hosts.includes(url.hostname)) throw new Error('Unapproved energy download URL');
   return url.href;
@@ -317,19 +317,19 @@ export function discoverPetrobanglaPdf(html) {
   return publicUrl(url, ['objectstorage.ap-dcc-gazipur-1.oraclecloud15.com']);
 }
 
-const pad2 = n => String(n).padStart(2, '0');
-const validDay = day => {
+export const pad2 = n => String(n).padStart(2, '0');
+export const validDay = day => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day ?? '')) throw new Error('Invalid energy day');
   periodEnd(day);
   return day;
 };
-const ymd = (y, m, d) => validDay(`${y}-${pad2(m)}-${pad2(d)}`);
+export const ymd = (y, m, d) => validDay(`${y}-${pad2(m)}-${pad2(d)}`);
 const addDays = (day, n) => new Date(Date.parse(`${validDay(day)}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
-const EN_MONTHS = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
-const EN_MONTH_RE = EN_MONTHS.join('|');
+export const EN_MONTHS = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
+export const EN_MONTH_RE = EN_MONTHS.join('|');
 
 // Identical repeats collapse; conflicting repeats throw.
-function addUnique(map, point) {
+export function addUnique(map, point) {
   const key = `${point.metric}|${point.area}|${point.period}`;
   const prior = map.get(key);
   if (prior && (prior.value !== point.value || prior.unit !== point.unit)) throw new Error(`Conflicting fuel observations for ${point.area}`);
@@ -525,7 +525,7 @@ const ICCC_HOST = 'iccc.gov.pg';
 // Category 763309980 is "Fuel Prices" (https://iccc.gov.pg/category/fuel-prices/).
 export const ICCC_INDEX_URL = `https://${ICCC_HOST}/wp-json/wp/v2/posts?categories=763309980&per_page=10&_fields=id,date,date_gmt,modified_gmt,link,title`;
 const ICCC_TITLE = new RegExp(`FUEL PRICES\\s*[–-]\\s*(?:\\d{1,2}(?:st|nd|rd|th)?\\s+)?(${EN_MONTH_RE})\\s+(20\\d{2})\\s*$`, 'i');
-const decodeTitle = s => text(s).replace(/&#8211;|&ndash;/g, '–').replace(/&#8217;|&rsquo;/g, '’').replace(/&amp;|&#038;/g, '&');
+export const decodeTitle = s => text(s).replace(/&#8211;|&ndash;/g, '–').replace(/&#8217;|&rsquo;/g, '’').replace(/&amp;|&#038;/g, '&');
 
 // Newest first.
 export function discoverPngFuelPosts(index) {

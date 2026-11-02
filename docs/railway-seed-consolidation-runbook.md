@@ -1526,7 +1526,7 @@ regional host retries only on this service's ticks.
 | **Start command** | `node seed-bundle-regional-energy.mjs` (root directory `scripts`) |
 | **Cron schedule** | `*/15 * * * *` (every fifteen minutes) |
 | **Service ID** | `441a7f0d-b3a7-464a-8328-9638c00c226c` (provisioned 2026-10-31; 2 vCPU, 2 GB; asia-southeast1) |
-| **Members** | PGCB, Petrobangla, NISO, Eskom, CAMMESA, GSE, ONS and ANP. Each keeps its own interval gate from `scripts/shared/regional-energy-feeds.json`. |
+| **Members** | PGCB, Petrobangla, NISO, Eskom, CAMMESA, GSE, ONS and ANP (#9842); EVN, KOREM, COES, ICCC, FCCC and MEM (#9893); QatarEnergy, ERB, NPA, SONABHY, ZERA, DOE, ANP Timor-Leste, CREG and URSEA (#10051). Each keeps its own interval gate from `scripts/shared/regional-energy-feeds.json`. |
 | **Wall-time budget** | `maxBundleMs: 570_000`; each member reserves 120 s plus kill grace |
 | **Required variable** | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` |
 | **Heartbeat** | `bundle:heartbeat:regional-energy` |

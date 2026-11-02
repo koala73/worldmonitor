@@ -15,6 +15,17 @@ import {
   FCCC_INDEX_URL, discoverFijiFuelPdfs, parseFijiFuel,
   MEM_MAX_UPLOADS_PER_MONTH, memUploadFolders, memWorkbookUrl, parseMemPriceRows,
 } from './lib/regional-energy-feeds.mjs';
+import {
+  QATARENERGY_PDF_URL, parseQatarFuel,
+  ERB_INDEX_URL, discoverErbBuildUps, parseErbBuildUp,
+  npaMediaUrl, discoverNpaWorkbook, parseNpaExPumpRows, parseNpaIndicatorRows,
+  SONABHY_PAGE_URL, SONABHY_API_HOSTS, discoverSonabhyState, discoverSonabhyApi, parseSonabhyTariffs,
+  ZERA_HOME_URL, parseZeraPrices,
+  DOE_HOST, DOE_MEDIA_HOST, DOE_NCR_PAGE_URL, discoverDoeNcrPdfs, parseDoeNcrPrices,
+  ANPTL_INDEX_URL, discoverAnpTlPosts, discoverAnpTlPdf, parseAnpTlStations,
+  CREG_PAGE_URL, parseCregPrices,
+  URSEA_TOPIC_URL, discoverUrseaPages, parseUrseaMaximumPrices, parseUrseaReferencePrices,
+} from './lib/regional-fuel-feeds.mjs';
 
 const USER_AGENT = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
 // The ANP national price sheet uses about a dozen columns, MEM's ten.
@@ -26,6 +37,8 @@ const DOWNLOAD_HOSTS = new Set([
   'www.gov.br', 'objectstorage.ap-dcc-gazipur-1.oraclecloud15.com',
   'evn.com.vn', 'portal.korem.kz', 'www.coes.org.pe',
   'iccc.gov.pg', 'fccc.gov.fj', 'mem.gob.gt',
+  'www.qatarenergy.qa', 'www.erb.org.zm', 'npa.gov.gh', 'www.sonabhy.bf', ...SONABHY_API_HOSTS,
+  'www.zera.co.zw', DOE_HOST, DOE_MEDIA_HOST, 'www.anp.tl', 'creg.gov.co', 'www.gub.uy',
 ]);
 export const regionalEnergyKey = id => `energy:regional:${id}:v1`;
 export const regionalEnergyMetaKey = id => `seed-meta:energy:regional-${id}`;
@@ -48,15 +61,22 @@ function sourceFetch(url, options) {
   return undiciFetch(url, { ...options, dispatcher: issuerAgents.get(issuer) });
 }
 
-// Loads one worksheet as arrays of cell values within the first SHEET_COLUMNS.
-async function readSheetRows(bytes, sheetName, source) {
-  // ZIP headers are not trusted: inflate each entry with a bounded output
-  // before ExcelJS inflates the same bytes without one.
+// ZIP headers are not trusted: inflate each entry with a bounded output
+// before ExcelJS inflates the same bytes without one.
+function assertWorkbookWithinBudget(bytes, source) {
   try {
     assertZipExpansionWithin(bytes, 50_000_000);
   } catch (err) {
     throw new Error(/expands past/.test(err.message) ? `${source} workbook exceeds size budget` : `${source} workbook is ${err.message}`);
   }
+}
+const cellValue = cell => (cell.value && typeof cell.value === 'object' && !(cell.value instanceof Date)
+  ? ('result' in cell.value ? cell.value.result : 'richText' in cell.value ? cell.value.richText.map(r => r.text).join('') : cell.value)
+  : cell.value);
+
+// Loads one worksheet as arrays of cell values within the first SHEET_COLUMNS.
+async function readSheetRows(bytes, sheetName, source) {
+  assertWorkbookWithinBudget(bytes, source);
   const { default: ExcelJS } = await import('exceljs');
   const book = new ExcelJS.Workbook();
   await book.xlsx.load(bytes);
@@ -67,13 +87,35 @@ async function readSheetRows(bytes, sheetName, source) {
   const sheetRows = [];
   sheet.eachRow(row => {
     const values = [];
-    row.eachCell((cell, column) => { if (column <= SHEET_COLUMNS) values[column - 1] = cell.value; });
+    row.eachCell((cell, column) => { if (column <= SHEET_COLUMNS) values[column - 1] = cellValue(cell); });
     sheetRows.push(Array.from(values));
   });
   return sheetRows;
 }
 
-export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs = Date.now() } = {}) {
+// Streams only the first worksheet. The NPA ex-pump workbook keeps one sheet
+// per publication day (hundreds of sheets, ~3 MB); loading it whole costs
+// about 600 MB, streaming the newest sheet about 160 MB.
+async function readFirstSheetRows(bytes, source) {
+  assertWorkbookWithinBudget(bytes, source);
+  const { default: ExcelJS } = await import('exceljs');
+  const { Readable } = await import('node:stream');
+  const reader = new ExcelJS.stream.xlsx.WorkbookReader(Readable.from([bytes]), { worksheets: 'emit', sharedStrings: 'cache', hyperlinks: 'ignore', styles: 'ignore', entries: 'emit' });
+  for await (const sheet of reader) {
+    const sheetRows = [];
+    for await (const row of sheet) {
+      const values = [];
+      row.eachCell((cell, column) => { if (column <= SHEET_COLUMNS) values[column - 1] = cellValue(cell); });
+      sheetRows.push(Array.from(values));
+    }
+    return sheetRows;
+  }
+  throw new Error(`Missing ${source} worksheet`);
+}
+
+// `pdfReader` is an injection seam for tests ONLY: it receives the downloaded
+// bytes and their URL and returns text items in place of pdfjs.
+export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs = Date.now(), pdfReader = null } = {}) {
   const feed = feeds.find(f => f.id === id);
   if (!feed) throw new Error(`Unknown regional energy feed ${id}`);
   const downloaded = [];
@@ -91,14 +133,15 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
     return true;
   };
   // `form` sends a urlencoded POST body; a redirect would drop it, so a POST must not redirect.
-  const read = async (input, format = 'text', form = undefined) => {
+  // `timeoutMs` covers the whole response, body included.
+  const read = async (input, format = 'text', form = undefined, timeoutMs = 25000) => {
     let url = new URL(input);
     for (let hop = 0; hop < 4; hop++) {
       approved(url);
       const request = form === undefined
         ? { headers: { 'User-Agent': USER_AGENT } }
         : { method: 'POST', body: form, headers: { 'User-Agent': USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } };
-      const response = await fetchFn(url.href, { ...request, signal: AbortSignal.timeout(25000), redirect: 'manual' });
+      const response = await fetchFn(url.href, { ...request, signal: AbortSignal.timeout(timeoutMs), redirect: 'manual' });
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         if (form !== undefined) throw new Error('Unexpected regional energy POST redirect');
         const location = response.headers.get('location');
@@ -122,6 +165,10 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
       return format === 'json' ? JSON.parse(body) : body;
     }
     throw new Error('Too many regional energy redirects');
+  };
+  const readPdf = async (input, pages = 'first') => {
+    const bytes = await read(input, 'bytes');
+    return pdfReader ? pdfReader(bytes, new URL(input).href) : (pages === 'all' ? pdfAllItems : pdfItems)(bytes);
   };
 
   let points;
@@ -209,6 +256,66 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
       if (points.length) break;
     }
     if (!points?.length) throw new Error(`No ${id} fuel price release in effect`);
+  }
+  if (id === 'qatarenergy') points = parseQatarFuel(await readPdf(QATARENERGY_PDF_URL, 'all'));
+  if (id === 'erb') {
+    // Each monthly release is posted the day before its prices start; read
+    // the newest release in effect, at most three.
+    for (const release of discoverErbBuildUps(await read(ERB_INDEX_URL, 'json')).slice(0, 3)) {
+      points = inEffect(parseErbBuildUp(await readPdf(release.url), release.period), nowMs, feed.utcOffsetMin);
+      if (points.length) break;
+    }
+    if (!points?.length) throw new Error('No erb pump price release in effect');
+  }
+  if (id === 'npa') {
+    // The two lookups and the two downloads are independent, so each pair
+    // runs together: the fetch phase has 80 s, the host answers in 5-20 s,
+    // and the 3 MB listing workbook took 3 s to 47 s on 2026-11-02. The
+    // worst case is then 20 s + 55 s.
+    const [listing, indicators] = await Promise.all([
+      read(npaMediaUrl('Ex-Pump Prices of OMCs'), 'json', undefined, 20000).then(media => discoverNpaWorkbook(media, 'expump')),
+      read(npaMediaUrl('Petroleum Price Indicators'), 'json', undefined, 20000).then(media => discoverNpaWorkbook(media, 'indicators')),
+    ]);
+    const [listingBytes, indicatorBytes] = await Promise.all([read(listing.url, 'bytes', undefined, 55000), read(indicators.url, 'bytes', undefined, 20000)]);
+    // The workbook keeps one sheet per day with the newest first; only that
+    // sheet is read, and it must be the day the upload is named for.
+    const prices = parseNpaExPumpRows(await readFirstSheetRows(listingBytes, 'NPA'));
+    if (prices[0].period !== listing.day) throw new Error('NPA listing sheet does not match its upload day');
+    points = [...prices, ...parseNpaIndicatorRows(await readSheetRows(indicatorBytes, 'Media Publication', 'NPA'))];
+  }
+  if (id === 'sonabhy') {
+    const state = await read(discoverSonabhyState(await read(SONABHY_PAGE_URL)));
+    points = parseSonabhyTariffs(await read(discoverSonabhyApi(state), 'json'));
+  }
+  if (id === 'zera') points = parseZeraPrices(await read(ZERA_HOME_URL));
+  if (id === 'doe') {
+    // The monitoring sheet is posted during its week; a sheet posted early
+    // waits for its week to start, and the previous week serves meanwhile.
+    for (const week of discoverDoeNcrPdfs(await read(DOE_NCR_PAGE_URL), nowMs).slice(0, 3)) {
+      const parsed = parseDoeNcrPrices(await readPdf(week.url, 'all'));
+      if (parsed[0].period !== week.weekStart) throw new Error('DOE monitoring week does not match its link');
+      points = inEffect(parsed, nowMs, feed.utcOffsetMin);
+      if (points.length) break;
+    }
+    if (!points?.length) throw new Error('No doe price monitoring week in effect');
+  }
+  if (id === 'anptl') {
+    const [post] = discoverAnpTlPosts(await read(ANPTL_INDEX_URL, 'json'));
+    points = parseAnpTlStations(await readPdf(discoverAnpTlPdf(await read(post.url, 'json')), 'all'), post.period);
+  }
+  if (id === 'creg') points = parseCregPrices(await read(CREG_PAGE_URL));
+  if (id === 'ursea') {
+    // Maximum prices and reference prices are published days ahead of the
+    // month they apply to; each falls back to its previous publication.
+    const pages = discoverUrseaPages(await read(URSEA_TOPIC_URL));
+    const inForce = async (urls, parse) => {
+      for (const url of urls.slice(0, 2)) {
+        const current = inEffect(parse(await read(url)), nowMs, feed.utcOffsetMin);
+        if (current.length) return current;
+      }
+      throw new Error('No ursea price publication in effect');
+    };
+    points = [...await inForce(pages.maximum, parseUrseaMaximumPrices), ...await inForce(pages.reference, parseUrseaReferencePrices)];
   }
   if (feed.publishesAhead) points = inEffect(points, nowMs, feed.utcOffsetMin);
   const snapshot = buildFeedSnapshot(id, points, downloaded.at(-1), nowMs);
