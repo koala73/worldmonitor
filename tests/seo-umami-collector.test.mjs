@@ -190,6 +190,35 @@ describe('Umami referral collector', () => {
     assert.equal(snapshot.channels.rows.find((row) => row.channel === 'direct').visitorDays, 200);
   });
 
+  it('carries a partial source into the families derived from it', async () => {
+    const down = new Error('[seo-umami] metrics?type=referrer failed with HTTP 524 after 3 attempts');
+    const snapshot = await collectUmamiSnapshot({
+      transport: memoryTransport(responses(), {
+        [ENDPOINTS.channels]: { 3: down },
+        [ENDPOINTS.referrers]: { 4: down },
+      }),
+      observedAt: OBSERVED_AT,
+    });
+    const families = snapshot.referrers.referrerFamilies;
+    assert.equal(families.unknown_direct.availability, 'partial');
+    assert.match(families.unknown_direct.reason, /2026-10-08/);
+    assert.equal(families.chatgpt.availability, 'partial');
+    assert.match(families.chatgpt.reason, /2026-10-09/);
+    assert.equal(families.google_search_ai.availability, 'unavailable');
+    assert.match(renderUmamiMarkdown(snapshot), /\| unknown_direct \| 200 \| channel direct; partial: missing 1 of 28 days/);
+  });
+
+  it('writes a snapshot whose referrer domains spell a secret marker', async () => {
+    const snapshot = await collectUmamiSnapshot({
+      transport: memoryTransport(responses({ [ENDPOINTS.referrers]: [{ x: 'password', y: 9 }, { x: 'token', y: 8 }] })),
+      observedAt: OBSERVED_AT,
+    });
+    const serialized = JSON.stringify(snapshot, null, 2);
+    assert.ok(serialized.includes('"domain": "password"'));
+    assert.equal(assertNoSecrets(serialized), serialized);
+    assert.equal(assertNoSecrets(renderUmamiMarkdown(snapshot)), renderUmamiMarkdown(snapshot));
+  });
+
   it('degrades only the section whose endpoint failed', async () => {
     const down = new Error('[seo-umami] metrics?type=channel failed with HTTP 500 after 3 attempts');
     const snapshot = await collectUmamiSnapshot({
@@ -317,6 +346,7 @@ describe('Umami live transport', () => {
   it('refuses output that carries a credential or an auth payload', () => {
     assert.throws(() => assertNoSecrets('{"x":"hunter2-password"}', { secrets: ['hunter2-password'] }), /credential/);
     assert.throws(() => assertNoSecrets('{"token":"abc"}'), /token/);
+    assert.throws(() => assertNoSecrets('{\n  "password": "abc"\n}'), /password/);
     assert.throws(() => assertNoSecrets('authorization: Bearer abc'), /Bearer/);
     assert.equal(assertNoSecrets('{"visitors":3}', { secrets: ['hunter2-password'] }), '{"visitors":3}');
   });

@@ -159,7 +159,13 @@ jobs:
           git switch -c "$BRANCH_NAME"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/research/seo-ai-visibility/gsc docs/research/seo-ai-visibility/bing docs/research/seo-ai-visibility/umami
+          # An optional source that skipped or failed writes no directory, and
+          # git add refuses a missing pathspec, so stage only what exists.
+          for source in gsc bing umami; do
+            if [ -d "docs/research/seo-ai-visibility/${source}" ]; then
+              git add "docs/research/seo-ai-visibility/${source}"
+            fi
+          done
           if git diff --cached --quiet; then
             echo "::notice::The collector produced no change to commit."
             exit 0

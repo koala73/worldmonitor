@@ -113,8 +113,12 @@ for (const family of [...AI_FAMILIES, 'google_search_ai', 'unknown_direct']) {
   invariant(REFERRER_FAMILIES.has(family), `${family} is not a referrer family seo-ai-visibility-collector defines`);
 }
 
-/** `"token"` and `"password"` only appear in an auth payload copied wholesale. */
-const SECRET_MARKERS = Object.freeze(['"token"', '"password"', 'Bearer ']);
+/**
+ * A `"token":` or `"password":` key only appears in an auth payload copied
+ * wholesale. The colon matters: referrer domains are visitor-supplied, so a
+ * domain spelled `password` must not abort the run.
+ */
+const SECRET_MARKERS = Object.freeze(['"token":', '"password":', 'Bearer ']);
 
 function invariant(condition, message) {
   if (!condition) throw new Error(`[seo-umami] ${message}`);
@@ -371,10 +375,15 @@ function buildChannels(fetched) {
 
 function buildReferrers(fetched, channels) {
   const { payload, reason } = fetched;
-  const directVisitors = channels.rows?.find((row) => row.channel === 'direct')?.visitorDays ?? null;
-  const unknownDirect = directVisitors === null
-    ? { availability: 'unavailable', reason: 'Umami channel metrics are unavailable', visitorDays: null }
-    : { availability: 'available', reason: null, visitorDays: directVisitors, source: 'channel direct' };
+  // Derived families carry their source section's status: a sum missing days is partial, not available.
+  const unknownDirect = channels.availability === 'unavailable'
+    ? { availability: 'unavailable', reason: `Umami channel metrics are unavailable: ${channels.reason}`, visitorDays: null }
+    : {
+      availability: channels.availability,
+      reason: channels.reason,
+      visitorDays: channels.rows.find((row) => row.channel === 'direct')?.visitorDays ?? 0,
+      source: 'channel direct',
+    };
   const googleSearchAi = { availability: 'unavailable', reason: GOOGLE_SEARCH_AI_REASON, visitorDays: null };
   if (payload === null) {
     return { ...unavailable(ENDPOINTS.referrers, reason), referrerFamilies: { google_search_ai: googleSearchAi, unknown_direct: unknownDirect } };
@@ -393,15 +402,20 @@ function buildReferrers(fetched, channels) {
       top: group.slice(0, 5).map(({ domain, visitorDays }) => ({ domain, visitorDays })),
     };
   }
+  const status = dailyStatus(fetched, fetched.capped
+    ? `Umami returned the ${REFERRER_ROW_LIMIT}-row limit on at least one day, so that day's long tail is cut and family sums are lower bounds`
+    : null);
   return {
     endpoint: ENDPOINTS.referrers,
-    ...dailyStatus(fetched, fetched.capped
-      ? `Umami returned the ${REFERRER_ROW_LIMIT}-row limit on at least one day, so that day's long tail is cut and family sums are lower bounds`
-      : null),
+    ...status,
     domains: rows.length,
     byFamily,
     referrerFamilies: {
-      ...Object.fromEntries(AI_FAMILIES.map((family) => [family, { availability: 'available', reason: null, visitorDays: byFamily[family].visitorDays }])),
+      ...Object.fromEntries(AI_FAMILIES.map((family) => [family, {
+        availability: status.availability,
+        reason: status.reason,
+        visitorDays: byFamily[family].visitorDays,
+      }])),
       google_search_ai: googleSearchAi,
       unknown_direct: unknownDirect,
     },
@@ -458,7 +472,7 @@ export async function collectUmamiSnapshot({ transport, observedAt }) {
 /** Refuse to write anything that carries a credential, the token, or an auth payload. */
 export function assertNoSecrets(serialized, { secrets = [] } = {}) {
   for (const marker of SECRET_MARKERS) {
-    invariant(!serialized.includes(marker), `refusing to write output containing ${marker.trim()}`);
+    invariant(!serialized.includes(marker), `refusing to write output containing ${marker.replace(/[":\s]/g, '')}`);
   }
   for (const value of secrets) {
     if (typeof value !== 'string' || value.length < 4) continue;
@@ -531,7 +545,8 @@ function renderReferrers(referrers, lines) {
   lines.push('| Family | Visitor-days | Note |');
   lines.push('|---|---:|---|');
   for (const [family, row] of Object.entries(referrers.referrerFamilies)) {
-    lines.push(`| ${family} | ${row.visitorDays ?? 'n/a'} | ${row.availability === 'available' ? (row.source ?? '') : markdownCell(row.reason)} |`);
+    const note = [row.source, row.availability === 'available' ? null : `${row.availability}: ${row.reason}`].filter(Boolean).join('; ');
+    lines.push(`| ${family} | ${row.visitorDays ?? 'n/a'} | ${markdownCell(note)} |`);
   }
   lines.push('');
   if (referrers.top) {
