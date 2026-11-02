@@ -51,9 +51,10 @@ import {
   closeProActivationInterstitial,
   openProActivationFlow,
   openProActivationInterstitial,
+  type ProActivationInterstitialOptions,
 } from '@/components/ProActivationInterstitial';
 
-type Captured = Parameters<NonNullable<Parameters<typeof openProActivationFlow>[1]['openInterstitial']>>[0];
+type Captured = ProActivationInterstitialOptions;
 
 async function openFlow(onEvent = vi.fn()): Promise<{ captured: Captured | null; onEvent: typeof onEvent }> {
   let captured: Captured | null = null;
@@ -108,8 +109,9 @@ afterEach(() => {
 describe('Pro activation About-you step', () => {
   it('is the last step and confirmable when the profile is due', async () => {
     const { captured } = await openFlow();
-    expect(captured!.steps.map((step) => step.id).at(-1)).toBe('about');
-    expect(captured!.steps.at(-1)!.state).toBe('confirmable');
+    const last = captured!.steps[captured!.steps.length - 1]!;
+    expect(last.id).toBe('about');
+    expect(last.state).toBe('confirmable');
     expect(profile.loadAboutYouStatus).toHaveBeenCalledWith('user_pro');
   });
 
