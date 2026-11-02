@@ -103,10 +103,14 @@ describe('hasAttachment', () => {
   });
 });
 
+const BOT = { login: 'github-actions[bot]', type: 'Bot' };
+
 describe('hasNudgeComment', () => {
-  it('finds the marker in any comment and nothing else', () => {
-    assert.equal(hasNudgeComment([{ body: 'thanks' }, { body: nudgeComment() }]), true);
-    assert.equal(hasNudgeComment([{ body: 'thanks' }, { body: null }]), false);
+  it('finds the marker only in a comment posted by a Bot account', () => {
+    assert.equal(hasNudgeComment([{ body: 'thanks', user: { login: 'reporter', type: 'User' } }, { body: nudgeComment(), user: BOT }]), true);
+    assert.equal(hasNudgeComment([{ body: nudgeComment(), user: { login: 'reporter', type: 'User' } }]), false, 'a reporter pasting the marker is not the workflow');
+    assert.equal(hasNudgeComment([{ body: nudgeComment() }]), false, 'no author is not the workflow');
+    assert.equal(hasNudgeComment([{ body: 'thanks', user: BOT }, { body: null, user: BOT }]), false);
     assert.equal(hasNudgeComment([]), false);
     assert.equal(hasNudgeComment(undefined), false);
   });
@@ -279,7 +283,7 @@ describe('main', () => {
 
   it('sees the marker comment on any page, so a labelled issue with the comment is not nudged again', () => {
     withEvent(event(), (eventPath) => {
-      const pages = [[{ body: 'first' }], [{ body: nudgeComment() }]];
+      const pages = [[{ body: 'first', user: { login: 'reporter', type: 'User' } }], [{ body: nudgeComment(), user: BOT }]];
       const { calls, gh } = ghReading(issue({ labels: [{ name: LABEL }] }), pages);
       const decision = main({ GITHUB_EVENT_PATH: eventPath }, gh);
       assert.deepEqual(decision, { action: 'none', reason: 'already-nudged' });

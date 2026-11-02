@@ -82,8 +82,12 @@ export function nudgeComment() {
   ].join('\n');
 }
 
+// The marker alone is not proof the workflow posted the request: a reporter
+// can paste it. The Actions token always comments as a Bot account, and a
+// person never can, so the author type is required too.
 export function hasNudgeComment(comments) {
-  return Array.isArray(comments) && comments.some((comment) => String(comment?.body ?? '').includes(COMMENT_MARKER));
+  return Array.isArray(comments) && comments.some((comment) =>
+    comment?.user?.type === 'Bot' && String(comment?.body ?? '').includes(COMMENT_MARKER));
 }
 
 /**
