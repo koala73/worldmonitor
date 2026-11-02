@@ -761,11 +761,31 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       assert.equal('cacheScope' in res.json.result, false, label);
     }
 
-    it('stamps tools/list with resultType, serverInfo and a public one-hour cache hint', async () => {
+    it('stamps tools/list with resultType, serverInfo and a private one-hour cache hint', async () => {
+      // Private, not public: ChatGPT gets a different tools/list (host-policy.ts)
+      // and a shared cache cannot key on the host, so a public default list could
+      // hand ChatGPT the checkout tool it must not see.
       const res = await post(modernBody(50, 'tools/list'), modernHeaders('tools/list'));
       assertComplete(res, 'tools/list');
-      assertCacheHint(res, HOUR_MS, 'public', 'tools/list');
+      assertCacheHint(res, HOUR_MS, 'private', 'tools/list');
       assert.ok(res.json.result.tools.length > 0);
+    });
+
+    it('marks every host variant of tools/list and discover private, since a shared cache cannot key on the host', async () => {
+      const chatgpt = { 'User-Agent': 'openai-mcp/1.0.0' };
+      for (const path of ['/.well-known/mcp', '/.well-known/mcp.json']) {
+        const alias = await post(modernBody(57, 'server/discover'), anonModernHeaders('server/discover', chatgpt), path);
+        assertCacheHint(alias, HOUR_MS, 'private', `chatgpt discover on ${path}`);
+      }
+      const list = await post(modernBody(55, 'tools/list'), modernHeaders('tools/list', chatgpt));
+      assertComplete(list, 'chatgpt tools/list');
+      assertCacheHint(list, HOUR_MS, 'private', 'chatgpt tools/list');
+      assert.equal(list.json.result.tools.some((tool) => tool.name === 'start_upgrade'), false);
+
+      const discover = await post(modernBody(56, 'server/discover'), modernHeaders('server/discover', chatgpt));
+      assertComplete(discover, 'chatgpt server/discover');
+      assertCacheHint(discover, HOUR_MS, 'private', 'chatgpt server/discover');
+      assert.equal(discover.json.result.instructions.includes('start_upgrade'), false);
     });
 
     it('marks the caller-independent catalogs public for one hour', async () => {
@@ -811,7 +831,7 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       }
     });
 
-    it('marks server/discover private on /mcp and public on /.well-known/mcp, one hour each', async () => {
+    it('marks server/discover private on /mcp and on /.well-known/mcp, one hour each', async () => {
       const transport = await post(modernBody(56, 'server/discover'), modernHeaders('server/discover'));
       assertComplete(transport, 'discover on /mcp');
       assertCacheHint(transport, HOUR_MS, 'private', 'discover on /mcp');
@@ -819,7 +839,8 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       for (const path of ['/.well-known/mcp', '/.well-known/mcp.json']) {
         const alias = await post(modernBody(57, 'server/discover'), anonModernHeaders('server/discover'), path);
         assertComplete(alias, `discover on ${path}`);
-        assertCacheHint(alias, HOUR_MS, 'public', `discover on ${path}`);
+        // Its instructions differ for ChatGPT, so no shared reuse across clients.
+        assertCacheHint(alias, HOUR_MS, 'private', `discover on ${path}`);
       }
     });
 
@@ -890,7 +911,7 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
         JSON.stringify({ jsonrpc: '2.0', id: 63, result: { content: [], _meta: { 'worldmonitor/usage': usage } } }),
         { status: 200, headers: { 'Content-Type': 'application/json', 'Content-Length': '1', 'X-Custom': 'kept' } },
       );
-      const shaped = await shapeModernResponse(original, { method: 'tools/call', onAlias: false, acceptsSse: false });
+      const shaped = await shapeModernResponse(original, { method: 'tools/call', acceptsSse: false });
       const text = await shaped.text();
       const json = JSON.parse(text);
       assert.deepEqual(json.result._meta, { 'worldmonitor/usage': usage, [SERVER_INFO_KEY]: serverInfo });
@@ -901,7 +922,7 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
 
     it('passes empty, 202 and non-JSON bodies through untouched', async () => {
       const { shapeModernResponse } = await import('../api/mcp/modern.ts');
-      const options = { method: 'tools/call', onAlias: false, acceptsSse: true };
+      const options = { method: 'tools/call', acceptsSse: true };
       for (const original of [
         new Response(null, { status: 202, headers: { 'X-A': '1' } }),
         new Response(null, { status: 429, headers: { 'Retry-After': '9' } }),

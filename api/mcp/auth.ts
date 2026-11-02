@@ -42,7 +42,12 @@ import type {
 } from './types';
 import { emitMcpRateLimitHit } from './telemetry';
 import { FREE_ACCOUNT_CALLS_PER_DAY } from './upgrade-constants';
-import { buildMcpStructuredDenial, type McpStaticDenialReason } from './upgrade';
+import {
+  API_PLAN_REQUIRED_MESSAGE,
+  SUBSCRIPTION_LAPSED_MESSAGE,
+  buildMcpStructuredDenial,
+  type McpStaticDenialReason,
+} from './upgrade';
 import { relayMcpCheckout } from './checkout';
 
 // ---------------------------------------------------------------------------
@@ -351,7 +356,7 @@ export function getMcpBillingVerificationDenial(
 
   const retryable = denial.status === 503;
   const message = {
-    subscription_lapsed: 'Subscription lapsed. Re-authenticating will not help — resubscribe to restore access.',
+    subscription_lapsed: SUBSCRIPTION_LAPSED_MESSAGE,
     renewal_verification_pending: 'Renewal verification pending. Retry shortly.',
     renewal_verification_failed: 'Renewal verification failed. Retry shortly.',
   }[billingStatus];
@@ -755,7 +760,7 @@ async function checkMcpEntitlementGate(
       response: mcpStructuredDenialResponse('upgrade-required', resourceMetadataUrl, corsHeaders, id, {
         code: -32002,
         status: 403,
-        message: 'API access subscription required. MCP with an API key needs an active API plan; a desktop key or a Pro-only account cannot use it. Upgrade at https://worldmonitor.app/pricing.',
+        message: API_PLAN_REQUIRED_MESSAGE,
       }),
     };
   }

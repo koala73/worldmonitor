@@ -2606,6 +2606,8 @@ curl -s https://worldmonitor.app/mcp \
 
 为已登录账户创建绑定该账户的付费套餐结账链接。当拒绝响应的 `error.data` 带有 `checkoutTool: "start_upgrade"` 时调用，并传入该拒绝中的 `recommendedPlan`。只有免费账户会收到 `checkoutTool`；付费调用方的拒绝只带 `recommendedPlan`，因为同一套餐系列内的升级通过账单门户完成。用户在浏览器中打开链接完成付款；此工具从不扣款，智能体也不接触付款信息。
 
+不向 ChatGPT 提供：其应用规范不允许发起结账，因此 ChatGPT 的请求在 `tools/list` 和 `describe_tool` 中看不到此工具，调用会返回 `Unknown tool`。Codex 和其他客户端仍可使用。
+
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `plan` | string | 是 | 取值之一：`pro_monthly`、`pro_annual`、`pro_business_monthly`、`pro_business_annual`、`api_starter`、`api_starter_annual`、`api_business`、`api_business_annual`。其他值返回 `-32602`，并在 `error.data.plans` 中列出可用值。 |

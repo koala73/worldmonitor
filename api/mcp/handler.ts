@@ -15,6 +15,8 @@ import {
 import { readBoundedRequestBody, RequestBodyTooLargeError } from './bounded-body';
 import {
   allSupportedProtocolVersionsNewestFirst,
+  CHATGPT_MODERN_SERVER_INSTRUCTIONS,
+  CHATGPT_SERVER_INSTRUCTIONS,
   MAX_JSON_RPC_BODY_BYTES,
   MCP_LOG_LEVELS,
   MODERN_SERVER_INSTRUCTIONS,
@@ -25,7 +27,8 @@ import {
 } from './constants';
 import { dispatchToolsCall } from './dispatch';
 import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
-import { FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE } from './registry/index';
+import { CHATGPT_TOOL_LIST_RESPONSE, FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE } from './registry/index';
+import { applyChatGptCommercePolicy, isChatGptHost } from './host-policy';
 import {
   ACCOUNT_RESOURCE_LIST_RESPONSE,
   buildAccountAllowanceResourceResponse,
@@ -861,10 +864,11 @@ export async function mcpHandler(
     res = await mcpHandlerInner(req, deps, usage, exchange, ctx);
     // Before modern shaping, which may re-frame a JSON body as SSE.
     res = await attachRequestIdToErrors(res, deriveRequestId(req));
+    // Before modern shaping too: it reads the legacy denial envelope.
+    if (isChatGptHost(req)) res = await applyChatGptCommercePolicy(res);
     if (usage.era === 'modern') {
       res = await shapeModernResponse(res, {
         method: exchange.method,
-        onAlias: WELL_KNOWN_MCP_PATHS.has(new URL(req.url).pathname),
         acceptsSse: clientAcceptsSse(req),
       });
     }
@@ -1366,7 +1370,7 @@ async function mcpHandlerInner(
     return respond(rpcOk(id, {
       supportedVersions: allSupportedProtocolVersionsNewestFirst(),
       capabilities: modernServerCapabilities(),
-      instructions: MODERN_SERVER_INSTRUCTIONS,
+      instructions: isChatGptHost(req) ? CHATGPT_MODERN_SERVER_INSTRUCTIONS : MODERN_SERVER_INSTRUCTIONS,
     }, corsHeaders));
   }
   if (modernEra && method === 'subscriptions/listen') {
@@ -1406,7 +1410,7 @@ async function mcpHandlerInner(
         protocolVersion: negotiatedVersion,
         capabilities: serverCapabilities(),
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-        instructions: SERVER_INSTRUCTIONS,
+        instructions: isChatGptHost(req) ? CHATGPT_SERVER_INSTRUCTIONS : SERVER_INSTRUCTIONS,
       }, { 'Mcp-Session-Id': sessionId, ...corsHeaders }));
     }
     case 'notifications/initialized':
@@ -1414,7 +1418,7 @@ async function mcpHandlerInner(
     case 'ping':
       return respond(rpcOk(id, {}, corsHeaders));
     case 'tools/list':
-      return respond(rpcOk(id, { tools: TOOL_LIST_RESPONSE }, corsHeaders));
+      return respond(rpcOk(id, { tools: isChatGptHost(req) ? CHATGPT_TOOL_LIST_RESPONSE : TOOL_LIST_RESPONSE }, corsHeaders));
     case 'tools/call': {
       // context is always set here. tools/call is never a PUBLIC_MCP_METHOD, and
       // since U7 a free-tier call takes the anon branch above but still sets an

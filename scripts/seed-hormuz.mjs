@@ -53,6 +53,52 @@ function decodeDsr(dsr, nCols) {
   return rows;
 }
 
+const MONTH_NAMES = ['january', 'february', 'march', 'april', 'may', 'june',
+  'july', 'august', 'september', 'october', 'november', 'december'];
+
+function isoDate(year, month, day) {
+  const y = Number(year);
+  const nameIndex = MONTH_NAMES.indexOf(String(month).trim().toLowerCase());
+  const m = nameIndex >= 0 ? nameIndex + 1 : Number(month);
+  const d = Number(day);
+  if (![y, m, d].every(Number.isInteger)) return null;
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+// Row columns follow the first record's S schema (G0, G1, ..., M0), and that
+// order differs per visual. The descriptor names the hierarchy level of each.
+function dateColumns(data) {
+  const schema = (data?.dsr?.DS?.[0]?.PH?.[0]?.DM0?.[0]?.S ?? []).map(s => s.N);
+  const levels = new Map((data?.descriptor?.Select ?? []).filter(Boolean).map(s => [s.Value, s.Name ?? '']));
+  const levelIndex = (level) => schema.findIndex(n => (levels.get(n) ?? '').endsWith(`.${level}`));
+  const cols = {
+    year: levelIndex('Year'),
+    month: levelIndex('Month'),
+    day: levelIndex('Day'),
+    value: schema.findIndex(n => n.startsWith('M')),
+  };
+  return Object.values(cols).every(i => i >= 0) ? { ...cols, width: schema.length } : null;
+}
+
+// An unnamed hierarchy means the report changed shape. Throwing fails
+// validateFn, so the run keeps the last good snapshot instead of an empty chart.
+export function parseChartSeries(data, cutoff) {
+  if (!data?.dsr?.DS?.[0]?.PH?.[0]?.DM0?.length) return [];
+  const cols = dateColumns(data);
+  if (!cols) throw new Error('Power BI response does not name the Year/Month/Day date hierarchy');
+  return decodeDsr(data.dsr, cols.width)
+    .map(row => {
+      const date = isoDate(row[cols.year], row[cols.month], row[cols.day]);
+      if (!date || Date.parse(date) < cutoff.getTime()) return null;
+      const val = row[cols.value];
+      return { date, value: typeof val === 'number' ? val : (Number(val) || 0) };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
 async function pbiJson(url, init = {}) {
   const resp = await fetch(url, {
     ...init,
@@ -156,20 +202,7 @@ async function fetchPbiCharts() {
       continue;
     }
 
-    const dsr = result?.results?.[0]?.result?.data?.dsr;
-    const rows = decodeDsr(dsr, 4); // [Year, Month, Day, Value] always 4 cols after projection
-
-    const series = rows
-      .map(row => {
-        const [yr, mo, dy, val] = row;
-        if (!yr || !mo || !dy) return null;
-        const dateStr = `${yr}-${String(mo).padStart(2, '0')}-${String(dy).padStart(2, '0')}`;
-        const d = new Date(dateStr);
-        if (Number.isNaN(d.getTime()) || d < cutoff) return null;
-        return { date: dateStr, value: typeof val === 'number' ? val : (Number(val) || 0) };
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.date.localeCompare(b.date));
+    const series = parseChartSeries(result?.results?.[0]?.result?.data, cutoff);
 
     console.log(`  ${cfg.label}: ${series.length} points (last 30d)`);
     charts.push({ label: cfg.label, title: cfg.title, series });
