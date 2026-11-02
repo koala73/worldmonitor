@@ -387,7 +387,6 @@
     "liveNews": "Canli Haberler",
     "markets": "Piyasalar",
     "map": "Kuresel Durum",
-    "techMap": "Kuresel Teknoloji",
     "techHubs": "Populer Teknoloji Merkezleri",
     "status": "Sistem Durumu",
     "insights": "Yapay Zeka Analizleri",
@@ -4211,5 +4210,29 @@
     "reportedClaims": "Yayıncı raporları. İddialar hâlâ araştırılıyor olabilir.",
     "occurred": "Olay",
     "reported": "Yayımlandı"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Küresel Piyasalar Haritası",
+      "liveNews": "Piyasa Başlıkları",
+      "insights": "Yapay Zeka Piyasa İçgörüleri"
+    },
+    "tech": {
+      "map": "Küresel Teknoloji Haritası",
+      "liveNews": "Teknoloji Başlıkları"
+    },
+    "commodity": {
+      "map": "Emtia Haritası",
+      "liveNews": "Emtia Başlıkları",
+      "insights": "Yapay Zeka Emtia İçgörüleri"
+    },
+    "energy": {
+      "map": "Enerji Atlas Haritası",
+      "liveNews": "Enerji Başlıkları",
+      "insights": "Yapay Zeka Enerji İçgörüleri"
+    },
+    "happy": {
+      "map": "İyi Haberler Haritası"
+    }
   }
 }

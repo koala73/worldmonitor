@@ -104,6 +104,7 @@ import { WM_OPEN_NOTIFICATIONS_FOR_COUNTRY } from '@/utils/notify-country-link';
 import { AuthLauncher } from '@/components/AuthLauncher';
 import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
 import { t } from '@/services/i18n';
+import { getPanelDisplayName } from '@/services/panel-display-name';
 import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { hasEmbedAccessForAccount, onEntitlementChange } from '@/services/entitlements';
@@ -2984,13 +2985,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   getLocalizedPanelName(panelKey: string, fallback: string): string {
-    if (panelKey === 'runtime-config') {
-      return t('modals.runtimeConfig.title');
-    }
-    const key = panelKey.replace(/-([a-z])/g, (_match, group: string) => group.toUpperCase());
-    const lookup = `panels.${key}`;
-    const localized = t(lookup);
-    return localized === lookup ? fallback : localized;
+    return getPanelDisplayName(panelKey, fallback);
   }
 
   private transferSourceGateOwnershipToUser(names: Iterable<string>): boolean {

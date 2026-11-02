@@ -457,7 +457,6 @@
     "markets": "Piacok",
     "marketImplications": "AI Piaci Hatások",
     "map": "Globális Helyzet",
-    "techMap": "Globális Technológia",
     "techHubs": "Technológiai Központok",
     "status": "Rendszer Állapota",
     "insights": "AI Insights",
@@ -4211,5 +4210,29 @@
     "reportedClaims": "A kiadó jelentései. Az állítások vizsgálata még folyamatban lehet.",
     "occurred": "Esemény",
     "reported": "Közzétéve"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Globális Piacok Térképe",
+      "liveNews": "Piaci Hírek",
+      "insights": "AI Piaci Elemzések"
+    },
+    "tech": {
+      "map": "Globális Technológiai Térkép",
+      "liveNews": "Technológiai Hírek"
+    },
+    "commodity": {
+      "map": "Árucikkek Térképe",
+      "liveNews": "Árucikkek Hírek",
+      "insights": "AI Árucikkek Elemzések"
+    },
+    "energy": {
+      "map": "Energia Atlasz Térképe",
+      "liveNews": "Energia Hírek",
+      "insights": "AI Energia Elemzések"
+    },
+    "happy": {
+      "map": "Jó Hírek Térképe"
+    }
   }
 }

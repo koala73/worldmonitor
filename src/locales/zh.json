@@ -385,7 +385,6 @@
     "liveNews": "实时新闻",
     "markets": "市场",
     "map": "全球态势",
-    "techMap": "全球科技",
     "techHubs": "热门科技中心",
     "status": "系统状态",
     "insights": "AI洞察",
@@ -4191,5 +4190,29 @@
     "reportedClaims": "发布方报告。相关说法可能仍在调查中。",
     "occurred": "事件",
     "reported": "发布"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "全球市场地图",
+      "liveNews": "市场头条",
+      "insights": "AI市场洞察"
+    },
+    "tech": {
+      "map": "全球科技地图",
+      "liveNews": "科技头条"
+    },
+    "commodity": {
+      "map": "商品地图",
+      "liveNews": "商品头条",
+      "insights": "AI商品洞察"
+    },
+    "energy": {
+      "map": "能源地图",
+      "liveNews": "能源头条",
+      "insights": "AI能源洞察"
+    },
+    "happy": {
+      "map": "好消息地图"
+    }
   }
 }

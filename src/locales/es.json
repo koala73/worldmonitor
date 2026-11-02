@@ -389,7 +389,6 @@
     "liveNews": "Noticias en vivo",
     "markets": "Mercados",
     "map": "Situación global",
-    "techMap": "Tech global",
     "status": "Estado del sistema",
     "insights": "Insights de IA",
     "strategicPosture": "Postura estratégica de IA",
@@ -4231,5 +4230,29 @@
     "reportedClaims": "Informes del editor. Las afirmaciones pueden seguir bajo investigación.",
     "occurred": "Incidente",
     "reported": "Publicado"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Mapa de Mercados Globales",
+      "liveNews": "Titulares de Mercado",
+      "insights": "Perspectivas de Mercado con IA"
+    },
+    "tech": {
+      "map": "Mapa Global de Tecnología",
+      "liveNews": "Titulares de Tecnología"
+    },
+    "commodity": {
+      "map": "Mapa de Materias Primas",
+      "liveNews": "Titulares de Materias Primas",
+      "insights": "Perspectivas de Materias Primas con IA"
+    },
+    "energy": {
+      "map": "Mapa de Atlas Energético",
+      "liveNews": "Titulares de Energía",
+      "insights": "Perspectivas de Energía con IA"
+    },
+    "happy": {
+      "map": "Mapa de Buenas Noticias"
+    }
   }
 }

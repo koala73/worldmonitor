@@ -385,7 +385,6 @@
     "liveNews": "即時新聞",
     "markets": "市場",
     "map": "全球態勢",
-    "techMap": "全球科技",
     "techHubs": "熱門科技中心",
     "status": "系統狀態",
     "insights": "AI洞察",
@@ -4191,5 +4190,29 @@
     "reportedClaims": "釋出方報告。相關說法可能仍在調查中。",
     "occurred": "事件",
     "reported": "釋出"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "全球市場地圖",
+      "liveNews": "市場頭條",
+      "insights": "AI市場洞察"
+    },
+    "tech": {
+      "map": "全球科技地圖",
+      "liveNews": "科技頭條"
+    },
+    "commodity": {
+      "map": "商品地圖",
+      "liveNews": "商品頭條",
+      "insights": "AI商品洞察"
+    },
+    "energy": {
+      "map": "能源地圖",
+      "liveNews": "能源頭條",
+      "insights": "AI能源洞察"
+    },
+    "happy": {
+      "map": "好訊息地圖"
+    }
   }
 }

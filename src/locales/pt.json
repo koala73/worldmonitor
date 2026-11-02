@@ -9,7 +9,6 @@
     "status": "Status do sistema",
     "insights": "Informações de IA",
     "map": "Interactive Map",
-    "techMap": "Tecnologia Global",
     "politics": "Notícias do mundo",
     "us": "Estados Unidos",
     "europe": "Europa",
@@ -4231,5 +4230,29 @@
     "reportedClaims": "Relatos do editor. As alegações podem continuar sob investigação.",
     "occurred": "Incidente",
     "reported": "Publicado"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Mapa de Mercados Globais",
+      "liveNews": "Manchetes de Mercado",
+      "insights": "Insights de Mercado com IA"
+    },
+    "tech": {
+      "map": "Mapa Global de Tecnologia",
+      "liveNews": "Manchetes de Tecnologia"
+    },
+    "commodity": {
+      "map": "Mapa de Commodities",
+      "liveNews": "Manchetes de Commodities",
+      "insights": "Insights de Commodities com IA"
+    },
+    "energy": {
+      "map": "Mapa Atlas de Energia",
+      "liveNews": "Manchetes de Energia",
+      "insights": "Insights de Energia com IA"
+    },
+    "happy": {
+      "map": "Mapa de Boas Notícias"
+    }
   }
 }
