@@ -31,11 +31,21 @@ test.describe('China activity nowcast panel', () => {
     }));
     expect(narrowOverflow.document).toBeLessThanOrEqual(1);
     expect(narrowOverflow.panel).toBeLessThanOrEqual(1);
-
     await page.setViewportSize({ width: 1280, height: 900 });
     await expect(panel.locator('.china-nowcast-contributions')).toHaveCSS(
       'grid-template-columns',
       /.+ .+/,
     );
+
+    // The dashboard sidebar column is 375px wide on a desktop viewport. Three
+    // cards abreast squeezed each to 115px and the heading text overflowed its
+    // cell, so a column this narrow holds one card per row.
+    await panel.evaluate((element) => { element.style.width = '375px'; });
+    await expect(panel.locator('.china-nowcast-contributions')).toHaveCSS(
+      'grid-template-columns',
+      /^\S+$/,
+    );
+    const columnOverflow = await panel.evaluate((element) => element.scrollWidth - element.clientWidth);
+    expect(columnOverflow).toBeLessThanOrEqual(1);
   });
 });
