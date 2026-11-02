@@ -218,7 +218,9 @@ async function expectCue(page: Page, s: Scroll, id: string, label: string): Prom
   if (s.scroller.split(' ').includes('table-scroll')) {
     const region = page.locator(`[data-table-scroll-probe="${id}"]`);
     await expect.soft(region, `${label}: the scroll region has a nameable role`).toHaveRole('group');
-    await expect.soft(region, `${label}: the scroll region is named by the panel title`).toHaveAccessibleName(s.name);
+    const panelTitle = (await page.locator(`#panelsGrid .panel[data-panel="${id}"] .panel-title`).textContent())?.trim() ?? '';
+    expect.soft(panelTitle, `${label}: the panel has a title`).not.toBe('');
+    await expect.soft(region, `${label}: the scroll region is named by the panel title`).toHaveAccessibleName(panelTitle);
   }
   expect.soft(s.atStart.mask, `${label}: edge fade at the start`).not.toBe('none');
   expect.soft(s.atStart, `${label}: at the start only the trailing edge fades`).toMatchObject({ start: '0px', end: '24px' });
