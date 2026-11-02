@@ -96,6 +96,25 @@ function getRowSpan(element: HTMLElement): number {
   return element.classList.contains('panel-wide') ? 2 : 1;
 }
 
+// #8276: A stylesheet can give any panel a natural row span that changes at
+// viewport breakpoints, so every mounted row separator re-reads its span on
+// resize. One shared listener serves all panels instead of one per panel.
+const rowSpanSyncs = new Set<() => void>();
+
+function handleRowSpanViewportResize(): void {
+  for (const sync of rowSpanSyncs) sync();
+}
+
+function registerRowSpanSync(sync: () => void, signal: AbortSignal): void {
+  if (typeof window === 'undefined' || signal.aborted) return;
+  if (rowSpanSyncs.size === 0) window.addEventListener('resize', handleRowSpanViewportResize);
+  rowSpanSyncs.add(sync);
+  signal.addEventListener('abort', () => {
+    rowSpanSyncs.delete(sync);
+    if (rowSpanSyncs.size === 0) window.removeEventListener('resize', handleRowSpanViewportResize);
+  }, { once: true });
+}
+
 function deltaToRowSpan(startSpan: number, deltaY: number): number {
   const spanDelta = deltaY > 0
     ? Math.floor(deltaY / ROW_RESIZE_STEP_PX)
@@ -441,23 +460,13 @@ export class Panel {
     handle.setAttribute('aria-valuemax', '4');
     this.syncKeyboardRowResizeAria();
 
-    // #8276: Refresh ARIA after the natural video panel enters the grid.
-    // Its CSS row span may differ from the detached element's fallback.
-    if (this.panelId === 'live-news' || this.panelId === 'live-webcams') {
-      this.runWhenConnected(() => this.syncKeyboardRowResizeAria());
-
-      // The natural span changes at responsive viewport breakpoints.
-      // AbortController removes this listener when the panel is destroyed.
-      window.addEventListener(
-        'resize',
-        () => {
-          if (this.element.isConnected) {
-            this.syncKeyboardRowResizeAria();
-          }
-        },
-        { signal: this.abortController.signal },
-      );
-    }
+    // #8276: Refresh ARIA once the panel enters the grid, where its CSS row
+    // span may differ from the detached element's fallback, and again at
+    // viewport breakpoints. Destroy aborts the registration.
+    this.runWhenConnected(() => this.syncKeyboardRowResizeAria());
+    registerRowSpanSync(() => {
+      if (this.element.isConnected) this.syncKeyboardRowResizeAria();
+    }, this.abortController.signal);
 
     // Also refresh the value before keyboard interaction.
     handle.addEventListener('focus', () => {

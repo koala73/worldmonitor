@@ -92,6 +92,31 @@ describe('Panel keyboard resize accessibility', () => {
     }
   });
 
+  it('synchronizes any panel whose natural span comes from CSS, not only the video panels', () => {
+    // The span is owned by a stylesheet rule keyed on the panel id, so the
+    // panel id must not decide whether the separator value tracks it.
+    const panel = new Panel({ id: 'threat-timeline', title: 'Threat timeline' });
+    const element = panel.getElement();
+    const handle = element.querySelector('.panel-resize-handle');
+
+    expect(handle?.getAttribute('aria-valuenow')).toBe('1');
+
+    element.style.gridRowStart = 'span 3';
+    document.body.appendChild(element);
+    panel.notifyConnected();
+    expect(handle?.getAttribute('aria-valuenow')).toBe('3');
+
+    element.style.gridRowStart = 'span 2';
+    window.dispatchEvent(new Event('resize'));
+    expect(handle?.getAttribute('aria-valuenow')).toBe('2');
+
+    panel.destroy();
+    element.style.gridRowStart = 'span 4';
+    window.dispatchEvent(new Event('resize'));
+    expect(handle?.getAttribute('aria-valuenow')).toBe('2');
+    element.remove();
+  });
+
   it.each(['mouse', 'touch'] as const)('keeps a natural span responsive after a no-op %s gesture', (input) => {
     const panel = new Panel({ id: 'live-news', title: 'News', className: 'panel-wide' });
     const element = panel.getElement();
