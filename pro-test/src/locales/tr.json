@@ -711,14 +711,14 @@
       "chokepointTitle": "Bir boğazı kontrol edin",
       "chokepointDesc": "{{chokepoints}} kritik deniz dar geçidinde kesinti durumunu, gemi akışlarını ve riski inceleyin.",
       "countryRiskTitle": "Bir ülke riski hareketini açıklayın",
-      "countryRiskDesc": "Bir ülkenin değişiminin ardındaki siyasi, güvenlik, ekonomik ve dayanıklılık sinyallerini izleyin; dayanıklılık {{resilienceRanked}} ülke için sıralandı.",
+      "countryRiskDesc": "Bir ülkedeki değişimin ardındaki siyasi, güvenlik, ekonomik ve dayanıklılık sinyallerini izleyin. {{resilienceUniverse}} ülkenin {{resilienceRanked}} tanesi, yani yaklaşık {{resilienceRankedPct}}%, için dayanıklılık sıralaması bulunur. Böylece bir hareket, yalnızca bu haftanın haber başlıklarına göre değil, o ülkenin uzun vadeli yapısal temeline göre yorumlanabilir.",
       "open": "Kanıt görüntüle",
       "workflow": "Adım adım iş akışı"
     },
     "voices": {
       "eyebrow": "Kendi sözleriyle",
       "title": "İnsanlar World Monitor hakkında ne diyor",
-      "sub": "{{countries}} ülkede {{users}} kişi World Monitor’ü kullandı. İşte basının ve bazılarının söyledikleri.",
+      "sub": "{{countries}} ülkede {{users}} kişi World Monitor’ü kullandı. The Atlantic 14 Mart 2026 tarihinde, El País ise iki gün sonra World Monitor hakkında yazdı. WIRED, The Economic Times, Arabian Business ve L'Orient Today de haber yaptı. İşte basının ve bazı kullanıcıların söyledikleri.",
       "translatedJa": "Japoncadan çevrildi",
       "prev": "Önceki alıntılar",
       "next": "Daha fazla alıntı"
