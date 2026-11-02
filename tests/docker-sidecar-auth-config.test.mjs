@@ -104,6 +104,20 @@ test('Docker nginx denies the native administration namespace before the data pr
   assert.match(staticNginx, /proxy_pass \$\{API_UPSTREAM\}/);
 });
 
+test('frontend nginx authenticates TLS upstreams for every API location', () => {
+  const nginx = readProjectFile('docker/nginx.conf.template');
+  const httpDefaults = nginx.slice(nginx.indexOf('http {'), nginx.indexOf('  server {'));
+  for (const directive of [
+    'proxy_ssl_verify on;',
+    'proxy_ssl_verify_depth 3;',
+    'proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;',
+    'proxy_ssl_server_name on;',
+    'proxy_ssl_name $proxy_host;',
+  ]) assert.ok(httpDefaults.includes(directive), directive);
+  assert.equal((nginx.match(/proxy_pass \$\{API_UPSTREAM\};/g) ?? []).length, 3);
+  assert.doesNotMatch(nginx, /proxy_ssl_(?:verify|server_name)\s+off;/);
+});
+
 // Opt in where nginx is installed: WM_TEST_NGINX=/usr/sbin/nginx node --test ...
 test('shipped nginx configurations separate native management from Docker data APIs', {
   skip: !process.env.WM_TEST_NGINX,
@@ -152,6 +166,8 @@ test('shipped nginx configurations separate native management from Docker data A
         .replaceAll('/usr/share/nginx/html', tempDir)
         .replaceAll('/etc/nginx/security_headers.conf', resolve(root, 'docker/nginx-security-headers.conf'))
         .replaceAll('/etc/nginx/embed_security_headers.conf', resolve(root, 'docker/nginx-embed-security-headers.conf'))
+        .replaceAll('/etc/nginx/oauth_authorize_security_headers.conf', resolve(root, 'docker/nginx-oauth-authorize-security-headers.conf'))
+        .replaceAll('/etc/nginx/youtube_embed_security_headers.conf', resolve(root, 'docker/nginx-youtube-embed-security-headers.conf'))
         .replaceAll('/dev/stderr', join(tempDir, 'logs/error.log'))
         .replaceAll('/dev/stdout', join(tempDir, 'logs/access.log'))
         .replaceAll('/tmp/nginx', join(tempDir, 'nginx'));

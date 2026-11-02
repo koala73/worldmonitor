@@ -4,6 +4,7 @@ import sovereignStatus from '../scripts/shared/sovereign-status.json' with { typ
 
 import { issueSessionToken } from '../api/_session.js';
 import seedHealthHandler from '../api/seed-health.js';
+import { CII_RISK_SCORES_META_KEY, healthyCiiInputs } from './helpers/health-pipeline-fixture.mjs';
 import { __testing__ as healthTesting } from '../api/health.js';
 import {
   createDomainGateway,
@@ -138,6 +139,7 @@ function installSeedHealthPipelineMock(chinaMeta: ChinaMeta) {
           sourceVersion: key === 'seed-meta:resilience:intervals'
             ? RESILIENCE_INTERVAL_SOURCE_VERSION
             : 'test',
+          ...(key === CII_RISK_SCORES_META_KEY ? { inputs: healthyCiiInputs() } : {}),
         }),
       };
     });

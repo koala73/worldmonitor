@@ -806,3 +806,32 @@ test('the synthesis resolver rejects a lead whose only survivor lost its acronym
   assert.equal(result.composed, null);
   assert.equal(result.failureCode, INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_UNCITED);
 });
+
+test('successful news publications retain bounded historical failure evidence', () => {
+  const lastSuccessAt = Date.parse(OLD_GENERATED_AT);
+  const failedAt = lastSuccessAt + 60_000;
+  const failed = buildInsightsFreshnessMetaPatch({
+    previousMeta: { lastSuccessAt },
+    outcome: 'lkg_preserved',
+    failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+    failureDetail: 'https://user:secret@provider.test/body',
+    nowMs: failedAt,
+    servedGeneratedAt: OLD_GENERATED_AT,
+  });
+  let recovered = failed;
+  for (const nowMs of [failedAt + 60_000, failedAt + 120_000]) {
+    recovered = buildInsightsFreshnessMetaPatch({
+      previousMeta: recovered, outcome: 'published', nowMs,
+      servedGeneratedAt: NEW_GENERATED_AT,
+    });
+    assert.deepEqual(recovered.lastFailure, {
+      checkedAt: new Date(failedAt).toISOString(),
+      lastSuccessAt: OLD_GENERATED_AT,
+      errorCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+    });
+    assert.equal(recovered.lastSuccessAt, nowMs);
+    assert.equal(recovered.lastSynthesisFailureCode, null);
+    assert.equal(recovered.consecutiveFailures, 0);
+  }
+  assert.doesNotMatch(JSON.stringify(recovered.lastFailure), /secret|provider.test/);
+});

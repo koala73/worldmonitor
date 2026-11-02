@@ -324,6 +324,20 @@ function isKeyFreeApiTarget(target: string): boolean {
     || target.startsWith('/api/version');
 }
 
+// Key issuance (API and embed) asks Clerk whether the caller's session is live.
+// It needs the caller's standard session token (it carries `sid`). The desktop
+// cloud credential is a template token without one.
+function isSessionBoundApiTarget(target: string): boolean {
+  const path = target.split('?')[0];
+  return path === '/api/user-api-keys' || path === '/api/user-embed-keys';
+}
+
+function callerBearer(input: RequestInfo | URL, init?: RequestInit): string | undefined {
+  const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+  const value = headers.get('Authorization');
+  return value?.startsWith('Bearer ') ? value : undefined;
+}
+
 function canRetryRequest(input: RequestInfo | URL, init?: RequestInit): boolean {
   const request = input instanceof Request ? input : undefined;
   const method = (init?.method ?? request?.method ?? 'GET').toUpperCase();
@@ -339,11 +353,18 @@ async function fetchLocalWithStartupRetry(
   const maxAttempts = 4;
   let lastError: unknown = null;
   const signal = init?.signal === undefined ? (input instanceof Request ? input.signal : undefined) : init.signal;
+  // Routes that can carry local secrets never leave the machine, so they
+  // never need the user's cloud credential.
+  const userAuthorization = isLocalOnlyApiTarget(target)
+    ? undefined
+    : isSessionBoundApiTarget(target)
+      ? callerBearer(input, init)
+      : (await (await import('@/services/desktop-cloud-auth')).getDesktopCloudAuthorization()) ?? undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       const { proxyLocalApiRequest } = await import('@/services/tauri-bridge');
-      return await proxyLocalApiRequest(target, input, init);
+      return await proxyLocalApiRequest(target, input, init, userAuthorization);
     } catch (error) {
       lastError = error;
 

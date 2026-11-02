@@ -1,6 +1,8 @@
 ---
 name: sentry-triage
 description: Triage WorldMonitor Sentry issues — classify unresolved events as noise, already-fixed, product bugs, or needs-human; optionally ship a tested fix. Use when the user says triage Sentry, pastes a WORLDMONITOR-* ID or sentry.io URL, or asks to investigate production errors.
+metadata:
+  internal: true
 ---
 
 # Sentry triage

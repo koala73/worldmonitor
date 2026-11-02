@@ -8,6 +8,62 @@ import { FORECAST_ACCURACY_AUDIT_OVERRIDE, STANDING_ACCURACY_AUDIT, forecastAccu
 
 const tool = CACHE_TOOLS.find((entry) => entry.name === 'get_forecast_scorecard');
 
+describe('resolved archive MCP transport', () => {
+  const now = Date.now();
+  const rows = Array.from({ length: 55 }, (_, i) => ({ forecastId: `fc-${i}`, domain: i % 2 ? 'conflict' : 'market', region: 'Iran',
+    lane: 'judged', question: 'Will the event occur?', forecastAt: now - 1000, probability: 0.4,
+    outcome: i % 2 ? 'VOID' : 'YES', resolvedAt: now - i, firstSeenAt: now - 1000, lastSeenAt: now,
+    trajectory: [[new Date(now - 1000).toISOString(), 0.4]], evidence: { selectionVersion: 3, rationale: 'PRIVATE' }, internalKey: 'PRIVATE',
+  }));
+  const stored = () => ({ 'forecast:archive:v1': { generatedAt: now, rows }, 'forecast:scorecard:v1': DECLARED,
+    'seed-meta:forecast:scorecard': { fetchedAt: now }, 'seed-meta:forecast:archive': { fetchedAt: now } });
+  it('leaves the default response byte-identical with archive data present', async () => {
+    const baseline = await runTool({ 'forecast:scorecard:v1': DECLARED, 'seed-meta:forecast:scorecard': { fetchedAt: now } });
+    assert.equal(JSON.stringify((await runTool(stored())).data), JSON.stringify(baseline.data));
+  });
+  it('filters, pages, keeps the audit and withholds trajectories without a family filter', async () => {
+    const first = (await runTool(stored(), { view: 'archive', domain: 'conflict', outcome: 'VOID', limit: 10 })).data;
+    assert.equal(first.archive.rows.length, 10);
+    assert.equal(first.archive.stale, false);
+    assert.ok(first.underAudit);
+    assert.ok(first.archive.rows.every(row => row.domain === 'conflict' && row.outcome === 'VOID' && !('trajectory' in row)));
+    const next = (await runTool(stored(), { view: 'archive', before: first.archive.nextBefore, limit: 50 })).data;
+    assert.ok(next.archive.rows.every(row => row.resolvedAt < Number(first.archive.nextBefore.split(':')[0])));
+    const one = (await runTool(stored(), { view: 'archive', forecast_id: 'fc-1' })).data;
+    assert.equal(one.archive.rows[0].trajectory.length, 1);
+    assert.ok(!JSON.stringify(one).includes('PRIVATE'));
+    assert.ok(Buffer.byteLength(JSON.stringify(next)) < 65_536);
+    const missingClock = stored();
+    delete missingClock['seed-meta:forecast:archive'];
+    assert.equal((await runTool(missingClock, { view: 'archive' })).data.archive.stale, true);
+  });
+  it('pages a daily batch with identical resolution timestamps without gaps or duplicates', async () => {
+    const batch = stored();
+    batch['forecast:archive:v1'].rows = rows.map(row => ({ ...row, resolvedAt: now }));
+    const ids = [];
+    let before;
+    do {
+      const response = (await runTool(batch, { view: 'archive', limit: 10, ...(before ? { before } : {}) })).data;
+      ids.push(...response.archive.rows.map(row => row.forecastId));
+      before = response.archive.nextBefore;
+    } while (before);
+    assert.equal(ids.length, 55);
+    assert.equal(new Set(ids).size, 55);
+  });
+  it('shortens large family pages to the response budget and rejects invalid cursors', async () => {
+    const batch = stored();
+    batch['forecast:archive:v1'].rows = rows.map(row => ({ ...row, forecastId: 'fc-1',
+      question: 'Q'.repeat(240), citationTitle: 'T'.repeat(160), citationUrl: `https://example.com/${'a'.repeat(470)}`,
+      trajectory: Array.from({ length: 30 }, (_, i) => [new Date(now - i * 1000).toISOString(), 0.123456789]),
+    }));
+    const response = await runTool(batch, { view: 'archive', forecast_id: 'fc-1', limit: 50 });
+    assert.ok(response.data.archive.rows.length < 50);
+    assert.ok(response.data.archive.nextBefore);
+    assert.ok(Buffer.byteLength(JSON.stringify(response)) < 65_536);
+    await assert.rejects(runTool(batch, { view: 'archive', before: 'bad' }));
+  });
+});
+
 const DECLARED = {
   schemaVersion: 1,
   generatedAt: 456,

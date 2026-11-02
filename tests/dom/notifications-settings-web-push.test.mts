@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChannelsData } from '@/services/notification-channels';
+import { IncompatibleDeliveryError } from '@/services/notification-channels';
 
 import { initTestI18n, tt } from './helpers/i18n.mts';
 
@@ -475,6 +476,36 @@ describe('notification Settings browser push', () => {
   });
 });
 
+
+describe('legacy alert-rule delivery rejection', () => {
+  it('reveals the sensitivity hint with server guidance after an autosave is rejected', async () => {
+    const message = 'Choose a digest cadence to receive High or All events.';
+    channelMocks.saveAlertRules.mockRejectedValueOnce(new IncompatibleDeliveryError(message));
+    const container = await mount({
+      channels: [],
+      alertRules: [{
+        variant: 'full', enabled: true, eventTypes: [], sensitivity: 'all', channels: [], digestMode: 'daily',
+      }],
+    });
+    const hint = container.querySelector<HTMLElement>('#usSensitivityHint')!;
+    expect(hint.style.display).toBe('none');
+    vi.useFakeTimers();
+    try {
+      const sensitivity = container.querySelector<HTMLSelectElement>('#usNotifSensitivity')!;
+      sensitivity.value = 'high';
+      sensitivity.dispatchEvent(new Event('change', { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(channelMocks.saveAlertRules).toHaveBeenCalledWith(
+        expect.objectContaining({ sensitivity: 'high' }), expect.any(AbortSignal),
+      );
+      expect(hint.style.display).toBe('');
+      expect(hint.textContent).toBe(message);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe('email connection recovery', () => {
   it('saves the email rule after linking succeeds', async () => {

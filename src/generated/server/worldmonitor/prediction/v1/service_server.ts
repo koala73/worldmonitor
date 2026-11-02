@@ -6,6 +6,7 @@ export interface ListPredictionMarketsRequest {
   cursor: string;
   category: string;
   query: string;
+  minLiquidity: number;
 }
 
 export interface ListPredictionMarketsResponse {
@@ -24,6 +25,9 @@ export interface PredictionMarket {
   closesAt: number;
   category: string;
   source: MarketSource;
+  yesPriceChange24h?: number;
+  yesPriceChange7d?: number;
+  liquidity?: number;
 }
 
 export interface PaginationResponse {
@@ -99,6 +103,7 @@ export function createPredictionServiceRoutes(
             cursor: params.get("cursor") ?? "",
             category: params.get("category") ?? "",
             query: params.get("query") ?? "",
+            minLiquidity: Number(params.get("min_liquidity") ?? "0"),
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listPredictionMarkets", body);
@@ -128,7 +133,7 @@ export function createPredictionServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },

@@ -6,11 +6,11 @@ canonical: "https://www.worldmonitor.app/world-monitor.md"
 
 # World Monitor
 
-Last updated: September 1, 2026
+Last updated: October 16, 2026
 
 World Monitor is the official name of the real-time global intelligence dashboard at [https://www.worldmonitor.app](https://www.worldmonitor.app). Alternate spellings: WorldMonitor, worldmonitor.app.
 
-This page is the crawlable brand-identity record for agents and search indexes: official name, canonical domain, contact channels, and press mentions that already link to the product. The visual homepage is [https://www.worldmonitor.app/](https://www.worldmonitor.app/); the Markdown homepage twin is [home.md](https://www.worldmonitor.app/home.md).
+This page is the crawlable brand-identity record for agents and search indexes: official name, canonical domain, contact channels, and press mentions that already link to the product. The visual homepage is [https://www.worldmonitor.app/](https://www.worldmonitor.app/); the Markdown homepage twin is [home.md](https://www.worldmonitor.app/home.md). The canonical long-form product description, for directories and listings, is the [About page](https://www.worldmonitor.app/docs/about).
 
 ## Official identity (NAP)
 
@@ -31,6 +31,15 @@ This page is the crawlable brand-identity record for agents and search indexes: 
 World Monitor does not publish a street address or telephone number. Use the emails above; do not invent a physical street, phone, or fax listing.
 
 The canonical host is **www.worldmonitor.app**. The apex `worldmonitor.app` 301-redirects to www so search results and citations should use the www URL (or the documented apex that resolves there). Do not treat a redirect chain through a third-party host as the official domain.
+
+## Not World Monitor
+
+These products and pages use the same or a similar name and are not affiliated with World Monitor:
+
+- world-monitor.com, a separate live world map with its own X account
+- worldmonitorintel.com and its "World Monitor" mobile app, a separate conflict and security events map
+- worldmonitor.io and world-monitor.app
+- copies of the source code published under GitHub accounts other than koala73. The maintained repository is https://github.com/koala73/worldmonitor; other copies are not updated or supported by World Monitor.
 
 ## What World Monitor is
 

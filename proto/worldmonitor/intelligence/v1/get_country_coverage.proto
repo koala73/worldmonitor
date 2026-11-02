@@ -4,6 +4,7 @@ package worldmonitor.intelligence.v1;
 
 import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
+import "worldmonitor/news/v1/news_item.proto";
 
 // GetCountryCoverageRequest selects one country's coverage window.
 message GetCountryCoverageRequest {
@@ -46,6 +47,8 @@ message CountryCoverageHeadline {
   string published_at = 4;
   // Publication time as Unix epoch milliseconds.
   int64 published_at_ms = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Shared keyword classification of the raw headline, before publisher normalization.
+  worldmonitor.news.v1.ThreatClassification threat = 6;
 }
 
 // CountryCoverageEvent is one incident on the country timeline, after

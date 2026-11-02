@@ -3,6 +3,7 @@ import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import type { ChokepointInfo } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { buildWorldMonitorAttributionUrl } from '@/embed/embed-url';
 import { createKeyedEmbedFetch } from '@/embed/embed-fetch';
+import { chokepointCoverageWarning } from '@/services/supply-chain/chokepoint-coverage';
 
 const STRIP_ORDER = [
   'hormuz_strait',
@@ -72,10 +73,11 @@ export async function mountEmbedChokepointStrip(root: HTMLElement, apiKey: strin
   heading.textContent = t('components.chokepointStrip.title');
   wrap.appendChild(heading);
 
-  if (data.upstreamUnavailable) {
+  const coverageText = chokepointCoverageWarning(data);
+  if (coverageText) {
     const warning = document.createElement('div');
     warning.className = 'wm-embed-cp-warning';
-    warning.textContent = t('components.supplyChain.upstreamUnavailable');
+    warning.textContent = coverageText;
     wrap.appendChild(warning);
   }
 

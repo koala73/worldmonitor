@@ -331,7 +331,7 @@ describe("HTTP route /api/telegram-pair-callback (security #3767)", () => {
     const t = convexTest(schema, modules);
     await seedPairingToken(t);
     const owner = t.withIdentity({ subject: USER_ID });
-    const pairing = await owner.mutation(api.notificationChannels.createPairingToken, {});
+    const pairing = await owner.mutation(internal.notificationChannels.createPairingToken, {});
     const payload = { ...makeStartPayload(), userId: "another-user", chatId: "98765" };
     payload.message.text = `/start ${pairing.token}`;
     for (const secret of ["wrong-secret", VALID_SECRET, VALID_SECRET]) {
@@ -384,12 +384,12 @@ describe("HTTP route /api/telegram-pair-callback (security #3767)", () => {
     expect(await t.query(internal.notificationChannels.getChannelsByUserId, { userId: USER_ID })).toMatchObject([{ verified: false }]);
   });
 
-  test.each(["public", "server bridge"])("%s setter cannot enroll or replace an arbitrary Telegram chat", async (surface) => {
+  test.each(["identity-scoped", "server bridge"])("%s setter cannot enroll or replace an arbitrary Telegram chat", async (surface) => {
     const t = convexTest(schema, modules);
     await seedPairingToken(t);
     const owner = t.withIdentity({ subject: USER_ID });
-    const attempt = () => surface === "public"
-      ? owner.mutation(api.notificationChannels.setChannel, { channelType: "telegram", chatId: "98765" })
+    const attempt = () => surface === "identity-scoped"
+      ? owner.mutation(internal.notificationChannels.setChannel, { channelType: "telegram", chatId: "98765" })
       : t.mutation(internal.notificationChannels.setChannelForUser, {
         userId: USER_ID, channelType: "telegram", chatId: "98765", scheduleWelcome: true,
       });

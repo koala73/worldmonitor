@@ -80,8 +80,10 @@ OAuth 端点遵循 [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc674
 
 **MCP**：服务器在 JSON-RPC 结果中以 `isError: true` 和文本说明返回工具错误 — 这些并非 HTTP 错误。请在工具调用层进行处理。
 
+**上报故障**：每个 MCP 错误都带有 `error.data.requestId`。意外的工具失败（`-32603`）和未知工具（`-32602`）还会带有 `error.data.reportWith: "report_issue"`。遇到这些错误，或所需工具不存在时，请携带该 `requestId` 调用 [`report_issue`](/zh/mcp-tools-reference#report_issue)。通过 REST 可调用 `POST /api/feedback/v1/submit-report`，并以响应的 `x-vercel-id` 作为 `requestId`。两者都无需凭据。计费拒绝、限流、上游数据源故障和参数校验错误属于预期状态，不带 `reportWith`：请自行处理，无需上报。
+
 ## 调试
 
-- 每个 Edge 响应都包含 `x-vercel-id` 与 `x-worldmonitor-deploy` 头 — 上报问题时请一并提供。
+- 每个 Edge 响应都包含 `x-vercel-id` 与 `x-worldmonitor-deploy` 头 — 上报问题时请一并提供。智能体可以把 `x-vercel-id` 作为 `report_issue` 调用的 `requestId`。
 - Sentry 告警会转发到 [status.worldmonitor.app](https://status.worldmonitor.app/)。
 - `GET /api/health` 与 `GET /api/seed-health` 显示各 seed 的数据新鲜度；某个 seed 过期是出现意外空载荷的最常见根因。

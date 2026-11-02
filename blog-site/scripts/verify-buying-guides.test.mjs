@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 
 const dist = new URL('../dist/', import.meta.url);
 const content = new URL('../src/content/guides/', import.meta.url);
-const categories = { vs: 5, alternatives: 5, best: 10 };
+const categories = { vs: 6, alternatives: 6, best: 10 };
 const site = 'https://www.worldmonitor.app';
 const hub = readFileSync(new URL('guides/index.html', dist), 'utf8');
 const llms = readFileSync(new URL('llms.txt', dist), 'utf8');
@@ -20,7 +20,7 @@ test('guide index structured data matches the displayed card order', () => {
   const nodes = [...hub.matchAll(/<script type="application\/ld\+json"[^>]*>(.*?)<\/script>/gs)]
     .map(match => JSON.parse(match[1]));
   const items = nodes.find(node => node['@type'] === 'CollectionPage').mainEntity.itemListElement;
-  assert.equal(cards.length, 20);
+  assert.equal(cards.length, 22);
   assert.deepEqual(items.map(item => item.url), cards);
   assert.deepEqual(items.map(item => item.position), cards.map((_, index) => index + 1));
 });

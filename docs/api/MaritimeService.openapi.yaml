@@ -8,6 +8,124 @@ security:
 servers:
     - url: https://api.worldmonitor.app
 paths:
+    /api/maritime/v1/list-ukmto-incidents:
+        get:
+            tags:
+                - MaritimeService
+            summary: ListUkmtoIncidents
+            description: ListUkmtoIncidents returns UKMTO maritime incident reports and source freshness.
+            operationId: ListUkmtoIncidents
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "dataAvailable": true
+                                "fetchedAt": 1717200000000
+                                "incidents":
+                                    - "description": "Example WorldMonitor observation."
+                                      "id": "example-id"
+                                      "incidentNumber": 1
+                                      "incidentType": "all"
+                                      "location":
+                                          "latitude": 40.7128
+                                          "longitude": -74.006
+                                "stale": true
+                            schema:
+                                $ref: '#/components/schemas/ListUkmtoIncidentsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/maritime/v1/get-vessel-snapshot:
         get:
             tags:
@@ -488,6 +606,66 @@ components:
             required:
                 - violations
             description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        ListUkmtoIncidentsRequest:
+            type: object
+            description: ListUkmtoIncidentsRequest requests the latest publisher snapshot.
+        ListUkmtoIncidentsResponse:
+            type: object
+            properties:
+                incidents:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/UkmtoIncident'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Successful upstream retrieval time, not the date of the newest incident.. Warning: Values > 2^53 may lose precision in JavaScript'
+                dataAvailable:
+                    type: boolean
+                stale:
+                    type: boolean
+            description: ListUkmtoIncidentsResponse distinguishes unavailable data from a valid empty list.
+        UkmtoIncident:
+            type: object
+            properties:
+                id:
+                    type: string
+                incidentNumber:
+                    type: integer
+                    format: int32
+                incidentType:
+                    type: string
+                place:
+                    type: string
+                description:
+                    type: string
+                location:
+                    $ref: '#/components/schemas/GeoCoordinates'
+                occurredAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                reportedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+            description: UkmtoIncident is a publisher report, not independent confirmation of an attack.
+        GeoCoordinates:
+            type: object
+            properties:
+                latitude:
+                    type: number
+                    maximum: 90
+                    minimum: -90
+                    format: double
+                    description: Latitude in decimal degrees (-90 to 90).
+                longitude:
+                    type: number
+                    maximum: 180
+                    minimum: -180
+                    format: double
+                    description: Longitude in decimal degrees (-180 to 180).
+            description: GeoCoordinates represents a geographic location using WGS84 coordinates.
         GetVesselSnapshotRequest:
             type: object
             properties:
@@ -604,22 +782,6 @@ components:
             required:
                 - id
             description: AisDensityZone represents a zone of concentrated vessel traffic.
-        GeoCoordinates:
-            type: object
-            properties:
-                latitude:
-                    type: number
-                    maximum: 90
-                    minimum: -90
-                    format: double
-                    description: Latitude in decimal degrees (-90 to 90).
-                longitude:
-                    type: number
-                    maximum: 180
-                    minimum: -180
-                    format: double
-                    description: Longitude in decimal degrees (-180 to 180).
-            description: GeoCoordinates represents a geographic location using WGS84 coordinates.
         AisDisruption:
             type: object
             properties:

@@ -144,6 +144,75 @@ function mount(): void {
       fearCard.append(scoreNode, fearMeta);
       content.append(fearCard);
     }
+    let flowCount = 0;
+    let flowStatus = '';
+    if ('etf-flows' in data) {
+      const source = record(data['etf-flows']);
+      const collection = source.etfs;
+      const sampled = record(collection);
+      const items = Array.isArray(collection) ? collection : Array.isArray(sampled.sample) ? sampled.sample : null;
+      const flows = items?.filter(item => Object.keys(record(item)).length) ?? [];
+      flowCount = flows.length;
+      const section = node('section', 'market-etf-flows');
+      section.append(node('h2', 'sec-label', 'ETF flows'),
+        node('p', 'qcoverage', 'Estimated USD flows use a volume/price heuristic, not verified net subscriptions or redemptions.'));
+      if (source.rateLimited === true) section.append(node('p', 'qcoverage', 'Provider rate limit reported for this ETF snapshot.'));
+      const timestamp = text(source.timestamp);
+      const fetchedAt = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(timestamp)
+        && Number.isFinite(Date.parse(timestamp)) ? timestamp : 'unavailable';
+      section.append(node('p', 'qcoverage etf-fetch-time', 'ETF data fetched: ' + fetchedAt));
+      const usd = (value: unknown): string => {
+        const amount = number(value);
+        return amount == null ? '—' : amount.toLocaleString('en-US', {
+          style: 'currency', currency: 'USD', maximumFractionDigits: 2, signDisplay: 'exceptZero',
+        });
+      };
+      const knownCount = (value: unknown): number | null => {
+        const count = number(value);
+        return count != null && Number.isInteger(count) && count >= 0 ? count : null;
+      };
+      const total = knownCount(sampled.count) ?? knownCount(sampled.total);
+      flowStatus = !items ? 'ETF flow data unavailable in this response.' : !flows.length
+        ? omittedByBudget('etf-flows', 'etfs') ? 'ETF flow rows omitted to fit the response budget.'
+          : items.length ? 'No usable ETF flow rows in this response.'
+            : Array.isArray(collection) || total === 0 ? 'No ETF flow rows in this snapshot.' : 'No ETF flow rows in this response sample.'
+        : flowCount + ' loaded ETF flow rows.';
+      section.append(node('p', 'qcoverage etf-row-coverage', total != null && total > flowCount
+        ? 'Showing ' + flowCount + ' of ' + total + ' ETF flow rows from the response sample.' : flowStatus));
+      if (items) {
+        const summary = record(source.summary);
+        const summaryDirection = ['NET INFLOW', 'NET OUTFLOW', 'NEUTRAL'].includes(text(summary.netDirection)) ? text(summary.netDirection) : 'Unknown';
+        section.append(node('p', 'qcoverage etf-source-summary', 'Source summary (before filtering, list caps and response-budget omissions): '
+          + summaryDirection + '; estimated flow (USD): ' + usd(summary.totalEstFlow)
+          + '; trading volume: ' + format(number(summary.totalVolume))
+          + '; ETFs: ' + format(knownCount(summary.etfCount))
+          + '; inflows: ' + format(knownCount(summary.inflowCount))
+          + '; outflows: ' + format(knownCount(summary.outflowCount)) + '.'));
+      }
+      for (const item of flows) {
+        const flow = record(item);
+        const row = node('article', 'etf-flow-row');
+        const identity = node('div', 'etf-identity');
+        identity.append(node('strong', 'etf-ticker', text(flow.ticker) || 'Unknown fund'),
+          node('div', 'qname', text(flow.issuer) || 'Issuer unavailable'));
+        const direction = ['inflow', 'outflow', 'neutral'].includes(text(flow.direction)) ? text(flow.direction) : 'unknown';
+        const change = number(flow.priceChange);
+        const metrics = node('dl', 'etf-metrics');
+        for (const [label, value, className] of [
+          ['Estimated flow (USD)', usd(flow.estFlow), 'etf-amount'],
+          ['Direction', direction, 'etf-direction'],
+          ['Trading volume', format(number(flow.volume)), 'etf-volume'],
+          ['Price change', change == null ? '—' : (change > 0 ? '+' : '') + change.toFixed(2) + '%', 'etf-price-change'],
+        ]) {
+          const metric = node('div', '');
+          metric.append(node('dt', '', label!), node('dd', className!, value!));
+          metrics.append(metric);
+        }
+        row.append(identity, metrics);
+        section.append(row);
+      }
+      content.append(section);
+    }
     let count = 0;
     for (const group of groups) {
       if (!(group.key in data)) continue;
@@ -170,7 +239,8 @@ function mount(): void {
       }
       content.append(section);
     }
-    status.textContent = count ? count + ' loaded quotes. Select a chart row to expand its details.' :
+    status.textContent = count ? count + ' loaded quotes. Select a chart row to expand its details.' + (flowStatus ? ' ' + flowStatus : '') :
+      flowStatus ? flowStatus :
       projected ? 'This projection contains no quote groups. Request market data without this projection.' :
         groups.some(group => omittedByBudget(group.key, group.list)) ? 'Quotes omitted to fit the response budget.' : 'No market quotes available in this response.';
   };

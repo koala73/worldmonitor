@@ -25,7 +25,7 @@ export const FinalCta = () => (
         >
           {t('welcome.cta.button')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </a>
-        <div className="mt-3 font-mono text-[11px] uppercase tracking-widest text-wm-muted">{t('welcome.cta.note')}</div>
+        <div className="mt-3 font-mono text-xs uppercase tracking-widest text-wm-muted">{t('welcome.cta.note')}</div>
       </div>
       <a href="/pro" data-umami-event="welcome-cta" data-umami-event-target="welcome-final-pro" className="inline-block mt-6 text-sm text-wm-muted hover:text-wm-green transition-colors font-mono">
         {t('welcome.cta.secondary')}

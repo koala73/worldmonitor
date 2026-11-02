@@ -202,6 +202,63 @@ function blockedNotificationWebhookUrlReason(rawUrl) {
   return null;
 }
 
+// Microsoft Teams channel (#9215). A Teams URL must also be a Microsoft
+// Workflows webhook, so a teams channel can never be pointed at an arbitrary
+// host. Sources (checked 2026-10-17):
+// - Workflows "When a Teams webhook request is received" trigger URLs moved
+//   to *.environment.api.powerplatform.com /powerautomate/automations/direct/
+//   (learn.microsoft.com/troubleshoot/power-platform/power-automate/
+//   flow-run-issues/triggers-troubleshoot, incl. the June 2026 /direct/cu/<n>/
+//   scale-unit form).
+// - The Teams connector reference still documents the Logic Apps form
+//   https://<x>.logic.azure.com:443/workflows/... (learn.microsoft.com/
+//   connectors/teams, "Microsoft Teams Webhook").
+// - Office 365 connector URLs (*.webhook.office.com) stopped working in the
+//   May 18-22 2026 retirement (devblogs.microsoft.com/microsoft365dev/
+//   retirement-of-office-365-connectors-within-microsoft-teams).
+// Keep in lockstep with blockedTeamsWebhookUrlReason in
+// api/_notification-webhook-ssrf.ts; tests/notification-webhook-ssrf.test.mts
+// asserts both return the same verdict.
+const TEAMS_WEBHOOK_HOST_RULES = [
+  { suffix: '.environment.api.powerplatform.com', pathPrefix: '/powerautomate/automations/direct/' },
+  { suffix: '.logic.azure.com', pathPrefix: '/workflows/' },
+];
+const TEAMS_RETIRED_HOST_SUFFIXES = ['webhook.office.com', 'outlook.office.com'];
+const TEAMS_WEBHOOK_MAX_URL_LENGTH = 4096;
+
+function hostMatchesSuffix(hostname, suffix) {
+  const bare = suffix.startsWith('.') ? suffix.slice(1) : suffix;
+  return hostname === bare || hostname.endsWith(`.${bare}`);
+}
+
+function blockedTeamsWebhookUrlReason(rawUrl) {
+  if (typeof rawUrl !== 'string' || !rawUrl.trim()) return 'Webhook URL must not be empty';
+  const baseReason = blockedNotificationWebhookUrlReason(rawUrl);
+  if (baseReason) return baseReason;
+  if (rawUrl.length > TEAMS_WEBHOOK_MAX_URL_LENGTH) {
+    return 'Teams webhook URL is too long';
+  }
+  const parsed = new URL(rawUrl);
+  if (parsed.username || parsed.password) {
+    return 'Teams webhook URL must not contain credentials';
+  }
+  if (parsed.port !== '') {
+    return 'Teams webhook URL must use the default HTTPS port';
+  }
+  const hostname = parsed.hostname.toLowerCase();
+  if (TEAMS_RETIRED_HOST_SUFFIXES.some(suffix => hostMatchesSuffix(hostname, suffix))) {
+    return 'Microsoft retired Office 365 connector webhooks in May 2026. Create a Workflows webhook in Teams and paste that URL';
+  }
+  const rule = TEAMS_WEBHOOK_HOST_RULES.find(candidate => hostname.endsWith(candidate.suffix));
+  if (!rule) {
+    return 'Teams webhook URL must be a Microsoft Workflows webhook (environment.api.powerplatform.com or logic.azure.com)';
+  }
+  if (!parsed.pathname.startsWith(rule.pathPrefix)) {
+    return 'Teams webhook URL path is not a Workflows webhook trigger';
+  }
+  return null;
+}
+
 async function defaultResolveHostname(hostname) {
   const records = await dns.lookup(hostname, { all: true, verbatim: true });
   return records.map(record => record.address);
@@ -326,13 +383,25 @@ async function postJsonWithPinnedAddress(url, body, headers, resolvedAddresses) 
         }
         chunks.push(buffer);
       });
+      // A throw in this listener escapes the promise and kills the process:
+      // a callback answering `HTTP/1.1 999` made new Response() throw here.
       res.on('end', () => {
-        const responseHeaders = new Headers();
-        for (const [key, value] of Object.entries(res.headers)) {
-          if (!value) continue;
-          responseHeaders.set(key, Array.isArray(value) ? value.join(', ') : value);
+        try {
+          if (res.statusCode && (res.statusCode < 200 || res.statusCode > 599)) {
+            const error = new Error(`webhook responded with out-of-range status ${res.statusCode}`);
+            error.code = 'WEBHOOK_INVALID_STATUS';
+            error.statusCode = res.statusCode;
+            throw error;
+          }
+          const responseHeaders = new Headers();
+          for (const [key, value] of Object.entries(res.headers)) {
+            if (!value) continue;
+            responseHeaders.set(key, Array.isArray(value) ? value.join(', ') : value);
+          }
+          settle(resolve, responseFromNode(res.statusCode, res.statusMessage, responseHeaders, Buffer.concat(chunks)));
+        } catch (error) {
+          settle(reject, error);
         }
-        settle(resolve, responseFromNode(res.statusCode, res.statusMessage, responseHeaders, Buffer.concat(chunks)));
       });
     });
     req.on('error', error => settle(reject, error));
@@ -352,6 +421,7 @@ module.exports = {
   SSRF_BLOCKED_ERROR_CODE,
   assertNotificationWebhookDeliveryUrlSafe,
   blockedNotificationWebhookUrlReason,
+  blockedTeamsWebhookUrlReason,
   createGuardedLookup,
   isBlockedResolvedAddress,
   postJsonWithPinnedAddress,

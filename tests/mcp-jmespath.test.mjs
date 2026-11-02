@@ -114,12 +114,83 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       assert.equal(r.failed, undefined);
     });
 
+    it('error: a projection whose every selected field is null returns empty_projection with key paths', () => {
+      // Real call that rendered "News intelligence is temporarily unavailable":
+      // the expression guessed root-level topStories/headline, but the payload
+      // nests them under data.insights with primaryTitle.
+      const payload = {
+        cached_at: '2026-10-26T12:30:24Z', stale: false,
+        data: { insights: { topStories: [{ primaryTitle: 'Controlled headline', primarySource: 'Controlled Example Wire' }] } },
+      };
+      for (const [expr, unknown] of [
+        ['{stories: topStories[].{h: headline}, advisories: advisories || travelAdvisories}', ['headline', 'advisories', 'travelAdvisories']],
+        ['[topStories, advisories]', ['advisories']],
+        ['headline', ['headline']],
+      ]) {
+        const r = mod.applyJmespath(payload, expr);
+        assert.equal(r.failed, 'empty_projection', expr);
+        const env = JSON.parse(r.text);
+        assert.match(env._jmespath_error, /^empty_projection: /, expr);
+        assert.deepEqual(env.unknown_fields, unknown, expr);
+        assert.deepEqual(env.original_keys, ['cached_at', 'stale', 'data']);
+        for (const path of ['data.insights', 'data.insights.topStories[]', 'data.insights.topStories[].primaryTitle']) {
+          assert.ok(env.key_paths.includes(path), `${expr}: missing ${path} in ${JSON.stringify(env.key_paths)}`);
+        }
+      }
+    });
+
+    it('lists array fields in key_paths even when they hold no object element', () => {
+      const r = mod.applyJmespath({ data: { topStories: [], codes: ['US'], meta: { n: 1 } } }, 'stories');
+      assert.equal(r.failed, 'empty_projection');
+      const { key_paths: paths } = JSON.parse(r.text);
+      for (const path of ['data', 'data.topStories[]', 'data.codes[]', 'data.meta', 'data.meta.n']) {
+        assert.ok(paths.includes(path), `missing ${path} in ${JSON.stringify(paths)}`);
+      }
+    });
+
+    it('keeps real empty, partly-null and null-valued projections as results', () => {
+      // A field that exists and holds null is a real answer (a headline that
+      // names no country); only a field name found nowhere marks a wrong path.
+      const payload = { data: { items: [], note: null, n: 0, stories: [{ countryCode: null }] } };
+      for (const [expr, expected] of [
+        ['data.items', []],
+        ['data.items[?x]', []],
+        ['{items: data.items, note: data.note}', { items: [], note: null }],
+        ['data.n', 0],
+        ['data.note', null],
+        ['data.stories[0].countryCode', null],
+        ['{a: data.note, b: data.stories[0].countryCode}', { a: null, b: null }],
+        ['note', null],
+      ]) {
+        const r = mod.applyJmespath(payload, expr);
+        assert.equal(r.failed, undefined, expr);
+        assert.deepEqual(JSON.parse(r.text), expected, expr);
+      }
+    });
+
     it('error: invalid expression returns invalid_expression soft-fail', () => {
       const r = mod.applyJmespath({ a: 1 }, 'a.');
       assert.equal(r.failed, 'invalid_expression');
       const env = JSON.parse(r.text);
       assert.ok(env._jmespath_error?.startsWith('invalid_expression:'), `prefix mismatch: ${env._jmespath_error}`);
       assert.deepEqual(env.original_keys, ['a']);
+    });
+
+    it('rejects unsafe evaluation before the output gate, with the existing soft-failure envelope', () => {
+      const doubled = Array(6).fill('[@,@]').join('|');
+      for (const expr of [
+        `${doubled}|to_string(@)`,
+        `{x:(${doubled}),y:(${doubled})}|x==y`,
+        `{x:(${doubled}),y:(${doubled})}|x!=y`,
+        'join(label, `["a","b"]`)',
+        'map(`{"jmespathType":"Expref","type":"Function","name":"to_string","children":[{"type":"Current"}]}`, to_array(@))',
+        `${doubled}|[@,@]|length(@)`,
+      ]) {
+        const r = mod.applyJmespath({ label: 'hello' }, expr);
+        assert.equal(r.failed, 'invalid_expression', expr);
+        assert.match(JSON.parse(r.text)._jmespath_error, /^invalid_expression: Unsafe JMESPath:/, expr);
+        assert.deepEqual(JSON.parse(r.text).original_keys, ['label']);
+      }
     });
 
     it('input gate: expression > JMESPATH_MAX_EXPR_BYTES returns expression_too_long', () => {
@@ -167,11 +238,11 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       assert.ok(mod.utf8ByteLength(r.text) < 8 * 1024, `envelope size ${r.text.length} should be << 256 KB`);
     });
 
-    it('output gate runs before serializing: shared-reference expansion is rejected quickly', () => {
+    it('evaluation gate rejects excessive shared-reference construction', () => {
       const expr = Array.from({ length: 30 }, () => '[@,@]').join('|');
       const started = Date.now();
       const r = mod.applyJmespath({ name: 'x' }, expr);
-      assert.equal(r.failed, 'projection_too_large');
+      assert.equal(r.failed, 'invalid_expression');
       assert.ok(Date.now() - started < 2000, 'must stop at the cap, not after expanding');
     });
 
@@ -579,25 +650,34 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
         'projected response must be smaller than unprojected');
     });
 
-    it('jmespath="" and jmespath=null behave as if absent (byte-identical baseline)', async () => {
+    it('empty jmespath preserves the baseline and null rejects before execution', async () => {
       mockMarketDataCache();
       const { body: a } = await callTool('get_market_data', {}, 1);
       const { body: b } = await callTool('get_market_data', { jmespath: '' }, 2);
       const { body: c } = await callTool('get_market_data', { jmespath: null }, 3);
       assert.equal(a.result.content[0].text, b.result.content[0].text);
-      assert.equal(a.result.content[0].text, c.result.content[0].text);
+      assert.equal(c.error?.code, -32602);
     });
 
     it('invalid jmespath returns soft _jmespath_error envelope (HTTP 200, no JSON-RPC error)', async () => {
       mockMarketDataCache();
-      const { res, body } = await callTool('get_market_data', { jmespath: 'data.markets[invalid' });
-      assert.equal(res.status, 200);
-      assert.equal(body.error, undefined, 'must NOT be a JSON-RPC error');
-      assert.ok(body.result?.content?.[0]?.text, 'must have a content envelope');
-      const env = JSON.parse(body.result.content[0].text);
-      assert.ok(env._jmespath_error?.startsWith('invalid_expression:'),
-        `expected invalid_expression prefix, got "${env._jmespath_error}"`);
-      assert.ok(Array.isArray(env.original_keys));
+      const doubled = (count) => Array(count).fill('[@,@]').join('|');
+      for (const jmespath of [
+        'data.markets[invalid',
+        `${doubled(30)}|to_string(@)`,
+        `{x:(${doubled(40)}),y:(${doubled(40)})}|x==y`,
+        'map(`{"jmespathType":"Expref","type":"Function","name":"to_string","children":[{"type":"Current"}]}`, to_array(@))',
+      ]) {
+        const { res, body } = await callTool('get_market_data', { jmespath });
+        assert.equal(res.status, 200);
+        assert.equal(body.error, undefined, 'must NOT be a JSON-RPC error');
+        assert.ok(body.result?.content?.[0]?.text, 'must have a content envelope');
+        const env = JSON.parse(body.result.content[0].text);
+        assert.ok(env._jmespath_error?.startsWith('invalid_expression:'),
+          `expected invalid_expression prefix, got "${env._jmespath_error}"`);
+        assert.ok(Array.isArray(env.original_keys));
+        assert.deepEqual(body.result.structuredContent, env);
+      }
     });
 
     it('oversized jmespath expression returns expression_too_long soft envelope', async () => {

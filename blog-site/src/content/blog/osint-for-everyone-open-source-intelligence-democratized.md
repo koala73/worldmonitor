@@ -87,7 +87,7 @@ This runs locally in your browser. No data leaves your machine unless you explic
 
 ## The Country Instability Index
 
-One of World Monitor's original contributions to OSINT is the **Country Instability Index (CII)**, a real-time 0-100 score computed for every monitored nation:
+One of World Monitor's original contributions to OSINT is the **[Country Instability Index (CII)](/country-instability-index/)**, a real-time 0-100 score computed for every monitored nation:
 
 - **Baseline risk (40%):** Historical conflict data, governance indicators
 - **Unrest indicators (20%):** Protests, strikes, civil disorder events

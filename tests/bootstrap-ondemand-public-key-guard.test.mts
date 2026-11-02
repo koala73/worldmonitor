@@ -118,4 +118,11 @@ describe('ensureHydrated public on-demand key guard (WORLDMONITOR-XP)', () => {
     assert.equal(requested.length, 1);
     assert.match(requested[0] ?? '', /\/api\/bootstrap\?keys=crossBorderArrivals&public=1$/);
   });
+
+  it('serves IDMC displacement events through its public key URL (#9014)', async () => {
+    assert.equal(ON_DEMAND.has('idmcIduDisplacement'), true, 'idmcIduDisplacement must be on-demand, never tier freight');
+    assert.deepEqual(await ensureHydrated('idmcIduDisplacement'), { ok: true });
+    assert.equal(requested.length, 1);
+    assert.match(requested[0] ?? '', /\/api\/bootstrap\?keys=idmcIduDisplacement&public=1$/);
+  });
 });

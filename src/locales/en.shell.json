@@ -115,6 +115,7 @@
     "goldIntelligence": "Gold Intelligence",
     "gov": "Government",
     "thinktanks": "Think Tanks",
+    "science": "Science",
     "polymarket": "Predictions",
     "commodities": "Metals & Materials",
     "economic": "Macro Stress",
@@ -179,7 +180,7 @@
     "bigmacDesc": "Big Mac prices across Middle East countries (Big Mac Index)",
     "bigmacWow": "Week-over-week",
     "bigmacCountry": "Country",
-    "faoFoodPriceIndex": "FAO Food Price Index",
+    "faoFoodPriceIndex": "Food prices",
     "fuelPrices": "Fuel Prices",
     "fuelPricesDesc": "Retail gasoline and diesel prices across 30+ countries worldwide",
     "fuelPricesCountry": "Country",
@@ -194,7 +195,8 @@
     "consumerPrices": "Consumer Prices",
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
-    "climateNews": "Climate News"
+    "climateNews": "Climate News",
+    "ukmtoIncidents": "UKMTO Incidents"
   },
   "common": {
     "dismiss": "Dismiss",
@@ -821,8 +823,9 @@
         "setSecret": "Set secret",
         "staged": "Staged (save with OK)"
       },
-      "reserveEarlyAccess": "Reserve Your Early Access",
-      "skipSetup": "Skip the setup — a single World Monitor license unlocks everything. Join the waitlist for early access.",
+      "proCloud": "Features without a local API key use World Monitor cloud data.",
+      "skipSetupPro": "Skip the setup: sign in with World Monitor Pro to use cloud data instead of your own API keys.",
+      "getPro": "Get World Monitor Pro",
       "status": {
         "invalid": "Invalid",
         "looksInvalid": "Looks invalid",
@@ -865,16 +868,18 @@
       "verboseOn": "Verbose sidecar logging ON (saved)",
       "verifyFailed": "Saved verified keys. Failed: {{errors}}",
       "worldMonitor": {
+        "signIn": {
+          "title": "Sign in with Pro",
+          "description": "Pro works here once you sign in from the main window. No key needed."
+        },
         "apiKey": {
-          "title": "License / API Key",
+          "title": "Desktop key",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "API Starter and API Business subscribers create this key on the web dashboard under Settings → API Keys. If a full key is lost, revoke it and create a replacement."
+          "description": "For builds without sign-in. Pro: create one in Settings → API Keys on the web; API-plan keys also work. For your own use; shared or public deployments need an API plan. Help: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "OR",
         "register": {
-          "title": "Need an API key?",
-          "description": "See worldmonitor.app/docs/api-keys for step-by-step help. Manual API keys require an API Starter or API Business plan.",
-          "submitBtn": "View API plans"
+          "submitBtn": "View plans"
         }
       },
       "freePanelLimit": "Free plan: max {{max}} panels. Upgrade to PRO for unlimited."
@@ -898,15 +903,8 @@
     "gpsJamming": {
       "title": "Satellite navigation interference"
     },
-    "pipeline": {
-      "title": "PIPELINE"
-    },
-    "militaryFlight": {
-      "climbRate": "CLIMB RATE",
-      "manufacturer": "MANUFACTURER",
-      "owner": "OWNER",
-      "builtYear": "YEAR BUILT"
-    },
+    "pipeline":{"title":"PIPELINE"},
+    "militaryFlight":{"climbRate":"CLIMB RATE","manufacturer":"MANUFACTURER","owner":"OWNER","builtYear":"YEAR BUILT"},
     "militaryCluster": {
       "showLess": "Show less"
     }
@@ -924,8 +922,6 @@
     "deleteTabAria": "Delete tab {{name}}",
     "tabNameAria": "Tab name"
   },
-  "preferences": {
-    "panelFontScale": "Text size",
-    "followGlobalFontScale": "Use global"
-  }
+  "preferences":{"panelFontScale":"Text size","followGlobalFontScale":"Use global"},
+  "countryHistory":{"title":"Daily country history"}
 }

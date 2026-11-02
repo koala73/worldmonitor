@@ -26,9 +26,94 @@ export interface WebhookDeliveryPayload {
   details?: Record<string, unknown>;
 }
 
+// `country.risk_surge` delivery body (X-WM-Event: country.risk_surge). The
+// registry entry shared/event-triggers.json#events.country.risk_surge and the
+// OpenAPI webhooks block mirror this shape; tests/openapi-webhooks-contract
+// pins them together.
+export interface RiskSurgeWebhookPayload {
+  subscriberId: string;
+  countryCode: string;
+  countryName?: string;
+  score: number;
+  previousScore?: number | null;
+  delta24h: number;
+  trend?: string;
+  advisoryLevel?: string | null;
+  triggeredAt: string;
+  reason: string;
+  details?: Record<string, unknown>;
+}
+
+// `news.breaking` delivery body (X-WM-Event: news.breaking). Built by
+// scripts/shipping-webhook-worker.mjs from a teed rss_alert queue message;
+// shared/event-triggers.json#events.news.breaking mirrors it and
+// tests/openapi-webhooks-contract pins the two together. Every field is
+// always present: nullable ones carry null, lists are empty when unknown.
+export interface NewsBreakingWebhookPayload {
+  subscriberId: string;
+  eventId: string;
+  title: string;
+  source: string;
+  link: string | null;
+  publishedAt: string;
+  severity: string;
+  importanceScore: number;
+  corroborationCount: number;
+  category: string | null;
+  countryCodes: string[];
+  variant: string | null;
+  matchedKeywords: string[];
+  triggeredAt: string;
+  reason: string;
+}
+
+// `market.move` delivery body (X-WM-Event: market.move), from a teed
+// market_alert queue message; same pinning as above.
+export interface MarketMoveWebhookPayload {
+  subscriberId: string;
+  eventId: string;
+  assetClass: string;
+  symbol: string;
+  name: string;
+  price: number | null;
+  changePct: number;
+  direction: string;
+  severity: string;
+  source: string;
+  publishedAt: string;
+  triggeredAt: string;
+  reason: string;
+}
+
+// `natural.hazard` delivery body (X-WM-Event: natural.hazard), built by the
+// worker from a new row of seismology:earthquakes:v1 or natural:events:v1;
+// same pinning as above.
+export interface NaturalHazardWebhookPayload {
+  subscriberId: string;
+  eventId: string;
+  hazardType: string;
+  title: string;
+  source: string;
+  sourceUrl: string | null;
+  lat: number;
+  lon: number;
+  countryCodes: string[];
+  occurredAt: string;
+  magnitude: number | null;
+  depthKm: number | null;
+  nearTestSite: boolean | null;
+  alertLevel: string | null;
+  stormName: string | null;
+  stormCategory: number | null;
+  windKt: number | null;
+  triggeredAt: string;
+  reason: string;
+}
+
 export interface WebhookDeliveryOptions {
   event?: string;
   deliveryId?: string;
+  nowMs?: number;
   fetchImpl?: typeof fetch;
   resolveHostname?: (hostname: string) => Promise<string[]>;
 }
@@ -160,7 +245,7 @@ export async function assertWebhookDeliveryUrlSafe(
 
 export async function deliverShippingV2Webhook(
   record: WebhookRecord,
-  payload: WebhookDeliveryPayload,
+  payload: WebhookDeliveryPayload | RiskSurgeWebhookPayload,
   options: WebhookDeliveryOptions = {},
 ): Promise<WebhookDeliveryResult> {
   if (!record.active) {
@@ -172,13 +257,19 @@ export async function deliverShippingV2Webhook(
     options.resolveHostname,
   );
   const body = JSON.stringify(payload);
+  const timestamp = String(Math.floor((options.nowMs ?? Date.now()) / 1000));
+  const deliveryId = options.deliveryId ?? makeDeliveryId();
+  const event = options.event ?? 'chokepoint.disruption';
   const signature = createHmac('sha256', record.secret).update(body).digest('hex');
+  const signatureV2 = createHmac('sha256', record.secret).update(`${timestamp}.${deliveryId}.${event}.${body}`).digest('hex');
   const headers = {
     'content-type': 'application/json',
     'user-agent': 'WorldMonitor-ShippingV2-Webhooks/1.0',
     'x-wm-signature': `sha256=${signature}`,
-    'x-wm-delivery-id': options.deliveryId ?? makeDeliveryId(),
-    'x-wm-event': options.event ?? 'chokepoint.disruption',
+    'x-wm-signature-v2': `sha256=${signatureV2}`,
+    'x-wm-timestamp': timestamp,
+    'x-wm-delivery-id': deliveryId,
+    'x-wm-event': event,
   };
   const response = options.fetchImpl
     ? await options.fetchImpl(url, { method: 'POST', headers, body })

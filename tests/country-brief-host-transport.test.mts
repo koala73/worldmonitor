@@ -5,6 +5,60 @@ import { IntelligenceServiceClient } from '../src/generated/client/worldmonitor/
 import { ScorecardServiceClient } from '../src/generated/client/worldmonitor/scorecard/v1/service_client';
 import { ResilienceServiceClient } from '../src/generated/client/worldmonitor/resilience/v1/service_client';
 import { SupplyChainServiceClient } from '../src/generated/client/worldmonitor/supply_chain/v1/service_client';
+import { countryRiskDirectViewSchema, normalizeCountryDirectRead } from '../shared/country-brief-host';
+
+it('keeps the local read budget with its admission across country switches and cache clearing', async () => {
+  let calls = 0;
+  const fetch = createHostCountryFetch(async (_name, args: any) => {
+    calls++;
+    return { section: args.section, state: 'unavailable', reason: 'Controlled unavailable source' };
+  });
+  const select = fetch.selectAdmission;
+  select('admitted-IR');
+  const read = (code: string) => fetch(`https://www.worldmonitor.app/api/intelligence/v1/get-country-signal-observations?country_code=${code}&family=COUNTRY_SIGNAL_FAMILY_OUTAGES`);
+  for (let count = 0; count < 62; count++) await assert.rejects(read('IR'), /Controlled unavailable/);
+  await assert.rejects(read('IR'), /budget/);
+  assert.equal(calls, 62);
+  select('admitted-CN');
+  await assert.rejects(read('CN'), /Controlled unavailable/);
+  assert.equal(calls, 63);
+  select('admitted-IR');
+  fetch.clear();
+  await assert.rejects(read('IR'), /budget/);
+  assert.equal(calls, 63);
+  select('refreshed-IR');
+  await assert.rejects(read('IR'), /Controlled unavailable/);
+  assert.equal(calls, 64);
+});
+
+it('includes queued country families in the one deadline and removes them before dispatch', async t => {
+  const deadline = new AbortController();
+  t.mock.method(AbortSignal, 'timeout', () => deadline.signal);
+  const releases: Array<() => void> = [];
+  const calls: string[] = [];
+  const fetch = createHostCountryFetch(async (_name, args: any) => {
+    calls.push(args.section);
+    await new Promise<void>(resolve => releases.push(resolve));
+    return { section: args.section, state: 'ready', value: {}, retrievedAt: new Date().toISOString() };
+  });
+  const occupied = ['US', 'FR', 'GB'].map(code => fetch(`https://www.worldmonitor.app/api/intelligence/v1/get-country-facts?country_code=${code}`));
+  const queued = fetch('https://www.worldmonitor.app/api/intelligence/v1/get-country-signal-observations?country_code=US&family=COUNTRY_SIGNAL_FAMILY_OUTAGES');
+  const rejected = assert.rejects(queued, /Country source deadline/);
+  deadline.abort(new DOMException('Country source deadline', 'TimeoutError'));
+  await rejected;
+  for (const release of releases) release();
+  await Promise.all(occupied);
+  assert.deepEqual(calls, ['facts', 'facts', 'facts']);
+});
+
+it('preserves bounded risk history in panel validation and normalized cache identity', () => {
+  assert.equal(countryRiskDirectViewSchema.safeParse({ country_code: 'US', history_days: 30 }).success, true);
+  assert.deepEqual(normalizeCountryDirectRead('get_country_risk', { country_code: 'USA', history_days: 30 }), { country_code: 'US', history_days: 30 });
+  for (const history_days of [0, 91, 1.5, '30', null]) {
+    assert.equal(countryRiskDirectViewSchema.safeParse({ country_code: 'US', history_days }).success, false);
+    assert.equal(normalizeCountryDirectRead('get_country_risk', { country_code: 'US', history_days }), null);
+  }
+});
 
 it('uses generated country query names without passing browser credentials to the host', async () => {
   const calls: Array<{ name: string; args: any }> = [];

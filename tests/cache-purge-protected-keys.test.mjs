@@ -46,11 +46,53 @@ function purge(body) {
 }
 
 describe('cache-purge protects auth state', () => {
+  it('protects foreign preview auth state through explicit keys and wildcard scans during production execution', async () => {
+    const protectedKeys = ['oauth:token:abc', 'webhook:sub:x', 'internal-mcp-replay:x', 'desktop-auth:x', 'rl:x']
+      .map(key => `preview:deadbeef:${key}`);
+    const safe = 'preview:deadbeef:news:digest';
+    const commands = [];
+    const saved = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input).includes('/scan/')) return Response.json({ result: ['0', [...protectedKeys, safe]] });
+      commands.push(...JSON.parse(init.body));
+      return Response.json([{ result: 1 }]);
+    };
+    try {
+      for (const body of [{ keys: protectedKeys }, { patterns: ['preview:*'] }]) {
+        const response = await handler(new Request('https://worldmonitor.app/api/cache-purge', {
+          method: 'POST', headers: { Authorization: `Bearer ${SECRET}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        }));
+        assert.equal(response.status, 200);
+      }
+      assert.deepEqual(commands, [['DEL', safe]]);
+    } finally { globalThis.fetch = saved; }
+  });
+  it('keeps foreign preview durable data out of wildcard purges during production execution', async () => {
+    const durable = ['military:bases:x', 'conflict:iran-events:x', 'conflict:ucdp-events:x']
+      .map(key => `preview:deadbeef:${key}`);
+    const safe = 'preview:deadbeef:news:digest';
+    const commands = [];
+    const saved = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input).includes('/scan/')) return Response.json({ result: ['0', [...durable, safe]] });
+      commands.push(...JSON.parse(init.body));
+      return Response.json([{ result: 1 }]);
+    };
+    try {
+      const response = await handler(new Request('https://worldmonitor.app/api/cache-purge', {
+        method: 'POST', headers: { Authorization: `Bearer ${SECRET}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ patterns: ['preview:*'] }),
+      }));
+      assert.equal(response.status, 200);
+      assert.deepEqual(commands, [['DEL', safe]]);
+    } finally { globalThis.fetch = saved; }
+  });
   it('drops OAuth and connector auth keys from an explicit key list', async () => {
     const res = await purge({
       keys: [
         'oauth:token:abc', 'oauth:refresh:def', 'oauth:client:c1', 'mcp-grant:n1',
         'wm:slack:oauth:s1', 'wm:discord:oauth:s2', 'rl:mcp:1',
+        'internal-mcp-replay:v1:deadbeef', 'webhook:sub:wh_abc:v1', 'webhook:owner:0123:v1',
+        'desktop-auth:code:0123abcd',
         'news:digest:v1', 'entitlements:user_1',
       ],
     });
@@ -64,5 +106,29 @@ describe('cache-purge protects auth state', () => {
     assert.equal(res.status, 200);
     const { keys } = await res.json();
     assert.deepEqual(keys, ['oauth-cache:keep']);
+  });
+
+  // Replay nonces and shipping webhook records share the Redis with the
+  // caches. Purging the first re-opens the signed-request replay window;
+  // purging the second deletes customers' subscriptions and signing secrets.
+  it('never deletes internal-MCP replay nonces or shipping webhook records, even by broad pattern', async () => {
+    const savedFetch = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (url.startsWith('https://redis.test/scan/')) {
+        return Response.json({ result: ['0', [
+          'internal-mcp-replay:v1:deadbeef', 'webhook:sub:wh_abc:v1', 'webhook:owner:0123:v1', 'webhooks-cache:keep',
+        ]] });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    };
+    try {
+      const res = await purge({ patterns: ['w*', 'internal-*'] });
+      assert.equal(res.status, 200);
+      const { keys } = await res.json();
+      assert.deepEqual(keys, ['webhooks-cache:keep']);
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
   });
 });

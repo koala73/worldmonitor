@@ -13,12 +13,8 @@ paths:
             tags:
                 - SanctionsService
             summary: ListSanctionsPressure
-            description: ListSanctionsPressure retrieves normalized OFAC designation summaries and recent additions. PRO-gated. Requires entitlement tier >= 1.
+            description: ListSanctionsPressure retrieves normalized OFAC designation summaries and recent additions.
             operationId: ListSanctionsPressure
-            security:
-                - WorldMonitorKey: []
-                - ApiKeyHeader: []
-                - BearerAuth: []
             parameters:
                 - name: max_items
                   in: query
@@ -76,7 +72,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: PRO entitlement access denied.
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -149,12 +145,15 @@ paths:
             tags:
                 - SanctionsService
             summary: LookupSanctionEntity
-            description: LookupSanctionEntity searches the OFAC entity index by name, vessel, or aircraft.
+            description: |-
+                LookupSanctionEntity screens the seeded OFAC SDN, OFAC Consolidated, Canada SEMA and US
+                 Consolidated Screening List export-control lists by name, up to 10 retained aliases per
+                 entity, or an exact IMO identifier.
             operationId: LookupSanctionEntity
             parameters:
                 - name: q
                   in: query
-                  description: Search text for a sanctioned person, organization, vessel, or aircraft.
+                  description: Search a name, up to 10 retained aliases per entity, or an exact IMO identifier (2-200 characters).
                   required: false
                   example: "example"
                   schema:
@@ -288,10 +287,6 @@ components:
             in: header
             name: X-Api-Key
             description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
-        BearerAuth:
-            type: http
-            scheme: bearer
-            description: 'Bearer token: a Clerk-issued JWT for browser session flows, passed as Authorization: Bearer <token>.'
     schemas:
         JmespathProjectionError:
             description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
@@ -556,12 +551,12 @@ components:
             properties:
                 q:
                     type: string
-                    description: Search text for a sanctioned person, organization, vessel, or aircraft.
+                    description: Search a name, up to 10 retained aliases per entity, or an exact IMO identifier (2-200 characters).
                 maxResults:
                     type: integer
                     format: int32
                     description: Maximum number of matching sanctioned entities to return.
-            description: LookupSanctionEntityRequest searches the OFAC entity index by name, vessel, or aircraft.
+            description: LookupSanctionEntityRequest screens the seeded OFAC SDN, OFAC Consolidated, Canada SEMA and US CSL index.
         LookupSanctionEntityResponse:
             type: object
             properties:
@@ -574,7 +569,12 @@ components:
                     format: int32
                 source:
                     type: string
-            description: LookupSanctionEntityResponse contains matched entities from OFAC + OpenSanctions.
+                    description: |-
+                        Comma-separated lists searched; "seeded" when q is rejected before lookup;
+                         "unavailable" when no valid index records are available.
+            description: |-
+                LookupSanctionEntityResponse contains seeded matches ranked by token-set Jaro-Winkler score.
+                 A match is a lead to confirm with the issuing agency, not legal advice.
         SanctionEntityMatch:
             type: object
             properties:

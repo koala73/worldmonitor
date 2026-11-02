@@ -18,7 +18,7 @@ import { readFileSync } from 'node:fs';
 import { createForecastServiceRoutes, type ForecastServiceHandler } from '../src/generated/server/worldmonitor/forecast/v1/service_server.ts';
 import { validateGeneratedRequest } from '../server/request-validator.ts';
 import { mapErrorToResponse } from '../server/error-mapper.ts';
-import { ApiError } from '../src/generated/server/worldmonitor/forecast/v1/service_server.ts';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -98,7 +98,7 @@ describe('getSimulationOutcome runId filter (#3734 U6)', () => {
     }) as typeof fetch;
     for (const runId of ['arbitrary', '../latest', '1734567890123-abc\n', '9'.repeat(1000) + '-abc', '1734567890123-' + 'a'.repeat(65), null, 123]) {
       await assert.rejects(getSimulationOutcome(makeCtx(), { runId: runId as string }),
-        (error: unknown) => error instanceof ApiError && error.statusCode === 400);
+        validationFailure('runId'));
     }
     assert.equal(calls, 0);
   });

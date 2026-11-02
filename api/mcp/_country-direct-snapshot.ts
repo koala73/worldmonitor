@@ -37,8 +37,14 @@ const riskSchema = z.object({
   countryCode: z.string(), countryName: z.string(), advisoryLevel: z.string(), sanctionsActive: z.boolean(), sanctionsCount: z.number().finite(),
   fetchedAt: z.number().finite().nonnegative(), upstreamUnavailable: z.literal(false), cii: ciiSchema.nullable().optional(),
 }).passthrough();
+const ciiHistorySchema = z.object({
+  methodologyVersion: z.string().min(1), requestedDays: z.number().int().min(1).max(90), returnedDays: z.number().int().nonnegative(),
+  points: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), combinedScore: z.number().finite(), components: ciiSchema.shape.components })).max(90),
+  change: z.object({ fromDate: z.string(), fromScore: z.number().finite(), toDate: z.string(), toScore: z.number().finite(), delta: z.number().finite() }).nullable(),
+  versionBreaks: z.array(z.object({ date: z.string(), from: z.string(), to: z.string() })), stale: z.literal(false),
+}).refine(history => history.returnedDays === history.points.length);
 
-export function isCountryDirectOriginalReusable(name: 'get_country_brief' | 'get_country_risk', value: unknown, country: string, now: number): boolean {
+export function isCountryDirectOriginalReusable(name: 'get_country_brief' | 'get_country_risk', value: unknown, country: string, now: number, historyDays?: number): boolean {
   if (value && typeof value === 'object' && ('panelRequest' in value || 'usage' in value)) return false;
   if (name === 'get_country_brief') {
     const parsed = briefSchema.safeParse(value);
@@ -51,6 +57,11 @@ export function isCountryDirectOriginalReusable(name: 'get_country_brief' | 'get
       && !original.error && !['error', 'partial', 'stale', 'unavailable'].some(status => original.status === status);
   }
   const parsed = riskSchema.safeParse(value);
+  const history = parsed.success ? parsed.data.ciiHistory : undefined;
+  if (historyDays !== undefined) {
+    const checked = ciiHistorySchema.safeParse(history);
+    if (!checked.success || checked.data.requestedDays !== historyDays) return false;
+  } else if (history !== undefined) return false;
   return parsed.success && parsed.data.countryCode === country
     && (!parsed.data.cii || parsed.data.cii.region === country);
 }

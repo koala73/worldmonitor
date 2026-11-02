@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { joinSafeHtml, safeHtml, unsafeRawHtml, type SafeHtml } from '@/utils/sanitize';
 import { fetchChokepointStatus, refreshChokepointStatusAfterHydration } from '@/services/supply-chain';
+import { chokepointCoverageWarning } from '@/services/supply-chain/chokepoint-coverage';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 import type { GetChokepointStatusResponse, ChokepointInfo } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 
@@ -114,8 +115,9 @@ export class ChokepointStripPanel extends Panel {
           </div>
         </div>`;
     }));
-    const coverageWarning = this.data.upstreamUnavailable
-      ? safeHtml`<div class="cp-strip-warning">${t('components.supplyChain.upstreamUnavailable')}</div>`
+    const coverageText = chokepointCoverageWarning(this.data);
+    const coverageWarning = coverageText
+      ? safeHtml`<div class="cp-strip-warning">${coverageText}</div>`
       : safeHtml``;
 
     const nAis = ordered.reduce(

@@ -20,6 +20,7 @@ const repoRoot = resolve(__dirname, '..');
 const MIRRORED_FILES = [
   'china-corporate-disclosure-policy.js',
   'correlation-runtime-mode.js',
+  'gdelt-tension-pairs.json',
   'geography.js',
   'hapi-app-identifier.json',
   'iso2-to-region.json',
@@ -44,6 +45,10 @@ const MIRRORED_FILES = [
   'entity-registry.js',
   'entity-extraction-core.js',
   'news-clustering-core.js',
+  // #9095: news-clustering-core.js imports it for same-copy detection.
+  'syndication.js',
+  // Push event registry read by scripts/shipping-webhook-worker.mjs on Railway.
+  'event-triggers.json',
 ];
 
 describe('scripts/shared/ mirrors shared/', () => {

@@ -7,6 +7,8 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, before, describe, it } from 'node:test';
 import { runInNewContext } from 'node:vm';
+import { discoverContentCorpusPages } from '../scripts/discover-content-corpus-pages.mjs';
+import { USE_CASE_WORKFLOWS } from '../scripts/data/use-case-workflows.mjs';
 
 import {
   buildCorpus,
@@ -26,6 +28,7 @@ const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const EXPECTED_USE_CASES_LASTMOD = [
   USE_CASES_CONTENT_VERSION,
   gitFileLastmod(repoRoot, 'scripts/build-use-cases.mjs'),
+  gitFileLastmod(repoRoot, 'scripts/data/use-case-workflows.mjs'),
 ].filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? '')).sort().at(-1);
 
 function jsonLdObjects(html) {
@@ -223,16 +226,16 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
   });
 
   it('publishes the hub and child pages with crawlable discovery', () => {
-    assert.equal(USE_CASE_PAGES.length, 3);
+    assert.equal(USE_CASE_PAGES.length, 12);
     assert.deepEqual(
-      USE_CASE_PAGES.map((page) => page.path),
+      USE_CASE_PAGES.slice(0, 3).map((page) => page.path),
       [
         '/use-cases/monitor-country-risk/',
         '/use-cases/verify-breaking-news/',
         '/use-cases/monitor-supply-chain-disruptions/',
       ],
     );
-    assert.match(hubHtml, /<h1>Evergreen monitoring workflows<\/h1>/);
+    assert.match(hubHtml, /<h1>Intelligence monitoring use cases<\/h1>/);
     assert.match(hubHtml, /href="\/use-cases\/monitor-country-risk\/"/);
     assert.match(hubHtml, /href="\/use-cases\/verify-breaking-news\/"/);
     assert.match(hubHtml, /href="\/use-cases\/monitor-supply-chain-disruptions\/"/);
@@ -428,8 +431,8 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
 
   it('records the family in the crawlable corpus manifest and countries hub', () => {
     assert.equal(manifest.sections.useCases.index, '/use-cases/');
-    assert.equal(manifest.sections.useCases.count, 3);
-    assert.deepEqual(manifest.sections.useCases.routes, [
+    assert.equal(manifest.sections.useCases.count, 12);
+    assert.deepEqual(manifest.sections.useCases.routes.slice(0, 3), [
       '/use-cases/monitor-country-risk/',
       '/use-cases/verify-breaking-news/',
       '/use-cases/monitor-supply-chain-disruptions/',
@@ -437,6 +440,62 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
     const countriesHub = readFileSync(join(outDir, 'countries', 'index.html'), 'utf8');
     assert.match(countriesHub, /href="\/use-cases\/monitor-country-risk\/"/);
     assert.match(countriesHub, /href="\/use-cases\/"/);
+  });
+
+  it('publishes every added workflow with matching visible schema and a working discovery path', () => {
+    const discovered = discoverContentCorpusPages({ publicDir: outDir });
+    const titles = new Set();
+    const descriptions = new Set();
+    const layers = readFileSync(join(repoRoot, 'src/config/map-layer-definitions.ts'), 'utf8');
+    for (const page of USE_CASE_WORKFLOWS) {
+      const path = `/use-cases/${page.slug}/`;
+      const html = readFileSync(join(outDir, path, 'index.html'), 'utf8');
+      assert.ok(hubHtml.includes(`href="${path}"`), `${path} absent from hub`);
+      assert.ok(manifest.sections.useCases.routes.includes(path));
+      assert.ok(discovered.some((entry) => entry.loc === `https://www.worldmonitor.app${path}`), 'missing sitemap discovery');
+      assert.ok(html.includes(`rel="canonical" href="https://www.worldmonitor.app${path}"`));
+      assert.equal((html.match(/<h1>/g) || []).length, 1);
+      const description = html.match(/<meta name="description" content="([^"]+)"/)?.[1];
+      assert.ok(description?.length >= 155 && description.length <= 160);
+      assert.ok(!descriptions.has(description), 'duplicate description');
+      assert.ok(!titles.has(page.title), 'duplicate title');
+      descriptions.add(description);
+      titles.add(page.title);
+      const structured = jsonLdObjects(html).flatMap((item) => item['@graph'] ?? item);
+      const howTo = structured.find((item) => item['@type'] === 'HowTo');
+      assert.equal(howTo.step.length, page.steps.length);
+      assert.deepEqual(visibleWorkflowStepNames(html), page.steps.map(([name]) => name));
+      for (const step of howTo.step) {
+        assert.ok(html.includes(`id="${new URL(step.url).hash.slice(1)}"`));
+      }
+      const faq = structured.find((item) => item['@type'] === 'FAQPage');
+      assert.equal(faq.mainEntity[0].name, page.question);
+      assert.equal(faq.mainEntity[0].acceptedAnswer.text, page.answer);
+      assert.ok(html.includes(page.question));
+      assert.match(html, /Illustrative scenario:/);
+      assert.match(html, /class="cta"[^>]*data-use-case-handoff/);
+      assert.match(html, /data-umami-event="use-case-product-cta-click"/);
+      const href = html.match(/href="([^"]+)"[^>]*data-use-case-handoff/)?.[1].replaceAll('&amp;', '&');
+      const handoff = new URL(href, 'https://www.worldmonitor.app');
+      assert.equal(handoff.pathname, '/dashboard');
+      assert.equal(handoff.searchParams.get('wm_content_campaign'), page.slug);
+      assert.equal(handoff.searchParams.get('layers'), new URL(page.dashboard, handoff).searchParams.get('layers'));
+      for (const layer of handoff.searchParams.get('layers').split(',')) {
+        assert.ok(layers.includes(`def('${layer}',`), `unknown layer ${layer}`);
+      }
+      for (const slug of page.related) {
+        assert.ok(html.includes(`href="/use-cases/${slug}/"`));
+        assert.ok(manifest.sections.useCases.routes.includes(`/use-cases/${slug}/`));
+      }
+      for (const [href] of page.sources) {
+        if (href.startsWith('/docs/')) {
+          assert.ok(readFileSync(join(repoRoot, `${href.slice(1)}.mdx`), 'utf8').length > 0);
+        } else {
+          assert.ok(readFileSync(join(outDir, href, 'index.html'), 'utf8').length > 0);
+        }
+      }
+      assert.doesNotMatch(html, /TODO|lorem ipsum|coming soon|placeholder/i);
+    }
   });
 
   it('rejects indexable placeholder copy', () => {

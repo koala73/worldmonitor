@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import {
   TRANSLATE_TARGET_LANGUAGES,
+  __setTranslateBudgetLimiterForTests,
   summarizeArticle,
 } from '../server/worldmonitor/news/v1/summarize-article.ts';
 
@@ -22,6 +23,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  __setTranslateBudgetLimiterForTests(null);
   globalThis.fetch = originalFetch;
   for (const key of ENV_KEYS) {
     const value = originalEnv.get(key);
@@ -50,6 +52,21 @@ function translateRequest(variant: string) {
 }
 
 describe('summarize-article translate target language', () => {
+  for (const [mode, variant, errorType] of [
+    ['brief', 'full', 'AuthError'],
+    ['translate', 'unsupported', 'ValidationError'],
+  ] as const) {
+    it(`rejects ${mode}/${variant} before processing prompt inputs`, async () => {
+      const request = { ...translateRequest(variant), mode };
+      Object.defineProperty(request, 'headlines', {
+        get() { throw new Error('prompt intake must not run for a rejected request'); },
+      });
+      const response = await summarizeArticle(anonymousContext(), request);
+      assert.equal(response.status, 'SUMMARIZE_STATUS_ERROR');
+      assert.equal(response.errorType, errorType);
+    });
+  }
+
   it('rejects a free-form target before any provider call', async () => {
     const llmCalls: string[] = [];
     globalThis.fetch = async (input) => {
@@ -71,9 +88,12 @@ describe('summarize-article translate target language', () => {
   });
 
   it('still translates into a supported language for an anonymous caller', async () => {
+    // The anonymous daily translate budget allows this call (its own suite:
+    // summarize-translate-hardening.test.mts).
+    __setTranslateBudgetLimiterForTests(async (_scope, limit) => ({ allowed: true, limit, reset: 0, degraded: false }));
     const llmCalls: string[] = [];
-    globalThis.fetch = async (input) => {
-      llmCalls.push(String(input));
+    globalThis.fetch = async (input, init) => {
+      if (init?.method === 'POST') llmCalls.push(String(input));
       return new Response('provider down', { status: 503 });
     };
 

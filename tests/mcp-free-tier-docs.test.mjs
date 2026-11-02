@@ -28,7 +28,9 @@ describe('MCP free-tier discovery parity', () => {
       registryFreeTools,
       'server-card free access must derive from the same registry roster as tools/list',
     );
-    assert.deepEqual(cardFreeTools, ['get_sources'], 'get_sources must remain the sole free data tool');
+    // get_sources is the sole free DATA tool. report_issue is free so keyless
+    // agents can report problems; it reads no data (#8721).
+    assert.deepEqual(cardFreeTools, ['get_sources', 'report_issue'], 'get_sources must remain the sole free data tool');
   });
 
   it('does not advertise describe_tool as anonymous', () => {

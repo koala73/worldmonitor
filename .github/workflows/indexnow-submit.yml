@@ -18,13 +18,15 @@ concurrency:
 jobs:
   submit-indexnow:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'schedule' ||
       (
-        github.event.deployment_status.state == 'success' &&
-        github.event.deployment.environment == 'Production' &&
-        github.event.deployment.creator.login == 'vercel[bot]'
-      )
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
+        (
+          github.event.deployment_status.state == 'success' &&
+          github.event.deployment.environment == 'Production' &&
+          github.event.deployment.creator.login == 'vercel[bot]'
+        )
+      ) && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     # Seven hosts are now submitted sequentially rather than two; each request
     # carries its own 15s deadline (REQUEST_TIMEOUT_MS), so this bounds a stuck
@@ -35,7 +37,7 @@ jobs:
         with:
           ref: ${{ github.event_name == 'deployment_status' && github.event.deployment.sha || github.sha }}
           fetch-depth: 2
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
       - name: Submit every published host and page

@@ -12,7 +12,21 @@
  * this key exists is an in-flight or failed attempt, not proven replay.
  */
 
-export const REFRESH_TTL_SECONDS = 604800;
+/**
+ * Idle window of a refresh token, and so of a connector nobody uses. Every
+ * rotation writes the new token with the whole window, so it slides: a client
+ * that refreshes at least once in 30 days stays connected, and one idle longer
+ * signs in again. MCP clients such as Claude refresh only when the connector is
+ * used, so the old 7-day value expired connectors after a quiet week.
+ *
+ * The family pointer and the family revocation marker share this TTL on
+ * purpose: replay evidence must outlive any token that could still be
+ * presented, or a late replay would stop revoking the family (GHSA-f6gj).
+ * Revocation does not wait for expiry: Pro grants are checked against Convex on
+ * every refresh and every MCP request (positive results are never cached), and
+ * a dashboard key is re-validated on bearer use behind a 60-second cache.
+ */
+export const REFRESH_TTL_SECONDS = 30 * 24 * 3600;
 export const REFRESH_ATTEMPT_TTL_SECONDS = 60;
 
 export type PipelineCommand = (string | number | unknown)[];

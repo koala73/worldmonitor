@@ -1,6 +1,7 @@
 import { CountrySectionError } from '@/services/country-brief-error';
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { iso2ToCountryName } from '@/utils/country-codes';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 
@@ -192,7 +193,7 @@ export class StorageFacilityMapPanel extends Panel {
     // Loose coupling with DeckGLMap: map clicks on a storage dot dispatch
     // 'energy:open-storage-facility-detail' with the id, and this panel
     // opens its drawer. No-op if the panel isn't mounted.
-    if (typeof window !== 'undefined') {
+    if (!this.detailSource && typeof window !== 'undefined') {
       window.addEventListener('energy:open-storage-facility-detail', this.openDetailHandler);
     }
     this.content.addEventListener('click', this.handleContentClick);
@@ -213,7 +214,7 @@ export class StorageFacilityMapPanel extends Panel {
   };
 
   public destroy(): void {
-    if (typeof window !== 'undefined') {
+    if (!this.detailSource && typeof window !== 'undefined') {
       window.removeEventListener('energy:open-storage-facility-detail', this.openDetailHandler);
     }
     super.destroy?.();
@@ -292,6 +293,14 @@ export class StorageFacilityMapPanel extends Panel {
   public async presentDetail(data: ListStorageFacilitiesResponse, id: string): Promise<void> {
     this.data = data;
     await this.loadDetail(id);
+  }
+
+  public async presentCountryDetail(countryCode: string, id: string): Promise<void> {
+    const { registry } = getCachedStorageFacilityRegistry();
+    const data = buildBootstrapResponse(registry);
+    const facilities = data?.facilities.filter(facility => facility.country === countryCode) ?? [];
+    if (!data || !facilities.some(facility => facility.id === id)) throw new Error('Storage facility is not in this country.');
+    await this.presentDetail({ ...data, facilities }, id);
   }
 
   private async loadDetail(facilityId: string): Promise<void> {
@@ -494,7 +503,7 @@ export class StorageFacilityMapPanel extends Panel {
         <div class="sf-kv">
           <div class="sf-kv-key">Operator</div>   <div>${escapeHtml(f.operator)}</div>
           <div class="sf-kv-key">Type</div>       <div>${escapeHtml(typeLabel)}</div>
-          <div class="sf-kv-key">Country</div>    <div>${escapeHtml(f.country)}</div>
+          <div class="sf-kv-key">Country</div>    <div>${escapeHtml(iso2ToCountryName(f.country))}</div>
           <div class="sf-kv-key">Capacity</div>   <div>${escapeHtml(capacityLabel(f))}</div>
           <div class="sf-kv-key">Location</div>   <div>${(f.location?.lat ?? 0).toFixed(3)}°, ${(f.location?.lon ?? 0).toFixed(3)}°</div>
           <div class="sf-kv-key">In service</div> <div>${f.inService > 0 ? escapeHtml(String(f.inService)) : '—'}</div>

@@ -19,7 +19,7 @@ import {
   type ParseResult,
 } from '../../news/v1/list-feed-digest';
 import type { ServerFeed } from '../../news/v1/_feeds';
-import { classifyByKeyword } from '../../../../shared/threat-keyword-classifier';
+import { classifyByKeyword, type ThreatClassification } from '../../../../shared/threat-keyword-classifier';
 import type { EventCategory, ThreatLevel } from '../../../../shared/threat-keyword-classifier';
 import { clusterCountryTimelineIncidents } from '../../../../shared/country-timeline-events';
 import type {
@@ -118,6 +118,7 @@ export interface CoverageHeadline {
   url: string;
   source: string;
   publishedAtMs: number;
+  threat: ThreatClassification;
 }
 
 export interface CoverageFetch {
@@ -182,6 +183,7 @@ export async function fetchCountryCoverageFeeds(
       url: item.link,
       source: source || item.originPublisher || item.source,
       publishedAtMs: item.publishedAt,
+      threat: classifyByKeyword(item.title, CLASSIFIER_VARIANT),
     });
   }
   headlines.sort((a, b) => b.publishedAtMs - a.publishedAtMs);

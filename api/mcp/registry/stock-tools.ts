@@ -53,10 +53,44 @@ const BACKTEST_SCHEMA = {
   },
 };
 
+function stockResearchArguments(params: Record<string, unknown>) {
+  const invalid = (field: string, description: string): never => {
+    throw new RpcValidationError('get_stock_research', [{ field, description }]);
+  };
+  const operation = params.operation;
+  if (typeof operation !== 'string' || !Object.prototype.hasOwnProperty.call(OPERATIONS, operation)) {
+    invalid('operation', 'Select a supported stock research operation.');
+  }
+  const selected = operation as keyof typeof OPERATIONS;
+  const single = selected === 'analysis' || selected === 'backtest';
+  const rawSymbols = params.symbols;
+  if (!Array.isArray(rawSymbols) || rawSymbols.length < 1 || rawSymbols.length > 50 || (single && rawSymbols.length !== 1)) {
+    invalid('symbols', 'Use exactly one symbol for analysis/backtest, or 1 through 50 for stored results.');
+  }
+  const symbols = (rawSymbols as unknown[]).map(raw => {
+    if (typeof raw !== 'string' || !/^[A-Z0-9^][A-Z0-9.^=-]{0,31}$/i.test(raw.trim())) {
+      invalid('symbols', 'Each symbol must contain 1 through 32 ticker characters.');
+    }
+    return (raw as string).trim().toUpperCase();
+  });
+  const news = selected === 'analysis' || selected === 'history';
+  if (params.include_news !== undefined && (!news || typeof params.include_news !== 'boolean')) {
+    invalid('include_news', 'A boolean news option is supported for analysis/history only.');
+  }
+  if (params.limit_per_symbol !== undefined && selected !== 'history') invalid('limit_per_symbol', 'This option is only supported for history.');
+  if (params.eval_window_days !== undefined && news) invalid('eval_window_days', 'This option is only supported for backtest/stored-backtests.');
+  const limit = params.limit_per_symbol ?? 4;
+  const window = params.eval_window_days ?? 10;
+  if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 32) invalid('limit_per_symbol', 'Expected an integer from 1 through 32.');
+  if (typeof window !== 'number' || !Number.isInteger(window) || window < 3 || window > 30) invalid('eval_window_days', 'Expected an integer from 3 through 30.');
+  return { selected, single, symbols, news, limit, window };
+}
+
 export const STOCK_TOOLS: ToolDef[] = [{
   name: 'get_stock_research',
+  title: 'Stock research',
   _outputBudgetBytes: 524288,
-  description: 'Stock research through the existing subscription gateway: current analysis, technical backtest, saved analysis history, or saved backtests. Analyze or backtest one symbol; retrieve stored results for a watchlist. Default no news, four history snapshots per symbol, and a ten-trading-day evaluation window. Preserve availability, observation dates, model/fallback provenance, ratingBasis and engineVersion. Technical backtests omit point-in-time fundamentals and are simulations, not trading results or forecasts. Cold analysis may invoke upstream data and an LLM; Existing provider quotas and billing denials apply; account calls use the daily MCP meter, while env-key calls retain their existing rate limit. Analysis/backtest generation may save shared research snapshots. No trading or account changes. For large histories use fewer symbols/snapshots or a jmespath projection.',
+  description: 'Run one stock-research operation and return {operation, data}: analysis (current rating with ratingBasis, model and engineVersion provenance), backtest (technical-signal simulation over a trading-day window), history (saved analysis snapshots per symbol) or stored-backtests (saved backtests per symbol). analysis and backtest take exactly one symbol; history and stored-backtests take up to 50. Results record availability and observation dates; backtests omit point-in-time fundamentals and are simulations, not trading results or forecasts. A cold analysis may fetch upstream market data and call an LLM (up to 55 s) and may save a shared research snapshot, so readOnlyHint is false; no trades or account changes occur. Requires a paid plan; weight 2 on API plans, with the gateway\'s provider quotas also applying. include_news applies to analysis/history, limit_per_symbol to history, eval_window_days to backtests.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -82,36 +116,9 @@ export const STOCK_TOOLS: ToolDef[] = [{
     },
   },
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  _validateArgs: params => { stockResearchArguments(params); },
   _execute: async (params, base, context, execution) => {
-    const invalid = (field: string, description: string): never => {
-      throw new RpcValidationError('get_stock_research', [{ field, description }]);
-    };
-    const operation = params.operation;
-    if (typeof operation !== 'string' || !Object.prototype.hasOwnProperty.call(OPERATIONS, operation)) {
-      invalid('operation', 'Select a supported stock research operation.');
-    }
-    const selected = operation as keyof typeof OPERATIONS;
-    const single = selected === 'analysis' || selected === 'backtest';
-    const rawSymbols = params.symbols;
-    if (!Array.isArray(rawSymbols) || rawSymbols.length < 1 || rawSymbols.length > 50 || (single && rawSymbols.length !== 1)) {
-      invalid('symbols', 'Use exactly one symbol for analysis/backtest, or 1 through 50 for stored results.');
-    }
-    const symbols = (rawSymbols as unknown[]).map(raw => {
-      if (typeof raw !== 'string' || !/^[A-Z0-9^][A-Z0-9.^=-]{0,31}$/i.test(raw.trim())) {
-        invalid('symbols', 'Each symbol must contain 1 through 32 ticker characters.');
-      }
-      return (raw as string).trim().toUpperCase();
-    });
-    const news = selected === 'analysis' || selected === 'history';
-    if (params.include_news !== undefined && (!news || typeof params.include_news !== 'boolean')) {
-      invalid('include_news', 'A boolean news option is supported for analysis/history only.');
-    }
-    if (params.limit_per_symbol !== undefined && selected !== 'history') invalid('limit_per_symbol', 'This option is only supported for history.');
-    if (params.eval_window_days !== undefined && news) invalid('eval_window_days', 'This option is only supported for backtest/stored-backtests.');
-    const limit = params.limit_per_symbol ?? 4;
-    const window = params.eval_window_days ?? 10;
-    if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 32) invalid('limit_per_symbol', 'Expected an integer from 1 through 32.');
-    if (typeof window !== 'number' || !Number.isInteger(window) || window < 3 || window > 30) invalid('eval_window_days', 'Expected an integer from 3 through 30.');
+    const { selected, single, symbols, news, limit, window } = stockResearchArguments(params);
     const query = new URLSearchParams();
     if (single) query.set('symbol', symbols[0]!);
     else symbols.forEach(symbol => query.append('symbols', symbol));

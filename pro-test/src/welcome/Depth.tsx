@@ -55,7 +55,7 @@ export const Depth = () => (
       >
         {DEPTH_PROOF_STATS.map(({ value, labelKey }) => (
           <div key={labelKey} className="data-cell text-center flex flex-col">
-            <dt className="font-mono text-[10px] uppercase tracking-widest text-wm-muted mt-2">{t(labelKey)}</dt>
+            <dt className="font-mono text-xs uppercase tracking-widest text-wm-muted mt-2">{t(labelKey)}</dt>
             <dd className="order-first text-3xl md:text-4xl font-display font-bold text-wm-green text-glow">{String(value)}</dd>
           </div>
         ))}

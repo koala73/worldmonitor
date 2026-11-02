@@ -1,88 +1,92 @@
 ---
 title: "ACLED alternatives for intelligence teams"
-description: "Choose an ACLED alternative by task. Compare specialist options, the limits of World Monitor, and when keeping ACLED makes more sense."
-metaTitle: "ACLED alternatives for intelligence teams | World Monitor"
+description: "ACLED alternatives ranked by why people leave: access limits, live monitoring, alerts and API. Compare World Monitor, Liveuamap and Recorded Future, and when to stay with ACLED."
+metaTitle: "ACLED alternatives for conflict monitoring | World Monitor"
 keywords: "ACLED buyers, acled alternatives for intelligence teams, global intelligence tools"
 audience: "ACLED buyers"
 pubDate: "2026-10-02"
+modifiedDate: "2026-10-18"
 author: "World Monitor editorial team"
 authorType: "Organization"
 authorUrl: "https://www.worldmonitor.app/"
 ---
 
-This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. Sources were checked on October 2, 2026. Confirm current access and contracts before buying.
+This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 18, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
 
 ## TL;DR
 
-> Before searching for an ACLED alternative, separate data access from the interface. A better-looking map cannot replace the event definitions, permissions, or history needed by a research project.
+> The right ACLED alternative depends on whether you are leaving the dataset or the access terms. If you need to follow conflict as it happens, choose World Monitor: a free live map with conflict beside shipping, aviation and markets, alert rules by country, event type and severity delivered to Slack, email or a signed webhook, and an API, SDKs and MCP at published prices. Choose Liveuamap for a cheap, focused conflict news map. Choose Recorded Future for facility and country risk under an enterprise contract. Stay with ACLED if your research depends on its coded events.
 
 ## Alternatives at a glance
 
-| Alternative | Choose it for |
-| --- | --- |
-| World Monitor | Monitoring before a research project |
-| Liveuamap | Following regional news reports |
-| Recorded Future | Organizational geopolitical exposure |
-| Keep ACLED | Research with consistently coded conflict events |
+| Alternative | Why people switch to it | Access |
+| --- | --- | --- |
+| World Monitor | Live monitoring, alerts, multi-domain map, API and MCP | [Free map](https://www.worldmonitor.app/dashboard); [published paid prices](https://www.worldmonitor.app/pro#pricing) |
+| Liveuamap | Low-cost map of regional conflict reports | Free map; low-cost paid plans |
+| Recorded Future | Facility threats and country risk | Enterprise contract |
+| Stay with ACLED | Consistently coded conflict events | myACLED access level |
 
-## Start with the job you need to replace
+## Why people leave ACLED
 
-A researcher needs consistent event definitions, date ranges, and a record of dataset revisions. A daily analyst may instead need to notice a development and find the original report. Counting dashboard markers cannot establish a research dataset with a defined denominator. Compare the required output, access, and handoff before comparing feature lists. The alternatives below solve different parts of the work.
+Most people who look for an ACLED alternative are not unhappy with the methodology. They hit one of three limits: the access level they can get does not include the granularity, timing or API they need; they want to watch events as they happen rather than analyze them later; or they need conflict alongside other signals. A replacement for the access terms is a different purchase from a replacement for the dataset.
 
 ## 1. World Monitor
 
-**Best for monitoring before a research project.**
+**Best when you need live monitoring, alerts and an API rather than a coded dataset.**
 
-Use it to identify developments and bring conflict reports into a wider briefing. Do not use the number of visible markers as a replacement for an ACLED event count.
+The [free map](https://www.worldmonitor.app/dashboard) needs no account and shows conflict alongside protests, shipping, aviation, infrastructure outages, hazards, cyber and markets. On the Pro plan, alert rules filter by event type, severity (all, high or critical) and country, and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push, or a webhook signed with HMAC-SHA256. Delivery is real time or a daily, twice-daily or weekly digest. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). Developers get a REST API on a separate API plan, Python, Go and Ruby SDKs, an npm CLI, and an MCP server with Pro. Each outlet has an editorial tier and a propaganda-risk band: the News panel shows them as badges, the free `get_sources` MCP tool returns them for any outlet, and the [data sources page](https://www.worldmonitor.app/docs/data-sources) explains the scheme.
 
-Read [World Monitor](https://www.worldmonitor.app/dashboard) and check the required access before choosing.
+The tradeoff: World Monitor aggregates published reports and does not verify events on the ground. It is not a coded research dataset, so do not use map marker counts in place of ACLED event counts.
 
 ## 2. Liveuamap
 
-**Best for following regional news reports.**
+**Best for a low-cost map of regional conflict reports.**
 
-A mapped news feed can support incident discovery and timeline work. It is not an interchangeable statistical dataset. Preserve source links and use your own verification process.
-
-Read [Liveuamap](https://dc.liveuamap.com/about) and check the required access before choosing.
+Liveuamap is a [news map built around geolocated reports](https://dc.liveuamap.com/about) on conflict, protests and other topics. Its paid plans, listed on its [plans page](https://me.liveuamap.com/welcome), are the lowest published prices in this set; several alternatives here publish no price at all. A mapped news feed supports incident discovery and timeline work, but it is not an interchangeable statistical dataset. Preserve source links and use your own verification process.
 
 ## 3. Recorded Future
 
 **Best for organizational geopolitical exposure.**
 
-Consider its Geopolitical Intelligence module when your task is to monitor threats near facilities and investigate country risk. Evaluate its records and contractual access against your own requirements; do not assume it reproduces ACLED's taxonomy.
+Consider its [Geopolitical Intelligence](https://www.recordedfuture.com/products/geopolitical-intelligence) module when your task is to monitor threats near facilities and investigate country risk. It is an enterprise contract. Do not assume it reproduces ACLED's taxonomy.
 
-Read [Recorded Future](https://www.recordedfuture.com/products/geopolitical-intelligence) and check the required access before choosing.
+## Stay with ACLED if
 
-## When to keep ACLED
+Stay with ACLED if your work is event-level research, reproducible analysis, or a project that depends on its definitions. None of the alternatives here replaces a coded dataset with a published [methodology](https://acleddata.com/conflict-data/knowledge-base/methodology). If access is the problem, review the [myACLED access table](https://acleddata.com/myacled-faqs) before leaving; a different access level may solve it.
 
-Keep ACLED for event-level research, reproducible analysis, or a project that depends on its definitions. World Monitor can complement that work, but is not a substitute for the original dataset. Its [official product documentation](https://acleddata.com/conflict-data/knowledge-base/methodology) describes the original scope. Review the [myACLED access table](https://acleddata.com/myacled-faqs) before relying on event-level or API access.
+## Pick World Monitor when
+
+- **You need to be told when something happens.** Alert rules by country, event type and severity deliver in real time or as a digest.
+- **Conflict is one part of the brief.** One map adds shipping, aviation, outages, hazards, cyber and markets.
+- **You want to start without an access application.** The map is free with no account, and paid prices are published.
+- **You are building on current events.** The REST API, SDKs, npm CLI and MCP server expose the same feeds.
+- **You need to judge the source.** News items carry tier, propaganda-risk and state-affiliation badges where they apply, and the free `get_sources` MCP tool returns any outlet's labels.
 
 ## Our pick
 
-For research with consistently coded conflict events, evaluate ACLED first. For the narrower task of a broad public-source overview, try World Monitor's free core dashboard. For a different operational requirement, evaluate the specialist listed above. Avoid buying breadth that your team will not use.
+If you are leaving ACLED because you need live monitoring and alerts, pick World Monitor. If you only follow one conflict on a small budget, pick Liveuamap. If the job is facility and country risk for an organization, pick Recorded Future. If your research needs coded events, stay with ACLED and use World Monitor to notice what to measure.
 
 ## What to do before switching
 
-List your required event types, countries, time span, update schedule, and permitted uses. Test the same published analysis with the proposed source. If definitions differ, explain the break in comparability. Keep ACLED when no alternative can preserve the research question.
-
-Compare the full cost of the workflow, including paid access and the analyst time needed to fill gaps. Do not cancel a working service just because a free dashboard overlaps with one screen.
+List your required event types, countries, time span, update schedule, and permitted uses. Test the same analysis with the proposed source. If definitions differ, explain the break in comparability. Keep ACLED when no alternative can preserve the research question.
 
 ## Frequently Asked Questions
 
 **Is there a free ACLED alternative?**
 
-World Monitor's core dashboard is free and can support public-source situational awareness. It is not a feature-for-feature replacement for ACLED. Define the task first, then check whether free access is enough.
+World Monitor's map is free with no account, and Liveuamap has a free map. Neither is a coded conflict dataset. World Monitor alert rules need the Pro plan.
 
-**Can I use more than one tool?**
+**Can I get conflict alerts instead of a dataset?**
 
-Yes. A specialist tool can supply the primary research or operational workflow while World Monitor supplies wider context. Keep the original provider's source attribution and access terms.
+Yes. World Monitor alert rules filter by event type, severity and country and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push or an HMAC-signed webhook, as documented in its [notifications reference](https://www.worldmonitor.app/docs/api-notifications).
 
 **What should a migration prove?**
 
-The replacement must produce your required output with acceptable coverage and a working handoff. Save a representative example and document every requirement that still needs another service.
+The replacement must answer your research or monitoring question with acceptable coverage and permitted use. Save a representative example and document every requirement that still needs ACLED.
 
 ## More guides
 
 - [World Monitor vs ACLED](/blog/vs/acled/)
-- [Compare all five providers](/blog/guides/#vs)
+- [Conflict data platforms for researchers](/blog/best/conflict-data-platforms-for-researchers/)
+- [Compare all providers](/blog/guides/#vs)
 - [Best tools by audience](/blog/guides/#best)

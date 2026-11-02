@@ -190,6 +190,133 @@ export function shortenGeneratedSuccessDescriptions(spec) {
   return stats;
 }
 
+// Generated summaries repeat operationId verbatim. Keep custom summaries and
+// the human-readable YAML; omit only this duplicate from the compact JSON.
+export function dropDuplicateOperationSummaries(spec) {
+  const stats = { dropped: 0 };
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    for (const [method, operation] of Object.entries(pathItem ?? {})) {
+      if (!['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'].includes(method)) continue;
+      if (typeof operation?.operationId !== 'string' || !operation.operationId) continue;
+      if (operation.summary === operation.operationId) {
+        delete operation.summary;
+        stats.dropped += 1;
+      }
+    }
+  }
+  return stats;
+}
+
+/**
+ * A 2xx response example illustrates the payload's shape; one item of each list
+ * of objects shows that shape as well as nine. The two captured examples that
+ * repeat whole rows (giving summary, China corridor control towers) spent 27 KB
+ * of the budget on rows a reader skims past. Lists of scalars stay whole: they
+ * are small, and a tuple like a bbox only makes sense complete. JSON only; the
+ * YAML and the per-service specs keep every row for Mintlify and the contract
+ * tests that validate them.
+ *
+ * Mutates `spec` in place; returns { trimmed }.
+ */
+export function trimResponseExampleLists(spec) {
+  const stats = { trimmed: 0 };
+  const trim = (value) => {
+    if (Array.isArray(value)) {
+      if (value.length > 1 && value.every((item) => item && typeof item === 'object')) {
+        value.length = 1;
+        stats.trimmed += 1;
+      }
+      value.forEach(trim);
+    } else if (value && typeof value === 'object') {
+      Object.values(value).forEach(trim);
+    }
+  };
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    if (!pathItem || typeof pathItem !== 'object') continue;
+    for (const operation of Object.values(pathItem)) {
+      const responses = operation && typeof operation === 'object' ? operation.responses : null;
+      if (!responses || typeof responses !== 'object') continue;
+      for (const [code, response] of Object.entries(responses)) {
+        if (!/^2\d\d$/.test(code) || !response || typeof response !== 'object' || response.$ref) continue;
+        for (const media of Object.values(response.content ?? {})) {
+          if (media && typeof media === 'object' && 'example' in media) trim(media.example);
+        }
+      }
+    }
+  }
+  return stats;
+}
+
+/**
+ * Operations left out of this scanner-facing JSON. The bundle has a hard byte
+ * budget (SCANNER_BUDGET_BYTES) and the owner decided (#9093) that endpoints
+ * built for WorldMonitor's own pages and for operators stay out of it, so the
+ * budget goes to the data APIs agents call. An excluded operation is still
+ * served, still documented in its per-service spec and in the YAML bundle,
+ * and still callable: only this one artifact omits it. Every entry names why.
+ */
+export const SCANNER_BUNDLE_EXCLUDED_OPERATIONS = Object.freeze({
+  '/api/economic/v1/get-food-prices': 'Budget: the dashboard food-price card (#9841) puts the scanner bundle 2,983 bytes over its cap. The endpoint remains served and fully documented in the EconomicService spec and YAML bundle.',
+  '/api/maritime/v1/list-ukmto-incidents': 'Budget: the optional UKMTO dashboard dataset puts the scanner bundle 2,045 bytes over its cap. The endpoint remains served and fully documented in the MaritimeService spec and YAML bundle; worker activation is tracked in #9831.',
+  '/api/intelligence/v1/get-country-signal-observations': 'Internal country panel observation carrier; documented in the IntelligenceService spec and YAML bundle.',
+  '/api/news/v1/list-label-changes': 'Label history read by the /trust page (#9093); documented in the NewsService spec.',
+  '/api/news/v1/submit-error-report': 'The /trust page "Report an error" form (#9093); documented in the NewsService spec.',
+  '/api/news/v1/list-error-reports': 'Operator review queue, secret-gated (#9093).',
+  '/api/news/v1/review-error-report': 'Operator review decision, secret-gated (#9093).',
+  '/api/news/v1/search-fact-checks': 'Fact-check lookup for the /verify page and verify_claim (#9094); documented in the NewsService spec.',
+  '/api/news/v1/search-claim-headlines': 'Claim headline search for the /verify page and verify_claim; documented in the NewsService spec.',
+  '/api/news/v1/list-source-items': 'Cached rows for a dashboard panel\'s enabled sources below the digest category cap (#9796); documented in the NewsService spec.',
+  '/api/economic/v1/get-capital-flows': 'Budget: the operation costs more than the bundle\'s remaining headroom (~2 KB on main at the time) and its full field documentation is kept rather than trimmed. Served, documented in the EconomicService spec and the YAML bundle, and exposed to agents by MCP get_capital_flows, whose tool description and schema do not depend on this artifact.',
+  '/api/intelligence/v1/get-pizzint-status': 'Budget: the dashboard\'s Pentagon Pizza Index and tension popup read it, and its tension evidence schemas cost about 1.4 KB when 77 bytes were free. Served and documented in the IntelligenceService spec and the YAML bundle.',
+});
+
+/**
+ * Remove SCANNER_BUNDLE_EXCLUDED_OPERATIONS from the spec. Runs before the
+ * dedup passes, so nothing is hoisted for an operation that is not served
+ * here, and before dropUnreachableSchemas, which then drops schemas only the
+ * excluded operations used. Returns { excluded } (paths removed).
+ */
+export function excludeScannerBundleOperations(spec, excluded = SCANNER_BUNDLE_EXCLUDED_OPERATIONS) {
+  const stats = { excluded: 0 };
+  for (const path of Object.keys(excluded)) {
+    if (spec.paths && Object.prototype.hasOwnProperty.call(spec.paths, path)) {
+      delete spec.paths[path];
+      stats.excluded += 1;
+    }
+  }
+  return stats;
+}
+
+/**
+ * Remove securitySchemes no root or operation `security` entry names. Runs
+ * after excludeScannerBundleOperations: a scheme only excluded operations used
+ * (TrustReviewKey, #9192) would otherwise ship as an orphan. Returns { dropped }.
+ */
+export function dropUnreferencedSecuritySchemes(spec) {
+  const stats = { dropped: 0 };
+  const schemes = spec.components?.securitySchemes;
+  if (!schemes) return stats;
+  const referenced = new Set();
+  const collect = (security) => {
+    for (const requirement of security ?? []) {
+      for (const name of Object.keys(requirement)) referenced.add(name);
+    }
+  };
+  collect(spec.security);
+  for (const ops of Object.values(spec.paths ?? {})) {
+    for (const op of Object.values(ops ?? {})) {
+      if (op && typeof op === 'object') collect(op.security);
+    }
+  }
+  for (const name of Object.keys(schemes)) {
+    if (!referenced.has(name)) {
+      delete schemes[name];
+      stats.dropped += 1;
+    }
+  }
+  return stats;
+}
+
 export const DEPRECATION_POLICY_URL = 'https://www.worldmonitor.app/api-versioning.md';
 const DEPRECATION_POLICY_HTML_URL = 'https://www.worldmonitor.app/docs/api-versioning';
 
@@ -245,6 +372,8 @@ export function buildBundle({ spec: provided } = {}) {
     );
   }
 
+  const excludedStats = excludeScannerBundleOperations(spec);
+  dropUnreferencedSecuritySchemes(spec);
   const stats = dedupeErrorResponses(spec);
   const headerStats = dedupeSharedResponseHeaders(spec);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(spec);
@@ -274,6 +403,8 @@ export function buildBundle({ spec: provided } = {}) {
   const softBreakStats = collapseSoftLineBreaks(spec);
   const defaultRequiredStats = dropDefaultParameterRequired(spec);
   const successDescriptionStats = shortenGeneratedSuccessDescriptions(spec);
+  const duplicateSummaryStats = dropDuplicateOperationSummaries(spec);
+  const exampleListStats = trimResponseExampleLists(spec);
 
   // Minified: this artifact is machine-consumed (scanners/agents), and the
   // smaller payload dodges fetch-size caps. The YAML remains the human copy.
@@ -296,6 +427,9 @@ export function buildBundle({ spec: provided } = {}) {
     softBreakStats,
     defaultRequiredStats,
     successDescriptionStats,
+    duplicateSummaryStats,
+    exampleListStats,
+    excludedStats,
   };
 }
 

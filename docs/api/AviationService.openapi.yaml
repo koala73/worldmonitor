@@ -8,6 +8,139 @@ security:
 servers:
     - url: https://api.worldmonitor.app
 paths:
+    /api/aviation/v1/list-aircraft-emergencies:
+        get:
+            tags:
+                - AviationService
+            summary: ListAircraftEmergencies
+            description: |-
+                ListAircraftEmergencies returns reported 7500, 7600 and 7700 signals independently of military classification.
+                 The 200 schema describes the unprojected response. With jmespath, the result may instead be any JSON value, including an array, scalar, or null.
+            operationId: ListAircraftEmergencies
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "feeds":
+                                    - "fetchedAt": 1717200000000
+                                      "message": "Synthetic example."
+                                      "source": "adsb.lol"
+                                      "squawk": "7500"
+                                      "status": "available"
+                                    - "fetchedAt": 1717200000000
+                                      "message": "Synthetic example."
+                                      "source": "adsb.lol"
+                                      "squawk": "7600"
+                                      "status": "available"
+                                    - "fetchedAt": 1717200000000
+                                      "message": "Synthetic example."
+                                      "source": "adsb.lol"
+                                      "squawk": "7700"
+                                      "status": "available"
+                                "observations":
+                                    - "address": "a00001"
+                                      "callsign": "SYNTHETIC"
+                                      "description": "Synthetic example. No observed incident."
+                                      "militaryFlag": "unknown"
+                                      "observedAt": 0
+                                      "source": "adsb.lol"
+                                      "squawk": "7500"
+                            schema:
+                                $ref: '#/components/schemas/ListAircraftEmergenciesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/aviation/v1/list-airport-delays:
         get:
             tags:
@@ -1909,6 +2042,99 @@ components:
             required:
                 - violations
             description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        ListAircraftEmergenciesRequest:
+            type: object
+            description: ListAircraftEmergenciesRequest has no filters. Coverage is provider reception.
+        ListAircraftEmergenciesResponse:
+            type: object
+            properties:
+                observations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EmergencyObservation'
+                feeds:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EmergencyFeed'
+            description: ListAircraftEmergenciesResponse preserves observations and per-query availability.
+        EmergencyObservation:
+            type: object
+            properties:
+                address:
+                    type: string
+                    description: Provider address, including a non-ICAO prefix when present.
+                squawk:
+                    type: string
+                    description: Exact four-character transponder code.
+                source:
+                    type: string
+                    description: Observation provider.
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Last message time in epoch milliseconds, not squawk selection time. Zero means unknown.. Warning: Values > 2^53 may lose precision in JavaScript'
+                position:
+                    $ref: '#/components/schemas/EmergencyPosition'
+                callsign:
+                    type: string
+                    description: Reported callsign, empty when unknown.
+                registration:
+                    type: string
+                    description: Provider registration, empty when unknown.
+                aircraftType:
+                    type: string
+                    description: Provider type code, empty when unknown.
+                description:
+                    type: string
+                    description: Provider aircraft description, empty when unknown.
+                militaryFlag:
+                    type: string
+                    description: Military database bit, set, not_set, or unknown. This is not admission criteria.
+                altitudeFt:
+                    type: number
+                    format: double
+                    description: Barometric altitude in feet, absent when unknown or reported as ground.
+                groundSpeedKts:
+                    type: number
+                    format: double
+                    description: Ground speed in knots, absent when unknown.
+            description: EmergencyObservation is a reported Mode A code, not a confirmed incident.
+        EmergencyPosition:
+            type: object
+            properties:
+                lat:
+                    type: number
+                    format: double
+                    description: Latitude in degrees.
+                lon:
+                    type: number
+                    format: double
+                    description: Longitude in degrees.
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Provider position time in epoch milliseconds. Zero means unknown.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: EmergencyPosition keeps the position clock separate from last contact.
+        EmergencyFeed:
+            type: object
+            properties:
+                source:
+                    type: string
+                    description: Provider name.
+                squawk:
+                    type: string
+                    description: Requested squawk.
+                status:
+                    type: string
+                    description: available, unavailable, or stale.
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Retrieval time in epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                message:
+                    type: string
+                    description: Safe status explanation.
+            description: EmergencyFeed records success and failure separately for each exact code query.
         ListAirportDelaysRequest:
             type: object
             properties:

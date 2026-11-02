@@ -1,6 +1,7 @@
 import { CountrySectionError } from '@/services/country-brief-error';
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { iso2ToCountryName } from '@/utils/country-codes';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
@@ -203,7 +204,7 @@ export class PipelineStatusPanel extends Panel {
     // keeps the map and the panel decoupled — if the panel isn't mounted, the
     // event is a no-op. If both exist, a map click opens this drawer on the
     // same pipeline id.
-    if (typeof window !== 'undefined') {
+    if (!this.detailSource && typeof window !== 'undefined') {
       window.addEventListener('energy:open-pipeline-detail', this.openDetailHandler);
     }
     this.content.addEventListener('click', this.handleContentClick);
@@ -224,7 +225,7 @@ export class PipelineStatusPanel extends Panel {
   };
 
   public destroy(): void {
-    if (typeof window !== 'undefined') {
+    if (!this.detailSource && typeof window !== 'undefined') {
       window.removeEventListener('energy:open-pipeline-detail', this.openDetailHandler);
     }
     super.destroy?.();
@@ -310,6 +311,14 @@ export class PipelineStatusPanel extends Panel {
   public async presentDetail(data: ListPipelinesResponse, id: string): Promise<void> {
     this.data = data;
     await this.loadDetail(id);
+  }
+
+  public async presentCountryDetail(countryCode: string, id: string): Promise<void> {
+    const { gas, oil } = getCachedPipelineRegistries();
+    const data = buildBootstrapResponse(gas, oil);
+    const pipelines = data?.pipelines.filter(pipeline => pipeline.fromCountry === countryCode || pipeline.toCountry === countryCode || pipeline.transitCountries.includes(countryCode)) ?? [];
+    if (!data || !pipelines.some(pipeline => pipeline.id === id)) throw new Error('Pipeline is not in this country.');
+    await this.presentDetail({ ...data, pipelines }, id);
   }
 
   private async loadDetail(pipelineId: string): Promise<void> {
@@ -507,7 +516,7 @@ export class PipelineStatusPanel extends Panel {
       : '';
 
     const transit = p.transitCountries.length > 0
-      ? ` via ${p.transitCountries.map(c => escapeHtml(c)).join(', ')}`
+      ? ` via ${p.transitCountries.map(c => escapeHtml(iso2ToCountryName(c))).join(', ')}`
       : '';
 
     return `
@@ -517,7 +526,7 @@ export class PipelineStatusPanel extends Panel {
         <div class="pp-kv">
           <div class="pp-kv-key">Operator</div>   <div>${escapeHtml(p.operator)}</div>
           <div class="pp-kv-key">Commodity</div>  <div>${escapeHtml(p.commodityType)}</div>
-          <div class="pp-kv-key">Route</div>      <div>${escapeHtml(p.fromCountry)} → ${escapeHtml(p.toCountry)}${transit}</div>
+          <div class="pp-kv-key">Route</div>      <div>${escapeHtml(iso2ToCountryName(p.fromCountry))} → ${escapeHtml(iso2ToCountryName(p.toCountry))}${transit}</div>
           <div class="pp-kv-key">Capacity</div>   <div>${escapeHtml(capacityLabel(p))}</div>
           <div class="pp-kv-key">Length</div>     <div>${p.lengthKm > 0 ? `${p.lengthKm.toLocaleString()} km` : '—'}</div>
           <div class="pp-kv-key">In service</div> <div>${p.inService > 0 ? escapeHtml(String(p.inService)) : '—'}</div>

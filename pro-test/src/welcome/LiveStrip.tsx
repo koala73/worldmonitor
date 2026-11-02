@@ -16,7 +16,7 @@ const STATUS_COLORS: Record<string, string> = {
 function LiveBadge({ live, capturedAt }: { live: boolean; capturedAt: string }) {
   if (live) {
     return (
-      <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-wm-green">
+      <span className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-wm-green">
         <span className="relative flex h-1.5 w-1.5">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-wm-green opacity-60" />
           <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-wm-green" />
@@ -32,7 +32,7 @@ function LiveBadge({ live, capturedAt }: { live: boolean; capturedAt: string }) 
   // data-live-updated> stamp naming the freeze, upgraded to LIVE in place
   // when the fetch succeeds.
   return (
-    <time data-live-updated dateTime={capturedAt} className="font-mono text-[10px] uppercase tracking-widest text-wm-muted">
+    <time data-live-updated dateTime={capturedAt} className="font-mono text-xs uppercase tracking-widest text-wm-muted">
       {t('welcome.live.pulseBadge', { date: formatSnapshotDate(capturedAt) })}
     </time>
   );
@@ -42,7 +42,7 @@ function Card({ icon, title, live, capturedAt, children }: { icon: ReactNode; ti
   return (
     <div className="bg-wm-card border border-wm-border rounded-sm p-5 flex flex-col gap-4 min-h-[230px]">
       <div className="flex items-center justify-between border-b border-wm-border pb-3">
-        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-wm-muted">
+        <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-wm-muted">
           {icon} {title}
         </div>
         <LiveBadge live={live} capturedAt={capturedAt} />
@@ -151,8 +151,8 @@ function formatChange(change: number, digits = 2): string {
 function MarketStat({ label, children, tone = 'text-wm-text' }: { label: string; children: ReactNode; tone?: string }) {
   return (
     <div className="min-w-0 rounded-sm border border-wm-border/80 bg-wm-bg/50 px-2 py-1.5">
-      <div className="font-mono text-[9px] uppercase tracking-widest text-wm-muted truncate">{label}</div>
-      <div className={`font-mono text-[11px] leading-tight truncate ${tone}`}>{children}</div>
+      <div className="font-mono text-xs uppercase tracking-wider text-wm-muted truncate">{label}</div>
+      <div className={`font-mono text-xs leading-tight ${tone}`}>{children}</div>
     </div>
   );
 }
@@ -182,12 +182,12 @@ function MarketTape({ quotes }: { quotes: TeaserQuote[] }) {
           <li key={q.symbol} className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.6rem] gap-2 items-center text-sm">
             <span className="min-w-0">
               <span className="block truncate leading-tight">{q.display}</span>
-              <span className="block font-mono text-[9px] uppercase tracking-wider text-wm-muted">{quoteGroup(q.symbol)}</span>
+              <span className="block font-mono text-xs uppercase tracking-wider text-wm-muted">{quoteGroup(q.symbol)}</span>
             </span>
             <Sparkline quote={q} className="w-14 h-5" />
             <span className="min-w-0 text-right">
-              <span className="block font-mono text-[11px] leading-tight truncate">{formatPrice(q.price)}</span>
-              <span className={`block font-mono text-[10px] leading-tight ${q.change >= 0 ? 'text-wm-green' : 'text-[#ff5f57]'}`}>
+              <span className="block font-mono text-xs leading-tight truncate">{formatPrice(q.price)}</span>
+              <span className={`block font-mono text-xs leading-tight ${q.change >= 0 ? 'text-wm-green' : 'text-[#ff5f57]'}`}>
                 {formatChange(q.change)}
               </span>
             </span>
@@ -225,7 +225,7 @@ export const LiveStrip = () => {
           className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-8"
         >
           <div>
-            <div className="font-mono text-[11px] uppercase tracking-[3px] text-wm-green mb-2">{t('welcome.live.eyebrow')}</div>
+            <div className="font-mono text-xs uppercase tracking-[3px] text-wm-green mb-2">{t('welcome.live.eyebrow')}</div>
             <h2 className="text-2xl md:text-3xl font-display font-bold">{t('welcome.live.title')}</h2>
           </div>
           <p className="text-sm text-wm-muted font-mono">{t('welcome.live.subtitle')}</p>
@@ -246,7 +246,7 @@ export const LiveStrip = () => {
                   ) : (
                     <span className="line-clamp-2">{h.title}</span>
                   )}
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-wm-muted">
+                  <span className="font-mono text-xs uppercase tracking-wider text-wm-muted">
                     {h.source}{mounted && h.publishedAt ? ` · ${timeAgo(h.publishedAt)}` : ''}
                   </span>
                 </li>
@@ -270,7 +270,7 @@ export const LiveStrip = () => {
                 );
               })}
             </ul>
-            <p className="font-mono text-[10px] uppercase tracking-wider text-wm-muted mt-3">{t('welcome.live.ciiNote')}</p>
+            <p className="font-mono text-xs uppercase tracking-wider text-wm-muted mt-3">{t('welcome.live.ciiNote')}</p>
           </Card>
 
           <Card icon={<Anchor className="w-4 h-4" aria-hidden="true" />} title={t('welcome.live.cardChokepoints')} live={teasers.chokepoints.live} capturedAt={teasers.capturedAt}>
@@ -293,7 +293,7 @@ export const LiveStrip = () => {
           </Card>
         </div>
         {!allLive && (
-          <p className="mt-6 font-mono text-[11px] uppercase tracking-widest text-wm-muted">{t('welcome.live.refreshNote')}</p>
+          <p className="mt-6 font-mono text-xs uppercase tracking-widest text-wm-muted">{t('welcome.live.refreshNote')}</p>
         )}
       </div>
     </section>

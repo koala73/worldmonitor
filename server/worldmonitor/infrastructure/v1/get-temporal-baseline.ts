@@ -1,5 +1,5 @@
 import {
-  ApiError,
+  ValidationError,
   type ServerContext,
   type GetTemporalBaselineRequest,
   type GetTemporalBaselineResponse,
@@ -24,7 +24,7 @@ export async function getTemporalBaseline(
   req: GetTemporalBaselineRequest,
 ): Promise<GetTemporalBaselineResponse> {
   const region = req.region || 'global';
-  if (region !== 'global') throw new ApiError(400, 'Invalid region: only global is supported', '');
+  if (region !== 'global') throw new ValidationError([{ field: 'region', description: 'Invalid region: only global is supported' }]);
 
   try {
     const { type, count } = req;

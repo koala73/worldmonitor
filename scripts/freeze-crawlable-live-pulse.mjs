@@ -30,6 +30,8 @@ import {
   crisisTrackerViewModel,
   liveRiskViewModel,
 } from './crawlable-live-tools.mjs';
+import { chokepointPulseRecord } from './crawlable-chokepoint-live.mjs';
+import { LIVE_TOPIC_PAGES, liveTopicReading, liveTopicRpcPath } from './live-pages/index.mjs';
 import { loadEnvFile } from './_seed-utils.mjs';
 import {
   briefCitationGroundingGap,
@@ -47,6 +49,7 @@ import { countryIndexPath, topUpCountryIndex } from './crawlable-country-index.m
 import { selectDeclaredScorecardFields, selectHorizonGrades } from './build-accuracy-page.mjs';
 import { MCP_CANONICAL_ENDPOINT, MCP_CANONICAL_ORIGIN } from '../shared/mcp-host-policy.ts';
 import { countryMentionTerms, mentionsCountry } from '../shared/country-mention.js';
+import DIGEST_EDITIONS from './shared/news-digest-editions.json' with { type: 'json' };
 import { isBriefRelevantTitle } from '../shared/brief-relevance.js';
 import { dedupeByArticleUrl, duplicateArticleUrls } from '../shared/article-identity.js';
 
@@ -231,30 +234,11 @@ const BRIEF_CONTEXT_MAX_CHARS = 3800;
 // every variant is a different slice of the same feed set capped at 20 items
 // per category, and country mentions are spread across them: on 2026-09-05
 // `full` alone named 48 of 194 countries, the five variants pooled named 68.
-// `full` goes first so its rows win ties and URL de-duplication.
-const COUNTRY_DIGEST_VARIANTS = Object.freeze(['full', 'tech', 'finance', 'commodity', 'happy']);
+// Every edition the digest serves (generated from shared/news-catalog.json),
+// `full` first so its rows win ties and URL de-duplication.
+const COUNTRY_DIGEST_VARIANTS = Object.freeze(['full', ...DIGEST_EDITIONS.filter((edition) => edition !== 'full')]);
 // The per-country index top-up (#7748) that fills the countries the pool
 // leaves short lives in scripts/crawlable-country-index.mjs.
-
-// Operator-facing review-hygiene text the chokepoint status contract appends
-// (THREAT_CONFIG_STALE_NOTE in server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts).
-// It is useful in the live tool but must not be frozen into the crawlable corpus,
-// where it becomes indexed, quotable page content.
-const INTERNAL_NOTE_RE = /\s*;?\s*Threat baseline last reviewed[^;]*?review recommended\.?/gi;
-const NO_ACTIVE_DISRUPTIONS_DESCRIPTION = 'No active disruptions';
-
-// Returns null, never a placeholder sentence. "No additional status note was
-// supplied." used to be frozen here and rendered as a real <p> in <main> — an
-// absence described in prose reads to a crawler as published content, and it
-// was the only body text 7 of 13 chokepoint pages carried (#7530). An absent
-// note has no page representation: the paragraph is emitted `hidden`.
-function publishableDescription(value) {
-  const cleaned = String(value || '')
-    .replace(INTERNAL_NOTE_RE, '')
-    .replace(/^[\s;·—-]+|[\s;·—-]+$/g, '')
-    .trim();
-  return cleaned && cleaned !== NO_ACTIVE_DISRUPTIONS_DESCRIPTION ? cleaned : null;
-}
 
 // Every capture gate below reports a bare count. That number says a refresh
 // failed but never why, so a red scheduled run (or a hand-run freeze) starts
@@ -416,24 +400,6 @@ function countryRecord(view, payload, freezeStartedAt) {
     geoConvergence: Number.isFinite(payload?.cii?.components?.geoConvergence)
       ? payload.cii.components.geoConvergence
       : null,
-  };
-}
-
-function chokepointRecord(view) {
-  return {
-    disruptionScore: view.disruptionScore,
-    status: view.status,
-    congestion: view.congestion,
-    navigationalWarnings: view.navigationalWarnings,
-    navigationalWarningsAvailable: view.navigationalWarnings !== null,
-    aisDisruptions: view.aisDisruptions,
-    aisSnapshotAvailable: view.aisDisruptions !== null,
-    description: publishableDescription(view.description),
-    todayTransits: view.todayTransits,
-    todayCountsAvailable: view.todayCountsAvailable,
-    weekMovement: view.weekMovement,
-    partial: view.partial === true,
-    asOf: new Date(view.fetchedAt).toISOString(),
   };
 }
 
@@ -986,11 +952,27 @@ export async function freezeCrawlableLivePulse({
     for (const id of chokepointIds) {
       try {
         const view = chokepointStatusViewModel(chokepointPayload, id, freezeStartedAt);
-        chokepoints[id] = chokepointRecord(view);
+        chokepoints[id] = chokepointPulseRecord(view);
       } catch (error) {
         chokepointErrors.push({ id, message: error instanceof Error ? error.message : String(error) });
       }
     }
+  }
+
+  // The /tools/<slug>/ live data pages build from these readings; the routing
+  // middleware replaces them with the current reading at request time.
+  const liveTopics = {};
+  const liveTopicErrors = [];
+  for (const page of LIVE_TOPIC_PAGES) {
+    try {
+      const payload = await authedGet(liveTopicRpcPath(page), token, base, authOpts);
+      const record = liveTopicReading(page, payload, freezeStartedAt);
+      if (record === null) liveTopicErrors.push({ id: page.slug, message: 'reading not publishable as current' });
+      else liveTopics[page.slug] = record;
+    } catch (error) {
+      liveTopicErrors.push({ id: page.slug, message: error instanceof Error ? error.message : String(error) });
+    }
+    await sleep(requestGapMs);
   }
 
   const crisisSnapshots = {};
@@ -1370,6 +1352,7 @@ export async function freezeCrawlableLivePulse({
     resilienceSnapshotPath,
     countries,
     chokepoints,
+    liveTopics,
     crises: crisisSnapshots,
     headlines,
     quotes,
@@ -1384,6 +1367,8 @@ export async function freezeCrawlableLivePulse({
       countryErrorCount: countryErrors.length,
       chokepointCount: Object.keys(chokepoints).length,
       chokepointErrorCount: chokepointErrors.length,
+      liveTopicCount: Object.keys(liveTopics).length,
+      liveTopicErrorCount: liveTopicErrors.length,
       crisisCount: Object.keys(crisisSnapshots).length,
       crisisErrorCount: crisisErrors.length,
       headlineCount: headlines.length,
@@ -1463,6 +1448,9 @@ export async function freezeCrawlableLivePulse({
     errors: {
       countries: countryErrors,
       chokepoints: chokepointErrors,
+      // Not a freeze gate: a missing topic builds as "no current reading" and
+      // the middleware still serves the live one.
+      liveTopics: liveTopicErrors,
       crises: crisisErrors,
       headlines: headlineErrors,
       quotes: quoteErrors,

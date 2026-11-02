@@ -5,12 +5,17 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { crawlerDocumentSnapshot } from './_lib/crawler-visible-html.mjs';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
+import { nonDefaultLandingLocales } from '../shared/indexable-landing-locales.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const PRO_PAGES = [
   { relPath: 'public/pro/index.html', label: '/pro' },
   { relPath: 'public/pro/welcome.html', label: '/' },
+  ...nonDefaultLandingLocales().map((locale) => ({
+    relPath: `public/${locale.pathSegment}/index.html`,
+    label: locale.canonicalPath,
+  })),
 ];
 
 function src(relPath) {
@@ -155,8 +160,9 @@ describe('pro critical CSS source contract', () => {
   it('applies the shared critical CSS transform to every pro-test page', () => {
     const prerender = src('pro-test/prerender.mjs');
     assert.doesNotMatch(prerender, /seo-prerender/);
-    assert.match(prerender, /const PAGES = \[/);
-    assert.match(prerender, /html = inlineCriticalCss\(html, file\);/);
+    assert.match(prerender, /inlineCriticalCss\(indexHtml, 'index\.html'\)/);
+    assert.match(prerender, /inlineCriticalCss\(welcomeBase, 'welcome\.html', \[heroImagePreloadTag\(englishWelcome\.html\)\]\)/);
+    assert.match(prerender, /localizeWelcomeDocument\(injected, page\.locale, page\.copy\)/);
     assert.doesNotMatch(prerender, /file === 'welcome\.html'/);
   });
 });
@@ -263,6 +269,45 @@ describe('pro built HTML critical CSS contract', { skip: shouldSkipProBuiltOutpu
     assert.match(html, /World Monitor Pro/);
     assert.doesNotMatch(html, /id="seo-prerender"/);
     assert.doesNotMatch(html, /html\.js #seo-prerender/);
+  });
+
+  // The React hero used to be the first thing on /pro to paint at its final
+  // size, so its mount emitted the page's LCP entry 1.8-2.4s after FCP. The
+  // prerender now ships that hero first, inside the same page structure the
+  // crawlable copy lives in (e2e/pro-hero-lcp.spec.ts proves the LCP effect).
+  it('/pro prerenders the hero first, with one <h1> and one <main> around the crawlable copy', () => {
+    const html = stripNoscript(builtSrc('public/pro/index.html'));
+    const root = crawlerDocumentSnapshot(html).visibleRootMarkup;
+
+    const headings = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)];
+    assert.equal(headings.length, 1, 'exactly one <h1>');
+    assert.match(
+      headings[0][1],
+      /^<span class="sr-only">World Monitor Pro — The Geopolitical AI Layer <\/span>.*Noise.*Signal/,
+      'the hero <h1> must lead with the curated title, visually hidden, before the visible hero words',
+    );
+    assert.equal([...root.matchAll(/<main\b/g)].length, 1, 'exactly one <main>');
+    assert.equal([...html.matchAll(/<main\b/g)].length, 1, 'exactly one <main> in the page');
+
+    const mainOpen = root.indexOf('<main>');
+    const hero = root.indexOf('<section class="pt-28');
+    const overview = root.indexOf('<section id="pro-overview"');
+    const mainClose = root.indexOf('</main>');
+    assert.ok(
+      mainOpen !== -1 && mainOpen < hero && hero < overview && overview < mainClose,
+      'the hero section must precede the curated overview, both inside <main>',
+    );
+    assert.ok(root.indexOf('<nav data-wm-nav="primary"') < mainOpen, 'the nav precedes <main>');
+    assert.doesNotMatch(root, /\/pro\/src\/|\/@fs\//, 'no dev-server asset URL may ship');
+  });
+
+  it('/pro adds its nav/hero mirrors without changing the shared critical CSS that / ships', () => {
+    const proCritical = criticalStyleText(builtSrc('public/pro/index.html'));
+    const welcomeCritical = criticalStyleText(builtSrc('public/pro/welcome.html'));
+    assert.ok(proCritical.startsWith(welcomeCritical), '/pro must ship the shared block unchanged, then its own');
+    const proOnly = proCritical.slice(welcomeCritical.length);
+    assert.match(proOnly, /\.sr-only\{/, '/pro must mirror the hero h1 sr-only lead');
+    assert.ok(!welcomeCritical.includes(proOnly), 'the /pro block must not reach /');
   });
 
   it('/ welcome ships its real, user-visible SSR app without a hidden sibling', () => {

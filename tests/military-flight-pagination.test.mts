@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { transformSync } from 'esbuild';
 import type { QueryRegion } from '../src/config/military';
+import { EMERGENCY_CODES } from '../shared/aircraft-emergencies';
 
 const root = resolve(import.meta.dirname, '..');
 const serviceSource = readFileSync(resolve(root, 'src/services/military-flights.ts'), 'utf8');
@@ -76,7 +77,7 @@ async function loadMilitaryService(
     const identifyByAircraftType = () => undefined;
     const isKnownMilitaryHex = () => undefined;
     const getNearbyHotspot = () => undefined;
-    const MILITARY_HOTSPOTS: any[] = [];
+    const MILITARY_HOTSPOTS: any[] = (globalThis as any).__wmTestMilitaryHotspots ?? [];
     const MILITARY_QUERY_REGIONS = ${JSON.stringify(queryRegions)};
     type QueryRegion = any;`,
     'military config',
@@ -140,7 +141,7 @@ async function loadMilitaryService(
 
   try {
     const module = await import(dataUrl) as {
-      fetchMilitaryFlights(): Promise<{ flights: Array<{ hexCode: string }>; clusters: unknown[] }>;
+      fetchMilitaryFlights(): Promise<{ flights: Array<{ hexCode: string }>; clusters: Array<{ flights: Array<{ hexCode: string }> }> }>;
     };
     return {
       module,
@@ -186,6 +187,23 @@ function regionName(req: PageRequest): 'alpha' | 'bravo' {
 }
 
 describe('military flight application-service pagination', { concurrency: 1 }, () => {
+  it('keeps emergency-squawking military aircraft in application flights and clusters', async () => {
+    // One hotspot around the four flights, so clustering has something to group.
+    (globalThis as Record<string, unknown>).__wmTestMilitaryHotspots = [{ name: 'TEST', lat: 28, lon: 42, radius: 5, priority: 'high' }];
+    const { module, cleanup } = await loadMilitaryService(() => ({
+      flights: [protoFlight('ORD001', 28, 42), ...EMERGENCY_CODES.map((squawk, index) => ({ ...protoFlight(`EMG00${index}`, 28, 42), squawk }))],
+    }));
+    delete (globalThis as Record<string, unknown>).__wmTestMilitaryHotspots;
+    try {
+      const result = await module.fetchMilitaryFlights();
+      assert.deepEqual(result.flights.map(flight => flight.hexCode).sort(), ['EMG000', 'EMG001', 'EMG002', 'ORD001']);
+      const clustered = result.clusters.flatMap(cluster => cluster.flights.map(flight => flight.hexCode)).sort();
+      assert.deepEqual(clustered, ['EMG000', 'EMG001', 'EMG002', 'ORD001']);
+    } finally {
+      cleanup();
+    }
+  });
+
   it('requests one global region and renders North American flights after bounded pagination', async () => {
     const calls: PageRequest[] = [];
     const queryRegions = await loadMilitaryQueryRegions();

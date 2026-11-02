@@ -822,6 +822,7 @@ describe('bounded backfill and cutover (#7082)', () => {
     assert.equal(report.legacyCoverageObserved, true);
     const zadd = calls.find(call => Array.isArray(call.command[0]) && call.command.some(command => command[0] === 'ZADD'));
     assert.ok(zadd);
+    assert.ok(zadd.url.endsWith('/multi-exec'), 'backfill record/index pairs must publish atomically');
     assert.deepEqual(zadd.command.find(command => command[0] === 'ZADD').slice(-1), [hash]);
     assert.equal(calls.at(-2).command[1], mod.FORECAST_EVIDENCE_COVERAGE_KEY);
   });

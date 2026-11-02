@@ -126,6 +126,32 @@ describe('AirlineIntelPanel prices tab', () => {
     expect(content.querySelector('.no-data')!.textContent).toBe(HOSTILE);
     panel.destroy();
   });
+
+  it('refuses a date range over 31 days before any request and accepts 31', async () => {
+    transport.premiumFetch.mockImplementation(async (input) => (
+      String(input).includes('search-google-dates')
+        ? Response.json({ dates: [{ date: '2026-12-01', returnDate: '', price: 99 }], degraded: false, error: '' })
+        : Response.json({})
+    ));
+    const { panel, root, content } = await mountPanel();
+    openPricesTab(root, content);
+    content.querySelector<HTMLElement>('[data-price-mode="dates"]')!.click();
+    const iso = (offsetDays: number) => new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10);
+    const search = (start: string, end: string) => {
+      content.querySelector<HTMLInputElement>('#datesStartInput')!.value = start;
+      content.querySelector<HTMLInputElement>('#datesEndInput')!.value = end;
+      content.querySelector<HTMLElement>('#datesSearchBtn')!.click();
+    };
+
+    search(iso(2), iso(33));
+    expect(content.querySelector('#datesInlineErr')!.textContent).toBe('Choose a range of at most 31 days');
+    expect(googleCalls()).toEqual([]);
+
+    search(iso(2), iso(32));
+    await vi.waitFor(() => expect(content.querySelector('.dp-row')).not.toBeNull());
+    expect(googleCalls()).toHaveLength(1);
+    panel.destroy();
+  });
 });
 
 // Kept last: each failure counts toward its breaker's cooldown.

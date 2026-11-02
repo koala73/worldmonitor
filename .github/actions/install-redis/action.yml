@@ -1,0 +1,66 @@
+name: Install Redis
+description: Install redis-server and redis-tools from a package cache, so the Redis-backed suites never wait on the Ubuntu mirror.
+# The unit shards install Redis for the suites that run Lua against a real
+# server (tests/pizzint-history-redis.test.mjs and others). Those suites
+# self-skip when the binaries are absent, so this action fails the job rather
+# than warn. `apt-get install` fetched ~1.5 MB from the Azure mirror on every
+# run, and a slow mirror (51 kB/s, 29s in run 39922207309) put 24-58s on the
+# slowest unit shard in 9 of 12 runs. The packages are cached and installed
+# with dpkg, which reads the files: apt-get given the same .deb paths fetches
+# them again when the mirror has the same version (#9554).
+runs:
+  using: composite
+  steps:
+    - name: Resolve Redis package cache key
+      id: redis-key
+      shell: bash
+      run: |
+        . /etc/os-release
+        echo "key=redis-debs-v1-${VERSION_CODENAME}-${{ runner.arch }}-redis-server-redis-tools" >> "$GITHUB_OUTPUT"
+    - name: Restore Redis packages
+      id: redis-debs
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ~/.cache/wm-redis-debs
+        key: ${{ steps.redis-key.outputs.key }}
+    - name: Download Redis packages on cache miss
+      if: steps.redis-debs.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p ~/.cache/wm-redis-debs/partial
+        # --download-only fetches whichever of the packages and their
+        # dependencies the image lacks, and installs nothing. It writes no
+        # archive for a package that is already installed, so apt-get download
+        # fetches the two named packages too: the cache always holds both. The
+        # image's package lists go stale when Ubuntu supersedes a redis build
+        # (2026-10-08), so refresh them only when the fast path fails.
+        # Joined with &&: called before ||, the function runs without errexit,
+        # so a failed first command would otherwise be masked by the second
+        # and the index refresh skipped.
+        download() {
+          sudo apt-get install -y --no-install-recommends --download-only \
+            -o Dir::Cache::archives="$HOME/.cache/wm-redis-debs" redis-server redis-tools \
+            && (cd ~/.cache/wm-redis-debs && sudo apt-get download redis-server redis-tools)
+        }
+        download || { sudo apt-get update -qq && download; }
+        sudo rm -rf ~/.cache/wm-redis-debs/partial ~/.cache/wm-redis-debs/lock
+        sudo chown -R "$(id -u):$(id -g)" ~/.cache/wm-redis-debs
+        ls ~/.cache/wm-redis-debs/*.deb
+    - name: Install Redis packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        debs=(~/.cache/wm-redis-debs/*.deb)
+        if ! sudo dpkg -i "${debs[@]}"; then
+          # A dependency the image no longer ships: apt fetches only that.
+          sudo apt-get install -y -f --no-install-recommends
+        fi
+        redis-server --version
+        redis-cli --version
+    - name: Save Redis packages
+      if: steps.redis-debs.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ~/.cache/wm-redis-debs
+        key: ${{ steps.redis-key.outputs.key }}

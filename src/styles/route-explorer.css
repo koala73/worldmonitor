@@ -1,6 +1,14 @@
 /* Route Explorer modal — full-screen overlay with query bar + tabs + map */
 
+/* The surface is dark in both themes (#0d1117, below), so the theme tokens it
+   reads keep their dark-theme values here. Without this the light theme puts
+   #111 accents and pale panels on the dark modal. */
 .re-modal {
+  --accent: #fff;
+  --bg-secondary: #111;
+  --surface: #141414;
+  --text-dim: #888;
+  --semantic-elevated: #ffaa00;
   position: fixed;
   inset: 0;
   z-index: 9000;
@@ -649,15 +657,17 @@
   color: var(--text-dim, #8b949e);
 }
 
+/* Same fixed colors as .panel-locked-cta: the dark theme's --accent is #fff,
+   which made white text on a white button. */
 .re-content__upgrade {
   padding: 10px 24px;
-  background: var(--accent, #58a6ff);
-  color: #fff;
+  background: linear-gradient(135deg, #d4a843 0%, #b8902e 100%);
+  color: #111;
   border: none;
   border-radius: 8px;
   font-size: calc(15px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: filter 0.15s;
 }
-.re-content__upgrade:hover { background: #4090ef; }
+.re-content__upgrade:hover { filter: brightness(1.15); }

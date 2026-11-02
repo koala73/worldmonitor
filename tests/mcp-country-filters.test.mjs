@@ -54,7 +54,7 @@ const cases = [
   ['get_health_signals', 'country', { 'disease-outbreaks': { outbreaks: [{ countryCode: 'IQ' }, { countryCode: 'IR' }] } }],
   ['get_energy_intelligence', 'country', { _countries: ['IQ', 'IR'] }],
   ['get_climate_data', 'country', { disasters: { disasters: [{ countryCode: 'IQ' }, { countryCode: 'IR' }] } }],
-  ['get_tariff_trends', 'country', { bigmac: { countries: [{ code: 'IQ' }, { code: 'IR' }] } }],
+  ['get_price_and_debt_indicators', 'country', { bigmac: { countries: [{ code: 'IQ' }, { code: 'IR' }] } }],
   ['get_country_macro', 'countries', { macro: { countries: { IQ: { value: 1 }, IR: { value: 2 } } } }],
   ['get_displacement_data', 'countries', { summary: { countries: [{ code: 'IRQ' }, { code: 'IRN' }], topFlows: [{ originCode: 'IRQ', asylumCode: 'DEU' }, { originCode: 'SYR', asylumCode: 'IRQ' }, { originCode: 'IRN', asylumCode: 'DEU' }] } }],
 ];

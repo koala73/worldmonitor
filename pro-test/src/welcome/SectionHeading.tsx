@@ -8,7 +8,7 @@ export const SectionHeading = ({ eyebrow, title, subtitle }: { eyebrow: string; 
     viewport={{ once: true, margin: '-80px' }}
     transition={{ duration: 0.5 }}
   >
-    <div className="font-mono text-[11px] uppercase tracking-[3px] text-wm-green mb-3">{eyebrow}</div>
+    <div className="font-mono text-xs uppercase tracking-[3px] text-wm-green mb-3">{eyebrow}</div>
     <h2 className="text-3xl md:text-5xl font-display font-bold tracking-tight">{title}</h2>
     {subtitle && <p className="text-wm-muted mt-4 max-w-2xl mx-auto">{subtitle}</p>}
   </motion.div>

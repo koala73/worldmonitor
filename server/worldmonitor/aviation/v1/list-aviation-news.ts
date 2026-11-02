@@ -4,7 +4,7 @@ import type {
     ListAviationNewsResponse,
     AviationNewsItem,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
-import { ApiError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
 import { parseStringArray, xmlParser } from './_shared';
@@ -96,7 +96,7 @@ export async function listAviationNews(
     // Ten matches the RPC array contract; 128 leaves room for free-form airline
     // names and routes without admitting unbounded matching work.
     if (inputEntities.length > 10 || inputEntities.some(entity => entity.length > 128)) {
-        throw new ApiError(400, 'Expected at most 10 entities of at most 128 characters each', '');
+        throw new ValidationError([{ field: 'entities', description: 'Expected at most 10 entities of at most 128 characters each' }]);
     }
     const entities = inputEntities.map(entity => entity.toUpperCase());
     const windowHours = req.windowHours ?? 24;

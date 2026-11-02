@@ -8,7 +8,7 @@
  *   - registerWebhook: PRO gate, SSRF guards (https-only, private IP, cloud
  *     metadata), chokepointIds whitelist, alertThreshold 0-100 range,
  *     subscriberId / secret format (wh_ + 24 hex / 64 hex), 30-day TTL
- *     pipeline (SET + SADD + EXPIRE).
+ *     pipeline (SET + SADD + EXPIRE + global SADD).
  *   - listWebhooks: PRO gate, owner-filter isolation, `secret` never in response.
  *   - deliverWebhook: delivery-time DNS re-resolution blocks private/reserved
  *     addresses before fetch to prevent DNS rebinding SSRF.
@@ -289,7 +289,7 @@ describe('ShippingV2Service handlers', () => {
       );
     });
 
-    it('happy path returns wh_-prefixed subscriberId and 64-char hex secret; issues SET + SADD + EXPIRE pipeline with 30-day TTL', async () => {
+    it('happy path returns wh_-prefixed subscriberId and 64-char hex secret; issues SET + SADD + EXPIRE + global SADD pipeline with 30-day TTL', async () => {
       const calls = stubRedisOk();
       const res = await registerWebhook(proCtx(), {
         callbackUrl: 'https://93.184.216.34/wm',
@@ -302,10 +302,9 @@ describe('ShippingV2Service handlers', () => {
       assert.match(res.subscriberId, /^wh_[0-9a-f]{24}$/);
       assert.match(res.secret, /^[0-9a-f]{64}$/);
 
-      // Exactly one Redis pipeline call with 3 commands in order.
       assert.equal(calls.length, 1);
       const pipeline = calls[0];
-      assert.equal(pipeline.length, 3);
+      assert.equal(pipeline.length, 4);
       assert.equal(pipeline[0][0], 'SET');
       assert.ok(pipeline[0][1].startsWith('webhook:sub:wh_'), 'SET key is webhook:sub:wh_*:v1');
       assert.equal(pipeline[0][3], 'EX');
@@ -315,6 +314,8 @@ describe('ShippingV2Service handlers', () => {
       assert.equal(pipeline[2][0], 'EXPIRE');
       assert.equal(pipeline[2][1], pipeline[1][1], 'EXPIRE targets same owner index key');
       assert.equal(pipeline[2][2], String(86400 * 30));
+      const subscriberId = pipeline[0][1].slice('webhook:sub:'.length, -':v1'.length);
+      assert.deepEqual(pipeline[3], ['SADD', 'webhook:all:v1', subscriberId], 'delivery worker discovers the subscriber');
     });
 
     it('uses the authenticated enterprise cookie for ownership when wms_ is also present', async () => {
@@ -375,6 +376,116 @@ describe('ShippingV2Service handlers', () => {
       const record = JSON.parse(calls[0][0][2]);
       assert.ok(record.chokepointIds.length > 0, 'empty list expands to registry');
       assert.equal(record.chokepointIds.length, webhookShared.VALID_CHOKEPOINT_IDS.size);
+    });
+
+    it('eventType omitted stores the default chokepoint.disruption and no scope fields', async () => {
+      const calls = stubRedisOk();
+      await registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: [], countries: [] });
+      const record = JSON.parse(calls[0][0][2]);
+      assert.equal(record.eventType, 'chokepoint.disruption');
+      assert.equal('countries' in record, false);
+      assert.equal('minLiveSignal' in record, false);
+    });
+
+    it('rejects an eventType outside shared/event-triggers.json', async () => {
+      stubRedisOk();
+      await assert.rejects(
+        () => registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: [], countries: [], eventType: 'country.coup' }),
+        (err) => err instanceof ValidationError && err.violations[0].field === 'eventType',
+      );
+    });
+
+    it('country.risk_surge keeps an upper-cased, de-duplicated country scope and rejects unmonitored codes', async () => {
+      const calls = stubRedisOk();
+      await registerWebhook(proCtx(), {
+        callbackUrl: 'https://93.184.216.34/wm',
+        chokepointIds: [],
+        eventType: 'country.risk_surge',
+        countries: ['ir', 'IR', ' ua '],
+      });
+      const record = JSON.parse(calls[0][0][2]);
+      assert.equal(record.eventType, 'country.risk_surge');
+      assert.deepEqual(record.countries, ['IR', 'UA']);
+      await assert.rejects(
+        () => registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: [], eventType: 'country.risk_surge', countries: ['ZZ'] }),
+        (err) => err instanceof ValidationError && err.violations[0].field === 'countries',
+      );
+      await assert.rejects(
+        () => registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: [], countries: ['IR'] }),
+        (err) => err instanceof ValidationError && err.violations[0].field === 'countries',
+        'countries on a chokepoint subscription is a caller mistake, not silently ignored',
+      );
+    });
+
+    it('news.breaking stores a normalized scope with the registry defaults and echoes nothing for threshold events', async () => {
+      const calls = stubRedisOk();
+      await registerWebhook(proCtx(), {
+        callbackUrl: 'https://93.184.216.34/wm',
+        chokepointIds: [],
+        countries: [],
+        eventType: 'news.breaking',
+        scope: { keywords: [' Hormuz ', 'tanker'], countries: ['ir'], categories: [], severityFloor: 'critical' },
+      });
+      const record = JSON.parse(calls[0][0][2]);
+      assert.equal(record.eventType, 'news.breaking');
+      assert.deepEqual(record.scope, {
+        keywords: ['hormuz', 'tanker'],
+        categories: [],
+        countries: ['IR'],
+        importanceFloor: 69,
+        severityFloor: 'critical',
+      });
+      assert.equal('minLiveSignal' in record, false);
+      assert.equal('countries' in record, false, 'top-level countries stays a risk-surge field');
+
+      const threshold = stubRedisOk();
+      await registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: [], countries: [], eventType: 'country.risk_surge', scope: { keywords: [] } });
+      assert.equal('scope' in JSON.parse(threshold[0][0][2]), false, 'a threshold record carries no scope');
+    });
+
+    it('natural.hazard stores its scope with the registry defaults (magnitude 5.5, alert level Orange)', async () => {
+      const calls = stubRedisOk();
+      await registerWebhook(proCtx(), {
+        callbackUrl: 'https://93.184.216.34/wm',
+        chokepointIds: [],
+        countries: [],
+        eventType: 'natural.hazard',
+        scope: { hazardTypes: ['earthquakes', 'severeStorms'], countries: ['jp'], minAlertLevel: '', keywords: [] },
+      });
+      const record = JSON.parse(calls[0][0][2]);
+      assert.equal(record.eventType, 'natural.hazard');
+      assert.deepEqual(record.scope, { hazardTypes: ['earthquakes', 'severeStorms'], countries: ['JP'], minMagnitude: 5.5, minAlertLevel: 'Orange' });
+    });
+
+    it('rejects a scope key the event does not define, and any set scope on a threshold event', async () => {
+      stubRedisOk();
+      await assert.rejects(
+        () => registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: [], countries: [], eventType: 'news.breaking', scope: { symbols: ['VIX'] } }),
+        (err) => err instanceof ValidationError && err.violations[0].field === 'scope.symbols',
+      );
+      await assert.rejects(
+        () => registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: [], countries: [], eventType: 'market.move', scope: { minAbsPct: 3 } }),
+        (err) => err instanceof ValidationError && err.violations[0].field === 'scope.minAbsPct',
+      );
+      await assert.rejects(
+        () => registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: [], countries: [], scope: { keywords: ['iran'] } }),
+        (err) => err instanceof ValidationError && err.violations[0].field === 'scope',
+        'scope on a chokepoint subscription is a caller mistake, not silently ignored',
+      );
+    });
+
+    it('minLiveSignal is stored for chokepoint.disruption, bounded, and refused for other events', async () => {
+      const calls = stubRedisOk();
+      await registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: ['hormuz_strait'], countries: [], minLiveSignal: 15 });
+      assert.equal(JSON.parse(calls[0][0][2]).minLiveSignal, 15);
+      await assert.rejects(
+        () => registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: [], countries: [], minLiveSignal: 41 }),
+        (err) => err instanceof ValidationError && err.violations[0].field === 'minLiveSignal',
+      );
+      await assert.rejects(
+        () => registerWebhook(proCtx(), { callbackUrl: 'https://93.184.216.34/wm', chokepointIds: [], eventType: 'country.risk_surge', countries: [], minLiveSignal: 15 }),
+        (err) => err instanceof ValidationError && err.violations[0].field === 'minLiveSignal',
+      );
     });
   });
 
@@ -467,6 +578,42 @@ describe('ShippingV2Service handlers', () => {
       assert.equal(summary.subscriberId, record.subscriberId);
       assert.equal(summary.callbackUrl, record.callbackUrl);
       assert.ok(!('secret' in summary), '`secret` must never appear in ListWebhooks response');
+      // Records written before event types existed report the default event
+      // and empty scope fields, so partner clients see one shape.
+      assert.equal(summary.eventType, 'chokepoint.disruption');
+      assert.deepEqual(summary.countries, []);
+      assert.equal(summary.minLiveSignal, 0);
+      assert.equal('scope' in summary, false, 'threshold records carry no scope');
+    });
+
+    it('echoes the stored scope of an occurrence-event record as registered', async () => {
+      const key = 'pro-test-key';
+      const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key));
+      const ownerTag = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+      const scope = { keywords: ['hormuz'], categories: [], countries: ['IR'], importanceFloor: 69, severityFloor: 'high' };
+      const record = {
+        subscriberId: 'wh_abc123456789012345678901',
+        ownerTag,
+        callbackUrl: 'https://hooks.example.com/wm',
+        chokepointIds: ['hormuz_strait'],
+        alertThreshold: 50,
+        createdAt: '2026-10-18T00:00:00.000Z',
+        active: true,
+        secret: 'must-not-be-in-response',
+        eventType: 'news.breaking',
+        scope,
+      };
+      globalThis.fetch = async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        if (body[0]?.[0] === 'SSCAN') return Response.json([{ result: ['0', []] }]);
+        if (body[0]?.[1]?.endsWith(':sweep')) return Response.json([{ result: body[0][0] === 'GET' ? null : 'OK' }]);
+        if (body.length === 1 && body[0][0] === 'SMEMBERS') return Response.json([{ result: [record.subscriberId] }]);
+        return Response.json(body.map(() => ({ result: JSON.stringify(record) })));
+      };
+      const res = await listWebhooks(proCtx(), {});
+      assert.equal(res.webhooks[0].eventType, 'news.breaking');
+      assert.deepEqual(res.webhooks[0].scope, scope);
+      assert.ok(!('secret' in res.webhooks[0]));
     });
   });
 

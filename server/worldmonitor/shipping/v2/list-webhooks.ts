@@ -15,6 +15,7 @@ import {
 import { readOwnerWebhooks } from './webhook-owner-index';
 import {
   callerFingerprint,
+  recordEventType,
   type WebhookRecord,
 } from './webhook-shared';
 
@@ -22,11 +23,10 @@ export async function listWebhooks(
   ctx: ServerContext,
   _req: ListWebhooksRequest,
 ): Promise<ListWebhooksResponse> {
-  // Without forceKey, Clerk-authenticated pro callers reach this handler with
-  // no API key, callerFingerprint() returns the 'anon' fallback, and the
-  // ownerTag !== ownerHash defense-in-depth below collapses because both
-  // sides equal 'anon' — exposing every 'anon'-bucket tenant's webhooks to
-  // every Clerk-session holder. See registerWebhook for full rationale.
+  // Without forceKey, Clerk-authenticated pro callers would reach this handler
+  // with no API key. callerFingerprint() now throws 401 in that case rather
+  // than folding such callers into a shared 'anon' owner bucket, but the
+  // forceKey gate stays the primary control. See registerWebhook for rationale.
   const apiKeyResult = (await validateApiKey(ctx.request, { forceKey: true })) as {
     valid: boolean; required: boolean; error?: string; credential?: string;
   };
@@ -63,6 +63,13 @@ export async function listWebhooks(
         alertThreshold: record.alertThreshold,
         createdAt: record.createdAt,
         active: record.active,
+        eventType: recordEventType(record),
+        countries: Array.isArray(record.countries) ? record.countries : [],
+        minLiveSignal: record.minLiveSignal ?? 0,
+        // Stored keys only (the event's own inputSchema properties, defaults
+        // applied). The generated type lists every repeated field, but proto3
+        // JSON omits empty repeated fields, so the wire shape is the same.
+        ...(record.scope ? { scope: record.scope as unknown as WebhookSummary['scope'] } : {}),
       });
     } catch {
       // skip malformed

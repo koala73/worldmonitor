@@ -12,7 +12,8 @@ RPC response (`ListPipelines`, `ListStorageFacilities`,
 that describe how public badges are derived from those bundles. Until the
 asset-change writer ships:
 `GetPipelineDetail.revisions` and `GetStorageFacilityDetail.revisions`
-return empty arrays, and there is no automated correction-intake path.
+return empty arrays. Reader error reports for news labels are live; see
+[Reporting an error](#reporting-an-error).
 </Note>
 
 ## Published revisions
@@ -26,6 +27,52 @@ return empty arrays, and there is no automated correction-intake path.
 | 2026-06-01 | Country Resilience Index | **P1-1 pillar aggregation correction.** Pillar scores now apply each domain's design weight inside pillar aggregation. The 2026-05-28 snapshot used the earlier coverage-only member aggregation and remains a labelled historical capture. | Live score, ranking, history, and interval cache generations changed together. The 2026-08-29 full-universe capture is the first published country snapshot after this correction. See [PR #4021](https://github.com/koala73/worldmonitor/pull/4021). |
 
 The crawlable CRI snapshot workflow is scheduled for the first day of each month (`17 5 1 * *` UTC). It captures the credentialed full-universe ranking, rebuilds the crawlable corpus and sitemap, and opens a pull request for review. Off-cycle captures also ship when a methodology correction needs a new full-universe artifact. The current published snapshot is `resilience-ranking-2026-08-29.json` (captured 2026-08-29, after the P1-1 pillar-aggregation correction), not a first-of-month run.
+
+## Story label history
+
+WorldMonitor labels each news story with how widely it is covered: one
+publisher family carries it ("single publisher"), or two or more do
+("corroborated"). The label describes coverage, not accuracy. A story moving
+to "corroborated" means more publishers carry it, not that it was confirmed.
+
+When a story's label moves between those two states, the change is recorded
+automatically. Each entry records:
+
+- the previous and new label;
+- how many publisher families stood behind each;
+- the publishers behind the new label, with their tiers;
+- the story's CRED score;
+- the headline and a representative link;
+- the time.
+
+Entries are kept for seven days. The [trust page](https://www.worldmonitor.app/trust/)
+shows them, with today's count of stories under each label. Read them through
+[`GET /api/news/v1/list-label-changes`](/api-reference/newsservice/listlabelchanges), for every story or
+for one story with `story_id`. The history starts when this shipped. Earlier
+changes were not recorded, and a story's first label is not an entry.
+
+Only the full English digest records changes. Other variants keep fewer of a
+story's feeds and would flip its label back and forth. "Tier 4 only" and
+"unknown" are not recorded, because they depend on which feed labels a cycle
+happened to keep.
+
+## Reporting an error
+
+Anyone can report that a label or story is wrong, without an account, from the
+[trust page](https://www.worldmonitor.app/trust/) or through
+[`POST /api/news/v1/submit-error-report`](/api-reference/newsservice/submiterrorreport).
+A report holds a message, and optionally the story it concerns, a URL and an
+email for a reply.
+
+- Reports are stored for review and never applied automatically.
+- Submissions are rate-limited per IP.
+- The review queue holds at most 1,000 pending reports. When it is full, new
+  reports are refused rather than pushing older ones out unseen.
+- Reports and any email are kept for 90 days and are never published.
+
+When a reviewer accepts a report, only the reviewer's public note is added to
+the label history above, as a `correction` entry with trigger `report`. The
+reader's message and email stay private. A rejected report publishes nothing.
 
 ## Energy Atlas automated revision log (planned)
 
@@ -111,12 +158,10 @@ rather than pretending the surface is live.
 
 - Automated Energy Atlas asset-level entries. This page will list those
   rows after the classifier ships.
-- An automated correction-intake pipeline. If you spot something
-  wrong, use the feedback channels at
-  [worldmonitor.app](https://www.worldmonitor.app) or open a GitHub issue
-  at the [public repository](https://github.com/koala73/worldmonitor/issues).
-  Corrections are not yet on the classifier's path — they're handled
-  manually today.
+- Automated corrections. Reader reports (see
+  [Reporting an error](#reporting-an-error)) are reviewed by a person and are
+  never applied automatically. Energy Atlas corrections are not yet on the
+  classifier's path; they're handled manually today.
 - The `override`-trigger entry writer. Same dependency: ships with the
   classifier.
 

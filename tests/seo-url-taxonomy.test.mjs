@@ -11,6 +11,7 @@ import {
 } from '../scripts/lib/seo-url-taxonomy.mjs';
 import { PAGE_FAMILIES } from '../scripts/seo-ai-visibility-scorecard.mjs';
 import { MACHINE_READABLE_URLS } from '../scripts/build-sitemap.mjs';
+import { INDEXABLE_LANDING_LOCALES } from '../shared/indexable-landing-locales.ts';
 
 const repoUrl = (relativePath) => new URL(`../${relativePath}`, import.meta.url);
 
@@ -142,6 +143,15 @@ describe('seo url taxonomy', () => {
     assert.equal(classifyUrl('https://www.worldmonitor.app/pricing.md').kind, 'markdown-twin');
     assert.equal(classifyUrl('https://www.worldmonitor.app/llms.txt').kind, 'markdown-twin');
     assert.equal(classifyUrl('https://www.worldmonitor.app/countries/france/').kind, 'html');
+  });
+
+  it('files indexable landing locale prefixes with the homepage family', () => {
+    for (const locale of INDEXABLE_LANDING_LOCALES) {
+      const classified = classifyUrl(locale.canonicalUrl);
+      assert.equal(classified.family, 'homepage', locale.canonicalPath);
+      assert.equal(classified.kind, 'html', locale.canonicalPath);
+      assert.equal(classified.familyMatches.length, 1, locale.canonicalPath);
+    }
   });
 
   it('refuses an unmapped path instead of bucketing it as other', () => {

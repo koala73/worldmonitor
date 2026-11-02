@@ -126,12 +126,50 @@ for (const code of ['IT.NET.USER.ZS', 'IT.CEL.SETS.P2', 'IT.NET.BBND.P2', 'IT.NE
     expect(providerUrls[0]!.pathname.endsWith(`/indicator/${encodeURIComponent(code)}`)).toBe(true);
   });
 }
-for (const countryCode of ['__default__', '../all', 'all?x=1', 'US/indicator/X', 'US;all', 'ZZZ', 'US;;DE', 'US#fragment', 'USA'.repeat(400), Array(251).fill('US').join(';')]) {
-  test(`rejects invalid country input before cache/provider I/O: ${countryCode.slice(0, 30)}`, async () => {
-    expect(await request({ countryCode })).toEqual({ data: [], pagination: undefined });
+for (const [countryCode, firstBad] of [
+  ['__default__', '__DEFAULT__'], ['../all', '../ALL'], ['all?x=1', 'ALL?X=1'], ['US/indicator/X', 'US/INDICATOR/X'],
+  ['US;all', 'ALL'], ['ZZZ', 'ZZZ'], ['US;;DE', ''], ['US#fragment', 'US#FRAGMENT'],
+  // Two letters is the shape, not the test: ZZ names no country and no World
+  // Bank aggregate, and the live API answers it with "Invalid value".
+  ['ZZ', 'ZZ'], ['zz', 'ZZ'], ['US;ZZ;XX', 'ZZ'], ['UK', 'UK'], ['AA', 'AA'],
+] as const) {
+  test(`rejects country input with a country_code violation before cache/provider I/O: ${countryCode}`, async () => {
+    await expect(request({ countryCode })).rejects.toMatchObject({
+      name: 'ValidationError',
+      violations: [{ field: 'country_code', description: expect.stringContaining(JSON.stringify(firstBad)) }],
+    });
     expect(reads).toHaveLength(0); expect(providerUrls).toHaveLength(0); expect(writes).toHaveLength(0);
   });
 }
+for (const countryCode of ['USA'.repeat(400), Array(251).fill('US').join(';')]) {
+  test(`rejects an oversized country list with a country_code violation before I/O: ${countryCode.length} chars`, async () => {
+    await expect(request({ countryCode })).rejects.toMatchObject({
+      name: 'ValidationError',
+      violations: [{ field: 'country_code' }],
+    });
+    expect(reads).toHaveLength(0); expect(providerUrls).toHaveLength(0); expect(writes).toHaveLength(0);
+  });
+}
+// World Bank aggregate ids the live API serves under /v2/country/{id}, such as
+// the euro area (XC), the EU, OECD members (OE) and the Channel Islands (JG).
+for (const countryCode of ['EU', 'XC', 'OE', 'XD', 'ZJ', 'JG;US']) {
+  test(`keeps the World Bank aggregate id filter: ${countryCode}`, async () => {
+    expect((await request({ countryCode })).data).toHaveLength(1);
+    expect(decodeURIComponent(providerUrls[0]!.pathname.split('/')[3]!)).toBe(countryCode.split(';').map(code => code === 'US' ? 'USA' : code).sort().join(';'));
+  });
+}
+test('answers ZZ with a 400 carrying the country_code violation through the gateway', async () => {
+  const path = '/api/economic/v1/list-world-bank-indicators';
+  const routes = createEconomicServiceRoutes({ listWorldBankIndicators } as EconomicServiceHandler).filter(route => route.path === path);
+  const gateway = createDomainGateway(routes);
+  const token = (await issueSessionToken()).token;
+  const response = await gateway(new Request(`https://worldmonitor.app${path}?indicator_code=${indicator}&country_code=ZZ`, {
+    headers: { Cookie: `wm-session=${token}`, 'x-real-ip': '192.0.2.53' },
+  }), { waitUntil: () => {} });
+  expect(response.status).toBe(400);
+  expect((await response.json()).violations).toEqual([expect.objectContaining({ field: 'country_code' })]);
+  expect(providerUrls).toHaveLength(0);
+});
 for (const indicatorCode of ['', '../country/all', 'NY.GDP?date=1900', 'NY.GDP#fragment', 'NY.GDP:all', 'NY.GDP/other', 'A'.repeat(65)]) {
   test(`rejects invalid indicator before cache/provider I/O: ${indicatorCode.slice(0, 30)}`, async () => {
     expect(await request({ indicatorCode })).toEqual({ data: [], pagination: undefined });

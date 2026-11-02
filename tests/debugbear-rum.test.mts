@@ -20,6 +20,7 @@ import {
   resetDebugBearRumForTesting as resetMarketingDebugBearRumForTesting,
   shouldEnableDebugBearRum as shouldEnableMarketingDebugBearRum,
 } from '../pro-test/src/debugbear-rum.ts';
+import { resetDeviceTierForTesting } from '../src/utils/device-tier.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -148,6 +149,7 @@ describe('DebugBear RUM loader', () => {
       h.listeners.get('unhandledrejection')!(rejectionEvent);
       assert.deepEqual(h.win.dbbRum, [
         ['presampling', DEBUGBEAR_RUM_SAMPLE_RATE],
+        ['tag4', 'unknown'],
         ['error', errorEvent],
         ['unhandledrejection', rejectionEvent],
       ]);
@@ -161,7 +163,7 @@ describe('DebugBear RUM loader', () => {
     try {
       initDebugBearRum();
       for (let i = 0; i < 1000; i++) h.listeners.get('error')!(new Event('error'));
-      assert.equal(h.win.dbbRum?.length, 51);
+      assert.equal(h.win.dbbRum?.length, 52);
       assert.deepEqual(h.win.dbbRum?.[0], ['presampling', DEBUGBEAR_RUM_SAMPLE_RATE]);
       const buffered = h.win.dbbRum!;
       const delivered: unknown[] = [];
@@ -169,11 +171,11 @@ describe('DebugBear RUM loader', () => {
       const event = new Event('unhandledrejection');
       h.listeners.get('unhandledrejection')!(event);
       assert.deepEqual(delivered, [['unhandledrejection', event]]);
-      assert.equal(buffered.length, 51, 'loaded collector receives events instead of stale buffer');
+      assert.equal(buffered.length, 52, 'loaded collector receives events instead of stale buffer');
       h.win.dbbRum = buffered;
       h.appendedScripts[0]!.onerror!();
       assert.equal(h.listeners.size, 0);
-      assert.deepEqual(buffered, [['presampling', DEBUGBEAR_RUM_SAMPLE_RATE]]);
+      assert.deepEqual(buffered, [['presampling', DEBUGBEAR_RUM_SAMPLE_RATE], ['tag4', 'unknown']]);
     } finally { h.restore(); }
   });
 
@@ -214,7 +216,7 @@ describe('DebugBear RUM loader', () => {
         outcome: 'complete',
       });
 
-      assert.deepEqual(h.win.dbbRum?.slice(1), [
+      assert.deepEqual(h.win.dbbRum?.slice(2), [
         ['metric1', 880],
         ['metric2', 1_937_018],
         ['metric3', 351_175],
@@ -226,6 +228,24 @@ describe('DebugBear RUM loader', () => {
       assert.equal(JSON.stringify(h.win.dbbRum).includes('user'), false);
     } finally {
       h.restore();
+    }
+  });
+
+  it('tags each sampled session with the device tier in tag4', () => {
+    const savedNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    const h = installDebugBearHarness('www.worldmonitor.app');
+    try {
+      Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { deviceMemory: 2 } });
+      resetDeviceTierForTesting();
+      initDebugBearRum();
+      assert.deepEqual(h.win.dbbRum?.slice(0, 2), [
+        ['presampling', DEBUGBEAR_RUM_SAMPLE_RATE],
+        ['tag4', 'low'],
+      ]);
+    } finally {
+      h.restore();
+      if (savedNavigator) Object.defineProperty(globalThis, 'navigator', savedNavigator);
+      resetDeviceTierForTesting();
     }
   });
 

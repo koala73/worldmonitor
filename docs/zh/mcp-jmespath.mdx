@@ -548,7 +548,7 @@ JMESPath 表达式可能以三种方式失败：表达式本身超过 1024 字�
 
 ### `describe_tool`
 
-当 `tools/list` 返回的压缩描述对某工具的响应结构含糊不清时，调用 `describe_tool({ tool_name: "get_market_data" })` 取完整未压缩定义。`describe_tool` 仅含元数据且**不计入 Pro 每日配额**——编写投影时尽管放心用。如果名字错了，响应是 `{ error: "unknown_tool", available: [...] }`，同样无配额成本。
+要在不重新列出整个目录的情况下重读单个工具的定义（含其 `outputSchema`），调用 `describe_tool({ tool_name: "get_market_data" })`。`describe_tool` 仅含元数据且**不计入 Pro 每日配额**——编写投影时尽管放心用。如果名字错了，响应是 `{ error: "unknown_tool", available: [...] }`，同样无配额成本。
 
 ## 另请参阅
 

@@ -2,13 +2,18 @@
 import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseArgs } from 'node:util';
+import { parseArgs, isDeepStrictEqual } from 'node:util';
 import { loadEnvFile } from './_seed-utils.mjs';
 import { runRailway, runGit, resolveRailwayTarget, REPOSITORY } from './railway-cli.mjs';
 import { orderByRecency, newestRunning } from './railway-deployments.mjs';
 import { createAncestryResolver } from './railway-deploy-closure.mjs';
 
 const SOURCES = {
+  yieldCurveAu: {
+    service: 'seed-bundle-yield-curves', metaKey: 'seed-meta:economic:yield-curve-au',
+    domain: 'economic', prefix: 'Yield-Curve-AU', requiredRuns: 1,
+    logFilter: '"Starting Container" OR "Yield-Curve-AU"',
+  },
   wildfires: {
     service: 'seed-fire-detections', metaKey: 'seed-meta:wildfire:fires',
     domain: 'wildfire', prefix: '', requiredRuns: 3,
@@ -47,6 +52,46 @@ const time = (value) => {
 const iso = (value) => Number.isFinite(time(value)) ? new Date(time(value)).toISOString() : null;
 const code = (value) => typeof value === 'string' && CODE.test(value) ? value : null;
 
+function auStorageKeys(observedAt) {
+  const key = 'economic:yield-curve:au:v1';
+  return ['seed-completion:economic:yield-curve-au', key, `${key}:latest`,
+    ...Array.from({ length: new Date(observedAt).getUTCFullYear() - 2012 }, (_, index) => `${key}:${2013 + index}`)];
+}
+
+function projectAuStorage(meta, values, observedAt) {
+  const key = 'economic:yield-curve:au:v1';
+  const canonical = values?.[key];
+  const completion = values?.['seed-completion:economic:yield-curve-au'];
+  const curves = canonical?.data?.curves;
+  const seed = canonical?._seed;
+  if (!Array.isArray(curves) || curves.length === 0 || curves.length !== meta.recordCount
+    || seed?.state !== 'OK' || seed.recordCount !== curves.length
+    || seed.sourceVersion !== 'rba-f2-csv-v1' || meta.sourceVersion !== seed.sourceVersion
+    || !iso(seed.fetchedAt) || time(seed.fetchedAt) > time(meta.fetchedAt)
+    || !iso(seed.newestItemAt) || seed.newestItemAt !== meta.newestItemAt
+    || seed.maxContentAgeMin !== 14400 || meta.maxContentAgeMin !== 14400
+    || `${curves.at(-1)?.date}T00:00:00.000Z` !== iso(seed.newestItemAt)
+    || time(seed.newestItemAt) > time(observedAt)
+    || completion?.fetchedAt !== seed.fetchedAt || !iso(completion?.completedAt)
+    || time(completion.completedAt) < time(meta.fetchedAt)
+    || time(completion.completedAt) > time(observedAt) + 30_000
+    || !/^\d{13}-[a-z0-9]{1,20}$/.test(completion?.runId ?? '')
+    || Number(completion.runId.split('-')[0]) > time(seed.fetchedAt)) fail('SOURCE_METADATA_UNVERIFIED');
+  for (const shardKey of auStorageKeys(observedAt).slice(2)) {
+    const shard = values[shardKey];
+    const expected = shardKey.endsWith(':latest') ? curves.slice(-1)
+      : curves.filter((row) => row.date.startsWith(`${shardKey.slice(-4)}-`));
+    if (expected.length === 0 && shard == null
+      && shardKey.endsWith(`:${new Date(observedAt).getUTCFullYear()}`)) continue;
+    if (!isDeepStrictEqual(shard?.data?.curves, expected)
+      || shard?._seed?.fetchedAt !== seed.fetchedAt || shard._seed.recordCount !== expected.length
+      || shard._seed.sourceVersion !== seed.sourceVersion || shard._seed.state !== 'OK') fail('SOURCE_METADATA_UNVERIFIED');
+  }
+  return { lastSuccessAt: iso(seed.fetchedAt), runId: completion.runId,
+    completedAt: iso(completion.completedAt), newestItemAt: iso(seed.newestItemAt),
+    contentDeadline: new Date(time(seed.newestItemAt) + 14400 * 60_000 + 30_000).toISOString(), storedParity: true };
+}
+
 export function validateRecord(record) {
   if (!object(record) || record.version !== 1 || !Object.hasOwn(SOURCES, record.source)
     || !SHA.test(record.requiredCommit) || !Number.isSafeInteger(record.pr) || record.pr < 1
@@ -70,13 +115,18 @@ export function projectSource(source, health, meta, detail, observedAt) {
     || now - time(health.checkedAt) > 300_000 || time(health.checkedAt) > now + 30_000) fail('HEALTH_UNVERIFIED');
   if (!object(meta) || !Number.isSafeInteger(meta.recordCount) || meta.recordCount < 0
     || !iso(meta.fetchedAt) || time(meta.fetchedAt) > now + 30_000
-    || !['ok', 'error', 'degraded', 'blocked'].includes(meta.sourceState)) fail('SOURCE_METADATA_UNVERIFIED');
+    || (!(source === 'yieldCurveAu' && meta.sourceState == null)
+      && !['ok', 'error', 'degraded', 'blocked'].includes(meta.sourceState))) fail('SOURCE_METADATA_UNVERIFIED');
   const projected = {
     healthStatus: entry.status, healthCheckedAt: iso(health.checkedAt),
     recordCount: meta.recordCount, sourceState: meta.sourceState,
     lastSuccessAt: iso(meta.fetchedAt), lastAttemptAt: null,
     failureCode: code(meta.errorCode) ?? code(meta.lastSourceFailureCode),
   };
+  if (source === 'yieldCurveAu') {
+    Object.assign(projected, projectAuStorage(meta, detail, observedAt));
+    projected.sourceState = meta.sourceState ?? 'ok';
+  }
   if (source === 'wildfires') {
     const failures = meta.consecutiveSourceFailures ?? (meta.sourceState === 'ok' ? 0 : null);
     if (!Number.isSafeInteger(failures) || failures < 0) fail('SOURCE_METADATA_UNVERIFIED');
@@ -105,6 +155,7 @@ function scheduledStart(timestamp, cron) {
   if (cron === '*/10 * * * *') return minute % 10 < 5;
   if (cron === '*/5 * * * *') return minute % 5 < 2;
   if (cron === '0 8,9 * * *') return [8, 9].includes(date.getUTCHours()) && minute < 5;
+  if (cron === '0 10 * * *') return date.getUTCHours() === 10 && minute < 5;
   return false;
 }
 
@@ -136,12 +187,16 @@ export function projectRuns(source, logs, deployment, observedAt) {
       return delta >= -15_000 && delta <= (config.prefix ? 570_000 : 120_000);
     }).sort((a, b) => time(b.timestamp) - time(a.timestamp))[0];
     const inRun = (line) => time(line.timestamp) >= started - 15_000 && time(line.timestamp) <= ended + 15_000;
+    const runIds = logs.filter((line) => inRun(line) && typeof line.message === 'string'
+      && line.message.includes(`[${config.prefix}]`))
+      .flatMap((line) => line.message.match(/Run ID:\s+(\d{13}-[a-z0-9]+)\s*$/)?.slice(1) ?? []);
     runs.push({
       startedAt: new Date(started).toISOString(), completedAt: iso(event.timestamp), state: event.state,
       containerStartedAt: iso(container?.timestamp),
       scheduled: Boolean(container && scheduledStart(time(container.timestamp), deployment.cronSchedule)),
       completeCoverage: source !== 'wildfires' || logs.some((line) => inRun(line) && /\(27 ok, 0 failed\)/.test(line.message)),
       recoveryPath: source === 'wildfires' && logs.some((line) => inRun(line) && /; trying primary retry$/.test(line.message)),
+      ...(source === 'yieldCurveAu' ? { runId: runIds.length === 1 ? runIds[0] : null } : {}),
     });
   }
   for (const started of attempts) {
@@ -205,6 +260,7 @@ export function evaluateRecovery(record) {
           && time(source.lastSuccessAt) <= time(run.completedAt) + 15_000);
         const run = matched.length === 1 ? matched[0] : null;
         if (!run || run.scheduled !== true || run.state !== 'OK' || run.completeCoverage !== true
+          || (record.source === 'yieldCurveAu' && (!source.storedParity || !source.runId || run.runId !== source.runId))
           || !iso(run.containerStartedAt) || !iso(run.startedAt) || !iso(run.completedAt)
           || time(run.startedAt) <= time(confirmedAt) || time(run.completedAt) > time(record.deadline)) {
           sequence = [];
@@ -285,13 +341,18 @@ export async function captureObservation(record, {
       'User-Agent': 'WorldMonitor-seed-recovery/1.0',
     } }, fetchFn);
     stage = 'METADATA_READ_FAILED';
-    const keys = [config.metaKey, ...(config.sourceKey ? [config.sourceKey] : [])];
+    const keys = [config.metaKey, ...(record.source === 'yieldCurveAu' ? auStorageKeys(observedAt)
+      : config.sourceKey ? [config.sourceKey] : [])];
     const rows = await readJson(new URL('/pipeline', redisUrl), {
       method: 'POST', headers: { Authorization: `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`, 'Content-Type': 'application/json', 'User-Agent': 'WorldMonitor-seed-recovery/1.0' },
       body: JSON.stringify(keys.map((key) => ['GET', key])),
     }, fetchFn);
-    if (!Array.isArray(rows) || rows.length !== keys.length || rows.some((row) => row.error || typeof row.result !== 'string')) fail('SOURCE_READ_UNVERIFIED');
-    const [meta, detail] = rows.map((row) => JSON.parse(row.result));
+    if (!Array.isArray(rows) || rows.length !== keys.length || rows.some((row) => row.error
+      || (typeof row.result !== 'string' && !(record.source === 'yieldCurveAu' && row.result === null)))) fail('SOURCE_READ_UNVERIFIED');
+    const parsed = rows.map((row) => JSON.parse(row.result));
+    const [meta] = parsed;
+    const detail = record.source === 'yieldCurveAu'
+      ? Object.fromEntries(keys.slice(1).map((key, index) => [key, parsed[index + 1]])) : parsed[1];
     observation.source = projectSource(record.source, health, meta, detail, observedAt);
     stage = 'LOG_READ_FAILED';
     const rawLogs = railway(['logs', deployed.id, '--project', record.project, '--environment', 'production',
@@ -315,6 +376,11 @@ export function formatRecoveryMarkdown(record) {
     `Baseline success: ${record.baselineSuccessAt}. Fixed deadline: ${record.deadline}.`, '',
     `Distinct consecutive source runs: ${verdict.successfulRuns}/${verdict.requiredRuns}.`, '',
     `Latest observation: ${last?.observedAt ?? 'none'}; health: ${last?.source?.healthStatus ?? 'unverified'}.`, '',
+    ...(record.source === 'yieldCurveAu' ? [
+      `AU source date: ${last?.source?.newestItemAt ?? 'unverified'}; content boundary: ${last?.source?.contentDeadline ?? 'unverified'}.`, '',
+      `Completion run: ${last?.source?.runId ?? 'unverified'}; full stored shard parity: ${last?.source?.storedParity === true ? 'verified' : 'unverified'}.`, '',
+      'This checkpoint does not verify the official provider or authenticated consumer RPC. Schedule alignment is not proof of the trigger identity.', '',
+    ] : []),
     `Deployment: ${last?.deployment?.id ?? 'unverified'}; commit: ${last?.deployment?.commit ?? 'unverified'}; ancestry: ${last?.deployment?.ancestry ?? 'unknown'}.`, '',
     'Scheduled execution attribution requires a container start in the configured cron window and a matching source completion. The member due time remains unknown until execution evidence exists. Do not run manual seeds during this observation window.', '',
     ...(record.source === 'physicalDivergence' ? ['This verdict covers initial recovery only. The separate 48-hour macro schedule validation remains required, including two 09:00 UTC ticks.', ''] : []),

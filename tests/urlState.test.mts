@@ -77,6 +77,21 @@ describe('parseMapUrlState expanded param', () => {
   });
 });
 
+describe('parseMapUrlState coordinates at zero', () => {
+  it('preserves zero latitude and longitude from a deep link', () => {
+    const state = parseMapUrlState('?lat=0&lon=0&zoom=4', EMPTY_LAYERS);
+    assert.equal(state.lat, 0);
+    assert.equal(state.lon, 0);
+    assert.equal(state.zoom, 4);
+  });
+
+  it('ignores blank and non-numeric coordinates', () => {
+    const state = parseMapUrlState('?lat=%20&lon=nope', EMPTY_LAYERS);
+    assert.equal(state.lat, undefined);
+    assert.equal(state.lon, undefined);
+  });
+});
+
 describe('readDashboardSearchQuery', () => {
   it('reads a SearchAction term from ?q=', () => {
     assert.equal(readDashboardSearchQuery('?q=hormuz%20strait'), 'hormuz strait');

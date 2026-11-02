@@ -27,6 +27,11 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     action: "delete",
     notes: "Prefs write counters",
   },
+  {
+    target: "billingEmailUpdateAttempts",
+    action: "delete",
+    notes: "Billing email change cooldown",
+  },
   { target: "notificationChannels", action: "delete", notes: "Contact endpoints" },
   { target: "alertRules", action: "delete", notes: "Alert config" },
   { target: "telegramPairingTokens", action: "delete", notes: "Telegram pairing" },
@@ -82,9 +87,11 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     notes: "Delete referrer-owned credits; anonymize referee email on surviving credits",
   },
   { target: "entitlements", action: "delete", notes: "Access, not invoices" },
+  { target: "aiRoutingPolicies", action: "delete", notes: "Per-account AI provider restriction; the edge cache entry expires in 60 s" },
   { target: "apiUsageRollups", action: "delete", notes: "Usage windows" },
   { target: "apiPlanLimitNotices", action: "delete", notes: "Plan-limit notices" },
   { target: "checkoutAdmissions", action: "delete", notes: "Checkout admission counters" },
+  { target: "checkoutSessionEvents", action: "delete", notes: "Checkout funnel session log" },
   {
     target: "proActivationPresentations",
     action: "delete",
@@ -121,6 +128,11 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     notes: "Waitlist rows matching verified account email after Clerk subject is confirmed",
   },
   {
+    target: "agentFeedback",
+    action: "delete",
+    notes: "Agent feedback reports filed by this user as a keyed MCP caller (principalId)",
+  },
+  {
     target: "contactMessages",
     action: "delete",
     notes: "Contact form rows matching verified account email",
@@ -141,6 +153,16 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     target: "emailSuppressions",
     action: "retain",
     notes: "Bounce/complaint (and other) suppressions stay so we do not re-mail",
+  },
+  {
+    target: "emailSoftBounces",
+    action: "skip",
+    notes: "No userId index; keyed by email, cleared on delivery or suppression and pruned after the 30-day window",
+  },
+  {
+    target: "emailSoftBounceResets",
+    action: "skip",
+    notes: "No userId index; keyed by email, removed on suppression and pruned after the 30-day window",
   },
   {
     target: "companyMonitoringAccounts",

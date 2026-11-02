@@ -16,28 +16,22 @@ const MAX_JSON_RPC_ID_BYTES = 256;
 
 /** Normalize a caller-controlled JSON-RPC id to the bounded echo-safe shape. */
 export function safeJsonRpcId(value: unknown): string | number | null {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'number') return Number.isInteger(value) ? value : null;
   if (typeof value !== 'string' || value.length > MAX_JSON_RPC_ID_BYTES) return null;
   return utf8ByteLength(value) <= MAX_JSON_RPC_ID_BYTES ? value : null;
 }
 
 // ---------------------------------------------------------------------------
-// tools/list description compression (v1.5.0)
+// tools/list description cap
 //
-// `tools/list` is the largest fixed per-session input-token cost. v1.4.0's
-// catalog is ~41.8 KB UTF-8; ~8 KB of that is tool-level `description`
-// prose. The first sentence of a tool description carries nearly all the
-// selection signal — the long tail is rarely load-bearing. Compress the
-// top-level `description` to first-sentence-or-cap; route LLMs that want
-// full text to the new `describe_tool` RPC (added in U3 below).
-//
-// PROPERTY descriptions are NOT compressed in v1 — audit found 53% of
-// them encode contract details (defaults, optional flags, "currently
-// supported" lists, examples) where naive compression would regress
-// correctness. Deferred to a future PR with a per-property hand-audit.
-//
-// Both compress + describe_tool surfaces go through `buildPublicTool`
-// (added in U2) so there's a single source of truth for the public shape.
+// v1.5.0 compressed every tool description to its first sentence (≤120 B)
+// and routed agents to `describe_tool` for the full text. Since v1.34.0 the
+// registry keeps every description under TOOL_DESCRIPTION_MAX_BYTES
+// (test-enforced), so tools/list and describe_tool ship identical text and
+// this helper is only a backstop in `buildPublicTool`: a description that
+// somehow exceeded the cap at runtime would be cut to its first sentence
+// rather than blowing the catalog budget. PROPERTY descriptions are never
+// compressed; they carry contract details (defaults, flags, examples).
 // ---------------------------------------------------------------------------
 
 // Compress a description string to at most `maxBytes` UTF-8 bytes.
@@ -72,4 +66,21 @@ export function compressDescription(text: string, maxBytes: number): string {
     used += chBytes;
   }
   return out;
+}
+
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** True when the request's Accept lists text/event-stream with a non-zero q. */
+export function clientAcceptsSse(req: Request): boolean {
+  const accept = req.headers.get('accept') ?? '';
+  return accept.split(',').some((entry) => {
+    const [type, ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
+    if (type !== 'text/event-stream') return false;
+    const qParam = params.find((part) => part.startsWith('q='));
+    if (!qParam) return true;
+    const q = Number(qParam.slice(2));
+    return Number.isFinite(q) && q > 0;
+  });
 }

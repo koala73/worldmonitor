@@ -1,4 +1,4 @@
-import { ApiError } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
+import { ApiError, ValidationError } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
 import type {
   ServerContext,
   GetAircraftDetailsRequest,
@@ -43,7 +43,7 @@ export async function getAircraftDetails(
   // the two handlers reading identically.
   const icao24 = req.icao24.trim().toLowerCase();
   if (!isValidAircraftIcao24(icao24)) {
-    throw new ApiError(400, 'icao24 must be a 6-character hexadecimal address', '');
+    throw new ValidationError([{ field: 'icao24', description: 'icao24 must be a 6-character hexadecimal address' }]);
   }
   const apiKey = process.env.WINGBITS_API_KEY;
   if (!apiKey) return { details: undefined, configured: false };

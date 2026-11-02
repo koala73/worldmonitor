@@ -323,6 +323,85 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.ok(elapsedMs < 1_500, `expected bounded linear report-body scan, took ${Math.round(elapsedMs)}ms`);
   });
 
+  it('rejects a report padded with repeated window openers in linear time', () => {
+    // With no "(UTC+8)" to end on, every "6 a.m." start used to rescan the
+    // rest of the body, once per later "to 6 a.m.".
+    const hostileDetail = fixture('mnd-detail.html').replace(
+      '<p>1.Date:',
+      `<p>${'6 a.m. Jan 1 to '.repeat(4_096)}</p><p>1.Date:`,
+    ).replaceAll('(UTC+8)', '(local)');
+    const startedAt = performance.now();
+    assert.throws(
+      () => parseTaiwanMndDetail(hostileDetail, {
+        sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87151',
+        retrievedAt,
+        expectedPublicationDay: '2026-07-25',
+      }),
+      /^Error: MND_REPORTING_WINDOW_/,
+    );
+    const elapsedMs = performance.now() - startedAt;
+    assert.ok(elapsedMs < 250, `expected a bounded window scan, took ${Math.round(elapsedMs)}ms`);
+  });
+
+  it('finds the reporting window after an earlier (UTC+8) mention', () => {
+    const html = fixture('mnd-detail.html').replace(
+      '<p>1.Date:',
+      '<p>All times are Taiwan time (UTC+8).</p><p>1.Date:',
+    );
+    const observation = parseTaiwanMndDetail(html, {
+      sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87151',
+      retrievedAt,
+      expectedPublicationDay: '2026-07-25',
+    });
+    assert.equal(observation.reportingDay, '2026-07-25');
+    assert.equal(observation.reportingPeriod.start, '2026-07-23T22:00:00.000Z');
+  });
+
+  it('finds the reporting window after many earlier (UTC+8) mentions', () => {
+    const html = fixture('mnd-detail.html').replace(
+      '<p>1.Date:',
+      `<p>${'Taiwan time (UTC+8). '.repeat(12)}</p><p>1.Date:`,
+    );
+    const observation = parseTaiwanMndDetail(html, {
+      sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87151',
+      retrievedAt,
+      expectedPublicationDay: '2026-07-25',
+    });
+    assert.equal(observation.reportingDay, '2026-07-25');
+  });
+
+  it('rejects a report full of (UTC+8) mentions without a window in bounded time', () => {
+    const hostileDetail = fixture('mnd-detail.html').replace(
+      '<p>1.Date:',
+      `<p>${'6 a.m. Jan 1 (UTC+8) '.repeat(4_096)}</p><p>1.Date:`,
+    );
+    const startedAt = performance.now();
+    // The first "6 a.m. Jan 1" pairs with the real window's "to 6 a.m. Jul. 25",
+    // as the full regex would pair them, and that span is rejected as invalid.
+    assert.throws(
+      () => parseTaiwanMndDetail(hostileDetail, {
+        sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87151',
+        retrievedAt,
+        expectedPublicationDay: '2026-07-25',
+      }),
+      /^Error: MND_REPORTING_WINDOW_/,
+    );
+    const elapsedMs = performance.now() - startedAt;
+    assert.ok(elapsedMs < 250, `expected a bounded marker scan, took ${Math.round(elapsedMs)}ms`);
+  });
+
+  it('rejects a report with no (UTC+8) window marker', () => {
+    const html = fixture('mnd-detail.html').replaceAll('(UTC+8)', '(local)');
+    assert.throws(
+      () => parseTaiwanMndDetail(html, {
+        sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87151',
+        retrievedAt,
+        expectedPublicationDay: '2026-07-25',
+      }),
+      /^Error: MND_REPORTING_WINDOW_MISSING$/,
+    );
+  });
+
   it('keeps deep ancestry lookups linear when near-limit closing tags do not match', () => {
     const hostileAncestry = `${'<x>'.repeat(12_000)}${'</y>'.repeat(12_000)}`;
     const hostileDetail = fixture('mnd-detail.html').replace(

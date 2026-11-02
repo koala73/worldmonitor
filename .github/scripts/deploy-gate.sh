@@ -149,13 +149,13 @@ trap post_pending_on_exit EXIT
 # define a job with the id `changes`; the latter two publish under
 # `typecheck-changes` / `lint-changes` so all three are evaluated
 # instead of two being masked by the third (#5822).
-required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","markdown","public-docs","mintlify-slugs","doc-anchors","security-audit","stacked-merge-guard","proto-changes","proto-breaking","fork-artifact-check","internal-generate","internal-auto-generate","internal-merge-freshness","proto-freshness"]'
+required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-node-windows","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","markdown","public-docs","mintlify-slugs","doc-anchors","security-audit","stacked-merge-guard","proto-changes","proto-breaking","fork-artifact-check","internal-generate","internal-auto-generate","internal-merge-freshness","proto-freshness","zapier"]'
 # The contract stamp covers the gate's PASS/FAIL RULES, not just the list of
 # names it inspects. A rules change that left the stamp alone would inherit
 # every success earned under the old rules, because the sweep only re-evaluates
 # a SUCCESS whose stamp differs (#5851). Bump this whenever the meaning of a
 # passing gate changes.
-gate_rules='base-drift-v2'
+gate_rules='base-drift-v3'
 gate_contract=$(REQUIRED_JOBS="$required" GATE_RULES="$gate_rules" python3 -c 'import hashlib, os; print(hashlib.sha256((os.environ["REQUIRED_JOBS"] + "\n" + os.environ["GATE_RULES"]).encode()).hexdigest()[:12])')
 gate_stamp="[gate-contract:$gate_contract]"
 BASE_DRIFT_REMOTE=${BASE_DRIFT_REMOTE:-origin}
@@ -312,6 +312,7 @@ discover() {
           pullRequests(first: 100, states: [OPEN], after: $endCursor) {
             nodes {
               headRefOid
+              author { login }
               commits(last: 1) {
                 nodes {
                   commit {
@@ -354,13 +355,24 @@ discover() {
       select(.commits.nodes[0].commit.status.context == null) |
       .headRefOid
     ')
+    # GitHub never fires workflow_run for a run whose actor is the Actions
+    # token, so a PR a scheduled workflow opens with github.token gets no
+    # event-driven gate at all and stays blocked until a human pushes (#10007).
+    # The sweep is the only writer such a head has: evaluate it directly. Its
+    # first status (usually pending) then moves it onto the 24-hour retry path.
+    unchained_shas=$(printf '%s\n' "$pr_gate_states" | jq -r '
+      .[].data.repository.pullRequests.nodes[] |
+      select(.commits.nodes[0].commit.status.context == null and .author.login == "github-actions") |
+      .headRefOid
+    ')
 
-    discovery=$(jq -nc --arg stale "$stale_terminal_shas" --arg retry "$retry_shas" --arg missing "$missing_shas" --arg deferred "$deferred_shas" '
+    discovery=$(jq -nc --arg stale "$stale_terminal_shas" --arg retry "$retry_shas" --arg missing "$missing_shas" --arg unchained "$unchained_shas" --arg deferred "$deferred_shas" '
       def shas: split("\n") | map(select(length > 0)) | reduce .[] as $sha ([]; if index($sha) then . else . + [$sha] end);
-      {kind:"sweep", stale:($stale|shas), retry:($retry|shas), missing:($missing|shas), deferred:($deferred|shas)}')
+      ($unchained|shas) as $unchained_list |
+      {kind:"sweep", stale:($stale|shas), retry:($retry|shas), missing:($missing|shas | map(select(. as $sha | $unchained_list | index($sha) | not))), unchained:$unchained_list, deferred:($deferred|shas)}')
   fi
   printf '%s\n' "$discovery" | jq -e '
-    [.stale[], .retry[], .missing[], .deferred[]?] as $shas |
+    [.stale[], .retry[], .missing[], .unchained[]?, .deferred[]?] as $shas |
     all($shas[]; test("^[0-9a-f]{40}$")) and ($shas|length) == ($shas|unique|length)
   ' >/dev/null
   matrix=$(printf '%s\n' "$discovery" | jq -c '{include:[.stale[]|{sha:.}]}')
@@ -477,6 +489,7 @@ print(json.dumps({
       then [{sha:$discovery.sha,check_attempts:2}]
       else ([$plan.stale[]|{sha:.,check_attempts:1}] +
         [$discovery.retry[]|{sha:.,check_attempts:2}] +
+        [$discovery.unchained[]?|{sha:.,check_attempts:2}] +
         [$recovered|split("\n")[]|select(length>0)|{sha:.,check_attempts:2}])
       end | reduce .[] as $row ([]; if any(.[]; .sha == $row.sha) then . else . + [$row] end))}')
   emit_matrix "$matrix"
@@ -564,9 +577,29 @@ if ! base_drift "$SHA"; then
 fi
 
 if [ -n "$drift_files" ]; then
-  post_gate_status "failure" "Stale base: main changed $(name_count "$drift_files") file(s) here: $drift_files"
-  active_sha=""
-  return 0
+  # Squash and rebase merges do not retain the PR head's ancestry.
+  if ! merged_head=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/commits/$SHA/pulls?per_page=100" --paginate --slurp |
+    jq -r --arg sha "$SHA" '
+      if type == "array" and length > 0 and all(.[];
+        type == "array" and all(.[];
+          (.head.sha | type) == "string" and
+          (.state == "open" or .state == "closed") and
+          (.merged_at == null or (.merged_at | type) == "string")))
+      then [.[][] | select(.head.sha == $sha)] as $prs |
+        (any($prs[]; .state == "closed" and .merged_at != null) and
+         (any($prs[]; .state == "open") | not))
+      else error("Incomplete associated pull-request response") end'); then
+    post_gate_status "pending" "Deploy Gate could not read associated PRs; retry scheduled"
+    active_sha=""
+    return 0
+  fi
+  if [ "$merged_head" != "true" ]; then
+    post_gate_status "failure" "Stale base: main changed $(name_count "$drift_files") file(s) here: $drift_files"
+    active_sha=""
+    return 0
+  fi
+  echo "Skipping base drift for merged PR head $SHA"
 fi
 
 post_gate_status "success" "All required PR gates passed"

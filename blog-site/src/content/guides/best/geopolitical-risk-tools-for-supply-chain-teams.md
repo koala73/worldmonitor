@@ -1,90 +1,102 @@
 ---
 title: "Best geopolitical risk tools for supply chain teams"
-description: "A practical buying guide for supply chain teams. Compare tools by task, check access, and see when a specialist beats World Monitor."
-metaTitle: "Best geopolitical risk tools for supply chain teams | World Monitor"
-keywords: "Supply chain teams, best geopolitical risk tools for supply chain teams, global intelligence tools"
+description: "Which geopolitical risk tools help supply chain teams watch routes and chokepoints? World Monitor for live chokepoint transit counts and chokepoint and country alerts, Dataminr for operational disruption at named sites, Recorded Future for facility threat investigation."
+metaTitle: "Best geopolitical risk tools for supply chain teams (2026) | World Monitor"
+keywords: "Supply chain teams, best geopolitical risk tools for supply chain teams, chokepoint monitoring, Red Sea shipping disruption, Suez, Hormuz, Panama Canal, global intelligence tools"
 audience: "Supply chain teams"
 pubDate: "2026-10-02"
+modifiedDate: "2026-10-18"
 author: "World Monitor editorial team"
 authorType: "Organization"
 authorUrl: "https://www.worldmonitor.app/"
 ---
 
-This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. Sources were checked on October 2, 2026. Confirm current access and contracts before buying.
+This guide is published by World Monitor. We compare public product documentation and our own documented capabilities. Recommendations are editorial judgments, not a hands-on benchmark. World Monitor's capabilities were rechecked on October 18, 2026, and competitor sources on October 2, 2026. Confirm current access and contracts before buying.
 
 ## TL;DR
 
-> Evaluate Dataminr for disruption monitoring tied to operations. Choose Recorded Future when threat investigation near facilities is central. Use World Monitor for public route and country context. None of these descriptions proves a complete supplier-risk system.
+> For a supply chain team, the best geopolitical risk tool depends on whether your exposure is a shipping route or a named facility. Choose World Monitor when the question is a maritime chokepoint: it shows live ship transit counts at 13 chokepoints, including Hormuz, Suez, Bab el-Mandeb in the Red Sea and Panama, next to conflict, hazard and market layers, and it alerts your team when a chokepoint on your lane turns red. Choose Dataminr for disruption monitoring tied to named sites and third parties under an enterprise contract. Choose Recorded Future when analysts investigate threats near facilities.
 
 ## The picks at a glance
 
-| Tool | Best fit | Access to check |
-| --- | --- | --- |
-| Dataminr | Operational disruption awareness | Confirm current access and package |
-| Recorded Future | Facility-related threat investigation | Confirm current access and package |
-| World Monitor | Public chokepoint and country context | Free core dashboard; premium and developer access vary |
+| Tool | Best fit | Access | Main limit |
+| --- | --- | --- | --- |
+| World Monitor | Chokepoint and route context beside markets | Free core map; alerts on Pro; separate API plan; published prices | Flow baseline at 7 of 13 chokepoints; alerts scoped by country or chokepoint, not by site |
+| Dataminr | Operational disruption near sites, routes and third parties | Enterprise contract with an availability SLA | Sales cycle |
+| Recorded Future | Threat investigation near facilities | Licensed modules, APIs and MCP | Entitlements follow licensed modules |
 
 ## What matters for supply chain teams
 
-A relevant event only becomes a supply-chain risk when you can connect it to a supplier, route, facility, or inventory decision. A country headline alone does not establish your exposure. The useful tool makes that connection possible and leaves a clear next action for the team.
+A relevant event only becomes a supply-chain risk when you can connect it to a supplier, route, facility or inventory decision. For ocean freight, the first question is often physical: are ships still moving through the strait, and how does today compare with normal? A country headline alone does not answer that. The useful tool gives you the observation, the context around it and a clear next check for the team.
 
 ## Different jobs need different tools
 
-### Route context
+### Route and chokepoint context
 
-You need the actual route and the part of the network that could be affected. Country-level risk is often too coarse for a logistics decision.
+You need the actual waterway on your route and an observation of traffic through it. A transit count tells you whether vessels are moving. It does not tell you where your container is.
 
 ### Location-specific disruption
 
-Test named facilities and transportation hubs. Ask how the event reaches an operator and how the operator confirms the impact.
+Test named facilities and transport hubs. Ask how the event reaches an operator and how the operator confirms the impact.
 
 ### Supplier evidence
 
-Keep the supplier relationship and operational facts separate from public intelligence. No general dashboard can infer your private network without the relevant inputs.
+Keep the supplier relationship and operational facts separate from public intelligence. No general dashboard can infer your private network without your inputs.
 
-## 1. Dataminr
+## 1. World Monitor
 
-**Best for operational disruption awareness.**
+**Best for chokepoint and route context beside markets.**
 
-Dataminr's operational-resilience documentation covers disruptions near operations, transport routes, and third parties. That is a closer fit to an operations team than a general news dashboard. Ask it to demonstrate your required locations and handoffs rather than accepting a generic global map.
+World Monitor shows live ship transit counts at 13 maritime chokepoints on its [chokepoints page](https://www.worldmonitor.app/chokepoints). Seven of them are also measured against an EIA flow baseline, so for those you can see current traffic against a reference level; the other six show transit counts without that baseline. The same map carries conflict, protests, shipping, aviation, infrastructure outages, hazards, cyber and markets, so a Red Sea, Suez, Hormuz or Panama question sits next to the events around it. The core map is free with no account at [worldmonitor.app/dashboard](https://www.worldmonitor.app/dashboard).
 
-[Official Dataminr documentation](https://www.dataminr.com/products/corporate-security/).
+On the paid Pro plan, alert rules filter by event type, severity (all, high or critical) and country, and deliver to Slack, Microsoft Teams, Discord, Telegram, email, browser push or an HMAC-SHA256 signed webhook, in real time or as a digest. Real-time alerts link to the original report, and email digests link every item ([notifications reference](https://www.worldmonitor.app/docs/api-notifications)). Rules can also opt in to [chokepoint disruption alerts](https://www.worldmonitor.app/docs/api-notifications#chokepoint-disruption-alerts) for every chokepoint or only the ones on your lanes. One fires when navigational warnings, AIS disruption or a drop in transits push a chokepoint into the red band, at least 15 points above its standing threat level, so Hormuz alerts on new activity rather than on its permanent war-zone rating. Each chokepoint alerts at most once every 12 hours, and these alerts arrive in real time, not in digests. Teams that feed their own systems can use the REST API on a separate API plan, or the Python, Go and Ruby SDKs, and API plans can subscribe a signed webhook to the same `chokepoint.disruption` event ([Shipping v2 API](https://www.worldmonitor.app/docs/api-shipping-v2#delivery-worker)). Alerts are scoped by country or chokepoint, not by a radius around a port or plant, and World Monitor does not know your shipments.
 
-## 2. Recorded Future
+[Tracking trade routes and chokepoints](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/).
+
+## 2. Dataminr
+
+**Best for operational disruption near named sites and third parties.**
+
+Dataminr's operational-resilience documentation covers disruptions near operations, transport routes and third parties, sold under enterprise contracts with an availability SLA. That is the closer fit when the operations team needs alerts around a list of named facilities and suppliers. Ask it to demonstrate your required locations and handoffs rather than accepting a generic global map.
+
+[Official Dataminr documentation](https://www.dataminr.com/products/pulse/corporate-security/operational-resilience/).
+
+## 3. Recorded Future
 
 **Best for facility-related threat investigation.**
 
-Its Geopolitical Intelligence module documents monitoring threats near facilities and country risk. Evaluate it when analysts need to investigate a threat that could affect a location. Confirm how the result enters your own supplier or logistics process; intelligence alone is not a shipment decision.
+Its Geopolitical Intelligence module documents monitoring threats near facilities and country risk. Evaluate it when analysts need to investigate a threat that could affect a location, alongside cyber threat intelligence. Confirm how the result enters your own supplier or logistics process; intelligence alone is not a shipment decision.
 
 [Official Recorded Future documentation](https://www.recordedfuture.com/products/geopolitical-intelligence).
 
-## 3. World Monitor
+## Pick World Monitor when
 
-**Best for public chokepoint and country context.**
-
-World Monitor is useful for a broad briefing on reported disruption and available route or infrastructure context. It can help explain why a team should investigate a possible exposure. It does not establish your supplier's inventory, shipment status, or contractual delivery obligations.
-
-[World Monitor overview](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/).
+- **Your exposure runs through a strait or canal.** Live transit counts at 13 chokepoints show whether ships are moving, with an EIA flow baseline at 7 of them.
+- **You need the events and the markets in one view.** Conflict, shipping, hazards, outages and markets share one map, so a Red Sea or Hormuz question has its context beside it.
+- **You want to hear when a strait on your lane is disrupted.** Chokepoint disruption alerts fire on live warnings, AIS disruption or a transit drop, for the chokepoints you choose.
+- **You want an alert when a sourcing country flares up.** Rules by country, event type and severity reach Slack, Microsoft Teams, email, Telegram, Discord or a signed webhook.
+- **You want to pipe signals into your own risk model.** The REST API and SDKs expose the same data to your systems.
+- **You need to start without a procurement process.** The map is free, and paid plans have published prices.
 
 ## Our pick
 
-Choose Dataminr for the operational-disruption evaluation and Recorded Future for threat investigation. Use World Monitor when the immediate task is an accessible public-context brief. Retain your supplier and logistics systems as the source of your actual exposure.
+For chokepoint and route questions, pick World Monitor. For disruption alerts tied to a list of named facilities and suppliers under an SLA, pick Dataminr. For investigating threats near a facility, pick Recorded Future. Keep your supplier and logistics systems as the record of your actual exposure.
 
 ## What to do today
 
-1. Select one supplier, one facility, and one route. Write the operational decision the intelligence is meant to support.
-2. Collect a sample event with its source and time. Trace how each tool helps connect that event to the named exposure and a response owner.
+1. List the chokepoints on your top five lanes. Open the World Monitor chokepoints page and note which ones carry the flow baseline and which show transit counts only.
+2. Select one supplier, one facility and one route. Write the operational decision the intelligence is meant to support.
 3. Ask the operator what evidence is still missing before rerouting or changing inventory. Compare tools on the missing work they remove, not the number of feeds they advertise.
 
 ## Frequently Asked Questions
 
-**Can public intelligence predict whether my shipment will arrive?**
+**Can World Monitor tell me whether ships are getting through the Red Sea or Hormuz?**
 
-It can identify relevant conditions and reported disruptions. It does not establish a particular shipment's status or predict delivery by itself. Check the carrier and your operational records.
+It shows live ship transit counts at 13 chokepoints, including Bab el-Mandeb, Suez, Hormuz and Panama. Seven chokepoints are also compared with an EIA flow baseline. It does not track your specific vessel or container; check the carrier for that.
 
-**Is the lowest-cost option always the best choice?**
+**Can World Monitor alert me when the Red Sea or Hormuz is disrupted?**
 
-No. A free core dashboard can be enough for a public-source brief. A specialized dataset or operating service can be worth its cost when it supplies something the job requires. Compare the full workflow and current access rather than assuming equal scope.
+Yes, on the Pro plan. An alert rule can opt in to chokepoint disruption alerts for chosen chokepoints, such as Bab el-Mandeb, Suez or Hormuz. An alert fires when live signals push the chokepoint into the red band and reaches Slack, Microsoft Teams, email, a signed webhook or the other alert channels. It reflects reported warnings and traffic. It does not establish a particular shipment's status or predict delivery; check the carrier and your operational records for that.
 
 **How were these recommendations made?**
 
@@ -93,6 +105,7 @@ We compared documented capabilities with the tasks in this guide. World Monitor 
 ## More guides
 
 - [The related World Monitor workflow](/blog/posts/supply-chain-early-warning-dashboard-worldmonitor-api/)
+- [What is a maritime chokepoint](/blog/posts/what-is-a-maritime-chokepoint/)
 - [All audience guides](/blog/guides/#best)
 
 ## Head-to-head comparisons

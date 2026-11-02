@@ -77,12 +77,14 @@ jobs:
     # ('production' vs 'Production') would silently disable the trigger and look
     # identical to the healthy case.
     if: >-
-      github.event_name != 'deployment_status' ||
       (
-        github.event.deployment_status.state == 'success' &&
-        github.event.deployment.environment == 'Production' &&
-        github.event.deployment.creator.login == 'vercel[bot]'
-      )
+        github.event_name != 'deployment_status' ||
+        (
+          github.event.deployment_status.state == 'success' &&
+          github.event.deployment.environment == 'Production' &&
+          github.event.deployment.creator.login == 'vercel[bot]'
+        )
+      ) && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     # Keep concurrency at job scope so deployment_status events rejected by the
     # gate above cannot evict a queued production smoke. GitHub cancels the
     # previously pending job in a group when a new one is queued, even with
@@ -107,7 +109,7 @@ jobs:
       # shared scope that main-branch runs restore from. The probe needs
       # nothing from npm; the absence is pinned by
       # tests/ci-workflow-coverage.test.mts.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
       # Probes the production CANONICAL origin, listed aliases, and www

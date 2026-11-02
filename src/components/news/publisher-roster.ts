@@ -18,6 +18,8 @@ export type PublisherRosterRow = {
   /** Every feed label seen for this publisher with its own declared tier, so the chip traces to a label. */
   readonly feeds: string;
   readonly risk: SourceProvenanceBadge | null;
+  /** Set when the row joins outlets that carried the same copy (#9095): they count as one publisher. */
+  readonly sameCopy?: string;
 };
 
 export type PublisherRosterView = {
@@ -67,6 +69,7 @@ export function describePublisherRoster(c: Corroboration, roster: PublisherRoste
         labels: publisher.labels.map((label) => `${label} (${tierChip(declaredSourceTier(label)).label})`).join(', '),
       }),
       risk: mostSevereRiskBadge(publisher.labels),
+      ...(publisher.sameCopy ? { sameCopy: t('components.corroboration.rosterSameCopy') } : {}),
     })),
     legend: t('components.corroboration.rosterLegend'),
     docsLabel: t('components.corroboration.tierDocsLink'),
@@ -80,7 +83,8 @@ const badgeHtml = (badge: { className: string; title: string; label: string }) =
 export function renderPublisherRosterHtml(view: PublisherRosterView): string {
   const rows = view.rows.map((row) => '<li>'
     + `<span class="publisher-name">${escapeHtml(row.name)}</span>${badgeHtml(row.chip)}${row.risk ? badgeHtml(row.risk) : ''}`
-    + `<span class="publisher-feeds">${escapeHtml(row.feeds)}</span></li>`).join('');
+    + `<span class="publisher-feeds">${escapeHtml(row.feeds)}</span>`
+    + `${row.sameCopy ? `<span class="publisher-same-copy">${escapeHtml(row.sameCopy)}</span>` : ''}</li>`).join('');
   return `<details class="publisher-roster"><summary>${escapeHtml(view.summary)}</summary><ol>${rows}</ol>`
     + `<p class="tier-legend">${escapeHtml(view.legend)} `
     + `<a href="${escapeHtml(view.docsHref)}" target="_blank" rel="noopener noreferrer">${escapeHtml(view.docsLabel)}</a></p></details>`;
@@ -95,7 +99,8 @@ export function renderPublisherRosterElement(view: PublisherRosterView): HTMLEle
       h('span', { className: 'publisher-name' }, row.name),
       badge(row.chip),
       row.risk ? badge(row.risk) : null,
-      h('span', { className: 'publisher-feeds' }, row.feeds)))),
+      h('span', { className: 'publisher-feeds' }, row.feeds),
+      row.sameCopy ? h('span', { className: 'publisher-same-copy' }, row.sameCopy) : null))),
     h('p', { className: 'tier-legend' }, `${view.legend} `,
       h('a', { href: view.docsHref, target: '_blank', rel: 'noopener noreferrer' }, view.docsLabel)));
 }

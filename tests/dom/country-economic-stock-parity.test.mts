@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
 import { CountryIntelManager } from '@/app/country-intel';
+import { CountryBriefController } from '@/components/CountryBriefController';
+import type { CountryBriefSource } from '@/services/country-brief-source';
 import { buildImfEconomicIndicators } from '@/services/imf-country-data';
 import type { StockIndexData } from '@/components/CountryBriefPanel';
 import { initTestI18n } from './helpers/i18n.mts';
@@ -35,6 +37,52 @@ function websiteRows(data: StockIndexData) {
 function renderedRows(body: HTMLElement) {
   return [...body.querySelectorAll('.cdp-economic-item')].map(row => row.textContent);
 }
+
+it.each(['stock-first', 'imf-first'])('keeps metric disclosures through %s composition and repeat stock', order => {
+  const data = { ...bundle, growth: { ...bundle.growth, periods: { realGdpGrowthPct: 2026 } }, macro: { ...bundle.macro, periods: { inflationPct: 2025, primaryBalancePct: 2024 } }, labor: { ...bundle.labor, periods: { unemploymentPct: 2020 } } };
+  const rows = buildImfEconomicIndicators(data as Parameters<typeof buildImfEconomicIndicators>[0]);
+  const { panel, body } = panelFixture();
+  if (order === 'stock-first') panel.updateStock(stock);
+  panel.updateEconomicIndicators(rows);
+  panel.updateStock(stock);
+  panel.updateStock(stock);
+  expect([...body.querySelectorAll('.cdp-economic-source')].map(row => row.textContent)).toEqual([
+    'Market Service', ...[2026, 2025, 2020, 2024].map(year => `IMF WEO · Year ${year} · IMF release not supplied`),
+  ]);
+  expect(body.querySelectorAll('.cdp-economic-item')).toHaveLength(6);
+});
+
+it('preserves populated CII prefix priority with a six-row cap', () => {
+  const manager = Object.create(CountryIntelManager.prototype);
+  const score = { score: 71, level: 'high', trend: 'stable' };
+  const rows = Reflect.get(manager, 'buildEconomicIndicators').call(manager, 'CA', score, stock, bundle);
+  expect(rows.map((row: { label: string }) => row.label)).toEqual(['Stock Index', 'Weekly Momentum', 'Instability Regime', 'Real GDP Growth', 'CPI Inflation', 'Unemployment']);
+  expect(rows.some((row: { label: string }) => row.label === 'Primary Balance')).toBe(false);
+});
+
+it('preserves country periods through the actual host controller projection', async () => {
+  const { panel, body } = panelFixture();
+  Reflect.set(panel, 'currentCode', 'CA');
+  Reflect.set(panel, 'abortController', new AbortController());
+  panel.setSectionFailure = vi.fn();
+  panel.setSectionCoverage = vi.fn();
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const country = { inflationPct: 0, year: 2099, periods: { inflationPct: 2025 } };
+  const source = {
+    mode: 'host', canRequestPremium: () => false,
+    market: { getCountryStockIndex: async () => ({ available: false }) },
+    intelligence: { getCountryFacts: async () => ({}) },
+    prediction: { listPredictionMarkets: async () => ({ dataAvailable: false }) },
+    fetch: async (input: string) => new Response(JSON.stringify(input.includes('imfMacro') ? { data: { imfMacro: { countries: { CA: country } } }, missing: ['imfGrowth', 'imfLabor', 'imfExternal'] } : { data: {} })),
+  } as unknown as CountryBriefSource;
+  const controller = new CountryBriefController(source, panel);
+  try {
+    const projected = await controller.hydrate('CA', 'Canada').imfPromise;
+    expect(projected?.macro?.periods).toEqual({ inflationPct: 2025 });
+    expect(body.textContent).toContain('+0.0%');
+    expect(body.textContent).toContain('IMF WEO · Year 2025 · IMF release not supplied');
+  } finally { controller.dispose(); warning.mockRestore(); }
+});
 
 it('renders the same six economic rows as the website from supplied stock and IMF data', () => {
   const shared = panelFixture();

@@ -13,6 +13,8 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from '../../_rate-limit.js';
 import { validateBearerToken } from '../../../server/auth-session';
 import { checkTierProEntitlement } from '../../../server/_shared/pro-entitlement';
 import { createChannelOAuthState } from '../../../server/_shared/channel-oauth-state';
@@ -22,7 +24,7 @@ const DISCORD_REDIRECT_URI = process.env.DISCORD_REDIRECT_URI ?? '';
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(req: Request, ctx?: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
   const corsHeaders = getCorsHeaders(req) as Record<string, string>;
 
   if (isDisallowedOrigin(req)) {
@@ -65,6 +67,13 @@ export default async function handler(req: Request): Promise<Response> {
     if (billingDenial) return billingDenial;
     return new Response(JSON.stringify({ error: 'pro_required', message: 'Discord notifications are available on the Pro plan.', upgradeUrl: 'https://worldmonitor.app/pro' }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
+
+  // Same per-user, fail-closed budget as api/slack/oauth/start.ts: each
+  // accepted start writes two state keys with a 10-minute TTL.
+  const rateLimitResponse = await checkRateLimit(req, corsHeaders, {
+    scope: 'discord-oauth-start', identifier: session.userId, limit: 5, window: '60 s', failClosed: true, ctx,
+  });
+  if (rateLimitResponse) return rateLimitResponse;
 
   // Generate one-time state token (20 random bytes → base64url)
   const stateBytes = crypto.getRandomValues(new Uint8Array(20));
