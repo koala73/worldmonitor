@@ -71,7 +71,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ...['colombia-secop', 'kenya-ppip', 'south-africa-etenders', 'chile-mercado-publico', 'brazil-pncp',
     'ukraine-prozorro', 'bulgaria-eop', 'latvia-iub', 'poland-bzp', 'pakistan-ppra',
-    'pakistan-epads', 'georgia-spa', 'armenia-armeps'].map((source) => [
+    'pakistan-epads', 'georgia-spa', 'armenia-armeps', 'albania-app', 'dominican-republic-dgcp',
+    'malaysia-myprocurement'].map((source) => [
     `economic:global-tenders:v1:source:${source}`,
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.',
   ]),
@@ -426,7 +427,7 @@ const EXCLUDED_FROM_MCP = new Map([
   // (could be a follow-up tool).
   ['energy:spine:v1:_countries',
     'deferred: per-country energy spine index; covered indirectly via get_energy_intelligence headline aggregates. Future expanded per-country energy tool would expose this.'],
-  ...['pgcb', 'petrobangla', 'niso', 'eskom', 'cammesa', 'gse', 'ons', 'anp', 'evn', 'korem', 'coes', 'iccc', 'fccc', 'mem'].map(id => [
+  ...['pgcb', 'petrobangla', 'niso', 'eskom', 'cammesa', 'gse', 'ons', 'anp', 'evn', 'korem', 'coes', 'iccc', 'fccc', 'mem', 'qatarenergy', 'erb', 'npa', 'sonabhy', 'zera', 'doe', 'anptl', 'creg', 'ursea'].map(id => [
     `energy:regional:${id}:v1`,
     'deferred: country-specific regional observations exposed by get-country-energy-profile; the MCP energy tool provides headline aggregates. A future per-country energy tool can expose these series.',
   ]),

@@ -1,4 +1,5 @@
 import { XMLParser } from 'fast-xml-parser';
+import Papa from 'papaparse';
 import { decodeHtmlEntities } from './_html-entities.mjs';
 import { recordTenderBucket, readTenderBody } from './_global-tender-receipts.mjs';
 import { dedupeTenders, isOpenOpportunity, normalizePublicTender, safeOfficialUrl } from './_global-tenders.mjs';
@@ -300,6 +301,17 @@ function europeanDate(value, separator, timeZone) {
   return localDate(`${match[3]}-${match[2]}-${match[1]}T${match[4]}:${match[5]}:00`, timeZone);
 }
 
+// Portals that publish a closing DATE without a time (Albania APP, Malaysia
+// MyProcurement) are kept at the start of that day in the publisher's zone, the
+// same reading TED's date-only deadlines get. A notice therefore leaves the open
+// feed at local midnight before its real closing hour and is never shown after it.
+function dateOnly(value, separator, timeZone) {
+  const escaped = separator === '.' ? '\\.' : separator;
+  const match = text(value).match(new RegExp(`^(\\d{2})${escaped}(\\d{2})${escaped}(\\d{4})$`));
+  if (!match) throw new Error('Procurement response contains an invalid closing date');
+  return localDate(`${match[3]}-${match[2]}-${match[1]}T00:00:00`, timeZone);
+}
+
 function pakistanDate(value) {
   const match = text(value).match(/^(?:[A-Za-z]+, )?([A-Za-z]+) (\d{1,2}), (\d{4}) (\d{1,2}):(\d{2}) (AM|PM)$/);
   const month = match && ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].indexOf(match[1]) + 1;
@@ -458,9 +470,120 @@ export async function fetchPakistan({ now = Date.now(), fetchTextFn } = {}) {
   return finish(source, records, now);
 }
 
+const ALBANIA_COLUMNS = ['Autoriteti_kontraktues', 'Numri_i_references', 'Objekti_i_prokurimit', 'Lloji_i_procedures',
+  'Tipi_i_kontrates', 'Lloji_i_marreveshjes_kuader', 'Fondi_limit', 'Data_e_publikimit', 'Data_e_hapjes', 'Data_e_mbylljes',
+  'Anulluar', 'Arsyeja_e_anullimit', 'Pezulluar', 'Fituesi', 'NIPT_i_fituesit', 'Vlera_e_fituesit',
+  'Vlera_e_fituesit_ne_lidhjen_e_kontrates', 'Lidhja_e_kontrates_me_TVSH', 'Numri_i_ofertave_te_dorezuara',
+  'Numri_i_ofertave_te_kualifikuara', 'Kodet_CPV'];
+const ALBANIA_EXPORT_PAGE = 'https://www.app.gov.al/eksportimi-i-procedurave-te-publikuara/';
+
+// APP regenerates one CSV per publication year every day (about 7.6 MB and
+// 23k rows by November, served at roughly 160 KB/s), so the current year is
+// one long read within the shared budget. January through March also read the
+// previous year, whose late-year procedures can stay open for up to 90 days;
+// two concurrent exports measured 60 s wall, inside the 70 s timeout.
+export async function fetchAlbania({ now = Date.now(), fetchTextFn } = {}) {
+  const source = 'albania-app';
+  const read = reader(fetchTextFn, 70_000);
+  const today = new Date(now);
+  const years = [today.getUTCFullYear(), ...(today.getUTCMonth() <= 2 ? [today.getUTCFullYear() - 1] : [])];
+  const files = await Promise.all(years.map((year) => read(`https://www.app.gov.al/GetData/ExportDocument?year=${year}`,
+    { headers: { Accept: 'text/csv, text/plain, */*' } })));
+  const records = files.flatMap((csv) => {
+    const parsed = Papa.parse(text(csv).replace(/^\uFEFF/, ''), { header: true, skipEmptyLines: true });
+    requireRow(parsed.meta?.fields?.length === ALBANIA_COLUMNS.length
+      && ALBANIA_COLUMNS.every((column, index) => parsed.meta.fields[index] === column), source);
+    return rows(parsed.data, 'procedures').map((raw) => {
+      requireRow(Object.keys(raw).length === ALBANIA_COLUMNS.length && /^REF-\d{5}-\d{2}-\d{2}-\d{4}$/.test(text(raw.Numri_i_references))
+        && text(raw.Objekti_i_prokurimit) && text(raw.Autoriteti_kontraktues) && ['Jo', 'Po'].includes(text(raw.Anulluar))
+        && ['Jo', 'Po'].includes(text(raw.Pezulluar)), source);
+      // Cancelled, suspended and awarded procedures are not open invitations;
+      // a procedure without a closing date cannot be represented as open.
+      if (raw.Anulluar === 'Po' || raw.Pezulluar === 'Po' || text(raw.Fituesi) || !text(raw.Data_e_mbylljes)) return null;
+      const fund = text(raw.Fondi_limit).replace(/,/g, '');
+      requireRow(!fund || /^\d+(?:\.\d+)?$/.test(fund), source);
+      // A zero limit fund (ticket purchases) is an absent estimate, not a value.
+      const amount = Number(fund) > 0 ? fund : undefined;
+      return normalizePublicTender({ source, sourceNoticeId: raw.Numri_i_references, officialUrl: ALBANIA_EXPORT_PAGE,
+        countryCode: 'AL', region: 'Europe', title: raw.Objekti_i_prokurimit, buyer: raw.Autoriteti_kontraktues,
+        publishedAt: dateOnly(raw.Data_e_publikimit, '.', 'Europe/Tirane'), deadline: dateOnly(raw.Data_e_mbylljes, '.', 'Europe/Tirane'),
+        status: 'open', noticeType: raw.Lloji_i_procedures, sectors: raw.Tipi_i_kontrates,
+        categoryCodes: text(raw.Kodet_CPV).match(/\b\d{8}\b/g) || [], moneyAmount: amount, currency: amount ? 'ALL' : '' });
+    });
+  });
+  return finish(source, records, now);
+}
+
+const DGCP_PROCESSES_URL = 'https://datosabiertos.dgcp.gob.do/api-dgcp/v1/procesos';
+
+// The open-data API lists processes newest first with no total count and a
+// 60 requests/minute limit; two pages of 200 cover the published processes of
+// the last few days, which is where every open process lives.
+export async function fetchDominicanRepublic({ now = Date.now(), fetchJsonFn } = {}) {
+  const source = 'dominican-republic-dgcp';
+  const read = reader(fetchJsonFn);
+  const records = [];
+  // Only distinct, still-open published processes count toward the sample;
+  // awarded, closed-stage, already-expired and repeated rows neither fill it
+  // nor fail the page.
+  const open = () => dedupeTenders(records).filter((record) => isOpenOpportunity(record, now)).length;
+  for (let page = 1; page <= 2 && open() < MAX_RECORDS; page++) {
+    const payload = await read(urlWithParams(DGCP_PROCESSES_URL, { page, limit: 200 }));
+    requireRow(payload?.hasError === false, source);
+    const content = rows(payload.payload?.content, 'content');
+    for (const raw of content) {
+      requireRow(text(raw?.codigo_proceso) && text(raw?.estado_proceso), source);
+      if (raw.estado_proceso !== 'Proceso publicado' || open() >= MAX_RECORDS) continue;
+      const deadline = Date.parse(raw.fecha_fin_recepcion_ofertas);
+      requireRow(Number.isFinite(deadline), source);
+      if (deadline <= now) continue;
+      requireRow(text(raw.titulo) && Number.isFinite(Date.parse(raw.fecha_publicacion)) && safeOfficialUrl(raw.url, source), source);
+      records.push(normalizePublicTender({ source, sourceNoticeId: raw.codigo_proceso, officialUrl: raw.url,
+        countryCode: 'DO', region: 'North America', title: raw.titulo, description: raw.descripcion, buyer: raw.unidad_compra,
+        publishedAt: raw.fecha_publicacion, deadline: raw.fecha_fin_recepcion_ofertas, status: 'open',
+        noticeType: raw.modalidad, sectors: raw.objeto_proceso, moneyAmount: raw.monto_estimado, currency: raw.divisa }));
+    }
+    if (content.length < 200) break;
+  }
+  return finish(source, records, now);
+}
+
+// MyProcurement answers its advert search as JSON wrapping rendered cards.
+// The plain GET needs neither the page's session cookie nor its CSRF token.
+export async function fetchMalaysia({ now = Date.now(), fetchJsonFn } = {}) {
+  const source = 'malaysia-myprocurement';
+  const read = reader(fetchJsonFn);
+  const payload = await read(urlWithParams('https://myprocurement.treasury.gov.my/procurements/fetch',
+    { type: 'advertisements', category: 'tender', itemsPerPage: MAX_RECORDS, page: 1 }));
+  requireRow(typeof payload?.html === 'string' && Number.isSafeInteger(payload.total) && Number.isSafeInteger(payload.lastPage), source);
+  const cards = payload.html.split(/<div\b[^>]*x-data="\{ selected: false, open: true \}"/).slice(1);
+  // A page that renders fewer cards than the publisher's own total promises is
+  // a partial render or a changed card marker, not a smaller catalogue.
+  if (cards.length !== Math.min(MAX_RECORDS, payload.total)) throw new Error('Malaysia response missing tender cards');
+  const field = (card, label) => card.match(new RegExp(`>${label}:</div>\\s*<div\\b[^>]*>([\\s\\S]*?)</div>`))?.[1];
+  const records = cards.map((card) => {
+    const id = card.match(/select-procurement', \{ id: (\d+) \}/)?.[1];
+    const link = card.match(/href="(https:\/\/myprocurement\.treasury\.gov\.my\/advertisements\/tender\/[a-f0-9]+)"[^>]*>([\s\S]*?)<\/a>/);
+    const invited = card.match(/Tarikh Pelawaan:\s*([^<]*?)\s*</)?.[1];
+    const number = card.match(/No\. Tender<\/span>:\s*([^<]*?)\s*</)?.[1];
+    const fields = Object.fromEntries(['Kementerian', 'Agensi', 'Kategori Perolehan', 'Kod Bidang', 'Tarikh Tutup Pelawaan', 'Harga Indikatif Jabatan']
+      .map((label) => [label, field(card, label)]));
+    requireRow(id && link && htmlText(link[2]) && invited && number && Object.values(fields).every((value) => typeof value === 'string'), source);
+    const price = htmlText(fields['Harga Indikatif Jabatan']).match(/^RM ([\d,]+\.\d{2})$/);
+    return normalizePublicTender({ source, sourceNoticeId: id, officialUrl: link[1], countryCode: 'MY', region: 'Asia',
+      title: htmlText(link[2]), description: `No. Tender: ${htmlText(number)}`, buyer: htmlText(fields.Agensi),
+      publishedAt: dateOnly(invited, '/', 'Asia/Kuala_Lumpur'), deadline: dateOnly(fields['Tarikh Tutup Pelawaan'], '/', 'Asia/Kuala_Lumpur'),
+      status: 'open', noticeType: htmlText(fields.Kementerian), sectors: htmlText(fields['Kategori Perolehan']),
+      categoryCodes: htmlText(fields['Kod Bidang']).split(',').map((code) => code.trim()).filter((code) => /^\d{6}$/.test(code)),
+      moneyAmount: price ? price[1].replace(/,/g, '') : undefined, currency: price ? 'MYR' : '' });
+  });
+  return finish(source, records, now);
+}
+
 export const ADDITIONAL_TENDER_ADAPTERS = [
   ['colombia-secop', fetchColombia], ['kenya-ppip', fetchKenya], ['south-africa-etenders', fetchSouthAfrica],
   ['chile-mercado-publico', fetchChile], ['brazil-pncp', fetchBrazil], ['ukraine-prozorro', fetchUkraine],
   ['bulgaria-eop', fetchBulgaria], ['latvia-iub', fetchLatvia], ['poland-bzp', fetchPoland], ['pakistan-ppra', fetchPakistan],
   ['pakistan-epads', fetchPakistanEpads], ['georgia-spa', fetchGeorgia], ['armenia-armeps', fetchArmenia],
+  ['albania-app', fetchAlbania], ['dominican-republic-dgcp', fetchDominicanRepublic], ['malaysia-myprocurement', fetchMalaysia],
 ];

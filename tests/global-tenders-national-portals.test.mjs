@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchPakistanEpads, fetchGeorgia, fetchArmenia, fetchPakistan } from '../scripts/_global-tender-feeds.mjs';
+import { fetchPakistanEpads, fetchGeorgia, fetchArmenia, fetchPakistan, fetchAlbania, fetchDominicanRepublic, fetchMalaysia } from '../scripts/_global-tender-feeds.mjs';
 import { tracksTenderFreshness, safeOfficialUrl } from '../scripts/_global-tenders.mjs';
 import { createTenderReceipt, observeTenderSource, observeTenderRequest } from '../scripts/_global-tender-receipts.mjs';
 import { __testing__ as seeder } from '../scripts/seed-global-tenders.mjs';
@@ -195,4 +195,207 @@ test('PPRA projects its organization from the matching expandable row for EPADS 
   const result = await fetchPakistan({ now: NOW, fetchTextFn: async () => html });
   assert.equal(result.records[0].buyer, 'Public Agency');
   assert.doesNotMatch(JSON.stringify(result), /private-contact/);
+});
+
+const ALBANIA_HEADER = 'Autoriteti_kontraktues,Numri_i_references,Objekti_i_prokurimit,Lloji_i_procedures,Tipi_i_kontrates,Lloji_i_marreveshjes_kuader,Fondi_limit,Data_e_publikimit,Data_e_hapjes,Data_e_mbylljes,Anulluar,Arsyeja_e_anullimit,Pezulluar,Fituesi,NIPT_i_fituesit,Vlera_e_fituesit,Vlera_e_fituesit_ne_lidhjen_e_kontrates,Lidhja_e_kontrates_me_TVSH,Numri_i_ofertave_te_dorezuara,Numri_i_ofertave_te_kualifikuara,Kodet_CPV';
+const albaniaRow = (overrides = {}) => {
+  const row = { Autoriteti_kontraktues: 'Operatori i Sistemit te Transmetimit OST', Numri_i_references: 'REF-06784-10-29-2026',
+    Objekti_i_prokurimit: '"Ndërtimi i nënstacionit të ri 220/110 kV Traktora, faza e dytë"', Lloji_i_procedures: 'Open INT',
+    Tipi_i_kontrates: 'Works', Lloji_i_marreveshjes_kuader: '', Fondi_limit: '"744,983,908.00"', Data_e_publikimit: '30.10.2026',
+    Data_e_hapjes: '30.10.2026', Data_e_mbylljes: '03.12.2026', Anulluar: 'Jo', Arsyeja_e_anullimit: '', Pezulluar: 'Jo', Fituesi: '',
+    NIPT_i_fituesit: '', Vlera_e_fituesit: '', Vlera_e_fituesit_ne_lidhjen_e_kontrates: '', Lidhja_e_kontrates_me_TVSH: 'Jo',
+    Numri_i_ofertave_te_dorezuara: '', Numri_i_ofertave_te_kualifikuara: '', Kodet_CPV: '" 45232221-7 Nënstacion transformator, 09100000-0 Karburante"', ...overrides };
+  return Object.values(row).join(',');
+};
+const albaniaCsv = (...rowsCsv) => `\uFEFF${[ALBANIA_HEADER, ...rowsCsv].join('\r\n')}\r\n`;
+const dominican = (overrides = {}) => ({ codigo_proceso: 'EDENORTE-CCC-PEIN-2026-0031', unidad_compra: 'Empresa de Distribución Eléctrica del Norte',
+  modalidad: 'Comparación de Precios', titulo: 'Rehabilitación de redes de distribución', descripcion: 'Rehabilitación de redes de distribución en Santiago',
+  estado_proceso: 'Proceso publicado', divisa: 'DOP', monto_estimado: 5775550.44, fecha_publicacion: '2026-10-30T18:00:03.12Z',
+  fecha_fin_recepcion_ofertas: '2026-11-06T09:00:00Z', objeto_proceso: 'Obras', numero_proveedores_notificados: '14276',
+  url: 'https://comunidad.comprasdominicana.gob.do//Public/Tendering/OpportunityDetail/Index?noticeUID=DO1.NTC.1793560', ...overrides });
+const malaysiaCard = ({ id = '832780', invited = '03/11/2026', closing = '24/11/2026', price = 'RM 1,800,000.00', codes = '050101, 220601', title = 'TAWARAN BAGI PERKHIDMATAN NAIK TARAF PERKAKASAN &amp; PERISIAN' } = {}) => `
+  <div x-data="{ selected: false, open: true }" class="card"><button x-on:click="selected = !selected; $dispatch('select-procurement', { id: ${id} })"></button>
+  <div class="mx-4"> Tarikh Pelawaan: ${invited} </div><div><span class="font-bold">No. Tender</span>: T/1503/11/2026(7) </div>
+  <div class="uppercase"><a href="https://myprocurement.treasury.gov.my/advertisements/tender/40bd270a9c31949e9484f194c3dbbf19">${title}</a></div>
+  <div class="w-full sm:w-1/3 font-bold align-top">Kementerian:</div><div class="w-full sm:w-2/3 uppercase">KEMENTERIAN PENDIDIKAN TINGGI</div>
+  <div class="w-full sm:w-1/3 font-bold align-top">Agensi:</div><div class="w-full sm:w-2/3 uppercase">PUSAT PERUBATAN UNIVERSITI MALAYA (PPUM)</div>
+  <div class="w-full sm:w-1/3 font-bold align-top">Kategori Perolehan:</div><div class="w-full sm:w-2/3 uppercase">Perkhidmatan Bukan Perunding</div>
+  <div class="w-full sm:w-1/3 font-bold align-top">Kod Bidang:</div><div class="w-full sm:w-2/3 uppercase">${codes}</div>
+  <div class="w-full sm:w-1/3 font-bold align-top">Tarikh Tutup Pelawaan:</div><div class="w-full sm:w-2/3 uppercase">${closing}</div>
+  <div class="w-full sm:w-1/3 font-bold align-top">Harga Indikatif Jabatan:</div><div class="w-full sm:w-2/3 uppercase">${price}</div></div>`;
+const malaysia = (cards = [malaysiaCard()], total = cards.length) => ({ html: `<div>${cards.join('')}</div>`, truncated: false, total, page: 1, lastPage: 1 });
+
+test('Albania reads the current-year CSV export and keeps only uncancelled procedures still open', async () => {
+  const requests = [];
+  const result = await fetchAlbania({ now: NOW, fetchTextFn: async (url, options) => {
+    requests.push({ url, options });
+    return albaniaCsv(albaniaRow(), albaniaRow({ Numri_i_references: 'REF-00001-10-29-2026', Anulluar: 'Po' }),
+      albaniaRow({ Numri_i_references: 'REF-00002-10-29-2026', Pezulluar: 'Po' }),
+      albaniaRow({ Numri_i_references: 'REF-00003-10-29-2026', Fituesi: 'WINNER SHPK', NIPT_i_fituesit: 'K73527402G' }),
+      albaniaRow({ Numri_i_references: 'REF-00004-10-29-2026', Data_e_mbylljes: '' }),
+      albaniaRow({ Numri_i_references: 'REF-00005-10-29-2026', Data_e_mbylljes: '01.11.2026' }),
+      albaniaRow({ Numri_i_references: 'REF-00006-10-29-2026', Fondi_limit: '' }),
+      albaniaRow({ Numri_i_references: 'REF-00007-10-29-2026', Fondi_limit: '0.00' }));
+  } });
+  assert.deepEqual(requests.map(({ url }) => url), ['https://www.app.gov.al/GetData/ExportDocument?year=2026']);
+  assert.equal(requests[0].options.timeoutMs, 70_000);
+  assert.equal(requests[0].options.maxRetries, 0);
+  assert.deepEqual(result.records.map((record) => record.sourceNoticeId), ['REF-06784-10-29-2026', 'REF-00006-10-29-2026', 'REF-00007-10-29-2026']);
+  const [record, unpriced, zeroFund] = result.records;
+  assert.equal(record.countryCode, 'AL');
+  assert.equal(record.title, 'Ndërtimi i nënstacionit të ri 220/110 kV Traktora, faza e dytë');
+  assert.equal(record.buyer, 'Operatori i Sistemit te Transmetimit OST');
+  assert.equal(record.deadline, '2026-12-02T23:00:00.000Z');
+  assert.equal(record.publishedAt, '2026-10-29T23:00:00.000Z');
+  assert.deepEqual(record.money, { amount: 744983908, currency: 'ALL' });
+  assert.deepEqual(record.categoryCodes, ['45232221', '09100000']);
+  assert.equal(record.officialUrl, 'https://www.app.gov.al/eksportimi-i-procedurave-te-publikuara/');
+  assert.equal(unpriced.money, undefined);
+  assert.equal(zeroFund.money, undefined);
+  assert.doesNotMatch(JSON.stringify(result), /WINNER SHPK|K73527402G/);
+});
+
+test('Albania also reads the previous year through March and rejects header drift or malformed rows', async () => {
+  for (const [when, expectedYears] of [['2027-01-05', ['2026', '2027']], ['2027-03-31', ['2026', '2027']], ['2027-04-01', ['2027']]]) {
+    const years = [];
+    const result = await fetchAlbania({ now: Date.parse(`${when}T12:00:00Z`), fetchTextFn: async (url) => {
+      years.push(new URL(url).searchParams.get('year'));
+      return albaniaCsv(albaniaRow({ Data_e_mbylljes: '20.04.2027' }));
+    } });
+    assert.deepEqual(years.sort(), expectedYears, when);
+    assert.equal(result.records.length, 1, when);
+  }
+  await assert.rejects(fetchAlbania({ now: NOW, fetchTextFn: async () => albaniaCsv(albaniaRow()).replace('Data_e_mbylljes', 'Data_mbylljes') }));
+  await assert.rejects(fetchAlbania({ now: NOW, fetchTextFn: async () => albaniaCsv(albaniaRow({ Numri_i_references: 'not-a-ref' })) }));
+  await assert.rejects(fetchAlbania({ now: NOW, fetchTextFn: async () => albaniaCsv(albaniaRow({ Data_e_mbylljes: '2026-12-03' })) }));
+  await assert.rejects(fetchAlbania({ now: NOW, fetchTextFn: async () => albaniaCsv(albaniaRow({ Fondi_limit: 'n/a' })) }));
+  await assert.rejects(fetchAlbania({ now: NOW, fetchTextFn: async () => '<html>Login</html>' }));
+});
+
+test('Dominican Republic pages the newest processes and keeps only published ones with an official link', async () => {
+  const pages = [];
+  const result = await fetchDominicanRepublic({ now: NOW, fetchJsonFn: async (url) => {
+    const target = new URL(url);
+    pages.push(target.searchParams.get('page'));
+    assert.equal(target.searchParams.get('limit'), '200');
+    return { code: 200, hasError: false, payload: { content: [dominican(),
+      dominican({ codigo_proceso: 'X-2026-0002', estado_proceso: 'Proceso adjudicado y celebrado' }),
+      dominican({ codigo_proceso: 'X-2026-0003', estado_proceso: 'Cancelado' }),
+      dominican({ codigo_proceso: 'X-2026-0004', fecha_fin_recepcion_ofertas: '2026-10-31T09:00:00Z' })] } };
+  } });
+  assert.deepEqual(pages, ['1']);
+  assert.equal(result.records.length, 1);
+  const [record] = result.records;
+  assert.equal(record.countryCode, 'DO');
+  assert.equal(record.buyer, 'Empresa de Distribución Eléctrica del Norte');
+  assert.equal(record.deadline, '2026-11-06T09:00:00.000Z');
+  assert.equal(record.publishedAt, '2026-10-30T18:00:03.120Z');
+  assert.deepEqual(record.money, { amount: 5775550.44, currency: 'DOP' });
+  assert.equal(record.noticeType, 'Comparación de Precios');
+  assert.equal(record.officialUrl, 'https://comunidad.comprasdominicana.gob.do//Public/Tendering/OpportunityDetail/Index?noticeUID=DO1.NTC.1793560');
+  assert.doesNotMatch(JSON.stringify(result), /14276/);
+});
+
+test('Dominican Republic reads a second full page only while the open sample is short and rejects drift', async () => {
+  let calls = 0;
+  const full = Array.from({ length: 200 }, (_, index) => dominican({ codigo_proceso: `X-2026-${index}`,
+    estado_proceso: index % 4 ? 'Proceso con etapa cerrada' : 'Proceso publicado' }));
+  const result = await fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => {
+    calls++;
+    return { hasError: false, payload: { content: calls === 1 ? full : [dominican({ codigo_proceso: 'LAST' })] } };
+  } });
+  assert.equal(calls, 2);
+  assert.equal(result.records.length, 51);
+  assert.equal(result.records.at(-1).sourceNoticeId, 'LAST');
+  calls = 0;
+  const saturated = await fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => {
+    calls++;
+    return { hasError: false, payload: { content: full.map((row) => ({ ...row, estado_proceso: 'Proceso publicado' })) } };
+  } });
+  assert.equal(calls, 1);
+  assert.equal(saturated.records.length, 100);
+  await assert.rejects(fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: true, payload: { content: [] } }) }));
+  // A page of published processes whose deadlines already passed must not stop the read.
+  calls = 0;
+  const expired = Array.from({ length: 200 }, (_, index) => dominican({ codigo_proceso: `OLD-${index}`, fecha_fin_recepcion_ofertas: '2026-10-01T09:00:00Z' }));
+  const second = await fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => {
+    calls++;
+    return { hasError: false, payload: { content: calls === 1 ? expired : [dominican({ codigo_proceso: 'LATE-OPEN' })] } };
+  } });
+  assert.equal(calls, 2);
+  assert.deepEqual(second.records.map((record) => record.sourceNoticeId), ['LATE-OPEN']);
+  // Awarded rows missing a title are skipped, not treated as a malformed page.
+  const awarded = await fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [
+    dominican({ codigo_proceso: 'AWARDED', estado_proceso: 'Proceso adjudicado y celebrado', titulo: '', fecha_publicacion: null }), dominican()] } }) });
+  assert.deepEqual(awarded.records.map((record) => record.sourceNoticeId), ['EDENORTE-CCC-PEIN-2026-0031']);
+  await assert.rejects(fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [dominican({ estado_proceso: '' })] } }) }));
+  // Repeated rows of one process count once, so page two is still read.
+  calls = 0;
+  const repeated = Array.from({ length: 200 }, () => dominican({ codigo_proceso: 'SAME' }));
+  const distinct = await fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => {
+    calls++;
+    return { hasError: false, payload: { content: calls === 1 ? repeated : [dominican({ codigo_proceso: 'OTHER' })] } };
+  } });
+  assert.equal(calls, 2);
+  assert.deepEqual(distinct.records.map((record) => record.sourceNoticeId), ['SAME', 'OTHER']);
+  // An expired published row with an empty title is skipped before field validation.
+  const staleTitle = await fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [
+    dominican({ codigo_proceso: 'STALE', titulo: '', fecha_fin_recepcion_ofertas: '2026-10-01T09:00:00Z' }), dominican()] } }) });
+  assert.deepEqual(staleTitle.records.map((record) => record.sourceNoticeId), ['EDENORTE-CCC-PEIN-2026-0031']);
+  await assert.rejects(fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [dominican({ fecha_fin_recepcion_ofertas: '' })] } }) }));
+  await assert.rejects(fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [dominican({ url: 'https://attacker.example/notice' })] } }) }));
+  await assert.rejects(fetchDominicanRepublic({ now: NOW, fetchJsonFn: async () => ({ hasError: false, payload: { content: [dominican({ titulo: '' })] } }) }));
+});
+
+test('Malaysia parses the JSON-wrapped advert cards without a session cookie or CSRF token', async () => {
+  let request;
+  const result = await fetchMalaysia({ now: NOW, fetchJsonFn: async (url, options) => {
+    request = { url: new URL(url), options };
+    return malaysia([malaysiaCard(), malaysiaCard({ id: '832771', price: 'Tiada Maklumat', codes: '050301', closing: '01/11/2026' })]);
+  } });
+  assert.equal(request.url.pathname, '/procurements/fetch');
+  assert.equal(request.url.searchParams.get('category'), 'tender');
+  assert.equal(request.url.searchParams.get('itemsPerPage'), '100');
+  assert.equal(request.options.headers, undefined);
+  assert.equal(result.records.length, 1);
+  const [record] = result.records;
+  assert.equal(record.countryCode, 'MY');
+  assert.equal(record.title, 'TAWARAN BAGI PERKHIDMATAN NAIK TARAF PERKAKASAN & PERISIAN');
+  assert.equal(record.buyer, 'PUSAT PERUBATAN UNIVERSITI MALAYA (PPUM)');
+  assert.equal(record.noticeType, 'KEMENTERIAN PENDIDIKAN TINGGI');
+  assert.equal(record.description, 'No. Tender: T/1503/11/2026(7)');
+  assert.equal(record.deadline, '2026-11-23T16:00:00.000Z');
+  assert.equal(record.publishedAt, '2026-11-02T16:00:00.000Z');
+  assert.deepEqual(record.money, { amount: 1800000, currency: 'MYR' });
+  assert.deepEqual(record.categoryCodes, ['050101', '220601']);
+  assert.equal(record.officialUrl, 'https://myprocurement.treasury.gov.my/advertisements/tender/40bd270a9c31949e9484f194c3dbbf19');
+});
+
+test('Malaysia rejects shells, cards without a closing date and totals that do not match an empty page', async () => {
+  await assert.rejects(fetchMalaysia({ now: NOW, fetchJsonFn: async () => ({ html: '<html>Login</html>', total: 967, page: 1, lastPage: 10 }) }), /missing tender cards/);
+  // Fewer rendered cards than the publisher's own total is a partial page, not a smaller catalogue.
+  await assert.rejects(fetchMalaysia({ now: NOW, fetchJsonFn: async () => malaysia([malaysiaCard()], 967) }), /missing tender cards/);
+  await assert.rejects(fetchMalaysia({ now: NOW, fetchJsonFn: async () => malaysia([malaysiaCard(), malaysiaCard({ id: '1' })], 1) }), /missing tender cards/);
+  const small = await fetchMalaysia({ now: NOW, fetchJsonFn: async () => malaysia([malaysiaCard(), malaysiaCard({ id: '832771' })], 2) });
+  assert.equal(small.records.length, 2);
+  await assert.rejects(fetchMalaysia({ now: NOW, fetchJsonFn: async () => '<html>Login</html>' }));
+  await assert.rejects(fetchMalaysia({ now: NOW, fetchJsonFn: async () => malaysia([malaysiaCard({ closing: '24 Nov 2026' })]) }));
+  await assert.rejects(fetchMalaysia({ now: NOW, fetchJsonFn: async () => malaysia([malaysiaCard().replace('Tarikh Tutup Pelawaan:', 'Tarikh Tutup:')]) }));
+  await assert.rejects(fetchMalaysia({ now: NOW, fetchJsonFn: async () => malaysia([malaysiaCard().replace(/<a href="[^"]+">/, '<a href="https://attacker.example/t">')]) }));
+});
+
+test('the batch-3 portals accept verified empty results, reject shells and track their own freshness', async () => {
+  const cases = [
+    ['albania-app', fetchAlbania, { fetchTextFn: async () => albaniaCsv() }, { fetchTextFn: async () => '<html>Login</html>' }],
+    ['dominican-republic-dgcp', fetchDominicanRepublic, { fetchJsonFn: async () => ({ hasError: false, payload: { content: [] } }) }, { fetchJsonFn: async () => ({ data: [] }) }],
+    ['malaysia-myprocurement', fetchMalaysia, { fetchJsonFn: async () => malaysia([]) }, { fetchJsonFn: async () => ({ html: '<html>Login</html>' }) }],
+  ];
+  for (const [source, fetchSource, empty, shell] of cases) {
+    const result = await fetchSource({ now: NOW, ...empty });
+    assert.deepEqual(result.records, [], source);
+    assert.equal(result.status.state, 'ok', source);
+    assert.equal(tracksTenderFreshness(source), true, source);
+    assert.equal(safeOfficialUrl('https://attacker.example/tender', source), '', source);
+    await assert.rejects(fetchSource({ now: NOW, ...shell }), undefined, source);
+  }
 });
