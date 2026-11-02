@@ -3465,7 +3465,7 @@ function _parseYahooChartJson(body) {
       sparkline,
       awaitingSessionOpen: awaitsSessionOpen(data),
       lastTradeAt: meta.regularMarketTime,
-      previousSessionClose: previousSessionClose(data),
+      chart: data,
     };
   } catch { return null; }
 }
@@ -3507,8 +3507,9 @@ async function _withPreviousSessionChange(symbol, quote) {
   if (cached?.lastTradeAt !== quote.lastTradeAt) {
     await sleep(150);
     const daily = await _fetchYahooChartOnce(symbol, PREVIOUS_SESSION_CHART_QUERY);
-    if (!daily?.previousSessionClose) return quote;
-    cached = { lastTradeAt: quote.lastTradeAt, close: daily.previousSessionClose };
+    const close = previousSessionClose(daily?.chart, quote.lastTradeAt);
+    if (!close) return quote;
+    cached = { lastTradeAt: quote.lastTradeAt, close };
     _previousSessionCloses.set(symbol, cached);
   }
   return { ...quote, change: ((quote.price - cached.close) / cached.close) * 100 };

@@ -178,12 +178,14 @@ export async function fetchYahooJson(url, opts = {}) {
  */
 export async function fetchYahooQuoteChart(symbol, {
   delayMs = 150,
-  fetchJson = (url) => fetchYahooJson(url, { label: symbol }),
+  fetchJson = (url, options) => fetchYahooJson(url, { label: symbol, ...options }),
 } = {}) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
   const chart = await fetchJson(url);
   if (!awaitsSessionOpen(chart)) return parseYahooChart(chart, symbol);
   await sleep(delayMs);
-  const daily = await fetchJson(`${url}${PREVIOUS_SESSION_CHART_QUERY}`).catch(() => null);
-  return parseYahooChart(chart, symbol, { previousClose: previousSessionClose(daily) });
+  // Optional: a 429 with Retry-After must not hold the sequential basket for minutes.
+  const daily = await fetchJson(`${url}${PREVIOUS_SESSION_CHART_QUERY}`, { maxRetries: 0 }).catch(() => null);
+  const lastTradeAt = chart.chart.result[0].meta.regularMarketTime;
+  return parseYahooChart(chart, symbol, { previousClose: previousSessionClose(daily, lastTradeAt) });
 }

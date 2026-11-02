@@ -31,11 +31,12 @@ function awaitsSessionOpen(data) {
  * Close of the session before the one holding the last trade, from a daily
  * chart. Bars after the last trade (a session that has not traded) are skipped.
  * A daily chart's chartPreviousClose is the close before its whole range, so
- * it cannot stand in for this.
+ * it cannot stand in for this. Pass the quote's own `lastTradeAt` when the
+ * daily chart was fetched separately: trading may open in between.
  */
-function previousSessionClose(data) {
+function previousSessionClose(data, lastTradeAt = data?.chart?.result?.[0]?.meta?.regularMarketTime) {
   const result = data?.chart?.result?.[0];
-  const lastTradeAt = finiteNumber(result?.meta?.regularMarketTime);
+  lastTradeAt = finiteNumber(lastTradeAt);
   const timestamps = result?.timestamp;
   const closes = result?.indicators?.quote?.[0]?.close;
   if (lastTradeAt == null || !Array.isArray(timestamps) || !Array.isArray(closes)) return null;

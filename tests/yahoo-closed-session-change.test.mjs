@@ -28,15 +28,27 @@ const GC_MONDAY_MOVE = 0.37;
 const GC_FRIDAY_CLOSE = 3898.89990234375;
 const LE_THURSDAY_CLOSE = 227.27499389648438;
 
+// The daily chart as it reads once Monday's session has traded: its last
+// trade moved past the rolled quote's, and the new session's bar has a close.
+function dailyAfterOpen() {
+  const daily = structuredClone(LE_DAILY_5D);
+  const result = daily.chart.result[0];
+  result.meta.regularMarketTime = result.timestamp.at(-1) + 9 * 3600;
+  result.indicators.quote[0].close[result.timestamp.length - 1] = 221.5;
+  return daily;
+}
+
 function stubYahoo(responses) {
   const urls = [];
-  const fetchJson = async (url) => {
+  const requestOptions = [];
+  const fetchJson = async (url, options = {}) => {
     urls.push(url);
+    requestOptions.push(options);
     const match = responses.find(([suffix]) => url.endsWith(suffix));
     if (!match) throw new Error(`unexpected Yahoo request ${url}`);
     return structuredClone(match[1]);
   };
-  return { urls, fetchJson };
+  return { urls, requestOptions, fetchJson };
 }
 
 describe('cron seeders (fetchYahooQuoteChart)', () => {
@@ -54,6 +66,25 @@ describe('cron seeders (fetchYahooQuoteChart)', () => {
     assert.equal(quote.price, 220.95);
     assert.equal(quote.change, LE_FRIDAY_MOVE);
     assert.equal(rolled.urls.length, 2);
+  });
+
+  it('measures against the session before the rolled quote even if trading opens between the requests', async () => {
+    const opened = stubYahoo([
+      ['/LE%3DF', LE_ROLLED_1D],
+      ['/LE%3DF?range=5d&interval=1d', dailyAfterOpen()],
+    ]);
+    const quote = await fetchQuote('LE=F', opened.fetchJson);
+    assert.equal(quote.change, LE_FRIDAY_MOVE);
+  });
+
+  it('gives the optional daily chart no retries, keeping the quote request on the default budget', async () => {
+    const rolled = stubYahoo([
+      ['/LE%3DF', LE_ROLLED_1D],
+      ['/LE%3DF?range=5d&interval=1d', LE_DAILY_5D],
+    ]);
+    await fetchQuote('LE=F', rolled.fetchJson);
+    assert.equal(rolled.requestOptions[0].maxRetries, undefined);
+    assert.equal(rolled.requestOptions[1].maxRetries, 0);
   });
 
   it('a trading quote costs one Yahoo request and keeps its own previous close', async () => {
@@ -102,22 +133,22 @@ function extractFunction(name) {
 async function loadRelayQuoteFetch(responses) {
   const shared = await import('../scripts/shared/yahoo-closed-session.cjs');
   const requests = [];
-  const parse = Function('awaitsSessionOpen', 'previousSessionClose', `
+  const parse = Function('awaitsSessionOpen', `
     ${extractFunction('_finiteObservation')}
     ${extractFunction('_parseYahooChartJson')}
     return _parseYahooChartJson;
-  `)(shared.awaitsSessionOpen, shared.previousSessionClose);
+  `)(shared.awaitsSessionOpen);
   const fetchOnce = async (symbol, query = '') => {
     requests.push(`${symbol}${query}`);
     const match = responses[`${symbol}${query}`];
     return match ? parse(JSON.stringify(match)) : null;
   };
   const fetchYahooChartDirect = Function(
-    '_fetchYahooChartOnce', 'sleep', 'PREVIOUS_SESSION_CHART_QUERY', '_previousSessionCloses',
+    '_fetchYahooChartOnce', 'sleep', 'PREVIOUS_SESSION_CHART_QUERY', 'previousSessionClose', '_previousSessionCloses',
     `${extractFunction('_withPreviousSessionChange')}
      ${extractFunction('fetchYahooChartDirect')}
      return fetchYahooChartDirect;`,
-  )(fetchOnce, async () => {}, shared.PREVIOUS_SESSION_CHART_QUERY, new Map());
+  )(fetchOnce, async () => {}, shared.PREVIOUS_SESSION_CHART_QUERY, shared.previousSessionClose, new Map());
   return { fetchYahooChartDirect, requests };
 }
 
@@ -133,6 +164,15 @@ describe('relay market loop (fetchYahooChartDirect)', () => {
     assert.equal(+second.change.toFixed(2), LE_FRIDAY_MOVE);
     assert.deepEqual(requests, ['LE=F', 'LE=F?range=5d&interval=1d', 'LE=F'],
       'the previous session close is reused until the last trade changes');
+  });
+
+  it('measures against the session before the rolled quote even if trading opens between the requests', async () => {
+    const { fetchYahooChartDirect } = await loadRelayQuoteFetch({
+      'LE=F': LE_ROLLED_1D,
+      'LE=F?range=5d&interval=1d': dailyAfterOpen(),
+    });
+    const quote = await fetchYahooChartDirect('LE=F');
+    assert.equal(+quote.change.toFixed(2), LE_FRIDAY_MOVE);
   });
 
   it('leaves a trading quote and explicit-range charts on a single request', async () => {
