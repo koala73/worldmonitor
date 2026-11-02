@@ -262,7 +262,7 @@ function extractAxiomAggregateRows(buckets: Record<string, unknown>): unknown[] 
   return totals.every((row) => row.minute !== undefined) ? totals : null;
 }
 
-function extractAxiomRows(data: unknown): AxiomRowSet | null {
+function extractAxiomRowSets(data: unknown): AxiomRowSet[] | null {
   if (!isRecord(data) || (data.status !== undefined && !isRecord(data.status))) return null;
   const status = isRecord(data.status) ? data.status : null;
   if (
@@ -272,33 +272,36 @@ function extractAxiomRows(data: unknown): AxiomRowSet | null {
     (status !== null && (status.isPartial !== false ||
       (status.isEstimate !== undefined && status.isEstimate !== false)))
   ) return null;
-  const firstTable = Array.isArray(data.tables) ? data.tables[0] : null;
-  let result = Array.isArray(data.matches)
-    ? { entries: data.matches, fromMatches: true }
-    : isRecord(firstTable) && Array.isArray(firstTable.rows)
-      ? { entries: firstTable.rows, fromMatches: false }
-      : Array.isArray(data.rows)
-        ? { entries: data.rows, fromMatches: false }
-        : null;
-  if ((result === null || result.entries.length === 0) && data.buckets !== undefined) {
-    if (!isRecord(data.buckets) || status === null ||
-      !isNonnegativeInteger(status.rowsMatched) || !isNonnegativeInteger(status.numGroups)) return null;
+  // Another result layout must not hide a malformed row container.
+  if ((data.matches !== undefined && !Array.isArray(data.matches)) ||
+    (data.rows !== undefined && !Array.isArray(data.rows)) ||
+    (data.tables !== undefined && (!Array.isArray(data.tables) ||
+      data.tables.some((table) => !isRecord(table) || !Array.isArray(table.rows))))) return null;
+  const rowSets: AxiomRowSet[] = [];
+  if (Array.isArray(data.matches)) rowSets.push({ entries: data.matches, fromMatches: true });
+  if (Array.isArray(data.tables)) {
+    rowSets.push(...data.tables.map((table) => ({ entries: table.rows, fromMatches: false })));
+  }
+  if (Array.isArray(data.rows)) rowSets.push({ entries: data.rows, fromMatches: false });
+  if (data.buckets !== undefined) {
+    if (!isRecord(data.buckets)) return null;
     // Omitted aggregates need the complete zero-row metadata check below.
     if (data.buckets.series !== undefined || data.buckets.totals !== undefined) {
+      if (status === null || !isNonnegativeInteger(status.rowsMatched) ||
+        !isNonnegativeInteger(status.numGroups)) return null;
       const entries = extractAxiomAggregateRows(data.buckets);
       if (entries === null) return null;
-      result = { entries, fromMatches: false };
+      rowSets.push({ entries, fromMatches: false });
     }
   }
-  if (result !== null) {
+  if (rowSets.length > 0) {
     // An empty array cannot prove zero usage if the query reports groups.
-    if (result.entries.length === 0 && status !== null &&
+    if (rowSets.every((result) => result.entries.length === 0) && status !== null &&
       ((status.numGroups !== undefined && status.numGroups !== 0) ||
         (status.rowsMatched !== undefined && status.rowsMatched !== 0))) return null;
-    return result;
+    return rowSets;
   }
 
-  if (data.matches !== undefined || data.tables !== undefined || data.rows !== undefined) return null;
   if (
     data.format === "legacy" &&
     Array.isArray(data.datasetNames) &&
@@ -307,7 +310,7 @@ function extractAxiomRows(data: unknown): AxiomRowSet | null {
     [status.blocksExamined, status.elapsedTime, status.rowsExamined].every(isNonnegativeInteger) &&
     isNonnegativeInteger(status.cacheStatus) && status.cacheStatus <= 255 &&
     isAxiomDateTime(status.maxBlockTime) && isAxiomDateTime(status.minBlockTime)
-  ) return { entries: [], fromMatches: false };
+  ) return [{ entries: [], fromMatches: false }];
   return null;
 }
 
@@ -372,14 +375,26 @@ async function queryAxiom(apl: string, dimension: PlanLimitDimension): Promise<{
       return { rows: [], blockedReason: `axiom_query_http_${resp.status}` };
     }
     const json = await resp.json();
-    const result = extractAxiomRows(json);
-    if (result === null) {
+    const rowSets = extractAxiomRowSets(json);
+    if (rowSets === null) {
       // An unknown HTTP-200 body cannot prove zero usage. Keep live notices
       // until a recognized result arrives.
       return { rows: [], blockedReason: "axiom_unexpected_body" };
     }
-    const rows = normalizeAxiomRows(result, dimension);
-    if (rows === null) return { rows: [], blockedReason: "axiom_unexpected_body" };
+    let rows: ScannerUsageRow[] = [];
+    for (const result of rowSets) {
+      const normalized = normalizeAxiomRows(result, dimension);
+      if (normalized === null) return { rows: [], blockedReason: "axiom_unexpected_body" };
+      // Empty arrays may be placeholders; populated representations must agree.
+      if (rows.length > 0 && normalized.length > 0) {
+        const keyFor = (row: ScannerUsageRow) => JSON.stringify([row.userId, row.minuteStart, row.usage]);
+        const keys = new Set(rows.map(keyFor));
+        if (normalized.length !== rows.length || normalized.some((row) => !keys.has(keyFor(row)))) {
+          return { rows: [], blockedReason: "axiom_unexpected_body" };
+        }
+      }
+      if (normalized.length > 0) rows = normalized;
+    }
     // This count() query partitions all matching events by customer/minute.
     // Missing groups must not look like zero usage for the omitted customers.
     const matched = isRecord(json) && isRecord(json.status) ? json.status.rowsMatched : undefined;

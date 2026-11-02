@@ -24,6 +24,11 @@ const EMPTY_AXIOM_LEGACY_RESULT = {
     rowsMatched: 0,
   },
 };
+const AXIOM_LOW_USAGE_ROW = {
+  customer_id: "user-starter",
+  minute: new Date(NOW - 60_000).toISOString(),
+  usage: 10,
+};
 
 // Legacy aggregate shape from @axiomhq/js QueryResult / Timeseries.
 function axiomBurstResult(usages: number[], layout: "totals" | "series", minutesAgo = usages.map((_, index) => usages.length - index)) {
@@ -552,6 +557,7 @@ describe("api plan-limit usage scanner", () => {
   test.each([
     { label: "without buckets", body: EMPTY_AXIOM_LEGACY_RESULT },
     { label: "with empty buckets", body: { ...EMPTY_AXIOM_LEGACY_RESULT, buckets: {} } },
+    { label: "with empty tables and buckets", body: { ...EMPTY_AXIOM_LEGACY_RESULT, tables: [], buckets: {} } },
   ])("a complete zero-row Axiom result $label recovers an idle burst notice", async ({ body }) => {
     const t = convexTest(schema, modules);
     await seedCurrentApiBurstNotice(t);
@@ -663,6 +669,7 @@ describe("api plan-limit usage scanner", () => {
 
   test.each([
     { label: "empty bucket object without legacy metadata", body: { status: { isPartial: false, rowsMatched: 0, numGroups: 0 }, buckets: {} } },
+    { label: "empty table array without legacy metadata", body: { status: { isPartial: false, rowsMatched: 0, numGroups: 0 }, tables: [], buckets: {} } },
     { label: "empty bucket object with malformed matches", body: { ...EMPTY_AXIOM_LEGACY_RESULT, matches: "invalid", buckets: {} } },
     { label: "empty bucket object with malformed rows", body: { ...EMPTY_AXIOM_LEGACY_RESULT, rows: "invalid", buckets: {} } },
     { label: "empty bucket object with malformed tables", body: { ...EMPTY_AXIOM_LEGACY_RESULT, tables: [{ rows: "invalid" }], buckets: {} } },
@@ -690,6 +697,131 @@ describe("api plan-limit usage scanner", () => {
     expect(summary.recovered).toBe(0);
     expect(summary.blocked).toContainEqual({ dimension: "api_minute_burst", reason: "axiom_unexpected_body" });
     expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
+  });
+
+  test.each([
+    { label: "matches", fields: { matches: "invalid" } },
+    { label: "null matches", fields: { matches: null } },
+    { label: "rows", fields: { rows: "invalid" } },
+    { label: "null rows", fields: { rows: null } },
+    { label: "tables", fields: { tables: "invalid" } },
+    { label: "null tables", fields: { tables: null } },
+    { label: "table rows", fields: { tables: [{ rows: "invalid" }] } },
+    { label: "table record", fields: { tables: [null] } },
+    { label: "missing table rows", fields: { tables: [{}] } },
+    { label: "later table rows", fields: { tables: [{ rows: [] }, { rows: "invalid" }] } },
+    { label: "rows alongside valid empty matches", fields: { matches: [], rows: "invalid" } },
+    { label: "invalid rows hidden by empty matches", fields: { matches: [], rows: [null] } },
+    { label: "invalid row objects hidden by empty matches", fields: { matches: [], rows: [{}] } },
+    { label: "invalid table rows hidden by empty matches", fields: { matches: [], tables: [{ rows: [null] }] } },
+    { label: "invalid rows in a later table", fields: { tables: [{ rows: [] }, { rows: [null] }] } },
+    { label: "invalid later table after valid usage", fields: { tables: [{ rows: [AXIOM_LOW_USAGE_ROW] }, { rows: [null] }], status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, rowsMatched: 10, numGroups: 1 } } },
+    { label: "invalid rows alongside valid matches", fields: { matches: [{ data: AXIOM_LOW_USAGE_ROW }], rows: [null], status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, rowsMatched: 10, numGroups: 1 } } },
+    { label: "conflicting populated row layouts", fields: { matches: [{ data: AXIOM_LOW_USAGE_ROW }], rows: [{ ...AXIOM_LOW_USAGE_ROW, usage: 11 }], status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, rowsMatched: 10, numGroups: 1 } } },
+    { label: "same totals for different users", fields: { matches: [{ data: AXIOM_LOW_USAGE_ROW }], rows: [{ ...AXIOM_LOW_USAGE_ROW, customer_id: "other-user" }], status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, rowsMatched: 10, numGroups: 1 } } },
+    { label: "same totals for different minutes", fields: { matches: [{ data: AXIOM_LOW_USAGE_ROW }], rows: [{ ...AXIOM_LOW_USAGE_ROW, minute: new Date(NOW - 120_000).toISOString() }], status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, rowsMatched: 10, numGroups: 1 } } },
+  ].flatMap(({ label, fields }) => [
+    { label: `${label} with empty totals`, fields, buckets: { totals: [] } },
+    { label: `${label} with empty series`, fields, buckets: { series: [] } },
+    { label: `${label} with both empty aggregates`, fields, buckets: { totals: [], series: [] } },
+  ]))("malformed $label preserves an existing notice", async ({ fields, buckets }) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...EMPTY_AXIOM_LEGACY_RESULT, ...fields, buckets,
+    }), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 60_000 });
+
+    expect(summary.recovered).toBe(0);
+    expect(summary.blocked).toContainEqual({ dimension: "api_minute_burst", reason: "axiom_unexpected_body" });
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
+  });
+
+  test.each([
+    { label: "rows after empty matches", fields: { matches: [], rows: [AXIOM_LOW_USAGE_ROW] } },
+    { label: "rows in a later table", fields: { tables: [{ rows: [] }, { rows: [AXIOM_LOW_USAGE_ROW] }] } },
+    { label: "matching populated layouts", fields: { matches: [{ data: AXIOM_LOW_USAGE_ROW }], rows: [AXIOM_LOW_USAGE_ROW], tables: [{ rows: [AXIOM_LOW_USAGE_ROW] }] } },
+  ])("valid $label recover an idle burst notice", async ({ fields }) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    const aggregate = axiomBurstResult([10], "totals");
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...aggregate, ...fields,
+    }), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW });
+
+    expect(summary.recovered).toBe(1);
+    expect(summary.blocked.filter((b: { dimension?: string }) => b.dimension === "api_minute_burst")).toEqual([]);
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(0);
+  });
+
+  test("matching populated representations may use different row orders", async () => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    const usages = [10, 11, 12, 13, 14];
+    const rows = usages.map((usage, index) => ({
+      ...AXIOM_LOW_USAGE_ROW,
+      minute: new Date(NOW - (usages.length - index) * 60_000).toISOString(),
+      usage,
+    }));
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...axiomBurstResult(usages, "totals"),
+      matches: rows.map((data) => ({ data })),
+      rows: [...rows].reverse(),
+      tables: [{ rows }],
+    }), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW });
+
+    expect(summary.evaluated).toBe(1);
+    expect(summary.recovered).toBe(1);
+    expect(summary.blocked.filter((b: { dimension?: string }) => b.dimension === "api_minute_burst")).toEqual([]);
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(0);
+  });
+
+  test.each([
+    { label: "bucket object", buckets: null },
+    { label: "aggregate array", buckets: { totals: null } },
+    { label: "aggregate row", buckets: { totals: [null] } },
+  ])("valid rows cannot hide a malformed $label", async ({ buckets }) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    const aggregate = axiomBurstResult([10], "totals");
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...aggregate, rows: [AXIOM_LOW_USAGE_ROW], buckets,
+    }), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW });
+
+    expect(summary.recovered).toBe(0);
+    expect(summary.blocked).toContainEqual({ dimension: "api_minute_burst", reason: "axiom_unexpected_body" });
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
+  });
+
+  test.each([
+    { label: "matches", fields: { matches: [] } },
+    { label: "rows", fields: { rows: [] } },
+    { label: "table rows", fields: { tables: [{ rows: [] }] } },
+    { label: "tables", fields: { tables: [] } },
+  ])("valid empty $label alongside aggregates recovers an idle burst notice", async ({ fields }) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...EMPTY_AXIOM_LEGACY_RESULT, ...fields, buckets: { totals: [], series: [] },
+    }), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 60_000 });
+
+    expect(summary.recovered).toBe(1);
+    expect(summary.blocked.filter((b: { dimension?: string }) => b.dimension === "api_minute_burst")).toEqual([]);
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(0);
   });
 
   test.each([
