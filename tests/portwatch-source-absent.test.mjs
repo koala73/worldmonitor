@@ -190,3 +190,92 @@ describe('content freshness with a source-absent critical country', () => {
     assert.ok(assessment.unusableReasons.includes('source_absent_overlaps_critical'));
   });
 });
+
+// Review follow-ups on #10032.
+describe('a source absence stays visible end to end', () => {
+  const now = 1_700_000_000_000;
+  const MINUTE = 60_000;
+
+  it('health reads COVERAGE_PARTIAL even when the published count clears minRecordCount', async () => {
+    const { __testing__ } = await import('../api/health.js');
+    const { classifyKey, STANDALONE_KEYS, SEED_META, STATUS_COUNTS } = __testing__;
+    // 180 reference countries, HK absent: 179 published, above the 174 floor.
+    const countryData = new Map(Array.from({ length: 178 }, (_, i) => [`Z${i}`, { contentAsOfChangedAt: now - MINUTE }]));
+    countryData.set('CN', { contentAsOfChangedAt: now - MINUTE });
+    const meta = {
+      ...buildPortActivityMetaPayload({
+        countryData,
+        coverage: { status: 'complete', completionRatio: 1, sourceAbsentCountries: ['HK'] },
+        now: now - MINUTE,
+      }),
+    };
+    const ctx = {
+      containmentEvidenceByName: new Map(),
+      keyStrens: new Map([[STANDALONE_KEYS.portwatchPortActivity, 1234]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[SEED_META.portwatchPortActivity.key, JSON.stringify(meta)]]),
+      keyMetaErrors: new Map(),
+      activationStates: new Map([['portwatchContentFreshness', true]]),
+      now,
+    };
+    const entry = classifyKey('portwatchPortActivity', STANDALONE_KEYS.portwatchPortActivity, { allowOnDemand: true }, ctx);
+    assert.equal(entry.records, 179);
+    assert.equal(entry.status, 'COVERAGE_PARTIAL');
+    assert.equal(STATUS_COUNTS[entry.status], 'warn');
+    assert.deepEqual(entry.coverage.sourceAbsentCountries, ['HK']);
+  });
+
+  it('an all-absent critical scope is not reported as stale content', () => {
+    const report = buildContentFreshnessReport({
+      countryData: new Map([['US', { contentAsOfChangedAt: now - MINUTE }]]),
+      now,
+      sourceAbsentCountries: ['CN', 'HK'],
+    });
+    const assessment = buildContentFreshnessAssessment(
+      { contentFreshness: report },
+      { countries: ['CN', 'HK'], budgetMinutes: 10 * 24 * 60 },
+      now,
+    );
+    assert.equal(assessment.usable, true, assessment.unusableReasons.join(','));
+    assert.equal(assessment.contentStale, false);
+  });
+
+  it('an empty critical scope with nothing declared absent still fails closed', () => {
+    const report = buildContentFreshnessReport({
+      countryData: new Map([['US', { contentAsOfChangedAt: now - MINUTE }]]),
+      now,
+      criticalCountries: [],
+    });
+    const assessment = buildContentFreshnessAssessment(
+      { contentFreshness: report },
+      { countries: ['CN', 'HK'], budgetMinutes: 10 * 24 * 60 },
+      now,
+    );
+    assert.equal(assessment.usable, false);
+  });
+
+  it('publication deletes an absent country\'s per-country key in the same transaction', async () => {
+    const { publishPortActivitySnapshot } = await import('../scripts/seed-portwatch-port-activity.mjs');
+    const sent = [];
+    const fetchFn = async (_url, init) => {
+      const commands = JSON.parse(init.body);
+      sent.push(commands);
+      return jsonResponse(commands.map(() => ({ result: 'OK' })));
+    };
+    const credentials = { url: 'https://redis.example.test', token: 't' };
+    const base = {
+      countryData: new Map([['CN', { iso2: 'CN', ports: [] }]]),
+      countries: ['CN'],
+      metaPayload: { fetchedAt: now },
+      sourceAbsentCountries: ['HK'],
+    };
+    await publishPortActivitySnapshot({ ...base, canonicalAdvances: true }, { fetchFn, credentials });
+    assert.deepEqual(
+      sent[0].filter((c) => c[0] === 'DEL'),
+      [['DEL', 'supply_chain:portwatch-ports:v1:HK']],
+    );
+    // A blocked run keeps last-good state untouched.
+    await publishPortActivitySnapshot({ ...base, canonicalAdvances: false }, { fetchFn, credentials });
+    assert.equal(sent[1].some((c) => c[0] === 'DEL'), false);
+  });
+});

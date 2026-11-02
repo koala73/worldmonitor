@@ -3776,6 +3776,13 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
         ...finiteCoverageField('reviewedHs2Count'),
         failureReasons: sanitizeCoverageFailureReasons(meta.coverage.failureReasons),
         retailers: coverageRetailers,
+        ...(Array.isArray(meta.coverage.sourceAbsentCountries) && meta.coverage.sourceAbsentCountries.length > 0
+          ? {
+              sourceAbsentCountries: meta.coverage.sourceAbsentCountries
+                .filter((iso2) => typeof iso2 === 'string' && /^[A-Z]{2}$/.test(iso2))
+                .slice(0, 60),
+            }
+          : {}),
       }
     : null;
   const coverageCompletionRatioUsable = Number.isFinite(meta?.coverage?.completionRatio)
@@ -4147,6 +4154,11 @@ function classifyKey(name, redisKey, opts, ctx) {
     seedCfg?.minRecordCount != null &&
     (metaCount == null || metaCount < seedCfg.minRecordCount)
   ) status = 'COVERAGE_PARTIAL';
+  // A producer that excluded entities proven absent from its source (PortWatch)
+  // is partial by definition, even when the remaining count still clears
+  // minRecordCount because the reference universe is larger than the floor.
+  else if (Array.isArray(meta?.coverage?.sourceAbsentCountries)
+    && meta.coverage.sourceAbsentCountries.length > 0) status = 'COVERAGE_PARTIAL';
   else if (
     seedCfg?.minRankableRecordCount != null &&
     (rankableRecordCount == null || rankableRecordCount < seedCfg.minRankableRecordCount)

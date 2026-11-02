@@ -1198,6 +1198,7 @@ export async function publishPortActivitySnapshot(
     countries,
     metaPayload,
     canonicalAdvances,
+    sourceAbsentCountries = [],
   },
   {
     fetchFn = fetch,
@@ -1222,6 +1223,13 @@ export async function publishPortActivitySnapshot(
     ]);
   if (canonicalAdvances) {
     commands.push(['SET', CANONICAL_KEY, JSON.stringify(countries), 'EX', TTL]);
+    // Readers such as the China corridor towers and get-country-port-activity
+    // read per-country keys directly, so a source-absent country's last-good
+    // payload must go in the same transaction that stops naming it. A blocked
+    // run deletes nothing.
+    for (const iso2 of sourceAbsentCountries) {
+      if (!stateByCountry.has(iso2)) commands.push(['DEL', `${KEY_PREFIX}${iso2}`]);
+    }
   }
   if (metaPayload) commands.push(['SET', META_KEY, JSON.stringify(metaPayload), 'EX', TTL]);
   if (canonicalAdvances) {
@@ -2381,6 +2389,7 @@ export async function main() {
       countries,
       metaPayload,
       canonicalAdvances,
+      sourceAbsentCountries: coverage.sourceAbsentCountries,
     });
     failureRecorded = !canonicalAdvances;
     let canonicalState = 'no prior canonical list';

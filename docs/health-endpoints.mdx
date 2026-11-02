@@ -530,9 +530,13 @@ indexed count proves that none of its reference ports has any row in PortWatch's
 where another country returned a real max date. Such a country has no content to
 judge, so it is reported by name instead of as stale or missing. A country listed
 both as critical and as source-absent reads as
-`source_absent_overlaps_critical`. The dataset's record count still falls short
-of `minRecordCount`, so the check stays `COVERAGE_PARTIAL` while any country is
-absent.
+`source_absent_overlaps_critical`. If every pinned country is absent, nothing
+remains to judge and the block does not report stale content. Any non-empty
+`coverage.sourceAbsentCountries` keeps the check at `COVERAGE_PARTIAL`, even when
+the published count still clears `minRecordCount`. The seeder also deletes each
+absent country's per-country key in the same transaction that advances
+publication, so readers of those keys never see its last-good payload as
+current.
 
 The producer's counts are a measurement taken at seeder-run time, and seed
 metadata is only rewritten on a canonical-advancing 12-hour run. Health

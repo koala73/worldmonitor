@@ -210,7 +210,9 @@ export function buildContentFreshnessAssessment(meta, requirement, now) {
     criticalOldestAgeMinutes: criticalAgeMinutes,
     // Compare raw milliseconds inclusively. The producer treats exactly-at-
     // budget as stale; rounded minutes would accept up to 29,999ms over.
-    contentStale: usable
+    // Every pinned country declared absent leaves nothing to judge; the
+    // absence itself is reported through coverage, not as stale content.
+    contentStale: usable && criticalCountries.length > 0
       ? criticalFreshCount < criticalCountries.length
         || criticalAgeMs === null
         || criticalAgeMs < 0
