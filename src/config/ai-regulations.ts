@@ -327,17 +327,6 @@ export const REGULATORY_ACTIONS: RegulatoryAction[] = [
     impact: 'high',
     source: 'CAC',
   },
-  {
-    id: 'action-007',
-    date: '2024-05-15',
-    country: 'European Union',
-    title: 'First EU AI Act Penalties Expected',
-    type: 'enforcement',
-    regulationId: 'eu-ai-act',
-    description: 'EU expected to begin enforcement actions for non-compliant AI systems.',
-    impact: 'high',
-    source: 'European Commission',
-  },
 ];
 
 // Country Regulatory Profiles
