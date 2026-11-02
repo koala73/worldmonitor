@@ -3,7 +3,10 @@
  *
  * The R&D Signal (defense-patents), Toronto Safety and AI Regulation panels
  * shipped markup whose classes appeared in no stylesheet, so each panel
- * rendered as raw stacked text with no padding. A class that only matches an
+ * rendered as raw stacked text with no padding. The Hormuz commodity
+ * dependency list put a country and its context in two bare spans, which ran
+ * together as "DjiboutiSoybeans"; the rest of that panel is styled inline, so
+ * only its dependency block is checked. A class that only matches an
  * unrelated rule elsewhere (`.stat`, `.count`, an RTL override) does not count:
  * the rule must name the panel root. DefensePatentsPanel paints its loading
  * state outside the list wrapper (a raw write the content-write ratchet keeps on
@@ -21,9 +24,14 @@ import { readFileSync, readdirSync } from 'node:fs';
 const srcDir = new URL('../src/', import.meta.url);
 
 const PANELS = {
-  'components/DefensePatentsPanel.ts': { roots: ['defense-patents-panel', 'defense-patents-loading'], sample: 'defense-patent-row' },
-  'components/TorontoSafetyPanel.ts': { roots: ['toronto-safety-panel'], sample: 'intel-item' },
-  'components/RegulationPanel.ts': { roots: ['regulation-panel'], sample: 'timeline-item' },
+  'components/DefensePatentsPanel.ts': { roots: ['defense-patents-panel', 'defense-patents-loading'], samples: ['defense-patent-row'] },
+  'components/TorontoSafetyPanel.ts': { roots: ['toronto-safety-panel'], samples: ['intel-item'] },
+  'components/RegulationPanel.ts': { roots: ['regulation-panel'], samples: ['timeline-item'] },
+  'components/HormuzPanel.ts': {
+    roots: ['hz-dependencies'],
+    samples: ['hz-dependency-label', 'hz-dependency-context'],
+    only: /^hz-dependenc/,
+  },
 };
 
 const SHARED = new Set(['panel-tabs', 'panel-tab']);
@@ -65,10 +73,10 @@ function emittedClasses(relPath) {
 }
 
 describe('audit panels style every class they emit', () => {
-  for (const [relPath, { roots, sample }] of Object.entries(PANELS)) {
+  for (const [relPath, { roots, samples, only }] of Object.entries(PANELS)) {
     it(relPath, () => {
-      const classes = emittedClasses(relPath);
-      for (const expected of [...roots, sample]) {
+      const classes = emittedClasses(relPath).filter((cls) => !only || only.test(cls));
+      for (const expected of [...roots, ...samples]) {
         assert.ok(classes.includes(expected), `class extraction missed ${expected}: ${classes.join(' ')}`);
       }
 
