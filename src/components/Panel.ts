@@ -78,19 +78,27 @@ function deltaToColSpan(startSpan: number, deltaX: number, maxSpan = 3): number 
   return clampColSpan(startSpan + spanDelta, maxSpan);
 }
 
-function getRowSpan(element: HTMLElement): number {
+function getSpanClass(element: HTMLElement): number | null {
   if (element.classList.contains('span-4')) return 4;
   if (element.classList.contains('span-3')) return 3;
   if (element.classList.contains('span-2')) return 2;
   if (element.classList.contains('span-1')) return 1;
+  return null;
+}
 
-  // #8276: Use the actual CSS grid span as the resize baseline.
-  // Natural wide video panels may occupy three rows instead of two.
-  // This prevents the first drag from unexpectedly shrinking the panel.
+function getRowSpan(element: HTMLElement): number {
+  // A user-set span (.resized) is authoritative: its class is !important.
+  const spanClass = getSpanClass(element);
+  if (spanClass !== null && element.classList.contains('resized')) return spanClass;
+
+  // Otherwise the rendered span is the resize baseline the user sees. Natural
+  // wide video panels take three rows (#8276), and the CLS-pinned span-2
+  // defaults take four on desktop, so their classes understate it.
   if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
     const match = /^span\s+([1-4])(?:\s|$)/.exec(window.getComputedStyle(element).gridRowStart);
     if (match) return Number(match[1]);
   }
+  if (spanClass !== null) return spanClass;
 
   // Fallback when the element is not yet attached to the layout.
   return element.classList.contains('panel-wide') ? 2 : 1;

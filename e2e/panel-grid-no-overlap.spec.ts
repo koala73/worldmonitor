@@ -39,11 +39,19 @@ test('pinned dashboard panels do not overlap their grid neighbours', async ({ pa
     await page.setViewportSize(viewport);
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
 
+    // Mount every pinned panel, so the check measures real panels and not the
+    // deferred shells that stand in for them below the fold.
     for (const id of PINNED_PANELS) {
-      await expect(page.locator(`#panelsGrid > .panel[data-panel="${id}"]`)).toHaveCount(1, {
-        timeout: 60_000,
-      });
+      const panel = page.locator(`#panelsGrid > .panel[data-panel="${id}"]`);
+      await expect(panel).toHaveCount(1, { timeout: 60_000 });
+      await panel.scrollIntoViewIfNeeded();
+      await expect(panel).not.toHaveAttribute('data-deferred-panel', 'true', { timeout: 60_000 });
     }
+
+    // The resize separator reports the rows on screen, not the span-2 class.
+    await expect(
+      page.locator('#panelsGrid > .panel[data-panel="threat-timeline"] .panel-resize-handle'),
+    ).toHaveAttribute('aria-valuenow', '4');
 
     await expect
       .poll(
