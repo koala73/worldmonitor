@@ -838,6 +838,12 @@ describe('slow-Redis timeout is degraded, not a silent allow (#6412 review)', ()
     );
   });
 
+  it('global checkRateLimit fails closed on an SDK timeout', { timeout: HANG_TEST_TIMEOUT_MS }, async () => {
+    const res = await checkRateLimit(makeRequest({ 'x-real-ip': '203.0.113.79' }), {}, { failClosed: true });
+    assert.equal(res?.status, 503);
+    assert.equal(res?.headers.get('X-RateLimit-Mode'), 'degraded');
+  });
+
   it('checkRateLimit (api/_rate-limit.js) fails closed on a timed-out decision when asked to', { timeout: HANG_TEST_TIMEOUT_MS }, async () => {
     const { checkRateLimit: apiCheckRateLimit, __resetRateLimitForTest: resetApi } = await import('../api/_rate-limit.js');
     try {

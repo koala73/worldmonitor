@@ -777,7 +777,15 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     }
 
     requestAnimationFrame(() => {
-      modal.querySelector<HTMLElement>('.pro-activation-primary')?.focus();
+      const primary = modal.querySelector<HTMLElement>('.pro-activation-primary');
+      const body = modal.querySelector<HTMLElement>('.pro-activation-body');
+      if (!primary || !body) return;
+      const actionBounds = primary.getBoundingClientRect();
+      const bodyBounds = body.getBoundingClientRect();
+      const target = actionBounds.top >= bodyBounds.top && actionBounds.bottom <= bodyBounds.bottom
+        ? primary
+        : modal.querySelector<HTMLElement>('.pro-activation-close');
+      target?.focus({ preventScroll: true });
     });
   }
 
@@ -1399,6 +1407,10 @@ function reportActivationStepFailure(
 ): void {
   if (!isFlowAccountCurrent(options)) return;
   void scheduleSentryInit();
+  // PushRegistrationError's hostname names which push service the server refused.
+  const endpointHost = err instanceof Error && 'endpointHost' in err && typeof err.endpointHost === 'string'
+    ? err.endpointHost
+    : '';
   enqueueSentryCall((s) => s.captureException(
     err instanceof Error ? err : new Error(String(err)),
     {
@@ -1407,6 +1419,7 @@ function reportActivationStepFailure(
         step,
         stage,
         activation_path: options.onlyIfUnactivated ? 'retro' : 'day0',
+        ...(endpointHost ? { push_endpoint_host: endpointHost } : {}),
       },
     },
   ));

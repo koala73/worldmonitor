@@ -34,10 +34,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -65,7 +62,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -79,10 +76,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -124,7 +118,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -218,10 +212,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -235,10 +226,21 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "admin.gse.com.ge",
+      "provider": "admin.gse.com.ge",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit Georgian State Electrosystem and link to https://admin.gse.com.ge/api/en/menu/actual-balance-125.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -314,10 +316,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -348,7 +347,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -381,6 +380,20 @@
       ]
     },
     {
+      "host": "ammancity.gov.jo",
+      "provider": "ammancity.gov.jo",
+      "kind": "structured",
+      "observed": true,
+      "license": "Site footer: \"All rights reserved © 2001 - 2026 - Greater Amman Municipality\"; displayed with attribution under the free-dashboard posture",
+      "attribution": "Credit Greater Amman Municipality and link the Central Market price page.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/amman.mjs"
+        }
+      ]
+    },
+    {
       "host": "amna.gr",
       "provider": "amna.gr",
       "kind": "feed",
@@ -390,10 +403,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -407,10 +417,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -424,7 +431,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -438,10 +445,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -580,6 +584,9 @@
           "path": "scripts/seed-forecasts.mjs"
         },
         {
+          "path": "scripts/triage-agent-feedback.mjs"
+        },
+        {
           "path": "server/_shared/usage.ts"
         }
       ]
@@ -594,10 +601,24 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "api.cammesa.com",
+      "provider": "api.cammesa.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved",
+      "attribution": "Credit CAMMESA SADI and link to https://api.cammesa.com/demanda-svc/swagger-ui.html.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_regional-energy-source.mjs"
         },
         {
-          "path": "src/config/feeds.ts"
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -704,6 +725,9 @@
       "attribution": "Credit api.data.gov.my and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "scripts/_dosm-product-demand.mjs"
+        },
         {
           "path": "scripts/backfill-fuel-prices-prev.mjs"
         },
@@ -995,6 +1019,20 @@
       ]
     },
     {
+      "host": "api.mercadopublico.cl",
+      "provider": "api.mercadopublico.cl",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit api.mercadopublico.cl and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "api.open511.gov.bc.ca",
       "provider": "BC Open511",
       "kind": "structured",
@@ -1188,6 +1226,20 @@
         },
         {
           "path": "server/worldmonitor/market/v1/stock-news-search.ts"
+        }
+      ]
+    },
+    {
+      "host": "api.siat.stat.uz",
+      "provider": "stat.uz",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (stat.uz site footer and ODI open-data certificate); a link to www.stat.uz is required",
+      "attribution": "Source: National Statistics Committee of the Republic of Uzbekistan, www.stat.uz (CC BY 4.0). Link https://stat.uz.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/statuz.mjs"
         }
       ]
     },
@@ -1409,6 +1461,12 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "api/mcp/registry/webcam-tools.ts"
+        },
+        {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
           "path": "scripts/seed-webcams.mjs"
         },
         {
@@ -1512,9 +1570,6 @@
           "path": "scripts/capture-seed-recovery.mjs"
         },
         {
-          "path": "scripts/check-seed-freshness.mjs"
-        },
-        {
           "path": "scripts/freeze-resilience-ranking.mjs"
         },
         {
@@ -1557,7 +1612,7 @@
           "path": "scripts/verify-import-hhi-coverage.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/app/desktop-updater.ts"
@@ -1623,10 +1678,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1649,10 +1701,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1666,10 +1715,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1697,10 +1743,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1714,10 +1757,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1731,10 +1771,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1762,7 +1799,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1776,10 +1813,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1793,10 +1827,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1810,7 +1841,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1824,10 +1855,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1897,10 +1925,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1914,10 +1939,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1945,10 +1967,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -1962,10 +1981,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2016,10 +2032,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2047,10 +2060,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2064,10 +2074,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2095,10 +2102,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2112,10 +2116,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/config/live-video-sources.ts"
@@ -2126,15 +2127,10 @@
       "host": "bothsidesofthetable.com",
       "provider": "bothsidesofthetable.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit bothsidesofthetable.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "breakingdefense.com",
@@ -2146,10 +2142,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2163,7 +2156,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2205,10 +2198,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2236,7 +2226,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2273,7 +2263,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2301,7 +2291,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2392,10 +2382,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2416,20 +2403,14 @@
     {
       "host": "changelog.com",
       "provider": "changelog.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit changelog.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2457,7 +2438,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2471,10 +2452,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2488,10 +2466,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2570,7 +2545,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2584,10 +2559,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2601,10 +2573,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2618,10 +2587,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2649,30 +2615,21 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "cointelegraph.com",
       "provider": "cointelegraph.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit cointelegraph.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2758,10 +2715,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2769,15 +2723,10 @@
       "host": "contxto.com",
       "provider": "contxto.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit contxto.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "correctiv.org",
@@ -2789,10 +2738,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2811,6 +2757,20 @@
       ]
     },
     {
+      "host": "corriere.it",
+      "provider": "corriere.it",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit corriere.it and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "cp24.com",
       "provider": "cp24.com",
       "kind": "feed",
@@ -2820,10 +2780,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2838,6 +2795,9 @@
       "references": [
         {
           "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
+        },
+        {
+          "path": "src/components/UkmtoIncidentsPanel.ts"
         }
       ]
     },
@@ -2851,10 +2811,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2868,7 +2825,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2882,10 +2839,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -2924,6 +2878,20 @@
       ]
     },
     {
+      "host": "dados.ons.org.br",
+      "provider": "dados.ons.org.br",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC-BY",
+      "attribution": "Credit Brazil ONS and link to https://dados.ons.org.br/api/3/action/package_show?id=balanco-energia-subsistema.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "dai2.xumo.com",
       "provider": "dai2.xumo.com",
       "kind": "feed",
@@ -2942,10 +2910,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3242,7 +3207,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3270,10 +3235,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3303,46 +3265,34 @@
         },
         {
           "path": "server/worldmonitor/research/v1/list-tech-events.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
     {
       "host": "dev.to",
       "provider": "dev.to",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit dev.to and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "devops.com",
       "provider": "devops.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit devops.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3356,10 +3306,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3373,10 +3320,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3390,7 +3334,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3441,15 +3385,10 @@
       "host": "disrupt-africa.com",
       "provider": "disrupt-africa.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit disrupt-africa.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "dlnews.com",
@@ -3461,10 +3400,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3520,7 +3456,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3562,7 +3498,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3636,7 +3572,7 @@
           "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
         },
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3650,7 +3586,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3664,10 +3600,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3695,10 +3628,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3712,10 +3642,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3729,7 +3656,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3757,7 +3684,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3788,7 +3715,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3802,7 +3729,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3895,10 +3822,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3926,10 +3850,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3957,10 +3878,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3974,10 +3892,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -3991,10 +3906,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4009,6 +3921,48 @@
       "references": [
         {
           "path": "scripts/seed-natural-events.mjs"
+        }
+      ]
+    },
+    {
+      "host": "epads.gov.pk",
+      "provider": "epads.gov.pk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit epads.gov.pk and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
+      "host": "epms.ppra.gov.pk",
+      "provider": "epms.ppra.gov.pk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit epms.ppra.gov.pk and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
+      "host": "erp.powergrid.gov.bd",
+      "provider": "erp.powergrid.gov.bd",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit Bangladesh Power Grid and link to https://erp.powergrid.gov.bd/w/generations/view_generations.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -4036,10 +3990,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4062,7 +4013,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4076,7 +4027,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4084,15 +4035,10 @@
       "host": "euractiv.com",
       "provider": "euractiv.com",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit euractiv.com and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/feeds.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "eurasianet.org",
@@ -4104,10 +4050,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4121,10 +4064,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "evn.com.vn",
+      "provider": "evn.com.vn",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved",
+      "attribution": "Credit Vietnam Electricity (EVN) and link to https://evn.com.vn/vi-VN/news-l/Thong-tin-tom-tat-van-hanh-HTD-Quoc-gia-60-2015.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -4164,13 +4118,21 @@
           "path": "scripts/seed-research.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "ezamowienia.gov.pl",
+      "provider": "ezamowienia.gov.pl",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit ezamowienia.gov.pl and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "scripts/_global-tender-feeds.mjs"
         }
       ]
     },
@@ -4198,7 +4160,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4212,7 +4174,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4226,7 +4188,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4245,6 +4207,20 @@
       ]
     },
     {
+      "host": "fccc.gov.fj",
+      "provider": "fccc.gov.fj",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved; robots content-signal ai-train=no, use=reference",
+      "attribution": "Credit the Fijian Competition and Consumer Commission and link to https://fccc.gov.fj/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "feed.businesswire.com",
       "provider": "Business Wire",
       "kind": "feed",
@@ -4254,30 +4230,21 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "feed.infoq.com",
       "provider": "feed.infoq.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit feed.infoq.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4291,30 +4258,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "feeds.arstechnica.com",
       "provider": "feeds.arstechnica.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit feeds.arstechnica.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4328,10 +4286,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4345,10 +4300,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4362,27 +4314,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "feeds.feedburner.com",
       "provider": "feeds.feedburner.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit feeds.feedburner.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ],
       "role": "transport"
@@ -4411,7 +4357,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4425,7 +4371,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4439,10 +4385,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4456,10 +4399,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4473,10 +4413,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4490,10 +4427,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4507,7 +4441,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4554,23 +4488,14 @@
     {
       "host": "finance.yahoo.com",
       "provider": "finance.yahoo.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit finance.yahoo.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4584,10 +4509,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4659,10 +4581,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4690,10 +4609,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "fpri.org",
+      "provider": "fpri.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit fpri.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4707,7 +4637,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4721,7 +4651,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4763,7 +4693,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "fwdstart.me",
+      "provider": "fwdstart.me",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit fwdstart.me and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4777,7 +4721,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4825,10 +4769,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4842,10 +4783,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4901,10 +4839,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4934,6 +4869,9 @@
         },
         {
           "path": "scripts/seed-research.mjs"
+        },
+        {
+          "path": "server/_shared/agent-feedback.ts"
         },
         {
           "path": "src/app/desktop-updater.ts"
@@ -4976,10 +4914,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -4993,10 +4928,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5010,7 +4942,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5038,7 +4970,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5066,7 +4998,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5080,7 +5012,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5123,10 +5055,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5154,7 +5083,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5196,10 +5125,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5241,10 +5167,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5258,30 +5181,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "hnrss.org",
       "provider": "hnrss.org",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit hnrss.org and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5300,6 +5214,20 @@
       ]
     },
     {
+      "host": "hormuz.data-tracking.net",
+      "provider": "hormuz.data-tracking.net",
+      "kind": "structured",
+      "observed": true,
+      "license": "Documented public API, no key (https://hormuz.data-tracking.net/api-docs, reviewed 2026-10-29): data reusable including commercially under CC BY 4.0 with attribution to hormuz.data-tracking.net; republished UKMTO incident reports stay under the Open Government Licence v3.0. The publisher refreshes every 30 minutes and asks clients not to poll faster.",
+      "attribution": "UK Maritime Trade Operations (https://www.ukmto.org/recent-incidents), contains public sector information licensed under the Open Government Licence v3.0; republished by hormuz.data-tracking.net (CC BY 4.0).",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-ukmto-incidents.mjs"
+        }
+      ]
+    },
+    {
       "host": "hromadske.ua",
       "provider": "hromadske.ua",
       "kind": "feed",
@@ -5309,10 +5237,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5337,6 +5262,20 @@
       ]
     },
     {
+      "host": "hub.arcgis.com",
+      "provider": "hub.arcgis.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit hub.arcgis.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-portwatch.mjs"
+        }
+      ]
+    },
+    {
       "host": "humanprogress.org",
       "provider": "humanprogress.org",
       "kind": "feed",
@@ -5346,10 +5285,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5363,10 +5299,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5385,6 +5318,23 @@
       ]
     },
     {
+      "host": "iccc.gov.pg",
+      "provider": "iccc.gov.pg",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved",
+      "attribution": "Credit the PNG Independent Consumer and Competition Commission and link to https://iccc.gov.pg/category/fuel-prices/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-energy-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "ici.radio-canada.ca",
       "provider": "ici.radio-canada.ca",
       "kind": "feed",
@@ -5394,10 +5344,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "identity.dataspace.copernicus.eu",
+      "provider": "identity.dataspace.copernicus.eu",
+      "kind": "structured",
+      "observed": true,
+      "license": "Copernicus Sentinel data policy: free, full and open access, including commercial use and redistribution, with the Copernicus credit",
+      "attribution": "Contains modified Copernicus Sentinel data [year]",
+      "status": "reviewed",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "scripts/seed-no2-activity.mjs"
         }
       ]
     },
@@ -5411,10 +5372,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5435,20 +5393,14 @@
     {
       "host": "inc42.com",
       "provider": "inc42.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit inc42.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5462,10 +5414,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5479,10 +5428,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5496,7 +5442,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5533,10 +5479,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5550,10 +5493,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5561,15 +5501,10 @@
       "host": "internal.example.com",
       "provider": "Internal example placeholder",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: documentation/test placeholder",
       "attribution": "Excluded from the provider count: placeholder URL.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "api/notification-channels.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "investing.com",
@@ -5581,7 +5516,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5609,10 +5544,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5626,7 +5558,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5640,10 +5572,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5657,7 +5586,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5671,7 +5600,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5699,10 +5628,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5716,7 +5642,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5730,7 +5656,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5744,10 +5670,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5761,10 +5684,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5778,10 +5698,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5840,10 +5757,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5897,10 +5811,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5914,47 +5825,35 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "kr-asia.com",
       "provider": "kr-asia.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit kr-asia.com and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "krebsonsecurity.com",
       "provider": "krebsonsecurity.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit krebsonsecurity.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -5968,29 +5867,18 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "lavca.org",
       "provider": "lavca.org",
-      "kind": "feed+structured",
-      "observed": true,
+      "kind": "structured",
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit lavca.org and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "lefaso.net",
@@ -6002,10 +5890,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6019,10 +5904,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6036,10 +5918,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6053,10 +5932,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6298,20 +6174,14 @@
     {
       "host": "lobste.rs",
       "provider": "lobste.rs",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit lobste.rs and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6348,10 +6218,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6365,7 +6232,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6379,10 +6246,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6396,10 +6260,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6441,10 +6302,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6531,10 +6389,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6548,7 +6403,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "mem.gob.gt",
+      "provider": "mem.gob.gt",
+      "kind": "structured",
+      "observed": true,
+      "license": "Data licence unconfirmed; robots content-signal ai-train=no, use=reference",
+      "attribution": "Credit the Ministerio de Energía y Minas de Guatemala and link to https://mem.gob.gt/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -6576,10 +6445,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6593,10 +6459,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6610,10 +6473,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6636,10 +6496,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6653,10 +6510,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6684,10 +6538,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6701,10 +6552,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6718,10 +6566,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6735,10 +6580,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6752,7 +6594,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6811,10 +6653,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6845,10 +6684,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6862,10 +6698,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6895,20 +6728,14 @@
     {
       "host": "news.crunchbase.com",
       "provider": "news.crunchbase.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit news.crunchbase.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6922,10 +6749,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6942,25 +6766,13 @@
           "path": "scripts/source-catalog-identity.mjs"
         },
         {
-          "path": "scripts/validate-rss-feeds.mjs"
-        },
-        {
           "path": "server/worldmonitor/intelligence/v1/_country-coverage-feeds.ts"
         },
         {
           "path": "server/worldmonitor/market/v1/stock-news-search.ts"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/services/country-coverage.ts"
@@ -6971,17 +6783,14 @@
     {
       "host": "news.mit.edu",
       "provider": "news.mit.edu",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit news.mit.edu and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -6995,10 +6804,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7012,10 +6818,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7029,7 +6832,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7043,10 +6846,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7063,30 +6863,35 @@
           "path": "scripts/ais-relay.cjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "news.ycombinator.com",
       "provider": "news.ycombinator.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit news.ycombinator.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "newscientist.com",
+      "provider": "newscientist.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit newscientist.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7100,7 +6905,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7114,10 +6919,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7185,7 +6987,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7199,7 +7001,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7227,7 +7029,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7241,10 +7043,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7286,10 +7085,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "ocds-api.etenders.gov.za",
+      "provider": "ocds-api.etenders.gov.za",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit ocds-api.etenders.gov.za and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "scripts/_global-tender-feeds.mjs"
         }
       ]
     },
@@ -7303,7 +7113,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7345,7 +7155,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7362,10 +7172,7 @@
           "path": "scripts/seed-energy-intelligence.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7379,10 +7186,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7425,6 +7229,20 @@
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit open.alberta.ca and link to the original upstream API/dataset.",
       "status": "excluded"
+    },
+    {
+      "host": "open.iub.gov.lv",
+      "provider": "open.iub.gov.lv",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit open.iub.gov.lv and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
     },
     {
       "host": "open.toronto.ca",
@@ -7555,10 +7373,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7643,10 +7458,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7660,10 +7472,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7691,6 +7500,20 @@
       "status": "excluded"
     },
     {
+      "host": "petrobangla.org.bd",
+      "provider": "petrobangla.org.bd",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit Petrobangla daily gas and link to https://petrobangla.org.bd/pages/reports.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "phys.org",
       "provider": "phys.org",
       "kind": "structured",
@@ -7707,17 +7530,14 @@
     {
       "host": "pitchbook.com",
       "provider": "pitchbook.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit pitchbook.com and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7750,6 +7570,20 @@
       ]
     },
     {
+      "host": "pncp.gov.br",
+      "provider": "pncp.gov.br",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit pncp.gov.br and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "polityka.pl",
       "provider": "Polityka",
       "kind": "feed",
@@ -7759,10 +7593,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7801,6 +7632,23 @@
       ]
     },
     {
+      "host": "portal.korem.kz",
+      "provider": "portal.korem.kz",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit KOREM, the Kazakhstan electricity market operator and link to https://portal.korem.kz/?lang=ru.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-energy-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "portfolio.hu",
       "provider": "portfolio.hu",
       "kind": "feed",
@@ -7810,10 +7658,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7844,10 +7689,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "precios.maga.gob.gt",
+      "provider": "precios.maga.gob.gt",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit precios.maga.gob.gt and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "scripts/lib/food-prices-adapters/maga.mjs"
         }
       ]
     },
@@ -7861,10 +7717,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7920,10 +7773,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -7957,7 +7807,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "public-api.prozorro.gov.ua",
+      "provider": "public-api.prozorro.gov.ua",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit public-api.prozorro.gov.ua and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
         }
       ]
     },
@@ -8184,6 +8048,20 @@
       "status": "excluded"
     },
     {
+      "host": "ransomware.live",
+      "provider": "ransomware.live",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit ransomware.live and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "raw.githubusercontent.com",
       "provider": "raw.githubusercontent.com",
       "kind": "structured",
@@ -8222,10 +8100,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8284,7 +8159,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8298,7 +8173,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8330,30 +8205,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "review.firstround.com",
       "provider": "review.firstround.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit review.firstround.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8367,10 +8233,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8384,7 +8247,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8426,7 +8289,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8440,10 +8303,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8457,27 +8317,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "rss.politico.com",
       "provider": "rss.politico.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit rss.politico.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8505,7 +8359,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8561,7 +8415,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8575,10 +8429,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8592,7 +8443,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8620,10 +8471,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8654,6 +8502,15 @@
           "path": "scripts/_sp500-breadth.mjs"
         }
       ]
+    },
+    {
+      "host": "sccd.royalnavy.mod.uk",
+      "provider": "sccd.royalnavy.mod.uk",
+      "kind": "structured",
+      "observed": false,
+      "license": "UKMTO terms sections 20-23 permit reuse under the Open Government Licence v3.0, subject to excluded third-party rights. Website JSON backend; no verified external developer support contract.",
+      "attribution": "UK Maritime Trade Operations. Link https://www.ukmto.org/recent-incidents and https://www.ukmto.org/terms-and-conditions. Contains public sector information licensed under the Open Government Licence v3.0.",
+      "status": "excluded"
     },
     {
       "host": "schema.org",
@@ -8708,7 +8565,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8857,23 +8714,14 @@
     {
       "host": "seekingalpha.com",
       "provider": "seekingalpha.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit seekingalpha.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8887,7 +8735,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -8901,10 +8749,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9011,22 +8856,44 @@
       ]
     },
     {
+      "host": "sh.dataspace.copernicus.eu",
+      "provider": "sh.dataspace.copernicus.eu",
+      "kind": "structured",
+      "observed": true,
+      "license": "Copernicus Sentinel data policy: free, full and open access, including commercial use and redistribution, with the Copernicus credit",
+      "attribution": "Contains modified Copernicus Sentinel data [year]",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-no2-activity.mjs"
+        }
+      ]
+    },
+    {
       "host": "sifted.eu",
       "provider": "sifted.eu",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit sifted.eu and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "simaniger.net",
+      "provider": "simaniger.net",
+      "kind": "structured",
+      "observed": true,
+      "license": "SIMA Niger asks for the citation \"SIMA Niger\" and to be contacted before commercial use or mass extraction; polled one weekly bulletin per run",
+      "attribution": "Cite \"SIMA Niger\" and link the weekly cereal bulletin.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "scripts/lib/food-prices-adapters/sima.mjs"
         }
       ]
     },
@@ -9057,10 +8924,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9122,10 +8986,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9139,10 +9000,49 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "stat.gov.kg",
+      "provider": "stat.gov.kg",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit stat.gov.kg and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "scripts/lib/food-prices-adapters/nsckg.mjs"
+        }
+      ]
+    },
+    {
+      "host": "stat.gov.kz",
+      "provider": "stat.gov.kz",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit stat.gov.kz and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/statkz.mjs"
+        }
+      ]
+    },
+    {
+      "host": "stat.uz",
+      "provider": "stat.uz",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (stat.uz site footer and ODI open-data certificate); a link to www.stat.uz is required",
+      "attribution": "Source: National Statistics Committee of the Republic of Uzbekistan, www.stat.uz (CC BY 4.0). Link https://stat.uz.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/statuz.mjs"
         }
       ]
     },
@@ -9156,10 +9056,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9372,6 +9269,20 @@
       ]
     },
     {
+      "host": "storage.eop.bg",
+      "provider": "storage.eop.bg",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit storage.eop.bg and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "storage.googleapis.com",
       "provider": "Ember electricity data",
       "kind": "structured",
@@ -9394,20 +9305,14 @@
     {
       "host": "stratechery.com",
       "provider": "stratechery.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit stratechery.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9444,10 +9349,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9470,10 +9372,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9527,10 +9426,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9544,10 +9440,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9561,10 +9454,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9578,7 +9468,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "tcb.gov.bd",
+      "provider": "tcb.gov.bd",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit tcb.gov.bd and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/tcb.mjs"
         }
       ]
     },
@@ -9592,30 +9496,21 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "tech.eu",
       "provider": "tech.eu",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit tech.eu and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9639,40 +9534,28 @@
     {
       "host": "techcabal.com",
       "provider": "techcabal.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit techcabal.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "techcrunch.com",
       "provider": "techcrunch.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit techcrunch.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9686,7 +9569,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9700,7 +9583,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9714,10 +9597,35 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "tenders.go.ke",
+      "provider": "tenders.go.ke",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit tenders.go.ke and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
+      "host": "tenders.procurement.gov.ge",
+      "provider": "tenders.procurement.gov.ge",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit tenders.procurement.gov.ge and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
         }
       ]
     },
@@ -9776,7 +9684,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9790,10 +9698,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9807,10 +9712,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9824,10 +9726,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9841,10 +9740,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9858,10 +9754,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9875,10 +9768,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9892,10 +9782,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9909,7 +9796,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9923,10 +9810,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9940,10 +9824,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9957,30 +9838,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "thenewstack.io",
       "provider": "thenewstack.io",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit thenewstack.io and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -9994,7 +9866,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10025,10 +9897,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10042,10 +9911,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10059,10 +9925,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10076,10 +9939,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10124,10 +9984,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10141,10 +9998,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10158,10 +10012,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10203,10 +10054,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10220,10 +10068,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10311,10 +10156,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10328,10 +10170,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10381,6 +10220,20 @@
       ]
     },
     {
+      "host": "ugandacoffee.go.ug",
+      "provider": "ugandacoffee.go.ug",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit ugandacoffee.go.ug and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/ucda.mjs"
+        }
+      ]
+    },
+    {
       "host": "uis.unesco.org",
       "provider": "uis.unesco.org",
       "kind": "structured",
@@ -10404,10 +10257,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10421,7 +10271,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10435,10 +10285,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10452,10 +10299,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10469,7 +10313,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "unstats.un.org",
+      "provider": "unstats.un.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit unstats.un.org and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/build-un-m49-regions.mjs"
         }
       ]
     },
@@ -10534,10 +10392,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10551,30 +10406,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "venturebeat.com",
       "provider": "venturebeat.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit venturebeat.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10605,10 +10451,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10636,10 +10479,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10684,10 +10524,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10701,10 +10538,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10792,10 +10626,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10809,7 +10640,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -10881,9 +10712,6 @@
         },
         {
           "path": "api/ask.ts"
-        },
-        {
-          "path": "api/fwdstart.js"
         },
         {
           "path": "api/mcp/skill-extension/generated.ts"
@@ -11047,6 +10875,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "api/_md-url-twin.ts"
+        },
+        {
           "path": "src/shared/public-rpc-cache.ts"
         },
         {
@@ -11081,10 +10912,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11098,10 +10926,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11115,27 +10940,21 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "www.a16z.news",
       "provider": "www.a16z.news",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.a16z.news and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11166,10 +10985,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11177,15 +10993,10 @@
       "host": "www.aaronsw.com",
       "provider": "www.aaronsw.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.aaronsw.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.abc.net.au",
@@ -11197,7 +11008,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11211,10 +11022,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11242,10 +11050,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11259,7 +11064,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11290,10 +11095,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11307,7 +11109,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11338,10 +11140,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11355,10 +11154,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11372,10 +11168,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11394,6 +11187,20 @@
       ]
     },
     {
+      "host": "www.armeps.am",
+      "provider": "www.armeps.am",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.armeps.am and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.asahi.com",
       "provider": "www.asahi.com",
       "kind": "feed",
@@ -11403,10 +11210,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11420,10 +11224,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11437,10 +11238,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11454,10 +11252,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11550,7 +11345,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11569,6 +11364,20 @@
       ]
     },
     {
+      "host": "www.bi.go.id",
+      "provider": "www.bi.go.id",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.bi.go.id and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-fetch.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.bild.de",
       "provider": "www.bild.de",
       "kind": "feed",
@@ -11578,7 +11387,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11601,7 +11410,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11615,10 +11424,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11646,10 +11452,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11677,27 +11480,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "www.cbinsights.com",
       "provider": "www.cbinsights.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.cbinsights.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11733,6 +11530,20 @@
       ]
     },
     {
+      "host": "www.cbsl.gov.lk",
+      "provider": "www.cbsl.gov.lk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.cbsl.gov.lk and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.cbsnews.com",
       "provider": "www.cbsnews.com",
       "kind": "feed",
@@ -11742,10 +11553,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11773,10 +11581,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11790,10 +11595,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11821,7 +11623,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11842,20 +11644,14 @@
     {
       "host": "www.cisa.gov",
       "provider": "www.cisa.gov",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.cisa.gov and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11869,10 +11665,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11907,23 +11700,14 @@
     {
       "host": "www.cnbc.com",
       "provider": "www.cnbc.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.cnbc.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -11937,22 +11721,47 @@
       "status": "excluded"
     },
     {
+      "host": "www.coes.org.pe",
+      "provider": "www.coes.org.pe",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit COES SINAC and link to https://www.coes.org.pe/Portal/portalinformacion/demanda.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-energy-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "www.coindesk.com",
       "provider": "www.coindesk.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.coindesk.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.comcom.govt.nz",
+      "provider": "www.comcom.govt.nz",
+      "kind": "structured",
+      "observed": true,
+      "license": "Creative Commons Attribution 4.0 International (https://www.comcom.govt.nz/using-our-website/copyright/)",
+      "attribution": "Fuel price monitoring data, Commerce Commission New Zealand, licensed under CC BY 4.0. https://www.comcom.govt.nz/regulated-industries/fuel/quarterly-monitoring-reports/",
+      "status": "reviewed",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
+          "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
     },
@@ -11974,15 +11783,10 @@
       "host": "www.corriere.it",
       "provider": "www.corriere.it",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.corriere.it and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/feeds.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.crisisgroup.org",
@@ -11994,10 +11798,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12011,7 +11812,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.da.gov.ph",
+      "provider": "www.da.gov.ph",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.da.gov.ph and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices.mjs"
         }
       ]
     },
@@ -12025,10 +11840,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12042,7 +11854,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12056,30 +11868,35 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "www.darkreading.com",
       "provider": "www.darkreading.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.darkreading.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.datos.gov.co",
+      "provider": "www.datos.gov.co",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.datos.gov.co and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "scripts/_global-tender-feeds.mjs"
         }
       ]
     },
@@ -12093,10 +11910,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12110,10 +11924,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12127,10 +11938,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12144,10 +11952,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12161,7 +11966,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12175,10 +11980,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12206,10 +12008,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12259,6 +12058,20 @@
       ]
     },
     {
+      "host": "www.economia-sniim.gob.mx",
+      "provider": "www.economia-sniim.gob.mx",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.economia-sniim.gob.mx and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-fetch.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.egyptindependent.com",
       "provider": "Egypt Independent",
       "kind": "feed",
@@ -12268,10 +12081,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12288,7 +12098,7 @@
           "path": "scripts/seed-oil-trade-series.mjs"
         },
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12302,7 +12112,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12316,27 +12126,49 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "www.engadget.com",
       "provider": "www.engadget.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.engadget.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.epdk.gov.tr",
+      "provider": "www.epdk.gov.tr",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.epdk.gov.tr and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/variants/tech.ts"
+          "path": "scripts/_epdk-crude-imports.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.eskom.co.za",
+      "provider": "www.eskom.co.za",
+      "kind": "structured",
+      "observed": true,
+      "license": "Site terms apply; open data licence unconfirmed",
+      "attribution": "Credit Eskom data portal and link to https://www.eskom.co.za/dataportal/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -12350,27 +12182,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "www.eu-startups.com",
       "provider": "www.eu-startups.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.eu-startups.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12384,10 +12210,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         },
         {
           "path": "src/main.ts"
@@ -12432,13 +12255,16 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/lib/food-prices-fetch.mjs"
+        },
+        {
+          "path": "scripts/lib/food-prices.mjs"
+        },
+        {
           "path": "scripts/seed-fao-food-price-index.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12472,13 +12298,7 @@
           "path": "scripts/seed-regulatory-actions.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12509,10 +12329,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12520,15 +12337,10 @@
       "host": "www.fpri.org",
       "provider": "www.fpri.org",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.fpri.org and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/feeds.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.france24.com",
@@ -12540,10 +12352,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12574,10 +12383,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12585,15 +12391,10 @@
       "host": "www.fwdstart.me",
       "provider": "www.fwdstart.me",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.fwdstart.me and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "api/fwdstart.js"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.g4media.ro",
@@ -12605,10 +12406,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12673,10 +12471,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12690,7 +12485,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12704,7 +12499,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12718,7 +12513,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12732,10 +12527,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12784,6 +12576,9 @@
       "references": [
         {
           "path": "scripts/seed-fuel-prices.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -12809,7 +12604,7 @@
           "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         },
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12823,10 +12618,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12840,10 +12632,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12871,10 +12660,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12888,10 +12674,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12905,10 +12688,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12939,10 +12719,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12970,10 +12747,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -12987,10 +12761,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13004,10 +12775,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13021,10 +12789,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13052,10 +12817,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13069,10 +12831,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13086,10 +12845,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13123,10 +12879,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13140,10 +12893,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13157,10 +12907,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13174,7 +12921,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13188,10 +12935,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13205,27 +12949,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "www.lennysnewsletter.com",
       "provider": "www.lennysnewsletter.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.lennysnewsletter.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13248,10 +12986,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13285,7 +13020,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13299,10 +13034,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13324,15 +13056,10 @@
       "host": "www.mbie.govt.nz",
       "provider": "www.mbie.govt.nz",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.mbie.govt.nz and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/seed-fuel-prices.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.migracion.gob.pa",
@@ -13378,10 +13105,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13395,10 +13119,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13412,10 +13133,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13477,10 +13195,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.nabc.go.th",
+      "provider": "www.nabc.go.th",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.nabc.go.th and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "scripts/lib/food-prices-adapters/nabc.mjs"
         }
       ]
     },
@@ -13494,10 +13223,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13511,10 +13237,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13532,6 +13255,9 @@
         },
         {
           "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
+        },
+        {
+          "path": "src/components/UkmtoIncidentsPanel.ts"
         }
       ]
     },
@@ -13545,10 +13271,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13584,15 +13307,10 @@
       "host": "www.newscientist.com",
       "provider": "www.newscientist.com",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.newscientist.com and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/feeds.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.newyorkfed.org",
@@ -13612,13 +13330,22 @@
       "host": "www.nfx.com",
       "provider": "www.nfx.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.nfx.com and link to the original upstream API/dataset.",
+      "status": "excluded"
+    },
+    {
+      "host": "www.niggrid.org",
+      "provider": "www.niggrid.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved",
+      "attribution": "Credit Nigeria NISO and link to https://www.niggrid.org/.",
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/variants/tech.ts"
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -13632,7 +13359,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13660,7 +13387,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13674,10 +13401,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13691,10 +13415,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.ocpv-ci.com",
+      "provider": "www.ocpv-ci.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.ocpv-ci.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "scripts/lib/food-prices-adapters/ocpv.mjs"
         }
       ]
     },
@@ -13708,10 +13443,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.onagri.nat.tn",
+      "provider": "www.onagri.nat.tn",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.onagri.nat.tn and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "scripts/lib/food-prices.mjs"
         }
       ]
     },
@@ -13739,10 +13485,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13770,10 +13513,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13792,6 +13532,20 @@
       ]
     },
     {
+      "host": "www.pbs.gov.pk",
+      "provider": "www.pbs.gov.pk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.pbs.gov.pk and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.pbs.org",
       "provider": "www.pbs.org",
       "kind": "feed",
@@ -13801,10 +13555,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13835,10 +13586,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13852,10 +13600,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13869,10 +13614,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13886,30 +13628,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "www.producthunt.com",
       "provider": "www.producthunt.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.producthunt.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13923,10 +13656,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13940,10 +13670,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13957,10 +13684,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -13974,26 +13698,18 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "www.ransomware.live",
       "provider": "www.ransomware.live",
-      "kind": "feed+structured",
-      "observed": true,
+      "kind": "structured",
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.ransomware.live and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.rappler.com",
@@ -14005,10 +13721,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14064,7 +13777,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14078,10 +13791,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14095,10 +13805,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14112,10 +13819,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14131,17 +13835,14 @@
     {
       "host": "www.saastr.com",
       "provider": "www.saastr.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.saastr.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14176,17 +13877,14 @@
     {
       "host": "www.schneier.com",
       "provider": "www.schneier.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.schneier.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14217,10 +13915,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14234,7 +13929,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14260,30 +13955,21 @@
           "path": "scripts/seed-sec-cik-map.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "www.semianalysis.com",
       "provider": "www.semianalysis.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.semianalysis.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14291,15 +13977,10 @@
       "host": "www.sequoiacap.com",
       "provider": "www.sequoiacap.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.sequoiacap.com and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.seznamzpravy.cz",
@@ -14311,10 +13992,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14328,10 +14006,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14345,7 +14020,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14387,7 +14062,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14432,7 +14107,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14446,10 +14121,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14480,7 +14152,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14494,7 +14166,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14508,10 +14180,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14556,10 +14225,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14573,27 +14239,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "www.techinasia.com",
       "provider": "www.techinasia.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.techinasia.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14616,30 +14276,21 @@
           "path": "server/worldmonitor/research/v1/list-tech-events.ts"
         },
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "www.technologyreview.com",
       "provider": "www.technologyreview.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.technologyreview.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14647,15 +14298,10 @@
       "host": "www.techstars.com",
       "provider": "www.techstars.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.techstars.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.telegraph.co.uk",
@@ -14667,10 +14313,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14698,10 +14341,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14718,10 +14358,7 @@
           "path": "scripts/seed-climate-news.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14735,10 +14372,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14752,10 +14386,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14769,7 +14400,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14783,10 +14414,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14800,30 +14428,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "www.theverge.com",
       "provider": "www.theverge.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.theverge.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14837,10 +14456,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14856,20 +14472,14 @@
     {
       "host": "www.tomshardware.com",
       "provider": "www.tomshardware.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.tomshardware.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14911,10 +14521,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14928,10 +14535,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14973,7 +14577,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -14987,10 +14591,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15037,6 +14638,20 @@
       ]
     },
     {
+      "host": "www.viwanda.go.tz",
+      "provider": "www.viwanda.go.tz",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.viwanda.go.tz and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/mit.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.w3.org",
       "provider": "W3C schema reference",
       "kind": "structured",
@@ -15045,9 +14660,6 @@
       "attribution": "Excluded from the provider count: standards reference, not an ingested source.",
       "status": "excluded",
       "references": [
-        {
-          "path": "api/fwdstart.js"
-        },
         {
           "path": "src/embed/panels/fear-greed.ts"
         }
@@ -15063,10 +14675,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15094,10 +14703,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15111,10 +14717,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15134,10 +14737,7 @@
           "path": "scripts/seed-security-advisories.mjs"
         },
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15150,6 +14750,9 @@
       "attribution": "Credit www.windy.com and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "api/mcp/registry/webcam-tools.ts"
+        },
         {
           "path": "api/mcp/skill-extension/generated.ts"
         },
@@ -15171,10 +14774,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15188,10 +14788,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15264,6 +14861,9 @@
           "path": "scripts/build-sitemap.mjs"
         },
         {
+          "path": "scripts/build-un-m49-regions.mjs"
+        },
+        {
           "path": "scripts/build-use-cases.mjs"
         },
         {
@@ -15313,6 +14913,9 @@
         },
         {
           "path": "scripts/notification-relay.cjs"
+        },
+        {
+          "path": "scripts/seed-no2-activity.mjs"
         },
         {
           "path": "scripts/seo-indexnow-submit.mjs"
@@ -15370,20 +14973,14 @@
     {
       "host": "www.ycombinator.com",
       "provider": "www.ycombinator.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.ycombinator.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15397,10 +14994,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15414,10 +15008,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15431,10 +15022,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15480,27 +15068,21 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
     {
       "host": "www.zdnet.com",
       "provider": "www.zdnet.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.zdnet.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15562,10 +15144,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15599,10 +15178,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15625,10 +15201,7 @@
       "status": "reviewed",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15642,10 +15215,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15666,17 +15236,14 @@
     {
       "host": "yourstory.com",
       "provider": "yourstory.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit yourstory.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/feeds.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15704,10 +15271,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     },
@@ -15721,10 +15285,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
-        {
-          "path": "src/config/feeds.ts"
+          "path": "shared/news-catalog.json"
         }
       ]
     }

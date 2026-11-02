@@ -24,12 +24,14 @@ import { getEuYieldCurve } from './get-eu-yield-curve';
 import { getEuFsi } from './get-eu-fsi';
 import { getEconomicStress } from './get-economic-stress';
 import { getFaoFoodPriceIndex } from './get-fao-food-price-index';
+import { getFoodPrices } from './get-food-prices';
 import { getOilStocksAnalysis } from './get-oil-stocks-analysis';
 import { getOilInventories } from './get-oil-inventories';
 import { getEnergyCrisisPolicies } from './get-energy-crisis-policies';
 import { listGlobalTenders } from './list-global-tenders';
 import { getChinaMacroSnapshot } from './get-china-macro-snapshot';
 import { getChinaActivityNowcast } from './get-china-activity-nowcast';
+import { getNo2Activity } from './get-no2-activity';
 import { getUsCpiMonthly } from './get-us-cpi-monthly';
 import { getUsTreasuryParYieldCurve } from './get-us-treasury-par-yield-curve';
 import { getUsInterestRates } from './get-us-interest-rates';
@@ -62,12 +64,14 @@ export const economicHandler: EconomicServiceHandler = {
   getEuFsi,
   getEconomicStress,
   getFaoFoodPriceIndex,
+  getFoodPrices,
   getOilStocksAnalysis,
   getOilInventories,
   getEnergyCrisisPolicies,
   listGlobalTenders,
   getChinaMacroSnapshot,
   getChinaActivityNowcast,
+  getNo2Activity,
   getUsCpiMonthly,
   getUsTreasuryParYieldCurve,
   getUsInterestRates,

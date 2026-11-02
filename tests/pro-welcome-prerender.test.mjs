@@ -381,6 +381,9 @@ test('built welcome root hides no SSR content and links every primary reference 
 test('built welcome page exposes a banner landmark and names every footer link', { skip }, () => {
   const { content: rootContent } = welcomeRoot();
   assert.match(rootContent, /<header><nav data-wm-nav="primary"/, 'the fixed nav should sit in a <header> banner landmark');
+  // The audience guides are reachable from the primary nav, not only from the task cards.
+  const nav = rootContent.slice(rootContent.indexOf('<nav data-wm-nav="primary"'), rootContent.indexOf('</nav>'));
+  assert.match(nav, /<a\b[^>]*href="\/use-cases\/"[^>]*>Use cases<\/a>/);
   assert.match(rootContent, /href="https:\/\/x\.com\/worldmonitorai"[^>]*>X \(Twitter\)<\/a>/);
   assert.doesNotMatch(rootContent, />X<\/a>/, 'a bare "X" link text is not descriptive');
 });
@@ -407,6 +410,39 @@ test('built welcome page prerenders task routes and agent discovery links', { sk
     );
   }
   assert.doesNotMatch(rootContent, /href="\/(?:crises|chokepoints|countries)\/\?/);
+
+  // Each trail also links the monitoring workflow written for that job, so a
+  // reader who picked the question can reach its audience page from the homepage.
+  // Scoped per card: the workflow link must sit in the card of its own evidence route.
+  const taskSection = rootContent.slice(taskIndex, liveIndex);
+  const workflowLinks = [
+    ['crises', 'verify-breaking-news', 'welcome-task-verify-workflow'],
+    ['chokepoints', 'monitor-supply-chain-disruptions', 'welcome-task-chokepoint-workflow'],
+    ['countries', 'monitor-country-risk', 'welcome-task-country-risk-workflow'],
+  ];
+  const cardStarts = workflowLinks.map(([route]) => taskSection.indexOf(`href="/${route}/"`));
+  workflowLinks.forEach(([route, slug, target], index) => {
+    assert.ok(cardStarts[index] >= 0, `task card for /${route}/ should be prerendered`);
+    const card = taskSection.slice(cardStarts[index], cardStarts[index + 1] ?? taskSection.length);
+    const workflowTag = card.match(new RegExp(`<a\\b[^>]*href="/use-cases/${slug}/"[^>]*>`))?.[0];
+    assert.ok(workflowTag, `the /${route}/ card should link /use-cases/${slug}/`);
+    assert.match(workflowTag, /data-umami-event="welcome-cta"/);
+    assert.match(workflowTag, new RegExp(`data-umami-event-target="${target}"`));
+    // Three links share the visible label, so each accessible name must include its card title.
+    const labelledBy = /aria-labelledby="([^"]+)"/.exec(workflowTag)?.[1]?.split(/\s+/) ?? [];
+    assert.equal(labelledBy.length, 2, `/${slug}/ link should be named by its label and its card title`);
+    const [labelText, titleText] = labelledBy.map((id) => {
+      const text = new RegExp(`id="${id}"[^>]*>([^<]+)<`).exec(card)?.[1]?.trim();
+      assert.ok(text, `#${id} should exist with text inside the /${route}/ card`);
+      return text;
+    });
+    assert.equal(labelText, 'Step-by-step workflow');
+    assert.match(card, new RegExp(`<h3\\b[^>]*id="${labelledBy[1]}"[^>]*>${titleText}</h3>`));
+  });
+  // A card is not one big anchor any more; nested anchors are invalid HTML and
+  // the parser would split them, so the workflow link must sit outside the
+  // evidence link.
+  assert.doesNotMatch(taskSection, /<a\b(?:(?!<\/a>)[\s\S])*<a\b/);
 
   // #8603 replaced the utm_content tag on these with an Umami attribute. The
   // noise-key 308 is bot-gated (middleware.ts), so a human always kept the

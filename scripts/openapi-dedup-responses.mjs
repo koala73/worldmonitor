@@ -359,6 +359,21 @@ function shortInlineDescription(name, description) {
  *
  * Mutates `spec` in place; returns { inlined }.
  */
+/** The shortened per-operation copy of a parameter component. */
+function inlineCopy(name, target) {
+  const copy = structuredClone(target);
+  // The component stays whole; only this per-operation copy is shortened.
+  if (copy.description != null) copy.description = shortInlineDescription(name, copy.description);
+  // `example` and `required: false` are repeated on every restored jmespath
+  // copy. OpenAPI already treats a non-path parameter as optional, and the
+  // component still carries both fields for the YAML contract.
+  if (name === 'Jmespath') {
+    delete copy.example;
+    delete copy.required;
+  }
+  return copy;
+}
+
 export function ensureInlineTypedInput(spec) {
   const stats = { inlined: 0 };
   if (!spec || typeof spec !== 'object' || !spec.paths) return stats;
@@ -382,7 +397,11 @@ export function ensureInlineTypedInput(spec) {
       });
       if (refIndexes.length === 0) continue;
 
+      // Rank candidates by the copy that will actually be written, not by the
+      // component: a long component (jmespath) shortens to far fewer bytes
+      // than a mid-sized one that carries no override.
       let pick = -1;
+      let pickCopy = null;
       let bestBytes = Infinity;
       for (const index of refIndexes) {
         const name = String(parameters[index].$ref).replace('#/components/parameters/', '');
@@ -390,28 +409,22 @@ export function ensureInlineTypedInput(spec) {
         if (!candidate || typeof candidate !== 'object' || !parameterIsInlineTyped(candidate)) {
           continue;
         }
-        const size = Buffer.byteLength(JSON.stringify(candidate), 'utf8');
+        const copy = inlineCopy(name, candidate);
+        const size = Buffer.byteLength(JSON.stringify(copy), 'utf8');
         if (size < bestBytes) {
           bestBytes = size;
           pick = index;
+          pickCopy = copy;
         }
       }
       if (pick < 0) {
         pick = refIndexes[0];
+        const name = String(parameters[pick].$ref).replace('#/components/parameters/', '');
+        const target = components[name];
+        if (!target || typeof target !== 'object') continue;
+        pickCopy = inlineCopy(name, target);
       }
-      const name = String(parameters[pick].$ref).replace('#/components/parameters/', '');
-      const target = components[name];
-      if (!target || typeof target !== 'object') continue;
-      const copy = structuredClone(target);
-      // The component stays whole; only this per-operation copy is shortened.
-      if (copy.description != null) copy.description = shortInlineDescription(name, copy.description);
-      // `example` and `required: false` are repeated on every restored jmespath
-      // copy. OpenAPI already treats a non-path parameter as optional, and the
-      // component still carries both fields for the YAML contract.
-      if (name === 'Jmespath') {
-        delete copy.example;
-        delete copy.required;
-      }
+      const copy = pickCopy;
       parameters[pick] = copy;
       stats.inlined += 1;
     }

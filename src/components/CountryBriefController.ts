@@ -9,6 +9,7 @@ import { combineAbortSignals } from '@/services/timeout-signal';
 import { getImfCountryBundle, buildImfEconomicIndicators, selectImfCountryBundle, type ImfBootstrapPayload, type ImfCountryBundle } from '@/services/imf-country-data';
 import { getCountryDefenseIndustrialBase } from '@/services/defense-industrial';
 import { fetchCountryMarkets, protoToMarket } from '@/services/prediction';
+import { countryNo2Activity, projectNo2ActivitySnapshot } from '@/services/economic/no2-activity';
 import { iso2ToIso3, iso2ToUnCode, iso2ToComtradeReporterCode } from '@/utils/country-codes';
 import { toApiUrl } from '@/services/runtime';
 
@@ -100,6 +101,11 @@ export class CountryBriefController {
     void this.read('facts', signal => this.source.intelligence.getCountryFacts({ countryCode: code }, { signal }), facts => this.panel.updateCountryFacts?.({ ...facts, population: Number(facts.population) }));
     void this.read('energy', signal => this.source.intelligence.getCountryEnergyProfile({ countryCode: code }, { signal }), energy => this.panel.updateEnergyProfile?.(energy));
     void this.read('maritime', signal => this.source.intelligence.getCountryPortActivity({ countryCode: code }, { signal }), maritime => this.panel.updateMaritimeActivity?.(maritime));
+    void this.read('activity', async signal => {
+      const snapshot = projectNo2ActivitySnapshot(await this.source.economic.getNo2Activity({ countryCode: code, regionId: '', kind: 'NO2_REGION_KIND_COUNTRY' }, { signal }));
+      if (!snapshot) throw new Error('NO2 activity unavailable');
+      return { region: countryNo2Activity(snapshot, code), stale: snapshot.stale, attribution: snapshot.attribution };
+    }, reading => this.panel.updateNo2Activity?.(reading));
     void this.read('markets', async signal => {
       if (this.source.mode === 'website') {
         let fetchedAt: number | undefined;

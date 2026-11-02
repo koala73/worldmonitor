@@ -153,6 +153,27 @@ describe('chokepoint transit gates', () => {
     }
   });
 
+  // 2026-10-31: AISStream reported no Gibraltar positions west of 5.7W, so the
+  // first Atlantic gate (centred 6.15W) caught 4 vessels in 42h. The gate has
+  // to sit where positions arrive, and still keep the strait's ports out.
+  it('counts a Gibraltar transit from positions inside receiver coverage', () => {
+    const { t, count } = tracker('Gibraltar Strait');
+    // Sampled lane positions west of Tarifa and east of Gibraltar.
+    t.observe('gib', 35.92, -5.66, 'tanker', 0);
+    t.observe('gib', 36.0, -5.0, 'tanker', 2 * HOUR);
+    assert.equal(count(), 1);
+    const { a } = CHOKEPOINT_TRANSIT_GATES['Gibraltar Strait'];
+    for (const [clat, clon, r] of a) assert.ok(clon - r >= -5.75, 'Atlantic gate reaches west of AIS coverage');
+  });
+
+  it('keeps the Gibraltar strait ports out of both gates', () => {
+    const ports = { Tarifa: [36.01, -5.6], Tangier: [35.78, -5.81], 'Tanger Med': [35.89, -5.5], Algeciras: [36.13, -5.44], Gibraltar: [36.14, -5.35], Ceuta: [35.89, -5.31] };
+    const { a, b } = CHOKEPOINT_TRANSIT_GATES['Gibraltar Strait'];
+    for (const [port, [lat, lon]] of Object.entries(ports)) {
+      for (const circle of [...a, ...b]) assert.ok(!inside(lat, lon, circle), `${port} is inside a Gibraltar gate`);
+    }
+  });
+
   it('is what the relay counts with', () => {
     assert.match(relaySrc, /createDurableTransitTracker\(\{\s*gates: CHOKEPOINT_TRANSIT_GATES,/);
   });

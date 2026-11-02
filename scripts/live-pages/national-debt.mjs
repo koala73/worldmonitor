@@ -123,7 +123,7 @@ export const nationalDebtPage = Object.freeze({
   slug: 'national-debt-clock',
   path: '/tools/national-debt-clock/',
   statusPath: '/api/economic/v1/get-national-debt?public=1',
-  title: 'National Debt Clock: US and World Government Debt Today | World Monitor',
+  title: 'National Debt Clock: US and World Debt Today | World Monitor',
   h1: 'National debt clock',
   question: 'How much is the US national debt right now?',
   description: 'US and world government debt estimated to the second from IMF World Economic Outlook data, with debt-to-GDP and the largest national debts, updated live.',

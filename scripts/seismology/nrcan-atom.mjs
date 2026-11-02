@@ -1,6 +1,7 @@
 // Pure Earthquakes Canada (NRCan) Atom parser + USGS merge/dedup helpers.
 // Tests import this module, not the seeder entrypoint.
 
+import { withSourceRequestDiagnostics } from '../lib/source-request-diagnostics.mjs';
 import { createRequire } from 'node:module';
 import {
   CHROME_UA, httpRetryError, redactProxyCredentials, roundGeoCoordinate, withRetry,
@@ -234,7 +235,11 @@ async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, m
   for (let attempt = 0; attempt < NRCAN_PROXY_EXITS; attempt++) {
     let result;
     try {
-      result = await proxyFetchFn(url, { attempt, proxyAuth, maxBytes });
+      result = await withSourceRequestDiagnostics({ source: 'nrcan', route: 'proxy', attempt }, async observe => {
+        const response = await proxyFetchFn(url, { attempt, proxyAuth, maxBytes });
+        observe(response);
+        return response;
+      });
     } catch (error) {
       if (error?.code === 'RESPONSE_TOO_LARGE') {
         throw Object.assign(new Error('RESPONSE_TOO_LARGE'), { nonRetryable: true });
@@ -286,13 +291,17 @@ export async function fetchApprovedAtom(url, {
   const cacheKey = nrcanAtomCacheKey(parsed.toString());
   if (cache?.has(cacheKey)) return cache.get(cacheKey);
 
-  const response = await fetchFn(parsed.toString(), {
-    headers: {
-      Accept: NRCAN_ACCEPT,
-      'User-Agent': CHROME_UA,
-    },
-    redirect: 'error',
-    signal: AbortSignal.timeout(15_000),
+  const { response, xml } = await withSourceRequestDiagnostics({ source: 'nrcan', route: 'direct' }, async observe => {
+    const result = await fetchFn(parsed.toString(), {
+      headers: {
+        Accept: NRCAN_ACCEPT,
+        'User-Agent': CHROME_UA,
+      },
+      redirect: 'error',
+      signal: AbortSignal.timeout(15_000),
+    });
+    observe(result);
+    return { response: result, xml: result.ok ? await readBoundedText(result, maxBytes) : null };
   });
   if (response.status === 403 && proxyAuth) {
     await response.body?.cancel?.();
@@ -304,7 +313,6 @@ export async function fetchApprovedAtom(url, {
     await response.body?.cancel?.();
     throw httpRetryError(response, { remainingBudgetMs: 2_000 });
   }
-  const xml = await readBoundedText(response, maxBytes);
   cache?.set(cacheKey, xml);
   return xml;
 }

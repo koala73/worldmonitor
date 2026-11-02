@@ -46,7 +46,7 @@ Before any handler runs, the edge middleware refuses `/api/*` requests whose `Us
 The middleware also has narrowly scoped bypass categories:
 
 - Exact bot-gate bypass paths: intentionally public `/api/version`, `/api/health`, `/api/llms.txt`, `/api/product-catalog`, and `/api/download.md`; authenticated machine routes `/api/seed-contract-probe` (requires `x-probe-secret: $RELAY_SHARED_SECRET`) and `/api/internal/brief-why-matters` (requires `Authorization: Bearer $RELAY_SHARED_SECRET`) also bypass only this User-Agent filter.
-- Method-aware `GET`/`HEAD` API markdown twins: valid requests for `/api/**/*.md` bypass the gate; other methods do not inherit that exception.
+- Method-aware `GET`/`HEAD` API markdown twins: `/api/**/*.md` bypasses the gate for declared AI crawlers (GPTBot, ClaudeBot, anthropic-ai, Claude-User, ChatGPT-User, OAI-SearchBot, PerplexityBot, Google-Extended, Applebot-Extended, CCBot) and for twins of the exact bypass paths above. Any other client meets the same gate as the twin's sibling route, and other methods do not inherit the exception.
 - Recognized social preview UAs may fetch `/api/story` and `/api/og-story`; recognized social image UAs may fetch `.png` paths and valid signed brief-carousel route shapes.
 
 Other `/api/*` paths — including anonymous public reads like `GET /api/bootstrap?public=1` — remain behind the gate. That is why a bare `curl` of a documented anonymous endpoint can return 403 while the same URL works from a browser.
@@ -107,8 +107,10 @@ For mutations this avoids duplicating the side effect, including async enqueues 
 
 **MCP**: the server returns tool errors in the JSON-RPC result with `isError: true` and a text explanation — those are not HTTP errors. Handle them at the tool-call layer.
 
+**Reporting a failure**: every MCP error carries `error.data.requestId`. An unexpected tool failure (`-32603`) and an unknown tool (`-32602`) also carry `error.data.reportWith: "report_issue"`. On those, or when a tool you need does not exist, call [`report_issue`](/mcp-tools-reference#report_issue) with the `requestId`. Over REST, `POST /api/feedback/v1/submit-report` takes the same report, with the response's `x-vercel-id` as `requestId`. Both are credential-free. Billing denials, rate limits, upstream outages and validation errors are expected states and carry no `reportWith`: handle them, do not report them.
+
 ## Debugging
 
-- Every edge response includes `x-vercel-id` and `x-worldmonitor-deploy` headers — include those when reporting issues.
+- Every edge response includes `x-vercel-id` and `x-worldmonitor-deploy` headers — include those when reporting issues. An agent can send `x-vercel-id` as the `requestId` of a `report_issue` call.
 - Sentry alerts forward to [status.worldmonitor.app](https://status.worldmonitor.app/).
 - `GET /api/health` and `GET /api/seed-health` show per-seed freshness; a stale seed is the most common root cause of unexpected empty payloads.

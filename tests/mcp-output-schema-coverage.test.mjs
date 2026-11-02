@@ -317,7 +317,9 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.ok(newsStory.threatLevel, 'news schema must declare threatLevel');
     assert.deepEqual(newsStory.sourceProvenance.required, [
       'risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases', 'summary',
+      'homeCountry', 'audience', 'language', 'ownershipClass',
     ]);
+    assert.deepEqual(newsStory.sourceProvenance.properties.audience.enum, ['domestic', 'international', 'diaspora', null]);
     assert.deepEqual(newsStory.sourceProvenance.properties.risk.enum, [
       'low', 'medium', 'high', 'unknown',
     ]);
@@ -645,6 +647,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // --------------------------------------------------------------------
   const VERBATIM_PASSTHROUGH_TOOLS = [
     'get_country_history',
+    'get_media_perspective',
     'analyze_news_headlines',
     'analyze_situation',
     'get_chokepoint_dependencies',

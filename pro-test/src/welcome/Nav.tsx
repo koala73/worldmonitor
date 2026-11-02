@@ -5,7 +5,7 @@ import { DASHBOARD_PATH } from '../routes';
 
 const TABLET_MENU_ID = 'welcome-tablet-navigation';
 const NAV_ITEMS = [
-  { href: '#moments', labelKey: 'welcome.nav.useCases', accent: false },
+  { href: '/use-cases/', labelKey: 'welcome.nav.useCases', accent: false },
   { href: '#first-five', labelKey: 'welcome.nav.firstFive', accent: false },
   { href: '#depth', labelKey: 'welcome.nav.depth', accent: false },
   { href: '#agents', labelKey: 'welcome.nav.agents', accent: false },

@@ -252,7 +252,7 @@ beforeEach(() => {
       if (value && '__status' in value) return Response.json({}, { status: value.__status });
       return Response.json(value);
     }
-    if (url.startsWith('https://redis.example') && failRedisFor) {
+    if (new URL(url).hostname === 'redis.example' && failRedisFor) {
       const commands = JSON.parse(String(init?.body ?? '[]')) as Array<Array<string | number>>;
       const batch = Array.isArray(commands[0]) ? commands : [commands];
       if (failRedisFor(batch)) return new Response('upstream error', { status: 500 });

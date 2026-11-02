@@ -920,6 +920,7 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
 // generated route tables and fails when an entry is not a real RPC path, when
 // its handler reaches an upstream itself, or when a seed-only route is missing.
 const cloudPreferredExact = new Set([
+  '/api/maritime/v1/list-ukmto-incidents',
   '/api/bootstrap',
   '/api/aviation/v1/get-airport-ops-summary',
   '/api/displacement/v1/get-displacement-summary',
@@ -943,12 +944,14 @@ const cloudPreferredExact = new Set([
   '/api/economic/v1/get-eu-yield-curve',
   '/api/economic/v1/get-eurostat-country-data',
   '/api/economic/v1/get-fao-food-price-index',
+  '/api/economic/v1/get-food-prices',
   '/api/economic/v1/get-fred-series',
   '/api/economic/v1/get-fred-series-batch',
   '/api/economic/v1/get-government-yield-curve',
   '/api/economic/v1/get-macro-signals',
   '/api/economic/v1/get-nat-gas-storage',
   '/api/economic/v1/get-national-debt',
+  '/api/economic/v1/get-no2-activity',
   '/api/economic/v1/get-oil-inventories',
   '/api/economic/v1/get-oil-stocks-analysis',
   '/api/economic/v1/get-us-cpi-monthly',
@@ -1006,6 +1009,8 @@ const cloudPreferredExact = new Set([
   '/api/military/v1/get-theater-posture',
   '/api/military/v1/get-usni-fleet-report',
   '/api/military/v1/list-defense-patents',
+  '/api/news/v1/list-news-pool',
+  '/api/news/v1/list-source-items',
   '/api/news/v1/summarize-article-cache',
   '/api/research/v1/list-arxiv-papers',
   '/api/research/v1/list-hackernews-items',
@@ -1064,6 +1069,22 @@ const cloudPreferredSeedOnlyPrefixes = [
   '/api/wildfire/v1/',
 ];
 const cloudPreferredAlwaysPrefixes = ['/api/scorecard/v1/'];
+// Plain api/*.js routes whose answer lives in cloud-only state: session signing
+// secrets, OAuth client records, operator Redis sets, cross-user aggregates and
+// the security-report sink. The sidecar holds none of it, so served locally
+// they answer 5xx or empty. Until #9906 they reached the cloud only by accident:
+// a static Upstash import kept them from loading on desktop at all.
+// reverse-geocode belongs here too: its shared Nominatim limiter fails closed
+// without Upstash (503 locally), and its geocode cache is the cloud's Redis.
+const cloudPreferredServerStateRoutes = new Set([
+  '/api/analytics-health',
+  '/api/notification-suppressions',
+  '/api/oauth/authorize',
+  '/api/oauth/register',
+  '/api/reverse-geocode',
+  '/api/security/report',
+  '/api/wm-session',
+]);
 
 // Versioned route families (api/v{N}/{domain}) the desktop deliberately never
 // bundles — scripts/build-sidecar-handlers.mjs refuses to build an undeclared
@@ -1078,6 +1099,7 @@ const cloudOnlyRouteFamilyPrefixes = ['/api/v2/shipping/'];
 function isCloudPreferred(pathname) {
   if (cloudPreferred.has(pathname)) return true;
   if (cloudPreferredExact.has(pathname)) return true;
+  if (cloudPreferredServerStateRoutes.has(pathname)) return true;
   return cloudPreferredAlwaysPrefixes.some(p => pathname.startsWith(p))
     || cloudPreferredSeedOnlyPrefixes.some(p => pathname.startsWith(p))
     || cloudOnlyRouteFamilyPrefixes.some(p => pathname.startsWith(p))
@@ -1975,7 +1997,7 @@ async function dispatch(requestUrl, req, routes, context) {
     // SSRF protection: block private IPs, reserved ranges, and DNS rebinding
     const safety = await isSafeUrl(feedUrl);
     if (!safety.safe) {
-      context.logger.warn(`[local-api] rss-proxy SSRF blocked: ${safety.reason} (url=${feedUrl})`);
+      context.logger.warn(`[local-api] rss-proxy SSRF blocked: ${safety.reason} (url=${JSON.stringify(feedUrl)})`);
       return rssProxyJson({ error: safety.reason }, 403);
     }
 
@@ -1986,7 +2008,7 @@ async function dispatch(requestUrl, req, routes, context) {
       // the TOCTOU DNS-rebinding window for IPv4 and IPv6-only feeds.
       const pinned = pickPinnedAddress(safety.resolvedAddresses);
       if (!pinned) {
-        context.logger.warn(`[local-api] rss-proxy SSRF blocked: no validated address (url=${feedUrl})`);
+        context.logger.warn(`[local-api] rss-proxy SSRF blocked: no validated address (url=${JSON.stringify(feedUrl)})`);
         return rssProxyJson({ error: 'Could not resolve hostname' }, 403);
       }
       const response = await fetchWithTimeout(feedUrl, {
@@ -2188,8 +2210,17 @@ export async function createLocalApiServer(options = {}) {
   const routes = await buildRouteTable(context.apiDir);
   let unregisterSelfFetchOrigins = null;
 
-  const server = createServer(async (req, res) => {
-    const requestUrl = new URL(req.url || '/', `http://127.0.0.1:${context.port}`);
+  const handleRequest = async (req, res) => {
+    let requestUrl;
+    try {
+      requestUrl = new URL(req.url || '/', `http://127.0.0.1:${context.port}`);
+    } catch {
+      // A raw request-target such as `//` is not a valid relative URL and
+      // makes the WHATWG parser throw ERR_INVALID_URL.
+      res.writeHead(400, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
+      res.end(JSON.stringify({ error: 'Bad request' }));
+      return;
+    }
 
     if (!requestUrl.pathname.startsWith('/api/')) {
       res.writeHead(404, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
@@ -2251,6 +2282,20 @@ export async function createLocalApiServer(options = {}) {
       res.writeHead(500, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
       res.end(JSON.stringify({ error: 'Internal server error' }));
     }
+  };
+
+  // Any throw that escapes handleRequest would be an unhandled rejection,
+  // which terminates the sidecar until the app restarts.
+  const server = createServer((req, res) => {
+    handleRequest(req, res).catch((error) => {
+      context.logger.error('[local-api] unhandled request error', error);
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
+      res.writeHead(500, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    });
   });
 
   return {

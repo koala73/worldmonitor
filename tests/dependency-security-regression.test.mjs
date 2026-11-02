@@ -103,6 +103,10 @@ const patchedLocks = [
   ['yeoman-environment', '6.0.1', npmLockVersions, '../integrations/zapier/package-lock.json'],
   ['serialize-javascript', '7.0.5', npmLockVersions, '../integrations/zapier/package-lock.json'],
   ['postcss-selector-parser', '7.1.6', npmLockVersions, '../integrations/zapier/package-lock.json'],
+  ['fast-uri', '3.1.9', npmLockVersions, '../package-lock.json'],
+  ['fast-uri', '3.1.9', pnpmLockVersions, '../docker/umami/runtime/pnpm-lock.yaml'],
+  ['undici', '7.30.1', npmLockVersions, '../workers/api-cors-preflight/package-lock.json'],
+  ['undici', '7.30.1', npmLockVersions, '../workers/railway-reconcile-control/package-lock.json'],
 ];
 
 for (const [name, patched, versionsOf, path] of patchedLocks) {

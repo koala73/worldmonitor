@@ -157,4 +157,32 @@ describe('parseSize', () => {
   it.each(['0 Pint', '-2 Pint', '2x2 Pint', '2 Pint or 1L', 'case of 2 Pint'])('declines ambiguous or invalid pint label %s', raw => {
     expect(parseSize(raw, { baseUnit: 'ml', marketCode: 'gb' })).toBeNull();
   });
+
+  it('still reads a size from a long product name', () => {
+    const name = `Organic Free-Range Brown Eggs from Pasture-Raised Hens, Grade A Large, Family Pack ${'Value '.repeat(40)}12 x 500g`;
+    expect(name.length).toBeGreaterThan(300);
+    expect(parseSize(name)?.baseQuantity).toBe(6000);
+  });
+
+  it.each([
+    ['2\nx\n500g', 2, 1000],
+    ['6 x\n330ml', 6, 1980],
+    ['3 pack\n\n250 g', 3, 750],
+  ])('reads a pack split across lines: %j', (raw, packCount, baseQuantity) => {
+    expect(parseSize(raw)).toMatchObject({ packCount, baseQuantity });
+  });
+
+  it('does not read a pack whose size is not on the last line', () => {
+    expect(parseSize('2 x 1\n500g')).toBeNull();
+  });
+
+  it.each([
+    ['a long digit run', '1'.repeat(100_000)],
+    ['repeated pack prefixes before a line break', `${' 1x'.repeat(33_000)}\na`],
+  ])('declines %s in bounded time', (_label, raw) => {
+    // Both size patterns backtrack across the whole text from every start.
+    const started = performance.now();
+    expect(parseSize(raw)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(250);
+  });
 });

@@ -1,6 +1,10 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
+  agentFeedbackKindValidator,
+  agentFeedbackStatusValidator,
+} from "./lib/agentFeedbackValidators";
+import {
   channelTypeValidator,
   digestModeValidator,
   proActivationStepIdValidator,
@@ -630,6 +634,47 @@ export default defineSchema({
     value: v.number(),
   }).index("by_name", ["name"]),
 
+  // Agent feedback channel (#8721). One row per admitted report; grouping by
+  // fingerprint is a read, never a write. Every text field is
+  // attacker-controlled and already sanitized and redacted by the edge. See
+  // docs/architecture/agent-feedback-threat-model.md before changing a field.
+  agentFeedback: defineTable({
+    kind: agentFeedbackKindValidator,
+    surfaceType: v.union(v.literal("mcp_tool"), v.literal("rpc"), v.literal("other")),
+    surfaceName: v.string(),
+    // Text fields are optional because a `filed` row drops them (Decision 10).
+    summary: v.optional(v.string()),
+    expected: v.optional(v.string()),
+    actual: v.optional(v.string()),
+    requestId: v.optional(v.string()),
+    clientName: v.optional(v.string()),
+    redacted: v.boolean(),
+    fingerprint: v.string(),
+    retryKey: v.string(),
+    reporterKey: v.string(),
+    authKind: v.union(v.literal("anonymous"), v.literal("keyed")),
+    principalId: v.optional(v.string()),
+    ipHash: v.optional(v.string()),
+    uaHash: v.optional(v.string()),
+    status: agentFeedbackStatusValidator,
+    issueNumber: v.optional(v.number()),
+    duplicateOf: v.optional(v.id("agentFeedback")),
+    dismissReason: v.optional(v.string()),
+    receivedAt: v.number(),
+    updatedAt: v.number(),
+    // Security rows only. Scheduling and delivery are separate so a failed
+    // send stays visible to the daily digest (Decisions 11 and 12).
+    notifyScheduledAt: v.optional(v.number()),
+    notifiedAt: v.optional(v.number()),
+  })
+    .index("by_fingerprint_received", ["fingerprint", "receivedAt"])
+    .index("by_status_received", ["status", "receivedAt"])
+    .index("by_kind_received", ["kind", "receivedAt"])
+    .index("by_retryKey_received", ["retryKey", "receivedAt"])
+    .index("by_reporter_received", ["reporterKey", "receivedAt"])
+    .index("by_principal", ["principalId"])
+    .index("by_kind_notified_received", ["kind", "notifiedAt", "receivedAt"]),
+
   // --- Payment tables (Dodo Payments integration) ---
 
   subscriptions: defineTable({
@@ -709,6 +754,15 @@ export default defineSchema({
       v.literal("lapsed"),
     )),
     renewalVerificationAttemptAt: v.optional(v.number()),
+    // Billing address the user set through payments/billing:updateBillingEmail,
+    // as Dodo reported it back, with the time of that read. Lifecycle
+    // webhooks replace rawPayload, so a delayed event generated before the
+    // repair would restore the bounced address; resolveBillingRecipient
+    // prefers this while observedAt is newer than updatedAt.
+    billingEmailOverride: v.optional(v.object({
+      email: v.string(),
+      observedAt: v.number(),
+    })),
   })
     .index("by_userId", ["userId"])
     .index("by_userId_status_currentPeriodEnd", ["userId", "status", "currentPeriodEnd"])
@@ -807,6 +861,13 @@ export default defineSchema({
   // payment-failure episode legitimately re-sends the sequence while webhook
   // replays and overlapping cron ticks stay idempotent. Growth is bounded by
   // real billing events (≤4 rows per episode), so no prune cron is needed.
+  // Last payments/billing:updateBillingEmail attempt per user. Every attempt
+  // calls Dodo on the shared API key, so one row per user carries the cooldown.
+  billingEmailUpdateAttempts: defineTable({
+    userId: v.string(),
+    attemptedAt: v.number(),
+  }).index("by_userId", ["userId"]),
+
   dunningEmails: defineTable({
     dodoSubscriptionId: v.string(),
     step: v.union(

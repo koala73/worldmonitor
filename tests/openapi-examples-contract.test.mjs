@@ -651,12 +651,12 @@ function honeypotRequestViolations(spec, label) {
 describe('OpenAPI examples contract', () => {
   // Bump these exact surface counts when adding or removing proto services/RPCs.
   it('audits the known service operation surface', () => {
-    assert.equal(serviceSpecs.length, 38, `expected 38 service specs, found ${serviceSpecs.length}`);
+    assert.equal(serviceSpecs.length, 39, `expected 39 service specs, found ${serviceSpecs.length}`);
     const total = serviceSpecs.reduce((sum, file) => {
       const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
       return sum + operationEntries(spec).length;
     }, 0);
-    assert.equal(total, 252, `expected 252 OpenAPI operations, found ${total}`);
+    assert.equal(total, 259, `expected 259 OpenAPI operations, found ${total}`);
   });
 
   it('adds schema-valid request and response examples to every service JSON spec', () => {
@@ -668,9 +668,9 @@ describe('OpenAPI examples contract', () => {
       totals.requestExpected += result.requestExpected;
       totals.responseExpected += result.responseExpected;
     }
-    assert.equal(totals.operations, 252);
+    assert.equal(totals.operations, 259);
     assert.ok(totals.requestExpected >= 137, `expected at least 137 request example targets, found ${totals.requestExpected}`);
-    assert.equal(totals.responseExpected, 252);
+    assert.equal(totals.responseExpected, 259);
   });
 
   // record-baseline-snapshot's nested updates[].type is a bare string (no schema
@@ -709,14 +709,14 @@ describe('OpenAPI examples contract', () => {
       const spec = loadYaml(readFileSync(resolve(apiDir, yamlFile), 'utf8'));
       operations += assertOperationExamples(spec, yamlFile).operations;
     }
-    assert.equal(operations, 252);
+    assert.equal(operations, 259);
   });
 
   it('adds request and response examples to the unified OpenAPI bundle', () => {
     const bundle = loadUnifiedOpenApiSpec();
     const result = assertOperationExamples(bundle, 'worldmonitor.openapi.yaml');
-    assert.equal(result.operations, 252);
-    assert.equal(result.responseExpected, 252);
+    assert.equal(result.operations, 259);
+    assert.equal(result.responseExpected, 259);
   });
 
   it('labels aircraft emergency examples synthetic and documents projected response shapes', () => {
@@ -862,11 +862,24 @@ describe('OpenAPI curated example values', () => {
     assert.deepEqual(outOfRange, []);
   });
 
-  it('uses an ISO datetime example for webcam lastUpdated', () => {
-    const spec = JSON.parse(readFileSync(resolve(apiDir, 'WebcamService.openapi.json'), 'utf8'));
-    const example = spec.paths?.['/api/webcam/v1/get-webcam-image']?.get
-      ?.responses?.['200']?.content?.[JSON_MEDIA]?.example?.lastUpdated;
-    assert.equal(example, '2026-01-15T12:00:00.000Z');
+  it('publishes a consistent successful webcam snapshot example', () => {
+    const specs = [
+      ['WebcamService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'WebcamService.openapi.json'), 'utf8'))],
+      ['WebcamService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'WebcamService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadUnifiedOpenApiSpec()],
+    ];
+    for (const [label, spec] of specs) {
+      const example = spec.paths?.['/api/webcam/v1/get-webcam-image']?.get
+        ?.responses?.['200']?.content?.[JSON_MEDIA]?.example;
+      assert.equal(example?.mediaType, 'snapshot', `${label}: media type`);
+      assert.equal(example?.playerUrl, '', `${label}: snapshot has no player`);
+      assert.equal(example?.error, '', `${label}: successful response has no error`);
+      assert.match(example?.thumbnailUrl, /^https:\/\//, `${label}: snapshot image`);
+      assert.match(example?.windyUrl, /^https:\/\/www\.windy\.com\/webcams\/\d+$/, `${label}: provider link`);
+      assert.equal(example?.lastUpdated, '2026-01-15T12:00:00.000Z', `${label}: capture time`);
+      assert.ok(Number.isFinite(example?.resolvedAt), `${label}: resolution timestamp`);
+      assert.ok(example.resolvedAt >= Date.parse(example.lastUpdated), `${label}: resolution follows capture`);
+    }
   });
 
   it('uses an ISO3 country and a real DTM operation for GetInternalDisplacement', () => {

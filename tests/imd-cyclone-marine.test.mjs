@@ -258,6 +258,20 @@ test('strips comments and script/style blocks completely, including nested and s
   assert.equal(stripNonContentBlocks(null), '');
 });
 
+test('strips a page made only of empty blocks in linear time', () => {
+  // The 512 KiB response cap filled with tiny blocks took about a minute when
+  // every cut rebuilt and re-lowercased the whole page.
+  const size = 512 * 1024;
+  for (const unit of ['<!---->', '<style></style>', '<!---->x']) {
+    const page = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+    const started = performance.now();
+    const out = stripNonContentBlocks(page);
+    const elapsed = performance.now() - started;
+    assert.doesNotMatch(out, /<!--|<style\b/i, unit);
+    assert.ok(elapsed < 250, `${unit}: ${elapsed.toFixed(0)} ms`);
+  }
+});
+
 test('an expired page publishes no records but still proves IMD replied', () => {
   const snapshot = assembleImdSnapshot({ pageResults: parsedResults(), now: AFTER_EXPIRY });
   assert.equal(snapshot.coverageState, 'ok');
@@ -503,6 +517,7 @@ test('a complete official Kerala PDF recovers an incomplete HTML bulletin withou
   const kerala = IMD_PRODUCTS.coastalBulletin.pages.find((page) => page.key === 'kerala-karnataka-lakshadweep');
   const fallbackUrl = 'https://mausam.imd.gov.in/thiruvananthapuram/mcdata/coastal%20bulletin.pdf';
   const pdf = readFileSync(join(root, 'tests/fixtures/imd/coastalBulletin-kerala-20261021.pdf'));
+  const captures = [];
   const requests = [];
   const sleeps = [];
   const timersAtSleep = [];
@@ -520,12 +535,15 @@ test('a complete official Kerala PDF recovers an incomplete HTML bulletin withou
       ? fixture('coastalBulletin-kerala-missing-synoptic.html')
       : pageFixture(entry.id, entry.page.key));
   };
-  const snapshot = await fetchImdCycloneMarine({ fetchFn, now: Date.parse('2026-10-21T18:30:00Z'), sleep: async (ms) => {
+  const snapshot = await fetchImdCycloneMarine({ fetchFn, captureFailure: async (bundle) => captures.push(bundle), now: Date.parse('2026-10-21T18:30:00Z'), sleep: async (ms) => {
     timersAtSleep.push(timerCount);
     sleeps.push(ms);
   } });
   const rows = snapshot.coastalBulletins.filter((row) => row.page === kerala.key);
   assert.equal(rows.length, 4, 'recover all four complete official PDF areas');
+  assert.equal(captures.length, 1);
+  assert.deepEqual(Buffer.from(captures[0].attempts[1].bodyBase64, 'base64'), pdf);
+  assert.match(captures[0].attempts[1].extractedText, /Synoptic Situation/);
   assert.equal(requests.filter((url) => url === fallbackUrl).length, 1);
   assert.deepEqual(sleeps, Array(requests.length - 1).fill(IMD_PAGE_DELAY_MS));
   assert.deepEqual(timersAtSleep, Array.from({ length: sleeps.length }, (_, index) => index + 1),
@@ -615,4 +633,56 @@ test('Kerala fallback rejects invalid responses and does not replace successful 
   assert.equal(good.status, 'parsed');
   assert.equal(calls, 1);
   assert.equal(good.fallbackUsed, undefined);
+});
+
+test('failed acquisition retains replay inputs without extra requests or public payload changes', async () => {
+  const page = IMD_PRODUCTS.coastalBulletin.pages.find((p) => p.fallbackUrl);
+  const previous = assembleImdSnapshot({ pageResults: parsedResults(), now: NOW });
+  const captures = [];
+  let calls = 0;
+  const fetchFn = async (url) => {
+    calls++;
+    if (url === page.fallbackUrl) return new Response('%PDF-invalid', { headers: { 'content-type': 'application/pdf' } });
+    const entry = ALL_PAGES.find((entry) => entry.page.url === url);
+    return new Response(entry.page.key === page.key ? fixture('coastalBulletin-kerala-missing-synoptic.html') : pageFixture(entry.id, entry.page.key));
+  };
+  const snapshot = await fetchImdCycloneMarine({ fetchFn, previous, now: NOW, delayMs: 0, captureFailure: async (bundle) => captures.push(bundle) });
+  assert.equal(captures.length, 1);
+  assert.equal(calls, ALL_PAGES.length + 1);
+  assert.equal(captures[0].pageKey, page.key);
+  assert.deepEqual(captures[0].previous, previous);
+  assert.equal(captures[0].now, NOW);
+  assert.equal(Buffer.from(captures[0].attempts[0].bodyBase64, 'base64').toString(), fixture('coastalBulletin-kerala-missing-synoptic.html'));
+  assert.equal(Buffer.from(captures[0].attempts[1].bodyBase64, 'base64').toString(), '%PDF-invalid');
+  assert.equal(captures[0].result.fallbackFailure, 'IMD_FETCH_FAILED');
+  assert.equal(JSON.stringify(snapshot).includes('bodyBase64'), false);
+  assert.equal(snapshot.products.coastalBulletin.carried, true);
+});
+
+
+test('evidence sink failure cannot change page results or carry', async () => {
+  const fetchFn = async () => { throw new Error('offline'); };
+  const previous = assembleImdSnapshot({ pageResults: parsedResults(), now: NOW });
+  const baseline = await fetchImdCycloneMarine({ fetchFn, previous, now: NOW, delayMs: 0 });
+  const captured = await fetchImdCycloneMarine({ fetchFn, previous, now: NOW, delayMs: 0,
+    captureFailure: async () => { throw new Error('disk full'); } });
+  assert.deepEqual(captured, baseline);
+});
+
+test('future-dated parsed inputs are retained without changing rejection or carry', async () => {
+  const previous = assembleImdSnapshot({ pageResults: parsedResults(), now: NOW });
+  const captures = [];
+  const misdated = pageFixture('seaBulletin', 'bay-of-bengal').replaceAll('UTC of 2026-10-16', 'UTC of 2026-10-18');
+  const fetchFn = async (url) => {
+    const { id, page } = ALL_PAGES.find(({ page }) => page.url === url);
+    return new Response(page.key === 'bay-of-bengal' ? misdated : pageFixture(id, page.key));
+  };
+  const snapshot = await fetchImdCycloneMarine({ fetchFn, previous, now: NOW, delayMs: 0,
+    captureFailure: async (bundle) => captures.push(bundle) });
+  assert.equal(captures.length, 1);
+  assert.equal(captures[0].result.status, 'parsed');
+  assert.equal(Buffer.from(captures[0].attempts[0].bodyBase64, 'base64').toString(), misdated);
+  assert.deepEqual(captures[0].previous, previous);
+  assert.equal(snapshot.products.seaBulletin.pages['bay-of-bengal'].reason, 'BULLETIN_FUTURE_DATED');
+  assert.deepEqual(snapshot.seaBulletins.filter((row) => row.page === 'bay-of-bengal'), previous.seaBulletins.filter((row) => row.page === 'bay-of-bengal'));
 });

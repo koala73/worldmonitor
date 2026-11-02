@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { INSIGHTS_MAX_AGE_MS } from '../../shared/insights-snapshot.js';
+import { OUTLET_AUDIENCES, OWNERSHIP_CLASSES } from '../../server/_shared/outlet-profile';
 
 const tierSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable();
 const publisherSchema = z.object({
@@ -12,6 +13,9 @@ const sourceProvenanceSchema = z.object({
   type: z.enum(['wire', 'gov', 'intel', 'mainstream', 'market', 'tech', 'other', 'unknown']),
   riskDeclared: z.boolean(), typeDeclared: z.boolean(), riskReviewed: z.boolean(), typeReviewed: z.boolean(),
   stateAffiliated: z.string().optional(), knownBiases: z.array(z.string()), note: z.string().optional(),
+  // Outlet profile; optional because the output budget can shed it.
+  homeCountry: z.string().nullable().optional(), audience: z.enum(OUTLET_AUDIENCES).nullable().optional(),
+  language: z.string().nullable().optional(), ownershipClass: z.enum(OWNERSHIP_CLASSES).nullable().optional(),
 }).strict();
 const storySchema = z.object({
   title: z.string(), sourceCount: z.number().finite().optional(), uniqueSourceCount: z.number().finite().optional(),

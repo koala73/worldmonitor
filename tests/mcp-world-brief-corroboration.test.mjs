@@ -13,6 +13,7 @@ import { mcpHandler } from '../api/mcp.ts';
 import { HMAC_SECRET, callBody, makePipelineMock } from './helpers/mcp-pro-deps.mjs';
 import { SOURCE_PROPAGANDA_RISK, SOURCE_TYPES, getSourceProvenanceState } from '../shared/source-provenance.ts';
 import { SOURCE_TIERS, declaredSourceTier } from '../server/_shared/source-tiers.ts';
+import { withOutletProfile } from '../server/_shared/outlet-profile.ts';
 
 const ENV_KEY = 'operator_test_key_world_brief_corroboration';
 const MCP_URL = 'https://worldmonitor.app/mcp';
@@ -64,7 +65,7 @@ function seededStory(overrides = {}) {
 function expectedProvenance(sources) {
   return sources.map((source) => {
     const { summary: _summary, ...provenance } = getSourceProvenanceState(source);
-    return { source, tier: declaredSourceTier(source), ...provenance };
+    return { source, tier: declaredSourceTier(source), ...withOutletProfile(source, provenance) };
   });
 }
 
@@ -236,16 +237,19 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
         source: 'Reuters World', tier: 1, risk: 'unknown', type: 'wire',
         riskDeclared: true, typeDeclared: true, riskReviewed: false, typeReviewed: true,
         knownBiases: [], note: 'Provenance not yet reviewed — do not treat as independent journalism',
+        homeCountry: 'GB', audience: 'international', language: 'en', ownershipClass: 'private',
       },
       {
         source: 'RT', tier: 3, risk: 'high', type: 'wire',
         riskDeclared: true, typeDeclared: true, riskReviewed: true, typeReviewed: true,
         stateAffiliated: 'Russia', knownBiases: [], note: 'Russian state media, banned in EU',
+        homeCountry: 'RU', audience: 'international', language: 'en', ownershipClass: 'state',
       },
       {
         source: 'Unreviewed Local Desk', tier: null, risk: 'unknown', type: 'unknown',
         riskDeclared: false, typeDeclared: false, riskReviewed: false, typeReviewed: false,
         knownBiases: [], note: 'Provenance not yet reviewed — do not treat as independent journalism',
+        homeCountry: null, audience: null, language: null, ownershipClass: null,
       },
     ]);
     assert.deepEqual(mixed.sourceProvenance.map((entry) => entry.source), mixed.sources);
@@ -370,7 +374,7 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
   // slots with strings at the 40-byte wire cap. The first 12 labels are the
   // reviewed sources with the largest provenance records, so every
   // sourceProvenance slot carries the heaviest real entry.
-  function stubWorstCaseBrief(titleChar) {
+  function stubWorstCaseBrief(titleChar, storyCount = 12) {
     const longTitle = titleChar.repeat(600);
     const caseVariant = (base, variant) => [...base]
       .map((char, index) => (index < 6 && (variant >> index) & 1 ? char.toUpperCase() : char)).join('');
@@ -385,7 +389,7 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
         (_, variant) => caseVariant(`outlet${family}-${'o'.repeat(60)}`, variant),
       )).flat(),
     ];
-    stubInsights(Array.from({ length: 12 }, (_, i) => seededStory({
+    stubInsights(Array.from({ length: storyCount }, (_, i) => seededStory({
       primaryTitle: `${i} ${longTitle}`,
       sources: outlets,
     })));
@@ -402,15 +406,30 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
       'the fixture must fill every roster slot');
     assert.ok(payload.topStories.every((story) => story.sourceProvenance.length === 12),
       'the fixture must fill every provenance slot');
-    assert.ok(payload.topStories.every((story) => story.sourceProvenance.every((entry) => entry.note === undefined && typeof entry.risk === 'string')),
-      'notes are shed while the structured provenance stays');
+    assert.ok(payload.topStories.every((story) => story.sourceProvenance.every((entry) => entry.note === undefined
+      && entry.homeCountry === undefined && entry.ownershipClass === undefined && typeof entry.risk === 'string')),
+      'notes and outlet profile fields are shed while the structured provenance stays');
     assert.deepEqual(payload.transportCoverage, {
-      field: 'topStories[].sourceProvenance[].note', original_count: 144, returned_count: 0, omitted_count: 144, omission_reason: 'output_budget',
+      field: 'topStories[].sourceProvenance[].{note,homeCountry,audience,language,ownershipClass}',
+      original_count: 144, returned_count: 0, omitted_count: 144, omission_reason: 'output_budget',
     });
     assert.ok(
       Buffer.byteLength(rawText, 'utf8') < 65_536,
       `serialized world brief is ${Buffer.byteLength(rawText, 'utf8')} bytes, over the 65536 budget`,
     );
+  });
+
+  it('sheds only notes, keeping outlet profiles, when that is enough', async () => {
+    stubWorstCaseBrief('W', 9);
+
+    const { payload, rawText } = await callWorldBrief();
+
+    assert.equal(payload._budget_exceeded, undefined);
+    assert.ok(payload.topStories.every((story) => story.sourceProvenance.length === 12));
+    assert.ok(payload.topStories.every((story) => story.sourceProvenance.every((entry) => entry.note === undefined && 'homeCountry' in entry)),
+      'notes go first; the outlet profile stays');
+    assert.equal(payload.transportCoverage.field, 'topStories[].sourceProvenance[].note');
+    assert.ok(Buffer.byteLength(rawText, 'utf8') < 65_536);
   });
 
   it('drops whole provenance lists when shedding notes cannot fit multibyte titles', async () => {

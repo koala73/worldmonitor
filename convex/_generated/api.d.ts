@@ -13,6 +13,7 @@ import type * as accountDeletion_clerkWebhook from "../accountDeletion/clerkWebh
 import type * as accountDeletion_erase from "../accountDeletion/erase.js";
 import type * as accountDeletion_registry from "../accountDeletion/registry.js";
 import type * as accountDeletion_sideEffects from "../accountDeletion/sideEffects.js";
+import type * as agentFeedback from "../agentFeedback.js";
 import type * as agentSources from "../agentSources.js";
 import type * as alertRules from "../alertRules.js";
 import type * as apiKeys from "../apiKeys.js";
@@ -51,6 +52,7 @@ import type * as entitlements from "../entitlements.js";
 import type * as followedCountries from "../followedCountries.js";
 import type * as http from "../http.js";
 import type * as intelHistory from "../intelHistory.js";
+import type * as lib_agentFeedbackValidators from "../lib/agentFeedbackValidators.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_dodo from "../lib/dodo.js";
 import type * as lib_emailDomain from "../lib/emailDomain.js";
@@ -100,6 +102,7 @@ declare const fullApi: ApiFromModules<{
   "accountDeletion/erase": typeof accountDeletion_erase;
   "accountDeletion/registry": typeof accountDeletion_registry;
   "accountDeletion/sideEffects": typeof accountDeletion_sideEffects;
+  agentFeedback: typeof agentFeedback;
   agentSources: typeof agentSources;
   alertRules: typeof alertRules;
   apiKeys: typeof apiKeys;
@@ -138,6 +141,7 @@ declare const fullApi: ApiFromModules<{
   followedCountries: typeof followedCountries;
   http: typeof http;
   intelHistory: typeof intelHistory;
+  "lib/agentFeedbackValidators": typeof lib_agentFeedbackValidators;
   "lib/auth": typeof lib_auth;
   "lib/dodo": typeof lib_dodo;
   "lib/emailDomain": typeof lib_emailDomain;

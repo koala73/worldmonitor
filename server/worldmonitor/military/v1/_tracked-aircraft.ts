@@ -58,7 +58,8 @@ async function loadTrackedAircraft(): Promise<{ set: ReadonlySet<string> | null;
  * The anonymous batch-details route uses this to spend the Wingbits credential
  * only on aircraft the map can actually show. Null means there is no snapshot
  * to check against (the desktop sidecar has no seed, or the seed is down), and
- * the caller keeps its previous behaviour.
+ * the caller must decide whether its authenticated local path may proceed.
+ * The hosted anonymous batch route denies new lookups on null.
  */
 export async function getTrackedAircraftIcao24s(): Promise<ReadonlySet<string> | null> {
   const now = Date.now();

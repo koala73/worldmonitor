@@ -66,6 +66,32 @@ export function isTitlePlausible(canonicalName: string, productName: string | un
   return matches.length >= Math.max(1, Math.ceil(tokens.length * 0.4));
 }
 
+function titleWords(title: string): string[] {
+  return title.toLowerCase().match(/\p{L}{3,}/gu) ?? [];
+}
+
+/**
+ * True when the extracted product shares at least half of the words in the
+ * page's own declared title and does not state a different quantity in the
+ * same unit (a carousel's 1L variant on a 500ml page).
+ */
+export function pageDeclaresProduct(
+  pageTitle: string | undefined,
+  productName: string | undefined,
+  sizeText?: string,
+): boolean {
+  if (!pageTitle || !productName) return false;
+  const pageSize = parseSize(pageTitle);
+  const productSize = parseSize(sizeText) ?? parseSize(productName);
+  if (pageSize && productSize && pageSize.baseUnit === productSize.baseUnit && pageSize.baseQuantity !== productSize.baseQuantity) {
+    return false;
+  }
+  const pageWords = titleWords(pageTitle);
+  if (pageWords.length === 0) return false;
+  const productWords = new Set(titleWords(productName));
+  return pageWords.filter((w) => productWords.has(w)).length * 2 >= pageWords.length;
+}
+
 /**
  * Build a size constraint hint from the canonical name for use in the Firecrawl prompt.
  * Returns a human-readable string like "1 gallon (approx. 3785ml)" or null if no size found.
@@ -344,7 +370,6 @@ export class SearchAdapter implements RetailerAdapter {
     // Pins outlive config changes, so a pin stored while a looser policy was
     // live would keep being scraped directly and bypass discovery entirely.
     // The market scope has to apply here too, not just to discovered URLs.
-    const requiredSegments = ctx.config.searchConfig?.urlPathMustContain ?? [];
     const targets: Target[] = [];
 
     for (const basket of baskets) {
@@ -366,8 +391,7 @@ export class SearchAdapter implements RetailerAdapter {
 
         if (
           pinned &&
-          isAllowedHost(pinned.sourceUrl, allowedHosts) &&
-          matchesRequiredPathSegments(pinned.sourceUrl, requiredSegments)
+          isUrlInPolicy(pinned.sourceUrl, ctx.config.searchConfig, allowedHosts)
         ) {
           targets.push({
             id: item.id,
@@ -485,6 +509,7 @@ export class SearchAdapter implements RetailerAdapter {
 
       let data: ExtractedProduct;
       let pageContent: string | undefined;
+      let pageTitle: string | undefined;
       try {
         // renderWaitMs: late-hydrating storefronts (Carrefour MAF) capture as
         // a breadcrumb shell without a settle delay — Firecrawl only; the Exa
@@ -498,6 +523,7 @@ export class SearchAdapter implements RetailerAdapter {
             : await this.exa.extract<ExtractedProduct>(url, extractSchema, { timeout: 30_000 });
         data = result.data ?? {};
         pageContent = result.pageContent;
+        pageTitle = result.pageTitle;
         // The open->closed transition deserves the same log visibility as the
         // opening warn: without it, "did the provider recover" is only
         // answerable by the absence of further warnings (#6182 review).
@@ -596,6 +622,12 @@ export class SearchAdapter implements RetailerAdapter {
         continue;
       }
 
+      if (ctx.config.searchConfig?.requirePageTitleMatch && !pageDeclaresProduct(pageTitle, data.productName, data.sizeText)) {
+        failures.push({ provider, reason: 'title-mismatch', detail: `page: ${pageTitle ?? 'none'}` });
+        // The page itself is not this product; another extractor reads the same page.
+        break;
+      }
+
       if (strictMode && !itemConstraints) {
         failures.push({ provider, reason: 'validator-rejected', detail: 'missing-item-constraints' });
         // A config/plumbing gap, not an extraction problem — retrying is pointless.
@@ -612,7 +644,7 @@ export class SearchAdapter implements RetailerAdapter {
         itemConstraints &&
         (itemConstraints.minBaseQty != null || itemConstraints.maxBaseQty != null) &&
         !data.sizeText?.trim() &&
-        !parseSize(canonicalName)
+        !parseSize(data.productName ?? '')
       ) {
         failures.push({ provider, reason: 'validator-rejected', detail: 'missing-size' });
         continue;
@@ -622,6 +654,7 @@ export class SearchAdapter implements RetailerAdapter {
         canonicalName,
         productName: data.productName,
         sizeText: data.sizeText,
+        productUrl: url,
         item: validationConstraints,
         marketCode: ctx.config.marketCode,
       });

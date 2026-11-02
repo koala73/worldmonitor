@@ -60,6 +60,7 @@ import type { RadiationObservation } from '@/services/radiation';
 import { ArcLayer } from '@deck.gl/layers';
 import type { WeatherAlert } from '@/services/weather';
 import type { CanadaRoadRecord } from '@/services/canada-roads';
+import { isReportableCanadaRoad } from '@/services/canada-road-report';
 import type { CanadaAlert } from '@/services/canada-alerts';
 import { escapeHtml } from '@/utils/sanitize';
 import { corroborationLabelHtml } from '@/utils/corroboration-flag';
@@ -79,11 +80,12 @@ import { getCachedFuelShortageRegistry } from '@/shared/fuel-shortage-registry-s
 // getCountryCentroid is imported lower in the file alongside other
 // country-geometry helpers; don't re-import it here.
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
-import { t } from '@/services/i18n';
+import { initI18n, t } from '@/services/i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
 import { createIdleAwareFrameProvider } from '@/utils/idle-aware-frame-provider';
 import { isInputPending, scheduleYield } from '@/utils/after-paint';
 import { showLayerWarning } from '@/utils/layer-warning';
+import { ukmtoIncidentLabel, type UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import { localizeMapLabels } from '@/utils/map-locale';
 import {
   createCountryHoverQueryController,
@@ -131,7 +133,7 @@ import {
   type MapVariant,
 } from '@/config/map-layer-definitions';
 import { isProTierResolved } from '@/services/widget-store';
-import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
+import { layerExplanationLookup, renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -187,6 +189,8 @@ import { createDeckLoopRecovery } from '@/components/map/deck-loop-recovery';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { ZoomHintGuard } from '@/components/map/zoom-hint-guard';
 import { NOTAM_AIRSPACE_COLORS, notamAirspaceTooltip } from '@/components/map/notam-airspace-style';
+import { NO2_ACTIVITY_LEGEND, no2ActivityFill, no2ActivityTooltip, NO2_ACTIVITY_COLORS } from '@/components/map/no2-activity-style';
+import type { No2ActivityRegionView, No2ActivitySnapshot } from '@/services/economic/no2-activity';
 import type { NotamAirspaceRestriction } from '@/services/notam-airspace';
 import { dispatchWebcamLayerClick, resolveWebcamStreamUrl, type WebcamLeafLike } from '@/components/map/webcam-click';
 import {
@@ -640,6 +644,7 @@ export class DeckGLMap {
   private satelliteImageryLayerFailed = false;
   private iranEvents: IranEvent[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
+  private ukmtoIncidents: UkmtoMapIncident[] = [];
   private aisDensity: AisDensityZone[] = [];
   private liveTankers: Array<{ mmsi: string; lat: number; lon: number; speed: number; shipType: number; name: string }> = [];
   private liveTankersAbort: AbortController | null = null;
@@ -697,6 +702,7 @@ export class DeckGLMap {
   private tradeReducedMotionMedia: MediaQueryList | null = null;
   private storedChokepointData: GetChokepointStatusResponse | null = null;
   private highlightedRouteIds: Set<string> = new Set();
+  private highlightedLane: { routeId: string; path: [number, number][]; chokepointIds: string[] } | null = null;
   private highlightedMarkers: HighlightedMarker[] = [];
   private bypassArcData: BypassArcDatum[] = [];
   private scenarioState: ScenarioVisualState | null = null;
@@ -737,6 +743,10 @@ export class DeckGLMap {
   private ciiScoresVersion = 0;
   private resilienceScoresMap: ReturnType<typeof buildResilienceChoroplethMap> = new Map();
   private resilienceScoresVersion = 0;
+  private no2Activity: No2ActivitySnapshot | null = null;
+  private no2CountryRegions: Map<string, No2ActivityRegionView> = new Map();
+  private no2ClusterRegions: No2ActivityRegionView[] = [];
+  private no2ActivityVersion = 0;
 
   // Country highlight state
   private countryGeoJsonLoaded = false;
@@ -2244,6 +2254,16 @@ export class DeckGLMap {
     if (mapLayers.ais && this.aisDisruptions.length > 0) {
       layers.push(this.createAisDisruptionsLayer());
     }
+    if (mapLayers.ais && this.ukmtoIncidents.length > 0) {
+      layers.push(new ScatterplotLayer<UkmtoMapIncident>({
+        id: 'ukmto-incidents-layer',
+        data: this.filterByTimeCached(this.ukmtoIncidents, item => new Date(item.occurredAt)),
+        getPosition: item => [item.location!.longitude, item.location!.latitude],
+        getRadius: 12000, radiusMinPixels: 7, radiusMaxPixels: 14,
+        getFillColor: item => item.stale ? [135, 145, 155, 180] : [120, 180, 255, 220],
+        stroked: true, getLineColor: [255, 255, 255, 200], lineWidthMinPixels: 1, pickable: true,
+      }));
+    }
 
     // GPS/GNSS jamming layer
     if (mapLayers.gpsJamming && this.gpsJammingHexes.length > 0) {
@@ -2404,6 +2424,8 @@ export class DeckGLMap {
       layers.push(this.createTradeRoutesLayer());
       layers.push(this.createTradeRouteTripsLayer());
       layers.push(this.createTradeChokepointsLayer());
+      const hlLane = this.createHighlightedLaneLayer();
+      if (hlLane) layers.push(hlLane);
       const hlMarkers = this.createHighlightedChokepointMarkers();
       if (hlMarkers) layers.push(hlMarkers);
       const bypassArcs = this.createBypassArcsLayer();
@@ -2466,6 +2488,7 @@ export class DeckGLMap {
       const resilienceLayer = this.createResilienceChoroplethLayer();
       if (resilienceLayer) layers.push(resilienceLayer);
     }
+    if (mapLayers.no2Activity) layers.push(...this.createNo2ActivityLayers());
     // Sanctions choropleth
     if (mapLayers.sanctions) {
       const sanctionsLayer = this.createSanctionsChoroplethLayer();
@@ -4976,6 +4999,51 @@ export class DeckGLMap {
     });
   }
 
+  /**
+   * Country polygons filled by NO2 activity state, with the industrial
+   * clusters drawn as outlined boxes on top so a cluster reads against its
+   * country rather than vanishing into it.
+   */
+  private createNo2ActivityLayers(): Layer[] {
+    if (!this.no2Activity || !this.countriesGeoJsonData) return [];
+    const countries = this.no2CountryRegions;
+    const layers: Layer[] = [
+      new GeoJsonLayer({
+        id: 'no2-activity-countries',
+        data: this.getCulledCountriesGeoJson() ?? this.countriesGeoJsonData,
+        filled: true,
+        stroked: true,
+        getFillColor: (feature: { properties?: Record<string, unknown> }) => {
+          const code = feature.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+          const region = code ? countries.get(code) : undefined;
+          return region ? no2ActivityFill(region.state, region.state === 'pending' || region.state === 'excluded' ? 70 : 110) : [0, 0, 0, 0];
+        },
+        getLineColor: [80, 80, 80, 80] as [number, number, number, number],
+        getLineWidth: 1,
+        lineWidthMinPixels: 0.5,
+        pickable: true,
+        updateTriggers: { getFillColor: [this.no2ActivityVersion] },
+      }),
+    ];
+    if (this.no2ClusterRegions.length > 0) {
+      layers.push(new PolygonLayer<No2ActivityRegionView>({
+        id: 'no2-activity-clusters',
+        data: this.no2ClusterRegions,
+        getPolygon: (d) => {
+          const [west, south, east, north] = d.bbox;
+          return [[west, south], [east, south], [east, north], [west, north], [west, south]];
+        },
+        getFillColor: (d) => no2ActivityFill(d.state, 150),
+        getLineColor: (d) => no2ActivityFill(d.state, 240),
+        lineWidthMinPixels: 1.5,
+        stroked: true,
+        pickable: true,
+        updateTriggers: { getFillColor: [this.no2ActivityVersion], getLineColor: [this.no2ActivityVersion] },
+      }));
+    }
+    return layers;
+  }
+
   private createSanctionsChoroplethLayer(): GeoJsonLayer | null {
     if (!this.countriesGeoJsonData) return null;
     return new GeoJsonLayer({
@@ -5257,6 +5325,14 @@ export class DeckGLMap {
       case 'notam-airspace-circles':
       case 'notam-airspace-markers':
         return { html: notamAirspaceTooltip((obj.row ?? obj) as NotamAirspaceRestriction, text) };
+      case 'no2-activity-countries': {
+        const code = obj.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+        const region = code ? this.no2CountryRegions.get(code) : undefined;
+        if (!region) return { html: `<div class="deckgl-tooltip"><strong>${text(obj.properties?.name ?? 'Unknown')}</strong><br/><span style="opacity:.7">No NO2 activity region</span></div>` };
+        return { html: no2ActivityTooltip(region, this.no2Activity?.attribution ?? '', text) };
+      }
+      case 'no2-activity-clusters':
+        return { html: no2ActivityTooltip(obj as No2ActivityRegionView, this.no2Activity?.attribution ?? '', text) };
       case 'aircraft-positions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.callsign || obj.icao24)}</strong><br/>${numericLabel(obj.altitudeFt)} ft · ${numericLabel(obj.groundSpeedKts)} kts · ${numericLabel(obj.trackDeg, 0)}°</div>` };
       case 'apt-groups-layer':
@@ -5281,6 +5357,8 @@ export class DeckGLMap {
       }
       case 'ais-disruptions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || t('components.deckgl.tooltip.disruption'))}</strong><br/>${text(obj.severity)} ${t('popups.severity')}<br/>${text(obj.description)}</div>` };
+      case 'ukmto-incidents-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(ukmtoIncidentLabel(obj))}</strong><br/>${text(obj.description)}</div>` };
       case 'cross-border-deaths-layer':
       case 'cross-border-points-layer': {
         const change = obj.change !== null && obj.change !== 0
@@ -5441,11 +5519,13 @@ export class DeckGLMap {
     'cii-choropleth-layer',
     'happiness-choropleth-layer',
     'resilience-choropleth-layer',
+    'no2-activity-countries',
   ]);
 
-  // Hover-only NOTAM shapes (areas and their fallback markers): a click on one
-  // is a click on the country under it.
+  // Area overlays pass clicks through to the country underneath.
   private static readonly AREA_OVERLAY_LAYER_IDS = new Set([
+    'conflict-zones-layer-country-geometry',
+    'no2-activity-clusters',
     'notam-airspace-polygons',
     'notam-airspace-circles',
     'notam-airspace-markers',
@@ -6097,7 +6177,7 @@ export class DeckGLMap {
         event.preventDefault();
         event.stopPropagation();
         const layer = (button as HTMLElement).getAttribute('data-layer') as keyof MapLayers | null;
-        if (layer) this.showLayerExplanation(layer);
+        if (layer) void this.showLayerExplanation(layer);
       });
     });
 
@@ -6128,7 +6208,15 @@ export class DeckGLMap {
     });
   }
 
-  private showLayerExplanation(layer: keyof MapLayers): void {
+  private async showLayerExplanation(layer: keyof MapLayers): Promise<void> {
+    try {
+      await initI18n();
+    } catch (error) {
+      console.warn('[DeckGLMap] Unable to load layer explanation text', error);
+      return;
+    }
+    if (this.destroyed) return;
+
     const existing = this.container.querySelector('.layer-explanation-popup') as HTMLElement | null;
     if (existing?.dataset.layer === layer) {
       existing.remove();
@@ -6146,7 +6234,7 @@ export class DeckGLMap {
     popup.className = 'layer-explanation-popup';
     popup.dataset.layer = layer;
     setTrustedHtml(popup, trustedHtml(
-      renderLayerExplanationCard(layerLabel, explanation),
+      renderLayerExplanationCard(layerLabel, explanation, layerExplanationLookup(t)),
       "static layer explanation metadata",
     ));
 
@@ -6282,6 +6370,7 @@ export class DeckGLMap {
       helpItem(label('notamAirspace'), 'notamAirspace'),
     ])}
         ${helpSection('naturalEconomic', [
+      helpItem(label('no2Activity'), 'no2Activity'),
       helpItem(label('naturalEvents'), 'naturalEventsFull'),
       helpItem(label('fires'), 'firesFull'),
       helpItem(label('weatherAlerts'), 'weatherAlerts'),
@@ -6436,6 +6525,20 @@ export class DeckGLMap {
     `, "legacy direct innerHTML migration"));
     legend.appendChild(ciiLegend);
 
+    // NO2 activity legend with the credit Copernicus requires wherever the
+    // data is shown; visible only while the layer is on.
+    const no2Legend = document.createElement('div');
+    no2Legend.className = 'no2-activity-legend';
+    no2Legend.id = 'no2ActivityLegend';
+    no2Legend.style.display = this.state.layers.no2Activity ? 'block' : 'none';
+    const no2Swatch = (state: keyof typeof NO2_ACTIVITY_COLORS) => shapes.square(`rgb(${NO2_ACTIVITY_COLORS[state].join(', ')})`);
+    setTrustedHtml(no2Legend, trustedHtml(`
+      <span class="legend-label-title" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));letter-spacing:0.5px;">${t('components.deckgl.layers.no2Activity').toUpperCase()}</span>
+      ${NO2_ACTIVITY_LEGEND.map(({ state, label }) => `<span class="legend-item">${no2Swatch(state)}<span class="legend-label">${label}</span></span>`).join('')}
+      <div class="no2-activity-credit" style="font-size:calc(8px * var(--wm-panel-effective-scale, 1));opacity:0.7;margin-top:2px;">${escapeHtml(this.no2Activity?.attribution ?? 'Contains modified Copernicus Sentinel data')}</div>
+    `, "legacy direct innerHTML migration"));
+    legend.appendChild(no2Legend);
+
     this.container.appendChild(legend);
     this.updateLegend();
   }
@@ -6449,6 +6552,12 @@ export class DeckGLMap {
     const ciiLegend = this.container.querySelector<HTMLElement>('#ciiChoroplethLegend');
     if (ciiLegend) {
       ciiLegend.style.display = this.state.layers.ciiChoropleth ? 'block' : 'none';
+    }
+    const no2Legend = this.container.querySelector<HTMLElement>('#no2ActivityLegend');
+    if (no2Legend) {
+      no2Legend.style.display = this.state.layers.no2Activity ? 'block' : 'none';
+      const credit = no2Legend.querySelector<HTMLElement>('.no2-activity-credit');
+      if (credit && this.no2Activity?.attribution) credit.textContent = this.no2Activity.attribution;
     }
   }
 
@@ -6736,6 +6845,7 @@ export class DeckGLMap {
       const toggle = this.container.querySelector(`.layer-toggle[data-layer="${key}"] input`) as HTMLInputElement;
       if (toggle) toggle.checked = value;
     });
+    this.enforceLayerLimit({ notify: false });
   }
 
   public getState(): DeckMapState {
@@ -6907,11 +7017,18 @@ export class DeckGLMap {
     });
   }
 
+  private tradeRoutePalette(): Record<'active' | 'disrupted' | 'highRisk' | 'scenario', [number, number, number, number]> {
+    const light = getCurrentTheme() === 'light';
+    return {
+      active: light ? [30, 100, 180, 200] : [100, 200, 255, 160],
+      disrupted: light ? [200, 40, 40, 220] : [255, 80, 80, 200],
+      highRisk: light ? [200, 140, 20, 200] : [255, 180, 50, 180],
+      scenario: light ? [220, 100, 20, 230] : [255, 140, 50, 210],
+    };
+  }
+
   private createTradeRoutesLayer(): ArcLayer<TradeRouteSegment> {
-    const active: [number, number, number, number] = getCurrentTheme() === 'light' ? [30, 100, 180, 200] : [100, 200, 255, 160];
-    const disrupted: [number, number, number, number] = getCurrentTheme() === 'light' ? [200, 40, 40, 220] : [255, 80, 80, 200];
-    const highRisk: [number, number, number, number] = getCurrentTheme() === 'light' ? [200, 140, 20, 200] : [255, 180, 50, 180];
-    const scenario: [number, number, number, number] = getCurrentTheme() === 'light' ? [220, 100, 20, 230] : [255, 140, 50, 210];
+    const { active, disrupted, highRisk, scenario } = this.tradeRoutePalette();
     const colorFor = (status: string): [number, number, number, number] =>
       status === 'disrupted' ? disrupted : status === 'high_risk' ? highRisk : active;
 
@@ -6921,7 +7038,7 @@ export class DeckGLMap {
       ? new Set(this.scenarioState.disruptedChokepointIds)
       : null;
 
-    const hlActive = this.highlightedRouteIds.size > 0;
+    const hlActive = this.highlightedRouteIds.size > 0 || Boolean(this.highlightedLane);
     const hlIds = this.highlightedRouteIds;
 
     const dimColor = (c: [number, number, number, number]): [number, number, number, number] =>
@@ -6977,7 +7094,7 @@ export class DeckGLMap {
       ? new Set(this.scenarioState.disruptedChokepointIds)
       : null;
 
-    const hlActive = this.highlightedRouteIds.size > 0;
+    const hlActive = this.highlightedRouteIds.size > 0 || Boolean(this.highlightedLane);
     const hlIds = this.highlightedRouteIds;
 
     const colorForRoute = (routeId: string, status: string): [number, number, number, number] => {
@@ -7125,12 +7242,12 @@ export class DeckGLMap {
   }
 
   private rebuildHighlightedMarkers(): void {
-    if (this.highlightedRouteIds.size === 0) { this.highlightedMarkers = []; return; }
-    const cpIds = new Set<string>();
+    const cpIds = new Set<string>(this.highlightedLane?.chokepointIds ?? []);
     for (const routeId of this.highlightedRouteIds) {
       const waypoints = ROUTE_WAYPOINTS_MAP.get(routeId);
       if (waypoints) for (const wp of waypoints) cpIds.add(wp);
     }
+    if (cpIds.size === 0) { this.highlightedMarkers = []; return; }
     this.highlightedMarkers = STRATEGIC_WATERWAYS
       .filter(w => cpIds.has(w.id))
       .map(w => {
@@ -7168,6 +7285,39 @@ export class DeckGLMap {
         getRadius: [this.tradeAnimationTime],
         getFillColor: [this.storedChokepointData],
       },
+    });
+  }
+
+  /** The route explorer's lane: only the part of its route between the two countries. */
+  private createHighlightedLaneLayer(): ArcLayer<BypassArcDatum> | null {
+    const lane = this.highlightedLane;
+    if (!lane || lane.path.length < 2) return null;
+    const { active, disrupted, highRisk, scenario } = this.tradeRoutePalette();
+    // Same rules as the route arcs (refreshTradeRouteStatus, setScenarioState),
+    // applied to the lane's own chokepoints only: a disruption past the
+    // destination does not color a lane that never reaches it.
+    const scores = new Map((this.storedChokepointData?.chokepoints ?? []).map((cp) => [cp.id, cp.disruptionScore ?? 0]));
+    const maxScore = lane.chokepointIds.reduce((max, id) => Math.max(max, scores.get(id) ?? 0), 0);
+    const scenarioHit = (this.scenarioState?.disruptedChokepointIds ?? []).some((id) => lane.chokepointIds.includes(id));
+    const color = scenarioHit
+      ? scenario
+      : !hasPremiumAccess(getAuthState())
+        ? active
+        : maxScore >= 70 ? disrupted : maxScore > 30 ? highRisk : active;
+    const legs: BypassArcDatum[] = [];
+    for (let i = 1; i < lane.path.length; i++) legs.push({ source: lane.path[i - 1]!, target: lane.path[i]! });
+    return new ArcLayer<BypassArcDatum>({
+      id: 'highlighted-lane-layer',
+      data: legs,
+      getSourcePosition: (d) => d.source,
+      getTargetPosition: (d) => d.target,
+      getSourceColor: color,
+      getTargetColor: color,
+      getWidth: 6,
+      widthMinPixels: 1,
+      widthMaxPixels: 8,
+      greatCircle: true,
+      pickable: false,
     });
   }
 
@@ -7308,7 +7458,7 @@ export class DeckGLMap {
   }
 
   public setCanadaRoads(records: CanadaRoadRecord[]): void {
-    this.canadaRoads = records;
+    this.canadaRoads = records.filter(isReportableCanadaRoad);
   }
   public setCanadaAlerts(alerts: CanadaAlert[]): void {
     this.canadaAlerts = alerts;
@@ -7354,6 +7504,11 @@ export class DeckGLMap {
   public setCableActivity(advisories: CableAdvisory[], repairShips: RepairShip[]): void {
     this.cableAdvisories = advisories;
     this.repairShips = repairShips;
+    this.render();
+  }
+
+  public setUkmtoIncidents(incidents: UkmtoMapIncident[]): void {
+    this.ukmtoIncidents = incidents;
     this.render();
   }
 
@@ -7721,14 +7876,33 @@ export class DeckGLMap {
 
   public highlightRoute(routeIds: string[]): void {
     this.highlightedRouteIds = new Set(routeIds);
+    this.highlightedLane = null;
     this.rebuildHighlightedMarkers();
     this.buildTradeTrips();
     this.render();
   }
 
+  /**
+   * Highlight one country pair's lane instead of its whole route: every route
+   * is dimmed, the lane's own path is drawn, only its chokepoints pulse, and
+   * the view fits the lane.
+   */
+  public highlightLane(
+    lane: { routeId: string; path: [number, number][]; chokepointIds: string[] },
+    occluder?: { left: number; right: number },
+  ): void {
+    this.highlightedRouteIds = new Set();
+    this.highlightedLane = { routeId: lane.routeId, path: [...lane.path], chokepointIds: [...lane.chokepointIds] };
+    this.rebuildHighlightedMarkers();
+    this.buildTradeTrips();
+    this.fitToPositions(lane.path, occluder);
+    this.render();
+  }
+
   public clearHighlightedRoute(): void {
-    if (this.highlightedRouteIds.size === 0) return;
+    if (this.highlightedRouteIds.size === 0 && !this.highlightedLane) return;
     this.highlightedRouteIds.clear();
+    this.highlightedLane = null;
     this.rebuildHighlightedMarkers();
     this.buildTradeTrips();
     this.render();
@@ -7746,6 +7920,33 @@ export class DeckGLMap {
     if (this.bypassArcData.length === 0) return;
     this.bypassArcData = [];
     this.render();
+  }
+
+  /**
+   * Fit the view to a set of [lon, lat] positions. Both map initializers set
+   * `renderWorldCopies: false`, so the camera is held inside one world: a lane
+   * across the antimeridian (US to Korea) cannot be framed the short way
+   * round, and bounds shifted past 180° are clamped to a view that drops one
+   * end. Plain -180..180 bounds keep both ends on screen.
+   * `occluder` is the screen box of a panel drawn over the map's left edge
+   * (the route explorer); the fit keeps the positions clear of it.
+   */
+  private fitToPositions(positions: [number, number][], occluder?: { left: number; right: number }): void {
+    if (!this.maplibreMap || positions.length === 0) return;
+    const lons = positions.map(([lon]) => lon);
+    const lats = positions.map(([, lat]) => lat);
+    const PAD = 60;
+    let left = PAD;
+    if (occluder) {
+      const box = this.container.getBoundingClientRect();
+      const covered = occluder.right - Math.max(box.left, occluder.left);
+      // Only a panel over the left edge that still leaves room for the lane moves the fit.
+      if (occluder.left <= box.left + 1 && covered > 0 && box.width - covered >= 3 * PAD) left = covered + PAD;
+    }
+    this.maplibreMap.fitBounds(
+      [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+      { padding: { top: PAD, bottom: PAD, right: PAD, left }, duration: 1000 },
+    );
   }
 
   public zoomToRoutes(routeIds: string[]): void {
@@ -7784,6 +7985,23 @@ export class DeckGLMap {
   public setCIIScores(scores: Array<{ code: string; score: number; level: string }>): void {
     this.ciiScoresMap = new Map(scores.map(s => [s.code, { score: s.score, level: s.level }]));
     this.ciiScoresVersion++;
+    this.render();
+  }
+
+  public setNo2Activity(snapshot: No2ActivitySnapshot | null): void {
+    this.no2Activity = snapshot;
+    this.no2CountryRegions = new Map();
+    this.no2ClusterRegions = [];
+    for (const region of snapshot?.regions ?? []) {
+      if (region.kind === 'country' && region.countryCode) this.no2CountryRegions.set(region.countryCode, region);
+      else if (region.kind === 'cluster') this.no2ClusterRegions.push(region);
+    }
+    this.no2ActivityVersion++;
+    if (import.meta.env.VITE_E2E === '1') {
+      this.container.dataset.wmNo2Regions = String(snapshot?.regions.length ?? 0);
+      this.container.dataset.wmNo2Countries = String(this.no2CountryRegions.size);
+    }
+    this.updateLegend();
     this.render();
   }
 
@@ -7956,25 +8174,24 @@ export class DeckGLMap {
   }
 
   private layerWarningShown = false;
-  private lastActiveLayerCount = 0;
+  // Null until the picker first renders: the layers a visitor starts with are a
+  // baseline, not an increase, so they never open the performance notice.
+  private lastActiveLayerCount: number | null = null;
 
-  private enforceLayerLimit(): void {
+  // `notify: false` rebases the count after a bulk change without opening the notice.
+  private enforceLayerLimit({ notify = true } = {}): void {
     const WARN_THRESHOLD = 13;
     const togglesEl = this.container.querySelector('.deckgl-layer-toggles');
     if (!togglesEl) return;
-    const activeCount = Array.from(togglesEl.querySelectorAll<HTMLInputElement>('.layer-toggle input'))
-      .filter(i => {
-        const toggle = i.closest('.layer-toggle') as HTMLElement | null;
-        const row = i.closest('.layer-toggle-row') as HTMLElement | null;
-        return toggle?.style.display !== 'none' && row?.style.display !== 'none';
-      })
+    // Skip toggles hidden for this variant, but not rows an active layer search hides.
+    const activeCount = Array.from(togglesEl.querySelectorAll<HTMLInputElement>('.layer-toggle:not([data-layer-hidden]) input'))
       .filter(i => i.checked).length;
-    const increasing = activeCount > this.lastActiveLayerCount;
+    const increasing = notify && this.lastActiveLayerCount !== null && activeCount > this.lastActiveLayerCount;
     this.lastActiveLayerCount = activeCount;
-    if (activeCount >= WARN_THRESHOLD && increasing && !this.layerWarningShown) {
+    if (activeCount > WARN_THRESHOLD && increasing && !this.layerWarningShown) {
       this.layerWarningShown = true;
       showLayerWarning(WARN_THRESHOLD);
-    } else if (activeCount < WARN_THRESHOLD) {
+    } else if (activeCount <= WARN_THRESHOLD) {
       this.layerWarningShown = false;
     }
   }
@@ -8314,6 +8531,10 @@ export class DeckGLMap {
         this.countriesBounded = null;
         this.culledCountriesGeoJson = null;
         this.culledCountriesContentKey = '';
+        // Choropleth data that arrived before the boundaries has nothing to
+        // paint onto until now; schedule the frame that paints it.
+        this.render();
+        if (import.meta.env.VITE_E2E === '1') this.container.dataset.wmCountryBoundaries = String(geojson.features.length);
         this.maplibreMap.addSource('country-boundaries', {
           type: 'geojson',
           data: geojson,

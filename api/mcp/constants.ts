@@ -383,7 +383,11 @@ export const SERVER_NAME = 'worldmonitor';
 // Bumped 1.43.0 → 1.44.0 when get_energy_storage and get_internet_activity
 // merged into get_energy_intelligence and get_infrastructure_status (97 → 95
 // tools); both old names stay callable as aliases.
-export const SERVER_VERSION = '1.44.0';
+// Bumped 1.44.0 → 1.45.0 for get_media_perspective (95 → 96 tools).
+// Bumped 1.45.0 → 1.46.0 for get_no2_activity (96 → 97 tools, #9722).
+// Bumped 1.46.0 → 1.47.0 for webcam discovery and recent media (97 → 99 tools, #5704).
+// Bumped 1.47.0 → 1.48.0 for report_issue (99 → 100 tools, #8721).
+export const SERVER_VERSION = '1.48.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
@@ -438,11 +442,13 @@ export { MAX_JSON_RPC_BODY_BYTES };
 // can quote it without a temporal-dead-zone error.
 export const TOOL_DESCRIPTION_MAX_BYTES = 1024;
 
-// Total budget for every tools/list description together. 64 KiB is about
-// 16k tokens, roughly a sixth of the tools/list envelope (the input and output
-// schemas are the rest), and leaves headroom for a few more tools at the
-// per-tool cap above the ~57 KB the registry uses today. Test-enforced only.
-export const TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES = 65536;
+// Total budget for every tools/list description together. 68 KiB is about
+// 17k tokens, roughly a sixth of the tools/list envelope (the input and output
+// schemas are the rest). The 64 KiB cap was set at ~57 KB (#9302) to leave
+// headroom for a few more tools; the #9357 depth work spent that headroom on
+// existing descriptions, and get_no2_activity (#9722) reached ~66 KB, so the
+// cap moves once to restore room for two more tools. Test-enforced only.
+export const TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES = 69632;
 
 // Session-level discovery instructions. Per MCP 2025-03-26 lifecycle spec,
 // servers MAY return an `instructions` string in the `initialize` result;
@@ -464,6 +470,8 @@ type InstructionDenialCodes = { allowanceExhausted: number; entitlement: number 
 
 function buildServerInstructions({ allowanceExhausted, entitlement }: InstructionDenialCodes): string {
   return [
+    'For webcam visual context, discover a viewport with find_webcams, then resolve one returned ID with get_webcam_media. Results are recent visual context, not confirmation of live conditions. Check lastUpdated separately from catalog freshness and URL resolvedAt. Keep Windy courtesy and link displayed images to windyUrl or playerUrl.',
+    '',
     'Call get_mcp_allowance({}) to read the current verified account allowance, including used, limit, remaining, resetsAt, requestWindows and sharedWithRestApi. It returns the same snapshot as worldmonitor://account/mcp-allowance for hosts without resources/read. Only user-bound OAuth or wm_… credentials are accepted. No account selector or panel_request is accepted. Status spends no daily allowance, including at the daily cap, but uses the shared 192/minute protocol bucket. Unreadable counters return an error, never a zero snapshot. Shared API usage also includes REST traffic and does not identify individual callers.',
     '',
     `Every tool accepts optional \`jmespath\`. Server-side projection is applied AFTER per-tool filter/summary. Typical 80-95% token reduction. A projected response from a tool whose data is licensed for reuse with attribution comes back as {data, _attribution} — keep the _attribution block with the values if you redistribute them. Grammar: ${JMESPATH_SPEC_URL}. Guide + 12 worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.`,
@@ -471,6 +479,8 @@ function buildServerInstructions({ allowanceExhausted, entitlement }: Instructio
     `Limits: request body ≤ ${MAX_JSON_RPC_BODY_BYTES}B (over-cap POSTs are rejected before parsing with HTTP 413 + -32600 and error.data.reason 'body-too-large'; shrink the payload, do not retry it), expr ≤ ${JMESPATH_MAX_EXPR_BYTES}B, output ≤ ${JMESPATH_MAX_OUTPUT_BYTES}B. Bad expressions, and projections that select nothing, soft-fail via {_jmespath_error, original_keys} envelope (consumes one daily quota unit on retry when that quota path applies — self-correct from original_keys; empty_projection names the unknown_fields and adds key_paths with the nested field names). Full envelope reference: https://www.worldmonitor.app/docs/mcp-error-catalog.`,
     '',
     `tools/list ships each tool's complete description (≤${TOOL_DESCRIPTION_MAX_BYTES}B per tool) with its input and output schema. describe_tool({tool_name}) returns that same definition for one tool, for re-reading a single tool without re-listing all of them — quota-exempt (still counts toward the 60/min rate limit). describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct. Full reference: https://www.worldmonitor.app/docs/mcp-tools-reference.`,
+    '',
+    'report_issue is credential-free and spends no daily allowance. Call it when a tool or REST call fails unexpectedly (pass the error\'s data.requestId as requestId), when a tool you need does not exist, or when data looks wrong. Do not put secrets, personal data, or vulnerability details in it.',
     '',
     `get_sources is the sole credential-free data tool and consumes no daily quota. It has a separate fail-closed ceiling of 10 unauthenticated calls/minute/IP. Signed-in accounts without a subscription get a free taste of CACHED-data tools (3 request windows/day, 5 calls/day); live-fetch tools stay Pro-only. Structured account-access denials carry \`error.data\` = {reason, nextStep, upgradeUrl}: -32001/401 reason=no-account, ${allowanceExhausted}/429 reason=allowance-exhausted, and ${entitlement}/403 reason=upgrade-required or lapsed-subscription. allowance-exhausted, upgrade-required and quota-exceeded also carry recommendedPlan when a self-serve plan is one step up, and a free account's denial adds checkoutTool="start_upgrade": call start_upgrade({plan: recommendedPlan}) for a personal checkout link the user opens to pay, then poll get_mcp_allowance. Other rate-limit and service errors may omit those fields; branch on the JSON-RPC code and HTTP status. Read each tool's \`_meta["worldmonitor/access"]\`: \`free\` is anonymous and quota-free, \`free-account\` is available to signed-in free accounts (cache-backed data calls spend the allowance; describe_tool, get_mcp_allowance and start_upgrade do not), and \`subscription\` requires Pro. Each tool also carries \`_meta["worldmonitor/weight"]\`: what one call COSTS, in REST-request units. It is charged only on an API plan, whose MCP calls and REST requests draw one daily budget (1 for a cache-backed read, 2 for a live downstream fetch, 3 for the two that fetch twice); Pro and Pro Business meter one unit per standalone data call. Opening any embedded panel costs one request including its rendered details. Country briefs include bounded section reads; news dashboards include bounded hazard map loads. Repeated same-country or news-dashboard opens reuse the admission for at least five minutes, local topic/filter/layer navigation reuses loaded data, and explicit refresh costs one new request. News summaries and translations are separate user requests. Budget before you call: get_mcp_allowance or the allowance resource reports \`sharedWithRestApi\` so you can tell whether \`used\` also counts REST traffic. Upgrade: ${MCP_UPGRADE_URL}.`,
     '',

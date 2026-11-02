@@ -59,7 +59,7 @@ function normalizeCompanyMonitoringScopes(scopes: string[] | undefined) {
 }
 
 // ---------------------------------------------------------------------------
-// Public mutations & queries (require Clerk JWT via ctx.auth)
+// Internal key issuance and public key management (Clerk JWT via ctx.auth)
 // ---------------------------------------------------------------------------
 
 /**
@@ -90,8 +90,10 @@ async function keySourceFields(
   return { sourceRef: user.signupRef, ...(user.signupSource ? { source: user.signupSource } : {}) };
 }
 
-export const createApiKey = mutation({
+// Only the live-session-gated edge relay may issue keys.
+export const createApiKeyForUser = internalMutation({
   args: {
+    userId: v.string(),
     name: v.string(),
     keyPrefix: v.string(),
     keyHash: v.string(),
@@ -100,7 +102,7 @@ export const createApiKey = mutation({
     keyKind: v.optional(keyKindValidator),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
+    const userId = args.userId;
     await assertAccountWritable(ctx, userId);
 
     if (args.keyKind === "desktop") {
@@ -162,6 +164,7 @@ export const createApiKey = mutation({
       for (const key of toRevoke) {
         await ctx.db.patch(key._id, { revokedAt: now });
       }
+      await scheduleSiblingKeyCacheInvalidation(ctx, userId, toRevoke.map((key) => key.keyHash));
       // After revoking overflow keys there is always exactly one slot free.
       activeCount = MAX_KEYS_PER_USER - 1;
     }
@@ -211,7 +214,7 @@ async function assertUniqueKeyHash(ctx: MutationCtx, keyHash: string) {
  * discipline and key shape as an API key; the kind is stored server-side.
  *
  * Gated by the Deploy Order flag, then the shared desktop-key predicate on the
- * MERGED features, as `createEmbedKey` does: rows written before
+ * MERGED features, as `createEmbedKeyForUser` does: rows written before
  * `desktopKeyAccess` existed omit it, and the predicate is fail-closed on
  * `undefined`. The cap is the plan's `maxDesktopKeys` (also catalog-merged).
  */
@@ -333,7 +336,7 @@ export const revokeApiKey = mutation({
     }
 
     await ctx.db.patch(args.keyId, { revokedAt: Date.now() });
-    await scheduleSiblingKeyCacheInvalidation(ctx, userId, key.keyHash);
+    await scheduleSiblingKeyCacheInvalidation(ctx, userId, [key.keyHash]);
     return { ok: true, keyHash: key.keyHash };
   },
 });
@@ -345,14 +348,15 @@ export const revokeApiKey = mutation({
  * `user-api-key:<hash>` entry for 60 s, and the client-driven
  * `/api/invalidate-user-api-key-cache` only drops the REVOKED key's entry, so
  * without this a denied third key stays denied until its sibling entry ages
- * out. Invalidate the revoked key and every other active key of the owner
- * through the same action the account lifecycle uses. Scheduled only when
- * Redis is configured, matching `scheduleScopedKeyCacheInvalidation`.
+ * out. Invalidate the revoked keys and every other active key of the owner
+ * through the same action the account lifecycle uses. Both revoke paths call
+ * this: `revokeApiKey` and the overflow convergence in key creation. Scheduled
+ * only when Redis is configured, matching `scheduleScopedKeyCacheInvalidation`.
  */
 async function scheduleSiblingKeyCacheInvalidation(
   ctx: MutationCtx,
   ownerUserId: string,
-  revokedKeyHash: string,
+  revokedKeyHashes: string[],
 ): Promise<void> {
   if (!process.env.UPSTASH_REDIS_REST_URL && !process.env.UPSTASH_REDIS_REST_TOKEN) return;
   const active = await ctx.db
@@ -361,7 +365,8 @@ async function scheduleSiblingKeyCacheInvalidation(
       q.eq("userId", ownerUserId).eq("revokedAt", undefined),
     )
     .collect();
-  const keyHashes = [revokedKeyHash, ...active.map((k) => k.keyHash).filter((h) => h !== revokedKeyHash)];
+  const revoked = new Set(revokedKeyHashes);
+  const keyHashes = [...revokedKeyHashes, ...active.map((k) => k.keyHash).filter((h) => !revoked.has(h))];
   await ctx.scheduler.runAfter(
     0,
     internal.payments.cacheActions.invalidateUserApiKeyCaches,

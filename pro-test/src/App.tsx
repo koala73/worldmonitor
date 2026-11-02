@@ -30,7 +30,7 @@ import {
   DASHBOARD_SCREENSHOT_WEBP_SRCSET,
 } from './assets/dashboard-screenshot';
 import { ensureTurnstileScript } from './turnstile';
-import wiredLogo from './assets/wired-logo.svg';
+import { VoiceCards } from './components/Voices';
 import {
   DASHBOARD_EMBED_PREVIEW_URL,
   DASHBOARD_PATH,
@@ -40,7 +40,7 @@ import { appendStoredContentAttributionToUrl } from '../../shared/content-attrib
 import { isInternalSourceTag } from '../../shared/referral-namespaces';
 import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
 import { LegalFooterNav } from './components/LegalFooterNav';
-import { PressFooterNav } from './components/PressFooterNav';
+import { PressNav } from './components/PressNav';
 import { ABOUT_DOCS_PATH } from '../../shared/press';
 import {
   isDesktopCheckoutHandoff,
@@ -531,16 +531,9 @@ const SocialProof = () => (
           </div>
         ))}
       </div>
-      <blockquote className="max-w-3xl mx-auto text-center">
-        <p className="text-lg md:text-xl text-wm-muted italic leading-relaxed">
-          "{t('socialProof.quote')}"
-        </p>
-        <footer className="mt-6 flex items-center justify-center gap-3">
-          <a href="https://www.wired.com/story/world-monitor-elie-habib/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-wm-muted hover:text-wm-text transition-colors">
-            <img src={wiredLogo} alt="WIRED" loading="lazy" className="h-5 brightness-0 invert opacity-60 hover:opacity-100 transition-opacity" />
-          </a>
-        </footer>
-      </blockquote>
+      <h2 className="text-2xl md:text-3xl font-display font-bold mb-8 text-center">{t('welcome.voices.title')}</h2>
+      <VoiceCards />
+      <PressNav className="mt-6" />
     </div>
   </section>
 );
@@ -1390,7 +1383,7 @@ const EnterprisePage = () => (
         </div>
         <span className="text-xs opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
       </div>
-      <PressFooterNav />
+      <PressNav />
       {/* This is the pricing page — the footer a buyer sees on the way to
           checkout — so the documents they are agreeing to have to be one click
           from here, not one FAQ answer deep (#6976). */}
@@ -1473,11 +1466,11 @@ export default function App() {
         <SourceMarquee />
         <Pillars />
         <WhyUpgrade />
+        <SocialProof />
         <TwoPathSplit />
         <ProShowcase />
         <DeliveryDesk />
         <AudiencePersonas />
-        <SocialProof />
         <LivePreview />
         <WhatsNew />
         <PricingSection

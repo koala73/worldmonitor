@@ -55,6 +55,7 @@ const CHINA_DECISION_SIGNAL_STATES = new Set([
 // scripts/seed-china-decision-signals.mjs.
 const CHINA_DECISION_HEALTHY_QUIET_CAUSE = 'healthy_quiet_window';
 const SEED_DOMAINS = {
+  'maritime:ukmto-incidents': { key: 'seed-meta:maritime:ukmto-incidents', intervalMin: 37.5, activationKey: 'seed-activated:maritime:ukmto-incidents' }, // 2x matches the 75-minute reader and health budget
   'health:china-coverage':    { key: 'seed-meta:health:china-coverage',    intervalMin: 60, activationKey: 'seed-activated:health:china-coverage' },
   // Phase 1 — Snapshot endpoints
   'seismology:earthquakes':   { key: 'seed-meta:seismology:earthquakes',   intervalMin: 15 },
@@ -713,17 +714,22 @@ export async function handleSeedHealth(req, options = {}) {
       // written before the field existed, which is absence of evidence, not a
       // failure — reporting it as one would flag every legacy run.
       worldExports: meta.worldExports ?? null,
+      // The run's three Hormuz LNG origin requests, read by the energy shock
+      // model. Null on a snapshot written before the field existed.
+      lngOrigin: meta.lngOrigin ?? null,
     } : null;
     // Only failures are a coverage gap. A reporter with no positive rows
     // (no_records) and an observed importer that does not trade every reviewed
     // heading are valid observations; flagging them would keep the domain
     // partial on every healthy run. Both stay visible in bilateralCoverage.
     //
-    // World exports are one run-level fetch, so anything but 'observed' — an
-    // unrecognised state included — is a gap the brief's supplier scale inherits.
+    // World exports and the LNG origin snapshot are run-level fetches, so
+    // anything but 'observed' — an unrecognised state included — is a gap their
+    // readers (the brief's supplier scale, the gas shock model) inherit.
     const bilateralPartial = bilateralGaps && (bilateralGaps.preservedCountries.length > 0
       || Object.values(bilateralGaps.countryCoverage).some(c => BILATERAL_FAILURE_STATES.has(c?.state))
-      || (bilateralGaps.worldExports != null && bilateralGaps.worldExports.state !== 'observed'));
+      || (bilateralGaps.worldExports != null && bilateralGaps.worldExports.state !== 'observed')
+      || (bilateralGaps.lngOrigin != null && bilateralGaps.lngOrigin.state !== 'observed'));
     // Same policy as api/health.js riskScores, without the sibling staleness
     // checks this endpoint does not compute.
     const ciiInputs = cfg.ciiInputs ? assessCiiInputs(meta, evaluationNow) : null;

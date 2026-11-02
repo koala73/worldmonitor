@@ -17,6 +17,7 @@ ENV npm_config_install_links=true
 COPY package.json package-lock.json ./
 COPY vendor/braces/ ./vendor/braces/
 COPY vendor/stream-json/ ./vendor/stream-json/
+COPY vendor/vercel-og/ ./vendor/vercel-og/
 RUN npm ci --ignore-scripts
 
 # Copy full source
@@ -84,6 +85,7 @@ WORKDIR /app
 COPY --from=builder /app/src-tauri/sidecar/local-api-server.mjs ./local-api-server.mjs
 COPY --from=builder /app/src-tauri/sidecar/package.json ./package.json
 COPY --from=builder /app/shared/llm-health-providers.js ./shared/llm-health-providers.js
+COPY --from=builder /app/shared/desktop-key-access.js ./shared/desktop-key-access.js
 ENV LOCAL_API_RESOURCE_DIR=/app
 
 # Minimal runtime node_modules — required by raw .js handlers that aren't

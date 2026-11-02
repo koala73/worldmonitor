@@ -80,7 +80,15 @@ export const ATTRIBUTION_RIDER_NOTICE =
  * cache envelope), and `get_imd_cyclone_marine` has no REST path at all
  * (`_apiPaths: []`).
  */
+/**
+ * The Copernicus credit rides with every NO2 activity projection, on REST and
+ * through the get_no2_activity tool, whose _execute keeps these top-level
+ * fields verbatim.
+ */
+export const NO2_ATTRIBUTION_EXPRESSION = '{attribution: attribution, generatedAt: generatedAt}';
+
 export const REST_ATTRIBUTION_EXPRESSIONS: Readonly<Record<string, string>> = {
+  '/api/economic/v1/get-no2-activity': NO2_ATTRIBUTION_EXPRESSION,
   '/api/displacement/v1/get-cross-border-movements': 'movements[].{source: source, sourceUrl: sourceUrl, license: license, licenseUrl: licenseUrl, notice: notice}',
   // Same payload as the get_resilience_indicators tool: its `_execute` returns
   // this endpoint's JSON verbatim, so the expression is identical.

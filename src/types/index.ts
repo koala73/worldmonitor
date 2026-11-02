@@ -80,6 +80,7 @@ export interface Feed {
   stateAffiliated?: string;  // e.g., "Russia", "China", "Iran"
   lang?: string;             // ISO 2-letter code for filtering (locale boost)
   strategicDefault?: boolean; // always default-on regardless of UI language
+  digestLang?: string;        // only this digest language carries it (server is stricter than the browser)
 }
 
 export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
@@ -692,6 +693,8 @@ export interface MapLayers {
   irradiators: boolean;
   radiationWatch?: boolean;
   sanctions: boolean;
+  /** Sentinel-5P NO2 activity direction per country and industrial cluster. */
+  no2Activity?: boolean;
   weather: boolean;
   /** Official Canada road events and conditions from Ontario, Alberta, Toronto, and British Columbia. */
   canadaRoads: boolean;

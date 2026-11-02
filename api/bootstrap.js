@@ -1,4 +1,4 @@
-import { sanitizeBootstrapValue } from './_bootstrap-public-payload.js';
+import { restoreWildfireBootstrapMetadata, sanitizeBootstrapValue } from './_bootstrap-public-payload.js';
 import { validateImfDataset } from './_imf-dataset.js';
 import { stripTrailingSlashes } from './_strip-trailing-slashes.js';
 import { waitUntil as vercelWaitUntil } from '@vercel/functions';
@@ -98,6 +98,10 @@ const TIER_CDN_CACHE = {
 // budget guarantees the shield outlives a complete seed cycle.
 // tests/bootstrap-on-demand-cache-budget.test.mts enforces the ceiling.
 const ON_DEMAND_CACHE_PROFILES = {
+  ukmtoIncidents: {
+    browser: 'max-age=60, stale-while-revalidate=60, stale-if-error=60',
+    cdn: 'public, s-maxage=60, stale-while-revalidate=60, stale-if-error=60',
+  },
   // Correlation cards publish every 5 minutes and have a 30-minute health
   // budget. The conservative complete CDN window is 11m.
   correlationCards: {
@@ -331,7 +335,10 @@ async function getCachedJsonBatch(keys, shadowMarkerTier = null) {
         // Envelope-aware: bootstrap is a public-boundary consumer — strip _seed
         // from contract-mode canonical keys so clients never see envelope
         // metadata. Legacy bare-shape values pass through unchanged.
-        result.set(keys[i], unwrapEnvelope(parsed).data);
+        const { data: payload, _seed } = unwrapEnvelope(parsed);
+        result.set(keys[i], keys[i] === BOOTSTRAP_CACHE_KEYS.wildfires
+          ? restoreWildfireBootstrapMetadata(payload, _seed)
+          : payload);
       } catch { /* skip malformed */ }
     }
   }

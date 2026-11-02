@@ -706,6 +706,10 @@ function isSseTransport(url) {
 function makeDeferred() {
   let resolve, reject;
   const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+  // The read loop or the RPC timer can reject this before its owner reaches
+  // `await promise` (send() is still awaiting the POST). Mark it handled so
+  // Node never reports an unhandled rejection; the later await still throws.
+  promise.catch(() => {});
   return { promise, resolve, reject };
 }
 

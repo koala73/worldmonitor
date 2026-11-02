@@ -375,7 +375,7 @@ const COMPARISON_PAGE_SEEDS = [
     slug: 'chokepoint-monitoring-tools',
     categoryList: true,
     path: '/compare/chokepoint-monitoring-tools/',
-    title: 'Chokepoint Monitoring Tools | World Monitor',
+    title: 'Chokepoint Monitoring Tools: Hormuz, Suez | World Monitor',
     metaDescription: 'Compare chokepoint monitoring tools for Hormuz, Suez, and Malacca, with chokepoint status fused with AIS, conflict, aviation, market, and climate context.',
     h1: 'Chokepoint Monitoring Tools',
     competitors: ['IMF PortWatch', 'MarineTraffic', 'Kpler', "Lloyd's List Intelligence", 'Windward', 'SENTINEL GIP', 'straits.live'],

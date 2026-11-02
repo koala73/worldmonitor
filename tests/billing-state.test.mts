@@ -11,9 +11,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  BILLING_BANNER_DISMISS_KEYS,
   deriveBillingUxState,
   getBillingBannerVariant,
+  getBillingEmailErrorKey,
   getBillingGateOverride,
+  suggestBillingEmail,
   getReactivationHref,
   getSubscriptionStatusTone,
   isSubscriptionCoveringAt,
@@ -241,8 +244,9 @@ describe('getBillingBannerVariant', () => {
     // en.json's onHoldBannerMessage value is locked byte-identical to the
     // pre-#4771 hardcoded copy in tests/billing-state-wiring.test.mts.
     assert.equal(v.messageKey, 'components.billingState.onHoldBannerMessage');
-    assert.equal(v.actionLabelKey, 'components.billingState.updatePayment');
-    assert.equal(v.action, 'billing-portal');
+    assert.deepEqual(v.actions, [
+      { labelKey: 'components.billingState.updatePayment', kind: 'billing-portal' },
+    ]);
     // Pre-#4771 sessionStorage key must survive so existing dismissals keep working.
     assert.equal(v.dismissKey, 'pf-banner-dismissed');
   });
@@ -252,7 +256,7 @@ describe('getBillingBannerVariant', () => {
     assert.ok(v);
     assert.equal(v.tone, 'warning');
     assert.equal(v.messageKey, 'components.billingState.renewalPendingDesc');
-    assert.equal(v.actionLabelKey, null);
+    assert.deepEqual(v.actions, []);
     assert.equal(v.dismissKey, 'pf-banner-dismissed-renewal-pending');
   });
 
@@ -261,15 +265,65 @@ describe('getBillingBannerVariant', () => {
     assert.ok(v);
     assert.equal(v.tone, 'error');
     assert.equal(v.messageKey, 'components.billingState.renewalFailedDesc');
-    assert.equal(v.actionLabelKey, 'components.billingState.manageBilling');
-    assert.equal(v.action, 'billing-portal');
+    assert.deepEqual(v.actions, [
+      { labelKey: 'components.billingState.manageBilling', kind: 'billing-portal' },
+    ]);
     assert.equal(v.dismissKey, 'pf-banner-dismissed-renewal-failed');
   });
 
-  it('every banner state uses a distinct dismiss key (dismissing one must not suppress another)', () => {
-    const keys = (['on_hold', 'renewal_verification_pending', 'renewal_verification_failed'] as const)
-      .map((s) => getBillingBannerVariant(s)?.dismissKey);
+  it('a bounced billing email on a plain active subscriber is its own amber banner', () => {
+    const v = getBillingBannerVariant('active', true);
+    assert.ok(v);
+    assert.equal(v.tone, 'warning');
+    assert.equal(v.messageKey, 'components.billingState.billingEmailBouncedMessage');
+    assert.deepEqual(v.actions, [
+      { labelKey: 'components.billingState.fixBillingEmail', kind: 'fix-billing-email' },
+    ]);
+    assert.equal(v.dismissKey, 'pf-banner-dismissed-billing-email-bounced');
+  });
+
+  it('on_hold plus a bounce keeps the red banner and adds the fix-email action', () => {
+    const plain = getBillingBannerVariant('on_hold');
+    const v = getBillingBannerVariant('on_hold', true);
+    assert.ok(plain && v);
+    assert.equal(v.tone, 'error');
+    assert.equal(v.messageKey, plain.messageKey);
+    assert.deepEqual(v.actions.map((a) => a.kind), ['billing-portal', 'fix-billing-email']);
+    assert.notEqual(v.dismissKey, plain.dismissKey, 'a bounce must re-surface a dismissed on_hold banner');
+  });
+
+  it('a bounce never surfaces a banner for free or lapsed users', () => {
+    assert.equal(getBillingBannerVariant('free', true), null);
+    assert.equal(getBillingBannerVariant('lapsed', true), null);
+  });
+
+  it('every rendered banner uses a distinct dismiss key, and all are clearable', () => {
+    const states = ['on_hold', 'renewal_verification_pending', 'renewal_verification_failed', 'active'] as const;
+    const keys = states
+      .flatMap((s) => [getBillingBannerVariant(s)?.dismissKey, getBillingBannerVariant(s, true)?.dismissKey])
+      .filter((key): key is string => typeof key === 'string');
     assert.equal(new Set(keys).size, keys.length);
+    for (const key of keys) {
+      assert.ok(BILLING_BANNER_DISMISS_KEYS.includes(key), `${key} must be cleared on recovery`);
+    }
+  });
+});
+
+describe('getBillingEmailErrorKey', () => {
+  it('maps the structured kinds the action throws and falls back for everything else', () => {
+    assert.equal(getBillingEmailErrorKey('INVALID_EMAIL'), 'components.billingState.billingEmailInvalid');
+    assert.equal(getBillingEmailErrorKey('EMAIL_SUPPRESSED'), 'components.billingState.billingEmailSuppressed');
+    assert.equal(getBillingEmailErrorKey('DODO_CUSTOMER_UPDATE_ERROR'), 'components.billingState.billingEmailUpdateFailed');
+    assert.equal(getBillingEmailErrorKey(null), 'components.billingState.billingEmailUpdateFailed');
+    assert.equal(getBillingEmailErrorKey('constructor'), 'components.billingState.billingEmailUpdateFailed');
+  });
+});
+
+describe('suggestBillingEmail', () => {
+  it('offers the signed-in address only when it is a different mailbox', () => {
+    assert.equal(suggestBillingEmail('elie.habbi@gmail.com', 'elie.habib@gmail.com'), 'elie.habib@gmail.com');
+    assert.equal(suggestBillingEmail('elie.habbi@gmail.com', ' Elie.Habbi@gmail.com '), '');
+    assert.equal(suggestBillingEmail('elie.habbi@gmail.com', ''), '');
   });
 });
 

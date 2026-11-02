@@ -1,3 +1,6 @@
+// These source checks pin CI build/test ordering and built-output guard wiring
+// (#8690, section 2).
+// The spawned probes exercise guard behavior, but cannot verify workflow ordering.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

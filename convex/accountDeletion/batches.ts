@@ -28,6 +28,7 @@ import {
 export const PERSONAL_DELETE_TABLES = [
   "userPreferences",
   "userPreferenceWriteRateLimits",
+  "billingEmailUpdateAttempts",
   "notificationChannels",
   "alertRules",
   "telegramPairingTokens",
@@ -43,6 +44,7 @@ export const PERSONAL_DELETE_TABLES = [
   "checkoutAdmissions",
   "checkoutSessionEvents",
   "followedCountriesUserMeta",
+  "agentFeedback",
   "users",
 ] as const;
 
@@ -79,6 +81,11 @@ async function takePersonalRows(
         .query("userPreferenceWriteRateLimits")
         .withIndex("by_user_window", (q) => q.eq("userId", userId))
         .take(limit);
+    case "billingEmailUpdateAttempts":
+      return ctx.db
+        .query("billingEmailUpdateAttempts")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .take(limit);
     case "notificationChannels":
       return ctx.db
         .query("notificationChannels")
@@ -88,6 +95,11 @@ async function takePersonalRows(
       return ctx.db
         .query("alertRules")
         .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(limit);
+    case "agentFeedback":
+      return ctx.db
+        .query("agentFeedback")
+        .withIndex("by_principal", (q) => q.eq("principalId", userId))
         .take(limit);
     case "telegramPairingTokens":
       return ctx.db

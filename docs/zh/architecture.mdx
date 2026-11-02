@@ -283,7 +283,7 @@ World Monitor 使用 Vercel Edge Functions 作为轻量 API 层，分为两代�
 - **数据适配器** — GDELT、ACLED、OpenSky、USGS、NASA FIRMS、FRED、Yahoo Finance、CoinGecko、mempool.space、BIS、WTO 等各自有专用边缘函数将响应归一化为一致 schema
 - **市场情报** — 宏观信号、ETF 资金流和稳定币监控在服务端计算衍生分析（VWAP、SMA、peg 偏差、资金流估算）并将结果缓存到 Redis
 - **时间基线** — Welford 算法状态在跨请求间持久化到 Redis，无需传统数据库即可构建统计基线
-- **自定义抓取器** — 没有 RSS 订阅源的来源（FwdStart、GitHub Trending、科技事件）被抓取并转换为 RSS 兼容格式
+- **自定义抓取器** — 没有 RSS 订阅源的来源（工信部新闻、GitHub Trending、科技事件）被抓取并转换为 RSS 兼容格式
 - **金融地理数据** — 证券交易所（29 个）、金融中心（19 个）、央行和超国家金融机构（14 个）和大宗商品枢纽（10 个）作为带类型的静态数据集提供，含市值、GFCI 排名、交易时间和大宗商品专长
 - **BIS 集成** — 来自国际清算银行的政策利率、实际有效汇率和信贷/GDP 比率，缓存 30 分钟 TTL
 - **WTO 贸易政策** — 来自世界贸易组织的贸易限制、关税趋势、双边贸易流和 SPS/TBT 壁垒

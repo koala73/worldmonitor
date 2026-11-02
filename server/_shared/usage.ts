@@ -235,6 +235,8 @@ export interface LlmCallEvent {
   fallback_index: number;
   /** '' on success; 'http_<status>' | 'timeout' | 'fetch_error' | 'empty' | 'stripped_empty' | 'validate_reject'. */
   reason: string;
+  /** Request mode within a stage, e.g. summarize-article 'brief' | 'analysis' | 'translate'. Absent when the stage has one mode. */
+  mode?: string;
 }
 
 export type UsageEvent = RequestEvent | UpstreamEvent | LlmCallEvent;
@@ -254,6 +256,7 @@ export function buildLlmCallEvent(p: {
   maxTokens: number;
   fallbackIndex: number;
   reason?: string;
+  mode?: string;
 }): LlmCallEvent {
   return {
     _time: new Date().toISOString(),
@@ -270,6 +273,7 @@ export function buildLlmCallEvent(p: {
     max_tokens: p.maxTokens,
     fallback_index: p.fallbackIndex,
     reason: p.reason ?? '',
+    ...(p.mode ? { mode: p.mode } : {}),
   };
 }
 

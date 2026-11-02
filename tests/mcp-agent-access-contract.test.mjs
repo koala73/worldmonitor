@@ -3,8 +3,6 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
 import { SERVER_INSTRUCTIONS } from '../api/mcp/constants.ts';
-import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
-import { getRequiredTier } from '../server/_shared/entitlement-check.ts';
 import {
   buildPublicTool,
   TOOL_LIST_RESPONSE,
@@ -39,21 +37,8 @@ describe('agent-visible MCP access contract', () => {
     }
   });
 
-  it('keeps Pro-only Comtrade cache data out of every free-account tool', () => {
-    const path = '/api/trade/v1/list-comtrade-flows';
-    assert.ok(PREMIUM_RPC_PATHS.has(path));
-    assert.equal(getRequiredTier(path), 1);
-    const handler = readFileSync(new URL(`../server/worldmonitor/${path.slice(5)}.ts`, import.meta.url), 'utf8');
-    const prefix = handler.match(/const KEY_PREFIX = '([^']+)'/)?.[1];
-    assert.equal(prefix, 'comtrade:flows');
-    assert.ok(TOOL_REGISTRY.some((tool) => tool._cacheKeys?.includes(`${prefix}:v1`)));
-    for (const tool of TOOL_REGISTRY) {
-      if (toolAccess(tool) === 'subscription') continue;
-      for (const key of tool._cacheKeys ?? []) {
-        assert.ok(key !== prefix && !key.startsWith(`${prefix}:`), `${tool.name} exposes Pro-only ${key}`);
-      }
-    }
-  });
+  // Pro-only cache data (Comtrade flows, the #7433 datasets) is kept out of
+  // free-account tools by tests/mcp-free-account-paid-data-invariant.test.mts.
 
   it('publishes what every tool COSTS, on every tool', () => {
     // An API-tier caller is charged 1, 2 or 3 units per call. Without this the

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { extractSentimentData, parseHtmlSentiment, parseXlsRows, excelDateToISO } = await import('../scripts/seed-aaii-sentiment.mjs');
+const { extractSentimentData, parseHtmlSentiment, parseXlsRows, excelDateToISO, readAaiiPage, MAX_AAII_PAGE_BYTES } = await import('../scripts/seed-aaii-sentiment.mjs');
 const { buildAaiiXlsFixture, FIXTURE_FIRST_SERIAL, FIXTURE_WEEKS } = await import('./helpers/aaii-xls-fixture.mjs');
 
 describe('AAII Sentiment seed parsing', () => {
@@ -175,6 +175,41 @@ describe('AAII Sentiment seed parsing', () => {
     it('rejects an invalid source date instead of rolling it into another month', () => {
       const html = '<span>Week ending February 30, 2026</span><div class="ssv2-snum bull">40%</div><div class="ssv2-snum neut">30%</div><div class="ssv2-snum bear">30%</div>';
       assert.deepEqual(parseHtmlSentiment(html), []);
+    });
+
+    it('scans a capped page of unclosed cell openers in linear time', () => {
+      // `[^>]*` crossed '<' and ran to the end of the page, so each unclosed
+      // opener rescanned the rest of it: well over a minute at the cap.
+      const size = MAX_AAII_PAGE_BYTES;
+      for (const unit of ['<td class="tableTxt"', '<td', 'class="ssv2-snum bull"']) {
+        const html = '<span>Week ending October 14, 2026</span>' + unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+        const started = performance.now();
+        assert.deepEqual(parseHtmlSentiment(html), [], unit);
+        const elapsed = performance.now() - started;
+        // The ssv2 scan looks at most 64 characters past each class attribute.
+        assert.ok(elapsed < 1000, `${unit}: ${elapsed.toFixed(0)} ms`);
+      }
+    });
+  });
+
+  describe('readAaiiPage', () => {
+    it('stops reading an endless page at the byte cap', async () => {
+      let pulled = 0;
+      const chunk = new Uint8Array(1 << 20).fill(0x20);
+      const response = new Response(new ReadableStream({
+        pull(controller) {
+          if (pulled >= 64 * chunk.length) return controller.close();
+          pulled += chunk.length;
+          controller.enqueue(chunk);
+        },
+        // No read-ahead: each chunk is pulled only when the reader asks for it.
+      }, { highWaterMark: 0 }));
+      await assert.rejects(readAaiiPage(response), /RESPONSE_TOO_LARGE/);
+      assert.ok(pulled <= MAX_AAII_PAGE_BYTES + chunk.length, `pulled ${pulled} bytes`);
+    });
+
+    it('reads a page within the cap as text', async () => {
+      assert.equal(await readAaiiPage(new Response('<p>Week ending</p>')), '<p>Week ending</p>');
     });
   });
 

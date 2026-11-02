@@ -1460,6 +1460,31 @@ function isImplausiblyFuture(dayOrInstant, retrievedAt) {
     || value > retrieval + DAY_MS;
 }
 
+// The reporting window is
+//   /6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})[\s\S]*?to\s*6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})[\s\S]*?\(UTC\+8\)/i
+// matched as three forward searches. As one regex, its lazy spans rescanned
+// the rest of the body from every "6 a.m." start. The searches give the same
+// match: no part can end differently in a way the next part could use, and a
+// later start can only find a later "to" part, so if the leftmost start has
+// no "to" part followed by "(UTC+8)", no start does.
+const MND_WINDOW_FROM = /6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})/gi;
+const MND_WINDOW_TO = /to\s*6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})/gi;
+const MND_WINDOW_MARKER = /\(UTC\+8\)/gi;
+
+function nextMatchFrom(pattern, text, from) {
+  pattern.lastIndex = from;
+  return pattern.exec(text);
+}
+
+function matchMndReportingWindow(text) {
+  const from = nextMatchFrom(MND_WINDOW_FROM, text, 0);
+  if (!from) return null;
+  const to = nextMatchFrom(MND_WINDOW_TO, text, from.index + from[0].length);
+  if (!to) return null;
+  if (!nextMatchFrom(MND_WINDOW_MARKER, text, to.index + to[0].length)) return null;
+  return [from[1], from[2], to[1], to[2]];
+}
+
 export function parseTaiwanMndDetail(
   html,
   {
@@ -1482,10 +1507,9 @@ export function parseTaiwanMndDetail(
   }
 
   const text = decodeHtml(extractMndReportBody(html));
-  const windowMatch = text.match(
-    /6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})[\s\S]*?to\s*6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})[\s\S]*?\(UTC\+8\)/i,
-  );
-  if (!windowMatch) throw new Error('MND_REPORTING_WINDOW_MISSING');
+  const windowParts = matchMndReportingWindow(text);
+  if (!windowParts) throw new Error('MND_REPORTING_WINDOW_MISSING');
+  const windowMatch = [null, ...windowParts];
   const publicationYear = Number(publicationTime.slice(0, 4));
   const start = localSixAmToUtc(
     publicationYear,

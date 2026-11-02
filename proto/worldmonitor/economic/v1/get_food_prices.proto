@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+message FoodMarketPrice {
+  string item = 1;
+  string market = 2;
+  string market_type = 3;
+  string origin = 4;
+  string unit = 5;
+  string currency = 6;
+  string date = 7;
+  double price = 8;
+  // True only when the same series has a price exactly seven days before `date`.
+  // When false, there is no comparison: wow_pct, previous_date and previous_price
+  // are placeholders (0 or empty), not a 0% change.
+  bool wow_available = 9;
+  // Week-over-week change in percent. Meaningful only when wow_available is true.
+  double wow_pct = 10;
+  // Date of the baseline price. Empty when wow_available is false.
+  string previous_date = 11;
+  // Baseline price in the same unit and currency. 0 when wow_available is false.
+  double previous_price = 12;
+}
+
+message FoodSecurityContext {
+  string country_code = 1;
+  string country = 2;
+  string reference_date = 3;
+  string title = 4;
+  string url = 5;
+  string fetched_at = 6;
+  // current, stale, or unavailable, independently for each country brief.
+  string status = 7;
+}
+
+message FoodPriceSource {
+  string id = 1;
+  string name = 2;
+  string country = 3;
+  string country_code = 4;
+  string url = 5;
+  string cadence = 6;
+  bool context_only = 7;
+  string fetched_at = 8;
+  string latest_report_date = 9;
+  // current, partial, stale, or unavailable. A successful fetch does not reset the report date.
+  string status = 10;
+  repeated FoodMarketPrice prices = 11;
+  repeated FoodSecurityContext contexts = 12;
+  // Citation the publisher asks for (for example a licence or required credit). Empty when none is stated.
+  string attribution = 13;
+}
+
+message GetFoodPricesRequest {}
+
+message GetFoodPricesResponse {
+  repeated FoodPriceSource sources = 1;
+  // True when all source caches are unavailable; missing prices are not zero.
+  bool unavailable = 2;
+}

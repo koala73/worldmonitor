@@ -27,6 +27,11 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     action: "delete",
     notes: "Prefs write counters",
   },
+  {
+    target: "billingEmailUpdateAttempts",
+    action: "delete",
+    notes: "Billing email change cooldown",
+  },
   { target: "notificationChannels", action: "delete", notes: "Contact endpoints" },
   { target: "alertRules", action: "delete", notes: "Alert config" },
   { target: "telegramPairingTokens", action: "delete", notes: "Telegram pairing" },
@@ -121,6 +126,11 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     target: "registrations",
     action: "delete",
     notes: "Waitlist rows matching verified account email after Clerk subject is confirmed",
+  },
+  {
+    target: "agentFeedback",
+    action: "delete",
+    notes: "Agent feedback reports filed by this user as a keyed MCP caller (principalId)",
   },
   {
     target: "contactMessages",

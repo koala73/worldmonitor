@@ -180,7 +180,7 @@
     "bigmacDesc": "Big Mac prices across Middle East countries (Big Mac Index)",
     "bigmacWow": "Week-over-week",
     "bigmacCountry": "Country",
-    "faoFoodPriceIndex": "FAO Food Price Index",
+    "faoFoodPriceIndex": "Food prices",
     "fuelPrices": "Fuel Prices",
     "fuelPricesDesc": "Retail gasoline and diesel prices across 30+ countries worldwide",
     "fuelPricesCountry": "Country",
@@ -195,7 +195,8 @@
     "consumerPrices": "Consumer Prices",
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
-    "climateNews": "Climate News"
+    "climateNews": "Climate News",
+    "ukmtoIncidents": "UKMTO Incidents"
   },
   "common": {
     "dismiss": "Dismiss",
@@ -902,15 +903,8 @@
     "gpsJamming": {
       "title": "Satellite navigation interference"
     },
-    "pipeline": {
-      "title": "PIPELINE"
-    },
-    "militaryFlight": {
-      "climbRate": "CLIMB RATE",
-      "manufacturer": "MANUFACTURER",
-      "owner": "OWNER",
-      "builtYear": "YEAR BUILT"
-    },
+    "pipeline":{"title":"PIPELINE"},
+    "militaryFlight":{"climbRate":"CLIMB RATE","manufacturer":"MANUFACTURER","owner":"OWNER","builtYear":"YEAR BUILT"},
     "militaryCluster": {
       "showLess": "Show less"
     }

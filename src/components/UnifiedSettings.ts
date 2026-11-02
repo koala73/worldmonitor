@@ -2069,7 +2069,7 @@ export class UnifiedSettings {
           <div class="panel-locked-desc">Desktop keys come with Pro. Use one to get your Pro data in your own desktop app.</div>
           ${checkoutConsentHtml(WEB_APP_ORIGIN)}
           <button class="panel-locked-cta upgrade-pro-cta">Upgrade to Pro</button>
-          <div class="panel-locked-desc">Need programmatic access or a shared deployment? That needs an API plan.</div>
+          <div class="panel-locked-desc">Need the REST API, SDKs or webhooks for your organization's internal tools? API Starter adds them to the full Pro dashboard. Customer-facing products need API Business.</div>
           <button class="panel-locked-cta api-keys-gate-btn">Upgrade to API Starter</button>
         </div>`;
     }

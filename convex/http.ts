@@ -5,6 +5,7 @@ import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
 import { timingSafeEqualStrings } from "./lib/svixVerify";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
+import { briefOnlyUserIds, type BriefRuleFlags } from "./alertRules";
 import {
   CHECKOUT_RATE_LIMITED,
   isCheckoutTimedOutOutcome,
@@ -156,6 +157,45 @@ function extractConvexErrorCode(err: unknown): string | null {
     if (typeof code === "string") return code;
   }
   return null;
+}
+
+// Row-shape bounds every alertRules writer enforces (convex/alertRules.ts
+// assertRuleShape / assertRuleSlotAvailable). Surfaced as a 400 with the
+// machine-readable code so the edge handler and the client can route on it.
+const ALERT_RULE_SHAPE_CODES = new Set([
+  "VARIANT_INVALID",
+  "EVENT_TYPES_INVALID",
+  "CHANNELS_INVALID",
+  "RULE_LIMIT_EXCEEDED",
+]);
+
+function alertRuleValidationResponse(err: unknown, passthroughCodes: readonly string[] = []): Response | null {
+  const code = extractConvexErrorCode(err);
+  if (!code || (!ALERT_RULE_SHAPE_CODES.has(code) && !passthroughCodes.includes(code))) return null;
+  const parsed = parseConvexErrorData(err);
+  const message = (parsed && typeof parsed === "object")
+    ? (parsed as { message?: string }).message ?? ""
+    : "";
+  return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
+}
+
+// Walks every page of a paginated internal query. The cross-tenant alertRules
+// reads are byte-bounded per page so one oversized row cannot push a single
+// transaction past the Convex read limit; the HTTP action stitches the pages.
+async function collectPages<T>(
+  fetchPage: (cursor: string | null) => Promise<{ page: T[]; continueCursor: string; isDone: boolean }>,
+): Promise<T[]> {
+  const out: T[] = [];
+  let cursor: string | null = null;
+  // 10,000 pages × 256 rows is far beyond any plausible table size; the guard
+  // only turns a cursor bug into an error instead of an unbounded loop.
+  for (let guard = 0; guard < 10_000; guard++) {
+    const result = await fetchPage(cursor);
+    out.push(...result.page);
+    if (result.isDone) return out;
+    cursor = result.continueCursor;
+  }
+  throw new Error("paginated read did not terminate");
 }
 
 function readConvexErrorNumber(err: unknown, field: string): number | null {
@@ -431,6 +471,72 @@ export async function relayAiRoutingPolicyHttpHandler(
 
 const http = httpRouter();
 
+// The gateway has verified both the JWT and the live Clerk session.
+http.route({
+  path: "/relay/api-keys/create",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
+    if (unauthorized) return unauthorized;
+    const body = await parseJsonObjectBody<Record<string, unknown>>(request);
+    if (!body || typeof body.userId !== "string" || !body.userId
+      || typeof body.name !== "string" || typeof body.keyPrefix !== "string" || typeof body.keyHash !== "string"
+      || (body.scopes !== undefined && (!Array.isArray(body.scopes) || !body.scopes.every(s => typeof s === "string")))
+      || (body.keyKind !== undefined && body.keyKind !== "api" && body.keyKind !== "desktop")) {
+      return Response.json({ error: "INVALID_REQUEST" }, { status: 400 });
+    }
+    try {
+      const result = await ctx.runMutation(internal.apiKeys.createApiKeyForUser, {
+        userId: body.userId, name: body.name, keyPrefix: body.keyPrefix, keyHash: body.keyHash,
+        scopes: body.scopes as string[] | undefined,
+        keyKind: body.keyKind as "api" | "desktop" | undefined,
+      });
+      return Response.json(result);
+    } catch (error) {
+      const code = extractConvexErrorCode(error);
+      if (code) {
+        const status = code.endsWith("LIMIT_REACHED") ? 409
+          : code.startsWith("INVALID_") || code === "DUPLICATE_KEY" ? 400 : 403;
+        return Response.json({ error: code }, { status });
+      }
+      return Response.json({ error: "INTERNAL_ERROR" }, { status: 500 });
+    }
+  }),
+});
+
+// The gateway has verified both the JWT and the live Clerk session.
+http.route({
+  path: "/relay/embed-keys/create",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
+    if (unauthorized) return unauthorized;
+    const body = await parseJsonObjectBody<Record<string, unknown>>(request);
+    if (!body || typeof body.userId !== "string" || !body.userId
+      || typeof body.name !== "string" || typeof body.keyPrefix !== "string" || typeof body.keyHash !== "string"
+      || (body.clerkPlan !== undefined && body.clerkPlan !== "free" && body.clerkPlan !== "pro")
+      || (body.allowedOrigins !== undefined && (!Array.isArray(body.allowedOrigins) || !body.allowedOrigins.every(s => typeof s === "string")))) {
+      return Response.json({ error: "INVALID_REQUEST" }, { status: 400 });
+    }
+    try {
+      const result = await ctx.runMutation(internal.embedKeys.createEmbedKeyForUser, {
+        userId: body.userId, name: body.name, keyPrefix: body.keyPrefix, keyHash: body.keyHash,
+        clerkPlan: body.clerkPlan as "free" | "pro" | undefined,
+        allowedOrigins: body.allowedOrigins as string[] | undefined,
+      });
+      return Response.json(result);
+    } catch (error) {
+      const code = extractConvexErrorCode(error);
+      if (code) {
+        const status = code === "KEY_LIMIT_REACHED" ? 409
+          : code.startsWith("INVALID_") || code === "DUPLICATE_KEY" || code === "TOO_MANY_ORIGINS" ? 400 : 403;
+        return Response.json({ error: code }, { status });
+      }
+      return Response.json({ error: "INTERNAL_ERROR" }, { status: 500 });
+    }
+  }),
+});
+
 // Only the edge contact handler may write leads after its public abuse checks.
 http.route({
   path: "/leads/submit-contact",
@@ -468,6 +574,97 @@ http.route({
         return Response.json({ error: code }, { status: 422 });
       }
       return Response.json({ error: "CONTACT_STORAGE_FAILED" }, { status: 503 });
+    }
+  }),
+});
+
+// Agent feedback channel (#8721). Only the edge may write, after
+// admitFeedbackReport has charged the caller's buckets. The body is already
+// validated, sanitized, redacted, and hashed there; this checks shape only and
+// never echoes field content (threat model, Decision 7).
+const FEEDBACK_STRING_FIELDS = ["kind", "surfaceType", "surfaceName", "summary", "fingerprint", "retryKey", "reporterKey", "authKind"] as const;
+const FEEDBACK_OPTIONAL_STRING_FIELDS = ["expected", "actual", "requestId", "clientName", "principalId", "ipHash", "uaHash"] as const;
+const FEEDBACK_KINDS = new Set(["bug", "missing_capability", "data_quality", "security"]);
+const FEEDBACK_SURFACE_TYPES = new Set(["mcp_tool", "rpc", "other"]);
+const FEEDBACK_AUTH_KINDS = new Set(["anonymous", "keyed"]);
+
+async function requireConvexSharedSecret(request: Request): Promise<boolean> {
+  const expected = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+  const provided = request.headers.get("x-convex-shared-secret") ?? "";
+  return Boolean(expected) && await timingSafeEqualStrings(provided, expected);
+}
+
+http.route({
+  path: "/api/internal-submit-feedback",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await requireConvexSharedSecret(request))) {
+      return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+    const body = await parseJsonObjectBody<Record<string, unknown>>(request);
+    if (!body
+      || FEEDBACK_STRING_FIELDS.some((f) => typeof body[f] !== "string")
+      || FEEDBACK_OPTIONAL_STRING_FIELDS.some((f) => body[f] !== undefined && typeof body[f] !== "string")
+      || typeof body.redacted !== "boolean"
+      || !FEEDBACK_KINDS.has(body.kind as string)
+      || !FEEDBACK_SURFACE_TYPES.has(body.surfaceType as string)
+      || !FEEDBACK_AUTH_KINDS.has(body.authKind as string)) {
+      return Response.json({ error: "INVALID_FEEDBACK" }, { status: 400 });
+    }
+    const pick = (f: string) => body[f] as string | undefined;
+    try {
+      const result = await ctx.runMutation(internal.agentFeedback.submit, {
+        kind: body.kind as "bug" | "missing_capability" | "data_quality" | "security",
+        surfaceType: body.surfaceType as "mcp_tool" | "rpc" | "other",
+        surfaceName: body.surfaceName as string,
+        summary: body.summary as string,
+        expected: pick("expected"),
+        actual: pick("actual"),
+        requestId: pick("requestId"),
+        clientName: pick("clientName"),
+        redacted: body.redacted as boolean,
+        fingerprint: body.fingerprint as string,
+        retryKey: body.retryKey as string,
+        reporterKey: body.reporterKey as string,
+        authKind: body.authKind as "anonymous" | "keyed",
+        principalId: pick("principalId"),
+        ipHash: pick("ipHash"),
+        uaHash: pick("uaHash"),
+      });
+      return Response.json({ reportId: result.reportId, status: result.status, retried: result.retried });
+    } catch (error) {
+      const code = extractConvexErrorCode(error);
+      if (code === "rate_limited") return Response.json({ error: code }, { status: 429 });
+      // A deleted or deleting account is final, so the edge must not retry it.
+      if (code === "ACCOUNT_DELETION_IN_PROGRESS") return Response.json({ error: code }, { status: 403 });
+      if (code === "INVALID_FEEDBACK") {
+        const parsed = parseConvexErrorData(error) as { field?: unknown } | null;
+        const field = typeof parsed?.field === "string" ? parsed.field : undefined;
+        return Response.json({ error: code, field }, { status: 400 });
+      }
+      return Response.json({ error: "FEEDBACK_STORAGE_FAILED" }, { status: 503 });
+    }
+  }),
+});
+
+// Lets the edge return an earlier report for a retry before charging any
+// admission bucket (Decision 3).
+http.route({
+  path: "/api/internal-find-feedback-retry",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await requireConvexSharedSecret(request))) {
+      return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+    const body = await parseJsonObjectBody<{ retryKey?: unknown }>(request);
+    if (!body || typeof body.retryKey !== "string" || !/^[0-9a-f]{64}$/.test(body.retryKey)) {
+      return Response.json({ error: "INVALID_FEEDBACK", field: "retryKey" }, { status: 400 });
+    }
+    try {
+      const found = await ctx.runQuery(internal.agentFeedback.findRetry, { retryKey: body.retryKey });
+      return Response.json({ found });
+    } catch {
+      return Response.json({ error: "FEEDBACK_STORAGE_FAILED" }, { status: 503 });
     }
   }),
 });
@@ -1193,13 +1390,8 @@ http.route({
           if (code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED" || code === "CHOKEPOINTS_INVALID") {
             return new Response(JSON.stringify({ error: code }), { status: 400, headers: { "Content-Type": "application/json" } });
           }
-          if (code === "INCOMPATIBLE_DELIVERY") {
-            const parsed = parseConvexErrorData(err);
-            const message = (parsed && typeof parsed === "object")
-              ? (parsed as { message?: string }).message ?? ""
-              : "";
-            return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
-          }
+          const validation = alertRuleValidationResponse(err, ["INCOMPATIBLE_DELIVERY"]);
+          if (validation) return validation;
           throw err;
         }
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -1213,16 +1405,22 @@ http.route({
         if (body.quietHoursOverride !== undefined && !VALID_OVERRIDE.has(body.quietHoursOverride)) {
           return new Response(JSON.stringify({ error: "invalid quietHoursOverride" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        await ctx.runMutation((internal as any).alertRules.setQuietHoursForUser, {
-          userId,
-          variant: body.variant,
-          quietHoursEnabled: body.quietHoursEnabled,
-          quietHoursStart: body.quietHoursStart,
-          quietHoursEnd: body.quietHoursEnd,
-          quietHoursTimezone: body.quietHoursTimezone,
-          quietHoursOverride: body.quietHoursOverride as "critical_only" | "silence_all" | "batch_on_wake" | undefined,
-          countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
-        });
+        try {
+          await ctx.runMutation((internal as any).alertRules.setQuietHoursForUser, {
+            userId,
+            variant: body.variant,
+            quietHoursEnabled: body.quietHoursEnabled,
+            quietHoursStart: body.quietHoursStart,
+            quietHoursEnd: body.quietHoursEnd,
+            quietHoursTimezone: body.quietHoursTimezone,
+            quietHoursOverride: body.quietHoursOverride as "critical_only" | "silence_all" | "batch_on_wake" | undefined,
+            countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
+          });
+        } catch (err: unknown) {
+          const validation = alertRuleValidationResponse(err, ["COUNTRIES_LIMIT_EXCEEDED"]);
+          if (validation) return validation;
+          throw err;
+        }
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
@@ -1234,14 +1432,20 @@ http.route({
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        await ctx.runMutation((internal as any).alertRules.setDigestSettingsForUser, {
-          userId,
-          variant: body.variant,
-          digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly",
-          digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
-          digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
-          countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
-        });
+        try {
+          await ctx.runMutation((internal as any).alertRules.setDigestSettingsForUser, {
+            userId,
+            variant: body.variant,
+            digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly",
+            digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
+            digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
+            countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
+          });
+        } catch (err: unknown) {
+          const validation = alertRuleValidationResponse(err, ["COUNTRIES_LIMIT_EXCEEDED", "INCOMPATIBLE_DELIVERY"]);
+          if (validation) return validation;
+          throw err;
+        }
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
@@ -1303,9 +1507,10 @@ http.route({
           const message = (parsed && typeof parsed === "object")
             ? (parsed as { message?: string }).message ?? ""
             : "";
-          if (code === "INCOMPATIBLE_DELIVERY" || code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED" || code === "CHOKEPOINTS_INVALID") {
-            return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
-          }
+          const validation = alertRuleValidationResponse(err, [
+            "INCOMPATIBLE_DELIVERY", "TICKERS_LIMIT_EXCEEDED", "COUNTRIES_LIMIT_EXCEEDED", "CHOKEPOINTS_INVALID",
+          ]);
+          if (validation) return validation;
           if (code === "PRO_REQUIRED") {
             // 402 Payment Required — the canonical HTTP status for paywall-gated
             // content. Client reads `error: "PRO_REQUIRED"` to route to the
@@ -1336,8 +1541,31 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
-    const rules = await ctx.runQuery((internal as any).alertRules.getDigestRules);
+    const rules = await collectPages((cursor) =>
+      ctx.runQuery((internal as any).alertRules.getDigestRules, { cursor }));
     return new Response(JSON.stringify(rules), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// Service-to-service: the digest cron fetches paid users who need a default
+// in-app brief (no digest rule of their own). Returns user ids only.
+http.route({
+  path: "/relay/brief-only-users",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
+    // One clock read for the whole scan: every page must run the same query.
+    const now = Date.now();
+    const [paidUserIds, flags] = await Promise.all([
+      collectPages<string>((cursor) => ctx.runQuery((internal as any).alertRules.listPaidUserIds, { cursor, now })),
+      collectPages<BriefRuleFlags>((cursor) => ctx.runQuery((internal as any).alertRules.listBriefRuleFlags, { cursor })),
+    ]);
+    const userIds = briefOnlyUserIds(paidUserIds, flags);
+    return new Response(JSON.stringify(userIds), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -1362,10 +1590,8 @@ http.route({
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
     const enabled = new URL(request.url).searchParams.get("enabled") !== "false";
-    const rules = await ctx.runQuery(
-      (internal as any).alertRules.getByEnabled,
-      { enabled },
-    );
+    const rules = await collectPages((cursor) =>
+      ctx.runQuery((internal as any).alertRules.getByEnabled, { enabled, cursor }));
     return new Response(JSON.stringify(rules), {
       status: 200,
       headers: { "Content-Type": "application/json" },

@@ -110,10 +110,6 @@ function alertNeedsTranslation(alert: OrefAlert): boolean {
   return hasHebrew(alert.title) || alert.data.some(hasHebrew) || hasHebrew(alert.desc);
 }
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 const OREF_LABEL_RE = /(?:ALERT|AREAS|DESC)\[[^\]]*\]:\s*/g;
 
 function stripOrefLabels(text: string): string {
@@ -122,58 +118,57 @@ function stripOrefLabels(text: string): string {
 
 export { stripOrefLabels };
 
-function buildTranslationPrompt(alerts: OrefAlert[]): string {
-  const lines: string[] = [];
-  for (const a of alerts) {
-    lines.push(`ALERT[${a.id}]: ${a.title || '(none)'}`);
-    lines.push(`AREAS[${a.id}]: ${a.data.join(', ') || '(none)'}`);
-    lines.push(`DESC[${a.id}]: ${a.desc || '(none)'}`);
-  }
-  return 'Translate each line from Hebrew to English. Keep the ALERT/AREAS/DESC labels and IDs exactly as-is. Only translate the text after the colon.\n' + lines.join('\n');
+// Translate treats its text as data and translates it literally, so OREF sends
+// each Hebrew string the dictionary and location map cannot cover as its own
+// plain-text request (server-cached per string), and keeps the static
+// translation when the LLM has no usable answer. Each string is sent at most
+// once per session; null records a failed attempt.
+const MAX_LLM_STRINGS_PER_PASS = 8;
+const MAX_STRING_TRANSLATIONS = 500;
+const MAX_LLM_STRING_LEN = 500;
+const stringTranslations = new Map<string, string | null>();
+
+function staticTranslateArea(text: string): string {
+  const translated = staticTranslate(text);
+  return locationTranslator ? locationTranslator(translated) : translated;
 }
 
-function parseTranslationResponse(raw: string, alerts: OrefAlert[]): void {
-  const lines = raw.split('\n');
-  for (const alert of alerts) {
-    const eid = escapeRegExp(alert.id);
-    const reAlert = new RegExp(`ALERT\\[${eid}\\]:\\s*(.+)`);
-    const reAreas = new RegExp(`AREAS\\[${eid}\\]:\\s*(.+)`);
-    const reDesc = new RegExp(`DESC\\[${eid}\\]:\\s*(.+)`);
-    let title: string | null = null;
-    let areas: string[] | null = null;
-    let desc: string | null = null;
-    for (const line of lines) {
-      const alertMatch = line.match(reAlert);
-      if (alertMatch?.[1]) title = alertMatch[1].trim();
-      const areasMatch = line.match(reAreas);
-      if (areasMatch?.[1]) areas = areasMatch[1].split(',').map(s => s.trim());
-      const descMatch = line.match(reDesc);
-      if (descMatch?.[1]) desc = descMatch[1].trim();
-    }
-    if (title === null && areas === null && desc === null) continue;
-    const entry = {
-      title: stripOrefLabels(title && !hasHebrew(title) ? title : staticTranslate(alert.title)),
-      data: (areas && !areas.some(hasHebrew) ? areas : alert.data.map(d => locationTranslator ? locationTranslator(staticTranslate(d)) : staticTranslate(d))).map(stripOrefLabels),
-      desc: stripOrefLabels(desc && !hasHebrew(desc) ? desc : staticTranslate(alert.desc)),
-    };
-    translationCache.set(alert.id, entry);
-  }
-  if (translationCache.size > MAX_TRANSLATION_CACHE) {
-    const excess = translationCache.size - MAX_TRANSLATION_CACHE;
-    const iter = translationCache.keys();
-    for (let i = 0; i < excess; i++) {
-      const k = iter.next().value;
-      if (k !== undefined) translationCache.delete(k);
-    }
+function untranslatedString(text: string, fallback: (s: string) => string): string | null {
+  if (!text || !hasHebrew(fallback(text))) return null;
+  return sanitizeHebrew(text);
+}
+
+function pendingStrings(alert: OrefAlert): string[] {
+  return [
+    untranslatedString(alert.title, staticTranslate),
+    ...alert.data.map(d => untranslatedString(d, staticTranslateArea)),
+    untranslatedString(alert.desc, staticTranslate),
+  ].filter((s): s is string => s !== null);
+}
+
+function resolveString(text: string, fallback: (s: string) => string): string {
+  const viaStatic = fallback(text);
+  if (!text || !hasHebrew(viaStatic)) return viaStatic;
+  return stringTranslations.get(sanitizeHebrew(text)) ?? viaStatic;
+}
+
+function trimOldest<K, V>(map: Map<K, V>, max: number): void {
+  const iter = map.keys();
+  while (map.size > max) {
+    const k = iter.next().value;
+    if (k === undefined) break;
+    map.delete(k);
   }
 }
 
+// Uses every per-string answer already in hand, so an alert whose remaining
+// strings wait for a later pass still shows the ones that are done.
 function translateFields(alert: OrefAlert): OrefAlert {
   return {
     ...alert,
-    title: staticTranslate(alert.title),
-    data: alert.data.map(d => locationTranslator ? locationTranslator(staticTranslate(d)) : staticTranslate(d)),
-    desc: staticTranslate(alert.desc),
+    title: resolveString(alert.title, staticTranslate),
+    data: alert.data.map(d => resolveString(d, staticTranslateArea)),
+    desc: resolveString(alert.desc, staticTranslate),
   };
 }
 
@@ -204,12 +199,36 @@ async function translateAlerts(alerts: OrefAlert[]): Promise<boolean> {
   let translated = false;
   translationPromise = (async () => {
     try {
-      const prompt = buildTranslationPrompt(untranslated);
-      const result = await translateText(prompt, 'en');
-      if (result) {
-        parseTranslationResponse(result, untranslated);
-        translated = true;
+      const batch = [...new Set(untranslated.flatMap(pendingStrings))]
+        .filter(text => !stringTranslations.has(text))
+        .slice(0, MAX_LLM_STRINGS_PER_PASS);
+      const results = await Promise.all(batch.map(async (text) => {
+        if (text.length > MAX_LLM_STRING_LEN) return [text, null] as const;
+        try {
+          return [text, await translateText(text, 'en')] as const;
+        } catch (e) {
+          console.warn('OREF alert translation failed', e);
+          return [text, null] as const;
+        }
+      }));
+      for (const [text, result] of results) {
+        const answer = result?.trim() ?? '';
+        const usable = answer.length > 0 && !hasHebrew(answer);
+        stringTranslations.set(text, usable ? answer : null);
+        if (usable) translated = true;
       }
+      trimOldest(stringTranslations, MAX_STRING_TRANSLATIONS);
+      // An alert is settled once every string it needs has been attempted;
+      // the rest wait for a later pass.
+      for (const alert of untranslated) {
+        if (pendingStrings(alert).some(text => !stringTranslations.has(text))) continue;
+        translationCache.set(alert.id, {
+          title: resolveString(alert.title, staticTranslate),
+          data: alert.data.map(d => resolveString(d, staticTranslateArea)),
+          desc: resolveString(alert.desc, staticTranslate),
+        });
+      }
+      trimOldest(translationCache, MAX_TRANSLATION_CACHE);
     } catch (e) {
       console.warn('OREF alert translation failed', e);
     } finally {

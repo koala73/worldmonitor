@@ -86,6 +86,25 @@ describe('LeadsService.submitContact', () => {
       );
     });
 
+    it('rejects an over-long email before the format regex runs', async () => {
+      globalThis.fetch = async (url) => {
+        if (typeof url === 'string' && url.includes('turnstile')) return new Response(JSON.stringify({ success: true }));
+        return new Response('{}');
+      };
+      // 'a@' + dots + '@' backtracks super-linearly in the format regex.
+      const email = 'a@' + '.'.repeat(64 * 1024) + '@';
+      const started = performance.now();
+      await assert.rejects(
+        () => submitContact(makeCtx(), validReq({ email })),
+        (err) => err instanceof ValidationError && err.violations[0].field === 'email',
+      );
+      assert.ok(performance.now() - started < 250, `took ${performance.now() - started}ms`);
+      await assert.rejects(
+        () => submitContact(makeCtx(), validReq({ email: `${'a'.repeat(243)}@example.com` })),
+        (err) => err instanceof ValidationError && err.violations[0].field === 'email',
+      );
+    });
+
     it('rejects missing name', async () => {
       globalThis.fetch = async (url) => {
         if (typeof url === 'string' && url.includes('turnstile')) return new Response(JSON.stringify({ success: true }));

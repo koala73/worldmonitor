@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { retainLastFailure } from './_last-failure.mjs';
 import {
   loadEnvFile,
   CHROME_UA,
@@ -254,8 +255,14 @@ export function buildInsightsFreshnessMetaPatch({
       && boundedSignature === (previous.failedStoriesSignature ?? null)
     : false;
 
+  const lastFailure = retainLastFailure(previous.lastFailure,
+    outcome === INSIGHTS_RUN_OUTCOMES.PUBLISHED ? null : {
+      checkedAt: now, lastSuccessAt: previous.lastSuccessAt, errorCode: failureCodeForMeta,
+    });
+
   if (outcome === INSIGHTS_RUN_OUTCOMES.PUBLISHED) {
     return {
+      lastFailure,
       lastAttemptAt: now,
       lastSuccessAt: now,
       servedGeneratedAt: servedAt,
@@ -269,6 +276,7 @@ export function buildInsightsFreshnessMetaPatch({
   }
 
   return {
+    lastFailure,
     lastAttemptAt: now,
     lastSuccessAt: Number.isFinite(previous.lastSuccessAt) ? previous.lastSuccessAt : null,
     servedGeneratedAt: servedAt,

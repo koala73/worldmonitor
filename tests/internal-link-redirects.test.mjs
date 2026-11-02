@@ -385,7 +385,9 @@ function authoredLinkTargets(source) {
   ];
 }
 
-const WELCOME_HREF = /href[=:]\s*[{`'"]*((?:\$\{DASHBOARD_PATH\}|DASHBOARD_PATH|https:\/\/[a-z.]*worldmonitor\.app|\/)(?:[^`'"\s,}]|\s*\+\s*['"][^'"]*['"])*)/g;
+// `[hH]ref` also catches suffixed keys such as TaskRoutes' `workflowHref:`, which a
+// lowercase-only match skipped while the links shipped unscanned.
+const WELCOME_HREF = /[hH]ref[=:]\s*[{`'"]*((?:\$\{DASHBOARD_PATH\}|DASHBOARD_PATH|https:\/\/[a-z.]*worldmonitor\.app|\/)(?:[^`'"\s,}]|\s*\+\s*['"][^'"]*['"])*)/g;
 
 /** Turn a welcome JSX href into the URL a browser would open. */
 function expandWelcomeHref(raw) {
@@ -654,7 +656,7 @@ describe('internal links never redirect or 404 (#8603)', () => {
     const sectionFiles = readdirSync(welcomeDir).filter((file) => file.endsWith('.tsx'));
     assert.ok(sectionFiles.length > 0, 'expected welcome section sources to scan');
     // WelcomeApp renders Footer and LegalFooterNav outside pro-test/src/welcome.
-    // PressFooterNav is third-party press URLs and stays out.
+    // PressNav is third-party press URLs and stays out.
     const files = [
       ...sectionFiles.map((file) => `pro-test/src/welcome/${file}`),
       'pro-test/src/components/Footer.tsx',
@@ -706,11 +708,11 @@ describe('internal links never redirect or 404 (#8603)', () => {
     // twelve dashboard CTAs by shape; this pins every welcome href by URL
     // semantics, which is what catches a bare variant host or a redirect
     // source that a tail-only shape check cannot see.
-    // 34 welcome-section hrefs, 11 Footer anchors (including status.worldmonitor.app
+    // 38 welcome-section hrefs, 11 Footer anchors (including status.worldmonitor.app
     // and the author byline),
     // and the 5 LEGAL_FOOTER_LINKS paths. Exact, so a footer href that drops
     // out of the scan does not hide behind the section count.
-    assert.equal(scanned, 50, `expected every welcome same-site href to be scanned, saw ${scanned}`);
+    assert.equal(scanned, 54, `expected every welcome same-site href to be scanned, saw ${scanned}`);
     assert.deepEqual(violations, [], `${violations.length} welcome links do not answer 200:\n${violations.join('\n')}`);
   });
 

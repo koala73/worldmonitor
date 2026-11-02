@@ -113,7 +113,7 @@ export const internetOutagesPage = Object.freeze({
   slug: 'internet-outages',
   path: '/tools/internet-outages/',
   statusPath: '/api/infrastructure/v1/list-internet-outages?public=1',
-  title: 'Internet Outages Today: Country-Level Disruptions Worldwide | World Monitor',
+  title: 'Internet Outages Today by Country | World Monitor',
   h1: 'Internet outages around the world',
   question: 'Where is the internet down right now?',
   description: 'Current internet disruptions worldwide from Cloudflare Radar: the country, how wide each outage is, its cause, and whether it is still ongoing, updated live.',

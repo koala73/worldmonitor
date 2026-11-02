@@ -199,7 +199,7 @@ GPS 干扰和欺骗 — 在冲突区域越来越多地被用作电子战 — 通
 
 `listFeedDigest` RPC 端点将所有源在服务端聚合成单个分类响应，而不是让每个客户端浏览器通过单独的边缘函数调用独立获取数十个 RSS 源。
 
-下面的公开服务端摘要源清单以 `server/worldmonitor/news/v1/_feeds.ts` 为来源依据；该代码文件仍是精确 URL、Google News 查询封装和特定区域 URL 参数的权威来源。源选择在此刻意可见，以便区域覆盖、官方来源纳入以及诸如 `Trump - Truth Social` 等政治敏感纳入项可供审阅，而非隐藏在一个通用的"RSS"标签之后。按语言限定的源以其语言代码标记，仅当请求语言匹配时才纳入。`full` 变体还在 `intel` 类别下追加 `INTEL_SOURCES`。
+下面的公开服务端摘要源清单以 `shared/news-catalog.json`（各信息源的服务端放置）为来源依据；该目录是精确 URL、Google News 查询封装和特定区域 URL 参数的权威来源。源选择在此刻意可见，以便区域覆盖、官方来源纳入以及诸如 `Trump - Truth Social` 等政治敏感纳入项可供审阅，而非隐藏在一个通用的"RSS"标签之后。按语言限定的源以其语言代码标记，仅当请求语言匹配时才纳入。`full` 变体还在 `intel` 类别下追加 `INTEL_SOURCES`。
 
 | 变体 | 类别 | 服务端源 |
 | --- | --- | --- |
@@ -511,6 +511,7 @@ IOC 分为四种类型（`c2_server`、`malware_host`、`phishing`、`malicious_
 | USGS Earthquake Hazards | 全球地震活动 | [earthquake.usgs.gov](https://earthquake.usgs.gov) |
 | Earthquakes Canada (NRCan) | 加拿大国家地震公报（Atom） | [earthquakescanada.nrcan.gc.ca](https://www.earthquakescanada.nrcan.gc.ca/index-en.php?tpl_region=canada) |
 | NASA FIRMS | 近实时野火/火灾探测（VIIRS） | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov) |
+| Copernicus Sentinel-5P TROPOMI | 对流层 NO2 柱浓度，按日聚合到 167 个国家与 32 个工业集群，作为同比活动方向（Sentinel Hub Statistical API）。包含经修改的 Copernicus Sentinel 数据。 | [dataspace.copernicus.eu](https://dataspace.copernicus.eu) |
 | NASA EONET | 自然事件 — 风暴、火山、洪水 | [eonet.gsfc.nasa.gov](https://eonet.gsfc.nasa.gov) |
 | GDACS | 联合国协调的全球灾害警报 | [gdacs.org](https://www.gdacs.org) |
 | 香港天文台 | 本地热带气旋警告信号 | [data.weather.gov.hk](https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en) |

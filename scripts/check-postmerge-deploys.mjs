@@ -78,6 +78,7 @@ export const MONITORED_WORKFLOWS = Object.freeze([
       'shared/checkout-errors.ts',
       'shared/chokepoint-alert-ids.ts',
       'shared/cloud-preferences-contract.ts',
+      'shared/alert-rule-shape.ts',
       'shared/pinned-webcams.ts',
       'shared/mcp-attribution.ts',
       'shared/company-monitoring-contract.ts',

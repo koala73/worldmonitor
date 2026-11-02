@@ -333,8 +333,8 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
   // Browser tester keys — validateApiKey returns required:false for trusted origins
   // even when a valid key is present, so we check the header directly first.
   const wmKey =
-    request.headers.get('X-WorldMonitor-Key') ??
-    request.headers.get('X-Api-Key') ??
+    request.headers.get('X-WorldMonitor-Key') ||
+    request.headers.get('X-Api-Key') ||
     '';
   // Set when the wm_-key lookup could not COMPLETE (below). Read only at the
   // terminal fall-through, so a co-present bearer still wins if it resolves.
