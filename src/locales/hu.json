@@ -3101,6 +3101,66 @@
       "partial": "Néhány jelentés hiányzik vagy régi",
       "stale": "Régebbi adatok",
       "global": "A FAO globális havi indexe"
+    },
+    "aboutYou": {
+      "title": "Segítsd a World Monitor fejlesztését az én irányításommal",
+      "ariaLabel": "Rólad",
+      "progress": "{{current}} / {{total}}",
+      "skip": "Kihagyás",
+      "close": "Bezárás",
+      "done": "Kész",
+      "saving": "Mentés…",
+      "saveFailed": "Nem sikerült elmenteni. Próbáld újra.",
+      "retry": "Újrapróbálkozás",
+      "thanks": "Köszönjük. Ez segít dönteni, mit építsünk majd.",
+      "questions": {
+        "primaryUse": {
+          "label": "Mire használod elsősorban a World Monitor-t?",
+          "options": {
+            "news": "Hírek és világesemények",
+            "markets": "Piacok és kereskedés",
+            "commodities": "Árucikkek és ellátási lánc",
+            "travel": "Utazás és járatok",
+            "security": "Biztonság és OSINT",
+            "research": "Kutatás és újságírás",
+            "api-agent": "API vagy AI-ügynök fejlesztése",
+            "other": "Valami más"
+          }
+        },
+        "usageContext": {
+          "label": "Munkához vagy személyes használathoz?",
+          "options": {
+            "personal": "Személyes",
+            "work": "Munka"
+          }
+        },
+        "payer": {
+          "label": "Ki fizeti vagy fizetne érte?",
+          "options": {
+            "self": "Én",
+            "employer": "A munkáltatóm vagy a csapatomat",
+            "not-paying": "Még senki"
+          }
+        },
+        "role": {
+          "label": "Melyik jellemzi legjobban a szerepedet?",
+          "options": {
+            "analyst": "Elemző vagy kutató",
+            "trader": "Kereskedő vagy befektető",
+            "journalist": "Újságíró",
+            "security": "Biztonság vagy kockázat",
+            "government": "Kormányzati vagy politikai",
+            "supply-chain": "Ellátási lánc vagy műveletek",
+            "developer": "Fejlesztő",
+            "student": "Hallgató",
+            "other": "Egyéb"
+          }
+        },
+        "alternative": {
+          "label": "Mit használnál, ha a World Monitor nem lenne?",
+          "placeholder": "Opcionális"
+        }
+      }
     }
   },
   "popups": {

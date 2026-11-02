@@ -94,6 +94,7 @@ import {
   trackGateHit,
   trackLayoutCustomized,
 } from '@/services/analytics';
+import { decideAboutYouPrompt, waitForActivationPromptDecision } from '@/services/onboarding-prompt';
 import { detectPlatform, allButtons, buttonsForPlatform } from '@/components/DownloadBanner';
 import type { Platform } from '@/components/DownloadBanner';
 import { isOpenableExternalUrl, openExternalUrl } from '@/services/external-navigation';
@@ -151,6 +152,29 @@ import {
 } from '@/app/responsive-zone-listener';
 import { stageVariantSelection } from '@/services/variant-panel-ownership';
 import { transferSourceGateOwnershipToUser as releaseSourceGateOwnership } from '@/services/source-cap';
+
+/** Bound on each wait before the About-you card abstains for this load. */
+const ABOUT_YOU_WAIT_MS = 8_000;
+
+/** The signed-in user id once auth settles, or null (signed out or timeout). */
+function waitForSettledUserId(timeoutMs: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    let done = false;
+    let unsubscribe: (() => void) | null = null;
+    const finish = (userId: string | null): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      queueMicrotask(() => unsubscribe?.());
+      resolve(userId);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    unsubscribe = subscribeAuthState((state) => {
+      if (!state.isPending) finish(state.user?.id ?? null);
+    });
+    if (done) unsubscribe();
+  });
+}
 
 function readStorageValue(key: string): string | null {
   try {
@@ -936,6 +960,49 @@ export class EventHandlerManager implements AppModule {
         this.openMissionPresetPopover(document.getElementById('missionPresetBtn'), false, 'auto');
       });
     }
+    // One onboarding prompt per load (KTD6): the mission picker owns a
+    // brand-new desktop visitor's first load; the About-you card waits.
+    if (!shouldPrompt) scheduleAfterFirstPaint(() => void this.maybeOpenAboutYouCard());
+  }
+
+  /**
+   * Open the About-you card when the signed-in account has not answered or
+   * skipped, or owes its one return visit (R19). Waits for auth to settle, the
+   * profile status, and the Pro activation decision, each bounded; any
+   * timeout or unknown abstains until the next load.
+   */
+  private async maybeOpenAboutYouCard(): Promise<void> {
+    const userId = await waitForSettledUserId(ABOUT_YOU_WAIT_MS);
+    if (!userId || this.ctx.isDestroyed) return;
+    const profile = await import('@/services/audience-profile');
+    const [status, activation] = await Promise.all([
+      profile.loadAboutYouStatus(userId),
+      waitForActivationPromptDecision(ABOUT_YOU_WAIT_MS),
+    ]);
+    const stillCurrent = (): boolean => !this.ctx.isDestroyed && getAuthState().user?.id === userId;
+    if (!stillCurrent()) return;
+    const decision = decideAboutYouPrompt({
+      signedIn: true,
+      status,
+      activation,
+      missionPickerDue: false,
+      modalOpen: isModalOpen(document),
+    });
+    if (decision.kind === 'none') return;
+    const { mountAboutYouCard } = await import('@/components/AboutYouCard');
+    if (!stillCurrent() || isModalOpen(document)) return;
+    mountAboutYouCard({
+      mode: decision.mode,
+      questions: decision.questions,
+      surface: 'dashboard',
+      deps: {
+        recordAnswer: (questionId, optionId) => profile.recordAboutYouAnswer(userId, questionId, optionId, 'dashboard'),
+        recordFreeText: (text) => profile.recordAboutYouFreeText(userId, text, 'dashboard'),
+        skip: () => profile.skipAboutYou(userId, 'dashboard'),
+        markReturnShown: () => profile.markAboutYouReturnShown(userId),
+        track: (event, data) => track(event, data),
+      },
+    });
   }
 
   private renderMissionPresetControl(): void {

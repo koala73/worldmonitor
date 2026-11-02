@@ -3128,6 +3128,66 @@
       "partial": "Neka izvješća nedostaju ili su stara",
       "stale": "Stariji podaci",
       "global": "Globalni mjesečni indeks FAO-a"
+    },
+    "aboutYou": {
+      "title": "Pomozite nam graditi World Monitor za vas",
+      "ariaLabel": "O vama",
+      "progress": "{{current}} od {{total}}",
+      "skip": "Preskoči",
+      "close": "Zatvori",
+      "done": "Gotovo",
+      "saving": "Spremanje…",
+      "saveFailed": "Nisam mogao to spremiti. Pokušajte ponovno.",
+      "retry": "Pokušaj ponovno",
+      "thanks": "Hvala. Ovo nam pomaže odlučiti što dalje graditi.",
+      "questions": {
+        "primaryUse": {
+          "label": "Za što primarno koristite World Monitor?",
+          "options": {
+            "news": "Vijesti i svjetski eventi",
+            "markets": "Tržišta i trgovanje",
+            "commodities": "Robe i dobavni lanac",
+            "travel": "Putovanje i letovi",
+            "security": "Sigurnost i OSINT",
+            "research": "Istraživanje i novinarstvo",
+            "api-agent": "Razvoj s API-jem ili AI agentom",
+            "other": "Nešto drugo"
+          }
+        },
+        "usageContext": {
+          "label": "Koristite li ga za posao ili osobnu upotrebu?",
+          "options": {
+            "personal": "Osobna",
+            "work": "Posao"
+          }
+        },
+        "payer": {
+          "label": "Tko plaća ili bi platio za to?",
+          "options": {
+            "self": "Ja",
+            "employer": "Moj poslodavac ili tim",
+            "not-paying": "Još nitko"
+          }
+        },
+        "role": {
+          "label": "Koja najbolje opisuje vašu ulogu?",
+          "options": {
+            "analyst": "Analitičar ili istraživač",
+            "trader": "Trgovac ili investitor",
+            "journalist": "Novinar",
+            "security": "Sigurnost ili rizik",
+            "government": "Državni ili politički sektor",
+            "supply-chain": "Dobavni lanac ili operacije",
+            "developer": "Programer",
+            "student": "Студент",
+            "other": "Ostalo"
+          }
+        },
+        "alternative": {
+          "label": "Što biste koristili da World Monitor ne postoji?",
+          "placeholder": "Opcionalno"
+        }
+      }
     }
   },
   "popups": {

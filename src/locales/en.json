@@ -2758,6 +2758,66 @@
       "retrying": "Retrying…",
       "dismiss": "Dismiss"
     },
+    "aboutYou": {
+      "title": "Help us build World Monitor for you",
+      "ariaLabel": "About you",
+      "progress": "{{current}} of {{total}}",
+      "skip": "Skip",
+      "close": "Close",
+      "done": "Done",
+      "saving": "Saving…",
+      "saveFailed": "Couldn't save that. Try again.",
+      "retry": "Retry",
+      "thanks": "Thanks. This helps us decide what to build next.",
+      "questions": {
+        "primaryUse": {
+          "label": "What do you mainly use World Monitor for?",
+          "options": {
+            "news": "News and world events",
+            "markets": "Markets and trading",
+            "commodities": "Commodities and supply chain",
+            "travel": "Travel and flights",
+            "security": "Security and OSINT",
+            "research": "Research and journalism",
+            "api-agent": "Building with the API or an AI agent",
+            "other": "Something else"
+          }
+        },
+        "usageContext": {
+          "label": "Do you use it for work or personal use?",
+          "options": {
+            "personal": "Personal",
+            "work": "Work"
+          }
+        },
+        "payer": {
+          "label": "Who pays, or would pay, for it?",
+          "options": {
+            "self": "I do",
+            "employer": "My employer or team",
+            "not-paying": "Nobody yet"
+          }
+        },
+        "role": {
+          "label": "Which best describes your role?",
+          "options": {
+            "analyst": "Analyst or researcher",
+            "trader": "Trader or investor",
+            "journalist": "Journalist",
+            "security": "Security or risk",
+            "government": "Government or policy",
+            "supply-chain": "Supply chain or operations",
+            "developer": "Developer",
+            "student": "Student",
+            "other": "Other"
+          }
+        },
+        "alternative": {
+          "label": "What would you use if World Monitor didn't exist?",
+          "placeholder": "Optional"
+        }
+      }
+    },
     "proActivation": {
       "badge": "PRO",
       "progress": "Step {{current}} of {{total}}",

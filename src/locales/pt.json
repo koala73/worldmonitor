@@ -2666,6 +2666,66 @@
       "partial": "Alguns relatórios faltam ou são antigos",
       "stale": "Dados antigos",
       "global": "Índice mensal global da FAO"
+    },
+    "aboutYou": {
+      "title": "Ajude-nos a criar World Monitor para você",
+      "ariaLabel": "Sobre você",
+      "progress": "{{current}} de {{total}}",
+      "skip": "Pular",
+      "close": "Fechar",
+      "done": "Pronto",
+      "saving": "Salvando…",
+      "saveFailed": "Não foi possível salvar. Tente novamente.",
+      "retry": "Tentar novamente",
+      "thanks": "Obrigado. Isso nos ajuda a decidir o que construir a seguir.",
+      "questions": {
+        "primaryUse": {
+          "label": "Para que você usa principalmente World Monitor?",
+          "options": {
+            "news": "Notícias e eventos mundiais",
+            "markets": "Mercados e operações",
+            "commodities": "Commodities e cadeia de suprimentos",
+            "travel": "Viagens e voos",
+            "security": "Segurança e OSINT",
+            "research": "Pesquisa e jornalismo",
+            "api-agent": "Desenvolver com a API ou um agente de IA",
+            "other": "Outro motivo"
+          }
+        },
+        "usageContext": {
+          "label": "Você usa para trabalho ou uso pessoal?",
+          "options": {
+            "personal": "Pessoal",
+            "work": "Trabalho"
+          }
+        },
+        "payer": {
+          "label": "Quem paga, ou pagaria, por isso?",
+          "options": {
+            "self": "Eu mesmo",
+            "employer": "Meu empregador ou equipe",
+            "not-paying": "Ninguém ainda"
+          }
+        },
+        "role": {
+          "label": "Qual melhor descreve seu cargo?",
+          "options": {
+            "analyst": "Analista ou pesquisador",
+            "trader": "Trader ou investidor",
+            "journalist": "Jornalista",
+            "security": "Segurança ou gerenciamento de risco",
+            "government": "Governo ou política",
+            "supply-chain": "Cadeia de suprimentos ou operações",
+            "developer": "Desenvolvedor",
+            "student": "Estudante",
+            "other": "Outro"
+          }
+        },
+        "alternative": {
+          "label": "O que você usaria se World Monitor não existisse?",
+          "placeholder": "Opcional"
+        }
+      }
     }
   },
   "popups": {

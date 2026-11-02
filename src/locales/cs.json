@@ -3072,6 +3072,66 @@
       "partial": "Některé zprávy chybí nebo jsou staré",
       "stale": "Starší data",
       "global": "Globální měsíční index FAO"
+    },
+    "aboutYou": {
+      "title": "Pomozte nám vytvořit World Monitor pro vás",
+      "ariaLabel": "O vás",
+      "progress": "{{current}} z {{total}}",
+      "skip": "Přeskočit",
+      "close": "Zavřít",
+      "done": "Hotovo",
+      "saving": "Ukládám…",
+      "saveFailed": "Nepodařilo se to uložit. Zkuste znovu.",
+      "retry": "Zkusit znovu",
+      "thanks": "Děkujeme. Pomáhá nám to rozhodovat se, co budeme vyvíjet dál.",
+      "questions": {
+        "primaryUse": {
+          "label": "K čemu World Monitor především používáte?",
+          "options": {
+            "news": "Zprávy a světové události",
+            "markets": "Trhy a obchodování",
+            "commodities": "Komodity a dodavatelský řetězec",
+            "travel": "Cestování a lety",
+            "security": "Bezpečnost a OSINT",
+            "research": "Výzkum a novinárina",
+            "api-agent": "Vývoj s API nebo AI agentem",
+            "other": "Něco jiného"
+          }
+        },
+        "usageContext": {
+          "label": "Používáte to pro práci nebo osobní účely?",
+          "options": {
+            "personal": "Osobní",
+            "work": "Práce"
+          }
+        },
+        "payer": {
+          "label": "Kdo to platí, nebo by to platil?",
+          "options": {
+            "self": "Já sám",
+            "employer": "Můj zaměstnavatel nebo tým",
+            "not-paying": "Zatím nikdo"
+          }
+        },
+        "role": {
+          "label": "Která role vás nejlépe popisuje?",
+          "options": {
+            "analyst": "Analytik nebo výzkumný pracovník",
+            "trader": "Obchodník nebo investor",
+            "journalist": "Novinář",
+            "security": "Bezpečnost nebo řízení rizik",
+            "government": "Vláda nebo politika",
+            "supply-chain": "Dodavatelský řetězec nebo operace",
+            "developer": "Vývojář",
+            "student": "Student",
+            "other": "Jiné"
+          }
+        },
+        "alternative": {
+          "label": "Co byste používali, kdyby World Monitor neexistoval?",
+          "placeholder": "Volitelné"
+        }
+      }
     }
   },
   "popups": {

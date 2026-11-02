@@ -3052,6 +3052,66 @@
       "partial": "Unele rapoarte lipsesc sau sunt vechi",
       "stale": "Date mai vechi",
       "global": "Indicele lunar global FAO"
+    },
+    "aboutYou": {
+      "title": "Ajută-ne să construim World Monitor pentru tine",
+      "ariaLabel": "Despre tine",
+      "progress": "{{current}} din {{total}}",
+      "skip": "Omite",
+      "close": "Închide",
+      "done": "Gata",
+      "saving": "Se salvează…",
+      "saveFailed": "Nu am putut salva. Încearcă din nou.",
+      "retry": "Încearcă din nou",
+      "thanks": "Mulțumim. Asta ne ajută să decidem ce să construim în continuare.",
+      "questions": {
+        "primaryUse": {
+          "label": "Pentru ce folosești în principal World Monitor?",
+          "options": {
+            "news": "Știri și evenimente mondiale",
+            "markets": "Piețe și tranzacționare",
+            "commodities": "Mărfuri și lanț de aprovizionare",
+            "travel": "Călătorii și zboruri",
+            "security": "Securitate și OSINT",
+            "research": "Cercetare și jurnalism",
+            "api-agent": "Construire cu API-ul sau un agent AI",
+            "other": "Altceva"
+          }
+        },
+        "usageContext": {
+          "label": "O folosești pentru muncă sau în scop personal?",
+          "options": {
+            "personal": "Personal",
+            "work": "Muncă"
+          }
+        },
+        "payer": {
+          "label": "Cine plătește sau ar plăti pentru ea?",
+          "options": {
+            "self": "Eu",
+            "employer": "Angajatorul sau echipa mea",
+            "not-paying": "Nimeni deocamdată"
+          }
+        },
+        "role": {
+          "label": "Care dintre acestea îți descrie cel mai bine rolul?",
+          "options": {
+            "analyst": "Analist sau cercetător",
+            "trader": "Trader sau investitor",
+            "journalist": "Jurnalist",
+            "security": "Securitate sau risc",
+            "government": "Guvern sau politică",
+            "supply-chain": "Lanț de aprovizionare sau operațiuni",
+            "developer": "Dezvoltator",
+            "student": "Student",
+            "other": "Altul"
+          }
+        },
+        "alternative": {
+          "label": "Ce ai folosi dacă World Monitor nu ar exista?",
+          "placeholder": "Opțional"
+        }
+      }
     }
   },
   "popups": {

@@ -3012,6 +3012,66 @@
       "partial": "部分报告不可用或已过时",
       "stale": "较早数据",
       "global": "粮农组织全球月度指数"
+    },
+    "aboutYou": {
+      "title": "帮助我们为您打造 World Monitor",
+      "ariaLabel": "关于您",
+      "progress": "第 {{current}} / {{total}}",
+      "skip": "跳过",
+      "close": "关闭",
+      "done": "完成",
+      "saving": "保存中…",
+      "saveFailed": "保存失败。请重试。",
+      "retry": "重试",
+      "thanks": "感谢。这有助于我们决定下一步要开发什么。",
+      "questions": {
+        "primaryUse": {
+          "label": "您主要用 World Monitor 做什么？",
+          "options": {
+            "news": "新闻和世界事件",
+            "markets": "市场和交易",
+            "commodities": "商品和供应链",
+            "travel": "旅行和航班",
+            "security": "安全和 OSINT",
+            "research": "研究和新闻",
+            "api-agent": "使用 API 或 AI 智能体开发",
+            "other": "其他"
+          }
+        },
+        "usageContext": {
+          "label": "您是工作使用还是个人使用？",
+          "options": {
+            "personal": "个人",
+            "work": "工作"
+          }
+        },
+        "payer": {
+          "label": "谁支付或将支付费用？",
+          "options": {
+            "self": "我",
+            "employer": "我的雇主或团队",
+            "not-paying": "暂时没有"
+          }
+        },
+        "role": {
+          "label": "以下哪项最准确地描述您的角色？",
+          "options": {
+            "analyst": "分析师或研究员",
+            "trader": "交易员或投资者",
+            "journalist": "记者",
+            "security": "安全或风险",
+            "government": "政府或政策",
+            "supply-chain": "供应链或运营",
+            "developer": "开发者",
+            "student": "学生",
+            "other": "其他"
+          }
+        },
+        "alternative": {
+          "label": "如果 World Monitor 不存在，您会使用什么？",
+          "placeholder": "可选"
+        }
+      }
     }
   },
   "popups": {

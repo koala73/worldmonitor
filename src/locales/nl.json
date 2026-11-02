@@ -2648,6 +2648,66 @@
       "partial": "Sommige rapporten ontbreken of zijn oud",
       "stale": "Oudere gegevens",
       "global": "Wereldwijde maandindex van FAO"
+    },
+    "aboutYou": {
+      "title": "Help ons World Monitor voor jou te bouwen",
+      "ariaLabel": "Over jou",
+      "progress": "{{current}} van {{total}}",
+      "skip": "Overslaan",
+      "close": "Sluiten",
+      "done": "Gereed",
+      "saving": "Opslaan…",
+      "saveFailed": "Dit kon niet worden opgeslagen. Probeer het opnieuw.",
+      "retry": "Opnieuw proberen",
+      "thanks": "Dank je wel. Dit helpt ons bepalen wat we volgende willen bouwen.",
+      "questions": {
+        "primaryUse": {
+          "label": "Waarvoor gebruik je World Monitor vooral?",
+          "options": {
+            "news": "Nieuws en wereldgebeurtenissen",
+            "markets": "Markten en handel",
+            "commodities": "Grondstoffen en toeleveringsketen",
+            "travel": "Reizen en vluchten",
+            "security": "Veiligheid en OSINT",
+            "research": "Onderzoek en journalistiek",
+            "api-agent": "Bouwen met de API of een AI-agent",
+            "other": "Iets anders"
+          }
+        },
+        "usageContext": {
+          "label": "Gebruik je het voor werk of persoonlijk gebruik?",
+          "options": {
+            "personal": "Persoonlijk",
+            "work": "Werk"
+          }
+        },
+        "payer": {
+          "label": "Wie betaalt, of zou betalen, ervoor?",
+          "options": {
+            "self": "Ik zelf",
+            "employer": "Mijn werkgever of team",
+            "not-paying": "Nog niemand"
+          }
+        },
+        "role": {
+          "label": "Welke beschrijving past het beste bij jouw rol?",
+          "options": {
+            "analyst": "Analist of onderzoeker",
+            "trader": "Handelaar of belegger",
+            "journalist": "Journalist",
+            "security": "Veiligheid of risico",
+            "government": "Regering of beleid",
+            "supply-chain": "Toeleveringsketen of operaties",
+            "developer": "Developer",
+            "student": "Student",
+            "other": "Overig"
+          }
+        },
+        "alternative": {
+          "label": "Wat zou je gebruiken als World Monitor niet bestond?",
+          "placeholder": "Optioneel"
+        }
+      }
     }
   },
   "popups": {
