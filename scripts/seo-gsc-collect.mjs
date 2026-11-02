@@ -116,7 +116,13 @@ const WINDOW_DAYS = Object.freeze({ '28d': 28, '90d': 90 });
  * source compiled as a case-insensitive JavaScript RegExp, so the two can
  * never drift. It uses only syntax the two engines share.
  */
-export const BRAND_QUERY_PATTERN = '(world|word|wolrd|wrold)[ ._-]*monitor|ワールドモニター';
+/**
+ * The second token takes the misspellings Bing reported on 2026-11-02 (moniter,
+ * montior, monitar, monotor, moniteur and so on) without matching "monetary"
+ * or "montreal": a vowel cluster or "in"/"ti" may sit on either side of the
+ * `t`, but never both missing.
+ */
+export const BRAND_QUERY_PATTERN = '(world|word|wolrd|wrold|worl|wold|wordl)[ ._-]*mon((i|o|a|in|ti)t(o|e|i|a|io|oe|eu|p)?|t(o|e|i|a|io|oe|eu|p))r|ワールドモニター';
 const BRAND_QUERY_REGEX = new RegExp(BRAND_QUERY_PATTERN, 'i');
 export const isBrandQuery = (query) => BRAND_QUERY_REGEX.test(String(query ?? ''));
 const BRAND_FILTER_EXPRESSION = `(?i)${BRAND_QUERY_PATTERN}`;
