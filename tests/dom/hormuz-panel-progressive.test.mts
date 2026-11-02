@@ -309,3 +309,68 @@ describe('HormuzPanel progressive vulnerability loading', () => {
     await Promise.resolve();
   });
 });
+
+describe('HormuzPanel dates from a tracker payload stored before the ISO seeder fix', () => {
+  const storedPayload = {
+    ...tracker,
+    updatedDate: '21.09.2026',
+    charts: [
+      {
+        label: 'crude_oil_outbound',
+        title: 'Crude Oil Outbound Shipments',
+        series: [
+          { date: 'November-01-2026', value: 4 },
+          { date: 'October-30-2026', value: 12 },
+          { date: 'October-31-2026', value: 7 },
+        ],
+      },
+      {
+        label: 'agriculture_inbound',
+        title: 'Agriculture Inbound Shipments',
+        series: [
+          { date: '2026-November-01', value: 0 },
+          { date: '2026-November-02', value: 5 },
+          { date: '2026-October-30', value: 164 },
+          { date: '2026-October-31', value: 82 },
+        ],
+      },
+    ],
+  };
+
+  async function serveFromRedis(stored: unknown): Promise<unknown> {
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.test');
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'test-token');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ result: JSON.stringify(stored) }), { status: 200 })));
+    try {
+      // @ts-expect-error api/ edge handlers are plain JS without declaration files.
+      const { default: handler } = await import('../../api/supply-chain/hormuz-tracker.js');
+      const response: Response = await handler(new Request('https://www.worldmonitor.app/api/supply-chain/hormuz-tracker'));
+      expect(response.status).toBe(200);
+      return await response.json();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  }
+
+  it('labels each chart with the latest day as MM-DD and draws bars oldest first', async () => {
+    gateMocks.isPro = false;
+    serviceMocks.fetchTracker.mockResolvedValue(await serveFromRedis(storedPayload));
+
+    const panel = new HormuzPanel();
+    document.body.append(panel.getElement());
+    await panel.fetchData();
+
+    await vi.waitFor(() => {
+      expect(panel.getElement().querySelectorAll('.hz-chart')).toHaveLength(2);
+    });
+    const charts = [...panel.getElement().querySelectorAll('.hz-chart')];
+    const latestLabels = charts.map((chart) => chart.querySelector(':scope > div > span:last-child')?.textContent?.split('·').pop()?.trim());
+    expect(latestLabels).toEqual(['11-01', '11-02']);
+    const barDates = charts.map((chart) => [...chart.querySelectorAll('rect.hbar')].map((bar) => bar.getAttribute('data-date')));
+    expect(barDates).toEqual([
+      ['2026-10-30', '2026-10-31', '2026-11-01'],
+      ['2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02'],
+    ]);
+  });
+});

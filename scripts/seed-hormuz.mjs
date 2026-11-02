@@ -53,6 +53,21 @@ function decodeDsr(dsr, nCols) {
   return rows;
 }
 
+export function parseChartSeries(data, cutoff) {
+  const rows = decodeDsr(data?.dsr, 4); // [Year, Month, Day, Value] always 4 cols after projection
+  return rows
+    .map(row => {
+      const [yr, mo, dy, val] = row;
+      if (!yr || !mo || !dy) return null;
+      const dateStr = `${yr}-${String(mo).padStart(2, '0')}-${String(dy).padStart(2, '0')}`;
+      const d = new Date(dateStr);
+      if (Number.isNaN(d.getTime()) || d < cutoff) return null;
+      return { date: dateStr, value: typeof val === 'number' ? val : (Number(val) || 0) };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
 async function pbiJson(url, init = {}) {
   const resp = await fetch(url, {
     ...init,
@@ -156,20 +171,7 @@ async function fetchPbiCharts() {
       continue;
     }
 
-    const dsr = result?.results?.[0]?.result?.data?.dsr;
-    const rows = decodeDsr(dsr, 4); // [Year, Month, Day, Value] always 4 cols after projection
-
-    const series = rows
-      .map(row => {
-        const [yr, mo, dy, val] = row;
-        if (!yr || !mo || !dy) return null;
-        const dateStr = `${yr}-${String(mo).padStart(2, '0')}-${String(dy).padStart(2, '0')}`;
-        const d = new Date(dateStr);
-        if (Number.isNaN(d.getTime()) || d < cutoff) return null;
-        return { date: dateStr, value: typeof val === 'number' ? val : (Number(val) || 0) };
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.date.localeCompare(b.date));
+    const series = parseChartSeries(result?.results?.[0]?.result?.data, cutoff);
 
     console.log(`  ${cfg.label}: ${series.length} points (last 30d)`);
     charts.push({ label: cfg.label, title: cfg.title, series });
