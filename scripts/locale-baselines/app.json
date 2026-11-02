@@ -228,7 +228,7 @@
   "components.chokepointStrip.infoTooltip": "Live status for the seven global oil & gas shipping chokepoints. Flow estimates calibrated from Portwatch vessel carrying capacity + ship tracking observations. See /docs/methodology/chokepoints for methodology.",
   "components.chokepointStrip.shortName.babElMandeb": "Bab el-Mandeb",
   "components.chokepointStrip.shortName.bosphorus": "Turkish Straits",
-  "components.chokepointStrip.shortName.danishStraits": "Danish Straits",
+  "components.chokepointStrip.shortName.doverStrait": "Dover Strait",
   "components.chokepointStrip.shortName.hormuzStrait": "Hormuz",
   "components.chokepointStrip.shortName.malaccaStrait": "Malacca",
   "components.chokepointStrip.shortName.panama": "Panama",

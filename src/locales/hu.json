@@ -2909,7 +2909,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Törökországi Szorosok",
         "panama": "Panama",
-        "danishStraits": "Dán Szorosok"
+        "doverStrait": "Doveri-szoros"
       },
       "flow": {
         "mbd": "{{value}} mb/nap",

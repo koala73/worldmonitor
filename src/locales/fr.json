@@ -2859,7 +2859,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Détroits turcs",
         "panama": "Panama",
-        "danishStraits": "Détroits danois"
+        "doverStrait": "Pas de Calais"
       },
       "flow": {
         "mbd": "{{value}} mb/j",

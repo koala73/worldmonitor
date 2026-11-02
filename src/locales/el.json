@@ -2840,7 +2840,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Τουρκικά Στενά",
         "panama": "Panama",
-        "danishStraits": "Δανικά Στενά"
+        "doverStrait": "Στενό του Ντόβερ"
       },
       "flow": {
         "mbd": "{{value}} mb/d",

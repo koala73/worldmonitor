@@ -258,12 +258,13 @@ export class Panel {
     this.severityDotEl.setAttribute('aria-hidden', 'true');
     headerLeft.appendChild(this.severityDotEl);
 
-    const initialFreshness = dataFreshness.getPanelFreshness(this.panelId);
-    if (initialFreshness) {
+    // The first /api/health poll runs after first paint, so most panels are built
+    // before freshness is known. The badge stays hidden until the listener sees it.
+    if (dataFreshness.hasPanelFreshnessSources(this.panelId)) {
       this.freshnessBadgeEl = document.createElement('span');
       this.freshnessBadgeEl.className = 'panel-freshness-badge';
       headerLeft.appendChild(this.freshnessBadgeEl);
-      this.updateFreshnessBadge(initialFreshness);
+      this.updateFreshnessBadge();
       this.freshnessUnsubscribe = dataFreshness.subscribe(() => this.updateFreshnessBadge());
       this.freshnessRefreshTimer = setInterval(
         () => this.updateFreshnessBadge(),

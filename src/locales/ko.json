@@ -2821,7 +2821,7 @@
         "babElMandeb": "바브엘만데브",
         "bosphorus": "터키 해협",
         "panama": "파나마",
-        "danishStraits": "덴마크 해협"
+        "doverStrait": "도버 해협"
       },
       "flow": {
         "mbd": "{{value}} mb/d",
