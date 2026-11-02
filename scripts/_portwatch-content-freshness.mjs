@@ -171,8 +171,16 @@ export function buildContentFreshnessReport({
   now = Date.now(),
   budgetMinutes = PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
   maxStaleCountries = PORTWATCH_MAX_REPORTED_STALE_COUNTRIES,
-  criticalCountries = PORTWATCH_DECISION_CRITICAL_COUNTRIES,
+  criticalCountries: declaredCriticalCountries = PORTWATCH_DECISION_CRITICAL_COUNTRIES,
+  // Countries the seeder proved have no rows in the source at all. A critical
+  // one is named in `criticalSourceAbsentCountries` instead of being judged:
+  // there is no content to be fresh or stale, and health accepts the narrowed
+  // scope only for a country listed there.
+  sourceAbsentCountries = [],
 }) {
+  const absent = new Set(sourceAbsentCountries);
+  const criticalCountries = declaredCriticalCountries.filter((iso2) => !absent.has(iso2));
+  const criticalSourceAbsentCountries = declaredCriticalCountries.filter((iso2) => absent.has(iso2)).sort();
   const budgetMs = budgetMinutes * 60_000;
   const entries = countryData instanceof Map ? [...countryData.entries()] : [];
   const critical = new Set(criticalCountries);
@@ -245,6 +253,7 @@ export function buildContentFreshnessReport({
       ? null
       : Math.round((now - oldestObservedAt) / 60_000),
     criticalCountries: [...criticalCountries].sort(),
+    criticalSourceAbsentCountries,
     criticalFreshCount,
     criticalStaleCountries,
     criticalMissingCountries: criticalCountries.length - criticalSeen,
@@ -261,7 +270,11 @@ export function buildPortActivityMetaPayload({ countryData, coverage, now = Date
     fetchedAt: now,
     recordCount: countryData instanceof Map ? countryData.size : 0,
     coverage,
-    contentFreshness: buildContentFreshnessReport({ countryData, now }),
+    contentFreshness: buildContentFreshnessReport({
+      countryData,
+      now,
+      sourceAbsentCountries: Array.isArray(coverage?.sourceAbsentCountries) ? coverage.sourceAbsentCountries : [],
+    }),
   };
 }
 
