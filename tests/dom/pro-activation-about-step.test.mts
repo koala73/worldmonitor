@@ -84,7 +84,7 @@ function mountAboutExtra(captured: Captured) {
   const root = document.createElement('div');
   root.innerHTML = String(extra.html);
   document.body.append(root);
-  const controls = { confirmAndFinish: vi.fn() };
+  const controls = { confirmAndFinish: vi.fn(), setBusy: vi.fn() };
   extra.onMount?.(root, controls);
   return { root, controls };
 }
@@ -221,6 +221,38 @@ describe('Pro activation About-you step', () => {
     expect(document.querySelector<HTMLButtonElement>('.pro-activation-skip')!.disabled).toBe(true);
     const close = document.querySelector<HTMLButtonElement>('.pro-activation-close');
     if (close) expect(close.disabled).toBe(true);
+  });
+
+  it('Escape and a backdrop click do not dismiss the flow while the save is in flight', async () => {
+    let release: (value: { ok: true }) => void = () => {};
+    profile.recordAboutYouAnswers.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    const { captured } = await openFlow();
+    const about = captured!.steps.findIndex((step) => step.id === 'about');
+    const onSkipStep = vi.fn(captured!.onSkipStep);
+    openProActivationInterstitial({ ...captured!, steps: captured!.steps.slice(about), onSkipStep });
+    document.querySelector<HTMLButtonElement>('[data-question="primaryUse"][data-option="news"]')!.click();
+    document.querySelector<HTMLButtonElement>('.pro-activation-about-save')!.click();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.querySelector<HTMLElement>('.pro-activation-overlay')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(onSkipStep).not.toHaveBeenCalled();
+    expect(document.querySelector('.pro-activation-about')).not.toBeNull();
+
+    release({ ok: true });
+    await flush();
+  });
+
+  it('a failed save releases the frame, so Escape dismisses again', async () => {
+    profile.recordAboutYouAnswers.mockResolvedValue({ ok: false, reason: 'error' });
+    const { captured } = await openFlow();
+    const about = captured!.steps.findIndex((step) => step.id === 'about');
+    const onSkipStep = vi.fn(captured!.onSkipStep);
+    openProActivationInterstitial({ ...captured!, steps: captured!.steps.slice(about), onSkipStep });
+    document.querySelector<HTMLButtonElement>('[data-question="primaryUse"][data-option="news"]')!.click();
+    document.querySelector<HTMLButtonElement>('.pro-activation-about-save')!.click();
+    await flush();
+    expect(document.querySelector<HTMLButtonElement>('.pro-activation-skip')!.disabled).toBe(false);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(onSkipStep).toHaveBeenCalledWith('about');
   });
 
   it('skipping the step emits step-skipped and records a profile skip', async () => {

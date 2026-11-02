@@ -132,6 +132,12 @@ export interface ProActivationStepControls {
    * the interstitial must close first rather than sit over it).
    */
   confirmAndFinish(): void;
+  /**
+   * Freeze the frame while the extras' own write is in flight: Skip and close
+   * are disabled, and Escape or a backdrop click do not dismiss. Otherwise a
+   * dismiss would record a skip after answers that were saved.
+   */
+  setBusy(busy: boolean): void;
 }
 
 /** Per-step body extras injected by the high-level flow (U4/U6). */
@@ -649,11 +655,13 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
   };
 
   /** X and Escape both mean "skip remaining steps" → summary; on the summary they dismiss. */
+  // Set by a step's extras while their own write is in flight (setBusy).
+  let extrasBusy = false;
   const handleDismiss = (): void => {
     // A notification mutation cannot be cancelled once sent. Keep the modal
     // stable until it settles so the summary/telemetry cannot call a successful
     // write "skipped" simply because Escape or the backdrop won the race.
-    if (transient === 'in-flight') return;
+    if (transient === 'in-flight' || extrasBusy) return;
     if (onSummary()) finishFlow();
     else finalizeAndShowSummary();
   };
@@ -803,11 +811,19 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
       if (extra?.onMount) {
         const extrasRoot = modal.querySelector<HTMLElement>('[data-pro-activation-extras]');
         if (extrasRoot) {
+          extrasBusy = false;
           extra.onMount(extrasRoot, {
             confirmAndFinish: () => {
+              extrasBusy = false;
               outcomes.set(step.id, 'confirmed');
               recordProgress();
               finishFlow();
+            },
+            setBusy: (busy) => {
+              extrasBusy = busy;
+              for (const btn of modal.querySelectorAll<HTMLButtonElement>('.pro-activation-skip, .pro-activation-close')) {
+                btn.disabled = busy;
+              }
             },
           });
         }
@@ -1450,16 +1466,12 @@ function buildAboutExtra(options: ProActivationFlowOptions): ProActivationStepEx
       const saveBtn = root.querySelector<HTMLButtonElement>('.pro-activation-about-save');
       const status = root.querySelector<HTMLElement>('.pro-activation-about-status');
       // One busy state for the whole step: while a write is in flight the
-      // answers, Save, and the frame's Skip/close are frozen, so a late
-      // response can never finish a step the user already left.
-      const frameButtons = (): HTMLButtonElement[] => {
-        const modal = root.closest('.pro-activation-modal') ?? root.ownerDocument;
-        return [...modal.querySelectorAll<HTMLButtonElement>('.pro-activation-skip, .pro-activation-close')];
-      };
+      // answers and Save are frozen here, and the frame refuses Skip, close,
+      // Escape, and backdrop dismissal (controls.setBusy).
       let inFlight = false;
       const setBusy = (busy: boolean): void => {
         inFlight = busy;
-        for (const btn of frameButtons()) btn.disabled = busy;
+        controls.setBusy(busy);
         if (saveBtn) {
           saveBtn.disabled = busy || Object.keys(answers).length === 0;
           if (busy) saveBtn.setAttribute('aria-busy', 'true');

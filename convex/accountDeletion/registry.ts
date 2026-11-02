@@ -144,8 +144,9 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
       "Raw provider archive, keyed by webhookId with no per-user index. Events "
       + "processed after the deletion row exists are redacted on insert "
       + "(webhookMutations.processWebhookEvent); rows written before the request "
-      + "keep the identity bridge Dodo echoed back and are retained as delivered "
-      + "(owner decision 2026-09-22). Sweeping them needs a denormalized "
+      + "keep the identity bridge and any cancellation_feedback/cancellation_comment "
+      + "Dodo echoed back and are retained as delivered (owner decision "
+      + "2026-09-22; docs/privacy.mdx names this exception). Sweeping them needs a denormalized "
       + "customer id plus an index; until then the tombstone means the billing "
       + "rows stop naming the account, not that no record can be re-joined.",
   },
