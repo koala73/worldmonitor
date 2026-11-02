@@ -1279,6 +1279,24 @@ describe('existing beforeSend filters', () => {
     assert.equal(beforeSend(event), null, 'MapLibre tile AJAX failure should be suppressed');
   });
 
+  it('suppresses CARTO vector-tile failures from tiles.basemaps.cartocdn.com (WORLDMONITOR-1BF)', () => {
+    // The CARTO style.json lives on basemaps.cartocdn.com, but its vector tiles
+    // are served from the tiles. subdomain. The allowlist matches hosts exactly,
+    // so the tile host needs its own entry. Frames are the real 1BF stack.
+    const event = makeEvent('Failed to fetch (tiles.basemaps.cartocdn.com)', 'TypeError', [
+      { filename: '../../src/services/fetch-failure-attribution.ts', lineno: 182, function: 'wrapped' },
+      { filename: '../../src/services/runtime.ts', lineno: 610, function: 'dispatch' },
+      { filename: '../../src/services/billing-retry.ts', lineno: 208, function: '<anonymous>' },
+      { filename: 'chrome-extension://hoklmmgfnpapgjgcpechhaamimifchmp/frame_ant/frame_ant.js', lineno: 2, function: 'window.fetch' },
+      { filename: '../../src/services/wm-session.ts', lineno: 1022, function: 'window.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'CARTO tile host failure should be suppressed');
+    const lookalike = makeEvent('Failed to fetch (tiles.basemaps.cartocdn.com.evil.example)', 'TypeError', [
+      { filename: '../../src/services/wm-session.ts', lineno: 1022, function: 'window.fetch' },
+    ]);
+    assert.ok(beforeSend(lookalike) !== null, 'A lookalike host must not ride the CARTO entry');
+  });
+
   it('suppresses MapLibre AJAXError for allowlisted host even with an all-maplibre stack', () => {
     // Proves the allowlist path fires on all-vendor stacks too: the AJAX carve-out
     // above bypasses the broad "all-maplibre TypeError" filter and routes into the
