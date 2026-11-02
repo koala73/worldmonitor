@@ -792,6 +792,12 @@ test.describe('dashboard news request budget (#5376)', () => {
   test('a news load that landed nothing recovers on the next trigger', async ({ page }) => {
     await seedFreshAnonymousFullVariant(page);
     const log = await installNewsRequestAccounting(page, { failDigestTimes: 1 });
+    // The log records a digest request when it is routed, before its response;
+    // count completions separately to know when the recovery load has its data.
+    let finishedDigests = 0;
+    page.on('requestfinished', (request) => {
+      if (request.url().includes('/api/news/v1/list-feed-digest')) finishedDigests += 1;
+    });
 
     // Capture terminal signals only during boot, including its failure path.
     const lossWatch = attachBrowserLossDiagnostics(
@@ -827,6 +833,10 @@ test.describe('dashboard news request budget (#5376)', () => {
 
     // ...and having recovered, it must settle: the successful load records the
     // work-list, so the gate stops the retries rather than looping every trigger.
+    // Let the recovery response arrive and its load finish first, so the next
+    // trigger probes the gate rather than coalescing into a load still running.
+    await expect.poll(() => finishedDigests, { timeout: 10_000 }).toBe(log.digestUrls.length);
+    await page.waitForTimeout(POST_FANOUT_QUIET_MS);
     const afterRecovery = log.digestUrls.length;
     await fireHydrationTrigger(page);
     await page.waitForTimeout(POST_FANOUT_QUIET_MS);
