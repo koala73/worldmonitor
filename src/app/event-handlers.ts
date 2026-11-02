@@ -1196,7 +1196,7 @@ export class EventHandlerManager implements AppModule {
     const sourceIds = LAYER_TO_SOURCE[layer];
     if (sourceIds) {
       for (const sourceId of sourceIds) {
-        dataFreshness.setEnabled(sourceId, enabled);
+        dataFreshness.setMapLayerEnabled(sourceId, enabled);
       }
     }
 
@@ -1514,7 +1514,7 @@ export class EventHandlerManager implements AppModule {
     const sourceIds = LAYER_TO_SOURCE[layer];
     if (sourceIds) {
       for (const sourceId of sourceIds) {
-        dataFreshness.setEnabled(sourceId, enabled);
+        dataFreshness.setMapLayerEnabled(sourceId, enabled);
       }
     }
 
