@@ -285,6 +285,21 @@ describe('Bing Webmaster collector degradation', () => {
     assert.match(renderBingMarkdown(snapshot), /## Totals\n\nNot measured: /);
   });
 
+  it('ends the fallback window on the newest bucket across queries and pages', async () => {
+    const snapshot = await collectBingSnapshot({
+      transport: memoryTransport({
+        GetRankAndTrafficStats: new Error('[seo-bing] GetRankAndTrafficStats failed with HTTP 500 after 4 attempts'),
+        GetQueryStats: [weekly('2026-10-23', 'world monitor', 50, 10)],
+        GetPageStats: [weekly('2026-10-30', `${SITE_URL}chokepoints/`, 7, 1)],
+      }),
+      observedAt: OBSERVED_AT,
+    });
+    assert.equal(snapshot.windowEndSource, 'GetPageStats');
+    assert.equal(snapshot.windows[0].endDate, '2026-10-30');
+    assert.equal(snapshot.pages.windows['28d'].impressions, 7);
+    assert.equal(snapshot.queries.windows['28d'].impressions, 50);
+  });
+
   it('makes a section unavailable when a row is malformed', async () => {
     const snapshot = await collectBingSnapshot({
       transport: memoryTransport({

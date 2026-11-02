@@ -261,28 +261,33 @@ async function fetchRows(transport, section) {
 
 /**
  * Windows end on the latest date Bing reports. The daily traffic rows decide
- * it; the weekly buckets stand in only when the traffic method failed.
+ * it; when the traffic method failed, the newest weekly bucket across queries
+ * and pages stands in, so neither section loses its latest week.
  */
 function deriveWindows(raw) {
-  const candidates = [
-    ['traffic', raw.traffic.rows?.map((row) => row.date)],
-    ['queries', raw.queries.rows?.map((row) => row.weekEnding)],
-    ['pages', raw.pages.rows?.map((row) => row.weekEnding)],
-  ];
-  for (const [section, dates] of candidates) {
-    if (!dates || dates.length === 0) continue;
-    const endDate = dates.reduce((latest, date) => (date > latest ? date : latest));
-    return {
-      endSource: METHODS[section],
-      windows: Object.entries(WINDOW_DAYS).map(([label, days]) => ({
-        label,
-        days,
-        startDate: shiftDate(endDate, -(days - 1)),
-        endDate,
-      })),
-    };
+  const latestOf = (dates) => (dates && dates.length > 0
+    ? dates.reduce((latest, date) => (date > latest ? date : latest))
+    : null);
+  let end = null;
+  const trafficEnd = latestOf(raw.traffic.rows?.map((row) => row.date));
+  if (trafficEnd) {
+    end = { section: 'traffic', date: trafficEnd };
+  } else {
+    for (const section of ['queries', 'pages']) {
+      const date = latestOf(raw[section].rows?.map((row) => row.weekEnding));
+      if (date && (!end || date > end.date)) end = { section, date };
+    }
   }
-  return { endSource: null, windows: [] };
+  if (!end) return { endSource: null, windows: [] };
+  return {
+    endSource: METHODS[end.section],
+    windows: Object.entries(WINDOW_DAYS).map(([label, days]) => ({
+      label,
+      days,
+      startDate: shiftDate(end.date, -(days - 1)),
+      endDate: end.date,
+    })),
+  };
 }
 
 const inWindow = (date, window) => date >= window.startDate && date <= window.endDate;
