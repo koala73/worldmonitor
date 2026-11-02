@@ -20,6 +20,8 @@
  * Accent borders must be logical (`border-inline-start`). rtl-overrides.css
  * loads before panels.css, so a physical `border-left` here wins over the
  * `[dir="rtl"]` rule at equal specificity and pins the accent to the wrong side.
+ * An inline `style="border-left: …"` beats every sheet, so templates pass the
+ * colour as a custom property instead.
  */
 
 import { describe, it } from 'node:test';
@@ -113,5 +115,16 @@ describe('audit panels style every class they emit', () => {
       .filter((rule) => /(^|[;\s])border-(left|right)[\w-]*\s*:/.test(rule.body))
       .map((rule) => rule.selectors.join(', '));
     assert.deepEqual(physical, [], 'use border-inline-start/end so [dir="rtl"] flips the accent');
+  });
+
+  it('keeps physical sides out of inline style attributes', () => {
+    const physical = Object.keys(PANELS).flatMap((relPath) => {
+      const source = readFileSync(new URL(relPath, srcDir), 'utf8');
+      return [...source.matchAll(/style="([^"]*)"/g)]
+        .map((m) => m[1])
+        .filter((style) => /(^|[;\s])(border|padding|margin)-(left|right)[\w-]*\s*:/.test(style))
+        .map((style) => `${relPath}: ${style}`);
+    });
+    assert.deepEqual(physical, [], 'an inline style beats the stylesheet and never flips in RTL; pass the value as a custom property');
   });
 });
