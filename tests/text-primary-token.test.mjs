@@ -53,3 +53,13 @@ describe('settings groups follow the theme', () => {
     });
   }
 });
+
+describe('transit chart tooltip follows the theme', () => {
+  it('pairs its --text-primary text with a themed background', () => {
+    const src = readFileSync(new URL('../src/utils/transit-chart.ts', import.meta.url), 'utf8');
+    const style = src.match(/this\.tooltip\.style,\s*\{([\s\S]*?)\}\);/)?.[1] ?? '';
+    assert.match(style, /color: 'var\(--text-primary/);
+    // --bg-elevated is not defined anywhere, so it always fell back to dark navy.
+    assert.match(style, /background: 'var\(--surface[,)]/);
+  });
+});
