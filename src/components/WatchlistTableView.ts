@@ -199,7 +199,7 @@ export class WatchlistTableView<T> {
       <div class="watchlist-table-view" data-watchlist-totalrows="${list.length}" data-watchlist-renderedrows="${this.getRenderedRowCount(list, start)}">
         ${intro}
         ${controls}
-        <div class="watchlist-table-scroll table-scroll" data-watchlist-scroll="1" tabindex="0"${labelledBy}>
+        <div class="watchlist-table-scroll table-scroll" data-watchlist-scroll="1" role="group" tabindex="0"${labelledBy}>
           <table class="watchlist-table">
             <thead><tr>${headers}</tr></thead>
             <tbody>${tableBody}</tbody>

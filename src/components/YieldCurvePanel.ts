@@ -173,7 +173,7 @@ function renderTable(points: YieldPoint[], labelledBy: string): string {
     return `<td style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text);padding:4px 6px;text-align:center">${escapeHtml(val)}</td>`;
   }).join('');
   return `
-    <div class="table-scroll" tabindex="0" aria-labelledby="${escapeHtml(labelledBy)}" style="margin-top:8px">
+    <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${escapeHtml(labelledBy)}" style="margin-top:8px">
       <table style="width:100%;border-collapse:collapse">
         <thead><tr>${headers}</tr></thead>
         <tbody><tr>${cells}</tr></tbody>
