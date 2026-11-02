@@ -9212,8 +9212,16 @@ a.prediction-link:hover {
   color: var(--text-dim);
 }
 
+/* Visually hidden, not display:none: the live region stays in the a11y tree,
+   and out of the grid flow so the empty row adds no gap. */
 .pro-activation-about-status:empty {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 @media (pointer: coarse) {

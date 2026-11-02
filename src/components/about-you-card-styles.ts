@@ -234,8 +234,12 @@ export const ABOUT_YOU_CARD_CSS = `
   color: var(--text-dim);
 }
 
+/* Collapsed, not display:none: a live region must stay in the accessibility
+   tree before text is written into it, or "Saving…" and "Thanks" go unread. */
 .about-you-card__status:empty {
-  display: none;
+  height: 0;
+  margin: 0;
+  overflow: hidden;
 }
 
 .about-you-card__retry {
