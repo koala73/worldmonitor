@@ -558,6 +558,9 @@ const STANDALONE_KEYS = {
   globalTendersPakistanEpads:   'economic:global-tenders:v1:source:pakistan-epads',
   globalTendersGeorgiaSpa:      'economic:global-tenders:v1:source:georgia-spa',
   globalTendersArmeniaArmeps:   'economic:global-tenders:v1:source:armenia-armeps',
+  globalTendersAlbaniaApp:      'economic:global-tenders:v1:source:albania-app',
+  globalTendersDominicanRepublicDgcp: 'economic:global-tenders:v1:source:dominican-republic-dgcp',
+  globalTendersMalaysiaMyprocurement: 'economic:global-tenders:v1:source:malaysia-myprocurement',
   crossStraitActivityTaiwanMnd: 'military:cross-strait-activity:v1:source:taiwan-mnd',
   crossStraitActivityJapanMod:  'military:cross-strait-activity:v1:source:japan-mod',
   defensePatents:        'patents:defense:latest',
@@ -1421,6 +1424,21 @@ const SEED_META = {
     key: 'seed-meta:economic:global-tenders:armenia-armeps', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
     activationKey: 'seed-activated:economic:global-tenders:armenia-armeps',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9894, activationKey: 'seed-activated:economic:global-tenders:armenia-armeps' },
+  },
+  globalTendersAlbaniaApp: {
+    key: 'seed-meta:economic:global-tenders:albania-app', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:albania-app',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10052, activationKey: 'seed-activated:economic:global-tenders:albania-app' },
+  },
+  globalTendersDominicanRepublicDgcp: {
+    key: 'seed-meta:economic:global-tenders:dominican-republic-dgcp', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:dominican-republic-dgcp',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10052, activationKey: 'seed-activated:economic:global-tenders:dominican-republic-dgcp' },
+  },
+  globalTendersMalaysiaMyprocurement: {
+    key: 'seed-meta:economic:global-tenders:malaysia-myprocurement', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:malaysia-myprocurement',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10052, activationKey: 'seed-activated:economic:global-tenders:malaysia-myprocurement' },
   },
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
   techEventsSeeder: {
@@ -2558,6 +2576,9 @@ const ON_DEMAND_KEYS = new Set([
   'globalTendersPakistanEpads',
   'globalTendersGeorgiaSpa',
   'globalTendersArmeniaArmeps',
+  'globalTendersAlbaniaApp',
+  'globalTendersDominicanRepublicDgcp',
+  'globalTendersMalaysiaMyprocurement',
   'ukmtoIncidents',
   // Deployment-order bridge: Vercel can ship this reader before Railway's
   // hourly bundle publishes the first summary. The seeder writes a durable
@@ -2768,6 +2789,9 @@ const ACTIVATION_MARKERS = {
   globalTendersPakistanEpads: SEED_META.globalTendersPakistanEpads.activationKey,
   globalTendersGeorgiaSpa: SEED_META.globalTendersGeorgiaSpa.activationKey,
   globalTendersArmeniaArmeps: SEED_META.globalTendersArmeniaArmeps.activationKey,
+  globalTendersAlbaniaApp: SEED_META.globalTendersAlbaniaApp.activationKey,
+  globalTendersDominicanRepublicDgcp: SEED_META.globalTendersDominicanRepublicDgcp.activationKey,
+  globalTendersMalaysiaMyprocurement: SEED_META.globalTendersMalaysiaMyprocurement.activationKey,
   ukmtoIncidents: 'seed-activated:maritime:ukmto-incidents',
   chinaCoverage: 'seed-activated:health:china-coverage',
   // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).
@@ -3267,6 +3291,7 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   'globalTendersChileMercadoPublico', 'globalTendersBrazilPncp', 'globalTendersUkraineProzorro',
   'globalTendersBulgariaEop', 'globalTendersLatviaIub', 'globalTendersPolandBzp', 'globalTendersPakistanPpra',
   'globalTendersPakistanEpads', 'globalTendersGeorgiaSpa', 'globalTendersArmeniaArmeps',
+  'globalTendersAlbaniaApp', 'globalTendersDominicanRepublicDgcp', 'globalTendersMalaysiaMyprocurement',
   // retailer-spread is SUPPRESSED to an explicit 0 by the aggregate job when a
   // market's retailers share < MIN_SPREAD_ITEMS (4) common basket items —
   // consumer-prices-core/src/jobs/aggregate.ts writes `retailer_spread_pct: 0`

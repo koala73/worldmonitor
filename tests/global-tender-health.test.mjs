@@ -6,7 +6,8 @@ import { __testing__ } from '../api/health.js';
 test('new tender sources become strict after their first successful publication', () => {
   const { classifyKey, SEED_META, STANDALONE_KEYS, ACTIVATION_MARKERS } = __testing__;
   const sources = ['ColombiaSecop', 'KenyaPpip', 'SouthAfricaEtenders', 'ChileMercadoPublico', 'BrazilPncp',
-    'UkraineProzorro', 'BulgariaEop', 'LatviaIub', 'PolandBzp', 'PakistanPpra', 'PakistanEpads', 'GeorgiaSpa', 'ArmeniaArmeps'];
+    'UkraineProzorro', 'BulgariaEop', 'LatviaIub', 'PolandBzp', 'PakistanPpra', 'PakistanEpads', 'GeorgiaSpa', 'ArmeniaArmeps',
+    'AlbaniaApp', 'DominicanRepublicDgcp', 'MalaysiaMyprocurement'];
   const now = Date.parse('2026-10-29T12:00:00Z');
   for (const source of sources) {
     const name = `globalTenders${source}`;
@@ -31,7 +32,8 @@ test('health registers and classifies per-source global tender freshness', () =>
   const { classifyKey, SEED_META, STANDALONE_KEYS, ZERO_RECORD_DATA_OK_KEYS } = __testing__;
   const sources = ['Sam', 'Ted', 'ContractsFinder', 'CanadaBuys', 'Gets', 'WorldBank',
     'ColombiaSecop', 'KenyaPpip', 'SouthAfricaEtenders', 'ChileMercadoPublico', 'BrazilPncp',
-    'UkraineProzorro', 'BulgariaEop', 'LatviaIub', 'PolandBzp', 'PakistanPpra', 'PakistanEpads', 'GeorgiaSpa', 'ArmeniaArmeps'];
+    'UkraineProzorro', 'BulgariaEop', 'LatviaIub', 'PolandBzp', 'PakistanPpra', 'PakistanEpads', 'GeorgiaSpa', 'ArmeniaArmeps',
+    'AlbaniaApp', 'DominicanRepublicDgcp', 'MalaysiaMyprocurement'];
 
   for (const source of sources) {
     const name = `globalTenders${source}`;
@@ -69,7 +71,8 @@ test('every per-source tender check grades a failed attempt against a 24h last-s
   assert.equal(SEED_META.globalTendersContractsFinder.sourceFailureWithinBudgetOk, undefined);
   const sources = ['Sam', 'Ted', 'CanadaBuys', 'Gets', 'WorldBank',
     'ColombiaSecop', 'KenyaPpip', 'SouthAfricaEtenders', 'ChileMercadoPublico', 'BrazilPncp',
-    'UkraineProzorro', 'BulgariaEop', 'LatviaIub', 'PolandBzp', 'PakistanPpra', 'PakistanEpads', 'GeorgiaSpa', 'ArmeniaArmeps'];
+    'UkraineProzorro', 'BulgariaEop', 'LatviaIub', 'PolandBzp', 'PakistanPpra', 'PakistanEpads', 'GeorgiaSpa', 'ArmeniaArmeps',
+    'AlbaniaApp', 'DominicanRepublicDgcp', 'MalaysiaMyprocurement'];
 
   for (const source of sources) {
     const name = `globalTenders${source}`;
