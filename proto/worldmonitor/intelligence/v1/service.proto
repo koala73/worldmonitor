@@ -103,7 +103,7 @@ service IntelligenceService {
     };
   }
 
-  // SearchGdeltDocuments matches a query against seeded GDELT topic articles, or returns recent articles for a country:XX query, up to 20 results.
+  // SearchGdeltDocuments returns up to 20 articles from the first seeded GDELT topic that matches a query, or recent articles for a country:XX query.
   rpc SearchGdeltDocuments(SearchGdeltDocumentsRequest) returns (SearchGdeltDocumentsResponse) {
     option (sebuf.http.config) = {
       path: "/search-gdelt-documents"
@@ -116,7 +116,7 @@ service IntelligenceService {
     option (sebuf.http.config) = {path: "/deduct-situation"};
   }
 
-  // ListSatellites returns CelesTrak TLE orbital elements with altitude, velocity, and inclination, refreshed every 2 hours and filterable by country.
+  // ListSatellites returns CelesTrak two-line element sets (TLE) for tracked satellites, for client-side orbit propagation, refreshed every 2 hours and filterable by country.
   rpc ListSatellites(ListSatellitesRequest) returns (ListSatellitesResponse) {
     option (sebuf.http.config) = {
       path: "/list-satellites"
@@ -132,7 +132,7 @@ service IntelligenceService {
     };
   }
 
-  // ListOrefAlerts returns active Israeli Home Front Command (OREF) Red Alert warnings polled from oref.org.il, or recent alert history in MODE_HISTORY.
+  // ListOrefAlerts returns active Israeli Home Front Command Red Alert sirens polled from Tzeva Adom, with oref.org.il as fallback, or alert history in MODE_HISTORY.
   rpc ListOrefAlerts(ListOrefAlertsRequest) returns (ListOrefAlertsResponse) {
     option (sebuf.http.config) = {
       path: "/list-oref-alerts"

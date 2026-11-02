@@ -1141,7 +1141,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: SearchGdeltDocuments
-            description: SearchGdeltDocuments matches a query against seeded GDELT topic articles, or returns recent articles for a country:XX query, up to 20 results.
+            description: SearchGdeltDocuments returns up to 20 articles from the first seeded GDELT topic that matches a query, or recent articles for a country:XX query.
             operationId: SearchGdeltDocuments
             parameters:
                 - name: query
@@ -1488,7 +1488,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListSatellites
-            description: ListSatellites returns CelesTrak TLE orbital elements with altitude, velocity, and inclination, refreshed every 2 hours and filterable by country.
+            description: ListSatellites returns CelesTrak two-line element sets (TLE) for tracked satellites, for client-side orbit propagation, refreshed every 2 hours and filterable by country.
             operationId: ListSatellites
             parameters:
                 - name: country
@@ -1736,7 +1736,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListOrefAlerts
-            description: ListOrefAlerts returns active Israeli Home Front Command (OREF) Red Alert warnings polled from oref.org.il, or recent alert history in MODE_HISTORY.
+            description: ListOrefAlerts returns active Israeli Home Front Command Red Alert sirens polled from Tzeva Adom, with oref.org.il as fallback, or alert history in MODE_HISTORY.
             operationId: ListOrefAlerts
             parameters:
                 - name: mode

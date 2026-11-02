@@ -24,7 +24,7 @@ service ClimateService {
     option (sebuf.http.config) = {path: "/list-climate-disasters", method: HTTP_METHOD_GET};
   }
 
-  // GetCo2Monitoring returns NOAA GML Mauna Loa CO2 readings (current, year-ago, 12-month trend) with global methane and nitrous oxide levels, seeded daily.
+  // GetCo2Monitoring returns NOAA GML Mauna Loa CO2 readings (current, year-ago, 12-month trend) with global methane and nitrous oxide levels, refreshed every 3 days.
   rpc GetCo2Monitoring(GetCo2MonitoringRequest) returns (GetCo2MonitoringResponse) {
     option (sebuf.http.config) = {path: "/get-co2-monitoring", method: HTTP_METHOD_GET};
   }

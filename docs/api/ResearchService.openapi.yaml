@@ -13,7 +13,7 @@ paths:
             tags:
                 - ResearchService
             summary: ListArxivPapers
-            description: ListArxivPapers returns the newest arXiv papers in cs.AI, cs.CL and cs.CR, optionally filtered to one category, sorted by date, up to 100 per page.
+            description: ListArxivPapers returns the newest arXiv papers in cs.AI, cs.CL and cs.CR, optionally filtered to one category, sorted by date, up to 100 per request.
             operationId: ListArxivPapers
             parameters:
                 - name: page_size

@@ -2846,7 +2846,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEuGasStorage
-            description: GetEuGasStorage retrieves EU aggregate gas storage fill % from GIE AGSI+, with day-over-day change, injection or withdrawal trend, and 5 gas days of history.
+            description: GetEuGasStorage retrieves EU aggregate gas storage fill % from GIE AGSI+, with day-over-day change, injection or withdrawal trend, and up to five days of history.
             operationId: GetEuGasStorage
             parameters:
                 - name: jmespath

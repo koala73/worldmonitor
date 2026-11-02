@@ -12,7 +12,7 @@ import "worldmonitor/research/v1/list_tech_events.proto";
 service ResearchService {
   option (sebuf.http.service_config) = {base_path: "/api/research/v1"};
 
-  // ListArxivPapers returns the newest arXiv papers in cs.AI, cs.CL and cs.CR, optionally filtered to one category, sorted by date, up to 100 per page.
+  // ListArxivPapers returns the newest arXiv papers in cs.AI, cs.CL and cs.CR, optionally filtered to one category, sorted by date, up to 100 per request.
   rpc ListArxivPapers(ListArxivPapersRequest) returns (ListArxivPapersResponse) {
     option (sebuf.http.config) = {path: "/list-arxiv-papers", method: HTTP_METHOD_GET};
   }

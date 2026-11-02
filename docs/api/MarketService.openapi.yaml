@@ -144,7 +144,7 @@ paths:
             tags:
                 - MarketService
             summary: ListCryptoQuotes
-            description: ListCryptoQuotes returns price, 24h and 7d change and a sparkline for major coins by default or up to 25 CoinGecko ids, with CoinPaprika as fallback.
+            description: ListCryptoQuotes returns price and 24h change for major coins or up to 25 CoinGecko ids from CoinPaprika or CoinGecko; 7d change and sparkline need CoinGecko.
             operationId: ListCryptoQuotes
             parameters:
                 - name: ids
@@ -2096,7 +2096,7 @@ paths:
             tags:
                 - MarketService
             summary: ListCryptoSectors
-            description: ListCryptoSectors returns the average 24h price change of five tokens each in eight crypto sectors, such as Layer 1, DeFi, AI and Memes, from CoinGecko.
+            description: ListCryptoSectors returns the average 24h price change of the tokens with data in eight crypto sectors, such as Layer 1, DeFi, AI and Memes, from CoinGecko.
             operationId: ListCryptoSectors
             parameters:
                 - name: jmespath
@@ -2207,7 +2207,7 @@ paths:
             tags:
                 - MarketService
             summary: ListDefiTokens
-            description: ListDefiTokens returns USD price with 24h and 7d change for a curated set of DeFi tokens such as Aave, Uniswap, Pendle and Lido, sourced from CoinGecko.
+            description: ListDefiTokens returns USD price with 24h and 7d change for curated DeFi tokens such as Aave, Uniswap, Pendle and Lido, from CoinGecko with CoinPaprika as fallback.
             operationId: ListDefiTokens
             parameters:
                 - name: jmespath
@@ -2322,7 +2322,7 @@ paths:
             tags:
                 - MarketService
             summary: ListAiTokens
-            description: ListAiTokens returns USD price with 24h and 7d change for a curated set of AI crypto tokens such as Bittensor, Render and Fetch.ai, sourced from CoinGecko.
+            description: ListAiTokens returns USD price with 24h and 7d change for curated AI crypto tokens such as Bittensor, Render and Fetch.ai, from CoinGecko with CoinPaprika as fallback.
             operationId: ListAiTokens
             parameters:
                 - name: jmespath
@@ -2437,7 +2437,7 @@ paths:
             tags:
                 - MarketService
             summary: ListOtherTokens
-            description: ListOtherTokens returns USD price with 24h and 7d change for a curated set of other trending tokens such as Aptos, Sui, Celestia and Ondo, from CoinGecko.
+            description: ListOtherTokens returns USD price with 24h and 7d change for other trending tokens such as Aptos, Sui, Celestia and Ondo, from CoinGecko with CoinPaprika as fallback.
             operationId: ListOtherTokens
             parameters:
                 - name: jmespath
@@ -3288,7 +3288,7 @@ paths:
             tags:
                 - MarketService
             summary: GetHyperliquidFlow
-            description: GetHyperliquidFlow returns 5-minute funding, open interest, volume, basis and composite flow scores for Hyperliquid perps on crypto, metals, oil, gas and FX.
+            description: GetHyperliquidFlow returns funding, open interest, 24h volume, basis and flow scores for Hyperliquid perps on crypto, metals, oil, gas and FX, polled every 5 minutes.
             operationId: GetHyperliquidFlow
             parameters:
                 - name: jmespath

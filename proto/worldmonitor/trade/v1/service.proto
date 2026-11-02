@@ -43,7 +43,7 @@ service TradeService {
     option (sebuf.http.config) = {path: "/get-trade-flows", method: HTTP_METHOD_GET};
   }
 
-  // GetTradeBarriers returns each WTO reporter's agricultural versus non-agricultural tariff gap from WTO tariff averages, largest gap first, up to 100 economies.
+  // GetTradeBarriers returns each WTO reporter's agricultural versus non-agricultural tariff gap, largest first, up to 100 economies; a missing series counts as 0%.
   rpc GetTradeBarriers(GetTradeBarriersRequest) returns (GetTradeBarriersResponse) {
     option (sebuf.http.config) = {path: "/get-trade-barriers", method: HTTP_METHOD_GET};
   }

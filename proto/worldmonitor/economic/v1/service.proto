@@ -158,7 +158,7 @@ service EconomicService {
     option (sebuf.http.config) = {path: "/get-eurostat-country-data", method: HTTP_METHOD_GET};
   }
 
-  // GetEuGasStorage retrieves EU aggregate gas storage fill % from GIE AGSI+, with day-over-day change, injection or withdrawal trend, and 5 gas days of history.
+  // GetEuGasStorage retrieves EU aggregate gas storage fill % from GIE AGSI+, with day-over-day change, injection or withdrawal trend, and up to five days of history.
   rpc GetEuGasStorage(GetEuGasStorageRequest) returns (GetEuGasStorageResponse) {
     option (sebuf.http.config) = {path: "/get-eu-gas-storage", method: HTTP_METHOD_GET};
   }

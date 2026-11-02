@@ -296,7 +296,7 @@ paths:
             tags:
                 - ClimateService
             summary: GetCo2Monitoring
-            description: GetCo2Monitoring returns NOAA GML Mauna Loa CO2 readings (current, year-ago, 12-month trend) with global methane and nitrous oxide levels, seeded daily.
+            description: GetCo2Monitoring returns NOAA GML Mauna Loa CO2 readings (current, year-ago, 12-month trend) with global methane and nitrous oxide levels, refreshed every 3 days.
             operationId: GetCo2Monitoring
             parameters:
                 - name: jmespath
@@ -1036,7 +1036,7 @@ components:
                     description: Unique event identifier.
                 type:
                     type: string
-                    description: 'Disaster type: flood, cyclone, drought, heatwave, wildfire.'
+                    description: 'Disaster type: flood, cyclone, drought, heatwave, wildfire, volcano.'
                 name:
                     type: string
                     description: Human-readable event name.
@@ -1070,7 +1070,7 @@ components:
                     description: Affected population when available.
                 source:
                     type: string
-                    description: 'Source system: GDACS, ReliefWeb, NASA FIRMS.'
+                    description: 'Source system: GDACS, ReliefWeb, NASA FIRMS, EONET.'
                 sourceUrl:
                     type: string
                     description: Source URL for drill-down.

@@ -414,7 +414,7 @@ paths:
             tags:
                 - ConsumerPricesService
             summary: ListConsumerPriceMovers
-            description: ListConsumerPriceMovers returns up to 10 products with the largest price rises and falls in a market over 7d, 30d or 90d, optionally filtered by category.
+            description: ListConsumerPriceMovers returns up to 10 risers and 10 fallers, the products with the largest price changes in a market over 7d, 30d or 90d, optionally by category.
             operationId: ListConsumerPriceMovers
             parameters:
                 - name: market_code

@@ -2373,7 +2373,7 @@ paths:
             tags:
                 - ClimateService
             summary: GetCo2Monitoring
-            description: GetCo2Monitoring returns NOAA GML Mauna Loa CO2 readings (current, year-ago, 12-month trend) with global methane and nitrous oxide levels, seeded daily.
+            description: GetCo2Monitoring returns NOAA GML Mauna Loa CO2 readings (current, year-ago, 12-month trend) with global methane and nitrous oxide levels, refreshed every 3 days.
             operationId: GetCo2Monitoring
             parameters:
                 - name: jmespath
@@ -5805,7 +5805,7 @@ paths:
             tags:
                 - ConsumerPricesService
             summary: ListConsumerPriceMovers
-            description: ListConsumerPriceMovers returns up to 10 products with the largest price rises and falls in a market over 7d, 30d or 90d, optionally filtered by category.
+            description: ListConsumerPriceMovers returns up to 10 risers and 10 fallers, the products with the largest price changes in a market over 7d, 30d or 90d, optionally by category.
             operationId: ListConsumerPriceMovers
             parameters:
                 - name: market_code
@@ -6853,7 +6853,7 @@ paths:
             tags:
                 - DisplacementService
             summary: GetPopulationExposure
-            description: GetPopulationExposure lists population and density for 20 priority countries, or estimates people within a radius (default 50 km) of a point from density.
+            description: GetPopulationExposure lists population and density for 20 priority countries, or estimates people within a radius of a point from the nearest one's average density.
             operationId: GetPopulationExposure
             parameters:
                 - name: mode
@@ -9835,7 +9835,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEuGasStorage
-            description: GetEuGasStorage retrieves EU aggregate gas storage fill % from GIE AGSI+, with day-over-day change, injection or withdrawal trend, and 5 gas days of history.
+            description: GetEuGasStorage retrieves EU aggregate gas storage fill % from GIE AGSI+, with day-over-day change, injection or withdrawal trend, and up to five days of history.
             operationId: GetEuGasStorage
             parameters:
                 - name: jmespath
@@ -16432,7 +16432,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: SearchGdeltDocuments
-            description: SearchGdeltDocuments matches a query against seeded GDELT topic articles, or returns recent articles for a country:XX query, up to 20 results.
+            description: SearchGdeltDocuments returns up to 20 articles from the first seeded GDELT topic that matches a query, or recent articles for a country:XX query.
             operationId: SearchGdeltDocuments
             parameters:
                 - name: query
@@ -16779,7 +16779,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListSatellites
-            description: ListSatellites returns CelesTrak TLE orbital elements with altitude, velocity, and inclination, refreshed every 2 hours and filterable by country.
+            description: ListSatellites returns CelesTrak two-line element sets (TLE) for tracked satellites, for client-side orbit propagation, refreshed every 2 hours and filterable by country.
             operationId: ListSatellites
             parameters:
                 - name: country
@@ -17027,7 +17027,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListOrefAlerts
-            description: ListOrefAlerts returns active Israeli Home Front Command (OREF) Red Alert warnings polled from oref.org.il, or recent alert history in MODE_HISTORY.
+            description: ListOrefAlerts returns active Israeli Home Front Command Red Alert sirens polled from Tzeva Adom, with oref.org.il as fallback, or alert history in MODE_HISTORY.
             operationId: ListOrefAlerts
             parameters:
                 - name: mode
@@ -21248,7 +21248,7 @@ paths:
             tags:
                 - MarketService
             summary: ListCryptoQuotes
-            description: ListCryptoQuotes returns price, 24h and 7d change and a sparkline for major coins by default or up to 25 CoinGecko ids, with CoinPaprika as fallback.
+            description: ListCryptoQuotes returns price and 24h change for major coins or up to 25 CoinGecko ids from CoinPaprika or CoinGecko; 7d change and sparkline need CoinGecko.
             operationId: ListCryptoQuotes
             parameters:
                 - name: ids
@@ -23200,7 +23200,7 @@ paths:
             tags:
                 - MarketService
             summary: ListCryptoSectors
-            description: ListCryptoSectors returns the average 24h price change of five tokens each in eight crypto sectors, such as Layer 1, DeFi, AI and Memes, from CoinGecko.
+            description: ListCryptoSectors returns the average 24h price change of the tokens with data in eight crypto sectors, such as Layer 1, DeFi, AI and Memes, from CoinGecko.
             operationId: ListCryptoSectors
             parameters:
                 - name: jmespath
@@ -23311,7 +23311,7 @@ paths:
             tags:
                 - MarketService
             summary: ListDefiTokens
-            description: ListDefiTokens returns USD price with 24h and 7d change for a curated set of DeFi tokens such as Aave, Uniswap, Pendle and Lido, sourced from CoinGecko.
+            description: ListDefiTokens returns USD price with 24h and 7d change for curated DeFi tokens such as Aave, Uniswap, Pendle and Lido, from CoinGecko with CoinPaprika as fallback.
             operationId: ListDefiTokens
             parameters:
                 - name: jmespath
@@ -23426,7 +23426,7 @@ paths:
             tags:
                 - MarketService
             summary: ListAiTokens
-            description: ListAiTokens returns USD price with 24h and 7d change for a curated set of AI crypto tokens such as Bittensor, Render and Fetch.ai, sourced from CoinGecko.
+            description: ListAiTokens returns USD price with 24h and 7d change for curated AI crypto tokens such as Bittensor, Render and Fetch.ai, from CoinGecko with CoinPaprika as fallback.
             operationId: ListAiTokens
             parameters:
                 - name: jmespath
@@ -23541,7 +23541,7 @@ paths:
             tags:
                 - MarketService
             summary: ListOtherTokens
-            description: ListOtherTokens returns USD price with 24h and 7d change for a curated set of other trending tokens such as Aptos, Sui, Celestia and Ondo, from CoinGecko.
+            description: ListOtherTokens returns USD price with 24h and 7d change for other trending tokens such as Aptos, Sui, Celestia and Ondo, from CoinGecko with CoinPaprika as fallback.
             operationId: ListOtherTokens
             parameters:
                 - name: jmespath
@@ -24392,7 +24392,7 @@ paths:
             tags:
                 - MarketService
             summary: GetHyperliquidFlow
-            description: GetHyperliquidFlow returns 5-minute funding, open interest, volume, basis and composite flow scores for Hyperliquid perps on crypto, metals, oil, gas and FX.
+            description: GetHyperliquidFlow returns funding, open interest, 24h volume, basis and flow scores for Hyperliquid perps on crypto, metals, oil, gas and FX, polled every 5 minutes.
             operationId: GetHyperliquidFlow
             parameters:
                 - name: jmespath
@@ -28267,7 +28267,7 @@ paths:
             tags:
                 - ResearchService
             summary: ListArxivPapers
-            description: ListArxivPapers returns the newest arXiv papers in cs.AI, cs.CL and cs.CR, optionally filtered to one category, sorted by date, up to 100 per page.
+            description: ListArxivPapers returns the newest arXiv papers in cs.AI, cs.CL and cs.CR, optionally filtered to one category, sorted by date, up to 100 per request.
             operationId: ListArxivPapers
             parameters:
                 - name: page_size
@@ -29139,7 +29139,7 @@ paths:
             tags:
                 - ResilienceService
             summary: GetFoodStocks
-            description: GetFoodStocks returns USDA PSD grain and oilseed stocks-to-use by country or WORLD, gap-filled from FAOSTAT. PRO-gated. Requires entitlement tier >= 1.
+            description: GetFoodStocks returns USDA PSD grain and oilseed stocks-to-use by country or WORLD; FAOSTAT fills supply gaps without stock ratios (see has_stocks_to_use). PRO-gated. Requires entitlement tier >= 1.
             operationId: GetFoodStocks
             security:
                 - WorldMonitorKey: []
@@ -35925,7 +35925,7 @@ paths:
             tags:
                 - TradeService
             summary: GetTradeBarriers
-            description: GetTradeBarriers returns each WTO reporter's agricultural versus non-agricultural tariff gap from WTO tariff averages, largest gap first, up to 100 economies.
+            description: GetTradeBarriers returns each WTO reporter's agricultural versus non-agricultural tariff gap, largest first, up to 100 economies; a missing series counts as 0%.
             operationId: GetTradeBarriers
             parameters:
                 - name: countries
@@ -36553,7 +36553,7 @@ paths:
             tags:
                 - WebcamService
             summary: ListWebcams
-            description: ListWebcams returns Windy webcams inside a map bounding box from a seeded geo index, grouped into clusters below zoom 9, with a count of cameras in view.
+            description: ListWebcams returns up to 2,000 Windy webcams in a map bounding box rounded out to whole degrees, from a seeded geo index, clustered below zoom 9, with a count.
             operationId: ListWebcams
             parameters:
                 - name: zoom
@@ -41879,7 +41879,7 @@ components:
                     description: Unique event identifier.
                 type:
                     type: string
-                    description: 'Disaster type: flood, cyclone, drought, heatwave, wildfire.'
+                    description: 'Disaster type: flood, cyclone, drought, heatwave, wildfire, volcano.'
                 name:
                     type: string
                     description: Human-readable event name.
@@ -41913,7 +41913,7 @@ components:
                     description: Affected population when available.
                 source:
                     type: string
-                    description: 'Source system: GDACS, ReliefWeb, NASA FIRMS.'
+                    description: 'Source system: GDACS, ReliefWeb, NASA FIRMS, EONET.'
                 sourceUrl:
                     type: string
                     description: Source URL for drill-down.

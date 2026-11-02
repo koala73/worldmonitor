@@ -824,7 +824,7 @@ paths:
             tags:
                 - TradeService
             summary: GetTradeBarriers
-            description: GetTradeBarriers returns each WTO reporter's agricultural versus non-agricultural tariff gap from WTO tariff averages, largest gap first, up to 100 economies.
+            description: GetTradeBarriers returns each WTO reporter's agricultural versus non-agricultural tariff gap, largest first, up to 100 economies; a missing series counts as 0%.
             operationId: GetTradeBarriers
             parameters:
                 - name: countries
