@@ -1093,6 +1093,8 @@
       "noMinerals": "Mineral data loading...",
       "upstreamUnavailable": "Supply chain data temporarily unavailable — showing cached data",
       "partialTransitCoverage": "{{names}} transit data unavailable",
+      "oilPipelinesUnavailable": "Oil pipeline data unavailable",
+      "gasPipelinesUnavailable": "Gas pipeline data unavailable",
       "spikeAlert": "Spike detected — rate significantly above 52-week average (weekly)",
       "warnings": "warning(s)",
       "aisDisruptions": "Ship tracking disruptions",

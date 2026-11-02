@@ -988,7 +988,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Esegui l'upgrade a PRO per quote di paesi di miniere e raffinerie con concentrazione (indice di concentrazione dei produttori) per fase.",
-      "partialTransitCoverage": "Dati di transito non disponibili: {{names}}"
+      "partialTransitCoverage": "Dati di transito non disponibili: {{names}}",
+      "oilPipelinesUnavailable": "Dati sugli oleodotti non disponibili",
+      "gasPipelinesUnavailable": "Dati sui gasdotti non disponibili"
     },
     "tradePolicy": {
       "tariffs": "Dazi",

@@ -2078,7 +2078,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Uaktualnij do PRO, aby uzyskać udziały krajów górnictwwa i rafinacji z koncentracją (indeks koncentracji producenta) według etapu.",
-      "partialTransitCoverage": "Dane tranzytu niedostępne: {{names}}"
+      "partialTransitCoverage": "Dane tranzytu niedostępne: {{names}}",
+      "oilPipelinesUnavailable": "Dane dotyczące rurociągów naftowych są niedostępne",
+      "gasPipelinesUnavailable": "Dane dotyczące rurociągów gazowych są niedostępne"
     },
     "positiveNewsFeed": {
       "noStories": "Brak artykułów w tej kategorii"

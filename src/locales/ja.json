@@ -994,7 +994,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "PROにアップグレードして、鉱山・精製所の国別シェアおよび段階別の集中度（生産者集中度指数）を確認してください。",
-      "partialTransitCoverage": "通過データが利用できません：{{names}}"
+      "partialTransitCoverage": "通過データが利用できません：{{names}}",
+      "oilPipelinesUnavailable": "石油パイプラインデータが利用不可",
+      "gasPipelinesUnavailable": "ガスパイプラインデータが利用不可"
     },
     "tradePolicy": {
       "tariffs": "関税",

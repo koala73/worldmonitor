@@ -1098,7 +1098,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "खनन और रिफाइनरी देश शेयर को एकाग्रता के साथ अपग्रेड करने के लिए PRO में अपग्रेड करें (उत्पादक एकाग्रता सूचकांक) चरण द्वारा।",
-      "partialTransitCoverage": "{{names}} के लिए पारगमन डेटा उपलब्ध नहीं है"
+      "partialTransitCoverage": "{{names}} के लिए पारगमन डेटा उपलब्ध नहीं है",
+      "oilPipelinesUnavailable": "तेल पाइपलाइन डेटा उपलब्ध नहीं है",
+      "gasPipelinesUnavailable": "गैस पाइपलाइन डेटा उपलब्ध नहीं है"
     },
     "tradePolicy": {
       "overview": "ओवरव्यू",

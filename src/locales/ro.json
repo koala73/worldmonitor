@@ -1000,7 +1000,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "Upgrade la PRO pentru ponderi de țară ale minelor și rafinăriilor cu concentrare (indice de concentrare a producătorilor) pe etapă.",
-      "partialTransitCoverage": "Date de tranzit indisponibile pentru {{names}}"
+      "partialTransitCoverage": "Date de tranzit indisponibile pentru {{names}}",
+      "oilPipelinesUnavailable": "Datele conductelor de petrol nu sunt disponibile",
+      "gasPipelinesUnavailable": "Datele conductelor de gaze nu sunt disponibile"
     },
     "tradePolicy": {
       "tariffs": "Tarife vamale",

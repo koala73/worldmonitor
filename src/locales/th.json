@@ -994,7 +994,9 @@
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
       "productionProLocked": "อัปเกรดเป็น PRO สำหรับสัดส่วนประเทศเหมืองและสถานกลั่นพร้อมความเข้มข้น (ดัชนีความเข้มข้นของผู้ผลิต) ตามขั้นตอน",
-      "partialTransitCoverage": "ไม่มีข้อมูลการขนส่งของ {{names}}"
+      "partialTransitCoverage": "ไม่มีข้อมูลการขนส่งของ {{names}}",
+      "oilPipelinesUnavailable": "ข้อมูลท่อส่งน้ำมันไม่พร้อมใช้งาน",
+      "gasPipelinesUnavailable": "ข้อมูลท่อส่งก๊าซไม่พร้อมใช้งาน"
     },
     "tradePolicy": {
       "tariffs": "ภาษีศุลกากร",
