@@ -1,7 +1,8 @@
 import { isoDate, pdfRows } from '../food-prices.mjs';
 
 // The media list is the publisher's own upload index; file names carry suffixes such as -MCIRMN when
-// the commerce ministry co-signs, so dates come from the title rather than a guessed URL.
+// the commerce ministry co-signs, and some titles drop the underscore before the year (prix_30_Sept2026),
+// so dates come from the title rather than a guessed URL.
 const MEDIA_URL = 'https://madr.gov.dz/wp-json/wp/v2/media?search=prix&mime_type=application/pdf&per_page=30&orderby=date&order=desc&_fields=id,date,title,mime_type,source_url';
 const MONTHS = [/^jan/, /^f[eé][vb]/, /^mar/, /^a[vp]r/, /^ma[iy]/, /^juin|^jun/, /^juil|^jul/, /^ao[uû]|^aug/, /^sep/, /^oct/, /^nov/, /^d[eé]c/];
 const PRODUCTS = {
@@ -23,7 +24,7 @@ export function discoverMadrReports(media) {
     let url;
     try { url = new URL(entry.source_url); } catch { return []; }
     if (url.protocol !== 'https:' || url.hostname !== 'madr.gov.dz' || !/^\/wp-content\/uploads\/.+\.pdf$/i.test(url.pathname)) return [];
-    const match = /^prix_(\d{1,2})_([A-Za-zéûÉ]{3,9})_(\d{4})_MADRP\b/i.exec(String(entry.title?.rendered ?? '').trim());
+    const match = /^prix_(\d{1,2})_([A-Za-zéûÉ]{3,9})_?(\d{4})_MADRP\b/i.exec(String(entry.title?.rendered ?? '').trim());
     const date = match ? textDate(match[1], match[2], match[3]) : '';
     if (!date || seen.has(date)) return [];
     seen.add(date);

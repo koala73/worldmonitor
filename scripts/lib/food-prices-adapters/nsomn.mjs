@@ -93,13 +93,19 @@ const query = table => ({
 });
 
 export async function collect(ctx) {
-  const rows = [];
+  const tables = [];
   for (const [table, market] of [[CAPITAL_TABLE, 'Ulaanbaatar'], [AIMAG_TABLE, undefined]]) {
     const body = await ctx.get(`${API}${table}`, { method: 'POST', body: JSON.stringify(query(table)), headers: { 'Content-Type': 'application/json' } });
-    rows.push(...parseNsoTable(JSON.parse(body), { market }));
+    tables.push(parseNsoTable(JSON.parse(body), { market }));
   }
-  const latest = rows.map(row => row.date).sort().at(-1);
-  if (!latest) throw new Error('nsomn tables have no food prices');
+  const [capital, aimags] = tables;
+  const newest = rows => rows.map(row => row.date).sort().at(-1);
+  const latest = newest(capital);
+  if (!latest) throw new Error('nsomn capital table has no food prices');
+  // The card shows only the newest week, so a table that lags would silently drop all of its markets.
+  // Fail instead, which keeps the last complete snapshot until both tables carry the same week.
+  if (newest(aimags) !== latest) throw new Error(`nsomn aimag table newest week ${newest(aimags) || 'missing'} does not match capital week ${latest}`);
+  const rows = [...capital, ...aimags];
   if (latest > ctx.dated(ctx.now, 0)) throw new Error(`nsomn week ${latest} is in the future`);
   const prior = ctx.dated(new Date(`${latest}T00:00:00Z`), -7);
   const observations = rows.filter(row => row.date === latest || row.date === prior);

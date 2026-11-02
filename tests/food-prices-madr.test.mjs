@@ -36,6 +36,8 @@ test('MADR discovers dated price PDFs from the WordPress media list, whatever th
   assert.equal(reports[0].date, '2026-11-02');
   assert.ok(reports.some(report => report.date === '2026-10-25' && /Prix_25_Oct_2026_MADRP\.pdf$/.test(report.url)), 'capitalised title');
   assert.ok(reports.some(report => report.date === '2026-10-21' && /MCIRMN\.pdf$/.test(report.url)), 'co-branded suffix');
+  assert.ok(reports.some(report => report.date === '2026-09-30') && reports.some(report => report.date === '2026-09-23'), 'titles without the underscore before the year (prix_30_Sept2026)');
+  assert.ok(reports.some(report => report.date === '2026-09-28'), 'Sept with the underscore');
   assert.deepEqual(discoverMadrReports([
     { title: { rendered: 'prix_02_Nov_2026_MADRP' }, mime_type: 'application/pdf', source_url: 'https://example.com/wp-content/uploads/2026/11/prix_02_Nov_2026_MADRP.pdf' },
     { title: { rendered: 'prix_02_Nov_2026_MADRP' }, mime_type: 'image/png', source_url: 'https://madr.gov.dz/wp-content/uploads/2026/11/x.png' },

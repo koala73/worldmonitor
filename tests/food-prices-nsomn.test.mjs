@@ -83,3 +83,16 @@ test('NSO collect fails when the newest week is in the future or weeks are not s
   assert.deepEqual(result.refreshedReports, [{ date: '2026-10-26' }]);
   assert.ok(!result.observations.some(row => row.date === '2026-10-12'), 'a non-adjacent week is not a baseline');
 });
+
+test('NSO collect refuses to publish when the two tables disagree on the newest week', async () => {
+  const fixtures = fixture();
+  // The aimag table lags a week: its newest two weeks are 2026-10-19 and 2026-10-12.
+  const lagging = structuredClone(fixtures[AIMAG_TABLE]);
+  lagging.dimension['Хугацаа'].category.label = { 0: '2026-10-19', 1: '2026-10-12' };
+  await assert.rejects(collect({
+    now: new Date('2026-11-02T08:00:00Z'),
+    dated: (date, offset) => new Date(date.getTime() + offset * 86400000).toISOString().slice(0, 10),
+    get: async url => JSON.stringify(url.endsWith(AIMAG_TABLE) ? lagging : fixtures[url.split('/').at(-1)]),
+    warn: () => {},
+  }), /aimag table newest week 2026-10-19 does not match capital week 2026-10-26/);
+});
