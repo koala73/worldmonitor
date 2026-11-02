@@ -220,23 +220,25 @@ const MODERN_ERROR_CODES: ReadonlyMap<number, number> = new Map([
 
 type CacheHint = { ttlMs: number; cacheScope: 'public' | 'private' };
 
-// tools/list, prompts/list and resources/templates/list are identical
-// for every caller. resources/list adds account resources for user-bound
-// callers, and a shared cache cannot key on the caller, so it is private for
-// everyone. server/discover is private on /mcp, so a shared cache cannot let
-// an anonymous caller skip the sign-in challenge, and public on the anonymous
-// aliases. Every other method carries no hint.
-function cacheHint(method: string | null, onAlias: boolean): CacheHint | null {
+// prompts/list and resources/templates/list are identical for every caller,
+// so they are public. tools/list and server/discover are not: a ChatGPT
+// request gets its own tool list and instructions (host-policy.ts), and a
+// shared cache cannot key on the host, so a public copy of either variant
+// could reach the other host. They are private everywhere, including the
+// anonymous discovery aliases. resources/list adds account resources for
+// user-bound callers, and a shared cache cannot key on the caller, so it is
+// private for everyone too. Every other method carries no hint.
+function cacheHint(method: string | null): CacheHint | null {
   switch (method) {
-    case 'tools/list':
     case 'prompts/list':
     case 'resources/templates/list':
       return { ttlMs: ONE_HOUR_MS, cacheScope: 'public' };
+    case 'tools/list':
+    case 'server/discover':
+      return { ttlMs: ONE_HOUR_MS, cacheScope: 'private' };
     case 'resources/list':
     case 'resources/read':
       return { ttlMs: 0, cacheScope: 'private' };
-    case 'server/discover':
-      return { ttlMs: ONE_HOUR_MS, cacheScope: onAlias ? 'public' : 'private' };
     default:
       return null;
   }
@@ -246,8 +248,6 @@ function cacheHint(method: string | null, onAlias: boolean): CacheHint | null {
 export interface ModernShapeOptions {
   /** The JSON-RPC method, or null when the request failed before it was read. */
   method: string | null;
-  /** True on the anonymous machine-discovery aliases (/.well-known/mcp*). */
-  onAlias: boolean;
   /** True when the request's Accept allows text/event-stream. */
   acceptsSse: boolean;
 }
@@ -264,7 +264,7 @@ function shapeMessage(message: Record<string, unknown>, options: ModernShapeOpti
     result: {
       ...result,
       resultType: 'complete',
-      ...cacheHint(options.method, options.onAlias),
+      ...cacheHint(options.method),
       _meta: {
         ...(isPlainObject(result._meta) ? result._meta : {}),
         ...serverInfoMeta(),
