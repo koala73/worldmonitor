@@ -2634,6 +2634,15 @@
             "mcpClients": "設定 MCP",
             "channels": "在通知設定中進行配置"
           }
+        },
+        "about": {
+          "heading": "最後一件事：您將使用 World Monitor 做什麼？",
+          "body": "三個快速問題能幫助我們為你打造合適的工具。你可以跳過任何問題。",
+          "confirmCta": "儲存我的答案",
+          "confirming": "儲存中…",
+          "doneNote": "感謝，我們已收到你的答案。",
+          "summaryLabel": "關於你",
+          "summaryVerified": "已儲存。謝謝。"
         }
       },
       "status": {
@@ -3015,6 +3024,66 @@
       "partial": "部分報告不可用或已過時",
       "stale": "較早資料",
       "global": "糧農組織全球月度指數"
+    },
+    "aboutYou": {
+      "title": "幫助我們為您打造 World Monitor",
+      "ariaLabel": "關於您",
+      "progress": "第 {{current}} / {{total}}",
+      "skip": "跳過",
+      "close": "關閉",
+      "done": "完成",
+      "saving": "儲存中…",
+      "saveFailed": "儲存失敗。請重試。",
+      "retry": "重試",
+      "thanks": "感謝。這有助於我們決定下一步要開發什麼。",
+      "questions": {
+        "primaryUse": {
+          "label": "您主要用 World Monitor 做什麼？",
+          "options": {
+            "news": "新聞和世界事件",
+            "markets": "市場和交易",
+            "commodities": "商品和供應鏈",
+            "travel": "旅行和航班",
+            "security": "安全和 OSINT",
+            "research": "研究和新聞",
+            "api-agent": "使用 API 或 AI 智慧體開發",
+            "other": "其他"
+          }
+        },
+        "usageContext": {
+          "label": "您是工作使用還是個人使用？",
+          "options": {
+            "personal": "個人",
+            "work": "工作"
+          }
+        },
+        "payer": {
+          "label": "誰支付或將支付費用？",
+          "options": {
+            "self": "我",
+            "employer": "我的僱主或團隊",
+            "not-paying": "暫時沒有"
+          }
+        },
+        "role": {
+          "label": "以下哪項最準確地描述您的角色？",
+          "options": {
+            "analyst": "分析師或研究員",
+            "trader": "交易員或投資者",
+            "journalist": "記者",
+            "security": "安全或風險",
+            "government": "政府或政策",
+            "supply-chain": "供應鏈或運營",
+            "developer": "開發者",
+            "student": "學生",
+            "other": "其他"
+          }
+        },
+        "alternative": {
+          "label": "如果 World Monitor 不存在，您會使用什麼？",
+          "placeholder": "可選"
+        }
+      }
     }
   },
   "popups": {

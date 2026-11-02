@@ -238,6 +238,8 @@ describe('overlay reload-contract gate', () => {
     assert.deepEqual(scan.safeDeclarations, [
       'src/app/event-handlers.ts :: dialog',
       'src/app/event-handlers.ts :: popover',
+      // Every answer saves on tap; the optional free text saves on blur.
+      'src/components/AboutYouCard.ts :: root',
       'src/components/IntelligenceGapBadge.ts :: overlay',
       'src/components/MobileWarningModal.ts :: this.element',
       'src/components/RouteExplorer/KeyboardHelp.ts :: this.element',

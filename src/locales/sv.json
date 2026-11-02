@@ -2260,6 +2260,15 @@
             "mcpClients": "Konfigurera MCP",
             "channels": "Ställ in dem i aviseringsinställningarna"
           }
+        },
+        "about": {
+          "heading": "En sista sak: vad ska du använda World Monitor till?",
+          "body": "Tre snabba svar hjälper oss att bygga rätt verktyg för dig. Hoppa över de du vill.",
+          "confirmCta": "Spara mina svar",
+          "confirming": "Sparar…",
+          "doneNote": "Tack, vi har dina svar.",
+          "summaryLabel": "Om dig",
+          "summaryVerified": "Sparad. Tack."
         }
       },
       "status": {
@@ -2651,6 +2660,66 @@
       "partial": "Vissa rapporter saknas eller är gamla",
       "stale": "Äldre data",
       "global": "FAO:s globala månadsindex"
+    },
+    "aboutYou": {
+      "title": "Hjälp oss bygga World Monitor för dig",
+      "ariaLabel": "Om dig",
+      "progress": "{{current}} av {{total}}",
+      "skip": "Hoppa över",
+      "close": "Stäng",
+      "done": "Klar",
+      "saving": "Sparar…",
+      "saveFailed": "Kunde inte spara det. Försök igen.",
+      "retry": "Försök igen",
+      "thanks": "Tack. Det hjälper oss att bestämma vad vi ska bygga härnäst.",
+      "questions": {
+        "primaryUse": {
+          "label": "Vad använder du huvudsakligen World Monitor till?",
+          "options": {
+            "news": "Nyheter och världshändelser",
+            "markets": "Marknader och handel",
+            "commodities": "Råvaror och försörjningskedjor",
+            "travel": "Resor och flyg",
+            "security": "Säkerhet och OSINT",
+            "research": "Forskning och journalistik",
+            "api-agent": "Bygga med API eller en AI-agent",
+            "other": "Något annat"
+          }
+        },
+        "usageContext": {
+          "label": "Använder du det för arbete eller privat bruk?",
+          "options": {
+            "personal": "Privat",
+            "work": "Arbete"
+          }
+        },
+        "payer": {
+          "label": "Vem betalar, eller skulle betala, för det?",
+          "options": {
+            "self": "Jag själv",
+            "employer": "Min arbetsgivare eller mitt team",
+            "not-paying": "Ingen än så länge"
+          }
+        },
+        "role": {
+          "label": "Vilken beskrivning passar bäst för din roll?",
+          "options": {
+            "analyst": "Analytiker eller forskare",
+            "trader": "Trader eller investerare",
+            "journalist": "Journalist",
+            "security": "Säkerhet eller risk",
+            "government": "Government eller policy",
+            "supply-chain": "Försörjningskedja eller verksamhet",
+            "developer": "Utvecklare",
+            "student": "Student",
+            "other": "Annat"
+          }
+        },
+        "alternative": {
+          "label": "Vad skulle du använda om World Monitor inte fanns?",
+          "placeholder": "Valfritt"
+        }
+      }
     }
   },
   "popups": {

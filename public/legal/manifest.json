@@ -1,25 +1,25 @@
 {
-  "version": "2026-11-01",
+  "version": "2026-11-02",
   "documents": [
     {
       "source": "docs/eula.mdx",
       "pdf": "/legal/eula.pdf",
-      "sourceDigest": "ac91bd12b6da07fe9c6413f796e3de1165d2b09046a4ef4ea166599cda2336d4"
+      "sourceDigest": "3a37cd27304f3f2aea543c869e7a9a7a25900a2a0a68213328d0201ee7d0aa14"
     },
     {
       "source": "docs/terms.mdx",
       "pdf": "/legal/terms.pdf",
-      "sourceDigest": "134bdd8c166be578292ef1e00b75567b5f42245951046f4ada29b8a03ed49c42"
+      "sourceDigest": "8666aa8197a363f2683683304a958ca05c589c686b6641d04b73472cf72e8c73"
     },
     {
       "source": "docs/dpa.mdx",
       "pdf": "/legal/dpa.pdf",
-      "sourceDigest": "8ce44549e1d2d3819d213208739a01e96afa7fb4684846fa04653435931e52b9"
+      "sourceDigest": "6012fc1be1af02479e660adfa278981709023586706b61f17044072881dbb543"
     },
     {
       "source": "docs/privacy.mdx",
       "pdf": "/legal/privacy.pdf",
-      "sourceDigest": "5243cdea917c53cb2d6aea5eab24f7a8911c6743f836c70a5473ceb7d641e5d5"
+      "sourceDigest": "ae9a29e04d348fe3373dac0be58fb66c4b446ab4a0276dfcdc52fd66b0c904c3"
     }
   ]
 }

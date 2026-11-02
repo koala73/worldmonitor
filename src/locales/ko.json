@@ -2634,6 +2634,15 @@
             "mcpClients": "MCP 설정하기",
             "channels": "알림 설정에서 설정하기"
           }
+        },
+        "about": {
+          "heading": "마지막 한 가지: World Monitor를 어떤 용도로 사용하실 예정인가요?",
+          "body": "세 가지 빠른 질문에 답해주면 저희가 더 나은 도구를 만드는 데 도움이 됩니다. 건너뛰셔도 괜찮습니다.",
+          "confirmCta": "답변 저장",
+          "confirming": "저장 중…",
+          "doneNote": "감사합니다. 답변을 받았습니다.",
+          "summaryLabel": "사용자 정보",
+          "summaryVerified": "저장됨. 감사합니다."
         }
       },
       "status": {
@@ -3015,6 +3024,66 @@
       "partial": "일부 보고서가 없거나 오래됨",
       "stale": "오래된 자료",
       "global": "FAO 세계 월간 지수"
+    },
+    "aboutYou": {
+      "title": "World Monitor를 함께 만들어 주세요",
+      "ariaLabel": "당신에 대해",
+      "progress": "{{current}}/{{total}}",
+      "skip": "건너뛰기",
+      "close": "닫기",
+      "done": "완료",
+      "saving": "저장 중…",
+      "saveFailed": "저장하지 못했습니다. 다시 시도해 주세요.",
+      "retry": "다시 시도",
+      "thanks": "감사합니다. 이는 다음에 무엇을 개발할지 결정하는 데 도움이 됩니다.",
+      "questions": {
+        "primaryUse": {
+          "label": "World Monitor를 주로 무엇으로 사용하시나요?",
+          "options": {
+            "news": "뉴스 및 국제 뉴스",
+            "markets": "시장 및 거래",
+            "commodities": "상품 및 공급망",
+            "travel": "여행 및 항공편",
+            "security": "보안 및 OSINT",
+            "research": "연구 및 저널리즘",
+            "api-agent": "API 또는 AI 에이전트로 구축",
+            "other": "기타"
+          }
+        },
+        "usageContext": {
+          "label": "업무용인가요, 개인용인가요?",
+          "options": {
+            "personal": "개인",
+            "work": "업무"
+          }
+        },
+        "payer": {
+          "label": "누가 비용을 지불하거나 지불할 예정인가요?",
+          "options": {
+            "self": "본인",
+            "employer": "고용주 또는 팀",
+            "not-paying": "아직 없음"
+          }
+        },
+        "role": {
+          "label": "당신의 역할을 가장 잘 설명하는 것은 무엇인가요?",
+          "options": {
+            "analyst": "분석가 또는 연구원",
+            "trader": "거래자 또는 투자자",
+            "journalist": "저널리스트",
+            "security": "보안 또는 위험 관리",
+            "government": "정부 또는 정책",
+            "supply-chain": "공급망 또는 운영",
+            "developer": "개발자",
+            "student": "학생",
+            "other": "기타"
+          }
+        },
+        "alternative": {
+          "label": "World Monitor가 없다면 무엇을 사용하겠어요?",
+          "placeholder": "선택 사항"
+        }
+      }
     }
   },
   "popups": {

@@ -144,8 +144,9 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
       "Raw provider archive, keyed by webhookId with no per-user index. Events "
       + "processed after the deletion row exists are redacted on insert "
       + "(webhookMutations.processWebhookEvent); rows written before the request "
-      + "keep the identity bridge Dodo echoed back and are retained as delivered "
-      + "(owner decision 2026-09-22). Sweeping them needs a denormalized "
+      + "keep the identity bridge and any cancellation_feedback/cancellation_comment "
+      + "Dodo echoed back and are retained as delivered (owner decision "
+      + "2026-09-22; docs/privacy.mdx names this exception). Sweeping them needs a denormalized "
       + "customer id plus an index; until then the tombstone means the billing "
       + "rows stop naming the account, not that no record can be re-joined.",
   },
@@ -337,10 +338,17 @@ export function normalizeVerifiedEmail(
 const INTERNAL_IDENTITY_KEYS = new Set([
   "wm_user_id", "wm_user_id_sig", "wm_login_email", "wm_login_email_sig",
 ]);
+// The reason and comment a customer gives Dodo when cancelling are answers
+// about the person, which the privacy policy promises to delete with the
+// account. Amounts, ids, and periods stay as billing evidence.
+const CANCELLATION_FEEDBACK_KEYS = new Set([
+  "cancellation_feedback", "cancellation_comment",
+]);
 
 /**
- * Strip internal identity-bridge fields from Dodo-shaped billing payloads
- * while keeping amounts, ids, periods, and the Dodo customer contact block.
+ * Strip internal identity-bridge fields and cancellation feedback from
+ * Dodo-shaped billing payloads while keeping amounts, ids, periods, and the
+ * Dodo customer contact block.
  */
 export function redactBillingPayload(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -353,7 +361,7 @@ export function redactBillingPayload(value: unknown): unknown {
   const out: Record<string, unknown> = {};
   for (const [key, nested] of Object.entries(source)) {
     const lower = key.toLowerCase();
-    if (INTERNAL_IDENTITY_KEYS.has(lower)) {
+    if (INTERNAL_IDENTITY_KEYS.has(lower) || CANCELLATION_FEEDBACK_KEYS.has(lower)) {
       continue;
     }
     out[key] = redactBillingPayload(nested);

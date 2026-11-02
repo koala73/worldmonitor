@@ -155,6 +155,7 @@ jobs:
               'shared/legal.ts' \
               'shared/agent-client-source.js' \
               'shared/acquisition-source.ts' \
+              'shared/audience-profile.ts' \
               'scripts/lib/company-monitoring-classification.mjs' \
               'src/utils/country-codes.ts' | grep -q .; then
             echo "convex=true" >> "$GITHUB_OUTPUT"

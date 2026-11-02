@@ -2644,6 +2644,15 @@
             "mcpClients": "MCP'yi kurun",
             "channels": "Bunları bildirim ayarlarından yapılandırın"
           }
+        },
+        "about": {
+          "heading": "Son bir şey: World Monitor'ü ne için kullanacaksınız?",
+          "body": "Üç hızlı cevap, sizin için doğru araçları geliştirmemize yardımcı olur. İstediğiniz soruları atlayabilirsiniz.",
+          "confirmCta": "Cevaplarımı kaydet",
+          "confirming": "Kaydediliyor…",
+          "doneNote": "Teşekkürler, cevaplarınız alındı.",
+          "summaryLabel": "Hakkında",
+          "summaryVerified": "Kaydedildi. Teşekkür ederiz."
         }
       },
       "status": {
@@ -3035,6 +3044,66 @@
       "partial": "Bazı raporlar eksik veya eski",
       "stale": "Eski veriler",
       "global": "FAO küresel aylık endeksi"
+    },
+    "aboutYou": {
+      "title": "World Monitor'ı sizin için geliştirmemize yardımcı olun",
+      "ariaLabel": "Sizin hakkınızda",
+      "progress": "{{current}} / {{total}}",
+      "skip": "Atla",
+      "close": "Kapat",
+      "done": "Bitti",
+      "saving": "Kaydediliyor…",
+      "saveFailed": "Kaydedilemedi. Lütfen tekrar deneyin.",
+      "retry": "Tekrar Dene",
+      "thanks": "Teşekkürler. Bu, neyi sonra geliştireceğimize karar vermemize yardımcı oluyor.",
+      "questions": {
+        "primaryUse": {
+          "label": "World Monitor'ı esas olarak ne için kullanıyorsunuz?",
+          "options": {
+            "news": "Haberler ve dünya olayları",
+            "markets": "Piyasalar ve ticaret",
+            "commodities": "Emtialar ve tedarik zinciri",
+            "travel": "Seyahat ve uçuşlar",
+            "security": "Güvenlik ve OSINT",
+            "research": "Araştırma ve gazetecilik",
+            "api-agent": "API veya AI ajanı ile geliştirme",
+            "other": "Başka bir şey"
+          }
+        },
+        "usageContext": {
+          "label": "Bunu iş için mi kişisel kullanım için mi kullanıyorsunuz?",
+          "options": {
+            "personal": "Kişisel",
+            "work": "İş"
+          }
+        },
+        "payer": {
+          "label": "Kimse ödedi veya ödeyecek?",
+          "options": {
+            "self": "Ben",
+            "employer": "İşverenim veya ekibim",
+            "not-paying": "Henüz kimse yok"
+          }
+        },
+        "role": {
+          "label": "Rolünüzü en iyi hangi seçenek açıklıyor?",
+          "options": {
+            "analyst": "Analist veya araştırmacı",
+            "trader": "Tüccar veya yatırımcı",
+            "journalist": "Gazeteci",
+            "security": "Güvenlik veya risk",
+            "government": "Hükümet veya politika",
+            "supply-chain": "Tedarik zinciri veya operasyon",
+            "developer": "Geliştirici",
+            "student": "Öğrenci",
+            "other": "Diğer"
+          }
+        },
+        "alternative": {
+          "label": "World Monitor olmasaydı ne kullanırdınız?",
+          "placeholder": "İsteğe bağlı"
+        }
+      }
     }
   },
   "popups": {

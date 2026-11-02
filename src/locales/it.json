@@ -2654,6 +2654,15 @@
             "mcpClients": "Configura MCP",
             "channels": "Configurali nelle impostazioni di notifica"
           }
+        },
+        "about": {
+          "heading": "Un'ultima cosa: come utilizzerai World Monitor?",
+          "body": "Tre risposte rapide ci aiutano a costruire gli strumenti giusti per te. Salta pure quelle che preferisci.",
+          "confirmCta": "Salva le mie risposte",
+          "confirming": "Salvataggio…",
+          "doneNote": "Grazie, abbiamo registrato le tue risposte.",
+          "summaryLabel": "Su di te",
+          "summaryVerified": "Salvato. Grazie."
         }
       },
       "status": {
@@ -3055,6 +3064,66 @@
       "partial": "Alcuni rapporti mancano o sono vecchi",
       "stale": "Dati meno recenti",
       "global": "Indice mensile globale FAO"
+    },
+    "aboutYou": {
+      "title": "Aiutaci a costruire World Monitor per te",
+      "ariaLabel": "Su di te",
+      "progress": "{{current}} di {{total}}",
+      "skip": "Salta",
+      "close": "Chiudi",
+      "done": "Fatto",
+      "saving": "Salvataggio in corso…",
+      "saveFailed": "Non è stato possibile salvare. Riprova.",
+      "retry": "Riprova",
+      "thanks": "Grazie. Questo ci aiuta a decidere cosa sviluppare dopo.",
+      "questions": {
+        "primaryUse": {
+          "label": "Per cosa usi principalmente World Monitor?",
+          "options": {
+            "news": "Notizie ed eventi mondiali",
+            "markets": "Mercati e trading",
+            "commodities": "Materie prime e catena di approvvigionamento",
+            "travel": "Viaggi e voli",
+            "security": "Sicurezza e OSINT",
+            "research": "Ricerca e giornalismo",
+            "api-agent": "Sviluppo con API o agente AI",
+            "other": "Altro"
+          }
+        },
+        "usageContext": {
+          "label": "Lo usi per lavoro o uso personale?",
+          "options": {
+            "personal": "Personale",
+            "work": "Lavoro"
+          }
+        },
+        "payer": {
+          "label": "Chi paga, o pagherebbe, per questo?",
+          "options": {
+            "self": "Io",
+            "employer": "Il mio datore di lavoro o il mio team",
+            "not-paying": "Nessuno per ora"
+          }
+        },
+        "role": {
+          "label": "Quale descrive meglio il tuo ruolo?",
+          "options": {
+            "analyst": "Analista o ricercatore",
+            "trader": "Trader o investitore",
+            "journalist": "Giornalista",
+            "security": "Sicurezza o risk management",
+            "government": "Governo o policy",
+            "supply-chain": "Supply chain o operazioni",
+            "developer": "Sviluppatore",
+            "student": "Studente",
+            "other": "Altro"
+          }
+        },
+        "alternative": {
+          "label": "Cosa useresti se World Monitor non esistesse?",
+          "placeholder": "Facoltativo"
+        }
+      }
     }
   },
   "popups": {

@@ -2634,6 +2634,15 @@
             "mcpClients": "Thiết lập MCP",
             "channels": "Thiết lập chúng trong cài đặt thông báo"
           }
+        },
+        "about": {
+          "heading": "Một điều cuối cùng: bạn sẽ dùng World Monitor để làm gì?",
+          "body": "Ba câu trả lời nhanh giúp chúng tôi xây dựng những công cụ phù hợp cho bạn. Bỏ qua những câu nào bạn muốn.",
+          "confirmCta": "Lưu câu trả lời của tôi",
+          "confirming": "Đang lưu…",
+          "doneNote": "Cảm ơn, chúng tôi đã ghi nhận câu trả lời của bạn.",
+          "summaryLabel": "Về bạn",
+          "summaryVerified": "Đã lưu. Cảm ơn bạn."
         }
       },
       "status": {
@@ -3015,6 +3024,66 @@
       "partial": "Một số báo cáo bị thiếu hoặc đã cũ",
       "stale": "Dữ liệu cũ",
       "global": "Chỉ số tháng toàn cầu của FAO"
+    },
+    "aboutYou": {
+      "title": "Giúp chúng tôi xây dựng World Monitor phù hợp với bạn",
+      "ariaLabel": "Về bạn",
+      "progress": "{{current}} trên {{total}}",
+      "skip": "Bỏ qua",
+      "close": "Đóng",
+      "done": "Xong",
+      "saving": "Đang lưu…",
+      "saveFailed": "Không thể lưu. Vui lòng thử lại.",
+      "retry": "Thử lại",
+      "thanks": "Cảm ơn. Điều này giúp chúng tôi quyết định tiếp theo sẽ xây dựng gì.",
+      "questions": {
+        "primaryUse": {
+          "label": "Bạn chủ yếu sử dụng World Monitor để làm gì?",
+          "options": {
+            "news": "Tin tức và sự kiện thế giới",
+            "markets": "Thị trường và giao dịch",
+            "commodities": "Hàng hóa và chuỗi cung ứng",
+            "travel": "Du lịch và chuyến bay",
+            "security": "An ninh và OSINT",
+            "research": "Nghiên cứu và báo chí",
+            "api-agent": "Phát triển với API hoặc AI agent",
+            "other": "Cái khác"
+          }
+        },
+        "usageContext": {
+          "label": "Bạn sử dụng nó cho công việc hay cá nhân?",
+          "options": {
+            "personal": "Cá nhân",
+            "work": "Công việc"
+          }
+        },
+        "payer": {
+          "label": "Ai trả tiền, hoặc sẽ trả tiền, cho nó?",
+          "options": {
+            "self": "Tôi",
+            "employer": "Nhà tuyển dụng hoặc đội của tôi",
+            "not-paying": "Chưa ai cả"
+          }
+        },
+        "role": {
+          "label": "Vai trò nào mô tả bạn tốt nhất?",
+          "options": {
+            "analyst": "Nhà phân tích hoặc nhà nghiên cứu",
+            "trader": "Nhà giao dịch hoặc nhà đầu tư",
+            "journalist": "Nhà báo",
+            "security": "An ninh hoặc rủi ro",
+            "government": "Chính phủ hoặc chính sách",
+            "supply-chain": "Chuỗi cung ứng hoặc hoạt động",
+            "developer": "Nhà phát triển",
+            "student": "Sinh viên",
+            "other": "Khác"
+          }
+        },
+        "alternative": {
+          "label": "Bạn sẽ sử dụng gì nếu World Monitor không tồn tại?",
+          "placeholder": "Tùy chọn"
+        }
+      }
     }
   },
   "popups": {

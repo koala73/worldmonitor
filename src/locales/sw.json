@@ -2949,6 +2949,15 @@
             "mcpClients": "Set up MCP",
             "channels": "Set those up in notification settings"
           }
+        },
+        "about": {
+          "heading": "Kitu kimoja tu: utatumia World Monitor kwa nini?",
+          "body": "Majibu matatu ya haraka yatatusaidia kujenga zana sahihi kwako. Ruka yoyote unayotaka.",
+          "confirmCta": "Hifadhi majibu yangu",
+          "confirming": "Inakusubirisha…",
+          "doneNote": "Asante, tuna majibu yako.",
+          "summaryLabel": "Kuhusu wewe",
+          "summaryVerified": "Hifadhiwa. Asante."
         }
       },
       "status": {
@@ -3104,6 +3113,66 @@
       "partial": "Baadhi ya ripoti hazipatikani au ni za zamani",
       "stale": "Data ya zamani",
       "global": "Fahirisi ya mwezi ya FAO duniani"
+    },
+    "aboutYou": {
+      "title": "Tusaidie kujenga World Monitor kwa ajili yako",
+      "ariaLabel": "Kuhusu wewe",
+      "progress": "{{current}} ya {{total}}",
+      "skip": "Ruka",
+      "close": "Funga",
+      "done": "Imekamilika",
+      "saving": "Inakifanya…",
+      "saveFailed": "Haiwezi kufanya hivyo. Jaribu tena.",
+      "retry": "Jaribu tena",
+      "thanks": "Asante. Hii inasaidia sisi kuamua nini cha kujenga ijayo.",
+      "questions": {
+        "primaryUse": {
+          "label": "Kwa nini kwa kawaida unatumia World Monitor?",
+          "options": {
+            "news": "Habari na matukio ya dunia",
+            "markets": "Soko na biashara",
+            "commodities": "Bidhaa na mlolongo wa ugavi",
+            "travel": "Usafiri na ndege",
+            "security": "Usalama na OSINT",
+            "research": "Utafiti na ujumbe",
+            "api-agent": "Kujenga na API au wakili wa AI",
+            "other": "Kitu kingine"
+          }
+        },
+        "usageContext": {
+          "label": "Je, unatumia kwa ajili ya kazi au matumizi ya kibinafsi?",
+          "options": {
+            "personal": "Kibinafsi",
+            "work": "Kazi"
+          }
+        },
+        "payer": {
+          "label": "Nani analipa, au angepiga, kwa ajili yake?",
+          "options": {
+            "self": "Mimi",
+            "employer": "Mwajiriwa wangu au timu",
+            "not-paying": "Hakuna bado"
+          }
+        },
+        "role": {
+          "label": "Ipi inayoeleza vizuri jukumu lako?",
+          "options": {
+            "analyst": "Mchambuzi au mtafiti",
+            "trader": "Mfanyabiashara au mwekezaji",
+            "journalist": "Mwandishi wa habari",
+            "security": "Usalama au hatari",
+            "government": "Serikali au sera",
+            "supply-chain": "Mlolongo wa ugavi au uendeshaji",
+            "developer": "Msanidi programu",
+            "student": "Mwanafunzi",
+            "other": "Nyingine"
+          }
+        },
+        "alternative": {
+          "label": "Utakavyo tumia iwapo World Monitor haisogezwi?",
+          "placeholder": "Sehemu inayochagua"
+        }
+      }
     }
   },
   "popups": {
