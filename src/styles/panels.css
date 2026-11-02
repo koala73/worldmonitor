@@ -4343,9 +4343,48 @@ a.hub-top-story {
   text-transform: uppercase;
 }
 
+/* Tinted fills with --text keep 4.5:1 in both themes; a solid semantic fill
+   cannot (light blue and red need light text, light green needs dark). */
 .regulation-panel .regulation-type,
 .regulation-panel .stance-badge {
-  color: var(--bg);
+  --regulation-badge: var(--text-muted);
+  border: 1px solid color-mix(in srgb, var(--regulation-badge) 45%, transparent);
+  background: color-mix(in srgb, var(--regulation-badge) 15%, transparent);
+  color: var(--text);
+}
+
+.regulation-panel .type-comprehensive {
+  --regulation-badge: var(--semantic-low);
+}
+
+.regulation-panel .type-sectoral {
+  --regulation-badge: var(--semantic-high);
+}
+
+.regulation-panel .type-voluntary,
+.regulation-panel .stance-permissive .stance-badge {
+  --regulation-badge: var(--semantic-normal);
+}
+
+.regulation-panel .type-proposed,
+.regulation-panel .stance-moderate .stance-badge {
+  --regulation-badge: var(--semantic-elevated);
+}
+
+.regulation-panel .stance-strict .stance-badge {
+  --regulation-badge: var(--semantic-critical);
+}
+
+.regulation-panel .timeline-item.impact-high .timeline-impact {
+  color: var(--semantic-critical-text, var(--semantic-critical));
+}
+
+.regulation-panel .timeline-item.impact-medium .timeline-impact {
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
+}
+
+.regulation-panel .timeline-item.impact-low .timeline-impact {
+  color: var(--semantic-normal);
 }
 
 .regulation-panel .status-badge {
