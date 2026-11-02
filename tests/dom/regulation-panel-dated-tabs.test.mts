@@ -91,8 +91,8 @@ describe.each(TIMEZONES)('RegulationPanel Deadlines tab in %s', (tz) => {
     expect(item).not.toBeNull();
     expect(item!.classList.contains('passed')).toBe(true);
     expect(text(item!.querySelector('h5'))).toBe('EU AI Act');
-    expect(text(item!.querySelector('.deadline-date'))).toContain('August 1, 2026');
-    expect(text(item!.querySelector('.days-until'))).toBe('93');
+    expect(text(item!.querySelector('.deadline-date'))).toContain('August 2, 2026');
+    expect(text(item!.querySelector('.days-until'))).toBe('92');
     expect(text(item!.querySelector('.days-label'))).toBe('days ago');
     expect(text(content)).not.toMatch(/-\d/);
     panel.destroy();
@@ -107,14 +107,14 @@ describe.each(TIMEZONES)('RegulationPanel Deadlines tab in %s', (tz) => {
     const item = content.querySelector('.deadline-item');
     expect(item!.classList.contains('passed')).toBe(false);
     expect(text(item!.querySelector('h5'))).toBe('EU AI Act');
-    expect(text(item!.querySelector('.days-until'))).toBe('334');
+    expect(text(item!.querySelector('.days-until'))).toBe('335');
     expect(text(item!.querySelector('.days-label'))).toBe('days');
     panel.destroy();
   });
 
   it('keeps a deadline upcoming through its whole calendar day', () => {
-    // 03:00 UTC on Aug 1 is the evening of Jul 31 in Los Angeles.
-    freezeClock('2026-08-01T03:00:00Z');
+    // 03:00 UTC on Aug 2 is the evening of Aug 1 in Los Angeles.
+    freezeClock('2026-08-02T03:00:00Z');
     const { panel, content } = mount('deadlines');
 
     const item = content.querySelector('.deadline-item');
