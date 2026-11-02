@@ -3,7 +3,7 @@ import { runBundle } from './_bundle-runner.mjs';
 import { claimBundleTurn, acknowledgeBundleTurn } from './_bundle-turn.mjs';
 import { orderRegionalEnergySections } from './_regional-energy-order.mjs';
 
-// Regional grid and fuel feeds (#9842, #9893). They run in their own service so the
+// Regional grid and fuel feeds (#9842, #9893, #10051). They run in their own service so the
 // daily energy-sources bundle keeps its cadence, and so a failing government
 // host retries only on this service's ticks. Each section keeps its own
 // interval gate; tests pin this array to scripts/shared/regional-energy-feeds.json.
@@ -22,6 +22,15 @@ const SECTIONS = [
   { label: 'Regional-Energy-iccc', script: 'seed-regional-energy-iccc.mjs', seedMetaKey: 'energy:regional-iccc', canonicalKey: 'energy:regional:iccc:v1', completionMetaKey: 'seed-completion:energy:regional-iccc', expectedSourceVersion: 'regional-energy-iccc-v1', intervalMs: 43200000, timeoutMs: 120_000 },
   { label: 'Regional-Energy-fccc', script: 'seed-regional-energy-fccc.mjs', seedMetaKey: 'energy:regional-fccc', canonicalKey: 'energy:regional:fccc:v1', completionMetaKey: 'seed-completion:energy:regional-fccc', expectedSourceVersion: 'regional-energy-fccc-v1', intervalMs: 43200000, timeoutMs: 120_000 },
   { label: 'Regional-Energy-mem', script: 'seed-regional-energy-mem.mjs', seedMetaKey: 'energy:regional-mem', canonicalKey: 'energy:regional:mem:v1', completionMetaKey: 'seed-completion:energy:regional-mem', expectedSourceVersion: 'regional-energy-mem-v1', intervalMs: 43200000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-qatarenergy', script: 'seed-regional-energy-qatarenergy.mjs', seedMetaKey: 'energy:regional-qatarenergy', canonicalKey: 'energy:regional:qatarenergy:v1', completionMetaKey: 'seed-completion:energy:regional-qatarenergy', expectedSourceVersion: 'regional-energy-qatarenergy-v1', intervalMs: 43200000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-erb', script: 'seed-regional-energy-erb.mjs', seedMetaKey: 'energy:regional-erb', canonicalKey: 'energy:regional:erb:v1', completionMetaKey: 'seed-completion:energy:regional-erb', expectedSourceVersion: 'regional-energy-erb-v1', intervalMs: 43200000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-npa', script: 'seed-regional-energy-npa.mjs', seedMetaKey: 'energy:regional-npa', canonicalKey: 'energy:regional:npa:v1', completionMetaKey: 'seed-completion:energy:regional-npa', expectedSourceVersion: 'regional-energy-npa-v1', intervalMs: 43200000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-sonabhy', script: 'seed-regional-energy-sonabhy.mjs', seedMetaKey: 'energy:regional-sonabhy', canonicalKey: 'energy:regional:sonabhy:v1', completionMetaKey: 'seed-completion:energy:regional-sonabhy', expectedSourceVersion: 'regional-energy-sonabhy-v1', intervalMs: 86400000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-zera', script: 'seed-regional-energy-zera.mjs', seedMetaKey: 'energy:regional-zera', canonicalKey: 'energy:regional:zera:v1', completionMetaKey: 'seed-completion:energy:regional-zera', expectedSourceVersion: 'regional-energy-zera-v1', intervalMs: 43200000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-doe', script: 'seed-regional-energy-doe.mjs', seedMetaKey: 'energy:regional-doe', canonicalKey: 'energy:regional:doe:v1', completionMetaKey: 'seed-completion:energy:regional-doe', expectedSourceVersion: 'regional-energy-doe-v1', intervalMs: 43200000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-anptl', script: 'seed-regional-energy-anptl.mjs', seedMetaKey: 'energy:regional-anptl', canonicalKey: 'energy:regional:anptl:v1', completionMetaKey: 'seed-completion:energy:regional-anptl', expectedSourceVersion: 'regional-energy-anptl-v1', intervalMs: 86400000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-creg', script: 'seed-regional-energy-creg.mjs', seedMetaKey: 'energy:regional-creg', canonicalKey: 'energy:regional:creg:v1', completionMetaKey: 'seed-completion:energy:regional-creg', expectedSourceVersion: 'regional-energy-creg-v1', intervalMs: 43200000, timeoutMs: 120_000 },
+  { label: 'Regional-Energy-ursea', script: 'seed-regional-energy-ursea.mjs', seedMetaKey: 'energy:regional-ursea', canonicalKey: 'energy:regional:ursea:v1', completionMetaKey: 'seed-completion:energy:regional-ursea', expectedSourceVersion: 'regional-energy-ursea-v1', intervalMs: 43200000, timeoutMs: 120_000 },
 ];
 
 // A null claim means another run holds the lease, credentials are absent, or

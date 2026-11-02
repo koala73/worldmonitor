@@ -151,5 +151,107 @@
     "intervalMin": 720,
     "maxContentAgeMin": 30240,
     "script": "seed-regional-energy-mem.mjs"
+  },
+  {
+    "id": "qatarenergy",
+    "countryCode": "QA",
+    "name": "QatarEnergy fuel prices",
+    "sourceUrl": "https://www.qatarenergy.qa/en/Documents/Fuel%20Prices.pdf",
+    "licence": "Unconfirmed",
+    "intervalMin": 720,
+    "maxContentAgeMin": 64800,
+    "script": "seed-regional-energy-qatarenergy.mjs",
+    "publishesAhead": true,
+    "utcOffsetMin": 180
+  },
+  {
+    "id": "erb",
+    "countryCode": "ZM",
+    "name": "Zambia ERB pump prices",
+    "sourceUrl": "https://www.erb.org.zm/category/price-build-up/",
+    "licence": "Unconfirmed",
+    "intervalMin": 720,
+    "maxContentAgeMin": 64800,
+    "script": "seed-regional-energy-erb.mjs",
+    "publishesAhead": true,
+    "utcOffsetMin": 120
+  },
+  {
+    "id": "npa",
+    "countryCode": "GH",
+    "name": "Ghana NPA petroleum prices",
+    "sourceUrl": "https://npa.gov.gh/",
+    "licence": "Unconfirmed",
+    "intervalMin": 720,
+    "maxContentAgeMin": 20160,
+    "script": "seed-regional-energy-npa.mjs"
+  },
+  {
+    "id": "sonabhy",
+    "countryCode": "BF",
+    "name": "Burkina Faso SONABHY tariffs",
+    "sourceUrl": "https://www.sonabhy.bf/tarif-hydrocarbures/",
+    "licence": "Unconfirmed",
+    "intervalMin": 1440,
+    "maxContentAgeMin": 576000,
+    "script": "seed-regional-energy-sonabhy.mjs"
+  },
+  {
+    "id": "zera",
+    "countryCode": "ZW",
+    "name": "Zimbabwe ZERA energy prices",
+    "sourceUrl": "https://www.zera.co.zw/",
+    "licence": "Unconfirmed",
+    "intervalMin": 720,
+    "maxContentAgeMin": 64800,
+    "script": "seed-regional-energy-zera.mjs"
+  },
+  {
+    "id": "doe",
+    "countryCode": "PH",
+    "name": "Philippines DOE NCR pump prices",
+    "sourceUrl": "https://doe.gov.ph/data-and-prices/liquid-fuels/retail-pump-prices/ncr-pump-prices",
+    "licence": "Public domain unless otherwise stated (site footer)",
+    "intervalMin": 720,
+    "maxContentAgeMin": 20160,
+    "script": "seed-regional-energy-doe.mjs",
+    "publishesAhead": true,
+    "utcOffsetMin": 480
+  },
+  {
+    "id": "anptl",
+    "countryCode": "TL",
+    "name": "Timor-Leste ANP fuel prices",
+    "sourceUrl": "https://www.anp.tl/category/daily-fuel-price/",
+    "licence": "Unconfirmed",
+    "intervalMin": 1440,
+    "maxContentAgeMin": 129600,
+    "script": "seed-regional-energy-anptl.mjs",
+    "publishesAhead": true,
+    "utcOffsetMin": 540
+  },
+  {
+    "id": "creg",
+    "countryCode": "CO",
+    "name": "Colombia CREG fuel prices",
+    "sourceUrl": "https://creg.gov.co/publicaciones/15565/precios-de-combustibles-liquidos/",
+    "licence": "Unconfirmed",
+    "intervalMin": 720,
+    "maxContentAgeMin": 64800,
+    "script": "seed-regional-energy-creg.mjs",
+    "publishesAhead": true,
+    "utcOffsetMin": -300
+  },
+  {
+    "id": "ursea",
+    "countryCode": "UY",
+    "name": "Uruguay URSEA fuel prices",
+    "sourceUrl": "https://www.gub.uy/unidad-reguladora-servicios-energia-agua/tematica/hidrocarburos",
+    "licence": "Unconfirmed",
+    "intervalMin": 720,
+    "maxContentAgeMin": 64800,
+    "script": "seed-regional-energy-ursea.mjs",
+    "publishesAhead": true,
+    "utcOffsetMin": -180
   }
 ]

@@ -99,6 +99,18 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     reason: 'The stat.uz prices page publishes the SDMX dataset that its SIAT API host serves; both are the Uzbekistan Statistics Agency.',
     reviewReference: 'Issue #9892 food-price batch 2 (PR #9993 review)',
   }),
+  'doe-ph': Object.freeze({
+    provider: 'doe.gov.ph',
+    memberHosts: Object.freeze(['doe.gov.ph', 'd24qbtp4vooyzi.cloudfront.net']),
+    reason: 'The Philippine Department of Energy price pages link each weekly monitoring PDF on the site\'s CloudFront media host.',
+    reviewReference: 'Issue #10051 fuel-price batch 3',
+  }),
+  sonabhy: Object.freeze({
+    provider: 'www.sonabhy.bf',
+    memberHosts: Object.freeze(['www.sonabhy.bf', 'king-prawn-app-6bsvl.ondigitalocean.app']),
+    reason: 'The SONABHY tariff page reads its prices from the Strapi CMS its Nuxt state names; the feed reads the same CMS after confirming the page still points to it.',
+    reviewReference: 'Issue #10051 fuel-price batch 3',
+  }),
   jodi: Object.freeze({
     provider: 'www.jodidata.org',
     memberHosts: Object.freeze(['www.jodidata.org', 'api.publisher.jodidata.org']),
@@ -237,6 +249,10 @@ const PROVIDER_OVERRIDES = {
   },
   'www.jodidata.org': { provider: 'www.jodidata.org', identityGroup: 'jodi' },
   'api.publisher.jodidata.org': { provider: 'www.jodidata.org', identityGroup: 'jodi' },
+  'doe.gov.ph': { provider: 'doe.gov.ph', identityGroup: 'doe-ph' },
+  'd24qbtp4vooyzi.cloudfront.net': { provider: 'doe.gov.ph', identityGroup: 'doe-ph' },
+  'www.sonabhy.bf': { provider: 'www.sonabhy.bf', identityGroup: 'sonabhy' },
+  'king-prawn-app-6bsvl.ondigitalocean.app': { provider: 'www.sonabhy.bf', identityGroup: 'sonabhy' },
   'api.adsb.lol': { provider: 'adsb.lol' },
   'api.airplanes.live': { provider: 'airplanes.live' },
   'firms.modaps.eosdis.nasa.gov': {
@@ -1029,19 +1045,22 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'af469a074313afb9f790017af76f7fbd2236553de62f84aeccdbc75ee7a0d6d1',
+  sha256: '785cc581308feaa92a67acce84b9624478306596051cda0006b5d9bf3f3aa401',
+  // 2026-11-02 (#10051): group the Philippine DOE with the CloudFront media
+  // host that serves its weekly PDFs, and SONABHY with the Strapi CMS its
+  // tariff page reads from.
   // 2026-11-02 (#10050): add Algeria MADR and the Mongolia NSO data host as food-price
   // publishers; neither states a reuse licence, so both stay in terms review.
   // 2026-11-01 (#9892): group stat.uz with its SIAT API host and record the
   // stated terms of stat.uz (CC BY 4.0), SIMA Niger and Amman Central Market.
   // 2026-10-24: added Shanghai Financial Portal as a distinct official M2
   // republisher; PBOC source credit is preserved under /BQSM/index.html section 2.
-  reason: 'Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050).',
+  reason: 'Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051).',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists.',
+  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists; plus Issue #10051 fuel-price batch 3, the DOE media host and SONABHY CMS groups.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {
