@@ -512,7 +512,7 @@ export async function main({ adapters, now } = {}) {
     validateFn: validate,
     ttlSeconds: CACHE_TTL_SECONDS,
     declareRecords,
-    sourceVersion: 'global-tenders-19-sources-v4',
+    sourceVersion: 'global-tenders-22-sources-v5',
     schemaVersion: 1,
     maxStaleMin: 180,
     zeroIsValid: true,
