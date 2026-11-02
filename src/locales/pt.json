@@ -2470,7 +2470,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Estreitos Turcos",
         "panama": "Panamá",
-        "danishStraits": "Estreitos Dinamarqueses"
+        "doverStrait": "Estreito de Dover"
       },
       "flow": {
         "mbd": "{{value}} mb/d",
