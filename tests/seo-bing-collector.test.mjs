@@ -359,6 +359,7 @@ describe('Bing Webmaster collector secrecy', () => {
       fetchImpl: async (url, init) => {
         requested.push(url);
         assert.ok(init.signal, 'every request needs a deadline');
+        assert.match(init.headers['User-Agent'] ?? '', /\S/, 'every request names a User-Agent');
         return new Response('{"Message":"bad key"}', { status: 401 });
       },
       sleep: async () => {},

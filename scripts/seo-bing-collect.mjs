@@ -46,7 +46,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadEnvFile } from './_seed-utils.mjs';
+import { CHROME_UA, loadEnvFile } from './_seed-utils.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 import { classifyUrl } from './lib/seo-url-taxonomy.mjs';
 import { PAGE_FAMILIES } from './seo-ai-visibility-scorecard.mjs';
@@ -222,7 +222,7 @@ export function createLiveTransport({
         let response;
         try {
           response = await fetchImpl(url, {
-            headers: { accept: 'application/json' },
+            headers: { accept: 'application/json', 'User-Agent': CHROME_UA },
             signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
           });
         } catch (error) {
