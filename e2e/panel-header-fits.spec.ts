@@ -36,12 +36,11 @@ function measure(page: Page): Promise<HeaderFit> {
       .filter((el) => el.getBoundingClientRect().width > 0)
       .map((el) => ({ name: el.className.toString().split(' ')[0], rect: el.getBoundingClientRect() }));
     const overlaps: string[] = [];
-    for (let i = 0; i < items.length; i++) {
-      for (let j = i + 1; j < items.length; j++) {
-        const a = items[i].rect, b = items[j].rect;
-        if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2) overlaps.push(`${items[i].name} x ${items[j].name}`);
+    items.forEach((a, i) => {
+      for (const b of items.slice(i + 1)) {
+        if (Math.min(a.rect.right, b.rect.right) - Math.max(a.rect.left, b.rect.left) > 2) overlaps.push(`${a.name} x ${b.name}`);
       }
-    }
+    });
     return {
       panel: Math.round(panel.getBoundingClientRect().width),
       title: title.textContent ?? '',
