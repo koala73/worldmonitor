@@ -131,12 +131,14 @@
    scroll; an idle timeline applies nothing. */
 @keyframes table-scroll-fade-mask {
   from, to {
-    mask-image: linear-gradient(var(--table-scroll-fade-direction, to right), transparent, #000 var(--table-scroll-fade-start), #000 calc(100% - var(--table-scroll-fade-end)), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 var(--table-scroll-fade-start), #000 calc(100% - var(--table-scroll-fade-end)), transparent);
   }
 }
 
-[dir="rtl"] {
-  --table-scroll-fade-direction: to left;
+@keyframes table-scroll-fade-mask-rtl {
+  from, to {
+    mask-image: linear-gradient(to left, transparent, #000 var(--table-scroll-fade-start), #000 calc(100% - var(--table-scroll-fade-end)), transparent);
+  }
 }
 
 @supports (animation-timeline: scroll()) {
@@ -153,6 +155,15 @@
     animation: table-scroll-fade-end linear both, table-scroll-fade-mask linear both;
     animation-timeline: scroll(self inline), scroll(self inline);
     animation-range: calc(100% - 24px) 100%, normal;
+  }
+
+  [dir="rtl"] .panel > .panel-content:has(table),
+  [dir="rtl"] .table-scroll {
+    animation-name: table-scroll-fade-start, table-scroll-fade-end, table-scroll-fade-mask-rtl;
+  }
+
+  [dir="rtl"] .table-scroll-pinned-start {
+    animation-name: table-scroll-fade-end, table-scroll-fade-mask-rtl;
   }
 }
 
@@ -918,6 +929,12 @@
   }
 }
 
+@media (max-width: 768px) {
+  .climate-zone {
+    overflow-wrap: anywhere;
+  }
+}
+
 .climate-warm {
   color: var(--semantic-high-text, var(--semantic-high));
 }
@@ -1239,6 +1256,13 @@
 
   .ucdp-range {
     white-space: nowrap;
+  }
+}
+
+@media (max-width: 768px) {
+  .ucdp-country,
+  .ucdp-actors {
+    overflow-wrap: anywhere;
   }
 }
 

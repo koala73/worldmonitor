@@ -254,6 +254,9 @@ export class EnergyDisruptionsPanel extends Panel {
         @container panel-body (max-width: 480px) {
           .ed-table th, .ed-table td { padding-inline: 4px; }
         }
+        @media (max-width: 768px) {
+          .ed-event, .ed-sub, .ed-asset-id { overflow-wrap: anywhere; }
+        }
       </style>
     `, 'legacy Panel.setContent() migration'));
 
