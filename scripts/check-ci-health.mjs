@@ -55,6 +55,10 @@ export const SLOWDOWN = { ratio: 1.2, minSeconds: 30, minSamples: 5, samplesPerW
 const FLAKE_LOGS_PER_SCAN = 40;
 const TESTS_PER_EVIDENCE = 5;
 const FILES_PER_ATTRIBUTION = 20;
+const ASSOCIATION_LOOKUPS = 3;
+// A test path from a fork-controlled log is copied into an issue body, which
+// GitHub rejects above 65,536 characters. Real paths here stay under 120.
+const MAX_TEST_PATH = 200;
 
 // `count` runs spread evenly over `runs` ordered by creation time, oldest
 // first, always keeping the oldest and the newest.
@@ -88,7 +92,7 @@ export function parseFailingTests(log) {
     const line = raw.replace(/^\d{4}-\d\d-\d\dT[\d:.]+Z ?/, '').replace(/\x1b\[[\d;]*m/g, '').trim();
     for (const pattern of FAILING_TEST_PATTERNS) {
       const path = pattern.exec(line)?.[1]?.replace(/^\.\//, '');
-      if (path && TEST_PATH.test(path)) found.add(path);
+      if (path && path.length <= MAX_TEST_PATH && TEST_PATH.test(path)) found.add(path);
     }
   }
   // Prefer file:line entries; drop a bare file when a line entry names it.
@@ -320,13 +324,18 @@ export function syncIssues({ findings, issues, generatedAt }) {
   const actions = [];
   for (const finding of findings) {
     const body = formatIssueBody(finding, generatedAt);
-    const open = issues.search(finding.title);
-    if (open) {
-      issues.update(open.number, body);
-      actions.push({ action: 'updated', number: open.number, title: finding.title });
-    } else {
-      const created = issues.create(finding.title, body);
-      actions.push({ action: 'created', number: created.number, title: finding.title });
+    // One rejected write must not drop every finding after it.
+    try {
+      const open = issues.search(finding.title);
+      if (open) {
+        issues.update(open.number, body);
+        actions.push({ action: 'updated', number: open.number, title: finding.title });
+      } else {
+        const created = issues.create(finding.title, body);
+        actions.push({ action: 'created', number: created.number, title: finding.title });
+      }
+    } catch (error) {
+      actions.push({ action: 'failed', number: null, title: finding.title, error: safeLabel(error.message) });
     }
   }
   return actions;
@@ -456,9 +465,18 @@ export function collect({ gh, repository, now }) {
     readLog: (jobId) => gh(['api', '--allow-escape-sequences', `repos/${repository}/actions/jobs/${jobId}/logs`]),
     changeSince: (file, iso, pullRequests) => {
       const commits = api(gh, `repos/${repository}/commits?sha=main&path=${encodeURIComponent(file)}&since=${encodeURIComponent(iso)}&per_page=20`);
-      const own = (message) => pullRequests.some((number) => String(message ?? '').split('\n')[0].includes(`(#${number})`));
-      const later = commits.filter((commit) => !own(commit.commit?.message));
-      return later.length ? later.at(-1).sha.slice(0, 10) : null;
+      const ownSubject = (message) => pullRequests.some((number) => String(message ?? '').split('\n')[0].includes(`(#${number})`));
+      // Oldest first: the first change after the flake that is not the flaking
+      // pull request's own merge. A merge subject may lack `(#N)`, so ask
+      // GitHub which pull requests each candidate belongs to, a few at most;
+      // an unresolved candidate keeps the flake reported.
+      const candidates = commits.filter((commit) => !ownSubject(commit.commit?.message)).reverse();
+      if (!pullRequests.length) return candidates[0]?.sha.slice(0, 10) ?? null;
+      for (const commit of candidates.slice(0, ASSOCIATION_LOOKUPS)) {
+        const pulls = api(gh, `repos/${repository}/commits/${commit.sha}/pulls`);
+        if (!pulls.some((pull) => pullRequests.includes(pull.number))) return commit.sha.slice(0, 10);
+      }
+      return null;
     },
   });
 }
@@ -486,7 +504,12 @@ if (isMainModule(import.meta.url, process.argv[1])) {
       : ['- No findings.'];
     for (const title of skipped) lines.push(`- not reported, its failing tests changed on main since: ${title}`);
     for (const warning of warnings) lines.push(`- warning: ${warning}`);
-    for (const action of actions) lines.push(`- ${action.action} #${action.number}: ${action.title}`);
+    for (const action of actions) {
+      lines.push(action.action === 'failed'
+        ? `- failed to sync: ${action.title} (${action.error})`
+        : `- ${action.action} #${action.number}: ${action.title}`);
+    }
+    if (actions.some((action) => action.action === 'failed')) process.exitCode = 1;
     console.log(lines.join('\n'));
     if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## CI health\n\n${lines.join('\n')}\n`);
   } catch (error) {

@@ -252,6 +252,11 @@ describe('failing test names', () => {
     ]);
   });
 
+  it('drops a test path long enough to push an issue body past GitHub\'s limit', () => {
+    const long = `tests/${'a'.repeat(60_000)}.test.mjs:1:1`;
+    assert.deepEqual(parseFailingTests(`test at ${long}\ntest at tests/ok.test.mjs:2:1`), ['tests/ok.test.mjs:2:1']);
+  });
+
   it('accepts a test under any top-level directory of the repo', () => {
     const log = [
       'test at src-tauri/sidecar/local-api-server.test.mjs:12:3',
@@ -412,6 +417,16 @@ describe('issue sync', () => {
     ]);
   });
 
+  it('keeps syncing the remaining findings when GitHub rejects one write', () => {
+    const issues = fakeIssues([{ number: 12, title: finding.title }]);
+    issues.update = () => { throw new Error('HTTP 422: body is too long'); };
+    const second = { ...finding, title: 'CI health (slower): Test / sidecar' };
+    assert.deepEqual(syncIssues({ findings: [finding, second], issues, generatedAt: '2026-11-02T06:30:00Z' }), [
+      { action: 'failed', number: null, title: finding.title, error: 'HTTP 422_ body is too long' },
+      { action: 'created', number: 99, title: second.title },
+    ]);
+  });
+
   it('only ever rewrites an issue the scan itself opened', () => {
     const title = finding.title;
     const human = { number: 3, title, user: { login: 'someone' } };
@@ -425,7 +440,7 @@ describe('issue sync', () => {
 
 describe('collection against a fake GitHub API', () => {
   // NOW is Saturday 12:00 UTC. The event window reaches back 7 days and 6 hours.
-  function fakeGh({ daily = {}, attempts = {}, newestMain = [], staleMain = null, successMain = [], logs = {}, commits = {} }) {
+  function fakeGh({ daily = {}, attempts = {}, newestMain = [], staleMain = null, successMain = [], logs = {}, commits = {}, pulls = {} }) {
     const paths = [];
     let mainReads = 0;
     const gh = (args) => {
@@ -439,6 +454,8 @@ describe('collection against a fake GitHub API', () => {
       }
       const history = /^repos\/o\/r\/commits\?sha=main&path=([^&]+)&since=([^&]+)&per_page=20$/.exec(path);
       if (history) return JSON.stringify(commits[decodeURIComponent(history[1])] ?? []);
+      const association = /^repos\/o\/r\/commits\/(\w+)\/pulls$/.exec(path);
+      if (association) return JSON.stringify((pulls[association[1]] ?? []).map((number) => ({ number })));
       const workflow = /workflows\/([^/]+)\/runs/.exec(path)?.[1];
       const date = /runs\?created=(\d{4}-\d{2}-\d{2})&/.exec(path)?.[1];
       if (date) return JSON.stringify({ workflow_runs: workflow === 'test.yml' ? (daily[date] ?? []) : [] });
@@ -502,6 +519,31 @@ describe('collection against a fake GitHub API', () => {
     assert.deepEqual(result.findings, []);
     assert.deepEqual(result.skipped, ['CI health (flaky): Test / unit-shard (3)']);
     assert.ok(paths.includes('repos/o/r/commits?sha=main&path=tests%2Fmcp-modern-era.test.mjs&since=2026-10-29T19%3A32%3A00Z&per_page=20'));
+  });
+
+  it('asks GitHub which pull request a later commit belongs to, since a merge subject may lack (#N)', () => {
+    const rerun = run({ id: 7, run_attempt: 2, event: 'pull_request', pull_requests: [{ number: 9750 }], created_at: '2026-10-29T19:32:00Z' });
+    const file = 'tests/mcp-modern-era.test.mjs';
+    const merge = { sha: 'aaaaaaaaaaaaaaaa', commit: { message: 'Merge branch feat/ukmto-hormuz-source' } };
+    const fix = { sha: 'bbbbbbbbbbbbbbbb', commit: { message: 'test(mcp): freeze the clock' } };
+    const setup = (history, pulls) => fakeGh({
+      daily: { '2026-10-29': [rerun] },
+      attempts: { '7/1': [job('unit-shard (3)', 'failure', 150, 0, [], 41)], '7/2': [job('unit-shard (3)', 'success', 150, 0, [], 42)] },
+      logs: { 41: 'test at tests/mcp-modern-era.test.mjs:965:5\n' },
+      commits: { [file]: history },
+      pulls,
+    });
+    const scan = (gh) => checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true });
+
+    // Only the flaking PR's own merge changed the file: still reported.
+    assert.equal(scan(setup([merge], { aaaaaaaaaaaaaaaa: [9750] }).gh).findings.length, 1);
+    // A later fix from another PR: skipped, and the fix is the one cited.
+    const fixed = scan(setup([fix, merge], { aaaaaaaaaaaaaaaa: [9750], bbbbbbbbbbbbbbbb: [9863] }).gh);
+    assert.deepEqual(fixed.skipped, ['CI health (flaky): Test / unit-shard (3)']);
+    // More own-PR commits than the lookup budget: unresolved, so still reported.
+    const own = Array.from({ length: 4 }, (_, index) => ({ sha: `c${index}`.padEnd(16, '0'), commit: { message: 'wip' } }));
+    const busy = scan(setup([fix, ...own], Object.fromEntries(own.map((commit) => [commit.sha, [9750]]))).gh);
+    assert.equal(busy.findings.length, 1);
   });
 
   it('samples slowdown runs across each whole week, not its newest day', () => {
