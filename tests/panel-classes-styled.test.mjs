@@ -1,12 +1,14 @@
 /**
- * Every class these panels emit must have a rule scoped under the panel's root.
+ * Every class these panels emit must have a rule scoped under a panel root.
  *
  * The R&D Signal (defense-patents), Toronto Safety and AI Regulation panels
  * shipped markup whose classes appeared in no stylesheet, so each panel
  * rendered as raw stacked text with no padding. A class that only matches an
  * unrelated rule elsewhere (`.stat`, `.count`, an RTL override) does not count:
- * the rule must name the panel root. Shared tab primitives are checked against
- * any dashboard sheet.
+ * the rule must name the panel root. DefensePatentsPanel paints its loading
+ * state outside the list wrapper (a raw write the content-write ratchet keeps on
+ * purpose), so that state is a second root. Shared tab primitives are checked
+ * against any dashboard sheet.
  *
  * Classes built by interpolation (`impact-${x}`) are skipped; the static ones
  * are what a refactor drops.
@@ -19,9 +21,9 @@ import { readFileSync, readdirSync } from 'node:fs';
 const srcDir = new URL('../src/', import.meta.url);
 
 const PANELS = {
-  'components/DefensePatentsPanel.ts': { root: 'defense-patents-panel', sample: 'defense-patent-row' },
-  'components/TorontoSafetyPanel.ts': { root: 'toronto-safety-panel', sample: 'intel-item' },
-  'components/RegulationPanel.ts': { root: 'regulation-panel', sample: 'timeline-item' },
+  'components/DefensePatentsPanel.ts': { roots: ['defense-patents-panel', 'defense-patents-loading'], sample: 'defense-patent-row' },
+  'components/TorontoSafetyPanel.ts': { roots: ['toronto-safety-panel'], sample: 'intel-item' },
+  'components/RegulationPanel.ts': { roots: ['regulation-panel'], sample: 'timeline-item' },
 };
 
 const SHARED = new Set(['panel-tabs', 'panel-tab']);
@@ -63,15 +65,17 @@ function emittedClasses(relPath) {
 }
 
 describe('audit panels style every class they emit', () => {
-  for (const [relPath, { root, sample }] of Object.entries(PANELS)) {
+  for (const [relPath, { roots, sample }] of Object.entries(PANELS)) {
     it(relPath, () => {
       const classes = emittedClasses(relPath);
-      assert.ok(classes.includes(root) && classes.includes(sample), `class extraction missed ${root} or ${sample}: ${classes.join(' ')}`);
+      for (const expected of [...roots, sample]) {
+        assert.ok(classes.includes(expected), `class extraction missed ${expected}: ${classes.join(' ')}`);
+      }
 
       const unstyled = classes.filter((cls) => (SHARED.has(cls)
         ? !selectors.some((s) => hasClass(s, cls))
-        : !selectors.some((s) => hasClass(s, cls) && hasClass(s, root))));
-      assert.deepEqual(unstyled, [], `${relPath} emits classes with no rule under .${root}`);
+        : !selectors.some((s) => hasClass(s, cls) && roots.some((root) => hasClass(s, root)))));
+      assert.deepEqual(unstyled, [], `${relPath} emits classes with no rule under .${roots.join(' or .')}`);
     });
   }
 });
