@@ -9,7 +9,6 @@
     "status": "Systeemstatus",
     "insights": "AI-inzichten",
     "map": "Interactive Map",
-    "techMap": "Mondiale technologie",
     "politics": "Wereldnieuws",
     "us": "Verenigde Staten",
     "europe": "Europa",
@@ -4208,5 +4207,29 @@
     "reportedClaims": "Meldingen van de uitgever. Beweringen worden mogelijk nog onderzocht.",
     "occurred": "Incident",
     "reported": "Gepubliceerd"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Wereldwijde marktkaart",
+      "liveNews": "Marktkoppen",
+      "insights": "AI-marktinzichten"
+    },
+    "tech": {
+      "map": "Wereldwijde technologiekaart",
+      "liveNews": "Technologiekoppen"
+    },
+    "commodity": {
+      "map": "Grondstoffenkaart",
+      "liveNews": "Grondstoffenkoppen",
+      "insights": "AI-grondstoffeninzichten"
+    },
+    "energy": {
+      "map": "Energieatlas-kaart",
+      "liveNews": "Energiekoppen",
+      "insights": "AI-energieinzichten"
+    },
+    "happy": {
+      "map": "Goed nieuws-kaart"
+    }
   }
 }

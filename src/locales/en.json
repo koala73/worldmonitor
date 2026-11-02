@@ -479,7 +479,6 @@
     "markets": "Markets",
     "marketImplications": "AI Market Implications",
     "map": "Global Situation",
-    "techMap": "Global Tech",
     "techHubs": "Hot Tech Hubs",
     "status": "System Status",
     "insights": "AI Insights",
@@ -585,6 +584,30 @@
     "climateNews": "Climate News",
     "fx": "Foreign exchange rates",
     "ukmtoIncidents": "UKMTO Incidents"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Global Markets Map",
+      "liveNews": "Market Headlines",
+      "insights": "AI Market Insights"
+    },
+    "tech": {
+      "map": "Global Tech Map",
+      "liveNews": "Tech Headlines"
+    },
+    "commodity": {
+      "map": "Commodity Map",
+      "liveNews": "Commodity Headlines",
+      "insights": "AI Commodity Insights"
+    },
+    "energy": {
+      "map": "Energy Atlas Map",
+      "liveNews": "Energy Headlines",
+      "insights": "AI Energy Insights"
+    },
+    "happy": {
+      "map": "Good News Map"
+    }
   },
   "commands": {
     "prefixes": {
