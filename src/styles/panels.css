@@ -4045,7 +4045,7 @@ a.hub-top-story {
   padding: 8px;
   border-radius: 4px;
   border: 0 solid var(--border);
-  border-left-width: 3px;
+  border-inline-start-width: 3px;
   background: var(--overlay-subtle);
   overflow-wrap: anywhere;
 }
@@ -4162,7 +4162,7 @@ a.hub-top-story {
 .regulation-panel .regulation-card {
   padding: 8px;
   border-radius: 4px;
-  border-left: 3px solid var(--border);
+  border-inline-start: 3px solid var(--border);
   background: var(--overlay-subtle);
   overflow-wrap: anywhere;
 }
@@ -4175,17 +4175,17 @@ a.hub-top-story {
 
 .regulation-panel .timeline-item.impact-high,
 .regulation-panel .deadline-item.urgent {
-  border-left-color: var(--semantic-critical);
+  border-inline-start-color: var(--semantic-critical);
 }
 
 .regulation-panel .timeline-item.impact-medium,
 .regulation-panel .deadline-item.warning {
-  border-left-color: var(--semantic-elevated);
+  border-inline-start-color: var(--semantic-elevated);
 }
 
 .regulation-panel .timeline-item.impact-low,
 .regulation-panel .deadline-item.normal {
-  border-left-color: var(--semantic-normal);
+  border-inline-start-color: var(--semantic-normal);
 }
 
 .regulation-panel .timeline-marker {
