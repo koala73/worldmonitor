@@ -75,12 +75,16 @@ test('news source rows keep every badge inside the panel', async ({ browser }, t
 
     await page.goto('/dashboard');
     const panel = page.locator('#panelsGrid .panel[data-panel="politics"]');
+    // The panel paints flat rows first and swaps in clustered rows once
+    // clustering finishes; only the clustered rows carry the category badge.
     await expect
       .poll(async () => {
         await panel.scrollIntoViewIfNeeded().catch(() => {});
-        return panel.locator('.item-source').count();
-      }, { message: `politics rows at ${viewport.width}px`, timeout: 90_000 })
+        return panel.locator('.item.clustered .item-source').count();
+      }, { message: `politics clustered rows at ${viewport.width}px`, timeout: 90_000 })
       .toBe(ITEMS.length);
+    await expect(panel.locator('.item.clustered .category-tag')).toHaveCount(2);
+    await expect(panel.locator('.item.clustered .alert-tag')).toHaveCount(2);
     await panel.screenshot({ path: testInfo.outputPath(`politics-${viewport.width}.png`) });
     const m = await measure(page);
     const label = `politics at ${viewport.width}px (panel ${m.panel}px, ${m.badges} badges)`;
