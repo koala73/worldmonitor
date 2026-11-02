@@ -13,7 +13,7 @@ paths:
             tags:
                 - WebcamService
             summary: ListWebcams
-            description: ListWebcams lists webcams in view, grouped into map clusters, with a total-in-view count.
+            description: ListWebcams returns Windy webcams in a bounding box rounded out to whole degrees, from a seeded geo index capped at 2,000 per search, clustered below zoom 9.
             operationId: ListWebcams
             parameters:
                 - name: zoom
@@ -173,7 +173,7 @@ paths:
             tags:
                 - WebcamService
             summary: GetWebcamImage
-            description: GetWebcamImage resolves a webcam id into its thumbnail and player URLs, title, and last-updated timestamp.
+            description: GetWebcamImage resolves one Windy webcam id into thumbnail, player and Windy page URLs, title, media type and last image update, cached for five minutes.
             operationId: GetWebcamImage
             parameters:
                 - name: webcam_id

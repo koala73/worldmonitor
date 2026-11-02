@@ -826,7 +826,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetNo2Activity
-            description: Sentinel-5P NO2 activity direction for 167 countries and 32 industrial clusters, year over year. Seed-backed.
+            description: GetNo2Activity returns Sentinel-5P NO2 year-over-year activity direction for 167 countries and 32 industrial clusters, filterable by country, region and kind.
             operationId: GetNo2Activity
             parameters:
                 - name: country_code
@@ -1221,7 +1221,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetBisExchangeRates
-            description: GetBisExchangeRates retrieves effective exchange rates from BIS.
+            description: GetBisExchangeRates retrieves the latest monthly real effective exchange rate from BIS WS_EER, with monthly change, for 12 economies including the euro area.
             operationId: GetBisExchangeRates
             parameters:
                 - name: jmespath
@@ -1334,7 +1334,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetBisCredit
-            description: GetBisCredit retrieves credit-to-GDP ratio data from BIS.
+            description: GetBisCredit retrieves the latest quarterly credit-to-GDP ratio and prior quarter from BIS WS_TC for 12 economies, including the US, euro area and China.
             operationId: GetBisCredit
             parameters:
                 - name: jmespath
@@ -1637,7 +1637,7 @@ paths:
             tags:
                 - EconomicService
             summary: ListGroceryBasketPrices
-            description: ListGroceryBasketPrices retrieves grocery basket price comparison across 24 countries worldwide.
+            description: ListGroceryBasketPrices compares the weekly USD cost of a 10-item grocery basket (rice, eggs, milk, bread and more) across 24 countries, with weekly change.
             operationId: ListGroceryBasketPrices
             parameters:
                 - name: jmespath
@@ -1759,7 +1759,7 @@ paths:
             tags:
                 - EconomicService
             summary: ListBigMacPrices
-            description: ListBigMacPrices retrieves Big Mac Index prices across Middle East countries.
+            description: ListBigMacPrices retrieves weekly Big Mac prices in local currency and USD for 49 countries via Exa web search, with cheapest, priciest and weekly change.
             operationId: ListBigMacPrices
             parameters:
                 - name: jmespath
@@ -1876,7 +1876,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetNationalDebt
-            description: GetNationalDebt retrieves national debt clock data for all countries.
+            description: GetNationalDebt estimates government debt in USD by country from IMF WEO debt-to-GDP and GDP with a deficit-based growth rate; US uses Treasury debt data.
             operationId: GetNationalDebt
             parameters:
                 - name: jmespath
@@ -1991,7 +1991,7 @@ paths:
             tags:
                 - EconomicService
             summary: ListFuelPrices
-            description: ListFuelPrices retrieves retail gasoline and diesel prices across 30+ countries.
+            description: ListFuelPrices retrieves weekly retail gasoline and diesel prices in USD for 30+ countries from official sources such as the EU Oil Bulletin and US EIA.
             operationId: ListFuelPrices
             parameters:
                 - name: jmespath
@@ -2113,7 +2113,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetBlsSeries
-            description: GetBlsSeries retrieves BLS-only series not available on FRED (CES, LAUMT, CIU).
+            description: GetBlsSeries returns a BLS labor series, private nonfarm payrolls (USPRIV) or the employment cost index (ECIALLCIV), mirrored from FRED with recent history.
             operationId: GetBlsSeries
             parameters:
                 - name: series_id
@@ -2247,7 +2247,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEconomicCalendar
-            description: GetEconomicCalendar retrieves upcoming major economic events (FOMC, CPI, NFP, etc).
+            description: GetEconomicCalendar returns scheduled FOMC and ECB rate decisions, US CPI, payrolls, GDP, PCE and retail sales, and Eurostat releases, filtered by date range.
             operationId: GetEconomicCalendar
             parameters:
                 - name: fromDate
@@ -2378,7 +2378,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetCrudeInventories
-            description: GetCrudeInventories retrieves the 8 most recent weeks of US crude oil stockpile data from EIA (WCRSTUS1).
+            description: GetCrudeInventories retrieves the 8 most recent weeks of US commercial crude oil inventories excluding the SPR (EIA series WCESTUS1) with the latest period.
             operationId: GetCrudeInventories
             parameters:
                 - name: jmespath
@@ -2717,7 +2717,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEurostatCountryData
-            description: GetEurostatCountryData retrieves per-country CPI, unemployment, and GDP growth for 10 EU member states.
+            description: GetEurostatCountryData retrieves HICP inflation, unemployment and quarterly GDP growth from Eurostat for 10 EU member states, including Germany and France.
             operationId: GetEurostatCountryData
             parameters:
                 - name: jmespath
@@ -2846,7 +2846,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEuGasStorage
-            description: GetEuGasStorage retrieves EU aggregate natural gas storage fill % from GIE AGSI+.
+            description: GetEuGasStorage returns EU gas storage fill % from GIE AGSI+, with day-over-day change, injection or withdrawal trend, and up to five days of history.
             operationId: GetEuGasStorage
             parameters:
                 - name: jmespath
@@ -2961,7 +2961,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEuYieldCurve
-            description: GetEuYieldCurve retrieves the ECB Euro Area AAA sovereign yield curve (Svensson model spot rates).
+            description: GetEuYieldCurve retrieves the latest ECB euro area AAA government bond yield curve (Svensson spot rates) at the 1Y, 2Y, 5Y, 10Y, 20Y and 30Y tenors.
             operationId: GetEuYieldCurve
             parameters:
                 - name: jmespath
@@ -3075,7 +3075,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEuFsi
-            description: GetEuFsi retrieves the ECB CISS (Composite Indicator of Systemic Stress) for the Euro area.
+            description: 'GetEuFsi retrieves the ECB Composite Indicator of Systemic Stress (CISS) for the euro area: latest daily value, a year of daily history and a staleness flag.'
             operationId: GetEuFsi
             parameters:
                 - name: jmespath
@@ -3306,7 +3306,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetFaoFoodPriceIndex
-            description: GetFaoFoodPriceIndex retrieves the FAO Food Price Index for the past 12 months.
+            description: GetFaoFoodPriceIndex retrieves 12 months of the FAO Food Price Index with meat, dairy, cereals, oils and sugar sub-indices, plus monthly and annual change.
             operationId: GetFaoFoodPriceIndex
             parameters:
                 - name: jmespath
@@ -3542,7 +3542,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetOilStocksAnalysis
-            description: GetOilStocksAnalysis retrieves the IEA oil stocks days-of-cover ranking and regional summary.
+            description: GetOilStocksAnalysis ranks IEA members by oil stock days of net-import cover against the 90-day obligation, with Europe, Asia-Pacific and North America data.
             operationId: GetOilStocksAnalysis
             parameters:
                 - name: jmespath
@@ -3815,7 +3815,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEnergyCrisisPolicies
-            description: GetEnergyCrisisPolicies retrieves government policy responses to the 2026 energy crisis from the IEA tracker.
+            description: GetEnergyCrisisPolicies retrieves government responses to the 2026 energy crisis from the IEA policy tracker, filterable by country code and policy category.
             operationId: GetEnergyCrisisPolicies
             parameters:
                 - name: country_code

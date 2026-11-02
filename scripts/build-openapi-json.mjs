@@ -190,18 +190,70 @@ export function shortenGeneratedSuccessDescriptions(spec) {
   return stats;
 }
 
+const HTTP_METHODS = new Set(['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace']);
+
 // Generated summaries repeat operationId verbatim. Keep custom summaries and
 // the human-readable YAML; omit only this duplicate from the compact JSON.
 export function dropDuplicateOperationSummaries(spec) {
   const stats = { dropped: 0 };
   for (const pathItem of Object.values(spec.paths ?? {})) {
     for (const [method, operation] of Object.entries(pathItem ?? {})) {
-      if (!['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'].includes(method)) continue;
+      if (!HTTP_METHODS.has(method)) continue;
       if (typeof operation?.operationId !== 'string' || !operation.operationId) continue;
       if (operation.summary === operation.operationId) {
         delete operation.summary;
         stats.dropped += 1;
       }
+    }
+  }
+  return stats;
+}
+
+/**
+ * Proto RPC comments open with the RPC name ("ListX returns ..."), so nearly
+ * every generated description repeats its operationId: about 200 copies, 3.9 KB
+ * of the served artifact. The YAML keeps the name because Mintlify uses the
+ * description as the page's meta description, where the name reads as the
+ * subject. In the JSON the operationId sits on the same object, so the copy is
+ * dropped and the next word capitalized ("Returns ..."). JSON only.
+ *
+ * Mutates `spec` in place; returns { dropped }.
+ */
+export function dropOperationIdDescriptionPrefixes(spec) {
+  const stats = { dropped: 0 };
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    for (const [method, operation] of Object.entries(pathItem ?? {})) {
+      if (!HTTP_METHODS.has(method)) continue;
+      const { operationId, description } = operation ?? {};
+      if (typeof operationId !== 'string' || !operationId || typeof description !== 'string') continue;
+      const rest = description.startsWith(`${operationId} `) ? description.slice(operationId.length + 1) : '';
+      if (!/^\S/.test(rest)) continue;
+      operation.description = rest[0].toUpperCase() + rest.slice(1);
+      stats.dropped += 1;
+    }
+  }
+  return stats;
+}
+
+/**
+ * openapi-inject-security.mjs appends "PRO-gated. Requires entitlement tier >= N."
+ * to every entitlement-gated operation, and the per-spec contract tests pin that
+ * wording in the YAML. The JSON states the same gate as "PRO tier N+."; the 403
+ * response still describes the refusal in full. JSON only.
+ *
+ * Mutates `spec` in place; returns { compacted }.
+ */
+const ENTITLEMENT_NOTE = /(?:PRO-gated\. )?Requires entitlement tier >= (\d+)\./g;
+
+export function compactEntitlementNotes(spec) {
+  const stats = { compacted: 0 };
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    for (const [method, operation] of Object.entries(pathItem ?? {})) {
+      if (!HTTP_METHODS.has(method) || typeof operation?.description !== 'string') continue;
+      operation.description = operation.description.replace(ENTITLEMENT_NOTE, (_, tier) => {
+        stats.compacted += 1;
+        return `PRO tier ${tier}+.`;
+      });
     }
   }
   return stats;
@@ -404,6 +456,8 @@ export function buildBundle({ spec: provided } = {}) {
   const defaultRequiredStats = dropDefaultParameterRequired(spec);
   const successDescriptionStats = shortenGeneratedSuccessDescriptions(spec);
   const duplicateSummaryStats = dropDuplicateOperationSummaries(spec);
+  const descriptionPrefixStats = dropOperationIdDescriptionPrefixes(spec);
+  const entitlementNoteStats = compactEntitlementNotes(spec);
   const exampleListStats = trimResponseExampleLists(spec);
 
   // Minified: this artifact is machine-consumed (scanners/agents), and the
@@ -428,6 +482,8 @@ export function buildBundle({ spec: provided } = {}) {
     defaultRequiredStats,
     successDescriptionStats,
     duplicateSummaryStats,
+    descriptionPrefixStats,
+    entitlementNoteStats,
     exampleListStats,
     excludedStats,
   };
