@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, sleep, runSeed, parseYahooChart, writeExtraKey, extendExistingTtl, extendExistingTtlDetailed, readCanonicalEnvelopeMeta, readSeedSnapshot, writeFreshnessMetadata, writeFreshnessMetadataSafely } from './_seed-utils.mjs';
-import { fetchYahooJson } from './_yahoo-fetch.mjs';
+import { loadEnvFile, loadSharedConfig, sleep, runSeed, writeExtraKey, extendExistingTtl, extendExistingTtlDetailed, readCanonicalEnvelopeMeta, readSeedSnapshot, writeFreshnessMetadata, writeFreshnessMetadataSafely } from './_seed-utils.mjs';
+import { fetchYahooJson, fetchYahooQuoteChart } from './_yahoo-fetch.mjs';
 import { buildCountryStockIndexSnapshot, countryStockIndexKey } from './_country-stock-index.mjs';
 import { loadCountryStockIndexes } from './_country-stock-index-registry.mjs';
 import { getUsEquitySession, isMultiMarketEquityTradingDay } from './shared/market-hours.cjs';
@@ -40,9 +40,7 @@ const YAHOO_ONLY = new Set(stocksConfig.yahooOnly);
 
 async function fetchYahooQuote(symbol) {
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
-    const chart = await fetchYahooJson(url, { label: symbol });
-    return parseYahooChart(chart, symbol);
+    return await fetchYahooQuoteChart(symbol, { delayMs: YAHOO_DELAY_MS });
   } catch (err) {
     console.warn(`  [Yahoo] ${symbol} error: ${err.message}`);
     return null;

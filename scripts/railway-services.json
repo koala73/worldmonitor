@@ -101,6 +101,7 @@
       "scripts/shared/stablecoins.json",
       "scripts/shared/stocks.json",
       "scripts/shared/ucdp-candidate.cjs",
+      "scripts/shared/yahoo-closed-session.cjs",
       "scripts/source-attribution.mjs",
       "public/.well-known/mcp/server-card.json",
       "shared/compare-and-delete-script.cjs",
@@ -1167,6 +1168,7 @@
       "scripts/shared/other-tokens.json",
       "scripts/shared/stablecoin-classifier.cjs",
       "scripts/shared/stablecoins.json",
+      "scripts/shared/yahoo-closed-session.cjs",
       "shared/ai-tokens.json",
       "shared/crypto.json",
       "shared/defi-tokens.json",
@@ -1589,6 +1591,7 @@
       "scripts/seed-commodity-quotes.mjs",
       "scripts/shared/commodities.json",
       "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/yahoo-closed-session.cjs",
       "shared/commodities.json"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
