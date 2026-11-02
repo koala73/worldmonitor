@@ -4476,17 +4476,20 @@ a.hub-top-story {
 
 .regulation-panel .country-card-header {
   padding: 8px 8px 0;
+  border-inline-start: 4px solid var(--stance-color, var(--text-muted));
 }
 
 .regulation-panel .country-summary {
-  padding: 0 8px 0 12px;
+  padding-block: 0;
+  padding-inline: 12px 8px;
 }
 
 .regulation-panel .country-stats {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 16px;
-  padding: 6px 8px 8px 12px;
+  padding-block: 6px 8px;
+  padding-inline: 12px 8px;
 }
 
 .regulation-panel .stat {
