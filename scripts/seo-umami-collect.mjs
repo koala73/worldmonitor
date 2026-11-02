@@ -52,6 +52,7 @@ import { fileURLToPath } from 'node:url';
 import { CHROME_UA, loadEnvFile } from './_seed-utils.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 import { REFERRER_FAMILIES } from './seo-ai-visibility-collector.mjs';
+import { REFERRAL_METRICS } from './seo-ai-visibility-scorecard.mjs';
 import { markdownCell, percent } from './seo-gsc-collect.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -462,6 +463,90 @@ export async function collectUmamiSnapshot({ transport, observedAt }) {
       'google_search_ai is unavailable, never zero: a referrer cannot separate AI Overviews and AI Mode from web search.',
       'The credentials and session token stay in operator configuration and never reach this file.',
     ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Scorecard feed
+// ---------------------------------------------------------------------------
+
+const SCORECARD_WINDOWS = Object.freeze({ '28d': 28, '90d': 90 });
+/**
+ * Characters of an upstream reason quoted in the scorecard reason; the rest is
+ * in the snapshot. Three such quotes stay far under the 4 KB limit even in
+ * multi-byte text.
+ */
+const MAX_QUOTED_REASON = 300;
+const brief = (text) => {
+  const characters = [...String(text ?? '')];
+  return characters.length <= MAX_QUOTED_REASON
+    ? characters.join('')
+    : `${characters.slice(0, MAX_QUOTED_REASON).join('')}... (see the snapshot)`;
+};
+
+/**
+ * Shape a snapshot for `sources.referrals` of
+ * `scripts/seo-ai-visibility-collector.mjs`.
+ *
+ * Only `sessions` has a source: Umami's `visits`, summed over the 28 one-day
+ * queries. Visitors are visitor-days and never stand in for sessions. The
+ * outcome metrics need landing-page and event breakdowns this collector does
+ * not read, so they are null. There is no 90-day window: Umami keeps 30 days
+ * of raw events. Referrer families are counted in visitor-days with no
+ * landing-page dimension, so they cannot fill the referrer × landing-page
+ * session segments; the reason lists them against the classification instead.
+ */
+export function toScorecardReferralExport(snapshot, { classification }) {
+  const { window, totals, referrers } = snapshot;
+  const sessions = totals.availability === 'available' && Number.isInteger(totals.visits)
+    ? totals.visits
+    : null;
+  const nullMetrics = Object.fromEntries(REFERRAL_METRICS.map((metric) => [metric, null]));
+  const windows = Object.entries(SCORECARD_WINDOWS).map(([label, days]) => ({
+    label,
+    startDate: isoDate(Date.parse(window.endDate) - (days - 1) * DAY_MS),
+    endDate: window.endDate,
+    metrics: label === window.label ? { ...nullMetrics, sessions } : nullMetrics,
+  }));
+  // A partial section's reason lists every failed day. It is stated once below,
+  // bounded, rather than repeated per family, so the whole reason stays inside
+  // the collector's 4 KB limit however many days failed.
+  const families = classification.families.map(({ id, hostSuffixes }) => {
+    const measured = referrers.referrerFamilies?.[id];
+    const value = !measured
+      ? 'not measured'
+      : measured.visitorDays === null
+        ? `unavailable (${brief(measured.reason)})`
+        : `${measured.visitorDays}${measured.availability === 'available' ? '' : ` (${measured.availability})`}`;
+    // Where the classification and the Umami host rules disagree, say so: the
+    // count above follows the Umami rules.
+    const elsewhere = hostSuffixes
+      .map((host) => [host, referrerFamily(host)])
+      .filter(([, family]) => family !== id)
+      .map(([host, family]) => `${host} counts as ${family}`);
+    return `${id} ${value}${elsewhere.length > 0 ? ` [${elsewhere.join(', ')}]` : ''}`;
+  });
+  const sectionNotes = [
+    ['Referrer', referrers],
+    ['Channel (the unknown_direct source)', snapshot.channels],
+  ]
+    .filter(([, section]) => section && section.availability !== 'available')
+    .map(([name, section]) => `${name} counts are ${section.availability}: ${brief(section.reason)}`);
+  const notes = [
+    sessions === null
+      ? `sessions is null: Umami totals are ${totals.availability} (${brief(totals.reason ?? 'no visits count was returned')}).`
+      : 'sessions is Umami `visits`, summed over 28 one-day queries, so a visit that spans midnight UTC counts on both days. Umami visitors are visitor-days and are not reported as sessions.',
+    `${REFERRAL_METRICS.filter((metric) => metric !== 'sessions').join(', ')} are null: the weekly Umami collection reads no landing-page or event breakdown.`,
+    'The 90d window is null: Umami keeps 30 days of raw events.',
+    'There are no referrer by landing-page segments: Umami referrer counts are visitor-days with no landing-page dimension.',
+    `Referrer families, ${window.label} visitor-days by the Umami collector's host rules: ${families.join('; ')}.`,
+    ...sectionNotes.map((note) => (/[.!?]$/.test(note) ? note : `${note}.`)),
+  ];
+  return {
+    status: sessions === null ? 'unavailable' : 'partial',
+    reason: notes.join(' '),
+    windows,
+    rows: [],
   };
 }
 

@@ -1701,38 +1701,84 @@ export function renderGscMarkdown(snapshot) {
  *
  * The scorecard stays the single report. This is the feed into it, not a
  * parallel one.
+ *
+ * - Window totals are the by-property `siteTotals.all`, the site aggregate the
+ *   performance chart shows. The page-row sum counts one search once per URL
+ *   it shows, so it is never passed off as a site total; without by-property
+ *   totals the window metrics are null.
+ * - Page-family rows are page-grouped sums, which is what a family can mean.
+ *   A family with no page row in a truncated window is unmeasured, not zero,
+ *   so it gets no row there.
+ * - Query rows exist only for reviewed queries, matched on exact text, among
+ *   the top queries the snapshot lists per window. Pass `querySet` to get them.
+ *
+ * `reason` is always set, because the collector downgrades a window without
+ * full query and family coverage to partial and must say why.
  */
-export function toScorecardSearchExport(snapshot) {
+export function toScorecardSearchExport(snapshot, { querySet = null } = {}) {
+  const { performance } = snapshot;
+  if (performance.status === 'unavailable') {
+    return {
+      status: 'unavailable',
+      reason: `Search Console performance was not collected: ${performance.reason}`,
+    };
+  }
   // The scorecard's indexedPages means HTML pages in the declared inventory.
   // The site total is only that number when every declared URL returned an
   // index status; a family row is exact when its own URLs all did. Anything
   // else is an absence of a measurement, so null.
   const { htmlPages, sample } = snapshot.indexation;
   const complete = sample.complete === true;
-  return {
-    status: snapshot.performance.status === 'available' ? 'available' : 'partial',
-    reason: snapshot.performance.status === 'available'
-      ? null
-      : 'Search Console performance rows are capped or truncated for at least one window.',
-    windows: snapshot.performance.windows.map((window) => ({
+  const reviewed = new Set((querySet?.queries ?? []).map((query) => query.query));
+  const sentence = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
+  const notes = [
+    'Window totals are Search Console by-property site totals. Page-family rows sum page-grouped rows, where one search counts once per URL it shows, so they are not shares of the site total.',
+    `Query rows exist only for reviewed queries that appear with exact text among the top ${MAX_TOP_QUERIES} queries the snapshot lists per window; a reviewed query outside that list has no row, which is not a zero.`,
+    complete
+      ? `indexedPages counts sitemap-declared HTML URLs that URL Inspection reported indexed when the snapshot ran (${snapshot.observedAt.slice(0, 10)}); the same count stands in both windows.`
+      : sentence(`indexedPages is null: the URL Inspection sample is not a complete count of the ${sample.declared} declared URLs (${snapshot.indexation.reason ?? 'no reason recorded'})`),
+  ];
+  const windows = performance.windows.map((window) => {
+    // `all` is null only when the by-property view itself failed. A failed
+    // brand or non-brand split makes siteTotals partial but leaves it valid.
+    const site = window.siteTotals?.all ?? null;
+    if (!site) notes.push(`${window.label}: no by-property site totals, so the window metrics are null (${window.siteTotals?.reason ?? 'not collected'}).`);
+    const truncated = window.status !== 'available';
+    if (truncated) notes.push(`${sentence(`${window.label}: ${window.reason}`)} Families with no page row in this window get no row.`);
+    return {
       label: window.label,
       startDate: window.startDate,
       endDate: window.endDate,
-      clicks: window.totals.clicks,
-      impressions: window.totals.impressions,
-      ctr: window.totals.ctr,
-      position: window.totals.averagePosition,
+      clicks: site ? site.clicks : null,
+      impressions: site ? site.impressions : null,
+      ctr: site ? site.ctr : null,
+      position: site ? site.averagePosition : null,
       indexedPages: complete ? htmlPages.indexed : null,
-      pageFamilyRows: Object.entries(window.byFamily).map(([pageFamily, metrics]) => ({
-        pageFamily,
-        clicks: metrics.clicks,
-        impressions: metrics.impressions,
-        ctr: metrics.ctr,
-        position: metrics.averagePosition,
-        indexedPages: htmlPages.indexedByFamily[pageFamily] ?? null,
-      })),
-      queryRows: [],
-    })),
+      pageFamilyRows: Object.entries(window.byFamily)
+        .filter(([, metrics]) => !truncated || metrics.urls > 0)
+        .map(([pageFamily, metrics]) => ({
+          pageFamily,
+          clicks: metrics.clicks,
+          impressions: metrics.impressions,
+          ctr: metrics.ctr,
+          position: metrics.averagePosition,
+          indexedPages: htmlPages.indexedByFamily[pageFamily] ?? null,
+        })),
+      queryRows: window.topQueries
+        .filter((row) => reviewed.has(row.query))
+        .map((row) => ({
+          query: row.query,
+          clicks: row.clicks,
+          impressions: row.impressions,
+          ctr: row.impressions > 0 ? roundTo(row.clicks / row.impressions, 4) : null,
+          position: finite(row.position),
+        })),
+    };
+  });
+  return {
+    status: performance.status === 'available' ? 'available' : 'partial',
+    reason: notes.join(' '),
+    windows,
   };
 }
 

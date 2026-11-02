@@ -293,10 +293,33 @@ function deriveWindows(raw) {
 const inWindow = (date, window) => date >= window.startDate && date <= window.endDate;
 const sumOf = (rows, field) => rows.reduce((total, row) => total + row[field], 0);
 
-function buildTraffic({ rows, reason }, windows) {
-  if (rows === null) return unavailable(METHODS.traffic, reason);
-  if (rows.length === 0) return unavailable(METHODS.traffic, 'Bing returned no daily rows');
-  const gaps = [];
+/**
+ * One row per date. A date Bing repeats verbatim counts once; a date whose
+ * rows disagree is left out, since neither row can be trusted over the other.
+ * Counting rows instead of dates would read either case as a complete window
+ * and double-count it.
+ */
+function onePerDate(rows) {
+  const unique = [];
+  const conflicting = [];
+  for (const [date, group] of groupBy(rows, (row) => row.date)) {
+    const [first] = group;
+    if (group.every((row) => row.impressions === first.impressions && row.clicks === first.clicks)) {
+      unique.push(first);
+    } else {
+      conflicting.push(date);
+    }
+  }
+  return { rows: unique.sort(byDate('date')), conflicting: conflicting.sort() };
+}
+
+function buildTraffic({ rows: rawRows, reason }, windows) {
+  if (rawRows === null) return unavailable(METHODS.traffic, reason);
+  if (rawRows.length === 0) return unavailable(METHODS.traffic, 'Bing returned no daily rows');
+  const { rows, conflicting } = onePerDate(rawRows);
+  const gaps = conflicting.length > 0
+    ? [`Bing returned conflicting rows for ${conflicting.join(', ')}, so those days are left out`]
+    : [];
   const byWindow = {};
   for (const window of windows) {
     const slice = rows.filter((row) => inWindow(row.date, window));
@@ -524,6 +547,97 @@ export async function collectBingSnapshot({ transport, observedAt }) {
       'A position Bing reports as -1 is recorded as null, not as a rank.',
       'The site URL and the API key stay in operator configuration and never reach this file.',
     ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Scorecard feed
+// ---------------------------------------------------------------------------
+
+/**
+ * Shape a snapshot for `sources.bingWebmaster` of
+ * `scripts/seo-ai-visibility-collector.mjs`, the way the Search Console
+ * collector's `toScorecardSearchExport` does.
+ *
+ * - Window totals come only from the daily traffic rows, and only for a window
+ *   Bing reported every day of: a sum with a missing day is an undercount, so
+ *   it is null. `GetRankAndTrafficStats` carries no position, so the site
+ *   average position is always null.
+ * - `indexedPages` is the latest `InIndex` from `GetCrawlStats`, Bing's count
+ *   of the site's pages in its index.
+ * - Query and page-family rows are top-100-per-week sums, so the source is
+ *   always partial and says so. Query rows exist only for reviewed queries,
+ *   matched on exact text, among the top queries per window. Page rows carry no
+ *   position or index count.
+ * - AI Performance has no API method; its unavailable reason is carried over.
+ */
+export function toScorecardBingSource(snapshot, { querySet }) {
+  const aiPerformance = {
+    status: 'unavailable',
+    reason: snapshot.aiPerformance?.reason ?? AI_PERFORMANCE_REASON,
+  };
+  if (snapshot.windows.length === 0) {
+    return {
+      search: {
+        status: 'unavailable',
+        reason: 'The Bing snapshot has no window: no traffic, query or page rows were returned.',
+      },
+      aiPerformance,
+    };
+  }
+  const reviewed = new Set(querySet.queries.map((query) => query.query));
+  const { traffic, queries, pages, crawl } = snapshot;
+  const latestInIndex = crawl.availability === 'unavailable' ? null : crawl.latest.inIndex;
+  const notes = [
+    `Query and page-family rows are top-${WEEKLY_ROW_CAP}-per-week sums, not totals; a weekly bucket counts toward a window when the Friday it ends on falls inside it.`,
+    `Query rows exist only for reviewed queries that appear with exact text among the top ${MAX_TOP_QUERIES} queries per window; a reviewed query outside that list has no row, which is not a zero.`,
+    'Window totals come from the daily traffic rows, which carry no position, so averagePosition is null at the window and page-family level.',
+    latestInIndex === null
+      ? `indexedPages is null: crawl stats are unavailable (${crawl.reason}).`
+      : `indexedPages is Bing's InIndex count on ${crawl.latest.date}; the same count stands in both windows.`,
+  ];
+  if (traffic.availability === 'unavailable') notes.push(`Window totals are null: daily traffic is unavailable (${traffic.reason}).`);
+  for (const section of [queries, pages]) {
+    if (section.availability === 'unavailable') notes.push(`${section.method} is unavailable (${section.reason}).`);
+  }
+  const windows = snapshot.windows.map((window) => {
+    const days = Number.parseInt(window.label, 10);
+    const daily = traffic.availability === 'unavailable' ? null : traffic.windows[window.label];
+    const totals = daily && daily.daysReported === days ? daily : null;
+    if (daily && !totals) notes.push(`${window.label}: Bing reported ${daily.daysReported} of ${days} days, so the window totals are null rather than an undercount.`);
+    const queryWindow = queries.availability === 'unavailable' ? null : queries.windows[window.label];
+    const pageWindow = pages.availability === 'unavailable' ? null : pages.windows[window.label];
+    return {
+      label: window.label,
+      startDate: window.startDate,
+      endDate: window.endDate,
+      impressions: totals ? totals.impressions : null,
+      clicks: totals ? totals.clicks : null,
+      ctr: totals ? totals.ctr : null,
+      position: null,
+      indexedPages: latestInIndex,
+      queryRows: (queryWindow?.topQueries ?? [])
+        .filter((row) => reviewed.has(row.query))
+        .map((row) => ({
+          query: row.query,
+          impressions: row.impressions,
+          clicks: row.clicks,
+          ctr: row.ctr,
+          position: row.avgImpressionPosition,
+        })),
+      pageFamilyRows: Object.entries(pageWindow?.byFamily ?? {}).map(([pageFamily, row]) => ({
+        pageFamily,
+        impressions: row.impressions,
+        clicks: row.clicks,
+        ctr: row.ctr,
+        position: null,
+        indexedPages: null,
+      })),
+    };
+  });
+  return {
+    search: { status: 'partial', reason: notes.join(' '), windows },
+    aiPerformance,
   };
 }
 

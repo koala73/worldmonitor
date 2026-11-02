@@ -44,7 +44,10 @@ grep that has to carve out documentation is a grep that stops catching leaks.
 Add `--search-export <path>` to also emit the per-family rows in the shape
 `scripts/seo-ai-visibility-collector.mjs` accepts under
 `sources.googleSearchConsole`. The scorecard stays the single report; this is a
-feed into it, not a second one.
+feed into it, not a second one. Its window totals are the by-property site
+totals, never the page-row sum. The weekly workflow does not need this flag:
+`scripts/seo-weekly-baseline.mjs` maps the committed snapshot through the same
+`toScorecardSearchExport`, adding the reviewed query rows.
 
 ## Reading it
 
