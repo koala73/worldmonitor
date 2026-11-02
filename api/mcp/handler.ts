@@ -869,9 +869,7 @@ export async function mcpHandler(
     if (usage.era === 'modern') {
       res = await shapeModernResponse(res, {
         method: exchange.method,
-        onAlias: WELL_KNOWN_MCP_PATHS.has(new URL(req.url).pathname),
         acceptsSse: clientAcceptsSse(req),
-        hostVariant: isChatGptHost(req),
       });
     }
   } catch (err) {
