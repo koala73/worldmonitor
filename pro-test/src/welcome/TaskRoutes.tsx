@@ -2,6 +2,7 @@ import { Anchor, Newspaper, ShieldCheck } from 'lucide-react';
 import { CardLinkArrow, cardLinkFocusRing } from './CardLink';
 import { t } from '../i18n';
 import depthProofStats from '../generated/depth-stats.json';
+import copyStats from '../generated/copy-stats.json';
 
 const TASK_ROUTES = [
   {
@@ -66,7 +67,7 @@ export const TaskRoutes = () => (
                 {t(`welcome.tasks.${key}Title`)}
               </h3>
               <p className="mt-3 text-sm leading-relaxed text-wm-muted">
-                {t(`welcome.tasks.${key}Desc`, depthProofStats)}
+                {t(`welcome.tasks.${key}Desc`, { ...depthProofStats, ...copyStats })}
               </p>
               <span className="mt-auto inline-flex items-center gap-1.5 pt-6 font-mono text-xs uppercase tracking-wider text-wm-green">
                 {t('welcome.tasks.open')}

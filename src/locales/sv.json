@@ -1685,7 +1685,8 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Uppgradera till PRO för gruv- och raffinaderiländsandelar med koncentration (producentkoncentrationsindex) per steg."
+      "productionProLocked": "Uppgradera till PRO för gruv- och raffinaderiländsandelar med koncentration (producentkoncentrationsindex) per steg.",
+      "partialTransitCoverage": "Transitdata otillgänglig: {{names}}"
     },
     "positiveNewsFeed": {
       "noStories": "Inga berättelser i denna kategori ännu"

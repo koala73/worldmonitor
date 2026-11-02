@@ -30,5 +30,10 @@ export const Footer = () => (
       </span>
     </div>
     <LegalFooterNav />
+    {/* Mirrors the "not professional advice" clause in docs/terms.mdx. */}
+    <p className="max-w-3xl mx-auto mt-4 text-xs text-wm-muted">
+      World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice.
+      Verify what you see, and consult a qualified professional before decisions where an error could cause loss or harm.
+    </p>
   </footer>
 );

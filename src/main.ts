@@ -405,6 +405,10 @@ function shouldSuppressCspViolation(
       // (www.6ppn.com/ext/assets/style.<hash>.css — the /ext/ path is the
       // extension's own asset root). Exact host + .css path (WORLDMONITOR-J0).
       if (url.protocol === 'https:' && url.hostname === 'www.6ppn.com' && cssFile.test(url.pathname)) return true;
+      // Same extension asset shape from a second host
+      // (price.dianxiaobao.net/ext/assets/style.<hash>.css, WORLDMONITOR-J0
+      // round 6, the only unfiltered blockedURI in the issue's last 30 days).
+      if (url.protocol === 'https:' && url.hostname === 'price.dianxiaobao.net' && cssFile.test(url.pathname)) return true;
       // FontAwesome public CDN. The injected sheet is v4.7.0 — a 2016 release
       // this app never shipped — and our style-src is `'self' 'unsafe-inline'`
       // with no cross-origin host at all, so any use.fontawesome.com stylesheet

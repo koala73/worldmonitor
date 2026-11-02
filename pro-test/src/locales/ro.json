@@ -711,14 +711,14 @@
       "chokepointTitle": "Verificați un punct de strangulare",
       "chokepointDesc": "Inspectează starea perturbării, fluxurile de nave și riscul pe {{chokepoints}} pasaje maritime critice.",
       "countryRiskTitle": "Explicați o mișcare de risc-țară",
-      "countryRiskDesc": "Urmărește semnalele politice, de securitate, economice și de reziliență din spatele schimbării unei țări, cu reziliență clasificată pentru {{resilienceRanked}} de țări.",
+      "countryRiskDesc": "Urmărește semnalele politice, de securitate, economice și de reziliență din spatele schimbării dintr-o țară. Reziliența este clasificată pentru {{resilienceRanked}} din {{resilienceUniverse}} de țări, adică aproximativ {{resilienceRankedPct}}%, astfel încât o evoluție să poată fi interpretată în raport cu baza structurală pe termen lung a acelei țări, în loc să fie interpretată doar prin prisma titlurilor știrilor din această săptămână.",
       "open": "Deschideți dovezi",
       "workflow": "Flux de lucru pas cu pas"
     },
     "voices": {
       "eyebrow": "În cuvintele lor",
       "title": "Ce spun oamenii despre World Monitor",
-      "sub": "{{users}} de oameni din {{countries}} de țări au folosit World Monitor. Iată ce au spus presa și unii dintre ei.",
+      "sub": "{{users}} de oameni din {{countries}} de țări au folosit World Monitor. The Atlantic a scris despre el pe 14 martie 2026, iar El País două zile mai târziu. WIRED, The Economic Times, Arabian Business și L'Orient Today au relatat, de asemenea, despre el. Iată ce au spus presa și unii utilizatori.",
       "translatedJa": "Tradus din japoneză",
       "prev": "Citatele anterioare",
       "next": "Mai multe citate"

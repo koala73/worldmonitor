@@ -993,7 +993,8 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Nâng cấp lên PRO để xem tỷ lệ mỏ và nhà máy lọc theo quốc gia với tập trung (chỉ số tập trung nhà sản xuất) theo giai đoạn."
+      "productionProLocked": "Nâng cấp lên PRO để xem tỷ lệ mỏ và nhà máy lọc theo quốc gia với tập trung (chỉ số tập trung nhà sản xuất) theo giai đoạn.",
+      "partialTransitCoverage": "Dữ liệu quá cảnh không khả dụng: {{names}}"
     },
     "tradePolicy": {
       "tariffs": "Thuế quan",
