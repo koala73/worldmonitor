@@ -268,14 +268,20 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
     if (!points?.length) throw new Error('No erb pump price release in effect');
   }
   if (id === 'npa') {
-    const listing = discoverNpaWorkbook(await read(npaMediaUrl('Ex-Pump Prices of OMCs'), 'json'), 'expump');
-    const indicators = discoverNpaWorkbook(await read(npaMediaUrl('Petroleum Price Indicators'), 'json'), 'indicators');
-    // The listing workbook is about 3 MB and the host's throughput varies
-    // (3 s to 47 s for the same file on 2026-11-02), so it gets a longer budget.
-    points = [
-      ...parseNpaExPumpRows(await readFirstSheetRows(await read(listing.url, 'bytes', undefined, 60000), 'NPA')),
-      ...parseNpaIndicatorRows(await readSheetRows(await read(indicators.url, 'bytes'), 'Media Publication', 'NPA')),
-    ];
+    // The two lookups and the two downloads are independent, so each pair
+    // runs together: the fetch phase has 80 s, the host answers in 5-20 s,
+    // and the 3 MB listing workbook took 3 s to 47 s on 2026-11-02. The
+    // worst case is then 20 s + 55 s.
+    const [listing, indicators] = await Promise.all([
+      read(npaMediaUrl('Ex-Pump Prices of OMCs'), 'json', undefined, 20000).then(media => discoverNpaWorkbook(media, 'expump')),
+      read(npaMediaUrl('Petroleum Price Indicators'), 'json', undefined, 20000).then(media => discoverNpaWorkbook(media, 'indicators')),
+    ]);
+    const [listingBytes, indicatorBytes] = await Promise.all([read(listing.url, 'bytes', undefined, 55000), read(indicators.url, 'bytes', undefined, 20000)]);
+    // The workbook keeps one sheet per day with the newest first; only that
+    // sheet is read, and it must be the day the upload is named for.
+    const prices = parseNpaExPumpRows(await readFirstSheetRows(listingBytes, 'NPA'));
+    if (prices[0].period !== listing.day) throw new Error('NPA listing sheet does not match its upload day');
+    points = [...prices, ...parseNpaIndicatorRows(await readSheetRows(indicatorBytes, 'Media Publication', 'NPA'))];
   }
   if (id === 'sonabhy') {
     const state = await read(discoverSonabhyState(await read(SONABHY_PAGE_URL)));

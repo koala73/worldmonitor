@@ -21,7 +21,7 @@ is added.
 | ICCC | PG | Monthly Port Moresby retail prices, unsubsidised prices and subsidy components (PGK/l) | 12 hours |
 | FCCC | FJ | Monthly approved retail fuel prices by schedule (FJD/l) and LPG prices by schedule and pack size | 12 hours |
 | MEM | GT | Daily average prices monitored in Guatemala City: gasolines and diesel (GTQ/gal), LPG (GTQ per 25 lb cylinder and per lb); bunker, AvGas and Jet A-1 (GTQ/gal) | 12 hours |
-| QatarEnergy | QA | Monthly retail prices for premium and super gasoline and diesel (QAR/l), eleven months of history | 12 hours |
+| QatarEnergy | QA | Monthly retail prices for premium and super gasoline and diesel (QAR/l), newest eight months served | 12 hours |
 | ERB | ZM | Monthly uniform pump price and wholesale price to marketers for petrol, diesel and kerosene (ZMW/l) | 12 hours |
 | NPA | GH | Average, lowest and highest ex-pump price across licensed marketers for petrol grades, diesel, kerosene and marine gas oil (GHS/l) and LPG (GHS/kg); crude and product FOB prices behind the price build-up in effect (USD/bbl, USD/MT) | 12 hours |
 | SONABHY | BF | Retail prices fixed by joint order in Ouagadougou and Bobo-Dioulasso: super, diesel, kerosene and DDO (XOF/l), butane by cylinder size | 1 day |

@@ -37,14 +37,24 @@ const assertUnique = points => {
 };
 // ExcelJS reads date cells as Date objects; the fixtures store them as { date }.
 const sheetRows = name => json(name).rows.map(row => row.map(v => (v && typeof v === 'object' && v.date ? new Date(v.date) : v)));
-async function workbook(name) {
+// Each sheet is [name, rows]; the first argument's sheet comes first in the file.
+// Excel writes xl/workbook.xml before the sheet parts and the ExcelJS stream
+// reader depends on that order; the ExcelJS writer puts the sheets first, so
+// the archive is rewritten in Excel's order.
+async function workbook(...sheets) {
   const { default: ExcelJS } = await import('exceljs');
-  const capture = json(name);
+  const { unzipSync, zipSync } = await import('fflate');
   const book = new ExcelJS.Workbook();
-  const sheet = book.addWorksheet(capture.sheet);
-  sheetRows(name).forEach(row => sheet.addRow(row));
-  return Buffer.from(await book.xlsx.writeBuffer());
+  for (const [name, rows] of sheets) {
+    const sheet = book.addWorksheet(name);
+    rows.forEach(row => sheet.addRow(row));
+  }
+  const entries = unzipSync(new Uint8Array(await book.xlsx.writeBuffer()));
+  const first = name => (/^\[Content_Types\]\.xml$|^_rels\/|^xl\/_rels\/|^xl\/workbook\.xml$|sharedStrings|styles/.test(name) ? 0 : 1);
+  const ordered = Object.fromEntries(Object.keys(entries).sort((a, b) => first(a) - first(b)).map(name => [name, entries[name]]));
+  return Buffer.from(zipSync(ordered));
 }
+const captured = name => [json(name).sheet, sheetRows(name)];
 // Serves fixture responses by URL and records each request.
 function server(routes) {
   const calls = [];
@@ -185,21 +195,36 @@ describe('Ghana NPA ex-pump prices and price indicators', () => {
     assert.throws(() => parseNpaIndicatorRows(sheetRows('npa-indicators-2026-10-20.json').filter(row => row[1] !== 'LPG (USD/MT)')), /Missing NPA indicator rows/);
   });
 
+  // The 15 October sheet: same layout, an earlier title and a different diesel average.
+  const older = () => ['Ex-Pump Prices 15th Oct 2026', sheetRows('npa-expump-2026-10-16.json').map(row => row.map(v => (
+    v === 'EX-PUMP PRICES OF OMCs/LPGMCs AS OF 16th October 2026' ? 'EX-PUMP PRICES OF OMCs/LPGMCs AS OF 15th October 2026' : v === 18.403636046511632 ? 18.25 : v))) ];
+
   it('streams the newest listing sheet and loads the indicator sheet by name', async () => {
     const listingUrl = 'https://npa.gov.gh/wp-content/uploads/2026/10/Ex-Pump-Prices-of-OMCs-and-LPGMCs-as-of-16th-October-2026.xlsx';
     const indicatorsUrl = 'https://npa.gov.gh/wp-content/uploads/2026/10/Petroleum-Price-Indicators-As-of-20th-October-2026.xlsx';
     const { fetchFn, calls } = server({
       [npaMediaUrl('Ex-Pump Prices of OMCs')]: json('npa-media-expump.json'),
       [npaMediaUrl('Petroleum Price Indicators')]: json('npa-media-indicators.json'),
-      [listingUrl]: await workbook('npa-expump-2026-10-16.json'),
-      [indicatorsUrl]: await workbook('npa-indicators-2026-10-20.json'),
+      // The real workbook keeps one sheet per day, newest first; the older day here has different prices.
+      [listingUrl]: await workbook(captured('npa-expump-2026-10-16.json'), older()),
+      [indicatorsUrl]: await workbook(captured('npa-indicators-2026-10-20.json')),
     });
     const data = await fetchRegionalEnergyFeed('npa', { fetchFn, nowMs: Date.parse('2026-11-02T12:00:00Z') });
     assert.equal(calls.length, 4);
+    assert.equal(data.observations.find(p => p.area === 'Diesel; average of OMCs').value, 18.4036, 'the newest sheet, not the older one');
     assert.equal(data.observations.length, 18 + 6);
     // The listing day and the PBU's effective day both fall on 16 October.
     assert.equal(data.observedAt, '2026-10-16T00:00:00.000Z');
     assert.equal(data.observations.find(p => p.metric === 'fuel.fob_price' && p.area === 'Petrol').period, '2026-10-16');
+
+    // A workbook whose first sheet is an older day than its upload is named for is refused.
+    const stale = server({
+      [npaMediaUrl('Ex-Pump Prices of OMCs')]: json('npa-media-expump.json'),
+      [npaMediaUrl('Petroleum Price Indicators')]: json('npa-media-indicators.json'),
+      [listingUrl]: await workbook(older(), captured('npa-expump-2026-10-16.json')),
+      [indicatorsUrl]: await workbook(captured('npa-indicators-2026-10-20.json')),
+    });
+    await assert.rejects(fetchRegionalEnergyFeed('npa', { fetchFn: stale.fetchFn, nowMs: Date.parse('2026-11-02T12:00:00Z') }), /does not match its upload day/);
   });
 });
 
