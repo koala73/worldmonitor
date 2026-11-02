@@ -768,6 +768,19 @@ describe('api/mcp.ts — MCP 2026-07-28 era detection and validation', () => {
       assert.ok(res.json.result.tools.length > 0);
     });
 
+    it('marks ChatGPT\'s own tools/list and discover private, since a shared cache cannot key on the host', async () => {
+      const chatgpt = { 'User-Agent': 'openai-mcp/1.0.0' };
+      const list = await post(modernBody(55, 'tools/list'), modernHeaders('tools/list', chatgpt));
+      assertComplete(list, 'chatgpt tools/list');
+      assertCacheHint(list, HOUR_MS, 'private', 'chatgpt tools/list');
+      assert.equal(list.json.result.tools.some((tool) => tool.name === 'start_upgrade'), false);
+
+      const discover = await post(modernBody(56, 'server/discover'), modernHeaders('server/discover', chatgpt));
+      assertComplete(discover, 'chatgpt server/discover');
+      assertCacheHint(discover, HOUR_MS, 'private', 'chatgpt server/discover');
+      assert.equal(discover.json.result.instructions.includes('start_upgrade'), false);
+    });
+
     it('marks the caller-independent catalogs public for one hour', async () => {
       for (const method of ['prompts/list', 'resources/templates/list']) {
         const res = await post(modernBody(51, method), modernHeaders(method));

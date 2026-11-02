@@ -3738,11 +3738,12 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _execute: async (params: Record<string, unknown>) => {
+    _execute: async (params: Record<string, unknown>, _base, _context, execution) => {
       const name = params.tool_name;
       if (typeof name !== 'string' || name.length === 0) {
         return { error: 'missing_tool_name', hint: 'Pass tool_name as a non-empty string matching a tool from tools/list.' };
       }
+      const hidden = execution?.hiddenTools;
       const alias = TOOL_ALIASES.describe(name);
       if (alias) {
         return {
@@ -3752,12 +3753,12 @@ export const RPC_TOOLS: ToolDef[] = [
           hint: alias.hint,
         };
       }
-      const tool = TOOL_REGISTRY.find((t) => t.name === name);
+      const tool = hidden?.has(name) ? undefined : TOOL_REGISTRY.find((t) => t.name === name);
       if (!tool) {
         return {
           error: 'unknown_tool',
           requested: name,
-          available: TOOL_REGISTRY.map((t) => t.name).sort(),
+          available: TOOL_REGISTRY.map((t) => t.name).filter((toolName) => !hidden?.has(toolName)).sort(),
         };
       }
       return buildPublicTool(tool, { compressDescriptions: false });

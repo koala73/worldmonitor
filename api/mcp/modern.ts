@@ -221,12 +221,17 @@ const MODERN_ERROR_CODES: ReadonlyMap<number, number> = new Map([
 type CacheHint = { ttlMs: number; cacheScope: 'public' | 'private' };
 
 // tools/list, prompts/list and resources/templates/list are identical
-// for every caller. resources/list adds account resources for user-bound
-// callers, and a shared cache cannot key on the caller, so it is private for
-// everyone. server/discover is private on /mcp, so a shared cache cannot let
-// an anonymous caller skip the sign-in challenge, and public on the anonymous
-// aliases. Every other method carries no hint.
-function cacheHint(method: string | null, onAlias: boolean): CacheHint | null {
+// for every caller, except that a ChatGPT request gets its own tools/list and
+// instructions (host-policy.ts). A shared cache cannot key on the host, so
+// those host variants are private. resources/list adds account resources for
+// user-bound callers, and a shared cache cannot key on the caller, so it is
+// private for everyone. server/discover is private on /mcp, so a shared cache
+// cannot let an anonymous caller skip the sign-in challenge, and public on the
+// anonymous aliases. Every other method carries no hint.
+function cacheHint(method: string | null, onAlias: boolean, hostVariant: boolean): CacheHint | null {
+  if (hostVariant && (method === 'tools/list' || method === 'server/discover')) {
+    return { ttlMs: ONE_HOUR_MS, cacheScope: 'private' };
+  }
   switch (method) {
     case 'tools/list':
     case 'prompts/list':
@@ -250,6 +255,8 @@ export interface ModernShapeOptions {
   onAlias: boolean;
   /** True when the request's Accept allows text/event-stream. */
   acceptsSse: boolean;
+  /** True when the host gets its own tools/list and instructions (ChatGPT). */
+  hostVariant?: boolean;
 }
 
 function shapeMessage(message: Record<string, unknown>, options: ModernShapeOptions): Record<string, unknown> {
@@ -264,7 +271,7 @@ function shapeMessage(message: Record<string, unknown>, options: ModernShapeOpti
     result: {
       ...result,
       resultType: 'complete',
-      ...cacheHint(options.method, options.onAlias),
+      ...cacheHint(options.method, options.onAlias, options.hostVariant === true),
       _meta: {
         ...(isPlainObject(result._meta) ? result._meta : {}),
         ...serverInfoMeta(),
