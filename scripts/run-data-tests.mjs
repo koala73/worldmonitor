@@ -57,6 +57,10 @@ export async function main(args) {
       list: { type: 'boolean', default: false },
       'built-output': { type: 'string', default: 'all' },
       timings: { type: 'string' },
+      // Estimates to place files by. CI passes the newest ones its previous
+      // runs measured (see unit-shards in test.yml); every shard of a run must
+      // read the same file or the shards would not partition the inventory.
+      durations: { type: 'string' },
       'test-name-pattern': { type: 'string' },
       // Milliseconds one file may run. The slowest measured file takes ~36s, and
       // a single test already fails at 120s, so 300s only catches files that
@@ -89,7 +93,10 @@ export async function main(args) {
     return matches;
   }))], values['built-output']);
   if (!files.length) throw new Error(`No test files remain for --built-output=${values['built-output']}`);
-  const durations = JSON.parse(readFileSync(timingPath, 'utf8'));
+  const durations = JSON.parse(readFileSync(values.durations ?? timingPath, 'utf8'));
+  if (!durations || typeof durations !== 'object' || Array.isArray(durations)) {
+    throw new Error('Test durations must be an object of file paths to milliseconds');
+  }
   if (total > files.length) throw new Error('Shard count exceeds the test file count');
   const selected = partitionTests(files, durations, total)[index - 1];
   if (!selected.length) throw new Error('The selected shard contains no test files');

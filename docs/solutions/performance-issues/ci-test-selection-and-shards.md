@@ -74,9 +74,23 @@ read commit history, not old file contents. Running those 34 files in a
 blobless clone gave the same results as a full clone and lazily fetched one
 blob, from a clone a third of the size.
 
-`scripts/shared/data-test-durations.json` must stay current or placement drifts:
+Duration estimates must stay current or placement drifts:
 `natural-events-transport` (111 s in CI) had no entry and was costed at 1 s,
-which left one shard 45 s behind the others.
+which left one shard 45 s behind the others. CI now refreshes them itself. After
+its tests, each unit shard blends its own timings into the estimates it ran with
+(each of its files moves halfway to what it measured; a failed or killed shard
+saves nothing) and saves the result as a `data-test-durations-v1-*` cache entry,
+whether the run passed or not. A cache saved only by green runs stays stale for
+as long as main is red (sorrycc/Mayoi#102 lost its Go cache that way). The next
+run's `changes` job looks the newest entry up once and every shard restores that
+exact key. They cannot each restore by prefix: every shard computes the whole
+partition and keeps its part, so a shard that read a newer entry than its
+siblings would drop or repeat test files. The newest entry carries one shard's
+refresh, so each file is refreshed within a few runs. This needs no extra job:
+`test.yml` may not hold advisory jobs (#5402), and a gated job after the shards
+would add its startup to the wall clock, which the shards set. The committed
+`scripts/shared/data-test-durations.json` is the fallback when no
+entry exists, and the manual refresh below still updates it.
 
 ## Local commands
 
