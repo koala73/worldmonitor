@@ -61,7 +61,7 @@ import { COUNTRY_BRIEF_UI_URI, COUNTRY_RISK_UI_URI, WORLD_BRIEF_UI_URI } from '.
 import { CII_HISTORY_OUTPUT_SCHEMA, ciiHistoryDays, readCountryCiiHistory } from '../_cii-history';
 import { CII_FORMULA_VERSION } from '../../../server/worldmonitor/intelligence/v1/_risk-config';
 import { ANALYSIS_TOOLS } from './analysis-tools';
-import { buildPublicTool, TOOL_ALIASES, TOOL_REGISTRY } from './index';
+import { buildPublicTool, informOnlyPublicTool, TOOL_ALIASES, TOOL_REGISTRY } from './index';
 import { COMPANY_INTEL_TOOL } from './company-intel-tools';
 import { NO2_ACTIVITY_TOOL } from './_no2-activity';
 import { tradeCountryCode } from './tariff-tools';
@@ -3761,7 +3761,8 @@ export const RPC_TOOLS: ToolDef[] = [
           available: TOOL_REGISTRY.map((t) => t.name).filter((toolName) => !hidden?.has(toolName)).sort(),
         };
       }
-      return buildPublicTool(tool, { compressDescriptions: false });
+      const publicTool = buildPublicTool(tool, { compressDescriptions: false });
+      return execution?.informOnly ? informOnlyPublicTool(publicTool) : publicTool;
     },
     _apiPaths: [],
   },

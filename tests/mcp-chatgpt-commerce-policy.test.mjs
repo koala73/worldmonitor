@@ -140,6 +140,17 @@ describe('what ChatGPT is offered', () => {
     const elsewhere = await invoke(fixture().deps, callBody('describe_tool', { tool_name: 'start_upgrade' }), 'Claude-User');
     assert.equal(elsewhere.body.result.structuredContent.name, 'start_upgrade');
   });
+
+  it('describe_tool shows ChatGPT the same schema copy tools/list does', async () => {
+    const described = await invoke(fixture().deps, callBody('describe_tool', { tool_name: 'get_market_data' }), CHATGPT_UA);
+    const tool = described.body.result.structuredContent;
+    assert.equal(tool.name, 'get_market_data', JSON.stringify(described.body).slice(0, 300));
+    assert.doesNotMatch(JSON.stringify(tool), SELLING);
+    assert.deepEqual(tool.outputSchema, CHATGPT_TOOL_LIST_RESPONSE.find((entry) => entry.name === 'get_market_data').outputSchema);
+
+    const elsewhere = await invoke(fixture().deps, callBody('describe_tool', { tool_name: 'get_market_data' }), 'Claude-User');
+    assert.match(JSON.stringify(elsewhere.body.result.structuredContent), /Upgrade at upgradeUrl/);
+  });
 });
 
 describe('denials sent to ChatGPT inform without selling', () => {

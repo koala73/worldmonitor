@@ -63,6 +63,9 @@ export interface McpToolExecutionContext {
   // Set only by dispatch for a host that must not see these tools (ChatGPT,
   // host-policy.ts). describe_tool treats them as unknown.
   hiddenTools?: ReadonlySet<string>;
+  // Set with hiddenTools: describe_tool returns the same inform-only schema
+  // copy that host's tools/list carries.
+  informOnly?: true;
   panelRequest?: import('./panel-requests').PaidPanelAdmission;
   panelScope?: 'forecasts';
   // Set only by dispatch for an original forecast read billed per tool call.

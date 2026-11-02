@@ -247,7 +247,7 @@ function rewriteSchemaDescriptions(node: unknown): void {
   for (const value of Object.values(record)) rewriteSchemaDescriptions(value);
 }
 
-function informOnlyPublicTool(tool: PublicToolShape): PublicToolShape {
+export function informOnlyPublicTool(tool: PublicToolShape): PublicToolShape {
   if (tool.outputSchema === undefined) return tool;
   const copy = structuredClone(tool);
   rewriteSchemaDescriptions(copy.outputSchema);

@@ -1077,7 +1077,10 @@ export async function dispatchToolsCall(
         };
       }
       if (startUpgradeResult) execution.startUpgradeResult = startUpgradeResult;
-      if (chatGptHost) execution.hiddenTools = CHATGPT_HIDDEN_TOOLS;
+      if (chatGptHost) {
+        execution.hiddenTools = CHATGPT_HIDDEN_TOOLS;
+        execution.informOnly = true;
+      }
       if (panelRead?.panel === 'forecasts') execution.panelScope = 'forecasts';
       if (perToolForecastRead) execution.perToolForecastRead = true;
       if (tool.name === REPORT_ISSUE_TOOL) {
