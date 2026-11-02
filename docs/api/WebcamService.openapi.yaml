@@ -13,7 +13,7 @@ paths:
             tags:
                 - WebcamService
             summary: ListWebcams
-            description: ListWebcams returns up to 2,000 Windy webcams in a map bounding box rounded out to whole degrees, from a seeded geo index, clustered below zoom 9, with a count.
+            description: ListWebcams returns Windy webcams in a map bounding box rounded out to whole degrees, from a seeded geo index capped at 2,000 per search, clustered below zoom 9.
             operationId: ListWebcams
             parameters:
                 - name: zoom
