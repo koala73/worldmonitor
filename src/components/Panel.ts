@@ -529,6 +529,15 @@ export class Panel {
     );
   }
 
+  // Compare span classes, not computed spans: a drag that returns to its start
+  // restores the starting classes, but a breakpoint crossed mid-drag can still
+  // change the natural CSS span, which must not be saved as a manual resize.
+  private rowSpanClassesChangedSinceDragStart(): boolean {
+    const current = ['span-1', 'span-2', 'span-3', 'span-4', 'resized']
+      .filter(token => this.element.classList.contains(token));
+    return current.join(' ') !== this.startRowSpanClasses.join(' ');
+  }
+
   private updateRowResize(deltaY: number): void {
     const span = deltaToRowSpan(this.startRowSpan, deltaY);
     if (span === this.startRowSpan) {
@@ -564,9 +573,8 @@ export class Panel {
         window.removeEventListener('blur', this.onRowWindowBlur);
       }
 
-      const currentSpan = getRowSpan(this.element);
-      if (currentSpan !== this.startRowSpan) {
-        savePanelSpan(this.panelId, currentSpan);
+      if (this.rowSpanClassesChangedSinceDragStart()) {
+        savePanelSpan(this.panelId, getRowSpan(this.element));
         trackLayoutCustomized('panel-resize');
       }
       this.syncKeyboardRowResizeAria();
@@ -642,9 +650,8 @@ export class Panel {
       document.body.classList.remove('panel-resize-active');
       this.resizeHandle?.classList.remove('active');
       this.removeRowTouchDocumentListeners();
-      const currentSpan = getRowSpan(this.element);
-      if (currentSpan !== this.startRowSpan) {
-        savePanelSpan(this.panelId, currentSpan);
+      if (this.rowSpanClassesChangedSinceDragStart()) {
+        savePanelSpan(this.panelId, getRowSpan(this.element));
         trackLayoutCustomized('panel-resize');
       }
       this.syncKeyboardRowResizeAria();
@@ -857,6 +864,8 @@ export class Panel {
     this._collapsed = collapsed;
     this.content.style.display = collapsed ? 'none' : '';
     this.element.classList.toggle('panel-collapsed', collapsed);
+    // Collapsing can change the CSS row span (#8276), so refresh the separator.
+    this.syncKeyboardRowResizeAria();
     btn.textContent = collapsed ? '▸' : '▾';
     const label = collapsed
       ? (t('components.panel.expandPanel') ?? 'Expand')

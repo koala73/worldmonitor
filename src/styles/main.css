@@ -1983,11 +1983,18 @@ canvas,
 }
 
 /* #8276: A collapsed natural video panel is only its header, so reserve one
-   grid row instead of the two-row .panel-wide footprint. */
+   grid row instead of the two-row .panel-wide footprint. The channel and
+   region bars control hidden video; with many channels the wrapped bar would
+   outgrow the row and overlap the next panel, so collapse hides them too. */
 @media (min-width: 769px) {
   #panelsGrid > .panel[data-panel="live-news"].panel-wide.panel-collapsed:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4),
   #panelsGrid > .panel[data-panel="live-webcams"].panel-wide.panel-collapsed:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
     grid-row: span 1;
+  }
+
+  #panelsGrid > .panel[data-panel="live-news"].panel-collapsed .live-news-toolbar,
+  #panelsGrid > .panel[data-panel="live-webcams"].panel-collapsed .webcam-toolbar {
+    display: none;
   }
 }
 

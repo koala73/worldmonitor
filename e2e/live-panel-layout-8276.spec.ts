@@ -144,6 +144,17 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
     span: getComputedStyle(element).gridRowStart,
     height: Math.round(element.getBoundingClientRect().height),
   }));
+  // A user can enable every optional channel (85); the wrapped channel bar
+  // must not push a collapsed panel past its one grid row.
+  await news.evaluate((element) => {
+    const switcher = element.querySelector('.live-news-switcher')!;
+    const buttons = Array.from(switcher.querySelectorAll('.live-channel-btn'));
+    for (let i = 0; switcher.querySelectorAll('.live-channel-btn').length < 85; i++) {
+      const clone = buttons[i % buttons.length]!.cloneNode(true) as HTMLElement;
+      clone.classList.remove('active');
+      switcher.appendChild(clone);
+    }
+  });
   // A collapsed video panel is only a header, so it reserves one grid row
   // instead of the two-row .panel-wide footprint.
   for (const panel of [news, webcams]) {
@@ -152,6 +163,13 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
     await expect.poll(() => footprint(panel)).toMatchObject({ span: 'span 1' });
     expect((await footprint(panel)).height).toBeLessThanOrEqual(200);
   }
+  const collapsedOverlap = await page.evaluate(() => {
+    const rect = (id: string) => document
+      .querySelector(`#panelsGrid > .panel[data-panel="${id}"]`)!
+      .getBoundingClientRect();
+    return Math.round(rect('live-news').bottom - rect('live-webcams').top);
+  });
+  expect(collapsedOverlap).toBeLessThanOrEqual(0);
   for (const panel of [news, webcams]) {
     await panel.locator('.panel-collapse-btn').click();
     await expect(panel).not.toHaveClass(/panel-collapsed/);

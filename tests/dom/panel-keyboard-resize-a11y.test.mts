@@ -172,6 +172,56 @@ describe('Panel keyboard resize accessibility', () => {
     }
   });
 
+  it('updates the separator value when collapsing changes the CSS span', () => {
+    const panel = new Panel({ id: 'live-news', title: 'News', className: 'panel-wide', collapsible: true });
+    const element = panel.getElement();
+    const handle = element.querySelector('.panel-resize-handle');
+    const collapse = element.querySelector<HTMLButtonElement>('.panel-collapse-btn')!;
+    element.style.gridRowStart = 'span 3';
+    document.body.appendChild(element);
+    panel.notifyConnected();
+    expect(handle?.getAttribute('aria-valuenow')).toBe('3');
+
+    try {
+      // The stylesheet gives a collapsed natural video panel one row.
+      element.style.gridRowStart = 'span 1';
+      collapse.click();
+      expect(handle?.getAttribute('aria-valuenow')).toBe('1');
+
+      element.style.gridRowStart = 'span 3';
+      collapse.click();
+      expect(handle?.getAttribute('aria-valuenow')).toBe('3');
+    } finally {
+      panel.destroy();
+    }
+  });
+
+  it('does not save a span when a breakpoint changes the natural span mid-drag', () => {
+    const panel = new Panel({ id: 'live-news', title: 'News', className: 'panel-wide' });
+    const element = panel.getElement();
+    element.style.gridRowStart = 'span 3';
+    document.body.appendChild(element);
+    panel.notifyConnected();
+    const handle = element.querySelector<HTMLElement>('.panel-resize-handle')!;
+
+    try {
+      handle.dispatchEvent(new MouseEvent('mousedown', { clientY: 300, bubbles: true }));
+      document.dispatchEvent(new MouseEvent('mousemove', { clientY: 380, bubbles: true }));
+      // The viewport crosses the short-desktop breakpoint during the drag.
+      element.style.gridRowStart = 'span 2';
+      window.dispatchEvent(new Event('resize'));
+      // The pointer returns to where the drag started.
+      document.dispatchEvent(new MouseEvent('mousemove', { clientY: 300, bubbles: true }));
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+
+      expect(loadPanelSpans()['live-news']).toBeUndefined();
+      expect(element.classList.contains('resized')).toBe(false);
+      expect(handle.getAttribute('aria-valuenow')).toBe('2');
+    } finally {
+      panel.destroy();
+    }
+  });
+
   it('updates separator values when saved dimensions are reset', () => {
     savePanelSpan('resize-reset-probe', 4);
     savePanelColSpan('resize-reset-probe', 3);
