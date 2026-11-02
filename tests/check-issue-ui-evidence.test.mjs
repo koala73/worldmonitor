@@ -69,13 +69,16 @@ describe('hasAttachment', () => {
       'https://private-user-images.githubusercontent.com/1/abc.png?jwt=x',
       'https://github.com/koala73/worldmonitor/assets/12345/0d2c7a5e-1b2f-4b8e-9d1f-1a2b3c4d5e6f',
       '![screenshot](https://example.com/shot.png)',
+      '![shot](https://example.com/shot.png "mobile view")',
+      '![shot][image]\n\n[image]: https://example.com/shot.png',
+      '![shot][]\n\n[shot]: https://example.com/shot.png',
       '<img width="800" alt="panel" src="https://example.com/shot.png" />',
     ];
     for (const text of forms) assert.equal(hasAttachment(text), true, text);
   });
 
   it('does not count a plain link, a mention of the word, or an empty body', () => {
-    for (const text of ['see https://www.worldmonitor.app/dashboard', 'screenshot: none', '[link](https://x.y)', '', undefined]) {
+    for (const text of ['see https://www.worldmonitor.app/dashboard', 'screenshot: none', '[link](https://x.y)', '![alt]()', '![alt]', '', undefined]) {
       assert.equal(hasAttachment(text), false, String(text));
     }
   });
@@ -194,16 +197,36 @@ describe('apply', () => {
     assert.throws(() => apply({ action: 'close', comment: true }, { gh: broken, ...target }), /HTTP 403/);
   });
 
-  it('reopen: removes the label, reopens, and says why', () => {
+  it('reopen: reopens before removing the label, then says why', () => {
     const { calls, gh } = recorder();
-    apply({ action: 'reopen' }, { gh, ...target });
+    apply({ action: 'reopen', reason: 'attachment-present' }, { gh, ...target });
     assert.deepEqual(calls.map((c) => c.args.slice(0, 4)), [
-      ['api', '--method', 'DELETE', `repos/koala73/worldmonitor/issues/42/labels/${LABEL}`],
       ['api', '--method', 'PATCH', 'repos/koala73/worldmonitor/issues/42'],
+      ['api', '--method', 'DELETE', `repos/koala73/worldmonitor/issues/42/labels/${LABEL}`],
       ['api', '--method', 'POST', 'repos/koala73/worldmonitor/issues/42/comments'],
     ]);
-    assert.deepEqual(calls[1].input, { state: 'open' });
-    assert.match(calls[2].input.body, /reopening/);
+    assert.deepEqual(calls[0].input, { state: 'open' });
+    assert.match(calls[2].input.body, /Attachment detected, reopening/);
+    assert.ok(calls[2].input.body.endsWith(COMMENT_MARKER));
+  });
+
+  it('reopen after a failed PATCH leaves the label on, so the next run retries', () => {
+    const calls = [];
+    const gh = (args) => {
+      calls.push(args);
+      if (args[2] === 'PATCH') throw new Error('gh api failed (1): HTTP 502');
+      return '';
+    };
+    assert.throws(() => apply({ action: 'reopen', reason: 'attachment-present' }, { gh, ...target }), /HTTP 502/);
+    assert.equal(calls.some((args) => args[2] === 'DELETE'), false);
+  });
+
+  it('reopen explains a dropped UI mention without claiming an attachment', () => {
+    const { calls, gh } = recorder();
+    apply({ action: 'reopen', reason: 'ui-mention-removed' }, { gh, ...target });
+    const body = calls.at(-1).input.body;
+    assert.match(body, /no longer refers to the UI/);
+    assert.doesNotMatch(body, /Attachment detected/);
   });
 
   it('unlabel only removes the label, and none writes nothing', () => {
@@ -216,18 +239,60 @@ describe('apply', () => {
 });
 
 describe('main', () => {
-  it('reads the event payload from GITHUB_EVENT_PATH and acts on the repository it names', () => {
+  const withEvent = (payload, fn) => {
     const dir = mkdtempSync(join(tmpdir(), 'wm-issue-ui-evidence-'));
     try {
       const eventPath = join(dir, 'event.json');
-      writeFileSync(eventPath, JSON.stringify(event()));
-      const calls = [];
-      const decision = main({ GITHUB_EVENT_PATH: eventPath }, (args) => { calls.push(args); return ''; });
-      assert.equal(decision.action, 'close');
-      assert.equal(calls.at(-1)[3], 'repos/koala73/worldmonitor/issues/42');
+      writeFileSync(eventPath, JSON.stringify(payload));
+      return fn(eventPath);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  };
+  const ghReading = (live) => {
+    const calls = [];
+    const gh = (args) => {
+      calls.push(args);
+      if (args.length === 2 && args[1] === 'repos/koala73/worldmonitor/issues/42') return JSON.stringify(live);
+      return '';
+    };
+    return { calls, gh };
+  };
+
+  it('reads the event payload from GITHUB_EVENT_PATH, then decides from the live issue, not the snapshot', () => {
+    withEvent(event(), (eventPath) => {
+      const { calls, gh } = ghReading(issue());
+      const decision = main({ GITHUB_EVENT_PATH: eventPath }, gh);
+      assert.equal(decision.action, 'close');
+      assert.deepEqual(calls[0], ['api', 'repos/koala73/worldmonitor/issues/42']);
+      assert.equal(calls.at(-1)[3], 'repos/koala73/worldmonitor/issues/42');
+    });
+  });
+
+  it('an edit that raced the closing run still reopens: the snapshot is open and unlabelled, the live issue is closed and labelled', () => {
+    const edited = { ...event({ body: `Attached: ${PASTED_IMAGE}` }), action: 'edited' };
+    withEvent(edited, (eventPath) => {
+      const live = issue({ state: 'closed', labels: [{ name: LABEL }], body: `Attached: ${PASTED_IMAGE}` });
+      const { calls, gh } = ghReading(live);
+      const decision = main({ GITHUB_EVENT_PATH: eventPath }, gh);
+      assert.deepEqual(decision, { action: 'reopen', reason: 'attachment-present' });
+      assert.equal(calls.filter((args) => args[2] === 'PATCH').length, 1);
+    });
+  });
+
+  it('a snapshot without evidence does not close an issue whose live body now has it', () => {
+    withEvent(event(), (eventPath) => {
+      const { calls, gh } = ghReading(issue({ body: PASTED_IMAGE }));
+      const decision = main({ GITHUB_EVENT_PATH: eventPath }, gh);
+      assert.equal(decision.action, 'none');
+      assert.equal(calls.length, 1, 'only the read');
+    });
+  });
+
+  it('refuses a live read that is not the requested issue', () => {
+    withEvent(event(), (eventPath) => {
+      assert.throws(() => main({ GITHUB_EVENT_PATH: eventPath }, () => JSON.stringify({ number: 7 })), /read back as/);
+    });
   });
 
   it('refuses to run without an event payload', () => {
@@ -239,9 +304,9 @@ describe('issue-ui-evidence workflow', () => {
   const job = workflow.jobs.evidence;
   const pin = (uses) => assert.match(uses, /@[0-9a-f]{40}$/i, `${uses} must be pinned to a commit SHA`);
 
-  it('runs when an issue is opened or edited, so an attached screenshot reopens it', () => {
+  it('runs when an issue is opened, edited or reopened, so a screenshot reopens it and a bare manual reopen is re-closed', () => {
     assert.equal(workflow.name, 'Issue UI Evidence');
-    assert.deepEqual(workflow.on.issues.types, ['opened', 'edited']);
+    assert.deepEqual(workflow.on.issues.types, ['opened', 'edited', 'reopened']);
     assert.deepEqual(Object.keys(workflow.on), ['issues']);
   });
 

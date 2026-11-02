@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 
 // UI reports need a picture. GitHub issue forms cannot require an attachment
-// (there is no upload field type), so this runs on `issues: opened/edited`:
-// an issue from outside the maintainer set that mentions the UI and carries
-// no attachment is labelled, told what is missing, and closed as not planned.
-// Editing the issue to attach a screenshot reopens it on the next run.
+// (there is no upload field type), so this runs on `issues:
+// opened/edited/reopened`: an issue from outside the maintainer set that
+// mentions the UI and carries no attachment is labelled, told what is
+// missing, and closed as not planned. Editing the issue to attach a
+// screenshot reopens it on the next run.
 //
-// Issue text reaches this script only through the event payload file and is
-// sent back to GitHub as JSON on stdin, never through shell interpolation.
+// The decision reads the issue as it is now, not the webhook snapshot: an
+// edit that lands while the opened run is still closing the issue would
+// otherwise be judged from a payload that predates the close, and the
+// screenshot would never reopen it. Issue text reaches this script only
+// through the event payload file and the API response, and is sent back to
+// GitHub as JSON on stdin, never through shell interpolation.
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -29,12 +34,14 @@ const UI_WORD_RE = /\bui\b/i;
 
 // Every form an attachment takes in issue text: pasted images and files on
 // the current user-attachments host, the two legacy image hosts, repo-scoped
-// asset links, and raw Markdown or HTML image syntax.
+// asset links, and raw Markdown or HTML image syntax. The Markdown form
+// covers an inline image with or without a quoted title and the full or
+// collapsed reference forms (`![alt][ref]`, `![alt][]`).
 const ATTACHMENT_RES = [
   /https?:\/\/github\.com\/user-attachments\/(?:assets|files)\//i,
   /https?:\/\/(?:private-)?user-images\.githubusercontent\.com\//i,
   /https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/assets\/\d+\//i,
-  /!\[[^\]]*\]\([^)\s]+\)/,
+  /!\[[^\]]*\]\s*(?:\([^)]*\S[^)]*\)|\[[^\]]*\])/,
   /<img\b[^>]*\bsrc\s*=/i,
 ];
 
@@ -57,8 +64,11 @@ export function closeComment() {
   ].join('\n');
 }
 
-export function reopenComment() {
-  return `Attachment detected, reopening for triage.\n\n${COMMENT_MARKER}`;
+export function reopenComment(reason) {
+  const lead = reason === 'ui-mention-removed'
+    ? 'The report no longer refers to the UI, reopening for triage.'
+    : 'Attachment detected, reopening for triage.';
+  return `${lead}\n\n${COMMENT_MARKER}`;
 }
 
 /**
@@ -150,9 +160,11 @@ export function apply(decision, { gh, repo, number }) {
       patch({ state: 'closed', state_reason: 'not_planned' });
       break;
     case 'reopen':
-      removeLabel();
+      // Reopen first: the label is what marks a closed issue as ours, so a
+      // reopen that fails after the label is gone would never be retried.
       patch({ state: 'open' });
-      comment(reopenComment());
+      removeLabel();
+      comment(reopenComment(decision.reason));
       break;
     case 'unlabel':
       removeLabel();
@@ -184,13 +196,21 @@ function loadEvent(env) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
+function fetchIssue({ gh, repo, number }) {
+  const issue = JSON.parse(gh(['api', issuePath(repo, number)]));
+  if (!issue || typeof issue !== 'object' || issue.number !== number) {
+    throw new Error(`issue #${number} read back as ${JSON.stringify(issue).slice(0, 200)}`);
+  }
+  return issue;
+}
+
 export function main(env = process.env, gh = runGh) {
   const event = loadEvent(env);
   const repo = event.repository?.full_name || env.GITHUB_REPOSITORY;
   const number = event.issue?.number;
   if (!repo || !number) throw new Error('event payload has no repository or issue number');
 
-  const decision = decide(event);
+  const decision = decide({ ...event, issue: fetchIssue({ gh, repo, number }) });
   console.log(`issue #${number}: ${decision.action} (${decision.reason})`);
   const calls = apply(decision, { gh, repo, number });
   for (const call of calls) console.log(`  gh ${call.join(' ')}`);
