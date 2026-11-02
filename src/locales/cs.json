@@ -926,7 +926,8 @@
       "infoTooltip": "<strong>Regulace</strong> Regulační opatření, změny politik a aktualizace vynucování od globálních regulátorů: finanční, technologické, energetické a obchodní úřady. Zdroj: oficiální vládní a regulační publikace.",
       "latestActions": "Poslední zaznamenané akce",
       "otherDeadlines": "Další termíny pro soulad",
-      "daysAgo": "dní zpátky"
+      "daysAgo": "dní zpátky",
+      "revokedCount": "Zrušené regulace ({{count}})"
     },
     "economic": {
       "indicators": "Ukazatele",

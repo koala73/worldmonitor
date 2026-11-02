@@ -926,7 +926,8 @@
       "infoTooltip": "<strong>Regulacje</strong> Działania regulacyjne, zmiany polityk i aktualizacje egzekwowania od globalnych regulatorów: władze finansowe, technologiczne, energetyczne i handlowe. Źródło: oficjalne publikacje rządowe i regulacyjne.",
       "latestActions": "Ostatnie zarejestrowane działania",
       "otherDeadlines": "Pozostałe terminy zgodności",
-      "daysAgo": "dni temu"
+      "daysAgo": "dni temu",
+      "revokedCount": "Uchylone przepisy ({{count}})"
     },
     "economic": {
       "indicators": "Wskaźniki",

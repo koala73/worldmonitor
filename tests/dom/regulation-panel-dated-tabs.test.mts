@@ -17,7 +17,7 @@ function freezeClock(iso: string): void {
   vi.setSystemTime(new Date(iso));
 }
 
-function mount(view: 'timeline' | 'deadlines'): { panel: RegulationPanel; content: HTMLElement } {
+function mount(view: 'timeline' | 'deadlines' | 'regulations' | 'countries'): { panel: RegulationPanel; content: HTMLElement } {
   const panel = new RegulationPanel('ai-regulation');
   const root = panel.getElement();
   document.body.appendChild(root);
@@ -57,7 +57,7 @@ describe.each(TIMEZONES)('RegulationPanel Timeline tab in %s', (tz) => {
 
     const dates = [...content.querySelectorAll('.timeline-item .timeline-date')].map(text);
     expect(dates.length).toBeGreaterThan(0);
-    expect(dates[0]).toBe('Jan 14, 2025');
+    expect(dates[0]).toBe('Jan 20, 2025');
     const times = dates.map((d) => new Date(d).getTime());
     expect(times).toEqual([...times].sort((a, b) => b - a));
     panel.destroy();
@@ -154,5 +154,28 @@ describe('AI regulation dataset', () => {
       })
       .map((action) => `${action.id} ${action.date}`);
     expect(early).toEqual([]);
+  });
+});
+
+describe('RegulationPanel Regulations and Countries tabs', () => {
+  it('lists the revoked US AI executive order under Revoked, not Active', () => {
+    const { panel, content } = mount('regulations');
+    const sections = [...content.querySelectorAll('.regulations-section')].map((section) => ({
+      heading: text(section.querySelector('h4')),
+      cards: [...section.querySelectorAll('.regulation-card h5')].map(text),
+    }));
+
+    const active = sections.find((s) => s.heading.startsWith('Active Regulations'));
+    const revoked = sections.find((s) => s.heading.startsWith('Revoked Regulations'));
+    expect(active?.cards).not.toContain('Biden AI EO');
+    expect(revoked).toEqual({ heading: 'Revoked Regulations (1)', cards: ['Biden AI EO'] });
+    panel.destroy();
+  });
+
+  it('counts one active regulation for the United States', () => {
+    const { panel, content } = mount('countries');
+    const us = [...content.querySelectorAll('.country-card')].find((card) => text(card.querySelector('h5')) === 'United States');
+    expect(text(us?.querySelector('.country-stats .stat .stat-value'))).toBe('1');
+    panel.destroy();
   });
 });

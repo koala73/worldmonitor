@@ -1337,7 +1337,7 @@ export interface Port {
 
 // AI Regulation Types
 export type RegulationType = 'comprehensive' | 'sectoral' | 'voluntary' | 'proposed';
-export type ComplianceStatus = 'active' | 'proposed' | 'draft' | 'superseded';
+export type ComplianceStatus = 'active' | 'proposed' | 'draft' | 'superseded' | 'revoked';
 export type RegulationStance = 'strict' | 'moderate' | 'permissive' | 'undefined';
 
 export interface AIRegulation {

@@ -1024,7 +1024,8 @@
       },
       "latestActions": "Legutóbbi rögzített műveletek",
       "otherDeadlines": "Egyéb megfelelési határidők",
-      "daysAgo": "nappal ezelőtt"
+      "daysAgo": "nappal ezelőtt",
+      "revokedCount": "Visszavont szabályozások ({{count}})"
     },
     "economic": {
       "indicators": "Mutatók",

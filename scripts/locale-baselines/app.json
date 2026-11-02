@@ -1417,6 +1417,7 @@
   "components.regulation.proposedCount": "Proposed Regulations ({{count}})",
   "components.regulation.recentActions": "Recent Regulatory Actions (Last 12 Months)",
   "components.regulation.regulations": "Regulations",
+  "components.regulation.revokedCount": "Revoked Regulations ({{count}})",
   "components.regulation.source": "Source",
   "components.regulation.stances.moderate": "Moderate",
   "components.regulation.stances.permissive": "Permissive",

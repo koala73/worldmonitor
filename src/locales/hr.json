@@ -1031,7 +1031,8 @@
       },
       "latestActions": "Najnovije zabilježene akcije",
       "otherDeadlines": "Ostali rokovi za usklađenost",
-      "daysAgo": "dana unazad"
+      "daysAgo": "dana unazad",
+      "revokedCount": "Opozvane Uredbe ({{count}})"
     },
     "economic": {
       "indicators": "Pokazatelji",
