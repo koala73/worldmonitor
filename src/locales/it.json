@@ -923,7 +923,8 @@
       "infoTooltip": "<strong>Regolamentazione</strong> Azioni regolatorie, cambiamenti di politica e aggiornamenti sull'applicazione dai regolatori globali: autorità finanziarie, tecnologiche, energetiche e commerciali. Fonte: pubblicazioni ufficiali governative e regolatorie.",
       "latestActions": "Ultimi Provvedimenti Registrati",
       "otherDeadlines": "Altri Termini di Conformità",
-      "daysAgo": "giorni fa"
+      "daysAgo": "giorni fa",
+      "revokedCount": "Regolamenti revocati ({{count}})"
     },
     "economic": {
       "indicators": "Indicatori",

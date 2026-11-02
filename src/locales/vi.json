@@ -929,7 +929,8 @@
       "infoTooltip": "<strong>Quy định</strong> Các hành động quản lý, thay đổi chính sách và cập nhật thực thi từ các cơ quan quản lý toàn cầu: tài chính, công nghệ, năng lượng và thương mại. Nguồn: ấn phẩm chính thức của chính phủ và cơ quan quản lý.",
       "latestActions": "Các hành động được ghi nhận mới nhất",
       "otherDeadlines": "Các thời hạn tuân thủ khác",
-      "daysAgo": "ngày trước"
+      "daysAgo": "ngày trước",
+      "revokedCount": "Quy định bị thu hồi ({{count}})"
     },
     "economic": {
       "indicators": "Chỉ số",

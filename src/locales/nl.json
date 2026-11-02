@@ -1432,7 +1432,8 @@
       "infoTooltip": "<strong>Regelgeving</strong> Regelgevende acties, beleidswijzigingen en handhavingsupdates van mondiale toezichthouders: financiële, technologische, energie- en handelsautoriteiten. Bron: officiële overheids- en regelgevende publicaties.",
       "latestActions": "Laatst geregistreerde acties",
       "otherDeadlines": "Overige nalevingsdeadlines",
-      "daysAgo": "dagen geleden"
+      "daysAgo": "dagen geleden",
+      "revokedCount": "Ingetrokken regelgeving ({{count}})"
     },
     "etfFlows": {
       "unavailable": "exchangegenoteerde fondsengegevens tijdelijk niet beschikbaar",

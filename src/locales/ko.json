@@ -929,7 +929,8 @@
       "infoTooltip": "<strong>규제</strong> 글로벌 규제 기관의 규제 조치, 정책 변경, 집행 업데이트: 금융, 기술, 에너지, 무역 당국. 출처: 공식 정부 및 규제 기관 간행물.",
       "latestActions": "최근 기록된 조치",
       "otherDeadlines": "기타 준수 기한",
-      "daysAgo": "일 전"
+      "daysAgo": "일 전",
+      "revokedCount": "폐지된 규제 ({{count}})"
     },
     "economic": {
       "indicators": "경제 지표",

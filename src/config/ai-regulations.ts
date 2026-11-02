@@ -56,7 +56,7 @@ export const AI_REGULATIONS: AIRegulation[] = [
     country: 'United States',
     region: 'North America',
     type: 'comprehensive',
-    status: 'active',
+    status: 'revoked',
     announcedDate: '2023-10-30',
     effectiveDate: '2023-10-30',
     scope: ['Foundation Models', 'AI Safety', 'National Security', 'Civil Rights'],
@@ -67,8 +67,8 @@ export const AI_REGULATIONS: AIRegulation[] = [
       'AI Bill of Rights implementation',
       'NIST AI Risk Management Framework adoption',
     ],
-    link: 'https://www.whitehouse.gov/briefing-room/presidential-actions/2023/10/30/executive-order-on-the-safe-secure-and-trustworthy-development-and-use-of-artificial-intelligence/',
-    description: 'Comprehensive executive order establishing US government approach to AI safety and governance.',
+    link: 'https://www.govinfo.gov/content/pkg/FR-2023-11-01/html/2023-24283.htm',
+    description: 'Comprehensive executive order establishing US government approach to AI safety and governance. Revoked on January 20, 2025 by Executive Order 14148.',
   },
   {
     id: 'us-blueprint-ai-bill-rights',
@@ -306,6 +306,17 @@ export const REGULATORY_ACTIONS: RegulatoryAction[] = [
     source: 'UK Government',
   },
   {
+    id: 'action-008',
+    date: '2025-01-20',
+    country: 'United States',
+    title: 'AI Executive Order 14110 Revoked',
+    type: 'executive-order',
+    regulationId: 'us-eo-14110',
+    description: 'Executive Order 14148 revoked Executive Order 14110 on safe, secure, and trustworthy AI.',
+    impact: 'high',
+    source: 'Federal Register',
+  },
+  {
     id: 'action-005',
     date: '2023-10-30',
     country: 'United States',
@@ -335,9 +346,9 @@ export const COUNTRY_REGULATION_PROFILES: CountryRegulationProfile[] = [
     country: 'United States',
     countryCode: 'US',
     stance: 'moderate',
-    activeRegulations: ['us-eo-14110', 'us-blueprint-ai-bill-rights'],
+    activeRegulations: ['us-blueprint-ai-bill-rights'],
     proposedRegulations: [],
-    lastUpdated: '2024-08-01',
+    lastUpdated: '2025-01-20',
     summary: 'Sector-specific approach with executive actions. Focus on innovation with safety guardrails.',
   },
   {
@@ -479,7 +490,7 @@ export function getRecentActions(months: number = 6): RegulatoryAction[] {
   cutoffDate.setMonth(cutoffDate.getMonth() - months);
 
   return REGULATORY_ACTIONS
-    .filter(action => new Date(action.date) >= cutoffDate)
+    .filter(action => new Date(action.date) >= cutoffDate && Date.parse(action.date) <= todayAsUtcMidnight())
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 

@@ -920,7 +920,8 @@
       "infoTooltip": "<strong>Regulierung</strong> Regulierungsmaßnahmen, Politikänderungen und Durchsetzungsaktualisierungen von globalen Regulierungsbehörden: Finanz-, Technologie-, Energie- und Handelsbehörden. Quelle: offizielle Regierungs- und Regulierungspublikationen.",
       "latestActions": "Zuletzt aufgezeichnete Maßnahmen",
       "otherDeadlines": "Weitere Compliance-Fristen",
-      "daysAgo": "Tage her"
+      "daysAgo": "Tage her",
+      "revokedCount": "Widerrufene Vorschriften ({{count}})"
     },
     "economic": {
       "indicators": "Indikatoren",

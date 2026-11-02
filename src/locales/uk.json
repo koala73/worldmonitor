@@ -1030,7 +1030,8 @@
       },
       "latestActions": "Останні записані дії",
       "otherDeadlines": "Інші строки дотримання вимог",
-      "daysAgo": "днів тому"
+      "daysAgo": "днів тому",
+      "revokedCount": "Скасовані нормативні акти ({{count}})"
     },
     "economic": {
       "indicators": "Індикатори",

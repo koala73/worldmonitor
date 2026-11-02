@@ -932,7 +932,8 @@
       "infoTooltip": "<strong>Düzenleme</strong> Küresel düzenleyicilerden düzenleyici eylemler, politika değişiklikleri ve uygulama güncellemeleri: finans, teknoloji, enerji ve ticaret otoriteleri. Kaynak: resmi hükümet ve düzenleyici kurum yayınları.",
       "latestActions": "En Son Kaydedilen İşlemler",
       "otherDeadlines": "Diğer Uyum Tarihleri",
-      "daysAgo": "gün önce"
+      "daysAgo": "gün önce",
+      "revokedCount": "İptal Edilen Düzenlemeler ({{count}})"
     },
     "economic": {
       "indicators": "Gostergeler",

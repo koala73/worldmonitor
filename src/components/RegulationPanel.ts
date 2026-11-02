@@ -191,6 +191,7 @@ export class RegulationPanel extends Panel {
   private renderRegulations(): string {
     const activeRegulations = AI_REGULATIONS.filter(r => r.status === 'active');
     const proposedRegulations = AI_REGULATIONS.filter(r => r.status === 'proposed');
+    const revokedRegulations = AI_REGULATIONS.filter(r => r.status === 'revoked');
 
     return `
       <div class="regulations-view">
@@ -206,6 +207,13 @@ export class RegulationPanel extends Panel {
             ${proposedRegulations.map(reg => this.renderRegulationCard(reg)).join('')}
           </div>
         </div>
+        ${revokedRegulations.length > 0 ? `
+        <div class="regulations-section">
+          <h4>${t('components.regulation.revokedCount', { count: String(revokedRegulations.length) })}</h4>
+          <div class="regulations-list">
+            ${revokedRegulations.map(reg => this.renderRegulationCard(reg)).join('')}
+          </div>
+        </div>` : ''}
       </div>
     `;
   }
