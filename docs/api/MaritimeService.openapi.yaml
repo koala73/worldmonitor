@@ -13,7 +13,7 @@ paths:
             tags:
                 - MaritimeService
             summary: ListUkmtoIncidents
-            description: ListUkmtoIncidents returns UKMTO maritime incident reports and source freshness.
+            description: ListUkmtoIncidents returns UKMTO maritime security reports with type, place and coordinates from a public republication, plus fetch time and a stale flag.
             operationId: ListUkmtoIncidents
             parameters:
                 - name: jmespath

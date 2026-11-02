@@ -13,7 +13,7 @@ paths:
             tags:
                 - ResilienceService
             summary: GetResilienceScore
-            description: PRO-gated. Requires an active Pro subscription.
+            description: GetResilienceScore returns a country's resilience score with domain and pillar scores, trend and confidence. PRO-gated. Requires an active Pro subscription.
             operationId: GetResilienceScore
             security:
                 - WorldMonitorKey: []
@@ -278,7 +278,7 @@ paths:
             tags:
                 - ResilienceService
             summary: GetFoodStocks
-            description: Returns seeded PSD cereal balances with FAOSTAT gap fill. PRO-gated. Requires entitlement tier >= 1.
+            description: GetFoodStocks returns USDA PSD grain and oilseed stocks-to-use by country or WORLD, gap-filled from FAOSTAT. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetFoodStocks
             security:
                 - WorldMonitorKey: []

@@ -1,6 +1,8 @@
 /**
  * Bing Webmaster Tools flags docs pages whose meta description is too short.
- * Mintlify uses an mdx page's frontmatter description as its meta description.
+ * Mintlify uses an mdx page's frontmatter description as its meta description,
+ * and an API reference page's operation description (generated from the proto
+ * RPC comment by `make generate`) as its own.
  * Lengths are JS string.length, which is also how Bing counts Chinese
  * characters.
  */
@@ -12,6 +14,8 @@ import { parse as parseYaml } from 'yaml';
 
 const ROOT = new URL('../', import.meta.url).pathname;
 const DOCS_DIR = join(ROOT, 'docs');
+const OPENAPI_YAML = join(DOCS_DIR, 'api/worldmonitor.openapi.yaml');
+const HTTP_METHODS = new Set(['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace']);
 const MIN_LENGTH = 110;
 
 function frontmatterFields(content) {
@@ -49,4 +53,20 @@ describe('docs meta description length', () => {
     );
   });
 
+  it(`every API reference operation description is at least ${MIN_LENGTH} characters`, () => {
+    const spec = parseYaml(readFileSync(OPENAPI_YAML, 'utf8'));
+    const offenders = [];
+    for (const pathItem of Object.values(spec.paths ?? {})) {
+      for (const [method, operation] of Object.entries(pathItem ?? {})) {
+        if (!HTTP_METHODS.has(method)) continue;
+        const length = String(operation?.description ?? '').length;
+        if (length < MIN_LENGTH) offenders.push({ id: operation?.operationId, length });
+      }
+    }
+    assert.deepEqual(
+      offenders,
+      [],
+      `${offenders.length} operation description(s) under ${MIN_LENGTH} characters; edit the proto RPC comment and run make generate:\n${formatOffenders(offenders)}`,
+    );
+  });
 });
