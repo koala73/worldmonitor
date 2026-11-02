@@ -13,7 +13,7 @@ export const AI_REGULATIONS: AIRegulation[] = [
     status: 'active',
     announcedDate: '2021-04-21',
     effectiveDate: '2024-08-01',
-    complianceDeadline: '2026-08-01',
+    complianceDeadline: '2026-08-02',
     scope: ['General Purpose AI', 'High-Risk AI Systems', 'Prohibited AI Practices', 'Foundation Models'],
     keyProvisions: [
       'Risk-based classification system (Unacceptable, High, Limited, Minimal)',
