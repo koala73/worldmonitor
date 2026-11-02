@@ -621,8 +621,10 @@ export function buildActivationSteps(
   if (caps.webPushSupported) steps.push(alertsStep(caps, config));
   steps.push(powerStep(config));
   // Last, after the steps that deliver value (R6). An unreadable status omits
-  // the step rather than offering a question we cannot record against.
-  if (config.aboutYouStatus) {
+  // the step rather than offering a question we cannot record against. A
+  // skipped profile omits it too: a skip means "don't ask", and an
+  // already-done step would claim "we have your answers".
+  if (config.aboutYouStatus === 'due' || config.aboutYouStatus === 'answered') {
     steps.push({ id: 'about', state: config.aboutYouStatus === 'due' ? 'confirmable' : 'already-done' });
   }
   return steps;

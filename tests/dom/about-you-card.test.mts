@@ -137,6 +137,22 @@ describe('AboutYouCard', () => {
     expect(deps.skip).toHaveBeenCalledTimes(1);
   });
 
+  it('typed free text saves after a pause, so an automatic reload cannot lose it', async () => {
+    vi.useFakeTimers();
+    const deps = makeDeps();
+    mountAboutYouCard({ mode: 'full', questions: ['alternative'], surface: 'dashboard', deps });
+    const textarea = card()!.querySelector('textarea')!;
+    textarea.value = 'A Bloomberg';
+    textarea.dispatchEvent(new Event('input'));
+    vi.advanceTimersByTime(500);
+    textarea.value = 'A Bloomberg terminal';
+    textarea.dispatchEvent(new Event('input'));
+    expect(deps.recordFreeText).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1_500);
+    expect(deps.recordFreeText).toHaveBeenCalledTimes(1);
+    expect(deps.recordFreeText).toHaveBeenCalledWith('A Bloomberg terminal');
+  });
+
   it('after the last answer it thanks the user and closes itself', async () => {
     vi.useFakeTimers();
     const deps = makeDeps();

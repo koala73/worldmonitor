@@ -3112,7 +3112,7 @@
       "global": "A FAO globális havi indexe"
     },
     "aboutYou": {
-      "title": "Segítsd a World Monitor fejlesztését az én irányításommal",
+      "title": "Segíts nekünk a World Monitort neked építeni",
       "ariaLabel": "Rólad",
       "progress": "{{current}} / {{total}}",
       "skip": "Kihagyás",
@@ -3147,7 +3147,7 @@
           "label": "Ki fizeti vagy fizetne érte?",
           "options": {
             "self": "Én",
-            "employer": "A munkáltatóm vagy a csapatomat",
+            "employer": "A munkáltatóm vagy a csapatom",
             "not-paying": "Még senki"
           }
         },

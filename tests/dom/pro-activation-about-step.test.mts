@@ -115,10 +115,13 @@ describe('Pro activation About-you step', () => {
     expect(profile.loadAboutYouStatus).toHaveBeenCalledWith('user_pro');
   });
 
-  it('is already-done when the profile was answered or skipped', async () => {
+  it('is already-done when the profile was answered, and omitted when it was skipped', async () => {
+    profile.status = { status: 'answered', answers: { primaryUse: 'news' }, keyQuestionsComplete: false, returnDue: false };
+    const answered = await openFlow();
+    expect(answered.captured!.steps.find((step) => step.id === 'about')?.state).toBe('already-done');
     profile.status = { status: 'skipped', answers: {}, keyQuestionsComplete: false, returnDue: false };
-    const { captured } = await openFlow();
-    expect(captured!.steps.find((step) => step.id === 'about')?.state).toBe('already-done');
+    const skipped = await openFlow();
+    expect(skipped.captured!.steps.map((step) => step.id)).not.toContain('about');
   });
 
   it('is omitted when the profile status cannot be read', async () => {
@@ -178,6 +181,46 @@ describe('Pro activation About-you step', () => {
     const skip = actions.querySelector<HTMLButtonElement>('.pro-activation-skip');
     expect(skip?.textContent).toBe('Skip for now');
     expect(document.querySelector('.pro-activation-about-save')).not.toBeNull();
+  });
+
+  it('while a save is in flight, picking an option keeps Save disabled and a second Save sends nothing', async () => {
+    profile.recordAboutYouAnswers.mockImplementation(() => new Promise(() => {}));
+    const { captured } = await openFlow();
+    const { root } = mountAboutExtra(captured!);
+    root.querySelector<HTMLButtonElement>('[data-question="primaryUse"][data-option="markets"]')!.click();
+    const save = root.querySelector<HTMLButtonElement>('.pro-activation-about-save')!;
+    save.click();
+    root.querySelector<HTMLButtonElement>('[data-question="payer"][data-option="self"]')!.click();
+    expect(save.disabled).toBe(true);
+    save.click();
+    await flush();
+    expect(profile.recordAboutYouAnswers).toHaveBeenCalledTimes(1);
+  });
+
+  it('a save that settles after the step was left does not confirm or finish', async () => {
+    let release: (value: { ok: true }) => void = () => {};
+    profile.recordAboutYouAnswers.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    const { captured, onEvent } = await openFlow();
+    const { root, controls } = mountAboutExtra(captured!);
+    root.querySelector<HTMLButtonElement>('[data-question="usageContext"][data-option="work"]')!.click();
+    root.querySelector<HTMLButtonElement>('.pro-activation-about-save')!.click();
+    root.remove();
+    release({ ok: true });
+    await flush();
+    expect(controls.confirmAndFinish).not.toHaveBeenCalled();
+    expect(onEvent.mock.calls.some(([event]) => event === 'pro-activation-step-confirmed')).toBe(false);
+  });
+
+  it('Skip and close are disabled while the save is in flight', async () => {
+    profile.recordAboutYouAnswers.mockImplementation(() => new Promise(() => {}));
+    const { captured } = await openFlow();
+    const about = captured!.steps.findIndex((step) => step.id === 'about');
+    openProActivationInterstitial({ ...captured!, steps: captured!.steps.slice(about) });
+    document.querySelector<HTMLButtonElement>('[data-question="primaryUse"][data-option="news"]')!.click();
+    document.querySelector<HTMLButtonElement>('.pro-activation-about-save')!.click();
+    expect(document.querySelector<HTMLButtonElement>('.pro-activation-skip')!.disabled).toBe(true);
+    const close = document.querySelector<HTMLButtonElement>('.pro-activation-close');
+    if (close) expect(close.disabled).toBe(true);
   });
 
   it('skipping the step emits step-skipped and records a profile skip', async () => {

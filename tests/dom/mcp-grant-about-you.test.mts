@@ -26,6 +26,19 @@ function pick(question: string, option: string): void {
   document.querySelector<HTMLButtonElement>(`[data-question="${question}"][data-option="${option}"]`)!.click();
 }
 
+async function flushMicrotasks(): Promise<void> {
+  // settle() chains catch -> then -> race -> finally before the caller's then.
+  for (let i = 0; i < 20; i += 1) await Promise.resolve();
+}
+
+/** settle() on an idle section resolves without waiting. */
+async function mountedIdle(section: { settle(ms: number): Promise<void> }): Promise<void> {
+  let done = false;
+  void section.settle(60_000).then(() => { done = true; });
+  await flushMicrotasks();
+  expect(done).toBe(true);
+}
+
 afterEach(() => {
   document.body.replaceChildren();
   vi.useRealTimers();
@@ -70,6 +83,74 @@ describe('MCP connect About-you section', () => {
     section!.submit();
     expect(recordAnswers).toHaveBeenCalledTimes(1);
     expect(recordAnswers).toHaveBeenCalledWith({ primaryUse: 'api-agent', usageContext: 'work' });
+  });
+
+  it('an Authorize retry sends changed answers, but never the same answers twice', async () => {
+    const d = deps();
+    const section = await mountMcpAboutYou(container(), d, 1000);
+    pick('primaryUse', 'news');
+    section!.submit();
+    section!.submit();
+    pick('primaryUse', 'markets');
+    section!.submit();
+    expect(d.recordAnswers).toHaveBeenCalledTimes(2);
+    expect(d.recordAnswers).toHaveBeenLastCalledWith({ primaryUse: 'markets' });
+  });
+
+  it('settle waits for the write in flight, bounded by its timeout', async () => {
+    vi.useFakeTimers();
+    let release: (value: { ok: boolean }) => void = () => {};
+    const recordAnswers = vi.fn(() => new Promise<{ ok: boolean }>((resolve) => { release = resolve; }));
+    const section = await mountMcpAboutYou(container(), deps({ recordAnswers }), 1000);
+    pick('usageContext', 'work');
+    section!.submit();
+    let settled = false;
+    void section!.settle(1500).then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(settled).toBe(false);
+    release({ ok: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(true);
+
+    const stuck = await mountMcpAboutYou(container(), deps({ recordAnswers: () => new Promise(() => {}) }), 1000);
+    expect(stuck).toBeNull(); // one section per page
+  });
+
+  it('settle gives up after its timeout so the redirect is never held', async () => {
+    vi.useFakeTimers();
+    const section = await mountMcpAboutYou(container(), deps({ recordAnswers: () => new Promise(() => {}) }), 1000);
+    pick('payer', 'self');
+    section!.submit();
+    let settled = false;
+    void section!.settle(1500).then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(settled).toBe(true);
+  });
+
+  it('settle also waits for a "Not now" skip in flight, and resolves at once when idle', async () => {
+    let release: (value: { ok: boolean }) => void = () => {};
+    const skip = vi.fn(() => new Promise<{ ok: boolean }>((resolve) => { release = resolve; }));
+    const section = await mountMcpAboutYou(container(), deps({ skip }), 1000);
+    let settled = false;
+    const idle = mountedIdle(section!);
+    await idle;
+    document.querySelector<HTMLButtonElement>('.about-you-not-now')!.click();
+    void section!.settle(5000).then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    release({ ok: true });
+    await flushMicrotasks();
+    expect(settled).toBe(true);
+  });
+
+  it('destroy removes the section and stops any later submit (account switch)', async () => {
+    const d = deps();
+    const section = await mountMcpAboutYou(container(), d, 1000);
+    pick('primaryUse', 'news');
+    section!.destroy();
+    expect(document.getElementById('mcpAboutYou')).toBeNull();
+    section!.submit();
+    expect(d.recordAnswers).not.toHaveBeenCalled();
   });
 
   it('a failing write never throws out of submit', async () => {

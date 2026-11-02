@@ -997,11 +997,14 @@ describe('buildActivationSteps — About-you final step (U3)', () => {
     assert.equal(steps.at(-1)?.state, 'confirmable');
   });
 
-  it('is already-done when the profile is answered or skipped', () => {
-    for (const status of ['answered', 'skipped'] as const) {
-      const about = buildActivationSteps(caps(), config({ aboutYouStatus: status })).find((s) => s.id === 'about');
-      assert.equal(about?.state, 'already-done', status);
-    }
+  it('is already-done when the profile is answered', () => {
+    const about = buildActivationSteps(caps(), config({ aboutYouStatus: 'answered' })).find((s) => s.id === 'about');
+    assert.equal(about?.state, 'already-done');
+  });
+
+  it('is omitted when the profile was skipped: a skip means do not ask, and "we have your answers" would be false', () => {
+    const steps = buildActivationSteps(caps(), config({ aboutYouStatus: 'skipped' }));
+    assert.deepEqual(steps.map((s) => s.id), ['brief', 'alerts', 'power']);
   });
 
   it('is omitted when the profile status is unreadable', () => {

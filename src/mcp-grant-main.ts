@@ -56,7 +56,11 @@ const API_BASE = ''; // same-origin (apex)
 
 /** How long the optional About-you questions may take to appear (KTD7). */
 const ABOUT_YOU_STATUS_TIMEOUT_MS = 3_000;
-let aboutYouStarted = false;
+/** How long a successful grant waits for the profile write before redirecting. */
+const ABOUT_YOU_REDIRECT_WAIT_MS = 1_500;
+/** The account the section was started for; a different user restarts it. */
+let aboutYouUserId: string | null = null;
+let aboutYouGeneration = 0;
 let aboutYouSection: McpAboutYouSection | null = null;
 
 /**
@@ -66,16 +70,22 @@ let aboutYouSection: McpAboutYouSection | null = null;
  * simply renders nothing.
  */
 async function startAboutYou(): Promise<void> {
-  if (aboutYouStarted) return;
-  const userId = getCurrentClerkUser()?.id;
+  const userId = getCurrentClerkUser()?.id ?? null;
+  if (userId === aboutYouUserId) return;
+  // The account changed (or signed out): the old section's callbacks write
+  // against the previous user, so drop it before anything else.
+  aboutYouSection?.destroy();
+  aboutYouSection = null;
+  aboutYouUserId = userId;
+  const generation = ++aboutYouGeneration;
   if (!userId) return;
-  aboutYouStarted = true;
   try {
     const [profile, view] = await Promise.all([
       import('@/services/audience-profile'),
       import('@/services/mcp-grant-about-you'),
     ]);
-    aboutYouSection = await view.mountMcpAboutYou(
+    if (generation !== aboutYouGeneration) return;
+    const section = await view.mountMcpAboutYou(
       $('aboutYouMount'),
       {
         loadStatus: () => profile.loadAboutYouStatus(userId),
@@ -84,6 +94,11 @@ async function startAboutYou(): Promise<void> {
       },
       ABOUT_YOU_STATUS_TIMEOUT_MS,
     );
+    if (generation !== aboutYouGeneration) {
+      section?.destroy();
+      return;
+    }
+    aboutYouSection = section;
   } catch (error) {
     console.warn('[mcp-grant] About-you questions unavailable', error);
   }
@@ -381,7 +396,8 @@ async function onAuthorizeClick(nonce: string): Promise<void> {
   btn.disabled = true;
   btn.textContent = 'Authorizing…';
   hide('mintError');
-  // Separate, fire-and-forget write: the mint below never waits on it (KTD7).
+  // Separate write: the mint below never waits on it (KTD7). Only the final
+  // redirect waits, bounded, for it to settle.
   aboutYouSection?.submit();
 
   let resp: Response;
@@ -469,6 +485,9 @@ async function onAuthorizeClick(nonce: string): Promise<void> {
     return;
   }
 
+  // The profile write runs beside the mint; give it a bounded moment so the
+  // navigation does not cut it off.
+  await aboutYouSection?.settle(ABOUT_YOU_REDIRECT_WAIT_MS);
   window.location.assign(target.toString());
 }
 

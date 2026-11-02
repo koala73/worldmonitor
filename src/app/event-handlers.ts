@@ -94,7 +94,7 @@ import {
   trackGateHit,
   trackLayoutCustomized,
 } from '@/services/analytics';
-import { decideAboutYouPrompt, waitForActivationPromptDecision } from '@/services/onboarding-prompt';
+import { bindPromptToAccount, decideAboutYouPrompt, waitForActivationPromptDecision } from '@/services/onboarding-prompt';
 import { detectPlatform, allButtons, buttonsForPlatform } from '@/components/DownloadBanner';
 import type { Platform } from '@/components/DownloadBanner';
 import { isOpenableExternalUrl, openExternalUrl } from '@/services/external-navigation';
@@ -962,7 +962,13 @@ export class EventHandlerManager implements AppModule {
     }
     // One onboarding prompt per load (KTD6): the mission picker owns a
     // brand-new desktop visitor's first load; the About-you card waits.
-    if (!shouldPrompt) scheduleAfterFirstPaint(() => void this.maybeOpenAboutYouCard());
+    if (!shouldPrompt) {
+      scheduleAfterFirstPaint(() => {
+        this.maybeOpenAboutYouCard().catch((err) => {
+          console.warn('[about-you] could not open the card', err);
+        });
+      });
+    }
   }
 
   /**
@@ -991,7 +997,7 @@ export class EventHandlerManager implements AppModule {
     if (decision.kind === 'none') return;
     const { mountAboutYouCard } = await import('@/components/AboutYouCard');
     if (!stillCurrent() || isModalOpen(document)) return;
-    mountAboutYouCard({
+    const card = mountAboutYouCard({
       mode: decision.mode,
       questions: decision.questions,
       surface: 'dashboard',
@@ -1003,6 +1009,10 @@ export class EventHandlerManager implements AppModule {
         track: (event, data) => track(event, data),
       },
     });
+    if (!card) return;
+    // Its callbacks write against `userId`: remove it on sign-out, an account
+    // switch, or teardown.
+    this.authStateUnsubscribers.push(bindPromptToAccount(card, userId, subscribeAuthState));
   }
 
   private renderMissionPresetControl(): void {

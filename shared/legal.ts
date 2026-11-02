@@ -72,7 +72,7 @@ export const LEGAL_DOCUMENT_DIGESTS: Readonly<Record<string, string>> = {
   'docs/eula.mdx': '3a37cd27304f3f2aea543c869e7a9a7a25900a2a0a68213328d0201ee7d0aa14',
   'docs/terms.mdx': '8666aa8197a363f2683683304a958ca05c589c686b6641d04b73472cf72e8c73',
   'docs/dpa.mdx': '6012fc1be1af02479e660adfa278981709023586706b61f17044072881dbb543',
-  'docs/privacy.mdx': 'dfdc2aab51b76b78b24489ff73590a2f26b71545c6deb9c0372b1f6d931ee12a',
+  'docs/privacy.mdx': '1c1c436a0232badab7cba48ab5bb6ed7446e4aafe8d40f71c76e08deb9ac9ed4',
 };
 
 /** Where the text behind any recorded version can be read back. */

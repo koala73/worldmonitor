@@ -10,6 +10,7 @@ import {
   reportActivationPromptDecision,
   waitForActivationPromptDecision,
   _resetActivationPromptDecisionForTests,
+  bindPromptToAccount,
   type AboutYouPromptInput,
 } from '../src/services/onboarding-prompt.ts';
 
@@ -109,5 +110,57 @@ describe('activation prompt decision channel', () => {
     reportActivationPromptDecision('not-due');
     reportActivationPromptDecision('will-open');
     assert.equal(await waitForActivationPromptDecision(10), 'will-open');
+  });
+});
+
+describe('bindPromptToAccount', () => {
+  type State = { user: { id: string } | null; isPending: boolean };
+  function harness() {
+    let listener: ((state: State) => void) | null = null;
+    let unsubscribed = 0;
+    const subscribe = (fn: (state: State) => void) => {
+      listener = fn;
+      return () => {
+        unsubscribed += 1;
+        listener = null;
+      };
+    };
+    const prompt = { isConnected: true, removed: 0, remove() { this.removed += 1; this.isConnected = false; } };
+    return { subscribe, prompt, emit: (state: State) => listener?.(state), unsubscribed: () => unsubscribed };
+  }
+
+  it('keeps the prompt while the same account stays signed in, or auth is pending', () => {
+    const h = harness();
+    bindPromptToAccount(h.prompt, 'user_a', h.subscribe);
+    h.emit({ user: { id: 'user_a' }, isPending: false });
+    h.emit({ user: null, isPending: true });
+    assert.equal(h.prompt.removed, 0);
+  });
+
+  it('removes the prompt and stops listening on sign-out or an account switch', () => {
+    for (const next of [null, { id: 'user_b' }]) {
+      const h = harness();
+      bindPromptToAccount(h.prompt, 'user_a', h.subscribe);
+      h.emit({ user: next, isPending: false });
+      assert.equal(h.prompt.removed, 1);
+      assert.equal(h.unsubscribed(), 1);
+    }
+  });
+
+  it('stops listening once the prompt is gone, without removing it again', () => {
+    const h = harness();
+    bindPromptToAccount(h.prompt, 'user_a', h.subscribe);
+    h.prompt.isConnected = false;
+    h.emit({ user: { id: 'user_b' }, isPending: false });
+    assert.equal(h.prompt.removed, 0);
+    assert.equal(h.unsubscribed(), 1);
+  });
+
+  it('the returned dispose removes the prompt and unsubscribes', () => {
+    const h = harness();
+    const dispose = bindPromptToAccount(h.prompt, 'user_a', h.subscribe);
+    dispose();
+    assert.equal(h.prompt.removed, 1);
+    assert.equal(h.unsubscribed(), 1);
   });
 });

@@ -1415,8 +1415,8 @@ const ABOUT_STEP_QUESTIONS: readonly AboutYouChoiceQuestionId[] = ['primaryUse',
 
 /**
  * The About-you step (U3): pick answers, then Save records them and ends the
- * flow (it is the last step). The shell's Continue counts as a skip, which
- * `onSkipStep` records as a profile skip.
+ * flow (it is the last step). The frame's "Skip for now" records a profile
+ * skip through `onSkipStep`.
  */
 function buildAboutExtra(options: ProActivationFlowOptions): ProActivationStepExtra {
   const groups = ABOUT_STEP_QUESTIONS.map((questionId) => {
@@ -1444,8 +1444,26 @@ function buildAboutExtra(options: ProActivationFlowOptions): ProActivationStepEx
       const answers: Partial<Record<AboutYouChoiceQuestionId, string>> = {};
       const saveBtn = root.querySelector<HTMLButtonElement>('.pro-activation-about-save');
       const status = root.querySelector<HTMLElement>('.pro-activation-about-status');
+      // One busy state for the whole step: while a write is in flight the
+      // answers, Save, and the frame's Skip/close are frozen, so a late
+      // response can never finish a step the user already left.
+      const frameButtons = (): HTMLButtonElement[] => {
+        const modal = root.closest('.pro-activation-modal') ?? root.ownerDocument;
+        return [...modal.querySelectorAll<HTMLButtonElement>('.pro-activation-skip, .pro-activation-close')];
+      };
+      let inFlight = false;
+      const setBusy = (busy: boolean): void => {
+        inFlight = busy;
+        for (const btn of frameButtons()) btn.disabled = busy;
+        if (saveBtn) {
+          saveBtn.disabled = busy || Object.keys(answers).length === 0;
+          if (busy) saveBtn.setAttribute('aria-busy', 'true');
+          else saveBtn.removeAttribute('aria-busy');
+        }
+      };
       for (const btn of root.querySelectorAll<HTMLButtonElement>('.pro-activation-about-option')) {
         btn.addEventListener('click', () => {
+          if (inFlight) return;
           const questionId = btn.dataset.question as AboutYouChoiceQuestionId;
           const optionId = btn.dataset.option ?? '';
           const same = answers[questionId] === optionId;
@@ -1458,8 +1476,8 @@ function buildAboutExtra(options: ProActivationFlowOptions): ProActivationStepEx
         });
       }
       saveBtn?.addEventListener('click', () => {
-        if (saveBtn.disabled) return;
-        saveBtn.disabled = true;
+        if (saveBtn.disabled || inFlight) return;
+        setBusy(true);
         if (status) status.textContent = t('components.proActivation.steps.about.confirming', { defaultValue: 'Saving…' });
         void withTimeout(
           recordAboutYouAnswers(options.accountUserId, 'activation', answers),
@@ -1468,13 +1486,14 @@ function buildAboutExtra(options: ProActivationFlowOptions): ProActivationStepEx
         )
           .catch(() => ({ ok: false as const, reason: 'timeout' }))
           .then((result) => {
-            if (!isFlowAccountCurrent(options)) return;
+            // The step was left (re-render or close) or the account changed.
+            if (!root.isConnected || !isFlowAccountCurrent(options)) return;
             if (result.ok) {
               options.onEvent?.(ACTIVATION_EVENTS.stepConfirmed, 'about');
               controls.confirmAndFinish();
               return;
             }
-            saveBtn.disabled = false;
+            setBusy(false);
             if (status) {
               status.textContent = t('components.aboutYou.saveFailed', { defaultValue: "Couldn't save that. Try again." });
             }

@@ -22,8 +22,20 @@ export interface McpAboutYouDeps {
 }
 
 export interface McpAboutYouSection {
-  /** Send any chosen answers. Never awaits; never throws. */
+  /**
+   * Send any chosen answers. Never awaits; never throws. A repeat with the same
+   * answers (an Authorize retry) sends nothing; changed answers are sent.
+   */
   submit(): void;
+  /**
+   * Resolve once the write in flight (answers or "Not now") settles, or after
+   * `timeoutMs`, whichever is first. Resolves at once when nothing is in
+   * flight. The grant redirect awaits this so a fast mint does not cut the
+   * write off; the mint itself never waits on it.
+   */
+  settle(timeoutMs: number): Promise<void>;
+  /** Remove the section and drop any later submit (the account changed). */
+  destroy(): void;
 }
 
 const QUESTIONS: ReadonlyArray<{ id: AboutYouChoiceQuestionId; label: string; options: Record<string, string> }> = [
@@ -72,7 +84,17 @@ export async function mountMcpAboutYou(
   if (status?.status !== 'due' || document.getElementById(SECTION_ID)) return null;
 
   const answers: Partial<Record<AboutYouChoiceQuestionId, string>> = {};
+  // `settled`: skipped or destroyed, so nothing more is sent.
   let settled = false;
+  let lastSent = '';
+  let inFlight: Promise<unknown> | null = null;
+  const track = (pending: Promise<unknown>): void => {
+    const settledWrite = pending.catch(() => undefined);
+    inFlight = settledWrite;
+    void settledWrite.then(() => {
+      if (inFlight === settledWrite) inFlight = null;
+    });
+  };
 
   const section = document.createElement('details');
   section.id = SECTION_ID;
@@ -120,7 +142,7 @@ export async function mountMcpAboutYou(
     if (settled) return;
     settled = true;
     section.remove();
-    void deps.skip().catch(() => undefined);
+    track(deps.skip());
   });
   section.append(notNow);
   container.append(section);
@@ -128,8 +150,32 @@ export async function mountMcpAboutYou(
   return {
     submit(): void {
       if (settled || Object.keys(answers).length === 0) return;
+      const snapshot = { ...answers };
+      const key = JSON.stringify(Object.entries(snapshot).sort(([a], [b]) => a.localeCompare(b)));
+      if (key === lastSent) return;
+      lastSent = key;
+      let pending: Promise<unknown>;
+      try {
+        pending = deps.recordAnswers(snapshot);
+      } catch {
+        return;
+      }
+      track(pending);
+    },
+    settle(timeoutMs: number): Promise<void> {
+      const pending = inFlight;
+      if (!pending) return Promise.resolve();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      return Promise.race([
+        pending.then(() => undefined),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, timeoutMs);
+        }),
+      ]).finally(() => clearTimeout(timer));
+    },
+    destroy(): void {
       settled = true;
-      void deps.recordAnswers({ ...answers }).catch(() => undefined);
+      section.remove();
     },
   };
 }

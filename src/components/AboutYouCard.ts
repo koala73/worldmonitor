@@ -4,8 +4,13 @@
  * `src/app/event-handlers.ts` so the dashboard main chunk does not carry it.
  *
  * Not a dialog: it never takes focus on open, never blocks the map, and never
- * counts as an open modal. Every answer is already saved, so a reload loses
- * nothing and the reload guards may treat it as safe.
+ * counts as an open modal. Each choice saves on tap and typed text saves after
+ * a short pause, so a reload loses nothing and the reload guards may treat it
+ * as safe.
+ *
+ * Escape is handled only while focus is inside the card. A non-modal panel that
+ * caught every Escape on the page would turn an unrelated Escape (closing a
+ * popover or fullscreen) into a permanent skip.
  */
 import {
   ABOUT_YOU_CHOICE_QUESTIONS,
@@ -23,6 +28,8 @@ import { ABOUT_YOU_CARD_CSS } from './about-you-card-styles';
 export const ABOUT_YOU_CARD_ID = 'wm-about-you-card';
 const STYLE_ID = 'wm-about-you-card-style';
 const THANKS_DISMISS_MS = 4_000;
+/** Typed free text saves after this pause, so a reload loses at most this much. */
+const FREE_TEXT_AUTOSAVE_MS = 1_500;
 
 export interface AboutYouCardDeps {
   recordAnswer(questionId: AboutYouChoiceQuestionId, optionId: string): Promise<ProfileWriteResult>;
@@ -105,16 +112,23 @@ export function mountAboutYouCard(options: AboutYouCardOptions): HTMLElement | n
   let saving = false;
   let freeTextSave: Promise<ProfileWriteResult> | null = null;
   let lastSavedText = '';
+  let autosaveTimer: number | undefined;
+  const cancelAutosave = (): void => {
+    if (autosaveTimer !== undefined) window.clearTimeout(autosaveTimer);
+    autosaveTimer = undefined;
+  };
 
   deps.track('about-you-shown', { surface, mode, questionCount: questions.length });
   if (mode === 'return') void deps.markReturnShown();
 
   const close = (): void => {
+    cancelAutosave();
     finished = true;
     root.remove();
   };
 
   const finish = (): void => {
+    cancelAutosave();
     finished = true;
     body.replaceChildren();
     progress.textContent = '';
@@ -130,6 +144,7 @@ export function mountAboutYouCard(options: AboutYouCardOptions): HTMLElement | n
   };
 
   const saveFreeText = (text: string): Promise<ProfileWriteResult> | null => {
+    cancelAutosave();
     const trimmed = text.trim();
     if (!trimmed || trimmed === lastSavedText) return null;
     lastSavedText = trimmed;
@@ -208,6 +223,14 @@ export function mountAboutYouCard(options: AboutYouCardOptions): HTMLElement | n
     textarea.maxLength = ABOUT_YOU_FREE_TEXT_MAX;
     textarea.placeholder = label('questions.alternative.placeholder', 'Optional');
     textarea.addEventListener('blur', () => void saveFreeText(textarea.value));
+    // The card declares itself reload-safe, so typed text must not wait for blur.
+    textarea.addEventListener('input', () => {
+      cancelAutosave();
+      autosaveTimer = window.setTimeout(() => {
+        autosaveTimer = undefined;
+        if (!finished) void saveFreeText(textarea.value);
+      }, FREE_TEXT_AUTOSAVE_MS);
+    });
     const done = el('button', 'about-you-card__done', label('done', 'Done'));
     done.type = 'button';
     done.addEventListener('click', () => {

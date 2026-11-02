@@ -80,3 +80,54 @@ export function _resetActivationPromptDecisionForTests(): void {
   activationDecision = null;
   waiters = [];
 }
+
+/** The part of a mounted prompt the account binding touches. */
+export interface AccountBoundPrompt {
+  readonly isConnected: boolean;
+  remove(): void;
+}
+
+/** The auth snapshot shape the binding reads. */
+export interface PromptAuthSnapshot {
+  user: { id: string } | null;
+  isPending: boolean;
+}
+
+/**
+ * Keep a prompt tied to the account it was opened for. Its callbacks write
+ * against `userId`, so after sign-out or an account switch every save would be
+ * rejected; the prompt is removed instead (not skipped: the original account
+ * never answered). Returns a dispose for teardown.
+ */
+export function bindPromptToAccount(
+  prompt: AccountBoundPrompt,
+  userId: string,
+  subscribe: (listener: (state: PromptAuthSnapshot) => void) => () => void,
+): () => void {
+  let unsubscribe: (() => void) | null = null;
+  let done = false;
+  const stop = (): void => {
+    done = true;
+    unsubscribe?.();
+    unsubscribe = null;
+  };
+  unsubscribe = subscribe((state) => {
+    if (done) return;
+    if (!prompt.isConnected) {
+      stop();
+      return;
+    }
+    if (state.isPending || state.user?.id === userId) return;
+    prompt.remove();
+    stop();
+  });
+  // A subscribe that fires synchronously may have finished before it returned.
+  if (done) {
+    unsubscribe?.();
+    unsubscribe = null;
+  }
+  return () => {
+    if (prompt.isConnected) prompt.remove();
+    stop();
+  };
+}
