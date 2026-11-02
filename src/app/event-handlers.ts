@@ -1196,11 +1196,12 @@ export class EventHandlerManager implements AppModule {
     const sourceIds = LAYER_TO_SOURCE[layer];
     if (sourceIds) {
       for (const sourceId of sourceIds) {
-        dataFreshness.setEnabled(sourceId, enabled);
+        dataFreshness.setMapLayerEnabled(sourceId, enabled);
       }
     }
 
     if (layer === 'ais') {
+      dataFreshness.setEnabled('ais', isAisConfigured());
       if (enabled) {
         this.ctx.map?.setLayerLoading('ais', true);
         initAisStream();
@@ -1514,11 +1515,12 @@ export class EventHandlerManager implements AppModule {
     const sourceIds = LAYER_TO_SOURCE[layer];
     if (sourceIds) {
       for (const sourceId of sourceIds) {
-        dataFreshness.setEnabled(sourceId, enabled);
+        dataFreshness.setMapLayerEnabled(sourceId, enabled);
       }
     }
 
     if (layer === 'ais') {
+      dataFreshness.setEnabled('ais', isAisConfigured());
       if (enabled) {
         this.ctx.map?.setLayerLoading('ais', true);
         initAisStream();
