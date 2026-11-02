@@ -10,5 +10,7 @@ import * as sima from './sima.mjs';
 import * as mit from './mit.mjs';
 import * as ucda from './ucda.mjs';
 import * as amman from './amman.mjs';
+import * as madr from './madr.mjs';
+import * as nsomn from './nsomn.mjs';
 
-export const FOOD_PRICE_ADAPTERS = { tcb, nabc, nsckg, statkz, statuz, maga, ocpv, sima, mit, ucda, amman };
+export const FOOD_PRICE_ADAPTERS = { tcb, nabc, nsckg, statkz, statuz, maga, ocpv, sima, mit, ucda, amman, madr, nsomn };

@@ -1025,7 +1025,8 @@
       "latestActions": "آخرین اقدامات ثبت‌شده",
       "otherDeadlines": "سایر موعد‌های انطباق",
       "daysAgo": "روز پیش",
-      "revokedCount": "مقررات لغو‌شده ({{count}})"
+      "revokedCount": "مقررات لغو‌شده ({{count}})",
+      "lapsedCount": "پیشنهادهای منقضی ({{count}})"
     },
     "economic": {
       "indicators": "Indicators",

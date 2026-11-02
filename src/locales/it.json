@@ -924,7 +924,8 @@
       "latestActions": "Ultimi Provvedimenti Registrati",
       "otherDeadlines": "Altri Termini di Conformità",
       "daysAgo": "giorni fa",
-      "revokedCount": "Regolamenti revocati ({{count}})"
+      "revokedCount": "Regolamenti revocati ({{count}})",
+      "lapsedCount": "Proposte decadute ({{count}})"
     },
     "economic": {
       "indicators": "Indicatori",

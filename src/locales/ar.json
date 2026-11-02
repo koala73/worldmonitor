@@ -933,7 +933,8 @@
       "latestActions": "أحدث الإجراءات المسجلة",
       "otherDeadlines": "مواعيد الامتثال الأخرى",
       "daysAgo": "أيام مضت",
-      "revokedCount": "اللوائح الملغاة ({{count}})"
+      "revokedCount": "اللوائح الملغاة ({{count}})",
+      "lapsedCount": "المقترحات المنتهية الصلاحية ({{count}})"
     },
     "economic": {
       "indicators": "المؤشرات",

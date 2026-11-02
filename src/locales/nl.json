@@ -1433,7 +1433,8 @@
       "latestActions": "Laatst geregistreerde acties",
       "otherDeadlines": "Overige nalevingsdeadlines",
       "daysAgo": "dagen geleden",
-      "revokedCount": "Ingetrokken regelgeving ({{count}})"
+      "revokedCount": "Ingetrokken regelgeving ({{count}})",
+      "lapsedCount": "Vervallen voorstellen ({{count}})"
     },
     "etfFlows": {
       "unavailable": "exchangegenoteerde fondsengegevens tijdelijk niet beschikbaar",

@@ -100,6 +100,8 @@ const MACRO_SECTIONS = [
   { label: 'Food-UCDA', script: 'seed-food-prices-ucda.mjs', seedMetaKey: 'economic:food-prices-ucda', canonicalKey: 'economic:food-prices:ucda:v1', completionMetaKey: 'seed-completion:economic:food-prices-ucda', intervalMs: DAY, timeoutMs: 145_000 },
   { label: 'Food-AMMAN', script: 'seed-food-prices-amman.mjs', seedMetaKey: 'economic:food-prices-amman', canonicalKey: 'economic:food-prices:amman:v1', completionMetaKey: 'seed-completion:economic:food-prices-amman', intervalMs: DAY, timeoutMs: 115_000 },
   { label: 'Food-TCB', script: 'seed-food-prices-tcb.mjs', seedMetaKey: 'economic:food-prices-tcb', canonicalKey: 'economic:food-prices:tcb:v1', completionMetaKey: 'seed-completion:economic:food-prices-tcb', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-MADR', script: 'seed-food-prices-madr.mjs', seedMetaKey: 'economic:food-prices-madr', canonicalKey: 'economic:food-prices:madr:v1', completionMetaKey: 'seed-completion:economic:food-prices-madr', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-NSOMN', script: 'seed-food-prices-nsomn.mjs', seedMetaKey: 'economic:food-prices-nsomn', canonicalKey: 'economic:food-prices:nsomn:v1', completionMetaKey: 'seed-completion:economic:food-prices-nsomn', intervalMs: DAY, timeoutMs: 85_000 },
 
 ];
 

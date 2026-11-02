@@ -68,6 +68,7 @@ const INTERNATIONAL_HOST_SUFFIXES = [
 // Only hosts that cannot be inferred from a real ccTLD or government suffix.
 const HOST_ORIGINS = Object.freeze({
   'simaniger.net': 'NE',
+  'data.1212.mn': 'MN',
   'www.ocpv-ci.com': 'CI',
   'api.cammesa.com': 'AR',
   'admin.gse.com.ge': 'GE',

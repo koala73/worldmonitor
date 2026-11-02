@@ -930,7 +930,8 @@
       "latestActions": "การกระทำที่บันทึกไว้ล่าสุด",
       "otherDeadlines": "กำหนดการปฏิบัติตามข้อกำหนดอื่น ๆ",
       "daysAgo": "วันที่ผ่านมา",
-      "revokedCount": "ระเบียบที่ยกเลิก ({{count}})"
+      "revokedCount": "ระเบียบที่ยกเลิก ({{count}})",
+      "lapsedCount": "ข้อเสนอที่หมดอายุ ({{count}})"
     },
     "economic": {
       "indicators": "ตัวชี้วัด",

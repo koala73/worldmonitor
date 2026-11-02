@@ -2958,6 +2958,20 @@
       ]
     },
     {
+      "host": "data.1212.mn",
+      "provider": "data.1212.mn",
+      "kind": "structured",
+      "observed": true,
+      "license": "Table metadata names the National Statistics Office of Mongolia as source; no reuse licence stated; displayed with attribution under the free-dashboard posture",
+      "attribution": "Credit the National Statistics Office of Mongolia (www.1212.mn) and link the weekly price table.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/nsomn.mjs"
+        }
+      ]
+    },
+    {
       "host": "data.api.abs.gov.au",
       "provider": "data.api.abs.gov.au",
       "kind": "structured",
@@ -6281,6 +6295,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "madr.gov.dz",
+      "provider": "madr.gov.dz",
+      "kind": "structured",
+      "observed": true,
+      "license": "Site footer: \"حقوق الطبع والنشر, وزارة الفلاحة و التنمية الريفية 2021\" (copyright, Ministry of Agriculture and Rural Development); no reuse licence stated; displayed with attribution under the free-dashboard posture",
+      "attribution": "Credit the Algerian Ministry of Agriculture, Rural Development and Fisheries (MADR) and link the daily retail price list.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/madr.mjs"
         }
       ]
     },

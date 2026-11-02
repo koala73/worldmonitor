@@ -930,7 +930,8 @@
       "latestActions": "最新の記録されたアクション",
       "otherDeadlines": "その他のコンプライアンス期限",
       "daysAgo": "日前",
-      "revokedCount": "廃止された規制 ({{count}})"
+      "revokedCount": "廃止された規制 ({{count}})",
+      "lapsedCount": "廃案になった提案 ({{count}})"
     },
     "economic": {
       "indicators": "指標",

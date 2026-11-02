@@ -222,6 +222,19 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Credit Greater Amman Municipality and link the Central Market price page.',
     status: 'terms-review',
   },
+  // Food-price publishers (#10050); neither states a reuse licence.
+  'madr.gov.dz': {
+    provider: 'madr.gov.dz',
+    license: 'Site footer: "حقوق الطبع والنشر, وزارة الفلاحة و التنمية الريفية 2021" (copyright, Ministry of Agriculture and Rural Development); no reuse licence stated; displayed with attribution under the free-dashboard posture',
+    attribution: 'Credit the Algerian Ministry of Agriculture, Rural Development and Fisheries (MADR) and link the daily retail price list.',
+    status: 'terms-review',
+  },
+  'data.1212.mn': {
+    provider: 'data.1212.mn',
+    license: 'Table metadata names the National Statistics Office of Mongolia as source; no reuse licence stated; displayed with attribution under the free-dashboard posture',
+    attribution: 'Credit the National Statistics Office of Mongolia (www.1212.mn) and link the weekly price table.',
+    status: 'terms-review',
+  },
   'www.jodidata.org': { provider: 'www.jodidata.org', identityGroup: 'jodi' },
   'api.publisher.jodidata.org': { provider: 'www.jodidata.org', identityGroup: 'jodi' },
   'api.adsb.lol': { provider: 'adsb.lol' },
@@ -1016,12 +1029,14 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '9bf8f767070c1b27e966921de9258c1076b8f4ba6554194b51cd0732d476532b',
+  sha256: 'af469a074313afb9f790017af76f7fbd2236553de62f84aeccdbc75ee7a0d6d1',
+  // 2026-11-02 (#10050): add Algeria MADR and the Mongolia NSO data host as food-price
+  // publishers; neither states a reuse licence, so both stay in terms review.
   // 2026-11-01 (#9892): group stat.uz with its SIAT API host and record the
   // stated terms of stat.uz (CC BY 4.0), SIMA Niger and Amman Central Market.
   // 2026-10-24: added Shanghai Financial Portal as a distinct official M2
   // republisher; PBOC source credit is preserved under /BQSM/index.html section 2.
-  reason: 'Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892).',
+  reason: 'Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050).',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe

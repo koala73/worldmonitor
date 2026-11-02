@@ -930,7 +930,8 @@
       "latestActions": "Các hành động được ghi nhận mới nhất",
       "otherDeadlines": "Các thời hạn tuân thủ khác",
       "daysAgo": "ngày trước",
-      "revokedCount": "Quy định bị thu hồi ({{count}})"
+      "revokedCount": "Quy định bị thu hồi ({{count}})",
+      "lapsedCount": "Đề xuất hết hiệu lực ({{count}})"
     },
     "economic": {
       "indicators": "Chỉ số",

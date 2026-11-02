@@ -1435,7 +1435,8 @@
       "latestActions": "Últimas ações registradas",
       "otherDeadlines": "Outros Prazos de Conformidade",
       "daysAgo": "dias atrás",
-      "revokedCount": "Regulamentações revogadas ({{count}})"
+      "revokedCount": "Regulamentações revogadas ({{count}})",
+      "lapsedCount": "Propostas arquivadas ({{count}})"
     },
     "etfFlows": {
       "unavailable": "dados de fundos negociados em bolsa temporariamente indisponíveis",

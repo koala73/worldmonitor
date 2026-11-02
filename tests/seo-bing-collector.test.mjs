@@ -107,6 +107,25 @@ describe('Bing Webmaster collector', () => {
     assert.match(snapshot.traffic.reason, /28d: Bing reported 27 of 28 days/);
   });
 
+  it('counts a repeated date once and leaves out a date whose rows disagree', async () => {
+    const days = Array.from({ length: 90 }, (_, index) => (
+      new Date(Date.parse('2026-08-03') + index * 86_400_000).toISOString().slice(0, 10)
+    ));
+    const rows = days.map((date) => daily(date, 10, 1));
+    // One date repeated verbatim, and one repeated with a different count.
+    // A row count would read both as 28 complete days and double-count.
+    rows.push(daily('2026-10-10', 10, 1), daily('2026-10-20', 99, 9));
+    const snapshot = await collectBingSnapshot({
+      transport: memoryTransport({ GetRankAndTrafficStats: rows }),
+      observedAt: OBSERVED_AT,
+    });
+    const window = snapshot.traffic.windows['28d'];
+    assert.equal(window.daysReported, 27, 'the conflicting date is not a reported day');
+    assert.equal(window.impressions, 270, 'no row is counted twice');
+    assert.equal(snapshot.traffic.availability, 'partial');
+    assert.match(snapshot.traffic.reason, /conflicting rows for 2026-10-20/);
+  });
+
   it('splits query rows into brand and non-brand with the shared pattern', async () => {
     const { snapshot } = await collect();
     const window = snapshot.queries.windows['28d'];
