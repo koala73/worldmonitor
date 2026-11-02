@@ -51,7 +51,7 @@ COLORS=$(identify -format '%k' screenshot.png 2>/dev/null || echo 0)
 1. `grep "Colors:"` matched nothing and exited 1.
 2. The step shell is `bash -e -o pipefail`, so the command substitution's pipeline failed and `-e` ended the script on the assignment line, with no output.
 
-Diagnostic route that worked: download the screenshot artifact (`gh run download <id> -n linux-smoke-test-screenshot`) and look at it. A rendered dashboard puts the fault in the gate, not the app. To confirm, run `identify` in an `ubuntu:24.04` container on that file: `identify -verbose … | grep -c Colors` gives 0, and `identify -format %k` gives 2600. A `workflow_dispatch` run of the canary on the fix branch then passed with `Screenshot unique colors: 1923`.
+Diagnostic route that worked: download the screenshot artifact (`gh run download <id> -n linux-smoke-test-screenshot`) and look at it. A rendered dashboard puts the fault in the gate, not the app. To confirm, run `identify` in an `ubuntu:24.04` container on that file: `identify -verbose … | grep -c Colors` gives 0, and `identify -format %k` gives 2600. A `workflow_dispatch` run of the canary on the fix branch (run 41395676273, 2026-11-02) then passed with `Screenshot unique colors: 1923`.
 
 ## Prevention
 
