@@ -711,14 +711,14 @@
       "chokepointTitle": "Kontrollera en flaskhal",
       "chokepointDesc": "Inspektera störningsstatus, fartygsflöden och risk över {{chokepoints}} kritiska sjövägspassager.",
       "countryRiskTitle": "Förklara ett landrisksteg",
-      "countryRiskDesc": "Spåra politiska, säkerhets-, ekonomiska och motståndskraftssignaler bakom ett lands förändring, med motståndskraft rankad för {{resilienceRanked}} länder.",
+      "countryRiskDesc": "Spåra de politiska, säkerhetsmässiga och ekonomiska signalerna samt signalerna om motståndskraft bakom ett lands förändring. Motståndskraften rankas för {{resilienceRanked}} av {{resilienceUniverse}} länder, cirka {{resilienceRankedPct}} %, så att en förändring kan tolkas mot landets långsiktiga strukturella baslinje i stället för enbart utifrån veckans nyhetsrubriker.",
       "open": "Öppna bevis",
       "workflow": "Arbetsflöde steg för steg"
     },
     "voices": {
       "eyebrow": "Med deras ord",
       "title": "Vad folk säger om World Monitor",
-      "sub": "{{users}} personer i {{countries}} länder har använt World Monitor. Så här sa pressen och några av dem.",
+      "sub": "{{users}} personer i {{countries}} länder har använt World Monitor. The Atlantic skrev om det den 14 mars 2026 och El País två dagar senare. Även WIRED, The Economic Times, Arabian Business och L'Orient Today har rapporterat om det. Här är vad pressen och några användare sa.",
       "translatedJa": "Översatt från japanska",
       "prev": "Föregående citat",
       "next": "Fler citat"

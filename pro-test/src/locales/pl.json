@@ -711,14 +711,14 @@
       "chokepointTitle": "Sprawdź wąskie gardło",
       "chokepointDesc": "Sprawdź status zaburzeń, przepływy statków i ryzyko na {{chokepoints}} krytycznych przejściach morskich.",
       "countryRiskTitle": "Wyjaśnij ruch na rynku ryzyka kraju",
-      "countryRiskDesc": "Prześledzaj sygnały polityczne, bezpieczeństwa, gospodarcze i odporności za zmianami w kraju — odporność rankingowana dla {{resilienceRanked}} krajów.",
+      "countryRiskDesc": "Śledź sygnały polityczne, gospodarcze oraz te dotyczące bezpieczeństwa i odporności, które stoją za zmianą w danym kraju. Ranking odporności obejmuje {{resilienceRanked}} z {{resilienceUniverse}} krajów, czyli około {{resilienceRankedPct}}%, dzięki czemu zmianę można interpretować w odniesieniu do długoterminowej bazy strukturalnej danego kraju, zamiast opierać się wyłącznie na nagłówkach wiadomości z tego tygodnia.",
       "open": "Otwórz dowody",
       "workflow": "Procedura krok po kroku"
     },
     "voices": {
       "eyebrow": "Ich słowami",
       "title": "Co ludzie mówią o World Monitor",
-      "sub": "{{users}} osób w {{countries}} krajach korzystało z World Monitor. Oto co powiedziały media i niektórzy z nich.",
+      "sub": "{{users}} osób w {{countries}} krajach korzystało z World Monitor. The Atlantic napisał o nim 14 marca 2026 r., a El País dwa dni później. Pisały o nim także WIRED, The Economic Times, Arabian Business i L'Orient Today. Oto co powiedziały media i niektórzy użytkownicy.",
       "translatedJa": "Przetłumaczono z japońskiego",
       "prev": "Poprzednie cytaty",
       "next": "Więcej cytatów"

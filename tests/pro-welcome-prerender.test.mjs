@@ -168,6 +168,30 @@ test('sections state a price or percentage the audit credits', { skip }, () => {
   const gps = passageAfter('GPS jamming zones');
   assert.match(gps, /at least 2% of aircraft/);
   assert.ok(gps.split(/\s+/).length >= 40, `GPS card is under 40 words: ${gps}`);
+  const depth = JSON.parse(readFileSync(new URL('../pro-test/src/generated/depth-stats.json', import.meta.url), 'utf8'));
+  const risk = passageAfter('Explain a country-risk move');
+  assert.ok(risk.includes(`ranked for ${depth.resilienceRanked} of ${copy.resilienceUniverse} countries, about ${copy.resilienceRankedPct}%,`), risk);
+  assert.equal(copy.resilienceRankedPct, Math.round((depth.resilienceRanked / copy.resilienceUniverse) * 100));
+  assert.ok(risk.split(/\s+/).length >= 40, `country-risk card is under 40 words: ${risk}`);
+});
+
+// The dates in the Voices subtitle are the publication dates in the cited URLs.
+test('Voices subtitle dates the press it names', { skip }, async () => {
+  const { THE_ATLANTIC_URL, EL_PAIS_URL } = await import('../shared/press.ts');
+  assert.match(THE_ATLANTIC_URL, /\/2026\/03\//);
+  assert.match(EL_PAIS_URL, /\/2026-03-16\//);
+  const { content } = welcomeRoot();
+  const at = content.indexOf('>What people say about World Monitor</h2>');
+  assert.ok(at >= 0, 'missing Voices heading');
+  const sub = tagsToText(content.slice(at).match(/<p[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? '', '');
+  assert.match(sub, /The Atlantic wrote about it on 14 March 2026 and El País two days later/);
+  assert.ok(sub.split(/\s+/).length >= 40, `Voices subtitle is under 40 words: ${sub}`);
+});
+
+test('footer says the content is not professional advice', { skip }, () => {
+  const text = tagsToText(welcomeHtml(), ' ').replace(/\s+/g, ' ');
+  assert.match(text, /World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice\./);
+  assert.match(text, /consult a qualified professional/);
 });
 
 // The FAQ figures live inside <details> answers, which geo.new did not credit

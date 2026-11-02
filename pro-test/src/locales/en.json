@@ -497,7 +497,7 @@
       "chokepointTitle": "Check a chokepoint",
       "chokepointDesc": "Inspect disruption status, vessel flows, and risk across {{chokepoints}} critical maritime passages.",
       "countryRiskTitle": "Explain a country-risk move",
-      "countryRiskDesc": "Trace the political, security, economic, and resilience signals behind a country's change, with resilience ranked for {{resilienceRanked}} countries.",
+      "countryRiskDesc": "Trace the political, security, economic and resilience signals behind a country's change. Resilience is ranked for {{resilienceRanked}} of {{resilienceUniverse}} countries, about {{resilienceRankedPct}}%, so a move can be read against that country's long-run structural baseline instead of reading it from this week's headlines alone.",
       "open": "Open evidence",
       "workflow": "Step-by-step workflow"
     },
@@ -718,7 +718,7 @@
     "voices": {
       "eyebrow": "In their words",
       "title": "What people say about World Monitor",
-      "sub": "{{users}} people in {{countries}} countries have used World Monitor. Here is what the press and some of them said.",
+      "sub": "{{users}} people in {{countries}} countries have used World Monitor. The Atlantic wrote about it on 14 March 2026 and El País two days later, and WIRED, The Economic Times, Arabian Business and L'Orient Today have covered it too. Here is what the press and some users said.",
       "translatedJa": "Translated from Japanese",
       "prev": "Previous quotes",
       "next": "More quotes"
