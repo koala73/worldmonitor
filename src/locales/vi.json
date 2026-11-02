@@ -2631,6 +2631,15 @@
             "mcpClients": "Thiết lập MCP",
             "channels": "Thiết lập chúng trong cài đặt thông báo"
           }
+        },
+        "about": {
+          "heading": "Một điều cuối cùng: bạn sẽ dùng World Monitor để làm gì?",
+          "body": "Ba câu trả lời nhanh giúp chúng tôi xây dựng những công cụ phù hợp cho bạn. Bỏ qua những câu nào bạn muốn.",
+          "confirmCta": "Lưu câu trả lời của tôi",
+          "confirming": "Đang lưu…",
+          "doneNote": "Cảm ơn, chúng tôi đã ghi nhận câu trả lời của bạn.",
+          "summaryLabel": "Về bạn",
+          "summaryVerified": "Đã lưu. Cảm ơn bạn."
         }
       },
       "status": {

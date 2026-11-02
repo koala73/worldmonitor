@@ -2727,6 +2727,15 @@
             "mcpClients": "Postavi MCP",
             "channels": "Postavite ih u postavkama obavijesti"
           }
+        },
+        "about": {
+          "heading": "Još jedno: čemu ćete koristiti World Monitor?",
+          "body": "Tri brza odgovora pomoći će nam da gradimo prave alate za vas. Preskočite sve koje želite.",
+          "confirmCta": "Spremi moje odgovore",
+          "confirming": "Spremanje…",
+          "doneNote": "Hvala, imamo vaše odgovore.",
+          "summaryLabel": "O vama",
+          "summaryVerified": "Spremljeno. Hvala vam."
         }
       },
       "status": {

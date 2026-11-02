@@ -2631,6 +2631,15 @@
             "mcpClients": "设置 MCP",
             "channels": "在通知设置中进行配置"
           }
+        },
+        "about": {
+          "heading": "最后一件事：您将使用 World Monitor 做什么？",
+          "body": "三个快速问题能帮助我们为你打造合适的工具。你可以跳过任何问题。",
+          "confirmCta": "保存我的答案",
+          "confirming": "保存中…",
+          "doneNote": "感谢，我们已收到你的答案。",
+          "summaryLabel": "关于你",
+          "summaryVerified": "已保存。谢谢。"
         }
       },
       "status": {

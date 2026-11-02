@@ -2710,6 +2710,15 @@
             "mcpClients": "MCP beállítása",
             "channels": "Állítsa be ezeket az értesítési beállításokban"
           }
+        },
+        "about": {
+          "heading": "Utolsó dolog: mire fogod használni a World Monitor-t?",
+          "body": "Három rövid kérdés segít nekünk megépíteni az ideális eszközöket számodra. Kihagyhatod, amit szeretnél.",
+          "confirmCta": "Válaszaim mentése",
+          "confirming": "Mentés…",
+          "doneNote": "Köszönjük, megkaptuk a válaszaidat.",
+          "summaryLabel": "Rólad",
+          "summaryVerified": "Mentve. Köszönjük."
         }
       },
       "status": {

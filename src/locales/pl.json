@@ -2661,6 +2661,15 @@
             "mcpClients": "Skonfiguruj MCP",
             "channels": "Skonfiguruj je w ustawieniach powiadomień"
           }
+        },
+        "about": {
+          "heading": "Ostatnia rzecz: do czego będziesz używać World Monitor?",
+          "body": "Trzy szybkie odpowiedzi помогут nam stworzyć dla Ciebie odpowiednie narzędzia. Możesz pominąć, które chcesz.",
+          "confirmCta": "Zapisz moje odpowiedzi",
+          "confirming": "Zapisywanie…",
+          "doneNote": "Dziękujemy za Twoje odpowiedzi.",
+          "summaryLabel": "O Tobie",
+          "summaryVerified": "Zapisano. Dziękujemy."
         }
       },
       "status": {

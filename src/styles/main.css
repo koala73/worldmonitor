@@ -9124,6 +9124,71 @@ a.prediction-link:hover {
   text-decoration: underline;
 }
 
+.pro-activation-about {
+  display: grid;
+  gap: 12px;
+}
+
+.pro-activation-about-label {
+  margin: 0 0 6px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pro-activation-about-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pro-activation-about-option {
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+  background: var(--overlay-light);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.pro-activation-about-option:hover,
+.pro-activation-about-option[aria-pressed='true'] {
+  border-color: var(--green);
+}
+
+.pro-activation-about-option[aria-pressed='true'] {
+  background: var(--overlay-medium, var(--overlay-light));
+}
+
+.pro-activation-about-save {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0 16px;
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--green);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.pro-activation-about-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pro-activation-about-status {
+  margin: 0;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+}
+
+.pro-activation-about-status:empty {
+  display: none;
+}
+
 @media (max-width: 560px) {
   .pro-activation-modal {
     width: 100%;

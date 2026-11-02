@@ -2651,6 +2651,15 @@
             "mcpClients": "Configurer MCP",
             "channels": "Configurez-les dans les paramètres de notification"
           }
+        },
+        "about": {
+          "heading": "Dernière chose : à quoi utiliserez-vous World Monitor ?",
+          "body": "Trois questions rapides nous aident à développer les bons outils pour vous. Vous pouvez ignorer celles que vous souhaitez.",
+          "confirmCta": "Enregistrer mes réponses",
+          "confirming": "Enregistrement…",
+          "doneNote": "Merci, nous avons vos réponses.",
+          "summaryLabel": "À propos de vous",
+          "summaryVerified": "Enregistré. Merci."
         }
       },
       "status": {

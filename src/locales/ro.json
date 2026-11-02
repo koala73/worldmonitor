@@ -2651,6 +2651,15 @@
             "mcpClients": "Configurează MCP",
             "channels": "Configurează-le în setările de notificare"
           }
+        },
+        "about": {
+          "heading": "Ultimul lucru: pentru ce vei folosi World Monitor?",
+          "body": "Trei răspunsuri rapide ne ajută să construim instrumentele potrivite pentru tine. Poți sări peste orice dintre ele.",
+          "confirmCta": "Salvează răspunsurile",
+          "confirming": "Se salvează…",
+          "doneNote": "Mulțumim, am primit răspunsurile tale.",
+          "summaryLabel": "Despre tine",
+          "summaryVerified": "Salvat. Mulțumim."
         }
       },
       "status": {

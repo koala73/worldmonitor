@@ -2631,6 +2631,15 @@
             "mcpClients": "MCP 설정하기",
             "channels": "알림 설정에서 설정하기"
           }
+        },
+        "about": {
+          "heading": "마지막 한 가지: World Monitor를 어떤 용도로 사용하실 예정인가요?",
+          "body": "세 가지 빠른 질문에 답해주면 저희가 더 나은 도구를 만드는 데 도움이 됩니다. 건너뛰셔도 괜찮습니다.",
+          "confirmCta": "답변 저장",
+          "confirming": "저장 중…",
+          "doneNote": "감사합니다. 답변을 받았습니다.",
+          "summaryLabel": "사용자 정보",
+          "summaryVerified": "저장됨. 감사합니다."
         }
       },
       "status": {

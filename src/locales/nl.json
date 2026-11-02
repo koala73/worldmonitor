@@ -2257,6 +2257,15 @@
             "mcpClients": "MCP instellen",
             "channels": "Stel deze in bij de meldingsinstellingen"
           }
+        },
+        "about": {
+          "heading": "Nog één ding: waar ga je World Monitor voor gebruiken?",
+          "body": "Drie snelle vragen helpen ons de juiste tools voor jou te bouwen. Sla er gerust over.",
+          "confirmCta": "Mijn antwoorden opslaan",
+          "confirming": "Opslaan…",
+          "doneNote": "Dank je, we hebben je antwoorden ontvangen.",
+          "summaryLabel": "Over jou",
+          "summaryVerified": "Opgeslagen. Dank je."
         }
       },
       "status": {

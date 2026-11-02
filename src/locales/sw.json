@@ -2946,6 +2946,15 @@
             "mcpClients": "Set up MCP",
             "channels": "Set those up in notification settings"
           }
+        },
+        "about": {
+          "heading": "Kitu kimoja tu: utatumia World Monitor kwa nini?",
+          "body": "Majibu matatu mabilis yatatusaidia kujenga zana sahihi kwako. Ruka yoyote unayotaka.",
+          "confirmCta": "Hifadhi majibu yangu",
+          "confirming": "Inakusubirisha…",
+          "doneNote": "Asante, tuna majibu yako.",
+          "summaryLabel": "Kuhusu wewe",
+          "summaryVerified": "Hifadhiwa. Asante."
         }
       },
       "status": {

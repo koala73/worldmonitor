@@ -53,6 +53,8 @@ import {
 import { getServerInsights, fetchServerInsights } from '@/services/insights-loader';
 import { loadWidgets, loadWidgetsStrict } from '@/services/widget-store';
 import { listMcpClients } from '@/services/mcp-clients';
+import { loadAboutYouStatus, recordAboutYouAnswers, skipAboutYou } from '@/services/audience-profile';
+import { ABOUT_YOU_CHOICE_QUESTIONS, type AboutYouChoiceQuestionId } from '../../shared/audience-profile';
 import {
   resolveHasUsedPowerFeature,
   ACTIVATION_EVENTS,
@@ -226,6 +228,24 @@ function stepFrameCopy(id: ActivationStepId): StepFrameCopy {
           defaultValue: "You're already using your Pro tools.",
         }),
       };
+    case 'about':
+      return {
+        heading: t('components.proActivation.steps.about.heading', {
+          defaultValue: 'One last thing: what will you use World Monitor for?',
+        }),
+        body: t('components.proActivation.steps.about.body', {
+          defaultValue: 'Three quick answers help us build the right tools for you. Skip any you like.',
+        }),
+        confirmCta: t('components.proActivation.steps.about.confirmCta', {
+          defaultValue: 'Save my answers',
+        }),
+        confirming: t('components.proActivation.steps.about.confirming', {
+          defaultValue: 'Saving…',
+        }),
+        doneNote: t('components.proActivation.steps.about.doneNote', {
+          defaultValue: 'Thanks, we have your answers.',
+        }),
+      };
   }
 }
 
@@ -238,6 +258,8 @@ function summaryLabel(id: ActivationStepId): string {
       return t('components.proActivation.steps.alerts.summaryLabel', { defaultValue: 'Real-time alerts' });
     case 'power':
       return t('components.proActivation.steps.power.summaryLabel', { defaultValue: 'Pro toolkit' });
+    case 'about':
+      return t('components.proActivation.steps.about.summaryLabel', { defaultValue: 'About you' });
   }
 }
 
@@ -255,6 +277,10 @@ function summaryVerifiedDetail(id: ActivationStepId): string {
     case 'power':
       return t('components.proActivation.steps.power.summaryVerified', {
         defaultValue: 'Unlocked and ready when you are.',
+      });
+    case 'about':
+      return t('components.proActivation.steps.about.summaryVerified', {
+        defaultValue: 'Saved. Thank you.',
       });
   }
 }
@@ -1154,9 +1180,16 @@ async function readActivationFlowContext(
       (connected) => ({ connected }),
       (error: unknown) => ({ error }),
     );
+  const aboutYouLookup = withTimeout(
+    loadAboutYouStatus(expectedUserId),
+    ACTIVATION_CONTEXT_TIMEOUT_MS,
+    'activation-about-you-read',
+  ).catch(() => null);
   const context = strict
     ? await readActivationContextStrict(expectedUserId)
     : await readActivationContext(expectedUserId);
+  // Unreadable omits the About-you step; it never blocks the flow (U3).
+  context.config.aboutYouStatus = (await aboutYouLookup)?.status ?? null;
   if (!mcpLookup || context.config.hasUsedPowerFeature) return context;
   const lookup = await mcpLookup;
   if ('connected' in lookup) context.config.hasUsedPowerFeature = lookup.connected;
@@ -1366,6 +1399,80 @@ function buildPowerExtra(options: ProActivationFlowOptions): ProActivationStepEx
           }
         });
       }
+    },
+  };
+}
+
+/** The questions the activation step asks; the dashboard card asks the rest. */
+const ABOUT_STEP_QUESTIONS: readonly AboutYouChoiceQuestionId[] = ['primaryUse', 'usageContext', 'payer'];
+
+/**
+ * The About-you step (U3): pick answers, then Save records them and ends the
+ * flow (it is the last step). The shell's Continue counts as a skip, which
+ * `onSkipStep` records as a profile skip.
+ */
+function buildAboutExtra(options: ProActivationFlowOptions): ProActivationStepExtra {
+  const groups = ABOUT_STEP_QUESTIONS.map((questionId) => {
+    const labelId = `pro-activation-about-${questionId}`;
+    const buttons = ABOUT_YOU_CHOICE_QUESTIONS[questionId]
+      .map(
+        (optionId) =>
+          `<button type="button" class="pro-activation-about-option" aria-pressed="false" data-question="${questionId}" data-option="${optionId}">${escapeHtml(
+            t(`components.aboutYou.questions.${questionId}.options.${optionId}`, { defaultValue: optionId }),
+          )}</button>`,
+      )
+      .join('');
+    return `<div class="pro-activation-about-question"><p id="${labelId}" class="pro-activation-about-label">${escapeHtml(
+      t(`components.aboutYou.questions.${questionId}.label`, { defaultValue: questionId }),
+    )}</p><div class="pro-activation-about-options" role="group" aria-labelledby="${labelId}">${buttons}</div></div>`;
+  }).join('');
+  const save = escapeHtml(t('components.proActivation.steps.about.confirmCta', { defaultValue: 'Save my answers' }));
+  return {
+    html: trustedHtml(
+      `<div class="pro-activation-about">${groups}<button type="button" class="pro-activation-about-save" disabled>${save}</button><p class="pro-activation-about-status" role="status" aria-live="polite"></p></div>`,
+      'pro-activation about-you step; labels escaped via escapeHtml, ids from the shared taxonomy',
+    ),
+    replacesPrimaryAction: true,
+    onMount: (root, controls) => {
+      const answers: Partial<Record<AboutYouChoiceQuestionId, string>> = {};
+      const saveBtn = root.querySelector<HTMLButtonElement>('.pro-activation-about-save');
+      const status = root.querySelector<HTMLElement>('.pro-activation-about-status');
+      for (const btn of root.querySelectorAll<HTMLButtonElement>('.pro-activation-about-option')) {
+        btn.addEventListener('click', () => {
+          const questionId = btn.dataset.question as AboutYouChoiceQuestionId;
+          const optionId = btn.dataset.option ?? '';
+          const same = answers[questionId] === optionId;
+          if (same) delete answers[questionId];
+          else answers[questionId] = optionId;
+          for (const sibling of root.querySelectorAll<HTMLButtonElement>(`[data-question="${questionId}"]`)) {
+            sibling.setAttribute('aria-pressed', String(!same && sibling === btn));
+          }
+          if (saveBtn) saveBtn.disabled = Object.keys(answers).length === 0;
+        });
+      }
+      saveBtn?.addEventListener('click', () => {
+        if (saveBtn.disabled) return;
+        saveBtn.disabled = true;
+        if (status) status.textContent = t('components.proActivation.steps.about.confirming', { defaultValue: 'Saving…' });
+        void withTimeout(
+          recordAboutYouAnswers(options.accountUserId, 'activation', answers),
+          ACTIVATION_CONTEXT_TIMEOUT_MS,
+          'activation-about-you-write',
+        )
+          .catch(() => ({ ok: false as const, reason: 'timeout' }))
+          .then((result) => {
+            if (!isFlowAccountCurrent(options)) return;
+            if (result.ok) {
+              options.onEvent?.(ACTIVATION_EVENTS.stepConfirmed, 'about');
+              controls.confirmAndFinish();
+              return;
+            }
+            saveBtn.disabled = false;
+            if (status) {
+              status.textContent = t('components.aboutYou.saveFailed', { defaultValue: "Couldn't save that. Try again." });
+            }
+          });
+      });
     },
   };
 }
@@ -1787,6 +1894,7 @@ export async function openProActivationFlow(
   const stepExtras: Partial<Record<ActivationStepId, ProActivationStepExtra>> = {
     brief: buildBriefExtra(safeWorldBrief(), selectedHourRef),
     power: buildPowerExtra(options),
+    about: buildAboutExtra(options),
   };
 
   // Per-step re-entry guard: belt-and-suspenders on top of the shell disabling
@@ -1856,6 +1964,9 @@ export async function openProActivationFlow(
     onSkipStep: (stepId) => {
       const skipEvent = selectStepEvent('skipped');
       if (skipEvent) options.onEvent?.(skipEvent, stepId);
+      if (stepId === 'about' && isFlowAccountCurrent(options)) {
+        void skipAboutYou(options.accountUserId, 'activation');
+      }
     },
     onBlockStep: (stepId) => options.onEvent?.(ACTIVATION_EVENTS.stepBlocked, stepId),
     onProgress: (results) => persistOutcome(results, false),

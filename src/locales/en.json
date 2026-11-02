@@ -2825,6 +2825,15 @@
       "ariaLabel": "Pro activation setup",
       "signedInAs": "Signed in as {{email}}",
       "steps": {
+        "about": {
+          "heading": "One last thing: what will you use World Monitor for?",
+          "body": "Three quick answers help us build the right tools for you. Skip any you like.",
+          "confirmCta": "Save my answers",
+          "confirming": "Saving…",
+          "doneNote": "Thanks, we have your answers.",
+          "summaryLabel": "About you",
+          "summaryVerified": "Saved. Thank you."
+        },
         "brief": {
           "heading": "Your daily brief, every morning",
           "body": "A curated intelligence briefing in your inbox each morning — the overnight signals that matter, distilled into a five-minute read.",

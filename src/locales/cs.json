@@ -2661,6 +2661,15 @@
             "mcpClients": "Nastavit MCP",
             "channels": "Nastavte si je v nastavení oznámení"
           }
+        },
+        "about": {
+          "heading": "Poslední věc: k čemu budete World Monitor používat?",
+          "body": "Tři rychlé odpovědi nám pomohou vytvořit správné nástroje pro vás. Přeskočte jakékoliv, které chcete.",
+          "confirmCta": "Uložit moje odpovědi",
+          "confirming": "Ukládám…",
+          "doneNote": "Děkujeme, máme vaše odpovědi.",
+          "summaryLabel": "O vás",
+          "summaryVerified": "Uloženo. Děkujeme."
         }
       },
       "status": {

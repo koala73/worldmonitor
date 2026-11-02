@@ -2631,6 +2631,15 @@
             "mcpClients": "MCPをセットアップ",
             "channels": "通知設定でセットアップ"
           }
+        },
+        "about": {
+          "heading": "最後に1つ: World Monitor をどのようにご利用いただきますか?",
+          "body": "3つの簡単な質問にお答えいただくと、より適切なツール開発に役立ちます。スキップしても大丈夫です。",
+          "confirmCta": "回答を保存",
+          "confirming": "保存中…",
+          "doneNote": "ご回答ありがとうございました。",
+          "summaryLabel": "ユーザー情報",
+          "summaryVerified": "保存済み。ご協力ありがとうございます。"
         }
       },
       "status": {

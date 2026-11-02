@@ -2257,6 +2257,15 @@
             "mcpClients": "Konfigurera MCP",
             "channels": "Ställ in dem i aviseringsinställningarna"
           }
+        },
+        "about": {
+          "heading": "En sista sak: vad ska du använda World Monitor till?",
+          "body": "Tre snabba svar hjälper oss att bygga rätt verktyg för dig. Hoppa över de du vill.",
+          "confirmCta": "Spara mina svar",
+          "confirming": "Sparar…",
+          "doneNote": "Tack, vi har dina svar.",
+          "summaryLabel": "Om dig",
+          "summaryVerified": "Sparad. Tack."
         }
       },
       "status": {

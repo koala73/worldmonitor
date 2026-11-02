@@ -2641,6 +2641,15 @@
             "mcpClients": "MCP'yi kurun",
             "channels": "Bunları bildirim ayarlarından yapılandırın"
           }
+        },
+        "about": {
+          "heading": "Son bir şey: World Monitor'ü ne için kullanacaksınız?",
+          "body": "Üç hızlı cevap, sizin için doğru araçları geliştirmemize yardımcı olur. İstediğiniz soruları atlayabilirsiniz.",
+          "confirmCta": "Cevaplarımı kaydet",
+          "confirming": "Kaydediliyor…",
+          "doneNote": "Teşekkürler, cevaplarınız alındı.",
+          "summaryLabel": "Hakkında",
+          "summaryVerified": "Kaydedildi. Teşekkür ederiz."
         }
       },
       "status": {

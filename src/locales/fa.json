@@ -2713,6 +2713,15 @@
             "mcpClients": "Set up MCP",
             "channels": "Set those up in notification settings"
           }
+        },
+        "about": {
+          "heading": "یک چیز آخر: World Monitor را برای چه کاری استفاده خواهید کرد؟",
+          "body": "سه پاسخ کوتاه به ما کمک می‌کند تا ابزارهای مناسب برایتان بسازیم. هر سؤالی را که دوست ندارید رد کنید.",
+          "confirmCta": "ذخیره پاسخ‌های من",
+          "confirming": "در حال ذخیره…",
+          "doneNote": "متشکریم، پاسخ‌های شما را دریافت کردیم.",
+          "summaryLabel": "درباره شما",
+          "summaryVerified": "ذخیره شد. متشکریم."
         }
       },
       "status": {
