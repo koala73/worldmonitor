@@ -747,7 +747,7 @@ describe('Search Console site totals and brand split', () => {
       'word monitor', 'world-monitor github', 'ワールドモニター', 'worldmoniter', 'worldmoniter.app',
       'worl monitor', 'woldmonitor', 'world montior', 'wordl monitor', 'world montor', 'world monitar',
       'world monter', 'wordmonintor', 'world monotor', 'worldmoniteur', 'wordmonitro', 'worldmoniterapp',
-      'worldmonitorapp', 'world monitoring']) {
+      'worldmonitorapp', 'world monitoring', 'world_moniter_app', 'worl_monitor_github']) {
       assert.equal(isBrandQuery(query), true, query);
     }
     for (const query of ['war monitor', 'warmonitor', 'monitor the situation', 'ww3 monitor',
