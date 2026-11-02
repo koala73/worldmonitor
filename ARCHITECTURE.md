@@ -46,7 +46,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
         │ CoinGeck│ │  FRED   │ │ FIRMS   │
         │   ...   │ │   ...   │ │   ...   │
         └─────────┘ └─────────┘ └─────────┘
-           844 observed source hosts
+           847 observed source hosts
 ```
 
 **Source files**: `package.json`, `vercel.json`
@@ -424,6 +424,7 @@ Runs before every `git push`:
 | `ci-health-scan.yml` | Weekly cron (Monday 06:23 UTC), manual | Scans Test, Typecheck, Lint Code and Proto Generation Check (`scripts/check-ci-health.mjs`) for four deterministic findings: a job that failed then passed on a re-run (flaky), a job cancelled on `main` after 10+ minutes in any attempt (timeout), a workflow's two newest decided `main` runs failing (on a corroborated run listing), and a job whose median on successful `main` runs rose 20% and 30s+ week over week (naming any steps new that week). Each finding is one rolling issue titled `CI health (<kind>): <workflow> / <job>`, updated while open and never closed automatically; only issues opened by `github-actions[bot]` are rewritten, and workflow/job names are reduced to plain labels because fork PR runs control them. Read-only apart from issue writes |
 | `perf-style-layout-budget.yml` | Twice-daily cron, manual (URL + budget inputs) | The #4536 forced-reflow gate the desktop main-thread baseline named but nothing enforced: captures `/dashboard` with the Playwright harness and fails when the `styleLayout` share of attributed main-thread self-time exceeds budget. Gates the *share*, not absolute ms, and runs scheduled rather than per-PR because lab absolutes are host-contention contaminated (KTD1) while the decomposition is stable. A report that measured nothing returns `unmeasured`, never a pass |
 | `contributor-trust.yml` | PR | Gates untrusted first-time-contributor runs |
+| `issue-ui-evidence.yml` | Issue opened or edited | The bug report form refuses an empty screenshot field but cannot check that it holds an image, so this catches the rest: an issue from outside the maintainer set whose title or body says `UI` and carries no screenshot, recording or image link gets the `needs-screenshot` label and one comment asking for the image. The label clears on the edit that attaches one. Never closes or reopens an issue. Maintainer, collaborator and bot issues are exempt. The decision reads the issue's current state from the API, not the webhook snapshot; issue text reaches the script only through the payload file and that read |
 | `stacked-merge-guard.yml` | PR (including base edits), push to main | Required pre-merge check (#7006): fails when a PR's base is not `main` and that base branch's own PR is already merged, which is how a stacked child can show MERGED while `main` never receives the commits |
 | `orphaned-stacked-merge-monitor.yml` | PR closed and merged | Post-merge safety net for #7006: retargets open children of a merged parent, flags children GitHub closed when the parent branch was deleted and strands their open children, then fails when the merge commit is not an ancestor of `main`, opens an issue, and comments on the purple PR |
 | `deploy-gate.yml` | After Test/Typecheck/Lint Code/Security Audit/Stacked Merge Guard complete | Aggregates required smoke-gate statuses onto the head SHA for branch protection |
