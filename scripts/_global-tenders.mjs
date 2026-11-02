@@ -31,6 +31,10 @@ const OFFICIAL_SOURCE_HOSTS = {
   'pakistan-epads': ['epads.gov.pk'],
   'georgia-spa': ['tenders.procurement.gov.ge'],
   'armenia-armeps': ['www.armeps.am', 'armeps.am'],
+  // APP publishes no public per-procedure page; notices link to the official export.
+  'albania-app': ['www.app.gov.al'],
+  'dominican-republic-dgcp': ['comunidad.comprasdominicana.gob.do'],
+  'malaysia-myprocurement': ['myprocurement.treasury.gov.my'],
 };
 
 // A failed source keeps its last-good open tenders for a day: procurement
@@ -41,7 +45,8 @@ export const TENDER_SOURCE_RETENTION_MS = 24 * 60 * 60_000;
 export function tracksTenderFreshness(source) {
   return ['contracts-finder', 'world-bank', 'colombia-secop', 'kenya-ppip', 'south-africa-etenders',
     'chile-mercado-publico', 'brazil-pncp', 'ukraine-prozorro', 'bulgaria-eop', 'latvia-iub',
-    'poland-bzp', 'pakistan-ppra', 'pakistan-epads', 'georgia-spa', 'armenia-armeps'].includes(source);
+    'poland-bzp', 'pakistan-ppra', 'pakistan-epads', 'georgia-spa', 'armenia-armeps',
+    'albania-app', 'dominican-republic-dgcp', 'malaysia-myprocurement'].includes(source);
 }
 
 function string(value) { return typeof value === 'string' ? value.trim() : ''; }

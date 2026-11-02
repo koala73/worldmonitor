@@ -114,6 +114,9 @@ const SOURCES = [
   ['pakistan-epads', 'Pakistan EPADS'],
   ['georgia-spa', 'Georgia SPA'],
   ['armenia-armeps', 'Armenia ARMEPS'],
+  ['albania-app', 'Albania APP'],
+  ['dominican-republic-dgcp', 'Dominican Republic DGCP'],
+  ['malaysia-myprocurement', 'Malaysia MyProcurement'],
 ] as const;
 
 const SORTS = [
