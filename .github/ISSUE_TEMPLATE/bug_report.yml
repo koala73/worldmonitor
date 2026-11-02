@@ -78,7 +78,7 @@ body:
     id: screenshots
     attributes:
       label: Screenshots / Console errors
-      description: Required. Paste or drag a screenshot or recording of what you see into this box. For anything visual (panels, map, layout, popups, text) a screenshot is what lets us reproduce it; for a non-visual error, paste the browser console output instead.
+      description: Required. Paste or drag a screenshot or recording of what you see into this box. Anything visual (panels, map, layout, popups, text) needs an image. Only when there is nothing to see, such as a failed request, paste the browser console output instead.
       placeholder: Drop a screenshot here...
     validations:
       required: true

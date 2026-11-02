@@ -38,6 +38,8 @@ const UI_WORD_RE = /\bui\b/i;
 // form may carry a quoted title. The reference forms (`![alt][ref]`,
 // `![alt][]`) are checked separately: they render only when a matching
 // `[ref]: url` definition exists, so an undefined reference is not evidence.
+// The definition's destination may sit on the line after the label, but a
+// blank line ends the definition.
 const ATTACHMENT_RES = [
   /https?:\/\/github\.com\/user-attachments\/(?:assets|files)\//i,
   /https?:\/\/(?:private-)?user-images\.githubusercontent\.com\//i,
@@ -55,7 +57,7 @@ function hasResolvedReferenceImage(text) {
   for (const match of text.matchAll(REFERENCE_IMAGE_RE)) {
     const label = (match[2] || match[1]).trim();
     if (!label) continue;
-    const definition = new RegExp(`^ {0,3}\\[${escapeRegExp(label)}\\]:[ \\t]*\\S`, 'im');
+    const definition = new RegExp(`^ {0,3}\\[${escapeRegExp(label)}\\]:[ \\t]*(?:\\r?\\n[ \\t]*)?\\S`, 'im');
     if (definition.test(text)) return true;
   }
   return false;
@@ -80,13 +82,20 @@ export function nudgeComment() {
   ].join('\n');
 }
 
+export function hasNudgeComment(comments) {
+  return Array.isArray(comments) && comments.some((comment) => String(comment?.body ?? '').includes(COMMENT_MARKER));
+}
+
 /**
  * Pure decision for one `issues` event. Returns `{ action, reason }` where
- * `action` is `nudge` (label and comment), `clear` (remove the label) or
- * `none`. A labelled issue that still lacks evidence is left alone so the
- * comment is posted once, not on every edit.
+ * `action` is `nudge` (label and/or comment), `clear` (remove the label) or
+ * `none`. The label and the marker comment are reconciled separately: a
+ * `nudge` carries `label` and `comment` booleans naming what is still
+ * missing, so a comment that failed after the label landed is retried, and
+ * an image that was attached and then removed gets the label back without a
+ * second comment. `nudged` says whether the marker comment already exists.
  */
-export function decide(event) {
+export function decide(event, { nudged = false } = {}) {
   const issue = event?.issue;
   if (!issue || typeof issue !== 'object') {
     return { action: 'none', reason: 'no-issue' };
@@ -111,7 +120,10 @@ export function decide(event) {
   if (hasAttachment(text)) {
     return hasLabel ? { action: 'clear', reason: 'attachment-present' } : { action: 'none', reason: 'attachment-present' };
   }
-  return hasLabel ? { action: 'none', reason: 'already-nudged' } : { action: 'nudge', reason: 'missing-attachment' };
+  if (hasLabel && nudged) {
+    return { action: 'none', reason: 'already-nudged' };
+  }
+  return { action: 'nudge', reason: 'missing-attachment', label: !hasLabel, comment: !nudged };
 }
 
 function issuePath(repo, number, suffix = '') {
@@ -142,13 +154,17 @@ export function apply(decision, { gh, repo, number }) {
 
   switch (decision.action) {
     case 'nudge':
-      ensureLabel({ gh: run, repo });
-      run(['api', '--method', 'POST', issuePath(repo, number, '/labels'), '--input', '-'], {
-        input: JSON.stringify({ labels: [LABEL] }),
-      });
-      run(['api', '--method', 'POST', issuePath(repo, number, '/comments'), '--input', '-'], {
-        input: JSON.stringify({ body: nudgeComment() }),
-      });
+      if (decision.label !== false) {
+        ensureLabel({ gh: run, repo });
+        run(['api', '--method', 'POST', issuePath(repo, number, '/labels'), '--input', '-'], {
+          input: JSON.stringify({ labels: [LABEL] }),
+        });
+      }
+      if (decision.comment !== false) {
+        run(['api', '--method', 'POST', issuePath(repo, number, '/comments'), '--input', '-'], {
+          input: JSON.stringify({ body: nudgeComment() }),
+        });
+      }
       break;
     case 'clear':
       run(['api', '--method', 'DELETE', issuePath(repo, number, `/labels/${encodeURIComponent(LABEL)}`)]);
@@ -188,13 +204,22 @@ function fetchIssue({ gh, repo, number }) {
   return issue;
 }
 
+function fetchComments({ gh, repo, number }) {
+  // --slurp returns one array per page; flatten so a long thread still reads whole.
+  const pages = JSON.parse(gh(['api', '--paginate', '--slurp', issuePath(repo, number, '/comments')]));
+  if (!Array.isArray(pages)) throw new Error(`issue #${number} comments read back as ${typeof pages}`);
+  return pages.flat();
+}
+
 export function main(env = process.env, gh = runGh) {
   const event = loadEvent(env);
   const repo = event.repository?.full_name || env.GITHUB_REPOSITORY;
   const number = event.issue?.number;
   if (!repo || !number) throw new Error('event payload has no repository or issue number');
 
-  const decision = decide({ ...event, issue: fetchIssue({ gh, repo, number }) });
+  const issue = fetchIssue({ gh, repo, number });
+  const nudged = hasNudgeComment(fetchComments({ gh, repo, number }));
+  const decision = decide({ ...event, issue }, { nudged });
   console.log(`issue #${number}: ${decision.action} (${decision.reason})`);
   const calls = apply(decision, { gh, repo, number });
   for (const call of calls) console.log(`  gh ${call.join(' ')}`);

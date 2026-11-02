@@ -20,7 +20,9 @@ import {
   apply,
   decide,
   hasAttachment,
+  hasNudgeComment,
   main,
+  nudgeComment,
   mentionsUi,
 } from '../scripts/check-issue-ui-evidence.mjs';
 
@@ -75,6 +77,7 @@ describe('hasAttachment', () => {
       '![shot][image]\n\n[image]: https://example.com/shot.png',
       '![shot][]\n\n[shot]: https://example.com/shot.png',
       '![Shot][IMAGE]\n\n  [image]: https://example.com/shot.png "title"',
+      '![shot][image]\n\n[image]:\nhttps://example.com/shot.png',
       '<img width="800" alt="panel" src="https://example.com/shot.png" />',
     ];
     for (const text of forms) assert.equal(hasAttachment(text), true, text);
@@ -93,19 +96,42 @@ describe('hasAttachment', () => {
       '![shot][image]\n\n[image]:',
       '![shot][image]\n\n[other]: https://example.com/shot.png',
       '![shot][]\n\n[image]: https://example.com/shot.png',
+      '![shot][image]\n\n[image]:\n\nhttps://example.com/shot.png',
       '![][]',
     ];
     for (const text of unresolved) assert.equal(hasAttachment(text), false, text);
   });
 });
 
+describe('hasNudgeComment', () => {
+  it('finds the marker in any comment and nothing else', () => {
+    assert.equal(hasNudgeComment([{ body: 'thanks' }, { body: nudgeComment() }]), true);
+    assert.equal(hasNudgeComment([{ body: 'thanks' }, { body: null }]), false);
+    assert.equal(hasNudgeComment([]), false);
+    assert.equal(hasNudgeComment(undefined), false);
+  });
+});
+
 describe('decide', () => {
-  it('nudges a UI report with no attachment', () => {
-    assert.deepEqual(decide(event()), { action: 'nudge', reason: 'missing-attachment' });
+  it('nudges a UI report with no attachment: label and comment', () => {
+    assert.deepEqual(decide(event()), { action: 'nudge', reason: 'missing-attachment', label: true, comment: true });
   });
 
-  it('nudges once: a labelled report that still lacks evidence is left alone on later edits', () => {
-    assert.deepEqual(decide(event({ labels: [{ name: LABEL }] })), { action: 'none', reason: 'already-nudged' });
+  it('nudges once: a labelled and commented report that still lacks evidence is left alone on later edits', () => {
+    assert.deepEqual(decide(event({ labels: [{ name: LABEL }] }), { nudged: true }), { action: 'none', reason: 'already-nudged' });
+  });
+
+  it('retries only the comment when the label landed but the comment did not', () => {
+    assert.deepEqual(decide(event({ labels: [{ name: LABEL }] }), { nudged: false }), {
+      action: 'nudge',
+      reason: 'missing-attachment',
+      label: false,
+      comment: true,
+    });
+  });
+
+  it('re-applies only the label when an image was attached, the label cleared, and the image removed again', () => {
+    assert.deepEqual(decide(event(), { nudged: true }), { action: 'nudge', reason: 'missing-attachment', label: true, comment: false });
   });
 
   it('reads the word from the title alone and from the body alone', () => {
@@ -170,7 +196,7 @@ describe('apply', () => {
 
   it('nudge: ensures the label exists, applies it, and comments; the issue state is never written', () => {
     const { calls, gh } = recorder();
-    apply({ action: 'nudge' }, { gh, ...target });
+    apply({ action: 'nudge', label: true, comment: true }, { gh, ...target });
     assert.deepEqual(calls.map((c) => c.args.slice(0, 4)), [
       ['api', '--method', 'POST', 'repos/koala73/worldmonitor/labels'],
       ['api', '--method', 'POST', 'repos/koala73/worldmonitor/issues/42/labels'],
@@ -185,6 +211,15 @@ describe('apply', () => {
       assert.notEqual(call.args[2], 'PATCH', 'the issue itself is never patched');
       assert.equal(call.input.state, undefined);
     }
+  });
+
+  it('nudge writes only the missing half', () => {
+    const commentOnly = recorder();
+    apply({ action: 'nudge', label: false, comment: true }, { gh: commentOnly.gh, ...target });
+    assert.deepEqual(commentOnly.calls.map((c) => c.args[3]), ['repos/koala73/worldmonitor/issues/42/comments']);
+    const labelOnly = recorder();
+    apply({ action: 'nudge', label: true, comment: false }, { gh: labelOnly.gh, ...target });
+    assert.deepEqual(labelOnly.calls.map((c) => c.args[3]), ['repos/koala73/worldmonitor/labels', 'repos/koala73/worldmonitor/issues/42/labels']);
   });
 
   it('nudge tolerates a label that already exists and fails on any other label error', () => {
@@ -220,23 +255,35 @@ describe('main', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   };
-  const ghReading = (live) => {
+  const ghReading = (live, commentPages = [[]]) => {
     const calls = [];
     const gh = (args) => {
       calls.push(args);
       if (args.length === 2 && args[1] === 'repos/koala73/worldmonitor/issues/42') return JSON.stringify(live);
+      if (args.includes('--paginate') && args.at(-1) === 'repos/koala73/worldmonitor/issues/42/comments') return JSON.stringify(commentPages);
       return '';
     };
     return { calls, gh };
   };
 
-  it('reads the event payload from GITHUB_EVENT_PATH, then decides from the live issue, not the snapshot', () => {
+  it('reads the event payload from GITHUB_EVENT_PATH, then decides from the live issue and its comments, not the snapshot', () => {
     withEvent(event(), (eventPath) => {
       const { calls, gh } = ghReading(issue());
       const decision = main({ GITHUB_EVENT_PATH: eventPath }, gh);
-      assert.equal(decision.action, 'nudge');
+      assert.deepEqual(decision, { action: 'nudge', reason: 'missing-attachment', label: true, comment: true });
       assert.deepEqual(calls[0], ['api', 'repos/koala73/worldmonitor/issues/42']);
+      assert.deepEqual(calls[1], ['api', '--paginate', '--slurp', 'repos/koala73/worldmonitor/issues/42/comments']);
       assert.equal(calls.at(-1)[3], 'repos/koala73/worldmonitor/issues/42/comments');
+    });
+  });
+
+  it('sees the marker comment on any page, so a labelled issue with the comment is not nudged again', () => {
+    withEvent(event(), (eventPath) => {
+      const pages = [[{ body: 'first' }], [{ body: nudgeComment() }]];
+      const { calls, gh } = ghReading(issue({ labels: [{ name: LABEL }] }), pages);
+      const decision = main({ GITHUB_EVENT_PATH: eventPath }, gh);
+      assert.deepEqual(decision, { action: 'none', reason: 'already-nudged' });
+      assert.equal(calls.length, 2, 'only the two reads');
     });
   });
 
@@ -255,7 +302,7 @@ describe('main', () => {
       const { calls, gh } = ghReading(issue({ body: PASTED_IMAGE }));
       const decision = main({ GITHUB_EVENT_PATH: eventPath }, gh);
       assert.equal(decision.action, 'none');
-      assert.equal(calls.length, 1, 'only the read');
+      assert.equal(calls.length, 2, 'only the two reads');
     });
   });
 
