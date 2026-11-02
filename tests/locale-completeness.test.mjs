@@ -142,6 +142,35 @@ describe('locale completeness', () => {
     });
   }
 
+  // The chokepoint strip shows these names on every dashboard. An English value
+  // left in a catalogue renders as English to that locale's readers. Latin-script
+  // locales may keep "Suez" or "Panama", but the descriptive names are English
+  // phrases, and a non-Latin-script locale has no reason to show Latin text here.
+  // flow.mbd is a unit and creditName names an EIA publication.
+  const NON_LATIN_SCRIPT = new Set([
+    'ar.json', 'bg.json', 'el.json', 'fa.json', 'hi.json', 'ja.json', 'ko.json',
+    'ru.json', 'th.json', 'uk.json', 'zh-TW.json', 'zh.json',
+  ]);
+  const enStrip = flatten(en.components.chokepointStrip);
+  for (const file of localeFiles) {
+    it(`${file} translates the chokepoint strip names instead of copying English`, () => {
+      const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
+      const strip = flatten(locale.components.chokepointStrip);
+      for (const key of ['shortName.bosphorus', 'shortName.doverStrait']) {
+        assert.notEqual(strip[key], enStrip[key], `${file} chokepointStrip.${key} is still English`);
+      }
+      if (!NON_LATIN_SCRIPT.has(file)) return;
+      const copied = Object.keys(enStrip).filter((key) =>
+        key !== 'flow.mbd' && key !== 'attribution.creditName' && strip[key] === enStrip[key]);
+      assert.deepEqual(copied, [], `${file} chokepointStrip keys still English: ${copied.join(', ')}`);
+      for (const [key, value] of Object.entries(strip)) {
+        if (key.startsWith('shortName.')) {
+          assert.doesNotMatch(value, /[A-Za-z]/, `${file} chokepointStrip.${key} shows Latin text: ${value}`);
+        }
+      }
+    });
+  }
+
   for (const file of ['en.json', ...localeFiles]) {
     it(`${file} discloses NWS, ECCC, and WMO SWIC coverage in the weather layer help, not the short label`, () => {
       const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
