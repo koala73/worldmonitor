@@ -563,7 +563,7 @@
 
 .china-nowcast-contributions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 6px;
 }
 
@@ -632,7 +632,7 @@
 
 .china-nowcast-method__grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 10px;
   padding: 0 10px 10px;
   border-top: 1px solid var(--border-subtle);
@@ -661,10 +661,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .china-nowcast-contributions,
-  .china-nowcast-method__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 720px) {
@@ -676,9 +672,7 @@
     margin-top: 6px;
   }
 
-  .china-nowcast-summary,
-  .china-nowcast-contributions,
-  .china-nowcast-method__grid {
+  .china-nowcast-summary {
     grid-template-columns: minmax(0, 1fr);
   }
 
