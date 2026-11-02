@@ -53,5 +53,6 @@ Diagnostic route that worked: download the screenshot artifact (`gh run download
 - When a step's last output is a ✅ line followed by a bare exit code, suspect the next command substitution before suspecting the product.
 
 ## Related Issues
+
 - PR #10008: the fix, plus the `test-linux-app.yml` row in `ARCHITECTURE.md`.
-- #5902: the original installed-app canary.
+- Issue #5902: the original installed-app canary.
