@@ -82,9 +82,12 @@ function dateColumns(data) {
   return Object.values(cols).every(i => i >= 0) ? { ...cols, width: schema.length } : null;
 }
 
+// An unnamed hierarchy means the report changed shape. Throwing fails
+// validateFn, so the run keeps the last good snapshot instead of an empty chart.
 export function parseChartSeries(data, cutoff) {
+  if (!data?.dsr?.DS?.[0]?.PH?.[0]?.DM0?.length) return [];
   const cols = dateColumns(data);
-  if (!cols) return [];
+  if (!cols) throw new Error('Power BI response does not name the Year/Month/Day date hierarchy');
   return decodeDsr(data.dsr, cols.width)
     .map(row => {
       const date = isoDate(row[cols.year], row[cols.month], row[cols.day]);

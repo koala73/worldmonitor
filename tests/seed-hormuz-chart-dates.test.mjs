@@ -84,8 +84,12 @@ describe('parseChartSeries: Power BI date hierarchy to ISO series', () => {
     ]);
   });
 
-  it('returns no points when the response does not name the date hierarchy', () => {
+  it('rejects rows whose date hierarchy it cannot name, so the run keeps the last good snapshot', () => {
     const unnamed = { ...yearMonthDay, descriptor: { Select: [] } };
-    assert.deepEqual(parseChartSeries(unnamed, cutoff), []);
+    assert.throws(() => parseChartSeries(unnamed, cutoff), /date hierarchy/);
+  });
+
+  it('returns no points for a visual with no rows', () => {
+    assert.deepEqual(parseChartSeries({ descriptor: yearMonthDay.descriptor, dsr: { DS: [{ PH: [{ DM0: [] }] }] } }, cutoff), []);
   });
 });
