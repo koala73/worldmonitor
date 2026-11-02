@@ -4504,3 +4504,72 @@ a.hub-top-story {
   text-transform: uppercase;
   color: var(--text-muted);
 }
+
+/* ----------------------------------------------------------
+   Hormuz Trade Tracker: commodity dependencies
+   ---------------------------------------------------------- */
+.hz-dependencies {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.hz-dependencies .hz-dependencies-title {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hz-dependencies .hz-dependencies-empty {
+  margin-top: 5px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+}
+
+.hz-dependencies .hz-dependencies-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 7px;
+}
+
+.hz-dependencies .hz-dependencies-heading {
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.hz-dependencies .hz-dependencies-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 5px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hz-dependencies .hz-dependency {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hz-dependencies .hz-dependency-label {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text);
+}
+
+.hz-dependencies .hz-dependency-context {
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+}
+
+.hz-dependencies .hz-dependencies-method {
+  margin-top: 7px;
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+}
