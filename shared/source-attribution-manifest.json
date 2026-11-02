@@ -9005,6 +9005,20 @@
       ]
     },
     {
+      "host": "ssl.bing.com",
+      "provider": "ssl.bing.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/seo-bing-collect.mjs"
+        }
+      ]
+    },
+    {
       "host": "stat.gov.kg",
       "provider": "stat.gov.kg",
       "kind": "structured",
@@ -10817,6 +10831,9 @@
         },
         {
           "path": "scripts/seed-wb-indicators.mjs"
+        },
+        {
+          "path": "scripts/seo-bing-collect.mjs"
         },
         {
           "path": "scripts/shared/notify-fields.cjs"
