@@ -2794,6 +2794,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "scripts/build-open-data-chokepoints.mjs"
+        },
+        {
           "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         },
         {
@@ -14867,6 +14870,9 @@
         },
         {
           "path": "scripts/build-crawlable-corpus.mjs"
+        },
+        {
+          "path": "scripts/build-open-data-chokepoints.mjs"
         },
         {
           "path": "scripts/build-openapi-json.mjs"
