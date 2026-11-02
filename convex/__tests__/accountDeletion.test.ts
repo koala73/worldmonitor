@@ -154,6 +154,17 @@ async function seedUser(
       localePrimary: "en",
       firstSeenAt: now,
       lastSeenAt: now,
+      // About-you answers and their free text live on this row, so deleting
+      // it is what erases them (KTD1).
+      aboutYou: {
+        version: 1,
+        primaryUse: "markets",
+        usageContext: "work",
+        alternative: "a terminal my employer pays for",
+        firstAnsweredAt: now,
+        updatedAt: now,
+        answerSurface: "dashboard",
+      },
     });
   });
 }

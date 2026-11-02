@@ -20,6 +20,7 @@ import type * as apiKeys from "../apiKeys.js";
 import type * as apiPlanLimitEmails from "../apiPlanLimitEmails.js";
 import type * as apiPlanLimitNotices from "../apiPlanLimitNotices.js";
 import type * as apiPlanLimitUsage from "../apiPlanLimitUsage.js";
+import type * as audienceProfile from "../audienceProfile.js";
 import type * as broadcast__localeHeuristic from "../broadcast/_localeHeuristic.js";
 import type * as broadcast__poolSelection from "../broadcast/_poolSelection.js";
 import type * as broadcast__resendContacts from "../broadcast/_resendContacts.js";
@@ -109,6 +110,7 @@ declare const fullApi: ApiFromModules<{
   apiPlanLimitEmails: typeof apiPlanLimitEmails;
   apiPlanLimitNotices: typeof apiPlanLimitNotices;
   apiPlanLimitUsage: typeof apiPlanLimitUsage;
+  audienceProfile: typeof audienceProfile;
   "broadcast/_localeHeuristic": typeof broadcast__localeHeuristic;
   "broadcast/_poolSelection": typeof broadcast__poolSelection;
   "broadcast/_resendContacts": typeof broadcast__resendContacts;

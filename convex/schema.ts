@@ -1049,6 +1049,29 @@ export default defineSchema({
     // OPTIONAL and not backfilled.
     signupRef: v.optional(v.string()),
     signupSource: v.optional(v.string()),
+    // About-you answers (what the account uses WorldMonitor for, personal or
+    // work, who pays, role, and an optional free-text alternative). Option ids
+    // come from shared/audience-profile.ts; `convex/audienceProfile.ts` is the
+    // only writer. Lives on this row so account deletion erases it with the
+    // row. `write*` fields are the per-user write limit, not answers.
+    aboutYou: v.optional(
+      v.object({
+        version: v.number(),
+        primaryUse: v.optional(v.string()),
+        usageContext: v.optional(v.string()),
+        payer: v.optional(v.string()),
+        role: v.optional(v.string()),
+        alternative: v.optional(v.string()),
+        firstAnsweredAt: v.optional(v.number()),
+        updatedAt: v.optional(v.number()),
+        answerSurface: v.optional(v.string()),
+        skippedAt: v.optional(v.number()),
+        skipSurface: v.optional(v.string()),
+        returnShownAt: v.optional(v.number()),
+        writeWindowStart: v.optional(v.number()),
+        writeCount: v.optional(v.number()),
+      }),
+    ),
   })
     .index("by_userId", ["userId"])
     .index("by_normalizedEmail", ["normalizedEmail"])
