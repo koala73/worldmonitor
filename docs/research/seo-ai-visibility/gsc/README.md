@@ -80,7 +80,8 @@ by-property number directly, and the window `totals` are labelled
 compare the site with the chart, never one with the other.
 
 **Brand and non-brand are split with one pattern.** `BRAND_QUERY_PATTERN` in
-the collector names World Monitor and its common misspellings. Google applies
+the collector names World Monitor and its misspellings, including the
+`worldmoniter` family Bing reports. Google applies
 it as a query filter; the snapshot applies the same source to its own top
 queries. A query filter drops anonymized queries, so the site table reports
 them as the remainder (`anonymized`) instead of losing them, and per-family

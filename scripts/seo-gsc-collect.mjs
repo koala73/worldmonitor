@@ -116,8 +116,17 @@ const WINDOW_DAYS = Object.freeze({ '28d': 28, '90d': 90 });
  * source compiled as a case-insensitive JavaScript RegExp, so the two can
  * never drift. It uses only syntax the two engines share.
  */
-export const BRAND_QUERY_PATTERN = '(world|word|wolrd|wrold)[ ._-]*monitor|ワールドモニター';
-const BRAND_QUERY_REGEX = new RegExp(BRAND_QUERY_PATTERN, 'i');
+/**
+ * The second alternative takes the misspellings Bing reported on 2026-11-02
+ * (moniter, montior, monitar, monotor, moniteur and so on). A vowel cluster or
+ * "in"/"ti" sits on at least one side of the `t`, which keeps "monetary" and
+ * "montreal" out, and requiring a non-letter (any script) or the end after it
+ * keeps "monterrey" and "montería" out while still accepting `_`, `.` and spaces.
+ * The first alternative stays unbounded so every query it matched before
+ * (worldmonitorapp, world monitoring) is still brand.
+ */
+export const BRAND_QUERY_PATTERN = '(world|word|wolrd|wrold)[ ._-]*monitor|(world|word|wolrd|wrold|worl|wold|wordl)[ ._-]*mon((i|o|a|in|ti)t(o|e|i|a|io|oe|eu|p)?|t(o|e|i|a|io|oe|eu|p))r(o|s|ing)?(app)?(\\P{L}|$)|ワールドモニター';
+const BRAND_QUERY_REGEX = new RegExp(BRAND_QUERY_PATTERN, 'iu');
 export const isBrandQuery = (query) => BRAND_QUERY_REGEX.test(String(query ?? ''));
 const BRAND_FILTER_EXPRESSION = `(?i)${BRAND_QUERY_PATTERN}`;
 const queryFilter = (operator) => ({
