@@ -752,7 +752,7 @@ describe('Search Console site totals and brand split', () => {
     }
     for (const query of ['war monitor', 'warmonitor', 'monitor the situation', 'ww3 monitor',
       'pentagon pizza index', 'osint world map', 'world news', 'world monetary fund', 'world montreal',
-      'word montage', 'world mentor', 'world monuments', 'world monterrey', 'world monteria']) {
+      'word montage', 'world mentor', 'world monuments', 'world monterrey', 'world monteria', 'world montería']) {
       assert.equal(isBrandQuery(query), false, query);
     }
   });
