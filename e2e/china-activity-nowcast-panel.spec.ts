@@ -51,7 +51,9 @@ test.describe('China activity nowcast panel', () => {
     await expect(methodGrid).toHaveCSS('grid-template-columns', /^\S+$/);
     const methodOverflow = await methodGrid.evaluate((element) => element.scrollWidth - element.clientWidth);
     expect(methodOverflow).toBeLessThanOrEqual(1);
-    const columnOverflow = await panel.evaluate((element) => element.scrollWidth - element.clientWidth);
+    const columnOverflow = await panel.locator('.panel-content').evaluate(
+      (element) => element.scrollWidth - element.clientWidth,
+    );
     expect(columnOverflow).toBeLessThanOrEqual(1);
 
     await panel.evaluate((element) => { element.style.width = ''; });
