@@ -82,7 +82,7 @@ describe.each(TIMEZONES)('RegulationPanel Timeline tab in %s', (tz) => {
     expect(text(content.querySelector('h4'))).toBe('Recent Regulatory Actions (Last 12 Months)');
     const items = [...content.querySelectorAll('.timeline-item')];
     expect(text(items[0]?.querySelector('.timeline-date'))).toBe('Aug 2, 2026');
-    expect(text(items.at(-1)?.querySelector('.timeline-date'))).toBe('Nov 5, 2025');
+    expect(text(items[items.length - 1]?.querySelector('.timeline-date'))).toBe('Nov 5, 2025');
     for (const item of items) {
       expect(item.querySelector<HTMLAnchorElement>('.timeline-source a')?.href).toMatch(/^https:\/\//);
     }
