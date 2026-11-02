@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RegulationPanel } from '@/components/RegulationPanel';
+import { AI_REGULATIONS, REGULATORY_ACTIONS } from '@/config/ai-regulations';
 import { initTestI18n } from './helpers/i18n.mts';
 
 // The Timeline and Deadlines tabs filter a static dataset against the clock.
@@ -69,7 +70,7 @@ describe.each(TIMEZONES)('RegulationPanel Timeline tab in %s', (tz) => {
     expect(content.querySelector('.regulation-note')).toBeNull();
     expect(text(content.querySelector('h4'))).toBe('Recent Regulatory Actions (Last 12 Months)');
     const dates = [...content.querySelectorAll('.timeline-item .timeline-date')].map(text);
-    expect(dates).toEqual(['Jan 14, 2025', 'Aug 1, 2024', 'Jul 1, 2024', 'May 15, 2024']);
+    expect(dates).toEqual(['Jan 14, 2025', 'Aug 1, 2024', 'Jul 1, 2024']);
     panel.destroy();
   });
 });
@@ -137,5 +138,21 @@ describe.each(TIMEZONES)('RegulationPanel Deadlines tab in %s', (tz) => {
     expect(text(item!.querySelector('h5'))).toBe('EU AI Act');
     expect(text(item!.querySelector('.days-label'))).toBe('days');
     panel.destroy();
+  });
+});
+
+describe('AI regulation dataset', () => {
+  // The Timeline lists these as recorded actions. Enforcement under a
+  // regulation cannot predate the date that regulation took effect, so an
+  // entry that does is a forecast presented as fact.
+  it('dates no enforcement action before its regulation took effect', () => {
+    const early = REGULATORY_ACTIONS
+      .filter((action) => action.type === 'enforcement' && action.regulationId)
+      .filter((action) => {
+        const effective = AI_REGULATIONS.find((reg) => reg.id === action.regulationId)?.effectiveDate;
+        return effective !== undefined && action.date < effective;
+      })
+      .map((action) => `${action.id} ${action.date}`);
+    expect(early).toEqual([]);
   });
 });
