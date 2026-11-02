@@ -471,17 +471,26 @@ jobs:
       # The next run's estimates, saved whether the tests passed or not: a cache
       # saved only by green runs goes stale exactly while main is red. The shard
       # moves its own files halfway to what they measured, on top of the
-      # estimates it ran with; a failed or killed shard saves nothing. Every
-      # shard saves its own entry and the next run takes the newest, so each
-      # run refreshes one shard's files and every file is refreshed within a
-      # few runs. Neither step can fail the shard.
+      # estimates it ran with; a failed or killed shard saves nothing. The next
+      # run reads only the newest entry, so if every shard saved, whichever
+      # finished last would win and the same shard could win every run. One
+      # shard saves per run instead, in turn by run number, so every shard's
+      # files are refreshed within one turn of the matrix. Neither step can
+      # fail the shard.
       - name: Blend this shard's timings into the estimates
         id: blend-durations
         if: ${{ !cancelled() }}
         continue-on-error: true
         env:
           DURATIONS_KEY: ${{ needs.changes.outputs.durations_key }}
+          RUN_NUMBER: ${{ github.run_number }}
+          SHARD_INDEX: ${{ strategy.job-index }}
+          SHARD_TOTAL: ${{ strategy.job-total }}
         run: |
+          if (( RUN_NUMBER % SHARD_TOTAL != SHARD_INDEX )); then
+            echo "Run $RUN_NUMBER saves estimates from shard $(( RUN_NUMBER % SHARD_TOTAL + 1 )), not this one."
+            exit 0
+          fi
           previous=scripts/shared/data-test-durations.json
           [ -n "$DURATIONS_KEY" ] && previous="$HOME/data-test-durations/durations.json"
           next="$RUNNER_TEMP/next-durations.json"

@@ -114,7 +114,7 @@ test('--durations places files by the given estimates, and every shard still cov
   }
 });
 
-test('every unit shard reads the one durations entry the run looked up, and saves its own after a red run too', () => {
+test('every unit shard reads the one durations entry the run looked up, and one shard in turn saves after every run, red or green', () => {
   const changes = workflow.jobs.changes;
   const lookup = changes.steps.find((step) => step.id === 'durations');
   assert.equal(lookup.with['lookup-only'], true);
@@ -145,6 +145,12 @@ test('every unit shard reads the one durations entry the run looked up, and save
     assert.equal(step['continue-on-error'], true);
   }
   assert.match(blend.run, /refresh-data-test-durations\.mjs --blend/);
+  // One shard saves per run, in turn: if all saved, the newest entry would be
+  // whichever finished last, and the same shard could win every run.
+  assert.equal(blend.env.RUN_NUMBER, '${{ github.run_number }}');
+  assert.equal(blend.env.SHARD_INDEX, '${{ strategy.job-index }}');
+  assert.equal(blend.env.SHARD_TOTAL, '${{ strategy.job-total }}');
+  assert.ok(blend.run.trimStart().startsWith('if (( RUN_NUMBER % SHARD_TOTAL != SHARD_INDEX )); then'), blend.run);
   assert.ok(save.uses.startsWith('actions/cache/save@'));
   assert.ok(save.with.key.startsWith(prefix), `${save.with.key} must match restore-keys ${prefix}`);
   assert.match(save.with.key, /matrix\.shard/);

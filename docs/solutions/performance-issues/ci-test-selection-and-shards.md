@@ -85,8 +85,11 @@ as long as main is red (sorrycc/Mayoi#102 lost its Go cache that way). The next
 run's `changes` job looks the newest entry up once and every shard restores that
 exact key. They cannot each restore by prefix: every shard computes the whole
 partition and keeps its part, so a shard that read a newer entry than its
-siblings would drop or repeat test files. The newest entry carries one shard's
-refresh, so each file is refreshed within a few runs. This needs no extra job:
+siblings would drop or repeat test files. Only one shard saves per run, chosen
+in turn by `github.run_number % strategy.job-total`: when every shard saved, the
+newest entry was whichever finished last, and the same shard could win every
+run while the others' files never refreshed. In turn, every shard's files are
+refreshed within one cycle of the matrix (five runs). This needs no extra job:
 `test.yml` may not hold advisory jobs (#5402), and a gated job after the shards
 would add its startup to the wall clock, which the shards set. The committed
 `scripts/shared/data-test-durations.json` is the fallback when no
