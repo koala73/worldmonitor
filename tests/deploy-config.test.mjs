@@ -515,6 +515,19 @@ describe('open data under /data/v1', () => {
   it('leaves unversioned /data assets immutable', () => {
     assert.equal(effectiveCacheControl('/data/countries-50m.json'), 'public, max-age=31536000, immutable');
   });
+
+  const nginxLocation = (prefix) => {
+    const match = dockerNginxSource.match(new RegExp(`^ {4}location ${prefix.replace(/\//g, '\\/')} \\{\\n([\\s\\S]*?)^ {4}\\}`, 'm'));
+    assert.ok(match, `docker/nginx.conf must declare location ${prefix}`);
+    return match[1];
+  };
+
+  it('gives the self-hosted image the same hourly, cross-origin rule for /data/v1/', () => {
+    const block = nginxLocation('/data/v1/');
+    assert.match(block, /add_header Cache-Control "public, max-age=3600";/);
+    assert.match(block, /add_header Access-Control-Allow-Origin "\*" always;/);
+    assert.match(nginxLocation('/data/'), /add_header Cache-Control "public, max-age=31536000, immutable";/);
+  });
 });
 
 describe('crawlable content corpus deployment contracts', () => {
