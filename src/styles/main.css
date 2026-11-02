@@ -12373,10 +12373,14 @@ a.prediction-link:hover {
 /* Global Procurement */
 .global-procurement-controls {
   display: grid;
-  grid-template-columns: minmax(150px, 2fr) minmax(110px, 1fr) 72px minmax(110px, 1fr) minmax(120px, 1fr) auto auto auto;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 6px;
   padding: 8px;
   border-bottom: 1px solid var(--border);
+}
+
+.global-procurement-input:first-child {
+  grid-column: 1 / -1;
 }
 
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Chrome declarative WebMCP pseudo-class. */
@@ -12405,6 +12409,7 @@ a.prediction-link:hover {
 }
 
 .global-procurement-toggle {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -12502,20 +12507,6 @@ a.prediction-link:hover {
 .global-procurement-card a.award-agency {
   display: inline-block;
   color: var(--green-text, var(--green));
-}
-
-@media (max-width: 900px) {
-  .global-procurement-controls {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .global-procurement-input:first-child {
-    grid-column: 1 / -1;
-  }
-
-  .global-procurement-toggle {
-    grid-column: 1 / -1;
-  }
 }
 
 /* Trade Policy Panel */
