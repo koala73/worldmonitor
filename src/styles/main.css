@@ -1982,6 +1982,15 @@ canvas,
   }
 }
 
+/* #8276: A collapsed natural video panel is only its header, so reserve one
+   grid row instead of the two-row .panel-wide footprint. */
+@media (min-width: 769px) {
+  #panelsGrid > .panel[data-panel="live-news"].panel-wide.panel-collapsed:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4),
+  #panelsGrid > .panel[data-panel="live-webcams"].panel-wide.panel-collapsed:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
+    grid-row: span 1;
+  }
+}
+
 .panel.span-3 {
   grid-row: span 3 !important;
   min-height: 600px !important;

@@ -76,6 +76,29 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
           const rect = panel.getBoundingClientRect();
           const style = getComputedStyle(panel);
 
+          // Every desktop webcam cell must fit inside the webcam grid; a
+          // height cap that clips the 2x2 grid would otherwise still pass.
+          const webcamGrid = id === 'live-webcams'
+            ? panel.querySelector<HTMLElement>('.webcam-grid')
+            : null;
+          const gridRect = webcamGrid?.getBoundingClientRect();
+          const webcamCells = webcamGrid
+            ? Array.from(webcamGrid.querySelectorAll<HTMLElement>('.webcam-cell'))
+            : [];
+          const webcamCellsVisible = id !== 'live-webcams' || (
+            !!gridRect &&
+            webcamCells.length === 4 &&
+            webcamCells.every(cell => {
+              const cellRect = cell.getBoundingClientRect();
+              return (
+                getComputedStyle(cell).display !== 'none' &&
+                cellRect.height > 0 &&
+                cellRect.top >= gridRect.top - 2 &&
+                cellRect.bottom <= gridRect.bottom + 2
+              );
+            })
+          );
+
           const next = panels
             .filter(candidate => candidate !== panel)
             .map(candidate => ({
@@ -104,6 +127,7 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
             style.gridRowStart === `span ${span}` &&
             Math.abs(rect.height - panelHeight) <= 2 &&
             Math.abs(gap - 4) <= 2 &&
+            webcamCellsVisible &&
             !panel.classList.contains('resized')
           );
         });
@@ -116,9 +140,21 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
     ).toBe(true);
   }
   await page.setViewportSize({ width: 1600, height: 866 });
+  const footprint = (panel: typeof news) => panel.evaluate(element => ({
+    span: getComputedStyle(element).gridRowStart,
+    height: Math.round(element.getBoundingClientRect().height),
+  }));
+  // A collapsed video panel is only a header, so it reserves one grid row
+  // instead of the two-row .panel-wide footprint.
   for (const panel of [news, webcams]) {
     await panel.locator('.panel-collapse-btn').click();
     await expect(panel).toHaveClass(/panel-collapsed/);
-    await expect.poll(() => panel.evaluate(element => getComputedStyle(element).gridRowStart)).toBe('span 2');
+    await expect.poll(() => footprint(panel)).toMatchObject({ span: 'span 1' });
+    expect((await footprint(panel)).height).toBeLessThanOrEqual(200);
+  }
+  for (const panel of [news, webcams]) {
+    await panel.locator('.panel-collapse-btn').click();
+    await expect(panel).not.toHaveClass(/panel-collapsed/);
+    await expect.poll(() => footprint(panel)).toEqual({ span: 'span 3', height: 608 });
   }
 });
