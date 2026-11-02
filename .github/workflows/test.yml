@@ -48,7 +48,10 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/data-test-durations/durations.json
-          key: data-test-durations-v1-${{ github.run_id }}
+          # A key nothing is saved under: actions/cache prefix-matches the
+          # primary key before restore-keys, so a run_id here would make a
+          # re-run of an old run prefer its own stale entry over the newest.
+          key: data-test-durations-v1-lookup
           restore-keys: data-test-durations-v1-
           lookup-only: true
       - id: diff
@@ -469,37 +472,39 @@ jobs:
           DURATIONS_KEY: ${{ needs.changes.outputs.durations_key }}
         run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/5 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl ${DURATIONS_KEY:+--durations="$HOME/data-test-durations/durations.json"}
       # The next run's estimates, saved whether the tests passed or not: a cache
-      # saved only by green runs goes stale exactly while main is red. The shard
-      # moves its own files halfway to what they measured, on top of the
-      # estimates it ran with; a failed or killed shard saves nothing. The next
+      # saved only by green runs goes stale exactly while main is red. The next
       # run reads only the newest entry, so if every shard saved, whichever
       # finished last would win and the same shard could win every run. One
-      # shard saves per run instead, in turn by run number, so every shard's
-      # files are refreshed within one turn of the matrix. Neither step can
-      # fail the shard.
+      # shard saves per run instead: the one after the shard that saved the
+      # entry this run restored (the key ends in its number), so the turn
+      # rotates within each cache scope, a PR's or main's. It moves its own
+      # files halfway to what they measured; if its tests failed it saves the
+      # estimates unchanged, so a red shard passes the turn on instead of
+      # holding it. Neither step can fail the shard.
       - name: Blend this shard's timings into the estimates
         id: blend-durations
         if: ${{ !cancelled() }}
         continue-on-error: true
         env:
           DURATIONS_KEY: ${{ needs.changes.outputs.durations_key }}
-          RUN_NUMBER: ${{ github.run_number }}
-          SHARD_INDEX: ${{ strategy.job-index }}
+          SHARD: ${{ matrix.shard }}
           SHARD_TOTAL: ${{ strategy.job-total }}
         run: |
-          if (( RUN_NUMBER % SHARD_TOTAL != SHARD_INDEX )); then
-            echo "Run $RUN_NUMBER saves estimates from shard $(( RUN_NUMBER % SHARD_TOTAL + 1 )), not this one."
+          last=0
+          [[ "$DURATIONS_KEY" =~ -([0-9]+)$ ]] && last=${BASH_REMATCH[1]}
+          saver=$(( last % SHARD_TOTAL + 1 ))
+          if (( saver != SHARD )); then
+            echo "Shard $saver saves this run's estimates, not this one."
             exit 0
           fi
           previous=scripts/shared/data-test-durations.json
           [ -n "$DURATIONS_KEY" ] && previous="$HOME/data-test-durations/durations.json"
           next="$RUNNER_TEMP/next-durations.json"
-          node scripts/refresh-data-test-durations.mjs --blend --previous "$previous" --output "$next" "$RUNNER_TEMP/data-test-timings.jsonl"
-          if [ -f "$next" ]; then
-            mkdir -p "$HOME/data-test-durations"
-            mv "$next" "$HOME/data-test-durations/durations.json"
-            echo "updated=true" >> "$GITHUB_OUTPUT"
-          fi
+          node scripts/refresh-data-test-durations.mjs --blend --previous "$previous" --output "$next" "$RUNNER_TEMP/data-test-timings.jsonl" || true
+          [ -f "$next" ] || cp "$previous" "$next"
+          mkdir -p "$HOME/data-test-durations"
+          mv "$next" "$HOME/data-test-durations/durations.json"
+          echo "updated=true" >> "$GITHUB_OUTPUT"
       - name: Save the estimates for the next run
         if: ${{ !cancelled() && steps.blend-durations.outputs.updated == 'true' }}
         continue-on-error: true

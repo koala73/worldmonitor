@@ -145,12 +145,15 @@ test('every unit shard reads the one durations entry the run looked up, and one 
     assert.equal(step['continue-on-error'], true);
   }
   assert.match(blend.run, /refresh-data-test-durations\.mjs --blend/);
-  // One shard saves per run, in turn: if all saved, the newest entry would be
-  // whichever finished last, and the same shard could win every run.
-  assert.equal(blend.env.RUN_NUMBER, '${{ github.run_number }}');
-  assert.equal(blend.env.SHARD_INDEX, '${{ strategy.job-index }}');
+  // One shard saves per run: the one after the shard whose entry was restored,
+  // so the turn rotates within the cache scope; a red saver passes it on.
+  assert.equal(blend.env.SHARD, '${{ matrix.shard }}');
   assert.equal(blend.env.SHARD_TOTAL, '${{ strategy.job-total }}');
-  assert.ok(blend.run.trimStart().startsWith('if (( RUN_NUMBER % SHARD_TOTAL != SHARD_INDEX )); then'), blend.run);
+  assert.match(blend.run, /saver=\$\(\( last % SHARD_TOTAL \+ 1 \)\)/);
+  assert.match(blend.run, /\[ -f "\$next" \] \|\| cp "\$previous" "\$next"/);
+  // The lookup key must not prefix-match any saved entry, or a re-run of an
+  // old run would restore its own stale entry ahead of the newest.
+  assert.ok(!lookup.with.key.includes('github.run_id') && !/^data-test-durations-v1-\d/.test(lookup.with.key), lookup.with.key);
   assert.ok(save.uses.startsWith('actions/cache/save@'));
   assert.ok(save.with.key.startsWith(prefix), `${save.with.key} must match restore-keys ${prefix}`);
   assert.match(save.with.key, /matrix\.shard/);

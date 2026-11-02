@@ -85,11 +85,17 @@ as long as main is red (sorrycc/Mayoi#102 lost its Go cache that way). The next
 run's `changes` job looks the newest entry up once and every shard restores that
 exact key. They cannot each restore by prefix: every shard computes the whole
 partition and keeps its part, so a shard that read a newer entry than its
-siblings would drop or repeat test files. Only one shard saves per run, chosen
-in turn by `github.run_number % strategy.job-total`: when every shard saved, the
-newest entry was whichever finished last, and the same shard could win every
-run while the others' files never refreshed. In turn, every shard's files are
-refreshed within one cycle of the matrix (five runs). This needs no extra job:
+siblings would drop or repeat test files. Only one shard saves per run: the one
+after the shard that saved the restored entry (the key ends in its number). When
+every shard saved, the newest entry was whichever finished last, and the same
+shard could win every run while the others' files never refreshed. The turn is
+taken from the restored key rather than `github.run_number` because PR and main
+runs share the run counter but not the cache, so a counter could keep landing
+main on one shard. A saver whose tests failed saves the estimates unchanged, so
+it passes the turn on instead of holding it while it stays red. The lookup key is
+`data-test-durations-v1-lookup`, which no entry is saved under: actions/cache
+prefix-matches the primary key before the restore keys, so a key with the run id
+would make a re-run of an old run restore its own stale entry. This needs no extra job:
 `test.yml` may not hold advisory jobs (#5402), and a gated job after the shards
 would add its startup to the wall clock, which the shards set. The committed
 `scripts/shared/data-test-durations.json` is the fallback when no
