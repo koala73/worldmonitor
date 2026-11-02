@@ -129,9 +129,10 @@ rerun that page-filtered split.
 The Search Console Page indexing report ("Page with redirect", "Not found
 (404)", "Crawled, currently not indexed") has no API, and its totals are not
 tracked. Every number here comes from the API. URL Inspection covers each
-sitemap URL individually, which is the population the totals summarize. URLs
-outside the sitemap are seen only through the performance rows listed under
-"URLs outside every family".
+sitemap URL individually. URLs outside the sitemap appear only through
+performance rows: those with a known family count toward that family's numbers,
+and only URLs with no matching family are listed under "URLs outside every
+family".
 
 ## Run time and failures
 
