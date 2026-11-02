@@ -74,7 +74,7 @@ describe('flaky detector', () => {
       attempts: [[job('variant-smoke (2)', 'failure', 40, 0, [], 501)], [job('variant-smoke (2)', 'success', 120, 0, [], 502)]],
     }]);
     assert.equal(fromPr.evidence[0].detail, 'pull request: failed on attempt 1, passed on attempt 2');
-    assert.equal(fromPr.evidence[0].failedJobId, 501);
+    assert.deepEqual(fromPr.evidence[0].failedJobIds, [501]);
     assert.deepEqual(fromPr.evidence[0].pullRequests, [9732]);
     const [fromMain] = findFlakyJobs([{
       run: run({ run_attempt: 2, event: 'push', head_branch: 'main' }),
@@ -252,8 +252,24 @@ describe('failing test names', () => {
     ]);
   });
 
+  it('accepts a test under any top-level directory of the repo', () => {
+    const log = [
+      'test at src-tauri/sidecar/local-api-server.test.mjs:12:3',
+      'test at workers/relay/relay.test.mjs:4:1',
+      ' FAIL  consumer-prices-core/src/parse.test.ts > sizes',
+    ].join('\n');
+    assert.deepEqual(parseFailingTests(log), [
+      'src-tauri/sidecar/local-api-server.test.mjs:12:3',
+      'workers/relay/relay.test.mjs:4:1',
+      'consumer-prices-core/src/parse.test.ts',
+    ]);
+  });
+
   it('lets nothing but a plain repo test path out of a fork-controlled log', () => {
     const log = [
+      'test at tests/../../etc/x.test.mjs:1:1',
+      'test at .github/x.test.mjs',
+      'test at /home/runner/tests/x.test.mjs',
       'test at tests/x.test.mjs:1:1|[evil](https://evil.example)',
       'test at ../../etc/passwd',
       'test at tests/@koala73.test.mjs',
@@ -265,9 +281,9 @@ describe('failing test names', () => {
 });
 
 describe('flake attribution', () => {
-  const flake = (at, failedJobId, title = 'CI health (flaky): Test / unit-shard (3)') => ({
+  const flake = (at, failedJobIds, title = 'CI health (flaky): Test / unit-shard (3)') => ({
     kind: 'flaky', title, summary: 's',
-    evidence: [{ url: 'u', sha: 's', at, detail: 'pull request: failed on attempt 1, passed on attempt 2', failedJobId, pullRequests: [9750] }],
+    evidence: [{ url: 'u', sha: 's', at, detail: 'pull request: failed on attempt 1, passed on attempt 2', failedJobIds: [failedJobIds].flat(), pullRequests: [9750] }],
   });
   const logs = {
     1: 'test at tests/mcp-modern-era.test.mjs:965:5',
@@ -302,7 +318,7 @@ describe('flake attribution', () => {
 
   it('keeps a flake when any occurrence is not shown to be addressed', () => {
     const finding = flake('2026-10-29T19:32:00Z', 1);
-    finding.evidence.push({ ...finding.evidence[0], at: '2026-11-01T00:00:00Z', failedJobId: 3 });
+    finding.evidence.push({ ...finding.evidence[0], at: '2026-11-01T00:00:00Z', failedJobIds: [3] });
     const { findings, warnings } = attributeFlakes([finding, flake('2026-10-31T00:00:00Z', 99, 'CI health (flaky): Test / sidecar')], {
       readLog, changeSince: () => '083a1800f0',
     });
@@ -322,13 +338,45 @@ describe('flake attribution', () => {
 
   it('reads at most the newest flakes per scan and leaves other kinds alone', () => {
     const read = [];
-    const timeout = { kind: 'timeout', title: 't', summary: 's', evidence: [{ at: '2026-10-31T00:00:00Z', failedJobId: 1 }] };
+    const timeout = { kind: 'timeout', title: 't', summary: 's', evidence: [{ at: '2026-10-31T00:00:00Z', failedJobIds: [1] }] };
     const flakes = [flake('2026-10-28T00:00:00Z', 1, 'a'), flake('2026-10-30T00:00:00Z', 1, 'b'), flake('2026-10-29T00:00:00Z', 1, 'c')];
     const { findings } = attributeFlakes([timeout, ...flakes], {
       readLog: (id) => { read.push(id); return logs[id]; }, changeSince: () => 'x', limit: 2,
     });
     assert.equal(read.length, 2);
     assert.deepEqual(findings.map((item) => item.title), ['t', 'a']);
+  });
+
+  it('decides on every failing file, not only the five it shows', () => {
+    const many = Array.from({ length: 6 }, (_, index) => `test at tests/f${index}.test.mjs:1:1`).join('\n');
+    const { findings, skipped } = attributeFlakes([flake('2026-10-29T00:00:00Z', 7)], {
+      readLog: () => many, changeSince: (file) => (file === 'tests/f5.test.mjs' ? null : 'abc'),
+    });
+    assert.deepEqual(skipped, []);
+    assert.match(findings[0].evidence[0].detail, /`tests\/f4\.test\.mjs:1:1` and 1 more$/);
+  });
+
+  it('keeps a flake when a later failed attempt names a test that has not changed', () => {
+    // Failed on attempts 1 and 2 in different tests, passed on attempt 3.
+    const [finding] = findFlakyJobs([{
+      run: run({ run_attempt: 3, event: 'pull_request' }),
+      attempts: [
+        [job('unit-shard (1)', 'failure', 150, 0, [], 1)],
+        [job('unit-shard (1)', 'failure', 150, 0, [], 2)],
+        [job('unit-shard (1)', 'success', 150, 0, [], 3)],
+      ],
+    }]);
+    assert.deepEqual(finding.evidence[0].failedJobIds, [1, 2]);
+    const { findings, skipped } = attributeFlakes([finding], {
+      readLog, changeSince: (file) => (file === 'tests/mcp-modern-era.test.mjs' ? 'fixed' : null),
+    });
+    assert.deepEqual(skipped, []);
+    assert.match(findings[0].evidence[0].detail, /`tests\/mcp-modern-era\.test\.mjs:965:5`, `e2e\/a\.spec\.ts:10:3`, `tests\/b\.test\.mjs:4:1`/);
+  });
+
+  it('keeps a flake when any failed attempt names no test', () => {
+    const { skipped } = attributeFlakes([flake('2026-10-29T00:00:00Z', [1, 3])], { readLog, changeSince: () => 'fixed' });
+    assert.deepEqual(skipped, []);
   });
 });
 

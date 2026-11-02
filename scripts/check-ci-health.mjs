@@ -54,6 +54,7 @@ export const SLOWDOWN = { ratio: 1.2, minSeconds: 30, minSamples: 5, samplesPerW
 // plus one lookup per named test file.
 const FLAKE_LOGS_PER_SCAN = 40;
 const TESTS_PER_EVIDENCE = 5;
+const FILES_PER_ATTRIBUTION = 20;
 
 // `count` runs spread evenly over `runs` ordered by creation time, oldest
 // first, always keeping the oldest and the newest.
@@ -65,8 +66,10 @@ export function spreadSample(runs, count) {
 }
 
 // A repo-relative test path and line, or nothing. Logs are fork-controlled on
-// pull_request runs, so only this exact shape ever reaches an issue.
-const TEST_PATH = /^(?:tests|e2e|api|server|src|convex|scripts|cli|shared)\/[\w./-]+\.(?:test|spec)\.[cm]?[jt]sx?(?::\d+(?::\d+)?)?$/;
+// pull_request runs, so only this exact shape ever reaches an issue: a plain
+// top-level directory (tests are spread over a dozen, src-tauri/ and
+// consumer-prices-core/ among them), no scheme, no `..`, no markup.
+const TEST_PATH = /^[a-z][\w-]*\/(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.(?:test|spec)\.[cm]?[jt]sx?(?::\d+(?::\d+)?)?$/;
 const FAILING_TEST_PATTERNS = [
   // node:test, in its "failing tests:" summary
   /^test at (\S+)$/,
@@ -147,7 +150,11 @@ export function findFlakyJobs(reruns) {
       const isOwnFailure = (earlier, jobs) => earlier.name === job.name && earlier.conclusion === 'failure' && !inheritedFailure(earlier, jobs);
       const failedAt = attempts.slice(0, -1).findIndex((jobs) => jobs.some((earlier) => isOwnFailure(earlier, jobs)));
       if (failedAt === -1) continue;
-      const failedJob = attempts[failedAt].find((earlier) => isOwnFailure(earlier, attempts[failedAt]));
+      // Every failed attempt of this job: each can fail in a different test.
+      const failedJobIds = attempts.slice(0, -1)
+        .flatMap((jobs) => jobs.filter((earlier) => isOwnFailure(earlier, jobs)))
+        .map((earlier) => earlier.id)
+        .filter(Boolean);
       const workflow = safeLabel(run.name);
       const name = safeLabel(job.name);
       addFinding(findings, {
@@ -156,7 +163,7 @@ export function findFlakyJobs(reruns) {
         summary: `\`${name}\` in **${workflow}** failed, then passed when the same commit was re-run.`,
       }, {
         ...evidence(run, `${runOrigin(run)}: failed on attempt ${failedAt + 1}, passed on attempt ${attempts.length}`),
-        failedJobId: failedJob?.id ?? null,
+        failedJobIds,
         pullRequests: (run.pull_requests ?? []).map((pull) => pull.number).filter(Number.isSafeInteger),
       });
     }
@@ -177,21 +184,36 @@ export function findFlakyJobs(reruns) {
 export function attributeFlakes(findings, { readLog, changeSince, limit = FLAKE_LOGS_PER_SCAN }) {
   const rows = findings.filter((finding) => finding.kind === 'flaky')
     .flatMap((finding) => finding.evidence)
-    .filter((row) => row.failedJobId)
+    .filter((row) => row.failedJobIds?.length)
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
     .slice(0, limit);
   const warnings = [];
   for (const row of rows) {
-    let tests;
-    try {
-      tests = parseFailingTests(readLog(row.failedJobId)).slice(0, TESTS_PER_EVIDENCE);
-    } catch (error) {
-      warnings.push(`log for job ${row.failedJobId} unreadable: ${safeLabel(error.message)}`);
-      continue;
+    // Every failed attempt must name its tests before any can be called fixed.
+    const tests = new Set();
+    let attributed = true;
+    for (const jobId of row.failedJobIds) {
+      let named;
+      try {
+        named = parseFailingTests(readLog(jobId));
+      } catch (error) {
+        warnings.push(`log for job ${jobId} unreadable: ${safeLabel(error.message)}`);
+        attributed = false;
+        continue;
+      }
+      if (!named.length) attributed = false;
+      named.forEach((test) => tests.add(test));
     }
-    if (!tests.length) continue;
-    row.detail += ` · failing: ${tests.map((test) => `\`${test}\``).join(', ')}`;
-    const files = [...new Set(tests.map((test) => test.replace(/:\d+(?::\d+)?$/, '')))];
+    if (!tests.size) continue;
+    const shown = [...tests].slice(0, TESTS_PER_EVIDENCE);
+    const more = tests.size - shown.length;
+    row.detail += ` · failing: ${shown.map((test) => `\`${test}\``).join(', ')}${more ? ` and ${more} more` : ''}`;
+    if (!attributed) continue;
+    // The display is capped; the decision reads every named file.
+    const files = [...new Set([...tests].map((test) => test.replace(/:\d+(?::\d+)?$/, '')))];
+    // A mass failure is a broken run, not one flake: keep it rather than spend
+    // a history lookup per file.
+    if (files.length > FILES_PER_ATTRIBUTION) continue;
     const changes = files.map((file) => {
       try {
         return changeSince(file, row.at, row.pullRequests ?? []);
