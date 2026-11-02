@@ -94,9 +94,10 @@ export function isOutagesConfigured(): boolean | null {
   return outagesConfigured;
 }
 
+// A response can settle after the user turns the feature off; availability wins.
 function setOutagesConfigured(configured: boolean | null): void {
-  outagesConfigured = configured;
-  dataFreshness.setEnabled('outages', configured !== false);
+  outagesConfigured = isFeatureAvailable('internetOutages') ? configured : false;
+  dataFreshness.setEnabled('outages', outagesConfigured !== false);
 }
 
 export async function fetchInternetOutages(): Promise<InternetOutage[]> {
