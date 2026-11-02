@@ -835,7 +835,8 @@ export class Panel {
       this.statusBadgeEl.title = detailTitle;
       this.statusBadgeEl.setAttribute('aria-label', detailTitle);
     } else {
-      this.statusBadgeEl.removeAttribute('title');
+      // A narrow column shows the badge as a bare dot; the title names it on hover.
+      this.statusBadgeEl.title = this.statusBadgeEl.textContent;
       this.statusBadgeEl.removeAttribute('aria-label');
     }
     this.statusBadgeEl.style.display = 'inline-flex';

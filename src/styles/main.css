@@ -1894,36 +1894,6 @@ canvas,
   container-type: inline-size;
 }
 
-/* A dashboard column is 248px on a 1366px laptop and 214px at 1280px. The
-   header's fixed-size badges then spill under the controls and the title
-   collapses to nothing. Below 300px the title wins: status badges shrink to
-   dots and the counters go. The JS toggles those counters with an inline
-   display, so the hide needs !important. */
-@container (max-width: 300px) {
-  .panel-freshness-badge,
-  .panel-data-badge.live {
-    width: 8px;
-    height: 8px;
-    min-width: 0;
-    min-height: 0;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: currentColor;
-    font-size: 0;
-  }
-
-  .panel-data-badge.live::before {
-    display: none;
-  }
-
-  .panel-new-badge,
-  .deviation-indicator,
-  .panel-count {
-    display: none !important;
-  }
-}
-
 /* .panel.resized: Custom height set - use grid-row span for height */
 
 /* Row span classes for resizable panels */
@@ -2658,6 +2628,38 @@ body.panel-resize-active iframe {
   animation: live-badge-dot-pulse 1.8s ease-in-out infinite;
   will-change: opacity, transform;
 }
+
+/* A dashboard column is 248px on a 1366px laptop and 214px at 1280px. The
+   header's fixed-size badges then spill under the controls and the title
+   collapses to nothing. Below 300px the title wins: status badges shrink to
+   dots and the counters go. The JS toggles those counters with an inline
+   display, so the hide needs !important. These rules sit after the base badge
+   rules so they win at equal specificity. */
+@container (max-width: 300px) {
+  .panel-freshness-badge,
+  .panel-data-badge.live {
+    width: 8px;
+    height: 8px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: currentColor;
+    font-size: 0;
+  }
+
+  .panel-data-badge.live::before {
+    display: none;
+  }
+
+  .panel-new-badge,
+  .deviation-indicator,
+  .panel-count {
+    display: none !important;
+  }
+}
+
 
 .panel-data-badge.cached {
   color: var(--semantic-elevated-text, var(--semantic-elevated));
