@@ -73,7 +73,7 @@ jobs:
 
   publish:
     needs: snapshot
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
