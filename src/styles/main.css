@@ -17,9 +17,11 @@
   --border: #2a2a2a;
   --border-strong: #444;
   --border-subtle: #1a1a1a;
+  --border-color: var(--border); /* alias; many rules read var(--border-color, <grey>) */
 
   /* Text */
   --text: #e8e8e8;
+  --text-primary: var(--text); /* alias; many rules read var(--text-primary, <grey>) */
   --text-secondary: #ccc;
   --text-dim: #888;
   --text-muted: #838383; /* was #666 (3.2:1 on --surface); AA 4.9:1 */
@@ -20791,7 +20793,7 @@ a.prediction-link:hover {
 /* ============ Preferences Collapsible Groups ============ */
 
 .wm-pref-group {
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
   border-radius: 8px;
   margin-bottom: 8px;
   overflow: hidden;
@@ -20804,7 +20806,7 @@ a.prediction-link:hover {
   font-weight: 600;
   letter-spacing: 0.5px;
   color: var(--text-primary, #e8eaed);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--overlay-subtle);
   list-style: none;
   display: flex;
   align-items: center;
@@ -20828,7 +20830,7 @@ a.prediction-link:hover {
 }
 
 .wm-pref-group > summary:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--overlay-light);
 }
 
 .wm-pref-group > summary:focus-visible {
@@ -20887,7 +20889,7 @@ a.prediction-link:hover {
   text-transform: uppercase;
   color: var(--text-faint);
   padding: 10px 0 4px;
-  border-top: 1px solid #333;
+  border-top: 1px solid var(--border);
 }
 
 .ai-flow-section-label:first-child {
@@ -20984,7 +20986,7 @@ a.prediction-link:hover {
 
 /* Ollama CTA */
 .ai-flow-cta {
-  border-top: 1px solid #333;
+  border-top: 1px solid var(--border);
   margin-top: 8px;
   padding-top: 10px;
 }
@@ -21060,7 +21062,7 @@ a.prediction-link:hover {
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  border-top: 1px solid #333;
+  border-top: 1px solid var(--border);
 }
 
 .ai-flow-status-dot {

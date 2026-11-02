@@ -5,6 +5,8 @@
    #111 accents and pale panels on the dark modal. */
 .re-modal {
   --accent: #fff;
+  --text: #e8e8e8;
+  --text-primary: var(--text); /* re-declared so it resolves against the pinned --text */
   --bg-secondary: #111;
   --surface: #141414;
   --text-dim: #888;
