@@ -70,6 +70,9 @@ export const PricingTeaser = () => (
           </a>
         </motion.div>
       </div>
+      {/* geo.new reads roughly the first 2,500 words of the page, so the
+          YMYL disclaimer (EAT-18) sits here rather than under the FAQ. */}
+      <p className="mt-8 text-center text-xs text-wm-muted">{t('welcome.pricing.disclaimer')}</p>
     </div>
   </section>
 );

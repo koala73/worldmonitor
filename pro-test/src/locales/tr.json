@@ -664,7 +664,8 @@
       "proF4": "MCP, REST API ve resmi SDK'lar — tek anahtarla canlı araçlar",
       "proF5": "Kendi panelleriniz için özel widget oluşturucu",
       "cta": "Planları & fiyatlandırmayı görmek",
-      "note": "Başlangıç fiyatı $39,99/ay · Yıllık ödeme ile 3 ay ücretsiz"
+      "note": "Başlangıç fiyatı $39,99/ay · Yıllık ödeme ile 3 ay ücretsiz",
+      "disclaimer": "World Monitor yalnızca bilgilendirme amaçlıdır ve finans, yatırım, hukuk, güvenlik veya emniyet konularında tavsiye niteliği taşımaz. Gördüklerinizi doğrulayın ve bir hatanın kayba veya zarara yol açabileceği kararları vermeden önce yetkin bir uzmana danışın."
     },
     "faq": {
       "eyebrow": "Ek koşul yok",
@@ -692,7 +693,6 @@
       "q11": "Hangi World Monitor lisansına ihtiyacım var?",
       "a11": "Çıktıyı kimin kullanacağına göre seçin. Pro'nun kişisel lisansı, World Monitor'ı kendi araştırması ve kararları için kullanan bir kişi içindir. Pro Business, lisanslı bir kullanıcının bunu şirket veya müşteri işi, dahili araçlar ve raporlar için kullanmasına izin verir. API Starter, tek bir kuruluş içinde API kullanımını kapsar ve müşterilere yeniden dağıtım içermez. API Business, o kuruluşun World Monitor verilerini müşterileri için ürün ve hizmetlere gömmesine izin verir. Enterprise özel koltukları, White-label'ı ve deployment'ları kapsar. Bu abonelik lisansları, AGPL/MIT kaynak kodu lisanslarından ayrıdır. Tam koşullar: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} fiyat, veri, uyarılar ve AI erişimi hakkında net cevaplar. Kısa versiyonu: dashboard $0 tutarındadır, hesap gerektirmez ve kod AGPL-3.0 altında açık kaynaktır.",
-      "disclaimer": "World Monitor yalnızca bilgilendirme amaçlıdır ve finans, yatırım, hukuk, güvenlik veya emniyet konularında tavsiye niteliği taşımaz. Gördüklerinizi doğrulayın ve bir hatanın kayba veya zarara yol açabileceği kararları vermeden önce yetkin bir uzmana danışın.",
       "q12": "Haberlere yansıyan küresel kriz ve aksaklıkları takip etmek için en iyi yazılım nedir?",
       "a12": "World Monitor ücretsiz ve açık kaynaklı bir seçenektir: adı belirtilen {{providers}} sağlayıcıdan gelen {{feeds}} haber ve OSINT akışını, {{mapLayers}} harita katmanı türüne sahip tek bir canlı dünya haritasında yayınlar; jeopolitik, piyasalar, denizcilik, havacılık ve siber alanları kapsar. Bunları ilişkilendirir, böylece aynı anda gelişen aksaklıklar manşetlere çıkmadan önce görünür hale gelir. Diğer araçlarla karşılaştırmak için worldmonitor.app/compare/best-geopolitical-risk-dashboards adresine bakın."
     },

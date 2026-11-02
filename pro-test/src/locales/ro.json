@@ -664,7 +664,8 @@
       "proF4": "MCP, REST API și SDK-uri oficiale — instrumente live sub o singură cheie",
       "proF5": "Constructor de widget-uri personalizat pentru panourile tale",
       "cta": "Vezi planuri și prețuri",
-      "note": "De la $39,99/lună · 3 luni gratuite la plată anuală"
+      "note": "De la $39,99/lună · 3 luni gratuite la plată anuală",
+      "disclaimer": "World Monitor are exclusiv scop informativ și nu constituie consultanță financiară, de investiții, juridică, de securitate sau de siguranță. Verificați ceea ce vedeți și consultați un profesionist calificat înainte de a lua decizii în care o eroare ar putea cauza pierderi sau prejudicii."
     },
     "faq": {
       "eyebrow": "Fără surprize",
@@ -692,7 +693,6 @@
       "q11": "De ce licență World Monitor am nevoie?",
       "a11": "Alege după cine va folosi rezultatul. Licența personală Pro este pentru o persoană care folosește World Monitor pentru propria cercetare și propriile decizii. Pro Business permite unui utilizator licențiat să îl folosească pentru munca de firmă sau de client, unelte interne și rapoarte. API Starter acoperă folosirea API în interiorul unei organizații, fără redistribuire către clienți. API Business permite acelei organizații să încorporeze datele World Monitor în produse și servicii pentru clienții săi. Enterprise acoperă locuri personalizate, White-label și deployment-uri. Aceste licențe de abonament sunt separate de licențele de cod sursă AGPL/MIT. Termeni completi: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} răspunsuri directe despre preț, date, alerte și acces AI. Pe scurt: dashboard-ul costă $0, nu necesită cont și codul este open source sub AGPL-3.0.",
-      "disclaimer": "World Monitor are exclusiv scop informativ și nu constituie consultanță financiară, de investiții, juridică, de securitate sau de siguranță. Verificați ceea ce vedeți și consultați un profesionist calificat înainte de a lua decizii în care o eroare ar putea cauza pierderi sau prejudicii.",
       "q12": "Care este cel mai bun software pentru monitorizarea crizelor și perturbărilor globale din știri?",
       "a12": "World Monitor este o opțiune gratuită și open source: transmite {{feeds}} fluxuri de știri și OSINT de la {{providers}} furnizori identificați pe o singură hartă live a lumii cu {{mapLayers}} tipuri de straturi de hartă, acoperind geopolitică, piețe, transport maritim, aviație și securitate cibernetică. Le corelează astfel încât perturbările care coincid să iasă la iveală înainte să ajungă în titluri. Pentru a o compara cu alte instrumente, consultați worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },

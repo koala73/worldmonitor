@@ -664,7 +664,8 @@
       "proF4": "MCP, API REST y SDKs oficiales — herramientas activas bajo una clave",
       "proF5": "Constructor de widgets personalizados para tus propios paneles",
       "cta": "Ver planes y precios",
-      "note": "Desde $39.99/mes · 3 meses gratis al facturar anualmente"
+      "note": "Desde $39.99/mes · 3 meses gratis al facturar anualmente",
+      "disclaimer": "World Monitor tiene fines exclusivamente informativos y no constituye asesoramiento financiero, de inversión, jurídico ni de seguridad. Verifique lo que ve y consulte a un profesional cualificado antes de tomar decisiones en las que un error pudiera causar pérdidas o daños."
     },
     "faq": {
       "eyebrow": "Sin trampa",
@@ -692,7 +693,6 @@
       "q11": "¿Qué licencia de World Monitor necesito?",
       "a11": "Elige según quién va a usar el resultado. La licencia personal de Pro es para una persona que usa World Monitor para su propia investigación y sus decisiones. Pro Business permite a un usuario con licencia usarlo para trabajo de empresa o de clientes, herramientas internas e informes. API Starter cubre el uso de la API dentro de una organización, sin redistribución a los clientes. API Business permite a esa organización embeber datos de World Monitor en productos y servicios para sus clientes. Enterprise cubre puestos personalizados, White-label y despliegues. Estas licencias de suscripción son distintas de las licencias de código fuente AGPL/MIT. Términos completos: worldmonitor.app/docs/terms.",
       "sub": "{{answers}} respuestas directas sobre precio, datos, alertas y acceso a IA. En resumen: el dashboard cuesta $0, no requiere cuenta y el código es de código abierto bajo AGPL-3.0.",
-      "disclaimer": "World Monitor tiene fines exclusivamente informativos y no constituye asesoramiento financiero, de inversión, jurídico ni de seguridad. Verifique lo que ve y consulte a un profesional cualificado antes de tomar decisiones en las que un error pudiera causar pérdidas o daños.",
       "q12": "¿Cuál es el mejor software para seguir las crisis y disrupciones globales en las noticias?",
       "a12": "World Monitor es una opción gratuita y de código abierto: transmite {{feeds}} fuentes de noticias y OSINT de {{providers}} proveedores identificados en un único mapa mundial en vivo con {{mapLayers}} tipos de capas de mapa, que abarca geopolítica, mercados, transporte marítimo, aviación y ciberseguridad. Las correlaciona para que las disrupciones que coinciden salgan a la luz antes de llegar a los titulares. Para compararlo con otras herramientas, consulta worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },
