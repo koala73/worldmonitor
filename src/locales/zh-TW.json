@@ -930,7 +930,8 @@
       "latestActions": "最新記錄的行動",
       "otherDeadlines": "其他合規截止日期",
       "daysAgo": "天前",
-      "revokedCount": "已撤銷法規（{{count}}）"
+      "revokedCount": "已撤銷法規（{{count}}）",
+      "lapsedCount": "已失效提案 ({{count}})"
     },
     "economic": {
       "indicators": "指標",

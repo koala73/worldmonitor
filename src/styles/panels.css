@@ -4306,6 +4306,18 @@ a.hub-top-story {
   color: var(--text-muted);
 }
 
+.regulation-panel .timeline-source a,
+.regulation-panel .deadline-source a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.regulation-panel .timeline-source a:hover,
+.regulation-panel .deadline-source a:hover {
+  color: var(--accent);
+}
+
 .regulation-panel .deadline-countdown {
   flex-shrink: 0;
   min-width: 40px;
@@ -4338,7 +4350,6 @@ a.hub-top-story {
   color: var(--text-muted);
 }
 
-.regulation-panel .deadline-penalties,
 .regulation-panel .regulation-description {
   margin: 4px 0 0;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
@@ -4346,7 +4357,6 @@ a.hub-top-story {
   color: var(--text-secondary);
 }
 
-.regulation-panel .deadline-scope,
 .regulation-panel .regulation-scope {
   display: flex;
   flex-wrap: wrap;

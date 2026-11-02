@@ -1064,6 +1064,7 @@
       "activeCount": "Active Regulations ({{count}})",
       "proposedCount": "Proposed Regulations ({{count}})",
       "revokedCount": "Revoked Regulations ({{count}})",
+      "lapsedCount": "Lapsed Proposals ({{count}})",
       "moreProvisions": "+{{count}} more...",
       "source": "Source",
       "stances": {

@@ -1025,7 +1025,8 @@
       "latestActions": "Vitendo vya Mwisho Vilivyorekodiwa",
       "otherDeadlines": "Makataa Mengine ya Kuzingatia Sheria",
       "daysAgo": "siku zilizopita",
-      "revokedCount": "Kanuni Zilizobatilishwa ({{count}})"
+      "revokedCount": "Kanuni Zilizobatilishwa ({{count}})",
+      "lapsedCount": "Mapendekezo Yaliyokwisha Muda ({{count}})"
     },
     "economic": {
       "indicators": "Viashiria",

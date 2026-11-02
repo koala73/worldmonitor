@@ -1454,6 +1454,7 @@
   "components.regulation.globalLandscape": "Global Regulatory Landscape",
   "components.regulation.infoTooltip": "<strong>Regulation</strong> Regulatory actions, policy changes, and enforcement updates from global regulators: financial, tech, energy, and trade authorities. Sourced from official government and regulatory body publications.",
   "components.regulation.keyProvisions": "Key Provisions",
+  "components.regulation.lapsedCount": "Lapsed Proposals ({{count}})",
   "components.regulation.latestActions": "Latest Recorded Actions",
   "components.regulation.learnMore": "Learn More",
   "components.regulation.moreProvisions": "+{{count}} more...",

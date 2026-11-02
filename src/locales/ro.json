@@ -936,7 +936,8 @@
       "latestActions": "Ultimele acțiuni înregistrate",
       "otherDeadlines": "Alte termene de conformitate",
       "daysAgo": "zile în urmă",
-      "revokedCount": "Regulamente revocate ({{count}})"
+      "revokedCount": "Regulamente revocate ({{count}})",
+      "lapsedCount": "Propuneri caduce ({{count}})"
     },
     "economic": {
       "indicators": "Indicatori",

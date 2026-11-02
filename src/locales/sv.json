@@ -1433,7 +1433,8 @@
       "latestActions": "Senast registrerade åtgärder",
       "otherDeadlines": "Övriga efterlevnadsfrister",
       "daysAgo": "dagar sedan",
-      "revokedCount": "Återkallade föreskrifter ({{count}})"
+      "revokedCount": "Återkallade föreskrifter ({{count}})",
+      "lapsedCount": "Förfallna förslag ({{count}})"
     },
     "etfFlows": {
       "unavailable": "data för börshandlade fonder är tillfälligt otillgängligt",

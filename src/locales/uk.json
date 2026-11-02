@@ -1031,7 +1031,8 @@
       "latestActions": "Останні записані дії",
       "otherDeadlines": "Інші строки дотримання вимог",
       "daysAgo": "днів тому",
-      "revokedCount": "Скасовані нормативні акти ({{count}})"
+      "revokedCount": "Скасовані нормативні акти ({{count}})",
+      "lapsedCount": "Пропозиції, що втратили чинність ({{count}})"
     },
     "economic": {
       "indicators": "Індикатори",
