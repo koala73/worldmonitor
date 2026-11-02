@@ -735,7 +735,6 @@ canvas,
   --status-live-text: initial;
   --status-cached-text: initial;
   --status-unavailable-text: initial;
-  --text-primary: initial;
 }
 
 .update-toast {

@@ -5,8 +5,7 @@
  * chokepoint and aircraft-emergency panels, transit charts) read
  * `var(--text-primary, <light grey>)`. The token was never defined, so every
  * one of them rendered light grey on white in the light theme. It now aliases
- * `--text`; surfaces that stay dark in both themes reset it to `initial` so
- * their bright fallbacks still apply.
+ * `--text`; the always-dark Route Explorer modal pins its own bright value.
  *
  * `--border-color` had the same gap (dark-grey fallbacks drawn on white) and
  * now aliases `--border`.
@@ -34,9 +33,11 @@ describe('--text-primary token', () => {
     assert.match(ruleBody(':root'), /--border-color:\s*var\(--border\)\s*;/);
   });
 
-  it('always-dark surfaces reset --text-primary so their bright fallbacks apply', () => {
-    const body = ruleBody(':is\\(\\.update-toast, \\.passkey-offer-prompt, \\.re-modal\\)');
-    assert.match(body, /--text-primary:\s*initial\s*;/);
+  it('Route Explorer pins a bright --text-primary on its always-dark modal', () => {
+    const re = readFileSync(new URL('../src/styles/route-explorer.css', import.meta.url), 'utf8');
+    const body = re.replace(/\/\*[\s\S]*?\*\//g, '').match(/(?:^|\})\s*\.re-modal\s*\{([^{}]*)\}/)?.[1] ?? '';
+    assert.match(body, /--text:\s*#e8e8e8\s*;/);
+    assert.match(body, /--text-primary:\s*var\(--text\)\s*;/);
   });
 });
 
