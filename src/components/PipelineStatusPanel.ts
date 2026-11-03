@@ -446,8 +446,21 @@ export class PipelineStatusPanel extends Panel {
         .pp-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
         .pp-table tr.pp-row { cursor: pointer; }
         .pp-table tr.pp-row:hover td { background: rgba(255,255,255,0.03); }
-        .pp-name { font-weight: 600; color: var(--text, #eee); }
-        .pp-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
+        .pp-name { font-weight: 600; color: var(--text, #eee); overflow-wrap: break-word; }
+        .pp-table .pp-val { white-space: nowrap; }
+        .pp-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+        /* Four columns cannot fit a narrow column without splitting values, so each
+           row stacks: the name takes the full width, the values share one line below. */
+        @container (max-width: 340px) {
+          .pp-table, .pp-table tbody { display: block; }
+          .pp-table thead { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+          .pp-table tr.pp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+          .pp-table tr.pp-row td { padding: 0; border: 0; }
+          .pp-table tr.pp-row td:first-child { flex: 1 0 100%; }
+          .pp-table tr.pp-row td:last-child { margin-left: auto; }
+          .pp-table tr.pp-row:hover { background: rgba(255,255,255,0.03); }
+          .pp-table tr.pp-row:hover td { background: none; }
+        }
         .pp-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
         .pp-drawer { position: absolute; inset: 0; background: var(--panel-bg, #0f1218); padding: 12px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; }
         .pp-drawer-close { position: absolute; top: 8px; right: 10px; background: transparent; border: 0; color: var(--text-dim, #888); cursor: pointer; font-size: calc(14px * var(--wm-panel-effective-scale, 1)); }
@@ -473,8 +486,8 @@ export class PipelineStatusPanel extends Panel {
           <div class="pp-name">${commodity} ${escapeHtml(p.name)}</div>
           <div class="pp-sub">${escapeHtml(p.operator || '')}</div>
         </td>
-        <td>${route}</td>
-        <td>${escapeHtml(capacityLabel(p))}</td>
+        <td class="pp-val">${route}</td>
+        <td class="pp-val">${escapeHtml(capacityLabel(p))}</td>
         <td>${badgeChip(p.publicBadge)}</td>
       </tr>`;
   }

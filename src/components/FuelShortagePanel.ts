@@ -313,8 +313,22 @@ export class FuelShortagePanel extends Panel {
         .fs-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
         .fs-table tr.fs-row { cursor: pointer; }
         .fs-table tr.fs-row:hover td { background: rgba(255,255,255,0.03); }
-        .fs-name { font-weight: 600; color: var(--text, #eee); }
-        .fs-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
+        .fs-name { font-weight: 600; color: var(--text, #eee); overflow-wrap: break-word; }
+        .fs-table .fs-val { white-space: nowrap; }
+        .fs-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+        /* Four columns cannot fit a narrow column without splitting values, so each
+           row stacks: the name takes the full width, the values share one line below. */
+        @container (max-width: 340px) {
+          .fs-table, .fs-table tbody { display: block; }
+          .fs-table thead { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+          .fs-table tr.fs-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+          .fs-table tr.fs-row td { padding: 0; border: 0; }
+          .fs-table tr.fs-row td:first-child { flex: 1 0 100%; }
+          .fs-table tr.fs-row td:last-child { margin-left: auto; }
+          .fs-table tr.fs-row:hover { background: rgba(255,255,255,0.03); }
+          .fs-table tr.fs-row:hover td { background: none; }
+          .fs-table .fs-val[data-label]::before { content: attr(data-label) ' '; color: var(--text-dim, #888); }
+        }
         .fs-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
         .fs-quality { font-family: monospace; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); }
         .fs-drawer { position: absolute; inset: 0; background: var(--panel-bg, #0f1218); padding: 12px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; }
@@ -345,7 +359,7 @@ export class FuelShortagePanel extends Panel {
           <div class="fs-name">${glyph} ${escapeHtml(s.country)} · ${escapeHtml(s.product)}</div>
           <div class="fs-sub">${escapeHtml(s.causeChain.join(' · ') || '—')}</div>
         </td>
-        <td>${escapeHtml(s.firstSeen.slice(0, 10))}</td>
+        <td class="fs-val" data-label="Since">${escapeHtml(s.firstSeen.slice(0, 10))}</td>
         <td><span class="fs-quality" title="Evidence quality: ${escapeHtml(quality)}">${QUALITY_DOT[quality]}</span></td>
         <td>${severityChip(s.severity)}</td>
       </tr>`;
