@@ -3,12 +3,15 @@ import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
 
 // A panel header holds the title, status badges and controls in one row. In a
 // 248px dashboard column (a 1366px laptop) the fixed-size badges spilled under
-// the controls and the title shrank to nothing. The title must stay readable
-// and nothing in the header may overlap at any column width.
+// the controls and the title shrank to nothing. On a phone the panel is 377px
+// wide with a 13px title, and the same badges squeezed "Intel Feed" to 5px. The
+// title must stay readable and nothing in the header may overlap at any width.
 
 const VIEWPORTS = [
-  { width: 1920, height: 1200 },
-  { width: 1366, height: 768 },
+  { width: 1920, height: 1200, mobile: false },
+  { width: 1366, height: 768, mobile: false },
+  { width: 393, height: 852, mobile: true },
+  { width: 360, height: 780, mobile: true },
 ];
 
 const ITEMS = [
@@ -60,13 +63,17 @@ interface CounterBox { name: string; display: string; width: number }
 function measureCounters(page: Page): Promise<CounterBox[]> {
   return page.evaluate(() => {
     const left = document.querySelector<HTMLElement>('#panelsGrid .panel[data-panel="politics"] .panel-header-left')!;
+    const COUNTER_TEXT: Record<string, string> = { 'panel-new-badge': '14 NEW', 'deviation-indicator': '▲', 'panel-count': '14' };
     return ['panel-new-badge', 'deviation-indicator', 'panel-count'].map((name) => {
-      let el = left.querySelector<HTMLElement>(`[data-counter-probe="${name}"]`);
+      // The header already renders a real item count on the right; probing a
+      // second one inside the title group would crowd it beyond any live header.
+      const real = name === 'panel-count' ? left.parentElement?.querySelector<HTMLElement>(':scope > .panel-count') : null;
+      let el = real ?? left.querySelector<HTMLElement>(`[data-counter-probe="${name}"]`);
       if (!el) {
         el = document.createElement('span');
         el.className = name;
         el.dataset.counterProbe = name;
-        el.textContent = '14 NEW';
+        el.textContent = COUNTER_TEXT[name] ?? '';
         el.style.display = 'inline-flex';
         left.appendChild(el);
       }
@@ -86,7 +93,9 @@ function measure(page: Page): Promise<HeaderFit> {
     const overlaps: string[] = [];
     items.forEach((a, i) => {
       for (const b of items.slice(i + 1)) {
-        if (Math.min(a.rect.right, b.rect.right) - Math.max(a.rect.left, b.rect.left) > 2) overlaps.push(`${a.name} x ${b.name}`);
+        const x = Math.min(a.rect.right, b.rect.right) - Math.max(a.rect.left, b.rect.left);
+        const y = Math.min(a.rect.bottom, b.rect.bottom) - Math.max(a.rect.top, b.rect.top);
+        if (x > 2 && y > 2) overlaps.push(`${a.name} x ${b.name}`);
       }
     });
     return {
@@ -100,8 +109,8 @@ function measure(page: Page): Promise<HeaderFit> {
 
 test('panel headers keep the title readable with nothing overlapping', async ({ browser }, testInfo) => {
   test.setTimeout(240_000);
-  for (const viewport of VIEWPORTS) {
-    const context = await browser.newContext({ viewport, colorScheme: 'dark' });
+  for (const { mobile, ...viewport } of VIEWPORTS) {
+    const context = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile, colorScheme: 'dark' });
     const page = await context.newPage();
     const settings = { politics: { name: 'World News', enabled: true, priority: 0 } };
     await seedAnonymousDashboard(page, 'full', { localStorage: { 'worldmonitor-panels': JSON.stringify(settings) } });
@@ -118,27 +127,42 @@ test('panel headers keep the title readable with nothing overlapping', async ({ 
         return panel.locator('.item.clustered').count();
       }, { message: `politics rows at ${viewport.width}px`, timeout: 90_000 })
       .toBe(ITEMS.length);
+    // Add the freshness badge and counters a live header carries before
+    // measuring, so the title competes with everything that crowds it in prod.
+    const badges = await measureBadges(page);
+    const counters = await measureCounters(page);
     await panel.locator('.panel-header').screenshot({ path: testInfo.outputPath(`header-${viewport.width}.png`) });
     const m = await measure(page);
     const label = `politics header at ${viewport.width}px (panel ${m.panel}px)`;
     expect.soft(m.titleClipped, `${label}: title "${m.title}" is clipped`).toBe(false);
     expect.soft(m.overlaps, `${label}: overlapping header items`).toEqual([]);
-    const counters = await measureCounters(page);
+    // Below 300px every badge is a dot and every counter leaves the layout. A
+    // news header up to 420px wide also turns LIVE into a dot and drops the
+    // item count, so the title keeps the room the controls would take.
+    const collapseAt: Record<string, number> = { 'panel-new-badge': 300, 'deviation-indicator': 300, 'panel-count': 420, freshness: 300, live: 420 };
     for (const c of counters) {
       expect.soft(c.display, `${label}: ${c.name} stays in the accessibility tree`).not.toBe('none');
-      if (m.panel <= 300) expect.soft(c.width, `${label}: ${c.name} is visually hidden`).toBeLessThanOrEqual(1);
+      if (m.panel <= collapseAt[c.name]!) expect.soft(c.width, `${label}: ${c.name} is visually hidden`).toBeLessThanOrEqual(1);
       else expect.soft(c.width, `${label}: ${c.name} is shown`).toBeGreaterThan(4);
     }
-    const badges = await measureBadges(page);
-    if (m.panel <= 300) {
-      for (const [name, b] of Object.entries(badges)) {
+    for (const [name, b] of Object.entries(badges)) {
+      if (m.panel <= collapseAt[name]!) {
         expect.soft({ width: b.width, height: b.height, fontSize: b.fontSize }, `${label}: ${name} badge is a dot`).toEqual({ width: 8, height: 8, fontSize: '0px' });
         expect.soft(b.title, `${label}: ${name} dot has a hover label`).not.toBe('');
-      }
-    } else {
-      for (const [name, b] of Object.entries(badges)) {
+      } else {
         expect.soft(b.width, `${label}: ${name} badge keeps its text`).toBeGreaterThan(20);
       }
+    }
+    // Forced colors strip the dot's background, so a collapsed dot must keep a
+    // border or it disappears.
+    await page.emulateMedia({ forcedColors: 'active' });
+    const borders = await page.evaluate(() => {
+      const header = document.querySelector<HTMLElement>('#panelsGrid .panel[data-panel="politics"] .panel-header')!;
+      const width = (sel: string) => parseFloat(getComputedStyle(header.querySelector<HTMLElement>(sel)!).borderTopWidth);
+      return { freshness: width('[data-freshness-probe]'), live: width('.panel-data-badge.live') };
+    });
+    for (const [name, w] of Object.entries(borders)) {
+      if (m.panel <= collapseAt[name]!) expect.soft(w, `${label}: ${name} dot keeps a border in forced colors`).toBeGreaterThanOrEqual(1);
     }
     await context.close();
   }

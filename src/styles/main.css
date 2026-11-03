@@ -2316,6 +2316,21 @@ body.panel-resize-active iframe {
   white-space: nowrap;
 }
 
+/* The title group fills the space the controls leave, and the title gets the
+   first line of it. The fixed-size freshness and new-items badges wrap under
+   the title instead of squeezing it: in a 375px column "Intel Feed" was 3px
+   wide, and 5px on a phone. A title wider than the whole group still ends in
+   an ellipsis. The controls keep one row. */
+.panel > .panel-header > .panel-header-left {
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.panel > .panel-header .panel-title {
+  max-width: 100%;
+}
+
 /* Badges and icon controls have fixed boxes. Keep their glyphs at the tested
    geometry while the title, tooltips, and panel body follow the text scale. */
 .panel-freshness-badge,
@@ -2628,6 +2643,41 @@ body.panel-resize-active iframe {
   opacity: 1;
   animation: live-badge-dot-pulse 1.8s ease-in-out infinite;
   will-change: opacity, transform;
+}
+
+/* A news panel header carries a LIVE pill, sort, summarize, count and close
+   controls. In a phone panel or a 375px desktop column they leave the title
+   group about 170px. There the LIVE pill becomes the dot used below 300px and
+   the item count leaves the layout (it stays in the accessibility tree; the
+   NEW badge still shows how many items are new). */
+@container (max-width: 420px) {
+  .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live {
+    width: 8px;
+    height: 8px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: currentColor;
+    font-size: 0;
+  }
+
+  .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live::before {
+    display: none;
+  }
+
+  .panel-header:has(> .panel-summarize-btn) > .panel-count {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
 }
 
 /* A dashboard column is 248px on a 1366px laptop and 214px at 1280px. The
@@ -28986,6 +29036,22 @@ body.map-width-resizing {
   .pizzint-location-status,
   .panel-count {
     border: 1px solid CanvasText;
+  }
+
+  /* The narrow-header dots are a filled background with border: 0 at higher
+     specificity, so forced colors would erase them. Same selectors, later in
+     the file, restore the border. */
+  @container (max-width: 420px) {
+    .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live {
+      border: 1px solid CanvasText;
+    }
+  }
+
+  @container (max-width: 300px) {
+    .panel-freshness-badge,
+    .panel-data-badge.live {
+      border: 1px solid CanvasText;
+    }
   }
 }
 
