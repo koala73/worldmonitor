@@ -1214,6 +1214,9 @@ export class CountryIntelManager implements AppModule {
     // than aborting the whole open. Only the cluster-derived counts degrade.
     let clusters: CountrySignalCluster[] = [];
     let clustersAvailable = false;
+    // The aviation read never rejects and does not need the aggregator, so it
+    // starts now instead of waiting behind the aggregator chunk.
+    const aviationDisruptionsPending = this.countryAviationDisruptions(code, country);
     try {
       clusters = (await getSignalAggregator()).getCountryClusters();
       clustersAvailable = true;
@@ -1271,7 +1274,7 @@ export class CountryIntelManager implements AppModule {
 
     const activeStrikes = this.getCountryStrikes(code, hasGeoShape).length;
 
-    const aviationDisruptions = (await this.countryAviationDisruptions(code, country)).length;
+    const aviationDisruptions = (await aviationDisruptionsPending).length;
 
     const ciiData = getCountryData(code);
     const isTier1 = !!TIER1_COUNTRIES[code];
@@ -1563,8 +1566,8 @@ export class CountryIntelManager implements AppModule {
     }
     const posturePanel = this.ctx.panels['strategic-posture'] as StrategicPosturePanel | undefined;
     const postures = posturePanel?.getPostures() || [];
-    // The aggregator and the per-country signals read different sources, and
-    // both are needed before the story is assembled, so fetch them together.
+    // getCountrySignals waits on the aggregator chunk too, but it also starts
+    // the aviation read; awaiting both together lets that read overlap.
     const [aggregator, countrySignals] = await Promise.all([
       getSignalAggregator(),
       this.getCountrySignals(code, name),

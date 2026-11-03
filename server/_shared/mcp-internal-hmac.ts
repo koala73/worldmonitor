@@ -375,8 +375,10 @@ export interface VerifiedInternalMcpRequest {
  */
 async function timingSafeStringEqual(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();
-  const aHash = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(a)));
-  const bHash = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(b)));
+  const [aHash, bHash] = (await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(a)),
+    crypto.subtle.digest('SHA-256', enc.encode(b)),
+  ])).map((digest) => new Uint8Array(digest)) as [Uint8Array, Uint8Array];
   let diff = 0;
   for (let i = 0; i < aHash.length; i++) diff |= aHash[i]! ^ bHash[i]!;
   return diff === 0;
