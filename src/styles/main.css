@@ -2056,6 +2056,17 @@ canvas,
   grid-column: span 3 !important;
 }
 
+/* A span wider than the sidebar grid's real columns adds implicit columns and
+   squeezes every other panel below 280px. data-grid-cols is the real count,
+   kept current by observePanelGridColumns() in src/utils/panel-grid.ts. */
+.panels-grid[data-grid-cols="1"] > .panel {
+  grid-column: span 1 !important;
+}
+
+.panels-grid[data-grid-cols="2"] > .panel.col-span-3 {
+  grid-column: span 2 !important;
+}
+
 .panel-resize-handle {
   position: absolute;
   bottom: 0;

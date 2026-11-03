@@ -25,10 +25,14 @@ import {
 import {
   clampColSpan,
   clearColSpanClass,
-  getExplicitColSpanClass,
+  getColSpan,
+  getDefaultColSpan,
   getMaxColSpan,
   isPanelGridColumnCountReady,
+  MAX_PANEL_COL_SPAN,
+  observePanelGridColumns,
   setColSpanClass,
+  syncColResizeAria,
 } from '@/utils/panel-grid';
 
 export type PanelSeverity = 'critical' | 'high' | 'medium' | 'low' | 'none';
@@ -49,14 +53,6 @@ export interface PanelOptions {
 const ROW_RESIZE_STEP_PX = 80;
 const COL_RESIZE_STEP_PX = 80;
 const FRESHNESS_BADGE_REFRESH_MS = 60_000;
-
-function getDefaultColSpan(element: HTMLElement): number {
-  return element.classList.contains('panel-wide') ? 2 : 1;
-}
-
-function getColSpan(element: HTMLElement): number {
-  return getExplicitColSpanClass(element) ?? getDefaultColSpan(element);
-}
 
 function persistPanelColSpan(panelId: string, element: HTMLElement): void {
   const maxSpan = getMaxColSpan(element);
@@ -398,9 +394,10 @@ export class Panel {
         return;
       }
 
-      const maxSpan = getMaxColSpan(this.element);
-      const clampedSavedSpan = clampColSpan(savedColSpan, maxSpan);
-      setColSpanClass(this.element, clampedSavedSpan);
+      // Keep the saved span even when the grid is narrower: CSS clamps what
+      // renders to the grid's real columns (data-grid-cols), so the span
+      // comes back when the window or the map column gives the grid room.
+      setColSpanClass(this.element, clampColSpan(savedColSpan, MAX_PANEL_COL_SPAN));
     } else if (savedColSpan !== undefined) {
       clearPanelColSpan(this.panelId);
     }
@@ -422,7 +419,7 @@ export class Panel {
         return;
       }
       this.colSpanReconcileRaf = null;
-      this.restoreSavedColSpan();
+      observePanelGridColumns(this.element);
       this.syncKeyboardColResizeAria();
     };
 
@@ -529,13 +526,7 @@ export class Panel {
   }
 
   private syncKeyboardColResizeAria(): void {
-    if (!this.colResizeHandle) return;
-    const maxSpan = getMaxColSpan(this.element);
-    this.colResizeHandle.setAttribute('aria-valuemax', String(maxSpan));
-    this.colResizeHandle.setAttribute(
-      'aria-valuenow',
-      String(clampColSpan(getColSpan(this.element), maxSpan)),
-    );
+    if (this.colResizeHandle) syncColResizeAria(this.element, this.colResizeHandle);
   }
 
   // Compare span classes, not computed spans: a drag that returns to its start

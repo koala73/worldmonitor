@@ -10,7 +10,6 @@ import { hasPanelSettingEntry, newsPanelKeyForCategory, newsPanelKeyLookupsFor }
 import {
   createDeferredPanelShell,
   getDeferredPanelShellFootprint as resolveDeferredPanelShellFootprint,
-  reconcileDeferredPanelShellColSpan,
   shouldDeferInitialPanelMount,
   type DeferredPanelShellFootprint,
 } from '@/app/panel-mount-deferral';
@@ -129,6 +128,7 @@ import type { Panel } from '@/components/Panel';
 import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { loadPanelCollapsed, loadPanelColSpans, loadPanelSpans } from '@/utils/panel-storage';
+import { observePanelGridColumns } from '@/utils/panel-grid';
 import { registerSettingsExportFlush } from '@/utils/settings-persistence';
 import { measure, mutate } from '@/utils/layout-batch';
 import { applyPanelFontScale } from '@/services/font-scale-settings';
@@ -1339,6 +1339,8 @@ export class PanelLayoutManager implements AppModule {
     // earlier than any LCP candidate in the new shell, making it useless for
     // ordering the LCP element against the shell swap (PR #4512 review).
     markLcpDebug('wm:layout:shell-replaced');
+    const panelsGrid = document.getElementById('panelsGrid');
+    if (panelsGrid) observePanelGridColumns(panelsGrid);
 
     // Skip link: explicitly move focus to <main> on activation. Native
     // fragment focus on a tabindex="-1" target is inconsistent across
@@ -2520,7 +2522,6 @@ export class PanelLayoutManager implements AppModule {
     if (placeholder && grid) {
       applyPanelFontScale(placeholder, this.ctx.panelSettings[key]?.fontScale);
       this.insertByOrder(grid, placeholder, key);
-      reconcileDeferredPanelShellColSpan(placeholder);
       this.mobilePanelNav?.applyToNewPanel(placeholder);
     }
     const existing = this.deferredPanelMounts.get(key);
