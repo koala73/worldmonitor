@@ -1014,11 +1014,10 @@ async function mcpHandlerInner(
     // HEAD is the matching GET with the body suppressed. Reuse the discovery
     // helpers so cache policy, canonical Link, and static-asset fallback status
     // cannot drift between the two methods.
-    const pathname = new URL(req.url).pathname;
-    if (WELL_KNOWN_MCP_PATHS.has(pathname)) {
+    if (WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
       return serveServerCard(req, corsHeaders, true);
     }
-    if (pathname === MCP_TRANSPORT_PATH) {
+    if (requestPathname === MCP_TRANSPORT_PATH) {
       return serveMcpGuide(req, corsHeaders, true);
     }
     return new Response(null, {
@@ -1038,12 +1037,11 @@ async function mcpHandlerInner(
     !req.headers.get('last-event-id') &&
     !clientAcceptsSse(req)
   ) {
-    const pathname = new URL(req.url).pathname;
-    if (WELL_KNOWN_MCP_PATHS.has(pathname)) {
+    if (WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
       usage.skip = true;
       return serveServerCard(req, corsHeaders);
     }
-    if (pathname === MCP_TRANSPORT_PATH) {
+    if (requestPathname === MCP_TRANSPORT_PATH) {
       usage.skip = true;
       return serveMcpGuide(req, corsHeaders);
     }

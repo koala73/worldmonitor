@@ -416,7 +416,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/mcp-market-built.spec.ts',
   'e2e/live-panel-layout-8276.spec.ts',
   'e2e/panel-grid-no-overlap.spec.ts',
-  'e2e/mobile-panel-table-overflow.spec.ts',
+  'e2e/panel-table-overflow.spec.ts',
   'e2e/panel-header-fits.spec.ts',
   'e2e/procurement-filters-fit.spec.ts',
   'e2e/news-source-row-fits.spec.ts',

@@ -1624,7 +1624,6 @@ export class App {
         const name = CountryIntelManager.resolveCountryName(code);
         void this.countryIntel.openCountryBriefByCode(code, name).catch((err) => {
           console.error('[CountryBrief] Failed to open country brief:', err);
-          this.state.map?.setRenderPaused(false);
           showToast('Country brief failed to open. Please try again.');
         });
       },
@@ -1770,7 +1769,6 @@ export class App {
           return;
         }
         console.error('[CountryBrief] Failed to open country brief:', error);
-        this.state.map?.setRenderPaused(false);
         showToast('Country brief failed to open. Please try again.');
         resolve(false);
       };
@@ -3869,7 +3867,6 @@ export class App {
             maximize: true,
           }).catch((err) => {
             console.error('[CountryBrief] Failed to open country brief:', err);
-            this.state.map?.setRenderPaused(false);
             showToast('Country brief failed to open. Please try again.');
           });
           this.eventHandlers.syncUrlState();
@@ -3895,7 +3892,6 @@ export class App {
           maximize: deepLinkExpanded,
         }).catch((err) => {
           console.error('[CountryBrief] Failed to open country brief:', err);
-          this.state.map?.setRenderPaused(false);
           showToast('Country brief failed to open. Please try again.');
         }).finally(() => {
           // The open also resolves without a brief (a failed chunk import is

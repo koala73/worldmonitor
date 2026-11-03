@@ -2257,7 +2257,8 @@ body.panel-resize-active iframe {
 .panel-col-resize-handle:focus-visible,
 .map-resize-handle:focus-visible,
 .map-width-resize-handle:focus-visible,
-.panel-content:focus-visible {
+.panel-content:focus-visible,
+.table-scroll:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: -2px;
 }
@@ -2632,9 +2633,11 @@ body.panel-resize-active iframe {
 /* A dashboard column is 248px on a 1366px laptop and 214px at 1280px. The
    header's fixed-size badges then spill under the controls and the title
    collapses to nothing. Below 300px the title wins: status badges shrink to
-   dots and the counters go. The JS toggles those counters with an inline
-   display, so the hide needs !important. These rules sit after the base badge
-   rules so they win at equal specificity. */
+   dots and the counters leave the layout. The badge rules sit after the base
+   badge rules so they win at equal specificity. The counters' base rules come
+   later in the file, so their rule is scoped to the header. They keep their
+   display, which the JS toggles inline, and are hidden the .wm-visually-hidden
+   way so screen readers still read the values. */
 @container (max-width: 300px) {
   .panel-freshness-badge,
   .panel-data-badge.live {
@@ -2653,13 +2656,20 @@ body.panel-resize-active iframe {
     display: none;
   }
 
-  .panel-new-badge,
-  .deviation-indicator,
-  .panel-count {
-    display: none !important;
+  .panel-header .panel-new-badge,
+  .panel-header .deviation-indicator,
+  .panel-header .panel-count {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
 }
-
 
 .panel-data-badge.cached {
   color: var(--semantic-elevated-text, var(--semantic-elevated));
@@ -12191,17 +12201,14 @@ a.prediction-link:hover {
   color: var(--text-secondary);
 }
 
-@media (max-width: 768px) {
-  .radiation-table th,
-  .radiation-table td {
-    padding-inline: 4px;
-  }
-
+@container panel-body (max-width: 480px) {
   .radiation-reading,
   .radiation-delta {
     white-space: normal;
   }
+}
 
+@media (max-width: 768px) {
   .radiation-location {
     overflow-wrap: anywhere;
   }
@@ -26276,7 +26283,7 @@ body.map-width-resizing {
   vertical-align: top;
 }
 
-.gb-table .gb-item-col { min-width: 110px; text-align: left; position: sticky; left: 0; z-index: 2; background: var(--panel-bg); }
+.gb-table .gb-item-col { min-width: 110px; text-align: start; position: sticky; inset-inline-start: 0; z-index: 2; background: var(--panel-bg, var(--surface)); }
 
 .gb-country-header {
   text-align: center;
@@ -26291,10 +26298,10 @@ body.map-width-resizing {
   font-weight: 500;
   min-width: 110px;
   position: sticky;
-  left: 0;
+  inset-inline-start: 0;
   z-index: 2;
-  background: var(--panel-bg);
-  text-align: left;
+  background: var(--panel-bg, var(--surface));
+  text-align: start;
 }
 
 .gb-unit {

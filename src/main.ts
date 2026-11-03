@@ -652,7 +652,7 @@ safeStorageRemove('wm-settings-open');
 
 // Standalone windows: ?settings=1 = panel display settings, ?live-channels=1 = channel management
 // Both need i18n initialized so t() does not return undefined.
-const urlParams = new URL(location.href).searchParams;
+const urlParams = new URLSearchParams(location.search);
 if (urlParams.get('settings') === '1') {
   void Promise.all([import('./services/i18n'), import('./settings-window')]).then(
     async ([i18n, m]) => {

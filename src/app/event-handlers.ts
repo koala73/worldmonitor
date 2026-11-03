@@ -1892,7 +1892,7 @@ export class EventHandlerManager implements AppModule {
       dropdown.querySelectorAll<HTMLAnchorElement>('.dl-dd-btn').forEach(a => {
         a.addEventListener('click', (e) => {
           e.preventDefault();
-          const plat = new URL(a.href, location.origin).searchParams.get('platform') || 'unknown';
+          const plat = new URLSearchParams(a.search).get('platform') || 'unknown';
           trackDownloadClicked(plat);
           window.open(a.href, '_blank', 'noopener,noreferrer');
           dropdown.classList.remove('open');
@@ -1957,7 +1957,7 @@ export class EventHandlerManager implements AppModule {
     a.rel = 'noopener';
     a.addEventListener('click', (e) => {
       e.preventDefault();
-      const plat = new URL(btn.href, location.origin).searchParams.get('platform') || 'unknown';
+      const plat = new URLSearchParams(a.search).get('platform') || 'unknown';
       trackDownloadClicked(plat);
       window.open(btn.href, '_blank', 'noopener,noreferrer');
     });

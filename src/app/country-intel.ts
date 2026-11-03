@@ -250,7 +250,6 @@ export class CountryIntelManager implements AppModule {
 
   private handleCountryBriefOpenError(err: unknown): void {
     console.error('[CountryBrief] Failed to open country brief:', err);
-    this.ctx.map?.setRenderPaused(false);
     this.showToast('Country brief failed to open. Please try again.');
   }
 
@@ -379,7 +378,6 @@ export class CountryIntelManager implements AppModule {
       // Keep the controller for the next open to cancel; closing must not
       // interrupt WebKit body reads.
       this.ctx.map?.clearCountryHighlight();
-      this.ctx.map?.setRenderPaused(false);
       this.ctx.countryTimeline?.destroy();
       this.ctx.countryTimeline = null;
     });
@@ -395,7 +393,6 @@ export class CountryIntelManager implements AppModule {
       const page = this.ctx.countryBriefPage;
       if (!page) return;
       page.showLoading();
-      this.ctx.map?.setRenderPaused(true);
 
       const localGeo = getCountryAtCoordinates(lat, lon);
       if (localGeo) {
@@ -408,7 +405,6 @@ export class CountryIntelManager implements AppModule {
       if (!this.isCurrentBriefRequest(request)) return;
       if (!geo) {
         page.hide();
-        this.ctx.map?.setRenderPaused(false);
         return;
       }
 
@@ -466,7 +462,6 @@ export class CountryIntelManager implements AppModule {
         if (!showedLoading) page.showLoading();
         showedLoading = true;
       }
-      if (!loadingAlreadyShown) this.ctx.map?.setRenderPaused(true);
       if (opts?.trackAnalytics !== false) trackCountryBriefOpened(code);
 
       const canonicalName = TIER1_COUNTRIES[code] || CountryIntelManager.resolveCountryName(code);
@@ -789,14 +784,10 @@ export class CountryIntelManager implements AppModule {
           && !!activePage?.isVisible()
           && (activeCode === '__loading__' || activeCode === '__error__');
         if (failedPresentation || failedLoadingShell) activePage?.hide();
-        if (!this.hasVisibleRealCountryBrief()) this.ctx.map?.setRenderPaused(false);
         this.showToast('Country brief failed to open. Please try again.');
       }
     } finally {
       this.clearBriefRequest(request);
-      if (!pageShown && token === this.briefRequestToken && !this.hasVisibleRealCountryBrief()) {
-        this.ctx.map?.setRenderPaused(false);
-      }
     }
   }
 
