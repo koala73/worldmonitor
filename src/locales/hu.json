@@ -1213,7 +1213,7 @@
       "title": "AI piaci következmények",
       "directions": {
         "long": "Vétel",
-        "short": "Eladás",
+        "short": "SHORT POZÍCIÓ",
         "hedge": "Fedezés"
       },
       "rationale": "Indoklás:",

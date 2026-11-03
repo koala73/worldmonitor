@@ -2402,7 +2402,7 @@
         "noMatches": "Nicio țară găsită",
         "source": "Sursă: Fondul Monetar Internațional Perspectivele economice mondiale · inflația anuală a indicelui prețurilor de consum, toate economiile care raportează",
         "countSingular": "Țară",
-        "countPlural": "țară"
+        "countPlural": "țări"
       }
     },
     "marketImplications": {
@@ -2410,7 +2410,7 @@
       "title": "Implicații AI pe Piață",
       "directions": {
         "long": "Cumpără",
-        "short": "Vinde",
+        "short": "POZIȚIE SCURTĂ",
         "hedge": "Acoperire"
       },
       "rationale": "Rațiune:",

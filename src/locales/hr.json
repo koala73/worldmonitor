@@ -1183,7 +1183,7 @@
         "noMatches": "Nema odgovarajućih zemalja",
         "source": "Izvor: Međunarodni monetarni fond Svjetski ekonomski izgledi · godišnja inflacija indeksa potrošačkih cijena, sva izvještavajuća gospodarstva",
         "countSingular": "Zemlja",
-        "countPlural": "zemlja"
+        "countPlural": "zemlje"
       }
     },
     "gdelt": {
@@ -1220,7 +1220,7 @@
       "title": "AI implikacije na tržištu",
       "directions": {
         "long": "Kupi",
-        "short": "Prodaj",
+        "short": "KRATKA POZICIJA",
         "hedge": "Zaštita"
       },
       "rationale": "Obrazloženje:",

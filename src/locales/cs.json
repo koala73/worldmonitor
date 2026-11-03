@@ -2419,7 +2419,7 @@
       "title": "Implikace AI na trh",
       "directions": {
         "long": "Koupit",
-        "short": "Prodat",
+        "short": "KRÁTKÁ POZICE",
         "hedge": "Zajištění"
       },
       "rationale": "Zdůvodnění:",

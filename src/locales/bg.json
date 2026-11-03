@@ -2393,7 +2393,7 @@
         "noMatches": "Няма съвпадащи страни",
         "source": "Източник: Международен паричен фонд World Economic Outlook · годишна инфлация на потребителските цени, всички отчитащи се икономики",
         "countSingular": "Страна",
-        "countPlural": "страна"
+        "countPlural": "страни"
       }
     },
     "marketImplications": {
@@ -2401,7 +2401,7 @@
       "title": "AI пазарни последици",
       "directions": {
         "long": "Купи",
-        "short": "Продай",
+        "short": "КЪСА ПОЗИЦИЯ",
         "hedge": "Хеджиране"
       },
       "rationale": "Обоснование:",
