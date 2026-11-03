@@ -39,7 +39,7 @@ Opening a Country Brief paused the deck.gl renderer until the brief closed. The 
 
 - **Bounding the pause to the loading phase** was the approach the issue proposed. It keeps a mechanism whose reason no longer exists and adds request-ownership bookkeeping to unpause safely across aborted and superseded opens.
 - **Raw pixel diff of the map region** as the repro signal. Animated markers changed about 8,000 pixels between frames with no toggle, which swamped the toggle signal. The clip also caught the layer list scrolling when a checkbox was clicked.
-- **Headless Playwright.** `MapContainer.hasWebGLSupport()` rejects software GL, so headless runs mount the SVG map, which never paused. Only a headed run on a real GPU reaches deck.gl.
+- **Headless Playwright in the current setup.** The repo's Playwright config and default headless Chromium render with SwiftShader, which `MapContainer.hasWebGLSupport()` rejects as software GL, so those runs mount the SVG map, which never paused. The check tests the GL renderer, not headless mode, so a hardware-accelerated headless run could reach deck.gl. A headed run on a real GPU is the reliable way to get there.
 
 ## Solution
 
