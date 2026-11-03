@@ -74,7 +74,10 @@ function Get-InstallDirs {
   # own stop to $INSTDIR, so no Node process outside the install is touched.
   $dirs = @()
   foreach ($entry in $Entries) {
-    if ($entry.InstallLocation) { $dirs += $entry.InstallLocation.TrimEnd('\') }
+    if ($entry.InstallLocation) {
+      $loc = $entry.InstallLocation.Trim().Trim('"').TrimEnd('\')
+      if ($loc) { $dirs += $loc }
+    }
   }
   foreach ($candidate in @(
     (Join-Path $env:LOCALAPPDATA "Programs\$Product"),
@@ -112,9 +115,14 @@ if (-not $KeepData) {
 
 $credTargets = @()
 if (-not $KeepSecrets) {
+  $suffix = '\.' + [regex]::Escape($KeyringService) + '$'
   $credTargets = @(cmdkey /list 2>$null |
-    Where-Object { $_ -match 'Target:' -and $_ -match [regex]::Escape($KeyringService) } |
-    ForEach-Object { ($_ -split 'Target:\s*', 2)[1].Trim() })
+    Where-Object { $_ -match 'Target:' } |
+    ForEach-Object { ($_ -split 'Target:\s*', 2)[1].Trim() } |
+    Where-Object { $_ -match $suffix })
+  if ($credTargets.Count -eq 0) {
+    Write-Warning 'No app credentials parsed. On localized Windows, check Credential Manager manually for targets ending in .world-monitor.'
+  }
 }
 
 if ($uninstallers.Count -eq 0 -and $dataDirs.Count -eq 0 -and $credTargets.Count -eq 0) {
@@ -147,21 +155,26 @@ Stop-InstalledProcesses -InstallDirs $installDirs
 foreach ($u in $uninstallers) {
   $cmd = $u.UninstallString
   Write-Host "Running uninstaller for $($u.DisplayName)..."
+  $successCodes = @(0)
   if ($cmd -match 'msiexec') {
+    $successCodes = @(0, 1641, 3010)
     $productCode = if ($u.PSChildName -match '^\{.*\}$') { $u.PSChildName } else { $null }
     if ($productCode) {
-      Start-Process 'msiexec.exe' -ArgumentList "/x $productCode /qb" -Wait
+      $result = Start-Process 'msiexec.exe' -ArgumentList "/x $productCode /qb" -Wait -PassThru
     } else {
-      Start-Process 'cmd.exe' -ArgumentList "/c $cmd /qb" -Wait
+      $result = Start-Process 'cmd.exe' -ArgumentList "/c $cmd /qb" -Wait -PassThru
     }
   } else {
     # NSIS: /S runs silently; its pre-uninstall hook stops the bundled sidecar.
     if ($cmd.StartsWith('"')) {
       $exe, $rest = $cmd -split '(?<=")\s+', 2
-      Start-Process $exe.Trim('"') -ArgumentList "$rest /S".Trim() -Wait
+      $result = Start-Process $exe.Trim('"') -ArgumentList "$rest /S".Trim() -Wait -PassThru
     } else {
-      Start-Process $cmd -ArgumentList '/S' -Wait
+      $result = Start-Process $cmd -ArgumentList '/S' -Wait -PassThru
     }
+  }
+  if ($successCodes -notcontains $result.ExitCode) {
+    throw "Uninstaller failed with exit code $($result.ExitCode). App data and credentials have been kept."
   }
 }
 

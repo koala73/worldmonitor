@@ -75,7 +75,7 @@ add_path_if_exists() {
 }
 
 collect_macos_paths() {
-  add_path_if_exists "/Applications/${PRODUCT}.app"
+  add_path_if_exists "${WM_UNINSTALL_SYSTEM_APPLICATIONS_DIR:-/Applications}/${PRODUCT}.app"
   add_path_if_exists "${HOME}/Applications/${PRODUCT}.app"
   if [ "$KEEP_DATA" -eq 0 ]; then
     add_path_if_exists "${HOME}/Library/Application Support/${IDENTIFIER}"
@@ -91,7 +91,10 @@ collect_macos_paths() {
 collect_linux_paths() {
   # Tauri names the AppImage after the product ("World Monitor_2.11.2_amd64.AppImage");
   # launcher integrations sometimes rename it with dashes.
-  local pattern_space pattern_dash dir
+  local pattern_space pattern_dash dir entry line executable basename matched
+  local config_home="${XDG_CONFIG_HOME:-${HOME}/.config}"
+  local data_home="${XDG_DATA_HOME:-${HOME}/.local/share}"
+  local cache_home="${XDG_CACHE_HOME:-${HOME}/.cache}"
   pattern_space="${PRODUCT}*.AppImage"
   pattern_dash="${PRODUCT// /-}*.AppImage"
   for dir in "${HOME}/Applications" "${HOME}/Downloads" "${HOME}/.local/bin" "${HOME}/bin" "${HOME}/Desktop" "${HOME}/AppImages"; do
@@ -103,18 +106,33 @@ collect_linux_paths() {
 
   # Launcher entries created by AppImage integration tools: only those whose
   # Exec line runs this product, never an unrelated entry that mentions it.
-  if [ -d "${HOME}/.local/share/applications" ]; then
+  if [ -d "${data_home}/applications" ]; then
     while IFS= read -r entry; do
-      if grep -qiE "^Exec=.*(${BINARY}|${PRODUCT// /[ _-]})" "$entry" 2>/dev/null; then
-        add_path_if_exists "$entry"
-      fi
-    done < <(find "${HOME}/.local/share/applications" -maxdepth 1 -name '*.desktop' 2>/dev/null)
+      matched=0
+      while IFS= read -r line; do
+        [[ "$line" == Exec=* ]] || continue
+        executable="${line#Exec=}"
+        executable="${executable#"${executable%%[![:space:]]*}"}"
+        if [[ "$executable" == \"* ]]; then
+          executable="${executable#\"}"
+          [[ "$executable" == *\"* ]] || continue
+          executable="${executable%%\"*}"
+        else
+          executable="${executable%%[[:space:]]*}"
+        fi
+        basename="${executable##*/}"
+        case "$basename" in
+          "$BINARY"|"$PRODUCT"*.AppImage|"${PRODUCT// /-}"*.AppImage) matched=1; break ;;
+        esac
+      done < "$entry"
+      if [ "$matched" -eq 1 ]; then add_path_if_exists "$entry"; fi
+    done < <(find "${data_home}/applications" -maxdepth 1 -name '*.desktop' 2>/dev/null)
   fi
 
   if [ "$KEEP_DATA" -eq 0 ]; then
-    add_path_if_exists "${HOME}/.config/${IDENTIFIER}"
-    add_path_if_exists "${HOME}/.local/share/${IDENTIFIER}"
-    add_path_if_exists "${HOME}/.cache/${IDENTIFIER}"
+    add_path_if_exists "${config_home}/${IDENTIFIER}"
+    add_path_if_exists "${data_home}/${IDENTIFIER}"
+    add_path_if_exists "${cache_home}/${IDENTIFIER}"
   fi
 }
 
@@ -128,7 +146,7 @@ stop_processes() {
   # bundle path (parent already gone), then the app itself. Every match is
   # scoped to this product so no other Node process on the machine is touched.
   for pid in $(pgrep -f "sidecar/node" 2>/dev/null || true); do
-    ppid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+    ppid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')" || continue
     [ -n "$ppid" ] || continue
     pcomm="$(ps -o comm= -p "$ppid" 2>/dev/null || true)"
     case "$pcomm" in
@@ -177,8 +195,16 @@ else
 fi
 
 REMOVE_SECRETS=0
-if [ "$KEEP_SECRETS" -eq 0 ] && keychain_entries_exist; then
-  REMOVE_SECRETS=1
+if [ "$KEEP_SECRETS" -eq 0 ]; then
+  if [ "$OS" = "Linux" ]; then
+    if ! command -v secret-tool >/dev/null 2>&1; then
+      echo "secret-tool not found; remove the '${KEYRING_SERVICE}' entries with your keyring manager." >&2
+    fi
+    echo "Reboot after uninstall to clear any API keys saved in the Linux kernel session keyring fallback." >&2
+  fi
+  if keychain_entries_exist; then
+    REMOVE_SECRETS=1
+  fi
 fi
 
 if [ "${#REMOVE_PATHS[@]}" -eq 0 ] && [ "$REMOVE_SECRETS" -eq 0 ]; then

@@ -9,7 +9,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
@@ -77,10 +77,10 @@ describe('uninstall scripts track the one-binary desktop model', () => {
 const platform = process.platform;
 const canRun = platform === 'darwin' || platform === 'linux';
 
-function fixtureHome() {
+function fixtureHome(targetPlatform = platform) {
   const home = mkdtempSync(join(tmpdir(), 'wm-uninstall-'));
   const paths = {};
-  if (platform === 'darwin') {
+  if (targetPlatform === 'darwin') {
     paths.app = join(home, 'Applications', `${tauri.productName}.app`);
     paths.data = join(home, 'Library', 'Application Support', tauri.identifier);
     paths.logs = join(home, 'Library', 'Logs', tauri.identifier);
@@ -97,17 +97,17 @@ function fixtureHome() {
     for (const p of [paths.data, paths.logs, paths.unrelated, dirname(paths.app), dirname(paths.launcher)]) mkdirSync(p, { recursive: true });
     writeFileSync(paths.app, 'AppImage');
     writeFileSync(paths.launcher, `[Desktop Entry]\nName=World Monitor\nExec="${paths.app}" %U\n`);
-    writeFileSync(otherLauncher, '[Desktop Entry]\nName=Notes about World Monitor\nExec=/usr/bin/gedit\n');
+    writeFileSync(otherLauncher, '[Desktop Entry]\nName=Notes about World Monitor\nExec=firefox https://www.worldmonitor.app/world-monitor\n');
     paths.otherLauncher = otherLauncher;
   }
   return { home, paths };
 }
 
-function run(home, args) {
-  return spawnSync('bash', [resolve(root, 'scripts/uninstall-desktop.sh'), ...args], {
+function run(home, args, env = {}) {
+  return spawnSync('/bin/bash', [resolve(root, 'scripts/uninstall-desktop.sh'), ...args], {
     cwd: root,
     encoding: 'utf8',
-    env: { ...process.env, HOME: home, WM_UNINSTALL_SKIP_PROCESS_STOP: '1' },
+    env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, '.config'), XDG_DATA_HOME: join(home, '.local/share'), XDG_CACHE_HOME: join(home, '.cache'), WM_UNINSTALL_SYSTEM_APPLICATIONS_DIR: join(home, 'system-applications'), WM_UNINSTALL_SKIP_PROCESS_STOP: '1', ...env },
   });
 }
 
@@ -163,7 +163,7 @@ describe('uninstall-desktop.sh against a sandboxed home', { skip: !canRun && 'ba
     const { home, paths } = fixtureHome();
     try {
       const declined = spawnSync('bash', [resolve(root, 'scripts/uninstall-desktop.sh'), '--keep-secrets'], {
-        cwd: root, encoding: 'utf8', input: 'n\n', env: { ...process.env, HOME: home, WM_UNINSTALL_SKIP_PROCESS_STOP: '1' },
+        cwd: root, encoding: 'utf8', input: 'n\n', env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, '.config'), XDG_DATA_HOME: join(home, '.local/share'), XDG_CACHE_HOME: join(home, '.cache'), WM_UNINSTALL_SYSTEM_APPLICATIONS_DIR: join(home, 'system-applications'), WM_UNINSTALL_SKIP_PROCESS_STOP: '1' },
       });
       assert.equal(declined.status, 1);
       assert.match(declined.stdout, /Aborted/);
@@ -183,5 +183,77 @@ describe('uninstall-desktop.sh against a sandboxed home', { skip: !canRun && 'ba
     assert.equal(bad.status, 1);
     assert.match(bad.stderr, /Unknown option: --variant/);
     assert.equal(execFileSync('bash', [resolve(root, 'scripts/uninstall-desktop.sh'), '--help'], { encoding: 'utf8' }).includes('--keep-data'), true);
+  });
+});
+
+function linuxEnv(home) {
+  const bin = join(home, 'test-bin');
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, 'uname'), '#!/bin/sh\necho Linux\n', { mode: 0o755 });
+  for (const [name, path] of [['find', '/usr/bin/find'], ['rm', '/bin/rm'], ['tr', '/usr/bin/tr'], ['cat', '/bin/cat']]) {
+    symlinkSync(path, join(bin, name));
+  }
+  return { PATH: bin };
+}
+
+describe('uninstall discovery isolation and Linux edge cases', { skip: !canRun }, () => {
+  it('discovers system macOS apps only under the explicit fixture directory', { skip: platform !== 'darwin' }, () => {
+    const { home } = fixtureHome();
+    try {
+      const app = join(home, 'system-applications', `${tauri.productName}.app`);
+      mkdirSync(app, { recursive: true });
+      const result = run(home, ['--yes', '--keep-secrets']);
+      assert.equal(result.status, 0, result.stderr);
+      assert.ok(!existsSync(app));
+      assert.ok(result.stdout.includes(app));
+      assert.ok(!result.stdout.split('\n').includes(`  /Applications/${tauri.productName}.app`));
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+
+  it('uses XDG paths and matches only the launcher executable', () => {
+    const { home, paths } = fixtureHome('linux');
+    try {
+      const env = linuxEnv(home);
+      env.XDG_CONFIG_HOME = join(home, 'relocated-config');
+      env.XDG_DATA_HOME = join(home, 'relocated-data');
+      env.XDG_CACHE_HOME = join(home, 'relocated-cache');
+      const data = [env.XDG_CONFIG_HOME, env.XDG_DATA_HOME, env.XDG_CACHE_HOME].map((base) => join(base, tauri.identifier));
+      const launchers = join(env.XDG_DATA_HOME, 'applications');
+      mkdirSync(launchers, { recursive: true });
+      for (const dir of data) mkdirSync(dir, { recursive: true });
+      const own = join(launchers, 'own.desktop');
+      const other = join(launchers, 'other.desktop');
+      writeFileSync(own, `[Desktop Entry]\nExec="${paths.app}" %U\n`);
+      writeFileSync(other, '[Desktop Entry]\nExec=firefox https://www.worldmonitor.app/world-monitor\n');
+      const result = run(home, ['--yes', '--keep-secrets'], env);
+      assert.equal(result.status, 0, result.stderr);
+      for (const path of [...data, own, paths.app]) assert.ok(!existsSync(path), `${path} removed`);
+      for (const path of [other, paths.data, paths.logs, paths.otherLauncher]) assert.ok(existsSync(path), `${path} kept`);
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+
+  it('warns about unavailable Secret Service tooling and the kernel fallback even on an empty home', () => {
+    const home = mkdtempSync(join(tmpdir(), 'wm-uninstall-secrets-'));
+    try {
+      const result = run(home, ['--dry-run'], linuxEnv(home));
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stderr, /secret-tool not found/);
+      assert.match(result.stderr, /Reboot.*kernel session keyring/);
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+
+  it('continues when a sidecar disappears between process discovery and inspection', () => {
+    const { home, paths } = fixtureHome('linux');
+    try {
+      const env = linuxEnv(home);
+      for (const [name, body] of [['pgrep', 'echo 999999'], ['ps', 'exit 1'], ['pkill', 'exit 0']]) {
+        writeFileSync(join(env.PATH, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+      }
+      env.WM_UNINSTALL_SKIP_PROCESS_STOP = '0';
+      const result = run(home, ['--yes', '--keep-secrets'], env);
+      assert.equal(result.status, 0, result.stderr);
+      assert.ok(!existsSync(paths.app));
+      assert.ok(existsSync(paths.otherLauncher));
+    } finally { rmSync(home, { recursive: true, force: true }); }
   });
 });
