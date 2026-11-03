@@ -46,6 +46,7 @@ describe('405 responses carry an Allow header', () => {
       }), ctx);
       assert.equal(res.status, 405);
       assert.equal(res.headers.get('allow'), allow, `${name} must name its supported methods`);
+      assert.ok(res.headers.get('access-control-expose-headers')?.split(/,\s*/).includes('Allow'));
     });
 
     it(`${name}: Allow matches the preflight method list`, async () => {
@@ -57,4 +58,10 @@ describe('405 responses carry an Allow header', () => {
       assert.equal(preflight.headers.get('access-control-allow-methods'), allow);
     });
   }
+});
+
+it('server CORS exposes Allow to browser callers', async () => {
+  const { getCorsHeaders } = await import('../server/cors.ts');
+  const headers = getCorsHeaders(new Request(`${ORIGIN}/api/test`, { headers: { origin: ORIGIN } }));
+  assert.ok(headers['Access-Control-Expose-Headers'].split(/,\s*/).includes('Allow'));
 });

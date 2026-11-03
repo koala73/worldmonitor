@@ -57,6 +57,7 @@ const EXPOSED_HEADERS = [
   'Idempotency-Key',
   'Idempotent-Replayed',
   'Location',
+  'Allow',
   // See api/_cors.js — the gateway emits this on every billing-verification
   // denial and cross-origin clients could not read it (#5622).
   'X-Billing-Verification',

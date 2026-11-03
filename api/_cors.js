@@ -52,6 +52,7 @@ const EXPOSED_HEADERS = [
   // this list over every api.worldmonitor.app response, so it must be here
   // for browser agents to read it, not only in server/cors.ts.
   'Location',
+  'Allow',
   // Billing-verification denials (server/_shared/entitlement-check.ts) carry
   // the reason here alongside `Retry-After`. Docs advertise the header
   // (docs/usage-errors.mdx) but it was not exposed, so a cross-origin browser
