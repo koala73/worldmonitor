@@ -197,6 +197,32 @@ function linuxEnv(home) {
 }
 
 describe('uninstall discovery isolation and Linux edge cases', { skip: !canRun }, () => {
+  it('keeps newline-containing discovery names from becoming separate removal targets', () => {
+    const { home, paths } = fixtureHome('linux');
+    try {
+      const victim = join(home, 'notes');
+      mkdirSync(victim);
+      const downloads = join(home, 'Downloads');
+      mkdirSync(downloads);
+      const appimage = join(downloads, 'World Monitor\nnotes\nextra.AppImage');
+      const launcher = join(dirname(paths.launcher), 'strange\nname.desktop');
+      writeFileSync(appimage, 'AppImage');
+      writeFileSync(launcher, `[Desktop Entry]\nExec="${paths.app}"\n`);
+      const result = spawnSync('/bin/bash', [resolve(root, 'scripts/uninstall-desktop.sh'), '--yes', '--keep-secrets'], {
+        cwd: home,
+        encoding: 'utf8',
+        env: { ...process.env, HOME: home, WM_UNINSTALL_SKIP_PROCESS_STOP: '1', ...linuxEnv(home) },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.ok(existsSync(victim), 'newline fragment must not become a relative removal target');
+      assert.ok(existsSync(appimage), 'ambiguous AppImage name is skipped');
+      assert.ok(existsSync(launcher), 'ambiguous launcher name is skipped');
+      assert.match(result.stderr, /Skipping discovered path containing control characters/);
+      assert.ok(!existsSync(paths.app), 'normal installation is still removed');
+      assert.ok(!existsSync(paths.launcher), 'normal launcher is still removed');
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+
   it('discovers system macOS apps only under the explicit fixture directory', { skip: platform !== 'darwin' }, () => {
     const { home } = fixtureHome();
     try {

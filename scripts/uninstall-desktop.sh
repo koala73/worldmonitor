@@ -74,6 +74,14 @@ add_path_if_exists() {
   fi
 }
 
+add_discovered_path() {
+  if [[ "$1" == *[[:cntrl:]]* ]]; then
+    echo "Warning: Skipping discovered path containing control characters; remove it manually." >&2
+    return
+  fi
+  add_path_if_exists "$1"
+}
+
 collect_macos_paths() {
   add_path_if_exists "${WM_UNINSTALL_SYSTEM_APPLICATIONS_DIR:-/Applications}/${PRODUCT}.app"
   add_path_if_exists "${HOME}/Applications/${PRODUCT}.app"
@@ -99,15 +107,15 @@ collect_linux_paths() {
   pattern_dash="${PRODUCT// /-}*.AppImage"
   for dir in "${HOME}/Applications" "${HOME}/Downloads" "${HOME}/.local/bin" "${HOME}/bin" "${HOME}/Desktop" "${HOME}/AppImages"; do
     [ -d "$dir" ] || continue
-    while IFS= read -r appimage; do
-      add_path_if_exists "$appimage"
-    done < <(find "$dir" -maxdepth 1 \( -iname "$pattern_space" -o -iname "$pattern_dash" \) 2>/dev/null)
+    while IFS= read -r -d '' appimage; do
+      add_discovered_path "$appimage"
+    done < <(find "$dir" -maxdepth 1 \( -iname "$pattern_space" -o -iname "$pattern_dash" \) -print0 2>/dev/null)
   done
 
   # Launcher entries created by AppImage integration tools: only those whose
   # Exec line runs this product, never an unrelated entry that mentions it.
   if [ -d "${data_home}/applications" ]; then
-    while IFS= read -r entry; do
+    while IFS= read -r -d '' entry; do
       matched=0
       while IFS= read -r line; do
         [[ "$line" == Exec=* ]] || continue
@@ -125,8 +133,8 @@ collect_linux_paths() {
           "$BINARY"|"$PRODUCT"*.AppImage|"${PRODUCT// /-}"*.AppImage) matched=1; break ;;
         esac
       done < "$entry"
-      if [ "$matched" -eq 1 ]; then add_path_if_exists "$entry"; fi
-    done < <(find "${data_home}/applications" -maxdepth 1 -name '*.desktop' 2>/dev/null)
+      if [ "$matched" -eq 1 ]; then add_discovered_path "$entry"; fi
+    done < <(find "${data_home}/applications" -maxdepth 1 -name '*.desktop' -print0 2>/dev/null)
   fi
 
   if [ "$KEEP_DATA" -eq 0 ]; then
