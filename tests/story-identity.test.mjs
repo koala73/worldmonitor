@@ -825,3 +825,13 @@ it('caps secondary candidate buckets for hot connector-only headlines', () => {
   const titles = ['WHO says US must do more', ...Array.from({ length: 251 }, (_, i) => `WHO says US must do more on topic${i}`)];
   assert.equal(clusterTexts(titles).length, titles.length);
 });
+
+it('clusters inflected content words when all shared words are connectors', () => {
+  const titles = [
+    'WHO says there are more reports about a new vaccination now',
+    'WHO says there are more reports about a new vaccinations now',
+  ];
+  assert.ok(storySimilarity(...titles) >= STORY_SIMILARITY_THRESHOLD);
+  assert.deepEqual(clusterTexts(titles), [[0, 1]]);
+  assert.deepEqual(clusterTexts([...titles].reverse()), [[0, 1]]);
+});

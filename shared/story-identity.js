@@ -137,7 +137,10 @@ function candidateTokenSets(text) {
       for (let i = 0; i + 2 <= tok.length; i++) out.add(tok.slice(i, i + 2));
     } else if (tok.length >= 3) {
       fallback.add(tok);
-      if (!CANDIDATE_STOPWORDS.has(tok)) out.add(tok);
+      if (!CANDIDATE_STOPWORDS.has(tok)) {
+        out.add(tok);
+        if (tok.length > 4 && tok.endsWith('s')) out.add(tok.slice(0, -1));
+      }
     }
   }
   return { primary: out, fallback };
