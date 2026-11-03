@@ -151,6 +151,24 @@ export function hasCloudflareTransitProof(request: Request): boolean {
   return constantTimeEqual((request.headers.get(CF_EDGE_PROOF_HEADER) ?? '').trim(), secret);
 }
 
+/**
+ * True when the caller presented `cf-connecting-ip` without a valid
+ * `x-wm-edge-proof` while `CF_EDGE_PROOF_SECRET` is configured.
+ *
+ * That state is either (a) a direct-to-Vercel spoof of the Cloudflare client
+ * IP header, or (b) Cloudflare-proxied traffic whose Transform Rule did not
+ * cover this route. IP-scoped rate limits must reject it rather than fall
+ * through to a shared PoP bucket (#8402). When the secret is unset, returns
+ * false so local/dev without the secret keep working.
+ */
+export function hasUnprovenCloudflareClientIp(request: Request): boolean {
+  const secret = (process.env.CF_EDGE_PROOF_SECRET ?? '').trim();
+  if (!secret) return false;
+  const cf = (request.headers.get('cf-connecting-ip') ?? '').trim();
+  if (!cf) return false;
+  return !hasCloudflareTransitProof(request);
+}
+
 // One-per-isolate warning that the edge-proof is not matching, so a missing
 // CF_EDGE_PROOF_SECRET or a Cloudflare rule that stopped covering this route
 // cannot regress silently. The dangerous state is cf-connecting-ip PRESENT
@@ -218,4 +236,41 @@ export function getClientIp(request: Request): string {
   // it must neither warn nor consume the shared latch.
   if (cf && isCloudflareProxyIp(xr)) warnEdgeProofNotProving();
   return xr || UNKNOWN_CLIENT_IP;
+}
+
+// Per-IP rate-limit buckets group IPv6 clients by their /64. One subscriber
+// line or VPS normally owns a whole /64, so keying on the full address would
+// hand that client 2^64 separate buckets. IPv4 (and IPv4-mapped IPv6) stays a
+// single address; anything unparseable is returned unchanged.
+export function rateLimitKeyForIp(ip: string): string {
+  if (!ip.includes(':')) return ip;
+  let addr = (ip.split('%')[0] ?? ip).toLowerCase();
+  const v4Tail = addr.match(/^(.*:)(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (v4Tail) {
+    const octets = v4Tail[2]!.split('.').map(Number);
+    if (octets.some((n) => n > 255)) return ip;
+    const [a = 0, b = 0, c = 0, d = 0] = octets;
+    addr = `${v4Tail[1]}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const halves = addr.split('::');
+  if (halves.length > 2) return ip;
+  const head = halves[0] ? halves[0].split(':') : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const missing = 8 - head.length - tail.length;
+  if (halves.length === 1 ? missing !== 0 : missing < 1) return ip;
+  const groups = [...head, ...new Array(halves.length === 2 ? missing : 0).fill('0'), ...tail];
+  if (!groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return ip;
+  // IPv4-mapped (::ffff:a.b.c.d), in dotted or hex form, is one IPv4 client.
+  const nums = groups.map((g) => parseInt(g, 16));
+  if (nums.slice(0, 5).every((n) => n === 0) && nums[5] === 0xffff) {
+    const hi = nums[6]!;
+    const lo = nums[7]!;
+    return `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
+  }
+  return `${groups.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(':')}::/64`;
+}
+
+// The caller identity for per-IP rate limits: getClientIp, with IPv6 grouped.
+export function getClientRateLimitKey(request: Request): string {
+  return rateLimitKeyForIp(getClientIp(request));
 }

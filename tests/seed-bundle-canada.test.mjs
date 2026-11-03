@@ -22,9 +22,6 @@ const src = readFileSync(join(root, 'scripts/seed-bundle-canada.mjs'), 'utf8');
 const RUNNER_SRC = readFileSync(join(root, 'scripts/_bundle-runner.mjs'), 'utf8');
 const TORONTO_TFS_SEEDER_SRC = readFileSync(join(root, 'scripts/seed-toronto-tfs.mjs'), 'utf8');
 const TORONTO_TPS_SEEDER_SRC = readFileSync(join(root, 'scripts/seed-toronto-tps.mjs'), 'utf8');
-const ACCEPTANCE_BASELINE = JSON.parse(
-  readFileSync(join(root, 'scripts/seed-freshness-baseline.json'), 'utf8'),
-);
 const sections = extractBundleSections(src);
 
 const MIN = 60_000;
@@ -89,7 +86,7 @@ test('per-member cadence is the declared one, not TTC\'s cron inherited', () => 
 test('Manitoba cutover acknowledgement reaches the first eligible Provincial-511 admission', () => {
   const provincial = section('Provincial-511');
   const intervalMs = resolveExpr(src, provincial.intervalMsExpr);
-  const freshnessGuard = /elapsed\s*<\s*section\.intervalMs\s*\*\s*(\d+(?:\.\d+)?)/.exec(RUNNER_SRC);
+  const freshnessGuard = /const\s+eligibilityMs\s*=\s*section\.intervalMs\s*\*\s*(\d+(?:\.\d+)?)/.exec(RUNNER_SRC);
   assert.ok(freshnessGuard, 'bundle runner must expose its interval freshness admission ratio');
   const freshnessRatio = Number(freshnessGuard[1]);
   assert.ok(freshnessRatio > 0 && freshnessRatio <= 1, 'freshness admission ratio must be in (0, 1]');
@@ -112,20 +109,6 @@ test('Manitoba cutover acknowledgement reaches the first eligible Provincial-511
     15 * MIN,
     'the first eligible Provincial-511 admission must still be three */5 ticks out',
   );
-
-  // Directional: no ack is required now, but one added later must span exactly
-  // that window rather than expiring on the activation tick.
-  const manitoba = ACCEPTANCE_BASELINE.acknowledged.find((entry) => entry.name === 'manitobaRoads');
-  if (manitoba) {
-    const activatedAt = Date.parse(manitoba.cutover?.activatedAt);
-    const firstScheduledRunAt = Date.parse(manitoba.cutover?.firstScheduledRunAt);
-    assert.equal(
-      firstScheduledRunAt,
-      activatedAt + firstEligibleDelayMs,
-      'the cutover must include */5 ticks skipped by the runner\'s 0.8-interval freshness gate',
-    );
-    assert.equal(Date.parse(manitoba.expiresAt), firstScheduledRunAt);
-  }
 });
 
 test('seed-meta keys follow runSeed(domain, resource), not the canonical key', () => {
@@ -232,10 +215,6 @@ test('Toronto sources use provider freshness, bounded execution, and durable act
     assert.match(contract.seederSrc, new RegExp(`afterPublish:\\s*mark${contract.label === 'Toronto-TFS' ? 'Tfs' : 'Tps'}Activated`));
     assert.match(contract.seederSrc, new RegExp(contract.activationKey));
   }
-
-  const acknowledged = new Set(ACCEPTANCE_BASELINE.acknowledged.map((entry) => entry.name));
-  assert.equal(acknowledged.has('torontoTfs'), false);
-  assert.equal(acknowledged.has('torontoTps'), false);
 });
 
 test('skips a member whose script is absent instead of failing the whole bundle', () => {
@@ -261,11 +240,8 @@ test('is registered as an active service now that it is provisioned', () => {
   assert.ok(Array.isArray(entry.watchPatterns) && entry.watchPatterns.length > 0);
   assert.deepEqual(
     entry.requiredEnv,
-    ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'MANITOBA_511_KEY', 'ALBERTA_511_KEY'],
-    'members publish through runSeed (Upstash REST pair); Manitoba and Alberta 511 each '
-    + 'need their Railway key. Alberta was keyless until 2026-08-19, when the vendor began '
-    + 'answering an unkeyed GET with HTTP 400 "Invalid Key" and the jurisdiction went stale '
-    + 'for 88 hours while the bundle still reported OK.',
+    ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'MANITOBA_511_KEY', 'ALBERTA_511_KEY', 'ONTARIO_511_KEY'],
+    'members publish through runSeed (Upstash REST pair); all three provincial 511 sources need their own key',
   );
 });
 

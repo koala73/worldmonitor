@@ -38,6 +38,7 @@ import { LlmStatusIndicator } from '@/components/LlmStatusIndicator';
 import type { PredictionPanel } from '@/components/PredictionPanel';
 import {
   buildMapUrl,
+  withUrlFragment,
   debounce,
   loadFromStorage,
   saveToStorage,
@@ -91,7 +92,14 @@ import {
   trackPanelToggled,
   trackDownloadClicked,
   trackGateHit,
+  trackLayoutCustomized,
 } from '@/services/analytics';
+import {
+  bindPromptToAccount,
+  decideAboutYouPrompt,
+  isPasskeyOfferPresent,
+  waitForActivationPromptDecision,
+} from '@/services/onboarding-prompt';
 import { detectPlatform, allButtons, buttonsForPlatform } from '@/components/DownloadBanner';
 import type { Platform } from '@/components/DownloadBanner';
 import { isOpenableExternalUrl, openExternalUrl } from '@/services/external-navigation';
@@ -102,6 +110,7 @@ import { WM_OPEN_NOTIFICATIONS_FOR_COUNTRY } from '@/utils/notify-country-link';
 import { AuthLauncher } from '@/components/AuthLauncher';
 import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
 import { t } from '@/services/i18n';
+import { getPanelDisplayName } from '@/services/panel-display-name';
 import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { hasEmbedAccessForAccount, onEntitlementChange } from '@/services/entitlements';
@@ -113,6 +122,7 @@ import { resolveGateAction, type PanelGateReason } from '@/services/panel-gating
 import { ExportGateControl } from '@/components/ExportGateControl';
 import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
+import { declareOverlay, isModalOpen } from '@/utils/open-modal';
 import {
   isAgentAnalyticsSuppressed,
   isAgentPanelViewSuppressed,
@@ -147,6 +157,29 @@ import {
 } from '@/app/responsive-zone-listener';
 import { stageVariantSelection } from '@/services/variant-panel-ownership';
 import { transferSourceGateOwnershipToUser as releaseSourceGateOwnership } from '@/services/source-cap';
+
+/** Bound on each wait before the About-you card abstains for this load. */
+const ABOUT_YOU_WAIT_MS = 8_000;
+
+/** The signed-in user id once auth settles, or null (signed out or timeout). */
+function waitForSettledUserId(timeoutMs: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    let done = false;
+    let unsubscribe: (() => void) | null = null;
+    const finish = (userId: string | null): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      queueMicrotask(() => unsubscribe?.());
+      resolve(userId);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    unsubscribe = subscribeAuthState((state) => {
+      if (!state.isPending) finish(state.user?.id ?? null);
+    });
+    if (done) unsubscribe();
+  });
+}
 
 function readStorageValue(key: string): string | null {
   try {
@@ -346,7 +379,7 @@ export class EventHandlerManager implements AppModule {
     if (!shareUrl) return;
     // Preserve the shared mobile-overlay marker while syncing map URL state;
     // replacing it with null makes Android Back skip the open sheet.
-    try { history.replaceState(history.state, '', shareUrl); } catch { }
+    try { history.replaceState(history.state, '', withUrlFragment(shareUrl, window.location.hash)); } catch { }
   };
   private readonly debouncedUrlSync = debounce(this.writeUrlState, 250);
 
@@ -919,12 +952,73 @@ export class EventHandlerManager implements AppModule {
       // fixed 700ms timeout that forced layout reads (getBoundingClientRect +
       // offsetHeight) on the post-load path. Re-check state at fire time since
       // the idle wait can outlast an early user choice.
+      //
+      // That includes a modal the user opened first. On a slow machine the
+      // idle period lands after it; the prompt then took focus and swallowed
+      // the modal's Escape (its keydown handler stops propagation), leaving the
+      // modal impossible to close from the keyboard. Skipping costs nothing:
+      // an undismissed prompt re-appears on the next load.
       scheduleAfterFirstPaint(() => {
         if (this.ctx.isDestroyed) return;
         if (this.missionPresetPopover || loadStoredMissionPreset() || isMissionPresetPromptDismissed()) return;
+        if (isModalOpen(document)) return;
         this.openMissionPresetPopover(document.getElementById('missionPresetBtn'), false, 'auto');
       });
     }
+    // One onboarding prompt per load (KTD6): the mission picker owns a
+    // brand-new desktop visitor's first load; the About-you card waits.
+    if (!shouldPrompt) {
+      scheduleAfterFirstPaint(() => {
+        this.maybeOpenAboutYouCard().catch((err) => {
+          console.warn('[about-you] could not open the card', err);
+        });
+      });
+    }
+  }
+
+  /**
+   * Open the About-you card when the signed-in account has not answered or
+   * skipped, or owes its one return visit (R19). Waits for auth to settle, the
+   * profile status, and the Pro activation decision, each bounded; any
+   * timeout or unknown abstains until the next load.
+   */
+  private async maybeOpenAboutYouCard(): Promise<void> {
+    const userId = await waitForSettledUserId(ABOUT_YOU_WAIT_MS);
+    if (!userId || this.ctx.isDestroyed) return;
+    const profile = await import('@/services/audience-profile');
+    const [status, activation] = await Promise.all([
+      profile.loadAboutYouStatus(userId),
+      waitForActivationPromptDecision(ABOUT_YOU_WAIT_MS),
+    ]);
+    const stillCurrent = (): boolean => !this.ctx.isDestroyed && getAuthState().user?.id === userId;
+    if (!stillCurrent()) return;
+    const decision = decideAboutYouPrompt({
+      signedIn: true,
+      status,
+      activation,
+      missionPickerDue: false,
+      // A passkey offer counts as an open prompt: one prompt per load (KTD6).
+      modalOpen: isModalOpen(document) || isPasskeyOfferPresent(document),
+    });
+    if (decision.kind === 'none') return;
+    const { mountAboutYouCard } = await import('@/components/AboutYouCard');
+    if (!stillCurrent() || isModalOpen(document) || isPasskeyOfferPresent(document)) return;
+    const card = mountAboutYouCard({
+      mode: decision.mode,
+      questions: decision.questions,
+      surface: 'dashboard',
+      deps: {
+        recordAnswer: (questionId, optionId) => profile.recordAboutYouAnswer(userId, questionId, optionId, 'dashboard'),
+        recordFreeText: (text) => profile.recordAboutYouFreeText(userId, text, 'dashboard'),
+        skip: () => profile.skipAboutYou(userId, 'dashboard'),
+        markReturnShown: () => profile.markAboutYouReturnShown(userId),
+        track: (event, data) => track(event, data),
+      },
+    });
+    if (!card) return;
+    // Its callbacks write against `userId`: remove it on sign-out, an account
+    // switch, or teardown.
+    this.authStateUnsubscribers.push(bindPromptToAccount(card, userId, subscribeAuthState));
   }
 
   private renderMissionPresetControl(): void {
@@ -991,6 +1085,13 @@ export class EventHandlerManager implements AppModule {
     popover.className = `mission-preset-popover${mobile ? ' mission-preset-popover--mobile' : ''}`;
     popover.setAttribute('role', 'dialog');
     popover.setAttribute('aria-label', 'Mission presets');
+    // Auto-opens after first paint for every preset-less user, and holds no
+    // entered state — it re-appears on the next load. Without this, the
+    // automatic reload guards treated it as work worth protecting and
+    // deferred stale-bundle reloads for a broad population
+    // (WORLDMONITOR-15X). Read-only on every `trigger`, so one declaration
+    // covers all three paths. Accessibility still sees a dialog.
+    declareOverlay(popover, { reload: 'safe' });
     popover.tabIndex = -1;
 
     const cards = getMissionPresetsForVariant(SITE_VARIANT).map((preset) => {
@@ -1179,11 +1280,12 @@ export class EventHandlerManager implements AppModule {
     const sourceIds = LAYER_TO_SOURCE[layer];
     if (sourceIds) {
       for (const sourceId of sourceIds) {
-        dataFreshness.setEnabled(sourceId, enabled);
+        dataFreshness.setMapLayerEnabled(sourceId, enabled);
       }
     }
 
     if (layer === 'ais') {
+      dataFreshness.setEnabled('ais', isAisConfigured());
       if (enabled) {
         this.ctx.map?.setLayerLoading('ais', true);
         initAisStream();
@@ -1462,7 +1564,18 @@ export class EventHandlerManager implements AppModule {
     // async flyTo that makes getCenter() return stale intermediate coordinates.
     // The cases, and why `view` alone is not one, are documented on the
     // predicate in src/utils/urlState.ts.
-    if (!urlHasAsyncFlyTo(this.ctx.initialUrlState)) {
+    if (urlHasAsyncFlyTo(this.ctx.initialUrlState)) {
+      // Keep the deep-link coordinates out of the URL until an animated
+      // renderer has reached them. SVG applies viewport changes synchronously,
+      // and may finish before this listener is attached, so this settled write
+      // is also what preserves its initial lat/lon URL state.
+      void this.ctx.map.whenViewportSettled().then(() => {
+        if (!this.ctx.isDestroyed) this.debouncedUrlSync();
+      }).catch(() => {
+        // A superseding interaction or renderer switch owns the newer state;
+        // its normal state-change listener will sync that viewport.
+      });
+    } else {
       this.debouncedUrlSync();
     }
   }
@@ -1486,11 +1599,12 @@ export class EventHandlerManager implements AppModule {
     const sourceIds = LAYER_TO_SOURCE[layer];
     if (sourceIds) {
       for (const sourceId of sourceIds) {
-        dataFreshness.setEnabled(sourceId, enabled);
+        dataFreshness.setMapLayerEnabled(sourceId, enabled);
       }
     }
 
     if (layer === 'ais') {
+      dataFreshness.setEnabled('ais', isAisConfigured());
       if (enabled) {
         this.ctx.map?.setLayerLoading('ais', true);
         initAisStream();
@@ -1519,16 +1633,22 @@ export class EventHandlerManager implements AppModule {
     const center = this.ctx.map.getCenter();
     const baseUrl = `${window.location.origin}${window.location.pathname}`;
     const briefPage = this.ctx.countryBriefPage;
-    const isCountryVisible = briefPage?.isVisible() ?? false;
+    // A loading or error panel is visible with a placeholder code such as
+    // `__loading__`, which is not a country.
+    const code = briefPage?.getCode();
+    const isCountryVisible = (briefPage?.isVisible() ?? false) && !!code && !code.startsWith('__');
+    // A deep-linked brief loads a lazy chunk and its data first; until it
+    // shows, keep its country in the URL so a refresh or copied link keeps it.
+    const pending = isCountryVisible ? null : this.ctx.pendingCountryBrief;
     return buildMapUrl(baseUrl, {
       view: state.view,
       zoom: state.zoom,
       center,
       timeRange: state.timeRange,
       layers: state.layers,
-      country: isCountryVisible ? (briefPage?.getCode() ?? undefined) : undefined,
-      expanded: isCountryVisible && briefPage?.getIsMaximized?.() ? true : undefined,
-      chokepoint: !isCountryVisible ? (this.ctx.activeChokepoint ?? undefined) : undefined,
+      country: isCountryVisible ? code : pending?.code,
+      expanded: (isCountryVisible ? briefPage?.getIsMaximized?.() : pending?.expanded) ? true : undefined,
+      chokepoint: !isCountryVisible && !pending ? (this.ctx.activeChokepoint ?? undefined) : undefined,
     });
   }
 
@@ -1559,6 +1679,10 @@ export class EventHandlerManager implements AppModule {
     dialog.className = 'embed-modal';
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-modal', 'true');
+    // Generated snippets only; nothing is typed here, so a reload loses nothing.
+    // The outer overlay is role="presentation"; this inner element is the one
+    // the reload guard sees.
+    declareOverlay(dialog, { reload: 'safe' });
     dialog.setAttribute('aria-labelledby', 'embedModalTitle');
 
     const header = document.createElement('div');
@@ -1768,7 +1892,7 @@ export class EventHandlerManager implements AppModule {
       dropdown.querySelectorAll<HTMLAnchorElement>('.dl-dd-btn').forEach(a => {
         a.addEventListener('click', (e) => {
           e.preventDefault();
-          const plat = new URL(a.href, location.origin).searchParams.get('platform') || 'unknown';
+          const plat = new URLSearchParams(a.search).get('platform') || 'unknown';
           trackDownloadClicked(plat);
           window.open(a.href, '_blank', 'noopener,noreferrer');
           dropdown.classList.remove('open');
@@ -1833,7 +1957,7 @@ export class EventHandlerManager implements AppModule {
     a.rel = 'noopener';
     a.addEventListener('click', (e) => {
       e.preventDefault();
-      const plat = new URL(btn.href, location.origin).searchParams.get('platform') || 'unknown';
+      const plat = new URLSearchParams(a.search).get('platform') || 'unknown';
       trackDownloadClicked(plat);
       window.open(btn.href, '_blank', 'noopener,noreferrer');
     });
@@ -2221,7 +2345,7 @@ export class EventHandlerManager implements AppModule {
       // Sources are applied to ctx.disabledSources on click, but DataLoader
       // only re-reads that set when a load runs — so before this, a source
       // toggle first showed up at RefreshScheduler's `news` tick,
-      // REFRESH_INTERVALS.feeds = 20 minutes away, or on reload (#6380).
+      // the next REFRESH_INTERVALS.feeds tick, or on reload (#6380).
       //
       // No invalidateNewsHydration() here, deliberately: DataLoader's news gate
       // keys its work-list signature on ctx.disabledSources
@@ -2732,6 +2856,7 @@ export class EventHandlerManager implements AppModule {
     // Set only by applyDrag: a zero-movement press/tap must not persist the
     // container-clamped application back over the raw stored preference.
     let dragMoved = false;
+    let dragStartPct = '';
 
     this.boundMapWidthEndResizeHandler = () => {
       activeTouchId = null;
@@ -2743,7 +2868,10 @@ export class EventHandlerManager implements AppModule {
       document.body.classList.remove('map-width-resizing');
       widthHandle.classList.remove('resizing');
       const current = mainContent.style.getPropertyValue('--map-col-width');
-      if (current && dragMoved) writeStorageValue('map-col-width', current);
+      if (current && dragMoved) {
+        writeStorageValue('map-col-width', current);
+        if (Number.parseFloat(current).toFixed(1) !== dragStartPct) trackLayoutCustomized('map-divider');
+      }
       dragMoved = false;
       syncMapColNarrowState();
       syncWidthSeparatorAria();
@@ -2756,7 +2884,8 @@ export class EventHandlerManager implements AppModule {
       activeDragSource = source;
       startX = clientX;
       startTotalWidth = mainContent.offsetWidth;
-      startColPx = startTotalWidth * (getCurrentWidthPercent() / 100);
+      dragStartPct = getCurrentWidthPercent().toFixed(1);
+      startColPx = startTotalWidth * (Number(dragStartPct) / 100);
       dragSign = isMapVisuallyRight() ? -1 : 1;
       this.ctx.map?.setIsResizing(true);
       document.body.classList.add('map-width-resizing');
@@ -2792,11 +2921,13 @@ export class EventHandlerManager implements AppModule {
       if (arrow === 0) return;
       e.preventDefault();
       const step = isMapVisuallyRight() ? -arrow : arrow;
-      const newPct = clampMapColWidthPercent(getCurrentWidthPercent() + step, mainContent.offsetWidth);
+      const currentPct = getCurrentWidthPercent();
+      const newPct = clampMapColWidthPercent(currentPct + step, mainContent.offsetWidth);
       const value = `${newPct.toFixed(1)}%`;
       mainContent.style.setProperty('--map-col-width', value);
       this.ctx.map?.resize();
       writeStorageValue('map-col-width', value);
+      if (newPct.toFixed(1) !== currentPct.toFixed(1)) trackLayoutCustomized('map-divider');
       syncMapColNarrowState();
       syncWidthSeparatorAria();
     });
@@ -2937,13 +3068,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   getLocalizedPanelName(panelKey: string, fallback: string): string {
-    if (panelKey === 'runtime-config') {
-      return t('modals.runtimeConfig.title');
-    }
-    const key = panelKey.replace(/-([a-z])/g, (_match, group: string) => group.toUpperCase());
-    const lookup = `panels.${key}`;
-    const localized = t(lookup);
-    return localized === lookup ? fallback : localized;
+    return getPanelDisplayName(panelKey, fallback);
   }
 
   private transferSourceGateOwnershipToUser(names: Iterable<string>): boolean {

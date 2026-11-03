@@ -15,8 +15,11 @@ concurrency:
 
 jobs:
   refresh:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      branch: ${{ steps.reconcile.outputs.branch }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -44,7 +47,7 @@ jobs:
             exit 0
           fi
           echo "skip=false" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.reconcile.outputs.skip != 'true'
         with:
           node-version: '24'
@@ -65,11 +68,24 @@ jobs:
           node scripts/freeze-resilience-ranking.mjs
       - name: Rebuild and verify published artifacts
         if: steps.reconcile.outputs.skip != 'true'
+        env:
+          # Every data suite whose source names an artifact this job rewrites.
+          # A hand-picked list skipped crawlable-corpus.test.mjs and the bot
+          # opened a red PR (#9954).
+          SNAPSHOT_CONSUMERS: 'docs/snapshots|resilience-ranking|resilienceSnapshot|crawlable-corpus|llms-full|llms\.txt|ai-search\.md|sitemap|product-facts|product-catalog|country-corpus-slugs|depth-stats|variant-meta'
         run: |
+          # Product facts carry the snapshot's ranked/universe pair (the depth
+          # band and the blog glossary's CRI definition, which llms-full
+          # renders). Regenerate them before inventory:facts, which derives
+          # public/product-facts.json from them, and before build:llms-full.
+          node --import tsx scripts/generate-public-product-facts.mjs
           # `npm ci --ignore-scripts` above skips the postinstall that writes
           # the gitignored inventory-facts boot artifacts, which the verifying
           # tests read. Generate them explicitly rather than relying on install.
           npm run inventory:facts
+          # Restate the pair on the hand-written HTML, docs and blog surfaces,
+          # or seo-geo-residue fails on any new ranked count.
+          npm run resilience:coverage
           npm run build:crawlable-corpus
           npm run build:sitemap
           npm run build:llms-full
@@ -78,12 +94,10 @@ jobs:
           # llms-full corpus does. Omitting it here would leave the committed
           # figures a month stale and turn the drift test red on main.
           npm run build:ai-search
-          node --import tsx --test \
-            tests/resilience-published-snapshot.test.mjs \
-            tests/resilience-ranking-snapshot.test.mts \
-            tests/sitemap-generation.test.mjs \
-            tests/seo-geo-residue.test.mjs \
-            tests/ai-search-product-facts.test.mjs
+          mapfile -t suites < <(grep -lE "$SNAPSHOT_CONSUMERS" tests/*.test.mjs tests/*.test.mts)
+          # No built-output filter: it drops whole suites such as
+          # public-product-facts, which skip only their build-only cases here.
+          node scripts/run-data-tests.mjs "${suites[@]}"
       - name: Commit the monthly snapshot
         if: steps.reconcile.outputs.skip != 'true'
         env:
@@ -95,7 +109,20 @@ jobs:
           git switch -c "$BRANCH_NAME"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml public/llms-full.txt public/ai-search.md public/llms.txt
+          # api/_country-corpus-slugs.generated.js is derived from "$snapshot_path"
+          # and rewritten by build:crawlable-corpus above. Leaving it unstaged
+          # would ship a renamed country's page while api/story.js kept
+          # canonicalising every share of it at the old slug — a hard 404, with
+          # no legacy-slug redirect behind it (#8604).
+          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml public/llms-full.txt public/ai-search.md public/llms.txt api/_country-corpus-slugs.generated.js
+          # Ranked/universe pair regenerated above: product facts and the
+          # hand-written surfaces listed in scripts/sync-resilience-coverage.mjs.
+          git add shared/product-facts.generated.json scripts/shared/product-facts.generated.json \
+            shared/product-catalog.generated.json scripts/shared/product-catalog.generated.json \
+            api/_product-catalog.generated.js pro-test/src/generated/depth-stats.json \
+            index.html src/config/variant-meta.ts docs/about.mdx docs/overview.mdx \
+            docs/methodology/country-resilience-index.mdx docs/zh/methodology/country-resilience-index.mdx \
+            blog-site/src/content/blog/country-instability-index-methodology-explained.md
           git commit -m "chore(resilience): refresh published snapshot ${snapshot_date}"
           git push --set-upstream origin "$BRANCH_NAME"
       - name: Open the monthly snapshot PR
@@ -138,3 +165,16 @@ jobs:
           path: ${{ runner.temp }}/resilience-snapshot.patch
           retention-days: 30
           if-no-files-found: error
+
+  # A PR opened with github.token fires no workflow_run event for its CI, so
+  # Deploy Gate would reach it only on its 30-minute sweep.
+  deploy-gate:
+    needs: refresh
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/bot-pr-deploy-gate.yml
+    with:
+      branch: ${{ needs.refresh.outputs.branch }}

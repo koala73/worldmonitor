@@ -195,7 +195,8 @@ export async function listCryptoQuotes(
 
   // Default request: return the seeded default crypto set, never the provider.
   if (ids.length === 0 && invalid.length === 0) {
-    if (seedQuotes.length === 0) {
+    if (seedRead.status !== 'hit' || seedUnavailable) {
+      markNoCacheResponse(ctx.request);
       return { quotes: [], unresolvedIds: [], provider: 'degraded' };
     }
     return {

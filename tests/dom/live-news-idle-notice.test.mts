@@ -20,8 +20,7 @@ interface PanelInternals {
   channels: LiveChannelLike[];
   ensurePlayerContainer(): void;
   getChannelDisplayName(channel: LiveChannelLike): string;
-  switchChannel(channel: LiveChannelLike): Promise<void>;
-  resolveChannelVideo(channel: LiveChannelLike): Promise<void>;
+  switchChannel(channel: LiveChannelLike): void;
 }
 
 let panel: LiveNewsPanel | undefined;
@@ -216,7 +215,7 @@ describe('Live News idle stop', () => {
     expect(notice()).toBeNull();
   });
 
-  it.each([false, true])('keeps the notice after a channel switch with auto-play %s', async (alwaysOn) => {
+  it.each([false, true])('keeps the notice after a channel switch with auto-play %s', (alwaysOn) => {
     localStorage.setItem('wm-live-streams-always-on', String(alwaysOn));
     localStorage.setItem('wm-live-media-idle-stop', '60');
     mount();
@@ -226,8 +225,7 @@ describe('Live News idle stop', () => {
 
     const sky = internals().channels.find((channel) => channel.id === 'sky');
     if (!sky) throw new Error('seeded sky channel missing');
-    vi.spyOn(internals(), 'resolveChannelVideo').mockResolvedValue(undefined);
-    await internals().switchChannel(sky);
+    internals().switchChannel(sky);
 
     expect(isPlaying()).toBe(false);
     expect(notice()?.querySelector('.live-media-shell-title')?.textContent)

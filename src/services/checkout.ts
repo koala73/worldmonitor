@@ -11,6 +11,7 @@
  * UI code calls startCheckout(productId) -- everything else is internal.
  */
 
+import type { DodoProductId } from '@/config/products';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { openBillingPortal, prereserveBillingPortalTab } from './billing';
 import { getCurrentClerkUser, getClerkToken, openSignIn } from './clerk';
@@ -112,7 +113,7 @@ const APP_CHECKOUT_BASE_URL = `${WEB_APP_ORIGIN}/dashboard`;
  */
 function navigateToWebSurface(url: string): void {
   if (isDesktopRuntime()) {
-    void openExternalUrl(url);
+    void openExternalUrl(url, null, { desktopPopupFallback: false });
     return;
   }
   window.location.assign(url);
@@ -120,15 +121,6 @@ function navigateToWebSurface(url: string): void {
 
 export const DESKTOP_CHECKOUT_HANDOFF_MESSAGE =
   'Checkout opened in your browser. Finish payment there, then come back — Pro unlocks here automatically.';
-
-/**
- * Same contract, minus the claim about WHERE it opened. Used when the native
- * handoff failed and checkout landed in a WebView window instead: the buyer
- * can still complete payment, so naming the wrong window is the only real
- * risk to avoid.
- */
-export const DESKTOP_CHECKOUT_FALLBACK_MESSAGE =
-  'Checkout opened in a new window. Finish payment there — Pro unlocks here automatically.';
 
 /**
  * Consume a legacy overlay-return flag from an existing tab. Hosted checkout
@@ -186,6 +178,7 @@ interface PendingCheckoutIntent {
 const PENDING_INTENT_TTL_MS = 15 * 60 * 1000;
 
 let _watchersInitialized = false;
+let _pendingCheckoutRevision = 0;
 
 function loadPendingCheckoutIntent(): PendingCheckoutIntent | null {
   try {
@@ -210,6 +203,7 @@ function loadPendingCheckoutIntent(): PendingCheckoutIntent | null {
 }
 
 function savePendingCheckoutIntent(intent: PendingCheckoutIntent): void {
+  _pendingCheckoutRevision++;
   try {
     // Stamp savedAt at write time so the TTL gate in the loader has
     // something to check. Caller's own savedAt (if any) is preserved
@@ -224,7 +218,13 @@ function savePendingCheckoutIntent(intent: PendingCheckoutIntent): void {
   }
 }
 
+async function parseStoredDodoProductId(value: string): Promise<DodoProductId | null> {
+  const { parseDodoProductId } = await import('@/config/products');
+  return parseDodoProductId(value);
+}
+
 function clearPendingCheckoutIntent(): void {
+  _pendingCheckoutRevision++;
   try {
     sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
   } catch {
@@ -378,9 +378,31 @@ export async function resumePendingCheckout(options?: {
     return false;
   }
 
-  console.log(`[checkout] resumePendingCheckout: starting checkout for ${intent.productId}`);
+  const revision = _pendingCheckoutRevision;
+  const isCurrentIntent = () => (
+    revision === _pendingCheckoutRevision && getCurrentClerkUser()?.id === clerkUser.id
+  );
+  let productId: DodoProductId | null;
+  try {
+    productId = await parseStoredDodoProductId(intent.productId);
+  } catch (err) {
+    if (isCurrentIntent()) {
+      const error = classifyThrownCheckoutError(err);
+      reportCheckoutError(error, { productId: intent.productId, action: 'exception' }, err);
+      renderCheckoutErrorSurface(error, false, intent.checkoutContext);
+    }
+    return false;
+  }
+  if (!isCurrentIntent()) return false;
+  if (!productId) {
+    clearPendingCheckoutIntent();
+    renderCheckoutErrorSurface(classifySyntheticCheckoutError('invalid_product'), false, intent.checkoutContext);
+    return false;
+  }
+
+  console.log(`[checkout] resumePendingCheckout: starting checkout for ${productId}`);
   const success = await startCheckout(
-    intent.productId,
+    productId,
     {
       referralCode: intent.referralCode,
       discountCode: intent.discountCode,
@@ -435,6 +457,18 @@ async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> 
 }
 
 /**
+ * First-touch acquisition record for the checkout payload. Loaded on demand so
+ * the module stays out of the main chunk; any failure sends no attribution.
+ */
+async function loadAcquisitionForCheckout() {
+  try {
+    return (await import('../../shared/acquisition-source')).getFirstTouchAcquisitionForCheckout();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * High-level checkout entry point for UI code.
  *
  * Creates a checkout session via the /api/create-checkout edge endpoint
@@ -442,7 +476,7 @@ async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> 
  * Falls back to /pro page on any failure.
  */
 export async function startCheckout(
-  productId: string,
+  productId: DodoProductId,
   options?: {
     discountCode?: string;
     referralCode?: string;
@@ -545,6 +579,7 @@ export async function startCheckout(
   }
 
   _checkoutInFlight = true;
+  let redirecting = false;
   // Fall back to the stored referral when the caller doesn't pass one.
   // A dashboard-origin upgrade click has no ref in hand — it arrives
   // from a locked-panel CTA or the Manage Billing surface — but the
@@ -610,6 +645,7 @@ export async function startCheckout(
         discountCode: options?.discountCode,
         referralCode: effectiveReferral,
         attributionSource: options?.attributionSource,
+        acquisition: await loadAcquisitionForCheckout(),
         // #4438: only set when the user confirmed "start a new checkout anyway"
         // from the pending-payment dialog. Skips the backend pending guard.
         ...(options?.bypassPendingGuard ? { bypassPendingGuard: true } : {}),
@@ -786,11 +822,7 @@ export async function startCheckout(
         // buyer finishes in the browser; the desktop client needs no redirect
         // back in, because Pro arrives over the same live Convex entitlement
         // subscription the web client uses.
-        const outcome = await openExternalUrl(hostedCheckoutUrl);
-        // Only a confirmed NATIVE open counts. `popup` on desktop means the
-        // bridge call failed and we fell back to `window.open` inside the
-        // WebView — which is the bug this branch exists to prevent, so
-        // announcing "opened in your browser" for it would be false.
+        const outcome = await openExternalUrl(hostedCheckoutUrl, null, { desktopPopupFallback: false });
         if (outcome !== 'native') {
           // Nothing opened. Announcing "check your browser" here would send
           // the buyer to a window that does not exist and strand a paid-for
@@ -808,18 +840,11 @@ export async function startCheckout(
           renderCheckoutErrorSurface(handoffError, fallbackToPricingPage, checkoutContext);
           return false;
         }
-        // Only `native` actually reached the OS browser. `popup` means the
-        // native handoff failed and the session opened in a WebView window
-        // instead — the buyer can still pay, so the sale is not blocked, but
-        // pointing them at "your browser" would send them to the wrong place.
-        showToast(
-          outcome === 'native'
-            ? DESKTOP_CHECKOUT_HANDOFF_MESSAGE
-            : DESKTOP_CHECKOUT_FALLBACK_MESSAGE,
-        );
+        showToast(DESKTOP_CHECKOUT_HANDOFF_MESSAGE);
         return true;
       }
       window.location.assign(hostedCheckoutUrl);
+      redirecting = true;
       return true;
     }
     // 200 OK but no usable checkout_url — missing, or an untrusted/unparseable
@@ -857,8 +882,30 @@ export async function startCheckout(
     renderCheckoutErrorSurface(error, fallbackToPricingPage, checkoutContext);
     return false;
   } finally {
-    _checkoutInFlight = false;
+    if (redirecting) holdCheckoutUntilNavigation();
+    else _checkoutInFlight = false;
   }
+}
+
+// `location.assign` only starts navigation: the dashboard stays clickable
+// until Dodo's page loads, often 1-3 s later. Releasing the guard on return
+// let a second click create a second Dodo session. Hold it until the page is
+// gone; release when the buyer comes back through the back-forward cache, or
+// when the navigation never happened (stopped, blocked) so upgrade CTAs
+// cannot stay dead.
+const REDIRECT_HOLD_MS = 15_000;
+
+function holdCheckoutUntilNavigation(): void {
+  const release = () => {
+    clearTimeout(timer);
+    window.removeEventListener('pageshow', onPageShow);
+    _checkoutInFlight = false;
+  };
+  const onPageShow = (event: PageTransitionEvent) => {
+    if (event.persisted) release();
+  };
+  window.addEventListener('pageshow', onPageShow);
+  const timer = setTimeout(release, REDIRECT_HOLD_MS);
 }
 
 /**
@@ -962,7 +1009,7 @@ function renderCheckoutErrorSurface(
     // of replacing the app. The toast stays on desktop because, unlike the
     // web redirect, the app is still on screen to show it.
     if (isDesktopRuntime()) {
-      void openExternalUrl(proUrl);
+      void openExternalUrl(proUrl, null, { desktopPopupFallback: false });
       showCheckoutErrorToast(error.userMessage);
       return;
     }

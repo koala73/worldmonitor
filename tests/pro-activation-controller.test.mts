@@ -344,6 +344,25 @@ describe('ProActivationController markerless mount() branching', () => {
       // Resolved tabs must not re-attempt on a later evaluate() call.
       await (controller as unknown as { evaluate(): Promise<void> }).evaluate();
       assert.deepEqual(openedFor, ['user-not-eligible']);
+
+      controller.destroy();
+      const nextBoot = new ProActivationController(ctx as never, {
+        reloadPending: false,
+        openAiAnalyst() {},
+      });
+      try {
+        nextBoot.init();
+        await (nextBoot as unknown as { evaluate(): Promise<void> }).evaluate();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.deepEqual(openedFor, ['user-not-eligible']);
+        assert.deepEqual(
+          (globalThis as unknown as { __activationChipOptions: unknown[] }).__activationChipOptions,
+          [],
+          'an ineligible account must not get a finish-setup chip on its next boot',
+        );
+      } finally {
+        nextBoot.destroy();
+      }
     } finally {
       ctx.isDestroyed = true;
       controller.destroy();

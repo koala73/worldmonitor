@@ -84,7 +84,7 @@ function flat(seconds: number, fromMs = 2_000): DurationSample[] {
 }
 
 function hls(overrides: Partial<Extract<PlayerObservation, { transport: 'hls' }>> = {}): PlayerObservation {
-  return { transport: 'hls', elapsedMs: 800, manifest: 'unknown', failure: null, ...overrides };
+  return { transport: 'hls', elapsedMs: 800, manifest: 'unknown', progress: 'stalled', failure: null, ...overrides };
 }
 
 describe('classifyAttempt: YouTube', () => {
@@ -232,12 +232,40 @@ describe('classifyAttempt: YouTube', () => {
 });
 
 describe('classifyAttempt: HLS', () => {
-  it('calls a live media playlist live', () => {
-    assert.deepEqual(classifyAttempt(hls({ manifest: 'live' })), { verdict: 'live', video: null });
+  it('calls a live playlist live once playback advances', () => {
+    assert.deepEqual(classifyAttempt(hls({ manifest: 'live', progress: 'advancing' })), { verdict: 'live', video: null });
+  });
+
+  it('calls a live playlist live on the manifest alone when playback cannot be checked (the Node checker)', () => {
+    assert.deepEqual(classifyAttempt(hls({ manifest: 'live', progress: 'unchecked' })), { verdict: 'live', video: null });
+  });
+
+  it('never calls a live playlist live while playback is stalled, and fails it as not started at the deadline', () => {
+    // A browser that cannot decode the stream (Playwright's Chromium has no H.264) sits on a black 0:00.
+    const deadline = LIVE_VIDEO_TIMING.verdictDeadlineMs;
+    assert.deepEqual(classifyAttempt(hls({ manifest: 'live', progress: 'stalled', elapsedMs: deadline - 1 })), { verdict: 'pending' });
+    assert.deepEqual(classifyAttempt(hls({ manifest: 'live', progress: 'stalled', elapsedMs: deadline })), {
+      verdict: 'failed',
+      outcome: { kind: 'not-started' },
+    });
   });
 
   it('calls a VOD playlist a recording', () => {
     assert.deepEqual(classifyAttempt(hls({ manifest: 'vod' })), { verdict: 'recording', video: null });
+  });
+
+  it('times out an unknown manifest at the deadline even while playback advances', () => {
+    assert.deepEqual(classifyAttempt(hls({ progress: 'advancing', elapsedMs: LIVE_VIDEO_TIMING.verdictDeadlineMs })), {
+      verdict: 'failed',
+      outcome: { kind: 'timeout' },
+    });
+  });
+
+  it('lets an HTTP failure win over a live playlist that is advancing', () => {
+    assert.deepEqual(classifyAttempt(hls({ manifest: 'live', progress: 'advancing', failure: { kind: 'http', status: 403 } })), {
+      verdict: 'failed',
+      outcome: { kind: 'hls-http', status: 403 },
+    });
   });
 
   it('fails on an HTTP status', () => {

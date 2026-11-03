@@ -1,5 +1,5 @@
 export function rssFeedCacheKey(variant: string, url: string): string {
-  return `rss:feed:v10:${variant}:${url}`;
+  return `rss:feed:v11:${variant}:${url}`;
 }
 
 // The 96-hour floor covers a Friday-to-Monday publishing gap. Ranking may

@@ -2,6 +2,8 @@
 
 import { loadEnvFile, runSeed, CHROME_UA, verifySeedKey, loadSharedConfig } from './_seed-utils.mjs';
 import { extractCountryCode } from './shared/geo-extract.mjs';
+import { projectNaturalEventsRetention } from './_natural-events-dashboard.mjs';
+import { countryCentroid } from './lib/country-centroid.mjs';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -165,6 +167,8 @@ function mapNaturalStatus(event, severity) {
 }
 
 function getCountryCenter(countryCode) {
+  const centroid = countryCentroid(countryCode);
+  if (centroid) return centroid;
   const bbox = COUNTRY_BBOXES[countryCode];
   if (!Array.isArray(bbox) || bbox.length !== 4) return { lat: 0, lng: 0 };
   return {
@@ -369,8 +373,7 @@ function mapNaturalEvent(event) {
     name: normalizeDisasterName(event.title || event.stormName || event.categoryTitle || 'Untitled disaster'),
     country,
     countryCode,
-    lat: Number.isFinite(lat) ? lat : 0,
-    lng: Number.isFinite(lng) ? lng : 0,
+    ...(Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : getCountryCenter(countryCode)),
     severity,
     startedAt,
     status,
@@ -392,7 +395,7 @@ async function fetchNaturalClimateDisasters() {
     console.warn('  [NaturalEvents] natural:events:v1 key is empty or missing in Redis');
     return [];
   }
-  const events = asArray(data?.events);
+  const events = asArray(projectNaturalEventsRetention(data)?.events);
   console.log(`  [NaturalEvents] ${events.length} raw events from natural:events:v1`);
   const climate = events.filter(isClimateNaturalEvent);
   console.log(`  [NaturalEvents] ${climate.length} matched climate filter`);
@@ -480,11 +483,13 @@ async function fetchClimateDisasters() {
 export {
   buildReliefWebRequestBodies,
   collectDisasterSourceResults,
+  fetchNaturalClimateDisasters,
   getNaturalSourceMeta,
   getReliefWebAppname,
   isClimateNaturalEvent,
   findCountryCodeByCoordinates,
   mapNaturalEvent,
+  mapReliefItem,
   toRedisDisaster,
 };
 

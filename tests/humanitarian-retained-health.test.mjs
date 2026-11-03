@@ -97,6 +97,26 @@ test('real failure publisher and live country proof contain only complete retain
   assert.equal(__testing__.computeOverallStatus({ warn: 1, containedWarn: 1, onDemandWarn: 0, crit: 0 }, 293).overall, 'HEALTHY');
 });
 
+test('terminal subnational rejection reaches retained health without another API request', async () => {
+  let requests = 0;
+  const { meta, backoff } = await failedRefresh({
+    fetchFn: async () => {
+      requests += 1;
+      if (requests === 1) return Response.json({ data: [] });
+      return new Response('Blocked due to bot activity.', { status: 429 });
+    },
+  });
+  assert.equal(requests, 2);
+  const { entry, contained } = classify(meta, await retention(meta));
+  assert.equal(entry.errorCode, 'HAPI_BOT_BLOCK');
+  assert.equal(entry.seedAgeMin, 144);
+  assert.equal(entry.records, 41);
+  assert.equal(entry.lastSuccessAt, SUCCESS);
+  assert.equal(entry.retryAt, backoff.retryAt);
+  assert.equal(contained, true);
+  assert.equal(entry.containmentUntil, new Date(SUCCESS + 6 * 60 * 60_000).toISOString());
+});
+
 const firstKey = `conflict:humanitarian:v1:${HAPI_REQUIRED_COUNTRIES[0]}`;
 for (const [label, mutate] of [
   ['missing country', ({ data }) => data.delete(firstKey)],
@@ -277,7 +297,8 @@ test('full health sweep reads served countries and cannot retain containment acr
       }
       if (op === 'GET' && key.includes('health:verdict:')) return { result: null };
       if (op === 'GET') return { result: JSON.stringify({ fetchedAt: NOW, recordCount: 41 }) };
-      if (op === 'SET' && key.includes('health:verdict:') && !key.endsWith(':refresh-lock') && expireDuringWrite) clock = NOW + 1001;
+      // The verdict snapshots are published by one fenced EVAL (#8268).
+      if (op === 'EVAL' && key === __testing__.HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT && expireDuringWrite) clock = NOW + 1001;
       return { result: 'OK' };
     }));
   };

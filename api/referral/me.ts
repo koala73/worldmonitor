@@ -119,7 +119,7 @@ export default async function handler(
     code = await getReferralCodeForUser(session.userId, secret);
   } catch (err) {
     console.error('[api/referral/me] code generation failed:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/referral/me', step: 'code-generation' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/referral/me', step: 'code-generation' }, fingerprint: ['api/referral/me', 'code-generation', err instanceof Error ? err.name : 'Error'], ctx });
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 

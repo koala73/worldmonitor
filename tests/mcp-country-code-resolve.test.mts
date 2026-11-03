@@ -32,7 +32,7 @@ import { HMAC_SECRET, callBody, makePipelineMock } from './helpers/mcp-pro-deps.
 
 const require = createRequire(import.meta.url);
 const ENV_KEY = 'operator_test_key_country_code_resolve';
-const MCP_URL = 'https://api.worldmonitor.app/api/mcp';
+const MCP_URL = 'https://worldmonitor.app/mcp';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };

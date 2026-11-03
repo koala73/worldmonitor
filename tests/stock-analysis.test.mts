@@ -4,6 +4,7 @@ import { afterEach, describe, it } from 'node:test';
 
 import {
   analyzeStock,
+  buildAnalyzeStockCacheKey,
   buildAnalysisResponse,
   buildTechnicalSnapshot,
   computeAtr,
@@ -14,6 +15,7 @@ import {
   deriveSignal,
   fetchYahooAnalystData,
   fetchYahooHistory,
+  fetchYahooHistoryOutcome,
   getFallbackOverlay,
   normalizeNewsSentiment,
   selectEarningsForSymbol,
@@ -112,7 +114,6 @@ const mockNewsXml = `<?xml version="1.0" encoding="UTF-8"?>
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  delete process.env.GROQ_API_KEY;
   delete process.env.OPENROUTER_API_KEY;
   delete process.env.OLLAMA_API_URL;
   delete process.env.OLLAMA_MODEL;
@@ -165,7 +166,7 @@ describe('analyzeStock handler', () => {
     assert.ok(response.stopLoss > 0);
     assert.ok(response.takeProfit > 0);
     assert.equal(response.headlines.length, 2);
-    assert.match(response.summary, /apple/i);
+    assert.match(response.summary, /AAPL/);
     assert.ok(response.bullishFactors.length > 0);
 
     assert.ok(response.analystConsensus);
@@ -196,6 +197,76 @@ describe('analyzeStock handler', () => {
     assert.equal(response.recentUpgrades[0].action, 'up');
     assert.equal(response.recentUpgrades[0].toGrade, 'Overweight');
     assert.equal(response.recentUpgrades[0].fromGrade, 'Equal-Weight');
+  });
+
+  it('reports the analysis unavailable to the first and later requesters when Yahoo history times out', async () => {
+    // A minimal Upstash REST fake, so the negative-cache write is observable.
+    const store = new Map<string, string>();
+    const writes: Array<{ key: string; payload: string; ttlSeconds: number }> = [];
+    const recordSet = ([verb, key, payload, ex, ttl]: string[]) => {
+      if (verb !== 'SET') return;
+      store.set(key, payload);
+      if (ex === 'EX') writes.push({ key, payload, ttlSeconds: Number(ttl) });
+    };
+    let historyRequests = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.startsWith('https://redis.test/get/')) {
+        const key = decodeURIComponent(url.slice('https://redis.test/get/'.length));
+        return new Response(JSON.stringify({ result: store.get(key) ?? null }), { status: 200 });
+      }
+      if (url === 'https://redis.test/pipeline') {
+        const commands = JSON.parse(String(init?.body ?? '[]')) as string[][];
+        commands.forEach(recordSet);
+        return new Response(JSON.stringify(commands.map(() => ({ result: 'OK' }))), { status: 200 });
+      }
+      if (url === 'https://redis.test/') {
+        recordSet(JSON.parse(String(init?.body ?? '[]')) as string[]);
+        return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+      }
+      if (url.includes('query1.finance.yahoo.com/v8/finance/chart')) {
+        historyRequests += 1;
+        throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+      }
+      return new Response(JSON.stringify(mockQuoteSummaryPayload), { status: 200 });
+    }) as typeof fetch;
+
+    // No `now` option, so both calls go through the production cache path.
+    const request = { symbol: 'TMOUT', name: 'TMOUT', includeNews: false };
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
+    let first;
+    let second;
+    try {
+      first = await analyzeStock({} as never, request);
+      second = await analyzeStock({} as never, request);
+    } finally {
+      console.warn = originalWarn;
+      delete process.env.UPSTASH_REDIS_REST_URL;
+      delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    }
+
+    const negativeWrites = writes.filter((w) => w.key.includes('market:analyze-stock:v9:TMOUT') && w.payload.includes('__WM_NEG__'));
+    // The fetcher-error TTL, not the 120s negative TTL a null result gets.
+    assert.deepEqual(negativeWrites.map((w) => w.ttlSeconds), [30]);
+    assert.equal(historyRequests, 1, 'the second request is served from the negative cache');
+
+    assert.equal(first.available, false);
+    assert.equal(first.symbol, 'TMOUT');
+    assert.equal(second.available, false);
+    assert.equal(second.symbol, 'TMOUT');
+  });
+});
+
+describe('fetchYahooHistoryOutcome', () => {
+  it('classifies a rejected request as a failed request, not an invalid symbol', async () => {
+    globalThis.fetch = (async () => {
+      throw new TypeError('fetch failed');
+    }) as typeof fetch;
+
+    assert.deepEqual(await fetchYahooHistoryOutcome('AAPL'), { status: 'request-failed' });
   });
 });
 
@@ -405,6 +476,7 @@ describe('fetchYahooAnalystData', () => {
     });
 
     assert.equal(response.provider, 'openrouter');
+    assert.equal(response.fallback, false);
     assert.equal(response.fundamentals?.debtToEquity, 1.5);
     assert.equal(response.fundamentals?.financialCurrency, 'CNY');
 
@@ -440,6 +512,86 @@ describe('fetchYahooAnalystData', () => {
     assert.equal(userPayload.technical?.signal, response.signal);
     assert.equal(userPayload.technical?.signalScore, response.signalScore);
   });
+
+  for (const summary of ['', ' \t\n ']) {
+    for (const recovers of [false, true]) {
+      it(`rejects ${summary === '' ? 'an empty' : 'a whitespace'} rating summary and ${recovers ? 'uses the next model summary' : 'labels the full template as rules'}`, async () => {
+        process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
+        process.env.LLM_API_URL = 'https://generic.example/v1/chat/completions';
+        process.env.LLM_API_KEY = 'test-generic-key';
+        process.env.LLM_MODEL = 'test-recovery-model';
+        const llmPostUrls: string[] = [];
+        const narrative = {
+          summary: 'Model technical summary.',
+          action: 'Model action.',
+          confidence: 'Medium',
+          whyNow: 'Model rationale.',
+          technicalSummary: 'Model technical details.',
+          newsSummary: 'Model news summary.',
+          bullishFactors: ['Model bullish factor'],
+          riskFactors: ['Model risk factor'],
+        };
+
+        globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+          const parsedUrl = new URL(url);
+          if (parsedUrl.hostname === 'query1.finance.yahoo.com' && parsedUrl.pathname.startsWith('/v8/finance/chart/')) {
+            return new Response(JSON.stringify(mockChartPayload), { status: 200 });
+          }
+          if (parsedUrl.hostname === 'query1.finance.yahoo.com' && parsedUrl.pathname.startsWith('/v10/finance/quoteSummary/')) {
+            return new Response(JSON.stringify(mockQuoteSummaryPayload), { status: 200 });
+          }
+          if (parsedUrl.hostname === 'news.google.com') {
+            return new Response(mockNewsXml, { status: 200 });
+          }
+          if ((init?.method || 'GET') === 'GET') {
+            return new Response('ok', { status: 200 });
+          }
+          llmPostUrls.push(url);
+          return new Response(JSON.stringify({
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  technical: narrative,
+                  rating: {
+                    ...narrative,
+                    summary: recovers && url.startsWith('https://generic.example/') ? '  Model rating summary.  ' : summary,
+                  },
+                  newsSentiment: 0.42,
+                }),
+              },
+              finish_reason: 'stop',
+            }],
+          }), { status: 200 });
+        }) as typeof fetch;
+
+        const response = await analyzeStock({} as never, {
+          symbol: 'BABA',
+          name: 'Alibaba',
+          includeNews: true,
+        }, { now: new Date('2026-10-18T12:00:00Z') });
+
+        assert.equal(response.available, true);
+        assert.equal(response.provider, recovers ? 'generic' : 'rules');
+        assert.equal(response.fallback, !recovers);
+        assert.equal(response.model, recovers ? 'test-recovery-model' : '');
+        if (recovers) {
+          assert.equal(response.ratingSummary, 'Model rating summary.');
+          assert.equal(response.summary, narrative.summary);
+          assert.equal(response.newsSentiment, 0.42);
+        } else {
+          assert.match(response.ratingSummary, /^BABA screens as /);
+          assert.match(response.summary, /^BABA screens as /);
+          assert.notEqual(response.action, narrative.action);
+          assert.equal(response.newsSentiment, undefined);
+        }
+        assert.deepEqual(llmPostUrls, [
+          'https://openrouter.ai/api/v1/chat/completions',
+          'https://generic.example/v1/chat/completions',
+        ]);
+      });
+    }
+  }
 
   it('falls through to the next provider when headline sentiment is missing', async () => {
     process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
@@ -728,13 +880,25 @@ describe('risk analytics helpers', () => {
 });
 
 describe('analyzeStock cache contract', () => {
-  it('rotates the cache namespace for the additive rating-signal contract', () => {
+  it('rotates the cache namespace to exclude caller-influenced narratives', () => {
     const source = readFileSync(
       new URL('../server/worldmonitor/market/v1/analyze-stock.ts', import.meta.url),
       'utf8',
     );
-    assert.match(source, /market:analyze-stock:v8:/);
-    assert.doesNotMatch(source, /market:analyze-stock:v7:/);
+    assert.match(source, /market:analyze-stock:v9:/);
+    assert.doesNotMatch(source, /market:analyze-stock:v8:/);
+  });
+
+  it('reuses canonical analysis while isolating symbols and news modes', () => {
+    assert.equal(
+      buildAnalyzeStockCacheKey('AAPL', false),
+      'market:analyze-stock:v9:AAPL:no-news',
+    );
+    assert.notEqual(
+      buildAnalyzeStockCacheKey('AAPL', true),
+      buildAnalyzeStockCacheKey('AAPL', false),
+    );
+    assert.notEqual(buildAnalyzeStockCacheKey('AAPL', true), buildAnalyzeStockCacheKey('MSFT', true));
   });
 });
 

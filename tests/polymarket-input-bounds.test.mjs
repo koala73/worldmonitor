@@ -71,6 +71,9 @@ test('Edge forwards only canonical query fields', async () => {
   };
   const response = await handler(new Request('https://worldmonitor.app/api/polymarket?' + new URLSearchParams({ endpoint: 'arbitrary', closed: 'junk', order: 'junk', ascending: 'junk', limit: '999', unknown: 'value' }), { headers: { 'X-WorldMonitor-Key': 'synthetic', 'Origin': 'https://worldmonitor.app' } }));
   assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Cache-Control'), 'private, max-age=120');
+  assert.equal(response.headers.get('CDN-Cache-Control'), null);
+  assert.equal(response.headers.get('Vercel-CDN-Cache-Control'), null);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].search, '?endpoint=markets&closed=false&order=volume&ascending=false&limit=100');
   for (const status of [200, 502]) {

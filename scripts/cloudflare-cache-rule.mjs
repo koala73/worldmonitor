@@ -225,16 +225,29 @@ export const NEGOTIATED_MEDIA_TYPES = Object.freeze(['text/markdown', 'text/plai
 export const SINGLE_REPRESENTATION_EXTENSIONS = Object.freeze(['md', 'txt', 'xml']);
 
 /**
- * The two app-shell documents the dashboard-managed "WWW entry HTML" rule used
- * to cache with no representation guard (#7804). Both carry the shared 600s
- * header in vercel.json, both answer a markdown rendering for
- * `Accept: text/markdown` under that same header (measured 2026-09-06 through
- * the query-bearing form, which every rule keeps on the bypass), and both are
- * claimed here so the guard block gates them like every other HTML document.
- * `/dashboard.html`, the rewrite destination behind `/dashboard`, is not a URL
- * anyone is sent to and stays out.
+ * Slashless and trailing-slash URLs for the prerendered locale homepages.
+ * Keep in lockstep with `nonDefaultLandingLocales()` in
+ * shared/indexable-landing-locales.ts — the cache-rule test compares both.
  */
-export const ENTRY_DOCUMENTS = Object.freeze(['/', '/dashboard']);
+export const INDEXABLE_LANDING_ENTRY_PATHS = Object.freeze([
+  '/es', '/es/',
+  '/pt', '/pt/',
+  '/ru', '/ru/',
+  '/fr', '/fr/',
+  '/de', '/de/',
+  '/ar', '/ar/',
+]);
+
+/**
+ * Exact HTML documents claimed behind the representation guard (#7804, GS-L10N).
+ * `/` and `/dashboard` are the retired "WWW entry HTML" pair. Locale landings
+ * advertise the same 600s CDN header in vercel.json, so they need a matching
+ * exact-path claim or Cloudflare's WWW-documents bypass keeps them DYNAMIC.
+ * `/dashboard.html`, the rewrite destination behind `/dashboard`, is not a URL
+ * anyone is sent to and stays out. Locale paths are exact (set membership), never
+ * `starts_with`, so `/es/not-a-landing` stays on the bypass.
+ */
+export const ENTRY_DOCUMENTS = Object.freeze(['/', '/dashboard', ...INDEXABLE_LANDING_ENTRY_PATHS]);
 
 /**
  * Entry documents whose body also varies by User-Agent: middleware.ts rewrites
@@ -245,6 +258,31 @@ export const USER_AGENT_ROUTED_DOCUMENTS = Object.freeze(['/']);
 
 /** The User-Agents middleware.ts routes to markdown, lowercased for `lower(http.user_agent)`. */
 export const AGENT_USER_AGENTS = Object.freeze(agentRequestPolicy.userAgents.map((agent) => agent.toLowerCase()));
+
+/**
+ * User-Agent substrings Mintlify answers on /docs/* with a markdown rendering
+ * carrying `x-robots-tag: noindex`, whatever the Accept header says. Measured
+ * 2026-10-16 against cache-busted URLs (which Cloudflare does not store):
+ * ChatGPT-User, OAI-SearchBot, Claude-User, PerplexityBot, Perplexity-User,
+ * DuckAssistBot and MistralAI-User got text/markdown; Googlebot, bingbot,
+ * GPTBot, ClaudeBot and Claude-SearchBot got HTML. The Accept guard cannot see
+ * a UA-routed variant, so one agent fetch stored the noindex markdown under the
+ * bare URL and the edge served it to Googlebot and browsers for the TTL. These
+ * requests stay out of the docs claim: excluding one only costs a cache hit,
+ * admitting one hands every later reader a noindex page. Lowercased substrings,
+ * so `perplexity` covers both Perplexity agents.
+ */
+export const DOCS_MARKDOWN_USER_AGENT_TOKENS = Object.freeze([
+  'chatgpt-user',
+  'oai-searchbot',
+  'claude-user',
+  'perplexity',
+  'duckassistbot',
+  'mistralai-user',
+]);
+
+/** Families whose nested documents vary by User-Agent at the origin, with the UA substrings to carve out. */
+const USER_AGENT_ROUTED_FAMILIES = Object.freeze({ docs: DOCS_MARKDOWN_USER_AGENT_TOKENS });
 
 /**
  * Cache-phase rules this rule has superseded. `--check` reports one still in
@@ -310,6 +348,7 @@ function buildCorpusCacheExpression({
   documents = ENTRY_DOCUMENTS,
   userAgentRouted = USER_AGENT_ROUTED_DOCUMENTS,
   agents = AGENT_USER_AGENTS,
+  userAgentRoutedFamilies = USER_AGENT_ROUTED_FAMILIES,
 } = {}) {
   const path = 'http.request.uri.path';
   const bare = families
@@ -318,14 +357,24 @@ function buildCorpusCacheExpression({
     .join(' ');
   const nested = families.map((family) => {
     const excluded = exclusions[family];
-    if (!excluded) return `    or starts_with(${path}, "/${family}/")`;
+    const routedAgents = userAgentRoutedFamilies[family] ?? [];
+    if (!excluded && !routedAgents.length) return `    or starts_with(${path}, "/${family}/")`;
     const carveOuts = [
-      ...excluded.exact.map((exact) => `${path} ne "/${family}/${exact}"`),
-      ...excluded.prefixes.map((prefix) => `not starts_with(${path}, "/${family}/${prefix}")`),
+      ...(excluded?.exact ?? []).map((exact) => `${path} ne "/${family}/${exact}"`),
+      ...(excluded?.prefixes ?? []).map((prefix) => `not starts_with(${path}, "/${family}/${prefix}")`),
     ];
+    // Same shape as the homepage carve-out below; an empty token list emits no group.
+    const agentCarveOut = routedAgents.length
+      ? [
+        '      and not (',
+        ...routedAgents.map((agent, index) => `        ${index ? 'or ' : ''}lower(http.user_agent) contains "${agent}"`),
+        '      )',
+      ]
+      : [];
     return [
       `    or (starts_with(${path}, "/${family}/")`,
       ...carveOuts.map((clause) => `      and ${clause}`),
+      ...agentCarveOut,
       '    )',
     ].join('\n');
   });
@@ -334,10 +383,8 @@ function buildCorpusCacheExpression({
   // routes to markdown: lower() because the middleware matches the UA
   // case-insensitively, and `contains` because it is the wider net — excluding
   // a request only costs a cache hit, admitting one hands a crawler browser HTML.
-  const entryDocuments = documents.map((document) => {
-    // An empty agent list must not emit an empty `and not ( )` group, which
-    // Cloudflare rejects; it simply means there is nobody to carve out.
-    if (!userAgentRouted.includes(document) || !agents.length) return `    or ${path} eq "${document}"`;
+  const unguardedDocuments = documents.filter((document) => !userAgentRouted.includes(document) || !agents.length);
+  const entryDocuments = documents.filter((document) => userAgentRouted.includes(document) && agents.length).map((document) => {
     const carveOuts = agents.map(
       (agent, index) => `        ${index ? 'or ' : ''}lower(http.user_agent) contains "${agent}"`,
     );
@@ -397,6 +444,7 @@ function buildCorpusCacheExpression({
     `    ${path} in {${bare}}`,
     ...nested,
     `    or ${path} in {${agentFiles}}`,
+    ...(unguardedDocuments.length ? [`    or ${path} in {${unguardedDocuments.map((document) => `"${document}"`).join(' ')}}`] : []),
     ...entryDocuments,
     '  ))',
   ].join('\n');

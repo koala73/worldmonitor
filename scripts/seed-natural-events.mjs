@@ -2,6 +2,9 @@
 
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
+import { getDefaultAutoSelectFamily, getDefaultAutoSelectFamilyAttemptTimeout, isIP } from 'node:net';
+import { Agent, Dispatcher1Wrapper } from 'undici';
+import { withSourceRequestDiagnostics } from './natural/source-request-diagnostics.mjs';
 
 import {
   loadEnvFile,
@@ -30,6 +33,9 @@ const HKO_WARNINGS_KEY = 'weather:hko-warnings:v1';
 const CACHE_TTL = 64800; // 18h — 6x the 3h Railway bundle cadence; preserves last-good through health grace.
 const NHC_RETAIN_MS = 540 * 60_000;
 const SOURCE_RETAIN_MS = 540 * 60_000;
+const EONET_RETAIN_MS = CACHE_TTL * 1000;
+const EONET_BODY_IDLE_MS = 5_000;
+const EONET_MAX_BODY_BYTES = 2 * 1024 * 1024;
 const NHC_FAILURE_CODES = new Set([
   'NHC_POINT_REQUEST_FAILED',
   'NHC_POINT_RESPONSE_INVALID',
@@ -39,6 +45,7 @@ const NHC_CONE_GEOMETRY_TYPES = new Set(['Polygon', 'MultiPolygon']);
 const NHC_ADVISORY_TIMEZONE_OFFSETS_MIN = {
   UTC: 0,
   GMT: 0,
+  CVT: -1 * 60,
   AST: -4 * 60,
   ADT: -3 * 60,
   EST: -5 * 60,
@@ -60,10 +67,23 @@ const DAYS = 30;
 const WILDFIRE_MAX_AGE_MS = 48 * 60 * 60 * 1000;
 const SOURCE_REQUEST_TIMEOUT_MS = 15_000;
 const SOURCE_REQUEST_BUDGET_MS = 30_500;
+// GDACS MAP serves DR (~2.9 MB) and TC (~0.8 MB) in 17-32 s on a healthy day,
+// first byte alone 6-11 s, so the shared 15 s cap failed them routinely. Its
+// six per-type requests run concurrently beside EONET and NHC, so the longer
+// budget stays well inside the bundle's 180 s section timeout.
+const GDACS_REQUEST_TIMEOUT_MS = 45_000;
+const GDACS_REQUEST_BUDGET_MS = 60_500;
 const SOURCE_TRANSPORT_CODES = new Set([
   'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND', 'EPIPE',
   'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET',
 ]);
+const SOURCE_DIAGNOSTIC_CODES = new Set([
+  ...SOURCE_TRANSPORT_CODES, 'ENETUNREACH', 'EHOSTUNREACH',
+  'CERT_HAS_EXPIRED', 'ERR_TLS_CERT_ALTNAME_INVALID', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN',
+]);
+const SOURCE_ERROR_NAMES = new Set(['Error', 'TypeError', 'AggregateError', 'AbortError', 'TimeoutError', 'SyntaxError']);
+const SOURCE_ERROR_SYSCALLS = new Set(['connect', 'getaddrinfo', 'read', 'write']);
 
 const GDACS_TO_CATEGORY = {
   EQ: 'earthquakes',
@@ -118,40 +138,134 @@ function validGdacsFeatures(features, eventtype) {
   });
 }
 
-function selectSourceSnapshot(result, previous, now, validateRecords) {
+function selectSourceSnapshot(result, previous, now, validateRecords, retainMs = SOURCE_RETAIN_MS) {
   if (result.status === 'fulfilled') {
-    return { version: 1, fetchedAt: now, retainedUntil: now + SOURCE_RETAIN_MS, records: result.value };
+    return { version: 1, fetchedAt: now, retainedUntil: now + retainMs, records: result.value };
   }
   return previous?.version === 1
     && Number.isSafeInteger(previous.fetchedAt) && previous.fetchedAt > 0 && previous.fetchedAt <= now
     && Number.isSafeInteger(previous.retainedUntil) && now < previous.retainedUntil
-    && previous.retainedUntil <= previous.fetchedAt + SOURCE_RETAIN_MS
+    && previous.retainedUntil <= previous.fetchedAt + retainMs
     && validateRecords(previous.records) ? previous : null;
 }
 
-async function fetchEventSourceJson(source, url, fetchFn) {
+function sourceFailureDetails(error) {
+  const errors = [];
+  const seen = new Set();
+  let truncated = false;
+  const queue = [{ error, parent: null, relation: 'root' }];
+  while (queue.length && errors.length < 8) {
+    const { error: item, parent, relation } = queue.shift();
+    if (!item || typeof item !== 'object' || seen.has(item)) continue;
+    seen.add(item);
+    const index = errors.length;
+    errors.push({
+      parent, relation,
+      name: SOURCE_ERROR_NAMES.has(item.name) ? item.name : 'OtherError',
+      code: SOURCE_DIAGNOSTIC_CODES.has(item.code) ? item.code : undefined,
+      syscall: SOURCE_ERROR_SYSCALLS.has(item.syscall) ? item.syscall : undefined,
+      family: isIP(typeof item.address === 'string' ? item.address : '') || undefined,
+    });
+    if (item.cause) queue.push({ error: item.cause, parent: index, relation: 'cause' });
+    if (Array.isArray(item.errors)) {
+      if (item.errors.length > 8) truncated = true;
+      for (const child of item.errors.slice(0, 8)) queue.push({ error: child, parent: index, relation: 'member' });
+    }
+  }
+  return {
+    node: process.versions.node, undici: process.versions.undici,
+    defaultAutoSelectFamily: getDefaultAutoSelectFamily(),
+    defaultAddressAttemptTimeoutMs: getDefaultAutoSelectFamilyAttemptTimeout(),
+    errors, truncated: truncated || queue.length > 0,
+  };
+}
+
+function isDualFamilyConnectFailure(error) {
+  try {
+    const cause = error?.cause;
+    const aggregate = cause?.code === 'UND_ERR_CONNECT_TIMEOUT' ? cause.cause : cause;
+    if (!(error instanceof TypeError) || !(aggregate instanceof AggregateError)
+      || aggregate.code !== 'ETIMEDOUT' || aggregate.errors.length !== 2) return false;
+    const [ipv4, ipv6] = aggregate.errors;
+    return ipv4.code === 'ETIMEDOUT' && ipv4.syscall === 'connect' && isIP(ipv4.address) === 4
+      && ipv6.code === 'ENETUNREACH' && ipv6.syscall === 'connect' && isIP(ipv6.address) === 6;
+  } catch {
+    return false;
+  }
+}
+
+async function readEonetBody(res, controller, signal) {
+  if (!res.body) return res.json();
+  const reader = res.body.getReader();
+  const chunks = [];
+  let bytes = 0;
+  let idleTimer;
+  const cancel = () => { void reader.cancel(signal.reason).catch(() => {}); };
+  signal.addEventListener('abort', cancel, { once: true });
+  try {
+    while (true) {
+      signal.throwIfAborted();
+      idleTimer = setTimeout(() => controller.abort(new DOMException('EONET body stalled', 'TimeoutError')), EONET_BODY_IDLE_MS);
+      const { done, value } = await reader.read();
+      clearTimeout(idleTimer);
+      signal.throwIfAborted();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > EONET_MAX_BODY_BYTES) {
+        const error = new Error('EONET decoded response exceeds 2 MiB');
+        controller.abort(error);
+        throw error;
+      }
+      chunks.push(value);
+    }
+    return await new Response(new Blob(chunks)).json();
+  } finally {
+    clearTimeout(idleTimer);
+    signal.removeEventListener('abort', cancel);
+    reader.releaseLock();
+  }
+}
+
+async function fetchEventSourceJson(source, url, fetchFn, noContentValue, {
+  attemptTimeoutMs = SOURCE_REQUEST_TIMEOUT_MS,
+  budgetMs = SOURCE_REQUEST_BUDGET_MS,
+} = {}) {
   const started = performance.now();
-  const deadline = started + SOURCE_REQUEST_BUDGET_MS;
+  const deadline = started + budgetMs;
   let attempt = 0;
-  return withRetry(async () => {
+  let ipv4Retry = false;
+  return withRetry(() => withSourceRequestDiagnostics(async progress => {
     const remaining = Math.floor(deadline - performance.now());
     if (remaining <= 0) throw Object.assign(new Error(`${source} request budget exhausted`), { nonRetryable: true });
     attempt++;
+    const attemptStarted = performance.now();
+    const dispatcher = ipv4Retry ? new Agent({ connect: { family: 4, timeout: attemptTimeoutMs } }) : undefined;
+    const controller = source === 'eonet' ? new AbortController() : null;
+    const signal = controller
+      ? AbortSignal.any([controller.signal, AbortSignal.timeout(remaining)])
+      : AbortSignal.timeout(Math.min(attemptTimeoutMs, remaining));
+    const headerTimer = controller && setTimeout(() => controller.abort(new DOMException('EONET headers timed out', 'TimeoutError')), Math.min(attemptTimeoutMs, remaining));
     let stage = 'request';
+    let headersReceivedAt;
     try {
       const res = await fetchFn(url, {
         headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(Math.min(SOURCE_REQUEST_TIMEOUT_MS, remaining)),
+        signal,
+        ...(dispatcher ? { dispatcher: new Dispatcher1Wrapper(dispatcher) } : {}),
       });
+      headersReceivedAt = performance.now();
+      if (headerTimer) clearTimeout(headerTimer);
       if (!res.ok) {
         stage = 'http';
         const error = httpRetryError(res, { remainingBudgetMs: deadline - performance.now() });
         await res.body?.cancel?.().catch(() => { throw error; });
         throw error;
       }
+      if (res.status === 204 && noContentValue !== undefined) return noContentValue;
       stage = 'body';
-      return await res.json();
+      return await (controller ? readEonetBody(res, controller, signal) : res.json());
     } catch (cause) {
+      if (source === 'eonet' && stage === 'request' && attempt === 1 && isDualFamilyConnectFailure(cause)) ipv4Retry = true;
       const code = [cause?.code, cause?.cause?.code].find(value => SOURCE_TRANSPORT_CODES.has(value));
       const timeout = cause?.name === 'TimeoutError' || cause?.name === 'AbortError';
       const transport = timeout || code || cause instanceof TypeError;
@@ -159,14 +273,28 @@ async function fetchEventSourceJson(source, url, fetchFn) {
       if (timeout) kind = 'TIMEOUT';
       if (cause instanceof SyntaxError) kind = 'INVALID_JSON';
       if (stage === 'http') kind = `HTTP_${cause.status}`;
-      const error = Object.assign(new Error(`${source} ${stage} ${kind} attempt=${attempt} elapsedMs=${Math.round(performance.now() - started)}`), {
+      const finished = performance.now();
+      const phaseTimings = headersReceivedAt === undefined ? ''
+        : ` headersElapsedMs=${Math.round(headersReceivedAt - attemptStarted)}${stage === 'body' ? ` bodyElapsedMs=${Math.round(finished - headersReceivedAt)}` : ''}`;
+      let details = '';
+      if (transport && stage !== 'http') {
+        try {
+          details = ` details=${JSON.stringify(sourceFailureDetails(cause))}`;
+        } catch {
+          details = ' details={"unavailable":true}';
+        }
+      }
+      const error = Object.assign(new Error(`${source} ${stage} ${kind} attempt=${attempt} elapsedMs=${Math.round(finished - started)} attemptElapsedMs=${Math.round(finished - attemptStarted)}${phaseTimings} progress=${JSON.stringify(progress())}${details}`), {
         nonRetryable: stage === 'http' ? cause.nonRetryable : !transport,
         retryAfterMs: cause.retryAfterMs,
       });
       if (deadline - performance.now() <= Math.max(500, error.retryAfterMs || 0)) error.nonRetryable = true;
       throw error;
+    } finally {
+      if (headerTimer) clearTimeout(headerTimer);
+      await dispatcher?.destroy();
     }
-  }, 1, 500);
+  }), 1, 500);
 }
 
 async function fetchEonet(days, fetchFn = globalThis.fetch, now = Date.now()) {
@@ -291,6 +419,7 @@ function parseGdacsTcFields(props) {
 async function fetchGdacsType(eventtype, fetchFn, now) {
   // MAP requires one type, but its VO route returns 404. SEARCH supplies
   // recent volcano events; their iscurrent field determines closure below.
+  // SEARCH answers an event-free date range with 204 and no body.
   const url = new URL(eventtype === 'VO' ? GDACS_API.replace(/MAP$/, 'SEARCH') : GDACS_API);
   if (eventtype === 'VO') {
     url.search = new URLSearchParams({
@@ -300,7 +429,9 @@ async function fetchGdacsType(eventtype, fetchFn, now) {
       pageSize: '100', pageNumber: '1',
     }).toString();
   } else url.searchParams.set('eventtype', eventtype);
-  const data = await fetchEventSourceJson(`gdacs:${eventtype}`, url.toString(), fetchFn);
+  const data = await fetchEventSourceJson(`gdacs:${eventtype}`, url.toString(), fetchFn,
+    eventtype === 'VO' ? { type: 'FeatureCollection', features: [] } : undefined,
+    { attemptTimeoutMs: GDACS_REQUEST_TIMEOUT_MS, budgetMs: GDACS_REQUEST_BUDGET_MS });
   if (!Array.isArray(data?.features) || data.features.some(feature =>
     !['Point', 'Polygon', 'MultiPolygon', 'LineString', 'MultiLineString'].includes(feature?.geometry?.type))) {
     throw new Error(`GDACS malformed response (${eventtype})`);
@@ -374,6 +505,10 @@ export async function fetchGdacs(fetchFn = globalThis.fetch, { previousSources =
       magnitudeUnit: '',
       sourceUrl: props.url?.report || '',
       sourceName: 'GDACS',
+      // Orange or Red (Green is dropped above); natural.hazard webhook scopes
+      // filter on it (shipping-webhook-worker.mjs). Redis-only: the RPC proto
+      // does not carry it.
+      alertLevel: props.alertlevel,
       closed: props.eventtype === 'VO' && (props.iscurrent === false || props.iscurrent === 'false'),
       ...tcFields,
       forecastTrack: [],
@@ -513,6 +648,36 @@ const NHC_STORM_TYPES = {
   EX: 'Post-Tropical', PT: 'Post-Tropical',
 };
 
+function nhcIdentityField(value, pattern) {
+  const type = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
+  if (type === 'string') {
+    return { type, length: value.length, ...(value.length <= 80 && pattern.test(value) ? { value } : {}) };
+  }
+  if (type === 'number') return { type, ...(Number.isFinite(value) && Math.abs(value) <= 1e15 ? { value } : {}) };
+  return { type };
+}
+
+function nhcIdentityDiagnostics(layerId, p, advDate) {
+  const predicates = {
+    stormname: typeof p.stormname === 'string' && p.stormname.trim().length > 0,
+    stormnum: Number.isInteger(p.stormnum) && p.stormnum >= 1 && p.stormnum <= 99,
+    advisnum: ['string', 'number'].includes(typeof p.advisnum) && String(p.advisnum).trim().length > 0,
+    maxwind: Number.isFinite(p.maxwind) && p.maxwind >= 0 && p.maxwind <= 200,
+    advdate: Number.isFinite(advDate),
+  };
+  return {
+    layerId,
+    failedPredicates: Object.keys(predicates).filter(key => !predicates[key]),
+    fields: {
+      stormname: nhcIdentityField(p.stormname, /^[A-Za-z -]{0,40}$/),
+      stormnum: nhcIdentityField(p.stormnum, /^\d{0,3}$/),
+      advisnum: nhcIdentityField(p.advisnum, /^\d{0,4}[A-Za-z]?$/),
+      maxwind: nhcIdentityField(p.maxwind, /^\d{0,3}(?:\.\d{1,2})?$/),
+      advdate: nhcIdentityField(p.advdate, /^(?:[\dTtZz :+.,/-]{0,40}|\d{1,4} (?:AM|PM) [A-Z]{2,6} (?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2} \d{4})$/),
+    },
+  };
+}
+
 async function fetchNhc(fetchFn = globalThis.fetch) {
   const pointQueries = NHC_STORM_SLOTS.map(s => nhcQuery(s.forecastPoints, NHC_POINT_GEOMETRY_TYPES, fetchFn));
   const pointResults = await Promise.allSettled(pointQueries);
@@ -561,7 +726,7 @@ async function fetchNhc(fetchFn = globalThis.fetch) {
   const events = [];
   for (const { slot, points, cone, pastPts } of stormData) {
     // Current position = forecast point with tau=0
-    const currentPt = points.features.find(f => f.properties?.tau === 0 || f.properties?.fcstprd === 0);
+    const currentPt = points.features.find(f => (f.properties?.tau ?? f.properties?.fcstprd) === 0);
     if (!currentPt) {
       throw new NhcQueryError(`NHC layer ${slot.forecastPoints} has no current storm point`, {
         code: 'NHC_POINT_RESPONSE_INVALID',
@@ -576,10 +741,12 @@ async function fetchNhc(fetchFn = globalThis.fetch) {
       || !['string', 'number'].includes(typeof p.advisnum) || String(p.advisnum).trim().length === 0
       || !Number.isFinite(p.maxwind) || p.maxwind < 0 || p.maxwind > 200
       || !Number.isFinite(advDate)) {
-      throw new NhcQueryError(`NHC layer ${slot.forecastPoints} has invalid current storm identity`, {
+      const error = new NhcQueryError(`NHC layer ${slot.forecastPoints} has invalid current storm identity`, {
         code: 'NHC_POINT_RESPONSE_INVALID',
         nonRetryable: true,
       });
+      error.identityDiagnostics = nhcIdentityDiagnostics(slot.forecastPoints, p, advDate);
+      throw error;
     }
     const stormName = p.stormname || '';
     const windKt = p.maxwind || 0;
@@ -591,16 +758,19 @@ async function fetchNhc(fetchFn = globalThis.fetch) {
 
     const classification = NHC_STORM_TYPES[stormType] || classifyWind(windKt).classification;
     const typeLabel = NHC_STORM_TYPES[stormType] || stormType;
-    const title = `${typeLabel} ${stormName}`;
+    const comparableName = stormName.trim().toLowerCase();
+    const hasClassification = comparableName.startsWith(typeLabel.toLowerCase())
+      && /^\s/.test(comparableName.slice(typeLabel.length));
+    const title = hasClassification ? stormName : `${typeLabel} ${stormName}`;
 
     // Build forecast track from forecast points
     const forecastTrack = points.features
-      .filter(f => f.properties?.tau > 0 || f.properties?.fcstprd > 0)
-      .sort((a, b) => (a.properties.tau || a.properties.fcstprd) - (b.properties.tau || b.properties.fcstprd))
+      .filter(f => (f.properties?.tau ?? f.properties?.fcstprd) > 0)
+      .sort((a, b) => (a.properties.tau ?? a.properties.fcstprd) - (b.properties.tau ?? b.properties.fcstprd))
       .map(f => ({
         lat: f.geometry.coordinates[1],
         lon: f.geometry.coordinates[0],
-        hour: f.properties.tau || f.properties.fcstprd || 0,
+        hour: f.properties.tau ?? f.properties.fcstprd,
         windKt: f.properties.maxwind || 0,
         category: f.properties.ssnum || 0,
       }));
@@ -800,6 +970,7 @@ function toWesternPacificObservation(event) {
 
 export async function fetchNaturalEvents({
   now = Date.now(),
+  runStartedAtMs = null,
   previousNhcSnapshot = null,
   previousSources = null,
   fetchFn = globalThis.fetch,
@@ -812,7 +983,7 @@ export async function fetchNaturalEvents({
     fetchHkoWarningsFn({ now, fetchFn }),
   ]);
 
-  const eonetSnapshot = selectSourceSnapshot(eonetResult, previousSources?.eonet, now, validEonetRecords);
+  const eonetSnapshot = selectSourceSnapshot(eonetResult, previousSources?.eonet, now, validEonetRecords, EONET_RETAIN_MS);
   const eonetEvents = eonetSnapshot?.records || [];
   const sourceSnapshots = {
     ...(gdacsResult.status === 'fulfilled' ? gdacsResult.value.snapshots
@@ -845,6 +1016,13 @@ export async function fetchNaturalEvents({
     console.log('[GDACS] partial coverage —', gdacsResult.value.failedTypes.map((t) => `${t.eventtype}: ${t.message}`).join('; '));
   }
   if (nhcResult.status === 'rejected') console.log('[NHC]', nhcResult.reason?.message);
+  if (nhcResult.status === 'rejected' && nhcResult.reason?.identityDiagnostics) {
+    console.log('[NHC identity]', JSON.stringify({
+      ...nhcResult.reason.identityDiagnostics,
+      attemptAt: now,
+      runStartedAtMs: Number.isSafeInteger(runStartedAtMs) ? runStartedAtMs : null,
+    }));
+  }
   if (hkoResult.status === 'rejected') console.log('[HKO]', hkoResult.reason?.message);
 
   // Uncapped TC list (see fetchGdacs): the general feed's 100-event cap must
@@ -897,11 +1075,13 @@ export async function fetchNaturalEvents({
   }
 
   // Add EONET events
+  const eonetIndexes = [];
   for (const event of eonetEvents) {
     const k = `${event.lat.toFixed(1)}-${event.lon.toFixed(1)}-${event.category}`;
     if (!seenLocations.has(k)) {
       seenLocations.add(k);
       merged.push(event);
+      eonetIndexes.push(merged.length - 1);
     }
   }
 
@@ -929,6 +1109,7 @@ export async function fetchNaturalEvents({
   }
   return {
     events: merged,
+    ...(eonetSnapshot ? { eonetRetention: { retainedUntil: eonetSnapshot.retainedUntil, eventIndexes: eonetIndexes } } : {}),
     fetchedAt: Math.min(now, nhcSnapshot.fetchedAt ?? now, ...Object.values(sourceSnapshots).filter(Boolean).map(snapshot => snapshot.fetchedAt)),
     westernPacific,
     hkoWarnings: {
@@ -961,7 +1142,7 @@ export function naturalEventsPublishTransform(data) {
   return publicData;
 }
 
-export function naturalEventsAfterPublish(data) {
+export function naturalEventsAfterPublish(data, context = {}) {
   const nhc = data?._nhcSnapshot;
   const nhcFailed = nhc?.consecutiveFailures > 0;
   const gdacsFailed = data?._gdacsFailedTypes || [];
@@ -980,9 +1161,33 @@ export function naturalEventsAfterPublish(data) {
     },
   ]));
   const patch = { sourceState: failedSources.length ? 'degraded' : 'ok', sourceHealth, failedSources };
+  if (context.runId) {
+    const identity = value => typeof value === 'string' && /^[a-zA-Z0-9_.-]{1,128}$/.test(value) ? value : null;
+    console.info(JSON.stringify({
+      event: 'natural_source_receipt',
+      schemaVersion: 1,
+      runId: context.runId,
+      publisher: identity(process.env.RAILWAY_SERVICE_NAME),
+      deploymentId: identity(process.env.RAILWAY_DEPLOYMENT_ID),
+      revision: identity(process.env.RAILWAY_GIT_COMMIT_SHA),
+      canonicalKey: context.canonicalKey,
+      recordCount: context.recordCount,
+      sourceFetchedAt: data.fetchedAt,
+      ...patch,
+    }));
+  }
   if (!failedSources.length) return { freshnessMetaPatch: patch };
 
   console.warn(`[natural-events] DEGRADED: ${failedSources.join(', ')}`);
+  const failedSourceHealth = Object.fromEntries(failedSources.filter(source => sourceHealth[source]).map(source => {
+    const health = sourceHealth[source];
+    return [source, {
+      ...health,
+      remainingRetentionMs: health.retainedUntil === null ? null
+        : Math.max(0, health.retainedUntil - (health.lastAttemptAt ?? Date.now())),
+    }];
+  }));
+  if (Object.keys(failedSourceHealth).length) console.warn(`[natural-events] failed source health=${JSON.stringify(failedSourceHealth)}`);
   if (nhcFailed) Object.assign(patch, {
     errorCode: nhc.errorCode,
     skipReason: 'nhc-required-point-coverage-incomplete',
@@ -1002,12 +1207,12 @@ export function naturalEventsAfterPublish(data) {
   return { completionState: 'DEGRADED', freshnessMetaPatch: patch };
 }
 
-async function fetchNaturalEventsForSeed() {
+async function fetchNaturalEventsForSeed({ runStartedAtMs } = {}) {
   const [previousNhcSnapshot, previousSources] = await Promise.all([
     readSeedSnapshot(NHC_SNAPSHOT_KEY, { strict: true }),
     readSeedSnapshot(SOURCE_SNAPSHOT_KEY, { strict: true }),
   ]);
-  return fetchNaturalEvents({ previousNhcSnapshot, previousSources });
+  return fetchNaturalEvents({ previousNhcSnapshot, previousSources, runStartedAtMs });
 }
 
 export function runNaturalEventsSeed() {

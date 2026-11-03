@@ -26,7 +26,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  STORY_TRACK_HGETALL_BATCH,
+  STORY_TRACK_BATCH_SIZE,
   readStoryTracksChunked,
 } from '../scripts/lib/story-track-batch-reader.mjs';
 
@@ -38,15 +38,39 @@ function hashes(n) {
 // Stub pipelineFn that returns a deterministic per-command result.
 function ok(commands) {
   return commands.map((cmd) => ({
-    result: ['title', `t-${cmd[1]}`, 'severity', 'high'],
+    result: [`t-${cmd[1]}`, 'high'],
   }));
 }
 
 describe('readStoryTracksChunked', () => {
+  it('requests only selected fields, omits missing fields, and preserves empty strings', async () => {
+    const fields = ['title', 'severity', 'description'];
+    const commands = [];
+    const out = await readStoryTracksChunked(['one', 'missing', 'three'], async (batch) => {
+      commands.push(...batch);
+      return [{ result: ['Event', null, ''] }, { result: [null, null, null] }, { result: ['Other', 'high', null] }];
+    }, { fields });
+    assert.deepEqual(commands, ['one', 'missing', 'three'].map(hash => ['HMGET', `story:track:v1:${hash}`, ...fields]));
+    assert.deepEqual(out, [
+      { result: ['title', 'Event', 'description', ''] },
+      { result: [] },
+      { result: ['title', 'Other', 'severity', 'high'] },
+    ]);
+  });
+
+  it('preserves row errors for callers and rejects malformed field responses', async () => {
+    const options = { fields: ['title', 'severity'] };
+    assert.deepEqual(await readStoryTracksChunked(['one'], async () => [{ error: 'WRONGTYPE' }], options), [{ error: 'WRONGTYPE' }]);
+    for (const result of [null, [], ['short'], ['title', 42], { title: 'object' }]) {
+      await assert.rejects(readStoryTracksChunked(['one'], async () => [{ result }], options), /Invalid story-track HMGET response/);
+    }
+    await assert.rejects(readStoryTracksChunked(['one'], ok), /fields are required/);
+  });
+
   describe('happy path', () => {
     it('returns one entry per hash when every chunk succeeds', async () => {
       const input = hashes(7);
-      const out = await readStoryTracksChunked(input, ok, { batchSize: 3 });
+      const out = await readStoryTracksChunked(input, ok, { fields: ['title', 'severity'], batchSize: 3 });
       assert.equal(out.length, input.length);
       // Spot-check alignment: the synthetic title carries the cache
       // key, which carries the hash. trackResults[i] must pair with
@@ -64,7 +88,7 @@ describe('readStoryTracksChunked', () => {
         callCount++;
         return ok(cmds);
       };
-      const out = await readStoryTracksChunked([], counting, { batchSize: 3 });
+      const out = await readStoryTracksChunked([], counting, { fields: ['title', 'severity'], batchSize: 3 });
       assert.deepEqual(out, []);
       assert.equal(callCount, 0);
     });
@@ -75,7 +99,7 @@ describe('readStoryTracksChunked', () => {
         callCount++;
         return ok(cmds);
       };
-      const out = await readStoryTracksChunked(hashes(3), counting, { batchSize: 3 });
+      const out = await readStoryTracksChunked(hashes(3), counting, { fields: ['title', 'severity'], batchSize: 3 });
       assert.equal(out.length, 3);
       assert.equal(callCount, 1);
     });
@@ -93,7 +117,7 @@ describe('readStoryTracksChunked', () => {
       };
       const log = []; // capture warnings
       const out = await readStoryTracksChunked(input, flaky, {
-        batchSize: 3,
+        fields: ['title', 'severity'], batchSize: 3,
         log: (line) => log.push(line),
       });
 
@@ -120,7 +144,7 @@ describe('readStoryTracksChunked', () => {
       const flaky = (cmds) => (cmds[0][1] === 'story:track:v1:h0000' ? null : ok(cmds));
       const log = [];
       const out = await readStoryTracksChunked(input, flaky, {
-        batchSize: 3,
+        fields: ['title', 'severity'], batchSize: 3,
         log: (line) => log.push(line),
       });
       assert.equal(out, null);
@@ -140,7 +164,7 @@ describe('readStoryTracksChunked', () => {
       };
       const log = [];
       const out = await readStoryTracksChunked(input, flaky, {
-        batchSize: 3,
+        fields: ['title', 'severity'], batchSize: 3,
         log: (line) => log.push(line),
       });
       // Even though chunk 0 succeeded, the partial chunk 1 voids the
@@ -157,7 +181,7 @@ describe('readStoryTracksChunked', () => {
         return [];
       };
       const out = await readStoryTracksChunked(hashes(10), counting, {
-        batchSize: 3,
+        fields: ['title', 'severity'], batchSize: 3,
         log: () => {},
       });
       assert.equal(out, null);
@@ -167,11 +191,8 @@ describe('readStoryTracksChunked', () => {
   });
 
   describe('default batch size', () => {
-    it('exports STORY_TRACK_HGETALL_BATCH=500 (load-bearing for 50MB request budget)', () => {
-      // Documenting the constant in a test guards against an absent-
-      // minded bump to e.g. 5000 that would re-introduce the 50MB body
-      // problem on the largest accumulator.
-      assert.equal(STORY_TRACK_HGETALL_BATCH, 500);
+    it('keeps pipeline batches bounded at 500', () => {
+      assert.equal(STORY_TRACK_BATCH_SIZE, 500);
     });
   });
 });

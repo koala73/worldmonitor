@@ -32,6 +32,7 @@ import {
 import * as feedDigest from '../server/worldmonitor/news/v1/list-feed-digest.ts';
 import { isCountryHeadline } from '../shared/country-headline-match.ts';
 import { classifyByKeyword } from '../shared/threat-keyword-classifier.ts';
+import { protoThreatLevelToLabel } from '../shared/news-clustering-core.js';
 import type { CountryTimelineIncident } from '../shared/country-timeline-events.ts';
 import type {
   GetCountryCoverageRequest,
@@ -849,6 +850,74 @@ describe('collectStructuredIncidents — producer status', () => {
     assert.equal(quakes.incidents[0]?.severity, 'high');
   });
 
+  it('rejects superstring place names that only contain the country name', async () => {
+    // Substring matching attributed foreign quakes to the wrong country:
+    // Nigeria to Niger, Somalia to Mali, Romania to Oman, Indiana to India,
+    // South Sudan to Sudan. Each place below sits far outside the request
+    // country's box, so only the name arm can fire — and it must not.
+    const superstrings: Array<[string, string, { lat: number; lon: number }]> = [
+      ['NE', 'Niger', { lat: 6.45, lon: 3.39 }], // Lagos, Nigeria
+      ['ML', 'Mali', { lat: 2.03, lon: 45.34 }], // Mogadishu, Somalia
+      ['OM', 'Oman', { lat: 44.42, lon: 26.1 }], // Bucharest, Romania
+      ['IN', 'India', { lat: 39.16, lon: -86.52 }], // Bloomington, Indiana
+      ['SD', 'Sudan', { lat: 4.85, lon: 31.57 }], // Juba, South Sudan
+    ];
+    const foreignPlace: Record<string, string> = {
+      NE: '10km S of Lagos, Nigeria',
+      ML: 'Mogadishu, Somalia',
+      OM: 'Bucharest, Romania',
+      IN: 'Bloomington, Indiana',
+      SD: 'Juba, South Sudan',
+    };
+    for (const [code, name, loc] of superstrings) {
+      const results = await collectStructuredIncidents({
+        ctx, code, countryName: name, cutoffMs: NOW_MS - DAY, now: NOW_MS,
+        deps: structuredDeps({
+          listEarthquakes: async () => ({ earthquakes: [{
+            id: `q-${code}`, place: foreignPlace[code], magnitude: 5.2, depthKm: 10,
+            location: { latitude: loc.lat, longitude: loc.lon },
+            occurredAt: NOW_MS - 2 * HOUR, sourceUrl: '', source: 'usgs', category: '',
+          }] }),
+        } as Partial<StructuredDependencies>),
+      });
+      assert.equal(
+        find(results, 'structured:earthquakes').incidents.length, 0,
+        `${foreignPlace[code]} must not attribute to ${name}`,
+      );
+    }
+  });
+
+  it('rejects demonym matches in USGS place labels', async () => {
+    // The shared matcher is tuned for news prose, where a demonym names a
+    // country. A USGS `place` is a toponym, where it does not: these five all
+    // matched once the shared matcher was wired in (the old substring test
+    // missed them), attributing Alaskan and Utah quakes to the Netherlands and
+    // Spain. collectEarthquakes drops the demonym arm for this reason.
+    const demonymTraps: Array<[string, string, string, { lat: number; lon: number }]> = [
+      ['NL', 'Netherlands', '73 km SE of Dutch Harbor, Alaska', { lat: 53.9, lon: -166.5 }],
+      ['ES', 'Spain', '10 km N of Spanish Fork, Utah', { lat: 40.1, lon: -111.65 }],
+      ['PH', 'Philippines', 'Philippine Sea', { lat: 20.0, lon: 130.0 }],
+      ['NO', 'Norway', 'Norwegian Sea', { lat: 68.0, lon: 2.0 }],
+      ['FR', 'France', '12 km SW of French Camp, California', { lat: 37.87, lon: -121.27 }],
+    ];
+    for (const [code, name, place, loc] of demonymTraps) {
+      const results = await collectStructuredIncidents({
+        ctx, code, countryName: name, cutoffMs: NOW_MS - DAY, now: NOW_MS,
+        deps: structuredDeps({
+          listEarthquakes: async () => ({ earthquakes: [{
+            id: `q-${code}`, place, magnitude: 5.2, depthKm: 10,
+            location: { latitude: loc.lat, longitude: loc.lon },
+            occurredAt: NOW_MS - 2 * HOUR, sourceUrl: '', source: 'usgs', category: '',
+          }] }),
+        } as Partial<StructuredDependencies>),
+      });
+      assert.equal(
+        find(results, 'structured:earthquakes').incidents.length, 0,
+        `${place} must not attribute to ${name} via its demonym`,
+      );
+    }
+  });
+
   it('rejects a structured record geolocated outside the country box', async () => {
     const results = await collect({
       listEarthquakes: async () => ({
@@ -884,17 +953,22 @@ describe('collectStructuredIncidents — producer status', () => {
     assert.ok(vessels.detail.toLowerCase().includes('ais'));
   });
 
+  // The conflict lane reads the seeded snapshot itself: list-acled-events drops
+  // every row without coordinates, which is every GDELT fallback row.
+  function conflictSeed(events: unknown[]): Partial<StructuredDependencies> {
+    return {
+      readSeed: async (key: string) => (key === 'conflict:acled:v1:all:0:0'
+        ? { status: 'hit' as const, fetchedAtMs: NOW_MS - HOUR, data: { events } }
+        : { status: 'hit' as const, fetchedAtMs: NOW_MS - HOUR }),
+    } as Partial<StructuredDependencies>;
+  }
+
   it('maps ACLED rows to the panel\'s label and severity', async () => {
-    const results = await collect({
-      listAcledEvents: async () => ({
-        events: [
-          { id: 'a1', eventType: 'Battles', country: 'Israel', location: { latitude: ISRAEL.lat, longitude: ISRAEL.lon }, occurredAt: NOW_MS - 2 * HOUR, fatalities: 3, actors: [], source: 'acled', admin1: 'North' },
-          { id: 'a2', eventType: 'Explosions/Remote violence', country: 'Israel', location: { latitude: ISRAEL.lat, longitude: ISRAEL.lon }, occurredAt: NOW_MS - 3 * HOUR, fatalities: 0, actors: [], source: 'acled', admin1: 'South' },
-          { id: 'a3', eventType: 'Battles', country: 'Egypt', location: { latitude: 30.0, longitude: 31.2 }, occurredAt: NOW_MS - 2 * HOUR, fatalities: 1, actors: [], source: 'acled', admin1: 'Cairo' },
-        ],
-        pagination: undefined,
-      }),
-    } as Partial<StructuredDependencies>);
+    const results = await collect(conflictSeed([
+      { id: 'a1', eventType: 'Battles', country: 'Israel', location: { latitude: ISRAEL.lat, longitude: ISRAEL.lon }, occurredAt: NOW_MS - 2 * HOUR, fatalities: 3, actors: [], source: 'acled', admin1: 'North' },
+      { id: 'a2', eventType: 'Explosions/Remote violence', country: 'Israel', location: { latitude: ISRAEL.lat, longitude: ISRAEL.lon }, occurredAt: NOW_MS - 3 * HOUR, fatalities: 0, actors: [], source: 'acled', admin1: 'South' },
+      { id: 'a3', eventType: 'Battles', country: 'Egypt', location: { latitude: 30.0, longitude: 31.2 }, occurredAt: NOW_MS - 2 * HOUR, fatalities: 1, actors: [], source: 'acled', admin1: 'Cairo' },
+    ]));
     const conflicts = find(results, 'structured:conflicts');
     assert.deepEqual(conflicts.incidents.map(i => i.label), [
       'battle: Israel',
@@ -902,6 +976,48 @@ describe('collectStructuredIncidents — producer status', () => {
     ]);
     assert.equal(conflicts.incidents[0]?.severity, 'critical', 'fatalities > 0 is critical');
     assert.equal(conflicts.incidents[1]?.severity, 'high', 'no fatalities is high');
+  });
+
+  it('counts coordinate-less GDELT conflict rows, one incident per article', async () => {
+    // Without ACLED access the seed holds only GDELT rows, which carry a country
+    // name but no coordinates. They are still evidence of coverage, so the lane
+    // must report them instead of `unknown`.
+    const gdelt = (id: string, country: string, url: string, eventType = 'GDELT 190') => ({
+      id, eventType, country, event_date: '2026-09-07', occurredAt: NOW_MS - 2 * HOUR,
+      gdeltAddedAt: NOW_MS - 2 * HOUR, source: 'example.com', url,
+    });
+    const results = await collect(conflictSeed([
+      gdelt('gdelt-event-1', 'Israel', 'https://example.com/strike'),
+      gdelt('gdelt-event-2', 'Israel', 'https://example.com/strike', 'GDELT 183'),
+      gdelt('gdelt-event-3', 'Israel', 'https://example.com/raid', 'GDELT 180'),
+      gdelt('gdelt-event-4', 'Egypt', 'https://example.com/elsewhere'),
+    ]));
+    const conflicts = find(results, 'structured:conflicts');
+    assert.equal(conflicts.state, 'ok');
+    assert.deepEqual(conflicts.incidents.map(i => [i.label, i.severity]), [
+      ['reported armed clash: Israel (example.com)', 'medium'],
+      ['reported assault: Israel (example.com)', 'medium'],
+    ]);
+
+    // ACLED and GDELT spell the DRC without "the"; the shared resolver alone misses it.
+    const drc = await collectStructuredIncidents({
+      ctx,
+      code: 'CD',
+      countryName: 'Democratic Republic of the Congo',
+      cutoffMs: NOW_MS - 7 * DAY,
+      now: NOW_MS,
+      deps: structuredDeps(conflictSeed([gdelt('gdelt-event-5', 'Democratic Republic of Congo', 'https://example.com/goma')])),
+    });
+    assert.equal(find(drc, 'structured:conflicts').incidents.length, 1);
+  });
+
+  it('reports a dead conflict seed as failed, not as a quiet week', async () => {
+    const results = await collect({
+      readSeed: async (key: string) => (key === 'conflict:acled:v1:all:0:0'
+        ? { status: 'error' as const, fetchedAtMs: 0 }
+        : { status: 'hit' as const, fetchedAtMs: NOW_MS - HOUR }),
+    } as Partial<StructuredDependencies>);
+    assert.equal(find(results, 'structured:conflicts').state, 'failed');
   });
 
   it('bounds military flights to the country box and grades them by interest', async () => {
@@ -1110,19 +1226,24 @@ describe('GetCountryCoverage — end to end over the real collector', () => {
     // ACLED is queried globally, so rows coming back prove it answered even when
     // none are this country's. That is a confirmed-quiet `empty`.
     const response = await run({
-      listAcledEvents: async () => ({
-        events: [{
-          id: 'a1',
-          eventType: 'Battles',
-          country: 'Egypt',
-          location: { latitude: 30.0, longitude: 31.2 },
-          occurredAt: NOW_MS - 2 * HOUR,
-          fatalities: 1,
-          actors: [],
-          source: 'acled',
-          admin1: 'Cairo',
-        }],
-        pagination: undefined,
+      readSeed: async (key: string) => ({
+        status: 'hit' as const,
+        fetchedAtMs: NOW_MS - HOUR,
+        data: key === 'conflict:acled:v1:all:0:0'
+          ? {
+            events: [{
+              id: 'a1',
+              eventType: 'Battles',
+              country: 'Egypt',
+              location: { latitude: 30.0, longitude: 31.2 },
+              occurredAt: NOW_MS - 2 * HOUR,
+              fatalities: 1,
+              actors: [],
+              source: 'acled',
+              admin1: 'Cairo',
+            }],
+          }
+          : undefined,
       }),
     } as Partial<StructuredDependencies>);
     assert.equal(response.sources.find(s => s.source === 'structured:conflicts')?.state, 'empty');
@@ -1308,6 +1429,42 @@ describe('fetchCountryCoverageFeeds — the real coverage pipeline', () => {
       item({ title: 'Israel election result confirmed - Reuters' }),
     ]);
     assert.equal(result.incidents.length, 0);
+  });
+
+  it('preserves raw shared headline classification through the RPC without changing coverage identity or events', async () => {
+    const inputs = [
+      item({ title: 'Israel nuclear strike - Reuters', level: 'info' }),
+      item({ title: 'Israel stability - War on the Rocks', level: 'info' }),
+      item({ title: 'Israel inflation - AP', level: 'critical' }),
+      item({ title: 'Israel summit', originPublisher: 'Origin publisher', level: 'critical' }),
+      item({ title: 'Israel garden exhibition', source: 'Feed fallback', level: 'critical' }),
+    ].map((entry, index) => ({ ...entry, link: `https://example.org/${index}`, publishedAt: NOW_MS - index * HOUR }));
+    const events = [item({ title: 'Protests erupt across Israel - Reuters' })];
+    const result = await runFeeds([
+      ...inputs,
+      item({ title: 'Iran responds to Israel - AP' }),
+      item({ title: 'Israel old report', publishedAt: NOW_MS - 30 * DAY }),
+    ], events);
+    assert.equal(result.headlines.length, inputs.length);
+    assert.deepEqual(result.headlines.map(headline => headline.threat), inputs.map(entry => classifyByKeyword(entry.title, 'full')));
+    assert.deepEqual(result.headlines.map(headline => headline.threat.level), ['critical', 'high', 'medium', 'low', 'info']);
+    const response = await getCountryCoverage(ctx, request(), deps({ coverage: result }));
+    assert.deepEqual(response.headlines.map(headline => protoThreatLevelToLabel(headline.threat?.level)), ['critical', 'high', 'medium', 'low', 'info']);
+    for (const [index, input] of inputs.entries()) {
+      const headline = response.headlines[index]!;
+      const expected = classifyByKeyword(input.title, 'full');
+      assert.deepEqual(headline.threat, { ...expected, level: headline.threat?.level });
+      assert.equal(headline.title, splitGoogleNewsTitle(input.title).title);
+      assert.equal(headline.url, input.link);
+      assert.equal(headline.publishedAtMs, input.publishedAt);
+      assert.equal(headline.publishedAt, new Date(input.publishedAt).toISOString());
+    }
+    assert.deepEqual(response.headlines.map(headline => headline.source), ['Reuters', 'War on the Rocks', 'AP', 'Origin publisher', 'Feed fallback']);
+    assert.equal(sourceState(response, 'coverage:headlines'), 'ok');
+    assert.equal(sourceState(response, 'coverage:events'), 'ok');
+    assert.deepEqual(result.incidents, (await runFeeds([], events)).incidents);
+    assert.equal(response.events[0]?.lane, 'protest');
+    assert.equal(response.events[0]?.severity, 'medium');
   });
 
   it('CLUSTERS BEFORE FILTERING, so a cluster named only by a later reprint is dropped', async () => {

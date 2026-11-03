@@ -150,37 +150,195 @@ Aggregate activity maps to a 5-level readiness scale:
 | **DEFCON 4** | 25% – 49% | Above Normal | Increased vigilance |
 | **DEFCON 5** | &lt;25% | Normal Activity | Normal peacetime operations |
 
-### GDELT Tension Pairs
+### World Monitor Tension Pairs
 
-The indicator also displays geopolitical tension scores from GDELT (Global Database of Events, Language, and Tone):
+The indicator also displays World Monitor tension scores computed independently from GDELT event exports:
 
 | Pair | Monitored Relationship |
 |------|----------------------|
 | USA ↔ Russia | Primary nuclear peer adversary |
 | Russia ↔ Ukraine | Active conflict zone |
 | USA ↔ China | Economic and military competition |
-| China ↔ Taiwan | Cross-strait relations |
+| China ↔ Taiwan | Cross-strait military and political pressure |
 | USA ↔ Iran | Middle East regional tensions |
-| USA ↔ Venezuela | Western Hemisphere escalation and sanctions pressure |
+| Israel ↔ Iran | Direct strikes and proxy conflict |
+| Iran ↔ GCC | Iran against the Gulf states: Saudi Arabia, UAE, Qatar, Kuwait, Bahrain, Oman |
+| Saudi Arabia ↔ Yemen | Cross-border attacks, counting every Yemeni actor |
 
 Each pair shows:
 
-- **Current tension score** (GDELT's normalized metric)
-- **7-day trend** (rising, falling, stable)
-- **Percentage change** from previous period
+- **Current tension score** (World Monitor's normalized score)
+- **Trend** (rising, falling, stable), against the pair's own usual weekly swing
+- **Percentage change**: the last seven days against the seven days before them
+- **Evidence**, when there is any: up to three non-news readings above their usual level, such as airport closures or military aircraft in the region
 
-This provides context for the activity levels. A spike at Pentagon locations during a rising China-Taiwan tension score carries different weight than during a quiet period.
+This provides context for the activity levels. See the country-pair tension section below for scoring and data-availability rules, and [evidence beside the scores](#evidence-beside-the-scores) for the readings.
 
 ### Backed by endpoints
 
 | Surface | Endpoint | Notes |
 |---|---|---|
-| Pentagon Pizza Index + GDELT pairs | `GET /api/intelligence/v1/get-pizzint-status` | Reads the seeded PizzINT cache; `include_gdelt=true` includes tension pairs. |
+| Pentagon Pizza Index + GDELT pairs | `GET /api/intelligence/v1/get-pizzint-status` | Reads pizza activity and, with `include_gdelt=true`, independently computed World Monitor tension pairs, each with its notable `evidence`. |
 | GPS/GNSS interference | `GET /api/intelligence/v1/list-gps-interference` | Reads normalized GPSJam Redis keys, with optional `region` filtering. |
 | OREF alerts for CII context | `GET /api/intelligence/v1/list-oref-alerts` | Direct RPC for live or history OREF data; see [Israel Sirens](/panels/oref-sirens) for the panel relay path. |
 | Security advisories | `GET /api/intelligence/v1/list-security-advisories` | Redis-backed advisory feed used by CII boosts and floors. |
 | Country energy profile | `GET /api/intelligence/v1/get-country-energy-profile` | Country-level energy context for country deep dives and strategic risk analysis. |
 | Energy shock scenario | `GET /api/intelligence/v1/compute-energy-shock` | On-demand country + chokepoint product supply shock. |
+
+### World Monitor country-pair tensions
+
+Tensions use GDELT event exports, not PizzINT's GPR scale. The materializer counts
+both actor directions for the pairs in `shared/gdelt-tension-pairs.json`:
+US–Russia, Russia–Ukraine, US–China, China–Taiwan, US–Iran, Israel–Iran,
+Iran–GCC, and Saudi Arabia–Yemen. A side can be a group: Iran–GCC sums Iran's
+events with each Gulf Cooperation Council member (Saudi Arabia, the UAE, Qatar,
+Kuwait, Bahrain, Oman) into one bucket; events between members are not counted.
+GDELT codes Houthi actors as plain Yemen (`YEM`), so Saudi Arabia–Yemen counts
+every Yemeni actor, Houthi or government. US–Venezuela did not meet the initial
+20 conflict events/day measurement threshold and is excluded. No GDELT query
+API is used.
+
+A pair added to the list scores **Insufficient data** until its 90-day history
+is rebuilt (below), 11 to 22 hours after the worker first runs with it. The
+day in progress gets no bucket for the new pair, since it would miss the
+earlier cohorts; that day is rebuilt once it is complete. China–Taiwan,
+Israel–Iran and Saudi Arabia–Yemen were added together with the fifteen-day
+hourly window, so the first runs after that deploy rebuild every stored day,
+newest first. Until the last fourteen completed days have their hours, two to
+four hours, the existing pairs read from completed days.
+
+For each UTC day, conflict intensity is the sum of
+`NumMentions × max(0, −GoldsteinScale)` for events in QuadClass 3 or 4.
+The daily bucket also retains total events, conflict events, and tone sum/count
+(mean tone is their quotient). Events are assigned to their export cohort's UTC
+day. For the last fifteen days, each day also keeps per-hour conflict counts and
+intensity, so scoring can follow the live feed instead of waiting for midnight.
+
+The score is the percentile of the live seven-day mean against the pair's 90
+completed daily intensities. The live mean is the last 168 complete hours
+divided by seven; an hour is complete once all four of its 15-minute export
+cohorts are in, so the hour in progress is not counted. If any of the last 336
+hours is missing or partial, the pair falls back to completed days: the last
+seven for the score, and the last fourteen for the change. The percentile is
+`100 × (days below the mean + 0.5 × days equal to it) / 90`.
+A non-flat history's maximum scores 100; a flat history scores 50.
+This measures relative event intensity, not the probability of conflict.
+The scored seven days (live or completed) must contain at least 140 conflict events (20 × 7).
+All 90 days must have all 96 export cohorts. Missing or partial days do not
+count as quiet days. During initial history collection, or when these conditions
+fail, the stored `insufficientPairs` lists the pair; the API omits its numeric
+score and the panel shows **Insufficient data**.
+
+Change is `100 × (last seven days − the seven before) / the seven before`, on
+summed intensity. Live, the two weeks are the last 336 complete hours split at
+168, so a surge shows within the hour; in the completed-day fallback they are
+the last fourteen completed days. Each week holds every weekday once, so the
+weekend dip in news volume (about 0.7× on Saturdays and Sundays) cancels out
+instead of reading as a fall.
+
+Each pair's trend threshold is its own usual weekly swing: the 75th percentile
+(linearly interpolated) of the absolute seven-day against previous seven-day
+changes over every fourteen-day span in its 90 completed days, never below 10%.
+The trend rises above the threshold, falls below its negative, and is stable at
+the boundaries, so a volatile pair needs a larger move than a calm one.
+A zero preceding week with positive recent intensity has no finite percentage
+change, so that pair is also withheld. Two zero weeks give a zero change.
+
+The independent `gdelt:bulk:dyad-tension:v1` snapshot retains 90 completed days
+plus today's bucket, with a 92-day TTL and its own replay cursor. Health checks
+`seed-meta:gdelt:bulk:dyad-tension` at a 45-minute budget for the 15-minute worker.
+The API withholds snapshots older than 45 minutes even though history remains
+stored. Responses that include tensions bypass HTTP caches, and the browser does
+not retain tension responses for cache fallback. Healthy ingestion does not mean
+that the 90-day scoring history is ready.
+The probe stays pending until the first successful data and metadata publication
+sets its durable activation marker. It then enforces freshness permanently.
+Pizza outages do not hide available tensions.
+
+Each worker run also repairs history. It walks the past days in the window
+that are missing, lack any of their 96 cohorts, lack a bucket for a pair
+added after the day began, or, within the last fifteen days, lack complete
+hours, newest first, and rebuilds
+up to two of them from that day's GDELT export files. A rebuilt day replaces
+the stored day. It is never added to it, so the partial first day of
+collection counts once. Only days before the replay cursor's day are repaired,
+so the live merge never adds to a rebuilt day. The worker downloads a day only
+when the GDELT master file list names all 96 of its exports, and checks each
+file against the listed size and MD5. A day with an upstream gap is skipped
+without downloading it and does not count toward the two. A day whose download
+or verification fails is recorded in the snapshot's `repairFailures` and
+skipped for six hours, so it cannot hold the run's slots while older days wait.
+A later successful rebuild clears its record. The repair has a 60-second budget
+per run. When the budget runs out, the worker aborts in-flight downloads and
+starts no new ones. A failure or an overrun keeps the days that finished and
+never delays or fails the live publication. A run usually rebuilds two days and
+sometimes one when downloads are slow, so an empty window fills in 45 to 90
+runs, 11 to 22 hours.
+
+### Evidence beside the scores
+
+The GDELT score measures news coverage. Under a pair's score, the popup can
+also show readings from feeds that are not news coverage, when they are above
+their usual level. They never change the score.
+
+| Reading | Pairs (countries read) | Source keys | Current count | Usual level |
+|---|---|---|---|---|
+| Reported strikes | Israel–Iran (Israel, Iran); Iran–GCC (the six GCC members); Saudi Arabia–Yemen (Saudi Arabia, Yemen) | `conflict:iran-events:v1`, `conflict:strike-pressure:v1` | Strike reports in the last 72 hours, by the country where they landed | Three times the mean daily count in the strike tally, from its first stored day to the day before the 72 hours; needs 7 days |
+| Airports | US–Iran (Iran); Israel–Iran; Iran–GCC (GCC members and Iran); Saudi Arabia–Yemen; China–Taiwan (Taiwan); Russia–Ukraine (Russia) | `aviation:notam:closures:v2`, `aviation:delays:intl:v3` | Monitored airports closed (a NOTAM closure, or at least 80% of due flights cancelled), with most flights cancelled (at least 50%), or restricted by NOTAM | Mean daily peak in the evidence history; needs 7 days |
+| Military aircraft | See below | `military:surges:history:v1` | One operator's aircraft in the pair's theater, in the latest snapshot | Mean of the earlier snapshots from the same ADS-B feed, about six hours; needs 12 snapshots |
+| Chinese military aircraft, Chinese navy ships near Taiwan | China–Taiwan | `military:cross-strait-activity-bootstrap:v1` | Taiwan's Ministry of National Defense daily report, if no more than two days old | Its 90-day median, once that window has enough reporting days |
+| New US sanctions | US–Iran (Iran); US–Russia (Russia); US–China (China) | `sanctions:changes:v1` | Additions to the SDN, Consolidated and Commerce CSL lists naming the country in the last 7 days | Each list's weekly rate over the earlier weeks its changes were recorded, summed over the lists; needs 21 days |
+
+Military aircraft read one operator in one region, so an aircraft is counted
+once where theaters overlap: US–Iran counts US aircraft and Israel–Iran Israeli
+aircraft in the Iran theater; US–China counts US aircraft and China–Taiwan
+Chinese aircraft in the Taiwan theater; US–Russia counts US aircraft in the
+Baltic and Black Sea theaters; Russia–Ukraine counts Russian aircraft in the
+Black Sea theater; Saudi Arabia–Yemen counts Saudi aircraft in the Yemen and
+Red Sea theater.
+
+A reading shows when it reaches its floor and is at least 1.5 times its usual
+level. The floors are 3 strikes, 1 airport, 6 military aircraft, 20 Chinese
+aircraft, 10 Chinese ships and 3 sanctions additions. A disrupted airport shows
+before any usual level exists; every other reading waits for one. The popup
+shows at most three readings per pair and adds the usual level in parentheses.
+
+Limitations:
+
+- Strike reports place a strike where it landed, not who fired it, and include
+  interceptions and claims. Saudi Arabia belongs to both Iran–GCC and Saudi
+  Arabia–Yemen, so a strike on Riyadh counts for both. The feed covers the
+  Middle East only.
+- The strike feed keeps only its newest 400 events. When all of them fall
+  inside the 72 hours, older strikes in the window are missing, so the strike
+  reading is withheld until the feed reaches back past the window.
+- A sanctions list can be skipped for a while (unavailable, or a suspicious
+  snapshot held back). Its changes from that time are never recorded, so that
+  time is left out of that list's usual rate. A retained gap keeps the last
+  snapshot, and the list's changes are recorded when it returns, so its time
+  stays in.
+- The aircraft counts see only aircraft that broadcast ADS-B. No Chinese,
+  Russian or Saudi military aircraft appeared in the six hours of snapshots
+  checked on 2026-10-25, so those readings are usually zero.
+- Ukraine has no monitored airport. Airport names are English city names.
+- The strike tally keeps 30 days and began on 2026-10-19; the sanctions log
+  began on 2026-10-18. Until each has its minimum history, strikes and
+  sanctions have no usual level and do not show.
+
+The derived-signals bundle runs `scripts/seed-tension-evidence.mjs` every 15
+minutes. It writes `intelligence:tension-evidence:v1` as
+`{ updatedAt, live, days }`: `live` holds every pair's current readings, and
+`days` keeps one value per pair, reading and UTC day for 90 days (the daily
+peak for airports and military aircraft, the latest value for the rest).
+Strike days are copied from the tally for every day it still holds, so a
+missed run is repaired. The key has a 100-day TTL. Each source must be within its own health budget
+(strikes 45 minutes, airport delays 90, NOTAM closures 240, military aircraft
+30, Taiwan Strait 720, sanctions 720); a stale or malformed source drops only
+its readings, and a run with no readings at all keeps the last payload. Health
+checks `seed-meta:intelligence:tension-evidence` at a 45-minute budget once the
+first publish sets `seed-activated:intelligence:tension-evidence`. The API
+attaches only notable readings, ignores evidence older than 45 minutes, and
+serves the scores unchanged when the evidence is missing.
 
 ## Related Assets
 
@@ -191,7 +349,7 @@ News clusters are automatically enriched with nearby critical infrastructure. Wh
 | Type | Source | Examples |
 |------|--------|----------|
 | **Pipelines** | 88 global routes | Nord Stream, Keystone, Trans-Siberian |
-| **Undersea Cables** | 86 major cables | TAT-14, SEA-ME-WE, Pacific Crossing |
+| **Undersea Cables** | 98 major cables | TAT-14, SEA-ME-WE, Pacific Crossing |
 | **AI Datacenters** | Epoch AI registry | Azure East US, GCP Council Bluffs |
 | **Military Bases** | 226 installations | Ramstein, Diego Garcia, Guam |
 | **Nuclear Facilities** | 100+ sites | Power plants, weapons labs, enrichment |
@@ -232,9 +390,9 @@ Strategic risk and Country Instability Index (CII) scores are pre-computed serve
 
 The `GetRiskScores` RPC handler (`get-risk-scores.ts`):
 
-1. Fetches recent protest/riot/battle/explosion/civilian-violence data from ACLED.
-2. Fetches auxiliary sources from Redis, including UCDP conflicts, outages, climate, cyber threats, fires, GPS jamming, Iran events, OREF alerts, advisories, displacement, classified news summaries, aviation alerts, earthquakes, sanctions, and military/AIS CII aggregates.
-3. Computes CII v8 scores for 31 Tier-1 countries using the shared coefficient table documented in [CII Risk Scoring Methodology](/methodology/cii-risk-scores).
+1. Fetches recent protest/riot/battle/explosion/civilian-violence data from ACLED. While ACLED returns no events (WorldMonitor has no ACLED access), Conflict and Unrest instead read GDELT terms (escalation or sustained level) from `gdelt:bulk:country-events:v1`.
+2. Fetches auxiliary sources from Redis, including UCDP conflicts, outages, climate, fires, GPS jamming, Iran events, OREF alerts, advisories, displacement, classified news summaries, aviation alerts, earthquakes, sanctions, and military/AIS CII aggregates.
+3. Computes CII v14 scores for 31 Tier-1 countries using the shared coefficient table documented in [CII Risk Scoring Methodology](/methodology/cii-risk-scores).
 4. Derives Strategic Risk from the weighted top 5 CII scores.
 5. Caches results in Redis with versioned live and stale keys tied to the current CII formula version.
 
@@ -248,9 +406,9 @@ Each country's score combines a static baseline (40%) with a dynamic event score
 
 | Sub-component | Weight | Scoring |
 |---------------|--------|---------|
-| Unrest | 25% | ACLED protests/riots, protest fatalities, high-severity unrest, and outage severity |
-| Conflict | 30% | Weighted ACLED battles/explosions/civilian violence, fatalities, Iran strike severity, and OREF alert pressure |
-| Security | 20% | Military flights, military vessels, aviation closures/delays, and GPS/GNSS jamming |
+| Unrest | 25% | ACLED protests/riots, protest fatalities, high-severity unrest, and outage severity; GDELT protest escalation or sustained level while ACLED returns no events |
+| Conflict | 30% | Weighted ACLED battles/explosions/civilian violence, fatalities, and OREF alert pressure; GDELT conflict escalation or sustained level while ACLED returns no events. Strikes count through strike pressure on the composite (v12), not here |
+| Security | 20% | Foreign military flights and vessels located in the country, aviation closures/delays, and GPS/GNSS jamming |
 | Information | 25% | Classified news headlines and country-attributed threat summaries |
 
 **Floors** (minimum score guarantees):
@@ -261,8 +419,9 @@ Each country's score combines a static baseline (40%) with a dynamic event score
 | UCDP minor conflict | >= 50 | 2-year Tier-1 UCDP event count > 10 below the war thresholds |
 | Advisory do-not-travel | >= 60 | Live advisory feed when present; otherwise embedded State Department fallback table |
 | Advisory reconsider | >= 50 | Live advisory feed when present; otherwise embedded State Department fallback table |
+| Strike pressure (v12) | 40-70 | Decayed strike pressure `P >= 5`: `min(70, 40 + 8 * log2(P / 5))` |
 
-**Supplemental Boosts**: Advisory boost (+15/+10/+5), OREF blend boost for IL (+15 active + history tiers), climate (+15 max), cyber (+12 max), fires (+8 max), displacement (+20 max), news urgency (+5 max), earthquakes (+25 max), sanctions (+14 max), and AIS disruptions (+10 max).
+**Supplemental Boosts**: Advisory boost (+15/+10/+5), OREF blend boost for IL (+15 active + history tiers), climate (+15 max), fires (+8 max), displacement (+20 max), news urgency (+5 max), earthquakes (+25 max), sanctions (+14 max), AIS disruptions (+10 max), and strike pressure (+10 max).
 
 Advisory outputs expose both `advisoryLevel` and `advisoryProvenance` on each
 `CiiScore`. `advisoryProvenance` is `live` when the score used the seeded
@@ -298,15 +457,16 @@ The top countries contribute most heavily, with diminishing influence for lower-
 | Source | Redis Key | Used For |
 |--------|-----------|----------|
 | ACLED | Fetched live via API | Protests, riots, battles, explosions, civilian violence, fatalities |
+| GDELT country events | `gdelt:bulk:country-events:v1` | Conflict and Unrest escalation against each country's 28-day median, and the sustained share of its last seven days, only while ACLED returns no events |
 | UCDP | `conflict:ucdp-events:v1` | War/minor conflict floors |
 | Outages | `infra:outages:v1` | Unrest outage boost |
 | Climate | `climate:anomalies:v2` | Climate severity boost |
-| Cyber | `cyber:threats-bootstrap:v2` | Severity-weighted cyber boost |
-| Fires | `wildfire:fires:v1` | Severity-weighted wildfire boost |
+| Fires | `wildfire:fires-summary:v1` (per-country rows derived from `wildfire:fires:v1`) | Severity-weighted wildfire boost |
 | GPS Jamming | `intelligence:gpsjam:v2` | Security score |
-| Military CII | Relay/seeded military aggregate | Security score and AIS disruption boost |
+| Military CII | Relay/seeded military aggregate | Security score (foreign flights and vessels only since v14) and AIS disruption boost |
 | Aviation Alerts | Seeded aviation disruption data | Security score |
-| Iran Events | `conflict:iran-events:v1` | Strike boost with severity weighting |
+| Middle East strikes | `conflict:iran-events:v1` (72h) and `conflict:strike-pressure:v1` (30-day tally) | Strike pressure: severity-weighted strikes per day, decayed, into a floor and a boost |
+| GDELT strikes | `gdelt:bulk:country-events:v1` (strike counter) | Strike pressure worldwide while ACLED returns no events |
 | OREF Alerts | `relay:oref:history:v1` | IL conflict boost and blend boost |
 | News Threats | Classified headline summaries | Information score and news urgency boost |
 | Displacement | Humanitarian displacement aggregate | Displacement boost |
@@ -331,6 +491,6 @@ The relay CII warm-ping loop is active in `scripts/ais-relay.cjs`: it calls
 refresh live/stale cache state, and writes `seed-meta:intelligence:risk-scores`
 for health monitoring when scores are returned. That seed-meta `recordCount`
 is real-time signal-density coverage, not raw feed availability: it counts the
-score-relevant Tier-1 conflict (ACLED or UCDP), news, and cyber signal families
+score-relevant Tier-1 conflict (ACLED, UCDP, or a live GDELT baseline while ACLED returns no events) and news signal families
 present in the CII refresh. Quiet-but-fresh real-time feeds can therefore produce
 `COVERAGE_PARTIAL`; source-specific freshness remains the feed-heartbeat view.

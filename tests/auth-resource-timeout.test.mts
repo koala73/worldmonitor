@@ -135,11 +135,16 @@ test('widget-agent request-body read must terminate for a body that never ends',
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (() => never<Response>()) as typeof fetch;
   try {
-    const { default: handler } = await import('../api/widget-agent.ts?resource-repro=1');
+    const { default: handler, __setWidgetAgentSpendDepsForTests } = await import('../api/widget-agent.ts?resource-repro=1');
+    __setWidgetAgentSpendDepsForTests({
+      checkRateLimit: async () => null,
+    });
+    let cancelled = false;
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new TextEncoder().encode('{"prompt":"'));
       },
+      cancel() { cancelled = true; },
     });
     const req = new Request('https://www.worldmonitor.app/api/widget-agent', {
       method: 'POST',
@@ -153,17 +158,18 @@ test('widget-agent request-body read must terminate for a body that never ends',
     } as RequestInit & { duplex: 'half' });
 
     const outcome = await Promise.race([
-      handler(req).then(() => 'settled'),
+      handler(req).then((res) => { assert.equal(res.status, 408); return 'settled'; }),
       after(500, 'still-pending'),
     ]);
     assert.equal(outcome, 'settled');
+    assert.equal(cancelled, true);
   } finally {
     globalThis.fetch = originalFetch;
     delete process.env.WIDGET_AGENT_BODY_TIMEOUT_MS;
   }
 });
 
-test('__resetWmSessionForTests restores the default mint timeout', async () => {
+test('__resetWmSessionForTests restores the default mint timeout', async (t) => {
   (globalThis as unknown as { window: unknown }).window = globalThis;
   (globalThis as unknown as { location: Location }).location = {
     href: 'https://worldmonitor.app/',
@@ -178,22 +184,24 @@ test('__resetWmSessionForTests restores the default mint timeout', async () => {
     visibilityState: 'visible',
     addEventListener() {},
   };
-  (globalThis as unknown as { fetch: typeof fetch }).fetch = ((_input, init) => new Promise<Response>((resolve, reject) => {
-    if (init?.signal?.aborted) {
-      reject(new Error('Aborted'));
-      return;
-    }
-    init?.signal?.addEventListener('abort', () => reject(new Error('Aborted')), { once: true });
-    setTimeout(() => resolve(new Response(JSON.stringify({ exp: Date.now() + 3600000 }))), 100);
-  })) as typeof fetch;
+  let mintCalls = 0;
+  globalThis.fetch = async () => {
+    mintCalls += 1;
+    return new Response(JSON.stringify({ exp: Date.now() + 3600000 }));
+  };
 
   const mod = await import('../src/services/wm-session.ts?reset-timeout-repro=1');
+  mod.__resetWmSessionForTests();
+  const timeout = t.mock.method(globalThis, 'setTimeout');
   mod.__setWmSessionFetchTimeoutForTests(50);
+  assert.equal(await mod.ensureWmSession(), true);
+  assert.deepEqual(timeout.mock.calls.map((call) => call.arguments[1]), [50]);
   mod.__resetWmSessionForTests();
 
-  // The stubbed fetch resolves at 100ms but the session timeout is 50ms, so
-  // ensureWmSession can only settle by aborting its own request.
-  await settlesWithoutHanging(mod.ensureWmSession(), 'ensureWmSession');
+  assert.equal(await mod.ensureWmSession(), true);
+  assert.equal(mintCalls, 2, 'reset must clear the successful mint cache');
+  assert.deepEqual(timeout.mock.calls.map((call) => call.arguments[1]), [50, 10_000]);
+  mod.__resetWmSessionForTests();
 });
 
 test('clerk plan lookup must not pin the gateway when Clerk never responds', async () => {

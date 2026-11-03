@@ -47,6 +47,8 @@ it('loads the scenario after premium access arrives and discards an older entitl
     assert.ok(harness.getPanelRoot().querySelector('#cdp-section-scenario .cdp-pro-locked'));
     harness.setPremiumAccess(true);
     panel.syncCountryPremiumSectionsAccess(true);
+    panel.updateTradeExposure({ iso2: 'US', hs2: '27', primaryChokepointId: 'panama', vulnerabilityIndex: 20,
+      exposures: [{ chokepointId: 'panama', chokepointName: 'Panama Canal', exposureScore: 20, coastSide: '', shockSupported: true }], fetchedAt: '' });
     harness.getCostShockRequests()[1].resolve(null);
     await Promise.resolve();
     assert.match(harness.getPanelRoot().querySelector('#cdp-section-scenario').textContent, /No cost shock scenario/);
@@ -55,4 +57,51 @@ it('loads the scenario after premium access arrives and discards an older entitl
   } finally {
     harness.cleanup();
   }
+});
+
+it('lists cited evidence under the brief sources in summary and full views', async () => {
+  const harness = await createCountryDeepDivePanelHarness();
+  try {
+    const panel = harness.createPanel();
+    panel.show('Finland', 'FI', null, {});
+    panel.updateBrief({
+      code: 'FI',
+      country: 'Finland',
+      brief: "SITUATION NOW\nFinland's fiscal space scores 28 of 100 in the Country Resilience Index. [E2]",
+      sources: [{ title: 'Finland budget talks', source: 'Yle', url: 'https://example.com/fi' }],
+      evidence: [{ id: 'E2', kind: 'resilience', label: 'Fiscal space', value: '28 of 100', factText: '', asOf: '2026-09-21T00:00:00.000Z', url: '' }],
+    });
+    // The mini DOM keeps trusted HTML as a string, so read each footer host's markup.
+    const root = harness.getPanelRoot();
+    const hosts = [...root.querySelectorAll('.cdp-summary-only'), ...root.querySelectorAll('.cdp-expanded-only')]
+      .map((node) => node.innerHTML)
+      .filter((html) => html.includes('cdp-brief-evidence'));
+    assert.equal(hosts.length >= 2, true, 'summary and expanded views each list the evidence');
+    for (const html of hosts) {
+      assert.match(html, /<details class="cdp-brief-sources cdp-brief-evidence">E2 Fiscal space<\/details>/);
+      assert.ok(html.indexOf('Finland budget talks') < html.indexOf('cdp-brief-evidence'), 'evidence follows the sources list');
+    }
+    await settleWidgets(harness);
+    panel.hide();
+  } finally {
+    harness.cleanup();
+  }
+});
+
+it('clears premium trade evidence on revocation and cannot reuse it on regrant', async () => {
+  const harness = await createCountryDeepDivePanelHarness({ premiumAccess: true, deferCostShock: true });
+  try {
+    const panel = harness.createPanel(); panel.show('United States', 'US', null, {});
+    panel.updateTradeExposure({ iso2: 'US', hs2: '27', primaryChokepointId: 'panama', vulnerabilityIndex: 20,
+      exposures: [{ chokepointId: 'panama', chokepointName: 'Private Panama evidence', exposureScore: 20, coastSide: '', shockSupported: true }], fetchedAt: '' });
+    const root = harness.getPanelRoot();
+    assert.match(root.querySelector('#cdp-section-trade').textContent, /Private Panama evidence/);
+    const reads = harness.getCostShockRequests().length;
+    harness.setPremiumAccess(false); panel.syncCountryPremiumSectionsAccess(false);
+    assert.doesNotMatch(root.querySelector('#cdp-section-trade').textContent, /Private Panama evidence/);
+    assert.match(root.querySelector('#cdp-section-trade').textContent, /PRO/);
+    harness.setPremiumAccess(true); panel.syncCountryPremiumSectionsAccess(true);
+    assert.equal(harness.getCostShockRequests().length, reads, 'regrant requires new authorized trade observations');
+    panel.hide();
+  } finally { harness.cleanup(); }
 });

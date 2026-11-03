@@ -12,6 +12,7 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../api/_sentry-edge.js';
+import { isAllowedOrigin } from './cors.js';
 
 // Clerk Backend API secret -- used to look up user metadata when the JWT
 // does not include a `plan` claim (i.e. standard session token, no template).
@@ -80,6 +81,13 @@ export interface SessionResult {
   email?: string;
   name?: string;
   /**
+   * Clerk's `sid` claim — the session this token was minted for. Local JWT
+   * verification is stateless, so a token outlives a revoked session until
+   * `exp`; a caller that turns a bearer into a longer-lived credential must
+   * pass this to `verifyClerkSessionActive` first. Optional and additive.
+   */
+  sessionId?: string;
+  /**
    * Why a `valid: false` result is invalid — present only on the deny arm.
    *
    * `invalid` is a confirmed answer ABOUT THE TOKEN: bad signature, expired,
@@ -140,6 +148,26 @@ export function getClerkJwtVerifyOptions() {
     ...getClerkJwtVerifyBaseOptions(),
     audience: getAllowedAudiences(),
   };
+}
+
+/**
+ * Clerk browser session tokens set `azp` to the origin that minted them.
+ * When the claim is present, require it to be an app-serving origin (same
+ * boundary as credentialed CORS / TRUSTED_RETURN_URL_ORIGINS), a surveyed
+ * desktop/preview origin already covered by `isAllowedOrigin`, or the
+ * deployment's own `SITE_URL`. Absent `azp` stays fail-open — machine and
+ * other non-browser Clerk tokens omit it (#8178).
+ */
+export function isAllowedClerkAuthorizedParty(azp: string): boolean {
+  if (!azp) return false;
+  if (isAllowedOrigin(azp)) return true;
+  const siteUrl = process.env.SITE_URL?.trim();
+  if (!siteUrl) return false;
+  try {
+    return new URL(siteUrl).origin === new URL(azp).origin;
+  } catch {
+    return false;
+  }
 }
 
 function extractOrgId(payload: Record<string, unknown>): string | null {
@@ -217,12 +245,103 @@ async function lookupPlanFromClerk(userId: string): Promise<'free' | 'pro'> {
 }
 
 /**
+ * `active`: Clerk still honours the session. `inactive`: Clerk answered and
+ * the session is revoked, ended, expired, missing, or belongs to another user.
+ * `unavailable`: no answer — a caller must fail closed on it, never mint.
+ */
+export type ClerkSessionCheck = 'active' | 'inactive' | 'unavailable';
+
+/**
+ * Ask Clerk whether the session a verified token names is still live.
+ *
+ * A signature check cannot see a sign-out, "sign out other devices" or an
+ * admin revoke: the token stays valid until `exp`. Anything that trades a
+ * bearer for a credential that outlives it (desktop sign-in ticket, MCP grant)
+ * must consult Clerk directly, every time — never cached, since liveness is
+ * the whole question. The `user_id` check keeps a live session of one account
+ * from authorising a token that names another.
+ */
+export async function verifyClerkSessionActive(sessionId: string, userId: string): Promise<ClerkSessionCheck> {
+  // Read lazily so a deployment or test that sets the secret after this
+  // module loads still verifies instead of refusing forever.
+  const secret = process.env.CLERK_SECRET_KEY;
+  if (!secret) return 'unavailable';
+  if (!sessionId || !userId) return 'inactive';
+  try {
+    const resp = await fetch(`https://api.clerk.com/v1/sessions/${encodeURIComponent(sessionId)}`, {
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        'User-Agent': 'worldmonitor-gateway/1.0',
+      },
+      signal: AbortSignal.timeout(PLAN_LOOKUP_TIMEOUT_MS),
+    });
+    // Clerk answered about THIS session: it does not exist.
+    if (resp.status === 404) return 'inactive';
+    if (!resp.ok) {
+      console.warn(`[auth-session] Clerk session check unavailable: http-${resp.status}`);
+      return 'unavailable';
+    }
+    const session = (await resp.json()) as { id?: unknown; status?: unknown; user_id?: unknown };
+    return session.id === sessionId && session.status === 'active' && session.user_id === userId
+      ? 'active'
+      : 'inactive';
+  } catch (err) {
+    void captureSilentError(err, {
+      tags: { route: 'server/auth-session', step: 'clerk-session-check' },
+    });
+    console.warn(
+      '[auth-session] Clerk session check unavailable:',
+      err instanceof Error ? err.message : String(err),
+    );
+    return 'unavailable';
+  }
+}
+
+/**
+ * The subject of a token Clerk signed, even if it has expired. Only for
+ * restriction lookups, where a policy can only narrow what the caller may use;
+ * never for authentication. `null` means Clerk did not sign it, and
+ * `'unverifiable'` means the signing keys could not be fetched.
+ */
+export async function verifiedSubjectIgnoringExpiry(token: string): Promise<string | null | 'unverifiable'> {
+  const jwks = getJWKS();
+  if (!jwks) return 'unverifiable';
+  try {
+    const { payload } = await jwtVerify(token, jwks, {
+      ...getClerkJwtVerifyBaseOptions(),
+      clockTolerance: Number.MAX_SAFE_INTEGER,
+    });
+    return typeof payload.sub === 'string' && payload.sub ? payload.sub : null;
+  } catch (err) {
+    return isJwksFetchFailure(err) ? 'unverifiable' : null;
+  }
+}
+
+/**
  * Validate a Clerk-issued bearer token using local JWKS verification.
  * Accepts both custom-template tokens (with `plan` claim) and standard
  * session tokens (plan looked up via Clerk Backend API).
  * Fails closed: invalid/expired/unverifiable tokens return { valid: false }.
+ * When a browser session token carries `azp`, it must be an authorized party
+ * (app hosts seeded from TRUSTED_RETURN_URL_ORIGINS via the CORS allowlist,
+ * plus desktop/preview origins and `SITE_URL`); absent `azp` is fail-open.
  */
-export async function validateBearerToken(token: string): Promise<SessionResult> {
+export interface ValidateBearerTokenOptions {
+  /**
+   * `false` skips the Clerk Backend API plan lookup a standard session token
+   * (no `plan` claim) otherwise triggers; `role` is then `free` unless the
+   * token says otherwise. For routes that do not use the role and must stay
+   * network-free until their rate limiter has run (desktop sign-in, MCP
+   * grant): the lookup is uncached for five minutes at most and never
+   * deduplicated, so it must not sit in front of a limiter.
+   */
+  resolvePlan?: boolean;
+}
+
+export async function validateBearerToken(
+  token: string,
+  options: ValidateBearerTokenOptions = {},
+): Promise<SessionResult> {
   const jwks = getJWKS();
   // No issuer domain configured: a deploy defect, not a bad token.
   if (!jwks) return { valid: false, reason: 'unverifiable' };
@@ -245,6 +364,18 @@ export async function validateBearerToken(token: string): Promise<SessionResult>
     // Verified, but carries no subject — a confirmed answer about the token.
     if (!userId) return { valid: false, reason: 'invalid' };
 
+    // Bind Clerk's authorized-party claim when present. Fail open when absent
+    // so non-browser tokens keep working; reject a foreign minting origin.
+    const azp = payload.azp;
+    if (typeof azp === 'string' && azp.length > 0 && !isAllowedClerkAuthorizedParty(azp)) {
+      return { valid: false, reason: 'invalid' };
+    }
+    // Present non-string claims (including explicit null) are unbound; only
+    // absent (`undefined`) and empty-string azp remain fail-open.
+    if (azp !== undefined && typeof azp !== 'string') {
+      return { valid: false, reason: 'invalid' };
+    }
+
     // `plan` claim is present only in 'convex' template tokens. For standard
     // session tokens we fall back to a cached Clerk API lookup.
     const rawPlan = (payload as Record<string, unknown>).plan;
@@ -253,13 +384,16 @@ export async function validateBearerToken(token: string): Promise<SessionResult>
         ? rawPlan === 'pro'
           ? 'pro'
           : 'free'
-        : await lookupPlanFromClerk(userId);
+        : options.resolvePlan === false
+          ? 'free'
+          : await lookupPlanFromClerk(userId);
 
     const email = typeof payload.email === 'string' ? payload.email : undefined;
     const givenName = typeof payload.given_name === 'string' ? payload.given_name : undefined;
     const familyName = typeof payload.family_name === 'string' ? payload.family_name : undefined;
     const name = [givenName, familyName].filter(Boolean).join(' ') || undefined;
     const orgId = extractOrgId(payload);
+    const sessionId = typeof payload.sid === 'string' && payload.sid ? payload.sid : undefined;
 
     // `exp` in the past on our clock means only the clockTolerance admitted
     // this token (requiredClaims guarantees the claim is present on success).
@@ -273,6 +407,7 @@ export async function validateBearerToken(token: string): Promise<SessionResult>
       role,
       email,
       name,
+      ...(sessionId ? { sessionId } : {}),
       ...(withinTolerance ? { acceptedWithinClockTolerance: true as const } : {}),
     };
   } catch (err) {

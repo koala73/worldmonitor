@@ -6,6 +6,22 @@ import type { CountryBriefSignals, NewsItem } from '@/types';
 const coverageMocks = vi.hoisted(() => ({
   fetchCountryCoverage: vi.fn(),
   createPanel: vi.fn(),
+  premiumFetch: vi.fn(),
+  activeFramework: vi.fn(),
+  summarize: vi.fn(),
+  localSummaryAvailable: false,
+}));
+
+vi.mock('@/services/ml-worker', () => ({
+  mlWorker: {
+    get isAvailable() { return coverageMocks.localSummaryAvailable; },
+    isModelLoaded: (model: string) => coverageMocks.localSummaryAvailable && model.startsWith('summarization'),
+    summarize: (...args: unknown[]) => coverageMocks.summarize(...args),
+  },
+}));
+
+vi.mock('@/services/premium-fetch', () => ({
+  premiumFetch: (...args: unknown[]) => coverageMocks.premiumFetch(...args),
 }));
 
 vi.mock('@/components/CountryDeepDivePanel', () => ({
@@ -62,7 +78,7 @@ vi.mock('@/services/panel-gating', async (importOriginal) => ({
 vi.mock('@/services/analysis-framework-store', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/analysis-framework-store')>(),
   subscribeFrameworkChange: () => () => {},
-  getActiveFrameworkForPanel: () => null,
+  getActiveFrameworkForPanel: () => coverageMocks.activeFramework(),
 }));
 
 vi.mock('@/services/country-geometry', async (importOriginal) => ({
@@ -125,11 +141,12 @@ function newsItem(title: string): NewsItem {
   };
 }
 
-function createBriefHarness(eagerNews: NewsItem[]) {
+function createBriefHarness(eagerNews: NewsItem[], options: { realBriefFetch?: boolean } = {}) {
   let visible = false;
   let activeCode = '';
   let close = () => {};
   const newsUpdates: NewsItem[][] = [];
+  const briefUpdates: Array<Record<string, unknown>> = [];
   const page = {
     onClose: (callback: () => void) => { close = callback; },
     getCode: () => activeCode,
@@ -154,7 +171,9 @@ function createBriefHarness(eagerNews: NewsItem[]) {
     updateEconomicIndicators: () => {},
     updateStock: () => {},
     updateMarkets: () => {},
-    updateBrief: () => {},
+    updateBrief: (data: Record<string, unknown>) => {
+      briefUpdates.push(data);
+    },
     getTimelineMount: () => undefined,
   };
   const ctx = {
@@ -181,13 +200,16 @@ function createBriefHarness(eagerNews: NewsItem[]) {
     low: 0,
     recentHigh: [],
   }));
-  Reflect.set(manager, 'fetchCountryIntelBrief', async () => ({ brief: '', sources: [] }));
+  if (!options.realBriefFetch) {
+    Reflect.set(manager, 'fetchCountryIntelBrief', async () => ({ brief: '', sources: [] }));
+  }
   Reflect.set(manager, 'fetchDefenseIndustrialBase', () => {});
   Reflect.set(manager, 'fetchProSections', () => {});
   Reflect.set(manager, 'fetchCommodityVulnerability', () => {});
   Reflect.set(manager, 'mountCountryTimeline', () => {});
   return {
     newsUpdates,
+    briefUpdates,
     bindClose: () => Reflect.get(manager, 'createCountryBriefPage').call(manager),
     close: () => { page.hide(); close(); },
     open: () => manager.openCountryBriefByCode('US', 'United States', { trackAnalytics: false }),
@@ -197,7 +219,68 @@ function createBriefHarness(eagerNews: NewsItem[]) {
 describe('CountryIntelManager lazy coverage headlines', () => {
   beforeEach(() => {
     coverageMocks.fetchCountryCoverage.mockReset();
+    coverageMocks.premiumFetch.mockReset();
+    coverageMocks.premiumFetch.mockRejectedValue(new Error('offline'));
+    coverageMocks.activeFramework.mockReset().mockReturnValue(null);
+    coverageMocks.localSummaryAvailable = false;
+    coverageMocks.summarize.mockReset();
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+  });
+
+  it('uses the shared default assessment without browser grounding and preserves its accepted timestamp', async () => {
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    const accepted = {
+      brief: 'Accepted server assessment [1].',
+      sources: [{ title: 'United States policy update', source: 'Server wire', url: 'https://example.com/accepted', publishedAt: '2026-10-19T10:00:00Z' }],
+      generatedAt: '2026-10-19T10:05:00Z',
+      cached: true,
+      evidence: [],
+    };
+    coverageMocks.premiumFetch.mockImplementation(async (input: unknown) => {
+      if (!String(input).includes('/get-country-intel-brief?')) throw new Error('offline');
+      return new Response(JSON.stringify(accepted));
+    });
+    const harness = createBriefHarness([newsItem('United States browser-only news')], { realBriefFetch: true });
+    await harness.open();
+    await vi.waitFor(() => expect(coverageMocks.premiumFetch.mock.calls.some(([input]) => String(input).includes('/get-country-intel-brief?'))).toBe(true));
+    const briefCall = coverageMocks.premiumFetch.mock.calls.find(([input]) => String(input).includes('/get-country-intel-brief?'))!;
+    const url = new URL(String(briefCall[0]), 'https://worldmonitor.app');
+    expect(url.searchParams.get('country_code')).toBe('US');
+    expect(url.searchParams.has('context')).toBe(false);
+    expect(url.searchParams.has('framework')).toBe(false);
+    await vi.waitFor(() => expect(harness.briefUpdates).toContainEqual(expect.objectContaining({
+      brief: accepted.brief, generatedAt: accepted.generatedAt, cached: true,
+      sources: expect.arrayContaining([expect.objectContaining({ url: 'https://example.com/accepted' })]),
+    })));
+  });
+
+  it('preserves browser context only for an explicitly selected framework', async () => {
+    coverageMocks.activeFramework.mockReturnValue({ systemPromptAppend: 'Focus on energy.' });
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    const harness = createBriefHarness([newsItem('United States energy policy')], { realBriefFetch: true });
+    await harness.open();
+    await vi.waitFor(() => expect(coverageMocks.premiumFetch.mock.calls.some(([input]) => String(input).includes('/get-country-intel-brief?'))).toBe(true));
+    const briefCall = coverageMocks.premiumFetch.mock.calls.find(([input]) => String(input).includes('/get-country-intel-brief?'))!;
+    const url = new URL(String(briefCall[0]), 'https://worldmonitor.app');
+    expect(url.searchParams.get('framework')).toBe('Focus on energy.');
+    expect(url.searchParams.get('context')).toContain('United States energy policy');
+  });
+
+  it.each([200, 503])('keeps browser source links on a local fallback after HTTP %s without an accepted brief', async (status) => {
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    coverageMocks.localSummaryAvailable = true;
+    coverageMocks.summarize.mockResolvedValue(['Local summary of the two United States headlines.']);
+    coverageMocks.premiumFetch.mockImplementation(async (input: unknown) => {
+      if (!String(input).includes('/get-country-intel-brief?')) throw new Error('offline');
+      return new Response(JSON.stringify({ brief: '', sources: [] }), { status });
+    });
+    const headlines = [newsItem('United States energy policy'), newsItem('United States trade policy')];
+    const harness = createBriefHarness(headlines, { realBriefFetch: true });
+    await harness.open();
+    await vi.waitFor(() => expect(harness.briefUpdates).toContainEqual(expect.objectContaining({
+      brief: 'Local summary of the two United States headlines.', fallback: true,
+      sources: headlines.map(item => expect.objectContaining({ url: item.link })),
+    })));
   });
 
   it('keeps coverage alive on close but aborts it when another brief opens', async () => {
@@ -246,5 +329,36 @@ describe('CountryIntelManager lazy coverage headlines', () => {
     expect(newsUpdates.some((batch) => batch.some((item) => item.title === secondCountryHeadline.title)))
       .toBe(false);
     expect(newsUpdates[newsUpdates.length - 1]?.map((item: NewsItem) => item.title)).toEqual([eagerHeadline.title]);
+  });
+
+  it('passes only well-formed evidence items from the brief response to the page', async () => {
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
+    const validItem = {
+      id: 'E2',
+      kind: 'resilience',
+      label: 'Fiscal space',
+      value: '28/100',
+      factText: 'Fiscal space scores 28 of 100.',
+      asOf: '2026-09-01',
+      url: 'https://www.worldmonitor.app/country/US',
+    };
+    coverageMocks.premiumFetch.mockImplementation(async (url: string) => {
+      if (!String(url).includes('get-country-intel-brief')) throw new Error('offline');
+      return new Response(JSON.stringify({
+        brief: 'SITUATION NOW\nFiscal space scores 28 of 100. [E2]',
+        sources: [],
+        evidence: [validItem, null, { label: 'No id', value: '1' }, { id: 7, label: 'Number id', value: '2' }, 'E3'],
+        generatedAt: 1758585600000,
+        cached: false,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+
+    const { briefUpdates, open } = createBriefHarness([], { realBriefFetch: true });
+    await open();
+    await vi.waitFor(() => expect(briefUpdates.some((update) => update.brief)).toBe(true));
+
+    const update = briefUpdates.find((entry) => entry.brief)!;
+    expect(update.brief).toBe('SITUATION NOW\nFiscal space scores 28 of 100. [E2]');
+    expect(update.evidence).toEqual([validItem]);
   });
 });

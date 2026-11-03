@@ -3,8 +3,14 @@
 // from Railway container IPs — api.bls.gov rejects HTTPS CONNECT through proxies).
 // FRED mirrors the national BLS series with identical data and no IP restrictions.
 // Metro-area unemployment rates (LAUMT*) are dropped; no FRED equivalent exists.
+//
+// The canonical `bls:series:v1` envelope is the only key this seeder publishes:
+// server/worldmonitor/economic/v1/get-bls-series.ts selects a series from it and
+// api/health.js watches it. The per-series `bls:series:<id>` extra keys were
+// dropped in #8424 — their seed-meta override was the data key itself, so every
+// run erased the series it had just written, unwatched by health.
 
-import { loadEnvFile, runSeed, writeExtraKeyWithMeta, sleep, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, sleep, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
 import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
@@ -12,7 +18,6 @@ loadEnvFile(import.meta.url);
 const _proxyAuth = resolveProxyForConnect();
 
 const CANONICAL_KEY = 'bls:series:v1';
-const KEY_PREFIX = 'bls:series';
 const CACHE_TTL = 259200; // 72h = 3× daily seed interval
 // Content-age budget — the newest observation across the FRED-mirrored BLS
 // series. The dominant freeze mode is FRED-stops or BLS-discontinues; 75 days
@@ -28,6 +33,9 @@ const FRED_SERIES = [
   { id: 'USPRIV',    title: 'Total Private Nonfarm Payrolls', units: 'Thousands of Persons', fredId: 'USPRIV' },
   { id: 'ECIALLCIV', title: 'Employment Cost Index - All Civilian Workers', units: 'Index (Dec 2005=100)', fredId: 'ECIALLCIV' },
 ];
+
+/** The ids the RPC may ask for; must stay equal to economicBlsSeriesIds in shared/openapi-filter-param-contracts.json. */
+export const BLS_SERIES_IDS = FRED_SERIES.map((def) => def.id);
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -70,7 +78,6 @@ async function fetchFredSeries(fredId) {
 
 async function fetchAllSeries() {
   const all = [];
-  const perKeySeries = {};
 
   for (let i = 0; i < FRED_SERIES.length; i++) {
     const def = FRED_SERIES[i];
@@ -86,34 +93,43 @@ async function fetchAllSeries() {
     }
 
     if (result) {
-      const series = {
+      all.push({
         seriesId: def.id,
         title: def.title,
         units: def.units,
         observations: result.observations,
-      };
-      all.push(series);
-      perKeySeries[`${KEY_PREFIX}:${def.id}`] = { series };
+      });
     }
   }
 
-  return { series: all, perKeySeries, fetchedAt: new Date().toISOString() };
+  return { series: all, fetchedAt: new Date().toISOString() };
 }
 
-function validate(data) {
-  return Array.isArray(data?.series) && data.series.length > 0;
+// The shape the RPC will serve, kept deliberately identical to
+// isServableSeries in server/worldmonitor/economic/v1/get-bls-series.ts. The
+// reader refuses an entry narrower than this, so the producer must refuse to
+// publish one: otherwise the seed passes validation, health reads fresh, and
+// every request for that series 503s until the next run.
+function isPublishableSeries(s) {
+  return typeof s?.seriesId === 'string'
+    && typeof s.title === 'string'
+    && typeof s.units === 'string'
+    && Array.isArray(s.observations)
+    && s.observations.length > 0;
 }
 
-function publishTransform(data) {
-  const { perKeySeries: _pks, ...rest } = data;
-  return rest;
-}
-
-async function afterPublish(data, _meta) {
-  for (const [key, value] of Object.entries(data.perKeySeries ?? {})) {
-    const seriesId = key.replace(`${KEY_PREFIX}:`, '');
-    await writeExtraKeyWithMeta(key, value, CACHE_TTL, value.series?.observations?.length ?? 0, `bls:series:${seriesId}`);
-  }
+// A partial cohort is not a publishable seed either. The RPC answers a known
+// series that is absent from a valid envelope with 503, and runSeed writes
+// fresh seed-meta for whatever this accepts, so publishing a 1-of-2 fetch
+// would serve a 503 for the dropped series all day while health reads OK.
+// Refusing it takes runSeed's validation-skip path instead: the last-good
+// envelope keeps serving both series and STALE_SEED fires if the outage
+// persists.
+export function validate(data) {
+  if (!Array.isArray(data?.series)) return false;
+  return FRED_SERIES.every((def) =>
+    data.series.some((s) => isPublishableSeries(s) && s.seriesId === def.id),
+  );
 }
 
 export function declareRecords(data) {
@@ -139,8 +155,6 @@ if (process.argv[1]?.endsWith('seed-bls-series.mjs')) {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
     sourceVersion: 'fred-v1',
-    publishTransform,
-    afterPublish,
 
     declareRecords,
     schemaVersion: 1,

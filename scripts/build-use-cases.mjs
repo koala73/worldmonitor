@@ -7,9 +7,10 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { USE_CASE_WORKFLOWS } from './data/use-case-workflows.mjs';
 
 /** Bump when hub or child copy changes so lastmod advances without touching every sibling. */
-export const USE_CASES_CONTENT_VERSION = '2026-09-10';
+export const USE_CASES_CONTENT_VERSION = '2026-10-29';
 
 export const USE_CASE_PAGES = [
   {
@@ -33,6 +34,9 @@ export const USE_CASE_PAGES = [
     hubCard:
       'Define exposure, baseline routes and risk, detect disruption signals, test transmission paths, record uncertainty, and escalate into an exact product state.',
   },
+  ...USE_CASE_WORKFLOWS.map(({ slug, title, hubCard }) => ({
+    slug, title, hubCard, path: `/use-cases/${slug}/`,
+  })),
 ];
 const UMAMI_SCRIPT_TAG =
   '<script async defer src="https://abacus.worldmonitor.app/script.js" '
@@ -177,14 +181,14 @@ function renderUseCasesIndex({ tpl, baseUrl, lastmod }) {
   const cards = USE_CASE_PAGES.map((page) => `        <a class="card" href="${escapeHtml(page.path)}"><strong>${escapeHtml(page.title)}</strong><br><span>${escapeHtml(page.hubCard)}</span></a>`).join('\n');
 
   const body = `      <p class="eyebrow">Use cases</p>
-      <h1>Evergreen monitoring workflows</h1>
+      <h1>Intelligence monitoring use cases</h1>
       <p class="lede">${escapeHtml(description)}</p>
       <h2>What this collection is</h2>
-      <p>Use-case pages are durable task guides. Each one defines a user, a decision, a trigger, and an expected output, then walks a repeatable sequence that ends in an exact World Monitor product state.</p>
+      <p>Choose the task you need to complete. Each guide explains what to check, which sources to compare, what the evidence cannot prove, and how to open the relevant World Monitor view.</p>
       <h2>Who it serves</h2>
-      <p>Analysts, duty-of-care officers, newsroom researchers, and operators who need a monitoring procedure — not a dated news article and not a generic marketing landing page.</p>
+      <p>These workflows help security analysts, newsrooms, shipping and travel teams, energy and procurement researchers, continuity teams, and humanitarian coordinators prepare evidence-based briefs.</p>
       <h2>How use cases differ from editorial posts</h2>
-      <p>Blog posts remain dated narrative and methodology explainers. Use-case pages stay evergreen, checklist-shaped, and product-handoff oriented. Supporting articles link here for the procedure; these pages link back for deeper editorial context.</p>
+      <p>Use these guides for repeatable monitoring tasks. Read the linked source documentation for coverage and methods, and the supporting articles for background. Check the dashboard and original sources for current observations.</p>
       <h2>Published workflows</h2>
       <div class="grid">
 ${cards}
@@ -200,7 +204,7 @@ ${cards}
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'CollectionPage',
-      name: 'Evergreen monitoring workflows',
+      name: 'Intelligence monitoring use cases',
       description,
       url: absoluteUrl(baseUrl, path),
       inLanguage: 'en-US',
@@ -215,7 +219,7 @@ ${cards}
 }
 
 function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
-  const { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument } = tpl;
+  const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = '/use-cases/monitor-country-risk/';
   const description =
     'A repeatable World Monitor country-risk workflow: establish a baseline, review live instability, check corroborating signals, record uncertainty, then act.';
@@ -243,22 +247,10 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
       placement: 'use-case-cta-mcp',
     },
   };
-  const dashboardHref = withUtmSource(
-    withContentAttribution('/dashboard?country=TW&expanded=1', handoffs.dashboard),
-    'seo-use-case',
-  );
-  const proHref = withUtmSource(
-    withContentAttribution('/pro', handoffs.pro),
-    'seo-use-case',
-  );
-  const apiHref = withUtmSource(
-    withContentAttribution('/docs/api-reference', handoffs.api),
-    'seo-use-case',
-  );
-  const mcpHref = withUtmSource(
-    withContentAttribution('/docs/mcp-quickstart', handoffs.mcp),
-    'seo-use-case',
-  );
+  const dashboardHref = withContentAttribution('/dashboard?country=TW&expanded=1', handoffs.dashboard);
+  const proHref = withContentAttribution('/pro', handoffs.pro);
+  const apiHref = withContentAttribution('/docs/api-reference', handoffs.api);
+  const mcpHref = withContentAttribution('/docs/mcp-quickstart', handoffs.mcp);
 
   const body = `      <p class="eyebrow">Use case</p>
       <h1>Monitor country risk</h1>
@@ -397,7 +389,7 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
 }
 
 function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
-  const { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument } = tpl;
+  const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = '/use-cases/verify-breaking-news/';
   const description =
     'Verify a breaking claim with World Monitor: capture it, assess sources, check independent signals, record contradictions, then take a qualified next action.';
@@ -425,25 +417,13 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
       placement: 'use-case-cta-mcp',
     },
   };
-  const dashboardHref = withUtmSource(
-    withContentAttribution(
-      '/dashboard?view=mena&layers=ais,flights,fires,outages,hotspots,natural,military&timeRange=24h',
-      handoffs.dashboard,
-    ),
-    'seo-use-case',
+  const dashboardHref = withContentAttribution(
+    '/dashboard?view=mena&layers=ais,flights,fires,outages,hotspots,natural,military&timeRange=24h',
+    handoffs.dashboard,
   );
-  const proHref = withUtmSource(
-    withContentAttribution('/pro', handoffs.pro),
-    'seo-use-case',
-  );
-  const apiHref = withUtmSource(
-    withContentAttribution('/docs/api-reference', handoffs.api),
-    'seo-use-case',
-  );
-  const mcpHref = withUtmSource(
-    withContentAttribution('/docs/mcp-quickstart', handoffs.mcp),
-    'seo-use-case',
-  );
+  const proHref = withContentAttribution('/pro', handoffs.pro);
+  const apiHref = withContentAttribution('/docs/api-reference', handoffs.api);
+  const mcpHref = withContentAttribution('/docs/mcp-quickstart', handoffs.mcp);
 
   const body = `      <p class="eyebrow">Use case</p>
       <h1>Verify breaking news</h1>
@@ -588,7 +568,7 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
 }
 
 function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
-  const { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument } = tpl;
+  const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = '/use-cases/monitor-supply-chain-disruptions/';
   const description =
     'Monitor supply-chain disruption with World Monitor: define exposure, baseline routes, detect signals, test transmission paths, record uncertainty, then act.';
@@ -616,25 +596,13 @@ function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
       placement: 'use-case-cta-mcp',
     },
   };
-  const dashboardHref = withUtmSource(
-    withContentAttribution(
-      '/dashboard?chokepoint=bab_el_mandeb&layers=ais,tradeRoutes,hotspots,sanctions,flights,cables&timeRange=24h',
-      handoffs.dashboard,
-    ),
-    'seo-use-case',
+  const dashboardHref = withContentAttribution(
+    '/dashboard?chokepoint=bab_el_mandeb&layers=ais,tradeRoutes,hotspots,sanctions,flights,cables&timeRange=24h',
+    handoffs.dashboard,
   );
-  const proHref = withUtmSource(
-    withContentAttribution('/pro', handoffs.pro),
-    'seo-use-case',
-  );
-  const apiHref = withUtmSource(
-    withContentAttribution('/docs/api-reference', handoffs.api),
-    'seo-use-case',
-  );
-  const mcpHref = withUtmSource(
-    withContentAttribution('/docs/mcp-quickstart', handoffs.mcp),
-    'seo-use-case',
-  );
+  const proHref = withContentAttribution('/pro', handoffs.pro);
+  const apiHref = withContentAttribution('/docs/api-reference', handoffs.api);
+  const mcpHref = withContentAttribution('/docs/mcp-quickstart', handoffs.mcp);
 
   const body = `      <p class="eyebrow">Use case</p>
       <h1>Monitor supply-chain disruptions</h1>
@@ -805,6 +773,61 @@ const USE_CASE_RENDERERS = {
   'monitor-supply-chain-disruptions': renderSupplyChainDisruptionsUseCase,
 };
 
+/**
+ * Render a USE_CASE_WORKFLOWS record as a crawlable page with matching structured data.
+ * Reject invalid descriptions and unknown related slugs before publishing the page.
+ */
+function renderMonitoringWorkflow({ page, tpl, baseUrl, lastmod }) {
+  const { escapeHtml: esc, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
+  const path = `/use-cases/${page.slug}/`;
+  const url = absoluteUrl(baseUrl, path);
+  assertMetaDescription(page.description, page.slug);
+  const handoff = { campaign: page.slug, destination: 'dashboard', placement: 'use-case-cta-dashboard' };
+  const steps = page.steps.map(([name, text]) => ({ name, text }));
+  const related = page.related.map((slug) => {
+    const sibling = USE_CASE_PAGES.find((candidate) => candidate.slug === slug);
+    if (!sibling) throw new Error(`Unknown related use case: ${slug}`);
+    return `        <li><a href="${esc(sibling.path)}">${esc(sibling.title)}</a></li>`;
+  }).join('\n');
+  const body = `      <p class="eyebrow">Use cases</p>
+      <h1>${esc(page.title)}</h1>
+      <p class="lede">${esc(page.description)}</p>
+      <p><a class="cta" href="${esc(withContentAttribution(page.dashboard, handoff))}" ${handoffAttributes(handoff, esc)}>Open this monitoring view</a></p>
+      <h2>Who this workflow helps</h2><p>${esc(page.audience)}</p>
+      <h2>When to start</h2><p>${esc(page.trigger)}</p>
+      <h2>What you will produce</h2><p>${esc(page.output)}</p>
+      <h2>End-to-end workflow</h2>
+      <ol>
+${steps.map(({ name, text }) => `        <li id="${stepSlug(name)}"><strong>${esc(name)}</strong><p>${esc(text)}</p></li>`).join('\n')}
+      </ol>
+      <h2>Worked example</h2><p>${esc(page.example)}</p>
+      <h2>Provenance, freshness, and limits</h2><p>${esc(page.limits)}</p>
+      <p>Check the observation time and original source before each decision. This guide describes a repeatable procedure, not a live incident report. Data availability depends on provider coverage and the selected product view.</p>
+      <ul>
+${page.sources.map(([href, label]) => `        <li><a href="${esc(href)}">${esc(label)}</a></li>`).join('\n')}
+      </ul>
+      <h2>Common question</h2><h3>${esc(page.question)}</h3><p>${esc(page.answer)}</p>
+      <h2>Related workflows</h2>
+      <ul>
+${related}
+      </ul>
+      <p><a href="/use-cases/">Browse all monitoring workflows</a></p>`;
+  return pageDocument({
+    baseUrl, path, title: `${page.title} | World Monitor`, description: page.description,
+    lastmod, ogType: 'website',
+    jsonLd: [
+      useCaseWebPageLd({ name: page.title, description: page.description, url, lastmod }),
+      howToLd({ name: page.title, description: page.description, url, steps }),
+      faqPageLd([[page.question, page.answer]]),
+    ],
+    breadcrumbs: breadcrumbLd(baseUrl, [
+      { name: 'Home', path: '/' }, { name: 'Use cases', path: '/use-cases/' }, { name: page.title, path },
+    ]),
+    body, inlineScript: HANDOFF_PRESERVE_SCRIPT,
+    footerBody: `${UMAMI_SCRIPT_TAG}World Monitor use-case corpus. Check original sources and their observation times before acting.`,
+  });
+}
+
 export function writeUseCasesSection({ outDir, baseUrl, tpl, lastmod = USE_CASES_CONTENT_VERSION }) {
   mkdirSync(join(outDir, 'use-cases'), { recursive: true });
   writeFileSync(
@@ -813,13 +836,14 @@ export function writeUseCasesSection({ outDir, baseUrl, tpl, lastmod = USE_CASES
   );
   for (const page of USE_CASE_PAGES) {
     const render = USE_CASE_RENDERERS[page.slug];
-    if (!render) {
+    const workflow = USE_CASE_WORKFLOWS.find((candidate) => candidate.slug === page.slug);
+    if (!render && !workflow) {
       throw new Error(`Missing use-case renderer for slug ${page.slug}`);
     }
     mkdirSync(join(outDir, 'use-cases', page.slug), { recursive: true });
     writeFileSync(
       join(outDir, 'use-cases', page.slug, 'index.html'),
-      render({ tpl, baseUrl, lastmod }),
+      render ? render({ tpl, baseUrl, lastmod }) : renderMonitoringWorkflow({ page: workflow, tpl, baseUrl, lastmod }),
     );
   }
 }

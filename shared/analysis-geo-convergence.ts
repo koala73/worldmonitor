@@ -203,7 +203,7 @@ interface GeoCell {
   id: string;
   lat: number;
   lon: number;
-  events: Map<GeoEventType, { count: number; lastSeen: number }>;
+  events: Map<GeoEventType, number[]>;
   firstSeen: number;
 }
 
@@ -227,6 +227,7 @@ export class GeoConvergenceEngine {
   }
 
   ingest(lat: number, lon: number, type: GeoEventType, timestamp: number = this.now()): void {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(timestamp)) return;
     const cellId = getCellId(lat, lon);
 
     let cell = this.cells.get(cellId);
@@ -242,16 +243,19 @@ export class GeoConvergenceEngine {
     }
 
     const existing = cell.events.get(type);
-    cell.events.set(type, {
-      count: (existing?.count ?? 0) + 1,
-      lastSeen: timestamp,
-    });
+    if (existing) existing.push(timestamp);
+    else cell.events.set(type, [timestamp]);
   }
 
+  /** Replace one domain's complete feed snapshot without disturbing other domains. */
   ingestEvents(events: readonly GeoEventInput[], type: GeoEventType): void {
+    for (const cell of this.cells.values()) {
+      if (cell.events.has(type)) cell.events.set(type, []);
+    }
     for (const e of events) {
       this.ingest(e.lat, e.lon, type, e.time ?? this.now());
     }
+    this.prune();
   }
 
   /**
@@ -268,7 +272,7 @@ export class GeoConvergenceEngine {
         if (seenAlerts.has(cellId)) continue;
 
         const types = Array.from(cell.events.keys());
-        const totalEvents = Array.from(cell.events.values()).reduce((sum, d) => sum + d.count, 0);
+        const totalEvents = Array.from(cell.events.values()).reduce((sum, times) => sum + times.length, 0);
 
         alerts.push({
           cellId,
@@ -296,7 +300,7 @@ export class GeoConvergenceEngine {
       const dist = haversineKm(lat, lon, cell.lat, cell.lon);
       if (dist <= radiusKm && cell.events.size >= this.nearbyMinTypes) {
         const types = cell.events.size;
-        const totalEvents = Array.from(cell.events.values()).reduce((sum, d) => sum + d.count, 0);
+        const totalEvents = Array.from(cell.events.values()).reduce((sum, times) => sum + times.length, 0);
         const score = scoreGeoCell(types, totalEvents);
 
         if (score > maxScore) {
@@ -325,10 +329,10 @@ export class GeoConvergenceEngine {
       lat: cell.lat,
       lon: cell.lon,
       firstSeen: cell.firstSeen,
-      events: Array.from(cell.events, ([type, data]) => ({
+      events: Array.from(cell.events, ([type, times]) => ({
         type,
-        count: data.count,
-        lastSeen: data.lastSeen,
+        count: times.length,
+        lastSeen: times.reduce((latest, time) => Math.max(latest, time), -Infinity),
       })),
     }));
   }
@@ -337,10 +341,10 @@ export class GeoConvergenceEngine {
     const cutoff = this.now() - this.windowMs;
 
     for (const [cellId, cell] of this.cells) {
-      for (const [type, data] of cell.events) {
-        if (data.lastSeen < cutoff) {
-          cell.events.delete(type);
-        }
+      for (const [type, times] of cell.events) {
+        const retained = times.filter(time => time >= cutoff);
+        if (retained.length > 0) cell.events.set(type, retained);
+        else cell.events.delete(type);
       }
       if (cell.events.size === 0) {
         this.cells.delete(cellId);

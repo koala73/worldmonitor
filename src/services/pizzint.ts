@@ -16,17 +16,19 @@ const pizzintBreaker = createCircuitBreaker<PizzIntStatus>({
   name: 'PizzINT',
   maxFailures: 3,
   cooldownMs: 5 * 60 * 1000,
-  cacheTtlMs: 30 * 60 * 1000,
+  // Under one jittered poll (REFRESH_INTERVALS.pizzint × 0.9), so every poll
+  // asks for the relay's latest 15-min reading.
+  cacheTtlMs: 5 * 60 * 1000,
   persistCache: true,
   revivePersistedData: revivePizzIntStatus,
 });
 
 const gdeltBreaker = createCircuitBreaker<GdeltTensionPair[]>({
-  name: 'GDELT Tensions',
+  name: 'WM GDELT Dyad Tensions v1',
   maxFailures: 3,
   cooldownMs: 5 * 60 * 1000,
-  cacheTtlMs: 15 * 60 * 1000,
-  persistCache: true,
+  cacheTtlMs: 0,
+  persistCache: false,
 });
 
 // ---- Proto → legacy adapters ----
@@ -56,7 +58,8 @@ function toLocation(proto: ProtoLocation): PizzIntLocation {
     name: proto.name,
     address: proto.address,
     current_popularity: proto.currentPopularity,
-    percentage_of_usual: proto.percentageOfUsual || null,
+    percentage_of_usual: proto.hasBaseline ? proto.percentageOfUsual : proto.percentageOfUsual || null,
+    no_live_signal: proto.noLiveSignal,
     is_spike: proto.isSpike,
     spike_magnitude: typeof proto.spikeMagnitude === 'number' ? proto.spikeMagnitude : null,
     data_source: proto.dataSource,
@@ -92,6 +95,13 @@ function toTensionPair(proto: ProtoTensionPair): GdeltTensionPair {
     trend: TREND_REVERSE[proto.trend] || 'stable',
     changePercent: proto.changePercent,
     region: proto.region,
+    evidence: (proto.evidence ?? []).map(item => ({
+      channel: item.channel,
+      value: item.value,
+      baseline: typeof item.baseline === 'number' ? item.baseline : null,
+      countries: item.countries ?? [],
+      airports: item.airports ?? [],
+    })),
   };
 }
 
@@ -140,14 +150,18 @@ export async function fetchPizzIntStatus(): Promise<PizzIntStatus> {
     const resp: GetPizzintStatusResponse = await getClient().getPizzintStatus({ includeGdelt: false });
     if (!resp.pizzint) throw new Error('No PizzINT data');
     return toStatus(resp.pizzint);
-  }, defaultStatus, { shouldCache: isCacheablePizzIntStatus });
+  }, defaultStatus, {
+    shouldCache: isCacheablePizzIntStatus,
+    // A stale entry waits for the refresh instead of showing the old reading for another poll.
+    staleRefreshMode: 'await',
+  });
 }
 
 export async function fetchGdeltTensions(): Promise<GdeltTensionPair[]> {
   return gdeltBreaker.execute(async () => {
     const resp: GetPizzintStatusResponse = await getClient().getPizzintStatus({ includeGdelt: true });
     return resp.tensionPairs.map(toTensionPair);
-  }, []);
+  }, [], { shouldCache: () => false });
 }
 
 export function getPizzIntStatus(): string {

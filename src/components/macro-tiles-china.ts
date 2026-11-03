@@ -1,3 +1,4 @@
+import { formatChinaSignalText } from './china-signal-labels';
 import type {
   ChinaMacroIndicator,
   GetChinaMacroSnapshotResponse,
@@ -88,7 +89,7 @@ export function chinaTileHtml(indicator: ChinaMacroIndicator): string {
 
   return `<div class="macro-summary-card">
     <div class="macro-summary-head">
-      <span class="indicator-name">${escapeHtml(indicator.label)}</span>
+      <span class="indicator-name">${escapeHtml(formatChinaSignalText(indicator.label))}</span>
       <span class="macro-summary-state macro-summary-state--${stateTone}" data-state="${escapeHtml(state)}">${escapeHtml(stateLabel)}</span>
     </div>
     <div class="macro-summary-value${valueClass}">${value}</div>

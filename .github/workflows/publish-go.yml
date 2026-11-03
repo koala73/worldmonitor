@@ -54,9 +54,11 @@ jobs:
           fi
 
       - name: Warm proxy.golang.org (makes the version go-gettable + indexed on pkg.go.dev)
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
+            VERSION="${INPUT_VERSION}"
           else
             VERSION="${GITHUB_REF_NAME#sdk/go/}"
           fi

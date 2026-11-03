@@ -108,7 +108,7 @@ Treat any `2xx` as enqueue success. The interim guidance to branch on response b
 Returns the job's current state as written by the worker, or a synthesised `pending` stub while the job is still queued.
 
 - **Auth**: same as `/run-scenario`
-- **jobId format**: `scenario:{unix-ms}:{8-char-suffix}` — strictly validated to guard against path traversal
+- **jobId format**: `scenario:{unix-ms}:{32-hex}` (128 bits). Legacy `scenario:{unix-ms}:{8-char}` ids remain valid. The poll URL is not a capability: the job is bound to the caller that enqueued it, and a different principal receives 404.
 
 **Status lifecycle**:
 
@@ -178,6 +178,7 @@ Poll loop: treat `pending` and `processing` as non-terminal; only `done` and `fa
 |--------|-----------|-------|
 | 400 | — (body is `{"violations":[…]}`, no `message`; violations include `jobId`) | Missing or malformed `jobId` |
 | 403 | `Pro subscription required` | Not Pro |
+| 404 | `Scenario job not found` | The job is bound to a different caller than the one polling |
 | 405 | — | Method other than `GET` (enforced by sebuf service-config) |
 | 502 | `Failed to fetch job status` | Redis read failure |
 

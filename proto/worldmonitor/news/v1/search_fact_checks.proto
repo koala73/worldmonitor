@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package worldmonitor.news.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// SearchFactChecksRequest names the claim to look up published fact-checks for.
+message SearchFactChecksRequest {
+  // The claim or headline, up to 300 characters.
+  string claim = 1 [
+    (sebuf.http.query) = { name: "claim" },
+    (buf.validate.field).string.max_len = 300
+  ];
+}
+
+// FactCheck is one rating an IFCN-verified fact-checker published about a similar claim, cited with attribution.
+message FactCheck {
+  // The fact-checker's name as it publishes it.
+  string publisher = 1;
+  // The IFCN-allowlisted domain the link belongs to.
+  string site = 2;
+  // The fact-checker's own rating, verbatim. WorldMonitor does not rate claims.
+  string rating = 3;
+  // When the fact-check was published, ISO 8601.
+  string reviewed_at = 4;
+  // Link to the fact-check.
+  string url = 5;
+  // The fact-check's headline; empty when the feed gives none.
+  string title = 6;
+  // The claim the fact-checker rated: similar to the claim searched, not necessarily the same.
+  string claim_reviewed = 7;
+}
+
+// SearchFactChecksResponse lists published fact-checks of claims similar to the one searched.
+message SearchFactChecksResponse {
+  // Strong matches from IFCN-verified fact-checkers, newest first; disagreeing ratings are all kept.
+  repeated FactCheck fact_checks = 1;
+  // ok | unavailable | not-configured. Only ok means the search ran; an empty list is then no published fact-check found.
+  string state = 2;
+  // Fixed reminder that ratings are the fact-checkers' own and never change the coverage result.
+  string caveat = 3;
+}

@@ -50,6 +50,7 @@ import {
   resolveCheckoutContext,
   type CheckoutAttribution,
 } from '../../../shared/checkout-attribution';
+import { getFirstTouchAcquisitionForCheckout } from '../../../shared/acquisition-source';
 
 let checkoutInFlight = false;
 
@@ -177,9 +178,9 @@ function bucketProductIdForAnalytics(productId: string): string {
 }
 
 /**
- * Phase machine for the checkout flow. `creating_checkout` drives the clicked
- * CTA spinner; `rate_limited` disables every paid CTA until Retry-After
- * expires. `awaiting_auth` is intentionally not exposed — while
+ * Phase machine for the checkout flow. `loading_auth` and `creating_checkout`
+ * drive the clicked CTA spinner; `rate_limited` disables every paid CTA until
+ * Retry-After expires. `awaiting_auth` is intentionally not exposed — while
  * the Clerk modal is open the pricing section is covered by the modal
  * backdrop, so a service-level UI signal for that window adds no user-
  * visible value and creates lifecycle-recovery problems (watchdogs,
@@ -188,14 +189,16 @@ function bucketProductIdForAnalytics(productId: string): string {
  * is already in the right state.
  *
  *   idle:               no checkout in progress; all CTAs clickable
+ *   loading_auth:       loading sign-in before its modal is available
  *   creating_checkout:  post-auth, inside doCheckout's try/finally;
  *                       the clicked tier's CTA shows spinner, siblings
- *                       stay clickable (any click simply updates intent)
+ *                       stay clickable (the service rejects concurrent starts)
  *   rate_limited:       provider cooldown; every paid CTA stays disabled
  *                       until retryAtMs and no checkout request is sent
  */
 export type CheckoutPhase =
   | { kind: 'idle' }
+  | { kind: 'loading_auth'; productId: string }
   | { kind: 'creating_checkout'; productId: string }
   | { kind: 'rate_limited'; retryAtMs: number };
 
@@ -258,10 +261,13 @@ export async function startCheckout(
   if (checkoutInFlight) return false;
   if (startCheckoutEntryInFlight) return false;
   startCheckoutEntryInFlight = true;
+  document.getElementById('wm-checkout-error-toast')?.remove();
+  if (_phase.kind === 'idle') setPhase({ kind: 'loading_auth', productId });
   try {
     return await startCheckoutInner(productId, options);
   } finally {
     startCheckoutEntryInFlight = false;
+    if (_phase.kind === 'loading_auth') setPhase({ kind: 'idle' });
   }
 }
 
@@ -282,6 +288,7 @@ async function startCheckoutInner(
   } catch (err) {
     console.error('[checkout] Failed to load Clerk:', err);
     Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'load-clerk' } });
+    showCheckoutErrorToast('Sign-in could not load. Please try again.');
     return false;
   }
 
@@ -314,6 +321,7 @@ async function startCheckoutInner(
     } catch (err) {
       console.error('[checkout] Failed to open sign in:', err);
       Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'checkout-sign-in' } });
+      showCheckoutErrorToast('Sign-in could not open. Please try again.');
     }
     return false;
   }
@@ -384,6 +392,7 @@ async function doCheckout(
   if (_phase.kind === 'rate_limited') setPhase({ kind: 'idle' });
   if (checkoutInFlight) return false;
   checkoutInFlight = true;
+  let redirecting = false;
   const checkoutContext = resolveCheckoutContext({
     surface: options.checkoutAttribution ? 'mission-preview' : 'dashboard',
     attribution: options.checkoutAttribution,
@@ -426,6 +435,7 @@ async function doCheckout(
     const token = await getAuthToken();
     if (!token) {
       console.error('[checkout] No auth token after retry');
+      showCheckoutErrorToast('Your sign-in could not be verified. Please sign in again and retry.');
       return false;
     }
 
@@ -449,6 +459,7 @@ async function doCheckout(
         discountCode: options.discountCode,
         referralCode: options.referralCode,
         attributionSource: options.attributionSource,
+        acquisition: getFirstTouchAcquisitionForCheckout(),
         // #4438: only set when the user confirmed "start a new checkout anyway"
         // from the pending-payment dialog. Skips the backend pending guard.
         ...(options.bypassPendingGuard ? { bypassPendingGuard: true } : {}),
@@ -551,6 +562,7 @@ async function doCheckout(
           },
           extra: { httpStatus: resp.status, serverMessage: err?.message ?? err?.error },
         });
+        showCheckoutErrorToast();
       }
       return false;
     }
@@ -567,6 +579,7 @@ async function doCheckout(
         level: 'error',
         tags: { surface: 'pro-marketing', code: 'missing_checkout_url' },
       });
+      showCheckoutErrorToast();
       return false;
     }
 
@@ -578,6 +591,7 @@ async function doCheckout(
     // the primary flow. The overlay Initialize/onEvent machinery above is left
     // dormant pending removal.
     window.location.assign(hostedCheckoutUrl);
+    redirecting = true;
 
     return true;
   } catch (err) {
@@ -596,12 +610,39 @@ async function doCheckout(
         kind: 'checkout_request_failed',
       },
     });
+    showCheckoutErrorToast();
     return false;
   } finally {
-    checkoutInFlight = false;
-    unmountCheckoutInterstitial();
-    if (_phase.kind === 'creating_checkout') setPhase({ kind: 'idle' });
+    if (redirecting) holdCheckoutUntilNavigation();
+    else releaseCheckout();
   }
+}
+
+function releaseCheckout(): void {
+  checkoutInFlight = false;
+  unmountCheckoutInterstitial();
+  if (_phase.kind === 'creating_checkout') setPhase({ kind: 'idle' });
+}
+
+// `location.assign` only starts navigation: this page stays clickable until
+// Dodo's page loads, often 1-3 s later. Releasing the guard on return let a
+// second click create a second Dodo session. Hold the guard, spinner and
+// interstitial until the page is gone; release when the buyer comes back
+// through the back-forward cache, or when the navigation never happened
+// (stopped, blocked) so the CTA cannot stay dead.
+const REDIRECT_HOLD_MS = 15_000;
+
+function holdCheckoutUntilNavigation(): void {
+  const release = () => {
+    clearTimeout(timer);
+    window.removeEventListener('pageshow', onPageShow);
+    releaseCheckout();
+  };
+  const onPageShow = (event: PageTransitionEvent) => {
+    if (event.persisted) release();
+  };
+  window.addEventListener('pageshow', onPageShow);
+  const timer = setTimeout(release, REDIRECT_HOLD_MS);
 }
 
 // Dodo's hosted-checkout origins. Redirect mode (#4449) navigates the top
@@ -710,6 +751,36 @@ function showCheckoutLoadingToast(): void {
   toast.textContent = 'Still loading, please wait…';
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 5_000);
+}
+
+function showCheckoutErrorToast(message = 'Checkout is unavailable right now. Please try again. If this continues, contact support@worldmonitor.app.'): void {
+  const id = 'wm-checkout-error-toast';
+  document.getElementById(id)?.remove();
+  const toast = document.createElement('div');
+  toast.id = id;
+  toast.setAttribute('role', 'alert');
+  Object.assign(toast.style, {
+    position: 'fixed',
+    top: '20px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: '99995',
+    width: 'max-content',
+    maxWidth: 'calc(100% - 32px)',
+    boxSizing: 'border-box',
+    background: 'rgba(127, 29, 29, 0.97)',
+    color: '#fff',
+    padding: '12px 18px',
+    borderRadius: '6px',
+    border: '1px solid rgba(248, 113, 113, 0.55)',
+    fontSize: '14px',
+    lineHeight: '1.5',
+    fontFamily: "'SF Mono', Monaco, monospace",
+  });
+  // Never expose raw server errors or provider response bodies to the buyer.
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  window.setTimeout(() => toast.remove(), 10_000);
 }
 
 function showCheckoutRateLimitToast(retryAfterSeconds: number): void {

@@ -7,11 +7,11 @@ import { ValidationError } from '../../../../src/generated/server/worldmonitor/s
 
 import { getCachedJson } from '../../../_shared/redis';
 import { requiresRedistributableProvidersForDirectRpc } from '../../../_shared/provider-redistribution';
+import { resolvePageSize } from '../../../_shared/constants';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import {
   VULNERABILITY_COHORT_KEY,
   chokepointDependencyShardKey,
-  resolvePageSize,
   enforceDependencyRedistributionPolicy,
   hasCurrentRedistributionPolicy,
   isMatchingShard,

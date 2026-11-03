@@ -21,14 +21,16 @@
 
 import { countryBox, inBox, splitCountryBox, type CountryBox } from '../../../../shared/country-bbox';
 import { resolveCountryCode } from '../../../../shared/country-code-resolve';
+import { countryMentionTerms, mentionsCountry } from '../../../../shared/country-mention.js';
 import type {
   CountryTimelineIncident,
   CountryTimelineSeverity,
 } from '../../../../shared/country-timeline-events';
 import { readCachedEnvelopeJson } from '../../../_shared/redis';
+import { unwrapEnvelope } from '../../../_shared/seed-envelope';
 import { listUnrestEvents } from '../../unrest/v1/list-unrest-events';
 import { listEarthquakes } from '../../seismology/v1/list-earthquakes';
-import { listAcledEvents } from '../../conflict/v1/list-acled-events';
+import { ACLED_SEED_KEY, acledCountryCode } from '../../conflict/v1/list-acled-events';
 import { listIranEvents } from '../../conflict/v1/list-iran-events';
 import { listMilitaryFlights } from '../../military/v1/list-military-flights';
 import type { MilitaryFlight } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
@@ -61,15 +63,15 @@ export interface StructuredSourceResult {
  * Reading the seed key directly is what separates "the seeder published an
  * empty week" from "the seeder is down".
  *
- * ACLED deliberately has no entry: list-acled-events writes per-query keys
- * (`conflict:acled:v1:<country>:<start>:<end>`, a time-varying composite via
- * cachedFetchJson) rather than one seeded snapshot, so there is no key to read
- * and no `_seed` envelope to age against. That is why its producer reports
- * `unknown` rather than `empty` when it returns nothing.
+ * The conflicts producer reads its seed's PAYLOAD as well, not only the stamp:
+ * list-acled-events drops rows without coordinates, and without ACLED access
+ * every row is a coordinate-less GDELT fallback row. Country attribution needs
+ * only the name, so this lane counts them.
  */
 const SEED_KEYS: Record<string, string> = {
   'structured:protests': 'unrest:events:v1',
   'structured:earthquakes': 'seismology:earthquakes:v1',
+  'structured:conflicts': ACLED_SEED_KEY,
 };
 
 /**
@@ -84,6 +86,8 @@ const SEED_KEYS: Record<string, string> = {
 const STALE_AFTER_MS: Record<string, number> = {
   'structured:protests': 24 * 60 * 60 * 1000,
   'structured:earthquakes': 6 * 60 * 60 * 1000,
+  // The seed refreshes every 15 minutes and GDELT rows span a 24h window.
+  'structured:conflicts': 6 * 60 * 60 * 1000,
 };
 
 /** Bound on the flights pagination walk, so a misbehaving cursor cannot spin. */
@@ -94,6 +98,8 @@ export interface SeedRead {
   status: 'hit' | 'miss' | 'error';
   /** Unix ms from the seed envelope, or 0 when the key carries no stamp. */
   fetchedAtMs: number;
+  /** The payload inside the envelope, for producers that read the seed directly. */
+  data?: unknown;
 }
 
 /**
@@ -106,11 +112,12 @@ async function readSeed(key: string): Promise<SeedRead> {
     const read = await readCachedEnvelopeJson(key, true);
     if (read.status === 'error') return { status: 'error', fetchedAtMs: 0 };
     if (read.status !== 'hit') return { status: 'miss', fetchedAtMs: 0 };
-    const envelope = read.value as { _seed?: { fetchedAt?: unknown } } | null;
-    const fetchedAt = envelope?._seed?.fetchedAt;
+    const { _seed: seed, data } = unwrapEnvelope(read.value);
+    const fetchedAt = seed?.fetchedAt;
     return {
       status: 'hit',
       fetchedAtMs: typeof fetchedAt === 'number' && Number.isFinite(fetchedAt) ? fetchedAt : 0,
+      data,
     };
   } catch {
     return { status: 'error', fetchedAtMs: 0 };
@@ -236,10 +243,29 @@ function acledEventType(eventType: string): string {
   return 'battle';
 }
 
+/** A row of the seeded conflict snapshot: ACLED-shaped, or a GDELT fallback row with no coordinates. */
+interface SeededConflictEvent {
+  id?: string;
+  eventType?: unknown;
+  country?: unknown;
+  occurredAt?: number;
+  fatalities?: unknown;
+  source?: string;
+  url?: string;
+}
+
+/** GDELT fallback rows carry `GDELT <CAMEO code>`; the root code (18/19/20) names the kind. */
+function gdeltConflictKind(eventType: string): string | null {
+  const match = /^GDELT (\d{2})/.exec(eventType);
+  if (!match) return eventType === 'GDELT coverage' ? 'conflict' : null;
+  if (match[1] === '18') return 'assault';
+  if (match[1] === '20') return 'mass violence';
+  return 'armed clash';
+}
+
 export interface StructuredDependencies {
   listUnrestEvents: typeof listUnrestEvents;
   listEarthquakes: typeof listEarthquakes;
-  listAcledEvents: typeof listAcledEvents;
   listIranEvents: typeof listIranEvents;
   listMilitaryFlights: typeof listMilitaryFlights;
   readSeed: (key: string) => Promise<SeedRead>;
@@ -249,7 +275,6 @@ export interface StructuredDependencies {
 export const defaultStructuredDependencies: StructuredDependencies = {
   listUnrestEvents,
   listEarthquakes,
-  listAcledEvents,
   listIranEvents,
   listMilitaryFlights,
   readSeed,
@@ -316,11 +341,31 @@ async function collectEarthquakes(req: StructuredRequest, box: CountryBox | null
       deps.listEarthquakes(req.ctx, { start: 0, end: 0, pageSize: 0, cursor: '', minMagnitude: 0 }),
       deps.readSeed(SEED_KEYS[source]!),
     ]);
-    const countryLower = req.countryName.toLowerCase();
+    // Word-boundary matching via the shared country-mention matcher: a
+    // substring test attributes foreign quakes to the wrong country (Nigeria
+    // to Niger, Somalia to Mali, Romania to Oman, Indiana to India, South
+    // Sudan to Sudan). The shared matcher also scrubs known superstring
+    // exclusions (South Sudan vs Sudan, Guinea variants) before matching.
+    //
+    // Demonyms are dropped for this call site. The shared matcher is tuned for
+    // NEWS PROSE, where "Dutch" or "Spanish" is a strong country signal; a USGS
+    // `place` is a geographic label, where it is not — "Dutch Harbor, Alaska"
+    // would ground the Netherlands, "Spanish Fork, Utah" Spain, and
+    // "Philippine Sea" / "Norwegian Sea" their respective countries. Place
+    // strings name the country or state outright, so the demonym arm only adds
+    // false positives here.
+    //
+    // NOT closed by this: an EXACT collision between a country name and a US
+    // state, i.e. "Georgia". Word boundaries cannot separate those two — the
+    // token is identical — and shared/country-mention.js has no GE exclusion
+    // (it likewise omits the "Georgian" demonym for the same ambiguity). A
+    // quake in Atlanta still matches GE on the name arm; only the bbox test
+    // distinguishes them.
+    const mentionTerms = { ...countryMentionTerms(req.code), demonyms: [] };
     const incidents: CountryTimelineIncident[] = [];
     for (const quake of response.earthquakes) {
       const matches = inBox(box, quake.location?.latitude, quake.location?.longitude)
-        || quake.place?.toLowerCase().includes(countryLower) === true;
+        || (typeof quake.place === 'string' && mentionsCountry(quake.place, mentionTerms));
       if (!matches) continue;
       if (!Number.isFinite(quake.occurredAt) || quake.occurredAt < req.cutoffMs) continue;
       incidents.push({
@@ -342,34 +387,44 @@ async function collectConflicts(req: StructuredRequest): Promise<StructuredSourc
   const source = 'structured:conflicts';
   const deps = req.deps ?? defaultStructuredDependencies;
   try {
-    // No seed read: ACLED has no single seeded snapshot key (see SEED_KEYS),
-    // so this producer reports `unknown` rather than `empty` on zero rows.
-    const response = await deps.listAcledEvents(
-      req.ctx,
-      { country: '', start: 0, end: 0, pageSize: 0, cursor: '' },
-    );
+    const seed = await deps.readSeed(SEED_KEYS[source]!);
+    const payload = seed.data as { events?: unknown } | null | undefined;
+    const events: SeededConflictEvent[] = Array.isArray(payload?.events) ? payload.events : [];
     const incidents: CountryTimelineIncident[] = [];
-    for (const event of response.events) {
-      // The panel groups ACLED rows with the CII name->code map. This surface
-      // uses the canonical server resolver, so a name ACLED spells differently
-      // still lands on the right country.
-      if (resolveCountryCode(event.country) !== req.code) continue;
-      if (!Number.isFinite(event.occurredAt) || event.occurredAt < req.cutoffMs) continue;
+    const gdeltArticles = new Set<string>();
+    for (const event of events) {
+      if (!event || typeof event.country !== 'string') continue;
+      if (acledCountryCode(event.country) !== req.code) continue;
+      if (!Number.isFinite(event.occurredAt) || event.occurredAt! < req.cutoffMs) continue;
+      const eventType = typeof event.eventType === 'string' ? event.eventType : '';
+      const gdeltKind = gdeltConflictKind(eventType);
+      if (gdeltKind) {
+        // GDELT codes several events per article; one article is one report.
+        const article = event.url || event.id || '';
+        if (article && gdeltArticles.has(article)) continue;
+        if (article) gdeltArticles.add(article);
+        incidents.push({
+          timestamp: event.occurredAt!,
+          lane: 'conflict',
+          label: `reported ${gdeltKind}: ${event.country}${event.source ? ` (${event.source})` : ''}`,
+          // News-coded, with no fatality field: below an ACLED-verified event.
+          severity: 'medium',
+        });
+        continue;
+      }
       incidents.push({
-        timestamp: event.occurredAt,
+        timestamp: event.occurredAt!,
         lane: 'conflict',
         // Mirrors the panel's `${eventType}: ${location || country}` — the
         // client adapter always sets `location` to '', so this is the country.
-        label: `${acledEventType(event.eventType)}: ${event.country}`,
-        severity: event.fatalities > 0 ? 'critical' : 'high',
+        label: `${acledEventType(eventType)}: ${event.country}`,
+        severity: Number(event.fatalities) > 0 ? 'critical' : 'high',
       });
     }
-    // This lane IS queried globally (country: ''), so rows coming back prove the
-    // upstream answered even when none of them are this country's — that is a
-    // confirmed-quiet `empty`. Only a globally empty result is unverifiable,
-    // because list-acled-events returns exactly that on failure too.
-    const healthConfirmed = response.events.length > 0;
-    return settle(source, incidents, { status: 'hit', fetchedAtMs: 0 }, req.now, healthConfirmed);
+    // The seed is global, so rows for other countries prove the producer is
+    // publishing — that is a confirmed-quiet `empty`. A globally empty seed is
+    // unverifiable: the seeder never publishes zero rows on purpose.
+    return settle(source, incidents, seed, req.now, events.length > 0);
   } catch (error) {
     return failed(source, errorDetail(error));
   }

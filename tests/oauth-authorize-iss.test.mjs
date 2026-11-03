@@ -22,6 +22,7 @@ import { strict as assert } from 'node:assert';
 import { after, afterEach, before, describe, it } from 'node:test';
 
 import { resolveMetadataOrigin } from '../api/_agent-metadata.ts';
+import { OAUTH_BIND_COOKIE, hashOAuthBindValue } from '../api/oauth/_browser-binding.js';
 
 const REDIS_URL = 'https://redis.test';
 const ENTERPRISE_KEY = 'enterprise-test-key';
@@ -34,6 +35,9 @@ const ENV_KEYS = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'WORLDMO
 const originalEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 
 let store;
+// Browser-binding cookie from the latest GET; consent POSTs replay it the way
+// the same browser would.
+let flowCookie = '';
 
 function installRedisStub() {
   store = new Map();
@@ -97,16 +101,17 @@ async function startFlow(host) {
   }).toString();
   const res = await authorizeHandler(new Request(url, { headers: { host } }));
   assert.equal(res.status, 200, 'consent page renders');
+  flowCookie = (res.headers.get('Set-Cookie') ?? '').split(';')[0];
   const nonceKey = [...store.keys()].find((k) => k.startsWith('oauth:nonce:'));
   assert.ok(nonceKey, 'GET stores the nonce');
   return { nonce: nonceKey.slice('oauth:nonce:'.length), nonceData: JSON.parse(store.get(nonceKey)) };
 }
 
-function submitConsent(nonce, { host = 'api.worldmonitor.app', xhr = false, apiKey = ENTERPRISE_KEY } = {}) {
+function submitConsent(nonce, { host = 'api.worldmonitor.app', xhr = false, apiKey = ENTERPRISE_KEY, cookie = flowCookie } = {}) {
   const body = new URLSearchParams({ api_key: apiKey, _nonce: nonce, ...(xhr ? { _js: '1' } : {}) });
   return authorizeHandler(new Request(`https://${host}/oauth/authorize`, {
     method: 'POST',
-    headers: { host, origin: `https://${host}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: { host, origin: `https://${host}`, 'Content-Type': 'application/x-www-form-urlencoded', ...(cookie ? { cookie } : {}) },
     body: body.toString(),
   }));
 }
@@ -187,10 +192,12 @@ describe('RFC 9207 — API-key consent redirect carries iss', () => {
   it('a nonce stored before the deploy (no iss) redirects without an iss param', async () => {
     installRedisStub();
     registerClient();
+    const bindValue = 'b'.repeat(43);
     store.set('oauth:nonce:legacy', JSON.stringify({
       client_id: CLIENT_ID, redirect_uri: REDIRECT_URI, code_challenge: CODE_CHALLENGE, state: '', created_at: Date.now(),
+      bind_hash: await hashOAuthBindValue(bindValue),
     }));
-    const res = await submitConsent('legacy');
+    const res = await submitConsent('legacy', { cookie: `${OAUTH_BIND_COOKIE}=${bindValue}` });
     assert.equal(res.status, 302);
     const loc = new URL(res.headers.get('Location'));
     assert.ok(loc.searchParams.get('code'));

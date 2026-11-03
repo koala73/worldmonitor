@@ -338,7 +338,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
   const urlStateModule = JSON.stringify(fileURLToPath(new URL('../src/utils/urlState.ts', import.meta.url)));
   const stubs = new Map<string, string>([
     ['@/utils', `
-      export { urlHasAsyncFlyTo } from ${urlStateModule};
+      export { urlHasAsyncFlyTo, withUrlFragment } from ${urlStateModule};
       export function buildMapUrl(baseUrl, state) {
         const url = new URL(baseUrl);
         if (state.center) {
@@ -456,7 +456,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       export function trackPanelToggled(...args) { push('trackPanelToggled', args); }
       export function trackDownloadClicked(...args) { push('trackDownloadClicked', args); }
       export function trackGateHit(...args) { push('trackGateHit', args); }
-      export function trackPanelResized(...args) { push('trackPanelResized', args); }
+      export function trackLayoutCustomized(...args) { push('trackLayoutCustomized', args); }
     `],
     ['@/services', `
       export async function saveSnapshot() {}
@@ -474,7 +474,8 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
     `],
     ['@/services/data-freshness', `
       export const dataFreshness = {
-        setEnabled(source, enabled) {
+        setEnabled() {},
+        setMapLayerEnabled(source, enabled) {
           globalThis.__missionFreshness = globalThis.__missionFreshness || [];
           globalThis.__missionFreshness.push([source, enabled]);
         },
@@ -485,7 +486,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
     ['@/services/panel-gating', 'export const PanelGateReason = { NONE: "none", ANONYMOUS: "anonymous", FREE_TIER: "free_tier", PAYMENT_ON_HOLD: "payment_on_hold", RENEWAL_PENDING: "renewal_pending", RENEWAL_FAILED: "renewal_failed", LAPSED: "lapsed" }; export function hasPremiumAccess(){ return globalThis.__missionHasPremium === true; } export function resolveGateAction(){ return () => {}; }'],
     ['@/services/mcp-store', 'export function deleteMcpPanel(){} export function getMcpPanel(){ return null; } export function saveMcpPanel(){}'],
     ['@/services/runtime', 'export function isDesktopRuntime(){ return false; }'],
-    ['@/services/tauri-bridge', 'export async function invokeTauri(){ return null; }'],
+    ['@/services/tauri-bridge', 'export async function invokeTauri(){ return null; } export function hasTauriInvokeBridge(){ return false; }'],
     ['@/services/gps-interference', 'export function getCachedGpsInterference(){ return null; }'],
     ['@/services/ml-worker', 'export const mlWorker = {};'],
     ['@/services/auth-state', 'export function getAuthState(){ return { user: { role: "pro" } }; } export function subscribeAuthState(){ return () => {}; }'],
@@ -1247,6 +1248,7 @@ function createMissionHarness(options: {
     initialLoadComplete: true,
     resolvedLocation: 'global',
     activeChokepoint: null,
+    pendingCountryBrief: null,
     initialUrlState: null,
     PANEL_ORDER_KEY: 'panel-order',
     PANEL_SPANS_KEY: 'panel-spans',

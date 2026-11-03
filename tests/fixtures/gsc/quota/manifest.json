@@ -1,0 +1,23 @@
+{
+  "recordedAt": "2026-09-24T00:00:00Z",
+  "propertyKind": "domain",
+  "rowLimit": 3,
+  "sitemaps": [
+    {
+      "url": "https://www.worldmonitor.app/sitemap-main.xml",
+      "file": "sitemap-main.xml"
+    }
+  ],
+  "searchAnalytics": {
+    "28d": {
+      "page": [],
+      "query": []
+    },
+    "90d": {
+      "page": [],
+      "query": []
+    }
+  },
+  "urlInspection": "url-inspection.json",
+  "liveProbes": "live-probes.json"
+}

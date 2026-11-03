@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 import { dispatchToolsCall } from '../api/mcp/dispatch.ts';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { documentedOutputSchema } from './helpers/mcp-output-schema.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -66,27 +67,30 @@ describe('get_five_factor_scorecard MCP tool', () => {
     assert.equal(tool.inputSchema.properties.members.minItems, 2);
     assert.equal(tool.inputSchema.properties.members.maxItems, 30);
     assert.equal(tool.inputSchema.properties.members.uniqueItems, true);
-    assert.equal(tool.inputSchema.properties.members.items.pattern, '^[A-Z]{2}$');
-    assert.ok(tool.outputSchema.properties.scorecard.properties.id);
-    assert.ok(tool.outputSchema.properties.scorecard.properties.label);
-    assert.ok(tool.outputSchema.properties.scorecard.properties.includedMembers);
-    assert.ok(tool.outputSchema.properties.scorecard.properties.excludedMembers);
-    assert.ok(tool.outputSchema.properties.scorecard.properties.pillars.items.properties.includedMembers);
-    assert.ok(tool.outputSchema.properties.scorecard.properties.pillars.items.properties.excludedMembers);
-    assert.ok(tool.outputSchema.properties.scorecard.properties.pillars.items.properties.memberWeights);
-    assert.equal(tool.outputSchema.oneOf.length, 2);
-    assert.deepEqual(tool.outputSchema.oneOf[0].properties, {
+    // Members resolve through the shared country resolver (#9722), so a
+    // schema pattern would make strict clients refuse names before the call.
+    assert.equal(tool.inputSchema.properties.members.items.pattern, undefined);
+    assert.equal(tool.inputSchema.properties.country_code.pattern, undefined);
+    assert.ok(documentedOutputSchema(tool).properties.scorecard.properties.id);
+    assert.ok(documentedOutputSchema(tool).properties.scorecard.properties.label);
+    assert.ok(documentedOutputSchema(tool).properties.scorecard.properties.includedMembers);
+    assert.ok(documentedOutputSchema(tool).properties.scorecard.properties.excludedMembers);
+    assert.ok(documentedOutputSchema(tool).properties.scorecard.properties.pillars.items.properties.includedMembers);
+    assert.ok(documentedOutputSchema(tool).properties.scorecard.properties.pillars.items.properties.excludedMembers);
+    assert.ok(documentedOutputSchema(tool).properties.scorecard.properties.pillars.items.properties.memberWeights);
+    assert.equal(documentedOutputSchema(tool).oneOf.length, 2);
+    assert.deepEqual(documentedOutputSchema(tool).oneOf[0].properties, {
       unavailable: { const: false },
       unavailableReason: { const: '' },
     });
-    assert.deepEqual(tool.outputSchema.oneOf[1].properties, {
+    assert.deepEqual(documentedOutputSchema(tool).oneOf[1].properties, {
       unavailable: { const: true },
       unavailableReason: {
         enum: ['country-unavailable', 'bloc-members-unavailable', 'scorecard-snapshot-unavailable'],
       },
     });
-    assert.equal(tool.outputSchema.properties.scorecard.oneOf.length, 2);
-    const pillarSchema = tool.outputSchema.properties.scorecard.properties.pillars.items.properties;
+    assert.equal(documentedOutputSchema(tool).properties.scorecard.oneOf.length, 2);
+    const pillarSchema = documentedOutputSchema(tool).properties.scorecard.properties.pillars.items.properties;
     assert.deepEqual(pillarSchema.pillar.enum, ['food', 'energy', 'demographics', 'technology', 'defense']);
     assert.deepEqual(pillarSchema.band.enum, ['', 'severe-deficit', 'material-deficit', 'mixed-capability', 'strong-capability', 'high-capability']);
     assert.deepEqual(pillarSchema.aggregationMethod.enum, ['country-weighted-components', 'aggregate-physical-inputs', 'population-weighted-continuous-score']);
@@ -97,7 +101,7 @@ describe('get_five_factor_scorecard MCP tool', () => {
     assert.deepEqual([pillarSchema.score.minimum, pillarSchema.score.maximum], [0, 5]);
     assert.deepEqual([pillarSchema.subScore.minimum, pillarSchema.subScore.maximum], [0, 100]);
     assert.deepEqual([pillarSchema.inputCoverage.minimum, pillarSchema.inputCoverage.maximum], [0, 1]);
-    const observationSchema = tool.outputSchema.properties.scorecard.properties.pillars.items.properties.inputs.items.properties.observations.items;
+    const observationSchema = documentedOutputSchema(tool).properties.scorecard.properties.pillars.items.properties.inputs.items.properties.observations.items;
     assert.deepEqual(Object.keys(observationSchema.properties), ['name', 'value', 'year', 'unit', 'source', 'indicatorCode']);
 
     const { deps } = makeProDeps();
@@ -191,9 +195,9 @@ describe('get_five_factor_scorecard MCP tool', () => {
     }));
     const listTool = (await listed.json()).result.tools.find((entry) => entry.name === 'list_five_factor_scorecards');
     assert.ok(listTool);
-    assert.match(listTool.description, /read hasScore first/);
-    assert.match(listTool.outputSchema.properties.scorecards.items.properties.pillars.items.properties.hasScore.description, /proto3 zero placeholders/);
-    assert.deepEqual(listTool.outputSchema.oneOf, [
+    assert.match(listTool.description, /hasScore=false makes numeric zero an insufficient-data placeholder/);
+    assert.match(documentedOutputSchema(listTool).properties.scorecards.items.properties.pillars.items.properties.hasScore.description, /proto3 zero placeholders/);
+    assert.deepEqual(documentedOutputSchema(listTool).oneOf, [
       {
         properties: {
           unavailable: { const: false },

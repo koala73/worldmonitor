@@ -1,3 +1,8 @@
+// This pins the built /pro output to one separate Sentry chunk, static entry
+// imports and HTML modulepreloads with the CSP nonce (#8690, section 2). Chunk
+// splitting is a build-artifact contract that importing a source module cannot
+// verify; the suite skips without built output unless CI requires it.
+//
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';

@@ -35,14 +35,13 @@ export type LayerExplanationCoverage = 'curated' | 'fallback';
 export interface LayerExplanation {
   key: keyof MapLayers;
   coverage: LayerExplanationCoverage;
-  category: string;
-  purpose: string;
-  source: string;
-  freshness: string;
-  confidence: string;
-  limitations: string[];
-  related: string[];
   evidence: string[];
+}
+
+export function layerExplanationCopyPrefix(layerKey: keyof MapLayers, coverage: LayerExplanationCoverage): string {
+  return coverage === 'curated'
+    ? `layerExplanation.layers.${layerKey}`
+    : 'layerExplanation.fallback';
 }
 
 const def = (
@@ -58,7 +57,7 @@ const def = (
 });
 
 export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
-  iranAttacks:              def('iranAttacks',              '&#127919;', 'iranAttacks',              'Iran Attacks', ['svg', 'deck', 'globe'], _desktop ? 'locked' : undefined),
+  iranAttacks:              def('iranAttacks',              '&#127919;', 'iranAttacks',              'Middle East Strikes', ['svg', 'deck', 'globe'], _desktop ? 'locked' : undefined),
   hotspots:                 def('hotspots',                 '&#127919;', 'intelHotspots',            'Intel Hotspots'),
   conflicts:                def('conflicts',                '&#9876;',   'conflictZones',            'Conflict Zones'),
 
@@ -73,6 +72,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   pipelines:                def('pipelines',                '&#128738;', 'pipelines',                'Pipelines'),
   datacenters:              def('datacenters',              '&#128421;', 'aiDataCenters',            'AI Data Centers'),
   military:                 def('military',                 '&#9992;',   'militaryActivity',         'Military Activity'),
+  aircraftEmergencies:       def('aircraftEmergencies',       '&#9888;',   'aircraftEmergencies',      'Aircraft Emergencies', ['svg', 'deck']),
   ais:                      def('ais',                      '&#128674;', 'shipTraffic',              'Ship Traffic'),
   tradeRoutes:              def('tradeRoutes',              '&#9875;',   'tradeRoutes',              'Trade Routes'),
   flights:                  def('flights',                  '&#9992;',   'flightDelays',             'Aviation'),
@@ -80,9 +80,9 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   ucdpEvents:               def('ucdpEvents',               '&#9876;',   'ucdpEvents',               'Armed Conflict Events'),
   displacement:             def('displacement',             '&#128101;', 'displacementFlows',        'Displacement Flows'),
   climate:                  def('climate',                  '&#127787;', 'climateAnomalies',         'Climate Anomalies'),
-  weather:                  def('weather',                  '&#9928;',   'weatherAlerts',            'Severe Weather Alerts (NWS, ECCC, WMO SWIC)'),
-  canadaRoads:              def('canadaRoads',              '&#128679;', 'canadaRoads',              'Canada Roads (Ontario, Alberta, Manitoba, Toronto, BC)', ['deck']),
-  canadaAlerts:             def('canadaAlerts',             '&#9888;',   'canadaAlerts',             'Canada Alerts (AB + BC + SK)', ['deck']),
+  weather:                  def('weather',                  '&#9928;',   'weatherAlerts',            'Weather Alerts'),
+  canadaRoads:              def('canadaRoads',              '&#128679;', 'canadaRoads',              'Canada Roads', ['deck']),
+  canadaAlerts:             def('canadaAlerts',             '&#9888;',   'canadaAlerts',             'Canada Alerts', ['deck']),
   outages:                  def('outages',                  '&#128225;', 'internetOutages',          'Internet Disruptions'),
   cyberThreats:             def('cyberThreats',             '&#128737;', 'cyberThreats',             'Cyber Threats'),
   natural:                  def('natural',                  '&#127755;', 'naturalEvents',            'Natural Events'),
@@ -95,11 +95,12 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   // the SVG/mobile fallback has no CII paint path, so this is deck + globe,
   // NOT svg. Previously mislabeled `['flat']`, which wrongly kept it out of
   // the globe layer picker even though GlobeMap renders it (#6773 / R8).
-  ciiChoropleth:            def('ciiChoropleth',            '&#127758;', 'ciiChoropleth',            'CII Instability', ['deck', 'globe'], _desktop ? 'enhanced' : undefined),
+  ciiChoropleth:            def('ciiChoropleth',            '&#127758;', 'ciiChoropleth',            'Country Instability', ['deck', 'globe'], _desktop ? 'enhanced' : undefined),
   // DeckGLMap owns the resilience choropleth; only DeckGL has a paint path.
-  resilienceScore:          def('resilienceScore',          '&#128200;', 'resilienceScore',          'Resilience', ['deck'], 'locked'),
+  resilienceScore:          def('resilienceScore',          '&#128200;', 'resilienceScore',          'Country Resilience', ['deck'], 'locked'),
   dayNight:                 def('dayNight',                 '&#127763;', 'dayNight',                 'Day/Night', ['svg', 'deck']),
   sanctions:                def('sanctions',                '&#128683;', 'sanctions',                'Sanctions', ['svg', 'deck']),
+  no2Activity:              def('no2Activity',              '&#127981;', 'no2Activity',              'Industrial Activity', ['deck']),
   startupHubs:              def('startupHubs',              '&#128640;', 'startupHubs',              'Startup Hubs', ['svg', 'deck']),
   techHQs:                  def('techHQs',                  '&#127970;', 'techHQs',                  'Tech HQs', ['svg', 'deck']),
   accelerators:             def('accelerators',             '&#9889;',   'accelerators',             'Accelerators', ['svg', 'deck']),
@@ -139,212 +140,31 @@ export const V1_LAYER_EXPLANATION_KEYS = [
   'weather',
   'canadaRoads', 'canadaAlerts',
   'flights',
+  'aircraftEmergencies',
   'ais',
   'waterways',
   'tradeRoutes',
   'cyberThreats',
   'hotspots',
+  'no2Activity',
 ] as const satisfies readonly (keyof MapLayers)[];
 
 export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanation>> = {
-  conflicts: {
-    key: 'conflicts',
-    coverage: 'curated',
-    category: 'Conflict',
-    purpose: 'Shows curated conflict zones and geopolitical boundary overlays so analysts can orient live signals against known theaters.',
-    source: 'WorldMonitor conflict-zone registry, UCDP/ACLED conflict context, and documented boundary metadata such as the Korean DMZ.',
-    freshness: 'Base zones are curated/static. Dynamic conflict-event inputs are tracked separately through ACLED/UCDP feeds and health signals.',
-    confidence: 'Good for geographic orientation; not a real-time incident confirmation by itself.',
-    limitations: [
-      'Static zones can lag fast tactical changes.',
-      'Some conflict evidence appears in UCDP Events, CII, or related panels rather than as a conflict-zone polygon.',
-    ],
-    related: ['UCDP Events', 'CII panel', 'Strategic Risk', 'Country brief'],
-    evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'src/config/geo.ts'],
-  },
-  ucdpEvents: {
-    key: 'ucdpEvents',
-    coverage: 'curated',
-    category: 'Conflict',
-    purpose: 'Plots event-level armed conflict records with country, actors, date, and fatality ranges.',
-    source: 'Uppsala Conflict Data Program GED API via the conflict service and UCDP event seed.',
-    freshness: 'Seeded every 6 hours when the UCDP seed is healthy.',
-    confidence: 'Higher editorial consistency than raw breaking feeds, but intentionally lagging and not a live battlefield feed.',
-    limitations: [
-      'Annual/research-grade release cadence can miss very recent events.',
-      'Fatality ranges are estimates and should be interpreted as ranges, not exact counts.',
-    ],
-    related: ['UCDP Events panel', 'CII conflict component', 'Country timeline'],
-    evidence: ['docs/architecture.mdx', 'src/services/conflict/index.ts', 'scripts/seed-ucdp-events.mjs'],
-  },
-  ciiChoropleth: {
-    key: 'ciiChoropleth',
-    coverage: 'curated',
-    category: 'Country Risk',
-    purpose: 'Colors countries by the current Country Instability Index score for broad strategic-risk triage.',
-    source: 'WorldMonitor CII scoring service using conflict, unrest, advisories, cyber, AIS, aviation, natural-event, and news signals.',
-    freshness: 'Risk-score cache is warm-pinged every 8 minutes; seed-meta and health.riskScores expose live, stale, partial, or degraded state against a 30-minute freshness budget.',
-    confidence: 'Composite model signal, not an official country rating or probability forecast.',
-    limitations: [
-      'Sparse or degraded source families can reduce confidence even when a country still has a score.',
-      'Country-level color can hide subnational variation and should be checked against panels before citation.',
-    ],
-    related: ['CII panel', 'Strategic Risk panel', 'Data freshness status', 'Country brief'],
-    evidence: ['docs/strategic-risk.mdx', 'docs/architecture.mdx', 'src/services/cached-risk-scores.ts'],
-  },
-  natural: {
-    key: 'natural',
-    coverage: 'curated',
-    category: 'Natural Disasters',
-    purpose: 'Shows earthquakes, severe disaster alerts, and active Earth-observation events for situational awareness.',
-    source: 'USGS earthquakes, GDACS alerts, and NASA EONET events merged into the natural events service.',
-    freshness: 'Natural events are seeded every 3 hours; USGS earthquake expectations are documented at roughly 5-minute source cadence.',
-    confidence: 'Strong for detected public disaster signals; confidence varies by hazard type and upstream reporting latency.',
-    limitations: [
-      'Low-severity GDACS alerts are filtered out to keep the map readable.',
-      'EONET wildfires are freshness-filtered, so older open events may not appear as active map points.',
-    ],
-    related: ['Natural Events layer popups', 'Severe Weather Alerts (NWS, ECCC, WMO SWIC)', 'Country brief natural signals'],
-    evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'server/worldmonitor/natural/v1/list-natural-events.ts'],
-  },
-  weather: {
-    key: 'weather',
-    coverage: 'curated',
-    category: 'Weather',
-    purpose: 'Shows active official severe-weather alerts from national meteorological services, merged into one weather:alerts:v1 feed.',
-    source: 'United States National Weather Service (NWS), Environment and Climate Change Canada (ECCC), and WMO Severe Weather Information Centre (SWIC) CAP aggregation, seeded through the WorldMonitor relay.',
-    freshness: 'NWS, ECCC, and SWIC alerts are seeded every 15 minutes by the relay and monitored against a 45-minute freshness budget.',
-    confidence: 'Authoritative for alerts issued by the contributing national services, subject to upstream publication timing. NWS and ECCC render as polygons; SWIC geocoded alerts render at the issuing service country centroid with an explicit precision marker.',
-    limitations: [
-      'Most SWIC members publish geocodes, not polygons; those alerts appear as country-level points with the verbatim area description, not warned-area overlays.',
-      'SWIC coverage depends on which WMO members currently publish to the aggregator; density varies by region.',
-      'US and Canadian SWIC rows are skipped because NWS and ECCC already supply polygon-tier coverage for those countries.',
-    ],
-    related: ['Natural Events layer', 'Weather alert popups', 'Data freshness status'],
-    evidence: ['scripts/ais-relay.cjs', 'scripts/_weather-alert-select.mjs', 'api/health.js', 'src/services/weather.ts'],
-  },
-  canadaRoads: {
-    key: 'canadaRoads',
-    coverage: 'curated',
-    category: 'Transport',
-    purpose: 'Shows official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions.',
-    source: 'Ontario 511, Alberta 511, and Manitoba 511 provincial feeds, City of Toronto Road Restrictions, and DriveBC Open511, seeded through WorldMonitor.',
-    freshness: 'Ontario, Alberta, and Manitoba 511 are seeded every 15 minutes and monitored against a 45-minute freshness budget. Toronto restrictions are seeded every 2 hours; DriveBC Open511 every 30 minutes.',
-    confidence: 'Authoritative for the supported provincial and municipal publishers, subject to upstream publication timing and mapped geometry.',
-    limitations: [
-      'Alberta 511 roadconditions is not ingested (the vendor endpoint 404s); live Alberta paint is events and alerts only.',
-      'Provincial alerts without coordinates do not appear as map dots.',
-      'Road-condition polylines may simplify complex highway geometry.',
-    ],
-    related: ['Severe Weather Alerts (NWS, ECCC, WMO SWIC)', 'Data freshness status'],
-    evidence: ['scripts/seed-provincial-511.mjs', 'scripts/seed-toronto-road-restrictions.mjs', 'scripts/seed-open511.mjs', 'api/health.js', 'src/services/canada-roads.ts'],
-  },
-  canadaAlerts: {
-    key: 'canadaAlerts',
-    coverage: 'curated',
-    category: 'Emergency Alerts',
-    purpose: 'Shows active Alberta, British Columbia, and Saskatchewan public-safety warnings as map dots alongside US NWS weather.',
-    source: 'Alberta Emergency Alert Atom, the OGL-BC Evacuation Orders and Alerts GeoJSON layer, and the SaskAlert public JSON feed plus same-host CAP 1.2 details are normalized into one canadaAlerts union. CAP/GeoRSS polygons, B.C. evacuation polygons, and SaskAlert CAP polygons become centroids; records without geometry use the source province centroid.',
-    freshness: 'Provincial sources are seeded every 15 minutes and the union is monitored against a 45-minute freshness budget. An empty feed (no active alerts) is a valid zero-record success.',
-    confidence: 'Authoritative for alerts published by Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert, subject to upstream publication timing and mapped alert geometry.',
-    limitations: [
-      'Coverage is limited to Alberta, British Columbia, and Saskatchewan. Ontario has no eligible province-operated machine feed outside excluded NAAD.',
-      'Does not replace US NWS weather alerts or Ontario/Toronto road layers.',
-      'Entries without a mappable severity (Alberta CAP/colour semantics, B.C. evacuation status, or SaskAlert CAP severity) are dropped rather than invented. SaskAlert summary colour/level is not treated as CAP severity.',
-    ],
-    related: ['Severe Weather Alerts (NWS, ECCC, WMO SWIC)', 'Natural Events layer', 'Data freshness status'],
-    evidence: ['scripts/seed-alberta-emergency-alert.mjs', 'scripts/seed-bc-emergency-info.mjs', 'scripts/seed-saskalert.mjs', 'api/health.js', 'src/services/canada-alerts.ts'],
-  },
-  flights: {
-    key: 'flights',
-    coverage: 'curated',
-    category: 'Aviation',
-    purpose: 'Highlights airport disruption, closures, NOTAM-derived airspace issues, and live aircraft positions when tracking is available.',
-    source: 'FAA ASWS, AviationStack, ICAO NOTAMs, adsb.lol (ODbL), Wingbits, legacy OpenSky service recovery, optional non-commercial airplanes.live/adsb.fi gap-fill, and the aviation service.',
-    freshness: 'Airport disruption seeds run on a 30-minute cadence; the aviation panel also refreshes operational views on a 5-minute polling cycle.',
-    confidence: 'Best for disruption triage; individual live aircraft coverage depends on ADS-B availability and configured providers.',
-    limitations: [
-      'AviationStack-backed simulated demo data can appear when an API key is absent.',
-      'Live aircraft positions can be delayed or absent where ADS-B coverage is weak or blocked.',
-    ],
-    related: ['Airline Intel panel', 'Aviation command bar', 'Country brief aviation signals'],
-    evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'src/services/aviation/index.ts', 'scripts/seed-aviation.mjs'],
-  },
-  ais: {
-    key: 'ais',
-    coverage: 'curated',
-    category: 'Maritime',
-    purpose: 'Shows vessel density and AIS disruption signals around strategic waters and chokepoints.',
-    source: 'AISStream relay snapshots, WorldMonitor maritime service, and chokepoint disruption classifiers.',
-    freshness: 'AIS relay snapshots are rebuilt every 5 seconds by default; the server may cache the base density snapshot for 5 minutes, and the layer is disabled or stale when relay credentials/connectivity are unavailable.',
-    confidence: 'Useful for maritime anomaly screening, but AIS is self-reported and vessels can go dark.',
-    limitations: [
-      'Terrestrial AIS coverage is uneven, with weaker Middle East, Asia, and open-ocean visibility documented.',
-      'Dark shipping is inferred from gaps and congestion patterns, not direct proof of intent.',
-    ],
-    related: ['Supply Chain panel', 'Chokepoint strip', 'Military vessels', 'Country brief AIS signals'],
-    evidence: ['docs/features.mdx', 'docs/architecture.mdx', 'src/services/maritime/index.ts', 'scripts/ais-relay.cjs'],
-  },
-  waterways: {
-    key: 'waterways',
-    coverage: 'curated',
-    category: 'Maritime',
-    purpose: 'Marks strategic waterways and chokepoints so disruption signals can be interpreted against fixed maritime geography.',
-    source: 'WorldMonitor strategic-waterways registry with supply-chain chokepoint status overlays from AIS, NGA warnings, and PortWatch-derived feeds.',
-    freshness: 'Waterway locations are static; live chokepoint status is warm-pinged every 30 minutes and transit summaries refresh every 10 minutes when the relay/PortWatch path is healthy.',
-    confidence: 'High for fixed geography; live disruption confidence depends on the companion AIS, NGA, and PortWatch feeds.',
-    limitations: [
-      'A visible chokepoint marker does not mean there is an active disruption.',
-      'Area geofences and modeled routes can simplify complex traffic patterns.',
-    ],
-    related: ['Supply Chain panel', 'Trade Routes layer', 'Route Explorer', 'Scenario Engine'],
-    evidence: ['docs/architecture.mdx', 'docs/data-sources.mdx', 'src/config/geo.ts', 'server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts'],
-  },
-  tradeRoutes: {
-    key: 'tradeRoutes',
-    coverage: 'curated',
-    category: 'Maritime',
-    purpose: 'Draws major container, energy, and bulk routes through strategic chokepoints for disruption-path reasoning.',
-    source: 'WorldMonitor trade-route registry plus supply-chain chokepoint status and transit summaries.',
-    freshness: 'Route geometry is static. Chokepoint status is warm-pinged every 30 minutes and transit summaries refresh every 10 minutes through supply-chain caches and relay paths.',
-    confidence: 'Good for route-level exposure context; not a ship-level routing feed.',
-    limitations: [
-      'Routes are modeled corridors and may not match a specific voyage plan.',
-      'Disruption overlays depend on current chokepoint and AIS health.',
-    ],
-    related: ['Supply Chain panel', 'Route Explorer', 'Scenario Engine', 'Waterways layer'],
-    evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'src/config/trade-routes.ts', 'src/services/supply-chain/index.ts'],
-  },
-  cyberThreats: {
-    key: 'cyberThreats',
-    coverage: 'curated',
-    category: 'Cyber',
-    purpose: 'Maps geo-enriched indicators of compromise such as C2 servers, malware hosts, phishing, malicious URLs, and ransomware infrastructure.',
-    source: 'abuse.ch Feodo Tracker and URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, ransomware.live RSS/news feed, and IP geolocation enrichment.',
-    freshness: 'Cyber threat seeds run every 2 hours; displayed IOCs use a 14-day rolling window and are capped for map performance.',
-    confidence: 'Good for infrastructure visibility, but attribution and IP geolocation can be noisy.',
-    limitations: [
-      'IP geolocation can point to hosting infrastructure rather than an operator or victim.',
-      'Feed availability, API keys, and per-feed abuse reports can bias coverage.',
-    ],
-    related: ['Cyber Threats map popups', 'CII cyber supplemental boost', 'Data freshness status'],
-    evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'scripts/seed-cyber-threats.mjs', 'server/worldmonitor/cyber/v1/list-cyber-threats.ts'],
-  },
-  hotspots: {
-    key: 'hotspots',
-    coverage: 'curated',
-    category: 'News / Hotspots',
-    purpose: 'Highlights monitored geopolitical hotspots and raises their level when related news and escalation signals converge.',
-    source: 'WorldMonitor hotspot registry, RSS/GDELT news intelligence, hotspot escalation scoring, military activity, and CII context.',
-    freshness: 'Hotspot locations are curated/static. News feeds are freshness-tracked separately; live-news RSS cache expectations are around 5 minutes, while GDELT intelligence has longer seeded/cache budgets.',
-    confidence: 'Useful as a triage cue, not a citation-grade claim without opening the underlying news and country context.',
-    limitations: [
-      'News volume and keyword matching can overrepresent highly covered regions.',
-      'Low-profile events may be missed when RSS/GDELT coverage is sparse or delayed.',
-    ],
-    related: ['Live News panel', 'Strategic Risk panel', 'Country brief', 'Hotspot popups'],
-    evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'src/config/geo.ts', 'src/services/hotspot-escalation.ts'],
-  },
+  conflicts: { key: 'conflicts', coverage: 'curated', evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'src/config/geo.ts'] },
+  ucdpEvents: { key: 'ucdpEvents', coverage: 'curated', evidence: ['docs/architecture.mdx', 'src/services/conflict/index.ts', 'scripts/seed-ucdp-events.mjs'] },
+  ciiChoropleth: { key: 'ciiChoropleth', coverage: 'curated', evidence: ['docs/strategic-risk.mdx', 'docs/architecture.mdx', 'src/services/cached-risk-scores.ts'] },
+  natural: { key: 'natural', coverage: 'curated', evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'server/worldmonitor/natural/v1/list-natural-events.ts'] },
+  weather: { key: 'weather', coverage: 'curated', evidence: ['scripts/ais-relay.cjs', 'scripts/_weather-alert-select.mjs', 'api/health.js', 'src/services/weather.ts'] },
+  canadaRoads: { key: 'canadaRoads', coverage: 'curated', evidence: ['scripts/seed-provincial-511.mjs', 'scripts/seed-toronto-road-restrictions.mjs', 'scripts/seed-open511.mjs', 'api/health.js', 'src/services/canada-roads.ts'] },
+  canadaAlerts: { key: 'canadaAlerts', coverage: 'curated', evidence: ['scripts/seed-alberta-emergency-alert.mjs', 'scripts/seed-bc-emergency-info.mjs', 'scripts/seed-saskalert.mjs', 'api/health.js', 'src/services/canada-alerts.ts'] },
+  flights: { key: 'flights', coverage: 'curated', evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'src/services/aviation/index.ts', 'scripts/seed-aviation.mjs', 'scripts/seed-notam-nms.mjs', 'src/services/notam-airspace.ts'] },
+  aircraftEmergencies: { key: 'aircraftEmergencies', coverage: 'curated', evidence: ['docs/aircraft-emergencies-evidence.md'] },
+  ais: { key: 'ais', coverage: 'curated', evidence: ['docs/features.mdx', 'docs/architecture.mdx', 'src/services/maritime/index.ts', 'scripts/ais-relay.cjs'] },
+  waterways: { key: 'waterways', coverage: 'curated', evidence: ['docs/architecture.mdx', 'docs/data-sources.mdx', 'src/config/geo.ts', 'server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts'] },
+  tradeRoutes: { key: 'tradeRoutes', coverage: 'curated', evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'src/config/trade-routes.ts', 'src/services/supply-chain/index.ts'] },
+  cyberThreats: { key: 'cyberThreats', coverage: 'curated', evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'scripts/seed-cyber-threats.mjs', 'server/worldmonitor/cyber/v1/list-cyber-threats.ts'] },
+  hotspots: { key: 'hotspots', coverage: 'curated', evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'src/config/geo.ts', 'src/services/hotspot-escalation.ts'] },
+  no2Activity: { key: 'no2Activity', coverage: 'curated', evidence: ['scripts/seed-no2-activity.mjs', 'scripts/shared/no2-activity.mjs', 'api/health.js', 'server/worldmonitor/economic/v1/get-no2-activity.ts'] },
 };
 
 const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
@@ -352,11 +172,11 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'iranAttacks', 'hotspots', 'conflicts',
     'bases', 'nuclear', 'irradiators', 'radiationWatch', 'spaceports',
     'cables', 'pipelines', 'storageFacilities', 'fuelShortages', 'datacenters', 'military',
-    'ais', 'tradeRoutes', 'flights', 'protests',
+    'ais', 'tradeRoutes', 'flights', 'aircraftEmergencies', 'protests',
     'ucdpEvents', 'displacement', 'climate', 'weather', 'canadaRoads', 'canadaAlerts',
     'outages', 'cyberThreats', 'natural', 'fires',
     'waterways', 'economic', 'minerals', 'gpsJamming',
-    'satellites', 'ciiChoropleth', 'resilienceScore', 'sanctions', 'dayNight', 'webcams',
+    'satellites', 'ciiChoropleth', 'resilienceScore', 'sanctions', 'no2Activity', 'dayNight', 'webcams',
     'diseaseOutbreaks',
   ],
   tech: [
@@ -618,6 +438,8 @@ export const LAYER_SYNONYMS: Record<string, Array<keyof MapLayers>> = {
   airplane: ['flights'],
   plane: ['flights'],
   notam: ['flights'],
+  tfr: ['flights'],
+  airspace: ['flights'],
   ship: ['ais', 'tradeRoutes'],
   vessel: ['ais'],
   maritime: ['ais', 'waterways', 'tradeRoutes'],
@@ -695,6 +517,11 @@ export const LAYER_SYNONYMS: Record<string, Array<keyof MapLayers>> = {
   gulf: ['gulfInvestments'],
   gcc: ['gulfInvestments'],
   sanction: ['sanctions'],
+  no2: ['no2Activity'],
+  emissions: ['no2Activity'],
+  pollution: ['no2Activity'],
+  industrial: ['no2Activity'],
+  satellite: ['no2Activity', 'satellites'],
   night: ['dayNight'],
   sun: ['dayNight'],
   webcam: ['webcams'],
@@ -721,16 +548,6 @@ export function getLayerExplanation(layerKey: keyof MapLayers): LayerExplanation
   return {
     key: layerKey,
     coverage: 'fallback',
-    category: 'Layer',
-    purpose: 'This layer can be toggled on the map, but a curated source and confidence card has not been added yet.',
-    source: 'Not curated in the v1 layer-explainability set.',
-    freshness: 'No layer-level freshness contract is declared here. Check the visible panel badges, popups, or data freshness status when available.',
-    confidence: 'Unknown until source-specific metadata is added.',
-    limitations: [
-      'The lack of a curated card does not mean the layer is unsupported.',
-      'Use layer popups and related panels for source-specific context.',
-    ],
-    related: ['Layer guide'],
     evidence: [],
   };
 }

@@ -1,0 +1,150 @@
+syntax = "proto3";
+
+package worldmonitor.trade.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// Why no line was served. NOT_COVERED is final; UPSTREAM_UNAVAILABLE is a fault.
+enum UsImportDutyUnavailableReason {
+  // Lines were served.
+  US_IMPORT_DUTY_UNAVAILABLE_REASON_UNSPECIFIED = 0;
+  // Malformed codes; only reachable when request validation is bypassed.
+  US_IMPORT_DUTY_UNAVAILABLE_REASON_INVALID_REQUEST = 1;
+  // The current HTS has no line under this code.
+  US_IMPORT_DUTY_UNAVAILABLE_REASON_NOT_COVERED = 2;
+  // The USITC HTS service did not answer.
+  US_IMPORT_DUTY_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE = 3;
+}
+
+// Column the base rate comes from.
+enum UsDutyBasis {
+  // No line.
+  US_DUTY_BASIS_UNSPECIFIED = 0;
+  // Column 1 General (MFN).
+  US_DUTY_BASIS_MFN = 1;
+  // Column 1 Special, under a trade agreement the partner is party to.
+  US_DUTY_BASIS_PREFERENTIAL = 2;
+  // Column 2 (Belarus, Cuba, North Korea, Russia).
+  US_DUTY_BASIS_COLUMN_2 = 3;
+}
+
+// Legal authority of a chapter 99 duty.
+enum UsDutyAuthority {
+  // Unknown.
+  US_DUTY_AUTHORITY_UNSPECIFIED = 0;
+  // Trade Act of 1974, section 301.
+  US_DUTY_AUTHORITY_SECTION_301 = 1;
+  // Trade Expansion Act of 1962, section 232.
+  US_DUTY_AUTHORITY_SECTION_232 = 2;
+  // Column 2 rate replaced for Russian goods (U.S. note 30).
+  US_DUTY_AUTHORITY_COLUMN_2 = 3;
+}
+
+// Whether a chapter 99 duty applies to this line and partner.
+enum UsAdditionalDutyStatus {
+  // Unknown.
+  US_ADDITIONAL_DUTY_STATUS_UNSPECIFIED = 0;
+  // Applies; counted in estimated_rate.
+  US_ADDITIONAL_DUTY_STATUS_APPLIES = 1;
+  // Applies or not depending on the goods or the entry; see condition.
+  US_ADDITIONAL_DUTY_STATUS_CONDITIONAL = 2;
+  // Lifted by an exemption heading; see condition.
+  US_ADDITIONAL_DUTY_STATUS_EXEMPT = 3;
+  // Not yet in force; see effective_from.
+  US_ADDITIONAL_DUTY_STATUS_SCHEDULED = 4;
+}
+
+// Current US duty on a product from one country: HTS columns plus the
+// chapter 99 Section 301 and 232 duties. IEEPA duties are not collected
+// since 2026-02-24 and are not reported. Excludes AD/CVD.
+message GetUsImportDutyRequest {
+  // HTS code: 6, 8 or 10 digits, no dots ("870323").
+  string hs_code = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[0-9]{6}([0-9]{2}){0,2}$",
+    (sebuf.http.query) = {name: "hs_code"}
+  ];
+  // Exporter, 3-digit UN M49 ("156").
+  string partner_country = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[0-9]{3}$",
+    (sebuf.http.query) = {name: "partner_country"}
+  ];
+}
+
+// A chapter 99 duty on one line.
+message UsAdditionalDuty {
+  // Chapter 99 heading ("9903.88.03").
+  string heading = 1;
+  // Legal authority.
+  UsDutyAuthority authority = 2;
+  // Action name ("China List 3").
+  string program = 3;
+  // Percentage points added to the base rate.
+  double added_rate = 4;
+  // Combined rate the base is raised to; 0 when none.
+  double top_up_to = 5;
+  // Whether it applies.
+  UsAdditionalDutyStatus status = 6;
+  // What decides the status.
+  string condition = 7;
+  // Chapter 99 U.S. note listing the products.
+  string legal_note = 8;
+  // First day in force, when dated.
+  string effective_from = 9;
+}
+
+// One 8-digit HTS line.
+message UsTariffLine {
+  // 8-digit HTS line ("8703.23.01").
+  string hts_code = 1;
+  // Article description.
+  string description = 2;
+  // Column 1 General.
+  string general_rate = 3;
+  // Column 1 Special, with program codes.
+  string special_rate = 4;
+  // Column 2.
+  string column2_rate = 5;
+  // Column the base rate comes from.
+  UsDutyBasis basis = 6;
+  // Base rate text.
+  string base_rate = 7;
+  // Base rate in percent; 0 when not ad valorem.
+  double base_ad_valorem = 8;
+  // True when the base rate is specific or compound.
+  bool base_non_ad_valorem = 9;
+  // Special program applied ("S" = USMCA).
+  string preference_program = 10;
+  // Special programs whose partner eligibility is not resolved.
+  repeated string unresolved_programs = 11;
+  // Chapter 99 duties.
+  repeated UsAdditionalDuty additional_duties = 12;
+  // Base plus APPLIES duties, in percent.
+  double estimated_rate = 13;
+  // False when the base is not ad valorem or a duty is not APPLIES/EXEMPT.
+  bool estimate_complete = 14;
+}
+
+// Current US duty on a product from one country.
+message GetUsImportDutyResponse {
+  // HTS code, as requested.
+  string hs_code = 1;
+  // Exporter code, as requested.
+  string partner_country = 2;
+  // HTS release of the chapter 99 index ("2026HTSRev21").
+  string hts_release = 3;
+  // 8-digit lines under the code.
+  repeated UsTariffLine lines = 4;
+  // False when the chapter 99 index was unavailable.
+  bool additional_duties_loaded = 5;
+  // Data source.
+  string source = 6;
+  // HTS search page for the code.
+  string source_url = 7;
+  // True on a fault, false on a coverage answer.
+  bool upstream_unavailable = 8;
+  // Why no line was served.
+  UsImportDutyUnavailableReason unavailable_reason = 9;
+}

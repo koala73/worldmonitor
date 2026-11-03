@@ -483,7 +483,8 @@ const energyAllLayersEnabled: MapLayers = {
   // commodityPorts is base-false in allLayersEnabled post-#3925 isolation
   // refactor (was true in an earlier snapshot Greptile reviewed) — energy
   // explicitly enables it because the energy harness ships seeded port
-  // fixtures and tests/energy-variant-atlas-guard asserts on this line.
+  // fixtures; e2e/map-harness.spec.ts (npm run test:e2e:energy) expects
+  // the Atlas deck layers these flags enable.
   commodityPorts: true,
   storageFacilities: true,
   fuelShortages: true,
@@ -557,10 +558,12 @@ const seedHarnessAptGroups = (): void => {
 // empty viewport payload in local/dev runs, which would wipe the shared
 // `bases-layer` snapshot even though the harness is meant to exercise the
 // renderer with seeded fixture data.
-internals.fetchServerBases = (): void => {
+if (new URLSearchParams(window.location.search).get('serverBases') !== '1') {
+  internals.fetchServerBases = (): void => {
+    seedHarnessBases();
+  };
   seedHarnessBases();
-};
-seedHarnessBases();
+}
 seedHarnessAptGroups();
 
 const buildLayerState = (enabledLayers: HarnessLayerKey[]): MapLayers => {

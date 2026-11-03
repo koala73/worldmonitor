@@ -17,9 +17,12 @@ import {
 } from '../scripts/_demographics-capability-source.mjs';
 import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
 import {
+  DEMOGRAPHICS_CAPABILITY_SEED_OPTIONS,
   demographicsCapabilityAfterPublish,
   fetchDemographicsCapability,
+  recordDemographicsCapabilityCompletedRun,
 } from '../scripts/seed-demographics-capability.mjs';
+import { runSeed } from '../scripts/_seed-utils.mjs';
 import { resolveSourceOrigin } from '../scripts/source-origin.mjs';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/demographics-capability/${name}`, import.meta.url), 'utf8');
@@ -77,6 +80,90 @@ describe('demographics capability source parsers (#6437)', () => {
     assert.equal(result.countries.DE.manufacturingEmploymentSharePercent.value, 18.009972);
     assert.equal(result.countries.US?.trainedIndustrialWorkforcePeople, undefined, 'occupation groups from different years must not be combined');
     assert.equal(result.countries.US?.manufacturingEmploymentSharePercent, undefined, 'economic rows from different years must not be divided');
+  });
+
+  it('preserves the original source of each ILOSTAT dimension without inferring observation quality', () => {
+    const occupation = fixture('ilostat-occupation.csv');
+    const economic = fixture('ilostat-economic.csv');
+    const original = parseIlostatWorkforceCsv(occupation, economic).countries.DE;
+    for (const metric of ['craftTradesEmploymentPeople', 'plantMachineOperatorsEmploymentPeople', 'trainedIndustrialWorkforcePeople']) {
+      assert.equal(original[metric].source, 'ILOSTAT: LFS - EU Labour Force Survey');
+      assert.equal(original[metric].year, 2025);
+    }
+    assert.equal(original.manufacturingEmploymentSharePercent.source, 'ILOSTAT: ILO - Modelled Estimates');
+    const survey = parseIlostatWorkforceCsv(occupation, economic.replaceAll('ILO - Modelled Estimates', 'LFS - EU Labour Force Survey')).countries.DE;
+    assert.deepEqual(survey.manufacturingEmploymentSharePercent, {
+      ...original.manufacturingEmploymentSharePercent,
+      source: 'ILOSTAT: LFS - EU Labour Force Survey',
+    });
+    const statusChanged = parseIlostatWorkforceCsv(occupation, economic.replaceAll(',A,NB,', ',Z,NB,')).countries.DE;
+    assert.deepEqual(statusChanged, original, 'OBS_STATUS is not a supplied quality classification');
+    assert.deepEqual(Object.keys(original.manufacturingEmploymentSharePercent).sort(), ['source', 'value', 'year']);
+  });
+
+  it('keeps blank or missing ILOSTAT SOURCE generic and preserves measured zero', () => {
+    const occupation = fixture('ilostat-occupation.csv').replaceAll('LFS - EU Labour Force Survey', '').replace('2025,4602.43,', '2025,0,');
+    const economic = fixture('ilostat-economic.csv').replaceAll('ILO - Modelled Estimates', '').replace('2025,7604.915,', '2025,0,');
+    const result = parseIlostatWorkforceCsv(occupation, economic).countries.DE;
+    assert.deepEqual(result.craftTradesEmploymentPeople, { value: 0, year: 2025, source: 'ILOSTAT' });
+    assert.deepEqual(result.manufacturingEmploymentSharePercent, { value: 0, year: 2025, source: 'ILOSTAT' });
+    const withoutSource = (csv) => csv.split('\n').map((line) => line.slice(0, line.lastIndexOf(','))).join('\n');
+    assert.deepEqual(parseIlostatWorkforceCsv(withoutSource(occupation), withoutSource(economic)).countries.DE, result);
+  });
+
+  it('preserves explicit ILOSTAT status and identifies the inputs of derived values', () => {
+    const occupation = fixture('ilostat-occupation.csv').replace('2025,4602.43,,', '2025,4602.43,I,');
+    const economic = fixture('ilostat-economic.csv').replace('2025,7604.915,,', '2025,7604.915,E,');
+    const result = parseIlostatWorkforceCsv(occupation, economic).countries.DE;
+    assert.equal(result.craftTradesEmploymentPeople.sourceStatus, 'ILOSTAT status: Imputation');
+    assert.equal(result.plantMachineOperatorsEmploymentPeople.sourceStatus, undefined);
+    assert.equal(result.trainedIndustrialWorkforcePeople.sourceStatus, 'ILOSTAT input statuses: Imputation; Not supplied');
+    assert.equal(result.manufacturingEmploymentSharePercent.sourceStatus, 'ILOSTAT input statuses: Not supplied; Estimate');
+    assert.equal(result.craftTradesEmploymentPeople.source, 'ILOSTAT: LFS - EU Labour Force Survey');
+    assert.equal(result.trainedIndustrialWorkforcePeople.value, 6_947_994);
+    assert.equal(result.manufacturingEmploymentSharePercent.value, 18.009972);
+    const blank = parseIlostatWorkforceCsv(fixture('ilostat-occupation.csv'), fixture('ilostat-economic.csv')).countries.DE;
+    assert.equal(blank.craftTradesEmploymentPeople.sourceStatus, undefined);
+    assert.equal(blank.manufacturingEmploymentSharePercent.sourceStatus, undefined);
+    const unknown = parseIlostatWorkforceCsv(occupation.replace('2025,4602.43,I,', '2025,4602.43,Q,'), economic).countries.DE;
+    assert.equal(unknown.craftTradesEmploymentPeople.sourceStatus, 'ILOSTAT status: Code Q');
+  });
+
+  it('preserves World Bank forecasts and incomplete status coverage in a STEM cohort', () => {
+    const rows = JSON.parse(fixture('world-bank.json'));
+    rows['SE.TER.ENRR'][0].obs_status = 'F';
+    rows['SE.TER.GRAD.EN.ZS'][0].obs_status = 'F';
+    const result = parseWorldBankEducation(rows).countries.DE;
+    assert.equal(result.tertiaryEnrollmentGrossPercent.sourceStatus, 'World Bank status: Forecast');
+    assert.equal(result.stemGraduatesSharePercent.sourceStatus, 'World Bank input statuses: Forecast; Not supplied');
+    assert.equal(result.researchersPerMillion.sourceStatus, undefined);
+  });
+
+  it('selects an older common source/year instead of combining mismatched ILOSTAT rows', () => {
+    const changeLatestSecondSource = (csv, code) => csv.split('\n').map((line) => (
+      line.includes(`,${code},2025,`) ? `${line.slice(0, line.lastIndexOf(','))},Different survey` : line
+    )).join('\n');
+    const occupation = changeLatestSecondSource(fixture('ilostat-occupation.csv'), 'OCU_ISCO08_8');
+    const economic = changeLatestSecondSource(fixture('ilostat-economic.csv'), 'ECO_AGGREGATE_MAN');
+    const result = parseIlostatWorkforceCsv(occupation, economic).countries.DE;
+    assert.equal(result.trainedIndustrialWorkforcePeople.year, 2024);
+    assert.equal(result.trainedIndustrialWorkforcePeople.value, 7_056_336);
+    assert.equal(result.trainedIndustrialWorkforcePeople.source, 'ILOSTAT: LFS - EU Labour Force Survey');
+    assert.equal(result.manufacturingEmploymentSharePercent.year, 2024);
+    assert.equal(result.manufacturingEmploymentSharePercent.source, 'ILOSTAT: ILO - Modelled Estimates');
+    const noOlderRows = (csv) => csv.split('\n').filter((line) => !line.includes(',2024,')).join('\n');
+    assert.equal(parseIlostatWorkforceCsv(noOlderRows(occupation), noOlderRows(economic)).countries.DE, undefined);
+  });
+
+  it('rejects competing complete same-year sources without a row-order preference', () => {
+    const addAlternative = (csv) => `${csv.trim()}\n${csv.split('\n').filter((line) => line.includes(',DEU,') && line.includes(',2025,')).map((line) => `${line.slice(0, line.lastIndexOf(','))},Alternative survey`).join('\n')}\n`;
+    const occupation = addAlternative(fixture('ilostat-occupation.csv'));
+    const economic = addAlternative(fixture('ilostat-economic.csv'));
+    const result = parseIlostatWorkforceCsv(occupation, economic).countries.DE;
+    assert.equal(result.trainedIndustrialWorkforcePeople.year, 2024);
+    assert.equal(result.manufacturingEmploymentSharePercent.year, 2024);
+    const reverseRows = (csv) => { const [header, ...rows] = csv.trim().split('\n'); return `${header}\n${rows.reverse().join('\n')}\n`; };
+    assert.deepEqual(parseIlostatWorkforceCsv(reverseRows(occupation), reverseRows(economic)).countries.DE, result);
   });
 
   it('rejects an HTTP-200 stage that loses a required metric family', () => {
@@ -291,11 +378,12 @@ describe('demographics partial-stage publication', () => {
     });
   });
 
-  it('stamps the completion marker only after a fully fresh three-stage publish', async () => {
+  it('preserves stage coverage and only attests fully fresh completion', async () => {
     const writes = [];
-    const completeResult = await demographicsCapabilityAfterPublish(previous, async (...args) => {
+    const writeMetadata = async (...args) => {
       writes.push(args);
-    }, 1_755_500_000_000);
+    };
+    const completeResult = await demographicsCapabilityAfterPublish(previous);
     assert.deepEqual(completeResult, {
       completionState: 'OK',
       freshnessMetaPatch: {
@@ -308,24 +396,112 @@ describe('demographics partial-stage publication', () => {
         },
       },
     });
+    await recordDemographicsCapabilityCompletedRun(previous, writeMetadata, 1_755_500_000_222);
     assert.deepEqual(writes, [[
       'demographics',
       'capability-complete',
       1,
       'demographics-capability-v1',
       30 * 24 * 60 * 60,
-      1_755_500_000_000,
+      1_755_500_000_222,
     ]]);
 
     const partialWrites = [];
     const partial = structuredClone(previous);
     partial.stages.education.status = 'retained';
-    const partialResult = await demographicsCapabilityAfterPublish(partial, async (...args) => {
-      partialWrites.push(args);
-    }, 1_755_500_000_000);
+    const partialResult = await demographicsCapabilityAfterPublish(partial);
     assert.equal(partialResult.completionState, 'DEGRADED');
+    await recordDemographicsCapabilityCompletedRun(partial, async (...args) => {
+      partialWrites.push(args);
+    }, 1_755_500_000_222);
     assert.equal(partialWrites.length, 0);
   });
+});
+
+describe('demographics completion ordering through runSeed', () => {
+  for (const scenario of ['complete', 'retained', 'metadata-failure']) {
+    it(`keeps the interval gate honest for a ${scenario} publish`, async () => {
+      const canonicalKey = DEMOGRAPHICS_CAPABILITY_KEY;
+      const freshnessMetaKey = 'seed-meta:demographics:capability';
+      const completionMetaKey = 'seed-meta:demographics:capability-complete';
+      const originalFetch = globalThis.fetch;
+      const originalExit = process.exit;
+      const originalNow = Date.now;
+      const envNames = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'WM_BUNDLE_COMPLETION_META_KEY'];
+      const originalEnv = Object.fromEntries(envNames.map((name) => [name, process.env[name]]));
+      const originalListeners = new Set(process.rawListeners('SIGTERM'));
+      const redis = new Map();
+      const writes = [];
+      let now = Date.parse('2026-10-23T03:01:29.000Z');
+      const previousCompletion = JSON.stringify({ fetchedAt: now - 86_400_000, recordCount: 150 });
+      redis.set(completionMetaKey, previousCompletion);
+      const payload = buildDemographicsPayload(Object.fromEntries(['wpp', 'education', 'ilostat'].map((name) => [name, {
+        status: 'fulfilled',
+        value: { countries: { DE: { fixtureMetric: { value: 1, year: 2026, source: name } } }, fetchedAt: new Date(now).toISOString(), newestObservationYear: 2026 },
+      }])), null);
+      payload.countries = Object.fromEntries(Array.from({ length: 150 }, (_, index) => [`country-${index}`, structuredClone(payload.countries.DE)]));
+      if (scenario === 'retained') payload.stages.wpp.status = 'retained';
+
+      process.env.UPSTASH_REDIS_REST_URL = 'https://demographics-test.invalid';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture-token';
+      delete process.env.WM_BUNDLE_COMPLETION_META_KEY;
+      Date.now = () => now;
+      process.exit = (code) => { throw Object.assign(new Error(`test exit ${code}`), { exitCode: code }); };
+      globalThis.fetch = async (url, options = {}) => {
+        const request = new URL(url);
+        assert.equal(request.origin, 'https://demographics-test.invalid');
+        if (request.pathname.startsWith('/get/')) {
+          return Response.json({ result: redis.get(decodeURIComponent(request.pathname.slice(5))) ?? null });
+        }
+        const [command, key, value] = JSON.parse(options.body);
+        if (command === 'SET') {
+          if (scenario === 'metadata-failure' && key === freshnessMetaKey) {
+            return Response.json({ error: 'fixture metadata failure' }, { status: 403 });
+          }
+          writes.push(key);
+          redis.set(key, value);
+          now += 222;
+        } else if (command === 'DEL') redis.delete(key);
+        return Response.json({ result: command === 'SET' ? 'OK' : 1 });
+      };
+
+      try {
+        const run = runSeed('demographics', 'capability', canonicalKey, async () => payload, DEMOGRAPHICS_CAPABILITY_SEED_OPTIONS);
+        await assert.rejects(run, scenario === 'metadata-failure'
+          ? /freshness metadata write failed before completion/
+          : (error) => error.exitCode === 0);
+        const freshness = await readSectionFreshness({ canonicalKey, freshnessMetaKey, completionMetaKey, requireCanonical: true }, async (key) => {
+          const value = redis.get(key);
+          return value ? JSON.parse(value) : null;
+        });
+        if (scenario === 'complete') {
+          const meta = JSON.parse(redis.get(freshnessMetaKey));
+          const completion = JSON.parse(redis.get(completionMetaKey));
+          assert.ok(writes.indexOf(completionMetaKey) > writes.indexOf(freshnessMetaKey));
+          assert.ok(completion.fetchedAt >= meta.fetchedAt);
+          assert.deepEqual(freshness, { fetchedAt: meta.fetchedAt });
+        } else {
+          assert.equal(writes.includes(completionMetaKey), false);
+          assert.equal(redis.get(completionMetaKey), previousCompletion);
+          assert.equal(freshness, null);
+          if (scenario === 'retained') {
+            assert.equal(JSON.parse(redis.get(freshnessMetaKey)).coverage.status, 'partial');
+          }
+        }
+      } finally {
+        globalThis.fetch = originalFetch;
+        process.exit = originalExit;
+        Date.now = originalNow;
+        for (const [name, value] of Object.entries(originalEnv)) {
+          if (value === undefined) delete process.env[name];
+          else process.env[name] = value;
+        }
+        for (const listener of process.rawListeners('SIGTERM')) {
+          if (!originalListeners.has(listener)) process.removeListener('SIGTERM', listener);
+        }
+      }
+    });
+  }
 });
 
 describe('demographics production registration', () => {

@@ -34,8 +34,10 @@ function hasHydrationConsumer(source, key) {
 // some route other than tier hydration. Module-scoped so BOTH guards can use it —
 // the hydration-coverage test (which allows them) and the tier-freeloader test
 // (which forbids them from riding in a bundle every client downloads). #5300.
-const PENDING_CONSUMERS = new Set([ 'chokepointBaselines', 'imfMacro',
-      'imfGrowth', 'imfLabor', 'imfExternal',
+const PENDING_CONSUMERS = new Set([ 'chokepointBaselines',
+      // Legacy public bootstrap/widget contract; the dashboard now uses the
+      // source-dated movement RPC. Keep this key on-demand until that contract migrates.
+      'crossBorderArrivals',
       'portwatchChokepointsRef', 'portwatchPortActivity', 'sprPolicies', 'electricityPrices', 'jodiOil',
       'eurostatHousePrices', 'eurostatGovDebtQ', 'eurostatIndProd',
       // BIS extended dataflows are consumed via a direct scoped bootstrap

@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { hangUntilAbort } from './_lib/hang-until-abort.mjs';
 import { readFileSync } from 'node:fs';
 
 import {
@@ -17,7 +18,10 @@ import {
   asFiveFactorSnapshot,
   readFiveFactorListProjection,
   readFiveFactorSnapshot,
+  SCORECARD_CANONICAL_MIN_BUDGET_MS,
+  SCORECARD_READ_DEADLINE_MS,
 } from '../server/worldmonitor/scorecard/v1/_read-snapshot';
+import { REDIS_OP_TIMEOUT_MS, REDIS_PIPELINE_TIMEOUT_MS } from '../server/_shared/redis';
 import { runSeed } from '../scripts/_seed-utils.mjs';
 import { listRankableCountries } from '../scripts/shared/rankable-universe.mjs';
 import {
@@ -30,6 +34,7 @@ import {
   scorecardPayloadFingerprint,
   stageScorecardReadModel,
 } from '../scripts/seed-five-factor-scorecard.mjs';
+
 
 const sources = {
   population: { countries: { AA: { populationMillions: 10, year: 2024 } } },
@@ -543,13 +548,9 @@ describe('five-factor atomic snapshot', () => {
       process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
       globalThis.fetch = async (_input, init = {}) => {
         requestCount += 1;
-        return new Promise<Response>((_resolve, reject) => {
-          const signal = init.signal;
-          if (!signal) return reject(new Error('missing Redis deadline signal'));
-          const abort = () => reject(signal.reason);
-          if (signal.aborted) abort();
-          else signal.addEventListener('abort', abort, { once: true });
-        });
+        const signal = init.signal;
+        if (!signal) throw new Error('missing Redis deadline signal');
+        return hangUntilAbort(signal) as unknown as Promise<Response>;
       };
       const deadlineAtMs = Date.now() + 40;
       const startedAtMs = Date.now();
@@ -870,5 +871,127 @@ describe('five-factor atomic snapshot', () => {
         if (!originalSigterm.has(listener)) process.removeListener('SIGTERM', listener);
       }
     }
+  });
+});
+
+describe('five-factor read-model timeout fallback', () => {
+  // A timed-out read-model HMGET used to be swallowed as an empty map, so the
+  // reader started the multi-MB canonical GET with whatever milliseconds were
+  // left and threw its TimeoutError out of the reader. The canonical GET is
+  // now skipped only when the leftover budget is below what it needs.
+  const timeoutError = () => new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+
+  async function withRedisStub<T>(
+    fetchImpl: (command: unknown[] | unknown[][], init: RequestInit) => Promise<Response>,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const originalFetch = globalThis.fetch;
+    const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    try {
+      __resetFiveFactorSnapshotCacheForTests();
+      process.env.UPSTASH_REDIS_REST_URL = 'https://scorecard-test-upstash.invalid';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+      globalThis.fetch = async (_input, init = {}) =>
+        fetchImpl(JSON.parse(String(init.body)) as unknown[] | unknown[][], init);
+      return await run();
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
+      if (originalToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
+      __resetFiveFactorSnapshotCacheForTests();
+    }
+  }
+
+  const canonicalResponse = (snapshot: unknown) =>
+    new Response(JSON.stringify({ result: JSON.stringify(snapshot) }), { status: 200 });
+
+  it('derives the canonical minimum from the existing Redis and deadline constants', () => {
+    assert.equal(
+      SCORECARD_CANONICAL_MIN_BUDGET_MS,
+      Math.min(REDIS_OP_TIMEOUT_MS, SCORECARD_READ_DEADLINE_MS - REDIS_PIPELINE_TIMEOUT_MS),
+    );
+    // The deadline reserves DEADLINE - PIPELINE for the fallback after a
+    // read model that used its whole pipeline timeout; that remainder must
+    // still qualify, or a cold isolate could never reach canonical.
+    assert.ok(SCORECARD_CANONICAL_MIN_BUDGET_MS > 0);
+    assert.ok(SCORECARD_CANONICAL_MIN_BUDGET_MS < SCORECARD_READ_DEADLINE_MS - REDIS_PIPELINE_TIMEOUT_MS);
+  });
+
+  for (const [label, budgetMs] of [
+    ['the full read deadline', SCORECARD_READ_DEADLINE_MS],
+    ['the ~2s left after a full pipeline timeout', SCORECARD_READ_DEADLINE_MS - REDIS_PIPELINE_TIMEOUT_MS - 10],
+  ] as const) {
+    it(`attempts canonical on a cold isolate after a timed-out read with ${label}`, async () => {
+      const snapshot = buildFiveFactorSnapshot(['AA'], sources, '2026-08-29T00:00:00.000Z');
+      const commands: unknown[] = [];
+      const selected = await withRedisStub(async (body) => {
+        if (body[0] === 'GET') {
+          commands.push('GET');
+          return canonicalResponse(snapshot);
+        }
+        commands.push('HMGET');
+        throw timeoutError();
+      }, () => readFiveFactorSnapshot(['AA'], Date.now() + budgetMs));
+      assert.deepEqual(commands, ['HMGET', 'GET']);
+      assert.equal((selected as typeof snapshot).countries.AA?.result.countryCode, 'AA');
+    });
+  }
+
+  for (const name of ['TimeoutError', 'AbortError'] as const) {
+    it(`returns null without a canonical GET when a ${name} leaves too little budget on a cold isolate`, async () => {
+      let requestCount = 0;
+      const selected = await withRedisStub(async (_body, init) => {
+        requestCount += 1;
+        if (requestCount === 1) throw new DOMException('aborted', name);
+        return hangUntilAbort(init.signal!) as unknown as Promise<Response>;
+      }, () => readFiveFactorSnapshot(['AA'], Date.now() + 40));
+      assert.equal(selected, null);
+      assert.equal(requestCount, 1, 'a timed-out read model with leftover ms must not start the canonical GET');
+    });
+  }
+
+  it('serves the stale cohort without a canonical GET when too little budget remains', async () => {
+    const snapshot = buildFiveFactorSnapshot(['AA'], sources, '2026-08-29T00:00:00.000Z');
+    const originalNow = Date.now;
+    const commands: unknown[] = [];
+    try {
+      const selected = await withRedisStub(async (body, init) => {
+        if (body[0] === 'GET') {
+          commands.push('GET');
+          if (commands.length === 1) return canonicalResponse(snapshot);
+          return hangUntilAbort(init.signal!) as unknown as Promise<Response>;
+        }
+        commands.push('HMGET');
+        throw timeoutError();
+      }, async () => {
+        await readFiveFactorSnapshot([]);
+        // Past the 5-minute warm window, inside the 6-hour stale ceiling.
+        Date.now = () => originalNow() + 10 * 60_000;
+        commands.length = 0;
+        return readFiveFactorSnapshot(['AA'], Date.now() + 40);
+      });
+      assert.deepEqual(commands, ['HMGET'], 'no canonical GET after a timed-out read with leftover ms');
+      assert.equal((selected as typeof snapshot).countries.AA?.result.countryCode, 'AA');
+    } finally {
+      Date.now = originalNow;
+    }
+  });
+
+  it('keeps non-timeout read-model failures on the canonical path', async () => {
+    const snapshot = buildFiveFactorSnapshot(['AA'], sources, '2026-08-29T00:00:00.000Z');
+    const commands: unknown[] = [];
+    const selected = await withRedisStub(async (body) => {
+      if (body[0] === 'GET') {
+        commands.push('GET');
+        return canonicalResponse(snapshot);
+      }
+      commands.push('HMGET');
+      return new Response('upstream error', { status: 500 });
+    }, () => readFiveFactorSnapshot(['AA'], Date.now() + 40));
+    assert.deepEqual(commands, ['HMGET', 'GET'], 'an HTTP failure is not a spent deadline');
+    assert.equal((selected as typeof snapshot).countries.AA?.result.countryCode, 'AA');
   });
 });

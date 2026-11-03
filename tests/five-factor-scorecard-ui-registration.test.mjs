@@ -22,7 +22,7 @@ function supportedLocaleFiles() {
 }
 
 describe('five-factor scorecard country UI registration (#6441)', () => {
-  it('mounts an abort-aware premium card through the canonical RPC service', async () => {
+  it('mounts an abort-aware card through the canonical RPC service', async () => {
     const harness = await createCountryDeepDivePanelHarness({
       premiumAccess: true,
       scorecardResponse: {
@@ -63,40 +63,21 @@ describe('five-factor scorecard country UI registration (#6441)', () => {
     }
   });
 
-  it('does not call the premium RPC for a free user', async () => {
-    const harness = await createCountryDeepDivePanelHarness({ premiumAccess: false });
-    try {
-      const panel = harness.createPanel();
-      panel.show('Germany', 'DE', null, {});
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      assert.equal(harness.getScorecardCalls().length, 0);
-      assert.match(harness.getPanelRoot().textContent, /countryBrief\.fiveFactorScorecard\.proLocked/);
-      panel.close();
-    } finally {
-      harness.cleanup();
-    }
-  });
-
-  it('reacts to auth and entitlement changes while the scorecard is mounted', async () => {
-    const harness = await createCountryDeepDivePanelHarness({ premiumAccess: false, scorecardMode: 'deferred-ignore-abort' });
-    try {
-      const panel = harness.createPanel();
-      panel.show('Germany', 'DE', null, {});
-      assert.match(harness.getPanelRoot().textContent, /countryBrief\.fiveFactorScorecard\.proLocked/);
-
-      harness.setPremiumAccess(true, 'auth');
-      await waitFor(() => harness.getPendingScorecards().length === 1);
-      assert.match(harness.getPanelRoot().textContent, /countryBrief\.fiveFactorScorecard\.loading/);
-
-      harness.setPremiumAccess(false, 'entitlement');
-      assert.match(harness.getPanelRoot().textContent, /countryBrief\.fiveFactorScorecard\.proLocked/);
-      harness.resolveScorecard(0, {
+  it('calls the free RPC for a free user, with no Pro lock (#9742)', async () => {
+    const harness = await createCountryDeepDivePanelHarness({
+      premiumAccess: false,
+      scorecardResponse: {
         unavailable: false,
         unavailableReason: '',
         scorecard: { countryCode: 'DE', methodologyVersion: '1.0.0', computedAt: '2026-08-29T00:00:00.000Z', pillars: [] },
-      });
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      assert.match(harness.getPanelRoot().textContent, /countryBrief\.fiveFactorScorecard\.proLocked/);
+      },
+    });
+    try {
+      const panel = harness.createPanel();
+      panel.show('Germany', 'DE', null, {});
+      await waitFor(() => harness.getScorecardCalls().length === 1);
+      assert.deepEqual(harness.getScorecardCalls(), [{ countryCode: 'DE', hasSignal: true }]);
+      assert.doesNotMatch(harness.getPanelRoot().textContent, /countryBrief\.fiveFactorScorecard\.proLocked/);
       panel.close();
     } finally {
       harness.cleanup();
@@ -183,6 +164,71 @@ describe('five-factor scorecard country UI registration (#6441)', () => {
         surface: 'country-deep-dive',
         widget: 'five-factor-scorecard',
       });
+      panel.close();
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('records which premium-access arm granted a denied scorecard fetch', async () => {
+    // WORLDMONITOR-147: captureCountryDeepDiveLoadFailure attaches the
+    // caller's premium-access belief whenever a load fails with 401/403, so a
+    // denial on any widget (this scorecard included, even though it no longer
+    // gates on hasPremiumAccess() — #9742) carries which arm granted access.
+    // `api_key` (not the harness default) is the arm that proves the point —
+    // it unlocks the panel from browser-local state while asserting nothing
+    // about the signed-in account — and using a non-default value here is
+    // what stops a hardcoded tag from passing.
+    const harness = await createCountryDeepDivePanelHarness({
+      premiumAccess: true,
+      premiumGrant: 'api_key',
+      entitlementBelief: { entitlementTier: null, authRole: null },
+      scorecardMode: 'denied',
+    });
+    try {
+      const panel = harness.createPanel();
+      panel.show('Germany', 'DE', null, {});
+      await waitFor(() => harness.getSentryExceptions().length === 1);
+      const captured = harness.getSentryExceptions()[0];
+      assert.deepEqual(captured.context.tags, {
+        kind: 'country_deep_dive_load_failed',
+        surface: 'country-deep-dive',
+        widget: 'five-factor-scorecard',
+        status: '401',
+        premium_grant: 'api_key',
+      });
+      assert.deepEqual(captured.context.extra, {
+        countryCode: 'DE',
+        entitlementBelief: { entitlementTier: null, authRole: null },
+      });
+      panel.close();
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('leaves a non-denial scorecard failure carrying no account state', async () => {
+    // Preservation control for the rule above. A synthetic failure with no
+    // `statusCode` says nothing about the plan, so the diagnostic must not
+    // attach — otherwise every deadline and network blip ships the account's
+    // entitlement belief to Sentry. Mutating the denial test alone cannot
+    // catch that; this is the arm that goes red if the gate is widened.
+    const harness = await createCountryDeepDivePanelHarness({
+      premiumAccess: true,
+      premiumGrant: 'api_key',
+      scorecardMode: 'reject',
+    });
+    try {
+      const panel = harness.createPanel();
+      panel.show('Germany', 'DE', null, {});
+      await waitFor(() => harness.getSentryExceptions().length === 1);
+      const captured = harness.getSentryExceptions()[0];
+      assert.deepEqual(captured.context.tags, {
+        kind: 'country_deep_dive_load_failed',
+        surface: 'country-deep-dive',
+        widget: 'five-factor-scorecard',
+      });
+      assert.deepEqual(captured.context.extra, { countryCode: 'DE' });
       panel.close();
     } finally {
       harness.cleanup();

@@ -37,7 +37,7 @@ The system returns available satellite passes, ranked by relevance, with preview
 
 ### Conflict Verification
 
-News reports claim a military buildup near a border. The conflict layer shows increased news activity. ADS-B shows military flight patterns. Now pull satellite imagery to see if there are new vehicle concentrations, field camps, or infrastructure construction.
+News reports claim a military buildup near a border. The conflict layer shows increased news activity. ADS-B shows [military flight patterns](/blog/posts/military-flight-tracking-osint/). Now pull satellite imagery to see if there are new vehicle concentrations, field camps, or infrastructure construction.
 
 Satellite imagery provides the physical evidence that other intelligence signals suggest. See how World Monitor [tracks global conflicts in real time](/blog/posts/track-global-conflicts-in-real-time/) for the data that makes satellite verification actionable.
 
@@ -88,7 +88,7 @@ Coverage depends on satellite revisit rates and cloud conditions. Equatorial reg
 
 ## Desktop-Enhanced Experience
 
-The orbital surveillance layer is available across all platforms, with the desktop app providing the smoothest experience for high-resolution imagery browsing. The Tauri app's local Node.js sidecar handles STAC API queries efficiently, and CSP (Content Security Policy) is configured to allow satellite preview image loading from trusted sources.
+The orbital surveillance layer is available across all platforms, with the [desktop app](https://www.worldmonitor.app/docs/desktop-app) providing the smoothest experience for high-resolution imagery browsing. The Tauri app's local Node.js sidecar handles STAC API queries efficiently, and CSP (Content Security Policy) is configured to allow satellite preview image loading from trusted sources.
 
 ## How to Use It
 

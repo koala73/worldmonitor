@@ -1,0 +1,9 @@
+{
+  "recordedAt": "2026-11-02T06:00:00Z",
+  "recordedFrom": "Umami API responses for 2026-10-05 to 2026-11-01, one per UTC day, recorded 2026-11-02. Referrer days keep their top 20 rows plus every classified domain beyond them; totals drop the comparison period. No credential or token appears.",
+  "endpoints": {
+    "stats": "totals.json",
+    "metrics?type=channel": "channels.json",
+    "metrics?type=referrer": "referrers.json"
+  }
+}

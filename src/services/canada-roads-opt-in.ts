@@ -26,6 +26,14 @@ export function applyCanadaRoadsOptInMigration<T extends { canadaRoads?: boolean
     next = { ...mapLayers, canadaRoads: false };
     if (!saveMapLayers(next)) return next;
   }
-  storage.setItem(CANADA_ROADS_OPT_IN_KEY, 'done');
+  try {
+    storage.setItem(CANADA_ROADS_OPT_IN_KEY, 'done');
+  } catch {
+    // Without a durable marker, preserve explicit opt-ins on subsequent loads.
+    if (next !== mapLayers) {
+      try { saveMapLayers(mapLayers); } catch { /* Keep the original in-memory preference. */ }
+    }
+    return mapLayers;
+  }
   return next;
 }

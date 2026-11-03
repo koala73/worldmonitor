@@ -75,7 +75,7 @@ describe('IndexNow submission', () => {
     );
   });
 
-  it('keeps IndexNow coverage aligned with the committed root sitemap and blog corpus', () => {
+  it('keeps IndexNow coverage aligned with the committed root sitemap and blog corpus', async () => {
     const sitemap = readFileSync(new URL('../public/sitemap-main.xml', import.meta.url), 'utf8');
     const sitemapUrls = [...sitemap.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
       .map((match) => match[1].trim());
@@ -93,6 +93,11 @@ describe('IndexNow submission', () => {
       'https://www.worldmonitor.app/blog/authors/elie-habib/',
     ]) {
       assert.ok(wwwBatch.urls.includes(url), `${url} must be submitted`);
+    }
+    const { MACHINE_READABLE_URLS } = await import('../scripts/build-sitemap.mjs');
+    for (const url of MACHINE_READABLE_URLS) {
+      assert.ok(!sitemapUrls.includes(url), `${url} must stay out of the sitemap (#8608)`);
+      assert.ok(wwwBatch.urls.includes(url), `${url} must still be announced to IndexNow`);
     }
     assert.equal(new Set(wwwBatch.urls).size, wwwBatch.urls.length, 'www batch must not contain duplicates');
     assert.equal(new Set(apexBatch.urls).size, apexBatch.urls.length, 'apex batch must not contain duplicates');
@@ -315,17 +320,20 @@ describe('IndexNow published inventory (#8071)', () => {
   it('posts published main, nested blog and docs pages, including URLs absent from the checkout', async () => {
     const documents = publishedDocuments();
     const posts = [];
+    const endpoints = [];
     const fetchImpl = async (url, init) => {
       assert.ok(init.signal);
       assert.ok(init.headers['User-Agent']);
       if (init.method === 'POST') {
         posts.push(JSON.parse(init.body));
+        endpoints.push(url);
         return new Response(null, { status: 200 });
       }
       const config = indexNow.INDEXNOW_BATCHES.find(batch => batch.keyLocation === url);
       return new Response(config?.key ?? documents.get(url), { status: 200 });
     };
-    await indexNow.runIndexNowSubmission({ fetchImpl, endpoints: ['https://www.bing.com/IndexNow'], logger: { log() {}, error() {} } });
+    await indexNow.runIndexNowSubmission({ fetchImpl, logger: { log() {}, error() {} } });
+    assert.deepEqual(endpoints, indexNow.INDEXNOW_BATCHES.map(() => 'https://api.indexnow.org/IndexNow'));
     assert.deepEqual(posts.map(post => post.host), indexNow.INDEXNOW_BATCHES.map(batch => batch.host));
     const expectedPages = [
       ...indexNow.INDEXNOW_BATCHES.flatMap(batch => batch.urls.filter(url => !url.includes('/blog/'))),
@@ -346,12 +354,28 @@ describe('IndexNow published inventory (#8071)', () => {
     const hosts = [];
     await assert.rejects(indexNow.runIndexNowSubmission({
       batches: indexNow.INDEXNOW_BATCHES,
-      endpoints: ['https://www.bing.com/IndexNow'],
       logger: { log() {}, error() {} },
       fetchImpl: async (url, init) => {
         if (init.method === 'POST') {
           hosts.push(JSON.parse(init.body).host);
           return new Response(null, { status: hosts.length === 1 ? 503 : 200 });
+        }
+        return new Response(indexNow.INDEXNOW_BATCHES.find(batch => batch.keyLocation === url).key);
+      },
+    }), /one or more IndexNow submissions failed/);
+    assert.deepEqual(hosts, indexNow.INDEXNOW_BATCHES.map(batch => batch.host));
+  });
+
+  it('fails on a shared endpoint transport error after attempting every host', async () => {
+    const hosts = [];
+    await assert.rejects(indexNow.runIndexNowSubmission({
+      batches: indexNow.INDEXNOW_BATCHES,
+      logger: { log() {}, error() {} },
+      fetchImpl: async (url, init) => {
+        if (init.method === 'POST') {
+          hosts.push(JSON.parse(init.body).host);
+          if (hosts.length === 1) throw new TypeError('fetch failed');
+          return new Response(null, { status: 200 });
         }
         return new Response(indexNow.INDEXNOW_BATCHES.find(batch => batch.keyLocation === url).key);
       },
@@ -404,6 +428,7 @@ globalThis.fetch = async (url, init) => {
       const www = batches.find(batch => batch.host === 'www.worldmonitor.app');
       assert.ok(www.urls.includes(flagged));
       assert.ok(www.urls.includes(`${origin}/compare/new-comparison/`));
+      assert.ok(www.urls.includes(`${origin}/llms.txt`), 'the published run must keep announcing the machine-readable files');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

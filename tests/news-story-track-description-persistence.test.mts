@@ -266,11 +266,89 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     assert.strictEqual(m.get('description'), '');
   });
 
+  it('persists a link that belongs to its publisher (family-domain allow, #8398)', () => {
+    // A link on the source's curated family domains must survive the
+    // persist-time publisher gate — the gate blanks hostile links, not
+    // legitimate publisher links.
+    const item = baseItem({
+      source: 'Reuters World',
+      link: 'https://www.reuters.com/world/europe/x-123',
+    });
+    const fields = buildStoryTrackHsetFields(item, '1745000000001', 99);
+    assert.strictEqual(fieldsToMap(fields).get('link'), 'https://www.reuters.com/world/europe/x-123');
+  });
+
+  it('blanks a persisted link that leaves its publisher domain (#8398)', () => {
+    // The pentest chain: attacker-controlled RSS link persisted verbatim
+    // into story:track, then fanned out by the relay to every matching
+    // user. The persist-time gate blanks it; the title still persists so
+    // corroboration/brief signal is unchanged.
+    const hostile = baseItem({
+      source: 'Reuters World',
+      title: 'Attacker headline with off-publisher link',
+      link: 'https://evil.example/phish',
+    });
+    const fields = buildStoryTrackHsetFields(hostile, '1745000000001', 99);
+    const m = fieldsToMap(fields);
+    assert.strictEqual(m.get('link'), '');
+    assert.strictEqual(m.get('title'), 'Attacker headline with off-publisher link');
+  });
+
+  it('preserves registered feed-host links from parsing through persistence', () => {
+    const feed = __testing__.buildDigestFeedBatches('full', 'en').allEntries
+      .find(entry => entry.feed.name === 'Al Jazeera')!.feed;
+    const link = 'https://www.aljazeera.com/news/2026/9/21/peace-talks';
+    const parsed = parseRssXml(`<rss><channel><item>
+      <title>Peace talks resume after border agreement</title><link>${link}</link>
+      <pubDate>${new Date(Date.now() - 60_000).toUTCString()}</pubDate>
+    </item></channel></rss>`, feed, 'full');
+    assert.ok(parsed?.items[0]);
+    assert.equal(parsed.items[0].link, link);
+    assert.equal(fieldsToMap(buildStoryTrackHsetFields(parsed.items[0], '1745000000001', 99)).get('link'), link);
+  });
+
+  it('uses registered feed hosts rather than a forged feed URL or untrusted origin', () => {
+    const item = baseItem({
+      source: 'Al Jazeera',
+      link: 'https://evil.example/phish',
+      feedUrl: 'https://evil.example/feed',
+      originPublisher: 'Reuters',
+      originPublisherTrusted: false,
+    });
+    assert.equal(fieldsToMap(buildStoryTrackHsetFields(item, '1745000000001', 99)).get('link'), '');
+    assert.equal(fieldsToMap(buildStoryTrackHsetFields({ ...item, link: 'https://www.reuters.com/world/x' }, '1745000000001', 99)).get('link'), '');
+  });
+
+  it('blanks a persisted link for a source with no server-known publisher signal (#8398)', () => {
+    // Fail-closed: an item whose source names no curated family persists
+    // with a blank link when the feed-host leg is unavailable item-side.
+    const item = baseItem({
+      source: 'Some Brand New Feed',
+      link: 'https://somebrandnewfeed.example/a',
+    });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(item, '1745000000001', 99)).get('link'), '');
+  });
+
+  it('persists a WSJ link via the publisher-name index (#8398 review)', () => {
+    // The item-scoped persist gate has no feed URL, so the Dow Jones
+    // delivery host leg is unavailable — the publisher-name index
+    // ("Wall Street Journal" -> 'wsj' family -> wsj.com) carries it.
+    const item = baseItem({
+      source: 'Wall Street Journal',
+      link: 'https://www.wsj.com/articles/x-123',
+    });
+    assert.strictEqual(
+      fieldsToMap(buildStoryTrackHsetFields(item, '1745000000001', 99)).get('link'),
+      'https://www.wsj.com/articles/x-123',
+    );
+  });
+
   it('preserves all other canonical fields (lastSeen, currentScore, title, link, severity, lang)', () => {
     const item = baseItem({
       description: 'A body that passes the length gate and will be persisted to Redis.',
       title: 'Headline A',
-      link: 'https://x.example/a',
+      source: 'Reuters World',
+      link: 'https://www.reuters.com/world/a',
       level: 'high',
       lang: 'fr',
     });
@@ -279,7 +357,7 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     assert.strictEqual(m.get('lastSeen'), '1745000000001');
     assert.strictEqual(m.get('currentScore'), 99);
     assert.strictEqual(m.get('title'), 'Headline A');
-    assert.strictEqual(m.get('link'), 'https://x.example/a');
+    assert.strictEqual(m.get('link'), 'https://www.reuters.com/world/a');
     assert.strictEqual(m.get('severity'), 'high');
     assert.strictEqual(m.get('lang'), 'fr');
   });
@@ -487,10 +565,11 @@ describe('fetchAndParseRss — cache prefix invalidation contract', () => {
       'utf-8',
     );
     // v9→v10: warm v9 rows retain only the first five RSS entries.
+    // v10→v11 (#8398): warm v10 rows carry un-gated links.
     assert.equal(
       rssFeedCacheKey('full', 'https://example.com/rss'),
-      'rss:feed:v10:full:https://example.com/rss',
-      'rss:feed cache key must invalidate the five-entry country pool',
+      'rss:feed:v11:full:https://example.com/rss',
+      'rss:feed cache key must invalidate un-gated pre-#8398 entries',
     );
     assert.ok(
       src.includes('const cacheKey = rssFeedCacheKey(variant, feed.url);'),

@@ -27,6 +27,7 @@ description: "World Monitor 金融变体中的市场雷达、海湾国家 FDI �
 | 稳定币市场 | `GET /api/market/v1/list-stablecoin-markets` | 稳定币锚定健康面板；bootstrap 优先经由 `stablecoinMarkets`。 |
 | ETF 资金流 | `GET /api/market/v1/list-etf-flows` | BTC 现货 ETF 追踪器；bootstrap 优先经由 `etfFlows`。 |
 | 国家股票指数 | `GET /api/market/v1/get-country-stock-index` | 所选国家的国家简报股票指数卡片。 |
+| 价格历史 | `GET /api/market/v1/get-price-history` | 小组件代理使用的带日期每日收盘价（1 个月至 1 年），最多 4 个已跟踪的大宗商品、市场或海湾代码。 |
 | 海湾报价 | `GET /api/market/v1/list-gulf-quotes` | 海湾经济体面板；bootstrap 优先经由 `gulfQuotes`。 |
 | 高级股票分析 | `GET /api/market/v1/analyze-stock` | PRO 股票分析卡片,含技术面、头条、目标价与 AI 综合。 |
 | 股票分析历史 | `GET /api/market/v1/get-stock-analysis-history` | PRO 缓存 / 共享的高级分析台账。 |
@@ -61,7 +62,7 @@ description: "World Monitor 金融变体中的市场雷达、海湾国家 FDI �
 | FRED 批量 | `POST /api/economic/v1/get-fred-series-batch` | 一次调用获取宏观磁贴与 FRED 仪表盘序列。 |
 | 杂货篮价格 | `GET /api/economic/v1/list-grocery-basket-prices` | 杂货指数面板；bootstrap 优先经由 `groceryBasket`。 |
 | 巨无霸价格 | `GET /api/economic/v1/list-bigmac-prices` | 巨无霸指数面板；bootstrap 优先经由 `bigmac`。 |
-| 国家债务 | `GET /api/economic/v1/get-national-debt` | PRO 全球债务钟面板；bootstrap 优先经由 `nationalDebt`。 |
+| 国家债务 | `GET /api/economic/v1/get-national-debt` | 全球债务钟面板；bootstrap 优先经由 `nationalDebt`。免费。 |
 | 燃料价格 | `GET /api/economic/v1/list-fuel-prices` | 燃料价格面板；bootstrap 优先经由 `fuelPrices`。 |
 | BLS 序列 | `GET /api/economic/v1/get-bls-series` | 仅 BLS 的薪资与就业成本指数序列。 |
 | 经济日历 | `GET /api/economic/v1/get-economic-calendar` | 经济日历磁贴。 |

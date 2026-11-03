@@ -2,16 +2,17 @@
  * Brief carousel image endpoint (Phase 8).
  *
  * GET /api/brief/carousel/{userId}/{issueSlot}/{page}?t={token}
- *   -> 200 image/png   cover | threads | story page. Cached 7d
- *                      immutable (CDN + Telegram) — safe because the
- *                      underlying envelope is immutable for the life
- *                      of the brief key.
+ *   -> 200 image/png   cover | threads | story page. Cache-Control
+ *                      is public, max-age=604800 (7 days, matching the
+ *                      Redis envelope TTL) and is NOT immutable, so a
+ *                      BRIEF_URL_SIGNING_SECRET rotation can revoke the
+ *                      image once that window ends. CDN-Cache-Control and
+ *                      Vercel-CDN-Cache-Control carry the same policy.
  *   -> 403 on bad token (shared signer with the magazine route)
  *   -> 404 on Redis miss (no brief composed for that user/slot)
  *   -> 404 on invalid page (must be one of 0, 1, 2)
- *   -> 503 on any renderer/runtime/font failure, with
- *      Cache-Control: no-store. NEVER returns a placeholder PNG —
- *      a 1x1 blank cached 7d immutable by Telegram + CDN is worse
+ *   -> 4xx/5xx always Cache-Control: no-store. NEVER returns a
+ *      placeholder PNG — a 1x1 blank cached by Telegram + CDN is worse
  *      than a clean 503 that sendMediaGroup skips. The digest cron
  *      treats carousel failure as best-effort and still sends the
  *      long-form text message, and the next cron tick re-renders
@@ -47,16 +48,32 @@ function jsonError(
   msg: string,
   status: number,
   cors: Record<string, string>,
-  { noStore = false }: { noStore?: boolean } = {},
 ): Response {
   return new Response(JSON.stringify({ error: msg }), {
     status,
     headers: {
       'Content-Type': 'application/json',
-      ...(noStore ? { 'Cache-Control': 'no-store' } : {}),
       ...cors,
+      'Cache-Control': 'no-store',
+      'CDN-Cache-Control': 'no-store',
+      'Vercel-CDN-Cache-Control': 'no-store',
     },
   });
+}
+
+// Matches the 7-day brief envelope TTL. Not immutable: a signing-secret
+// rotation must be able to stop serving an already-fetched capability URL
+// once this window ends. @vercel/og's own Cache-Control is a year-long
+// immutable default and is replaced after ImageResponse construction
+// (passing it via extraHeaders appends a second Cache-Control).
+const CAROUSEL_CACHE_CONTROL = 'public, max-age=604800';
+
+function withCacheControl(response: Response, body: BodyInit | null): Response {
+  const headers = new Headers(response.headers);
+  headers.set('Cache-Control', CAROUSEL_CACHE_CONTROL);
+  headers.set('CDN-Cache-Control', CAROUSEL_CACHE_CONTROL);
+  headers.set('Vercel-CDN-Cache-Control', CAROUSEL_CACHE_CONTROL);
+  return new Response(body, { status: response.status, headers });
 }
 
 export default async function handler(
@@ -64,7 +81,10 @@ export default async function handler(
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<Response> {
   if (isDisallowedOrigin(req)) {
-    return new Response('Origin not allowed', { status: 403 });
+    return new Response('Origin not allowed', {
+      status: 403,
+      headers: { 'Cache-Control': 'no-store' },
+    });
   }
   const cors = getCorsHeaders(req, 'GET, OPTIONS') as Record<string, string>;
 
@@ -114,19 +134,15 @@ export default async function handler(
     envelope = await readRawJsonFromUpstash(`brief:${userId}:${issueDate}`, 3_000, true);
   } catch (err) {
     console.error('[api/brief/carousel] Upstash read failed:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/brief/carousel', step: 'envelope-read' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/brief/carousel', step: 'envelope-read' }, fingerprint: ['api/brief/carousel', 'envelope-read', err instanceof Error ? err.name : 'Error'], ctx });
     return jsonError('service_unavailable', 503, cors);
   }
   if (!envelope) return jsonError('not_found', 404, cors);
 
-  // @vercel/og sets its own default Cache-Control
-  // (`public, immutable, no-transform, max-age=31536000`). Passing
-  // another Cache-Control via extraHeaders would APPEND rather than
-  // override, producing a comma-joined duplicate. The default 1-year
-  // immutable is fine here — the underlying envelope is immutable
-  // for the life of its 7d Redis TTL, and stale-past-TTL requests
-  // just 404 at the route before reaching render. Browsers +
-  // Telegram's media cache happily reuse.
+  // @vercel/og sets Cache-Control to
+  // `public, immutable, no-transform, max-age=31536000` and extraHeaders
+  // append rather than replace it. Rebuild the Response below so the
+  // 7-day policy is the only Cache-Control a shared cache sees.
   const extraHeaders: Record<string, string> = {
     ...cors,
     'X-Content-Type-Options': 'nosniff',
@@ -139,9 +155,9 @@ export default async function handler(
       // ImageResponse doesn't expose a HEAD mode, so echo the status
       // and headers without the body. Telegram's preflight + CDN
       // validation both respect this.
-      return new Response(null, { status: 200, headers: response.headers });
+      return withCacheControl(response, null);
     }
-    return response;
+    return withCacheControl(response, response.body);
   } catch (err) {
     // AbortSignal.timeout / AbortController.abort firing somewhere inside
     // `renderCarouselImageResponse` (remote image fetch, font load, OG
@@ -160,9 +176,10 @@ export default async function handler(
     );
     captureSilentError(err, {
       tags: { route: 'api/brief/carousel', step: 'render', page: String(page) },
+      fingerprint: ['api/brief/carousel', 'render', err instanceof Error ? err.name : 'Error'],
       ctx,
       ...(isTransientTimeout ? { level: 'warning' as const } : {}),
     });
-    return jsonError('render_failed', 503, cors, { noStore: true });
+    return jsonError('render_failed', 503, cors);
   }
 }

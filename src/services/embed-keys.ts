@@ -10,6 +10,7 @@
  *
  * Generation and hashing stay client-side for the same reason they do in
  * `api-keys.ts`: the plaintext is shown once and never reaches a server log.
+ * Creation uses a live-session-gated edge route; list/revoke use Convex.
  */
 
 import {
@@ -17,7 +18,7 @@ import {
   getConvexApi,
   waitForConvexAuthForUser,
 } from './convex-client';
-import { getCurrentClerkUser } from './clerk';
+import { getClerkSessionToken, getCurrentClerkUser } from './clerk';
 import {
   assertAccountStillCurrent,
   settleAccountOperation,
@@ -86,21 +87,18 @@ export async function createEmbedKey(name: string): Promise<CreateEmbedKeyResult
   const keyPrefix = embedKeyPrefix(plaintext);
   const keyHash = await sha256Hex(plaintext);
 
-  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
-  if (!client || !api) throw new Error('Convex unavailable');
-  if (!await waitForConvexAuthForUser(userId)) {
-    throw new Error('Account changed while creating the embed key. Try again.');
-  }
-
-  const result = await settleAccountOperation(
-    userId,
-    'creating the embed key',
-    () => client.mutation(
-      (api as any).embedKeys.createEmbedKey,
-      { name: name.trim(), keyPrefix, keyHash },
-    ),
-  );
+  const token = await settleAccountOperation(userId, 'creating the embed key', getClerkSessionToken);
+  if (!token) throw new Error('Account changed while creating the embed key. Try again.');
   assertAccountStillCurrent(userId, 'creating the embed key');
+  const response = await settleAccountOperation(userId, 'creating the embed key', () => fetch('/api/user-embed-keys', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: name.trim(), keyPrefix, keyHash }),
+  }));
+  assertAccountStillCurrent(userId, 'creating the embed key');
+  const result = await settleAccountOperation(userId, 'creating the embed key', () => response.json().catch(() => null));
+  assertAccountStillCurrent(userId, 'creating the embed key');
+  if (!response.ok) throw new Error(typeof result?.error === 'string' ? result.error : 'service_unavailable');
 
   return { id: result.id, name: result.name, keyPrefix: result.keyPrefix, key: plaintext };
 }
@@ -127,10 +125,9 @@ export async function listEmbedKeys(): Promise<EmbedKeyInfo[]> {
 /**
  * Revoke an embed key by its Convex document ID.
  *
- * Unlike `revokeApiKey`, this does not bust the edge validation cache: there is
- * no ownership-checked invalidation route for `embedKeys` yet, so a revoked key
- * keeps validating for at most the 60s `CACHE_TTL_SECONDS` in
- * `server/_shared/embed-key.ts`.
+ * The Convex mutation schedules the edge validation cache drop itself, so new
+ * reads are denied once that job runs; if it fails, the entry still ages out
+ * within the 60s `CACHE_TTL_SECONDS` in `server/_shared/embed-key.ts`.
  *
  * A map frame is slower still: it already holds a `wmg_` grant good for up to
  * `EMBED_GRANT_TTL_MS` (30 minutes), and revocation only stops the NEXT mint.

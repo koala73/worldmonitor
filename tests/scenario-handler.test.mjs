@@ -33,6 +33,28 @@ function proCtx() {
   return makeCtx({ 'X-WorldMonitor-Key': 'pro-test-key' });
 }
 
+const LEGACY_JOB_ID = 'scenario:1712345678901:abcdefgh';
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+const PRO_OWNER = await sha256Hex('key:pro-test-key');
+
+function statusFetch(jobId, envelope) {
+  return async (url) => {
+    const key = decodeURIComponent(String(url).split('/get/')[1] ?? '');
+    if (key === `scenario-owner:${jobId}`) {
+      return Response.json({ result: JSON.stringify(PRO_OWNER) });
+    }
+    if (key === `scenario-result:${PRO_OWNER}:${jobId}`) {
+      return Response.json({ result: envelope == null ? null : JSON.stringify(envelope) });
+    }
+    return Response.json({ result: null });
+  };
+}
+
 let runScenario;
 let getScenarioStatus;
 let listScenarioTemplates;
@@ -117,6 +139,7 @@ describe('ScenarioService handlers', () => {
           const commands = JSON.parse(init.body);
           return Response.json(commands.map(([cmd, key, payload]) => {
             if (cmd === 'LLEN') return { result: 0 };
+            if (cmd === 'SET') return { result: 'OK' };
             if (cmd === 'RPUSH') { queue.push(JSON.parse(payload)); return { result: queue.length }; }
             const [, , iso2, hs2] = key.split(':');
             return { result: JSON.stringify({ iso2, hs2, coverage: 'flow_weighted',
@@ -124,6 +147,7 @@ describe('ScenarioService handlers', () => {
           }));
         }
         const key = decodeURIComponent(String(url).split('/get/')[1]);
+        if (key.startsWith('scenario-owner:')) return Response.json({ result: JSON.stringify(PRO_OWNER) });
         if (key === 'seed-meta:supply_chain:chokepoint-exposure') return Response.json({ result: JSON.stringify({
           manifestVersion: 1, status: 'ok', countryIds: ['DE', 'JP'], hs2Codes: ['27', '29'], fetchedAt: 1789000000000,
         }) });
@@ -134,7 +158,7 @@ describe('ScenarioService handlers', () => {
       assert.notEqual(first.jobId, second.jobId);
       for (const job of queue) {
         const result = await computeScenario(job.scenarioId, job.iso2, job.disruptionPct);
-        results.set(`scenario-result:${job.jobId}`, { status: 'done', result });
+        results.set(`scenario-result:${job.owner}:${job.jobId}`, { status: 'done', result });
         const polled = await getScenarioStatus(proCtx(), { jobId: job.jobId });
         assert.deepEqual(polled.result, result);
       }
@@ -148,12 +172,16 @@ describe('ScenarioService handlers', () => {
         calls.push({ url: String(url), body: init?.body });
         const body = JSON.parse(String(init?.body));
         // Pipeline format: [[CMD, ...args]]; LLEN returns 0, RPUSH returns new length 1.
-        const results = body.map((cmd) => cmd[0] === 'LLEN' ? { result: 0 } : { result: 1 });
+        const results = body.map((cmd) => {
+          if (cmd[0] === 'LLEN') return { result: 0 };
+          if (cmd[0] === 'SET') return { result: 'OK' };
+          return { result: 1 };
+        });
         return new Response(JSON.stringify(results), { status: 200 });
       };
       const ctx = proCtx();
       const res = await runScenario(ctx, { scenarioId: 'taiwan-strait-full-closure', iso2: '' });
-      assert.match(res.jobId, /^scenario:\d{13}:[a-z0-9]{8}$/);
+      assert.match(res.jobId, /^scenario:\d{13}:[a-f0-9]{32}$/);
       assert.equal(res.status, 'pending');
       // statusUrl preserved from the legacy v1 contract — server-computed,
       // URL-encoded jobId, safe for callers to follow directly. Locked in
@@ -173,12 +201,40 @@ describe('ScenarioService handlers', () => {
       const pushCall = calls.find((c) => String(c.body).includes('RPUSH'));
       assert.ok(pushCall, 'RPUSH pipeline must be dispatched');
       const pushed = JSON.parse(pushCall.body);
-      assert.equal(pushed[0][0], 'RPUSH');
-      assert.equal(pushed[0][1], 'scenario-queue:pending');
-      const payload = JSON.parse(pushed[0][2]);
+      assert.equal(pushed[0][0], 'SET');
+      assert.equal(pushed[0][1], `scenario-owner:${res.jobId}`);
+      assert.equal(pushed[0][2], JSON.stringify(PRO_OWNER));
+      assert.equal(pushed[1][0], 'RPUSH');
+      assert.equal(pushed[1][1], 'scenario-queue:pending');
+      const payload = JSON.parse(pushed[1][2]);
       assert.equal(payload.scenarioId, 'taiwan-strait-full-closure');
       assert.equal(payload.iso2, null);
       assert.equal(payload.disruptionPct, undefined);
+      assert.equal(payload.owner, PRO_OWNER);
+    });
+
+    it('does not queue a job whose owner binding failed (MULTI/EXEC, not a pipeline)', async () => {
+      // Fake store: /pipeline applies each command independently; /multi-exec
+      // aborts the whole EXEC when a command is rejected at queue time.
+      const queue = [];
+      globalThis.fetch = async (url, init) => {
+        const commands = JSON.parse(String(init?.body));
+        const reject = (cmd) => cmd[0] === 'SET';
+        if (String(url).endsWith('/multi-exec') && commands.some(reject)) {
+          return Response.json({ error: 'EXECABORT Transaction discarded because of previous errors.' }, { status: 400 });
+        }
+        return Response.json(commands.map((cmd) => {
+          if (cmd[0] === 'LLEN') return { result: 0 };
+          if (reject(cmd)) return { error: 'OOM command not allowed when used memory > maxmemory' };
+          if (cmd[0] === 'RPUSH') { queue.push(cmd[2]); return { result: queue.length }; }
+          return { result: 1 };
+        }));
+      };
+      await assert.rejects(
+        () => runScenario(proCtx(), { scenarioId: 'taiwan-strait-full-closure', iso2: '' }),
+        (err) => err instanceof ApiError && err.statusCode === 502,
+      );
+      assert.equal(queue.length, 0, 'an ownerless job must not reach the worker queue');
     });
 
     it('rejects when queue depth exceeds 100 with 429 ApiError', async () => {
@@ -252,13 +308,31 @@ describe('ScenarioService handlers', () => {
       assert.equal(res.result, undefined);
     });
 
+    it('returns 404 when the stored owner is a different principal', async () => {
+      const jobId = 'scenario:1712345678901:abcdefgh';
+      const otherOwner = await sha256Hex('key:someone-else');
+      globalThis.fetch = async (url) => {
+        const key = decodeURIComponent(String(url).split('/get/')[1] ?? '');
+        if (key === `scenario-owner:${jobId}`) {
+          return Response.json({ result: JSON.stringify(otherOwner) });
+        }
+        return Response.json({
+          result: JSON.stringify({
+            status: 'done',
+            result: { scenarioId: 'taiwan-strait-full-closure' },
+            completedAt: 1,
+          }),
+        });
+      };
+      await assert.rejects(
+        () => getScenarioStatus(proCtx(), { jobId }),
+        (err) => err instanceof ApiError && err.statusCode === 404,
+      );
+    });
+
     it('passes through processing status', async () => {
-      globalThis.fetch = async () =>
-        new Response(
-          JSON.stringify({ result: JSON.stringify({ status: 'processing', startedAt: 123 }) }),
-          { status: 200 },
-        );
-      const res = await getScenarioStatus(proCtx(), { jobId: 'scenario:1712345678901:abcdefgh' });
+      globalThis.fetch = statusFetch(LEGACY_JOB_ID, { status: 'processing', startedAt: 123 });
+      const res = await getScenarioStatus(proCtx(), { jobId: LEGACY_JOB_ID });
       assert.equal(res.status, 'processing');
     });
 
@@ -274,14 +348,8 @@ describe('ScenarioService handlers', () => {
         // No evaluatedRecords/requestedRecords either: an older worker did not emit them.
         topImpactCountries: [{ iso2: 'JP', totalImpact: 1500, impactPct: 100 }],
       };
-      globalThis.fetch = async () =>
-        new Response(
-          JSON.stringify({
-            result: JSON.stringify({ status: 'done', result: workerResult, completedAt: 456 }),
-          }),
-          { status: 200 },
-        );
-      const res = await getScenarioStatus(proCtx(), { jobId: 'scenario:1712345678901:abcdefgh' });
+      globalThis.fetch = statusFetch(LEGACY_JOB_ID, { status: 'done', result: workerResult, completedAt: 456 });
+      const res = await getScenarioStatus(proCtx(), { jobId: LEGACY_JOB_ID });
       assert.equal(res.status, 'done');
       assert.ok(res.result);
       assert.deepEqual(res.result.affectedChokepointIds, ['taiwan_strait']);
@@ -300,24 +368,18 @@ describe('ScenarioService handlers', () => {
     });
 
     it('marks malformed coverage unknown instead of dropping records from a complete result', async () => {
-      globalThis.fetch = async () => Response.json({ result: JSON.stringify({ status: 'done', result: {
+      globalThis.fetch = statusFetch(LEGACY_JOB_ID, { status: 'done', result: {
         coverage: { status: 'complete', countryIds: ['DE'], hs2Codes: ['27'], records: [
           { iso2: 'DE', hs2: '27', state: 'evaluated', basis: 'flow_weighted', rawImpact: null },
         ] },
-      } }) });
+      } });
       const res = await getScenarioStatus(proCtx(), { jobId: 'scenario:1712345678901:abcdefgh' });
       assert.equal(res.result.coverage.status, 'unknown');
     });
 
     it('returns failed status with error message', async () => {
-      globalThis.fetch = async () =>
-        new Response(
-          JSON.stringify({
-            result: JSON.stringify({ status: 'failed', error: 'computation_error', failedAt: 789 }),
-          }),
-          { status: 200 },
-        );
-      const res = await getScenarioStatus(proCtx(), { jobId: 'scenario:1712345678901:abcdefgh' });
+      globalThis.fetch = statusFetch(LEGACY_JOB_ID, { status: 'failed', error: 'computation_error', failedAt: 789 });
+      const res = await getScenarioStatus(proCtx(), { jobId: LEGACY_JOB_ID });
       assert.equal(res.status, 'failed');
       assert.equal(res.error, 'computation_error');
     });

@@ -211,13 +211,14 @@ describe('authorizeProHandler — happy path', () => {
     assert.equal(new URL(res.headers.get('Location')).searchParams.has('iss'), false);
   });
 
-  it('Order of Redis ops: HMAC verify → GETDEL mcp-grant → GETDEL oauth:nonce → GET oauth:client → SETEX oauth:code', async () => {
+  it('Order of Redis ops: HMAC verify → GET oauth:nonce → GETDEL mcp-grant → GETDEL oauth:nonce → GET oauth:client → SETEX oauth:code', async () => {
     const grant = await makeGrantToken();
     const { deps, ops } = await makeDeps();
     await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
 
     const opSummary = ops.map((o) => `${o.kind}:${o.key}`);
     assert.deepEqual(opSummary, [
+      `get:oauth:nonce:${NONCE}`,
       `getdel:mcp-grant:${NONCE}`,
       `getdel:oauth:nonce:${NONCE}`,
       `get:oauth:client:${CLIENT_ID}`,

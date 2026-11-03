@@ -8,7 +8,12 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, runSeed } from '../scripts/_seed-utils.mjs';
+import {
+  BUNDLE_SECTION_TIMEOUT_MS_ENV,
+  GRACEFUL_FETCH_FAILURE_EXIT_CODE,
+  markPreservableFetchFailure,
+  runSeed,
+} from '../scripts/_seed-utils.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_EXIT = process.exit;
@@ -32,6 +37,8 @@ afterEach(() => {
 let recordedCalls;
 let expireResult;
 let expirePipelineStatus;
+// Redis GET result for seed-meta reads; undefined keeps the generic OK reply.
+let seedMetaGetResult;
 
 beforeEach(() => {
   process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example.com';
@@ -39,6 +46,7 @@ beforeEach(() => {
   recordedCalls = [];
   expireResult = 0;
   expirePipelineStatus = 200;
+  seedMetaGetResult = undefined;
 
   globalThis.fetch = async (url, opts = {}) => {
     const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
@@ -46,6 +54,9 @@ beforeEach(() => {
     // Lock acquire: SET NX returns OK. Pipeline (EXPIRE) returns array. Default: OK.
     if (Array.isArray(body) && Array.isArray(body[0])) {
       return new Response(JSON.stringify(body.map(() => ({ result: expireResult }))), { status: expirePipelineStatus });
+    }
+    if (seedMetaGetResult !== undefined && String(url).includes('/get/seed-meta%3A')) {
+      return new Response(JSON.stringify({ result: seedMetaGetResult }), { status: 200 });
     }
     return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
   };
@@ -192,6 +203,86 @@ test('fetch failure extends existing TTL and exits with graceful-failure code', 
     countMetaSets('fetch-fail'), 0,
     'fetch failure must not write fresh seed-meta while reporting graceful failure',
   );
+});
+
+const MINUTE_MS = 60_000;
+const freshMeta = () => JSON.stringify({ fetchedAt: Date.now() - 30 * MINUTE_MS, recordCount: 1 });
+
+for (const scenario of [
+  { label: 'confirmed fresh retention', expected: 0 },
+  { label: 'missing last-good', retained: 0, expected: 75 },
+  { label: 'unconfirmed retention', retained: null, expected: 75 },
+  { label: 'Redis retention failure', status: 403, expected: 75 },
+  { label: 'default policy', optIn: false, expected: 75 },
+  { label: 'untagged (configuration or code) error', tagged: false, expected: 75 },
+  { label: 'last-good older than maxStaleMin', meta: () => JSON.stringify({ fetchedAt: Date.now() - 121 * MINUTE_MS }), expected: 75 },
+  { label: 'unreadable seed-meta', meta: () => 'not json', expected: 75 },
+  { label: 'bundle-runner child', bundle: true, expected: 75 },
+]) {
+  test(`fetch failure with ${scenario.label} preserves the failure and selects the correct exit`, async () => {
+    expireResult = scenario.retained === undefined ? 1 : scenario.retained;
+    expirePipelineStatus = scenario.status ?? 200;
+    seedMetaGetResult = (scenario.meta ?? freshMeta)();
+    const originalSectionTimeout = process.env[BUNDLE_SECTION_TIMEOUT_MS_ENV];
+    if (scenario.bundle) process.env[BUNDLE_SECTION_TIMEOUT_MS_ENV] = '600000';
+    let afterPublishCalls = 0;
+    let result;
+    try {
+      result = await captureSeedLogs(() => runWithExitTrap(() => runSeed(
+        'test', 'fetch-policy', 'test:fetch-policy:v1',
+        async () => {
+          const err = Object.assign(new Error('upstream unavailable'), { nonRetryable: true });
+          throw scenario.tagged === false ? err : markPreservableFetchFailure(err);
+        },
+        {
+          ttlSeconds: 3600,
+          maxStaleMin: 120,
+          allowPreservedFetchFailure: scenario.optIn ?? true,
+          afterPublish: () => { afterPublishCalls++; },
+        },
+      )));
+    } finally {
+      if (originalSectionTimeout === undefined) delete process.env[BUNDLE_SECTION_TIMEOUT_MS_ENV];
+      else process.env[BUNDLE_SECTION_TIMEOUT_MS_ENV] = originalSectionTimeout;
+    }
+
+    assert.equal(result.exitCode, scenario.expected);
+    assert.deepEqual(expireKeys(), ['test:fetch-policy:v1', 'seed-meta:test:fetch-policy']);
+    assert.equal(countSetsFor('test:fetch-policy:v1'), 0);
+    assert.equal(countMetaSets('fetch-policy'), 0);
+    assert.equal(afterPublishCalls, 0);
+    // Log markers must agree with the exit code: triage counts "Failed
+    // gracefully" as an exit-75 tick.
+    const failedGracefully = result.logs.some((line) => line.includes('=== Failed gracefully'));
+    const retainedMarker = result.logs.some((line) => line.includes('=== Refresh failed; last-good retained'));
+    assert.equal(failedGracefully, scenario.expected === 75);
+    assert.equal(retainedMarker, scenario.expected === 0);
+  });
+}
+
+test('allowPreservedFetchFailure without maxStaleMin is a contract violation', async () => {
+  const result = await captureSeedLogs(() => runWithExitTrap(() => runSeed(
+    'test', 'fetch-policy-no-stale', 'test:fetch-policy-no-stale:v1',
+    async () => ['unused'],
+    { ttlSeconds: 3600, allowPreservedFetchFailure: true },
+  )));
+  assert.equal(result.exitCode, 1);
+  assert.ok(result.errors.some((line) => line.includes('allowPreservedFetchFailure requires a positive maxStaleMin')));
+});
+
+test('allowPreservedFetchFailure does not suppress publish errors', async () => {
+  expireResult = 1;
+  await assert.rejects(
+    () => runSeed('test', 'publish-policy', 'test:publish-policy:v1', async () => ['new data'], {
+      ttlSeconds: 3600,
+      maxStaleMin: 120,
+      allowPreservedFetchFailure: true,
+      publishTransform: () => { throw new Error('fixture publish failed'); },
+    }),
+    /fixture publish failed/,
+  );
+  assert.equal(countSetsFor('test:publish-policy:v1'), 0);
+  assert.equal(countMetaSets('publish-policy'), 0);
 });
 
 test('contract RETRY hard-fails when expired keys make last-good preservation impossible', async () => {

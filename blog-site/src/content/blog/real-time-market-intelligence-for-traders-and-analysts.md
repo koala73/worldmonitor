@@ -151,4 +151,4 @@ Market data refreshes in real time during trading hours. Central bank trackers, 
 
 ---
 
-**Open Finance Monitor at [finance.worldmonitor.app](https://finance.worldmonitor.app). Your geopolitical edge starts here.**
+**Open Finance Monitor at [finance.worldmonitor.app](https://finance.worldmonitor.app/dashboard). Your geopolitical edge starts here.**

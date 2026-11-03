@@ -1,3 +1,4 @@
+import { PINNED_WEBCAMS_KEY, normalizePinnedWebcamsPreference } from '../../shared/pinned-webcams';
 import {
   ACCOUNT_PROVENANCE_PREFERENCE_KEYS,
   ROLLING_DEPLOYMENT_PREFERENCE_KEYS,
@@ -83,6 +84,9 @@ export function resolveCloudBlobKeyAction(
   data: Record<string, unknown>,
 ): CloudBlobKeyAction {
   const value = data[key];
+  if (key === PINNED_WEBCAMS_KEY && Object.prototype.hasOwnProperty.call(data, key)) {
+    return { kind: 'set', value: normalizePinnedWebcamsPreference(value) };
+  }
   if (typeof value === 'string') return { kind: 'set', value };
   if (!(key in data) && !ABSENCE_TOLERANT_SYNC_KEYS.has(key)) return { kind: 'remove' };
   return { kind: 'keep' };

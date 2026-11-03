@@ -16,6 +16,7 @@ import {
   unverifiableEntitlementDenial,
   type EntitlementCheckOptions,
 } from './entitlement-check';
+import { hasCurrentEntitlementCoverage } from './entitlement-coverage';
 
 type ProEntitlementDecision =
   | { allowed: true }
@@ -42,13 +43,13 @@ export async function checkTierProEntitlement(
   corsHeaders: Record<string, string>,
   loadEntitlements: EntitlementLoader = getEntitlements,
 ): Promise<ProEntitlementDecision> {
-  // Preserves the exact tier check these handlers already ran
-  // inline (tier >= 1, no validUntil check) — this intentionally does NOT
-  // match checkEntitlementDetailed, which additionally requires
-  // `validUntil >= Date.now()`. Unifying that gap is a separate concern from
-  // this PR's Clerk-role fix.
+  // Tier alone is not a grant. The entitlement cache serves a billing-marker
+  // row for its whole TTL without re-checking validUntil ("consumers must
+  // check expiry before granting access"), so a paid fallback that lapses
+  // inside that window would otherwise stay Pro here. Same coverage rule as
+  // resolvePremiumCallerIdentity and the gateway's legacy Pro bearer gate.
   const entitlements = await loadEntitlements(userId);
-  if (entitlements && entitlements.features.tier >= 1) {
+  if (hasCurrentEntitlementCoverage(entitlements) && entitlements.features.tier >= 1) {
     return { allowed: true };
   }
 

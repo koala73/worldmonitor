@@ -213,7 +213,11 @@ describe('research report corpus (#5668)', () => {
     assert.match(hubHtml, new RegExp(`href="/research/${report.slug}/"`));
     assert.match(html, /href="\/docs\/methodology\/chokepoints"/);
     assert.match(html, /href="\/chokepoints\/strait-of-hormuz\/"[^>]*data-umami-event-target="chokepoint-page"/);
-    assert.match(html, /utm_source=research-report/);
+    // Attribution rides the data-umami-event-target attribute, not a query
+    // key: a utm_* key on a published href is a 308 hop through the
+    // middleware index-noise strip (#8603).
+    assert.match(html, /href="https:\/\/www\.worldmonitor\.app\/pro"[^>]*data-umami-event-target="pricing"/);
+    assert.doesNotMatch(html, /utm_source=/, 'research CTAs must not carry utm_source; middleware 308s it away');
     assert.doesNotMatch(html, /[?&]ref=/, 'research CTAs must never use the affiliate ref= param');
     const [reportLd] = jsonLdObjects(html);
     for (const distribution of reportLd.hasPart.distribution) {
@@ -236,6 +240,17 @@ describe('research report corpus (#5668)', () => {
       html.match(/og:image:alt" content="([^"]+)"/)[1],
       /^World Monitor — real-time global intelligence dashboard/,
       'report OG alt must describe the report, not the generic site card',
+    );
+  });
+
+  it('points the dated direct answer at the live chokepoint page', () => {
+    const summary = html.match(/<section id="summary">([\s\S]*?)<\/section>/)?.[1];
+    assert.ok(summary, 'report must render a summary section');
+    const focus = snapshot.chokepoints[report.focusChokepointId];
+    assert.match(
+      summary,
+      new RegExp(`through ${focus.observationEnd}[^<]*<a href="/chokepoints/strait-of-hormuz/"[^>]*data-umami-event-target="chokepoint-page"`),
+      'the direct answer must say how old it is and link the live status page next to it',
     );
   });
 

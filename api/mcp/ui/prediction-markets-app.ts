@@ -1,22 +1,3 @@
-// MCP Apps (extension `io.modelcontextprotocol/ui`, spec 2026-01-26) — the
-// interactive app shell for the `get_prediction_markets` tool: active event-
-// contract odds grouped by category (geopolitical / tech / finance), each with a
-// probability bar. Built on the shared shell foundation.
-//
-// Tool result shape (cache tool — content[0].text JSON, freshness envelope).
-// The tool serves the raw `prediction:markets-bootstrap:v1` cache value under
-// label `markets-bootstrap`; bucket items carry `yesPrice` (a 0-100 percentage,
-// see src/components/PredictionPanel.ts) — NOT `probability`:
-//   { cached_at, stale, data: {
-//       "markets-bootstrap": {
-//         geopolitical: [{ title, source, yesPrice }],
-//         tech:         [{ title, source, yesPrice }],
-//         finance:      [{ title, source, yesPrice }] } } }
-// A bucket may be empty (category / query / source filters narrow the bundle).
-// Odds are shown as a percentage only — never dollar volume/liquidity.
-//
-// textContent-only rendering; renderBody stays backtick/`${`/regex-free.
-
 import { buildAppHtml } from './shell';
 
 const STYLES = `
@@ -25,10 +6,23 @@ const STYLES = `
   .sec-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; }
   .mkt { padding: 7px 0; border-bottom: 1px solid var(--border); }
   .mkt:last-child { border-bottom: none; }
+  .mkt:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
   .mkt-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   .mkt-title { font-size: 13px; color: var(--fg); min-width: 0; }
   .mkt-prob { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; white-space: nowrap; }
-  .mkt-src { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-top: 2px; }
+  .mkt-src { font-size: 10px; letter-spacing: 0.05em; color: var(--muted); }
+  .mkt-title { overflow-wrap: anywhere; }
+  a.mkt-title { text-decoration: none; }
+  a.mkt-title:hover { text-decoration: underline; }
+  .mkt-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; color: var(--muted); font-size: 11px; margin-top: 4px; }
+  .mkt-conviction { color: var(--muted); }
+  .conv-yes, .mkt-yes { color: var(--accent); }
+  .conv-no, .mkt-no { color: var(--severe); }
+  .mkt-outcomes { display: flex; justify-content: space-between; font-size: 11px; margin-top: 5px; }
+  .mkt .pbar { background: color-mix(in srgb, var(--severe) 30%, var(--border)); }
+  .mkt-count { color: var(--muted); font-size: 11px; margin-left: 8px; text-transform: none; letter-spacing: 0; }
+  .mkt-coverage { font-size: 12px; }
+  .mkt-more { margin: 8px 0; padding: 6px 10px; border: 1px solid var(--border); border-radius: 5px; background: transparent; color: var(--fg); cursor: pointer; }
 `;
 
 const BODY = `
@@ -45,7 +39,9 @@ const BODY = `
 
 const RENDER = `
     if (!data || typeof data !== "object") return;
-    var d = data.data && typeof data.data === "object" ? data.data : data;
+    var value = Object.prototype.hasOwnProperty.call(data, "projection") ? data.projection : data;
+    var envelope = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    var d = envelope.data && typeof envelope.data === "object" ? envelope.data : envelope;
     q("empty").style.display = "none";
     q("card").style.display = "block";
 
@@ -57,35 +53,105 @@ const RENDER = `
     ];
     var host = q("groups");
     host.textContent = "";
-    for (var g = 0; g < buckets.length; g++) {
-      var cfg = buckets[g];
-      var list = listState(mb && mb[cfg.key]).items;
-      if (!list || !list.length) continue;
-      var sec = el("div", "mgroup");
-      sec.appendChild(el("div", "sec-label", cfg.label));
-      for (var i = 0; i < list.length && i < 6; i++) {
-        var m = list[i];
-        if (!m || typeof m !== "object") continue;
-        var mkt = el("div", "mkt");
-        var head = el("div", "mkt-head");
-        head.appendChild(el("span", "mkt-title", collapseWs(m.title) || "Market"));
-        var p = num(m.yesPrice);
-        var pct = p == null ? null : p; // yesPrice is already a 0-100 percentage — no scaling
-        head.appendChild(el("span", "mkt-prob", pct == null ? "—" : Math.round(pct) + "%"));
-        mkt.appendChild(head);
-        var bar = probabilityBar(pct);
-        if (bar) mkt.appendChild(bar);
-        var src = collapseWs(m.source);
-        if (src) mkt.appendChild(el("div", "mkt-src", src));
-        sec.appendChild(mkt);
+    function appendMarket(sec, m) {
+      if (!m || typeof m !== "object") return;
+      var mkt = el("div", "mkt");
+      var head = el("div", "mkt-head");
+      var href = httpUrl(m.source === "kalshi" ? m.displayUrl ?? m.url : m.url);
+      var title = el(href ? "a" : "span", "mkt-title", collapseWs(m.title) || "Market");
+      if (href) { title.href = href; title.target = "_blank"; title.rel = "noopener noreferrer"; }
+      head.appendChild(title);
+      var p = num(m.yesPrice);
+      var pct = p == null ? null : Math.round(clampPct(p));
+      head.appendChild(el("span", "mkt-prob", pct == null ? "—" : pct + "%"));
+      mkt.appendChild(head);
+      var meta = el("div", "mkt-meta");
+      var src = collapseWs(m.source);
+      if (src) meta.appendChild(el("span", "mkt-src", src === "kalshi" ? "Kalshi" : src === "polymarket" ? "Polymarket" : src));
+      var volume = num(m.volume);
+      if (volume != null && volume > 0) {
+        var amount = volume >= 1000000 ? (volume / 1000000).toFixed(1) + "M"
+          : volume >= 1000 ? (volume / 1000).toFixed(0) + "K" : volume.toFixed(0);
+        meta.appendChild(el("span", "mkt-volume", "Vol: $" + amount));
       }
+      if (typeof m.endDate === "string") {
+        var closes = new Date(m.endDate);
+        if (Number.isFinite(closes.getTime())) meta.appendChild(el("span", "mkt-closes", "Closes: " + closes.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })));
+      }
+      if (pct != null) meta.appendChild(el("span", "mkt-conviction " + (pct >= 60 ? "conv-yes" : pct <= 40 ? "conv-no" : "conv-neutral"), pct >= 60 ? "Lean Yes" : pct <= 40 ? "Lean No" : "Toss-up"));
+      mkt.appendChild(meta);
+      var outcomes = el("div", "mkt-outcomes");
+      outcomes.appendChild(el("span", "mkt-yes", "Yes " + (pct == null ? "—" : pct + "%")));
+      outcomes.appendChild(el("span", "mkt-no", "No " + (pct == null ? "—" : (100 - pct) + "%")));
+      mkt.appendChild(outcomes);
+      var bar = probabilityBar(pct);
+      if (bar) mkt.appendChild(bar);
+      sec.appendChild(mkt);
+    }
+    function plural(n, word) { return n.toLocaleString("en-US") + " " + word + (n === 1 ? "" : "s"); }
+    function listNames(names) {
+      return names.length < 2 ? names.join("") : names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+    }
+    var unavailable = [];
+    var unsampled = [];
+    for (let g = 0; g < buckets.length; g++) {
+      let cfg = buckets[g];
+      let raw = mb && mb[cfg.key];
+      let state = listState(raw);
+      let list = state.items;
+      let reported = raw && !Array.isArray(raw) ? num(raw.count) : null;
+      if (!state.available) unavailable.push(cfg.label);
+      if (!list.length) {
+        if (reported != null && reported > 0) unsampled.push(cfg.label + ": " + plural(Math.floor(reported), "market") + " reported, but none were included to show.");
+        continue;
+      }
+      let sec = el("div", "mgroup");
+      let label = el("div", "sec-label", cfg.label);
+      let total = reported == null ? list.length : Math.max(list.length, Math.floor(reported));
+      label.appendChild(el("span", "mkt-count", plural(total, "market")));
+      sec.appendChild(label);
+      for (var i = 0; i < list.length && i < 6; i++) appendMarket(sec, list[i]);
+      if (list.length > 6) {
+        let more = el("button", "mkt-more", "Show " + (list.length - 6) + " more");
+        more.type = "button";
+        more.onclick = function () {
+          var firstNew = sec.querySelectorAll(".mkt").length;
+          more.remove();
+          for (var j = 6; j < list.length; j++) appendMarket(sec, list[j]);
+          var target = sec.querySelectorAll(".mkt")[firstNew];
+          if (target) { target.tabIndex = -1; target.focus(); }
+          reportSize();
+        };
+        sec.appendChild(more);
+      }
+      // A summary carries a sample; say so rather than imply the list is whole.
+      if (list.length < total) sec.appendChild(el("div", "empty mkt-coverage", "Showing " + list.length + " of " + total + "; the rest were not included in this response."));
       host.appendChild(sec);
     }
-    if (!host.childNodes.length) host.appendChild(el("div", "empty", "No prediction markets available."));
+    if (!host.childNodes.length && !unsampled.length) host.appendChild(el("div", "empty",
+      unavailable.length === buckets.length ? "Prediction data unavailable."
+        : unavailable.length ? "No markets in the categories that loaded."
+        : "No markets in this response."));
+    if (unavailable.length) host.appendChild(el("div", "empty mkt-coverage", listNames(unavailable) + " markets were not included or could not be loaded."));
+    unsampled.forEach(function (notice) { host.appendChild(el("div", "empty mkt-coverage", notice)); });
 
-    q("foot").textContent = data.cached_at
-      ? "Snapshot: " + collapseWs(data.cached_at) + (data.stale ? " (stale)" : "")
-      : "";
+    var updated = envelope.cached_at ? utcTime(envelope.cached_at) || collapseWs(envelope.cached_at) : "";
+    var notices = [updated ? "Updated " + updated : "Update time unknown"];
+    if (envelope.stale) notices[0] += " (out of date)";
+    if (envelope.freshnessUnknown) notices.push("Freshness could not be checked");
+    if (envelope.degraded || mb && mb.degraded) notices.push("Some market sources failed");
+    // Error codes such as "kalshi_fetch_failed" name the source in plain
+    // words; other error text is not shown to the reader.
+    var sourceError = collapseWs(envelope.error || mb && mb.error);
+    if (sourceError) {
+      var failedSuffix = "_fetch_failed";
+      var failedName = sourceError.length > failedSuffix.length && sourceError.slice(-failedSuffix.length) === failedSuffix
+        ? sourceError.slice(0, -failedSuffix.length) : "";
+      var sourceNames = { kalshi: "Kalshi", polymarket: "Polymarket" };
+      notices.push(Object.prototype.hasOwnProperty.call(sourceNames, failedName)
+        ? sourceNames[failedName] + " could not be reached" : "A market source reported an error");
+    }
+    q("foot").textContent = notices.join(" · ");
 `;
 
 export const PREDICTION_MARKETS_APP_HTML = buildAppHtml({

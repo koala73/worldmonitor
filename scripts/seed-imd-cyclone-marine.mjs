@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * IMD cyclone, port, coastal, and marine seeder (#7005).
+ * IMD marine bulletin seeder (#7005), parsed from IMD's public pages (#7730).
  *
  * Does not write the NWS/ECCC/SWIC weather-alerts key.
  */
@@ -11,7 +11,6 @@ import {
   IMD_CANONICAL_KEY,
   IMD_MAX_CONTENT_AGE_MIN,
   IMD_SOURCE_VERSION,
-  createImdProxyFetch,
   declareImdRecords,
   fetchImdCycloneMarine,
   imdAfterPublish,
@@ -19,6 +18,8 @@ import {
   shouldActivateImdSnapshot,
   validateImdEnvelope,
 } from './lib/imd-cyclone-marine.mjs';
+
+import { createImdFailureCapture } from './lib/imd-failure-evidence.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -39,7 +40,7 @@ async function markImdActivated(data) {
   return result;
 }
 
-async function fetchSnapshot() {
+async function fetchSnapshot({ runStartedAtMs } = {}) {
   let previous = null;
   try {
     const existing = await readCanonicalValue(IMD_CANONICAL_KEY);
@@ -47,8 +48,13 @@ async function fetchSnapshot() {
   } catch (err) {
     console.warn(`imd-cyclone-marine: last-good read failed: ${err.message || err}`);
   }
-  const fetchFn = createImdProxyFetch(process.env.PROXY_URL);
-  return fetchImdCycloneMarine({ userAgent: CHROME_UA, previous, fetchFn });
+  let captureFailure;
+  try {
+    captureFailure = await createImdFailureCapture({ directory: process.env.IMD_FAILURE_EVIDENCE_DIR, runStartedAtMs });
+  } catch {
+    console.warn('imd-cyclone-marine: failure evidence unavailable');
+  }
+  return fetchImdCycloneMarine({ userAgent: CHROME_UA, previous, captureFailure });
 }
 
 runSeed('weather', 'imd-cyclone-marine', IMD_CANONICAL_KEY, fetchSnapshot, {

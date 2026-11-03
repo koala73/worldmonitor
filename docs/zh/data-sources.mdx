@@ -34,12 +34,12 @@ World Monitor 将上游主机——结构化 API、新闻与 OSINT 订阅源、�
 - 情报热点并关联新闻
 - 社会动荡事件（双源：ACLED 抗议 + GDELT 地理事件，经 Haversine 半正矢公式去重）
 - 制裁机制
-- 难民与流离失所流向（联合国 OCHA HAPI）
+- 难民与流离失所流向（UNHCR、IDMC、IOM DTM）以及跨境流动（UNHCR 门户、英国内政部、美国 CBP、Frontex、巴拿马）
 - 来自三个国家机构以及大使馆与卫生机构源的政府旅行公告
 - 以色列后方司令部（OREF）火箭弹与无人机警报实时监测
 - 预测市场概率作为先行指标（Polymarket）
 - 地缘政治边界叠加层 — 朝鲜 DMZ（基于《朝鲜停战协定》的 43 点闭合环多边形），并带有类型的边界类别（非军事区、停火、争议、停战）和信息弹窗
-- 伊朗冲突事件 — 来自 LiveUAMap 的地理编码袭击、打击和军事事件，并带严重性分级
+- 中东打击 — 沙特阿拉伯、也门、伊朗、伊拉克、海湾国家和黎凡特地区的导弹、无人机和空袭及拦截事件，从精选 Telegram 频道中提取（先关键词预筛，再由 AI 分类），并以 GDELT 事件导出作为补充；交战方官方媒体的报道只有在独立来源印证后才会发布
 
 **主要提供商**
 
@@ -77,14 +77,18 @@ World Monitor 将上游主机——结构化 API、新闻与 OSINT 订阅源、�
 
 抗议评分是体制感知的：民主国家使用对数缩放（常规抗议不会触发动荡），而威权国家使用线性评分（每次抗议都很重要）。死亡人数和并发互联网中断应用严重性加成。
 
-ACLED 需要鉴权：在 API 项目上设置 `ACLED_EMAIL` + `ACLED_PASSWORD`（OAuth，自动刷新）或一个静态 `ACLED_ACCESS_TOKEN`。当 ACLED 鉴权缺失时，获取会优雅降级为空结果 — 但 ACLED 也是国家不稳定指数的**实时冲突来源**，因此没有它，CII 冲突评分会回退到仅 UCDP。由于 UCDP GED 的年度版本滞后约 7 个月，UCDP 种子任务还会发现最新的月度 **GED Candidate** 版本（`YY.0.M`，约一个月滞后发布）并将其合并到年度基线之上 — candidate 提供近期性，年度基线提供 2 年窗口所需的深度，发布负载为两者都保留槽位。这使近期冲突事件保持在 CII 2 年时效窗口内，但当 UCDP 本身静默或 candidate 合并降级时，`riskScores` 健康/缓存信号仍可能读到 `COVERAGE_PARTIAL`（网络与新闻族仍覆盖，因此该指标读数为 3 之 2）。发生这种情况时，`get-risk-scores` RPC 会记录一条 `[CII] ACLED returned 0 events` 警告。当 candidate 合并停止工作时，`seed-meta:conflict:ucdp-events` 携带 `candidateVersion: null`，内容年龄三元组会将 `ucdpEvents` 健康条目驱动为 `STALE_CONTENT`。
+ACLED 需要鉴权：在 API 项目上设置 `ACLED_EMAIL` + `ACLED_PASSWORD`（OAuth，自动刷新）或一个静态 `ACLED_ACCESS_TOKEN`。当 ACLED 鉴权缺失时，获取会优雅降级为空结果 — 但 ACLED 也是国家不稳定指数的**实时冲突来源**，因此没有它，CII 冲突评分会回退到仅 UCDP。由于 UCDP GED 的年度版本滞后约 7 个月，UCDP 种子任务还会发现最新的月度 **GED Candidate** 版本（`YY.0.M`，约一个月滞后发布）并将其合并到年度基线之上 — candidate 提供近期性，年度基线提供 2 年窗口所需的深度，发布负载为两者都保留槽位。这使近期冲突事件保持在 CII 2 年时效窗口内，但当 UCDP 本身静默或 candidate 合并降级时，`riskScores` 健康/缓存信号仍可能读到 `COVERAGE_PARTIAL`（只有新闻族仍覆盖，因此该指标读数为 2 之 1；网络族自 CII v14 起不再计入）。发生这种情况时，`get-risk-scores` RPC 会记录一条 `[CII] ACLED returned 0 events` 警告。当 candidate 合并停止工作时，`seed-meta:conflict:ucdp-events` 携带 `candidateVersion: null`，内容年龄三元组会将 `ucdpEvents` 健康条目驱动为 `STALE_CONTENT`。
 
 ### 流离失所跟踪
 
-难民和流离失所数据来自联合国 OCHA 人道主义 API（HAPI），提供难民、寻求庇护者和境内流离失所者（IDP）的人口级计数。流离失所面板提供两个视角：
+流离失所面板为每个来源提供单独的标签页。每个来源独立加载和刷新，因此某个标签页的数据一到即可显示：
 
-- **来源地** — 人们逃离的国家，按流出量排名
-- **接收地** — 吸收流离失所人口的国家，按接收量排名
+- **来源地**和**接收地** — UNHCR Population API 的年度难民、寻求庇护者和境内流离失所者（IDP）计数，分别按流出量（人们逃离的国家）和接收量（收容他们的国家）排名
+- **近期** — IDMC 境内流离失所更新（IDU）中的新增境内流离失所事件，读取自 IDMC 在 HDX 上发布的各国文件。IDMC 录入数据的中位延迟约为三周，因此最近一周的数据总是不完整
+- **境内** — IOM 流离失所追踪矩阵（DTM）按一级行政区的境内流离失所数据。每个行动只保留最新一轮调查，同一国家内重叠的行动从不相加
+- **跨境** — 带来源日期的流动数据，来自 UNHCR 业务数据门户、英国内政部每日小船抵达数据、美国 CBP 西南边境遭遇数据、Frontex 每月检测数据和巴拿马达连抵达数据。每个数字保留其来源的报告日期。遭遇和检测统计的是事件，而非独立人数。路线方法和许可见[跨境流动](https://github.com/koala73/worldmonitor/blob/main/docs/cross-border-movements.md)
+
+某国 IDMC 境内流离失所激增会作为跨源信号发出。新鲜且经来源确认的跨境抵达激增会为该国 CII 一次性加 5 分（自公式 v13 起）。
 
 危机徽章标记极端流离失所国家：> 100 万流离失所（红色）、> 50 万（橙色）。流离失所流出量作为组成信号进入 CII — 高流离失所是动荡的滞后指标，即使头条新闻已转移，它仍会持续。
 
@@ -157,7 +161,6 @@ Polymarket 地缘政治市场使用基于标签的过滤器（乌克兰、伊朗
 |----------|------|------|
 | CelesTrak | 用于轨道跟踪的卫星 TLE 数据 | [celestrak.org](https://celestrak.org) |
 | gpsjam.org | 基于 ADS-B 的 GPS 干扰网格 | [gpsjam.org](https://gpsjam.org) |
-| LiveUAMap | 地理编码冲突事件（伊朗战区） | [liveuamap.com](https://liveuamap.com) |
 
 深入阅读：[军事跟踪](/zh/military-tracking) · [海事情报](/zh/maritime-intelligence) · [轨道监视](/zh/orbital-surveillance)
 
@@ -196,14 +199,14 @@ GPS 干扰和欺骗 — 在冲突区域越来越多地被用作电子战 — 通
 
 `listFeedDigest` RPC 端点将所有源在服务端聚合成单个分类响应，而不是让每个客户端浏览器通过单独的边缘函数调用独立获取数十个 RSS 源。
 
-下面的公开服务端摘要源清单以 `server/worldmonitor/news/v1/_feeds.ts` 为来源依据；该代码文件仍是精确 URL、Google News 查询封装和特定区域 URL 参数的权威来源。源选择在此刻意可见，以便区域覆盖、官方来源纳入以及诸如 `Trump - Truth Social` 等政治敏感纳入项可供审阅，而非隐藏在一个通用的"RSS"标签之后。按语言限定的源以其语言代码标记，仅当请求语言匹配时才纳入。`full` 变体还在 `intel` 类别下追加 `INTEL_SOURCES`。
+下面的公开服务端摘要源清单以 `shared/news-catalog.json`（各信息源的服务端放置）为来源依据；该目录是精确 URL、Google News 查询封装和特定区域 URL 参数的权威来源。源选择在此刻意可见，以便区域覆盖、官方来源纳入以及诸如 `Trump - Truth Social` 等政治敏感纳入项可供审阅，而非隐藏在一个通用的"RSS"标签之后。按语言限定的源以其语言代码标记，仅当请求语言匹配时才纳入。`full` 变体还在 `intel` 类别下追加 `INTEL_SOURCES`。
 
 | 变体 | 类别 | 服务端源 |
 | --- | --- | --- |
-| `full` | `politics` | BBC World; Guardian World; AP News; Reuters World; CNN World; Trump - Truth Social |
+| `full` | `politics` | BBC World; Guardian World; AP News; Reuters World; CNN World; Trump - Truth Social; New York Times World; Washington Post World; The Economist; The Independent |
 | `full` | `us` | Reuters US; NPR News; PBS NewsHour; ABC News; CBS News; NBC News; Wall Street Journal; Politico; The Hill; Axios; CBC News; Globe and Mail; Global News |
-| `full` | `europe` | France 24; EuroNews; Le Monde; DW News; Tagesschau (de); ANSA (it); NOS Nieuws (nl); SVT Nyheter (sv); Yle News; NRK; Aftenposten; DR Nyheder; Arctic Today; Telex (hu); Index.hu (hu); HVG (hu); 444.hu (hu); 24.hu (hu); Híradó (hu); Portfolio.hu (hu); ATV (hu); Seznam Zprávy (cs); N1 Croatia (hr); Index.hr (hr); Jutarnji list (hr); Balkan Insight; Digi24 (ro); HotNews (ro); G4Media (ro); Dnevnik (bg); Kyiv Independent; Ukrinform; Suspilne; Ukrainska Pravda EN; NV EN; Hromadske EN; Ukrainska Pravda (uk); Hromadske (uk); Bihus.Info (uk); Slidstvo.Info (uk); ZN.UA (uk); TVN24; Rzeczpospolita; Meduza; Moscow Times; Civil.ge; OC Media; JAMnews; Azertag; Armenpress; Zerkalo; NewsMaker (ru); Ziarul de Gardă (ro); ERR News; LRT English; LSM English; Daily Sabah; Hurriyet (tr); Polsat News (pl); PAP (pl); Gazeta Wyborcza (pl); Polityka (pl); Onet (pl); OKO.press (pl); TVP Info (pl); Kathimerini (el); Naftemporiki (el); in.gr (el); iefimerida (el); Proto Thema (el); ERT (el); AMNA (el); Ta Nea (el); Liberal GR (el); CNN Greece (el) |
-| `full` | `middleeast` | BBC Middle East; Al Jazeera; Al Arabiya; Guardian ME; BBC Persian (fa); Iran International; Haaretz; Jerusalem Post; Ynetnews; Arab News; The National; Oman Observer; Asharq Business; Rudaw; Yemen Online; Sana'a Center; Syria Direct; Enab Baladi English; +972 Magazine; WAFA English; Naharnet Lebanon; L'Orient Today; Annahar (ar); Libya Herald; Egypt Independent; Mada Masr |
+| `full` | `europe` | France 24; EuroNews; Le Monde; DW News; Tagesschau (de); ANSA (it); NOS Nieuws (nl); SVT Nyheter (sv); Yle News; NRK; Aftenposten; DR Nyheder; Arctic Today; Telex (hu); Index.hu (hu); HVG (hu); 444.hu (hu); 24.hu (hu); Híradó (hu); Portfolio.hu (hu); ATV (hu); Seznam Zprávy (cs); N1 Croatia (hr); Index.hr (hr); Jutarnji list (hr); Balkan Insight; Digi24 (ro); HotNews (ro); G4Media (ro); Dnevnik (bg); Kyiv Independent; Ukrinform; Suspilne; Ukrainska Pravda EN; NV EN; Hromadske EN; Ukrainska Pravda (uk); Hromadske (uk); Bihus.Info (uk); Slidstvo.Info (uk); ZN.UA (uk); TVN24; Rzeczpospolita; Meduza; Moscow Times; Civil.ge; OC Media; JAMnews; Azertag; Armenpress; Zerkalo; NewsMaker (ru); Ziarul de Gardă (ro); ERR News; LRT English; LSM English; Daily Sabah; Hurriyet (tr); Polsat News (pl); PAP (pl); Gazeta Wyborcza (pl); Polityka (pl); Onet (pl); OKO.press (pl); TVP Info (pl); Kathimerini (el); Naftemporiki (el); in.gr (el); iefimerida (el); Proto Thema (el); ERT (el); AMNA (el); Ta Nea (el); Liberal GR (el); CNN Greece (el); Sky News; BBC UK; BBC Northern Ireland |
+| `full` | `middleeast` | BBC Middle East; Al Jazeera; Al Arabiya; Guardian ME; BBC Persian (fa); Iran International; Haaretz; Jerusalem Post; Ynetnews; Arab News; The National; Oman Observer; Asharq Business; Rudaw; Yemen Online; Sana'a Center; Syria Direct; Enab Baladi English; +972 Magazine; WAFA English; Naharnet Lebanon; L'Orient Today; Annahar (ar); Libya Herald; Egypt Independent; Mada Masr; Times of Israel; Middle East Eye |
 | `full` | `tech` | Hacker News; Ars Technica; The Verge; MIT Tech Review |
 | `full` | `ai` | AI News; VentureBeat AI; The Verge AI; MIT Tech Review; ArXiv AI |
 | `full` | `finance` | CNBC; MarketWatch; Yahoo Finance; Financial Times; Reuters Business |
@@ -211,11 +214,12 @@ GPS 干扰和欺骗 — 在冲突区域越来越多地被用作电子战 — 通
 | `full` | `gov` | White House; White House Actions; State Dept; Pentagon; Federal Reserve; SEC; UN News; CISA; Treasury; DOJ |
 | `full` | `africa` | BBC Africa; Africa News; Sahel Crisis; News24; Africanews; Jeune Afrique (fr); Premium Times; Vanguard Nigeria; Channels TV; Daily Trust; ThisDay; Radio Tamazuj; The Reporter Ethiopia; Ethiopia Insight; Dabanga Sudan; Hiiraan Online; Actualite.cd (fr); Radio Okapi (fr); MyJoyOnline; Citi Newsroom; Le Quotidien (fr); RFI Afrique; Studio Tamani (fr); leFaso.net (fr); ActuNiger (fr); Aïr Info (fr); Daily Nation; The Guardian Post; Tchadinfos (fr); Alwihda Info (fr); Radio Ndeke Luka (fr) |
 | `full` | `latam` | BBC Latin America; Guardian Americas; Primicias (es); Infobae Americas (es); El Universo (es); Clarín (es); InSight Crime; HaitiLibre English; AyiboPost (fr); Caracas Chronicles; Efecto Cocuyo (es); Havana Times; 14ymedio (es) |
-| `full` | `asia` | BBC Asia; The Diplomat; Reuters Asia; Reuters India; Japan Today; Nikkei Asia; CNA; NDTV; South China Morning Post; The Hindu; Asia News; Xinhua; Asahi Shimbun (ja); MIIT (China) (zh); MOFCOM (China) (zh); Bangkok Post (th); VnExpress (vi); Yonhap News (ko); BBC Hindi (hi); Aaj Tak (hi); NDTV India (hi); Amar Ujala (hi); Eurasianet; RFE/RL Central Asia; The Astana Times; The Times of Central Asia; Focus Taiwan; Taipei Times; Taiwan News; Dawn; Geo News; Jakarta Post; Rappler; The Star (Malaysia); Irrawaddy; Island Times (Palau); Amu TV; Pajhwok Afghan News; The Daily Star; Dhaka Tribune; Times of India (en) |
+| `full` | `asia` | BBC Asia; The Diplomat; Reuters Asia; Reuters India; Japan Today; Nikkei Asia; CNA; NDTV; South China Morning Post; The Hindu; Asia News; Xinhua; Asahi Shimbun (ja); MIIT (China) (zh); MOFCOM (China) (zh); Bangkok Post (th); VnExpress (vi); Yonhap News (ko); BBC Hindi (hi); Aaj Tak (hi); NDTV India (hi); Amar Ujala (hi); Eurasianet; RFE/RL Central Asia; The Astana Times; The Times of Central Asia; Focus Taiwan; Taipei Times; Taiwan News; Dawn; Geo News; Jakarta Post; Rappler; The Star (Malaysia); Irrawaddy; Island Times (Palau); Amu TV; Pajhwok Afghan News; The Daily Star; Dhaka Tribune; Times of India (en); Japan Times |
 | `full` | `energy` | Oil & Gas; Reuters Energy; Nuclear Energy |
 | `full` | `thinktanks` | Foreign Policy; Atlantic Council; Foreign Affairs; War on the Rocks; CSIS; ISW |
 | `full` | `crisis` | CrisisWatch; IAEA; WHO |
 | `full` | `layoffs` | Layoffs.fyi; TechCrunch Layoffs; Layoffs News |
+| `full` | `science` | Reuters Science; Nature News; BBC Science; Guardian Science; ScienceDaily |
 | `full` | `intel` | Defense One; The War Zone; Defense News; Breaking Defense; Military Times; Task & Purpose; USNI News; gCaptain; Oryx OSINT; Foreign Policy; Foreign Affairs; Atlantic Council; Bellingcat; Krebs Security; Arms Control Assn; Bulletin of Atomic Scientists; FAO News; OCCRP; DFRLab; Lighthouse Reports; The Sentry; GITOC; VSquare; Correctiv |
 | `tech` | `tech` | TechCrunch; The Verge; Ars Technica; Hacker News |
 | `tech` | `ai` | AI News; VentureBeat AI; The Verge AI; ArXiv AI |
@@ -347,10 +351,12 @@ Client (1 RPC call) → listFeedDigest → Redis check (digest:v1:{variant}:{lan
 
 | 分级       | 描述                                | 示例                                    |
 | ---------- | ----------------------------------- | --------------------------------------- |
-| **Tier 1** | 通讯社、官方政府来源                | Reuters、AP、BBC、DOD                       |
-| **Tier 2** | 主要老牌媒体                        | CNN、NYT、The Guardian、Al Jazeera          |
-| **Tier 3** | 专业/垂直媒体                       | Defense One、Breaking Defense、The War Zone |
-| **Tier 4** | 聚合器和博客                        | Google News、个人分析师博客       |
+| **Tier 1** | 通讯社和官方机构                    | Reuters、AP News、AFP、Pentagon             |
+| **Tier 2** | 主要媒体                            | BBC、CNN World、New York Times、The Guardian、Al Jazeera |
+| **Tier 3** | 专业、地区和智库来源                | Defense One、Breaking Defense、The War Zone |
+| **Tier 4** | 聚合器和博客                        | Hacker News、The Verge、Yahoo Finance       |
+
+聚类报道会列出其发布方，每个发布方显示该报道中所见源里声明的最高分级。未声明分级的源显示为"未声明分级"，在计算佐证标记时绝不按 Tier 4 计。分级只对来源排序，不判断某条说法是否属实。
 
 源还带有**宣传风险评级**和**国家关联标志**。国家关联来源（RT、新华社、IRNA）为完整性而被纳入，但会以视觉标记标出，以便分析师考虑编辑偏见。这些同一输入还会进入每条头条的 [`credibilityScore`](/zh/methodology/news-credibility)（0-100 来源可靠性，与 `importanceScore` 新闻重要性不同）。威胁分类置信度按来源分级加权 — 在焦点检测算法中，Tier 1 的突发警报比 Tier 4 的博客帖子权重更高。
 
@@ -505,6 +511,7 @@ IOC 分为四种类型（`c2_server`、`malware_host`、`phishing`、`malicious_
 | USGS Earthquake Hazards | 全球地震活动 | [earthquake.usgs.gov](https://earthquake.usgs.gov) |
 | Earthquakes Canada (NRCan) | 加拿大国家地震公报（Atom） | [earthquakescanada.nrcan.gc.ca](https://www.earthquakescanada.nrcan.gc.ca/index-en.php?tpl_region=canada) |
 | NASA FIRMS | 近实时野火/火灾探测（VIIRS） | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov) |
+| Copernicus Sentinel-5P TROPOMI | 对流层 NO2 柱浓度，按日聚合到 167 个国家与 32 个工业集群，作为同比活动方向（Sentinel Hub Statistical API）。包含经修改的 Copernicus Sentinel 数据。 | [dataspace.copernicus.eu](https://dataspace.copernicus.eu) |
 | NASA EONET | 自然事件 — 风暴、火山、洪水 | [eonet.gsfc.nasa.gov](https://eonet.gsfc.nasa.gov) |
 | GDACS | 联合国协调的全球灾害警报 | [gdacs.org](https://www.gdacs.org) |
 | 香港天文台 | 本地热带气旋警告信号 | [data.weather.gov.hk](https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en) |
@@ -562,6 +569,7 @@ GDACS 事件带有彩色编码的警报级别（红色 = 严重，橙色 = 高�
 | OpenSky Network | 旧版按请求恢复（在军事种子任务中已禁用） | [opensky-network.org](https://opensky-network.org) |
 | FAA ASWS | 美国机场延误和地面停留数据 | [nasstatus.faa.gov](https://nasstatus.faa.gov) |
 | ICAO | NOTAM 空域关闭数据 | [icao.int](https://www.icao.int) |
+| FAA NOTAM Management Service | 全球 NOTAM，用于机场关闭和航班延误图层中的 NOTAM 空域（需凭据） | [faa.gov](https://www.faa.gov) |
 | AviationStack | 国际机场延误覆盖 | [aviationstack.com](https://aviationstack.com/) |
 
 深入阅读：[航空情报面板](/zh/panels/airline-intel)
@@ -575,10 +583,18 @@ GDACS 事件带有彩色编码的警报级别（红色 = 严重，橙色 = 高�
 | **FAA ASWS**       | 美国枢纽机场目录        | 来自 `nasstatus.faa.gov` 的实时 XML 源 — 地面延误、地面停留、到达/出发延误、关闭 |
 | **AviationStack**  | 国际机场目录  | 每个机场最近 100 架航班 — 根据航班记录计算取消率和平均延误时长  |
 | **ICAO NOTAM API** | MENA 机场目录           | 实时 NOTAM（Notice to Air Missions）查询，用于活跃的机场/空域关闭                      |
+| **FAA NMS-API**    | 同一 NOTAM 监测列表      | FAA 全球 NOTAM 库（国内、FDC、国际、军事），通过每日批量加载和增量拉取保持最新 |
 
 **NOTAM 关闭检测**针对 MENA 机场，因军事活动或安全事件导致的空域关闭具有战略意义。检测使用两种方法：ICAO Q 码匹配（机场/空域关闭代码 `FA`、`AH`、`AL`、`AW`、`AC`、`AM` 结合关闭限定符 `LC`、`AS`、`AU`、`XX`、`AW`）和闭包关键词的自由文本正则扫描（`AD CLSD`、`AIRPORT CLOSED`、`AIRSPACE CLOSED`）。当检测到 NOTAM 关闭时，它会以 `severe/closure` 分级覆盖该机场已有的任何延误警报。
 
-**严重性阈值**：平均延误 ≥15 分钟或 ≥15% 航班延误 = 轻微；≥30 分钟/30% = 中度；≥45 分钟/45% = 重大；≥60 分钟/60% = 严重。取消率 ≥80% 且航班 ≥10 = 关闭。所有结果在 Redis 中缓存 30 分钟。当未配置 AviationStack API key 时，系统会生成概率性模拟延误以供演示 — 高峰时段和高流量机场获得更高的延误概率。
+**FAA NOTAM Management Service。** `scripts/seed-notam-nms.mjs` 使用 OAuth2 客户端凭据（`NOTAM_KEY`、`NOTAM_SECRET`）认证。每个 NOTAM 分类每 24 小时最多批量加载一次，其余运行只拉取自上次游标以来的变更，符合 FAA 每日一次批量加载、每三分钟一次增量拉取的限制。已取消、已替换和已过结束时间的 NOTAM 会被移除。该库产出两个键：
+
+- `aviation:notam:nms:closures:v1`：完全关闭的机场（Q 码 `FALC` 或 `AD CLSD` 文本）和有限制生效的机场。带例外的关闭（如 `AD CLSD EXC MEDEVAC`）或仅限 IFR、夜间运行的关闭按限制计；没有例外的 `AD CLSD TO ALL TFC` 按关闭计。只针对某一类航空器、不影响航班运行的关闭（如洛杉矶、波士顿、拉斯维加斯的 `AD AP CLSD TO NON SKED TRANSIENT GA ACFT EXC 24HR PPR`）不计入。当该列表不超过 30 分钟时，航空种子任务会把它排在 ICAO 之前合并，按同一监测列表过滤，并把每条警报归属到报告它的数据源。NMS 在生产环境首次发布后，如果 NMS 列表缺失或超过 30 分钟，航空种子任务会保留上一次有效的关闭数据，而不是只发布 ICAO 数据，以免 NMS 恢复时关闭记录消失后再次告警。
+- `aviation:notam:airspace:v1`：当前生效或 24 小时内开始的临时飞行限制、禁区、限制区、危险区、军事区、保留区及关闭的空域，由**航班延误**（航空）地图图层绘制（仅限 deck.gl 渲染器）。给出半径的 NOTAM 以测量该半径的 Q 行中心点绘制为圆，半径超过 250 NM 的绘制为标记；给出多边形的绘制为多边形；没有半径、形状仅在文本中描述的 FDC TFR 绘制为标记。
+
+两个键的健康预算均为 20 分钟。Railway 服务 `seed-notam-nms` 每 5 分钟针对 FAA 生产主机运行一次。种子任务对任何非生产主机都只做试运行，因为预发布环境提供的是 FAA 测试 NOTAM。设置 `NMS_ALLOW_NONPROD_WRITE=1` 后，非生产运行也只发布地图图层，不发布关闭数据或激活标记。
+
+**严重性阈值**：平均延误 ≥15 分钟或 ≥15% 航班延误 = 轻微；≥30 分钟/30% = 中度；≥45 分钟/45% = 重大；≥60 分钟/60% = 严重。取消率 ≥80% 且航班 ≥10 = 关闭。AviationStack 的取消率中每个实际执行的航班只计一次（代码共享记录计入它所指的执行航班，该航班已有记录时不重复计算），起飞时间按机场当地时区读取。已到起飞时间（计划起飞时间已过或已起飞）的航班至少有 10 个时，只按这些航班计算；不足时，返回的是当天较晚的航班，只能判定关闭（至少 80% 取消），不给出更低的取消等级，因为提前取消的后续航班属于时刻调整，不是运营中断。所有结果在 Redis 中缓存 30 分钟。当未配置 AviationStack API key 时，系统会生成概率性模拟延误以供演示 — 高峰时段和高流量机场获得更高的延误概率。
 
 ### 航空情报面板
 

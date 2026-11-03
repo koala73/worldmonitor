@@ -19,6 +19,13 @@
 // tests/dockerfile-digest-notifications-imports.test.mjs).
 
 import { extractTickers } from '../../shared/ticker-extract.js';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+// #8398: relay-emitted watchlist_story_alert events must not carry a link
+// outside the item's registered publisher set. Same CJS-require shape as
+// watchlist-story-scan.mjs (dependency-free CJS gate by design).
+const { gateRelayStoryLink } = require('./publisher-link-relay-gate.cjs');
 
 export const WATCHLIST_STORY_EVENT_TYPE = 'watchlist_story_alert';
 
@@ -73,13 +80,22 @@ export function buildWatchlistStoryEvents(stories, dictionary, scoreMin) {
     const description = typeof story.description === 'string' ? story.description : '';
     const tickers = extractTickers(description ? `${title}\n${description}` : title, dictionary);
     if (tickers.length === 0) continue;
+    // #8398: gate the emitted link to the story source's registered
+    // publisher set. The source arrives resolved (watchlist-story-scan.mjs
+    // reads story:sources:v1 BEFORE building events); an unresolvable or
+    // unlisted source blanks the link (fail-closed) while the title/tickers
+    // still alert.
+    const source = typeof story.source === 'string' ? story.source : '';
+    const link = typeof story.link === 'string'
+      ? gateRelayStoryLink(story.link, source || 'label:')
+      : '';
     events.push({
       eventType: WATCHLIST_STORY_EVENT_TYPE,
       severity: importanceScore >= CRITICAL_SCORE_BAND ? 'critical' : 'high',
       payload: {
         title,
-        link: typeof story.link === 'string' ? story.link : '',
-        source: typeof story.source === 'string' ? story.source : '',
+        link,
+        source,
         tickers,
         importanceScore,
         // Stable story identity: the accumulator hash. The publisher-side

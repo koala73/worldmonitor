@@ -6,6 +6,8 @@ import { describe, it } from 'node:test';
 import { fetchChinaMacroSnapshot } from '../scripts/china-macro/adapters.mjs';
 import {
   fetchText,
+  fetchThroughProxy,
+  hasUsableProxy,
   PROXY_FALLBACK_BUDGET_MS,
   requestBudget,
   shouldRetryViaProxy,
@@ -228,6 +230,38 @@ describe('china-macro proxy fallback (#6676 NBS egress block)', () => {
     });
   });
 
+  describe('fetchThroughProxy', () => {
+    it('reports whether a proxy URL is usable', () => {
+      assert.equal(hasUsableProxy(PARSEABLE_PROXY), true);
+      assert.equal(hasUsableProxy(null), false);
+      assert.equal(hasUsableProxy('not a proxy'), false);
+    });
+
+    it('clamps the exit ladder to an earlier caller deadline and skips it under the floor', async (t) => {
+      t.mock.method(console, 'warn', () => {});
+      let now = 1_000;
+      const timeouts = [];
+      const options = {
+        now: () => now,
+        proxyFetchFn: async (_url, _config, { timeoutMs }) => {
+          timeouts.push(timeoutMs);
+          now += timeoutMs;
+          throw new Error('exit hang');
+        },
+      };
+      await assert.rejects(
+        fetchThroughProxy(new URL('https://example.test/a'), {}, PARSEABLE_PROXY, { ...options, deadlineAt: now + 5_000 }),
+        /exit hang/,
+      );
+      assert.deepEqual(timeouts, [5_000], 'a 5s remainder must cap the first exit and leave no second one');
+      assert.equal(
+        await fetchThroughProxy(new URL('https://example.test/a'), {}, PARSEABLE_PROXY, { ...options, deadlineAt: now + 100 }),
+        null,
+      );
+      assert.equal(timeouts.length, 1, 'under the floor no exit runs');
+    });
+  });
+
   describe('fetchChinaMacroSnapshot NBS robots hop', () => {
     it('routes robots.txt through the proxy when Railway cannot open stats.gov.cn', async () => {
       const proxied = [];
@@ -282,4 +316,71 @@ describe('china-macro proxy fallback (#6676 NBS egress block)', () => {
       );
     });
   });
+});
+
+describe('China transport failure diagnostics', () => {
+  it('logs nested direct and proxy causes without changing the thrown error or retry budget', async (t) => {
+    const logs = [];
+    t.mock.method(console, 'warn', (line) => logs.push(JSON.parse(line)));
+    const direct = connectionFailure();
+    const proxyError = Object.assign(new Error('secret password http://user:password@proxy.test'), {
+      cause: { code: 'ETIMEDOUT', message: 'Authorization: secret' },
+      proxyFailure: { stage: 'proxy_connect', proxyConnectStatus: 407, httpStatus: null },
+    });
+    let attempts = 0;
+    const budget = requestBudget(8);
+    await assert.rejects(fetchText(async () => { throw direct; }, 'https://example.test/robots.txt?secret=token', {
+      policy: POLICY, budget, proxyUrl: PARSEABLE_PROXY,
+      proxyFetchFn: async () => { attempts++; throw proxyError; },
+    }), (error) => error === direct);
+    assert.equal(attempts, 4);
+    assert.equal(budget.count, 1);
+    assert.equal(logs.length, 5);
+    assert.deepEqual(logs[0], {
+      event: 'china_macro_transport_failure', host: 'example.test', resource: 'robots',
+      transport: 'direct', attempt: 1, code: 'ECONNREFUSED',
+    });
+    assert.deepEqual(logs[4], {
+      event: 'china_macro_transport_failure', host: 'example.test', resource: 'robots',
+      transport: 'proxy', attempt: 4, code: 'ETIMEDOUT',
+      stage: 'proxy_connect', proxyConnectStatus: 407,
+    });
+    assert.doesNotMatch(JSON.stringify(logs), /secret|password|Authorization|proxy\.test|token/);
+  });
+
+  it('rejects unrecognized diagnostic fields and tolerates a failing logger', async (t) => {
+    const logs = [];
+    t.mock.method(console, 'warn', (line) => { logs.push(JSON.parse(line)); throw Error('logger'); });
+    const direct = Object.assign(new TypeError('fetch failed'), { code: 'SECRET', cause: null });
+    direct.cause = direct;
+    await assert.rejects(fetchText(async () => { throw direct; }, 'https://example.test/a', {
+      policy: POLICY, budget: requestBudget(8), proxyUrl: PARSEABLE_PROXY,
+      proxyFetchFn: async () => { throw Object.assign(new Error('secret'), {
+        code: 'SECRET', proxyFailure: { stage: 'secret', proxyConnectStatus: 999, httpStatus: 'secret' },
+      }); },
+    }), (error) => error === direct);
+    assert.equal(logs.length, 5);
+    assert.equal(logs.every((entry) => entry.code === 'UNKNOWN'), true);
+    assert.doesNotMatch(JSON.stringify(logs), /SECRET|secret|999/);
+  });
+});
+
+it('identifies a proxy tunnel timeout before a recovered fetch without logging a success as a failure', async (t) => {
+  const logs = [];
+  t.mock.method(console, 'warn', (line) => logs.push(JSON.parse(line)));
+  let attempts = 0;
+  const result = await fetchText(async () => { throw connectionFailure(); }, 'https://example.test/a', {
+    policy: POLICY, budget: requestBudget(8), proxyUrl: PARSEABLE_PROXY,
+    proxyFetchFn: async () => {
+      if (++attempts === 1) throw Object.assign(new Error('CONNECT tunnel timeout'), {
+        proxyFailure: { stage: 'proxy_connection', proxyConnectStatus: null },
+      });
+      return proxyResult('recovered');
+    },
+  });
+  assert.equal(result.text, 'recovered');
+  assert.equal(logs.length, 2);
+  assert.equal(logs[1].code, 'TIMEOUT');
+  assert.equal(logs[1].stage, 'proxy_connection');
+  assert.equal(logs[1].proxyConnectStatus, undefined);
 });

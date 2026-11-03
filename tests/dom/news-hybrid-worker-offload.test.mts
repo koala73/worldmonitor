@@ -20,6 +20,7 @@ vi.mock('@/services/ml-worker', () => ({
   },
 }));
 
+import { getSourceTier } from '@/config';
 import { clusterNews, clusterNewsHybrid, MAX_SEMANTIC_CLUSTER_INPUT } from '@/services/clustering';
 
 function item(index: number, source = 'Reuters', title = `Distinct event ${index}`): NewsItem {
@@ -153,6 +154,37 @@ describe('hybrid clustering initial worker stage (#7782)', () => {
     expect(merged?.lastUpdated).toBeInstanceOf(Date);
   });
 
+  it('recomputes derived fields and preserves primary metadata when merging', async () => {
+    const first = cluster(1, {
+      lat: 10,
+      lon: 20,
+      lang: 'en',
+      credibilityScore: 0.9,
+      velocity: { sourcesPerHour: 4, level: 'elevated', trend: 'rising', sentiment: 'negative', sentimentScore: -3 },
+    });
+    const secondItem = item(2, 'Reuters');
+    secondItem.lat = 10;
+    secondItem.lon = 20;
+    secondItem.monitorColor = 'red';
+    secondItem.threat = { level: 'critical', category: 'conflict', confidence: 0.8, source: 'keyword' };
+    const second = cluster(2, { allItems: [secondItem] });
+    workerMocks.clusterNews.mockResolvedValue([first, second, cluster(3), cluster(4), cluster(5)]);
+    mlMocks.available = true;
+    mlMocks.clusterBySemanticSimilarity.mockResolvedValueOnce([[first.id, second.id], ['cluster-3'], ['cluster-4'], ['cluster-5']]);
+
+    const merged = (await clusterNewsHybrid(Array.from({ length: 5 }, (_, index) => item(index))))
+      .find(({ allItems }) => allItems.length === 2);
+    expect(merged).toMatchObject({
+      lat: 10,
+      lon: 20,
+      lang: 'en',
+      credibilityScore: 0.9,
+      monitorColor: 'red',
+      velocity: { sourcesPerHour: 4, level: 'elevated', trend: 'rising', sentiment: 'negative', sentimentScore: -3 },
+    });
+    expect(merged?.threat?.level).toBe('critical');
+  });
+
   it('keeps the 250 semantic cap and all overflow clusters', async () => {
     const clusters = Array.from({ length: MAX_SEMANTIC_CLUSTER_INPUT + 10 }, (_, index) => cluster(index));
     workerMocks.clusterNews.mockResolvedValue(clusters);
@@ -165,6 +197,44 @@ describe('hybrid clustering initial worker stage (#7782)', () => {
 
     expect(mlMocks.clusterBySemanticSimilarity.mock.calls[0]?.[0]).toHaveLength(MAX_SEMANTIC_CLUSTER_INPUT);
     expect(result).toHaveLength(260);
+  });
+
+  it('sends the highest-ranked clusters to semantic refinement, not the first 250 in input order', async () => {
+    // cluster(i) gets older as i grows, so plain recency alone would pick
+    // indices 0..249 — exactly what a positional slice of the input picks.
+    // The strongest clusters sit at the END of the input (250..259), each
+    // older than every weak cluster, so only the ranking can promote them.
+    expect(getSourceTier('Reuters')).toBeLessThan(getSourceTier('Source 0'));
+    const total = MAX_SEMANTIC_CLUSTER_INPUT + 10;
+    const clusters = Array.from({ length: total }, (_, index) => {
+      if (index >= 250 && index <= 252) return cluster(index, { isAlert: true });
+      if (index >= 253 && index <= 255) return cluster(index, { sourceCount: 3 });
+      if (index >= 256) return cluster(index, { primarySource: 'Reuters' });
+      return cluster(index);
+    });
+    workerMocks.clusterNews.mockResolvedValue(clusters);
+    mlMocks.available = true;
+    mlMocks.clusterBySemanticSimilarity.mockImplementation(async (candidates: Array<{ id: string }>) => (
+      candidates.map(({ id }) => [id])
+    ));
+
+    const result = await clusterNewsHybrid(Array.from({ length: total }, (_, index) => item(index)));
+
+    const sentIds = (mlMocks.clusterBySemanticSimilarity.mock.calls[0]?.[0] as Array<{ id: string }>)
+      .map(({ id }) => id);
+    const ids = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, k) => `cluster-${from + k}`);
+    // Alert beats source count, source count beats tier, tier beats recency.
+    expect(sentIds).toEqual([
+      ...ids(250, 252),
+      ...ids(253, 255),
+      ...ids(256, 259),
+      ...ids(0, MAX_SEMANTIC_CLUSTER_INPUT - 11),
+    ]);
+    // The weakest (oldest untiered) clusters overflow and are still returned.
+    const overflow = ids(MAX_SEMANTIC_CLUSTER_INPUT - 10, MAX_SEMANTIC_CLUSTER_INPUT - 1);
+    for (const id of overflow) expect(sentIds).not.toContain(id);
+    expect(result.map(({ id }) => id)).toEqual(expect.arrayContaining(overflow));
+    expect(result).toHaveLength(total);
   });
 
   it('passes more than 1,000 inputs to the shared worker core without changing tier semantics', async () => {

@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import { unsafeRawHtml } from '@/utils/sanitize';
 import { LatestRequestGuard } from '@/utils/latest-request-guard';
 import { fetchMultipleStocks } from '@/services/market';
-import { combineAbortSignals, createTimeoutSignal } from '@/services/timeout-signal';
+import { combineAbortSignals, createTimeoutSignal, isTimeoutOrAbortError } from '@/services/timeout-signal';
 import { NQ_PULSE_BASKET, NQ_PULSE_DISCLOSURE } from '@/config/nq-context';
 import {
   composeNqPulseHtml,
@@ -45,10 +45,11 @@ export class NqPulsePanel extends Panel {
       this.setSafeContent(unsafeRawHtml(html, 'NQ Pulse rows use escaped instrument labels and formatted quotes'));
       return result.data.length > 0;
     } catch (error) {
-      if (!this.requestGuard.isCurrent(generation) || this.signal.aborted || this.isAbortError(error)) {
+      if (!this.requestGuard.isCurrent(generation) || this.signal.aborted) {
         return false;
       }
-      this.showError(error instanceof Error ? error.message : 'NQ context unavailable.', () => {
+      const timedOut = isTimeoutOrAbortError(error);
+      this.showError(timedOut || !(error instanceof Error) ? 'NQ context unavailable.' : error.message, () => {
         void this.fetchData();
       });
       return false;

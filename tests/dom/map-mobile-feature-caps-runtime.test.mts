@@ -35,6 +35,8 @@ type Surface = {
   protests: unknown[];
   conflictEvents: unknown[];
   weatherAlerts: unknown[];
+  newsLocations: unknown[];
+  naturalEvents: unknown[];
   getTimeRangeMs: () => number;
   updateLabelVisibility: ReturnType<typeof vi.fn>;
   applyTransform: ReturnType<typeof vi.fn>;
@@ -65,6 +67,8 @@ function createMap(isMobile: boolean): Surface {
   map.protests = [];
   map.conflictEvents = [];
   map.weatherAlerts = [];
+  map.newsLocations = [];
+  map.naturalEvents = [];
   map.updateLabelVisibility = vi.fn();
   map.applyTransform = vi.fn();
   return map;

@@ -373,27 +373,11 @@ test('StatCan scored freshness is invariant across UTC, Toronto, and Dubai proce
   ]);
 });
 
-test('the StatCan and BoC EMPTY waivers are retired with independent issue ownership', () => {
-  // Was: pinned both waivers' exact anchors, to prove they used the real 08:00
-  // UTC tick rather than a mistaken 13:00 one. Both probes now publish, so the
-  // monitor reports them as "no longer reported; remove it" and #6799 pruned
-  // them. A waiver that outlives its problem is a suppression with nothing to
-  // suppress, and would silently absorb the next real outage.
-  //
-  // What still has to hold: neither is re-suppressed, and the 08:00 cron the
-  // anchors were derived from is still documented — the wrong-tick bug is only
+test('StatCan and BoC keep independent issue ownership and a documented tick', () => {
+  // The 08:00 UTC cron must stay documented — the wrong-tick bug is only
   // avoidable while the runbook says what the tick actually is.
-  const baseline = JSON.parse(readFileSync(resolve(here, '../scripts/seed-freshness-baseline.json'), 'utf8'));
   const healthSrc = readFileSync(resolve(here, '../api/health.js'), 'utf8');
   const runbook = readFileSync(resolve(here, '../docs/railway-seed-consolidation-runbook.md'), 'utf8');
-
-  for (const name of ['statcanWds', 'bocValet']) {
-    assert.equal(
-      baseline.acknowledged.some((row) => row.name === name),
-      false,
-      `${name} publishes again; do not suppress a future recurrence`,
-    );
-  }
 
   assert.match(seederSrc, /Issue #6676\./, 'the StatCan seeder must point to its own tracking issue');
   assert.doesNotMatch(seederSrc, /Issue #6616\./, 'the StatCan seeder must not point to the BoC issue');
@@ -405,10 +389,6 @@ test('the StatCan and BoC EMPTY waivers are retired with independent issue owner
 
   // The 13:00 anchor was never a real cron. Keep it out of every surface.
   assert.doesNotMatch(healthSrc, /2026-08-16T13:00/);
-  for (const row of baseline.acknowledged) {
-    assert.doesNotMatch(row.expiresAt ?? '', /T13:00/, `${row.name} must not anchor on a 13:00 tick`);
-    assert.doesNotMatch(row.reason ?? '', /13:00/, `${row.name} must not cite a 13:00 tick`);
-  }
   assert.match(runbook, /0 8,9 \* \* \*[^\n]*daily 08:00 and 09:00 UTC/);
 });
 

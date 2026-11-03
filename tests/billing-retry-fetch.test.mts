@@ -70,7 +70,7 @@ function harness(responses: Array<() => Response | Promise<Response>>): Harness 
 // legacy-bearer gate still 503s (3 events / 30d — all `user_api_key`, so those
 // particular callers never reach this wrapper; see the header).
 const NON_PREMIUM_TARGET = 'https://api.worldmonitor.app/api/conflict/v1/list-ucdp-events';
-const PREMIUM_TARGET = 'https://api.worldmonitor.app/api/sanctions/v1/list-sanctions-pressure';
+const PREMIUM_TARGET = 'https://api.worldmonitor.app/api/economic/v1/list-global-tenders';
 
 describe('withBillingVerificationRetry', () => {
   it('retries an unverifiable-entitlement 503 once and returns the recovered response', async () => {

@@ -1,0 +1,14 @@
+snapshot_date,id,name,lat,lon,status,disruption_score,war_risk_tier,congestion_level,active_warnings,ais_disruptions,navigational_warnings_available,ais_snapshot_available,transit_data_available,transit_today_counts_available,transit_today_total,transit_today_tanker,transit_today_cargo,transit_today_other,transit_wow_change_pct,flow_ratio,flow_disrupted,flow_source
+2026-09-10,bab_el_mandeb,Bab el-Mandeb,12.58,43.33,yellow,40,critical,normal,0,0,true,true,true,false,,,,,-3.3,0.572,true,portwatch-dwt
+2026-09-10,bosphorus,Bosporus Strait,41.12,29.05,yellow,30,elevated,high,0,1,true,true,true,true,1,0,0,1,-11.2,0.85,false,portwatch-dwt
+2026-09-10,cape_of_good_hope,Cape of Good Hope,-34.36,18.49,green,15,normal,high,0,1,true,true,true,false,,,,,-14.5,,,
+2026-09-10,dover_strait,Dover Strait,51.05,1.45,yellow,30,normal,high,7,1,true,true,true,true,7,3,0,4,2,0.97,false,portwatch-dwt
+2026-09-10,gibraltar,Strait of Gibraltar,35.96,-5.35,green,15,normal,high,0,1,true,true,true,true,1,0,1,0,10,,,
+2026-09-10,hormuz_strait,Strait of Hormuz,26.56,56.25,red,70,war_zone,normal,0,0,true,true,true,false,,,,,-26.7,0.122,true,portwatch-dwt
+2026-09-10,kerch_strait,Kerch Strait,45.33,36.6,red,70,war_zone,normal,0,0,true,true,true,false,,,,,0,,,
+2026-09-10,korea_strait,Korea Strait,34,129,green,0,normal,normal,0,0,true,true,true,false,,,,,-10.6,,,
+2026-09-10,lombok_strait,Lombok Strait,-8.47,115.72,green,0,normal,normal,0,0,true,true,true,false,,,,,-6.9,,,
+2026-09-10,malacca_strait,Strait of Malacca,2.5,101.5,green,15,normal,elevated,1,1,true,true,true,false,,,,,1.3,0.804,false,portwatch-dwt
+2026-09-10,panama,Panama Canal,9.08,-79.68,green,0,normal,normal,0,0,true,true,true,false,,,,,2.9,1.096,false,portwatch-dwt
+2026-09-10,suez,Suez Canal,30.45,32.35,yellow,35,high,normal,1,0,true,true,true,false,,,,,-3.3,0.983,false,portwatch-dwt
+2026-09-10,taiwan_strait,Taiwan Strait,24,119.5,yellow,20,elevated,low,0,1,true,true,true,true,4,0,3,1,17.8,,,

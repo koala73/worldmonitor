@@ -1,13 +1,15 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { VitePWA } from 'vite-plugin-pwa';
+import { appChunkRuntimeCache, createDashboardPrecache } from './shared/pwa-precache';
 import type { OutputBundle } from 'rollup';
-import { resolve, dirname, extname } from 'path';
+import { resolve, dirname, extname, basename, posix } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
 import { getSentryBuildMetadata } from './shared/sentry-build-metadata';
+import { appendChunkOwnership, chunkHasFirstPartyModule } from './shared/chunk-ownership';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 import {
   WEB_DASHBOARD_VARIANTS,
@@ -104,7 +106,7 @@ const LAZY_HTML_PRELOAD_RE = new RegExp(
 const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   // Markets / equities / crypto positioning
   AAIISentiment: 'panels-markets', CotPositioning: 'panels-markets',
-  ETFFlows: 'panels-markets', EarningsCalendar: 'panels-markets',
+  ETFFlows: 'panels-markets', EarningsCalendar: 'panels-markets', MaterialEvents: 'panels-markets',
   EconomicCalendar: 'panels-markets', FearGreed: 'panels-markets',
   Fx: 'panels-markets',
   GoldIntelligence: 'panels-markets', LiquidityShifts: 'panels-markets',
@@ -126,7 +128,7 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   AirlineIntel: 'panels-defense', DefensePatents: 'panels-defense',
   OrefSirens: 'panels-defense', StrategicPosture: 'panels-defense',
   StrategicRisk: 'panels-defense', ThermalEscalation: 'panels-defense',
-  UcdpEvents: 'panels-defense',
+  UcdpEvents: 'panels-defense', UkmtoIncidents: 'panels-defense',
   // News / feeds / briefs
   BreakthroughsTicker: 'panels-news', ClimateNews: 'panels-news',
   DailyMarketBrief: 'panels-news', GdeltIntel: 'panels-news',
@@ -226,11 +228,16 @@ function brotliPrecompressPlugin(): Plugin {
   };
 }
 
+// Pages whose title, description and canonical are their own; the dashboard
+// brand meta below would otherwise mark them duplicates of /dashboard, or title
+// the desktop sign-in tab as the dashboard.
+const PAGES_WITH_OWN_HEAD_META = new Set(['verify.html', 'desktop-sign-in.html']);
+
 function htmlVariantPlugin(activeMeta: VariantMeta, activeVariant: string, isDesktopBuild: boolean): Plugin {
   return {
     name: 'html-variant',
-    transformIndexHtml(html) {
-      let result = html
+    transformIndexHtml(html, ctx) {
+      let result = PAGES_WITH_OWN_HEAD_META.has(basename(ctx.filename)) ? html : html
         .replace(/<title>.*?<\/title>/, `<title>${activeMeta.title}</title>`)
         .replace(/<meta name="title" content=".*?" \/>/, `<meta name="title" content="${activeMeta.title}" />`)
         .replace(/<meta name="description" content=".*?" \/>/, `<meta name="description" content="${activeMeta.description}" />`)
@@ -318,6 +325,36 @@ function dashboardHtmlOutputPlugin(): Plugin {
         dashboardHtml.source = deferDashboardStylesheetLinks(dashboardHtml.source, bundle);
       }
       bundle['dashboard.html'] = dashboardHtml;
+    },
+  };
+}
+
+// Stamp each emitted chunk with its own ownership so `beforeSend` can stop
+// guessing from the filename. See shared/chunk-ownership.ts for why a name
+// cannot answer the question. Runs at `enforce: 'post'` so the chunk bodies are
+// final, and appends (never prepends) so sourcemap columns stay valid.
+//
+// Web workers (`*.worker-<hash>.js`, `maplibre-gl-worker-<hash>.js`) go through
+// a separate Vite build and never reach this hook. That is correct, not a gap:
+// a worker has its own `globalThis`, so a registration there could never reach
+// the manifest the main thread's `beforeSend` reads. Worker frames stay
+// unregistered and fall back to the legacy name regex.
+function firstPartyChunkManifestPlugin(): Plugin {
+  return {
+    name: 'wm-first-party-chunk-manifest',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') continue;
+        const basename = output.fileName.split('/').pop();
+        if (!basename) continue;
+        output.code = appendChunkOwnership(
+          output.code,
+          basename,
+          chunkHasFirstPartyModule(output.moduleIds ?? []),
+        );
+      }
     },
   };
 }
@@ -660,6 +697,9 @@ function sebufApiPlugin(): Plugin {
               headers[key] = value.join(', ');
             }
           }
+          delete headers['x-user-id'];
+          delete headers['x-wm-mcp-internal-verified'];
+          delete headers['x-wm-rl-principal'];
 
           const webRequest = new Request(url.toString(), {
             method: req.method,
@@ -739,6 +779,35 @@ function sebufApiPlugin(): Plugin {
   };
 }
 
+function miitNewsPlugin(): Plugin {
+  return {
+    name: 'miit-news',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (req.url?.split('?')[0] !== '/api/miit-news') return next();
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          res.statusCode = 405;
+          res.end();
+          return;
+        }
+        try {
+          const { default: handler } = await server.ssrLoadModule('/api/miit-news.js');
+          const headers = new Headers();
+          if (typeof req.headers.origin === 'string') headers.set('Origin', req.headers.origin);
+          const response: Response = await handler(new Request(`http://localhost${req.url}`, { headers }));
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => res.setHeader(key, value));
+          res.end(req.method === 'HEAD' ? undefined : await response.text());
+        } catch (error) {
+          console.error('[miit-news]', error);
+          res.statusCode = 502;
+          res.end();
+        }
+      });
+    },
+  };
+}
+
 function rssProxyPlugin(): Plugin {
   return {
     name: 'rss-proxy',
@@ -759,7 +828,7 @@ function rssProxyPlugin(): Plugin {
 
         try {
           const parsed = new URL(feedUrl);
-          if (!isAllowedDomain(parsed.hostname)) {
+          if (parsed.protocol !== 'https:' || parsed.port || parsed.username || parsed.password || !isAllowedDomain(parsed.hostname)) {
             res.statusCode = 403;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ error: `Domain not allowed: ${parsed.hostname}` }));
@@ -770,16 +839,38 @@ function rssProxyPlugin(): Plugin {
           const timeout = feedUrl.includes('news.google.com') ? 20000 : 12000;
           const timer = setTimeout(() => controller.abort(), timeout);
 
-          const response = await fetch(feedUrl, {
-            signal: controller.signal,
-            headers: rssFetchHeadersForHost(parsed.hostname),
-            redirect: 'follow',
-          });
-          clearTimeout(timer);
+          let response: Response;
+          try {
+            let current = parsed;
+            for (let hop = 0; ; hop++) {
+              response = await fetch(current.href, {
+                signal: controller.signal,
+                headers: rssFetchHeadersForHost(current.hostname),
+                redirect: 'manual',
+              });
+              if (![301, 302, 303, 307, 308].includes(response.status)) break;
+              const location = response.headers.get('location');
+              await response.body?.cancel();
+              if (!location || hop >= 5) throw new Error('Invalid RSS redirect');
+              const nextUrl = new URL(location, current);
+              if (nextUrl.protocol !== 'https:' || nextUrl.port || nextUrl.username || nextUrl.password || !isAllowedDomain(nextUrl.hostname)) {
+                res.statusCode = 403;
+                res.end(JSON.stringify({ error: 'Redirect not allowed' }));
+                return;
+              }
+              current = nextUrl;
+            }
+          } finally {
+            clearTimeout(timer);
+          }
 
           const data = await response.text();
           res.statusCode = response.status;
-          res.setHeader('Content-Type', 'application/xml');
+          // Same isolation as api/rss-proxy.js: callers parse response.text(),
+          // so feed bytes must never render as a same-origin document.
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+          res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
           res.setHeader('Cache-Control', 'public, max-age=300');
           res.setHeader('Access-Control-Allow-Origin', '*');
           res.end(data);
@@ -788,72 +879,6 @@ function rssProxyPlugin(): Plugin {
           res.statusCode = error.name === 'AbortError' ? 504 : 502;
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ error: error.name === 'AbortError' ? 'Feed timeout' : 'Failed to fetch feed' }));
-        }
-      });
-    },
-  };
-}
-
-function youtubeLivePlugin(): Plugin {
-  return {
-    name: 'youtube-live',
-    configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
-        if (!req.url?.startsWith('/api/youtube/live')) {
-          return next();
-        }
-
-        const url = new URL(req.url, 'http://localhost');
-        const channel = url.searchParams.get('channel');
-
-        if (!channel) {
-          res.statusCode = 400;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Missing channel parameter' }));
-          return;
-        }
-
-        try {
-          const channelHandle = channel.startsWith('@') ? channel : `@${channel}`;
-          const liveUrl = `https://www.youtube.com/${channelHandle}/live`;
-
-          const ytRes = await fetch(liveUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            },
-            redirect: 'follow',
-          });
-
-          if (!ytRes.ok) {
-            res.setHeader('Content-Type', 'application/json');
-            res.setHeader('Cache-Control', 'public, max-age=300');
-            res.end(JSON.stringify({ videoId: null, channel }));
-            return;
-          }
-
-          const html = await ytRes.text();
-
-          // Scope both fields to the same videoDetails block so we don't
-          // combine a videoId from one object with isLive from another.
-          let videoId: string | null = null;
-          const detailsIdx = html.indexOf('"videoDetails"');
-          if (detailsIdx !== -1) {
-            const block = html.substring(detailsIdx, detailsIdx + 5000);
-            const vidMatch = block.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
-            const liveMatch = block.match(/"isLive"\s*:\s*true/);
-            if (vidMatch && liveMatch) {
-              videoId = vidMatch[1];
-            }
-          }
-
-          res.setHeader('Content-Type', 'application/json');
-          res.setHeader('Cache-Control', 'public, max-age=300');
-          res.end(JSON.stringify({ videoId, isLive: videoId !== null, channel }));
-        } catch (error) {
-          console.error(`[YouTube Live] Error:`, error);
-          res.statusCode = 500;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Failed to fetch', videoId: null }));
         }
       });
     },
@@ -896,8 +921,13 @@ function webMcpDevSecurityHeadersPlugin(): Plugin {
     apply: 'serve',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+        let pathname = (req.url ?? '/').split(/[?#]/, 1)[0];
+        try { pathname = decodeURI(pathname); } catch { /* Vite handles malformed paths. */ }
+        pathname = posix.normalize(pathname).replace(/\/$/, '') || '/';
         const isEmbedDocument = pathname === '/embed' || pathname === '/embed.html';
+        if (pathname === '/wm-widget-sandbox.html') {
+          res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox allow-scripts; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net;");
+        }
         res.setHeader('Origin-Agent-Cluster', '?1');
         res.setHeader('Permissions-Policy', isEmbedDocument ? 'tools=()' : 'tools=(self)');
         next();
@@ -907,6 +937,7 @@ function webMcpDevSecurityHeadersPlugin(): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
+  const dashboardPrecache = createDashboardPrecache();
   const env = loadEnv(mode, process.cwd(), '');
   // Inject environment variables from .env files into process.env.
   // This ensures that API keys and other secrets in .env.local are
@@ -996,6 +1027,8 @@ export default defineConfig(({ mode }) => {
         },
       },
       htmlVariantPlugin(activeMeta, activeVariant, isDesktopBuild),
+      firstPartyChunkManifestPlugin(),
+      dashboardPrecache.plugin,
       chunkSizeWarningPolicyPlugin(),
       !isDesktopBuild && dashboardHtmlOutputPlugin(),
       // Variant subdomain SEO pages only make sense on the web deployment,
@@ -1005,7 +1038,7 @@ export default defineConfig(({ mode }) => {
       webMcpDevSecurityHeadersPlugin(),
       polymarketPlugin(),
       rssProxyPlugin(),
-      youtubeLivePlugin(),
+      miitNewsPlugin(),
       gpsjamDevPlugin(),
       sebufApiPlugin(),
       brotliPrecompressPlugin(),
@@ -1043,30 +1076,8 @@ export default defineConfig(({ mode }) => {
         },
 
         workbox: {
-          globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
-          globIgnores: [
-            '**/ml*.js',
-            '**/onnx*.wasm',
-            '**/locale-*.js',
-            '**/clerk-*.js',
-            // Fonts are fetched only when their stylesheet applies. Precache
-            // would pull every local weight into the first mobile visit.
-            '**/*.woff2',
-            // Keep off-page/static-heavy public assets out of the dashboard's
-            // first-visit precache. The small root favicons above remain
-            // explicit includeAssets entries.
-            'pro/**',
-            'favico/**',
-            'textures/**',
-            // #4891: blog OG covers + post images are generated into the prod
-            // build (absent locally), and the png glob was precaching all ~40
-            // of them (~700KB) on every first dashboard visit — and again on
-            // each SW update after a blog deploy. Blog pages fetch their own
-            // images on demand; the dashboard never needs them.
-            'blog/**',
-          ],
-          // globe.gl + three.js grows main bundle past the 2 MiB default limit
-          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+          globPatterns: ['assets/**/*.{js,css}'],
+          manifestTransforms: [dashboardPrecache.manifestTransform],
           navigateFallback: null,
           skipWaiting: true,
           clientsClaim: true,
@@ -1074,7 +1085,9 @@ export default defineConfig(({ mode }) => {
           // Web Push handler (Phase 6). importScripts runs in the SW
           // context; /push-handler.js is a static file copied from
           // public/ and attaches 'push' + 'notificationclick' listeners.
-          importScripts: ['/push-handler.js', '/sw-navigation.js'],
+          // /link-suppression-check.js must load BEFORE the push handler
+          // so notificationclick can consult the operator block set (#8401).
+          importScripts: ['/link-suppression-check.js', '/push-handler.js', '/sw-navigation.js'],
 
           // Navigations are handled by public/sw-navigation.js (network-first
           // with an offline.html fallback), NOT by a runtime cache: a cached
@@ -1130,6 +1143,7 @@ export default defineConfig(({ mode }) => {
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
+            appChunkRuntimeCache,
             {
               urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/i,
               handler: 'StaleWhileRevalidate',
@@ -1211,6 +1225,8 @@ export default defineConfig(({ mode }) => {
           settings: resolve(__dirname, 'settings.html'),
           liveChannels: resolve(__dirname, 'live-channels.html'),
           mcpGrant: resolve(__dirname, 'mcp-grant.html'),
+          verify: resolve(__dirname, 'verify.html'),
+          desktopSignIn: resolve(__dirname, 'desktop-sign-in.html'),
         },
         output: {
           // onlyExplicitManualChunks keeps the panel clusters from forming

@@ -21,9 +21,25 @@ export const RESEARCH_MAX_STALE_MIN = 150;
 // the ~hourly cron so a single arXiv blip stays a graceful exit-0 RETRY rather than exit-1 +
 // `researchArxivHnTrending` EMPTY in prod (issue #5409). Was 3600 (≈1× cron, BELOW the gate).
 export const ARXIV_TTL = 10800;
-const HN_TTL = 600;
+// ≈3× the hourly cron, like ARXIV_TTL: 600s left every HN feed EMPTY for ~50 min of each hour.
+export const HN_TTL = 10800;
 const TECH_EVENTS_TTL = 28800; // 8h — outlives maxStaleMin:480 for health buffer
-const TRENDING_TTL = 3600;
+// Distinct seed-meta key for this seeder's tech-events mirror. MUST NOT share
+// seed-meta:research:tech-events with scripts/ais-relay.cjs: the relay writes
+// research:tech-events-bootstrap:v1 (the payload /api/health counts and
+// bootstrap hydration serves) plus that meta, and defers its boot seed while
+// the meta is younger than its 6h interval. The default meta-key derivation
+// strips ':v1', so this file's extra-key write used to refresh the relay's
+// meta on every hourly seed-research run (Railway cron 0 */1 * * *; two live
+// meta writes on 2026-09-23 were 62min apart) while never writing the
+// bootstrap payload — the relay then postponed its first seed on every restart
+// (age always < 6h), the bootstrap key silently expired, and health reported
+// EMPTY records=0 next to a fresh seedAge. seed-health intervalMin 240 is the
+// declared expected interval, not this seeder's real write cadence. See
+// incident 2026-09-23.
+export const TECH_EVENTS_SEED_META_KEY = 'seed-meta:research:tech-events:seeder';
+// ≈3× the hourly cron, like ARXIV_TTL and HN_TTL.
+export const TRENDING_TTL = 10800;
 
 // ─── arXiv Papers ───
 
@@ -60,7 +76,7 @@ function parseArxivEntries(xml) {
 // every attempt failed (the caller isolates that per-category). `fetchFn`/`sleepFn` injectable
 // for tests.
 export async function fetchArxivCategory(cat, { fetchFn = fetch, retries = 1, sleepFn = sleep } = {}) {
-  const url = `https://export.arxiv.org/api/query?search_query=cat:${cat}&start=0&max_results=50`;
+  const url = `https://export.arxiv.org/api/query?search_query=cat:${cat}&sortBy=submittedDate&sortOrder=descending&start=0&max_results=50`;
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
@@ -226,25 +242,6 @@ async function fetchTechEvents() {
     }
   } catch (e) { console.warn(`  dev.events RSS: ${e.message}`); }
 
-  // Curated major conferences (must match list-tech-events.ts CURATED_EVENTS)
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const CURATED = [
-    { id: 'gitex-global-2026', title: 'GITEX Global 2026', type: 'conference', location: 'Dubai World Trade Centre, Dubai',
-      coords: { lat: 25.2285, lng: 55.2867, country: 'UAE', original: 'Dubai World Trade Centre, Dubai', virtual: false },
-      startDate: '2026-12-07', endDate: '2026-12-11', url: 'https://www.gitex.com', source: 'curated', description: "World's largest tech & startup show" },
-    { id: 'token2049-dubai-2026', title: 'TOKEN2049 Dubai 2026', type: 'conference', location: 'Dubai, UAE',
-      coords: { lat: 25.2048, lng: 55.2708, country: 'UAE', original: 'Dubai, UAE', virtual: false },
-      startDate: '2026-04-29', endDate: '2026-04-30', url: 'https://www.token2049.com', source: 'curated', description: 'Premier crypto event in Dubai' },
-    { id: 'collision-2026', title: 'Collision 2026', type: 'conference', location: 'Toronto, Canada',
-      coords: { lat: 43.6532, lng: -79.3832, country: 'Canada', original: 'Toronto, Canada', virtual: false },
-      startDate: '2026-06-22', endDate: '2026-06-25', url: 'https://collisionconf.com', source: 'curated', description: "North America's fastest growing tech conference" },
-    { id: 'web-summit-2026', title: 'Web Summit 2026', type: 'conference', location: 'Lisbon, Portugal',
-      coords: { lat: 38.7223, lng: -9.1393, country: 'Portugal', original: 'Lisbon, Portugal', virtual: false },
-      startDate: '2026-11-02', endDate: '2026-11-05', url: 'https://websummit.com', source: 'curated', description: "The world's premier tech conference" },
-  ];
-  for (const c of CURATED) { if (new Date(c.startDate) >= now) events.push(c); }
-
   // Deduplicate
   const seen = new Set();
   const deduped = events.filter(e => {
@@ -308,14 +305,14 @@ async function fetchTrendingFromGitHubSearch(lang) {
   }));
 }
 
-async function fetchTrendingRepos() {
+export async function fetchTrendingRepos() {
   const languages = ['python', 'javascript', 'typescript'];
   const results = {};
 
   for (const lang of languages) {
     try {
       let repos = await fetchTrendingFromOSSInsight(lang);
-      if (!repos) repos = await fetchTrendingFromGitHubSearch(lang);
+      if (!repos?.length) repos = await fetchTrendingFromGitHubSearch(lang);
       if (!repos || repos.length === 0) { console.warn(`  Trending ${lang}: no data from any source`); continue; }
 
       const cacheKey = `research:trending:v1:${lang}:daily:50`;
@@ -363,11 +360,22 @@ async function fetchAll() {
     }
   }
   if (allData.hn) { for (const [key, data] of Object.entries(allData.hn)) await writeExtraKeyWithMeta(key, data, HN_TTL, data.items?.length ?? 0); }
-  if (allData.techEvents?.events?.length > 0) await writeExtraKeyWithMeta('research:tech-events:v1', allData.techEvents, TECH_EVENTS_TTL, allData.techEvents.events.length);
+  if (allData.techEvents?.events?.length > 0) await writeTechEventsMirror(allData.techEvents);
   if (allData.trending) { for (const [key, data] of Object.entries(allData.trending)) await writeExtraKeyWithMeta(key, data, TRENDING_TTL, data.repos?.length ?? 0); }
 
   const primaryKey = allData.arxiv?.['research:arxiv:v1:cs.AI::50'];
   return primaryKey || { papers: [], pagination: undefined };
+}
+
+// Persist the tech-events mirror under the SEEDER-owned meta key. Extracted so
+// the write path stays behaviorally testable (see
+// tests/seed-research-tech-events-meta-ownership.test.mjs): the meta key
+// override is load-bearing — the default derivation would collide with the
+// relay-owned seed-meta:research:tech-events and starve the bootstrap payload.
+export async function writeTechEventsMirror(techEvents, deps = {}) {
+  if (!techEvents.events.some(event => event.source !== 'curated')) return;
+  const write = deps.writeExtraKeyWithMeta ?? writeExtraKeyWithMeta;
+  await write('research:tech-events:v1', techEvents, TECH_EVENTS_TTL, techEvents.events.length, TECH_EVENTS_SEED_META_KEY);
 }
 
 function validate(data) {

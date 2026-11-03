@@ -224,6 +224,10 @@ describe('surge detection against regional baselines', () => {
     assert.match(signal.description, /^12 airlift aircraft detected \(4\.0x baseline\)\./);
     assert.deepEqual(signal.location, { lat: 27.0, lon: 50.0, name: 'Middle East / Persian Gulf' });
     assert.equal(signal.metadata.theaterId, 'middle-east');
+    assert.equal(signal.metadata.lat, 27.0);
+    assert.equal(signal.metadata.lon, 50.0);
+    assert.equal(signal.data.lat, 27.0);
+    assert.equal(signal.data.lon, 50.0);
     assert.deepEqual(signal.metadata.aircraftTypes, { transport: 12 });
   });
 });

@@ -1,3 +1,8 @@
+// This pins gate CLI source to the shared realpath-safe main-module helper
+// instead of an inline symlink-unsafe comparison (#8690, section 2). Source
+// inspection identifies the required guard; spawned symlink fixtures also
+// verify that the affected gates execute and reject violations.
+//
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
@@ -58,6 +63,19 @@ const GATES = [
     // fixture tree is one file, so the population floor also trips — matching
     // the headline alone would pass even if the deref patterns had gone stale.
     expected: /These dereference localStorage directly/,
+  },
+  {
+    file: 'scripts/enforce-overlay-reload-policy.mjs',
+    setup(root) {
+      mkdirSync(join(root, 'src/components'), { recursive: true });
+      writeFileSync(
+        join(root, 'src/components/UndeclaredModal.ts'),
+        "const overlay = document.createElement('div');\noverlay.setAttribute('role', 'dialog');\n",
+      );
+    },
+    // The violation line rather than the headline, for the same reason as
+    // above: the one-file fixture also trips the site-count floor.
+    expected: /Overlays without a reload contract/,
   },
   {
     file: 'scripts/check-local-secret-dumps.mjs',

@@ -1,11 +1,13 @@
 ---
 title: "Data Sources"
-description: "Every data source behind World Monitor, segmented by intelligence domain — what each domain covers, the providers behind it, and deep-dive links for methodology, cadence, and fallback ordering."
+description: "Every World Monitor data source by intelligence domain: what each covers, which providers feed it, and deep-dive links for methodology, cadence and fallbacks."
 ---
 
 World Monitor fuses attributed structured APIs, news and OSINT feeds, and operational-status endpoints into live operating pictures across the product variants. The source-attribution manifest, application feed registry, and Telegram catalog are separate inventories and are not added together. This page is the catalog: start with the domain map below, open the domain you care about, then follow the deep-dive links for methodology and freshness guarantees.
 
 Data flows one way: Railway seeders and edge functions fetch upstream sources on fixed cadences, normalize and cache the results in Redis, and the dashboard hydrates from those caches — so a burst of traffic never multiplies load on any provider. The [architecture guide](/architecture) covers the pipeline in depth, and the machine-audited inventory of every observed upstream host lives in the [full source inventory](/source-attribution).
+
+Compare the dashboard with its underlying event-data services: [World Monitor vs ACLED](https://www.worldmonitor.app/compare/worldmonitor-vs-acled/) and [World Monitor vs GDELT](https://www.worldmonitor.app/compare/worldmonitor-vs-gdelt/).
 
 ## Coverage at a Glance
 
@@ -35,12 +37,12 @@ The core of the geopolitical variant: who is fighting, protesting, fleeing, and 
 - Intelligence hotspots with news correlation
 - Social unrest events (dual-source: ACLED protests + GDELT geo-events, Haversine-deduplicated)
 - Sanctions regimes
-- Refugee and displacement flows (UN OCHA HAPI)
+- Refugee and displacement flows (UNHCR, IDMC, IOM DTM) and cross-border movements (UNHCR portal, UK Home Office, US CBP, Frontex, Panama)
 - Government travel advisories from three national agencies plus embassy and health feeds
 - Israel Home Front Command (OREF) rocket and drone sirens in real time
 - Prediction-market probabilities as leading indicators (Polymarket)
 - Geopolitical boundary overlays — Korean DMZ (43-point closed-ring polygon based on the Korean Armistice Agreement), with typed boundary categories (demilitarized, ceasefire, disputed, armistice) and info popups
-- Iran conflict events — geocoded attacks, strikes, and military incidents sourced from LiveUAMap with severity classification
+- Middle East strikes — missile, drone and air strikes and interceptions in Saudi Arabia, Yemen, Iran, Iraq, the Gulf states and the Levant, extracted from curated Telegram channels (keyword pre-filter, then an AI classifier) and backstopped by the GDELT event export; reports from belligerent state media publish only when an independent source agrees
 
 **Key providers**
 
@@ -78,14 +80,18 @@ Events from both sources are **Haversine-deduplicated** on a 0.1° grid (~10km) 
 
 Protest scoring is regime-aware: democratic countries use logarithmic scaling (routine protests don't trigger instability), while authoritarian states use linear scoring (every protest is significant). Fatalities and concurrent internet outages apply severity boosts.
 
-ACLED is authenticated: set either `ACLED_EMAIL` + `ACLED_PASSWORD` (OAuth, auto-refreshed) or a static `ACLED_ACCESS_TOKEN` on the API project. When ACLED auth is absent the fetch degrades gracefully to an empty result — but ACLED is also the **real-time conflict source** for the Country Instability Index, so without it CII conflict scoring falls back to UCDP alone. UCDP GED's ANNUAL release lags ~7 months, so the UCDP seeders additionally discover the newest monthly **GED Candidate** release (`YY.0.M`, published with about a month's lag) and merge it on top of the annual base — the candidate adds recency, the annual base supplies the depth the 2-year window needs, and the published payload reserves slots for both. That keeps recent conflict events inside the CII 2-year recency window, but the fallback can still read `COVERAGE_PARTIAL` on the `riskScores` health/cache signal when UCDP itself is quiet or the candidate merge is degraded (cyber and news families still cover, so the metric reads 2 of 3). The `get-risk-scores` RPC logs a `[CII] ACLED returned 0 events` warning when this happens. When the candidate merge stops working, `seed-meta:conflict:ucdp-events` carries `candidateVersion: null` and the content-age trio drives the `ucdpEvents` health entry to `STALE_CONTENT`.
+ACLED is authenticated: set either `ACLED_EMAIL` + `ACLED_PASSWORD` (OAuth, auto-refreshed) or a static `ACLED_ACCESS_TOKEN` on the API project. When ACLED auth is absent the fetch degrades gracefully to an empty result — but ACLED is also the **real-time conflict source** for the Country Instability Index, so without it CII conflict scoring falls back to UCDP alone. UCDP GED's ANNUAL release lags ~7 months, so the UCDP seeders additionally discover the newest monthly **GED Candidate** release (`YY.0.M`, published with about a month's lag) and merge it on top of the annual base — the candidate adds recency, the annual base supplies the depth the 2-year window needs, and the published payload reserves slots for both. That keeps recent conflict events inside the CII 2-year recency window, but the fallback can still read `COVERAGE_PARTIAL` on the `riskScores` health/cache signal when UCDP itself is quiet or the candidate merge is degraded (only the news family still covers, so the metric reads 1 of 2; cyber stopped counting in CII v14). The `get-risk-scores` RPC logs a `[CII] ACLED returned 0 events` warning when this happens. When the candidate merge stops working, `seed-meta:conflict:ucdp-events` carries `candidateVersion: null` and the content-age trio drives the `ucdpEvents` health entry to `STALE_CONTENT`.
 
 ### Displacement Tracking
 
-Refugee and displacement data is sourced from the UN OCHA Humanitarian API (HAPI), providing population-level counts for refugees, asylum seekers, and internally displaced persons (IDPs). The Displacement panel offers two perspectives:
+The Displacement panel gives each source its own tab. Each source loads and refreshes on its own, so a tab appears as soon as its source has data:
 
-- **Origins** — countries people are fleeing from, ranked by outflow volume
-- **Hosts** — countries absorbing displaced populations, ranked by intake
+- **Origins** and **Hosts** — yearly UNHCR Population API counts of refugees, asylum seekers, and internally displaced persons (IDPs), ranked by outflow (countries people are fleeing) and by intake (countries hosting them)
+- **Recent** — new internal displacement events from IDMC's Internal Displacement Updates, read from the per-country files IDMC publishes on HDX. IDMC enters a figure a median of about three weeks after the displacement, so the newest week is always incomplete
+- **Internal** — internal displacement by first-level region from IOM's Displacement Tracking Matrix (DTM). Each operation keeps only its latest survey round, and operations that overlap in one country are never summed
+- **Cross-border** — source-dated movements from the UNHCR Operational Data Portal, UK Home Office daily small-boat arrivals, US CBP southwest-border encounters, Frontex monthly detections, and Panama's Darién arrivals. Each figure keeps its source's report date. Encounters and detections count events, not unique people. Route methodology and licences are listed in [Cross-border movements](https://github.com/koala73/worldmonitor/blob/main/docs/cross-border-movements.md)
+
+A surge in IDMC internal displacement for a country is emitted as a cross-source signal. A fresh, source-confirmed cross-border arrival surge adds five points to that country's CII once (since formula v13).
 
 Crisis badges flag countries with extreme displacement: > 1 million displaced (red), > 500,000 (orange). Displacement outflow feeds into the CII as a component signal — high displacement is a lagging indicator of instability that persists even when headlines move on.
 
@@ -196,7 +202,6 @@ Force posture and strategic infrastructure, tracked from open sources in real ti
 |----------|------|------|
 | CelesTrak | Satellite TLE data for orbital tracking | [celestrak.org](https://celestrak.org) |
 | gpsjam.org | ADS-B-derived GPS interference grid | [gpsjam.org](https://gpsjam.org) |
-| LiveUAMap | Geocoded conflict events (Iran theater) | [liveuamap.com](https://liveuamap.com) |
 | World Bank Open Data | Military expenditure, personnel, and national arms-transfer totals (`MS.MIL.*`) | [api.worldbank.org](https://api.worldbank.org/) |
 | SIPRI Arms Transfers Database | Derived supplier shares and HHI for delivered major conventional weapons; no full-database mirror | [armstransfers.sipri.org](https://armstransfers.sipri.org/) |
 
@@ -251,62 +256,66 @@ Deep dives: [News feeds panel](/panels/news-feeds) · [News digest & briefing me
 
 Rather than each client browser independently fetching dozens of RSS feeds through individual edge function invocations, the `listFeedDigest` RPC endpoint aggregates all feeds server-side into a single categorized response.
 
-The public server digest feed inventory below is source-backed from `server/worldmonitor/news/v1/_feeds.ts`; that code file remains the source of truth for exact URLs, Google News query wrappers, and locale-specific URL parameters. Feed choices are intentionally visible here so regional coverage, official-source inclusion, and politically sensitive inclusions such as `Trump - Truth Social` can be reviewed rather than hidden behind a generic "RSS" label. Language-scoped feeds are marked with their language code and are only included when the request language matches. The `full` variant also appends `INTEL_SOURCES` under the `intel` category.
+The public server digest feed inventory below is source-backed from `shared/news-catalog.json` (each feed's server placements); that catalog is the source of truth for exact URLs, Google News query wrappers, and locale-specific URL parameters. Feed choices are intentionally visible here so regional coverage, official-source inclusion, and politically sensitive inclusions such as `Trump - Truth Social` can be reviewed rather than hidden behind a generic "RSS" label. Language-scoped feeds are marked with their language code and are only included when the request language matches. The relay requests every edition and language pair the catalog places a feed in every 17 minutes, just past the digest's 15-minute cache (`scripts/shared/news-digest-warm-cells.json`), so a language-scoped feed is fetched even when no reader requests its language. The `full` variant also appends `INTEL_SOURCES` under the `intel` category.
 
 | Variant | Category | Server feed sources |
 | --- | --- | --- |
-| `full` | `politics` | BBC World; Guardian World; AP News; Reuters World; CNN World; Trump - Truth Social |
+| `full` | `politics` | BBC World; Guardian World; AP News; Reuters World; CNN World; Trump - Truth Social; New York Times World; Washington Post World; The Economist; The Independent |
 | `full` | `us` | Reuters US; NPR News; PBS NewsHour; ABC News; CBS News; NBC News; Wall Street Journal; Politico; The Hill; Axios; Fox News; CBC News; Globe and Mail; Global News; Toronto Star; National Post; Financial Post; iPolitics; The Narwhal; The Tyee; Radio-Canada (fr); La Presse (fr); Le Devoir (fr); TVA Nouvelles (fr); Vancouver Sun; Calgary Herald; Winnipeg Free Press; Ottawa Citizen; Edmonton Journal; Maclean's; The Province; CTV News; CP24; Montreal Gazette |
-| `full` | `europe` | France 24; EuroNews; Le Monde; DW News; Telegraph; Interfax EN; Tagesschau (de); Handelsblatt (de); Welt (de); Interfax RU (ru); ANSA (it); NOS Nieuws (nl); SVT Nyheter (sv); Yle News; NRK; Aftenposten; DR Nyheder; Arctic Today; Telex (hu); Index.hu (hu); HVG (hu); 444.hu (hu); 24.hu (hu); Híradó (hu); Portfolio.hu (hu); ATV (hu); Seznam Zprávy (cs); N1 Croatia (hr); Index.hr (hr); Jutarnji list (hr); Balkan Insight; Digi24 (ro); HotNews (ro); G4Media (ro); Dnevnik (bg); Kyiv Independent; Ukrinform; Suspilne; Ukrainska Pravda EN; NV EN; Hromadske EN; Ukrainska Pravda (uk); Hromadske (uk); Bihus.Info (uk); Slidstvo.Info (uk); ZN.UA (uk); TVN24; Rzeczpospolita; Meduza; Moscow Times; Civil.ge; OC Media; JAMnews; Azertag; Armenpress; Zerkalo; NewsMaker (ru); Ziarul de Gardă (ro); ERR News; LRT English; LSM English; Daily Sabah; Hurriyet (tr); Polsat News (pl); PAP (pl); Gazeta Wyborcza (pl); Polityka (pl); Onet (pl); OKO.press (pl); TVP Info (pl); Kathimerini (el); Naftemporiki (el); in.gr (el); iefimerida (el); Proto Thema (el); ERT (el); AMNA (el); Ta Nea (el); Liberal GR (el); CNN Greece (el) |
-| `full` | `middleeast` | BBC Middle East; Al Jazeera; Al Arabiya; Guardian ME; BBC Persian (fa); Iran International; Haaretz; Jerusalem Post; Ynetnews; Arab News; The National; Oman Observer; Asharq Business; Rudaw; Yemen Online; Sana'a Center; Syria Direct; Enab Baladi English; +972 Magazine; WAFA English; Naharnet Lebanon; L'Orient Today; Annahar (ar); Libya Herald; Egypt Independent; Mada Masr |
+| `full` | `europe` | France 24; EuroNews; Le Monde; DW News; Telegraph; Interfax EN; Tagesschau (de); Handelsblatt (de); Welt (de); Interfax RU (ru); ANSA (it); NOS Nieuws (nl); SVT Nyheter (sv); Yle News; NRK; Aftenposten; DR Nyheder; Arctic Today; Telex (hu); Index.hu (hu); HVG (hu); 444.hu (hu); 24.hu (hu); Híradó (hu); Portfolio.hu (hu); ATV (hu); Seznam Zprávy (cs); N1 Croatia (hr); Index.hr (hr); Jutarnji list (hr); Balkan Insight; Digi24 (ro); HotNews (ro); G4Media (ro); Dnevnik (bg); Kyiv Independent; Ukrinform; Suspilne; Ukrainska Pravda EN; NV EN; Hromadske EN; Ukrainska Pravda (uk); Hromadske (uk); Bihus.Info (uk); Slidstvo.Info (uk); ZN.UA (uk); TVN24; Rzeczpospolita; Meduza; Moscow Times; Civil.ge; OC Media; JAMnews; Azertag; Armenpress; Zerkalo; NewsMaker (ru); Ziarul de Gardă (ro); ERR News; LRT English; LSM English; Daily Sabah; Hurriyet (tr); Polsat News (pl); PAP (pl); Gazeta Wyborcza (pl); Polityka (pl); Onet (pl); OKO.press (pl); TVP Info (pl); Kathimerini (el); Naftemporiki (el); in.gr (el); iefimerida (el); Proto Thema (el); ERT (el); AMNA (el); Ta Nea (el); Liberal GR (el); CNN Greece (el); Sky News; BBC UK; BBC Northern Ireland; BBC Mundo (es); BBC Russian (ru); BBC Turkce (tr); Bild (de); Corriere della Sera (it); DW Turkish (tr); Dagens Nyheter (sv); De Telegraaf (nl); Der Spiegel (de); Die Zeit (de); El Mundo (es); El País (es); NRC (nl); Novaya Gazeta Europe (ru); RT; RT Russia; Repubblica (it); Svenska Dagbladet (sv); TASS |
+| `full` | `middleeast` | BBC Middle East; Al Jazeera; Al Arabiya; Guardian ME; BBC Persian (fa); Iran International; Haaretz; Jerusalem Post; Ynetnews; Arab News; The National; Oman Observer; Asharq Business; Rudaw; Yemen Online; Sana'a Center; Syria Direct; Enab Baladi English; +972 Magazine; WAFA English; Naharnet Lebanon; L'Orient Today; Annahar (ar); Libya Herald; Egypt Independent; Mada Masr; Times of Israel; Middle East Eye; Asharq News (ar); Fars News; IRNA; Mehr News |
 | `full` | `tech` | Hacker News; Ars Technica; The Verge; MIT Tech Review; Wired |
 | `full` | `ai` | AI News; VentureBeat AI; The Verge AI; MIT Tech Review; ArXiv AI |
 | `full` | `finance` | CNBC; MarketWatch; Yahoo Finance; Financial Times; Reuters Business; Fox Business; Business Insider; GlobeNewswire; Business Wire; PR Newswire; Chainwire; Coinbase Blog; Binance Announcements; Jin10 (zh) |
-| `full` | `commodities` | Oil & Gas; Gold & Metals |
-| `full` | `gov` | White House; White House Actions; State Dept; Pentagon; Federal Reserve; SEC; U.S. Trade Representative; UN News; CISA; Treasury; DOJ |
-| `full` | `africa` | BBC Africa; Guardian Africa; France 24 Africa; Africa News; Sahel Crisis; News24; Africanews; Jeune Afrique (fr); Premium Times; Vanguard Nigeria; Channels TV; Daily Trust; ThisDay; Radio Tamazuj; The Reporter Ethiopia; Ethiopia Insight; Dabanga Sudan; Hiiraan Online; Actualite.cd (fr); Radio Okapi (fr); MyJoyOnline; Citi Newsroom; Le Quotidien (fr); RFI Afrique; Studio Tamani (fr); leFaso.net (fr); ActuNiger (fr); Aïr Info (fr); Daily Nation; The Guardian Post; Tchadinfos (fr); Alwihda Info (fr); Radio Ndeke Luka (fr) |
-| `full` | `latam` | BBC Latin America; Guardian Americas; Guardian Caribbean; France 24 LatAm; Mexico News Daily; Primicias (es); Infobae Americas (es); El Universo (es); Clarín (es); InSight Crime; HaitiLibre English; AyiboPost (fr); Caracas Chronicles; Efecto Cocuyo (es); Havana Times; 14ymedio (es) |
-| `full` | `asia` | BBC Asia; Guardian Pacific; France 24 Asia Pacific; The Diplomat; Reuters Asia; Reuters India; Japan Today; Nikkei Asia; CNA; NDTV; South China Morning Post; The Hindu; Asia News; Xinhua; Asahi Shimbun (ja); MIIT (China) (zh); MOFCOM (China) (zh); Bangkok Post (th); VnExpress (vi); Yonhap News (ko); BBC Hindi (hi); Aaj Tak (hi); NDTV India (hi); Amar Ujala (hi); Eurasianet; RFE/RL Central Asia; The Astana Times; The Times of Central Asia; Focus Taiwan; Taipei Times; Taiwan News; Dawn; Geo News; Jakarta Post; Rappler; The Star (Malaysia); Irrawaddy; Island Times (Palau); Amu TV; Pajhwok Afghan News; The Daily Star; Dhaka Tribune; Times of India (en) |
-| `full` | `energy` | Oil & Gas; Reuters Energy; Nuclear Energy |
-| `full` | `thinktanks` | Foreign Policy; Atlantic Council; Foreign Affairs; War on the Rocks; CSIS; ISW |
-| `full` | `crisis` | CrisisWatch; IAEA; WHO |
+| `full` | `commodities` | Oil & Gas; Gold & Metals; Agriculture; Commodity Trading |
+| `full` | `gov` | White House; White House Actions; State Dept; Pentagon; Federal Reserve; SEC; U.S. Trade Representative; UN News; CISA; Treasury; DOJ; CDC; DHS; FEMA |
+| `full` | `africa` | BBC Africa; Guardian Africa; France 24 Africa; Africa News; Sahel Crisis; News24; Africanews; Jeune Afrique (fr); Premium Times; Vanguard Nigeria; Channels TV; Daily Trust; ThisDay; Radio Tamazuj; The Reporter Ethiopia; Ethiopia Insight; Dabanga Sudan; Hiiraan Online; Actualite.cd (fr); Radio Okapi (fr); MyJoyOnline; Citi Newsroom; Le Quotidien (fr); RFI Afrique; Studio Tamani (fr); leFaso.net (fr); ActuNiger (fr); Aïr Info (fr); Daily Nation; The Guardian Post; Tchadinfos (fr); Alwihda Info (fr); Radio Ndeke Luka (fr); BBC Afrique (fr) |
+| `full` | `latam` | BBC Latin America; Guardian Americas; Guardian Caribbean; France 24 LatAm; Mexico News Daily; Primicias (es); Infobae Americas (es); El Universo (es); Clarín (es); InSight Crime; HaitiLibre English; AyiboPost (fr); Caracas Chronicles; Efecto Cocuyo (es); Havana Times; 14ymedio (es); AP Mexico; Brasil Paralelo (pt); El Tiempo (es); Folha de S.Paulo (pt); La Silla Vacía (es); Latin America; Mexico Security; O Globo (pt); Reuters LatAm |
+| `full` | `asia` | BBC Asia; Guardian Pacific; France 24 Asia Pacific; The Diplomat; Reuters Asia; Reuters India; Japan Today; Nikkei Asia; CNA; NDTV; South China Morning Post; The Hindu; Asia News; Xinhua; Asahi Shimbun (ja); MIIT (China) (zh); MOFCOM (China) (zh); Bangkok Post (th); VnExpress (vi); Yonhap News (ko); BBC Hindi (hi); Aaj Tak (hi); NDTV India (hi); Amar Ujala (hi); Eurasianet; RFE/RL Central Asia; The Astana Times; The Times of Central Asia; Focus Taiwan; Taipei Times; Taiwan News; Dawn; Geo News; Jakarta Post; Rappler; The Star (Malaysia); Irrawaddy; Island Times (Palau); Amu TV; Pajhwok Afghan News; The Daily Star; Dhaka Tribune; Times of India (en); Japan Times; ABC News Australia; Chosun Ilbo (ko); Guardian Australia; India News Network; Indian Express; Thai PBS (th); Tuoi Tre News (vi) |
+| `full` | `energy` | Oil & Gas; Reuters Energy; Nuclear Energy; Mining & Resources |
+| `full` | `thinktanks` | Foreign Policy; Atlantic Council; Foreign Affairs; War on the Rocks; CSIS; ISW; FPRI; Jamestown; RAND; Responsible Statecraft; Brookings; Carnegie; RUSI |
+| `full` | `crisis` | CrisisWatch; IAEA; WHO; UNHCR |
 | `full` | `layoffs` | Layoffs.fyi; TechCrunch Layoffs; Layoffs News |
-| `full` | `intel` | Defense One; The War Zone; Defense News; Breaking Defense; Military Times; Task & Purpose; USNI News; gCaptain; Oryx OSINT; Foreign Policy; Foreign Affairs; Atlantic Council; Bellingcat; Krebs Security; Arms Control Assn; Bulletin of Atomic Scientists; FAO News; OCCRP; DFRLab; Lighthouse Reports; The Sentry; GITOC; VSquare; Correctiv |
-| `tech` | `tech` | TechCrunch; The Verge; Ars Technica; Hacker News; Wired |
-| `tech` | `ai` | AI News; VentureBeat AI; The Verge AI; ArXiv AI |
-| `tech` | `startups` | TechCrunch Startups; VentureBeat; Crunchbase News |
-| `tech` | `vcblogs` | Y Combinator Blog; a16z Blog; First Round Review; Sequoia Blog; Stratechery |
-| `tech` | `regionalStartups` | EU Startups; Tech.eu; Sifted (Europe); Tech in Asia; TechCabal (Africa); Inc42 (India) |
-| `tech` | `unicorns` | Unicorn News; Decacorn News |
-| `tech` | `accelerators` | YC News; Demo Day News |
-| `tech` | `security` | Krebs Security; Dark Reading |
-| `tech` | `policy` | Politico Tech; AI Regulation; Tech Antitrust |
-| `tech` | `github` | GitHub Blog |
-| `tech` | `funding` | VC News |
-| `tech` | `cloud` | InfoQ; The New Stack |
+| `full` | `science` | Reuters Science; Nature News; BBC Science; Guardian Science; ScienceDaily |
+| `full` | `intel` | Defense One; The War Zone; Defense News; Breaking Defense; Military Times; Task & Purpose; USNI News; gCaptain; Oryx OSINT; Foreign Policy; Foreign Affairs; Atlantic Council; Bellingcat; Krebs Security; Arms Control Assn; Bulletin of Atomic Scientists; FAO News; OCCRP; DFRLab; Lighthouse Reports; The Sentry; GITOC; VSquare; Correctiv; RAND; CSIS; Brookings; CNAS; Carnegie; Chatham House; ECFR; EU ISS; FAO GIEWS; FAS; GMF; Janes; Lowy Institute; Middle East Institute; NTI; RUSI; Ransomware.live; Stimson Center; UK MOD; Wilson Center |
+| `tech` | `tech` | TechCrunch; The Verge; Ars Technica; Hacker News; Wired; Engadget; Fast Company; TechMeme; ZDNet; MIT Tech Review |
+| `tech` | `ai` | AI News; VentureBeat AI; The Verge AI; ArXiv AI; AI Weekly; Anthropic News; ArXiv ML; MIT Research; MIT Tech Review AI; OpenAI News |
+| `tech` | `startups` | TechCrunch Startups; VentureBeat; Crunchbase News; AngelList News; CB Insights; Fortune Term Sheet; PitchBook News; SaaStr; TechCrunch Venture; The Information |
+| `tech` | `vcblogs` | Y Combinator Blog; a16z Blog; First Round Review; Sequoia Blog; Stratechery; FwdStart Newsletter; Lenny's Newsletter; Paul Graham Essays; VC Insights |
+| `tech` | `regionalStartups` | EU Startups; Tech.eu; Sifted (Europe); Tech in Asia; TechCabal (Africa); Inc42 (India); 36Kr English; Africa Startups; Africa Tech News; Asia VC News; Brazil Tech; China Startups; China Tech Giants; FinTech LATAM; India Startups; India Tech News; Indonesia Tech; Japan Startups; Japan Tech News; Korea Startups; Korea Tech News; KrASIA; LATAM Startups; MENA Startups; MENA Tech News; Nikkei Tech; SEA Startups; SEA Tech News; Startups LATAM; Taiwan Tech; The Next Web; Vietnam Tech; YourStory |
+| `tech` | `unicorns` | Unicorn News; Decacorn News; CB Insights Unicorn; New Unicorns |
+| `tech` | `accelerators` | YC News; Demo Day News; 500 Global News; Startup School; Techstars News |
+| `tech` | `security` | Krebs Security; Dark Reading; Schneier; The Hacker News |
+| `tech` | `policy` | Politico Tech; AI Regulation; Tech Antitrust; China Tech Policy; EFF News; EU Commission Digital; EU Digital Policy; India Tech Policy; UK Tech Policy |
+| `tech` | `github` | GitHub Blog; Dev Events; GitHub Trending; Open Source News; YC Launches |
+| `tech` | `funding` | VC News; SEC Filings; Seed & Pre-Seed; Startup Funding |
+| `tech` | `cloud` | InfoQ; The New Stack; DevOps.com |
 | `tech` | `layoffs` | Layoffs.fyi; TechCrunch Layoffs |
-| `tech` | `finance` | CNBC Tech; Yahoo Finance |
+| `tech` | `finance` | CNBC Tech; Yahoo Finance; MarketWatch Tech; Seeking Alpha Tech |
 | `tech` | `dev` | Dev.to; Lobsters; Changelog; Show HN |
-| `tech` | `ipo` | IPO News; Tech IPO News |
+| `tech` | `ipo` | IPO News; Tech IPO News; Renaissance IPO |
 | `tech` | `producthunt` | Product Hunt |
 | `tech` | `hardware` | Tom's Hardware; SemiAnalysis; Semiconductor News |
 | `tech` | `outages` | AWS Status; Cloud Outages |
-| `finance` | `markets` | CNBC; Yahoo Finance; Seeking Alpha; Fox Business; Business Insider; GlobeNewswire; Business Wire; PR Newswire |
-| `finance` | `forex` | Forex News |
-| `finance` | `bonds` | Bond Market |
-| `finance` | `commodities` | Oil & Gas; Gold & Metals |
-| `finance` | `crypto` | CoinDesk; Cointelegraph; The Block; Decrypt; Chainwire; Coinbase Blog; Binance Announcements; Jin10 (zh); The Defiant; Bitcoin Magazine; DL News; CryptoSlate; Unchained; DeFi News; Bloomberg Crypto; Reuters Crypto; Wu Blockchain; Messari; NFT News; Stablecoin Policy |
-| `finance` | `centralbanks` | Federal Reserve; PBoC Watch |
-| `finance` | `economic` | Economic Data |
-| `finance` | `ipo` | IPO News |
+| `tech` | `thinktanks` | Brookings Tech; CSIS Tech; MIT Tech Policy; Stanford HAI; AI Now Institute; OECD Digital; EU Tech Policy; Chatham House Tech; ISEAS (Singapore); ORF Tech (India); RIETI (Japan); Asia Pacific Tech; China Tech Analysis; DigiChina |
+| `tech` | `podcasts` | Acquired Episodes; All-In Podcast; a16z Insights; TWIST Episodes; 20VC Episodes; Lex Fridman Tech; Verge Shows; Hard Fork (NYT); Pivot Podcast; Tech Newsletters; AI Podcasts; AI Interviews; How I Built This; Masters of Scale |
+| `finance` | `markets` | CNBC; Yahoo Finance; Seeking Alpha; Fox Business; Business Insider; GlobeNewswire; Business Wire; PR Newswire; MarketWatch; Bloomberg Markets; Investing.com News; Reuters Markets |
+| `finance` | `forex` | Forex News; Central Bank Rates; Dollar Watch |
+| `finance` | `bonds` | Bond Market; Corporate Bonds; Treasury Watch |
+| `finance` | `commodities` | Oil & Gas; Gold & Metals; Agriculture; Commodity Trading |
+| `finance` | `crypto` | CoinDesk; Cointelegraph; The Block; Decrypt; Chainwire; Coinbase Blog; Binance Announcements; Jin10 (zh); The Defiant; Bitcoin Magazine; DL News; CryptoSlate; Unchained; DeFi News; Bloomberg Crypto; Reuters Crypto; Wu Blockchain; Messari; NFT News; Stablecoin Policy; Crypto News |
+| `finance` | `centralbanks` | Federal Reserve; PBoC Watch; BoE Watch; BoJ Watch; ECB Watch; Global Central Banks |
+| `finance` | `economic` | Economic Data; Trade & Tariffs; Housing Market |
+| `finance` | `ipo` | IPO News; Earnings Reports; M&A News |
 | `finance` | `derivatives` | Options Market; Futures Trading |
 | `finance` | `fintech` | Fintech News; Trading Tech; Blockchain Finance |
 | `finance` | `fin-regulation` | SEC; Financial Regulation; Banking Rules; Crypto Regulation |
 | `finance` | `institutional` | Hedge Fund News; Private Equity; Sovereign Wealth |
 | `finance` | `analysis` | Market Outlook; Risk & Volatility; Bank Research |
 | `finance` | `gccNews` | Arabian Business; The National; Arab News; Gulf FDI; Gulf Investments; Vision 2030 |
+| `finance` | `nq-news` | Reuters Nasdaq Futures; Nasdaq-100 & QQQ; Federal Reserve; NQ Influence Basket; Semiconductors |
 | `commodity` | `commodity-news` | Kitco News; Mining.com; Bloomberg Commodities; Reuters Commodities; S&P Global Commodity; CNBC Commodities |
-| `commodity` | `gold-silver` | Kitco Gold; Gold Price News; Silver Price News; Precious Metals; World Gold Council |
+| `commodity` | `gold-silver` | Kitco Gold; Gold Price News; Silver Price News; Precious Metals; World Gold Council; FX Empire Gold; Gold Silver Worlds; GoldSeek; SilverSeek |
 | `commodity` | `energy` | OilPrice.com; Rigzone; EIA Reports; OPEC News; Natural Gas News; Energy Intel; Reuters Energy |
 | `commodity` | `mining-news` | Mining Journal; Northern Miner; Mining Weekly; Mining Technology; Australian Mining; Mine Web (SNL); Resource World |
 | `commodity` | `critical-minerals` | Benchmark Mineral; Lithium Market; Cobalt Market; Rare Earths News; EV Battery Supply; IEA Critical Minerals; Uranium Market |
@@ -316,11 +325,14 @@ The public server digest feed inventory below is source-backed from `server/worl
 | `commodity` | `commodity-regulation` | Mining Regulation; ESG in Mining; Trade & Tariffs; Indonesia Nickel Policy; China Mineral Policy |
 | `commodity` | `markets` | Yahoo Finance Commodities; CNBC Markets; Seeking Alpha Metals; Commodity Futures |
 | `commodity` | `finance` | CNBC; MarketWatch; Yahoo Finance; Financial Times; Reuters Business |
-| `happy` | `positive` | Good News Network; Positive.News; Reasons to be Cheerful; Optimist Daily |
-| `happy` | `science` | ScienceDaily; Nature News; Singularity Hub; Human Progress |
-| `happy` | `nature` | Mongabay; Conservation Optimism |
-| `happy` | `inspiring` | GNN Heroes; GNN Health |
+| `happy` | `positive` | Good News Network; Positive.News; Reasons to be Cheerful; Optimist Daily; DailyGood; GOOD Magazine; Good Good Good; Sunny Skyz; The Better India; Upworthy |
+| `happy` | `science` | ScienceDaily; Nature News; Singularity Hub; Human Progress; GNN Science; Greater Good (Berkeley); Live Science; New Scientist |
+| `happy` | `nature` | Mongabay; Conservation Optimism; GNN Animals; GNN Earth |
+| `happy` | `inspiring` | GNN Heroes; GNN Health; GNN Heroes Spotlight |
 | `happy` | `community` | Yes! Magazine; Shareable |
+| `energy` | `live-news` | OilPrice.com; Rigzone; Reuters Energy; Bloomberg Energy; FT Energy; IEA News; S&P Global Platts |
+| `energy` | `energy` | OilPrice.com; Rigzone; EIA Press Room; OPEC & Crude; Natural Gas & LNG; Pipelines & Chokepoints; Energy Crisis & Shortages; Refinery & Disruptions; Energy Intel |
+| `energy` | `supply-chain` | Tanker & Shipping; Strategic Chokepoints; Energy Sanctions; Port & Terminal |
 
 **Architecture**:
 
@@ -398,14 +410,16 @@ Resource management is aggressive — iframes are lazy-loaded via Intersection O
 
 ### Source Credibility & Feed Tiering
 
-Every RSS feed is assigned a source tier reflecting editorial reliability:
+Feeds are assigned a source tier reflecting editorial reliability:
 
-| Tier       | Description                                | Examples                                    |
-| ---------- | ------------------------------------------ | ------------------------------------------- |
-| **Tier 1** | Wire services, official government sources | Reuters, AP, BBC, DOD                       |
-| **Tier 2** | Major established outlets                  | CNN, NYT, The Guardian, Al Jazeera          |
-| **Tier 3** | Specialized/niche outlets                  | Defense One, Breaking Defense, The War Zone |
-| **Tier 4** | Aggregators and blogs                      | Google News, individual analyst blogs       |
+| Tier       | Description                                 | Examples                                             |
+| ---------- | ------------------------------------------- | ---------------------------------------------------- |
+| **Tier 1** | Wire services and official bodies           | Reuters, AP News, AFP, Pentagon                      |
+| **Tier 2** | Major outlets                               | BBC, CNN World, New York Times, The Guardian, Al Jazeera |
+| **Tier 3** | Specialist, regional and think-tank sources | Defense One, Breaking Defense, The War Zone          |
+| **Tier 4** | Aggregators and blogs                       | Hacker News, The Verge, Yahoo Finance                |
+
+A clustered story lists its publishers with the best tier declared among the feeds seen for that story. A feed with no declared tier shows as "tier not declared" and never counts as tier 4 when the corroboration flags are computed. Tiers rank sources; they do not judge whether a claim is true.
 
 Feeds also carry a **propaganda risk rating** and **state affiliation flag**. State-affiliated sources (RT, Xinhua, IRNA) are included for completeness but visually tagged so analysts can factor in editorial bias. Those same inputs feed the per-headline [`credibilityScore`](/methodology/news-credibility) (0-100 source reliability, distinct from `importanceScore` newsworthiness). Threat classification confidence is weighted by source tier — a Tier 1 breaking alert carries more weight than a Tier 4 blog post in the focal point detection algorithm.
 
@@ -565,7 +579,7 @@ Natural hazards and climate stress, merged from independent government and UN-co
 - Western Pacific tropical-cyclone observations (Hong Kong Observatory, Japan Meteorological Agency)
 - Climate anomaly detection over 15 conflict- and disaster-prone zones (Open-Meteo ERA5)
 - Weather alerts and severe conditions (NWS + ECCC polygons, WMO SWIC official CAP points)
-- IMD RSMC New Delhi cyclone tracks, forecast wind radii, cone of uncertainty, and port / sea-area / coastal bulletins (`weather:imd-cyclone-marine:v1`, on-demand). Live fetch requires `IMD_API_KEY`, `IMD_API_EMAIL`, and `IMD_API_PASSWORD`; the seeder mints a short-lived JWT for each run. A disabled snapshot is not an all-clear.
+- IMD sea-area and coastal marine bulletins, including storm warnings, port signals, and storm-surge or tidal warnings (`weather:imd-cyclone-marine:v1`, on-demand), parsed from the public `mausam.imd.gov.in` bulletin pages. IMD cyclone track, wind radii, and cone are API-only and disabled; GDACS covers North Indian Ocean cyclones. A disabled product is not an all-clear.
 - Radiation monitoring — see the [Radiation Watch panel](/panels/radiation-watch)
 
 **Key providers**
@@ -579,10 +593,11 @@ Natural hazards and climate stress, merged from independent government and UN-co
 | Hong Kong Observatory | Local tropical-cyclone warning signals | [data.weather.gov.hk](https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en) |
 | Japan Meteorological Agency | Western North Pacific tropical-cyclone observations | [jma.go.jp](https://www.jma.go.jp/bosai/map.html#contents=typhoon) |
 | Open-Meteo | ERA5 reanalysis climate data | [open-meteo.com](https://open-meteo.com) |
+| Copernicus Sentinel-5P TROPOMI | Tropospheric NO2 column aggregated daily over 167 countries and 32 industrial clusters as a year-over-year activity direction (Sentinel Hub Statistical API). Contains modified Copernicus Sentinel data. | [dataspace.copernicus.eu](https://dataspace.copernicus.eu) |
 | US National Weather Service | Official US weather alerts (polygon tier) | [api.weather.gov](https://api.weather.gov/alerts/active) |
 | Environment and Climate Change Canada | Official Canadian weather alerts (polygon tier) | [api.weather.gc.ca](https://api.weather.gc.ca) |
 | WMO Severe Weather Information Centre | Official CAP from WMO members, merged into `weather:alerts:v1` (point tier) | [severeweather.wmo.int](https://severeweather.wmo.int/json/wmo_all.json) |
-| India Meteorological Department | Cyclone track / wind / cone plus port, sea-area, and coastal products. Key-gated API; fishermen warning listed but undocumented and kept disabled. Not merged into `weather:alerts:v1`. | [api.imd.gov.in](https://api.imd.gov.in/public/api_reference.html) |
+| India Meteorological Department | Sea-area and coastal marine bulletins with storm warnings and port signals, parsed from public pages. Cyclone track / wind / cone (API-only), port warning PDFs, and fishermen warning PDFs stay disabled. Not merged into `weather:alerts:v1`. | [mausam.imd.gov.in](https://mausam.imd.gov.in/responsive/marine_forecast.php) |
 
 Deep dives: [Natural disasters](/natural-disasters) · [Disease alert methodology](/methodology/disease-alert-level) · [Thermal escalation panel](/panels/thermal-escalation)
 
@@ -632,6 +647,7 @@ Airport operations, airspace closures, live flight tracking, and airline intelli
 | OpenSky Network | Legacy per-request recovery (disabled in the military seeder) | [opensky-network.org](https://opensky-network.org) |
 | FAA ASWS | US airport delay and ground stop data | [nasstatus.faa.gov](https://nasstatus.faa.gov) |
 | ICAO | NOTAM airspace closure data | [icao.int](https://www.icao.int) |
+| FAA NOTAM Management Service | Worldwide NOTAMs for airport closures and the airspace areas on the Aviation layer (credentialed) | [faa.gov](https://www.faa.gov) |
 | AviationStack | International airport delay coverage | [aviationstack.com](https://aviationstack.com/) |
 
 Deep dives: [Airline intel panel](/panels/airline-intel)
@@ -644,11 +660,22 @@ Airports across the Americas, Europe, Asia-Pacific, MENA, and Africa are continu
 | ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------- |
 | **FAA ASWS**       | 14 US hub airports        | Real-time XML feed from `nasstatus.faa.gov` — ground delays, ground stops, arrival/departure delays, closures |
 | **AviationStack**  | 56 international airports  | Last 100 flights per airport — cancellation rate and average delay duration computed from flight records  |
-| **ICAO NOTAM API** | 46 MENA airports           | Real-time NOTAM (Notice to Air Missions) query for active airport/airspace closures                      |
+| **ICAO NOTAM API** | Watchlist airports worldwide | Real-time NOTAM (Notice to Air Missions) query for active airport/airspace closures                      |
+| **FAA NMS-API**    | Same NOTAM watchlist      | Worldwide FAA NOTAM store (domestic, FDC, international, military), kept current by daily bulk loads and delta pulls |
 
 **NOTAM closure detection** targets MENA airports where airspace closures due to military activity or security events carry strategic significance. Detection uses two methods: ICAO Q-code matching (aerodrome/airspace closure codes `FA`, `AH`, `AL`, `AW`, `AC`, `AM` combined with closure qualifiers `LC`, `AS`, `AU`, `XX`, `AW`) and free-text regex scanning for closure keywords (`AD CLSD`, `AIRPORT CLOSED`, `AIRSPACE CLOSED`). When a NOTAM closure is detected, it overrides any existing delay alert for that airport with a `severe/closure` classification.
 
-**Severity thresholds**: Average delay ≥15min or ≥15% delayed flights = minor; ≥30min/30% = moderate; ≥45min/45% = major; ≥60min/60% = severe. Cancellation rate ≥80% with ≥10 flights = closure. All results are cached for 30 minutes in Redis. When no AviationStack API key is configured, the system generates probabilistic simulated delays for demonstration — rush-hour windows and high-traffic airports receive higher delay probability.
+Only a JSON array from ICAO counts as a NOTAM observation, and an empty array is a valid "no closures" result. An HTTP error, an HTML page, malformed or non-array JSON, a timeout, or ICAO's `Reach call limit` quota response leaves `seed-meta:aviation:notam` untouched. The seeder keeps renewing the last closure list while it is within the 240-minute `notamClosures` health budget. After that, `/api/health` reports the feed stale, the seeder stops renewing the list, and it expires at its 2-hour TTL instead of being shown as current.
+
+**FAA NOTAM Management Service.** `scripts/seed-notam-nms.mjs` authenticates with OAuth2 client credentials (`NOTAM_KEY`, `NOTAM_SECRET`). It loads each NOTAM classification in bulk at most once per 24 hours and pulls the changes since its last cursor on every other run, in line with the FAA limits of one bulk load per day and one delta pull per three minutes. Cancelled and replaced NOTAMs are removed, and so are NOTAMs past their end time. Two keys come out of the store:
+
+- `aviation:notam:nms:closures:v1`: aerodromes closed in full (Q-code `FALC` or an `AD CLSD` text) and aerodromes with restrictions in force. A closure with exceptions, such as `AD CLSD EXC MEDEVAC`, or one limited to IFR or night traffic counts as a restriction, and `AD CLSD TO ALL TFC` with no exception counts as closed. A closure to one traffic class that leaves airline service running, such as `AD AP CLSD TO NON SKED TRANSIENT GA ACFT EXC 24HR PPR` at Los Angeles, Boston or Las Vegas, is not counted. The aviation seeder merges this list ahead of ICAO when it is under 30 minutes old, filters it to the same watchlist, and attributes each alert to the source that reported it. The watchlist is the seeder's airport list in `scripts/seed-aviation.mjs`, the only list the Railway container ships, so it has to include every airport in `src/config/airports.ts`; a test enforces that. Once NMS has published in production, an NMS list that is missing or older than 30 minutes makes the aviation seeder keep its last-good closures instead of publishing ICAO alone, so closures do not vanish and re-alert when NMS recovers.
+- The same closures key also lists every aerodrome the FAA feed carries a NOTAM for, of any kind (`coveredIcaos`). The list is rebuilt on each bulk load and grows with each delta pull, so after a deploy that introduces it, the list is complete only from the next daily bulk load. A monitored airport that has no FAA or AviationStack delay data used to show **Coverage unavailable**. When the feed carries NOTAMs for that airport and none closes or restricts it, the airport now shows **Open**, with severity normal and source NOTAM. The label makes no claim about delays. An airport the feed carries nothing for still shows Coverage unavailable, because the absence of a closure NOTAM there says nothing. So does an airport whose flight information region (FIR) has an airspace closure in effect: a country-wide closure is filed against the FIR, not against each airport.
+- `aviation:notam:airspace:v1`: temporary flight restrictions and prohibited, restricted, danger, military and reserved areas, plus closed airspace, that are in effect now or start within 24 hours. They are drawn by the **Aviation** map layer (deck.gl renderer only). NOTAMs that give a radius are drawn as circles around the Q-line centre the radius is measured from, and radii above 250 NM are drawn as markers. NOTAMs that give a polygon are drawn as polygons. An FDC TFR without a radius, whose shape is described only in the text, is drawn as a marker.
+
+Both keys have a 20-minute health budget. The Railway service `seed-notam-nms` runs every 5 minutes against the FAA production host. The seeder runs a dry run against any non-production host, because staging serves FAA test NOTAMs. With `NMS_ALLOW_NONPROD_WRITE=1` a non-production run publishes the map layer only, never closures or the activation marker.
+
+**Severity thresholds**: Average delay ≥15min or ≥15% delayed flights = minor; ≥30min/30% = moderate; ≥45min/45% = major; ≥60min/60% = severe. Cancellation rate ≥80% with ≥10 flights = closure. AviationStack rates count each operating flight once (a codeshare row counts for the flight it names when that flight has no other row) and read departure times in the airport's own time zone. They are measured over flights already due (scheduled departure passed, or departed) when at least 10 are in the sample. With fewer due flights, the returned flights are the day's later departures, so they can show a closure (at least 80% cancelled) but no lower cancellation level: advance cancellations of later flights are schedule changes, not disruption. All results are cached for 30 minutes in Redis. When no AviationStack API key is configured, the system generates probabilistic simulated delays for demonstration — rush-hour windows and high-traffic airports receive higher delay probability.
 
 ### Aviation Intelligence Panel
 

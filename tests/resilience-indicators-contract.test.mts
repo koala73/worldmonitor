@@ -108,7 +108,7 @@ describe('resilience indicator RPC contract', () => {
           ? input.href
           : input.url;
       if (requestUrl.endsWith('/api/internal-validate-api-key')) {
-        return Response.json({ userId: 'issue-6507-free-user', keyId: 'free-key', name: 'Free key' });
+        return Response.json({ id: 'free-key', userId: 'issue-6507-free-user', name: 'Free key', keyKind: 'api' });
       }
       if (requestUrl.endsWith('/api/internal-entitlements')) {
         return Response.json({

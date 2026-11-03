@@ -124,6 +124,11 @@ describe('aviation budget: reserveAviationStackCalls enforces ceilings', () => {
 describe('aviation budget: call sites are wired to the cap', () => {
   const read = (p) => readFileSync(resolve(root, p), 'utf-8');
 
+  it('carrier aggregate includes the billing cycle', () => {
+    const src = read('server/worldmonitor/aviation/v1/get-carrier-ops.ts');
+    assert.match(src, /aviation:carrier-ops:.*:v2:\$\{aviationStackBudgetCycle\(\)\}/);
+  });
+
   it('list-airport-flights reserves budget and quantizes the limit out of the cache key', () => {
     const src = read('server/worldmonitor/aviation/v1/list-airport-flights.ts');
     assert.match(src, /reserveAviationStackCalls\(1, 'request'\)/);

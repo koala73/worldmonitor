@@ -5,6 +5,7 @@ import type {
   ListPipelinesResponse,
   PipelineEntry,
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 import { derivePublicBadge } from './_pipeline-evidence';
 import { pickNewerClassifierVersion, pickNewerIsoTimestamp } from '../../../../src/shared/pipeline-evidence';
 
@@ -113,8 +114,12 @@ export async function listPipelines(
   _ctx: unknown,
   req: ListPipelinesRequest,
 ): Promise<ListPipelinesResponse> {
-  const wantGas = !req.commodityType || req.commodityType === 'gas';
-  const wantOil = !req.commodityType || req.commodityType === 'oil';
+  const commodity = (req.commodityType || '').toLowerCase();
+  if (commodity !== '' && commodity !== 'gas' && commodity !== 'oil') {
+    throw new ValidationError([{ field: 'commodityType', description: 'Expected gas, oil, or an empty filter' }]);
+  }
+  const wantGas = !commodity || commodity === 'gas';
+  const wantOil = !commodity || commodity === 'oil';
 
   // Seeder writes via raw key (no env-prefix) — match it on read.
   const [gasRaw, oilRaw] = await Promise.all([
@@ -134,7 +139,7 @@ export async function listPipelines(
     oilRaw?.classifierVersion,
   );
   const fetchedAt = pickNewerIsoTimestamp(gasRaw?.updatedAt, oilRaw?.updatedAt)
-    || new Date().toISOString();
+    || '';
 
   return {
     pipelines,

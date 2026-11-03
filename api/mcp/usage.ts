@@ -26,6 +26,8 @@ import {
   type WaitUntilCtx,
 } from '../../server/_shared/usage';
 import type { AuthKind } from '../../server/_shared/usage-identity';
+import { TOOL_ALIASES } from './registry/index';
+import { emitTelemetry } from './telemetry';
 import type { McpAuthContext } from './types';
 
 // Which stage of the /mcp funnel produced the terminal Response. Set by the
@@ -43,7 +45,63 @@ export type McpPhase =
   // body-size rejections; the HTTP status on the same event separates them.
   | 'malformed'
   | 'transport'  // method/SSE-transport level (405, replay 4xx)
+  | 'protocol_version' // MCP-Protocol-Version header names a version this server does not serve (400)
+  | 'header_mismatch'  // 2026-07-28: a required request header is missing or disagrees with the body (-32020)
+  | 'invalid_meta'     // 2026-07-28: a required per-request _meta field is missing or malformed (-32602)
+  | 'method_not_found' // 2026-07-28: a removed or unknown method, answered 404 -32601
+  | 'migration'  // a product-host alias was refused before auth or dispatch
   | 'ok';        // served (JSON-RPC-level errors still ride HTTP 200 → ok)
+
+const REGISTERED_TOOL_NAMES: ReadonlySet<string> = TOOL_ALIASES.callableNames();
+
+/**
+ * JSON-RPC methods this transport serves — cardinality bound for rpc_method
+ * (#8403 / Strix). Anything else collapses to `_unregistered` so client-minted
+ * strings cannot inflate the Axiom dimension.
+ */
+const SERVED_RPC_METHODS: ReadonlySet<string> = new Set([
+  'initialize',
+  'notifications/initialized',
+  'ping',
+  'tools/list',
+  'tools/call',
+  'prompts/list',
+  'prompts/get',
+  'skills/list',
+  'skills/get',
+  'resources/list',
+  'resources/templates/list',
+  'resources/read',
+  'logging/setLevel',
+  // MCP 2026-07-28 (modern era only).
+  'server/discover',
+  'subscriptions/listen',
+]);
+
+/** Fixed bucket for methods outside SERVED_RPC_METHODS — one cardinality slot. */
+const UNREGISTERED_RPC_METHOD = '_unregistered';
+
+const REQUESTED_TOOL_PATTERN = /^[a-z0-9_.-]{1,64}$/;
+/** Fixed bucket for a requested name outside REQUESTED_TOOL_PATTERN — one cardinality slot. */
+const INVALID_REQUESTED_TOOL = '<invalid>';
+
+/**
+ * Reduce a client-chosen tool name to a log-safe identifier (#9431): trimmed,
+ * lowercased, `[a-z0-9_.-]{1,64}`, or the fixed `<invalid>` bucket. Only the
+ * name is ever recorded, never arguments or other request content.
+ */
+export function sanitizeRequestedTool(raw: unknown): string {
+  if (typeof raw !== 'string') return INVALID_REQUESTED_TOOL;
+  const name = raw.trim().toLowerCase();
+  return REQUESTED_TOOL_PATTERN.test(name) ? name : INVALID_REQUESTED_TOOL;
+}
+
+/** Outcome of the tool that ran, mirrored from its mcp.toolcall line (#9431). */
+export interface McpToolOutcome {
+  errorKind: string | null;
+  resultBytes: number;
+  jmespathUsed: boolean;
+}
 
 export interface McpUsage {
   phase: McpPhase;
@@ -52,10 +110,106 @@ export interface McpUsage {
   principalId: string | null;
   /** Set true for surfaces that must not emit (OPTIONS/HEAD, manifest GET). */
   skip: boolean;
+  /** Served JSON-RPC method, or `_unregistered` / null (#8403 cardinality). */
+  rpcMethod: string | null;
+  /** tools/call name when it is callable (registry, alias, or retired); never raw client input (#8403). */
+  toolName: string | null;
+  /** Sanitized name of a tool the caller asked for that this server does not serve (#9431). */
+  requestedTool: string | null;
+  /** Set by recordToolCall when a tool ran; null otherwise (#9431). */
+  toolOutcome: McpToolOutcome | null;
+  /** MCP-Protocol-Version the client sent: a known revision, 'other', or null when absent. */
+  protocolVersion: string | null;
+  /** 'modern' once a request takes the 2026-07-28 per-request path (api/mcp/modern.ts). */
+  era: McpEra;
+}
+
+/** Protocol era of a request: initialize-based legacy, or 2026-07-28 modern. */
+export type McpEra = 'legacy' | 'modern';
+
+// Every published MCP revision. The header is client-chosen, so anything else
+// collapses to 'other' to keep the Axiom dimension bounded (#8403). Add new
+// revisions here when the spec publishes them.
+const KNOWN_PROTOCOL_VERSIONS: ReadonlySet<string> = new Set([
+  '2024-11-05',
+  '2025-03-26',
+  '2025-06-18',
+  '2025-11-25',
+  '2026-07-28',
+]);
+
+export function setUsageProtocolVersion(usage: McpUsage, header: string | null): void {
+  usage.protocolVersion = header === null ? null : KNOWN_PROTOCOL_VERSIONS.has(header) ? header : 'other';
 }
 
 export function createMcpUsage(): McpUsage {
-  return { phase: 'ok', authKind: 'anon', customerId: null, principalId: null, skip: false };
+  return {
+    phase: 'ok',
+    authKind: 'anon',
+    customerId: null,
+    principalId: null,
+    skip: false,
+    rpcMethod: null,
+    toolName: null,
+    requestedTool: null,
+    toolOutcome: null,
+    protocolVersion: null,
+    era: 'legacy',
+  };
+}
+
+export function setUsageRpc(
+  usage: McpUsage,
+  method: string,
+  toolCallName?: unknown,
+): void {
+  usage.rpcMethod = SERVED_RPC_METHODS.has(method) ? method : UNREGISTERED_RPC_METHOD;
+  usage.requestedTool = null;
+  if (usage.rpcMethod !== 'tools/call') {
+    usage.toolName = null;
+    return;
+  }
+  if (typeof toolCallName === 'string' && REGISTERED_TOOL_NAMES.has(toolCallName)) {
+    usage.toolName = toolCallName;
+    return;
+  }
+  usage.toolName = null;
+  usage.requestedTool = sanitizeRequestedTool(toolCallName);
+}
+
+/** describe_tool answered `unknown_tool` for this name (#9431). */
+export function setUsageDescribeMiss(usage: McpUsage, requestedName: unknown): void {
+  usage.requestedTool = sanitizeRequestedTool(requestedName);
+}
+
+/** The mcp.toolcall line, keyed exactly as MCP_TOOLCALL_TELEMETRY_KEYS allows. */
+export interface McpToolCallLine {
+  tool: string;
+  auth_kind: string;
+  user_id: string;
+  latency_ms: number;
+  bytes_pre_jmespath: number;
+  bytes_post_jmespath: number;
+  jmespath_used: boolean;
+  jmespath_failed: string | null;
+  ok: boolean;
+  error_kind?: 'client_4xx' | 'source_unavailable' | 'server_error';
+  budget_exceeded: boolean;
+}
+
+/**
+ * The one recording point for a tool that ran: emits the `mcp.toolcall`
+ * console line and copies its outcome onto the request's wm_api_usage row,
+ * so the two can never disagree (#9431).
+ */
+export function recordToolCall(usage: McpUsage | undefined, line: McpToolCallLine): void {
+  emitTelemetry('mcp.toolcall', { ...line });
+  if (!usage) return;
+  usage.toolOutcome = {
+    errorKind: line.error_kind ?? null,
+    resultBytes: line.bytes_pre_jmespath,
+    jmespathUsed: line.jmespath_used,
+  };
 }
 
 /** Attribute the resolved principal. env_key principals are operator keys —
@@ -109,9 +263,33 @@ export function mcpReasonFor(phase: McpPhase, status: number): RequestReason {
       return 'malformed_request';
     case 'transport':
       return status === 405 ? 'method_not_allowed' : 'malformed_request';
+    case 'protocol_version':
+      return 'unsupported_protocol_version';
+    case 'header_mismatch':
+      return 'header_mismatch';
+    case 'invalid_meta':
+      return 'invalid_request_meta';
+    case 'method_not_found':
+      return 'unknown_route';
+    case 'migration':
+      return 'canonical_endpoint_required';
     default:
       return 'ok';
   }
+}
+
+/**
+ * Resolve response size for telemetry. A missing/invalid Content-Length is
+ * unknown — return null. Never treat `Number(null) === 0` as a real size
+ * (#8403): streamed/SSE MCP responses omit the header and used to land as
+ * fake zeros next to genuinely empty bodies.
+ */
+export function resolveMcpResBytes(res: Response): number | null {
+  const raw = res.headers.get('content-length');
+  if (raw === null || raw === '') return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
 }
 
 /**
@@ -132,7 +310,6 @@ export function emitMcpRequestEvent(
     const pathname = (() => {
       try { return new URL(req.url).pathname; } catch { return '/mcp'; }
     })();
-    const resBytesRaw = Number(res.headers.get('content-length'));
     const event = buildRequestEvent({
       requestId: deriveRequestId(req),
       domain: 'mcp',
@@ -141,7 +318,7 @@ export function emitMcpRequestEvent(
       status: res.status,
       durationMs,
       reqBytes: deriveReqBytes(req),
-      resBytes: Number.isFinite(resBytesRaw) && resBytesRaw >= 0 ? resBytesRaw : 0,
+      resBytes: resolveMcpResBytes(res),
       customerId: usage.customerId,
       principalId: usage.principalId,
       authKind: usage.authKind,
@@ -165,6 +342,18 @@ export function emitMcpRequestEvent(
       host: deriveHost(req),
       sentryTraceId: deriveSentryTraceId(req),
       reason: mcpReasonFor(usage.phase, res.status),
+      rpcMethod: usage.rpcMethod,
+      toolName: usage.toolName,
+      // Cardinality bound (#8403): requested_tool is client-chosen, so it is
+      // written only for authenticated callers. Anonymous tools/call traffic
+      // is almost all scanners that fail auth anyway; letting it in would let
+      // anyone mint unbounded values in the Axiom dimension.
+      requestedTool: usage.authKind === 'anon' ? null : usage.requestedTool,
+      toolErrorKind: usage.toolOutcome?.errorKind ?? null,
+      toolResultBytes: usage.toolOutcome?.resultBytes ?? null,
+      toolJmespath: usage.toolOutcome?.jmespathUsed ?? null,
+      mcpProtocolVersion: usage.protocolVersion,
+      mcpEra: usage.era,
     });
     emitUsageEvents(ctx, [event]);
   } catch {

@@ -447,6 +447,9 @@ export function surgeAlertToSignal(surge: SurgeAlert): MilitarySurgeSignal {
     surgeMultiple: surge.surgeMultiple,
     aircraftTypes: Object.fromEntries(surge.aircraftTypes),
     nearbyBases: surge.nearbyBases,
+    lat: surge.theater.centerLat,
+    lon: surge.theater.centerLon,
+    regionName: surge.theater.name,
   };
 
   return {

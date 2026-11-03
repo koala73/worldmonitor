@@ -1,0 +1,18 @@
+[package]
+name = "worldmonitor"
+version = "0.1.0"
+edition = "2021"
+description = "Official Rust SDK for World Monitor intelligence data and MCP tools"
+license = "MIT"
+authors = ["World Monitor"]
+homepage = "https://worldmonitor.app"
+repository = "https://github.com/koala73/worldmonitor"
+documentation = "https://docs.rs/worldmonitor"
+readme = "README.md"
+keywords = ["worldmonitor", "osint", "geopolitics", "mcp", "api-client"]
+categories = ["api-bindings", "web-programming::http-client"]
+include = ["src/**", "examples/**", "tests/**", "README.md", "LICENSE", "Cargo.lock"]
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde_json = "1"
