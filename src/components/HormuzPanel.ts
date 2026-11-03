@@ -66,6 +66,8 @@ function renderChart(chart: HormuzChart, idx: number): string {
 
 export class HormuzPanel extends Panel {
   private data: HormuzTrackerData | null = null;
+  // False while a fetch is loading or after it failed, when `data` is an old snapshot.
+  private showingData = false;
   private dependencies: GetChokepointDependenciesResponse | null = null;
   private dependencyState: 'loading' | 'loaded' | 'unavailable' | 'pro-locked' = 'loading';
   private tooltipBound = false;
@@ -87,13 +89,16 @@ export class HormuzPanel extends Panel {
 
   // The date label, unit and index note are not in the first-paint shell, and the
   // raw-key healer cannot restore an interpolated date, so redraw with real copy.
+  // Skip it while loading or after a failed refresh: a redraw would show the old
+  // snapshot as current and drop the error's retry.
   private readonly handleTranslationsLoaded = (): void => {
-    if (this.data) this.renderPanel();
+    if (this.data && this.showingData) this.renderPanel();
   };
 
   public async fetchData(): Promise<boolean> {
     const generation = ++this.fetchGeneration;
     this.invalidateDependencyRequest();
+    this.showingData = false;
     this.showLoading();
     // The Hormuz tape itself stays free; only the commodity-dependency fan-out
     // over it is Pro (#6449). Gate just that leg so a free viewer keeps the
@@ -109,6 +114,7 @@ export class HormuzPanel extends Panel {
         return false;
       }
       this.data = data;
+      this.showingData = true;
       this.dependencies = null;
       const currentIsPro = hasPremiumAccess(getAuthState());
       if (currentIsPro) {

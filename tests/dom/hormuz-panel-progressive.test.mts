@@ -438,4 +438,59 @@ describe('HormuzPanel shipment index labels', () => {
     expect(panel.getElement().textContent).not.toContain('components.hormuzTracker.');
     panel.destroy();
   });
+
+  it('keeps the error and its retry when the catalog lands after a failed refresh', async () => {
+    const { I18N_RESOURCES_LOADED_EVENT } = await import('@/services/i18n');
+    serviceMocks.fetchTracker.mockResolvedValueOnce({
+      ...tracker,
+      charts: [{ label: 'lng_outbound', title: 'LNG Outbound Shipments', series: [{ date: '2026-11-01', value: 0 }] }],
+    }).mockResolvedValueOnce(null);
+    serviceMocks.fetchDependencies.mockResolvedValue(dependencyResponse);
+
+    const panel = new HormuzPanel();
+    document.body.append(panel.getElement());
+    await panel.fetchData();
+    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('LNG Outbound Shipments'));
+    expect(await panel.fetchData()).toBe(false);
+    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('Hormuz data unavailable'));
+
+    window.dispatchEvent(new CustomEvent(I18N_RESOURCES_LOADED_EVENT, { detail: { language: 'en' } }));
+    // Panel content writes commit after a 150ms debounce; let any redraw land.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    const text = panel.getElement().textContent ?? '';
+    expect(text, 'the failed refresh stays visible').toContain('Hormuz data unavailable');
+    expect(text, 'the old snapshot is not shown as current').not.toContain('LNG Outbound Shipments');
+    panel.destroy();
+  });
+
+  it('leaves an in-flight refresh loading when the catalog lands', async () => {
+    const { I18N_RESOURCES_LOADED_EVENT } = await import('@/services/i18n');
+    const fresh = {
+      ...tracker,
+      charts: [{ label: 'lng_outbound', title: 'LNG Fresh Shipments', series: [{ date: '2026-11-02', value: 3 }] }],
+    };
+    let resolveRefresh: (value: typeof fresh) => void = () => undefined;
+    serviceMocks.fetchTracker.mockResolvedValueOnce({
+      ...tracker,
+      charts: [{ label: 'lng_outbound', title: 'LNG Outbound Shipments', series: [{ date: '2026-11-01', value: 0 }] }],
+    }).mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve; }));
+    serviceMocks.fetchDependencies.mockResolvedValue(dependencyResponse);
+
+    const panel = new HormuzPanel();
+    document.body.append(panel.getElement());
+    await panel.fetchData();
+    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('LNG Outbound Shipments'));
+    const refresh = panel.fetchData();
+
+    window.dispatchEvent(new CustomEvent(I18N_RESOURCES_LOADED_EVENT, { detail: { language: 'en' } }));
+    // Panel content writes commit after a 150ms debounce; let any redraw land.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(panel.getElement().textContent, 'the old snapshot does not replace the loading state').not.toContain('LNG Outbound Shipments');
+
+    resolveRefresh(fresh);
+    expect(await refresh).toBe(true);
+    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('LNG Fresh Shipments'));
+    panel.destroy();
+  });
 });
