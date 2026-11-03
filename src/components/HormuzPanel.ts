@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { t } from '@/services/i18n';
+import { t, I18N_RESOURCES_LOADED_EVENT } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { fetchHormuzTracker } from '@/services/hormuz-tracker';
 import type { HormuzTrackerData, HormuzChart, HormuzSeries } from '@/services/hormuz-tracker';
@@ -82,7 +82,14 @@ export class HormuzPanel extends Panel {
     this.lastHadPremium = hasPremiumAccess(getAuthState());
     this.authUnsubscribe = subscribeAuthState(() => this.handlePremiumAccessChange());
     this.entitlementUnsubscribe = onEntitlementChange(() => this.handlePremiumAccessChange());
+    window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.handleTranslationsLoaded);
   }
+
+  // The date label, unit and index note are not in the first-paint shell, and the
+  // raw-key healer cannot restore an interpolated date, so redraw with real copy.
+  private readonly handleTranslationsLoaded = (): void => {
+    if (this.data) this.renderPanel();
+  };
 
   public async fetchData(): Promise<boolean> {
     const generation = ++this.fetchGeneration;
@@ -137,6 +144,7 @@ export class HormuzPanel extends Panel {
   }
 
   public override destroy(): void {
+    window.removeEventListener(I18N_RESOURCES_LOADED_EVENT, this.handleTranslationsLoaded);
     this.authUnsubscribe?.();
     this.authUnsubscribe = null;
     this.entitlementUnsubscribe?.();
