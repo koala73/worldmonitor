@@ -482,6 +482,7 @@ export class DataLoaderManager implements AppModule {
   // ctx.allNews. Fetches carry their own selection state until that commit, so
   // a late stale or obsolete-language response cannot re-mute newer fresh data.
   private newsLoadGeneration = 0;
+  private fullEditionIntel: { generation: number; selection: Promise<SelectedNewsDigest | null> } | null = null;
   private committedNewsGeneration = 0;
   private committedNewsServedStale = false;
   private readonly digestRequestTimeoutMs = 8000;
@@ -1912,12 +1913,22 @@ export class DataLoaderManager implements AppModule {
     // The server builds intel into the full edition's digest only, so an Intel
     // Feed added on another edition reads that one.
     const readsFullEdition = SITE_VARIANT !== 'full' && !(digestSelection?.digest.categories && 'intel' in digestSelection.digest.categories);
-    const selection = readsFullEdition ? await this.selectEditionDigest('full', getCurrentLanguage()) : digestSelection;
-    // A newer load (a source toggle, say) may have started during the fetch.
-    if (!this.isCurrentNewsLoad(generation)) return [];
+    let selection = digestSelection;
+    if (readsFullEdition) {
+      // One fetch per load: the pending pass starts it without holding the
+      // home-digest replay, and the final pass awaits the same request.
+      if (this.fullEditionIntel?.generation !== generation) {
+        this.fullEditionIntel = { generation, selection: this.selectEditionDigest('full', getCurrentLanguage()) };
+      }
+      if (!options.digestPending) {
+        selection = await this.fullEditionIntel.selection;
+        // A newer load (a source toggle, say) may have started during the fetch.
+        if (!this.isCurrentNewsLoad(generation)) return [];
+        // This edition's digest can land while the full one is down; the load must stay retryable.
+        recordCrossEditionMiss(!(selection?.digest.categories && 'intel' in selection.digest.categories));
+      }
+    }
     const digest = selection?.digest;
-    // This edition's digest can land while the full one is down; the load must stay retryable.
-    if (readsFullEdition) recordCrossEditionMiss(!(digest?.categories && 'intel' in digest.categories));
     const digestServedStale = selection?.servedStale ?? true;
 
     if (digest?.categories && 'intel' in digest.categories) {
