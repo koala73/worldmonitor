@@ -399,17 +399,19 @@ export class StorageFacilityMapPanel extends Panel {
 
     const html = unsafeRawHtml(`
       <div class="sf-wrap">
-        <table class="sf-table" role="table">
-          <thead role="rowgroup">
-            <tr role="row">
-              <th scope="col" role="columnheader">Facility</th>
-              <th scope="col" role="columnheader">Country · Type</th>
-              <th scope="col" role="columnheader">Capacity</th>
-              <th scope="col" role="columnheader">Status</th>
-            </tr>
-          </thead>
-          <tbody role="rowgroup">${rows}</tbody>
-        </table>
+        <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+          <table class="sf-table" role="table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th scope="col" role="columnheader">Facility</th>
+                <th scope="col" role="columnheader">Country · Type</th>
+                <th scope="col" role="columnheader">Capacity</th>
+                <th scope="col" role="columnheader">Status</th>
+              </tr>
+            </thead>
+            <tbody role="rowgroup">${rows}</tbody>
+          </table>
+        </div>
         ${attribution}
         ${drawer}
       </div>

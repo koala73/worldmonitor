@@ -142,7 +142,8 @@
 }
 
 @supports (animation-timeline: scroll()) {
-  .panel > .panel-content:has(table),
+  /* Only the table's own wrapper fades. A mask on .panel-content would
+     also fade the summary, filters and footer around the table. */
   .table-scroll {
     animation: table-scroll-fade-start linear both, table-scroll-fade-end linear both, table-scroll-fade-mask linear both;
     animation-timeline: scroll(self inline), scroll(self inline), scroll(self inline);
@@ -157,7 +158,6 @@
     animation-range: calc(100% - 24px) 100%, normal;
   }
 
-  [dir="rtl"] .panel > .panel-content:has(table),
   [dir="rtl"] .table-scroll {
     animation-name: table-scroll-fade-start, table-scroll-fade-end, table-scroll-fade-mask-rtl;
   }

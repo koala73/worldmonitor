@@ -290,17 +290,19 @@ export class FuelShortagePanel extends Panel {
     const html = unsafeRawHtml(`
       <div class="fs-wrap">
         <div class="fs-summary">${escapeHtml(summary)}</div>
-        <table class="fs-table" role="table">
-          <thead role="rowgroup">
-            <tr role="row">
-              <th scope="col" role="columnheader">Country · Product</th>
-              <th scope="col" role="columnheader">Since</th>
-              <th scope="col" role="columnheader">Evidence</th>
-              <th scope="col" role="columnheader">Severity</th>
-            </tr>
-          </thead>
-          <tbody role="rowgroup">${rows}</tbody>
-        </table>
+        <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+          <table class="fs-table" role="table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th scope="col" role="columnheader">Country · Product</th>
+                <th scope="col" role="columnheader">Since</th>
+                <th scope="col" role="columnheader">Evidence</th>
+                <th scope="col" role="columnheader">Severity</th>
+              </tr>
+            </thead>
+            <tbody role="rowgroup">${rows}</tbody>
+          </table>
+        </div>
         ${attribution}
         ${drawer}
       </div>
