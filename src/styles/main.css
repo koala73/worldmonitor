@@ -10314,6 +10314,11 @@ a.prediction-link:hover {
   text-decoration: underline;
 }
 
+.popup-provenance .popup-link {
+  margin-top: 0;
+  font-size: inherit;
+}
+
 .popup-source-links {
   display: flex;
   flex-wrap: wrap;

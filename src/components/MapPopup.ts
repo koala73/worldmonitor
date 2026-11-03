@@ -1521,7 +1521,7 @@ export class MapPopup {
       ? `<div class="popup-stat"><span class="stat-label">${t('popups.mapPopup.issuedBy')}</span><span class="stat-value" data-source="${escapeHtml(alert.source ?? '')}">${escapeHtml(authority)}</span></div>`
       : '';
     const linkRow = link
-      ? `<div class="popup-stat"><span class="stat-label">${t('popups.source')}</span><span class="stat-value"><a class="popup-source-link" href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.host)}</a></span></div>`
+      ? `<div class="popup-stat"><span class="stat-label">${t('popups.source')}</span><span class="stat-value"><a class="popup-link popup-source-link" href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.host)}</a></span></div>`
       : '';
     return `<div class="popup-stats popup-provenance">${authorityRow}${linkRow}</div>`;
   }
