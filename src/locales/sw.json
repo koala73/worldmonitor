@@ -2597,19 +2597,20 @@
       "proLocked": "Boreshaji hadi PRO kwa alama ya kufa kwa kilicho haraka cha bidhaa"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Ufuatiliaji wa meli halisi kupitia Kifaranga cha Hormuz, hatua mbaya ya mafuta muhimu zaidi duniani. Inafuatilia hesabu za tanki, matukio ya kumwazimu, na mabadiliko ya mtiririko wa wiki. Takriban 20% ya ugavi wa mafuta wa jumla hupitia hapa kila siku.",
+      "infoTooltip": "<strong>Kifuatiliaji cha Biashara cha Hormuz</strong> Fahirisi za kila siku za usafirishaji kupitia Mlango-bahari wa Hormuz kutoka WTO DataLab: mafuta ghafi, LNG na mbolea zinazoondoka Ghuba, na bidhaa za kilimo zinazowasili. Kwa kiasi, wastani wa Januari–Machi 2025 = 100, meli zinazoonekana kupitia AIS pekee. Hali na tarehe zinatoka kwenye uchambuzi wa hivi karibuni wa WTO.",
       "title": "Kifuatiliaji cha Biashara cha Hormuz",
       "noData": "Hakuna data",
       "notAvailable": "N/A",
       "chartUnavailable": "Data ya chati haipatikani",
       "sourcePrefix": "Chanzo:",
-      "units": {
-        "ktPerDay": "kt/siku",
-        "generic": "vitengo"
-      },
       "errors": {
         "unavailable": "Data ya Hormuz haipatikani",
         "failedToLoad": "Imeshindwa kupakia"
+      },
+      "analysisDate": "Uchambuzi wa WTO {{date}}",
+      "indexNote": "Fahirisi ya mizigo kwa kiasi, wastani wa Januari–Machi 2025 = 100",
+      "units": {
+        "index": "fahirisi"
       }
     },
     "liveWebcams": {

@@ -2309,20 +2309,21 @@
       "proLocked": "PRO로 업그레이드하여 원자재 취약성 점수 확인"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>호르무즈 해협 무역 추적</strong> 호르무즈 해협(세계에서 가장 중요한 유가 병목)을 통한 선박 실시간 추적. 유조선 수, 중단 사건, 주간 흐름 변화 모니터링. 전 세계 석유 공급의 약 20%가 매일 이곳을 지나갑니다.",
+      "infoTooltip": "<strong>호르무즈 무역 추적기</strong> WTO DataLab의 호르무즈 해협 일일 해운 지수: 걸프만에서 나가는 원유, LNG, 비료 및 도착하는 농산물. 부피 기준, 2025년 1~3월 평균 = 100, AIS 식별 가능 선박만 포함. 상태 및 날짜는 WTO의 최신 분석에서 제공됩니다.",
       "title": "호르무즈 무역 추적기",
       "noData": "데이터 없음",
       "notAvailable": "해당 없음",
       "chartUnavailable": "차트 데이터를 사용할 수 없음",
       "sourcePrefix": "출처:",
       "units": {
-        "ktPerDay": "kt/일",
-        "generic": "단위"
+        "index": "지수"
       },
       "errors": {
         "unavailable": "호르무즈 데이터를 사용할 수 없음",
         "failedToLoad": "로드 실패"
-      }
+      },
+      "analysisDate": "WTO 분석 {{date}}",
+      "indexNote": "부피 기준 해운 지수, 2025년 1~3월 평균 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>실시간 웹캠</strong> 전 세계 지정학적으로 중요한 장소의 실시간 피드: 분쟁 지역, 수도, 국경 검문소, 전략적 병목지점. YouTube 및 공개 네트워크의 스트림."

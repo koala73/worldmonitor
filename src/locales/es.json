@@ -2327,20 +2327,21 @@
       "proLocked": "Actualiza a PRO para ver puntuaciones de vulnerabilidad de materias primas"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Monitoreo de buques en vivo a través del Estrecho de Ormuz, el punto crítico de petróleo más importante del mundo. Monitorea recuentos de tanqueros, eventos de interrupción y cambios de flujo semanales. Aproximadamente el 20% del suministro mundial de petróleo transita aquí diariamente.",
+      "infoTooltip": "<strong>Rastreador Comercial del Hormuz</strong> Índices de envíos diarios de WTO DataLab para el Estrecho de Ormuz: petróleo crudo, GNL y fertilizantes saliendo del Golfo, productos agrícolas llegando. Por volumen, promedio de enero–marzo de 2025 = 100, solo buques visibles por AIS. El estado y la fecha provienen del análisis más reciente de la WTO.",
       "title": "Rastreador Comercial del Hormuz",
       "noData": "Sin datos",
       "notAvailable": "N/A",
       "chartUnavailable": "Datos del gráfico no disponibles",
       "sourcePrefix": "Fuente:",
       "units": {
-        "ktPerDay": "kt/día",
-        "generic": "unidades"
+        "index": "índice"
       },
       "errors": {
         "unavailable": "Datos del Hormuz no disponibles",
         "failedToLoad": "Error al cargar"
-      }
+      },
+      "analysisDate": "Análisis de WTO {{date}}",
+      "indexNote": "Índice de envíos por volumen, promedio de enero–marzo de 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Cámaras en vivo</strong> Transmisiones en vivo desde ubicaciones geopolíticamente significativas en todo el mundo: zonas de conflicto, capitales, cruces fronterizos y puntos de estrangulamiento estratégicos. Transmisiones de YouTube y redes públicas."

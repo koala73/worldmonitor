@@ -2318,20 +2318,21 @@
       "proLocked": "Upgraden Sie auf PRO für Rohstoff-Anfälligkeitsbewertung"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz-Handels-Tracker</strong> Live-Schiffsverfolgung durch die Straße von Hormuz, einem der weltweit kritischsten Ölengpässe. Überwacht Tankeranzahl, Störungsereignisse und wöchentliche Durchsatzveränderungen. Etwa 20% des globalen Ölvorrats durchlaufen täglich diesen Engpass.",
+      "infoTooltip": "<strong>Hormuz-Handels-Tracker</strong> – tägliche Versandindizes der WTO DataLab für die Straße von Hormuz: Rohöl, LNG und Düngemittel, das den Golf verlässt, sowie landwirtschaftliche Waren, die ankommen. Nach Volumen, Durchschnitt Januar–März 2025 = 100, nur AIS-sichtbare Schiffe. Status und Datum stammen aus der neuesten Analyse der WTO.",
       "title": "Hormuz-Handels-Tracker",
       "noData": "Keine Daten",
       "notAvailable": "N/V",
       "chartUnavailable": "Chartdaten nicht verfügbar",
       "sourcePrefix": "Quelle:",
       "units": {
-        "ktPerDay": "kt/Tag",
-        "generic": "Einheiten"
+        "index": "Index"
       },
       "errors": {
         "unavailable": "Hormuz-Daten nicht verfügbar",
         "failedToLoad": "Fehler beim Laden"
-      }
+      },
+      "analysisDate": "WTO-Analyse {{date}}",
+      "indexNote": "Versandindex nach Volumen, Durchschnitt Januar–März 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Live-Webcams</strong> Liveübertragungen von geopolitisch bedeutsamen Orten weltweit: Konfliktzonen, Hauptstädte, Grenzübergänge und strategische Engpässe. Streams von YouTube und öffentlichen Netzwerken."

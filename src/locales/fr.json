@@ -2327,20 +2327,21 @@
       "proLocked": "Passez à PRO pour l'évaluation de vulnérabilité des matières premières"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Suivi des navires en direct à travers le détroit d'Ormuz, le point d'étranglement pétrolier le plus critique du monde. Surveillance des décomptes de pétroliers, des événements de perturbation et des changements de flux hebdomadaires. Environ 20% de l'approvisionnement pétrolier mondial transite ici quotidiennement.",
+      "infoTooltip": "<strong>Suivi du commerce du Détroit d'Ormuz</strong> Indices de chargements quotidiens du WTO DataLab pour le détroit d'Ormuz : pétrole brut, GNL et engrais quittant le Golfe, produits agricoles arrivant. Par volume, moyenne janvier–mars 2025 = 100, navires visibles en AIS uniquement. Le statut et la date proviennent de la dernière analyse du WTO.",
       "title": "Suivi du commerce du Détroit d'Ormuz",
       "noData": "Aucune donnée",
       "notAvailable": "N/D",
       "chartUnavailable": "Données de graphique indisponibles",
       "sourcePrefix": "Source :",
       "units": {
-        "ktPerDay": "kt/jour",
-        "generic": "unités"
+        "index": "indice"
       },
       "errors": {
         "unavailable": "Données d'Ormuz indisponibles",
         "failedToLoad": "Échec du chargement"
-      }
+      },
+      "analysisDate": "Analyse OMC {{date}}",
+      "indexNote": "Indice d'expédition par volume, moyenne janvier–mars 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Webcams en direct</strong> Flux en direct depuis des lieux géopolitiquement significatifs dans le monde : zones de conflit, capitales, postes frontières et points de passage stratégiques. Flux provenant de YouTube et réseaux publics."

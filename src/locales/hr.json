@@ -2611,19 +2611,20 @@
       "proLocked": "Nadogradi na PRO za bodovanje ranjivosti roba"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Tracker trgovine kroz Hormuz</strong> Praćenje brodova u realnom vremenu kroz Tjesnac Hormuz, svjetski najkritičniji čvor trgovine naftom. Prati broj tankera, događaje prekida i tjedne promjene toka. Približno 20% globalne ponude nafte prolazi ovdje dnevno.",
+      "infoTooltip": "<strong>Praćenje trgovine kroz Hormuz</strong> WTO DataLab dnevni indeksi pošiljki za Tjesnac Hormuz: sirova nafta, UPP i gnojivo koja napuštaju Perzijski zaljev, poljoprivredni proizvodi koji stižu. Po količini, prosječna vrijednost za siječanj–ožujak 2025. = 100, samo brodovi vidljivi na AIS-u. Status i datum dolaze iz najnovije WTO analize.",
       "title": "Praćenje trgovine kroz Hormuz",
       "noData": "Nema podataka",
       "notAvailable": "N/A",
       "chartUnavailable": "Podaci grafikona nisu dostupni",
       "sourcePrefix": "Izvor:",
-      "units": {
-        "ktPerDay": "kt/dan",
-        "generic": "jedinice"
-      },
       "errors": {
         "unavailable": "Hormuz podaci nisu dostupni",
         "failedToLoad": "Učitavanje nije uspjelo"
+      },
+      "analysisDate": "WTO analiza {{date}}",
+      "indexNote": "Indeks pošiljki po količini, prosjek za siječanj–ožujak 2025. = 100",
+      "units": {
+        "index": "indeks"
       }
     },
     "liveWebcams": {

@@ -2327,20 +2327,21 @@
       "proLocked": "Esegui l'upgrade a PRO per la valutazione della vulnerabilità delle materie prime"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Tracciamento live dei vascelli attraverso lo Stretto di Hormuz, il collo di bottiglia petrolifero più critico al mondo. Monitora i conteggi dei cisterne, gli eventi di interruzione e i cambiamenti di flusso settimanali. Approssimativamente il 20% dell'offerta petrolifera globale transita qui quotidianamente.",
+      "infoTooltip": "<strong>Tracker Commerciale Hormuz</strong> – indici giornalieri di spedizioni WTO DataLab per lo Stretto di Hormuz: petrolio greggio, GNL e fertilizzanti in uscita dal Golfo, merci agricole in ingresso. Per volume, media gennaio–marzo 2025 = 100, solo navi visibili su AIS. Stato e data provengono dall'ultima analisi WTO.",
       "title": "Tracker Commerciale Hormuz",
       "noData": "Nessun dato",
       "notAvailable": "N/D",
       "chartUnavailable": "Dati del grafico non disponibili",
       "sourcePrefix": "Fonte:",
       "units": {
-        "ktPerDay": "kt/giorno",
-        "generic": "unità"
+        "index": "indice"
       },
       "errors": {
         "unavailable": "Dati Hormuz non disponibili",
         "failedToLoad": "Caricamento non riuscito"
-      }
+      },
+      "analysisDate": "Analisi WTO {{date}}",
+      "indexNote": "Indice dei carichi per volume, media gennaio–marzo 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Webcam in diretta</strong> Feed in diretta da luoghi geopoliticamente significativi in tutto il mondo: zone di conflitto, capitali, valichi di frontiera e punti di strozzatura strategici. Stream da YouTube e reti pubbliche."
