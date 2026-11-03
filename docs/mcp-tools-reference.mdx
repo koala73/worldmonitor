@@ -2128,7 +2128,7 @@ Observed military aircraft from the seeded flight snapshot: total, type breakdow
 - **API endpoints:** none (MCP-only derived analysis).
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
 - **Kind:** derived analysis over `military:flights:v1`; no new provider or seeder.
-- **Freshness budget:** flights **30 min** before `stale: true`; `cached_at` preserves the original source timestamp.
+- **Freshness budget:** flights **30 min** before `stale: true`; `cached_at` is derived from `seed-meta:military:flights.fetchedAt`, not the snapshot’s `fetchedAt`. Missing or invalid seed metadata yields `cached_at: null` and `stale: true`.
 - **Coverage:** `data.coverage` preserves `global` or `regional`; absent or unrecognized scope becomes `unknown`. Regional and unknown scope set `data.partial: true`, so counts describe an observed subset, never a worldwide total. Global scope still does not imply every military aircraft is observable. Coverage and freshness are independent. Missing snapshots fail explicitly.
 
 ```json
