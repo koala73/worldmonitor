@@ -3457,13 +3457,6 @@
         "agencyIdentifier": "Myndighetsidentifierare",
         "agencyObservations": "Myndighetsobservationer"
       },
-      "translate": {
-        "translate": "Översätt",
-        "showOriginal": "Visa original",
-        "automatic": "Automatisk översättning",
-        "notOfficial": "Inte en officiell översättning",
-        "fullOriginal": "Fullständig originaltext"
-      },
       "placeReports_one": "{{place}} ({{count}} rapport)",
       "placeReports_other": "{{place}} ({{count}} rapporter)",
       "issuedBy": "Utfärdat av"

@@ -3910,13 +3910,6 @@
         "agencyIdentifier": "Kitambulisho cha wakala",
         "agencyObservations": "Uchunguzi wa mawakala"
       },
-      "translate": {
-        "translate": "Tafsiri",
-        "showOriginal": "Onyesha asili",
-        "automatic": "Tafsiri ya kiotomatiki",
-        "notOfficial": "Si tafsiri rasmi",
-        "fullOriginal": "Maandishi kamili ya asili"
-      },
       "placeReports_one": "{{place}} (ripoti {{count}})",
       "placeReports_other": "{{place}} (ripoti {{count}})",
       "issuedBy": "Imetolewa na"

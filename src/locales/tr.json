@@ -3841,13 +3841,6 @@
         "agencyIdentifier": "Kurum kimliği",
         "agencyObservations": "Kurum gözlemleri"
       },
-      "translate": {
-        "translate": "Çevir",
-        "showOriginal": "Orijinali göster",
-        "automatic": "Otomatik çeviri",
-        "notOfficial": "Resmî çeviri değildir",
-        "fullOriginal": "Orijinal metnin tamamı"
-      },
       "placeReports_one": "{{place}} ({{count}} bildirim)",
       "placeReports_other": "{{place}} ({{count}} bildirim)",
       "issuedBy": "Yayımlayan"

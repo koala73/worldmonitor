@@ -1,7 +1,7 @@
 /**
  * #10065: MapPopup must not mix the selected locale with hardcoded English.
  * Deterministic labels come from the catalogue; free-form provider prose is
- * left original and only translated when the user asks, via the toggle.
+ * left in its original language.
  */
 import i18next from 'i18next';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -10,7 +10,6 @@ import {
   aptSectorLabel, aptTacticLabel, countryLabel, isSameLocation, localizeRelativePlace,
   parseGdeltReportTitle, severityLabel, statusLabel, weatherEventLabel,
 } from '@/components/map-popup-i18n';
-import { PopupProseTranslator, renderTranslatableText } from '@/components/map-popup-translate';
 import { mapAlert } from '@/services/weather';
 import de from '@/locales/de.json';
 import en from '@/locales/en.json';
@@ -29,28 +28,14 @@ async function useLanguage(lng: 'en' | 'de'): Promise<void> {
   if (i18next.language !== lng) throw new Error(`[dom-harness] wanted ${lng}, got ${i18next.language}`);
 }
 
-type Deferred = { promise: Promise<string | null>; resolve: (v: string | null) => void };
-const deferred = (): Deferred => {
-  let resolve!: (v: string | null) => void;
-  const promise = new Promise<string | null>(r => { resolve = r; });
-  return { promise, resolve };
-};
-const flush = () => new Promise(r => setTimeout(r, 0));
-
 let container: HTMLElement;
 let popup: MapPopup;
-let calls: string[];
-let pending: Deferred[];
 beforeAll(() => useLanguage('de'));
 beforeEach(async () => {
   await useLanguage('de');
-  PopupProseTranslator.clearCache();
-  calls = []; pending = [];
   container = document.createElement('div');
   document.body.appendChild(container);
-  popup = new MapPopup(container, {
-    translate: (text) => { calls.push(text); const d = deferred(); pending.push(d); return d.promise; },
-  });
+  popup = new MapPopup(container);
 });
 afterEach(() => { popup.hide('replacement'); container.remove(); });
 
@@ -117,15 +102,13 @@ describe('MapPopup in German', () => {
     expect(text).toContain('AKTIV');
     expect(text).not.toContain('ACTIVE');
   });
-  it('localizes weather event and severity, leaves the provider headline original and does not translate on open', () => {
+  it('localizes weather event and severity, and leaves the provider headline original', () => {
     popup.show({ type: 'weather', data: weather as never, x: 10, y: 10 });
     expect(document.querySelector('.popup-header .popup-badge')?.textContent).toBe('MÄSSIG');
     const title = document.querySelector('.popup-header .popup-title');
     expect(title?.textContent).toBe('HOCHWASSERWARNUNG');
     expect(title?.getAttribute('data-event')).toBe('Flood Warning');
     expect(document.body.textContent).toContain(weather.headline);
-    expect(document.querySelectorAll('.popup-translate-btn').length).toBeGreaterThan(0);
-    expect(calls).toEqual([]);
   });
   it('shows the issuing authority and an http(s)-only source link for weather alerts', () => {
     popup.show({ type: 'weather', x: 10, y: 10, data: { ...weather, issuedBy: 'NWS Houston/Galveston TX', sourceUrl: 'https://api.weather.gov/alerts/w1' } as never });
@@ -176,63 +159,10 @@ describe('MapPopup in German', () => {
   });
 });
 
-describe('on-demand translation toggle', () => {
-  it('keeps the complete original reachable when the excerpt is truncated', () => {
-    const long = 'A'.repeat(320);
-    const host = document.createElement('div');
-    host.innerHTML = renderTranslatableText(long, { className: 'popup-description', maxLength: 300, official: true });
-    expect(host.querySelector('.popup-translatable-text')?.getAttribute('data-source')).toBe('A'.repeat(300));
-    const full = host.querySelector('.popup-full-original');
-    expect(full?.querySelector('summary')?.textContent).toBe(de.popups.mapPopup.translate.fullOriginal);
-    expect(full?.querySelector('p')?.textContent).toBe(long);
-  });
-  it('caps uncapped prose at the translate endpoint limit and keeps the full original', () => {
-    const headline = 'H'.repeat(620);
-    const host = document.createElement('div');
-    host.innerHTML = renderTranslatableText(headline, { className: 'popup-headline', official: true });
-    expect(host.querySelector('.popup-translatable-text')?.getAttribute('data-source')).toHaveLength(500);
-    expect(host.querySelector('.popup-full-original p')?.textContent).toBe(headline);
-  });
-  it('translates on click, marks it automatic and not official, and restores the original', async () => {
-    popup.show({ type: 'weather', data: weather as never, x: 10, y: 10 });
-    const btn = document.querySelector<HTMLButtonElement>('.popup-translate-btn')!;
-    btn.click();
-    expect(calls).toEqual([weather.headline]);
-    pending[0]!.resolve('Hochwasserwarnung für das Flussgebiet');
-    await flush();
-    const box = btn.closest('.popup-translatable')!;
-    expect(box.getAttribute('data-state')).toBe('translated');
-    expect(box.textContent).toContain('Hochwasserwarnung für das Flussgebiet');
-    expect(box.querySelector('.popup-translation-note')?.textContent).toContain(de.popups.mapPopup.translate.notOfficial);
-    btn.click();
-    expect(box.getAttribute('data-state')).toBe('original');
-    expect(box.textContent).toContain(weather.headline);
-  });
-  it('drops a late response after the popup was replaced', async () => {
-    popup.show({ type: 'weather', data: weather as never, x: 10, y: 10 });
-    document.querySelector<HTMLButtonElement>('.popup-translate-btn')!.click();
-    popup.show({ type: 'apt', data: apt as never, x: 10, y: 10 });
-    pending[0]!.resolve('VERSPÄTET');
-    await flush();
-    expect(document.body.textContent).not.toContain('VERSPÄTET');
-  });
-  it('keeps the original and shows an unavailable status when the provider fails', async () => {
-    popup.show({ type: 'weather', data: weather as never, x: 10, y: 10 });
-    const btn = document.querySelector<HTMLButtonElement>('.popup-translate-btn')!;
-    btn.click();
-    pending[0]!.resolve(null);
-    await flush();
-    const box = btn.closest('.popup-translatable')!;
-    expect(box.textContent).toContain(weather.headline);
-    expect(box.querySelector('.popup-translation-error')).not.toBeNull();
-  });
-});
-
 describe('English baseline', () => {
-  it('renders plain prose with no translate button and English labels', async () => {
+  it('renders English labels', async () => {
     await useLanguage('en');
     popup.show({ type: 'weather', data: weather as never, x: 10, y: 10 });
-    expect(document.querySelector('.popup-translate-btn')).toBeNull();
     expect(document.querySelector('.popup-header .popup-badge')?.textContent).toBe('MODERATE');
   });
 });

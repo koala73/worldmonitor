@@ -3821,13 +3821,6 @@
         "agencyIdentifier": "รหัสหน่วยงาน",
         "agencyObservations": "การสังเกตของหน่วยงาน"
       },
-      "translate": {
-        "translate": "แปล",
-        "showOriginal": "แสดงต้นฉบับ",
-        "automatic": "แปลอัตโนมัติ",
-        "notOfficial": "ไม่ใช่คำแปลอย่างเป็นทางการ",
-        "fullOriginal": "ข้อความต้นฉบับฉบับเต็ม"
-      },
       "placeReports_other": "{{place}} ({{count}} รายงาน)",
       "issuedBy": "ออกโดย"
     },

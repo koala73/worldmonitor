@@ -3861,13 +3861,6 @@
         "agencyIdentifier": "Identificator agenție",
         "agencyObservations": "Observații ale agențiilor"
       },
-      "translate": {
-        "translate": "Traduce",
-        "showOriginal": "Afișează originalul",
-        "automatic": "Traducere automată",
-        "notOfficial": "Nu este o traducere oficială",
-        "fullOriginal": "Textul original complet"
-      },
       "placeReports_one": "{{place}} ({{count}} raport)",
       "placeReports_few": "{{place}} ({{count}} rapoarte)",
       "placeReports_other": "{{place}} ({{count}} de rapoarte)",

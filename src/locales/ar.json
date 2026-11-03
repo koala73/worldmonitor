@@ -3921,13 +3921,6 @@
         "agencyIdentifier": "معرّف الجهة",
         "agencyObservations": "ملاحظات الجهات"
       },
-      "translate": {
-        "translate": "ترجمة",
-        "showOriginal": "عرض الأصل",
-        "automatic": "ترجمة آلية",
-        "notOfficial": "ليست ترجمة رسمية",
-        "fullOriginal": "النص الأصلي الكامل"
-      },
       "placeReports_zero": "{{place}} ({{count}} تقرير)",
       "placeReports_one": "{{place}} (تقرير واحد)",
       "placeReports_two": "{{place}} (تقريران)",

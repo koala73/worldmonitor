@@ -3910,13 +3910,6 @@
         "agencyIdentifier": "شناسه نهاد",
         "agencyObservations": "مشاهدات نهادها"
       },
-      "translate": {
-        "translate": "ترجمه",
-        "showOriginal": "نمایش متن اصلی",
-        "automatic": "ترجمه خودکار",
-        "notOfficial": "ترجمه رسمی نیست",
-        "fullOriginal": "متن کامل اصلی"
-      },
       "placeReports_one": "{{place}} ({{count}} گزارش)",
       "placeReports_other": "{{place}} ({{count}} گزارش)",
       "issuedBy": "صادرشده توسط"

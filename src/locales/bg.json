@@ -3841,13 +3841,6 @@
         "agencyIdentifier": "Идентификатор на агенцията",
         "agencyObservations": "Наблюдения на агенции"
       },
-      "translate": {
-        "translate": "Преведи",
-        "showOriginal": "Покажи оригинала",
-        "automatic": "Автоматичен превод",
-        "notOfficial": "Не е официален превод",
-        "fullOriginal": "Пълен оригинален текст"
-      },
       "placeReports_one": "{{place}} ({{count}} съобщение)",
       "placeReports_other": "{{place}} ({{count}} съобщения)",
       "issuedBy": "Издадено от"

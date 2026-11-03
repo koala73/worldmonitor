@@ -34,7 +34,6 @@ import { renderPopupSourceLinks } from './map-popup-source-links';
 import { overlayHistory, type OverlayCloseOrigin, type OverlayOpenHandle } from '@/utils/overlay-history';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { aptSectorLabel, aptTacticLabel, countryLabel, datacenterSectorLabel, isSameLocation, localizeRelativePlace, parseGdeltReportTitle, severityLabel, statusLabel, weatherEventLabel } from './map-popup-i18n';
-import { renderTranslatableText, PopupProseTranslator, type TranslateFn } from './map-popup-translate';
 
 
 // ── Static HS2 sector breakdown per chokepoint ────────────────────────────────
@@ -283,11 +282,9 @@ export class MapPopup {
   private readonly mobileDismissThreshold = 96;
   private outsideListenerTimeoutId: number | null = null;
   private mapPopupHistoryOpen: OverlayOpenHandle | null = null;
-  private readonly proseTranslator: PopupProseTranslator;
 
-  constructor(container: HTMLElement, options: { translate?: TranslateFn } = {}) {
+  constructor(container: HTMLElement) {
     this.container = container;
-    this.proseTranslator = new PopupProseTranslator(options.translate);
   }
 
   public setChokepointData(data: GetChokepointStatusResponse | null): void {
@@ -408,27 +405,10 @@ export class MapPopup {
 
     // Close button handler via event delegation on the popup element.
     // This avoids re-querying and re-attaching listeners after innerHTML.
-    const openedPopup = this.popup;
-    // <details> toggle does not bubble; capture it so opening the full original re-clamps.
-    this.popup.addEventListener('toggle', (e) => {
-      if ((e.target as HTMLElement | null)?.classList?.contains('popup-full-original')
-        && this.popup === openedPopup && openedPopup.isConnected) {
-        this.clampPopupToViewport();
-      }
-    }, true);
     this.popup.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       if (target.closest('.popup-close') || target.closest('.map-popup-sheet-handle')) {
         this.hide();
-        return;
-      }
-      const translateBtn = target.closest<HTMLButtonElement>('.popup-translate-btn');
-      if (translateBtn) {
-        e.stopPropagation();
-        const isCurrent = () => this.popup === openedPopup && openedPopup.isConnected;
-        void this.proseTranslator.toggle(translateBtn, isCurrent).then(() => {
-          if (isCurrent()) this.clampPopupToViewport();
-        });
         return;
       }
       const toggle = target.closest('.cluster-toggle') as HTMLButtonElement | null;
@@ -974,7 +954,7 @@ export class MapPopup {
             <span class="stat-value">${escapeHtml(conflict.location || `${conflict.center[1]}°N, ${conflict.center[0]}°E`)}</span>
           </div>
         </div>
-        ${conflict.description ? renderTranslatableText(conflict.description, { className: 'popup-description' }) : ''}
+        ${conflict.description ? `<p class="popup-description">${escapeHtml(conflict.description)}</p>` : ''}
         ${conflict.parties && conflict.parties.length > 0 ? `
           <div class="popup-section">
             <details open>
@@ -1514,7 +1494,7 @@ export class MapPopup {
         <button class="popup-close" aria-label="${t('common.close')}">×</button>
       </div>
       <div class="popup-body">
-        ${alert.headline ? renderTranslatableText(alert.headline, { className: 'popup-headline', official: true }) : ''}
+        ${alert.headline ? `<p class="popup-headline">${escapeHtml(alert.headline)}</p>` : ''}
         ${validity}
         <div class="popup-stats">
           <div class="popup-stat">
@@ -1526,7 +1506,7 @@ export class MapPopup {
             <span class="stat-value">${expiresIn}</span>
           </div>
         </div>
-        ${alert.description ? renderTranslatableText(alert.description, { className: 'popup-description', maxLength: 300, official: true }) : ''}
+        <p class="popup-description">${escapeHtml(alert.description.slice(0, 300))}${alert.description.length > 300 ? '...' : ''}</p>
         ${this.renderWeatherProvenance(alert)}
       </div>
     `;
@@ -1584,7 +1564,7 @@ export class MapPopup {
         <button class="popup-close" aria-label="${t('common.close')}">×</button>
       </div>
       <div class="popup-body">
-        ${base.description ? renderTranslatableText(base.description, { className: 'popup-description' }) : ''}
+        ${base.description ? `<p class="popup-description">${escapeHtml(base.description)}</p>` : ''}
         ${enriched.kind ? `<p class="popup-description" style="opacity:0.7;margin-top:2px">${escapeHtml(enriched.kind.replace(/_/g, ' '))}</p>` : ''}
         <div class="popup-stats">
           <div class="popup-stat">
@@ -1785,7 +1765,7 @@ export class MapPopup {
       }
       return `<p class="popup-description">${escapeHtml(event.title)}</p>`;
     }
-    return renderTranslatableText(event.title, { className: 'popup-description' });
+    return `<p class="popup-description">${escapeHtml(event.title)}</p>`;
   }
 
   private renderProtestClusterPopup(data: ProtestClusterData): string {
@@ -2004,7 +1984,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
           </div>
           ${mitreHtml}
         </div>
-        ${apt.description ? renderTranslatableText(apt.description, { className: 'popup-description' }) : ''}
+        ${apt.description ? `<p class="popup-description">${escapeHtml(apt.description)}</p>` : ''}
         ${tacticsHtml}
         ${sectorsHtml}
       </div>

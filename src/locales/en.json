@@ -3956,13 +3956,6 @@
         "agencyIdentifier": "Agency identifier",
         "agencyObservations": "Agency observations"
       },
-      "translate": {
-        "translate": "Translate",
-        "showOriginal": "Show original",
-        "automatic": "Automatic translation",
-        "notOfficial": "Not an official translation",
-        "fullOriginal": "Full original text"
-      },
       "placeReports_one": "{{place}} ({{count}} report)",
       "placeReports_other": "{{place}} ({{count}} reports)",
       "issuedBy": "Issued by"

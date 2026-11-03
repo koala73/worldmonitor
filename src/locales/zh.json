@@ -3821,13 +3821,6 @@
         "agencyIdentifier": "机构标识",
         "agencyObservations": "机构观测"
       },
-      "translate": {
-        "translate": "翻译",
-        "showOriginal": "显示原文",
-        "automatic": "自动翻译",
-        "notOfficial": "非官方译文",
-        "fullOriginal": "完整原文"
-      },
       "placeReports_other": "{{place}}（{{count}} 篇报道）",
       "issuedBy": "发布机构"
     },

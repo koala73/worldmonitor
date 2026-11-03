@@ -3941,13 +3941,6 @@
         "agencyIdentifier": "Identifikator agencije",
         "agencyObservations": "Opažanja agencija"
       },
-      "translate": {
-        "translate": "Prevedi",
-        "showOriginal": "Prikaži izvornik",
-        "automatic": "Automatski prijevod",
-        "notOfficial": "Nije službeni prijevod",
-        "fullOriginal": "Cijeli izvorni tekst"
-      },
       "placeReports_one": "{{place}} ({{count}} izvješće)",
       "placeReports_few": "{{place}} ({{count}} izvješća)",
       "placeReports_other": "{{place}} ({{count}} izvješća)",

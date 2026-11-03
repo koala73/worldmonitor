@@ -3475,13 +3475,6 @@
         "agencyIdentifier": "Identificador da agência",
         "agencyObservations": "Observações das agências"
       },
-      "translate": {
-        "translate": "Traduzir",
-        "showOriginal": "Mostrar original",
-        "automatic": "Tradução automática",
-        "notOfficial": "Não é uma tradução oficial",
-        "fullOriginal": "Texto original completo"
-      },
       "placeReports_one": "{{place}} ({{count}} relato)",
       "placeReports_many": "{{place}} ({{count}} relatos)",
       "placeReports_other": "{{place}} ({{count}} relatos)",

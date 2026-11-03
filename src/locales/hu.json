@@ -3910,13 +3910,6 @@
         "agencyIdentifier": "Ügynökségi azonosító",
         "agencyObservations": "Ügynökségi megfigyelések"
       },
-      "translate": {
-        "translate": "Fordítás",
-        "showOriginal": "Eredeti megjelenítése",
-        "automatic": "Automatikus fordítás",
-        "notOfficial": "Nem hivatalos fordítás",
-        "fullOriginal": "Teljes eredeti szöveg"
-      },
       "placeReports_one": "{{place}} ({{count}} jelentés)",
       "placeReports_other": "{{place}} ({{count}} jelentés)",
       "issuedBy": "Kiadta"

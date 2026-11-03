@@ -3821,13 +3821,6 @@
         "agencyIdentifier": "Mã cơ quan",
         "agencyObservations": "Quan sát của các cơ quan"
       },
-      "translate": {
-        "translate": "Dịch",
-        "showOriginal": "Hiện bản gốc",
-        "automatic": "Bản dịch tự động",
-        "notOfficial": "Không phải bản dịch chính thức",
-        "fullOriginal": "Toàn văn bản gốc"
-      },
       "placeReports_other": "{{place}} ({{count}} báo cáo)",
       "issuedBy": "Cơ quan ban hành"
     },

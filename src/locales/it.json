@@ -3861,13 +3861,6 @@
         "agencyIdentifier": "Identificativo dell’agenzia",
         "agencyObservations": "Osservazioni delle agenzie"
       },
-      "translate": {
-        "translate": "Traduci",
-        "showOriginal": "Mostra originale",
-        "automatic": "Traduzione automatica",
-        "notOfficial": "Non è una traduzione ufficiale",
-        "fullOriginal": "Testo originale completo"
-      },
       "placeReports_one": "{{place}} ({{count}} segnalazione)",
       "placeReports_many": "{{place}} ({{count}} segnalazioni)",
       "placeReports_other": "{{place}} ({{count}} segnalazioni)",

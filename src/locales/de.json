@@ -3841,13 +3841,6 @@
         "agencyIdentifier": "Behördenkennung",
         "agencyObservations": "Behördenbeobachtungen"
       },
-      "translate": {
-        "translate": "Übersetzen",
-        "showOriginal": "Original anzeigen",
-        "automatic": "Automatische Übersetzung",
-        "notOfficial": "Keine amtliche Übersetzung",
-        "fullOriginal": "Vollständiger Originaltext"
-      },
       "placeReports_one": "{{place}} ({{count}} Meldung)",
       "placeReports_other": "{{place}} ({{count}} Meldungen)",
       "issuedBy": "Herausgegeben von"

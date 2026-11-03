@@ -3910,13 +3910,6 @@
         "agencyIdentifier": "एजेंसी पहचानकर्ता",
         "agencyObservations": "एजेंसी अवलोकन"
       },
-      "translate": {
-        "translate": "अनुवाद करें",
-        "showOriginal": "मूल दिखाएँ",
-        "automatic": "स्वचालित अनुवाद",
-        "notOfficial": "आधिकारिक अनुवाद नहीं",
-        "fullOriginal": "पूरा मूल पाठ"
-      },
       "placeReports_one": "{{place}} ({{count}} रिपोर्ट)",
       "placeReports_other": "{{place}} ({{count}} रिपोर्ट)",
       "issuedBy": "जारीकर्ता"
