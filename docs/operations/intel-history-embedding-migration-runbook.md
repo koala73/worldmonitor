@@ -30,7 +30,8 @@ insert succeeds.
 ## What pins the current space
 
 Six places must agree. The parity suite `tests/intel-history-endpoints.test.mts`
-pins the first four together; the last two are caches that self-invalidate.
+pins the first four together. `CACHE_VERSION` requires a manual bump.
+Only `EMBED_CACHE_PREFIX` changes automatically with the model and dimension.
 
 | Literal | Where | Value today |
 |---|---|---|
@@ -68,7 +69,10 @@ Expect the current model stamp plus `unstamped` for legacy rows. Unstamped
 rows always belong to `openai/text-embedding-3-small@512`, even after the
 current model changes. Any other stamp needs investigation before migration.
 Use `scripts/measure-intel-history.mjs` to measure retained rows and bytes for
-the cost estimate. It does not measure which deployments read the table.
+the cost estimate. Accept the totals only when the output reports
+`complete: true`. The default `--max-rows 100000` can stop early with exit code
+2. If incomplete, rerun with a larger `--max-rows` until the scan completes.
+It does not measure which deployments read the table.
 
 ## Cutover policy
 
@@ -80,6 +84,18 @@ Never put vectors from different models into one ranked result list.
 The dual-write path, table-specific queries, retraction changes and backfill
 helper below do not exist yet. Implement and test them in the migration PR
 before starting this procedure. Changing only the shared constants is unsafe.
+
+The migration must add `intelHistoryV2:embeddingModelInventory` with the same
+`limit`, `cursor`, `models`, `partial`, and `nextCursor` contract as the old-table
+query. Before backfill validation, deploy and test both queries. Then inventory
+each table separately, paging each cursor to completion:
+
+```sh
+npx convex run intelHistory:embeddingModelInventory '{"limit": 200}'
+npx convex run intelHistoryV2:embeddingModelInventory '{"limit": 200}'
+```
+
+The V2 command is a required migration addition, not an existing endpoint.
 
 ## Prepare two independent vector spaces
 
@@ -106,7 +122,9 @@ before starting this procedure. Changing only the shared constants is unsafe.
    A tombstone must prevent both a live append and a delayed backfill from
    recreating a retracted event.
 6. Update `retract` to delete matching `dedupeKey` rows from both tables in
-   the same transaction that writes the tombstone. A tombstone alone does
+   the same transaction that writes the tombstone. Use `dedupeKeys` for
+   records returned from V2. If `ids` remain supported, update the resolver
+   to resolve IDs from both tables before cutover. A tombstone alone does
    not hide a row already copied to V2. Keep `restore` explicit. It removes
    the tombstone but does not restore previously deleted rows by itself.
 7. Apply the 180-day retention policy to both tables. Preserve each event's
@@ -152,7 +170,9 @@ Before the read flip:
 
 1. Switch `search`, `timeline` and `getByIds` to V2 in one deploy. Switch
    query embedding configuration and its cache namespace to the new space
-   in that same deploy. Update the parity tests to pin each table's own
+   in that same deploy. Version or purge the successful-read cache namespace
+   `intel-history:read:v1` too. Its 30-minute cached responses do not include
+   the table or embedding space in their keys. Update the parity tests to pin each table's own
    producer, validator, query model and index dimensions.
 2. Keep dual-write and pruning active for both tables during the rollback
    window. Keep retraction deletion active for both tables too. Stopping old
@@ -160,7 +180,8 @@ Before the read flip:
 3. Verify the edge handlers and MCP consumers read V2 and produce expected
    historical results. Record the deployed revision and observed checks.
 4. If validation fails, switch all readers and query configuration back to
-   the old space. The old table still contains its original vectors and
+   the old space. Version or purge the successful-read cache again so V2
+   responses cannot survive rollback. The old table still contains its original vectors and
    events written during the rollback window. No reverse re-embedding is
    needed because this procedure never overwrites the old space.
 5. Close rollback only after explicit operator acceptance. Record that
