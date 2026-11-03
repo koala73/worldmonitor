@@ -537,6 +537,44 @@ describe("api plan-limit usage scanner", () => {
     expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
   });
 
+  test.each(["error", "fatal"])("an Axiom %s status message preserves an active burst notice", async (priority) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...EMPTY_AXIOM_LEGACY_RESULT,
+      status: {
+        ...EMPTY_AXIOM_LEGACY_RESULT.status,
+        messages: [{ priority: "info", count: 1, msg: "Query started" }, { priority, count: 1, msg: "Query failed" }],
+      },
+    }), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 60_000 });
+
+    expect(summary.recovered).toBe(0);
+    expect(summary.blocked).toContainEqual({ dimension: "api_minute_burst", reason: "axiom_unexpected_body" });
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
+  });
+
+  test.each(["info", "warn"])("an Axiom %s status message allows valid empty-result recovery", async (priority) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...EMPTY_AXIOM_LEGACY_RESULT,
+      status: {
+        ...EMPTY_AXIOM_LEGACY_RESULT.status,
+        messages: [{ priority, count: 1, msg: "Query diagnostic" }],
+      },
+    }), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 60_000 });
+
+    expect(summary.recovered).toBe(1);
+    expect(summary.blocked.filter((b: { dimension?: string }) => b.dimension === "api_minute_burst")).toEqual([]);
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(0);
+  });
+
   test("an empty {matches: []} Axiom result recovers an idle burst notice", async () => {
     const t = convexTest(schema, modules);
     await seedCurrentApiBurstNotice(t);
