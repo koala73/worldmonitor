@@ -19,9 +19,14 @@ const PANELS = [
   { key: 'storage-facility-map', rows: FIXTURES.storage.facilities.length, valueColumns: [1, 2] },
 ] as const;
 
+// Panel text scales with the font-size setting (90% to 200%), so the layout
+// must follow the text, not a fixed column width.
 const VIEWPORTS = [
-  { width: 1920, height: 1200 },
-  { width: 1366, height: 768 },
+  { width: 1920, height: 1200, fontScale: 1 },
+  { width: 1845, height: 1100, fontScale: 1 },
+  { width: 1366, height: 768, fontScale: 1 },
+  { width: 1920, height: 1200, fontScale: 1.25 },
+  { width: 1920, height: 1200, fontScale: 2 },
 ];
 
 interface TableFit { panel: number; table: number; host: number; split: string[]; brokenWords: string[] }
@@ -76,10 +81,13 @@ function measure(page: Page, key: string, valueColumns: readonly number[]): Prom
 test('energy table values and names stay whole inside their column', async ({ browser }, testInfo) => {
   test.setTimeout(240_000);
   for (const viewport of VIEWPORTS) {
-    const context = await browser.newContext({ viewport, colorScheme: 'dark' });
+    const { fontScale, ...size } = viewport;
+    const context = await browser.newContext({ viewport: size, colorScheme: 'dark' });
     const page = await context.newPage();
     const settings = Object.fromEntries(PANELS.map(({ key }) => [key, { name: key, enabled: true, priority: 0 }]));
-    await seedAnonymousDashboard(page, 'full', { localStorage: { 'worldmonitor-panels': JSON.stringify(settings) } });
+    await seedAnonymousDashboard(page, 'full', {
+      localStorage: { 'worldmonitor-panels': JSON.stringify(settings), 'wm-font-scale': String(fontScale) },
+    });
     await page.route(/^https?:\/\/(?!(127\.0\.0\.1:4173|localhost:4173)(?:\/|$)).*/i, (route) => route.abort());
     await page.route('**/api/**', (route) => route.fulfill({ json: {} }));
     await page.route('**/api/bootstrap*', (route) => route.fulfill({ json: { missing: [], data: {} } }));
@@ -94,11 +102,11 @@ test('energy table values and names stay whole inside their column', async ({ br
         .poll(async () => {
           await panel.scrollIntoViewIfNeeded().catch(() => {});
           return panel.locator('tbody tr').count();
-        }, { message: `${key} rows at ${viewport.width}px`, timeout: 90_000 })
+        }, { message: `${key} rows at ${viewport.width}px, ${fontScale * 100}% text`, timeout: 90_000 })
         .toBe(rows);
-      await panel.screenshot({ path: testInfo.outputPath(`${key}-${viewport.width}.png`) });
+      await panel.screenshot({ path: testInfo.outputPath(`${key}-${viewport.width}-${fontScale * 100}.png`) });
       const fit = await measure(page, key, valueColumns);
-      const label = `${key} at ${viewport.width}px (panel ${fit.panel}px)`;
+      const label = `${key} at ${viewport.width}px, ${fontScale * 100}% text (panel ${fit.panel}px)`;
       expect.soft(fit.split, `${label}: values broken across lines`).toEqual([]);
       expect.soft(fit.brokenWords, `${label}: name words broken mid-word`).toEqual([]);
       expect.soft(fit.table, `${label}: table wider than its column`).toBeLessThanOrEqual(fit.host + 1);

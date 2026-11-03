@@ -415,7 +415,7 @@ export class StorageFacilityMapPanel extends Panel {
       </div>
       ${ATTRIBUTION_FOOTER_CSS}
       <style>
-        .sf-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
+        .sf-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); container: sf-wrap / inline-size; }
         .sf-table { width: 100%; border-collapse: collapse; }
         .sf-table th { text-align: left; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
         .sf-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
@@ -425,8 +425,10 @@ export class StorageFacilityMapPanel extends Panel {
         .sf-table .sf-val { white-space: nowrap; }
         .sf-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; overflow-wrap: anywhere; }
         /* Four columns cannot fit a narrow column without splitting values, so each
-           row stacks: the name takes the full width, the values share one line below. */
-        @container (max-width: 340px) {
+           row stacks: the name takes the full width, the values share one line below.
+           The breakpoint is in em of the scaled wrap text (31em is 341px at 100%), so
+           a larger font-size setting stacks the rows in a wider column too. */
+        @container sf-wrap (max-width: 31em) {
           .sf-table, .sf-table tbody { display: block; }
           .sf-table thead { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
           .sf-table tr.sf-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
