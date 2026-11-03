@@ -8459,7 +8459,7 @@ a.prediction-link:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 40px;
+  min-width: max-content;
   transition: width 0.5s ease;
   border-right: 1px solid rgba(0, 0, 0, 0.15);
 }
@@ -8469,7 +8469,7 @@ a.prediction-link:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 40px;
+  min-width: max-content;
   flex: 1;
   transition: width 0.5s ease;
 }
