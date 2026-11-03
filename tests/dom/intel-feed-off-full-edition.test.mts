@@ -22,6 +22,11 @@ interface LoaderInternals {
   loadIntelNews(selection: Selection, options: { recordBaselineSample: boolean; digestPending: boolean }, generation?: number): Promise<unknown[]>;
   selectEditionDigest(edition: string, language: string): Promise<Selection>;
   renderNewsForCategory(category: string, items: unknown[]): void;
+  shouldHydrateNews(forceAll: boolean): boolean;
+  resolveEnabledNewsCategories(): unknown[];
+  tryFetchDigest(): Promise<Selection>;
+  loadNewsCategory(): Promise<unknown[]>;
+  clusterNewsForGeneration(): Promise<{ clusters: unknown[] }>;
 }
 
 function protoItem(source: string, title: string) {
@@ -41,7 +46,14 @@ async function techLoader(fullDigest: Selection) {
     panels: {},
     panelSettings: { intel: { name: 'Intel Feed', enabled: true, priority: 1 } },
     newsByCategory: {},
+    currentTimeRange: 'all',
+    initialLoadComplete: false,
     allNews: [],
+    latestClusters: [],
+    latestPredictions: [],
+    latestMarkets: [],
+    clustersSettled: false,
+    monitors: [],
     map: { setNewsLocations: vi.fn(), updateHotspotActivity: vi.fn(), flashLocation: vi.fn() },
   } as unknown as AppContext;
   const { DataLoaderManager } = await import('@/app/data-loader');
@@ -96,5 +108,25 @@ describe('Intel Feed on an edition without an intel digest', () => {
 
     expect(items).toEqual([]);
     expect(renderNewsForCategory).toHaveBeenCalledWith('intel', []);
+  });
+
+  it('keeps news retryable while the full edition digest is unavailable', async () => {
+    const source = INTEL_SOURCES[0]!.name;
+    const { internal, selectEditionDigest } = await techLoader(null);
+    internal.resolveEnabledNewsCategories = () => [{ key: 'tech', feeds: [], isCustom: false }];
+    internal.tryFetchDigest = async () => techDigest;
+    internal.loadNewsCategory = async () => [];
+    internal.clusterNewsForGeneration = async () => ({ clusters: [] });
+
+    await (internal as unknown as { loadNews(): Promise<void> }).loadNews();
+    expect(selectEditionDigest).toHaveBeenCalledWith('full', expect.any(String));
+    expect(internal.shouldHydrateNews(false), 'a later trigger retries intel').toBe(true);
+
+    selectEditionDigest.mockImplementation(async () => ({
+      digest: { categories: { intel: { items: [protoItem(source, 'Recovered headline')] } } },
+      servedStale: false,
+    }));
+    await (internal as unknown as { loadNews(): Promise<void> }).loadNews();
+    expect(internal.shouldHydrateNews(false), 'a landed intel load is not repeated').toBe(false);
   });
 });
