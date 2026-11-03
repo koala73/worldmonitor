@@ -189,7 +189,7 @@ describe('get_global_air_activity (#5707)', () => {
     assert.deepEqual(tool.annotations, {
       readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false,
     });
-    assert.match(tool.description, /get_airspace/, 'must point per-country/civilian askers at get_airspace');
+    assert.match(tool.description, /Military snapshot counts only/, 'must state the military snapshot scope');
     const firstSentence = tool.description.match(/^[\s\S]+?[.!?](?:\s|$)/);
     assert.ok(firstSentence && Buffer.byteLength(firstSentence[0].trim(), 'utf8') <= 120,
       'first sentence must survive tools/list compression');

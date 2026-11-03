@@ -718,14 +718,11 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     title: 'Global military air activity',
     _outputBudgetBytes: 32768,
     description:
-      'Observed military air activity by type and theater; check coverage and partial before interpreting totals. ' +
-      'Counts tracks from redistribution-cleared providers in the seeded snapshot, excluding confirmed on-ground ' +
-      'aircraft; unknown ground status remains included. Returns the observed total, aircraft-type breakdown, ' +
-      'overlapping geographic theater counts and the count outside all theater bounds. Quiet theaters are omitted. ' +
-      'coverage preserves the provider snapshot scope: global, regional or unknown. Regional or unknown coverage ' +
-      'sets partial=true: those counts are a subset, never a worldwide total. Even global coverage does not mean ' +
-      'every military aircraft is observable. Freshness is separate from geographic coverage. For civilian or ' +
-      'single-country traffic use get_airspace; for posture interpretation use get_military_surge.',
+      'Observed military aircraft by type and overlapping geographic theater, plus a count outside all theaters. ' +
+      'Counts seeded tracks from redistribution-cleared providers, excluding confirmed on-ground aircraft; unknown ' +
+      'ground status remains included. Quiet theaters are omitted. coverage is global, regional or unknown; regional ' +
+      'or unknown sets partial=true and is never a worldwide total. Global coverage still omits unobserved aircraft. ' +
+      'Geographic coverage is independent of freshness. Military snapshot counts only, without posture interpretation.',
     inputSchema: { type: 'object', properties: {}, required: [] },
     outputSchema: {
       type: 'object',
