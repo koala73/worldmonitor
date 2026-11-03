@@ -583,9 +583,14 @@ export class DataLoaderManager implements AppModule {
     this.boundMarketWatchlistHandler = () => {
       void this.loadMarkets().then(async () => {
         if (hasPremiumAccess()) {
-          await this.loadStockAnalysis();
-          await this.loadStockBacktest();
-          await this.loadDailyMarketBrief(true);
+          // All three loaders own a different panel and swallow their own
+          // failures, so serializing them only added latency to a watchlist
+          // edit. The boot path already fans them out the same way (#6770).
+          await Promise.all([
+            this.loadStockAnalysis(),
+            this.loadStockBacktest(),
+            this.loadDailyMarketBrief(true),
+          ]);
         }
       });
     };

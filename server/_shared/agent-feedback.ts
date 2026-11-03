@@ -501,11 +501,15 @@ export async function submitAgentFeedback(
   if (!pepper) return failure(503, 'Feedback is temporarily unavailable.', report.kind);
 
   const ipKey = feedbackIpKey(meta.clientIp);
-  const ipHash = await sha256Hex(`${pepper}|${ipKey}`);
-  const uaHash = meta.userAgent ? await sha256Hex(`${pepper}|${meta.userAgent}`) : undefined;
+  const [ipHash, uaHash] = await Promise.all([
+    sha256Hex(`${pepper}|${ipKey}`),
+    meta.userAgent ? sha256Hex(`${pepper}|${meta.userAgent}`) : Promise.resolve(undefined),
+  ]);
   const reporterKey = caller.authKind === 'keyed' ? `principal:${caller.principalId}` : `ip:${ipHash}`;
-  const fingerprint = await feedbackFingerprint(report);
-  const retryKey = await feedbackRetryKey(report, reporterKey);
+  const [fingerprint, retryKey] = await Promise.all([
+    feedbackFingerprint(report),
+    feedbackRetryKey(report, reporterKey),
+  ]);
 
   // Decision 3: a retry returns the earlier row and costs no budget.
   const lookup = await postConvex(fetchImpl, '/api/internal-find-feedback-retry', { retryKey });

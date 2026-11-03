@@ -1214,6 +1214,9 @@ export class CountryIntelManager implements AppModule {
     // than aborting the whole open. Only the cluster-derived counts degrade.
     let clusters: CountrySignalCluster[] = [];
     let clustersAvailable = false;
+    // The aviation read never rejects and does not need the aggregator, so it
+    // starts now instead of waiting behind the aggregator chunk.
+    const aviationDisruptionsPending = this.countryAviationDisruptions(code, country);
     try {
       clusters = (await getSignalAggregator()).getCountryClusters();
       clustersAvailable = true;
@@ -1271,7 +1274,7 @@ export class CountryIntelManager implements AppModule {
 
     const activeStrikes = this.getCountryStrikes(code, hasGeoShape).length;
 
-    const aviationDisruptions = (await this.countryAviationDisruptions(code, country)).length;
+    const aviationDisruptions = (await aviationDisruptionsPending).length;
 
     const ciiData = getCountryData(code);
     const isTier1 = !!TIER1_COUNTRIES[code];
@@ -1563,8 +1566,13 @@ export class CountryIntelManager implements AppModule {
     }
     const posturePanel = this.ctx.panels['strategic-posture'] as StrategicPosturePanel | undefined;
     const postures = posturePanel?.getPostures() || [];
-    const aggregator = await getSignalAggregator();
-    const signals = { ...await this.getCountrySignals(code, name), ...this.selectCountryMilitary(code, name).signalCounts };
+    // getCountrySignals waits on the aggregator chunk too, but it also starts
+    // the aviation read; awaiting both together lets that read overlap.
+    const [aggregator, countrySignals] = await Promise.all([
+      getSignalAggregator(),
+      this.getCountrySignals(code, name),
+    ]);
+    const signals = { ...countrySignals, ...this.selectCountryMilitary(code, name).signalCounts };
     const cluster = aggregator.getCountryClusters().find(c => c.country === code);
     const regional = aggregator.getRegionalConvergence().filter(r => r.countries.includes(code));
     const convergence = cluster ? {

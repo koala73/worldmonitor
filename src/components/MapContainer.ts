@@ -708,8 +708,13 @@ export class MapContainer {
     console.log('[MapContainer] Initializing deck.gl map (desktop mode)');
     try {
       markLcpDebug('wm:map:deck-init-start');
-      await loadMapLibreCss();
-      const { DeckGLMap } = await import('./DeckGLMap');
+      // The MapLibre stylesheet chunk and the DeckGL renderer chunk are
+      // independent, and both are needed before the first map paint. Fetching
+      // them together removes one serialized round trip from the critical path.
+      const [, { DeckGLMap }] = await Promise.all([
+        loadMapLibreCss(),
+        import('./DeckGLMap'),
+      ]);
       if (!this.isCurrentRendererInit(token)) return;
       this.prepareRendererDom('deckgl-mode');
       this.deckGLMap = new DeckGLMap(this.container, {
