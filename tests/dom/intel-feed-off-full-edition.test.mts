@@ -121,6 +121,26 @@ describe('Intel Feed on an edition without an intel digest', () => {
     expect(selectEditionDigest).toHaveBeenCalledTimes(1);
   }, 2_000);
 
+  it('leaves a newer load alone when a superseded one reaches its pending pass late', async () => {
+    const source = INTEL_SOURCES[0]!.name;
+    const full: Selection = { digest: { categories: { intel: { items: [protoItem(source, 'Live headline')] } } }, servedStale: false };
+    const { internal, selectEditionDigest, renderNewsForCategory } = await techLoader(full);
+    const ctx = (internal as unknown as { ctx: { newsByCategory: Record<string, unknown[]> } }).ctx;
+    const older = internal.newsLoadGeneration;
+    internal.newsLoadGeneration += 1;
+    const newer = internal.newsLoadGeneration;
+    const pendingOptions = { recordBaselineSample: false, digestPending: true };
+
+    await internal.loadIntelNews(techDigest, pendingOptions, newer);
+    const live = await internal.loadIntelNews(techDigest, options, newer);
+    renderNewsForCategory.mockClear();
+    ctx.newsByCategory.intel = live;
+
+    expect(await internal.loadIntelNews(techDigest, pendingOptions, older)).toEqual([]);
+    expect(renderNewsForCategory, 'the stale pass must not re-render the live list as cached').not.toHaveBeenCalled();
+    expect(selectEditionDigest, 'the stale pass must not start or replace the full edition fetch').toHaveBeenCalledTimes(1);
+  });
+
   it('renders an empty list instead of leaving the panel loading when no digest has intel', async () => {
     const { internal, renderNewsForCategory } = await techLoader(null);
 

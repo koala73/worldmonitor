@@ -1915,6 +1915,9 @@ export class DataLoaderManager implements AppModule {
     const readsFullEdition = SITE_VARIANT !== 'full' && !(digestSelection?.digest.categories && 'intel' in digestSelection.digest.categories);
     let selection = digestSelection;
     if (readsFullEdition) {
+      // A superseded load must not replace the newer load's fetch or
+      // re-render its live list as cached headlines.
+      if (!this.isCurrentNewsLoad(generation)) return [];
       // One fetch per load: the pending pass starts it without holding the
       // home-digest replay, and the final pass awaits the same request.
       if (this.fullEditionIntel?.generation !== generation) {
