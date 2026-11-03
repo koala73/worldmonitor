@@ -14,9 +14,8 @@
  *                                browser navigates to ?status=failed,
  *                                so the retry button has context.
  *
- * Living in its own file so unit tests can exercise the helpers
- * without pulling in `dodopayments-checkout` (which is browser-only
- * and breaks Node test runners on import).
+ * Living in its own file so storage helpers can be tested independently
+ * of the dashboard checkout and browser UI dependency graph.
  */
 
 import { clearReferralOnAttribution } from './referral-capture';

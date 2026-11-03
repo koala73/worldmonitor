@@ -1,0 +1,54 @@
+syntax = "proto3";
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+message GetCountryHistoryRequest {
+  // Assigned ISO alpha-2 country code.
+  string country = 1 [(sebuf.http.query) = {name: "country", required: true}, (buf.validate.field).string.pattern = "^[A-Z]{2}$"];
+  // UTC days including today; 0 defaults to 7.
+  // Verified limits: free 7, Pro 90, API/Enterprise 365.
+  int32 days = 2 [(sebuf.http.query) = {name: "days"}, (buf.validate.field).int32.gte = 0];
+}
+
+message CountryHistoryScore {
+  double score = 1;
+  // Source formula/cache identity.
+  string version = 2;
+  int64 observed_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+message CountryHistoryEvent {
+  string title = 1;
+  string link = 2;
+  string source = 3;
+  string category = 4;
+}
+
+message CountryHistoryPoint {
+  string date = 1;
+  int64 captured_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Absent means unavailable; zero is observed.
+  CountryHistoryScore cii = 3;
+  CountryHistoryScore resilience = 4;
+  repeated CountryHistoryEvent top_events = 5;
+  repeated string key_signals = 6;
+  // Do not join trends across missing dates, absent scores or formula changes.
+  bool cii_version_break = 7;
+  bool resilience_version_break = 8;
+}
+
+message GetCountryHistoryResponse {
+  string country = 1;
+  int32 requested_days = 2;
+  int32 allowed_days = 3;
+  int32 effective_days = 4;
+  int32 returned_days = 5;
+  repeated CountryHistoryPoint points = 6;
+  // True on failed reads or before activation.
+  bool upstream_unavailable = 7;
+  // True if unavailable or over 36 hours since publication.
+  bool stale = 8;
+  int64 fetched_at = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

@@ -44,6 +44,14 @@ export class EnergyCrisisPanel extends Panel {
       infoTooltip: 'IEA 2026 Energy Crisis Policy Response Tracker. Tracks government measures to conserve energy and support consumers in response to Middle East conflict and Strait of Hormuz supply disruptions.',
     });
     this.showLoading('Loading energy crisis policies...');
+    this.content.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.ecp-filter-btn');
+      if (!btn) return;
+      const filter = btn.dataset.filter || 'all';
+      if (filter === this.activeFilter) return;
+      this.activeFilter = filter;
+      this.render();
+    });
   }
 
   public async fetchData(): Promise<void> {
@@ -179,13 +187,5 @@ export class EnergyCrisisPanel extends Panel {
         </div>
       </div>
     `, 'legacy Panel.setContent() migration'));
-
-    this.content?.querySelectorAll('.ecp-filter-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const filter = (e.currentTarget as HTMLElement).dataset.filter || 'all';
-        this.activeFilter = filter;
-        this.render();
-      });
-    });
   }
 }

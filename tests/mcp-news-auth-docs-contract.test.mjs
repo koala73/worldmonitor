@@ -152,9 +152,9 @@ describe('MCP news/auth public contract', () => {
     assert.deepEqual(requestShape(withContext), requestShape(withoutContext));
   });
 
-  it('RPC brief tools return sources from producer records, not generated text', async () => {
+  it('world and personalized country briefs return sources from producer records, not generated text', async () => {
     const { result: worldResult } = await captureRpcFetches('get_world_brief', { geo_context: 'Middle East tensions' });
-    const { result: countryResult, calls: countryCalls } = await captureRpcFetches('get_country_brief', { country_code: 'US' });
+    const { result: countryResult, calls: countryCalls } = await captureRpcFetches('get_country_brief', { country_code: 'US', framework: 'Focus on energy.' });
 
     assert.deepEqual(worldResult.sources, [{
       title: 'United States headline used for MCP grounding',
@@ -165,7 +165,11 @@ describe('MCP news/auth public contract', () => {
     assert.equal(worldResult.summary, 'Seeded grounded world brief.');
     assert.equal(worldResult.sources.some((source) => source.url.startsWith('javascript:')), false);
 
-    assert.deepEqual(countryResult.sources, worldResult.sources);
+    assert.deepEqual(countryResult.sources.map(({ sourceProvenance, ...source }) => {
+      assert.deepEqual(sourceProvenance.knownBiases, []);
+      assert.equal(sourceProvenance.risk, 'unknown');
+      return source;
+    }), worldResult.sources);
     const countryBriefCall = countryCalls.find((call) => new URL(call.url).pathname === '/api/intelligence/v1/get-country-intel-brief');
     assert.ok(countryBriefCall, 'get_country_brief should call country brief endpoint');
     const context = JSON.parse(String(countryBriefCall.init.body)).context || '';
@@ -239,8 +243,8 @@ describe('MCP news/auth public contract', () => {
     ]);
   });
 
-  it('get_country_brief keeps large grounding context out of the signed URL', async () => {
-    const { calls } = await captureRpcFetches('get_country_brief', { country_code: 'US' }, { longCountryHeadline: true });
+  it('personalized get_country_brief keeps large grounding context out of the signed URL', async () => {
+    const { calls } = await captureRpcFetches('get_country_brief', { country_code: 'US', framework: 'Focus on energy.' }, { longCountryHeadline: true });
     const countryBriefCall = calls.find((call) => new URL(call.url).pathname === '/api/intelligence/v1/get-country-intel-brief');
     assert.ok(countryBriefCall, 'get_country_brief should call country brief endpoint');
 

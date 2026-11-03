@@ -4,10 +4,11 @@ import { trackAircraft } from '../server/worldmonitor/aviation/v1/track-aircraft
 import { ApiError, createAviationServiceRoutes, type TrackAircraftRequest } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
 import { aviationHandler } from '../server/worldmonitor/aviation/v1/handler.ts';
 import { createDomainGateway, serverOptions } from '../server/gateway.ts';
-import { __resetRateLimitForTest } from '../server/_shared/rate-limit.ts';
+import { __resetRateLimitForTest, ENDPOINT_RATE_POLICIES, FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED } from '../server/_shared/rate-limit.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { readLimiterRequest } from './helpers/upstash-limiter-wire.mjs';
 import { issueSessionToken } from '../api/_session.js';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -57,7 +58,7 @@ const providers = () => calls.filter(url => url.hostname === 'relay.example');
 
 test('invalid or oversized identifiers fail before cache or upstream I/O', async () => {
   for (const options of [{ icao24: 'abc123&lamin=0' }, { icao24: 'abc12' }, { icao24: 'gggggg' }, { icao24: 'a'.repeat(1000) }, { callsign: 'UAE/20' }, { callsign: 'UAE20&x=1' }, { callsign: 'ABCDEFGHI' }, { callsign: ' '.repeat(1000) + 'UAE20' }]) {
-    await assert.rejects(read(options), (error: unknown) => error instanceof ApiError && error.statusCode === 400);
+    await assert.rejects(read(options), validationFailure(Object.keys(options)[0]!));
     assert.equal(calls.length, 0);
   }
 });
@@ -78,7 +79,7 @@ test('canonical callsign retains substring matching and Wingbits priority', asyn
   assert.equal(providers()[0]!.search, '?callsign=UAE');
   assert.deepEqual([...redis.redis.keys()].filter(key => key.startsWith('aviation:track:')), ['aviation:track:callsign:UAE:v2']);
 });
-test('identifier store outage fails closed while anonymous bbox remains available', async () => {
+test('identifier and bbox gateway requests fail closed without the budget store', async () => {
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
   __resetRateLimitForTest();
@@ -86,12 +87,11 @@ test('identifier store outage fails closed while anonymous bbox remains availabl
   assert.equal(unavailable.status, 503);
   assert.equal(unavailable.headers.get('X-RateLimit-Mode'), 'degraded');
   assert.equal(unavailable.headers.get('Retry-After'), '5');
-  assert.equal((await unavailable.json()).message, 'Rate-limit service temporarily unavailable');
   assert.equal(providers().length, 0);
   const bbox = await gateway(request({ sw_lat: '24', sw_lon: '54', ne_lat: '26', ne_lon: '56' }));
-  assert.equal(bbox.status, 200);
-  assert.equal((await bbox.json()).source, 'wingbits');
-  assert.equal(providers().length, 1);
+  assert.equal(bbox.status, 503);
+  assert.equal(bbox.headers.get('X-RateLimit-Mode'), 'degraded');
+  assert.equal(providers().length, 0);
 });
 test('identifier quota is 30/min across distinct cache keys', async () => {
   const transport = globalThis.fetch;
@@ -133,21 +133,87 @@ test('Redis transport failure denies identifier lookups before provider work', a
   await assert.rejects(read({ callsign: 'UAE20' }), (error: unknown) => error instanceof ApiError && error.statusCode === 503);
   assert.equal(providers().length, 0);
 });
-test('bbox retains the global gateway budget, authoritative empty results and OpenSky recovery', async () => {
+test('bbox uses the endpoint budget before providers and preserves empty results and recovery', async () => {
   const transport = globalThis.fetch;
   const wire: { init?: RequestInit }[] = [];
-  globalThis.fetch = (async (input, init) => { wire.push({ init }); return transport(input, init); }) as typeof fetch;
+  globalThis.fetch = (async (input, init) => {
+    if (new URL(String(input)).hostname === 'relay.example') {
+      assert.equal(readLimiterRequest(wire)?.tokens, 30);
+    }
+    wire.push({ init });
+    return transport(input, init);
+  }) as typeof fetch;
   wingbitsPositions = [];
   const empty = await gateway(request({ sw_lat: '10', sw_lon: '10', ne_lat: '11', ne_lon: '11' }));
   assert.equal(empty.status, 200);
   assert.deepEqual((await empty.json()).positions, []);
   assert.equal(providers().length, 1);
-  assert.equal(readLimiterRequest(wire)?.tokens, 600);
+  assert.equal(readLimiterRequest(wire)?.tokens, 30);
   assert.ok(!wire.some(item => String(item.init?.body).includes('track-aircraft-identifiers')));
   wingbitsStatus = 502;
   const recovered = await gateway(request({ sw_lat: '24', sw_lon: '54', ne_lat: '26', ne_lon: '56' }));
   assert.equal((await recovered.json()).source, 'opensky');
   assert.deepEqual(providers().map(url => url.pathname), ['/wingbits/track', '/wingbits/track', '/opensky/states/all']);
+});
+
+for (const mode of [undefined, 'docker']) test(`one route admission caps mixed cache misses at 30/min in ${mode ?? 'cloud'}`, async () => {
+  if (mode) process.env.LOCAL_API_MODE = mode;
+  assert.deepEqual(ENDPOINT_RATE_POLICIES[PATH], { limit: 30, window: '60 s' });
+  assert.ok(FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED[PATH]);
+  const transport = globalThis.fetch;
+  let routeAdmissions = 0;
+  let identifierAdmissions = 0;
+  globalThis.fetch = (async (input, init) => {
+    const commands = init?.body ? JSON.parse(String(init.body)) : [];
+    if (Array.isArray(commands[0])) {
+      if (commands.some((c: string[]) => c.some(value => String(value).includes(`rl:ep:${PATH}:`)))) {
+        return Response.json(commands.map(() => ({ result: [30 - ++routeAdmissions, 30] })));
+      }
+      if (commands.some((c: string[]) => c.some(value => String(value).includes('track-aircraft-identifiers')))) identifierAdmissions++;
+    }
+    return transport(input, init);
+  }) as typeof fetch;
+  for (let i = 0; i < 30; i++) {
+    const query = i % 2 === 0
+      ? { sw_lat: String(i), sw_lon: '10', ne_lat: String(i + 1), ne_lon: '11' }
+      : { callsign: `UAE${i}` };
+    assert.equal((await gateway(request(query))).status, 200);
+  }
+  assert.equal(routeAdmissions, 30);
+  assert.equal(identifierAdmissions, 15);
+  assert.equal(providers().length, 30);
+  for (const query of [{ sw_lat: '40', sw_lon: '10', ne_lat: '41', ne_lon: '11' }, { callsign: 'UAE31' }]) {
+    const denied = await gateway(request(query));
+    assert.equal(denied.status, 429);
+    assert.equal(denied.headers.get('RateLimit-Limit'), '30');
+    assert.ok(Number(denied.headers.get('Retry-After')) > 0);
+  }
+  assert.equal(providers().length, 30);
+  assert.equal(identifierAdmissions, 15, 'route denial must occur before the identifier budget');
+});
+
+for (const mode of [undefined, 'docker']) test(`Redis failure denies both gateway shapes in ${mode ?? 'cloud'} before providers`, async () => {
+  if (mode) process.env.LOCAL_API_MODE = mode;
+  const transport = globalThis.fetch;
+  globalThis.fetch = (async (input, init) => {
+    if (new URL(String(input)).hostname === 'redis.example') throw new Error('Synthetic Redis outage');
+    return transport(input, init);
+  }) as typeof fetch;
+  for (const query of [{ sw_lat: '24', sw_lon: '54', ne_lat: '26', ne_lon: '56' }, { icao24: 'abc123' }]) {
+    assert.equal((await gateway(request(query))).status, 503);
+    assert.equal(providers().length, 0);
+  }
+});
+
+test('request headers and query parameters cannot enable native admission', async () => {
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  const req = request({ sw_lat: '24', sw_lon: '54', ne_lat: '26', ne_lon: '56', LOCAL_API_MODE: 'tauri-sidecar', mode: 'tauri-sidecar' });
+  req.headers.set('LOCAL_API_MODE', 'tauri-sidecar');
+  req.headers.set('x-worldmonitor-local-token', 'synthetic-aircraft-native-token');
+  const denied = await gateway(req);
+  assert.equal(denied.status, 503);
+  assert.equal(providers().length, 0);
 });
 test('identifier provider failures preserve empty none responses and no-identifier requests do not fetch', async () => {
   wingbitsStatus = 502;
@@ -165,7 +231,7 @@ test('both identifiers and identifiers with bbox are validated and admitted with
   assert.equal(both.positions[0]?.icao24, 'abc123');
   const withBbox = await read({ icao24: 'abc123', callsign: 'UAE', swLat: 24, swLon: 54, neLat: 26, neLon: 56 });
   assert.equal(withBbox.positions[0]?.icao24, 'abc123');
-  await assert.rejects(read({ icao24: 'bad', swLat: 24, swLon: 54, neLat: 26, neLon: 56 }), (error: unknown) => error instanceof ApiError && error.statusCode === 400);
+  await assert.rejects(read({ icao24: 'bad', swLat: 24, swLon: 54, neLat: 26, neLon: 56 }), validationFailure('icao24'));
 });
 test('verified MCP identifier calls cannot bypass the handler budget', async () => {
   const { signInternalMcpRequest, buildInternalMcpHeaders } = await import('../server/_shared/mcp-internal-hmac.ts');
@@ -242,8 +308,119 @@ test('native HTTP identifier admission preserves real auth, data, cache and wind
     assert.equal(recovered.status, 200);
     assert.equal((await recovered.json()).source, 'opensky');
     assert.equal(providers().length, 1);
+    const bboxUrl = `http://127.0.0.1:${port}${PATH}?sw_lat=24&sw_lon=54&ne_lat=26&ne_lon=56`;
+    const bbox = await originalFetch(bboxUrl, { headers });
+    assert.equal(bbox.status, 200);
+    assert.equal((await bbox.json()).source, 'wingbits');
+    assert.equal((await originalFetch(bboxUrl, { headers })).status, 200);
+    assert.equal(providers().length, 2);
   } finally {
     Date.now = realNow;
     await app.close();
   }
+});
+
+test('nearby exact viewports keep separate data and filter provider overfetch on cache hits', async () => {
+  wingbitsPositions = [{ ...wingbitsPosition, lat: 25.2, lon: 55.2 }, { ...wingbitsPosition, lat: 25.8, lon: 55.8 }];
+  const west = { swLat: 25.1, swLon: 55.1, neLat: 25.5, neLon: 55.5 };
+  const east = { swLat: 25.6, swLon: 55.6, neLat: 25.9, neLon: 55.9 };
+  assert.deepEqual((await read(west)).positions.map(p => p.lat), [25.2]);
+  assert.deepEqual((await read(east)).positions.map(p => p.lat), [25.8]);
+  assert.deepEqual((await read(west)).positions.map(p => p.lat), [25.2]);
+  assert.equal(providers().length, 2);
+  assert.equal(providers()[0]!.searchParams.get('lamin'), '25.1');
+  assert.equal(providers()[1]!.searchParams.get('lamin'), '25.6');
+});
+
+test('viewport fetch identity includes identifiers and stays separate from identifier-only data', async () => {
+  await read({ icao24: 'abc123' });
+  const bbox = { swLat: 24, swLon: 54, neLat: 26, neLon: 56 };
+  assert.equal((await read({ ...bbox, icao24: 'abc123' })).source, 'wingbits');
+  await read({ ...bbox, icao24: 'def456' });
+  assert.equal(providers().length, 3);
+});
+
+test('normalized viewport coordinates determine both cache identity and relay query', async () => {
+  const reversed = { swLat: 100, swLon: 200, neLat: 24, neLon: 54 };
+  await read(reversed);
+  await read({ swLat: 24, swLon: 54, neLat: 90, neLon: 180 });
+  assert.equal(providers().length, 1);
+  assert.equal(providers()[0]!.search, '?lamin=24&lomin=54&lamax=90&lomax=180');
+});
+
+test('nonfinite viewport coordinates reject before cache or provider work', async () => {
+  for (const swLat of [NaN, Infinity, -Infinity]) {
+    await assert.rejects(read({ swLat, neLat: 26, swLon: 54, neLon: 56 }), validationFailure('sw_lat', /finite viewport/));
+    assert.equal(calls.length, 0);
+  }
+});
+
+for (const status of [400, 401, 403, 404, 422]) test(`Wingbits bbox ${status} does not authorize OpenSky`, async () => {
+  wingbitsStatus = status;
+  const result = await read({ swLat: 24, swLon: 54, neLat: 26, neLon: 56 });
+  assert.equal(result.source, 'none');
+  assert.deepEqual(providers().map(url => url.pathname), ['/wingbits/track']);
+});
+test('oversized bbox answers empty before cache/provider work', async () => {
+  for (const options of [
+    { swLat: -90, swLon: -180, neLat: 90, neLon: 180 },
+    { swLat: -45, swLon: -180, neLat: 45.01, neLon: 180 },
+  ]) {
+    const result = await read(options);
+    assert.equal(result.source, 'none');
+    assert.deepEqual(result.positions, []);
+    assert.equal(calls.length, 0);
+  }
+});
+for (const [name, bbox] of [
+  ['exactly 36 areas', { swLat: -45, swLon: -180, neLat: 45, neLon: 180 }],
+  ['wrapped longitude', { swLat: 10, swLon: 170, neLat: 20, neLon: -170 }],
+  ['MapLibre unwrapped longitude', { swLat: 10, swLon: 170, neLat: 20, neLon: 190 }],
+  ['projection latitude overshoot', { swLat: 85, swLon: 10, neLat: 91, neLon: 20 }],
+] as const) test(`${name} retains current Wingbits map semantics`, async () => {
+  assert.equal((await read(bbox)).source, 'wingbits');
+  assert.equal(providers().length, 1);
+});
+
+test('gateway answers 200 empty for a viewport just above the relay area limit without provider work', async () => {
+  const response = await gateway(request({ sw_lat: '-45', sw_lon: '-180', ne_lat: '45.01', ne_lon: '180' }));
+  // 200, not 422: the client track breaker opens after two failures and
+  // would blank the flights layer after a zoom-out.
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.source, 'none');
+  assert.deepEqual(body.positions ?? [], []);
+  assert.equal(providers().length, 0);
+  assert.ok(![...redis.redis.keys()].some(key => key.startsWith('aviation:track:')));
+});
+test('identifier lookup with an oversized viewport skips only the bbox tier', async () => {
+  const result = await read({ swLat: -90, swLon: -180, neLat: 90, neLon: 180, icao24: 'abc123' });
+  assert.deepEqual(providers().map(url => url.pathname), ['/opensky/states/all']);
+  assert.equal(providers()[0]!.searchParams.get('icao24'), 'abc123');
+  assert.notEqual(result.source, 'wingbits');
+});
+for (const status of [408, 429, 503]) test(`Wingbits ${status} outage retains display fallback`, async () => {
+  wingbitsStatus = status;
+  assert.equal((await read({ swLat: 24, swLon: 54, neLat: 26, neLon: 56 })).source, 'opensky');
+  assert.deepEqual(providers().map(url => url.pathname), ['/wingbits/track', '/opensky/states/all']);
+});
+
+test('client track breaker stays closed across repeated zoom-outs past the relay area limit', async () => {
+  const harnessFetch = globalThis.fetch;
+  let gatewayCalls = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'https://www.worldmonitor.app');
+    if (url.pathname !== PATH) return harnessFetch(input, init);
+    gatewayCalls++;
+    return gateway(new Request(`https://api.worldmonitor.app${PATH}${url.search}`, { headers: { 'X-WorldMonitor-Key': session, 'x-real-ip': '192.0.2.10' } }));
+  }) as typeof fetch;
+  const { fetchAircraftPositions } = await import('../src/services/aviation/index.ts');
+  // Distinct viewports so the client's 15s result cache never answers. The
+  // breaker opens after two failures, so a third request that still reaches
+  // the gateway proves none of them counted as a failure.
+  for (const neLat of [60, 70, 80]) {
+    assert.deepEqual(await fetchAircraftPositions({ swLat: -60, swLon: -180, neLat, neLon: 180 }), []);
+  }
+  assert.equal(gatewayCalls, 3);
+  assert.equal(providers().length, 0);
 });

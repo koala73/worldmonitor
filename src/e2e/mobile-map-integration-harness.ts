@@ -1,6 +1,7 @@
 import '../styles/main.css';
 import { MapComponent } from '../components/Map';
 import { initI18n } from '../services/i18n';
+import type { CrossBorderData } from '../services/displacement';
 
 type MobileMapIntegrationHarness = {
   ready: boolean;
@@ -22,6 +23,8 @@ type MobileMapIntegrationHarness = {
   forceRender: () => void;
   burstFlashes: (count: number) => void;
   clearOverlayFeeds: () => void;
+  setCrossBorderArrivals: (data: CrossBorderData) => void;
+  toggleCrossBorderLayer: () => void;
   getActiveFlashCount: () => number;
   getFlashNodeCount: () => number;
   getKeptHotspotCoords: () => Array<{ lat: number; lon: number }>;
@@ -261,6 +264,8 @@ const ensureHotspotsRendered = (): void => {
 ensureHotspotsRendered();
 
 window.__mobileMapIntegrationHarness = {
+  setCrossBorderArrivals: (data) => map.setCrossBorderArrivals(data),
+  toggleCrossBorderLayer: () => map.toggleLayer('displacement', 'programmatic'),
   get ready() {
     return ready;
   },

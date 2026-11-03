@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
@@ -456,18 +456,29 @@ describe('CARTO dark-matter style compatibility', () => {
   }
 });
 
-// ── RTL plugin file existence ───────────────────────────────────────
+// ── RTL text: built into MapLibre 6, no plugin ─────────────────────
+//
+// MapLibre 6 shapes Arabic and reorders bidirectional text itself (bidi-js is
+// bundled into its worker) and deprecates `setRTLTextPlugin`. Keeping the call
+// after the #8209 upgrade did worse than nothing: MapLibre 6's worker loads a
+// non-`.mjs` plugin URL with `globalThis.eval`, which the dashboard CSP has no
+// `'unsafe-eval'` for, so every RTL-bearing tile rejected with `call to eval()
+// blocked by CSP` (WORLDMONITOR-12T: 354 Firefox events in the first six hours
+// after deploy; Chromium's `unsafe-eval … Content Security Policy` wording was
+// silently dropped by `ignoreErrors`) and the self-hosted plugin replaced the
+// built-in shaping with nothing at all.
 
 describe('RTL text plugin', () => {
-  it('self-hosted mapbox-gl-rtl-text.min.js exists in public/', () => {
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    const pluginPath = resolve(__dirname, '..', 'public', 'mapbox-gl-rtl-text.min.js');
-    const content = readFileSync(pluginPath, 'utf-8');
-    assert.ok(content.length > 10_000, 'RTL plugin should be at least 10KB');
-    // Verify it's actually the mapbox RTL plugin (contains its module signature)
-    assert.ok(
-      content.includes('mapboxgl') || content.includes('RTLTextPlugin') || content.includes('applyArabicShaping'),
-      'RTL plugin file should contain expected identifiers',
-    );
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+
+  it('DeckGLMap does not register the deprecated RTL plugin (WORLDMONITOR-12T)', () => {
+    const source = readFileSync(resolve(__dirname, '..', 'src', 'components', 'DeckGLMap.ts'), 'utf-8');
+    assert.ok(!/\.setRTLTextPlugin\(|\.getRTLTextPluginStatus\(|mapbox-gl-rtl-text/.test(source),
+      'DeckGLMap.ts still references the RTL plugin — MapLibre 6 evals a non-.mjs plugin in its worker, which the CSP blocks');
+  });
+
+  it('the self-hosted plugin file is gone from public/', () => {
+    assert.ok(!existsSync(resolve(__dirname, '..', 'public', 'mapbox-gl-rtl-text.min.js')),
+      'public/mapbox-gl-rtl-text.min.js is dead weight once nothing registers it');
   });
 });

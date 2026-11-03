@@ -1,22 +1,21 @@
 /**
  * Checkout session creation for Dodo Payments.
  *
- * Two entry points:
- *   - createCheckout (public action): authenticated via Convex/Clerk auth
- *   - internalCreateCheckout (internal action): called by /relay/create-checkout
- *     with trusted userId from the edge gateway
- *
- * Both share the same core logic via _createCheckoutSession().
+ * One entry point: internalCreateCheckout, called by /relay/create-checkout with
+ * the userId the edge gateway (api/create-checkout.ts) took from a verified
+ * Clerk token. There is deliberately no public action: a direct Convex client
+ * call would skip the edge's per-user and per-IP budgets, and Dodo rate-limits
+ * our shared API key.
  */
 
+import { assertAccountWritable } from "../accountDeletion/guard";
 import { v, ConvexError } from "convex/values";
-import { action, internalAction, type ActionCtx } from "../_generated/server";
+import { internalAction, internalMutation, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import {
   CHECKOUT_PROVIDER_ATTEMPT_TIMEOUT_MS,
   createDodoCheckoutSession,
 } from "../lib/dodo";
-import { requireUserId, resolveUserIdentity } from "../lib/auth";
 import { extractDomain } from "../lib/emailShape";
 import {
   ANON_ID_V4_REGEX,
@@ -29,10 +28,17 @@ import { isTrustedReturnUrlOrigin } from "./returnUrlOrigin";
 import {
   CHECKOUT_RATE_LIMITED,
   CHECKOUT_RATE_LIMIT_MAX_ATTEMPTS,
+  isCheckoutTimedOutOutcome,
   isCheckoutRateLimitedOutcome,
   runCheckoutWithRateLimitRetry,
+  type CheckoutRateLimitedOutcome,
+  type CheckoutTimedOutOutcome,
 } from "./checkoutRateLimit";
-import { recordTerminalCheckoutRateLimit } from "./checkoutRateLimitAlarm";
+import {
+  recordTerminalCheckoutRateLimit,
+  recordTerminalCheckoutTimeout,
+} from "./checkoutRateLimitAlarm";
+import { recordCreatedCheckoutSession } from "./checkoutSessionLog";
 
 // MCP paid-funnel campaign marker (#6716). Imported, never re-declared: a
 // second copy of this normalisation is exactly the drift that produced the
@@ -41,9 +47,40 @@ import { recordTerminalCheckoutRateLimit } from "./checkoutRateLimitAlarm";
 // The Convex runtime imports from `shared/` elsewhere (convex/apiKeys.ts,
 // convex/companyMonitoring/*), so there is no module-boundary reason to fork it.
 import { normalizeCheckoutAttributionSource as normalizeAttributionSource } from "../../shared/mcp-attribution";
+import { acquisitionCheckoutMetadata } from "../../shared/acquisition-source";
 
 const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
 const PAYMENT_IN_PROGRESS = "PAYMENT_IN_PROGRESS";
+
+const CHECKOUT_ADMISSION_LIMIT = 5;
+const CHECKOUT_ADMISSION_WINDOW_MS = 10 * 60 * 1000;
+
+// One durable row per account. Mutation serialization makes the read/increment
+// atomic even when direct and relayed actions arrive together.
+export const admitCheckout = internalMutation({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }): Promise<CheckoutRateLimitedOutcome | null> => {
+    await assertAccountWritable(ctx, userId);
+    const now = Date.now();
+    const row = await ctx.db.query("checkoutAdmissions")
+      .withIndex("by_user", (q) => q.eq("userId", userId)).unique();
+    if (row && now < row.windowStart + CHECKOUT_ADMISSION_WINDOW_MS) {
+      if (row.count >= CHECKOUT_ADMISSION_LIMIT) {
+        return {
+          checkoutFailed: true,
+          code: CHECKOUT_RATE_LIMITED,
+          retryAfterSeconds: Math.max(1, Math.ceil((row.windowStart + CHECKOUT_ADMISSION_WINDOW_MS - now) / 1000)),
+        };
+      }
+      await ctx.db.patch(row._id, { count: row.count + 1 });
+    } else if (row) {
+      await ctx.db.patch(row._id, { windowStart: now, count: 1 });
+    } else {
+      await ctx.db.insert("checkoutAdmissions", { userId, windowStart: now, count: 1 });
+    }
+    return null;
+  },
+});
 
 function requireCheckoutProduct(productId: string): void {
   const allowed = Object.values(PRODUCT_CATALOG).some(
@@ -67,8 +104,7 @@ const MAX_LOGIN_EMAIL_LENGTH = 254;
  *
  * This is a shape guard, not a trust boundary — it keeps an unusable value out
  * of a field the webhook later hands to Resend as a recipient. What makes that
- * the right level: `createCheckout` reads the email from the Clerk JWT `email`
- * claim via `resolveUserIdentity`, and `internalCreateCheckout` receives it from
+ * the right level: `internalCreateCheckout` receives it from
  * `/relay/create-checkout`, whose only caller (`api/create-checkout.ts`) derives
  * it from a JWKS-verified bearer token. Note the relay itself authenticates by
  * shared secret and does NOT re-derive the claim, so "the value is a verified
@@ -96,6 +132,27 @@ function normalizeCheckoutLoginEmail(raw: string | undefined): string | null {
   return trimmed;
 }
 
+const MAX_PREFILL_NAME_LENGTH = 100;
+
+/**
+ * Dodo `customer` prefill for the hosted checkout form. Dodo requires an email
+ * to create a customer, so with no usable login email (phone-only signups,
+ * anonymous buyers) nothing is sent and the buyer fills the form as before.
+ */
+function checkoutCustomerPrefill(
+  loginEmail: string | null,
+  rawName: string | undefined,
+): { customer?: { email: string; name?: string } } {
+  if (!loginEmail) return {};
+  const name = typeof rawName === "string" ? rawName.trim() : "";
+  return {
+    customer: {
+      email: loginEmail,
+      ...(name && name.length <= MAX_PREFILL_NAME_LENGTH ? { name } : {}),
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Shared checkout session creation logic
 // ---------------------------------------------------------------------------
@@ -107,6 +164,8 @@ interface CheckoutArgs {
   referralCode?: string;
   /** MCP paid-funnel attribution (#6716). Parallel to referralCode. */
   attributionSource?: string;
+  /** First-touch acquisition source from the browser; re-validated here. */
+  acquisition?: unknown;
 }
 
 interface UserInfo {
@@ -235,7 +294,11 @@ async function _createCheckoutSession(
   ctx: ActionCtx,
   args: CheckoutArgs,
   user: UserInfo,
-) {
+): Promise<
+  | (Omit<Awaited<ReturnType<typeof createDodoCheckoutSession>>, "session_id"> & { anonymous_claim_token?: string })
+  | CheckoutRateLimitedOutcome
+  | CheckoutTimedOutOutcome
+> {
   // Validate returnUrl to prevent open-redirect attacks.
   const siteUrl = process.env.SITE_URL ?? "https://worldmonitor.app";
   let returnUrl = siteUrl;
@@ -254,6 +317,14 @@ async function _createCheckoutSession(
     }
     returnUrl = parsedReturnUrl.toString();
   }
+
+  // Completed edge idempotency replays return before reaching this boundary.
+  // Consume once per creation, outside the provider retry ladder. A failed
+  // admission mutation must propagate: unknown capacity cannot authorize work.
+  const denied: CheckoutRateLimitedOutcome | null = await ctx.runMutation(
+    internal.payments.checkout.admitCheckout, { userId: user.userId },
+  );
+  if (denied) return denied;
 
   // Record Terms assent (#6976). Both checkout paths — the /pro pricing page
   // and every dashboard CTA — funnel through here, so one call covers them all
@@ -346,6 +417,9 @@ async function _createCheckoutSession(
     // subscriptionHelpers on first subscription.active.
     metadata.wm_attribution = attributionSource;
   }
+  // First-touch channel (UTM, referrer host, landing page) so subscriptions
+  // carry channel next to billing country. Only `wm_acq_*` keys, re-validated.
+  Object.assign(metadata, acquisitionCheckoutMetadata(args.acquisition));
 
   try {
     // A 429 here is Dodo rate-limiting our shared API key (account-level, not
@@ -358,13 +432,22 @@ async function _createCheckoutSession(
         createDodoCheckoutSession({
           product_cart: [{ product_id: args.productId, quantity: 1 }],
           return_url: returnUrl,
-          // Note: deliberately not passing `customer` block — Dodo locks
-          // those fields as read-only. User identity is tracked via
-          // metadata.wm_user_id + HMAC signature instead.
+          // Prefill the signed-in email and name so buyers don't retype them.
+          // #2809 dropped this because Dodo made prefilled fields read-only;
+          // the allow_customer_editing_* flags below keep both editable, so a
+          // buyer can still bill a different address. Identity stays on
+          // metadata.wm_user_id + HMAC signature, never on this email.
+          ...checkoutCustomerPrefill(loginEmail, user.name),
           ...(args.discountCode ? { discount_code: args.discountCode } : {}),
           ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+          // Country, plus state/ZIP only where tax needs them, instead of a
+          // full street address.
+          minimal_address: true,
           feature_flags: {
             allow_discount_code: true,
+            allow_customer_editing_email: true,
+            allow_customer_editing_name: true,
+            allow_phone_number_collection: false,
           },
           customization: {
             theme: "dark",
@@ -374,10 +457,17 @@ async function _createCheckoutSession(
         attemptTimeoutMs: CHECKOUT_PROVIDER_ATTEMPT_TIMEOUT_MS,
         onRetry: (delayMs) =>
           console.warn(
-            `[checkout] Dodo 429 for user=${user.userId} product=${args.productId}; retrying in ${delayMs}ms`,
+            `[checkout] Dodo checkout failed for user=${user.userId} product=${args.productId}; retrying in ${delayMs}ms`,
           ),
       },
     );
+    if (isCheckoutTimedOutOutcome(result)) {
+      await recordTerminalCheckoutTimeout(ctx, {
+        userId: user.userId,
+        productId: args.productId,
+      });
+      return result;
+    }
     if (isCheckoutRateLimitedOutcome(result)) {
       console.warn(
         `[checkout] Dodo rate limited checkout creation for user=${user.userId} product=${args.productId} after bounded retry (<=${CHECKOUT_RATE_LIMIT_MAX_ATTEMPTS} attempts); retry after ${result.retryAfterSeconds}s`,
@@ -394,87 +484,39 @@ async function _createCheckoutSession(
       });
       return result;
     }
+    const { session_id: sessionId, ...session } = result;
+    await recordCreatedCheckoutSession(ctx, {
+      userId: user.userId,
+      productId: args.productId,
+      ...(sessionId ? { sessionId } : {}),
+      anonymous: anonymousClaimToken !== null,
+    });
     return anonymousClaimToken
-      ? { ...result, anonymous_claim_token: anonymousClaimToken }
-      : result;
+      ? { ...session, anonymous_claim_token: anonymousClaimToken }
+      : session;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(
       `[checkout] createCheckout failed for user=${user.userId} product=${args.productId}: ${msg}`,
     );
-    throw new ConvexError(`Checkout failed: ${msg}`);
+    throw new ConvexError({ code: "CHECKOUT_FAILED" });
   }
 }
 
 // ---------------------------------------------------------------------------
-// Public action: authenticated via Convex/Clerk auth
-// ---------------------------------------------------------------------------
-
-export const createCheckout = action({
-  args: {
-    productId: v.string(),
-    returnUrl: v.optional(v.string()),
-    discountCode: v.optional(v.string()),
-    referralCode: v.optional(v.string()),
-    attributionSource: v.optional(v.string()),
-    // "Start a new checkout anyway" — skips ONLY the pending-payment guard
-    // (#4438). The subscription guard still applies.
-    bypassPendingGuard: v.optional(v.boolean()),
-  },
-  handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
-    requireCheckoutProduct(args.productId);
-    const identity = await resolveUserIdentity(ctx);
-    if (args.bypassPendingGuard) {
-      // Audit trail: the user confirmed "start a new checkout anyway" past a
-      // pending-payment block. Logged server-side so a future double-charge
-      // investigation has the bypass record (#4438 review — the original
-      // incident was undetected stacked payments).
-      console.info(`[checkout] pending-payment guard bypassed user=${userId} product=${args.productId}`);
-    }
-    // Run both guards concurrently — they share no data, so serial awaits only
-    // add a Convex round-trip to every checkout (#4438 review). Subscription
-    // block still WINS (evaluated first); bypass skips the pending query.
-    const [blocking, pending] = await Promise.all([
-      getCheckoutBlockingSubscription(ctx, userId, args.productId),
-      args.bypassPendingGuard
-        ? Promise.resolve(null)
-        : getCheckoutBlockingPendingPayment(ctx, userId, args.productId),
-    ]);
-    if (blocking) {
-      throw new ConvexError(buildBlockedCheckoutPayload(blocking));
-    }
-    if (pending) {
-      throw new ConvexError(buildPendingBlockedPayload(pending));
-    }
-
-    const customerName = identity
-      ? [identity.givenName, identity.familyName].filter(Boolean).join(" ") ||
-        identity.name
-      : undefined;
-
-    const result = await _createCheckoutSession(ctx, args, {
-      userId,
-      email: identity?.email,
-      name: customerName,
-    });
-    // The public Convex action historically rejects provider failures. Keep
-    // that error-channel contract: only the trusted internal relay consumes
-    // the typed outcome and translates it into HTTP 429 + Retry-After.
-    if (isCheckoutRateLimitedOutcome(result)) {
-      throw new ConvexError({
-        code: CHECKOUT_RATE_LIMITED,
-        message: "Checkout is temporarily rate limited. Retry shortly.",
-        retryAfterSeconds: result.retryAfterSeconds,
-      });
-    }
-    return result;
-  },
-});
-
-// ---------------------------------------------------------------------------
 // Internal action: called by /relay/create-checkout with trusted userId
 // ---------------------------------------------------------------------------
+
+// The edge handler forwards only normalized known keys; the values are
+// re-validated again when stamped into provider metadata.
+const acquisitionValidator = v.object({
+  source: v.optional(v.string()),
+  medium: v.optional(v.string()),
+  campaign: v.optional(v.string()),
+  referrer: v.optional(v.string()),
+  landing: v.optional(v.string()),
+  firstSeen: v.optional(v.string()),
+});
 
 export const internalCreateCheckout = internalAction({
   args: {
@@ -486,7 +528,9 @@ export const internalCreateCheckout = internalAction({
     discountCode: v.optional(v.string()),
     referralCode: v.optional(v.string()),
     attributionSource: v.optional(v.string()),
-    // See createCheckout — skips only the pending-payment guard (#4438).
+    acquisition: v.optional(acquisitionValidator),
+    // "Start a new checkout anyway" — skips ONLY the pending-payment guard
+    // (#4438). The subscription guard still applies.
     bypassPendingGuard: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -495,7 +539,10 @@ export const internalCreateCheckout = internalAction({
     }
     requireCheckoutProduct(args.productId);
     if (args.bypassPendingGuard) {
-      // See createCheckout — audit the pending-guard bypass (#4438 review).
+      // Audit trail: the user confirmed "start a new checkout anyway" past a
+      // pending-payment block. Logged server-side so a future double-charge
+      // investigation has the bypass record (#4438 review — the original
+      // incident was undetected stacked payments).
       console.info(`[checkout] pending-payment guard bypassed user=${args.userId} product=${args.productId}`);
     }
     // Both guards concurrently (no shared data); subscription block still wins,
@@ -520,6 +567,7 @@ export const internalCreateCheckout = internalAction({
         discountCode: args.discountCode,
         referralCode: args.referralCode,
         attributionSource: args.attributionSource,
+        acquisition: args.acquisition,
       },
       {
         userId: args.userId,

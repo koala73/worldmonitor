@@ -75,7 +75,6 @@ let entitlement: Ent = ACTIVE;
 const requiredTiers = new Map<string, number>();
 const entitlementsByUser = new Map<string, Ent>();
 const getEntitlements = vi.fn(async (userId: string) => entitlementsByUser.get(userId) ?? entitlement);
-let entitlementBackendConfigured = true;
 const checkEntitlementDetailedMock = vi.fn(
   async (): Promise<{ response: Response | null; entitlements: unknown }> =>
     ({ response: null, entitlements: null }),
@@ -88,18 +87,27 @@ vi.mock("../_shared/entitlement-check", async (importActual) => {
     checkEntitlement: vi.fn().mockResolvedValue(null),
     checkEntitlementDetailed: (...a: unknown[]) => checkEntitlementDetailedMock(...(a as [])),
     getEntitlements: (...a: unknown[]) => getEntitlements(...a),
-    isEntitlementBackendConfigured: () => entitlementBackendConfigured,
   };
 });
 
 // --- Stub user-key validation: a valid wm_ key resolves to a userId. ---------
-const validateUserApiKey = vi.fn(async () => ({ userId: "acct_lapsed", keyId: "k1", name: "t" }));
+// The gateway resolves wm_ keys through the desktop-aware principal (plan
+// 2026-10-25-001 U4); an `api` principal with rank 0 is today's API customer.
+const apiPrincipal = () => ({ userId: "acct_lapsed", keyId: "k1", keyKind: "api" as const, keyHash: "h".repeat(64), activeKeyRank: 0 });
+const validateUserApiKey = vi.fn(async () => apiPrincipal());
 vi.mock("../_shared/user-api-key", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../_shared/user-api-key")>();
   return {
     ...actual,
-    validateUserApiKey: (...a: unknown[]) => validateUserApiKey(...a),
+    validateUserApiKeyPrincipal: (...a: unknown[]) => validateUserApiKey(...a),
   };
+});
+
+// Control cache responses while exercising the real user-key validator.
+const cachedUserKey = vi.fn();
+vi.mock("../_shared/redis", async (importActual) => {
+  const actual = await importActual<typeof import("../_shared/redis")>();
+  return { ...actual, cachedFetchJson: (...args: unknown[]) => cachedUserKey(...args) };
 });
 
 // --- Stub Clerk session resolution for mixed bearer + wm_ requests. ----------
@@ -160,6 +168,7 @@ const ORIGINAL_ENV = { ...process.env };
 
 beforeEach(() => {
   entitlement = ACTIVE;
+  cachedUserKey.mockReset();
   requiredTiers.clear();
   entitlementsByUser.clear();
   clerkSession = null;
@@ -178,9 +187,8 @@ beforeEach(() => {
   getEntitlements.mockClear().mockImplementation(async (userId: string) => entitlementsByUser.get(userId) ?? entitlement);
   resolveClerkSession.mockClear();
   validateBearerToken.mockClear();
-  entitlementBackendConfigured = true;
   checkEntitlementDetailedMock.mockReset().mockResolvedValue({ response: null, entitlements: null });
-  validateUserApiKey.mockClear().mockResolvedValue({ userId: "acct_lapsed", keyId: "k1", name: "t" });
+  validateUserApiKey.mockReset().mockResolvedValue(apiPrincipal());
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
   delete process.env.WORLDMONITOR_VALID_KEYS;
@@ -415,33 +423,44 @@ describe("#4611 — expired wm_ key rejected on all route classes", () => {
     expect(await res.json()).toMatchObject({ code: "renewal_verification_pending" });
   });
 
-  test("null entitlement with UNCONFIGURED backend → fail-open stays on shared limiter", async () => {
-    entitlement = null;
-    entitlementBackendConfigured = false;
-    checkRateLimit.mockResolvedValue(
-      new Response(JSON.stringify({ error: "Too many requests" }), { status: 429 }),
-    );
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      const res = await makeGateway()(keyReq(REGULAR_PATH), ctx);
-      // Missing CONVEX_SITE_URL / shared secret means NO lookup could ever
-      // succeed: 503ing here would turn a config regression into a fleet-wide
-      // outage for every wm_ key. Fail open to the shared/global limiter
-      // (pre-#4770 posture), without granting the unverified key its own bucket.
-      expect(res.status).toBe(429);
+  test.each(["CONVEX_SITE_URL", "CONVEX_SERVER_SHARED_SECRET"])(
+    "cached key with missing %s cannot reach the handler; restored access recovers",
+    async (missingConfig) => {
+      process.env.CONVEX_SITE_URL = "https://fixture.invalid";
+      process.env.CONVEX_SERVER_SHARED_SECRET = "fixture-only";
+      delete process.env[missingConfig];
+      const realKeys = await vi.importActual<typeof import("../_shared/user-api-key")>("../_shared/user-api-key");
+      const realEntitlements = await vi.importActual<typeof import("../_shared/entitlement-check")>("../_shared/entitlement-check");
+      cachedUserKey.mockResolvedValue({ v: 2, userId: "cached-key-config-test", keyId: "k-config", keyKind: "api", activeKeyRank: 0 });
+      validateUserApiKey.mockImplementation(realKeys.validateUserApiKeyPrincipal as unknown as typeof validateUserApiKey);
+      getEntitlements.mockImplementation(realEntitlements.getEntitlements as typeof getEntitlements);
+      const key = `wm_${"a".repeat(40)}`;
+      const res = await makeGateway()(keyReq(REGULAR_PATH, "GET", key), ctx);
+      expect(cachedUserKey).toHaveBeenCalledTimes(1);
+      expect(res.status).toBe(503);
+      expect(await res.json()).toMatchObject({ code: "entitlement_verification_unavailable" });
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
+      expect(res.headers.get("Retry-After")).toBe("5");
+      expect(res.headers.get("X-Billing-Verification")).toBe("entitlement_verification_unavailable");
       expect(routeHandler).not.toHaveBeenCalled();
-      expect(checkRateLimit).toHaveBeenCalledTimes(1);
-      expect(checkRateLimit).toHaveBeenCalledWith(
-        expect.any(Request),
-        expect.any(Object),
-      );
-      expect(errorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("entitlement backend unconfigured"),
-      );
-    } finally {
-      errorSpy.mockRestore();
-    }
-  });
+      expect(checkRateLimit).not.toHaveBeenCalled();
+      expect(checkBurst).not.toHaveBeenCalled();
+      expect(reserveDailyMeter).not.toHaveBeenCalled();
+
+      // A cache miss still fails at key validation when configuration is absent.
+      cachedUserKey.mockImplementation(async (_key, _ttl, fetcher) => fetcher());
+      const miss = await makeGateway()(keyReq(REGULAR_PATH, "GET", key), ctx);
+      expect(miss.status).toBe(503);
+      expect(routeHandler).not.toHaveBeenCalled();
+
+      process.env.CONVEX_SITE_URL = "https://fixture.invalid";
+      process.env.CONVEX_SERVER_SHARED_SECRET = "fixture-only";
+      cachedUserKey.mockResolvedValue({ v: 2, userId: "cached-key-config-test", keyId: "k-config", keyKind: "api", activeKeyRank: 0 });
+      getEntitlements.mockResolvedValue(ACTIVE);
+      expect((await makeGateway()(keyReq(REGULAR_PATH, "GET", key), ctx)).status).toBe(200);
+      expect(routeHandler).toHaveBeenCalledTimes(1);
+    },
+  );
 
   // --- active subscription unaffected --------------------------------------
   test("active apiAccess key → served on regular RPC", async () => {
@@ -480,9 +499,8 @@ describe("#4611 — expired wm_ key rejected on all route classes", () => {
  * #5379 + #4770 — pin every entitlement-resolution outcome.
  *
  * Transient lookup failures now arrive as a verificationUnavailable marker and
- * yield a retryable 503. A null/undefined result with a configured backend also
- * yields 503; only a wholly unconfigured backend keeps the explicit fail-open
- * deploy-defect exception covered above. Resolved denying rows remain 403.
+ * yield a retryable 503. A null/undefined result also yields 503, including
+ * an unconfigured backend. Resolved denying rows remain 403.
  */
 describe("#5379 + #4770 — entitlement resolution outcomes are pinned", () => {
   // ── Absent entitlement with a configured backend ⇒ retryable 503 ──────────
@@ -557,12 +575,7 @@ describe("#5379 + #4770 — entitlement resolution outcomes are pinned", () => {
     expect(routeHandler).not.toHaveBeenCalled();
   });
 
-  test("apiAccess:true with a NON-NUMERIC validUntil → still served (residual gap, pinned)", async () => {
-    // `?? 0` only defaults null/undefined. A string date compares false against
-    // Date.now() and is served. Narrower than the missing-field case but the same
-    // shape of hole; the real fix is runtime shape validation of the Convex
-    // response in getEntitlements, not another special case here. Pinned so the
-    // residual risk stays visible rather than living only in a review comment.
+  test("apiAccess:true with a non-numeric validUntil is denied before dispatch", async () => {
     getEntitlements.mockImplementation(
       async () => ({
         planKey: "api_starter",
@@ -571,7 +584,8 @@ describe("#5379 + #4770 — entitlement resolution outcomes are pinned", () => {
       }) as never,
     );
     const res = await makeGateway()(keyReq(REGULAR_PATH), ctx);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    expect(routeHandler).not.toHaveBeenCalled();
   });
 
   test("a THROWING getEntitlements propagates", async () => {

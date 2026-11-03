@@ -239,9 +239,17 @@ describe('isAppOwnedRedisKey (#7674)', () => {
   it('names the route-owned exceptions and leaves the seeder fleet raw', () => {
     assert.equal(isAppOwnedRedisKey('temporal:anomalies:v1'), true);
     assert.equal(isAppOwnedRedisKey('seed-meta:temporal:anomalies'), true);
-    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:v8'), true);
-    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:stale:v8'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:v14'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:stale:v14'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:rejected:v14'), true);
     assert.equal(isAppOwnedRedisKey('seed-meta:intelligence:risk-scores'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:history:IR'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:history:US'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:history:index'), true);
+    assert.equal(isAppOwnedRedisKey('seed-meta:intelligence:risk-scores-history'), true);
+    assert.equal(isAppOwnedRedisKey('seed-activated:intelligence:risk-scores-history'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:history:IR:extra'), false);
+    assert.equal(isAppOwnedRedisKey('risk:scores:history:ir'), false);
     assert.equal(isAppOwnedRedisKey('supply_chain:chokepoints:v4'), true);
     assert.equal(isAppOwnedRedisKey('seed-meta:supply_chain:chokepoints'), true);
     assert.equal(isAppOwnedRedisKey('cable-health-v1'), true);
@@ -337,7 +345,7 @@ describe('mcp get_keyword_spikes reads and writes the preview namespace (#7674)'
 
 describe('health sweep classifies the temporal producer keys into the preview namespace (#7674)', () => {
   it('temporal data + stamp are prefixed; every seeder key and marker stays raw', async () => {
-    const { handleHealth } = await import('../api/health.js');
+    const { handleHealth, __testing__ } = await import('../api/health.js');
     process.env.WORLDMONITOR_VALID_KEYS = 'prefix-health-test-key';
 
     globalThis.fetch = (async (input, init = {}) => {
@@ -380,7 +388,9 @@ describe('health sweep classifies the temporal producer keys into the preview na
     // start with the prefix, so the verdict paths must contain exactly one.
     const verdictSnapshotKeys = pipelineBodies
       .flat()
-      .map((command) => String(command[1]))
+      .flatMap((command) => command[0] === 'EVAL'
+        ? command.slice(3, 3 + Number(command[2])).map(String)
+        : [String(command[1])])
       .filter((key) => key.includes('health:verdict'));
     assert.ok(
       verdictSnapshotKeys.some((key) => key === `${PREFIX}health:verdict:v2`
@@ -391,6 +401,14 @@ describe('health sweep classifies the temporal producer keys into the preview na
       verdictSnapshotKeys.every((key) => key.indexOf(PREFIX) === key.lastIndexOf(PREFIX)),
       'no verdict key may carry the deployment prefix twice',
     );
+
+    const snapshotWriteKeys = pipelineBodies.flat()
+      .filter((command) => command[0] === 'EVAL' && command[1] === __testing__.HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT)
+      .flatMap((command) => command.slice(4, 6));
+    assert.deepEqual(snapshotWriteKeys.sort(), [
+      `${PREFIX}health:verdict:v2`,
+      `${PREFIX}health:verdict:compact:v2`,
+    ].sort(), 'both fenced snapshot writes must use this deployment namespace');
 
     // The sweep is the pipeline that starts with the data-key STRLEN/LLEN
     // commands.

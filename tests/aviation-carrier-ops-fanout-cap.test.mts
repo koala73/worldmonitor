@@ -158,3 +158,52 @@ describe('get-carrier-ops paid fan-out is bounded', () => {
     assert.ok(relayUrls.length > 0 && relayUrls.length <= MAX_AIRPORTS_PER_REQUEST);
   });
 });
+
+describe('get-carrier-ops minFlights default', () => {
+  it('treats a decoder-absent 0 as the documented default of 3', async () => {
+    // The relay mock is swapped mid-test to return one flight per airport, so
+    // a single-flight group must be filtered when min_flights is absent (the
+    // generated GET decoder delivers that as minFlights: 0). mock.method
+    // cannot re-stub globalThis.fetch twice, so install the single-flight
+    // relay variant up front instead of reusing installFetchMock().
+    const relayUrls: string[] = [];
+    mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('https://redis.test/get/')) {
+        return new Response(JSON.stringify({ result: null }), { status: 200 });
+      }
+      if (url === 'https://redis.test/pipeline') {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url === 'https://redis.test/') {
+        return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+      }
+      if (url.startsWith('https://relay.test/aviationstack')) {
+        relayUrls.push(url);
+        const u = new URL(url);
+        const dep = u.searchParams.get('dep_iata') ?? 'IST';
+        return new Response(JSON.stringify({ data: [{
+          flight: { iata: 'TK1923', icao: 'THY1923' },
+          airline: { name: 'Turkish Airlines', iata: 'TK', icao: 'THY' },
+          departure: { airport: 'Istanbul', timezone: 'Europe/Istanbul', iata: dep, icao: 'LTFM', terminal: '1', gate: '1', scheduled: '2026-09-01T10:00:00+00:00' },
+          arrival: { airport: 'JFK', timezone: 'America/New_York', iata: 'JFK', icao: 'KJFK', terminal: '1', gate: '1', scheduled: '2026-09-01T14:00:00+00:00' },
+          flight_date: '2026-09-01', flight_status: 'scheduled',
+        }] }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    const filtered = await getCarrierOps(ctxFor(['IST']), { airports: ['IST'], minFlights: 0 });
+    assert.equal(filtered.source, 'aviationstack');
+    assert.deepEqual(filtered.carriers, []);
+
+    // A fresh airport code avoids the shared carrier-ops cache entry the
+    // filtered call above populated (the cache key carries no minFlights).
+    // The single-flight relay serves one group of totalFlights 1, so an
+    // explicit minFlights: 1 keeps it while the decoder-absent 0 (default 3)
+    // filters it.
+    const explicit = await getCarrierOps(ctxFor(['ESB']), { airports: ['ESB'], minFlights: 1 });
+    assert.equal(explicit.source, 'aviationstack');
+    assert.equal(explicit.carriers.length, 1, 'an explicit minFlights: 1 must keep the single-flight group');
+    assert.equal(explicit.carriers[0]?.totalFlights, 1);
+  });
+});

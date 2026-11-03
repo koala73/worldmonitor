@@ -2,6 +2,7 @@
 title: Sentry noise filtering with stack gating and signature matching
 module: Sentry error filtering
 date: 2026-07-17
+last_updated: 2026-09-17
 category: best-practices
 problem_type: best_practice
 component: tooling
@@ -71,7 +72,7 @@ A Sentry noise fix is incomplete if it only proves that the target event disappe
 
 Overbroad Sentry filtering creates a silent-failure channel: genuine API outages, broken application loaders, and product regressions can disappear along with the intended noise. Under-filtering has the opposite cost: repeated SDK and extension failures consume attention, distort issue frequency, and make real regressions harder to see.
 
-The core lesson is that stack provenance is compositional. An error can contain a first-party frame because application code was called, a vendor chunk was bundled under the application origin, or an extension wrapped a browser global. No single signal—message text, origin, or `hasFirstParty`—is sufficient for every class of event. Reliable filtering combines the narrowest stable evidence available:
+The core lesson is that stack provenance is compositional. An error can contain a first-party frame because application code was called, a vendor chunk was bundled under the application origin, or an extension wrapped a browser global. It can also carry *only* first-party frames and still be foreign. When a stackless rejection passes through Sentry's fetch instrumentation, the SDK writes the fetch call site onto the error, so an extension's leaked copy reaches `beforeSend` with no extension frame at all, and the "extension URL plus wrapper" evidence below cannot exist for that class. The defence there is at the source: give hand-built abort reasons the native header-only stack (`docs/solutions/logic-errors/sentry-stack-backfill-makes-a-stackless-abort-reason-look-first-party.md`). No single signal—message text, origin, or `hasFirstParty`—is sufficient for every class of event. Reliable filtering combines the narrowest stable evidence available:
 
 - stable SDK-owned message signature for `ignoreErrors`;
 - extension URL plus exact wrapper function for `beforeSend`;

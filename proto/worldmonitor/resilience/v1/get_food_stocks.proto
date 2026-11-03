@@ -12,7 +12,7 @@ message FoodStockRecord {
   string commodity = 2;
   // Marketing year label stored verbatim, e.g. "2025/26". Never a calendar year.
   string marketing_year = 3;
-  // Ending stocks divided by total use (0.18 = 18%). Read has_stocks_to_use
+  // Ending stocks divided by total use (0.18 = 18%). Read hasStocksToUse
   // BEFORE this value: proto3 has no presence for a bare double, so an unknown
   // ratio and a genuine 0% are the same wire value. USDA/PSD estimates ending
   // stocks only for selected countries, so a minor producer routinely reports

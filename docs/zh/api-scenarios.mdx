@@ -107,7 +107,7 @@ The **scenarios** API 是建立在 WorldMonitor 咽喉点 + 贸易数据集之�
 返回 worker 写入的作业当前状态，或在作业仍在队列中时返回合成的 `pending` 桩。
 
 - **鉴权**：同 `/run-scenario`
-- **jobId 格式**：`scenario:{unix-ms}:{8-char-suffix}` — 严格校验以防路径遍历
+- **jobId 格式**：`scenario:{unix-ms}:{32-hex}`（128 位）。旧的 `scenario:{unix-ms}:{8-char}` 仍然有效。轮询 URL 不是能力凭证：任务绑定到入队的调用方，其他主体收到 404。
 
 **状态生命周期**：
 
@@ -167,6 +167,7 @@ The **scenarios** API 是建立在 WorldMonitor 咽喉点 + 贸易数据集之�
 |--------|-----------|-------|
 | 400 | `Validation failed` (包含 `jobId`) | 缺失或格式错误的 `jobId` |
 | 403 | `PRO subscription required` | 非 PRO |
+| 404 | `Scenario job not found` | 作业绑定的调用方与当前轮询的调用方不同 |
 | 405 | — | 非 `GET` 方法（由 sebuf service-config 强制） |
 | 502 | `Failed to fetch job status` | Redis 读取失败 |
 

@@ -5,8 +5,12 @@ import handler from '../api/mcp.ts';
 import { buildResourceContent } from '../scripts/build-agent-skills-index.mjs';
 
 const endpoint = 'https://worldmonitor.app/mcp';
+// The transport challenges an unauthenticated `initialize`; the anonymous
+// handshake is served on the machine-discovery alias. Stateless calls
+// (skills/list, resources/read) stay on the transport.
+const discoveryAlias = 'https://worldmonitor.app/.well-known/mcp';
 function request(method: string, params: Record<string, unknown> = {}, id = 1): Request {
-  return new Request(endpoint, {
+  return new Request(method === 'initialize' ? discoveryAlias : endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),

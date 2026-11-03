@@ -11,6 +11,12 @@ http {
   sendfile        on;
   keepalive_timeout  65;
 
+  proxy_ssl_verify on;
+  proxy_ssl_verify_depth 3;
+  proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+  proxy_ssl_server_name on;
+  proxy_ssl_name $proxy_host;
+
   gzip on;
   gzip_min_length 1024;
   gzip_comp_level 5;
@@ -98,6 +104,47 @@ http {
 
     location /api/ {
       include /etc/nginx/security_headers.conf;
+      if ($request_method = 'OPTIONS') {
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-WorldMonitor-Key" always;
+        add_header Content-Length 0;
+        return 204;
+      }
+      proxy_pass ${API_UPSTREAM};
+      proxy_http_version 1.1;
+      proxy_set_header Host $proxy_host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      add_header Access-Control-Allow-Origin "*" always;
+      add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+      add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-WorldMonitor-Key" always;
+    }
+
+    # The vercel.json per-route CSPs that allow these pages' inline scripts by hash.
+    location ~ ^/api/oauth/(authorize|authorize-pro)$ {
+      include /etc/nginx/oauth_authorize_security_headers.conf;
+      if ($request_method = 'OPTIONS') {
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-WorldMonitor-Key" always;
+        add_header Content-Length 0;
+        return 204;
+      }
+      proxy_pass ${API_UPSTREAM};
+      proxy_http_version 1.1;
+      proxy_set_header Host $proxy_host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      add_header Access-Control-Allow-Origin "*" always;
+      add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+      add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-WorldMonitor-Key" always;
+    }
+
+    location = /api/youtube/embed {
+      include /etc/nginx/youtube_embed_security_headers.conf;
       if ($request_method = 'OPTIONS') {
         add_header Access-Control-Allow-Origin "*" always;
         add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;

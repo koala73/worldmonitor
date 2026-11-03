@@ -1,3 +1,4 @@
+import { decodeHealthPipeline } from './helpers/health-pipeline-fixture.mjs';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -7,7 +8,6 @@ process.env.WORLDMONITOR_VALID_KEYS = 'test-health-admin-key';
 
 const { default: handler, handleHealth, __testing__ } = await import('../api/health.js');
 const { nextChinaDecisionCoverageFailure } = await import('../scripts/seed-china-decision-signals.mjs');
-const { findOperationalProblems, findPendingDiagnostics } = await import('../scripts/check-seed-freshness.mjs');
 
 const {
   HEALTH_VERDICT_SNAPSHOT_KEY: HEALTH_SNAPSHOT_KEY,
@@ -30,6 +30,7 @@ afterEach(() => {
   globalThis.setTimeout = realSetTimeout;
   Date.now = realDateNow;
 });
+
 
 function healthySnapshot(checkedAt = new Date().toISOString()) {
   return {
@@ -66,7 +67,7 @@ test('one sweep serves both callers, each from its own snapshot', async () => {
   const pipelineCalls = [];
 
   globalThis.fetch = async (_url, init) => {
-    const commands = JSON.parse(init.body);
+    const { commands, encodeResults } = decodeHealthPipeline(init.body);
     pipelineCalls.push(commands);
 
     const results = commands.map(([op, key, value]) => {
@@ -86,7 +87,7 @@ test('one sweep serves both callers, each from its own snapshot', async () => {
       return { result: 'OK' };
     });
 
-    return new Response(JSON.stringify(results), { status: 200 });
+    return new Response(JSON.stringify(encodeResults(results)), { status: 200 });
   };
 
   const compactResponse = await handler(
@@ -172,7 +173,7 @@ test('coalesces concurrent cache misses into one full sweep', async () => {
   const pipelineCalls = [];
 
   globalThis.fetch = async (_url, init) => {
-    const commands = JSON.parse(init.body);
+    const { commands, encodeResults } = decodeHealthPipeline(init.body);
     pipelineCalls.push(commands);
 
     if (commands.some(([op]) => op === 'STRLEN' || op === 'LLEN')) {
@@ -201,7 +202,7 @@ test('coalesces concurrent cache misses into one full sweep', async () => {
       return { result: 'OK' };
     });
 
-    return new Response(JSON.stringify(results), { status: 200 });
+    return new Response(JSON.stringify(encodeResults(results)), { status: 200 });
   };
 
   const [first, second] = await Promise.all([
@@ -232,7 +233,7 @@ test('serves HEALTHY with contained problems from a cached compact snapshot', as
   // caller must therefore read the compact key, and must never touch the full one.
   const compactSnapshot = buildCompactVerdictSnapshot(snapshot);
   globalThis.fetch = async (_url, init) => {
-    const commands = JSON.parse(init.body);
+    const { commands, encodeResults } = decodeHealthPipeline(init.body);
     assert.deepEqual(commands, [['GET', HEALTH_COMPACT_SNAPSHOT_KEY]],
       'a ?compact=1 caller must read the compact snapshot, never the full check map');
     return new Response(JSON.stringify([{ result: JSON.stringify(compactSnapshot) }]), { status: 200 });
@@ -261,7 +262,7 @@ test('takes over refresh after the prior lock owner disappears', async () => {
     return 0;
   };
   globalThis.fetch = async (_url, init) => {
-    const commands = JSON.parse(init.body);
+    const { commands, encodeResults } = decodeHealthPipeline(init.body);
     if (commands.some(([op]) => op === 'STRLEN' || op === 'LLEN')) sweepCount++;
     const results = commands.map(([op, key]) => {
       if (op === 'GET' && key === HEALTH_SNAPSHOT_KEY) return { result: null };
@@ -275,7 +276,7 @@ test('takes over refresh after the prior lock owner disappears', async () => {
       if (op === 'EXISTS') return { result: 0 };
       return { result: 'OK' };
     });
-    return new Response(JSON.stringify(results), { status: 200 });
+    return new Response(JSON.stringify(encodeResults(results)), { status: 200 });
   };
 
   const response = await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'));
@@ -292,7 +293,7 @@ test('does not report REDIS_DOWN when a healthy Redis lock stays contended', asy
     return 0;
   };
   globalThis.fetch = async (_url, init) => {
-    const commands = JSON.parse(init.body);
+    const { commands, encodeResults } = decodeHealthPipeline(init.body);
     if (commands.some(([op]) => op === 'STRLEN' || op === 'LLEN')) sweepCount++;
     const results = commands.map(([op, key]) => {
       if (op === 'GET' && key === HEALTH_SNAPSHOT_KEY) return { result: null };
@@ -303,15 +304,18 @@ test('does not report REDIS_DOWN when a healthy Redis lock stays contended', asy
       if (op === 'EXISTS') return { result: 0 };
       return { result: 'OK' };
     });
-    return new Response(JSON.stringify(results), { status: 200 });
+    return new Response(JSON.stringify(encodeResults(results)), { status: 200 });
   };
 
   const response = await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'));
   const body = await response.json();
 
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 503);
+  assert.equal(body.status, 'REFRESH_PENDING');
+  assert.equal(response.headers.get('Retry-After'), '3');
+  assert.equal(body.checkedAt, undefined);
   assert.notEqual(body.status, 'REDIS_DOWN');
-  assert.equal(sweepCount, 1, 'bounded contention fallback performs one direct sweep');
+  assert.equal(sweepCount, 0, 'a waiter must never sweep without the lease');
 });
 
 test('does not start a doomed Redis request at the contention deadline', async () => {
@@ -325,7 +329,7 @@ test('does not start a doomed Redis request at the contention deadline', async (
     return 0;
   };
   globalThis.fetch = async (_url, init) => {
-    const commands = JSON.parse(init.body);
+    const { commands, encodeResults } = decodeHealthPipeline(init.body);
     if (commands.some(([op]) => op === 'STRLEN' || op === 'LLEN')) sweepCount++;
     if (commands.length === 1 && commands[0][0] === 'GET' && (commands[0][1] === HEALTH_SNAPSHOT_KEY || commands[0][1] === HEALTH_COMPACT_SNAPSHOT_KEY)) {
       snapshotReads++;
@@ -342,16 +346,19 @@ test('does not start a doomed Redis request at the contention deadline', async (
       if (op === 'EXISTS') return { result: 0 };
       return { result: 'OK' };
     });
-    return new Response(JSON.stringify(results), { status: 200 });
+    return new Response(JSON.stringify(encodeResults(results)), { status: 200 });
   };
 
   const response = await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'));
   const body = await response.json();
 
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 503);
+  assert.equal(body.status, 'REFRESH_PENDING');
+  assert.equal(response.headers.get('Retry-After'), '3');
+  assert.equal(body.checkedAt, undefined);
   assert.notEqual(body.status, 'REDIS_DOWN');
   assert.equal(snapshotReads, 1, 'near-deadline contention must skip a doomed Redis HTTP request');
-  assert.equal(sweepCount, 1, 'near-deadline contention falls back to one direct sweep');
+  assert.equal(sweepCount, 0, 'deadline exhaustion must not start an unowned sweep');
 });
 
 test('releases its refresh lock when snapshot persistence fails', async () => {
@@ -362,7 +369,7 @@ test('releases its refresh lock when snapshot persistence fails', async () => {
   let snapshotWriteAttempts = 0;
   let sweepCount = 0;
   globalThis.fetch = async (_url, init) => {
-    const commands = JSON.parse(init.body);
+    const { commands, encodeResults } = decodeHealthPipeline(init.body);
     if (commands.some(([op]) => op === 'STRLEN' || op === 'LLEN')) sweepCount++;
 
     // A sweep persists BOTH snapshots in one pipeline (#5300), so a failed
@@ -398,7 +405,7 @@ test('releases its refresh lock when snapshot persistence fails', async () => {
       if (op === 'EXISTS') return { result: 0 };
       return { result: 'OK' };
     });
-    return new Response(JSON.stringify(results), { status: 200 });
+    return new Response(JSON.stringify(encodeResults(results)), { status: 200 });
   };
 
   const first = await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'));
@@ -416,7 +423,7 @@ test('validates snapshot age after the Redis read completes', async () => {
   let sweepCount = 0;
   Date.now = () => fakeNow;
   globalThis.fetch = async (_url, init) => {
-    const commands = JSON.parse(init.body);
+    const { commands, encodeResults } = decodeHealthPipeline(init.body);
     if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === HEALTH_SNAPSHOT_KEY) {
       fakeNow += 2_000;
       return new Response(JSON.stringify([{ result: JSON.stringify(almostExpired) }]), { status: 200 });
@@ -429,7 +436,7 @@ test('validates snapshot age after the Redis read completes', async () => {
       if (op === 'EXISTS') return { result: 0 };
       return { result: 'OK' };
     });
-    return new Response(JSON.stringify(results), { status: 200 });
+    return new Response(JSON.stringify(encodeResults(results)), { status: 200 });
   };
 
   const response = await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'));
@@ -466,7 +473,7 @@ test('serves the auditable content-freshness deadline from full and compact snap
     ['', HEALTH_SNAPSHOT_KEY, { 'x-worldmonitor-key': 'test-health-admin-key' }],
   ]) {
     globalThis.fetch = async (_url, init) => {
-      assert.deepEqual(JSON.parse(init.body), [['GET', key]]);
+      assert.deepEqual(decodeHealthPipeline(init.body).commands, [['GET', key]]);
       return new Response(JSON.stringify([{ result: JSON.stringify(
         query === '?compact=1' ? buildCompactVerdictSnapshot(snapshot) : snapshot,
       ) }]), { status: 200 });
@@ -511,7 +518,7 @@ test('does not serve a full or compact snapshot after content-freshness grace ex
   ]) {
     const calls = [];
     globalThis.fetch = async (_url, init) => {
-      const commands = JSON.parse(init.body);
+      const { commands, encodeResults } = decodeHealthPipeline(init.body);
       calls.push(commands);
       if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === key) {
         const value = query === '?compact=1' ? buildCompactVerdictSnapshot(snapshot) : snapshot;
@@ -533,10 +540,8 @@ test('does not serve a full or compact snapshot after content-freshness grace ex
 });
 
 // The verdict cache must never outlive a softening deadline it publishes.
-// Reading is already guarded (hasExpiredActivationGrace), but a guarded READ
-// still costs a full ~390-command sweep per concurrent waiter, because the
-// refresh wait budget is shorter than a sweep. Expiring the KEY at the deadline
-// converts that into an ordinary cache miss, which the refresh lock serialises.
+// Reading is also guarded by hasExpiredActivationGrace; expiry avoids retaining
+// snapshots that every reader must reject before electing a refresher.
 test('snapshot TTL is the full 60s when no deadline is published', () => {
   const now = Date.parse('2026-08-03T12:00:00.000Z');
   assert.equal(snapshotTtlSeconds(healthySnapshot(new Date(now).toISOString()), now), 60);
@@ -663,9 +668,10 @@ function sweepFetch({
   failGraceClaim = false,
   chinaCoverageSummary,
   chinaDecisionMeta,
+  incidentAlerts = null,
 } = {}) {
   return async (_url, init) => {
-    const commands = JSON.parse(init.body);
+    const { commands, encodeResults } = decodeHealthPipeline(init.body);
     onCommands(commands);
 
     if (failGraceClaim && commands.some(([op]) => op === 'HSETNX')) {
@@ -685,6 +691,10 @@ function sweepFetch({
       if (op === 'HGET') return { result: graceStore.get(field) ?? null };
       if (op === 'HDEL') return { result: 1 };
       if (op === 'PEXPIRE') return { result: 1 };
+      if (op === 'GET' && String(key).endsWith('health:failure-log-sig')) return { result: null };
+      if (op === 'GET' && String(key).endsWith(__testing__.HEALTH_INCIDENT_ALERTS_KEY)) {
+        return incidentAlerts === INCIDENT_ALERTS_UNREADABLE ? { error: 'ERR unreachable' } : { result: incidentAlerts };
+      }
       if (op === 'GET' && key === TEMPORAL_META_KEY) {
         return {
           result: JSON.stringify({
@@ -708,9 +718,11 @@ function sweepFetch({
       }
       return { result: 'OK' };
     });
-    return new Response(JSON.stringify(results), { status: 200 });
+    return new Response(JSON.stringify(encodeResults(results)), { status: 200 });
   };
 }
+
+const INCIDENT_ALERTS_UNREADABLE = Symbol('unreadable');
 
 async function sweepCompactBody(fetchImpl) {
   globalThis.fetch = fetchImpl;
@@ -824,7 +836,7 @@ function chinaHealthyCoverageSummary(now) {
   };
 }
 
-test('producer evidence stays non-blocking through health and the monitor until the three-hour boundary', async () => {
+test('producer evidence stays non-blocking through health until the three-hour boundary', async () => {
   const lastSuccessAt = Date.parse('2026-09-08T12:00:00.000Z');
   const failureAt = lastSuccessAt + 15 * 60_000;
   const deadline = lastSuccessAt + CHINA_DECISION_SIGNALS_PENDING_MS;
@@ -856,21 +868,16 @@ test('producer evidence stays non-blocking through health and the monitor until 
     chinaCoverageSummary: chinaHealthyCoverageSummary(deadline - 1),
     chinaDecisionMeta: seedMeta,
   }));
-  assert.ok(findPendingDiagnostics(pendingBody, deadline - 1).some(
-    ({ name }) => name === 'chinaDecisionSignals',
-  ));
-  assert.ok(!findOperationalProblems(pendingBody, deadline - 1).some(
-    ({ name }) => name === 'chinaDecisionSignals',
-  ));
+  assert.ok(pendingBody.pending?.chinaDecisionSignals);
+  assert.equal(pendingBody.problems?.chinaDecisionSignals, undefined);
 
   Date.now = () => deadline;
   const warningBody = await sweepCompactBody(sweepFetch({
     chinaCoverageSummary: chinaHealthyCoverageSummary(deadline),
     chinaDecisionMeta: seedMeta,
   }));
-  assert.ok(findOperationalProblems(warningBody, deadline).some(
-    ({ name, status }) => name === 'chinaDecisionSignals' && status === 'COVERAGE_PARTIAL',
-  ));
+  assert.equal(warningBody.problems?.chinaDecisionSignals?.status, 'COVERAGE_PARTIAL');
+  assert.notEqual(warningBody.dataStatus, 'OK');
 });
 
 test('handleHealth keeps repeated producer-owned China failures pending for three hours', async () => {
@@ -1038,7 +1045,7 @@ test('handleHealth serves a graced snapshot until its deadline, then sweeps agai
 
   let sweeps = 0;
   globalThis.fetch = async (_url, init) => {
-    const commands = JSON.parse(init.body);
+    const { commands, encodeResults } = decodeHealthPipeline(init.body);
     if (commands.some(([op]) => op === 'STRLEN' || op === 'LLEN')) sweeps++;
     if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === HEALTH_COMPACT_SNAPSHOT_KEY) {
       return new Response(JSON.stringify([{ result: JSON.stringify(graced) }]), { status: 200 });
@@ -1056,4 +1063,99 @@ test('handleHealth serves a graced snapshot until its deadline, then sweeps agai
   graced.pending.temporalAnomalies.staleContentGraceUntil = new Date(now).toISOString();
   await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'));
   assert.equal(sweeps, 1, 'an expired grace must force a fresh sweep, not serve a stale ok');
+});
+
+// ── Health is the only source of ingestion truth (dataStatus + incidents) ──
+
+test('dataStatus is the strict data verdict and never contains the uptime keyword', () => {
+  const { dataStatusFromSummary } = __testing__;
+  assert.equal(dataStatusFromSummary({ warn: 0, crit: 0 }), 'OK');
+  assert.equal(dataStatusFromSummary({ warn: 2, crit: 0 }), 'DEGRADED');
+  assert.equal(dataStatusFromSummary({ warn: 2, crit: 1 }), 'CRITICAL');
+  for (const value of ['OK', 'DEGRADED', 'CRITICAL']) assert.doesNotMatch(value, /HEALTHY/);
+});
+
+test('a contained warning keeps availability HEALTHY but reports dataStatus DEGRADED', () => {
+  const body = __testing__.healthResponseBody({
+    status: 'HEALTHY',
+    summary: { total: 100, ok: 99, warn: 1, containedWarn: 1, onDemandWarn: 0, crit: 0 },
+    checkedAt: new Date(0).toISOString(),
+    checks: { ttcAlerts: { status: 'STALE_SEED', records: 68, seedAgeMin: 160, maxStaleMin: 30 } },
+  }, true);
+  assert.equal(body.status, 'HEALTHY');
+  assert.equal(body.dataStatus, 'DEGRADED');
+  assert.equal(body.problems.ttcAlerts.status, 'STALE_SEED');
+});
+
+test('pendingIncidentKeys and nextAlertedIncidents keep only accepted, still-active incidents', () => {
+  const { pendingIncidentKeys, nextAlertedIncidents } = __testing__;
+  const current = ['a:STALE_SEED', 'b:SEED_ERROR'];
+  assert.deepEqual(pendingIncidentKeys(null, current), current, 'nothing reported yet');
+  assert.deepEqual(pendingIncidentKeys('["a:STALE_SEED","b:SEED_ERROR"]', current), [], 'a reported incident is quiet');
+  assert.deepEqual(pendingIncidentKeys('["a:SEED_ERROR"]', current), current, 'a changed status is a new incident');
+  assert.deepEqual(pendingIncidentKeys('not json', current), current, 'callers gate corrupt records first');
+  assert.deepEqual(
+    nextAlertedIncidents('["a:STALE_SEED","gone:EMPTY"]', current, []),
+    ['a:STALE_SEED'],
+    'a recovered source leaves the record so a recurrence alerts again',
+  );
+  assert.deepEqual(nextAlertedIncidents('[]', current, ['b:SEED_ERROR']), ['b:SEED_ERROR'], 'only accepted deliveries are recorded');
+});
+
+test('handleHealth reports each incident until Sentry accepts it, then stays quiet', async () => {
+  const sweep = async (incidentAlerts, accepted = () => true) => {
+    const captures = [];
+    let record;
+    globalThis.fetch = sweepFetch({
+      incidentAlerts,
+      onCommands: (commands) => {
+        for (const [op, key, value] of commands) {
+          if (op === 'SET' && String(key).endsWith(__testing__.HEALTH_INCIDENT_ALERTS_KEY)) record = value;
+        }
+      },
+    });
+    const response = await handleHealth(
+      new Request('https://api.worldmonitor.app/api/health?compact=1'),
+      undefined,
+      {
+        captureIncident: async (error, opts) => {
+          captures.push({ message: error.message, ...opts });
+          return accepted(opts.tags.health_source);
+        },
+      },
+    );
+    return { body: await response.json(), captures, record };
+  };
+
+  const first = await sweep(null);
+  assert.notEqual(first.body.dataStatus, 'OK');
+  const alerted = JSON.parse(first.record);
+  assert.ok(alerted.length > 0);
+  assert.equal(first.captures.length, alerted.length, 'every active problem is reported once');
+  const [incident] = first.captures;
+  const { health_source: source, health_status: status } = incident.tags;
+  assert.ok(alerted.includes(`${source}:${status}`));
+  assert.equal(incident.level, 'warning');
+  assert.deepEqual(incident.fingerprint, ['health-source-incident', source, status]);
+  assert.equal(incident.message, `Health source incident: ${source} ${status}`);
+
+  const repeat = await sweep(first.record);
+  assert.equal(repeat.captures.length, 0, 'an accepted incident must not re-alert');
+
+  const unreadable = await sweep(INCIDENT_ALERTS_UNREADABLE);
+  assert.equal(unreadable.captures.length, 0, 'an unreadable record cannot prove anything is new');
+  assert.equal(unreadable.record, undefined, 'and must not be overwritten');
+  for (const corrupt of ['not json', '{"a":1}', '[1,2]']) {
+    const result = await sweep(corrupt);
+    assert.equal(result.captures.length, 0, `a corrupt record (${corrupt}) must not re-alert accepted incidents`);
+    assert.equal(result.record, undefined, 'and must not be overwritten');
+  }
+
+  const withoutSource = JSON.stringify(alerted.filter((key) => key !== `${source}:${status}`));
+  const failed = await sweep(withoutSource, (name) => name !== source);
+  assert.deepEqual(failed.captures.map((capture) => capture.tags.health_source), [source]);
+  assert.equal(JSON.parse(failed.record).includes(`${source}:${status}`), false, 'an undelivered incident stays pending');
+  const retried = await sweep(failed.record);
+  assert.deepEqual(retried.captures.map((capture) => capture.tags.health_source), [source], 'the next sweep retries it');
+  assert.ok(JSON.parse(retried.record).includes(`${source}:${status}`));
 });

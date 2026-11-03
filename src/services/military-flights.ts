@@ -18,6 +18,7 @@ import {
 } from './wingbits';
 import { isFeatureAvailable } from './runtime-config';
 import { isDesktopRuntime, toApiUrl } from './runtime';
+import type { BreakerDataState } from '@/utils/circuit-breaker';
 import { MilitaryServiceClient } from '@/services/generated-rpc-clients';
 
 const militaryClient = new MilitaryServiceClient(getRpcBaseUrl(), {
@@ -560,15 +561,23 @@ startFlightHistoryCleanup();
 export async function fetchMilitaryFlights(): Promise<{
   flights: MilitaryFlight[];
   clusters: MilitaryFlightCluster[];
+  dataState: BreakerDataState;
 }> {
   const desktop = isDesktopRuntime();
-  if (desktop && !isFeatureAvailable('openskyRelay')) return { flights: [], clusters: [] };
-  if (!desktop && !isFeatureAvailable('militaryFlights')) return { flights: [], clusters: [] };
+  const fallback = { flights: [] as MilitaryFlight[], clusters: [] as MilitaryFlightCluster[] };
+  const unavailable: BreakerDataState = { mode: 'unavailable', timestamp: null, offline: false };
+  if ((desktop && !isFeatureAvailable('openskyRelay')) || (!desktop && !isFeatureAvailable('militaryFlights'))) {
+    return { ...fallback, dataState: unavailable };
+  }
+  let completed: typeof fallback | undefined;
+  let completedState: BreakerDataState | undefined;
 
-  return breaker.execute(async () => {
+  const result = await breaker.execute(async () => {
     if (flightCache && Date.now() - flightCache.timestamp < CACHE_TTL) {
       const clusters = clusterFlights(flightCache.data);
-      return { flights: flightCache.data, clusters };
+      completed = { flights: flightCache.data, clusters };
+      completedState = { mode: 'cached', timestamp: flightCache.timestamp, offline: false };
+      return completed;
     }
 
     let flights = desktop ? await fetchFromOpenSky() : await fetchViaProto();
@@ -586,8 +595,14 @@ export async function fetchMilitaryFlights(): Promise<{
     // Generate clusters
     const clusters = clusterFlights(flights);
 
-    return { flights, clusters };
-  }, { flights: [], clusters: [] });
+    completed = { flights, clusters };
+    completedState = { mode: 'live', timestamp: flightCache.timestamp, offline: false };
+    return completed;
+  }, fallback);
+  const dataState: BreakerDataState = result === fallback ? unavailable
+    : result === completed && completedState ? completedState
+      : { mode: 'cached', timestamp: null, offline: breaker.getDataState().offline };
+  return { ...result, dataState };
 }
 
 /**

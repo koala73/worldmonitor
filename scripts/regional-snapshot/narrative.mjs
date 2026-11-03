@@ -15,7 +15,7 @@
 //     the evidence IDs already computed by collectEvidence(). Unknown IDs
 //     are silently filtered so a halluci­nated ID never leaks through.
 //   - Provider chain mirrors seed-insights.mjs / seed-forecasts.mjs:
-//     Groq → OpenRouter (Gemini Flash). Ollama skipped: the narrative call
+//     paid OpenRouter → two fixed free OpenRouter models. Ollama skipped: the narrative call
 //     runs on Railway which has no local model.
 //   - `callLlm` is dependency-injected so unit tests can exercise the full
 //     prompt + parser without network.
@@ -26,8 +26,6 @@ import { extractFirstJsonObject, cleanJsonText } from '../_llm-json.mjs';
 import { withRetry, httpRetryError, createLlmBudgetError, isLlmBudgetError } from '../_seed-utils.mjs';
 import { buildLlmCallEvent, emitLlmEvents } from '../lib/llm-telemetry.cjs';
 import {
-  GROQ_DEFAULT_MODEL,
-  GROQ_REASONING_EXTRA_BODY,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
@@ -106,19 +104,6 @@ const DEFAULT_PROVIDERS = [
     }),
     extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
     maxRetries: 0,
-  },
-  {
-    name: 'groq',
-    envKey: 'GROQ_API_KEY',
-    apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: GROQ_DEFAULT_MODEL,
-    extraBody: GROQ_REASONING_EXTRA_BODY,
-    timeout: 20_000,
-    headers: (key) => ({
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      'User-Agent': CHROME_UA,
-    }),
   },
 ];
 

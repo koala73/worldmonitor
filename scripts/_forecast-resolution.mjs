@@ -23,6 +23,10 @@
 // 'within-horizon' window ([emission, deadline]), with a horizon-scoped
 // threshold (#5010) — never the feed's full 365-day trailing tally.
 
+import { extractMetricObservation, parseMetricKey, selectResolutionFeed, shapeResolutionFeeds } from './_forecast-resolution-eval.mjs';
+import { isPublishedOriginEntry } from './_forecast-scorecard.mjs';
+import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from './_gps-maritime-regions.mjs';
+
 // ── Horizon -> deadline math (R5) ───────────────────────────────────────
 //
 // Production detectors and the state-derived path emit only '24h'/'7d'/'30d'
@@ -44,6 +48,39 @@ export const HORIZON_MS = {
 export const CONFLICT_COUNT_SOURCE_FEED = 'conflict:acled-resolution:v1:all:0:0';
 export const UNREST_COUNT_SOURCE_FEED = 'unrest:events-resolution:v1';
 export const CYBER_COUNT_SOURCE_FEED = 'cyber:threats-bootstrap:v2';
+
+// ── Projection horizon contracts (#7075) ─────────────────────────────────
+//
+// Projection key (the `projections` block of a forecast) -> the HORIZON_MS
+// horizon it claims. A forecast's three projections each get their own
+// resolution contract at emission; the resolver registers one ledger window
+// per contract, keyed `<parentKey>@<horizon>`.
+export const PROJECTION_HORIZONS = Object.freeze({ h24: '24h', d7: '7d', d30: '30d' });
+
+// One resolver cycle: seed-forecast-resolutions runs cron `0 6 * * *`, so a
+// point-in-time read lands at most one cycle from its horizon deadline. The
+// per-contract value is frozen into each contract so a later change never
+// re-scores rows registered under the old tolerance.
+export const HORIZON_SAMPLE_TOLERANCE_MS = DAY_MS;
+
+// A sample is evidence about a horizon claim only when it sits nearer the
+// deadline than the emission, so the one-cycle tolerance is capped at half the
+// horizon: 12h for h24, one cycle for d7 and d30. A missed run then leaves an
+// h24 window UNOBSERVED instead of grading it on the emission-time reading.
+export function horizonSampleToleranceMs(timeHorizon) {
+  return Math.min(HORIZON_SAMPLE_TOLERANCE_MS, HORIZON_MS[timeHorizon] / 2);
+}
+
+// v1 scores point-in-time contracts only. The within-horizon families cannot
+// be scored per horizon here: the market curve is monotone-decreasing across
+// horizons, which violates the cumulative probability law for a crosses-by-
+// deadline event, and the count families scale their threshold with the
+// horizon, so their horizons are not nested events. A settlement deadline
+// (at-endDate) is the market's truth time, not a horizon.
+const HORIZON_UNSCORED_REASON_BY_WINDOW = {
+  'within-horizon': 'cumulative_unsupported',
+  'at-endDate': 'settlement_deadline',
+};
 
 // Never returns null and never silently coerces an unrecognized horizon to a
 // nearby one — a silent '7d' fallback would score a 14d forecast a full week
@@ -147,15 +184,16 @@ export const SIGNAL_TO_HARD_FAMILY = {
 
 // Domains whose forecasts are ALWAYS judged (R3), regardless of what signals
 // they carry. Domain is the claim's SUBJECT; signals are only evidence.
-// Political unrest and cyber concentration now have country/date feeds with a
-// direct count metric. Military still lacks a stable theater id, while the
-// legacy infrastructure family only measured outage presence rather than its
-// claimed cascade risk (#5330). Keep both judged until they carry a crisp,
-// claim-aligned metric identity.
+// Military still lacks a stable theater id, while the legacy infrastructure
+// family only measured outage presence rather than its claimed cascade risk
+// (#5330). Cyber's feed keeps country-bearing records for under a day, so a
+// 7-day count read once daily measures the deadline's hour, not the window
+// (#5233). Keep all three judged until they carry a crisp, claim-aligned metric
+// identity.
 // This gate is checked AFTER the state_derived origin check and the
 // prediction_market exemption, and BEFORE the general SIGNAL_TO_HARD_FAMILY
 // lookup.
-export const JUDGED_DOMAINS = new Set(['infrastructure', 'military']);
+export const JUDGED_DOMAINS = new Set(['infrastructure', 'military', 'cyber']);
 
 // Which hard families a forecast's DOMAIN permits (R3, by-domain constraint).
 // Domain is the claim's SUBJECT; signals are only evidence. A market-domain
@@ -250,6 +288,29 @@ const FAMILY_WINDOW = {
   prediction_market: 'at-endDate',
   gps: 'at-deadline',
   market: 'within-horizon',
+};
+
+// Chokepoint -> market region (sea) it transmits to. Shared with seed-forecasts.mjs.
+export const CHOKEPOINT_MARKET_REGIONS = {
+  'Strait of Hormuz': 'Middle East',
+  'Bab el-Mandeb': 'Red Sea',
+  'Red Sea': 'Red Sea',
+  'Suez Canal': 'Red Sea',
+  'Taiwan Strait': 'Western Pacific',
+  'South China Sea': 'Western Pacific',
+  'Strait of Malacca': 'South China Sea',
+  'Kerch Strait': 'Black Sea',
+  'Black Sea': 'Black Sea',
+  'Bosporus Strait': 'Black Sea',
+  'Persian Gulf': 'Middle East',
+  'Arabian Sea': 'Middle East',
+  'Baltic Sea': 'Northern Europe',
+  'Danish Straits': 'Northern Europe',
+  'Strait of Gibraltar': 'Mediterranean',
+  'Mediterranean Sea': 'Mediterranean',
+  'Panama Canal': 'Central America',
+  'Lombok Strait': 'Southeast Asia',
+  'Cape of Good Hope': 'Southern Africa',
 };
 
 // ── Commodity label -> future ticker (market family) ────────────────────
@@ -465,6 +526,9 @@ function deriveHardMetrics(pred, family, inputs, options = {}) {
         window: FAMILY_WINDOW[family],
       };
     }
+    // Unreachable for emission while cyber is in JUDGED_DOMAINS (#5233); kept
+    // for the judged question's threshold and for the per-cycle accumulation
+    // that would let a hard cyber count return.
     case 'cyber': {
       const tally = firstFiniteSignalCount(pred, new Set(['cyber']));
       if (!Number.isFinite(tally)) return null;
@@ -479,17 +543,8 @@ function deriveHardMetrics(pred, family, inputs, options = {}) {
         window: FAMILY_WINDOW[family],
       };
     }
-    case 'supply_chain': {
-      // Threshold is a boolean-shaped condition (disruption present),
-      // represented as riskScore >= 60 (the detector's own "disrupted"
-      // gate threshold, seed-forecasts.mjs detectSupplyChainScenarios).
-      return {
-        metricKey: `supply_chain:chokepoints:v4|riskScore(route==${pred.region})`,
-        operator: '>=',
-        threshold: 60,
-        window: FAMILY_WINDOW[family],
-      };
-    }
+    case 'supply_chain':
+      return chokepointDisruptionMetrics(pred.region);
     case 'prediction_market': {
       // Percent-anchored so a digit-bearing source label doesn't skew the
       // baseline (FIX 6). Falls back to the emission probability.
@@ -509,13 +564,17 @@ function deriveHardMetrics(pred, family, inputs, options = {}) {
       };
     }
     case 'gps': {
+      // The forecast states interference in the zone, so it resolves on the
+      // detector's own emission floor, not on the emission-day count (#8990).
       const hexes = firstFiniteSignalCount(pred, new Set(['gps_jamming']));
       if (!Number.isFinite(hexes)) return null;
       return {
         metricKey: `intelligence:gpsjam:v2|hexCount(region==${pred.region})`,
         operator: '>=',
-        threshold: Math.max(1, Math.round(hexes)),
+        threshold: GPS_ZONE_MIN_HEXES,
         window: FAMILY_WINDOW[family],
+        rule: GPS_RESOLUTION_RULE,
+        ruleVersion: GPS_RESOLUTION_RULE_VERSION,
       };
     }
     case 'market': {
@@ -528,19 +587,8 @@ function deriveHardMetrics(pred, family, inputs, options = {}) {
       if (commoditySignal) {
         const label = String(commoditySignal.value ?? '').split(' sensitivity:')[0].trim();
         const symbol = COMMODITY_LABEL_TO_SYMBOL[label];
-        if (symbol) {
-          const price = findCommodityPrice(inputs, symbol); // finite & > 0 (guarded in the index)
-          if (Number.isFinite(price)) {
-            return {
-              metricKey: `market:commodities-bootstrap:v1|price(symbol==${symbol})`,
-              sourceFeed: 'market:commodities-bootstrap:v1',
-              operator: 'crosses',
-              threshold: +(price * MARKET_PRICE_MOVE_RATIO).toFixed(2),
-              baselineValue: +price.toFixed(2),
-              window: FAMILY_WINDOW[family],
-            };
-          }
-        }
+        const metrics = symbol ? commodityMoveMetrics(inputs, symbol) : null;
+        if (metrics) return metrics;
       }
       // No commodity-ticker hard path succeeded: an unmapped label
       // (Semiconductors, Trade goods, ambiguous compounds), no emission
@@ -556,7 +604,111 @@ function deriveHardMetrics(pred, family, inputs, options = {}) {
   }
 }
 
+// 50 is the feed's red boundary (scoreToStatus in
+// server/worldmonitor/supply-chain/v1/_scoring.mjs) and the score at which
+// detectSupplyChainScenarios emits a supply-chain forecast. A state-derived
+// freight forecast attaches the same contract at any score. A war-zone route
+// whose standing threat base is already red cannot fall through 50, so it
+// resolves on a score above that base (#9033). Pending rows move to the
+// current contract before they resolve.
+export const CHOKEPOINT_DISRUPTED_MIN_SCORE = 50;
+export const CHOKEPOINT_RESOLUTION_RULE = 'disrupted';
+export const CHOKEPOINT_RESOLUTION_RULE_VERSION = 1;
+export const CHOKEPOINT_ABOVE_FIXED_BASE_RULE = 'above_fixed_base';
+
+// Relay names whose standing threat base is already red. The base is
+// THREAT_LEVEL.war_zone. The names are the relay names for hormuz_strait and
+// kerch_strait. This file cannot import those tables: the forecast seeders
+// package only scripts/. The parity test walks the live tables.
+const WAR_ZONE_FIXED_BASE_BY_ROUTE = new Map([
+  ['Strait of Hormuz', 70],
+  ['Kerch Strait', 70],
+]);
+
+export function chokepointHardContract(route) {
+  const base = WAR_ZONE_FIXED_BASE_BY_ROUTE.get(route);
+  if (base !== undefined) {
+    return {
+      operator: '>',
+      threshold: base,
+      rule: CHOKEPOINT_ABOVE_FIXED_BASE_RULE,
+      ruleVersion: CHOKEPOINT_RESOLUTION_RULE_VERSION,
+    };
+  }
+  return {
+    operator: '>=',
+    threshold: CHOKEPOINT_DISRUPTED_MIN_SCORE,
+    rule: CHOKEPOINT_RESOLUTION_RULE,
+    ruleVersion: CHOKEPOINT_RESOLUTION_RULE_VERSION,
+  };
+}
+
+export function isChokepointDisrupted(riskScore, route) {
+  const { operator, threshold } = chokepointHardContract(route);
+  const score = Number(riskScore);
+  return operator === '>' ? score > threshold : score >= threshold;
+}
+
+function chokepointDisruptionMetrics(route) {
+  const contract = chokepointHardContract(route);
+  return {
+    metricKey: `supply_chain:chokepoints:v4|riskScore(route==${route})`,
+    sourceFeed: 'supply_chain:chokepoints:v4',
+    operator: contract.operator,
+    threshold: contract.threshold,
+    window: FAMILY_WINDOW.supply_chain,
+    rule: contract.rule,
+    ruleVersion: contract.ruleVersion,
+  };
+}
+
+function commodityMoveMetrics(inputs, symbol) {
+  const price = findCommodityPrice(inputs, symbol); // finite & > 0 (guarded in the index)
+  if (!Number.isFinite(price)) return null;
+  return {
+    metricKey: `market:commodities-bootstrap:v1|price(symbol==${symbol})`,
+    sourceFeed: 'market:commodities-bootstrap:v1',
+    operator: 'crosses',
+    threshold: +(price * MARKET_PRICE_MOVE_RATIO).toFixed(2),
+    baselineValue: +price.toFixed(2),
+    window: FAMILY_WINDOW.market,
+  };
+}
+
+// The chokepoint record a sea-level forecast resolves on: the most disrupted
+// of the sea's chokepoints at emission (ties by name), so the spec names one route.
+function mostDisruptedChokepointInSea(inputs, sea) {
+  const chokepoints = inputs?.chokepoints?.chokepoints || inputs?.chokepoints?.routes || [];
+  return chokepoints
+    .filter((cp) => cp?.region && cp.region !== sea && CHOKEPOINT_MARKET_REGIONS[cp.region] === sea && Number.isFinite(Number(cp.riskScore)))
+    .sort((a, b) => Number(b.riskScore) - Number(a.riskScore) || a.region.localeCompare(b.region))[0]?.region ?? null;
+}
+
+// State-derived buckets with a checkable market or chokepoint outcome (#5234).
+// sovereign_risk, rates_inflation and fx_stress have no regional hard feed
+// (FRED is US-only; BIS EER covers 12 economies, not these regions) and stay judged.
+function deriveStateDerivedHardMetrics(pred, inputs) {
+  const bucketId = pred.stateDerivation?.bucketId;
+  if (bucketId === 'energy') return commodityMoveMetrics(inputs, 'CL=F');
+  if (bucketId === 'freight' && pred.domain === 'supply_chain') {
+    const route = mostDisruptedChokepointInSea(inputs, pred.region);
+    return route ? chokepointDisruptionMetrics(route) : null;
+  }
+  return null;
+}
+
 function buildQuestion(pred) {
+  const title = pred.title || '(untitled forecast)';
+  const region = pred.region || 'unspecified region';
+  const domain = pred.domain || 'unspecified domain';
+  const horizon = pred.timeHorizon || 'unspecified horizon';
+  return specificJudgedQuestion(pred) ?? `Will "${title}" (${domain}, ${region}) resolve YES within its ${horizon} horizon?`;
+}
+
+// The domain's own judged question, or null when the forecast would get only
+// the generic "resolve YES" template, which the extraction gate withholds
+// from the judged lane (#7067, carried over from #5234).
+function specificJudgedQuestion(pred) {
   const title = pred.title || '(untitled forecast)';
   const region = pred.region || 'unspecified region';
   const domain = pred.domain || 'unspecified domain';
@@ -570,8 +722,23 @@ function buildQuestion(pred) {
   if (domain === 'political') {
     return `Within the ${horizon} horizon, did ${region} experience a materially elevated level of civil unrest or political instability versus its recent baseline, consistent with "${title}"?`;
   }
-  return `Will "${title}" (${domain}, ${region}) resolve YES within its ${horizon} horizon?`;
+  if (domain === 'cyber') {
+    const metrics = deriveHardMetrics(pred, 'cyber', {});
+    if (metrics) {
+      return `Within the ${horizon} horizon after this forecast, did public threat-intelligence sources report at least ${metrics.threshold} new malicious cyber threat indicators (malware hosts, command-and-control servers, phishing or scanning IPs) attributed to ${region}?`;
+    }
+  }
+  return null;
 }
+
+// Judged domains whose question text is rendered from live state, so it can
+// change between hourly runs of one forecast: the cyber question names a count
+// derived from the live threat tally, and a migrated cyber count asks a
+// different template (#9067); a military theater forecast's title follows the
+// live dominant operator country and surge type, while its id is the theater.
+// The resolver keys their judged windows on the forecast (id, region, horizon)
+// rather than the text, so the first emission's question is the one judged.
+export const FROZEN_JUDGED_QUESTION_DOMAINS = new Set(['cyber', 'military']);
 
 function buildJudgedSpec(pred, generatedAt) {
   return {
@@ -587,8 +754,7 @@ function buildJudgedSpec(pred, generatedAt) {
   };
 }
 
-function buildHardSpec(pred, inputs, family, generatedAt, options = {}) {
-  const metrics = deriveHardMetrics(pred, family, inputs, options);
+function buildHardSpec(pred, inputs, family, generatedAt, options = {}, metrics = deriveHardMetrics(pred, family, inputs, options)) {
   if (!metrics || !Number.isFinite(metrics.threshold)) {
     // Threshold fallback (R3/plan step 3): a hard family that cannot derive
     // a finite threshold emits a judged spec rather than an unresolvable
@@ -617,6 +783,7 @@ function buildHardSpec(pred, inputs, family, generatedAt, options = {}) {
     deadline,
     sourceFeed,
     question: null,
+    ...(metrics.rule ? { rule: metrics.rule, ruleVersion: metrics.ruleVersion } : {}),
   };
 }
 
@@ -648,27 +815,35 @@ function buildHardSpec(pred, inputs, family, generatedAt, options = {}) {
 // buildResolutionSpec itself never throws.
 export function buildResolutionSpec(pred, inputs, generatedAt, options = {}) {
   if (pred.generationOrigin === 'state_derived') {
-    return buildJudgedSpec(pred, generatedAt);
+    const metrics = deriveStateDerivedHardMetrics(pred, inputs);
+    return metrics ? buildHardSpec(pred, inputs, null, generatedAt, options, metrics) : buildJudgedSpec(pred, generatedAt);
   }
 
   // prediction_market exemption (before the JUDGED_DOMAINS gate).
-  const hasPredictionMarketSignal = (pred.signals || []).some(
-    (s) => SIGNAL_TO_HARD_FAMILY[s.type] === 'prediction_market',
-  );
-  if (hasPredictionMarketSignal) {
-    return buildHardSpec(pred, inputs, 'prediction_market', generatedAt, options);
+  const family = hardFamilyFor(pred);
+  if (family === 'prediction_market') {
+    return buildHardSpec(pred, inputs, family, generatedAt, options);
   }
 
   if (JUDGED_DOMAINS.has(pred.domain)) {
     return buildJudgedSpec(pred, generatedAt);
   }
 
-  const family = resolveHardFamily(pred);
   if (!family) {
     return buildJudgedSpec(pred, generatedAt);
   }
 
   return buildHardSpec(pred, inputs, family, generatedAt, options);
+}
+
+// The hard family buildResolutionSpec dispatches a forecast to, before the
+// origin and JUDGED_DOMAINS gates. Specs do not store it, so the shadow gate
+// recomputes it from the forecast.
+function hardFamilyFor(pred) {
+  const hasPredictionMarketSignal = (pred.signals || []).some(
+    (s) => SIGNAL_TO_HARD_FAMILY[s.type] === 'prediction_market',
+  );
+  return hasPredictionMarketSignal ? 'prediction_market' : resolveHardFamily(pred);
 }
 
 // The seam pass (D1): sets pred.resolution on every prediction in place and
@@ -677,6 +852,256 @@ export function buildResolutionSpec(pred, inputs, generatedAt, options = {}) {
 export function attachResolutionSpecs(predictions, inputs, generatedAt, options = {}) {
   for (const pred of predictions) {
     pred.resolution = buildResolutionSpec(pred, inputs, generatedAt, options);
+    pred.horizonResolutions = buildHorizonResolutionSpecs(pred, inputs, generatedAt, options);
   }
   return predictions;
+}
+
+// One contract per projection horizon, built by the same dispatch as the
+// parent spec with the horizon swapped in. Deterministic like
+// buildResolutionSpec. A horizon that cannot carry a complete point-in-time
+// contract is `unscored` with the reason, never a judged question. The
+// horizon equal to the forecast's own is unscored too: its projection is the
+// forecast probability under the same metric and deadline, so a window for
+// it would grade the forecast twice and pad that horizon's sample. Held-out
+// origins (the headline's excluded set; makePrediction always stamps the
+// origin) carry no contract: the lane measures the published population, and
+// the resolver applies the same gate at registration.
+// The horizons the resolver registers a scoring window for, in horizon order:
+// a hard contract with a finite deadline on a published-origin forecast that
+// carries a finite projection for it. Reads the internal forecast (history
+// entry or seed prediction), never the public payload, so dropping public
+// projections (#8967) cannot change what is scored. The resolver and the
+// published scoredHorizons both use this.
+const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
+
+export function scoredHorizonKeys(forecast) {
+  const contracts = forecast?.horizonResolutions;
+  if (!contracts || typeof contracts !== 'object' || !isPublishedOriginEntry(forecast)) return [];
+  return Object.keys(PROJECTION_HORIZONS).filter((horizon) => {
+    const spec = contracts[horizon];
+    // Number(null) is 0, so a null deadline or projection would pass a coerced check.
+    return spec?.kind === 'hard'
+      && isFiniteNumber(spec.deadline)
+      && isFiniteNumber(forecast.projections?.[horizon]);
+  });
+}
+
+export function buildHorizonResolutionSpecs(pred, inputs, generatedAt, options = {}) {
+  const specs = {};
+  const excludedOrigin = !isPublishedOriginEntry(pred);
+  for (const [horizon, timeHorizon] of Object.entries(PROJECTION_HORIZONS)) {
+    if (excludedOrigin) {
+      specs[horizon] = { horizon, timeHorizon, kind: 'unscored', reason: 'excluded_origin' };
+      continue;
+    }
+    if (timeHorizon === pred.timeHorizon) {
+      specs[horizon] = { horizon, timeHorizon, kind: 'unscored', reason: 'parent_horizon' };
+      continue;
+    }
+    const spec = buildResolutionSpec({ ...pred, timeHorizon }, inputs, generatedAt, options);
+    const reason = horizonUnscoredReason(spec);
+    if (reason) {
+      specs[horizon] = { horizon, timeHorizon, kind: 'unscored', reason };
+      continue;
+    }
+    specs[horizon] = {
+      horizon,
+      timeHorizon,
+      kind: 'hard',
+      semantics: 'point_in_time',
+      metricKey: spec.metricKey,
+      operator: spec.operator,
+      threshold: spec.threshold,
+      ...(Number.isFinite(spec.baselineValue) && { baselineValue: spec.baselineValue }),
+      window: spec.window,
+      sourceFeed: spec.sourceFeed,
+      deadline: spec.deadline,
+      sampleToleranceMs: horizonSampleToleranceMs(timeHorizon),
+      ...(spec.rule && { rule: spec.rule, ruleVersion: spec.ruleVersion }),
+    };
+  }
+  return specs;
+}
+
+function horizonUnscoredReason(spec) {
+  if (spec.kind !== 'hard') return 'no_hard_contract';
+  if (spec.window === 'at-deadline') return null;
+  return HORIZON_UNSCORED_REASON_BY_WINDOW[spec.window] || 'unsupported_window';
+}
+
+// ── Emission-time extraction gate, shadow phase (#7067) ─────────────────
+//
+// Dry-runs the resolver's extractor against the resolver-shaped view of each
+// hard spec's sourceFeed. Shadow only: verdicts are reported, specs are never
+// changed. A verdict is one of:
+//   pass             the extractor returns a finite metric
+//   fail             the extractor returns non-finite (would downgrade)
+//   feed_unavailable the feed read failed or the key is empty
+//   skipped          count() specs: the resolver tallies dated events rather
+//                    than extracting one record, so a missing record is a 0
+export function extractionShadowFeedKeys(predictions) {
+  return [...new Set(predictions
+    .filter((pred) => pred.resolution?.kind === 'hard')
+    .map((pred) => pred.resolution.sourceFeed)
+    .filter(Boolean))];
+}
+
+// rawByKey holds one entry per successful read, so a key missing from it is a
+// failed read. Pure: no network, clock, or mutation.
+export function evaluateExtractionShadow(predictions, rawByKey) {
+  const feedsByKey = shapeResolutionFeeds(rawByKey);
+  const verdicts = [];
+  for (const pred of predictions) {
+    const spec = pred.resolution;
+    if (spec?.kind !== 'hard') continue;
+    const verdict = (outcome, reason, value = null) => ({
+      id: pred.id,
+      outcome,
+      family: hardFamilyFor(pred) || 'unknown',
+      domain: pred.domain || 'unknown',
+      metricKey: spec.metricKey,
+      reason,
+      value,
+    });
+    const parsed = parseMetricKey(spec.metricKey);
+    if (!parsed) {
+      verdicts.push(verdict('fail', 'unparseable_metric_key'));
+      continue;
+    }
+    if (parsed.fn === 'count') {
+      verdicts.push(verdict('skipped', 'count_resolved_by_tally'));
+      continue;
+    }
+    const readKeys = [spec.sourceFeed, parsed.feedKey].filter(Boolean);
+    if (!readKeys.some((key) => Object.hasOwn(feedsByKey, key))) {
+      verdicts.push(verdict('feed_unavailable', 'feed_read_failed'));
+      continue;
+    }
+    // Check the raw value: shaping turns an absent FRED or settlement key into [].
+    if (selectResolutionFeed(rawByKey, spec, parsed) == null) {
+      verdicts.push(verdict('feed_unavailable', 'feed_empty'));
+      continue;
+    }
+    const feedData = selectResolutionFeed(feedsByKey, spec, parsed);
+    const { value } = extractMetricObservation(parsed, feedData);
+    verdicts.push(Number.isFinite(value) ? verdict('pass', 'finite_metric', value) : verdict('fail', 'metric_not_found'));
+  }
+  return verdicts;
+}
+
+export function summarizeExtractionShadow(verdicts) {
+  const summary = { total: verdicts.length, byOutcome: {}, byFamily: {}, byDomain: {} };
+  const bump = (counts, outcome) => { counts[outcome] = (counts[outcome] || 0) + 1; };
+  for (const { outcome, family, domain } of verdicts) {
+    bump(summary.byOutcome, outcome);
+    bump(summary.byFamily[family] ??= {}, outcome);
+    bump(summary.byDomain[domain] ??= {}, outcome);
+  }
+  return summary;
+}
+
+// ── Emission-time extraction gate, enforcement (#7067) ──────────────────
+//
+// The activation switch. While false, the gate stays in shadow and emission
+// is unchanged. Flip it only after the shadow cohort from 7 daily runs is
+// posted on #7067 and the judged lane has held below the pending-judge bar
+// without growing for 7 runs. The runtime check below covers only the
+// current reading of that bar.
+export const EXTRACTION_GATE_ENFORCED = false;
+
+// Downgrades wait while the judged lane holds this many pending entries or
+// more, so a hard VOID is never traded for a judged backlog (#7067 section 3).
+export const EXTRACTION_GATE_MAX_PENDING_JUDGE = 20;
+
+export const SPEC_ORIGIN_HARD = 'hard';
+export const SPEC_ORIGIN_JUDGED = 'judged';
+export const SPEC_ORIGIN_HARD_DOWNGRADED = 'hard_downgraded_unextractable';
+export const GENERIC_JUDGED_QUESTION_REASON = 'generic_judged_question';
+export const PARENT_UNEXTRACTABLE_HORIZON_REASON = 'parent_unextractable';
+
+// The judged lane must score most of what it resolves on time before it takes
+// downgrades. #7067 forbids moving failures into a broken lane and counts a
+// downgrade as a success only if it raises scored-within-SLA yield; below half,
+// a downgraded row is more likely to end VOID or late than scored on time,
+// which is the hard-path failure moved to another lane.
+export const EXTRACTION_GATE_MIN_SCORED_WITHIN_SLA_RATE = 0.5;
+
+// The scorecard is written by the daily resolver. Same bar as the calibration
+// gate on the same key (CALIBRATION_GATE_MAX_AGE_MS): 2 missed runs and a
+// reading no longer describes the lane.
+export const EXTRACTION_GATE_SCORECARD_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+
+// Pure. `scorecard` is the stored forecast:scorecard:v1 value, or null when it
+// could not be read. Enforcement without a healthy lane still stamps
+// specOrigin and withholds generic questions; only downgrades wait.
+export function decideExtractionGateMode(scorecard, { enforced = EXTRACTION_GATE_ENFORCED, nowMs = NaN } = {}) {
+  if (!enforced) return { mode: 'shadow', downgrade: false, reason: 'disabled' };
+  const hold = (reason) => ({ mode: 'enforce', downgrade: false, reason });
+  const judgedLane = scorecard?.judgedLane;
+  const pendingJudge = judgedLane?.pendingJudge;
+  if (!judgedLane || typeof pendingJudge !== 'number' || !Number.isFinite(pendingJudge)) return hold('judged_lane_unreadable');
+  if (!(nowMs - Number(scorecard.generatedAt) <= EXTRACTION_GATE_SCORECARD_MAX_AGE_MS)) return hold('judged_lane_stale');
+  if (pendingJudge >= EXTRACTION_GATE_MAX_PENDING_JUDGE) return hold('judged_lane_backlogged');
+  // The issue requires first-attempt and within-SLA figures to be measurable;
+  // with no instrumented resolution they read 0 and prove nothing.
+  const rate = judgedLane.scoredWithinSlaRate;
+  if (!(Number(judgedLane.instrumentedResolved) > 0) || typeof rate !== 'number' || !Number.isFinite(rate)) {
+    return hold('judged_lane_unmeasured');
+  }
+  if (rate < EXTRACTION_GATE_MIN_SCORED_WITHIN_SLA_RATE) return hold('judged_lane_below_sla');
+  return { mode: 'enforce', downgrade: true, reason: 'judged_lane_healthy' };
+}
+
+// Applies an enforcing decision to published forecasts in place. Every spec
+// gets a specOrigin, so ledger rows emitted under the gate separate from
+// legacy rows. A failed extraction becomes a judged spec that keeps the
+// original family, metric and reason, and its hard horizon contracts (same
+// metric) become unscored. A judged spec whose only question is the generic
+// template becomes unscored with a stated reason and never reaches the
+// judged lane. Pure apart from the in-place writes; returns per-family counts.
+export function applyExtractionGate(predictions, verdicts, generatedAt, decision) {
+  const counts = { downgraded: {}, withheld: {} };
+  if (decision?.mode !== 'enforce') return counts;
+  const bump = (bucket, key) => { bucket[key] = (bucket[key] || 0) + 1; };
+  const failures = new Map(verdicts.filter((v) => v.outcome === 'fail').map((v) => [v.id, v]));
+  for (const pred of predictions) {
+    const spec = pred.resolution;
+    if (spec?.kind !== 'hard' && spec?.kind !== 'judged') continue;
+    const failure = spec.kind === 'hard' ? failures.get(pred.id) : null;
+    let next;
+    if (failure && decision.downgrade) {
+      next = {
+        ...buildJudgedSpec(pred, generatedAt),
+        specOrigin: SPEC_ORIGIN_HARD_DOWNGRADED,
+        originalFamily: failure.family,
+        originalMetricKey: spec.metricKey,
+        originalSourceFeed: spec.sourceFeed,
+        downgradeReason: failure.reason,
+      };
+      bump(counts.downgraded, failure.family);
+      pred.horizonResolutions = unscoreHardHorizons(pred.horizonResolutions);
+    } else {
+      next = spec.kind === 'hard'
+        ? { ...spec, specOrigin: SPEC_ORIGIN_HARD, specFamily: hardFamilyFor(pred) || 'unknown' }
+        : { ...spec, specOrigin: SPEC_ORIGIN_JUDGED };
+    }
+    if (next.kind === 'judged' && specificJudgedQuestion(pred) == null) {
+      const { question: _generic, ...kept } = next;
+      next = { ...kept, kind: 'unscored', reason: GENERIC_JUDGED_QUESTION_REASON };
+      bump(counts.withheld, pred.domain || 'unknown');
+    }
+    pred.resolution = next;
+  }
+  return counts;
+}
+
+function unscoreHardHorizons(horizonResolutions) {
+  if (!horizonResolutions || typeof horizonResolutions !== 'object') return horizonResolutions;
+  return Object.fromEntries(Object.entries(horizonResolutions).map(([horizon, spec]) => [
+    horizon,
+    spec?.kind === 'hard'
+      ? { horizon: spec.horizon, timeHorizon: spec.timeHorizon, kind: 'unscored', reason: PARENT_UNEXTRACTABLE_HORIZON_REASON }
+      : spec,
+  ]));
 }

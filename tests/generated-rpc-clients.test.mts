@@ -162,3 +162,69 @@ test('lazy generated RPC client ignores symbol lookups without loading construct
   assert.equal(symbolValue, undefined);
   assert.equal(attempts, 0);
 });
+
+test('lazy generated RPC client rejects an invoked member that is not a method on the loaded client (#4550)', async () => {
+  // The type constraint on createLazyRpcClientConstructor rejects clients with
+  // public fields, getters, or sync methods at compile time (see
+  // src/services/generated-rpc-clients.method-shape.ts). This covers the
+  // runtime defense when the loaded constructor's shape drifts from its type:
+  // the declared type has only `ping`, the loaded class also has fields.
+  class DriftedClient {
+    baseURL = 'https://example.test';
+    version = 3;
+
+    async ping(): Promise<string> {
+      return 'pong';
+    }
+  }
+
+  const LazyTestClient = createLazyRpcClientConstructor<{ ping(): Promise<string> }>(async () => DriftedClient);
+  const client = new LazyTestClient('https://example.test');
+
+  await assert.rejects(
+    () => (Reflect.get(client, 'baseURL') as () => Promise<unknown>)(),
+    (error: unknown) => error instanceof TypeError
+      && /"baseURL" is not a method on the loaded client \(got string\)/.test(error.message),
+  );
+  await assert.rejects(
+    () => (Reflect.get(client, 'version') as () => Promise<unknown>)(),
+    /"version" is not a method on the loaded client \(got number\)/,
+  );
+  await assert.rejects(
+    () => (Reflect.get(client, 'notDeclared') as () => Promise<unknown>)(),
+    /"notDeclared" is not a method on the loaded client \(got undefined\)/,
+  );
+
+  // Methods are unaffected.
+  assert.equal(await client.ping(), 'pong');
+});
+
+test('lazy generated RPC client serializes with JSON.stringify without loading or rejecting', async () => {
+  let attempts = 0;
+
+  class TestClient {
+    async ping(): Promise<string> {
+      return 'pong';
+    }
+  }
+
+  const LazyTestClient = createLazyRpcClientConstructor<TestClient>(async () => {
+    attempts += 1;
+    return TestClient;
+  });
+  const client = new LazyTestClient('https://example.test');
+
+  const unhandled: unknown[] = [];
+  const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    assert.equal(Reflect.get(client, 'toJSON'), undefined);
+    assert.equal(JSON.stringify({ c: client }), '{"c":{}}');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
+
+  assert.deepEqual(unhandled, []);
+  assert.equal(attempts, 0);
+});

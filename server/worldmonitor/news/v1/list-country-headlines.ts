@@ -61,7 +61,9 @@ export async function listCountryHeadlines(
     const entry = cached.get(rssFeedCacheKey('full', feed.url));
     if (!entry || typeof entry !== 'object' || !('items' in entry) || !Array.isArray(entry.items)) continue;
     response.feedCached++;
-    for (const value of entry.items) {
+    const rows = 'countryItems' in entry && Array.isArray(entry.countryItems)
+      ? [...entry.items, ...entry.countryItems] : entry.items;
+    for (const value of rows) {
       const item = headlineFromCache(value, feed.name, now, cutoff, revoked.urls);
       if (!item || seen.has(item.link)) continue;
       seen.add(item.link);

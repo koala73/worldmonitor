@@ -6,6 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
+import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
 import { ensureResilienceScoreCached } from './_shared';
 
 export const getResilienceScore: ResilienceServiceHandler['getResilienceScore'] = async (
@@ -16,8 +17,10 @@ export const getResilienceScore: ResilienceServiceHandler['getResilienceScore'] 
   if (!countryCode) {
     throw new ValidationError([{ field: 'countryCode', description: 'countryCode is required' }]);
   }
-  if (!/^[A-Z]{2}$/.test(countryCode)) {
-    throw new ValidationError([{ field: 'countryCode', description: 'countryCode must be a 2-letter ISO 3166-1 alpha-2 code' }]);
+  // Shape alone let ZZ through to a scored, cached record built from imputed
+  // defaults: a fabricated country with a resilience level.
+  if (!isAssignedCountryCode(countryCode)) {
+    throw new ValidationError([{ field: 'countryCode', description: 'countryCode must be an assigned ISO 3166-1 alpha-2 code, e.g. "IQ".' }]);
   }
   return ensureResilienceScoreCached(countryCode);
 };

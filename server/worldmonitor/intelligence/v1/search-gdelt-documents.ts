@@ -5,7 +5,8 @@ import type {
   SearchGdeltDocumentsResponse,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
-import { getCachedJson, getLargeRawJson } from '../../../_shared/redis';
+import { getLargeRawJson, logCacheReadError, readCachedJson } from '../../../_shared/redis';
+import { normalizeGdeltTopicSnapshot } from '../../../../shared/intelligence-snapshots.js';
 import { readRevokedUrlSet } from '../../../_shared/digest-revocations';
 import { countryMentionTerms, mentionsCountry } from '../../../../shared/country-mention.js';
 
@@ -35,21 +36,6 @@ const COUNTRY_ARTICLES_KEY = 'gdelt:bulk:country-articles:v1';
 //                      key is missing — a run-wide condition), and the two
 //                      transient reads `index-read-failed` and
 //                      `revocations-unavailable` (that one request's failure).
-
-type SeededGdeltData = {
-  topics?: Array<{
-    id: string;
-    articles: Array<{
-      title: string;
-      url: string;
-      source: string;
-      date: string;
-      image: string;
-      language: string;
-      tone: number;
-    }>;
-  }>;
-};
 
 interface CountryIndexRow {
   title?: unknown;
@@ -181,10 +167,16 @@ export async function searchGdeltDocuments(
       return await searchCountryArticles(req.query, countryCode, req.maxRecords);
     }
 
-    const seeded = await getCachedJson(SEEDED_KEY, true) as SeededGdeltData | null;
-    if (!seeded?.topics?.length) {
-      // Distinct signal: seed is missing/expired, not "no articles matched".
-      // Clients should show a graceful empty state rather than retrying.
+    const read = await readCachedJson(SEEDED_KEY, true);
+    if (read.status === 'error') {
+      logCacheReadError(SEEDED_KEY, read.error);
+      return { articles: [], query: req.query, error: 'seed-read-failed' };
+    }
+    // Invalid articles are dropped per topic (the seeder can write an empty
+    // title); only a missing, malformed or all-invalid snapshot is unavailable.
+    const seeded = read.status === 'hit' ? normalizeGdeltTopicSnapshot(read.value) : null;
+    if (!seeded) {
+      // Distinct signal: seed is missing/expired/malformed, not "no articles matched".
       return { articles: [], query: req.query, error: 'seed-unavailable' };
     }
 
@@ -204,6 +196,6 @@ export async function searchGdeltDocuments(
       error: '',
     };
   } catch {
-    return { articles: [], query: req.query, error: '' };
+    return { articles: [], query: req.query, error: 'seed-read-failed' };
   }
 }

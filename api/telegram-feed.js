@@ -9,8 +9,12 @@ import { checkRateLimit } from './_rate-limit.js';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
 import { sha256Hex } from './_crypto.js';
+// Shared classifier (WORLDMONITOR-R1). Re-exported as a test seam; the
+// classification is otherwise observable only through a Sentry capture.
+import { relayFailureLevel } from './_relay-failure-level.js';
 
 export const config = { runtime: 'edge' };
+export { relayFailureLevel };
 
 const EPOCH_ISO = new Date(0).toISOString();
 
@@ -86,6 +90,7 @@ const TELEGRAM_RELAY_TIMEOUT_MS = {
   resolve: 20_000,
   channel: 22_000,
 };
+
 // `channel` is the fan-out mode: one request per watchlist entry, so the limit
 // has to clear TELEGRAM_WATCHLIST_MAX_ENTRIES (20) with room for a second tab
 // and an in-window add. Setting it equal to the cap left exactly zero headroom
@@ -333,7 +338,7 @@ export default async function handler(req) {
         ? entitlement.features.apiDailyAllowance : -1;
       const plan = entitlement.planKey;
       const upgrade_url = plan && plan !== 'enterprise' ? 'https://worldmonitor.app/' : undefined;
-      if (!burst.ok) {
+      if (burst.ok === false) {
         if (enforce) {
           const retryAfterSec = Math.max(1, Math.ceil((burst.reset - Date.now()) / 1000));
           return jsonResponse({
@@ -415,7 +420,7 @@ export default async function handler(req) {
       });
     } catch (normalizeError) {
       console.warn('[telegram-feed] normalization failed:', normalizeError?.message || String(normalizeError));
-      void captureSilentError(normalizeError, { tags: { route: 'api/telegram-feed', step: 'normalize' } });
+      void captureSilentError(normalizeError, { tags: { route: 'api/telegram-feed', step: 'normalize' }, fingerprint: ['api/telegram-feed', 'normalize', normalizeError instanceof Error ? normalizeError.name : 'Error'] });
       if (mode === 'resolve') {
         return jsonResponse({ error: 'Invalid Telegram channel response' }, 502, {
           'Cache-Control': 'no-store',
@@ -440,19 +445,20 @@ export default async function handler(req) {
     // (undici cause chains, MTProto text) and the browser has no use for it.
     // Failures are captured server-side instead.
     console.warn('[telegram-feed] relay request failed:', error?.message || String(error));
-    // Timeouts capture at `warning`, not `error`: fetchWithTimeout aborts on the
-    // mode budget (TELEGRAM_RELAY_TIMEOUT_MS), so those 504s are routine relay
-    // latency rather than product defects. Skipping them outright (the previous
-    // posture, inherited from api/rss-proxy.js) left relay degradation with no
-    // signal at all — nothing in scripts/ or .github/workflows/ watches it.
-    // `warning` keeps it queryable without counting toward error totals.
-    // `mode` is mandatory on both paths: the budgets differ by 7s, so without
+    // Routine transport churn captures at `warning`, not `error` — see
+    // relayFailureLevel. Skipping those outright (the previous posture,
+    // inherited from api/rss-proxy.js) left relay degradation with no signal at
+    // all — nothing in scripts/ or .github/workflows/ watches it. `warning`
+    // keeps it queryable without counting toward error totals.
+    // `mode` is mandatory on every path: the budgets differ by 7s, so without
     // it a feed stall and a channel stall are the same Sentry issue.
+    // `timeout_ms` stays exclusive to the abort arm; it describes a deadline
+    // the other failures never reached.
     void captureSilentError(error, {
       tags: { route: 'api/telegram-feed', step: 'relay-fetch', mode },
-      ...(isTimeout
-        ? { level: 'warning', extra: { timeout_ms: TELEGRAM_RELAY_TIMEOUT_MS[mode] } }
-        : {}),
+      fingerprint: ['api/telegram-feed', 'relay-fetch', error instanceof Error ? error.name : 'Error'],
+      level: relayFailureLevel(error),
+      ...(isTimeout ? { extra: { timeout_ms: TELEGRAM_RELAY_TIMEOUT_MS[mode] } } : {}),
     });
     return jsonResponse({
       error: isTimeout ? 'Relay timeout' : 'Relay request failed',

@@ -294,6 +294,31 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
     const allowlist = proxy.match(/const ALLOWED_EVAL_SCRIPTS = new Set\(\[([\s\S]*?)\]\);/);
     assert.ok(allowlist?.[1]?.includes('MCP_QUOTA_RESERVE_SCRIPT'), 'the pinned quota script must be allowlisted');
   });
+
+  it('keeps free-account allowance EVAL copies byte-identical and allowlisted', async () => {
+    const { RESERVE_FREE_ACCOUNT_ALLOWANCE_SCRIPT, READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT } = await import('../shared/free-account-allowance-scripts.mjs');
+    const proxy = readFileSync(fileURLToPath(new URL('../docker/redis-rest-proxy.mjs', import.meta.url)), 'utf8');
+    const allowlist = proxy.match(/const ALLOWED_EVAL_SCRIPTS = new Set\(\[([\s\S]*?)\]\);/);
+    assert.ok(allowlist, 'the proxy must declare ALLOWED_EVAL_SCRIPTS');
+    const pinned = (name) => {
+      const marker = `const ${name} = `;
+      const start = proxy.indexOf(marker);
+      assert.notEqual(start, -1, `the proxy must carry a pinned ${name} copy`);
+      const from = proxy.slice(start + marker.length);
+      const end = from.indexOf(".join('\\n');");
+      assert.notEqual(end, -1, `${name} must be an array joined with newlines`);
+      return (new Function(`return ${from.slice(0, end)};`)()).join('\n');
+    };
+    assert.equal(pinned('RESERVE_FREE_ACCOUNT_ALLOWANCE_SCRIPT'), RESERVE_FREE_ACCOUNT_ALLOWANCE_SCRIPT);
+    assert.equal(pinned('READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT'), READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT);
+    assert.ok(allowlist[1].includes('RESERVE_FREE_ACCOUNT_ALLOWANCE_SCRIPT'), 'the reserve script must be allowlisted');
+    assert.ok(allowlist[1].includes('READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT'), 'the read script must be allowlisted');
+    assert.doesNotMatch(
+      readFileSync(fileURLToPath(new URL('../api/mcp/free-account-allowance.ts', import.meta.url)), 'utf8'),
+      /const RESERVE_FREE_ACCOUNT_ALLOWANCE_SCRIPT = `/,
+      'the reserve script must not live only in the handler — the proxy cannot see it there',
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

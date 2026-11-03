@@ -20,6 +20,36 @@ export const PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES = 12 * 60;
 // floor if that detection delay ever costs more than the alarm did.
 export const PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES = 10 * 24 * 60;
 export const PORTWATCH_MAX_REPORTED_STALE_COUNTRIES = 40;
+// Hard publication expiry: a cached country payload stops being publishable at
+// seven days. Lives here rather than in the seeder because orderColdFetchQueue
+// needs it to know which countries are about to fall off the cliff, and the
+// seeder re-exports it as MAX_CACHE_AGE_MS for its own callers.
+export const PORTWATCH_MAX_CACHE_AGE_MS = 7 * 86_400_000;
+// Tail of the cache lifetime in which a country outranks ordinary rotation.
+//
+// Pinned to exactly one full nominal sweep, using the ROTATION slots the seeder
+// actually has: MAX_COLD_FETCH_PER_RUN (30) minus the two reserved for CN/HK =
+// 28, so ceil(174 / 28) = 7 runs at the 12h cadence = 3.5 days = 5040 minutes.
+//
+// The parity test in tests/portwatch-rate-limit-rotation.test.mjs bounds this
+// from BOTH sides and the two bounds happen to meet here: below one sweep the
+// window cannot promise every member an attempt, and above half the seven-day
+// cache lifetime most cached countries qualify and the tier stops prioritising
+// anything. There is deliberately no slack — changing the rotation math means
+// changing this constant, and the test makes that a conscious edit rather than
+// a silent drift.
+//
+// What that buys is one ATTEMPT per expiring country before its payload
+// expires, NOT a successful refresh. Under the 2026-09-22 throttle only 6 of 30
+// cold fetches landed, so a stalled cohort larger than the slot cap still loses
+// members at the cliff — the window reorders who gets tried, it does not raise
+// the upstream success rate.
+//
+// #8501: without this window, oldest-ATTEMPT-first sorted the persistently
+// rate-limited countries to the back on every run (a failed fetch advances
+// refreshAttemptedAt), so the cohort that most needed a slot was the cohort
+// least likely to get one. 54 countries sat at 84.6h with no way back.
+export const PORTWATCH_EXPIRY_PRIORITY_LEAD_MINUTES = 5040;
 export const PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY =
   'seed-activated:supply_chain:portwatch-ports:content-freshness';
 export const PORTWATCH_DECISION_CRITICAL_COUNTRIES = Object.freeze(['CN', 'HK']);
@@ -60,11 +90,55 @@ export function isCriticalContentRefreshDue({
   return ageMs >= Math.max(0, budgetMs - leadMs);
 }
 
+// Cold-fetch slot order, in four tiers:
+//
+//   0 decision-critical (CN/HK) — bounded at two countries, so reserving them
+//     costs the rest of the queue almost nothing;
+//   1 out of coverage — never cached, or cached longer ago than
+//     PORTWATCH_MAX_CACHE_AGE_MS. Either way the country is ALREADY missing
+//     from the publication and one successful fetch restores it. #4293 put
+//     never-cached countries first; they must stay ahead of the expiring tier,
+//     whose members are at least still publishable today. Ordered
+//     oldest-attempt-first so a country that keeps failing rotates behind the
+//     others in this tier instead of holding the head slot every run;
+//   2 expiring — inside PORTWATCH_EXPIRY_PRIORITY_LEAD_MINUTES of the hard
+//     cache expiry, ordered closest-to-the-cliff first. Losing a country is
+//     irreversible; serving it a window stale is not, so the cliff outranks
+//     rotation fairness (#8501);
+//   3 everything else — oldest-ATTEMPT-first, the durable rotation cursor.
+//
+// An expired payload used to fall to tier 3 on the theory that it was
+// "unpublishable whatever we do this run". A fresh fetch makes it publishable.
+// In tier 3 its recent failed attempts sorted it behind countries that were
+// still being published: on 2026-11-01 none of 10 expired countries got one of
+// the 30 slots, 15 slots went to published countries, and the run exited 1 at
+// 164/174 coverage.
 export function orderColdFetchQueue(
   needsFetch,
   criticalCountries = PORTWATCH_DECISION_CRITICAL_COUNTRIES,
+  {
+    now = Date.now(),
+    maxCacheAgeMs = PORTWATCH_MAX_CACHE_AGE_MS,
+    expiryPriorityLeadMinutes = PORTWATCH_EXPIRY_PRIORITY_LEAD_MINUTES,
+    // The seeder passes its own usability check, so a payload it cannot
+    // publish (corrupt ports, a future timestamp) ranks with expired ones.
+    isOutOfCoverage = null,
+  } = {},
 ) {
-  const critical = new Set(criticalCountries);
+  const critical = new Set(criticalCountries ?? PORTWATCH_DECISION_CRITICAL_COUNTRIES);
+  const expiryPriorityFromMs = Math.max(0, maxCacheAgeMs - expiryPriorityLeadMinutes * 60_000);
+  const cachedAt = (item) => {
+    const prev = item?.prevPayload;
+    return prev && typeof prev === 'object' && Number.isFinite(prev.cacheWrittenAt)
+      ? prev.cacheWrittenAt
+      : null;
+  };
+  const isExpiring = (item) => {
+    const writtenAt = cachedAt(item);
+    if (writtenAt === null) return false;
+    const age = now - writtenAt;
+    return age >= expiryPriorityFromMs && age < maxCacheAgeMs;
+  };
   const lastAttemptAt = (item) => {
     const prev = item?.prevPayload;
     if (!prev || typeof prev !== 'object') return Number.NEGATIVE_INFINITY;
@@ -73,11 +147,24 @@ export function orderColdFetchQueue(
     return Number.NEGATIVE_INFINITY;
   };
   const stableId = (item) => String(item?.iso2 || item?.iso3 || '');
-  const priority = (item) => (critical.has(item?.iso2) ? 0 : 1);
+  const isExpired = (item) => {
+    const writtenAt = cachedAt(item);
+    return writtenAt !== null && now - writtenAt >= maxCacheAgeMs;
+  };
+  const priority = (item) => {
+    if (critical.has(item?.iso2)) return 0;
+    if (cachedAt(item) === null || isExpired(item) || isOutOfCoverage?.(item)) return 1;
+    return isExpiring(item) ? 2 : 3;
+  };
   return [...needsFetch].sort((a, b) => {
     const priorityOrder = priority(a) - priority(b);
     if (priorityOrder !== 0) return priorityOrder;
-    const ageOrder = lastAttemptAt(a) - lastAttemptAt(b);
+    // Inside the expiring tier the deadline is the only thing that matters, so
+    // rank by how long the payload has been cached, not when we last tried it.
+    // Every other tier keeps the durable oldest-attempt rotation cursor.
+    const ageOrder = priority(a) === 2
+      ? cachedAt(a) - cachedAt(b)
+      : lastAttemptAt(a) - lastAttemptAt(b);
     return ageOrder || stableId(a).localeCompare(stableId(b));
   });
 }
@@ -87,8 +174,16 @@ export function buildContentFreshnessReport({
   now = Date.now(),
   budgetMinutes = PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
   maxStaleCountries = PORTWATCH_MAX_REPORTED_STALE_COUNTRIES,
-  criticalCountries = PORTWATCH_DECISION_CRITICAL_COUNTRIES,
+  criticalCountries: declaredCriticalCountries = PORTWATCH_DECISION_CRITICAL_COUNTRIES,
+  // Countries the seeder proved have no rows in the source at all. A critical
+  // one is named in `criticalSourceAbsentCountries` instead of being judged:
+  // there is no content to be fresh or stale, and health accepts the narrowed
+  // scope only for a country listed there.
+  sourceAbsentCountries = [],
 }) {
+  const absent = new Set(sourceAbsentCountries);
+  const criticalCountries = declaredCriticalCountries.filter((iso2) => !absent.has(iso2));
+  const criticalSourceAbsentCountries = declaredCriticalCountries.filter((iso2) => absent.has(iso2)).sort();
   const budgetMs = budgetMinutes * 60_000;
   const entries = countryData instanceof Map ? [...countryData.entries()] : [];
   const critical = new Set(criticalCountries);
@@ -161,6 +256,7 @@ export function buildContentFreshnessReport({
       ? null
       : Math.round((now - oldestObservedAt) / 60_000),
     criticalCountries: [...criticalCountries].sort(),
+    criticalSourceAbsentCountries,
     criticalFreshCount,
     criticalStaleCountries,
     criticalMissingCountries: criticalCountries.length - criticalSeen,
@@ -177,7 +273,11 @@ export function buildPortActivityMetaPayload({ countryData, coverage, now = Date
     fetchedAt: now,
     recordCount: countryData instanceof Map ? countryData.size : 0,
     coverage,
-    contentFreshness: buildContentFreshnessReport({ countryData, now }),
+    contentFreshness: buildContentFreshnessReport({
+      countryData,
+      now,
+      sourceAbsentCountries: Array.isArray(coverage?.sourceAbsentCountries) ? coverage.sourceAbsentCountries : [],
+    }),
   };
 }
 

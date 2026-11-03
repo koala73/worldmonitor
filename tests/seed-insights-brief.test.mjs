@@ -320,6 +320,67 @@ describe('composeSynthesizedBrief lead sentence boundaries (#5947)', () => {
   });
 });
 
+describe('lead repair preserves acronym context (#8571)', () => {
+  const stories = [
+    { primaryTitle: 'US Navy moved a carrier into the Gulf as Iran tensions rose', primarySource: 'Reuters', sources: ['Reuters', 'AP News'] },
+    { primaryTitle: 'Oil rose on Iran tensions', primarySource: 'BBC', sources: ['BBC', 'Reuters'] },
+  ];
+  const compose = (lead, validatorMode = 'enforce') => composeSynthesizedBriefResult(
+    JSON.stringify({ lead, lines: stories.map((story, i) => ({ n: i + 1, text: `${story.primaryTitle} [${i + 1}]` })) }),
+    stories,
+    { validatorMode },
+  );
+
+  for (const mode of ['enforce', 'shadow']) {
+    it(`does not publish a subject-cut continuation in ${mode}`, () => {
+      const result = compose('The U.S. Navy moved a carrier into the Gulf as Iran tensions rose [1]. Oil rose on Iran tensions [2].', mode);
+      assert.equal(result.brief.lead, 'Oil rose on Iran tensions [2].');
+      assert.equal(result.brief.droppedLeadSentences, 2);
+      assert.equal(result.brief.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
+    });
+  }
+
+  it('propagates removal through consecutive ambiguous boundaries', () => {
+    const result = compose('The U.S. Navy moved into the Gulf [1] with the U.S. Navy moved a carrier as Iran tensions rose [1]. Oil rose on Iran tensions [2].');
+    assert.equal(result.brief.lead, 'Oil rose on Iran tensions [2].');
+    assert.equal(result.brief.droppedLeadSentences, 3);
+  });
+
+  it('keeps an accepted head when a middle unit fails and removes its continuation', () => {
+    const result = compose('The Navy moved into the Gulf [1] with the U.S. Navy moved 42 carriers [1] with the U.S. Navy moved a carrier as Iran tensions rose [1]. Oil rose on Iran tensions [2].');
+    assert.equal(result.brief.lead, 'The Navy moved into the Gulf [1] with the U.S. Oil rose on Iran tensions [2].');
+    assert.equal(result.brief.droppedLeadSentences, 2);
+    assert.equal(result.brief.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_NUMERIC_FACT);
+    assert.equal(result.brief.droppedLeadDetail, 'number:42');
+  });
+
+  it('rejects when no independent sentence survives', () => {
+    const result = compose('The U.S. Navy moved a carrier into the Gulf as Iran tensions rose [1].');
+    assert.equal(result.brief, null);
+    assert.equal(result.rejection, BRIEF_REJECTIONS.LEAD_UNCITED);
+  });
+
+  it('keeps bare-acronym prose byte-identical', () => {
+    const lead = 'The US Navy moved a carrier into the Gulf as Iran tensions rose [1].  Oil rose on Iran tensions [2].';
+    const result = compose(lead);
+    assert.equal(result.brief.lead, lead);
+    assert.equal(result.brief.droppedLeadSentences, 0);
+  });
+
+  it('excludes attribution in a removed continuation', () => {
+    const result = compose('The U.S. Reuters reported that Navy moved a carrier into the Gulf as Iran tensions rose [1]. Oil rose on Iran tensions [2].');
+    assert.equal(result.brief.lead, 'Oil rose on Iran tensions [2].');
+    assert.equal(result.brief.sourceAttributions, 0);
+  });
+
+  it('preserves shadow acceptance of semantic failures', () => {
+    const lead = 'Venezuela warned [1] the U.S. Navy moved a carrier into the Gulf as Iran tensions rose [1]. Oil rose on Iran tensions [2].';
+    const result = compose(lead, 'shadow');
+    assert.equal(result.brief.lead, lead);
+    assert.equal(result.brief.droppedLeadSentences, 0);
+  });
+});
+
 // #5947 review (adversarial + correctness, independently): collapsing EVERY
 // dotted acronym before splitting removed real sentence boundaries too, merging
 // two sentences into one validation unit whose citation set is the UNION of
@@ -358,11 +419,7 @@ describe('composeSynthesizedBrief acronym boundaries fail closed (#5947 review)'
       lines,
     });
     const composed = composeSynthesizedBrief(misattributed, topStories, { validatorMode: 'enforce' });
-    assert.notEqual(composed, null, 'the grounded sentence still publishes');
-    assert.ok(!composed.lead.includes('U.S.'), 'the misattributed claim never publishes');
-    assert.ok(!composed.lead.includes('warnings were issued'));
-    assert.match(composed.lead, /Embassies urged citizens/);
-    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+    assert.equal(composed, null, 'neither the misattributed head nor its ambiguous continuation publishes');
   });
 
   it('drops an uncited sentence that follows an acronym-terminated sentence', () => {
@@ -505,12 +562,7 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
       lines,
     });
     const composed = composeSynthesizedBrief(unioned, topStories, { validatorMode: 'enforce' });
-    assert.notEqual(composed, null);
-    assert.ok(
-      !composed.lead.includes('U.S.'),
-      'a bare marker mid-lead must stay a boundary — merging would union {1,2} and publish the US claim',
-    );
-    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
+    assert.equal(composed, null, 'the unclosed citation run cannot license either fragment');
   });
 
   it('does not merge on an adjacent citation run that does not close the sentence', () => {
@@ -519,9 +571,7 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
       lines,
     });
     const composed = composeSynthesizedBrief(adjacentUnioned, topStories, { validatorMode: 'enforce' });
-    assert.notEqual(composed, null);
-    assert.ok(!composed.lead.includes('U.S.'), 'the unclosed run must not license the US claim');
-    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
+    assert.equal(composed, null, 'adjacent citations cannot license the ambiguous continuation');
   });
 
   it('accepts an adjacent citation run that does close the sentence', () => {
@@ -617,9 +667,7 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
       lines,
     });
     const composed = composeSynthesizedBrief(strippedToBare, topStories, { validatorMode: 'enforce' });
-    assert.notEqual(composed, null);
-    assert.ok(!composed.lead.includes('U.S.'), 'the stripped bare marker must not collapse — the US claim stays uncited and unpublished');
-    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
+    assert.equal(composed, null, 'stripping an invalid citation cannot make the continuation independent');
   });
 });
 
@@ -1285,5 +1333,147 @@ describe('synthesisRejectionFeedback', () => {
     assert.match(synthesisRejectionFeedback({ code: BRIEF_REJECTIONS.LEAD_UNCITED }), /bracket number/);
     assert.equal(synthesisRejectionFeedback(null), null);
     assert.equal(synthesisRejectionFeedback({}), null);
+  });
+});
+
+// #8441: the World Brief ran only the proper-noun and number gates, and the
+// proper-noun gate consumes "Former President" as a title prefix, so a lead
+// calling the sitting president "former President Trump" grounded on "Trump".
+describe('status-qualifier gate on the World Brief (#8441)', () => {
+  const topStories = [
+    {
+      primaryTitle: "Trump welcomes China's Xi to Washington with planeside ceremony",
+      primarySource: 'AP News',
+      primaryLink: 'http://xi',
+      sources: ['AP News', 'Reuters'],
+    },
+    {
+      primaryTitle: 'Former Brazilian president Bolsonaro begins prison sentence',
+      primarySource: 'Reuters',
+      primaryLink: 'http://bolsonaro',
+      sources: ['Reuters', 'BBC World'],
+    },
+  ];
+  const groundedLines = [
+    { n: 1, text: "Trump welcomed China's Xi to Washington [1]" },
+    { n: 2, text: 'Former president Bolsonaro began his prison sentence [2]' },
+  ];
+  const compose = (lead, { lines = groundedLines, validatorMode = 'enforce' } = {}) =>
+    composeSynthesizedBriefResult(JSON.stringify({ lead, lines }), topStories, { validatorMode });
+
+  it('drops a lead sentence whose qualifier no cited story carries, and keeps the rest', () => {
+    const out = compose(
+      "Former President Trump welcomed China's Xi to Washington [1]. Bolsonaro began a prison sentence [2].",
+    );
+    assert.equal(out.rejection, null);
+    assert.ok(!/Former President Trump/i.test(out.brief.lead), 'the fabricated qualifier must not publish');
+    assert.match(out.brief.lead, /Bolsonaro/);
+    assert.equal(out.brief.droppedLeadSentences, 1);
+    assert.equal(out.brief.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER);
+    assert.match(out.brief.droppedLeadDetail, /Former President Trump/);
+  });
+
+  it('rejects the lead when its only sentence carries the qualifier', () => {
+    const out = compose("Former President Trump welcomed China's Xi to Washington [1].");
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER);
+    assert.equal(out.rejectionDetail, 'Former President Trump');
+  });
+
+  it("does not let one cited story's qualifier license another story's name", () => {
+    // Story 2 says "Former"; story 1 names Trump. Both are cited, but the
+    // qualifier and the name must sit in the SAME story.
+    const out = compose('Former President Trump welcomed Xi to Washington as Bolsonaro began a sentence [1][2].');
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER);
+  });
+
+  it('keeps a qualifier its cited story carries', () => {
+    const out = compose("Former president Bolsonaro began a prison sentence [2]. Trump welcomed China's Xi to Washington [1].");
+    assert.equal(out.rejection, null);
+    assert.match(out.brief.lead, /Former president Bolsonaro/);
+    assert.equal(out.brief.droppedLeadSentences, 0);
+  });
+
+  it('observes but publishes in shadow mode', () => {
+    const lead = "Former President Trump welcomed China's Xi to Washington [1].";
+    const out = compose(lead, { validatorMode: 'shadow' });
+    assert.equal(out.rejection, null);
+    assert.equal(out.brief.lead, lead);
+  });
+
+  it('substitutes the headline for a story line with an ungrounded qualifier', () => {
+    const out = compose("Bolsonaro began a prison sentence [2]. Trump welcomed China's Xi to Washington [1].", {
+      lines: [
+        { n: 1, text: "Former President Trump welcomed China's Xi to Washington [1]" },
+        groundedLines[1],
+      ],
+    });
+    assert.equal(out.rejection, null);
+    assert.equal(out.brief.hallucinatedLines, 1);
+    assert.equal(out.brief.lines[0].text, `${topStories[0].primaryTitle} [1]`);
+    assert.equal(out.brief.lines[1].text, 'Former president Bolsonaro began his prison sentence [2]');
+  });
+
+  it('counts but publishes an ungrounded line in shadow mode', () => {
+    const line = "Former President Trump welcomed China's Xi to Washington";
+    const out = compose("Bolsonaro began a prison sentence [2]. Trump welcomed China's Xi to Washington [1].", {
+      lines: [{ n: 1, text: `${line} [1]` }, groundedLines[1]],
+      validatorMode: 'shadow',
+    });
+    assert.equal(out.brief.hallucinatedLines, 1);
+    assert.equal(out.brief.lines[0].text, `${line} [1]`);
+  });
+
+  it('sees a qualifier the sentence split separated from its title at a dotted acronym', () => {
+    // "former U.S. President Trump": the split fails closed at "U.S." before a
+    // capital, so "…as former U.S." and "President Trump welcomed…" are two
+    // units and neither holds qualifier, title and name together.
+    const stories = [
+      topStories[0],
+      {
+        primaryTitle: 'U.S. tariffs on China take effect as talks stall',
+        primarySource: 'Reuters',
+        primaryLink: 'http://tariffs',
+        sources: ['Reuters', 'CNBC'],
+      },
+    ];
+    const composeWith = (lead) => composeSynthesizedBriefResult(
+      JSON.stringify({ lead, lines: [groundedLines[0], { n: 2, text: 'US tariffs on China took effect [2]' }] }),
+      stories,
+      { validatorMode: 'enforce' },
+    );
+    const split = composeWith(
+      "Tariffs on China took effect [2] as former U.S. President Trump welcomed Xi to Washington [1]. Trump welcomed China's Xi with a planeside ceremony [1].",
+    );
+    assert.equal(split.rejection, null);
+    assert.ok(!/former/i.test(split.brief.lead), 'neither half of the split sentence publishes');
+    assert.equal(split.brief.lead, "Trump welcomed China's Xi with a planeside ceremony [1].");
+    assert.equal(split.brief.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER);
+
+    const grounded = composeWith("Tariffs on China took effect [2] as U.S. President Trump welcomed Xi to Washington [1].");
+    assert.equal(grounded.rejection, null, 'the same split without a qualifier still publishes');
+    assert.equal(grounded.brief.droppedLeadSentences, 0);
+
+    // PR #8573 review: when the qualifier sits wholly in the unit after the
+    // acronym, the head carries nothing wrong and must survive.
+    const ownFailure = composeWith(
+      "Tariffs on China took effect [2] on the U.S. Former President Trump welcomed Xi to Washington [1]. Trump welcomed China's Xi with a planeside ceremony [1].",
+    );
+    assert.equal(ownFailure.rejection, null);
+    assert.equal(
+      ownFailure.brief.lead,
+      "Tariffs on China took effect [2] on the U.S. Trump welcomed China's Xi with a planeside ceremony [1].",
+    );
+    assert.equal(ownFailure.brief.droppedLeadSentences, 1);
+  });
+
+  it('tells the resample which qualifier to remove', () => {
+    const note = synthesisRejectionFeedback({
+      code: BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER,
+      detail: 'Former President Trump',
+    });
+    assert.match(note, /"Former President Trump"/);
+    assert.match(note, /former|acting|interim/i);
   });
 });

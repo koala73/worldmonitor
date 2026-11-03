@@ -7,17 +7,9 @@
  * `import('dodopayments-checkout')` under pro-test/, was deleted in #7222 along
  * with the dependency in pro-test/package.json.
  *
- * Why a SOURCE sweep and not a resolution or bundle check: the DASHBOARD still
- * declares `dodopayments-checkout` in the root package.json (its own overlay
- * machinery is dormant but present), so the package sits in the repo-root
- * node_modules. esbuild and Vite both resolve bare specifiers by walking UP
- * from pro-test/src, which means a re-introduced import in /pro resolves
- * happily against the root install — pro-test's own package.json not declaring
- * it changes nothing, and every /pro test suite stays green. Dropping the
- * `dodopayments-checkout` stubs from the /pro esbuild harness does not close
- * this either (verified: re-adding the import to pro-test/src/services/
- * checkout.ts still built and passed). Reading the source text is the only
- * check that does not depend on module resolution.
+ * Use a source sweep so a future root dependency cannot silently restore the
+ * SDK through ancestor node_modules resolution. The dashboard overlay and its
+ * root dependency have now also been removed.
  *
  * Why the sweep is DERIVED and not a directory listing (PR #7259 review): the
  * /pro bundle's source surface is larger than pro-test/src. Modules there
@@ -167,5 +159,16 @@ describe('/pro bundle has no dodopayments-checkout dependency', () => {
       false,
       'pro-test must not re-declare dodopayments-checkout (#7222).',
     );
+  });
+});
+
+
+describe('dashboard checkout has no overlay SDK', () => {
+  it('has no SDK import in dashboard sources or dependency manifest', () => {
+    const files = walk(resolve(root, 'src'));
+    assert.ok(files.length > 100, 'expected to scan the dashboard sources');
+    assert.deepEqual(files.filter(file => SDK_SPECIFIER.test(readFileSync(file, 'utf-8'))).map(file => relative(root, file)), []);
+    const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf-8'));
+    assert.equal(Object.hasOwn({ ...pkg.dependencies, ...pkg.devDependencies }, 'dodopayments-checkout'), false);
   });
 });

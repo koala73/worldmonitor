@@ -30,6 +30,7 @@ import type { AcquisitionProviderName, SearchOptions, SearchResult } from '../ac
 
 /** Packaging/container words that are not product identity tokens. */
 const PACKAGING_WORDS = new Set(['pack', 'box', 'bag', 'container', 'bottle', 'can', 'jar', 'tin', 'set', 'kit', 'bundle']);
+const SIZE_LIKE = /^\d+(?:\.\d+)?[a-z]+$/;
 
 /**
  * Token overlap: ≥40% of canonical name identity words (>2 chars, non-packaging) must appear
@@ -54,7 +55,7 @@ export function isTitlePlausible(canonicalName: string, productName: string | un
   const tokens = canonicalName
     .toLowerCase()
     .split(/\W+/)
-    .filter((w) => w.length > 2 && !PACKAGING_WORDS.has(w));
+    .filter((w) => w.length > 2 && !PACKAGING_WORDS.has(w) && !(SIZE_LIKE.test(w) && parseSize(w)));
   if (tokens.length === 0) return true;
   const extracted = productName.toLowerCase();
   const matches = tokens.filter((w) => {
@@ -63,6 +64,32 @@ export function isTitlePlausible(canonicalName: string, productName: string | un
     return s.length >= 4 && s !== w && extracted.includes(s);
   });
   return matches.length >= Math.max(1, Math.ceil(tokens.length * 0.4));
+}
+
+function titleWords(title: string): string[] {
+  return title.toLowerCase().match(/\p{L}{3,}/gu) ?? [];
+}
+
+/**
+ * True when the extracted product shares at least half of the words in the
+ * page's own declared title and does not state a different quantity in the
+ * same unit (a carousel's 1L variant on a 500ml page).
+ */
+export function pageDeclaresProduct(
+  pageTitle: string | undefined,
+  productName: string | undefined,
+  sizeText?: string,
+): boolean {
+  if (!pageTitle || !productName) return false;
+  const pageSize = parseSize(pageTitle);
+  const productSize = parseSize(sizeText) ?? parseSize(productName);
+  if (pageSize && productSize && pageSize.baseUnit === productSize.baseUnit && pageSize.baseQuantity !== productSize.baseQuantity) {
+    return false;
+  }
+  const pageWords = titleWords(pageTitle);
+  if (pageWords.length === 0) return false;
+  const productWords = new Set(titleWords(productName));
+  return pageWords.filter((w) => productWords.has(w)).length * 2 >= pageWords.length;
 }
 
 /**
@@ -221,6 +248,7 @@ export type ExtractionProviderName = Extract<AcquisitionProviderName, 'firecrawl
 export type ExtractionFailureReason =
   | 'provider-error'
   | 'provider-cooldown'
+  | 'source-http-error'
   | 'missing-price'
   | 'price-evidence-missing'
   | 'title-mismatch'
@@ -342,7 +370,6 @@ export class SearchAdapter implements RetailerAdapter {
     // Pins outlive config changes, so a pin stored while a looser policy was
     // live would keep being scraped directly and bypass discovery entirely.
     // The market scope has to apply here too, not just to discovered URLs.
-    const requiredSegments = ctx.config.searchConfig?.urlPathMustContain ?? [];
     const targets: Target[] = [];
 
     for (const basket of baskets) {
@@ -364,8 +391,7 @@ export class SearchAdapter implements RetailerAdapter {
 
         if (
           pinned &&
-          isAllowedHost(pinned.sourceUrl, allowedHosts) &&
-          matchesRequiredPathSegments(pinned.sourceUrl, requiredSegments)
+          isUrlInPolicy(pinned.sourceUrl, ctx.config.searchConfig, allowedHosts)
         ) {
           targets.push({
             id: item.id,
@@ -419,9 +445,14 @@ export class SearchAdapter implements RetailerAdapter {
     itemConstraints?: ItemConstraints,
   ): Promise<ExtractionAttempt> {
     const sizeHint = extractSizeHint(canonicalName);
-    const sizeClause = sizeHint
-      ? ` You are looking for "${canonicalName}". The product MUST be ${sizeHint}. If the page shows a different size, pack count, or bulk case, return null for price.`
-      : ` You are looking for "${canonicalName}".`;
+    const canonicalSize = parseSize(canonicalName);
+    const { minBaseQty, maxBaseQty, baseUnit } = itemConstraints ?? {};
+    const quantityWindow = canonicalSize && canonicalSize.baseUnit === baseUnit && minBaseQty != null && maxBaseQty != null
+      ? ` The total product quantity must be between ${minBaseQty}${baseUnit} and ${maxBaseQty}${baseUnit}. Convert equivalent displayed units to ${baseUnit} before comparing the quantity. Keep the requested pack count of ${canonicalSize.packCount}. If the page shows a quantity outside this range, an incompatible measurement type, a different pack count, or a bulk case, return null for price.`
+      : sizeHint
+        ? ` The product MUST be ${sizeHint}. If the page shows a different size, pack count, or bulk case, return null for price.`
+        : '';
+    const sizeClause = ` You are looking for "${canonicalName}".${quantityWindow}`;
 
     const extractSchema = {
       // No numeric example here, deliberately. A worked example ("combine them
@@ -478,6 +509,7 @@ export class SearchAdapter implements RetailerAdapter {
 
       let data: ExtractedProduct;
       let pageContent: string | undefined;
+      let pageTitle: string | undefined;
       try {
         // renderWaitMs: late-hydrating storefronts (Carrefour MAF) capture as
         // a breadcrumb shell without a settle delay — Firecrawl only; the Exa
@@ -491,6 +523,7 @@ export class SearchAdapter implements RetailerAdapter {
             : await this.exa.extract<ExtractedProduct>(url, extractSchema, { timeout: 30_000 });
         data = result.data ?? {};
         pageContent = result.pageContent;
+        pageTitle = result.pageTitle;
         // The open->closed transition deserves the same log visibility as the
         // opening warn: without it, "did the provider recover" is only
         // answerable by the absence of further warnings (#6182 review).
@@ -498,6 +531,10 @@ export class SearchAdapter implements RetailerAdapter {
           ctx.logger.info(
             `  [search:provider-cooldown] ${ctx.config.slug}: ${provider === 'firecrawl' ? 'Firecrawl' : 'Exa'} extraction recovered — cooldown closed after a successful probe`,
           );
+        }
+        if (result.sourceStatusCode != null && result.sourceStatusCode >= 400) {
+          failures.push({ provider, reason: 'source-http-error', detail: `HTTP ${result.sourceStatusCode}` });
+          continue;
         }
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
@@ -585,6 +622,12 @@ export class SearchAdapter implements RetailerAdapter {
         continue;
       }
 
+      if (ctx.config.searchConfig?.requirePageTitleMatch && !pageDeclaresProduct(pageTitle, data.productName, data.sizeText)) {
+        failures.push({ provider, reason: 'title-mismatch', detail: `page: ${pageTitle ?? 'none'}` });
+        // The page itself is not this product; another extractor reads the same page.
+        break;
+      }
+
       if (strictMode && !itemConstraints) {
         failures.push({ provider, reason: 'validator-rejected', detail: 'missing-item-constraints' });
         // A config/plumbing gap, not an extraction problem — retrying is pointless.
@@ -601,7 +644,7 @@ export class SearchAdapter implements RetailerAdapter {
         itemConstraints &&
         (itemConstraints.minBaseQty != null || itemConstraints.maxBaseQty != null) &&
         !data.sizeText?.trim() &&
-        !parseSize(canonicalName)
+        !parseSize(data.productName ?? '')
       ) {
         failures.push({ provider, reason: 'validator-rejected', detail: 'missing-size' });
         continue;
@@ -611,7 +654,9 @@ export class SearchAdapter implements RetailerAdapter {
         canonicalName,
         productName: data.productName,
         sizeText: data.sizeText,
+        productUrl: url,
         item: validationConstraints,
+        marketCode: ctx.config.marketCode,
       });
 
       if (strictMode && !validator.ok) {
@@ -987,6 +1032,9 @@ export class SearchAdapter implements RetailerAdapter {
         rawTitle: extracted.productName,
         rawBrand: null,
         rawSizeText: extracted.sizeText ?? null,
+        normalizedSize: itemConstraints
+          ? parseSize(extracted.sizeText, { baseUnit: itemConstraints.baseUnit, marketCode: ctx.config.marketCode }) ?? undefined
+          : undefined,
         imageUrl: null,
         categoryText: itemCategory,
         retailerSku: null,

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>World Monitor for AI agents: MCP server, API and skills</title>
+  <meta name="description" content="Connect Claude, ChatGPT, Cursor, Gemini or Grok Bot to the World Monitor MCP server: 90+ live intelligence tools, a REST API and skills you add in one command.">
+  <link rel="canonical" href="https://www.worldmonitor.app/agent/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="World Monitor for AI agents: MCP server, API and skills">
+  <meta property="og:description" content="Connect Claude, ChatGPT, Cursor, Gemini or Grok Bot to the World Monitor MCP server: 90+ live intelligence tools, a REST API and skills you add in one command.">
+  <meta property="og:url" content="https://www.worldmonitor.app/agent/">
+  <meta property="og:image" content="https://www.worldmonitor.app/favico/og-image.png">
+  <link rel="stylesheet" href="/agent/agent.css">
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow"><a href="/" data-umami-event="agent-nav-home">World Monitor</a></p>
+      <h1>World Monitor for AI agents</h1>
+      <p class="lede" id="approved-description">World Monitor: real-time geopolitical intelligence dashboard. A free live map of conflicts, shipping, flights, markets and cyber, with an API and MCP server.</p>
+      <p class="muted">Give Claude, ChatGPT, Cursor, Gemini, Grok Bot or any MCP client the same live data the dashboard shows: one remote MCP server with 90+ MCP tools, a REST API, and ready-made skills.</p>
+    </header>
+
+    <section aria-labelledby="offer-heading">
+      <h2 id="offer-heading">What agents get</h2>
+      <dl class="tiles">
+        <div class="tile"><dt>MCP server</dt><dd><code>https://worldmonitor.app/mcp</code><br>90+ MCP tools over Streamable HTTP: conflict events, chokepoints and vessel traffic, military flights, markets, cyber threats, country risk, forecasts and news digests. <a href="/docs/mcp-overview" data-umami-event="agent-docs-click" data-umami-event-target="mcp-overview">MCP reference</a></dd></div>
+        <div class="tile"><dt>REST API</dt><dd>The same data as JSON over HTTPS with an <code>X-WorldMonitor-Key</code> header, described by an OpenAPI spec. <a href="/docs/api-reference" data-umami-event="agent-docs-click" data-umami-event-target="api-reference">API reference</a></dd></div>
+        <div class="tile"><dt>Skills</dt><dd>Task recipes your agent can load on demand, installed with one command. <a href="#skills" data-umami-event="agent-jump-skills">Install skills</a></dd></div>
+      </dl>
+      <p class="muted">Signing in needs only a free World Monitor account, and <code>get_sources</code> works without one. Most data tools need a Pro or API plan; see <a href="/pro" data-umami-event="agent-plans-click">plans</a>.</p>
+    </section>
+
+    <section aria-labelledby="setup-heading">
+      <h2 id="setup-heading">Connect your agent</h2>
+      <p class="muted">Every client uses the same server URL. When it connects, a browser window asks you to sign in to World Monitor and approve access (OAuth). No key to copy.</p>
+
+      <article class="client" id="claude">
+        <h3>Claude</h3>
+        <p><strong>Claude and Claude Desktop:</strong> open <em>Customize</em> &gt; <em>Connectors</em>, click <em>+ Add</em> and choose <em>Add custom connector</em> (some accounts show <em>Custom</em> &gt; <em>Web</em> instead). Name it World Monitor, paste the URL below, click <em>Continue</em>, keep the detected sign-in settings, click <em>Add</em>, then connect and sign in. On Team and Enterprise plans an owner adds it first under <em>Organization settings</em> &gt; <em>Connectors</em>, and members then click <em>Connect</em>. The Free plan allows one custom connector.</p>
+        <div class="cmd"><pre><code>https://worldmonitor.app/mcp</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="claude" aria-label="Copy Claude connector URL">Copy</button></div>
+        <p><strong>Claude Code:</strong> add the server, then run <code>/mcp</code> in a session to sign in.</p>
+        <div class="cmd"><pre><code>claude mcp add --transport http worldmonitor https://worldmonitor.app/mcp</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="claude" aria-label="Copy Claude Code command">Copy</button></div>
+      </article>
+
+      <article class="client" id="chatgpt">
+        <h3>ChatGPT</h3>
+        <p>Full MCP support is available on ChatGPT web for Business, Enterprise and Edu plans. On Business, only workspace admins and owners can create custom MCP connections. On Enterprise and Edu, admins can also give selected members permission to create connections. Only admins and owners can publish connections for the workspace. Pro supports custom MCP connections with read/fetch permissions. Check <a href="https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt" data-umami-event="agent-outbound-click" data-umami-event-target="chatgpt-requirements" rel="noopener">OpenAI’s current requirements</a> before setup.</p>
+        <p>With permission to create a connection, open <em>Plugins</em>, click the plus button and choose <em>Add custom MCP server</em>. Enter World Monitor as the name and the URL below as the server URL. Choose OAuth, confirm the warning, then create and install the plugin. Start a chat and pick World Monitor with <code>@</code>.</p>
+        <div class="cmd"><pre><code>https://worldmonitor.app/mcp</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="chatgpt" aria-label="Copy ChatGPT server URL">Copy</button></div>
+      </article>
+
+      <article class="client" id="cursor">
+        <h3>Cursor</h3>
+        <p>Add this to <code>~/.cursor/mcp.json</code> for every project, or <code>.cursor/mcp.json</code> for one. Cursor opens the sign-in window the first time the server starts.</p>
+        <div class="cmd"><pre><code>{
+  &quot;mcpServers&quot;: {
+    &quot;worldmonitor&quot;: {
+      &quot;url&quot;: &quot;https://worldmonitor.app/mcp&quot;
+    }
+  }
+}</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="cursor" aria-label="Copy Cursor mcp.json">Copy</button></div>
+      </article>
+
+      <article class="client" id="gemini">
+        <h3>Gemini CLI</h3>
+        <p>Add the server (use <code>-s user</code> to make it available in every project), then run <code>/mcp auth worldmonitor</code> inside Gemini CLI to sign in.</p>
+        <div class="cmd"><pre><code>gemini mcp add --transport http worldmonitor https://worldmonitor.app/mcp</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="gemini" aria-label="Copy Gemini CLI command">Copy</button></div>
+        <p>Or add it to <code>~/.gemini/settings.json</code> by hand:</p>
+        <div class="cmd"><pre><code>{
+  &quot;mcpServers&quot;: {
+    &quot;worldmonitor&quot;: {
+      &quot;httpUrl&quot;: &quot;https://worldmonitor.app/mcp&quot;
+    }
+  }
+}</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="gemini" aria-label="Copy Gemini settings.json">Copy</button></div>
+      </article>
+
+      <article class="client" id="grok-bot">
+        <h3>Grok Bot</h3>
+        <p>In a Grok Bot chat, ask it to add the server, confirm, and sign in when the approval window opens. Then mention World Monitor with <code>@</code> in any chat.</p>
+        <div class="cmd"><pre><code>Add this MCP server: https://worldmonitor.app/mcp</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="grok-bot" aria-label="Copy Grok Bot prompt">Copy</button></div>
+        <p>On grok.com, open <a href="https://grok.com/connectors" data-umami-event="agent-outbound-click" data-umami-event-target="grok-connectors" rel="noopener">Connectors</a>, choose <em>New Connector</em>, then <em>Custom</em>, and paste the same URL.</p>
+      </article>
+
+      <article class="client" id="generic">
+        <h3>Any other MCP client</h3>
+        <p>Point it at the Streamable HTTP endpoint below. Clients that support OAuth register themselves and open the sign-in window. Clients that send headers can use an API key instead: <code>X-WorldMonitor-Key: wm_...</code>. Stdio-only clients can connect through <code>mcp-remote</code>.</p>
+        <div class="cmd"><pre><code>https://worldmonitor.app/mcp</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="other" aria-label="Copy MCP endpoint">Copy</button></div>
+        <p>Check the connection and browse the tools with the MCP Inspector:</p>
+        <div class="cmd"><pre><code>npx @modelcontextprotocol/inspector --server-url https://worldmonitor.app/mcp --transport http</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="other" aria-label="Copy MCP Inspector command">Copy</button></div>
+      </article>
+    </section>
+
+    <section aria-labelledby="skills-heading" id="skills">
+      <h2 id="skills-heading">Install the skills</h2>
+      <p class="muted">Skills are folders with a <code>SKILL.md</code> recipe that tells an agent which World Monitor endpoint answers which question. The <a href="https://skills.sh/koala73/worldmonitor" data-umami-event="agent-outbound-click" data-umami-event-target="skills-sh" rel="noopener">skills CLI</a> installs them into Claude Code, Cursor, Codex, Gemini CLI and other agents. Pick skills and agents interactively:</p>
+      <div class="cmd"><pre><code>npx skills add koala73/worldmonitor</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="skills" aria-label="Copy skills install command">Copy</button></div>
+      <p class="muted">Install one skill for one agent, or every skill for every supported agent in your user profile:</p>
+      <div class="cmd"><pre><code>npx skills add koala73/worldmonitor --skill check-chokepoint-status --agent claude-code</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="skills" aria-label="Copy single skill install command">Copy</button></div>
+      <div class="cmd"><pre><code>npx skills add koala73/worldmonitor --all --global</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="skills" aria-label="Copy global install command">Copy</button></div>
+      <p class="muted">Skills call the REST API, so set an API key from <a href="/pro" data-umami-event="agent-plans-click">your account</a> in <code>X-WorldMonitor-Key</code>. Available skills:</p>
+      <ul class="skills" id="skill-list">
+        <li><code>assess-energy-shock</code> Model oil or gas supply shock exposure for a country and chokepoint.</li>
+        <li><code>check-airport-delays</code> Retrieve current airport delay and cancellation alerts worldwide — delay type, severity, average delay minutes, and affected-flight percentages per airport.</li>
+        <li><code>check-chokepoint-status</code> Retrieve live disruption status for the 13 monitored maritime chokepoints (Suez, Hormuz, Malacca, Bab el-Mandeb, Panama, and more).</li>
+        <li><code>check-country-risk</code> Retrieve composite country risk intelligence — Country Instability Index (CII), travel advisory level, and active sanctions exposure — for one country by ISO code.</li>
+        <li><code>check-forecast-signals</code> Retrieve probabilistic forecasts and their scorecard context.</li>
+        <li><code>check-sanctions-pressure</code> Retrieve normalized OFAC sanctions pressure — designation summaries, recent additions, and per-country/per-program aggregates including sanctioned vessels and aircraft.</li>
+        <li><code>compare-macro-history</code> Compare CPI, interest rates and sovereign yield histories from seeded official reports.</li>
+        <li><code>fetch-country-brief</code> Open the WorldMonitor country interface in a UI-capable MCP host.</li>
+        <li><code>fetch-news-digest</code> Retrieve the pre-aggregated digest of World Monitor&#x27;s curated news feeds, bucketed by category, with per-article threat classification and alert flags.</li>
+        <li><code>fetch-resilience-score</code> Retrieve the composite country resilience score (0-100) and its domain/pillar breakdown for a single country.</li>
+        <li><code>get-market-quotes</code> Retrieve real-time equity, index, and ETF quotes with price, change, and sparkline history.</li>
+        <li><code>get-prediction-markets</code> Retrieve active prediction-market contracts (Polymarket) with live yes-price probabilities, volume, and close dates, filterable by category or keyword.</li>
+        <li><code>lookup-bilateral-tariff</code> Look up the applied tariff on one HS6 product imported by one country from another (MFN, partner-specific preferential, and the best available applied rate), from UNCTAD TRAINS via World Bank WITS.</li>
+        <li><code>lookup-us-import-duty</code> Look up the current US import duty on one HTS product from one country — the HTS column rate (MFN, trade-agreement or column 2) plus the Section 301 and 232 duties in chapter 99 — from the live USITC Harmonized Tariff Schedule.</li>
+        <li><code>monitor-energy-disruptions</code> Retrieve the curated energy disruption event log for pipelines and storage facilities.</li>
+        <li><code>monitor-health-alerts</code> Retrieve disease outbreak alerts and PM2.5 air-quality health warnings.</li>
+        <li><code>monitor-internet-outages</code> Retrieve detected internet outages (Cloudflare Radar) with country, cause, severity, and time bounds.</li>
+        <li><code>monitor-supply-chain-stress</code> Retrieve current shipping market stress from carrier and freight indicators.</li>
+        <li><code>monitor-webcams</code> Discover live webcams in a map viewport and resolve thumbnails or player URLs.</li>
+        <li><code>research-stocks</code> Read current stock research, technical backtests, saved analyses or saved backtests.</li>
+        <li><code>scan-cyber-threats</code> Retrieve active cyber-threat intelligence — malware IOCs, C2 infrastructure, and CISA known-exploited vulnerabilities — filterable by type, source, and severity.</li>
+        <li><code>trace-trade-flows</code> Retrieve strategic UN Comtrade commodity flows with anomaly flags.</li>
+        <li><code>track-climate-hazards</code> Retrieve climate-relevant disaster events, anomalies, and climate news.</li>
+        <li><code>track-conflict-events</code> Retrieve geolocated armed-conflict events (UCDP) with parties, fatality estimates, and violence type, filterable by country and date range.</li>
+        <li><code>track-earthquakes</code> Retrieve recent earthquakes (USGS) with magnitude, depth, location, and a concern score that flags proximity to nuclear test sites.</li>
+        <li><code>track-military-flights</code> Retrieve tracked military aircraft positions (OpenSky + Wingbits) with callsign, type, operator, altitude, and activity clusters, filterable by bounding box, operator, and aircraft type.</li>
+        <li><code>track-tariff-trends</code> Retrieve a country&#x27;s average applied tariff over time — the MFN rate on all products, or the rate it applies on goods from one partner and/or in one product group — plus the optional US effective tariff rate.</li>
+        <li><code>track-unrest-events</code> Retrieve seeded protest, riot, strike, and civil unrest events.</li>
+        <li><code>track-vessel-traffic</code> Retrieve a point-in-time AIS vessel-traffic snapshot with disruption candidates and optional tanker overlay, filterable by bounding box.</li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="more-heading">
+      <h2 id="more-heading">More for agents</h2>
+      <ul class="links">
+        <li><a href="/docs/mcp-quickstart" data-umami-event="agent-docs-click" data-umami-event-target="mcp-quickstart">MCP quickstart</a>: first call in five minutes.</li>
+        <li><a href="/agents.md" data-umami-event="agent-docs-click" data-umami-event-target="agents-md">agents.md</a>: auth, rate limits and machine surfaces.</li>
+        <li><a href="/llms.txt" data-umami-event="agent-docs-click" data-umami-event-target="llms-txt">llms.txt</a>: a short briefing for language models.</li>
+        <li><a href="/dashboard" data-umami-event="agent-nav-dashboard">Open the live dashboard</a></li>
+      </ul>
+    </section>
+  </main>
+  <p id="copy-status" class="sr-only" role="status" aria-live="polite"></p>
+  <script type="module" nonce="wm-static-bootstrap" src="/agent/agent.js"></script>
+  <script async defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-16bc-4241-a133-0eb28c07c832" data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" nonce="wm-static-bootstrap"></script>
+</body>
+</html>

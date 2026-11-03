@@ -1,3 +1,4 @@
+import type { BreakerDataState } from '@/utils/circuit-breaker';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { AisDensityZone as ProtoDensityZone, AisDisruption as ProtoDisruption, GetVesselSnapshotResponse, SnapshotCandidateReport as ProtoCandidateReport } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
@@ -122,7 +123,10 @@ let pollLoop: SmartPollLoopHandle | null = null;
 let inFlight = false;
 let isPolling = false;
 let lastPollAt = 0;
-let lastSequence = 0;
+let lastCandidateSequence = 0;
+let firstCandidatePoll: Promise<void> | null = null;
+let lastStartedPollId = 0;
+let lastAppliedPollId = 0;
 
 let latestDisruptions: AisDisruptionEvent[] = [];
 let latestDensity: AisDensityZone[] = [];
@@ -145,7 +149,11 @@ function shouldIncludeCandidates(): boolean {
   return positionCallbacks.size > 0;
 }
 
+let candidateDataState: BreakerDataState = { mode: 'unavailable', timestamp: null, offline: false };
+let latestCandidateOutcomePollId = 0;
+
 interface ParsedSnapshot {
+  dataState: BreakerDataState;
   sequence: number;
   status: SnapshotStatus;
   disruptions: AisDisruptionEvent[];
@@ -154,18 +162,35 @@ interface ParsedSnapshot {
 }
 
 async function fetchSnapshotPayload(includeCandidates: boolean, signal?: AbortSignal): Promise<ParsedSnapshot | null> {
+  let completed: GetVesselSnapshotResponse | undefined;
+  let completedAt: number | null = null;
   const response = await snapshotBreaker.execute(
-    async () => client.getVesselSnapshot(
-      { neLat: 0, neLon: 0, swLat: 0, swLon: 0, includeCandidates, includeTankers: false },
-      { signal },
-    ),
+    async () => {
+      const value = await client.getVesselSnapshot(
+        { neLat: 0, neLon: 0, swLat: 0, swLon: 0, includeCandidates, includeTankers: false },
+        { signal },
+      );
+      completed = value;
+      completedAt = Date.now();
+      return value;
+    },
     emptySnapshotFallback,
+    {
+      cacheKey: includeCandidates ? 'candidates' : 'density',
+      shouldCache: (result) => result.dataAvailable && result.snapshot !== undefined,
+      evictOnRefreshFailure: includeCandidates,
+    },
   );
 
   const snapshot = response.snapshot;
   if (!snapshot) return null;
 
   return {
+    dataState: !response.dataAvailable || !snapshot.status?.connected
+      ? { mode: 'unavailable', timestamp: null, offline: snapshotBreaker.getDataState().offline }
+      : response === completed
+        ? { mode: 'live', timestamp: completedAt, offline: false }
+        : { mode: 'cached', timestamp: null, offline: snapshotBreaker.getDataState().offline },
     sequence: snapshot.sequence,
     status: {
       connected: snapshot.status?.connected ?? false,
@@ -251,26 +276,39 @@ async function pollSnapshot(force = false, signal?: AbortSignal): Promise<void> 
   if (signal?.aborted) return;
 
   inFlight = true;
+  // A forced candidate poll can overlap a density poll. Only the most recently
+  // started poll that has finished may replace the shared state.
+  const pollId = ++lastStartedPollId;
+  const includeCandidates = shouldIncludeCandidates();
   try {
-    const includeCandidates = shouldIncludeCandidates();
     const snapshot = await fetchSnapshotPayload(includeCandidates, signal);
     if (!snapshot) throw new Error('Invalid snapshot payload');
 
-    latestDisruptions = snapshot.disruptions;
-    latestDensity = snapshot.density;
-    latestStatus = snapshot.status;
-    lastPollAt = Date.now();
+    if (pollId > lastAppliedPollId) {
+      lastAppliedPollId = pollId;
+      latestDisruptions = snapshot.disruptions;
+      latestDensity = snapshot.density;
+      latestStatus = snapshot.status;
+      lastPollAt = Date.now();
+    }
 
-    if (includeCandidates) {
-      if (snapshot.sequence > lastSequence) {
-        emitCandidateReports(snapshot.candidateReports);
-        lastSequence = snapshot.sequence;
-      } else if (lastSequence === 0) {
-        emitCandidateReports(snapshot.candidateReports);
-        lastSequence = snapshot.sequence;
-      }
-    } else {
-      lastSequence = snapshot.sequence;
+    if (includeCandidates && pollId > latestCandidateOutcomePollId) {
+      latestCandidateOutcomePollId = pollId;
+      candidateDataState = positionCallbacks.size > 0
+        && Number.isFinite(snapshot.sequence)
+        && snapshot.sequence > 0
+        && (lastCandidateSequence === 0 || snapshot.sequence > lastCandidateSequence)
+        ? snapshot.dataState
+        : { mode: 'unavailable', timestamp: null, offline: false };
+    }
+
+    if (
+      includeCandidates
+      && positionCallbacks.size > 0
+      && (lastCandidateSequence === 0 || snapshot.sequence > lastCandidateSequence)
+    ) {
+      lastCandidateSequence = snapshot.sequence;
+      emitCandidateReports(snapshot.candidateReports);
     }
 
     const itemCount = latestDisruptions.length + latestDensity.length;
@@ -278,16 +316,20 @@ async function pollSnapshot(force = false, signal?: AbortSignal): Promise<void> 
       dataFreshness.recordUpdate('ais', itemCount > 0 ? itemCount : latestStatus.vessels);
     }
   } catch {
-    latestStatus.connected = false;
+    if (includeCandidates && pollId > latestCandidateOutcomePollId) {
+      latestCandidateOutcomePollId = pollId;
+      candidateDataState = { mode: 'unavailable', timestamp: null, offline: snapshotBreaker.getDataState().offline };
+    }
+    if (pollId > lastAppliedPollId) latestStatus.connected = false;
   } finally {
     inFlight = false;
   }
 }
 
-function startPolling(): void {
-  if (isPolling || !isAisConfigured()) return;
+function startPolling(): Promise<void> | null {
+  if (isPolling || !isAisConfigured()) return null;
   isPolling = true;
-  void pollSnapshot(true);
+  const firstPoll = pollSnapshot(true);
   pollLoop?.stop();
   pollLoop = startSmartPollLoop(({ signal }) => pollSnapshot(false, signal), {
     intervalMs: SNAPSHOT_POLL_INTERVAL_MS,
@@ -296,19 +338,37 @@ function startPolling(): void {
     refreshOnVisible: true,
     runImmediately: false,
   });
+  return firstPoll;
 }
 
 // ---- Exported Functions ----
 
-export function registerAisCallback(callback: AisCallback): void {
+/**
+ * Resolves when the first candidate poll finishes (delivered or failed), so a
+ * consumer can build its first view from AIS contacts instead of an empty set.
+ */
+export function registerAisCallback(callback: AisCallback): Promise<void> {
+  const firstCallback = positionCallbacks.size === 0;
   positionCallbacks.add(callback);
-  startPolling();
+  const started = startPolling();
+  if (started) {
+    firstCandidatePoll = started;
+  } else if (firstCallback && isAisConfigured()) {
+    // Polling that began with no callbacks requested density only. Waiting for
+    // the next tick left the vessel layer USNI-only for minutes (#8634).
+    firstCandidatePoll = pollSnapshot(true);
+  }
+  return firstCandidatePoll ?? Promise.resolve();
 }
 
 export function unregisterAisCallback(callback: AisCallback): void {
   positionCallbacks.delete(callback);
   if (positionCallbacks.size === 0) {
     lastCallbackTimestampByMmsi.clear();
+    lastCandidateSequence = 0;
+    firstCandidatePoll = null;
+    latestCandidateOutcomePollId = lastStartedPollId;
+    candidateDataState = { mode: 'unavailable', timestamp: null, offline: false };
   }
 }
 
@@ -322,6 +382,16 @@ export function disconnectAisStream(): void {
   isPolling = false;
   inFlight = false;
   latestStatus.connected = false;
+  latestCandidateOutcomePollId = lastStartedPollId;
+  candidateDataState = { mode: 'unavailable', timestamp: null, offline: false };
+}
+
+export function getAisCandidateDataState(): BreakerDataState {
+  if (!isPolling || positionCallbacks.size === 0 || !isAisConfigured()
+    || (candidateDataState.mode === 'live' && (candidateDataState.timestamp === null || Date.now() - candidateDataState.timestamp > SNAPSHOT_STALE_MS))) {
+    return { mode: 'unavailable', timestamp: null, offline: candidateDataState.offline };
+  }
+  return { ...candidateDataState };
 }
 
 export function getAisStatus(): { connected: boolean; vessels: number; messages: number } {

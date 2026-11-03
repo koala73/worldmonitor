@@ -139,17 +139,31 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
     const step1Body = await step1Res.json();
     assert.equal(step1Body.error?.code, -32001, 'step 1 (unauth tools/call): JSON-RPC code must be -32001');
 
-    // Step 1b — discovery is PUBLIC. Unauthenticated initialize + tools/list
-    // succeed WITHOUT touching any dep (thrower-stub bundle stays untouched),
-    // proving the discovery surface bypasses the auth wall cleanly.
+    // Step 1b — the connect-time challenge. An unauthenticated `initialize` on
+    // the transport is refused with the same 401 (id echoed), so a hosted
+    // connector learns at connect time that it must sign in. Still touches no
+    // dep (thrower-stub bundle stays untouched).
+    const initParams = { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'lifecycle-test', version: '1.0' } };
+    const step1bChallenge = await mcpHandler(
+      unauthReq({ jsonrpc: '2.0', id: '1b', method: 'initialize', params: initParams }),
+      step1Deps,
+    );
+    assert.equal(step1bChallenge.status, 401, 'step 1b (unauth initialize on the transport): the handshake must be challenged');
+    assert.match(step1bChallenge.headers.get('www-authenticate') ?? '', /^Bearer realm="worldmonitor"/);
+    assert.equal((await step1bChallenge.json()).id, '1b', 'step 1b: the refusal must echo the request id');
+
+    // The anonymous handshake is served on the machine-discovery alias, and
+    // stateless catalog reads stay public on the transport — both WITHOUT
+    // touching any dep, proving they bypass the auth wall cleanly.
     const step1bInit = await mcpHandler(
-      unauthReq({
-        jsonrpc: '2.0', id: '1b', method: 'initialize',
-        params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'lifecycle-test', version: '1.0' } },
+      new Request('https://worldmonitor.app/.well-known/mcp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: '1b', method: 'initialize', params: initParams }),
       }),
       step1Deps,
     );
-    assert.equal(step1bInit.status, 200, 'step 1b (unauth initialize): discovery must be public');
+    assert.equal(step1bInit.status, 200, 'step 1b (unauth initialize on the discovery alias): the anonymous handshake must be public');
     assert.ok(step1bInit.headers.get('mcp-session-id'), 'step 1b: anonymous initialize must still issue a session id');
 
     const step1bList = await mcpHandler(
@@ -251,7 +265,7 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
     // Step 5 — at counter=LIMIT-1, the next INCR lands at the cap and the
     // reservation succeeds. Counter sits AT the cap after this call.
     const step5Res = await mcpHandler(
-      proReq('POST', callBody('get_market_data', {}, 5)),
+      proReq('POST', callBody('get_country_macro', {}, 5)),
       depsCapped,
     );
     assert.equal(step5Res.status, 200, 'step 5 (tools/call at cap-1): expected HTTP 200');
@@ -271,7 +285,7 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
     // (per the cap-exceeded branch in dispatchToolsCall), AND the
     // counter-unchanged invariant.
     const step6Res = await mcpHandler(
-      proReq('POST', callBody('get_market_data', {}, 6)),
+      proReq('POST', callBody('get_country_macro', {}, 6)),
       depsCapped,
     );
     assert.equal(step6Res.status, 429, `step 6 (tools/call at cap): expected HTTP 429, got ${step6Res.status}`);
@@ -319,7 +333,7 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
     // sabotage 3 (a regression that DECRs the counter on initialize would
     // free one slot, flipping this 429 into a 200).
     const step8Res = await mcpHandler(
-      proReq('POST', callBody('get_market_data', {}, 8)),
+      proReq('POST', callBody('get_country_macro', {}, 8)),
       depsCapped,
     );
     assert.equal(

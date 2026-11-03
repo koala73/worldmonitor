@@ -6,10 +6,12 @@ import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 import "worldmonitor/intelligence/v1/intel_history_record.proto";
 
+// The handler embeds `query` and runs a vector search over
+// convex/intelHistory.ts. (Detached: kept out of the public spec.)
+
 // SearchIntelHistoryRequest asks for stored historical intelligence events
-// semantically similar to a free-text query. The handler embeds `query` and
-// runs a vector search over convex/intelHistory.ts; the optional filters
-// narrow the candidate set before ranking.
+// semantically similar to a free-text query. The optional filters narrow the
+// candidate set before ranking.
 message SearchIntelHistoryRequest {
   // Free-text search query, e.g. "artillery strikes near Kharkiv". Embedded
   // with the same model and normalization the seed writer used, so query and

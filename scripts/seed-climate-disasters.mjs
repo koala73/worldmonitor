@@ -2,6 +2,8 @@
 
 import { loadEnvFile, runSeed, CHROME_UA, verifySeedKey, loadSharedConfig } from './_seed-utils.mjs';
 import { extractCountryCode } from './shared/geo-extract.mjs';
+import { projectNaturalEventsRetention } from './_natural-events-dashboard.mjs';
+import { countryCentroid } from './lib/country-centroid.mjs';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -45,11 +47,15 @@ for (const [name, iso2] of Object.entries(COUNTRY_NAMES_RAW)) {
 const COUNTRY_CODES_BY_BBOX_AREA = Object.entries(COUNTRY_BBOXES)
   .filter(([, bbox]) => Array.isArray(bbox) && bbox.length === 4)
   .sort(([, a], [, b]) => {
-    const areaA = Math.abs((Number(a[2]) - Number(a[0])) * (Number(a[3]) - Number(a[1])));
-    const areaB = Math.abs((Number(b[2]) - Number(b[0])) * (Number(b[3]) - Number(b[1])));
+    const areaA = (a[2] - a[0]) * longitudeSpan(a);
+    const areaB = (b[2] - b[0]) * longitudeSpan(b);
     return areaA - areaB;
   })
   .map(([code]) => code);
+
+function longitudeSpan([, west, , east]) {
+  return west > east ? 360 - west + east : east - west;
+}
 
 function asArray(value) {
   if (Array.isArray(value)) return value;
@@ -161,11 +167,13 @@ function mapNaturalStatus(event, severity) {
 }
 
 function getCountryCenter(countryCode) {
+  const centroid = countryCentroid(countryCode);
+  if (centroid) return centroid;
   const bbox = COUNTRY_BBOXES[countryCode];
   if (!Array.isArray(bbox) || bbox.length !== 4) return { lat: 0, lng: 0 };
   return {
     lat: (Number(bbox[0]) + Number(bbox[2])) / 2,
-    lng: (Number(bbox[1]) + Number(bbox[3])) / 2,
+    lng: ((Number(bbox[1]) + longitudeSpan(bbox) / 2 + 180) % 360) - 180,
   };
 }
 
@@ -191,7 +199,8 @@ function findCountryCodeByCoordinates(lat, lng) {
     const bbox = COUNTRY_BBOXES[code];
     if (!Array.isArray(bbox) || bbox.length !== 4) continue;
     const [minLat, minLng, maxLat, maxLng] = bbox.map(Number);
-    if (latNum >= minLat && latNum <= maxLat && lngNum >= minLng && lngNum <= maxLng) {
+    const inLongitude = minLng > maxLng ? lngNum >= minLng || lngNum <= maxLng : lngNum >= minLng && lngNum <= maxLng;
+    if (latNum >= minLat && latNum <= maxLat && lngNum >= -180 && lngNum <= 180 && inLongitude) {
       return code;
     }
   }
@@ -364,8 +373,7 @@ function mapNaturalEvent(event) {
     name: normalizeDisasterName(event.title || event.stormName || event.categoryTitle || 'Untitled disaster'),
     country,
     countryCode,
-    lat: Number.isFinite(lat) ? lat : 0,
-    lng: Number.isFinite(lng) ? lng : 0,
+    ...(Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : getCountryCenter(countryCode)),
     severity,
     startedAt,
     status,
@@ -387,7 +395,7 @@ async function fetchNaturalClimateDisasters() {
     console.warn('  [NaturalEvents] natural:events:v1 key is empty or missing in Redis');
     return [];
   }
-  const events = asArray(data?.events);
+  const events = asArray(projectNaturalEventsRetention(data)?.events);
   console.log(`  [NaturalEvents] ${events.length} raw events from natural:events:v1`);
   const climate = events.filter(isClimateNaturalEvent);
   console.log(`  [NaturalEvents] ${climate.length} matched climate filter`);
@@ -475,11 +483,13 @@ async function fetchClimateDisasters() {
 export {
   buildReliefWebRequestBodies,
   collectDisasterSourceResults,
+  fetchNaturalClimateDisasters,
   getNaturalSourceMeta,
   getReliefWebAppname,
   isClimateNaturalEvent,
   findCountryCodeByCoordinates,
   mapNaturalEvent,
+  mapReliefItem,
   toRedisDisaster,
 };
 

@@ -22,7 +22,7 @@
  *
  * Env vars needed (same as the individual scripts):
  *   UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
- *   GROQ_API_KEY and/or OPENROUTER_API_KEY (for narrative + brief LLM)
+ *   OPENROUTER_API_KEY (for narrative + brief LLM)
  */
 
 import { pathToFileURL } from 'node:url';

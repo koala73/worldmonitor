@@ -109,6 +109,7 @@ A healthy service shows `latest` and `active[0]` agreeing. The failure signature
 - `railwayStatus()` now reads `activeDeployments` from `railway status --json` (with a 64 MB `maxBuffer`).
 - `activeCrash()` marks a service red when the active deployment or its instance is `CRASHED`, and pulls *that* deployment's log rather than the newest record's.
 - `tickTally()` counts `=== Done`, `=== Failed gracefully`, FATAL and `RETRY FAILED` markers inside the multi-tick log, so the chronic-versus-one-off decision is made per tick instead of per deployment record.
+  - `=== Failed gracefully ===` always means exit 75. A standalone seeder that opts in to `runSeed`'s `allowPreservedFetchFailure` (aviation intl) logs `=== Refresh failed; last-good retained ===` instead and exits 0, but only while its seed-meta is within `maxStaleMin`. Count that marker as a failed tick that Railway records as a success.
 - `FAILED` records now tally as build failures, not run crashes, with a new `BUILD_FAILED` (warn) class and a combined `<CLASS>+BUILD_FAILED`.
 
 Per the diagnosing session: selftest 52/52, and the live rerun flags `seed-fred-rates` as `GRACEFUL+BUILD_FAILED` (warn) with exit 1. The skill's SKILL.md gotchas were updated to match.

@@ -4,13 +4,22 @@
 
 # On main: skip if ONLY scripts/, docs/, .github/, or non-web files changed
 if [ "$VERCEL_GIT_COMMIT_REF" = "main" ] && [ -n "$VERCEL_GIT_PREVIOUS_SHA" ]; then
+  # PREVIOUS_SHA is the last successful deployment, so it equals HEAD only on a
+  # deliberate redeploy of that commit, usually to pick up a changed env var.
+  # The path diff would be empty and cancel it (#8216).
+  if [ "$VERCEL_GIT_PREVIOUS_SHA" = "$(git rev-parse HEAD 2>/dev/null)" ]; then
+    echo "Building: redeploy of the last deployed commit"
+    exit 1
+  fi
   git cat-file -e "$VERCEL_GIT_PREVIOUS_SHA" 2>/dev/null && {
     WEB_CHANGES=$(git diff --name-only "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- \
       'src/' 'api/' 'server/' 'shared/' 'public/' 'blog-site/' 'pro-test/' 'proto/' 'convex/' \
       'CHANGELOG.md' 'docs/docs.json' 'docs/snapshots/' \
-      'scripts/build-crawlable-corpus.mjs' 'scripts/unranked-country-inventory.mjs' 'scripts/build-use-cases.mjs' 'scripts/build-accuracy-page.mjs' 'scripts/build-research-reports.mjs' 'scripts/build-comparison-pages.mjs' 'scripts/comparison-page-narratives.mjs' \
+      'scripts/shared/prediction-country-language.json' \
+      'scripts/build-crawlable-corpus.mjs' 'scripts/unranked-country-inventory.mjs' 'scripts/build-use-cases.mjs' 'scripts/data/use-case-workflows.mjs' 'scripts/build-accuracy-page.mjs' 'scripts/build-situation-page.mjs' 'scripts/situation-page/' 'scripts/slugify.mjs' 'scripts/build-research-reports.mjs' 'scripts/build-comparison-pages.mjs' 'scripts/comparison-page-narratives.mjs' 'scripts/comparison-shortlist.mjs' \
       'scripts/build-sitemap.mjs' 'scripts/discover-content-corpus-pages.mjs' \
       'scripts/crawlable-live-tools.mjs' 'scripts/crawlable-sources-page.mjs' \
+      'scripts/country-related-links.mjs' 'scripts/data/country-centroids.json' 'scripts/related-reading.mjs' \
       'scripts/source-origin.mjs' 'scripts/source-origin.d.mts' \
       'scripts/generate-inventory-facts.mjs' \
       'scripts/docs-stats.mjs' 'scripts/source-attribution.mjs' 'scripts/vercel-ignore.sh' \
@@ -53,6 +62,13 @@ fi
 # deployed commit.
 COMPARE_SHA=$(git merge-base HEAD origin/main 2>/dev/null)
 if [ -z "$COMPARE_SHA" ] && [ -n "$VERCEL_GIT_PREVIOUS_SHA" ]; then
+  # Vercel's preview clone has no origin/main, so this fallback is the usual
+  # path. PREVIOUS_SHA equals HEAD on a redeploy that picks up a changed
+  # preview env var; the empty diff would cancel it, as on main (#8216).
+  if [ "$VERCEL_GIT_PREVIOUS_SHA" = "$(git rev-parse HEAD 2>/dev/null)" ]; then
+    echo "Building: redeploy of the last deployed commit"
+    exit 1
+  fi
   git cat-file -e "$VERCEL_GIT_PREVIOUS_SHA" 2>/dev/null && COMPARE_SHA="$VERCEL_GIT_PREVIOUS_SHA"
 fi
 [ -z "$COMPARE_SHA" ] && exit 1
@@ -71,17 +87,25 @@ git diff --name-only "$COMPARE_SHA" HEAD -- \
   'CHANGELOG.md' \
   'docs/docs.json' \
   'docs/snapshots/' \
+  'scripts/shared/prediction-country-language.json' \
   'scripts/build-crawlable-corpus.mjs' \
   'scripts/unranked-country-inventory.mjs' \
-  'scripts/build-use-cases.mjs' \
+  'scripts/build-use-cases.mjs' 'scripts/data/use-case-workflows.mjs' \
   'scripts/build-accuracy-page.mjs' \
+  'scripts/build-situation-page.mjs' \
+  'scripts/situation-page/' \
+  'scripts/slugify.mjs' \
   'scripts/build-comparison-pages.mjs' \
   'scripts/comparison-page-narratives.mjs' \
+  'scripts/comparison-shortlist.mjs' \
   'scripts/build-research-reports.mjs' \
   'scripts/build-sitemap.mjs' \
   'scripts/discover-content-corpus-pages.mjs' \
   'scripts/crawlable-live-tools.mjs' \
   'scripts/crawlable-sources-page.mjs' \
+  'scripts/country-related-links.mjs' \
+  'scripts/data/country-centroids.json' \
+  'scripts/related-reading.mjs' \
   'scripts/source-origin.mjs' \
   'scripts/source-origin.d.mts' \
   'scripts/generate-inventory-facts.mjs' \

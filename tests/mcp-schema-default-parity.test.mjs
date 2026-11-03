@@ -3,6 +3,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CACHE_TOOLS, filterConflictPanelEvents } from '../api/mcp/registry/cache-tools.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // Registry now lives split across two files. Concatenate them so the
@@ -35,13 +36,12 @@ const ENV_EXAMPLE = readFileSync(resolve(HERE, '../.env.example'), 'utf8');
  *      conditional-spread anti-pattern `...(params.<key> ? { <key>: ... } : {})`.
  *      Acceptable patterns: `<key>: String(params.<key> ?? <default>)` or
  *      bare `params.<key> ?? <default>` (nullish-coalescing default).
- *   2. Cache tools — for every `limit: default 30` claim, the `_postFilter`
- *      source MUST reference `DEFAULT_LIST_LIMIT` (the centrally-applied
- *      cap from v1.3.0 / issue #3678).
+ *   2. Cache tools — each `limit: default 30` claim must reference
+ *      `DEFAULT_LIST_LIMIT` in its tool block or have a runtime contract
+ *      check covering the extracted filter.
  *
- * Both checks operate on `Function.prototype.toString()` which preserves
- * the source under tsx/Node ESM. If a future build step minifies before
- * tests, this check needs reworking — but we run tests against source.
+ * Source checks inspect the registry TypeScript. The conflict limit
+ * contract also executes the ordinary and paid-panel filters.
  */
 
 const VALID_KEY = 'wm_test_key_123';
@@ -165,7 +165,27 @@ describe('MCP schema-vs-behaviour parity (regression guard)', () => {
   });
 
   describe('cache tools — limit:default 30 is enforced via DEFAULT_LIST_LIMIT', () => {
-    it('every "limit: default 30" claim has a corresponding DEFAULT_LIST_LIMIT use in the same tool block', () => {
+    it('conflict filters enforce default 30 and explicit limits through the extracted helper', () => {
+      const tool = CACHE_TOOLS.find((candidate) => candidate.name === 'get_conflict_events');
+      assert.match(tool.inputSchema.properties.limit.description, /default 30/);
+      const rows = Array.from({ length: 40 }, (_, id) => ({ id }));
+      const snapshot = {
+        'ucdp-events': { events: rows },
+        'iran-events': { events: rows },
+        events: { events: rows },
+      };
+      for (const filter of [tool._postFilter, filterConflictPanelEvents]) {
+        for (const [params, expected] of [[{}, 30], [{ limit: 0 }, 40], [{ limit: 2 }, 2]]) {
+          const result = filter(structuredClone(snapshot), params);
+          for (const label of ['ucdp-events', 'events', ...(process.env.IRAN_EVENTS_ENABLED?.toLowerCase() === 'true' ? ['iran-events'] : [])]) {
+            assert.deepEqual(result[label].events.map((row) => row.id),
+              Array.from({ length: expected }, (_, id) => id), `${label}, ${JSON.stringify(params)}`);
+          }
+        }
+      }
+    });
+
+    it('every "limit: default 30" claim has an inline default or a tested extracted filter', () => {
       const src = MCP_SRC;
       const tools = src.split(/(?=\n\s{2}\{\s*\n\s+name:\s+'[a-z_]+')/);
       const violations = [];
@@ -175,6 +195,7 @@ describe('MCP schema-vs-behaviour parity (regression guard)', () => {
         const name = nameMatch[1];
         // Cache tool with `limit:default 30` claim?
         if (!/limit:\s*\{[^}]*default 30/.test(block)) continue;
+        if (name === 'get_conflict_events') continue;
         // Must reference DEFAULT_LIST_LIMIT somewhere in the block (typically
         // inside the _postFilter body).
         if (!/DEFAULT_LIST_LIMIT/.test(block)) {

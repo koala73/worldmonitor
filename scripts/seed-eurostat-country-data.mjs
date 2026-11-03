@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot } from './_seed-utils.mjs';
+import { CPI_CANONICAL_KEYS, shiftMonth } from './_world-cpi-shared.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -13,10 +14,11 @@ const EU_COUNTRIES = ['DE', 'FR', 'IT', 'ES', 'PL', 'NL', 'BE', 'AT', 'SE', 'CZ'
 
 const EUROSTAT_BASE = 'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data';
 
-const DATASETS = {
+export const DATASETS = {
   cpi: {
-    id: 'prc_hicp_manr',
-    params: { coicop: 'CP00', lastTimePeriod: '2' },
+    // ECOICOP ver. 2 HICP; prc_hicp_manr was frozen at 2025-12.
+    id: 'prc_hicp_minr',
+    params: { coicop18: 'TOTAL', unit: 'RCH_A', lastTimePeriod: '2' },
     unit: '%',
     label: 'HICP annual rate of change',
   },
@@ -39,7 +41,7 @@ const DATASETS = {
  * Eurostat uses a flat value object indexed by integer position.
  * Dimensions define the order of iteration.
  */
-function parseEurostatResponse(data, geoCode) {
+export function parseEurostatResponse(data, geoCode) {
   try {
     const dims = data?.dimension;
     const values = data?.value;
@@ -205,6 +207,58 @@ async function fetchCountryData(geoCode) {
   return { geoCode, entry, metricCount };
 }
 
+// ── CPI fallback: IMF harmonised HICP ────────────────────────────────────
+//
+// The tile read Eurostat with no fallback, so when Eurostat froze its ECOICOP
+// ver. 1 datasets at 2025-12 the tile served December 2025 as current for nine
+// months. seed-world-cpi-imf already stores the IMF's harmonised index (the
+// same HICP measure) per country; the tile uses it whenever it carries a newer
+// month than Eurostat.
+
+const IMF_CPI_KEY = CPI_CANONICAL_KEYS['imf-cpi'];
+
+function annualRate(byDate, month) {
+  const current = byDate.get(month);
+  const yearAgo = byDate.get(shiftMonth(month, -12));
+  if (!(current > 0) || !(yearAgo > 0)) return null;
+  // One decimal, the precision Eurostat publishes the annual rate at.
+  return Math.round((current / yearAgo - 1) * 1000) / 10;
+}
+
+/**
+ * Latest and prior annual HICP rate for one country from the IMF payload.
+ * Returns the tile's CPI metric shape, or null when the monthly series lacks
+ * a year-ago point.
+ */
+export function imfHarmonisedCpi(imfPayload, iso2) {
+  const series = imfPayload?.harmonised?.[iso2];
+  if (series?.frequency !== 'M' || !Array.isArray(series.points) || series.points.length === 0) return null;
+  const byDate = new Map(series.points.map(({ date, value }) => [date, value]));
+  const latest = series.points[series.points.length - 1].date;
+  const value = annualRate(byDate, latest);
+  if (value === null) return null;
+  return { value, priorValue: annualRate(byDate, shiftMonth(latest, -1)), date: latest, unit: '%' };
+}
+
+/** Eurostat stays authoritative unless the IMF print is for a newer month. */
+export function pickFresherCpi(eurostatCpi, imfCpi) {
+  if (!imfCpi) return eurostatCpi;
+  if (!eurostatCpi || imfCpi.date > eurostatCpi.date) return imfCpi;
+  return eurostatCpi;
+}
+
+/** Apply the IMF fallback to every country's CPI; other metrics are untouched. */
+export function withImfCpiFallback(countries, imfPayload) {
+  const out = {};
+  let imfCount = 0;
+  for (const [iso2, entry] of Object.entries(countries)) {
+    const cpi = pickFresherCpi(entry.cpi, imfHarmonisedCpi(imfPayload, iso2));
+    if (cpi && cpi !== entry.cpi) imfCount += 1;
+    out[iso2] = cpi ? { ...entry, cpi } : entry;
+  }
+  return { countries: out, imfCount };
+}
+
 /**
  * Fetch all countries in batches to avoid overwhelming Eurostat with simultaneous requests.
  * Individual failures don't abort the seed.
@@ -237,8 +291,17 @@ async function fetchAll() {
 
   console.log(`  Eurostat: ${countriesWithData}/${EU_COUNTRIES.length} countries with data`);
 
+  // A missing IMF snapshot (first run, Redis blip) leaves the Eurostat values as-is.
+  const imfPayload = await readSeedSnapshot(IMF_CPI_KEY);
+  for (const geo of EU_COUNTRIES) countries[geo] ??= {};
+  const { countries: withFallback, imfCount } = withImfCpiFallback(countries, imfPayload);
+  for (const [geo, entry] of Object.entries(withFallback)) {
+    if (Object.keys(entry).length === 0) delete withFallback[geo];
+  }
+  console.log(`  CPI: ${imfCount} country(ies) from IMF harmonised HICP (newer than Eurostat)${imfPayload ? '' : ' — IMF snapshot unavailable'}`);
+
   return {
-    countries,
+    countries: withFallback,
     seededAt: Date.now(),
   };
 }

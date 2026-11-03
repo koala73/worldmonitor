@@ -1,11 +1,10 @@
 # World Monitor
 
-[English](README.md) | [日本語](README.ja-JP.md)
+[English](README.md) | [日本語](README.ja-JP.md) | [Русский](README.ru.md)
 
 **实时全球情报仪表盘** — 在统一的态势感知界面中，汇集 AI 驱动的新闻聚合、地缘政治监测和基础设施追踪。
 
 [![GitHub stars](https://img.shields.io/github/stars/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/stargazers)
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/re63kWKxaz)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Last commit](https://img.shields.io/github/last-commit/koala73/worldmonitor)](https://github.com/koala73/worldmonitor/commits/main)
@@ -52,7 +51,7 @@
 - **精选新闻源**，覆盖全球和区域类别，并由 AI 综合生成简报
 - **双地图引擎** — 3D 地球仪（globe.gl）和 WebGL 平面地图（deck.gl），使用共享地图图层目录
 - **跨信息流关联** — 汇聚军事、经济、灾害和升级信号
-- **国家不稳定指数（CII）** — 面向一级国家注册表的服务器权威 CII v8 压力评分
+- **国家不稳定指数（CII）** — 面向一级国家注册表的服务器权威 CII v14 压力评分
 - **金融雷达** — 证券交易所、大宗商品、加密货币，以及市场综合指标
 - **本地 AI** — 通过 Ollama 运行全部功能，无需 API 密钥
 - **站点变体**，均来自同一代码库（World Monitor、Tech Monitor、Finance Monitor、Commodity Monitor、Happy Monitor、Energy Monitor）
@@ -109,7 +108,7 @@ npm run dev:energy     # energy.worldmonitor.app
 |----------|-------------|
 | **前端** | Vanilla TypeScript、Vite、globe.gl + Three.js、deck.gl + MapLibre GL |
 | **桌面** | Tauri 2（Rust）与 Node.js sidecar |
-| **AI/ML** | Ollama / Groq / OpenRouter、Transformers.js（浏览器端） |
+| **AI/ML** | Ollama / OpenRouter、Transformers.js（浏览器端） |
 | **API 契约** | Protocol Buffers 与 sebuf HTTP 注解 |
 | **部署** | Vercel Edge Functions、Railway 中继、Tauri、PWA |
 | **缓存** | Redis（Upstash）、3 层缓存、CDN、service worker |
@@ -129,6 +128,7 @@ World Monitor 同时为智能体、脚本和浏览器而构建：
   ```sh
   npx worldmonitor tools          # run ad-hoc — list every MCP tool (no key needed)
   npm install -g worldmonitor     # or install the `worldmonitor` (alias `wm`) command
+  brew install worldmonitor       # or install it with Homebrew
   worldmonitor risk IR --api-key wm_xxx
   ```
 
@@ -141,6 +141,12 @@ World Monitor 同时为智能体、脚本和浏览器而构建：
 ## 航班数据
 
 航班数据由 [Wingbits](https://wingbits.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor) 慷慨提供；Wingbits 是先进的 ADS-B 航班数据解决方案。
+
+---
+
+## 支持
+
+World Monitor 的 Web 应用和 API 运行在 [Vercel](https://vercel.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor) 上。感谢 Vercel 对本项目的慷慨支持。
 
 ---
 

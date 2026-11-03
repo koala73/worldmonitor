@@ -69,8 +69,8 @@ const summary = {
       id: 'cross-strait-activity',
       state: 'available',
       signals: [{
-        label: 'PLA aircraft sorties',
-        value: '18 sorties',
+        label: 'taiwan-mnd activity',
+        value: 'plaAircraftSorties: 3 · planShips: 6 · officialShips: 1 · adizEntries: 1 · medianLineCrossings: 0',
         source: 'Taiwan MND',
         observedAt: '2026-07-14',
         stale: false,
@@ -146,6 +146,15 @@ test('China summary is scoped to China, exposes per-group states, and safely att
 
     assert.match(card?.textContent ?? '', /countryBrief\.china\.status\.partial/);
     assert.match(card?.textContent ?? '', /countryBrief\.china\.status\.stale/);
+    const activity = sectionsAfterUpdate[2];
+    assert.match(activity?.textContent ?? '', /Taiwan Ministry of National Defense activity/);
+    assert.match(activity?.textContent ?? '', /Chinese military aircraft flights: 3/);
+    assert.match(activity?.textContent ?? '', /Chinese navy ships: 6/);
+    assert.match(activity?.textContent ?? '', /Other official vessels: 1/);
+    assert.match(activity?.textContent ?? '', /Air defense identification zone entries: 1/);
+    assert.match(activity?.textContent ?? '', /Taiwan Strait median-line crossings: 0/);
+    assert.doesNotMatch(activity?.textContent ?? '', /plaAircraftSorties|planShips|adizEntries|taiwan-mnd/);
+    assert.match(sectionsAfterUpdate[1]?.textContent ?? '', /State Administration for Market Regulation · Guidance · Announced/);
     assert.match(
       card?.textContent ?? '',
       /One policy source is temporarily unavailable\./,

@@ -22,7 +22,8 @@ const root = resolve(__dirname, '..');
 
 import { extractPresets, isTemplatePreset, probePreset } from '../scripts/lib/mcp-preset-liveness.mjs';
 
-const presets = extractPresets(readFileSync(resolve(root, 'src/services/mcp-store.ts'), 'utf8'));
+const storeSource = readFileSync(resolve(root, 'src/services/mcp-store.ts'), 'utf8');
+const presets = extractPresets(storeSource);
 
 // Known-dead or moved URLs that must NOT appear in presets
 const BANNED_URLS = [
@@ -30,6 +31,8 @@ const BANNED_URLS = [
   'https://maps.mcp.cloudflare.com/mcp',         // wrong — Cloudflare-hosted Maps doesn't exist
   'https://mcp-fetch.cloudflare.com/mcp',        // wrong — old Browser Fetch URL
   'https://server.smithery.ai/@amadevs/mcp-server-overpass/mcp', // 404 on Smithery
+  'https://weatherforensics.dev/mcp/free', // vendor backend unavailable; replaced by Open-Meteo
+  'https://radar.mcp.cloudflare.com/sse',        // 410 since 2026-10; Cloudflare moved Radar to /mcp
 ];
 
 // Private/RFC1918 host patterns (SSRF risk)
@@ -95,7 +98,7 @@ describe('MCP Presets — static validation', () => {
 
   it('expected free presets are present', () => {
     const names = new Set(presets.map(p => p.name));
-    for (const expected of ['Parallel Search', 'Robtex', 'Pyth Price Feeds', 'Weather Forensics']) {
+    for (const expected of ['Parallel Search', 'Robtex', 'Pyth Price Feeds', 'Open-Meteo']) {
       assert.ok(names.has(expected), `Expected preset "${expected}" not found`);
     }
   });
@@ -138,22 +141,17 @@ describe('MCP Presets — static validation', () => {
     assert.equal(bf.serverUrl, 'https://browser.mcp.cloudflare.com/mcp');
   });
 
-  it('WeatherForensics defaultTool is noaa_ncei_daily_weather_for_location_date (not get_current_weather)', () => {
-    const wf = presets.find(p => p.name === 'Weather Forensics');
-    assert.ok(wf, 'Weather Forensics preset not found');
-    assert.equal(wf.defaultTool, 'noaa_ncei_daily_weather_for_location_date');
+  it('Open-Meteo uses the historical weather tool without authentication', () => {
+    const weather = presets.find(p => p.name === 'Open-Meteo');
+    assert.ok(weather, 'Open-Meteo preset not found');
+    assert.equal(weather.defaultTool, 'openmeteo_get_historical');
+    assert.equal(weather.authNote, undefined);
   });
 
-  // This preset is the one that went dark, and it was the only one of the
-  // catalog's open endpoints with no URL assertion in the default CI run — the
-  // live suite is opt-in, so a silent re-point was invisible here. Pin the
-  // vendor's PUBLISHED address specifically: the backend it 308s to is an
-  // implementation detail, and recording that instead is the change this pin
-  // exists to catch.
-  it('WeatherForensics serverUrl is the vendor published domain, not its backend', () => {
-    const wf = presets.find(p => p.name === 'Weather Forensics');
-    assert.ok(wf, 'Weather Forensics preset not found');
-    assert.equal(wf.serverUrl, 'https://weatherforensics.dev/mcp/free');
+  it('Open-Meteo uses the community hosted MCP endpoint, not the REST API', () => {
+    const weather = presets.find(p => p.name === 'Open-Meteo');
+    assert.ok(weather, 'Open-Meteo preset not found');
+    assert.equal(weather.serverUrl, 'https://open-meteo.caseyjhand.com/mcp');
   });
 
   it('LunarCrush defaultTool is Cryptocurrencies (not List)', () => {
@@ -162,10 +160,19 @@ describe('MCP Presets — static validation', () => {
     assert.equal(lc.defaultTool, 'Cryptocurrencies');
   });
 
-  it('Cloudflare Radar serverUrl points to radar.mcp.cloudflare.com/sse', () => {
+  it('Cloudflare Radar serverUrl points to radar.mcp.cloudflare.com/mcp', () => {
     const cf = presets.find(p => p.name === 'Cloudflare Radar');
     assert.ok(cf, 'Cloudflare Radar preset not found');
-    assert.equal(cf.serverUrl, 'https://radar.mcp.cloudflare.com/sse');
+    assert.equal(cf.serverUrl, 'https://radar.mcp.cloudflare.com/mcp');
+  });
+
+  it('Cloudflare Radar defaultTool exists upstream and sends a required date range', () => {
+    const cf = presets.find(p => p.name === 'Cloudflare Radar');
+    assert.ok(cf, 'Cloudflare Radar preset not found');
+    // get_summary_attacks is not in the Radar server's tools/list; traffic anomalies 400 without range or dates.
+    assert.equal(cf.defaultTool, 'get_traffic_anomalies');
+    const block = storeSource.slice(storeSource.indexOf("name: 'Cloudflare Radar'"));
+    assert.match(block.slice(0, block.indexOf('},\n  {')), /defaultArgs: \{ limit: 10, dateRange: '7d' \}/);
   });
 });
 

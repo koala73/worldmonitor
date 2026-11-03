@@ -81,13 +81,9 @@ export function normalizeCountryToIso2(raw: unknown): string | null {
   // (shared/brief-filter.js:135). Map to null without treating as error.
   if (trimmed.toLowerCase() === 'global') return null;
 
-  // ISO2 pass-through, but only if the gazetteer knows about it.
-  // "USA" is intentionally rejected here — it's not in country-names.json
-  // (the map uses "united states" → "US"), and accepting it would
-  // bypass the gazetteer's source-of-truth discipline.
   if (/^[A-Za-z]{2}$/.test(trimmed)) {
     const upper = trimmed.toUpperCase();
-    return ISO2_SET.has(upper) ? upper : null;
+    if (ISO2_SET.has(upper)) return upper;
   }
 
   // Full-name lookup, case-insensitive.

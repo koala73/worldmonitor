@@ -12,6 +12,7 @@ import { __testing__ } from '../api/health.js';
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const KEY = 'market:breadth-history:v1';
 const META = 'seed-meta:market:breadth-history';
+const SAVED = 'market:sp500-constituents:v1';
 const prior = {
   [KEY]: { _seed: { fetchedAt: Date.parse('2026-09-02T02:00:00Z'), recordCount: 1, state: 'OK', sourceVersion: 'market-breadth-v1', schemaVersion: 1 },
     data: { updatedAt: '2026-09-02T02:00:00Z', current: { pctAbove20d: 20, pctAbove50d: 50, pctAbove200d: 80 },
@@ -34,8 +35,11 @@ function runSeed(now: string, fixtures: Record<string, unknown> = prior, failure
       if (String(url) !== 'https://scanner.tradingview.com/america/scan') return fake.fetchImpl(url, init);
       scans++;
       if (${JSON.stringify(failure)} === 'http' || (${JSON.stringify(failure)} === 'transient' && scans === 1)) return new Response('', { status: 503 });
-      const data = Array.from({ length: 503 }, (_, i) => ({ s: 'NYSE:T' + i, d: ['T' + i, 100, 90, 110, ${JSON.stringify(failure)} === 'partial' ? null : 90, realDate.parse('2026-09-04T13:30:00Z') / 1000] }));
-      return Response.json({ totalCount: 503, data });
+      let data = Array.from({ length: 503 }, (_, i) => ({ s: 'NYSE:T' + i, d: ['T' + i, 100, 90, 110, ${JSON.stringify(failure)} === 'partial' ? null : 90, realDate.parse('2026-09-04T13:30:00Z') / 1000] }));
+      const symbols = JSON.parse(init.body).symbols;
+      if (symbols.tickers) data = data.filter((row) => symbols.tickers.includes(row.s));
+      else if (${JSON.stringify(failure)} === 'short-index') data = data.slice(0, 408);
+      return Response.json({ totalCount: data.length, data });
     };
     process.on('exit', () => console.log('RESULT ' + JSON.stringify({ scans, redis: Object.fromEntries([...fake.redis].map(([k,v]) => [k, JSON.parse(v)]).filter(([k]) => !k.includes(':staging:'))), expires: Object.fromEntries(fake.expires) })));
     await import('./scripts/seed-market-breadth.mjs');
@@ -70,7 +74,10 @@ test('recovers a missed Friday close on Sunday through the real producer and rea
   assert.equal(second.status, 0, second.output);
   assert.deepEqual(second.redis[KEY].data.history, first.redis[KEY].data.history);
   assert.equal(second.redis[KEY]._seed.newestItemAt, first.redis[KEY]._seed.newestItemAt);
-  assert.equal(health(second.redis, '2026-09-09T02:00:00Z').status, 'OK');
+  // 42.5h of a 120h budget: still below the 80% pre-warning threshold.
+  assert.equal(health(second.redis, '2026-09-06T08:00:00Z').status, 'OK');
+  // 108.5h = 90% of budget: visible pre-warning, not yet stale.
+  assert.equal(health(second.redis, '2026-09-09T02:00:00Z').status, 'CONTENT_AGE_PREWARNING');
   assert.equal(health(second.redis, '2026-09-09T14:00:00Z').status, 'STALE_CONTENT');
   const fetchBefore = globalThis.fetch;
   try {
@@ -96,6 +103,36 @@ for (const [failure, attempts] of [['http', 4], ['partial', 1], ['redis', 4]] as
     assert.equal(health(result.redis, '2026-09-06T08:00:00Z').status, 'STALE_SEED');
   });
 }
+
+test('a full index scan saves its symbols beside, not inside, the published history', () => {
+  const result = runSeed('2026-09-06T08:00:00Z');
+  assert.equal(result.status, 0, result.output);
+  assert.equal(result.redis[SAVED].data.symbols.length, 503);
+  assert.equal(result.redis[SAVED].data.savedAt, Date.parse('2026-09-06T08:00:00Z'));
+  assert.equal(result.redis[SAVED]._seed.recordCount, 503);
+  assert.equal('savedConstituents' in result.redis[KEY].data, false);
+});
+
+test('a short index symbol set publishes from the saved list and keeps it', () => {
+  const fresh = runSeed('2026-09-05T08:00:00Z');
+  const fixtures = { ...fresh.redis, [KEY]: prior[KEY], [META]: prior[META] };
+  const result = runSeed('2026-09-06T08:00:00Z', fixtures, 'short-index');
+  assert.equal(result.status, 0, result.output);
+  assert.equal(result.scans, 2);
+  assert.match(result.output, /symbol set returned 408 rows; scored the saved constituent list instead/);
+  assert.deepEqual(result.redis[KEY].data.history.map((r: { date: string }) => r.date), ['2026-09-01', '2026-09-04']);
+  assert.deepEqual(result.redis[SAVED], fresh.redis[SAVED]);
+  assert.equal(result.expires[SAVED], 2592000);
+  assert.equal(health(result.redis, '2026-09-06T08:00:00Z').status, 'OK');
+});
+
+test('a short index symbol set with no saved list preserves last-good', () => {
+  const result = runSeed('2026-09-06T08:00:00Z', prior, 'short-index');
+  assert.equal(result.status, 75, result.output);
+  assert.match(result.output, /symbol set returned 408 rows and no saved constituent list/);
+  assert.deepEqual(result.redis[KEY], prior[KEY]);
+  assert.equal(result.redis[SAVED], undefined);
+});
 
 test('a restart after canonical publication but before metadata converges to one session row', () => {
   const first = runSeed('2026-09-06T08:00:00Z');

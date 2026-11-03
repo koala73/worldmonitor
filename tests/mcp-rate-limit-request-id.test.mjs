@@ -23,6 +23,7 @@
 import { describe, it, before, after, beforeEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { Ratelimit } from '@upstash/ratelimit';
+import { hashKeySync } from '../server/_shared/usage-identity.ts';
 
 import { mcpHandler } from '../api/mcp/handler.ts';
 import {
@@ -173,7 +174,8 @@ describe('#7818 — credentialed per-minute denials correlate to the request', (
       body: JSON.stringify({ jsonrpc: '2.0', id: 'env-key-9', method: 'tools/call', params: { name: 'get_market_data', arguments: {} } }),
     }), deps);
     assertJsonRpcError(await res.json(), { id: 'env-key-9', code: -32029, label: 'env_key denial' });
-    assert.ok(limiterCalls.some((c) => c.key === `rl:mcp:key:${ENV_KEY}`), 'the env-key limiter must be the rejecting one');
+    assert.ok(limiterCalls.some((c) => c.key === `rl:mcp:key:${hashKeySync(ENV_KEY)}`), 'the env-key limiter must be keyed on the hashed credential, never the raw key');
+    assert.equal(limiterCalls.some((c) => String(c.key).includes(ENV_KEY)), false);
   });
 
   it('per-user branch on a PUBLIC method (the default-burst caller) preserves the id', async () => {
@@ -200,10 +202,10 @@ describe('#7818 — credentialed per-minute denials correlate to the request', (
 });
 
 // ---------------------------------------------------------------------------
-// The cases that must KEEP a null id
+// Missing and invalid request IDs
 // ---------------------------------------------------------------------------
 
-describe('#7818 — branches with no request id stay null', () => {
+describe('#7818 — request and notification IDs stay distinct', () => {
   it('the GET/SSE replay caller has no JSON-RPC id and must not invent one', async () => {
     deniedKeyPrefixes = [PRO_MIN_KEYS];
     const { deps } = makeProDeps();
@@ -220,23 +222,22 @@ describe('#7818 — branches with no request id stay null', () => {
     assert.equal(body.error.code, -32029);
   });
 
-  it('a rate-limited notification has no id to echo and keeps null', async () => {
-    // `notifications/initialized` normally dispatches to a bodyless 202. The
-    // limiter sits upstream of dispatch, so a denied notification gets the
-    // error envelope instead — and a notification carries no id by definition,
-    // so `undefined ?? null` is the correct answer, not a lost id. This is the
-    // second documented `"id": null` case alongside the SSE replay channel.
+  it('rejects a rate-limited notification with a bodyless HTTP error', async () => {
     deniedKeyPrefixes = [ANON_KEYS];
-    const res = await mcpHandler(anonPost({ jsonrpc: '2.0', method: 'notifications/initialized' }));
-    const body = await res.json();
-    assert.equal(body.id, null, 'a notification carries no id to correlate');
-    assert.equal(body.error.code, -32029);
+    for (const headers of [{}, { Authorization: `Bearer ${ENV_KEY}` }, { Authorization: `Bearer ${PRO_BEARER}` }]) {
+      const res = await mcpHandler(anonPost({ jsonrpc: '2.0', method: 'notifications/initialized' }, headers));
+      assert.equal(res.status, 429);
+      assert.equal(await res.text(), '');
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+    }
+    assert.deepEqual(limiterCalls.map(call => call.key), Array(3).fill(`${ANON_KEYS}ip:203.0.113.42`));
   });
 
   it('an ALLOWED notification still dispatches to the bodyless 202', async () => {
     const res = await mcpHandler(anonPost({ jsonrpc: '2.0', method: 'notifications/initialized' }));
     assert.equal(res.status, 202, 'threading an id must not disturb the notification dispatch arm');
     assert.equal(await res.text(), '');
+    assert.deepEqual(limiterCalls.map(call => call.key), [`${ANON_KEYS}ip:203.0.113.42`]);
   });
 
   it('a malformed id is still rejected with -32600 and a null id', async () => {

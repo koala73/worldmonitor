@@ -169,6 +169,30 @@ describe('deferred Umami loader', () => {
       assert.equal(firstScript.async, true);
       assert.equal(firstScript.src, 'https://abacus.worldmonitor.app/script.js');
       assert.equal(firstScript.dataset.websiteId, 'e8800335-c853-46a8-8497-c993ed2f58bc');
+      // Deferred URL credentials must not enter Umami payloads, while UTM
+      // params (campaign attribution) must survive — so redact per payload
+      // with the shared list instead of excluding the whole query string.
+      const hookName = firstScript.dataset.beforeSend;
+      assert.ok(hookName, 'Umami must be given a data-before-send hook');
+      assert.equal(firstScript.dataset.excludeSearch, undefined, 'excluding the query string would drop UTM attribution');
+      const hook = (fakeWindow as unknown as Record<string, unknown>)[hookName!] as
+        (type: string, payload: Record<string, unknown>) => Record<string, unknown>;
+      assert.equal(typeof hook, 'function');
+      const redacted = hook('event', {
+        url: 'https://www.worldmonitor.app/settings?accept-business-invite=g1&token=tok123&utm_source=x',
+        referrer: 'https://www.worldmonitor.app/?__clerk_ticket=tkt_1&ref=abc',
+        name: 'pageview',
+      });
+      const url = new URL(redacted.url as string);
+      assert.equal(url.searchParams.get('token'), null);
+      assert.equal(url.searchParams.get('accept-business-invite'), null);
+      assert.equal(url.searchParams.get('utm_source'), 'x');
+      const referrer = new URL(redacted.referrer as string);
+      assert.equal(referrer.searchParams.get('__clerk_ticket'), null);
+      assert.equal(referrer.searchParams.get('ref'), null);
+      assert.equal(redacted.name, 'pageview');
+      const clean = { url: 'https://www.worldmonitor.app/?utm_source=x', referrer: '' };
+      assert.equal(hook('event', clean), clean, 'clean payloads pass through untouched');
       // www MUST stay listed (#4931): the apex 301s to www in production and
       // the tracker's data-domains check is an exact hostname match — without
       // www, analytics on the canonical host are silently disabled.
@@ -306,14 +330,16 @@ function installUmamiHarness(opts: { existingScript?: FakeUmamiScript } = {}): {
 describe('scheduleAfterFirstPaint', () => {
   it('runs the task via the load-event listener when readyState is not complete', () => {
     const loadHandlers: Array<() => void> = [];
+    const frames: Array<() => void> = [];
+    const idle: Array<() => void> = [];
     const fakeWindow = {
       requestAnimationFrame: (cb: () => void) => {
-        cb();
-        return 1;
+        frames.push(cb);
+        return frames.length;
       },
       requestIdleCallback: (cb: () => void) => {
-        cb();
-        return 1;
+        idle.push(cb);
+        return idle.length;
       },
       addEventListener: (type: string, cb: () => void) => {
         if (type === 'load') loadHandlers.push(cb);
@@ -332,7 +358,24 @@ describe('scheduleAfterFirstPaint', () => {
       assert.equal(ran, 0, 'task must not run before the load event fires');
       assert.equal(loadHandlers.length, 1, 'a load listener must be registered');
       loadHandlers[0]!();
-      assert.equal(ran, 1, 'task runs exactly once after load -> rAF -> idle');
+      assert.equal(ran, 0, 'load must leave a paint opportunity before the task');
+      assert.equal(idle.length, 0, 'idle work must wait for the animation frames');
+      assert.equal(frames.length, 1);
+      frames.shift()!();
+      assert.equal(ran, 0);
+      assert.equal(idle.length, 0, 'one animation frame must leave another paint opportunity');
+      assert.equal(frames.length, 1);
+      frames.shift()!();
+      assert.equal(ran, 0, 'the task must still wait for idle');
+      assert.equal(frames.length, 0);
+      assert.equal(idle.length, 1);
+      idle.shift()!();
+      assert.equal(ran, 1, 'task runs once after load, paint, and idle');
+      loadHandlers[0]!();
+      frames.shift()!();
+      frames.shift()!();
+      idle.shift()!();
+      assert.equal(ran, 1, 'repeated scheduling must not run the task twice');
     } finally {
       if (savedWindow) Object.defineProperty(globalThis, 'window', savedWindow);
       else delete (globalThis as { window?: unknown }).window;
@@ -342,6 +385,7 @@ describe('scheduleAfterFirstPaint', () => {
   });
 
   it('falls back to setTimeout when requestIdleCallback is absent', () => {
+    const timers: Array<() => void> = [];
     const fakeWindow = {
       requestAnimationFrame: (cb: () => void) => {
         cb();
@@ -358,8 +402,8 @@ describe('scheduleAfterFirstPaint', () => {
     Object.defineProperty(globalThis, 'setTimeout', {
       configurable: true,
       value: (cb: () => void) => {
-        cb();
-        return 1;
+        timers.push(cb);
+        return timers.length;
       },
     });
     try {
@@ -367,6 +411,9 @@ describe('scheduleAfterFirstPaint', () => {
       scheduleAfterFirstPaint(() => {
         ran += 1;
       });
+      assert.equal(ran, 0, 'the fallback must defer the task');
+      assert.equal(timers.length, 1);
+      timers.shift()!();
       assert.equal(ran, 1, 'task runs via the setTimeout fallback when rIC is missing');
     } finally {
       if (savedWindow) Object.defineProperty(globalThis, 'window', savedWindow);

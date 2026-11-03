@@ -27,6 +27,26 @@ import { isSessionTokenShape } from './_session.js';
 import { captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
+import { hasCurrentEntitlementCoverage } from '../server/_shared/entitlement-coverage';
+import { allowsProvider, getAiRoutingDecisionForUser } from '../server/_shared/ai-routing-policy';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from './_rate-limit.js';
+// @ts-expect-error — JS module, no declaration file
+import { getRelayHeaders } from './_relay.js';
+import { ENDPOINT_RATE_POLICIES } from '../server/_shared/rate-limit';
+import { runRedisPipeline } from '../server/_shared/redis';
+import {
+  DIRECT_LLM_DAILY_QUOTA_LIMIT,
+  DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
+  reserveDirectLlmQuota,
+  resolveActiveDirectLlmLimit,
+} from '../server/_shared/direct-llm-quota';
+import {
+  OPERATOR_KEY_DAILY_CEILINGS,
+  operatorKeyQuotaPrincipal,
+  reportHighUsageIfCrossed,
+} from '../server/_shared/high-usage-alarm';
+import { hashKeySync } from '../server/_shared/usage-identity';
 
 const RELAY_BASE = 'https://proxy.worldmonitor.app';
 const WIDGET_AGENT_KEY = process.env.WIDGET_AGENT_KEY ?? '';
@@ -37,6 +57,13 @@ const WORLDMONITOR_VALID_KEYS = (process.env.WORLDMONITOR_VALID_KEYS ?? '')
   .filter(Boolean);
 
 const WIDGET_AGENT_BODY_TIMEOUT_MS = Number(process.env.WIDGET_AGENT_BODY_TIMEOUT_MS) || 5_000;
+const WIDGET_AGENT_MAX_BODY_BYTES = 163_840;
+const WIDGET_AGENT_SPEND_HEADER = 'X-WM-Widget-Spend-Id';
+const WIDGET_AGENT_RATE_POLICY_LOOKUP = ENDPOINT_RATE_POLICIES['/api/widget-agent'];
+if (!WIDGET_AGENT_RATE_POLICY_LOOKUP) {
+  throw new Error("[widget-agent] missing ENDPOINT_RATE_POLICIES['/api/widget-agent']");
+}
+const WIDGET_AGENT_RATE_POLICY = WIDGET_AGENT_RATE_POLICY_LOOKUP;
 
 /**
  * A timer budget from the environment, or the default.
@@ -64,31 +91,73 @@ function timeoutFromEnv(raw: string | undefined, fallback: number): number {
 // The health check is a small JSON round-trip with no model call behind it, so
 // it can carry a tight budget.
 //
-// The POST relay call deliberately has NO timeout here. It cannot get a correct
-// one from this side: the relay calls `res.writeHead()` without
-// `res.flushHeaders()` (scripts/ais-relay.cjs:12388) and its first SSE write
-// lands only after a NON-streaming `client.messages.create(...)` completes, so
-// Node holds the buffered headers and `fetch` does not settle until that whole
-// model turn is done. Any budget short enough to be useful is therefore shorter
-// than a healthy Pro generation and would abort it mid-widget — strictly worse
-// than today's unbounded wait. Bounding this properly needs a relay-side change
-// (flush an immediate `: connected` prelude plus heartbeats) so the edge can
-// measure connect time rather than model latency; tracked as follow-up work.
+// POST connect time is bounded separately from model latency. The relay flushes
+// response headers before the model turn (`res.flushHeaders()` in
+// scripts/ais-relay.cjs), so `fetch` settles when the upstream accepts the
+// call. The abort signal is cleared at that point and does not cancel the SSE
+// body. A budget here only rejects a relay that never answers the handshake.
 const WIDGET_AGENT_HEALTH_TIMEOUT_MS = timeoutFromEnv(process.env.WIDGET_AGENT_HEALTH_TIMEOUT_MS, 10_000);
+const WIDGET_AGENT_CONNECT_TIMEOUT_MS = timeoutFromEnv(process.env.WIDGET_AGENT_CONNECT_TIMEOUT_MS, 15_000);
+
+class WidgetBodyTooLargeError extends Error {
+  constructor() {
+    super('Request body too large');
+    this.name = 'WidgetBodyTooLargeError';
+  }
+}
 
 async function readRequestBody(req: Request): Promise<string> {
-  // Adversarial DoS guard: a POST body stream that never ends must not hold the
-  // edge function open forever. Race text() against a tight budget.
-  return Promise.race([
-    req.text(),
-    new Promise<string>((_, reject) =>
-      setTimeout(() => reject(new Error('widget-agent body read timeout')), WIDGET_AGENT_BODY_TIMEOUT_MS),
-    ),
-  ]);
+  if (!req.body) return '';
+  const reader = req.body.getReader();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      (async () => {
+        const decoder = new TextDecoder();
+        let total = 0;
+        let text = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) return text + decoder.decode();
+          total += value.byteLength;
+          if (total > WIDGET_AGENT_MAX_BODY_BYTES) throw new WidgetBodyTooLargeError();
+          text += decoder.decode(value, { stream: true });
+        }
+      })(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('widget-agent body read timeout')), WIDGET_AGENT_BODY_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+    // Do not let a stalled producer's cancellation hold the response open.
+    void reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
 }
 
 async function hasValidWorldMonitorKey(key: string): Promise<boolean> {
   return timingSafeIncludes(key, WORLDMONITOR_VALID_KEYS);
+}
+
+/**
+ * The enterprise credential that authenticates this request, or '' if none does.
+ *
+ * An explicit `X-WorldMonitor-Key` / `X-Api-Key` header never falls back to an
+ * ambient cookie. Without one, each protected cookie is validated on its own so
+ * a rotated Pro key cannot mask a still-valid Widget key.
+ */
+async function resolveEnterpriseKey(
+  explicitKey: string,
+  proCookie: string,
+  widgetCookie: string,
+): Promise<string> {
+  if (explicitKey) {
+    return (await hasValidWorldMonitorKey(explicitKey)) ? explicitKey : '';
+  }
+  if (await hasValidWorldMonitorKey(proCookie)) return proCookie;
+  if (await hasValidWorldMonitorKey(widgetCookie)) return widgetCookie;
+  return '';
 }
 
 function getCookie(req: Request, name: string): string {
@@ -111,6 +180,49 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json', ...cors },
+  });
+}
+
+type WidgetAgentSpendDeps = {
+  checkRateLimit: typeof checkRateLimit;
+  runRedisPipeline: typeof runRedisPipeline;
+};
+
+function defaultWidgetAgentSpendDeps(): WidgetAgentSpendDeps {
+  return { checkRateLimit, runRedisPipeline };
+}
+
+let widgetAgentSpendDeps: WidgetAgentSpendDeps = defaultWidgetAgentSpendDeps();
+
+export function __setWidgetAgentSpendDepsForTests(
+  overrides: Partial<WidgetAgentSpendDeps> | null,
+): void {
+  widgetAgentSpendDeps = overrides
+    ? { ...defaultWidgetAgentSpendDeps(), ...overrides }
+    : defaultWidgetAgentSpendDeps();
+}
+
+function directLlmQuotaError(
+  status: 429 | 503,
+  retryAfterSec: number,
+  cors: Record<string, string>,
+  limit = DIRECT_LLM_DAILY_QUOTA_LIMIT,
+): Response {
+  const body = status === 429
+    ? {
+        error: 'Direct LLM daily quota exceeded',
+        limit,
+        resetsAt: 'next UTC midnight',
+      }
+    : { error: 'Direct LLM quota unavailable' };
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      'Retry-After': String(retryAfterSec),
+      ...cors,
+    },
   });
 }
 
@@ -150,7 +262,7 @@ export default async function handler(
   // `proxyWidgetAgent` is a separate function purely so this boundary does not
   // reindent 130 lines of unchanged routing logic.
   try {
-    return await proxyWidgetAgent(req, corsHeaders);
+    return await proxyWidgetAgent(req, corsHeaders, ctx);
   } catch (err) {
     // `name` + `message` are the phase discriminator on-call needs: an
     // unreachable relay reads `TypeError: … ENOTFOUND proxy.worldmonitor.app`,
@@ -164,6 +276,7 @@ export default async function handler(
     }));
     void captureSilentError(err, {
       tags: { route: 'api/widget-agent', step: 'proxy' },
+      fingerprint: ['api/widget-agent', 'proxy', err instanceof Error ? err.name : 'Error'],
       extra: { method: req.method },
       ctx,
     });
@@ -174,9 +287,15 @@ export default async function handler(
 async function proxyWidgetAgent(
   req: Request,
   corsHeaders: Record<string, string>,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<Response> {
   // ── Auth ──────────────────────────────────────────────────────────────────
   let isPro = false;
+  let spendId = '';
+  let quotaUserId = '';
+  let directLlmDailyLimit: number | null = DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
+  // Set for tier-3 callers, whose limit is a circuit breaker worth paging on.
+  let alarm: { credential: 'operator-key' | 'enterprise-plan'; principal: string } | null = null;
 
   const headerWorldMonitorKey =
     req.headers.get('X-WorldMonitor-Key') ??
@@ -185,13 +304,27 @@ async function proxyWidgetAgent(
   const explicitWorldMonitorKey = isSessionTokenShape(headerWorldMonitorKey)
     ? ''
     : headerWorldMonitorKey;
-  const worldMonitorKey =
-    explicitWorldMonitorKey ||
-    getCookie(req, 'wm-pro-key') ||
-    getCookie(req, 'wm-widget-key') ||
-    headerWorldMonitorKey;
-  if (await hasValidWorldMonitorKey(worldMonitorKey)) {
+  const proCookie = getCookie(req, '__Host-wm-pro-key');
+  const widgetCookie = getCookie(req, '__Host-wm-widget-key');
+  // Explicit enterprise credentials must not fall back to ambient cookies.
+  // Otherwise validate each cookie: a rotated Pro key must not mask Widget.
+  //
+  // Keep the credential that actually validated, not just a boolean: the spend
+  // bucket below is keyed on its digest, so hashing anything else would merge
+  // two distinct enterprise keys into one meter.
+  const enterpriseKey = await resolveEnterpriseKey(
+    explicitWorldMonitorKey,
+    proCookie,
+    widgetCookie,
+  );
+  if (enterpriseKey) {
     isPro = true;
+    // The same per-key bucket and ceiling the gateway and chat-analyst charge
+    // for this key: one counter, one cap (high-usage-alarm.ts).
+    spendId = await operatorKeyQuotaPrincipal(enterpriseKey);
+    quotaUserId = spendId;
+    directLlmDailyLimit = OPERATOR_KEY_DAILY_CEILINGS.directLlmCalls;
+    alarm = { credential: 'operator-key', principal: hashKeySync(enterpriseKey) };
   } else {
     const authHeader = req.headers.get('Authorization');
     if (authHeader?.startsWith('Bearer ')) {
@@ -221,7 +354,7 @@ async function proxyWidgetAgent(
         ent = await getEntitlements(session.userId);
         entitlementChecked = true;
         entitlementTier = ent ? ent.features.tier : null;
-        allowed = !!ent && ent.features.tier >= 1;
+        allowed = hasCurrentEntitlementCoverage(ent) && ent.features.tier >= 1;
       }
       if (!allowed) {
         // #4771: a paying user whose local renewal state is stale gets the
@@ -267,17 +400,41 @@ async function proxyWidgetAgent(
         }));
         return json({ error: 'Pro subscription required' }, 403, corsHeaders);
       }
+      if (!session.userId) {
+        return json({ error: 'Invalid or expired session' }, 401, corsHeaders);
+      }
+      if (req.method === 'POST') {
+        const routing = await getAiRoutingDecisionForUser(session.userId);
+        if (!allowsProvider(routing, 'anthropic')) {
+          return json({ error: 'Widget provider is unavailable under your AI routing policy' }, routing.kind === 'unavailable' ? 503 : 403, corsHeaders);
+        }
+      }
       isPro = true;
+      spendId = `user:${session.userId}`;
+      quotaUserId = session.userId;
+      directLlmDailyLimit = entitlementChecked
+        ? resolveActiveDirectLlmLimit(ent)
+        : DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
+      if (entitlementChecked && ent && ent.features.tier >= 3) {
+        alarm = { credential: 'enterprise-plan', principal: session.userId };
+      }
     } else {
       // Legacy tester key path (wm-widget-key / wm-pro-key)
-      const widgetKey = req.headers.get('X-Widget-Key') || getCookie(req, 'wm-widget-key');
-      const proKey = req.headers.get('X-Pro-Key') || getCookie(req, 'wm-pro-key');
-      const hasWidgetKey = await timingSafeEqualSecret(widgetKey, WIDGET_AGENT_KEY);
-      const hasProKey = await timingSafeEqualSecret(proKey, PRO_WIDGET_KEY);
-      if (!hasWidgetKey && !hasProKey) {
+      const widgetKey = req.headers.get('X-Widget-Key') || (explicitWorldMonitorKey ? '' : widgetCookie);
+      const proKey = req.headers.get('X-Pro-Key') || (explicitWorldMonitorKey ? '' : proCookie);
+      // Both comparisons are independent fixed-cost digests; run them together
+      // rather than serializing two awaits on the legacy-key auth path.
+      const [widgetKeyOk, proKeyOk] = await Promise.all([
+        timingSafeEqualSecret(widgetKey, WIDGET_AGENT_KEY),
+        timingSafeEqualSecret(proKey, PRO_WIDGET_KEY),
+      ]);
+      if (!widgetKeyOk && !proKeyOk) {
         return json({ error: 'Forbidden' }, 403, corsHeaders);
       }
-      isPro = hasProKey;
+      isPro = proKeyOk;
+      spendId = proKeyOk ? 'legacy-pro-key' : 'legacy-widget-key';
+      quotaUserId = spendId;
+      directLlmDailyLimit = DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
     }
   }
 
@@ -287,11 +444,11 @@ async function proxyWidgetAgent(
   }
 
   // ── Build relay headers (server-side keys, never exposed to browser) ──────
-  const relayHeaders: Record<string, string> = {
+  const relayHeaders: Record<string, string> = getRelayHeaders({
     'Content-Type': 'application/json',
     'User-Agent': 'worldmonitor-widget-edge/1.0',
     ...(WIDGET_AGENT_KEY ? { 'X-Widget-Key': WIDGET_AGENT_KEY } : {}),
-  };
+  });
   if (isPro && PRO_WIDGET_KEY) {
     relayHeaders['X-Pro-Key'] = PRO_WIDGET_KEY;
   }
@@ -316,39 +473,118 @@ async function proxyWidgetAgent(
     return json({ error: 'Method not allowed' }, 405, corsHeaders);
   }
 
+  if (!spendId || !quotaUserId) {
+    return json({ error: 'service_unavailable', ok: false }, 503, corsHeaders);
+  }
+
+  // Per-identity, fail-closed. The relay's in-memory bucket is keyed on the
+  // TCP peer, which is this edge's egress IP for every browser — not the user.
+  // A Redis outage must not open an uncapped frontier-model proxy.
+  const limited = await widgetAgentSpendDeps.checkRateLimit(req, corsHeaders, {
+    scope: 'widget-agent',
+    identifier: spendId,
+    limit: WIDGET_AGENT_RATE_POLICY.limit,
+    window: WIDGET_AGENT_RATE_POLICY.window,
+    failClosed: true,
+    ctx,
+  });
+  if (limited) return limited;
+
+  const declaredLength = Number(req.headers.get('content-length') ?? '');
+  if (Number.isFinite(declaredLength) && declaredLength > WIDGET_AGENT_MAX_BODY_BYTES) {
+    return json({ error: 'Request body too large' }, 413, corsHeaders);
+  }
+
   // ── Agent call (POST, SSE stream) ─────────────────────────────────────────
   let rawBody: string;
   try {
     rawBody = await readRequestBody(req);
-  } catch {
+  } catch (err) {
+    if (err instanceof WidgetBodyTooLargeError) {
+      return json({ error: 'Request body too large' }, 413, corsHeaders);
+    }
     return json({ error: 'Request body read timeout' }, 408, corsHeaders);
   }
 
   // Normalise tier in body to match the server-validated isPro flag.
   // Prevents the relay from seeing tier:pro without the matching X-Pro-Key.
+  // Valid JSON that is not an object (null, an array, a number, a string) is
+  // refused here: reading .tier off null used to throw into the catch and
+  // forward the raw body to the relay.
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(rawBody) as Record<string, unknown>;
-    const expectedTier = isPro ? 'pro' : 'basic';
-    if (parsed.tier !== expectedTier) {
-      rawBody = JSON.stringify({ ...parsed, tier: expectedTier });
-    }
+    parsed = JSON.parse(rawBody);
   } catch { /* malformed body — relay will return 400 */ }
+  if (parsed !== undefined) {
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return json({ error: 'Request body must be a JSON object' }, 400, corsHeaders);
+    }
+    const body = parsed as Record<string, unknown>;
+    const expectedTier = isPro ? 'pro' : 'basic';
+    if (body.tier !== expectedTier) {
+      rawBody = JSON.stringify({ ...body, tier: expectedTier });
+    }
+  }
 
-  // No timeout here on purpose — see WIDGET_AGENT_HEALTH_TIMEOUT_MS above for
-  // why a correct one is not expressible from this side yet.
-  const relayRes = await fetch(`${RELAY_BASE}/widget-agent`, {
-    method: 'POST',
-    headers: relayHeaders,
-    body: rawBody,
-  });
+  // Reserve against the same daily meter as chat-analyst / gateway LLM routes
+  // before any upstream call. Unlimited (null) entitlements stay metered by
+  // the per-identity rate limit above.
+  let rollbackQuota: (() => Promise<void>) | null = null;
+  if (directLlmDailyLimit !== null) {
+    const reservation = await reserveDirectLlmQuota({
+      userId: quotaUserId,
+      limit: directLlmDailyLimit,
+      pipeline: (cmds) => widgetAgentSpendDeps.runRedisPipeline(cmds, true),
+    });
+    if (!reservation.ok) {
+      return directLlmQuotaError(
+        reservation.reason === 'cap-exceeded' ? 429 : 503,
+        reservation.retryAfterSec,
+        corsHeaders,
+        reservation.floor ?? directLlmDailyLimit,
+      );
+    }
+    if (alarm) {
+      reportHighUsageIfCrossed({
+        meter: 'direct-llm',
+        ...alarm,
+        newCount: reservation.newCount,
+        ceiling: directLlmDailyLimit,
+        ctx,
+      });
+    }
+    rollbackQuota = reservation.rollback;
+  }
+  const releaseUnservedQuota = async () => {
+    const rollback = rollbackQuota;
+    rollbackQuota = null;
+    if (rollback) await rollback();
+  };
 
-  return new Response(relayRes.body, {
-    status: relayRes.status,
-    headers: {
-      'Content-Type': relayRes.headers.get('Content-Type') ?? 'text/event-stream',
-      'Cache-Control': 'no-cache, no-store',
-      'X-Accel-Buffering': 'no',
-      ...corsHeaders,
-    },
-  });
+  relayHeaders[WIDGET_AGENT_SPEND_HEADER] = spendId;
+  const connectAbort = new AbortController();
+  const connectTimer = setTimeout(() => connectAbort.abort(), WIDGET_AGENT_CONNECT_TIMEOUT_MS);
+  try {
+    const relayRes = await fetch(`${RELAY_BASE}/widget-agent`, {
+      method: 'POST',
+      headers: relayHeaders,
+      body: rawBody,
+      signal: connectAbort.signal,
+    });
+    clearTimeout(connectTimer);
+    if (!relayRes.ok) await releaseUnservedQuota();
+    return new Response(relayRes.body, {
+      status: relayRes.status,
+      headers: {
+        'Content-Type': relayRes.headers.get('Content-Type') ?? 'text/event-stream',
+        'Cache-Control': 'no-cache, no-store',
+        'X-Accel-Buffering': 'no',
+        ...corsHeaders,
+      },
+    });
+  } catch (err) {
+    clearTimeout(connectTimer);
+    await releaseUnservedQuota();
+    throw err;
+  }
 }

@@ -2,6 +2,8 @@ import { motion } from 'motion/react';
 import { Check } from 'lucide-react';
 import { CardLinkArrow, cardLinkFocusRing } from './CardLink';
 import { t } from '../i18n';
+import depthProofStats from '../generated/depth-stats.json';
+import copyStats from '../generated/copy-stats.json';
 
 // Registry install commands are product identifiers, not prose — they stay
 // untranslated on purpose (same reason the tool names below do).
@@ -15,7 +17,13 @@ const INSTALL_CHIPS = [
 const AGENT_RESOURCES = [
   { key: 'briefing', href: '/llms.txt', display: '/llms.txt', eventTarget: 'welcome-agent-briefing' },
   { key: 'mcp', href: 'https://worldmonitor.app/mcp', display: 'worldmonitor.app/mcp', eventTarget: 'welcome-agent-mcp' },
-  { key: 'api', href: 'https://api.worldmonitor.app', display: 'api.worldmonitor.app', eventTarget: 'welcome-agent-api' },
+  // Destination is the API reference, not the bare api host: that host's root
+  // is a 308 to the www homepage, so it was a redirect hop to a page that is
+  // not the API (#8603). `display` tracks the destination, as it does for
+  // every other entry here — this block is read by LLMs summarising the
+  // section, so a display string that names a different URL than the link
+  // would teach them the wrong base URL.
+  { key: 'api', href: '/docs/api-reference', display: '/docs/api-reference', eventTarget: 'welcome-agent-api' },
   { key: 'agentView', href: '/?mode=agent', display: '/?mode=agent', eventTarget: 'welcome-agent-view' },
 ] as const;
 
@@ -27,23 +35,24 @@ export const Agents = () => (
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: '-60px' }}
         transition={{ duration: 0.5 }}
+        className="min-w-0"
       >
-        <div className="font-mono text-[11px] uppercase tracking-[3px] text-wm-green mb-3">{t('welcome.agents.eyebrow')}</div>
-        <h2 className="text-3xl md:text-5xl font-display font-bold tracking-tight mb-6">{t('welcome.agents.title')}</h2>
-        <p className="text-wm-muted mb-6">{t('welcome.agents.sub')}</p>
+        <div className="font-mono text-xs text-wm-muted mb-3">{t('welcome.agents.eyebrow')}</div>
+        <h2 className="text-3xl md:text-5xl font-display font-medium tracking-tight mb-6">{t('welcome.agents.title')}</h2>
+        <p className="text-wm-muted mb-6">{t('welcome.agents.sub', { ...depthProofStats, ...copyStats })}</p>
         <ul className="space-y-3 mb-6 text-sm">
           {[1, 2, 3, 4].map(n => (
             <li key={n} className="flex items-start gap-2.5">
               <Check className="w-4 h-4 text-wm-green shrink-0 mt-0.5" aria-hidden="true" />
-              <span className="text-wm-muted">{t(`welcome.agents.b${n}`)}</span>
+              <span className="text-wm-muted">{t(`welcome.agents.b${n}`, depthProofStats)}</span>
             </li>
           ))}
         </ul>
         <div className="mb-6">
-          <p className="mb-3 font-mono text-[10px] uppercase tracking-[2px] text-wm-text">
+          <p className="mb-3 font-mono text-xs text-wm-text">
             {t('welcome.agents.resources.title')}
           </p>
-          <div className="grid gap-px overflow-hidden rounded-sm border border-wm-border bg-wm-border sm:grid-cols-2">
+          <div className="grid gap-px overflow-hidden rounded-lg border border-wm-border bg-wm-border sm:grid-cols-2">
             {AGENT_RESOURCES.map(({ key, href, display, eventTarget }) => (
               <a
                 key={key}
@@ -54,14 +63,14 @@ export const Agents = () => (
               >
                 <span className="min-w-0">
                   <span className="block font-medium text-wm-text">{t(`welcome.agents.resources.${key}`)}</span>
-                  <span className="block truncate font-mono text-[10px] text-wm-muted">{display}</span>
+                  <span className="block truncate font-mono text-xs text-wm-muted">{display}</span>
                 </span>
                 <CardLinkArrow className="shrink-0 text-wm-green" />
               </a>
             ))}
           </div>
         </div>
-        <div className="mb-6 rounded-sm border border-wm-border bg-wm-card/70 font-mono text-[11px] leading-none">
+        <div className="mb-6 rounded-lg border border-wm-border bg-wm-card font-mono text-xs leading-none">
           {INSTALL_CHIPS.map(({ cmd, href }, i) => (
             <a
               key={cmd}
@@ -75,10 +84,10 @@ export const Agents = () => (
             </a>
           ))}
         </div>
-        <p className="font-mono text-xs uppercase tracking-wider text-wm-text mb-8">{t('welcome.agents.promise')}</p>
+        <p className="font-mono text-xs text-wm-text mb-8">{t('welcome.agents.promise')}</p>
         <a
-          href="https://www.worldmonitor.app/docs/documentation"
-          className="border border-wm-border text-wm-text px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-green/50 transition-colors inline-block"
+          href="/docs/documentation"
+          className="inline-flex min-h-12 py-3 items-center rounded-md border border-wm-border px-6 text-sm font-medium text-wm-text transition-colors hover:border-white/20 hover:bg-white/[0.03]"
         >
           {t('welcome.agents.cta')}
         </a>
@@ -88,15 +97,12 @@ export const Agents = () => (
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: '-60px' }}
         transition={{ duration: 0.5, delay: 0.1 }}
-        className="bg-wm-card border border-wm-border rounded-md overflow-hidden border-glow"
+        className="min-w-0 bg-wm-card border border-wm-border rounded-xl overflow-hidden"
       >
-        <div className="flex items-center gap-1.5 px-4 h-9 border-b border-wm-border bg-wm-bg/80">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" aria-hidden="true" />
-          <span className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" aria-hidden="true" />
-          <span className="w-2.5 h-2.5 rounded-full bg-[#28c840]" aria-hidden="true" />
-          <span className="ml-3 font-mono text-[10px] uppercase tracking-widest text-wm-muted">{t('welcome.agents.termTitle')}</span>
+        <div className="flex items-center px-4 h-10 border-b border-wm-border bg-wm-bg">
+          <span className="font-mono text-xs text-wm-muted">{t('welcome.agents.termTitle')}</span>
         </div>
-        <div className="p-6 font-mono text-xs leading-relaxed">
+        <div className="p-6 font-mono text-xs leading-relaxed break-words">
           <p className="text-wm-text mb-4">&gt; {t('welcome.agents.termQuery')}</p>
           <p className="text-wm-muted mb-1">
             <span className="text-wm-green" aria-hidden="true">⏺</span> get_chokepoint_status{' '}
@@ -110,7 +116,7 @@ export const Agents = () => (
           </p>
           <p className="text-wm-text mb-2"><span className="text-wm-green" aria-hidden="true">✓</span> {t('welcome.agents.termAnswer')}</p>
           <p>
-            <a href="https://www.worldmonitor.app/docs/documentation" className="text-wm-green hover:text-green-300 transition-colors">{t('welcome.agents.termDocs')}</a>
+            <a href="/docs/documentation" className="text-wm-green hover:text-green-300 transition-colors">{t('welcome.agents.termDocs')}</a>
           </p>
         </div>
       </motion.div>

@@ -1,11 +1,24 @@
+import { loadToolAliases } from '../alias';
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../constants';
+import { CHATGPT_HIDDEN_TOOLS } from '../host-policy';
 import { JMESPATH_SCHEMA } from '../jmespath';
+import { RESPONSE_MODE_SCHEMA, SPOKEN_LANGUAGE_SCHEMA } from '../spoken';
+import { advertisedOutputSchema } from '../structured-content';
 import type { McpAccessClass, PublicToolShape, ToolDef } from '../types';
 import { compressDescription, utf8ByteLength } from '../utils';
 import { CACHE_TOOLS } from './cache-tools';
 import { NLP_TOOLS } from './nlp-tools';
-import { RPC_TOOLS } from './rpc-tools';
+import { RETIRED_RPC_TOOLS, RPC_TOOLS } from './rpc-tools';
+import { COUNTRY_VIEW_TOOLS } from './country-view';
+import { NEWS_DASHBOARD_TOOLS } from './news-dashboard';
 import { SOURCE_TOOLS } from './source-tools';
+import { MACRO_TOOLS } from './macro-tools';
+import { STOCK_TOOLS } from './stock-tools';
+import { COST_SHOCK_TOOLS } from './cost-shock-tools';
+import { PUBLIC_DOMAIN_TOOLS } from './public-domain-tools';
+import { TARIFF_TOOLS } from './tariff-tools';
+import { WEBCAM_TOOLS } from './webcam-tools';
+import { FEEDBACK_TOOLS } from './feedback-tools';
 
 // Merged tool registry — cache tools first (no `_execute`), then RPC tools
 // (with `_execute`), then the NLP utilities. Order is observable: `tools/list`
@@ -13,14 +26,20 @@ import { SOURCE_TOOLS } from './source-tools';
 // returns the available-list sorted before responding. NLP_TOOLS is appended
 // last so extracting it from rpc-tools.ts left every other tool's position
 // unchanged. SOURCE_TOOLS is appended after it for the same reason.
-export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS];
+export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS, ...NEWS_DASHBOARD_TOOLS, ...MACRO_TOOLS, ...STOCK_TOOLS, ...COST_SHOCK_TOOLS, ...PUBLIC_DOMAIN_TOOLS, ...COUNTRY_VIEW_TOOLS, ...TARIFF_TOOLS, ...WEBCAM_TOOLS, ...FEEDBACK_TOOLS];
+export const RETIRED_TOOLS: ToolDef[] = [...RETIRED_RPC_TOOLS];
+
 export const FREE_TIER_TOOL_NAMES: ReadonlySet<string> = new Set(
   TOOL_REGISTRY.filter((tool) => tool._freeTier === true).map((tool) => tool.name),
 );
 
-/** Metadata reads stay authenticated but never spend an allowance or quota slot. */
+/**
+ * Account tools stay authenticated but never spend an allowance or quota slot:
+ * the metadata reads, and `start_upgrade` (#9144), which an agent most needs
+ * exactly when the allowance is spent.
+ */
 export function isQuotaExemptMetadataTool(tool: ToolDef): boolean {
-  return tool.name === 'describe_tool';
+  return tool.name === 'describe_tool' || tool.name === 'get_mcp_allowance' || tool.name === 'start_upgrade';
 }
 
 /**
@@ -37,11 +56,10 @@ export function isQuotaExemptMetadataTool(tool: ToolDef): boolean {
  * per-account meter for internal-MCP callers — so the edge has to charge that
  * work here or it goes unbilled entirely.
  *
- * The measured spread is 1-2 downstream calls per tool, not the 10x an
- * "MCP call = many API calls" intuition suggests, so the table is two values
- * plus per-tool overrides for the pair that genuinely fetch twice. Deriving the
- * class from `_execute` rather than a hand-maintained list means a new tool
- * inherits the right weight by construction.
+ * Most execution tools make one downstream call. Per-tool overrides cover
+ * the maximum fan-out of country briefs (two) and airspace (four when split
+ * at the dateline). The weight is fixed before execution, including when a
+ * request selects fewer sources or needs only one longitude interval.
  */
 export function toolWeight(tool: ToolDef): number {
   if (tool._weight !== undefined) return tool._weight;
@@ -50,12 +68,15 @@ export function toolWeight(tool: ToolDef): number {
 
 /** Single access classifier used by tools/list, describe_tool, and resources. */
 export function toolAccess(tool: ToolDef): McpAccessClass {
+  if (tool._subscriptionOnly) return 'subscription';
   if (tool._freeTier === true) return 'free';
   // Local metadata escape hatch: authenticated free accounts may call it and
   // dispatch exempts it from both the allowance and Pro daily quota.
   if (isQuotaExemptMetadataTool(tool)) return 'free-account';
   return tool._execute === undefined ? 'free-account' : 'subscription';
 }
+
+export const TOOL_ALIASES = loadToolAliases(TOOL_REGISTRY, RETIRED_TOOLS, toolAccess);
 
 // Public shape for tools/list — strips internal _-prefixed fields, adds MCP
 // annotations, and injects the universal `summary` flag (issue #3678) into
@@ -78,6 +99,12 @@ for (const tool of TOOL_REGISTRY) {
   if (tool._execute === undefined && props && 'summary' in props) {
     throw new Error(`api/mcp/registry/index.ts: cache tool "${tool.name}" declares its own 'summary' property — collides with universal SUMMARY_SCHEMA injection. Remove the per-tool declaration.`);
   }
+  if (props && 'response_mode' in props) {
+    throw new Error(`api/mcp/registry/index.ts: tool "${tool.name}" declares its own 'response_mode' property — collides with the RESPONSE_MODE_SCHEMA injection for tools with a _spoken narrator. Remove the per-tool declaration.`);
+  }
+  if (props && 'spoken_language' in props) {
+    throw new Error(`api/mcp/registry/index.ts: tool "${tool.name}" declares its own 'spoken_language' property — collides with the SPOKEN_LANGUAGE_SCHEMA injection for tools with a _spoken narrator. Remove the per-tool declaration.`);
+  }
 }
 
 // Shared public-shape builder (v1.5.0). SINGLE source of truth for what
@@ -97,8 +124,12 @@ for (const tool of TOOL_REGISTRY) {
 // the public-shape fields (name, description, inputSchema, annotations).
 //
 // `opts.compressDescriptions` — when true (the tools/list call path),
-// the tool's top-level `description` is run through compressDescription.
-// When false (the describe_tool call path), full text is preserved.
+// the tool's top-level `description` is capped at TOOL_DESCRIPTION_MAX_BYTES
+// through compressDescription. Every registered description already fits
+// (tests/mcp-tools-list-description-budget.test.mjs), so on a passing build
+// both paths emit the same text; the cap is a runtime backstop, not a
+// second shape. When false (the describe_tool call path), text is passed
+// through untouched.
 export function buildPublicTool(
   tool: ToolDef,
   opts: { compressDescriptions: boolean },
@@ -127,6 +158,13 @@ export function buildPublicTool(
   // a tool advertising no `jmespath` is exactly the state that made the old
   // roster's gaps invisible.
   clonedProperties.jmespath = structuredClone(JMESPATH_SCHEMA);
+  // Spoken mode (#9722) is advertised only where a narrator exists; the
+  // validator rejects it elsewhere rather than silently returning the full
+  // payload to a voice agent that asked for sentences.
+  if (tool._spoken) {
+    clonedProperties.response_mode = structuredClone(RESPONSE_MODE_SCHEMA);
+    clonedProperties.spoken_language = structuredClone(SPOKEN_LANGUAGE_SCHEMA);
+  }
 
   const description = opts.compressDescriptions
     ? compressDescription(tool.description, TOOL_DESCRIPTION_MAX_BYTES)
@@ -134,6 +172,7 @@ export function buildPublicTool(
 
   const publicTool: PublicToolShape = {
     name: tool.name,
+    title: tool.title,
     description,
     inputSchema: {
       type: tool.inputSchema.type,
@@ -143,11 +182,19 @@ export function buildPublicTool(
     },
     // Deep-clone for the same reason as inputSchema.properties — mutating the
     // returned object must not corrupt the module-level outputSchema literal.
-    outputSchema: structuredClone(tool.outputSchema),
+    // Advertised as `anyOf [documented shape, projection / soft-envelope
+    // shapes]` so the `structuredContent` every call returns validates in a
+    // strict client whatever the response kind (api/mcp/structured-content.ts).
+    outputSchema: advertisedOutputSchema(structuredClone(tool.outputSchema), {
+      permitDeprecation: TOOL_ALIASES.targetNames().has(tool.name),
+      permitSpoken: tool._spoken !== undefined,
+    }),
     // Per-tool annotations declared on each registry entry (v1.7.0).
     // Deep-cloned so a mutating client can't poison the registry literal —
     // matches the inputSchema.properties + outputSchema treatment above.
-    annotations: structuredClone(tool.annotations),
+    // The spec's annotations.title repeats the top-level title: some hosts,
+    // including the Claude Connectors Directory, read only this one.
+    annotations: { title: tool.title, ...structuredClone(tool.annotations) },
     _meta: {
       'worldmonitor/access': toolAccess(tool),
       'worldmonitor/weight': toolWeight(tool),
@@ -163,12 +210,54 @@ export function buildPublicTool(
   if (tool._uiResourceUri) {
     publicTool._meta.ui = { resourceUri: tool._uiResourceUri };
     publicTool._meta['ui/resourceUri'] = tool._uiResourceUri;
+    if (tool._openaiEntrypoints) {
+      publicTool._meta['openai/ui'] = { entrypoints: structuredClone(tool._openaiEntrypoints) };
+    }
   }
 
   return publicTool;
 }
 
 export const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map((tool) => buildPublicTool(tool, { compressDescriptions: true }));
+
+// What a ChatGPT request lists (see ../host-policy.ts): every tool except the
+// checkout tool, with output-schema copy that describes the plans page instead
+// of telling the agent to upgrade. Only get_market_data carries `locked`.
+const INFORM_ONLY_SCHEMA_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  locked: 'Present only for a signed-in free account: subscription datasets withheld from `data`. Their absence means locked, not empty; they are not included in the current plan.',
+  upgradeUrl: 'Present with `locked`: a page describing the plans that include the locked datasets.',
+};
+
+// Walks every `properties` map, so a field nested under anyOf/oneOf branches
+// is rewritten too.
+function rewriteSchemaDescriptions(node: unknown): void {
+  if (Array.isArray(node)) {
+    for (const item of node) rewriteSchemaDescriptions(item);
+    return;
+  }
+  if (!node || typeof node !== 'object') return;
+  const record = node as Record<string, unknown>;
+  const properties = record.properties as Record<string, { description?: unknown }> | undefined;
+  if (properties && typeof properties === 'object') {
+    for (const [field, description] of Object.entries(INFORM_ONLY_SCHEMA_DESCRIPTIONS)) {
+      const property = properties[field];
+      if (property && typeof property === 'object' && typeof property.description === 'string') property.description = description;
+    }
+  }
+  for (const value of Object.values(record)) rewriteSchemaDescriptions(value);
+}
+
+export function informOnlyPublicTool(tool: PublicToolShape): PublicToolShape {
+  if (tool.outputSchema === undefined) return tool;
+  const copy = structuredClone(tool);
+  rewriteSchemaDescriptions(copy.outputSchema);
+  return copy;
+}
+
+export const CHATGPT_TOOL_LIST_RESPONSE = TOOL_LIST_RESPONSE
+  .filter((tool) => !CHATGPT_HIDDEN_TOOLS.has(tool.name))
+  .map(informOnlyPublicTool);
+
 // Tools-list payload is static at module load — precompute its wire size so
 // the per-session `mcp.tools_list_emitted` telemetry line doesn't re-stringify
 // ~5 KB on every initialize.

@@ -116,7 +116,7 @@ function resolveProxyConfigWithFallback() {
 }
 
 /**
- * Returns proxy as "user:pass@host:port" string for use with curl -x.
+ * Returns a proxy URL for curl -x, preserving the configured TLS transport.
  * Decodo: gate.decodo.com → us.decodo.com (curl endpoint differs from CONNECT endpoint).
  * Returns empty string if no proxy configured.
  */
@@ -138,7 +138,8 @@ function resolveProxyString(raw = process.env.PROXY_URL || '') {
 function curlProxyString(cfg) {
   const normalizedHost = String(cfg.host || '').toLowerCase().replace(/\.$/u, '');
   const host = normalizedHost === DECODO_GATE_HOST ? DECODO_CURL_HOST : cfg.host;
-  return cfg.auth ? `${cfg.auth}@${host}:${cfg.port}` : `${host}:${cfg.port}`;
+  const base = cfg.auth ? `${cfg.auth}@${host}:${cfg.port}` : `${host}:${cfg.port}`;
+  return `${cfg.tls ? 'https' : 'http'}://${base}`;
 }
 
 /**
@@ -356,6 +357,10 @@ function proxyFetch(url, proxyConfig, {
 
       const req = requestFn({
         hostname: targetUrl.hostname,
+        // The tunnel is to :443. With only `createConnection` there is no agent,
+        // so Node would default to port 80 and send `Host: <host>:80` over TLS,
+        // which ENTSO-E rejects as an inconsistent request URL (HTTP 400).
+        defaultPort: 443,
         path: targetUrl.pathname + targetUrl.search,
         method,
         headers: reqHeaders,

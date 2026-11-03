@@ -65,7 +65,7 @@ describe('insights-loader', () => {
       assert.equal(insightsSnapshotRejection({
         worldBrief: 'Test brief',
         worldBriefSources: [{ title: 'Test', source: 's', url: 'https://example.com/test' }],
-        briefProvider: 'groq',
+        briefProvider: 'openrouter',
         status: 'ok',
         topStories: [{ primaryTitle: 'Test', sourceCount: 2 }],
         generatedAt,
@@ -117,7 +117,7 @@ describe('insights-loader', () => {
       return {
         worldBrief: 'Test brief',
         worldBriefSources: [{ title: 'Test', source: 's', url: 'https://example.com/test' }],
-        briefProvider: 'groq',
+        briefProvider: 'openrouter',
         status: 'ok',
         topStories: [{
           primaryTitle: 'Test', primarySource: 's', primaryLink: 'l', pubDate: '',
@@ -315,6 +315,74 @@ describe('insights-loader', () => {
       const result = await fetchServerInsights(30);
       assert.equal(result, null);
       assert.equal(aborted, true);
+    });
+
+    it('aborts with a frameless stack, like AbortSignal.timeout (WORLDMONITOR-125/12Z)', async () => {
+      // Chromium gives a JS-constructed DOMException no `stack`, while the reason
+      // AbortSignal.timeout builds natively carries the header only. Sentry's
+      // fetch instrumentation backfills `stack` from the fetch call site when it
+      // is undefined, so a stackless reason leaked by a browser extension's own
+      // fetch hook arrived as a first-party insights-loader rejection and
+      // escaped the zero-frame `signal timed out` suppression.
+      const NativeDOMException = globalThis.DOMException;
+      class StacklessDOMException extends NativeDOMException {
+        constructor(...args) {
+          super(...args);
+          delete this.stack;
+        }
+      }
+      assert.equal(new StacklessDOMException('x', 'TimeoutError').stack, undefined,
+        'precondition: the stub reproduces Chromium\'s stackless DOMException');
+      let reason;
+      globalThis.DOMException = StacklessDOMException;
+      try {
+        globalThis.fetch = (_url, init) => new Promise((_, reject) => {
+          init.signal.addEventListener('abort', () => {
+            reason = init.signal.reason;
+            reject(reason);
+          }, { once: true });
+        });
+        const result = await fetchServerInsights(10);
+        assert.equal(result, null);
+      } finally {
+        globalThis.DOMException = NativeDOMException;
+      }
+      assert.equal(reason?.name, 'TimeoutError');
+      assert.equal(reason?.message, 'signal timed out');
+      assert.equal(reason?.stack, 'TimeoutError: signal timed out');
+    });
+
+    it('still aborts when the engine refuses the stack stamp', { timeout: 1_000 }, async () => {
+      // The stamp only improves telemetry; the abort is the fetch deadline. A
+      // DOMException that pins `stack` makes defineProperty throw, and that
+      // throw must not skip the abort and leave the request hanging.
+      const NativeDOMException = globalThis.DOMException;
+      class LockedStackDOMException extends NativeDOMException {
+        constructor(...args) {
+          super(...args);
+          Object.defineProperty(this, 'stack', { value: 'TimeoutError: signal timed out\n    at locked', configurable: false, writable: false });
+        }
+      }
+      assert.throws(
+        () => Object.defineProperty(new LockedStackDOMException('x', 'TimeoutError'), 'stack', { value: 'y' }),
+        TypeError,
+        'precondition: the stub refuses a stack redefinition',
+      );
+      let reason;
+      globalThis.DOMException = LockedStackDOMException;
+      try {
+        globalThis.fetch = (_url, init) => new Promise((_, reject) => {
+          init.signal.addEventListener('abort', () => {
+            reason = init.signal.reason;
+            reject(reason);
+          }, { once: true });
+        });
+        const result = await fetchServerInsights(10);
+        assert.equal(result, null);
+      } finally {
+        globalThis.DOMException = NativeDOMException;
+      }
+      assert.equal(reason?.name, 'TimeoutError');
     });
 
     it('coalesces concurrent fetches into one network request (#7290)', async () => {

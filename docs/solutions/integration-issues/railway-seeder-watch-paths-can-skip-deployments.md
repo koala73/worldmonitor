@@ -448,8 +448,14 @@ a path refusal.
 
 `Seed Freshness Monitor` keeps the gate-dependent ingestion acceptance. A
 missing, pending, failed, or errored head gate is not a green skip and is not
-an ingestion failure: the job monitors the newest gated ancestor in the
-window, and fails closed only when none exists. It deliberately does not run
+an ingestion failure: the job uses the newest gated ancestor in the bounded
+window for acceptance bookkeeping, and fails closed when none qualifies.
+The probe and transition publisher stay at the workflow's `github.sha` because
+production API changes can deploy before that revision passes its gate. Checking
+out the ancestor would restore an older classifier that can mistake a newly
+introduced pending kind for a blocking incident (#8285). This removes the gate
+fallback's version skew; it does not verify the live deployment SHA or prevent
+production from advancing while a run is queued. It deliberately does not run
 on an ingestion push because Railway may not have deployed or executed that
 revision yet.
 

@@ -60,7 +60,7 @@ export class TorontoSafetyPanel extends Panel {
 
   protected render(): void {
     if (this.loading) {
-      this.setContentNodes(h('div', { className: 'empty-state' }, 'Loading Toronto safety data…'));
+      this.showLoading('Loading Toronto safety data…');
       return;
     }
     if (this.error) {

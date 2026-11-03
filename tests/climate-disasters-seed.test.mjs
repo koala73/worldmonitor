@@ -23,6 +23,14 @@ afterEach(() => {
 });
 
 describe('seed-climate-disasters helpers', () => {
+  it('locates Russia on both sides of the dateline without claiming the North Atlantic', () => {
+    assert.equal(findCountryCodeByCoordinates(65, 179), 'RU');
+    assert.equal(findCountryCodeByCoordinates(65, -175), 'RU');
+    assert.equal(findCountryCodeByCoordinates(55, -30), '');
+    assert.equal(findCountryCodeByCoordinates(52.52, 13.4), 'DE');
+    assert.equal(findCountryCodeByCoordinates(43.65, -79.38), 'CA');
+  });
+
   it('uses the documented ReliefWeb disaster type filter', () => {
     const [body] = buildReliefWebRequestBodies();
     const typeFilter = body.filter.conditions.find((condition) => condition.field.includes('type'));

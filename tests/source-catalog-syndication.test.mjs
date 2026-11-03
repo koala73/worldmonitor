@@ -59,21 +59,17 @@ test('FeedBurner declarations require an explicit publisher identity', () => {
   );
 });
 
-test('multiline feed declarations retain their publisher identity', () => {
+test('catalog feed declarations retain their publisher identity', () => {
   const fixtureRoot = mkdtempSync(join(tmpdir(), 'source-catalog-identity-'));
   try {
-    const configDir = join(fixtureRoot, 'src/config');
-    mkdirSync(configDir, { recursive: true });
-    writeFileSync(join(configDir, 'feeds.ts'), `
-      const rss = (url: string) => url;
-      // { name: 'Ignored', url: rss('https://feeds.feedburner.com/ignored') }
-      export const feeds = [{
+    mkdirSync(join(fixtureRoot, 'shared'), { recursive: true });
+    writeFileSync(join(fixtureRoot, 'shared/news-catalog.json'), JSON.stringify({
+      feeds: [{
         name: 'Fast Company',
-        url: rss(
-          'https://feeds.feedburner.com/fastcompany/headlines',
-        ),
-      }];
-    `);
+        url: 'https://feeds.feedburner.com/fastcompany/headlines',
+        placements: [{ edition: 'tech', category: 'startups', serverOrder: 0, browserOrder: 0 }],
+      }],
+    }));
 
     const declarations = scanNamedFeedDeclarations(fixtureRoot);
     assert.equal(declarations.length, 1);
@@ -97,15 +93,15 @@ test('feed declaration parsing works in the dependency-free docs-stats checkout'
       mkdirSync(dirname(destination), { recursive: true });
       copyFileSync(join(rootDir, relativePath), destination);
     }
-    const configDir = join(fixtureRoot, 'src/config');
-    mkdirSync(configDir, { recursive: true });
+    mkdirSync(join(fixtureRoot, 'shared'), { recursive: true });
     writeFileSync(join(fixtureRoot, 'package.json'), '{"type":"module"}\n');
-    writeFileSync(join(configDir, 'feeds.ts'), `
-      export const feeds = [{
+    writeFileSync(join(fixtureRoot, 'shared/news-catalog.json'), JSON.stringify({
+      feeds: [{
         name: 'Fast Company',
-        url: rss('https://feeds.feedburner.com/fastcompany/headlines'),
-      }];
-    `);
+        url: 'https://feeds.feedburner.com/fastcompany/headlines',
+        placements: [{ edition: 'tech', category: 'startups', serverOrder: 0, browserOrder: 0 }],
+      }],
+    }));
 
     const moduleUrl = pathToFileURL(join(fixtureRoot, 'scripts/source-catalog-identity.mjs')).href;
     const probe = `

@@ -1,6 +1,7 @@
 ---
 title: "A suppression layer above beforeSend cannot see your ownership tag — zero-frame checkout timeouts were dropped twice over"
 date: 2026-09-12
+last_updated: 2026-09-17
 category: logic-errors
 module: Sentry error filtering
 problem_type: logic_error
@@ -54,7 +55,7 @@ Checkout timeouts on the WorldMonitor dashboard were captured by first-party cod
 
 It *is* `instanceof Error`, so the SDK parses that stack and extracts zero frames rather than falling back to a synthetic call-site stack. Every `!hasFirstParty` gate therefore reads it as third-party noise.
 
-**Trusting an existing code comment.** `pro-test/src/sentry-filter-policy.ts` argued the dashboard bundle "mints its own `signal timed out` DOMException in first-party code, which does carry caller frames." That is true only of the pre-Baseline-2024 fallback path in `src/services/timeout-signal.ts`; every current engine takes the native `AbortSignal.timeout` branch. Believing the comment is why the gate was written to suppress the shape in the first place.
+**Trusting an existing code comment.** `pro-test/src/sentry-filter-policy.ts` argued the dashboard bundle "mints its own `signal timed out` DOMException in first-party code, which does carry caller frames." For deadline signals, only the fallback path in `src/services/timeout-signal.ts` mints such a reason at all. `createTimeoutSignal` feature-detects: it returns the native `AbortSignal.timeout` wherever that API exists, and runs the fallback only in a runtime that lacks it. Even that fallback did not reliably carry caller frames. It built a bare DOMException, which Chromium-family engines leave stackless, so it got frames only if Sentry's fetch backfill wrote the call site onto it. Engines that do record a DOMException stack gave it the timer callback's frames, not the caller's. The #8300 change (PR #8304) stamps it with the native header-only stack, so it carries no frames on any engine that lets `stack` be redefined. Believing the comment is why the gate was written to suppress the shape in the first place. (One hand-built reason did reach first-party frames on every engine by another route: the insights loader's own `signal timed out` DOMException had no `stack` in Chromium, so Sentry's fetch instrumentation wrote the fetch call site onto it when a browser extension leaked the rejection. PR #8296 now gives it the native header-only stack — see `docs/solutions/logic-errors/sentry-stack-backfill-makes-a-stackless-abort-reason-look-first-party.md`.)
 
 **Fixing only `beforeSend`.** WebKit words the same rejection `AbortError: Fetch is aborted` (already documented in `src/services/timeout-signal.ts` under WORLDMONITOR-10F), and that phrase lived in `ignoreErrors` — a layer no `beforeSend` exemption can reach.
 
@@ -132,5 +133,6 @@ That run also revealed the gate had been silently eating three other first-party
 - `docs/solutions/best-practices/sentry-noise-filtering-with-stack-gating-and-signature-matching.md` — the frame-gating and signature-matching policy this gate belongs to
 - `docs/solutions/logic-errors/name-shaped-trampoline-allowlist-cannot-match-a-nameless-frame.md` — the sibling failure mode, where a name-shaped allowlist could not match a nameless frame
 - `docs/solutions/workflow-issues/sentry-resolve-by-shipping-permanently-mutes-issues.md` — why this PR deliberately carries no resolve-on-commit marker
+- `docs/solutions/logic-errors/sentry-stack-backfill-makes-a-stackless-abort-reason-look-first-party.md` — why a hand-built abort reason must carry the native header-only stack, or the SDK's fetch backfill gives it first-party frames
 
-Shipped in PR #8069 (open as of this writing, CI green, unmerged).
+Shipped in PR #8069 (merged 2026-09-12).

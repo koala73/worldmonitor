@@ -35,11 +35,20 @@ interface DigestItem {
   importanceScore: number;
 }
 
+const DEFAULT_DIGEST_TITLE = 'Outside forces fuel Sudan war, new report finds';
+
 function digestItem(overrides: Partial<DigestItem> = {}): DigestItem {
+  const title = overrides.title ?? DEFAULT_DIGEST_TITLE;
   return {
-    title: 'Outside forces fuel Sudan war, new report finds',
+    title,
     source: 'UN News',
-    link: 'https://news.un.org/feed/view/en/story/2026/09/1168270',
+    // One article is one URL. The live strip dedupes by normalized article URL
+    // (#8339), matching the freeze, so a fixture reusing a single link across
+    // several distinct stories would collapse to one row and stop exercising
+    // tie-breaking. Derive it from the title; keep the canonical Sudan URL.
+    link: title === DEFAULT_DIGEST_TITLE
+      ? 'https://news.un.org/feed/view/en/story/2026/09/1168270'
+      : `https://news.un.org/feed/view/en/story/2026/09/${encodeURIComponent(title)}`,
     publishedAt: Date.now() - 60 * 60 * 1000,
     importanceScore: 50,
     ...overrides,
@@ -175,6 +184,25 @@ describe('live welcome headlines link only to verifiable articles', () => {
     ]);
     const { headlines } = await fetchLiveTeasers();
     assert.deepEqual(headlines.items.map((h) => h.title), ['highest', 'newer', 'older']);
+  });
+
+  it('publishes one row per article when a publisher repeats it across editions', async () => {
+    // The live strip flattens every digest category, and _feeds.ts registers
+    // France 24's editions in four of them, so one article arrives several
+    // times with a byte-identical link (#8339). Must match the freeze, or the
+    // row set changes when the live fetch replaces the frozen card.
+    const link = 'https://www.france24.com/en/americas/20260914-us-g20-energy-talks-iran-war';
+    stubDigest([
+      digestItem({ title: 'G20 energy talks', source: 'France 24', link, importanceScore: 60 }),
+      digestItem({ title: 'G20 energy talks', source: 'France 24 LatAm', link, importanceScore: 55 }),
+      digestItem({ title: 'A distinct story', importanceScore: 10 }),
+    ]);
+    const { headlines } = await fetchLiveTeasers();
+    assert.deepEqual(
+      headlines.items.map((h) => h.source),
+      ['France 24', 'UN News'],
+      'the repeated edition drops and the next distinct story takes the slot',
+    );
   });
 });
 

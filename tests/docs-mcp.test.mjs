@@ -363,6 +363,21 @@ describe('docs-mcp handler', () => {
     assert.equal(await res.text(), sse);
   });
 
+  it('never forwards the caller credential or cookies to the third-party docs host', async () => {
+    const calls = mockUpstream('event: message\ndata: {"jsonrpc":"2.0","id":4,"result":{"tools":[]}}\n\n');
+    const res = await handler(post('{"jsonrpc":"2.0","id":4,"method":"tools/list"}', {
+      authorization: 'Bearer wm_oauth_access_token',
+      cookie: '__session=clerk',
+      'mcp-session-id': 'sess-1',
+    }));
+    assert.equal(res.status, 200);
+    assert.equal(calls.length, 1);
+    const sent = new Headers(calls[0].init.headers);
+    assert.equal(sent.get('authorization'), null);
+    assert.equal(sent.get('cookie'), null);
+    assert.equal(sent.get('mcp-session-id'), 'sess-1');
+  });
+
   it('forces no-store on proxied responses, including the cacheable 405 Mintlify returns for a bare GET', async () => {
     clearUpstashEnv();
     // Every header that can carry a shared-cache policy, from the shared list:

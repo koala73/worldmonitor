@@ -9,11 +9,14 @@ import { beforeEach, describe, expect, test } from "vitest";
 import {
   CHECKOUT_LOGIN_EMAIL_CLOCK_SKEW_MS,
   CHECKOUT_LOGIN_EMAIL_MAX_AGE_MS,
+  DUNNING_PORTAL_TOKEN_TTL_MS,
   signBusinessInviteToken,
   signCheckoutLoginEmail,
+  signDunningPortalToken,
   signUserId,
   verifyBusinessInviteToken,
   verifyCheckoutLoginEmail,
+  verifyDunningPortalToken,
   verifyUserId,
 } from "../lib/identitySigning";
 
@@ -371,5 +374,76 @@ describe("checkout login-email token signing/verification", () => {
     const token = await signCheckoutLoginEmail(USER, EMAIL, ISSUED_AT);
     delete process.env.DODO_IDENTITY_SIGNING_SECRET;
     expect(await verifyCheckoutLoginEmail(USER, EMAIL, token, ISSUED_AT)).toBe("invalid");
+  });
+});
+
+describe("dunning portal token signing/verification", () => {
+  const USER = "user_dunning_portal_1";
+  const NOW = new Date("2026-10-15T06:00:00Z").getTime();
+
+  beforeEach(() => {
+    process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SECRET;
+  });
+
+  test("round-trips a valid token", async () => {
+    const token = await signDunningPortalToken(USER, NOW);
+    expect(await verifyDunningPortalToken(token, NOW)).toBe(USER);
+  });
+
+  test("a day-7 reminder link still works a week after it was sent", async () => {
+    const token = await signDunningPortalToken(USER, NOW);
+    expect(await verifyDunningPortalToken(token, NOW + 7 * 86_400_000)).toBe(USER);
+    expect(await verifyDunningPortalToken(token, NOW + DUNNING_PORTAL_TOKEN_TTL_MS - 1)).toBe(USER);
+  });
+
+  test("lifetime stays short: about a week, not two", () => {
+    expect(DUNNING_PORTAL_TOKEN_TTL_MS).toBe(8 * 86_400_000);
+  });
+
+  test("rejects an expired token", async () => {
+    const token = await signDunningPortalToken(USER, NOW);
+    expect(await verifyDunningPortalToken(token, NOW + DUNNING_PORTAL_TOKEN_TTL_MS)).toBeNull();
+  });
+
+  test("rejects a tampered expiry", async () => {
+    const token = await signDunningPortalToken(USER, NOW);
+    const parts = token.split(".");
+    parts[2] = String(NOW + DUNNING_PORTAL_TOKEN_TTL_MS + 86_400_000);
+    expect(await verifyDunningPortalToken(parts.join("."), NOW)).toBeNull();
+  });
+
+  test("rejects a leading-zero expiry, so one link has one textual form", async () => {
+    // Number("0123") === 123 would re-verify the same signature, and each
+    // variant would get its own per-token rate-limit bucket at the edge.
+    const token = await signDunningPortalToken(USER, NOW);
+    const parts = token.split(".");
+    parts[2] = `0${parts[2]}`;
+    expect(await verifyDunningPortalToken(parts.join("."), NOW)).toBeNull();
+  });
+
+  test("binds the userId to the signature", async () => {
+    const token = await signDunningPortalToken(USER, NOW);
+    const parts = token.split(".");
+    parts[1] = "user_someoneelse";
+    expect(await verifyDunningPortalToken(parts.join("."), NOW)).toBeNull();
+  });
+
+  test("rejects an extra segment and a non-numeric expiry", async () => {
+    const token = await signDunningPortalToken(USER, NOW);
+    expect(await verifyDunningPortalToken(`${token}.x`, NOW)).toBeNull();
+    const parts = token.split(".");
+    parts[2] = "1e15";
+    expect(await verifyDunningPortalToken(parts.join("."), NOW)).toBeNull();
+  });
+
+  test("rejects a business-invite token as a foreign purpose", async () => {
+    const invite = await signBusinessInviteToken("k57c5e0m1234567890abcdef12345678");
+    expect(await verifyDunningPortalToken(invite, NOW)).toBeNull();
+  });
+
+  test("throws when signing a malformed userId", async () => {
+    await expect(signDunningPortalToken("user.with.dots", NOW)).rejects.toThrow(
+      /Clerk-shaped userId/,
+    );
   });
 });

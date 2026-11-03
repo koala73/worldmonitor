@@ -4,13 +4,11 @@ import assert from 'node:assert/strict';
 import {
   UCDP_PANEL_ROWS_PER_TAB,
   classifyUcdpEvents,
-  buildUcdpDedupeIndex,
   summarizeUcdpEvents,
   selectUcdpPanelRows,
   compactUcdpDashboardPayload,
 } from '../scripts/_ucdp-dashboard.mjs';
 import { deriveUcdpClassifications } from '../src/services/conflict/ucdp-classify.ts';
-import { deduplicateUcdpProjectionAggregates, isDuplicatedByAcled } from '../src/services/conflict/ucdp-dedupe.ts';
 
 const NOW = Date.parse('2026-07-14T00:00:00.000Z');
 const DAY = 24 * 60 * 60 * 1000;
@@ -136,7 +134,7 @@ test('projection shrinks the payload while preserving every displayed number', (
 
   assert.ok(compact.events.length < events.length, 'events must be capped');
   assert.equal(compact.totalEvents, events.length, 'pre-cap total must be recorded');
-  assert.equal(compact.dedupeIndex.length, events.length, 'dedupe index must cover the full pre-cap set');
+  assert.equal('dedupeIndex' in compact, false, 'no reader remains for a client-side ACLED dedupe index (#8588)');
   assert.deepEqual(compact.aggregates, summarizeUcdpEvents(events));
   assert.deepEqual(compact.classifications, classifyUcdpEvents(events, NOW));
   // Passthrough metadata is preserved.
@@ -148,28 +146,14 @@ test('projection shrinks the payload while preserving every displayed number', (
   assert.ok(after < before / 2, `projection should at least halve the payload (was ${before}, now ${after})`);
 });
 
-test('reconciles projection totals after ACLED de-duplication', () => {
+test('bootstrap projection size does not grow with the full event count', () => {
+  // #8587 keeps every candidate row, so the full set can grow well past 2,000.
+  // The bootstrap key must stay bounded by the capped panel rows, not the total.
   const events = fixture();
-  const compact = compactUcdpDashboardPayload({ events }, NOW);
-  const acledEvents = [{ latitude: 1, longitude: 2, event_date: new Date(NOW - DAY).toISOString(), fatalities: 1 }];
-  const expectedAggregates = summarizeUcdpEvents(events
-    .filter((event) => [
-      'UCDP_VIOLENCE_TYPE_STATE_BASED',
-      'UCDP_VIOLENCE_TYPE_NON_STATE',
-      'UCDP_VIOLENCE_TYPE_ONE_SIDED',
-    ].includes(event.violenceType))
-    .filter((event) => !isDuplicatedByAcled({
-      latitude: event.location.latitude,
-      longitude: event.location.longitude,
-      dateMs: event.dateStart,
-      deathsBest: event.deathsBest,
-    }, acledEvents)));
-
-  assert.deepEqual(
-    deduplicateUcdpProjectionAggregates(compact.aggregates, compact.dedupeIndex, acledEvents),
-    expectedAggregates,
-  );
-  assert.deepEqual(compact.dedupeIndex, buildUcdpDedupeIndex(events));
+  const grown = [...events, ...events.map((e, i) => ({ ...e, id: `${e.id}-extra-${i}` }))];
+  const bytes = (list: any[]) => JSON.stringify(compactUcdpDashboardPayload({ events: list, fetchedAt: NOW }, NOW)).length;
+  const growth = bytes(grown) - bytes(events);
+  assert.ok(growth < 2_000, `doubling the event count grew the bootstrap projection by ${growth} bytes`);
 });
 
 test('tolerates malformed payloads rather than publishing garbage', () => {

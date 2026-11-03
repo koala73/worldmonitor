@@ -4,7 +4,8 @@ import WelcomeApp from './WelcomeApp.tsx';
 import { effectiveWelcomeContentLanguage, initI18n } from './i18n';
 import { initSentry } from './sentry';
 import { initDebugBearRum } from './debugbear-rum';
-import { clearWelcomeRoot } from './welcome-root';
+import { clearWelcomeRoot, prepareWelcomeRoot } from './welcome-root';
+import { captureFirstTouchAcquisitionFromPage } from '../../shared/acquisition-source';
 import './index.css';
 
 const WELCOME_HYDRATION_IDLE_TIMEOUT_MS = 2500;
@@ -27,21 +28,25 @@ function scheduleWelcomeHydration(hydrate: () => void) {
 
 initSentry();
 initDebugBearRum();
+captureFirstTouchAcquisitionFromPage();
 
 initI18n({ metaPrefix: 'welcome.meta' }).then(() => {
-  const rootElement = document.getElementById('root')!;
+  const mount = prepareWelcomeRoot(
+    document.getElementById('root'),
+    effectiveWelcomeContentLanguage(),
+  );
+  if (!mount) {
+    return;
+  }
   const app = (
     <StrictMode>
       <WelcomeApp />
     </StrictMode>
   );
-  if (
-    rootElement.dataset.wmPrerendered === 'welcome' &&
-    rootElement.dataset.wmPrerenderLang === effectiveWelcomeContentLanguage()
-  ) {
-    scheduleWelcomeHydration(() => hydrateRoot(rootElement, app));
+  if (mount.mode === 'hydrate') {
+    scheduleWelcomeHydration(() => hydrateRoot(mount.root, app));
     return;
   }
-  clearWelcomeRoot(rootElement);
-  createRoot(rootElement).render(app);
+  clearWelcomeRoot(mount.root);
+  createRoot(mount.root).render(app);
 });

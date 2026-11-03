@@ -117,8 +117,10 @@ for (const kind of ['ddos', 'traffic', 'country'] as const) {
     payload = { _seed: { fetchedAt: now, state: 'OK' }, data: good };
     await refresh(good, 200);
     if (kind === 'country') {
+      payload = { anomalies: [traffic.anomalies[0], { id: 'traffic-fr', locationCode: 'FR' }], totalCount: 2 };
+      await refresh({ anomalies: traffic.anomalies, totalCount: 2 }, 200);
       payload = { anomalies: [{ id: 'traffic-fr', locationCode: 'FR' }], totalCount: 1 };
-      await refresh(emptyTraffic, 200);
+      await refresh({ anomalies: [], totalCount: 1 }, 200);
     }
   });
 }

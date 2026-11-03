@@ -32,8 +32,6 @@ const auditedRules = [
   { file: 'src/styles/main.css', css: mainCss, selector: '.tech-event-marker.upcoming-soon::after' },
   { file: 'src/styles/main.css', css: mainCss, selector: '.intel-skeleton' },
   { file: 'src/styles/main.css', css: mainCss, selector: '.intel-skeleton::after' },
-  { file: 'src/styles/main.css', css: mainCss, selector: '.cw-dot' },
-  { file: 'src/styles/main.css', css: mainCss, selector: '.cw-dot::after' },
 ];
 
 const expectedIssueKeyframes = new Set([
@@ -53,8 +51,6 @@ const expectedIssueKeyframes = new Set([
   'tech-item-highlight-pulse',
   'pulse-marker',
   'skeleton-shimmer',
-  'cw-dot-pulse',
-  'cw-dot-ring',
 ]);
 
 

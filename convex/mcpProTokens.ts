@@ -1,8 +1,10 @@
+import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import { requireUserId, resolveUserId } from "./lib/auth";
 import { mergeEntitlementFeatures } from "./lib/entitlements";
+import { mcpGrantClientSource } from "../shared/agent-client-source";
 
 /**
  * Pro MCP token (non-key) identity rows.
@@ -47,6 +49,7 @@ export const issueProMcpToken = internalMutation({
     if (!args.userId) {
       throw new ConvexError("INVALID_USER_ID");
     }
+    await assertAccountWritable(ctx, args.userId);
 
     const entitlement = await ctx.db
       .query("entitlements")
@@ -138,10 +141,14 @@ export const issueProMcpToken = internalMutation({
       if (active.length < MAX_TOKENS_PER_USER + 1) break;
     }
 
+    // The edge names the row with mcpGrantName(client_name), so the bucket is
+    // read back from that name rather than from a second edge field.
+    const clientSource = mcpGrantClientSource(args.name);
     const tokenId = await ctx.db.insert("mcpProTokens", {
       userId: args.userId,
       clientId: args.clientId,
       name: args.name,
+      ...(clientSource ? { clientSource } : {}),
       createdAt: Date.now(),
     });
 

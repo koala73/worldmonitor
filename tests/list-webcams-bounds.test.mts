@@ -1,16 +1,21 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, it, mock } from 'node:test';
+import { mapErrorToResponse } from '../server/error-mapper';
 import { listWebcams } from '../server/worldmonitor/webcam/v1/list-webcams';
 import { createWebcamServiceRoutes } from '../src/generated/server/worldmonitor/webcam/v1/service_server';
 
 const originalEnv = { ...process.env };
+let failure = '';
+let version: string | number;
 let commands: unknown[][];
 let responseKeys: string[];
 let cache: Map<string, unknown>;
 let cameras: Array<{ webcamId: string; title: string; lat: number; lng: number; category: string; country: string }>;
 const empty = { webcams: [], clusters: [], totalInView: 0 };
-const route = createWebcamServiceRoutes({ listWebcams, getWebcamImage: async () => { throw new Error('not used'); } })[0]!;
+const route = createWebcamServiceRoutes({ listWebcams, getWebcamImage: async () => { throw new Error('not used'); } }, { onError: mapErrorToResponse })[0]!;
 beforeEach(() => {
+  failure = '';
+  version = 'seed-v1';
   commands = [];
   responseKeys = [];
   cache = new Map();
@@ -25,15 +30,22 @@ beforeEach(() => {
     if (url.pathname.startsWith('/get/')) {
       const key = decodeURIComponent(url.pathname.slice(5));
       commands.push(['GET', key]);
-      if (key === 'webcam:cameras:active') return Response.json({ result: JSON.stringify('seed-v1') });
+      if (key === 'webcam:cameras:active' && failure === 'pointer') return new Response('', { status: 503 });
+      if (key === 'webcam:cameras:active') return Response.json({ result: JSON.stringify(version) });
       responseKeys.push(key);
       return Response.json({ result: cache.has(key) ? JSON.stringify(cache.get(key)) : null });
     }
     const body = JSON.parse(String(init?.body));
     if (url.pathname === '/pipeline') {
       commands.push(...body);
+      if (failure === body[0][0]) return Response.json([{ error: 'fixture failure' }]);
+      if (body[0][0] === 'EXISTS') {
+        assert.deepEqual(body[0], ['EXISTS', `webcam:cameras:geo:${version}`, `webcam:cameras:meta:${version}`]);
+        return Response.json([{ result: failure === 'expired-seed' ? 0 : 2 }]);
+      }
+      if (failure === 'partial' && body[0][0] === 'HMGET') return Response.json([{ result: [null] }]);
       if (body[0][0] === 'HMGET') {
-        assert.equal(body[0][1], 'webcam:cameras:meta:seed-v1');
+        assert.equal(body[0][1], `webcam:cameras:meta:${version}`);
         return Response.json([{ result: body[0].slice(2).map((id: string) => JSON.stringify(cameras.find(c => c.webcamId === id))) }]);
       }
       assert.equal(body[0][0], 'GEOSEARCH');
@@ -123,4 +135,29 @@ it('bounds every extreme-coordinate combination before forming geometry or cache
     assert.ok(height! >=0 && height! <=180*111.32);
   }
   for (const key of responseKeys) assert.doesNotMatch(key, /Infinity|NaN|e\+/);
+});
+
+for (const unavailable of ['pointer', 'GEOSEARCH', 'HMGET', 'partial', 'expired-seed']) {
+  it(`does not cache webcam data after ${unavailable} failure`, async () => {
+    cameras = unavailable === 'expired-seed' ? [] : [{ webcamId: 'one', title: 'One', lat: 22, lng: 13, category: 'city', country: 'XX' }];
+    failure = unavailable;
+    const response = await request();
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    assert.equal(commands.some(command => command[0] === 'SET'), false);
+    failure = '';
+    cameras = [{ webcamId: 'one', title: 'One', lat: 22, lng: 13, category: 'city', country: 'XX' }];
+    const recovered = await request();
+    assert.equal(recovered.status, 200);
+    assert.equal((await recovered.json()).totalInView, 1);
+  });
+}
+
+it('reads the numeric timestamp version written by the webcam seeder', async () => {
+  version = 1789756800000;
+  cameras = [{ webcamId: 'one', title: 'One', lat: 22, lng: 13, category: 'city', country: 'XX' }];
+  const response = await request();
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).totalInView, 1);
+  assert.equal(searches()[0]?.[1], `webcam:cameras:geo:${version}`);
 });

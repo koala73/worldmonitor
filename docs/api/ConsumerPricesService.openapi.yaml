@@ -13,7 +13,7 @@ paths:
             tags:
                 - ConsumerPricesService
             summary: GetConsumerPriceOverview
-            description: GetConsumerPriceOverview retrieves headline basket indices and coverage metrics.
+            description: GetConsumerPriceOverview returns essentials and value basket indices, week and month changes, retailer spread and coverage for one of 10 scraped markets.
             operationId: GetConsumerPriceOverview
             parameters:
                 - name: market_code
@@ -146,9 +146,10 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
-                  example: "US"
+                  example: "ae"
                   schema:
                     type: string
+                    pattern: '^([A-Za-z]{2})?$'
                 - name: basket_slug
                   in: query
                   description: basket_slug selects the basket (e.g. "essentials-ae").
@@ -156,6 +157,7 @@ paths:
                   example: "essentials-ae"
                   schema:
                     type: string
+                    pattern: '^([Ee][Ss][Ss][Ee][Nn][Tt][Ii][Aa][Ll][Ss]-[A-Za-z]{2})?$'
                 - name: range
                   in: query
                   description: range is one of "7d", "30d", "90d". Unsupported values use "30d".
@@ -179,11 +181,11 @@ paths:
                             example:
                                 "asOf": "1717200000000"
                                 "basketSlug": "essentials-ae"
-                                "currencyCode": "USD"
+                                "currencyCode": "AED"
                                 "essentialsSeries":
                                     - "date": "2026-01-15"
                                       "index": 1.5
-                                "marketCode": "US"
+                                "marketCode": "ae"
                             schema:
                                 $ref: '#/components/schemas/GetConsumerPriceBasketSeriesResponse'
                 "400":
@@ -274,7 +276,7 @@ paths:
             tags:
                 - ConsumerPricesService
             summary: ListConsumerPriceCategories
-            description: ListConsumerPriceCategories retrieves category summaries with sparklines.
+            description: ListConsumerPriceCategories returns per-category price indices with week and month changes, sparklines and coverage for a market over a 7d, 30d or 90d range.
             operationId: ListConsumerPriceCategories
             parameters:
                 - name: market_code
@@ -412,7 +414,7 @@ paths:
             tags:
                 - ConsumerPricesService
             summary: ListConsumerPriceMovers
-            description: ListConsumerPriceMovers retrieves the largest upward and downward item price moves.
+            description: ListConsumerPriceMovers returns up to 10 risers and 10 fallers, the products with the largest price changes in a market over 7d, 30d or 90d, by category.
             operationId: ListConsumerPriceMovers
             parameters:
                 - name: market_code
@@ -563,7 +565,7 @@ paths:
             tags:
                 - ConsumerPricesService
             summary: ListRetailerPriceSpreads
-            description: ListRetailerPriceSpreads retrieves cheapest-basket comparisons across retailers.
+            description: ListRetailerPriceSpreads compares essentials basket totals across retailers in a market, with each store's gap to the cheapest and the overall spread.
             operationId: ListRetailerPriceSpreads
             parameters:
                 - name: market_code
@@ -694,7 +696,7 @@ paths:
             tags:
                 - ConsumerPricesService
             summary: GetConsumerPriceFreshness
-            description: GetConsumerPriceFreshness retrieves feed freshness and coverage health per retailer.
+            description: GetConsumerPriceFreshness returns scrape freshness per retailer in a market, with last run time, status, parse success rate and the count of stalled feeds.
             operationId: GetConsumerPriceFreshness
             parameters:
                 - name: market_code
@@ -704,6 +706,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^([A-Za-z]{2})?$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -1057,9 +1060,13 @@ components:
             properties:
                 marketCode:
                     type: string
+                    maxLength: 2
+                    pattern: ^([A-Za-z]{2})?$
                     description: market_code is the ISO 3166-1 alpha-2 market identifier.
                 basketSlug:
                     type: string
+                    maxLength: 13
+                    pattern: ^([Ee][Ss][Ss][Ee][Nn][Tt][Ii][Aa][Ll][Ss]-[A-Za-z]{2})?$
                     description: basket_slug selects the basket (e.g. "essentials-ae").
                 range:
                     type: string
@@ -1288,6 +1295,8 @@ components:
             properties:
                 marketCode:
                     type: string
+                    maxLength: 2
+                    pattern: ^([A-Za-z]{2})?$
                     description: market_code is the ISO 3166-1 alpha-2 market identifier.
             description: GetConsumerPriceFreshnessRequest parameters for the freshness RPC.
         GetConsumerPriceFreshnessResponse:

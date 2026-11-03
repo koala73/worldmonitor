@@ -114,6 +114,7 @@ function verdict(data, now = NOW) {
 
 async function runNhc({
   now = NOW,
+  runStartedAtMs = null,
   previous = previousNhcSnapshot,
   eonet = eonetEvents(),
   gdacs = { features: [] },
@@ -123,6 +124,7 @@ async function runNhc({
 } = {}) {
   return fetchNaturalEvents({
     now,
+    runStartedAtMs,
     previousNhcSnapshot: previous,
     fetchHkoWarningsFn: async () => {
       if (calls) calls.hko += 1;
@@ -161,7 +163,7 @@ test('retains validated NHC coverage after required point requests fail without 
     payload.events.filter((event) => event.sourceName === 'NHC'),
     [retainedStorm],
   );
-  assert.deepEqual(calls, { eonet: 1, gdacs: 1, nhc: 30, hko: 1 });
+  assert.deepEqual(calls, { eonet: 1, gdacs: 6, nhc: 30, hko: 1 });
   assert.equal(payload._nhcSnapshot.fetchedAt, NOW);
   assert.equal(payload._nhcSnapshot.consecutiveFailures, 1);
   assert.equal(verdict(payload, NOW + 5 * MIN).sourceFailurePendingUntil, new Date(NOW + 215 * MIN).toISOString());
@@ -290,6 +292,81 @@ test('optional cone and past-point failures do not remove a point-confirmed stor
   assert.equal(payload._nhcSnapshot.consecutiveFailures, 0);
 });
 
+test('identity rejection logs bounded predicates and keeps retained clocks', async t => {
+  const logs = [];
+  t.mock.method(console, 'log', (...args) => logs.push(args.join(' ')));
+  for (const [field, value] of [['stormname', ''], ['stormnum', '1'], ['advisnum', null], ['advdate', '800 AM XYZ Mon Sep 07 2026']]) {
+    logs.length = 0;
+    const payload = await runNhc({ now: NOW + MIN, runStartedAtMs: NOW, nhc: async (_input, id) => Response.json(collection(id === 32 ? [{ ...currentStormPoint, properties: { ...currentStormPoint.properties, [field]: value } }] : [])) });
+    const line = logs.find(line => line.startsWith('[NHC identity] '));
+    assert.ok(line, field);
+    const diagnostic = JSON.parse(line.slice('[NHC identity] '.length));
+    assert.equal(diagnostic.layerId, 32);
+    assert.equal(diagnostic.attemptAt, NOW + MIN);
+    assert.equal(diagnostic.runStartedAtMs, NOW);
+    assert.deepEqual(diagnostic.failedPredicates, [field]);
+    assert.equal(diagnostic.fields[field].type, value === null ? 'null' : typeof value);
+    if (field === 'advdate') assert.equal(diagnostic.fields.advdate.value, value);
+    assert.equal(payload._nhcSnapshot.fetchedAt, NOW);
+    assert.equal(payload._nhcSnapshot.retainedUntil, previousNhcSnapshot.retainedUntil);
+    assert.equal(payload._nhcSnapshot.errorCode, 'NHC_POINT_RESPONSE_INVALID');
+    assert.equal(payload._nhcSnapshot.consecutiveFailures, 2);
+    assert.deepEqual(payload.events.filter(e => e.sourceName === 'NHC'), [retainedStorm]);
+    assert.equal(JSON.stringify(naturalEventsPublishTransform(payload)).includes('failedPredicates'), false);
+  }
+});
+
+test('identity diagnostics redact unsafe and oversized strings and never serialize nested fields', async t => {
+  const logs = [];
+  t.mock.method(console, 'log', (...args) => logs.push(args.join(' ')));
+  const properties = { ...currentStormPoint.properties, stormname: 'https://private.example/?token=SECRET', stormnum: { secret: 'SECRET' }, advisnum: 'Bearer SECRET', advdate: 'SECRET'.repeat(10000), unrelated: 'SECRET' };
+  await runNhc({ nhc: async (_input, id) => Response.json(collection(id === 32 ? [{ ...currentStormPoint, properties }] : [])) });
+  const line = logs.find(line => line.startsWith('[NHC identity] '));
+  assert.ok(line);
+  assert.ok(line.length < 1500);
+  assert.doesNotMatch(line, /SECRET|private|https|unrelated/);
+  const d = JSON.parse(line.slice('[NHC identity] '.length));
+  assert.deepEqual(d.failedPredicates, ['stormnum', 'advdate']);
+  assert.equal(d.fields.advdate.length, 60000);
+  assert.equal(d.fields.advdate.value, undefined);
+  assert.deepEqual(d.fields.stormnum, { type: 'object' });
+});
+
+test('valid identity and earlier wind rejection do not emit identity diagnostics', async t => {
+  const logs = [];
+  t.mock.method(console, 'log', (...args) => logs.push(args.join(' ')));
+  for (const maxwind of [45, -1, 201, '45']) {
+    const payload = await runNhc({ nhc: async (_input, id) => Response.json(collection(id === 32 ? [{ ...currentStormPoint, properties: { ...currentStormPoint.properties, maxwind } }] : [])) });
+    assert.equal(payload._nhcSnapshot.errorCode, maxwind === 45 ? null : 'NHC_POINT_RESPONSE_INVALID');
+  }
+  assert.equal(logs.some(line => line.startsWith('[NHC identity] ')), false);
+});
+
+test('uses tau including zero before fcstprd for current and future NHC positions', async () => {
+  const point = (tau, fcstprd, lat) => ({
+    ...currentStormPoint,
+    geometry: { type: 'Point', coordinates: [-60, lat] },
+    properties: { ...currentStormPoint.properties, tau, fcstprd },
+  });
+  const payload = await runNhc({
+    previous: null,
+    nhc: async (_input, id) => Response.json(collection(id === 6 ? [
+      point(24, 0, 24),
+      point(null, 36, 26),
+      point(0, 120, 20),
+      point(undefined, 12, 22),
+    ] : [])),
+  });
+  const storm = payload.events.find(event => event.sourceName === 'NHC');
+  assert.equal(storm.lat, 20);
+  assert.deepEqual(storm.forecastTrack.map(({ hour, lat }) => ({ hour, lat })), [
+    { hour: 12, lat: 22 },
+    { hour: 24, lat: 24 },
+    { hour: 36, lat: 26 },
+  ]);
+  assert.equal(payload._nhcSnapshot.errorCode, null);
+});
+
 test('accepts time-first advisory dates across NHC time zones', async () => {
   for (const [advdate, expectedDate] of [
     ['800 AM PDT Mon Sep 07 2026', '2026-09-07T15:00:00.000Z'],
@@ -319,6 +396,60 @@ test('accepts time-first advisory dates across NHC time zones', async () => {
     assert.equal(storm.id, 'nhc-EP13-26');
     assert.equal(storm.date, Date.parse(expectedDate));
     assert.equal(payload._nhcSnapshot.errorCode, null);
+  }
+});
+
+test('publishes Gonzalo from an NHC CVT advisory without retaining the previous storm', async () => {
+  const now = Date.parse('2026-09-25T07:02:25.376Z');
+  const point = {
+    ...currentStormPoint,
+    geometry: { type: 'Point', coordinates: [-22.3, 13.7] },
+    properties: {
+      ...currentStormPoint.properties,
+      stormname: 'Tropical Storm Gonzalo', stormnum: 7, advisnum: '1A',
+      advdate: '500 AM CVT Fri Sep 25 2026', maxwind: 40, tau: 0, fcstprd: 120,
+    },
+  };
+  const payload = await runNhc({
+    now,
+    previous: { ...previousNhcSnapshot, fetchedAt: now - MIN, lastAttemptAt: now - MIN, retainedUntil: now + MIN },
+    nhc: async (_input, id) => Response.json(collection(id === 32 ? [point] : [])),
+  });
+  const storms = payload.events.filter(event => event.sourceName === 'NHC');
+  assert.deepEqual(storms.map(event => event.id), ['nhc-AL07-1A']);
+  assert.equal(storms[0].title, 'Tropical Storm Gonzalo');
+  assert.equal(storms[0].description, 'Tropical Storm Gonzalo, Max wind 40 kt');
+  assert.equal(storms[0].stormName, 'Tropical Storm Gonzalo');
+  assert.equal(storms[0].date, Date.parse('2026-09-25T06:00:00.000Z'));
+  assert.equal(payload._nhcSnapshot.fetchedAt, now);
+  assert.equal(payload._nhcSnapshot.retainedUntil, now + 540 * MIN);
+  assert.equal(payload._nhcSnapshot.consecutiveFailures, 0);
+  assert.equal(payload._nhcSnapshot.errorCode, null);
+  assert.equal(verdict(payload, now).status, 'OK');
+});
+
+test('adds only a missing matching NHC classification prefix and preserves the supplied storm name', async () => {
+  for (const [stormname, stormtype, title] of [
+    ['Hurricane Trudy', 'HU', 'Hurricane Trudy'],
+    ['  hurricane Trudy  ', 'HU', '  hurricane Trudy  '],
+    ['Hurricane\tTrudy', 'HU', 'Hurricane\tTrudy'],
+    ['Trudy', 'HU', 'Hurricane Trudy'],
+    ['Tropical Storm Trudy', 'HU', 'Hurricane Tropical Storm Trudy'],
+    ['Hurricane-like Trudy', 'HU', 'Hurricane Hurricane-like Trudy'],
+  ]) {
+    const point = { ...currentStormPoint, properties: { ...currentStormPoint.properties, stormname, stormtype } };
+    const payload = await runNhc({ previous: null,
+      nhc: async (_input, id) => Response.json(collection(id === 6 ? [point] : [])),
+    });
+    const storm = payload.events.find(event => event.sourceName === 'NHC');
+    assert.ok(storm, stormname);
+    assert.equal(storm.title, title, stormname);
+    assert.equal(storm.description, `${title}, Max wind 45 kt`, stormname);
+    assert.equal(storm.stormName, stormname);
+    assert.equal(storm.id, 'nhc-AL01-7');
+    assert.equal(storm.date, NOW);
+    assert.equal(storm.windKt, 45);
+    assert.equal(storm.closed, false);
   }
 });
 
@@ -523,7 +654,10 @@ test('canonical publication strips NHC recovery state and diagnostics', () => {
   });
 });
 
-async function seedProcess(initial, now, failStateWrite, eonetEmpty) {
+async function seedProcess(initial, now, {
+  failStateWrite = false, eonetEmpty = false, eonetFails = false, eonetTransient = false,
+  gdacsFails = [], gdacsFeatures = {}, nhcHealthy = false, nhcIdentityPoint = null, failSourceStateWrite = false,
+} = {}) {
   Date.now = () => now;
   const store = new Map(initial);
   const calls = { eonet: 0, gdacs: 0, nhc: 0, hko: 0 };
@@ -544,12 +678,17 @@ async function seedProcess(initial, now, failStateWrite, eonetEmpty) {
       if (failStateWrite && body[0] === 'SET' && body[1] === 'natural:events:nhc-snapshot:v1') {
         return new Response('', { status: 403 });
       }
+      if (failSourceStateWrite && body[0] === 'SET' && body[1] === 'natural:events:source-snapshots:v1') {
+        return new Response('', { status: 403 });
+      }
       return Response.json(Array.isArray(body[0])
         ? body.map(command => ({ result: redis(command) }))
         : { result: redis(body) });
     }
     if (url.hostname === 'eonet.gsfc.nasa.gov') {
       calls.eonet += 1;
+      if (eonetTransient && calls.eonet === 1) throw new TypeError('fetch failed');
+      if (eonetFails) return new Response('', { status: 503 });
       return Response.json({ events: eonetEmpty ? [] : [{
         id: 'eonet-volcano-process', title: 'Volcano process fixture', description: '',
         categories: [{ id: 'volcanoes', title: 'Volcanoes' }],
@@ -559,10 +698,14 @@ async function seedProcess(initial, now, failStateWrite, eonetEmpty) {
     }
     if (url.hostname === 'www.gdacs.org') {
       calls.gdacs += 1;
-      return Response.json({ features: [] });
+      const type = url.searchParams.get('eventtype') || url.searchParams.get('eventlist');
+      if (gdacsFails.includes(type)) return new Response('', { status: 503 });
+      return Response.json({ features: gdacsFeatures[type] || [] });
     }
     if (url.hostname === 'mapservices.weather.noaa.gov') {
       calls.nhc += 1;
+      if (nhcIdentityPoint) return Response.json({ type: 'FeatureCollection', features: url.pathname.endsWith('/32/query') ? [nhcIdentityPoint] : [] });
+      if (nhcHealthy) return Response.json({ type: 'FeatureCollection', features: [] });
       return new Response('', { status: 503 });
     }
     if (url.hostname === 'data.weather.gov.hk') {
@@ -576,8 +719,8 @@ async function seedProcess(initial, now, failStateWrite, eonetEmpty) {
   await module.runNaturalEventsSeed();
 }
 
-function runSeedFixture(initial, now, { failStateWrite = false, eonetEmpty = false } = {}) {
-  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', `(${seedProcess.toString()})(${JSON.stringify(initial)}, ${now}, ${failStateWrite}, ${eonetEmpty})`], {
+function runSeedFixture(initial, now, options = {}) {
+  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', `(${seedProcess.toString()})(${JSON.stringify(initial)}, ${now}, ${JSON.stringify(options)})`], {
     encoding: 'utf8',
     timeout: 10_000,
     env: {
@@ -599,6 +742,26 @@ function runSeedFixture(initial, now, { failStateWrite = false, eonetEmpty = fal
   };
 }
 
+test('real seeder correlates identity diagnostics without persisting them or renewing retention', () => {
+  const result = runSeedFixture([['natural:events:nhc-snapshot:v1', JSON.stringify(previousNhcSnapshot)]], NOW + MIN, {
+    nhcIdentityPoint: { ...currentStormPoint, properties: { ...currentStormPoint.properties, stormnum: '1' } },
+  });
+  assert.equal(result.status, 0, result.output);
+  const line = result.output.split('\n').find(line => line.startsWith('[NHC identity] '));
+  assert.ok(line, result.output);
+  const diagnostic = JSON.parse(line.slice('[NHC identity] '.length));
+  assert.equal(diagnostic.runStartedAtMs, NOW + MIN);
+  assert.match(result.output, new RegExp('Run ID:  ' + diagnostic.runStartedAtMs + '-'));
+  assert.deepEqual(diagnostic.failedPredicates, ['stormnum']);
+  const store = new Map(result.store);
+  const state = JSON.parse(store.get('natural:events:nhc-snapshot:v1'));
+  assert.equal(state.fetchedAt, NOW);
+  assert.equal(state.retainedUntil, previousNhcSnapshot.retainedUntil);
+  assert.equal(state.consecutiveFailures, 2);
+  assert.equal(JSON.stringify(result.store).includes('failedPredicates'), false);
+  assert.deepEqual(result.calls, { eonet: 1, gdacs: 6, nhc: 17, hko: 1 });
+});
+
 test('real seeder persists NHC recovery state before replacing the canonical payload', () => {
   const canonical = JSON.stringify({
     _seed: { fetchedAt: NOW, recordCount: 1, sourceVersion: 'fixture', schemaVersion: 2, state: 'OK' },
@@ -613,7 +776,7 @@ test('real seeder persists NHC recovery state before replacing the canonical pay
 
   const published = runSeedFixture(initial, NOW + 5 * MIN);
   assert.equal(published.status, 0, published.output);
-  assert.deepEqual(published.calls, { eonet: 1, gdacs: 1, nhc: 30, hko: 1 });
+  assert.deepEqual(published.calls, { eonet: 1, gdacs: 6, nhc: 30, hko: 1 });
   const store = new Map(published.store);
   const state = JSON.parse(store.get('natural:events:nhc-snapshot:v1'));
   const publicData = JSON.parse(store.get('natural:events:v1')).data;
@@ -632,7 +795,7 @@ test('real seeder persists NHC recovery state before replacing the canonical pay
   assert.equal(failedStore.get('natural:events:v1'), canonical);
   assert.equal(failedStore.get('seed-meta:natural:events'), meta);
   assert.equal(failedStore.get('natural:events:nhc-snapshot:v1'), JSON.stringify(previousNhcSnapshot));
-  assert.deepEqual(failed.calls, { eonet: 1, gdacs: 1, nhc: 30, hko: 1 });
+  assert.deepEqual(failed.calls, { eonet: 1, gdacs: 6, nhc: 30, hko: 1 });
 });
 
 test('real seeder preserves canonical data and advances repeated unsafe-empty failures', () => {
@@ -683,4 +846,47 @@ test('real seeder keeps first-failure diagnostics after a valid zero-record aggr
   assert.equal(meta.sourceState, 'degraded');
   assert.equal(meta.lastSourceSuccessAt, NOW);
   assert.equal(meta.consecutiveSourceFailures, 1);
+});
+
+test('real seeder retains failed EONET/GDACS sources and writes their honest success times', () => {
+  const flood = { type: 'Feature', geometry: { type: 'Point', coordinates: [20, 30] }, properties: {
+    eventtype: 'FL', eventid: 1, alertlevel: 'Orange', fromdate: new Date(NOW).toISOString(), name: 'Flood',
+  } };
+  const first = runSeedFixture([], NOW, { nhcHealthy: true, gdacsFeatures: { FL: [flood] } });
+  assert.equal(first.status, 0, first.output);
+  const second = runSeedFixture(first.store, NOW + 60 * MIN, { nhcHealthy: true, eonetFails: true, gdacsFails: ['FL'] });
+  assert.equal(second.status, 0, second.output);
+  const store = new Map(second.store);
+  const envelope = JSON.parse(store.get('natural:events:v1'));
+  const meta = JSON.parse(store.get('seed-meta:natural:events'));
+  assert.equal(envelope._seed.fetchedAt, NOW + 60 * MIN, 'publication time advances');
+  assert.equal(envelope.data.fetchedAt, NOW, 'full-source observation time does not');
+  assert.deepEqual(envelope.data.events.map(event => event.id).sort(), ['eonet-volcano-process', 'gdacs-FL-1']);
+  assert.equal('_sourceSnapshots' in envelope.data, false);
+  assert.equal('_eonetFailed' in envelope.data, false);
+  assert.deepEqual(meta.failedSources, ['gdacs:FL', 'eonet']);
+  assert.equal(meta.sourceHealth.eonet.lastSuccessAt, NOW);
+  assert.equal(meta.sourceHealth.eonet.status, 'retained');
+  assert.equal(meta.sourceHealth['gdacs:FL'].lastSuccessAt, NOW);
+  assert.deepEqual(second.calls, { eonet: 2, gdacs: 7, nhc: 15, hko: 1 });
+
+  const recovered = runSeedFixture(second.store, NOW + 120 * MIN, { nhcHealthy: true, eonetTransient: true });
+  assert.equal(recovered.status, 0, recovered.output);
+  const recoveredStore = new Map(recovered.store);
+  const recoveredEnvelope = JSON.parse(recoveredStore.get('natural:events:v1'));
+  const recoveredMeta = JSON.parse(recoveredStore.get('seed-meta:natural:events'));
+  assert.deepEqual(recoveredEnvelope.data.events.map(event => event.id), ['eonet-volcano-process']);
+  assert.equal(recoveredEnvelope.data.fetchedAt, NOW + 120 * MIN);
+  assert.equal(recoveredMeta.sourceHealth.eonet.lastSuccessAt, NOW + 120 * MIN);
+  assert.equal(recoveredMeta.sourceState, 'ok');
+  assert.deepEqual(recoveredMeta.failedSources, []);
+  assert.deepEqual(recovered.calls, { eonet: 2, gdacs: 6, nhc: 15, hko: 1 });
+
+  const failed = runSeedFixture(first.store, NOW + 60 * MIN, { nhcHealthy: true, failSourceStateWrite: true });
+  assert.notEqual(failed.status, 0, failed.output);
+  const failedStore = new Map(failed.store);
+  for (const key of ['natural:events:v1', 'seed-meta:natural:events', 'natural:events:source-snapshots:v1']) {
+    assert.equal(failedStore.get(key), new Map(first.store).get(key), key);
+  }
+  assert.deepEqual(failed.calls, { eonet: 1, gdacs: 6, nhc: 15, hko: 1 });
 });

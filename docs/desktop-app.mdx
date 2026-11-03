@@ -14,10 +14,10 @@ Running the app entirely against your own API keys and local sources needs no pl
 ### Desktop Application (Tauri)
 
 - **Native desktop app** for macOS, Windows, and Linux — packages the full dashboard with a local Node.js sidecar that runs the supported API handler catalog locally
-- **OS keychain integration** — API keys stored in the system credential manager (macOS Keychain, Windows Credential Manager), never in plaintext files
+- **OS keychain integration** — API keys stored in the system credential manager (macOS Keychain, Windows Credential Manager, Linux Secret Service, or the kernel session keyring when no Secret Service is running), never in plaintext files
 - **Token-authenticated sidecar** — a unique session token prevents other local processes from accessing the sidecar on localhost. Generated per launch using randomized hashing
 - **Cloud fallback** — when a local API handler fails or is missing, requests transparently fall through to the cloud deployment (worldmonitor.app) with origin headers stripped
-- **Settings window** — dedicated configuration UI (Cmd+,) with three tabs: **LLMs** (Ollama endpoint, model selection, Groq, OpenRouter), **API Keys** (the supported data-source credential catalog with per-key validation), and **Debug & Logs** (traffic log, verbose mode, log files). Each tab runs an independent verification pipeline — saving in the LLMs tab doesn't block API Keys validation
+- **Settings window** — dedicated configuration UI (Cmd+,) with three tabs: **LLMs** (Ollama endpoint, model selection, OpenRouter), **API Keys** (the supported data-source credential catalog with per-key validation), and **Debug & Logs** (traffic log, verbose mode, log files). Each tab runs an independent verification pipeline — saving in the LLMs tab doesn't block API Keys validation
 - **Automatic model discovery** — when you set an Ollama or LM Studio endpoint URL in the LLMs tab, the settings panel immediately queries it for available models (tries Ollama native `/api/tags` first, then OpenAI-compatible `/v1/models`) and populates a dropdown. Embedding models are filtered out. If discovery fails, a manual text input appears as fallback
 - **Cross-window secret sync** — the main dashboard and settings window run in separate webviews with independent JS contexts. Saving a secret in Settings writes to the OS keychain and broadcasts a `localStorage` change event. The main window listens for this event and hot-reloads all secrets without requiring an app restart
 - **Consolidated keychain vault** — all secrets are stored as a single JSON blob in one keychain entry (`secrets-vault`) rather than individual entries per key. This reduces macOS Keychain authorization prompts from 20+ to exactly 1 on each app launch. A one-time migration reads any existing individual entries, consolidates them, and cleans up the old format
@@ -60,7 +60,7 @@ All published variants run on three platforms that work together:
 └──────────────────────────────────────────┘
 ```
 
-**Why two platforms?** Several upstream APIs (OpenSky Network, CNN RSS, UN News, CISA, IAEA) actively block requests from Vercel's IP ranges, and some require persistent connections or protocols that edge functions cannot support. The Railway relay server acts as an alternate origin, handling:
+**Why two platforms?** Several upstream APIs (OpenSky Network, CNN RSS, UN News, CISA, IAEA) actively block requests from Vercel's IP ranges, and some require persistent connections or protocols that edge functions cannot support. The [Railway relay server](/relay-parameters) acts as an alternate origin, handling:
 
 - **AIS vessel tracking** — maintains a persistent WebSocket connection to AISStream.io and multiplexes it to all connected browser clients, avoiding per-user connection limits
 - **OpenSky aircraft data** — authenticates via OAuth2 client credentials flow (Vercel IPs get 403'd by OpenSky without auth tokens)
@@ -104,11 +104,11 @@ The Tauri desktop app wraps the dashboard in a native window (macOS, Windows, Li
 
 ## Secret Management
 
-API keys are stored in the operating system's credential manager (macOS Keychain, Windows Credential Manager) — never in plaintext config files. All secrets are consolidated into a single JSON vault entry in the keychain, so app startup requires exactly one OS authorization prompt regardless of how many keys are configured.
+API keys are stored in the operating system's credential manager (macOS Keychain, Windows Credential Manager, or the Secret Service such as GNOME Keyring or KWallet on Linux) — never in plaintext config files. On Linux sessions with no Secret Service provider, keys are kept in the kernel session keyring instead, which lasts only until reboot (a warning is written to `desktop.log`). All secrets are consolidated into a single JSON vault entry in the keychain, so app startup requires exactly one OS authorization prompt regardless of how many keys are configured.
 
 At sidecar launch, the vault is read, parsed, and injected as environment variables. Empty or whitespace-only values are skipped. Secrets can also be updated at runtime without restarting the sidecar: saving a key in the Settings window triggers a `POST /api/local-env-update` call that hot-patches `process.env` so handlers pick up the new value immediately.
 
-**Verification pipeline** — when you enter a credential in Settings, the app validates it against the actual provider API (Groq → `/openai/v1/models`, Ollama → `/api/tags`, FRED → GDP test query, NASA FIRMS → fire data fetch, etc.). Network errors (timeouts, DNS failures, unreachable hosts) are treated as soft passes — the key is saved with a "could not verify" notice rather than blocking. Only explicit 401/403 responses from the provider mark a key as invalid. This prevents transient network issues from locking users out of their own credentials.
+**Verification pipeline** — when you enter a credential in Settings, the app validates it against the actual provider API (OpenRouter → `/api/v1/models`, Ollama → `/api/tags`, FRED → GDP test query, NASA FIRMS → fire data fetch, etc.). Network errors (timeouts, DNS failures, unreachable hosts) are treated as soft passes — the key is saved with a "could not verify" notice rather than blocking. Only explicit 401/403 responses from the provider mark a key as invalid. This prevents transient network issues from locking users out of their own credentials.
 
 **Smart re-verification** — when saving settings, the verification pipeline skips keys that haven't been modified since their last successful verification. This prevents unnecessary round-trips to provider APIs when a user changes one key but has 15 others already configured and validated. Only newly entered or modified keys trigger verification requests.
 
@@ -120,9 +120,8 @@ World Monitor desktop uses a runtime configuration schema with per-feature toggl
 
 ### Secret keys
 
-The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following 25 keys:
+The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following keys:
 
-- `GROQ_API_KEY`
 - `OPENROUTER_API_KEY`
 - `FRED_API_KEY`
 - `EIA_API_KEY`
@@ -142,7 +141,7 @@ The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following 2
 - `AISSTREAM_API_KEY`
 - `OLLAMA_API_URL`
 - `OLLAMA_MODEL`
-- `WORLDMONITOR_API_KEY` — gates cloud fallback access (min 16 chars)
+- `WORLDMONITOR_API_KEY` — forwarded on cloud requests for API-key access (min 16 chars). Without it, cloud requests use an anonymous session (see [Cloud Fallback](#cloud-fallback))
 - `WTO_API_KEY`
 - `AVIATIONSTACK_API`
 - `ICAO_API_KEY`
@@ -168,14 +167,15 @@ Secrets are **not stored in plaintext files** by the frontend.
 
 If required secrets are missing/disabled:
 
-- Summarization: Groq/OpenRouter disabled, browser model fallback.
-- FRED / EIA / Finnhub: economic, oil analytics, and stock data return empty state.
-- Cloudflare / ACLED: outages/conflicts return empty state.
+- Summarization: OpenRouter disabled, browser model fallback.
+- FRED, EIA, Cloudflare outages, WTO trade policy, and shipping rates need no local key on desktop. The sidecar always reads them from the cloud seed cache, so a local vendor key is never used for them.
+- Finnhub: stock data returns empty state.
+- ACLED: conflicts return empty state.
 - Cyber threat feeds (URLhaus, OTX, AbuseIPDB): cyber threat layer returns empty state.
 - NASA FIRMS: satellite fire detection returns empty state.
 - Wingbits: flight enrichment disabled, heuristic-only flight classification remains.
 - AIS / OpenSky relay: live tracking features are disabled cleanly.
-- World Monitor API key: cloud fallback is blocked; desktop operates local-only.
+- No Pro sign-in and no World Monitor key: cloud requests use an anonymous session, so the desktop sees what a signed-out browser sees. Tier-gated and premium routes stay unavailable. A desktop key or API key removes this limit; see [Sign-in and desktop keys](#sign-in-and-desktop-keys).
 
 ## Sidecar
 
@@ -210,6 +210,18 @@ The sidecar employs multiple resilience patterns to maintain data availability w
 ## Cloud Fallback
 
 When a local API handler is missing, throws an error, or returns a 5xx status, the sidecar transparently proxies the request to the cloud deployment. Endpoints that fail are marked as `cloudPreferred` — subsequent requests skip the local handler and go directly to the cloud until the sidecar is restarted. Origin and Referer headers are stripped before proxying to maintain server-to-server parity.
+
+Cloud requests carry the strongest credential the desktop has. A configured `WORLDMONITOR_API_KEY` is sent as `X-WorldMonitor-Key`, and a signed-in Pro desktop also forwards its session bearer. A request with neither carries an anonymous session that the sidecar mints and caches, the same kind a browser holds. The gateway accepts it on public routes and refuses it on tier-gated and premium ones, so a signed-out desktop reaches exactly what a signed-out browser reaches.
+
+### Sign-in and desktop keys
+
+A key is not required to run the app. There are three ways to get Pro cloud data on the desktop:
+
+- **Sign in.** A Pro or Pro Business subscriber signs in from the desktop app. The app forwards the session bearer with cloud requests.
+- **Desktop key.** Pro includes 2 desktop keys and Pro Business 3. Paste one into **Settings → Overview → Desktop key**; it is stored in the OS keychain. It works in the official app and in self-built desktop copies, with no sign-in. It is for the subscriber only, it has a per-account daily and per-minute ceiling, and it does not reach `/api/v2/`, shipping webhooks, MCP via key, or OAuth key grants. See [Desktop keys](/api-keys#desktop-keys).
+- **API key.** API Starter and API Business keys also work in the desktop app.
+
+With none of these, the app uses an anonymous session and the local sidecar. Docker self-host copies run on their own data and never call the cloud.
 
 ## Observability
 

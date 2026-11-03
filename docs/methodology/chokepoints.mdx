@@ -76,6 +76,38 @@ The other six canonical waterways still receive transit summaries, warnings,
 AIS-disruption matching, threat classification, disruption score, and war-risk
 tier, but `flowEstimate` is absent until a baseline-backed flow model is added.
 
+## Live transit counts and coverage
+
+The live transit counter uses two gate areas for each chokepoint, one on each
+side of the narrows. The gates cover the shipping lanes and keep clear of the
+nearby ports and anchorages. A crossing is recorded when a vessel reported in
+one gate is next reported in the opposite gate within 18 hours. Traffic that
+stays on one side, including port calls, anchorage moves and ferries, is not
+counted. Reports often arrive in bursts, so a vessel can be silent for most of
+that time. Counts cover the preceding 24 hours. They are observed crossings, not
+a census of all traffic. A vessel not reported in both gates is not counted.
+PortWatch history and week-over-week movement are separate inputs and do not
+fill a missing live count.
+
+Completed crossings are saved to a Redis event window at each transit publish,
+normally every ten minutes. Deployments read this window before publishing.
+Each observation expires at its original 24-hour deadline. A failed window read
+leaves the previous publication unchanged. An abrupt restart can still lose
+observations since the last successful save and journeys that have not yet exited.
+
+The Strait of Hormuz page explains this measurement requirement when its count
+is absent. An absent count does not establish zero traffic or a closed strait.
+There is no claim that AIS coverage is permanently unavailable there.
+
+The `chokepointTransits` health check counts canonical waterways with observed
+crossings, out of 13. AIS positions currently reach the transit gates of three
+waterways: Dover, Gibraltar and the Cape of Good Hope. The check requires those
+three by name. Fewer than three covered waterways, or any one of the three
+missing, produces `COVERAGE_PARTIAL`; zero produces `EMPTY_DATA`. Either status appears in `checks.chokepointTransits.status` (and
+the compact `problems` entry), turns the top-level `dataStatus` to `DEGRADED`
+or `CRITICAL`, and opens one Sentry incident when it first appears. A fresh write of 13 empty rows cannot satisfy
+this coverage check. The raw cache and seed metadata include the missing ids.
+
 ## Live Flow
 
 Live flow is computed by `scripts/seed-chokepoint-flows.mjs` on the seven-item
@@ -245,14 +277,14 @@ If a canonical chokepoint lacks upstream transit coverage for the current cycle,
 Refresh cadence:
 
 - `energy:chokepoint-flows:v1`: Railway seed loop every 6 hours.
-- `supply_chain:chokepoints:v4`: status warm-ping every 30 minutes.
+- `supply_chain:chokepoints:v4`: status warm-ping every 6 minutes.
 - `supply_chain:transit-summaries:v1`: AIS relay compact transit summary.
 
 ## Known Limits
 
 - The seven live-flow rows are energy-baseline-backed; the other six monitored
   waterways do not yet publish mb/d estimates.
-- The Dover Strait live-flow row currently maps to the EIA `danish` baseline id.
+- The [Dover Strait](https://www.worldmonitor.app/chokepoints/dover-strait/) live-flow row currently maps to the EIA `danish` baseline id.
   Treat `baselineMbd` as the source reference and `id` as the canonical
   WorldMonitor row id.
 - AIS and PortWatch coverage can degrade near heavily jammed or conflict-heavy

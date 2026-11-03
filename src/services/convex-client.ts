@@ -11,6 +11,8 @@
 
 import type { ConvexClient } from 'convex/browser';
 import { getClerkToken, clearClerkTokenCache, getCurrentClerkUser } from './clerk';
+import { clearAgentRef, loadAgentRef } from '../../shared/agent-client-source';
+import { agentRefStorage } from '@/services/agent-ref';
 
 // Use typeof to get the exact generated API type without importing statically
 type ConvexApi = typeof import('../../convex/_generated/api').api;
@@ -190,6 +192,16 @@ export async function getConvexClient(): Promise<ConvexClient | null> {
 }
 
 /**
+ * Convex argument validation rejecting `signupRef` because the deployed
+ * function predates it ("ArgumentValidationError: Object contains extra field
+ * `signupRef` ...").
+ */
+function isUnknownSignupRefError(err: unknown): boolean {
+  const message = (err as Error | undefined)?.message ?? '';
+  return /validat/i.test(message) && message.includes('signupRef');
+}
+
+/**
  * Send the authenticated user's locale, timezone, and approximate country
  * to Convex on first session. Fire-and-forget — never throws to the auth
  * path. Idempotent per Clerk userId for the lifetime of this client
@@ -256,15 +268,30 @@ async function callEnsureRecord(c: ConvexClient): Promise<void> {
     const api = await getConvexApi();
     if (!api) return;
 
-    const result = await c.mutation(api.users.ensureRecord, {
-      localeTag,
-      localePrimary,
-      timezone,
-      country,
-    });
+    // First-touch agent link (`?ref=agent-claude`), if one is stored. The
+    // server keeps it only when it creates the row, so this is the sign-up
+    // source and a later visit never rewrites it.
+    const refStorage = agentRefStorage();
+    const signupRef = loadAgentRef(refStorage) ?? undefined;
+    const baseArgs = { localeTag, localePrimary, timezone, country };
+
+    let result;
+    try {
+      result = await c.mutation(api.users.ensureRecord, { ...baseArgs, ...(signupRef ? { signupRef } : {}) });
+    } catch (err) {
+      // A Convex deployment older than this client rejects the unknown
+      // `signupRef` argument. Attribution must never cost the account record,
+      // so retry once without it.
+      if (!signupRef || !isUnknownSignupRefError(err)) throw err;
+      result = await c.mutation(api.users.ensureRecord, baseArgs);
+    }
 
     if (result?.ok === true) {
       lastEnsuredUserId = userId;
+      // The ref has done its job: it was stamped if this created the row, and
+      // an existing account is not a sign-up. Clearing it keeps a later
+      // account in this browser from being credited to the same link.
+      if (signupRef) clearAgentRef(refStorage);
     } else {
       console.warn('[convex-client] users:ensureRecord rejected:', result);
       // Do NOT set lastEnsuredUserId so a future session retries.

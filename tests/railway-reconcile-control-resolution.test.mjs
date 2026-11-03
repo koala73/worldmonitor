@@ -97,6 +97,7 @@ function githubClient({
   gate = 'success',
   active = false,
   calls = [],
+  runOverrides = {},
 } = {}) {
   const fetchImpl = async (url, options) => {
     const parsed = new URL(url);
@@ -122,6 +123,9 @@ function githubClient({
           status: active ? 'in_progress' : 'completed',
           conclusion: active ? null : 'failure',
           display_title: `Railway reconciliation ${PRIOR_ID}`,
+          repository: { full_name: 'koala73/worldmonitor' },
+          head_repository: { full_name: 'koala73/worldmonitor', fork: false },
+          ...runOverrides,
         }],
       });
     }
@@ -136,6 +140,9 @@ function githubClient({
         status: active ? 'in_progress' : 'completed',
         conclusion: active ? null : 'failure',
         display_title: `Railway reconciliation ${PRIOR_ID}`,
+        repository: { full_name: 'koala73/worldmonitor' },
+        head_repository: { full_name: 'koala73/worldmonitor', fork: false },
+        ...runOverrides,
       });
     }
     if (/\/actions\/runs\/31181545167\/attempts\/[12]\/jobs$/.test(parsed.pathname)) {
@@ -412,6 +419,8 @@ describe('read-only GitHub recovery proof', () => {
     for (const changed of [
       { path: '.github/workflows/other.yml' },
       { head_branch: 'feature/unsafe' },
+      { repository: { full_name: 'outsider/worldmonitor' } },
+      { head_repository: { full_name: 'outsider/worldmonitor', fork: true } },
     ]) {
       const github = githubClient();
       const readTargetRun = github.readTargetRun.bind(github);
@@ -424,6 +433,29 @@ describe('read-only GitHub recovery proof', () => {
         (error) => error.code === 'TARGET_RUN_IDENTITY_MISMATCH',
         JSON.stringify(changed),
       );
+    }
+  });
+
+  it('excludes spoofed title matches from operator recovery proof', async () => {
+    for (const runOverrides of [
+      { event: 'pull_request' },
+      { event: 'workflow_run' },
+      { head_branch: 'feature/spoof' },
+      { head_sha: 'main' },
+      { path: '.github/workflows/other.yml' },
+      { repository: { full_name: 'outsider/worldmonitor' } },
+      { head_repository: { full_name: 'outsider/worldmonitor', fork: true } },
+      { head_repository: null },
+    ]) {
+      const req = request('resolve_pre_mutation_hold');
+      req.evidence.targetRunId = null;
+      req.evidence.targetRunAttempt = null;
+      const proof = await buildRecoveryProof(req, {
+        githubClient: githubClient({ active: true, runOverrides }),
+        now: () => NOW,
+      });
+      assert.deepEqual(proof.github.matchingRuns, [], JSON.stringify(runOverrides));
+      assert.deepEqual(proof.github.attempts, []);
     }
   });
 
@@ -586,7 +618,11 @@ describe('read-only GitHub recovery proof', () => {
           ? Array.from({ length: 100 }, (_, index) => ({
             id: 1000 + index, run_attempt: 1, status: 'completed', conclusion: 'success', display_title: 'ordinary reconcile',
           }))
-          : [{ id: 31181545167, run_attempt: 1, status: 'completed', conclusion: 'failure', display_title: PRIOR_ID }];
+          : [{ id: 31181545167, run_attempt: 1, status: 'completed', conclusion: 'failure', display_title: PRIOR_ID,
+            event: 'workflow_dispatch', head_branch: 'main', head_sha: HEAD,
+            path: '.github/workflows/railway-deploy-trigger.yml',
+            repository: { full_name: 'koala73/worldmonitor' },
+            head_repository: { full_name: 'koala73/worldmonitor', fork: false } }];
         return responseJson({ total_count: 101, workflow_runs });
       }
       if (parsed.pathname.endsWith('/actions/runs/31181545167/attempts/1/jobs')) {
