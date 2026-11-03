@@ -67,6 +67,30 @@ function renderChart(chart: HormuzChart, idx: number): string {
     </div>`;
 }
 
+/**
+ * The part of `el` that is on screen: its box cut by every scrolling or
+ * clipping ancestor (the sidebar grid scrolls panels partly out of view) and
+ * by the viewport.
+ */
+function visibleBounds(el: HTMLElement): { left: number; top: number; right: number; bottom: number } {
+  const r = el.getBoundingClientRect();
+  const box = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+  for (let node = el.parentElement; node && node !== document.body; node = node.parentElement) {
+    const style = getComputedStyle(node);
+    if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+    const clip = node.getBoundingClientRect();
+    box.left = Math.max(box.left, clip.left);
+    box.top = Math.max(box.top, clip.top);
+    box.right = Math.min(box.right, clip.right);
+    box.bottom = Math.min(box.bottom, clip.bottom);
+  }
+  box.left = Math.max(box.left, 0);
+  box.top = Math.max(box.top, 0);
+  box.right = Math.min(box.right, window.innerWidth);
+  box.bottom = Math.min(box.bottom, window.innerHeight);
+  return box;
+}
+
 export class HormuzPanel extends Panel {
   private data: HormuzTrackerData | null = null;
   // False while a fetch is loading or after it failed, when `data` is an old snapshot.
@@ -252,7 +276,7 @@ export class HormuzPanel extends Panel {
       tip.style.left = '0px';
       tip.style.top = '0px';
       const origin = tip.getBoundingClientRect();
-      const body = (tip.closest('.panel-content') ?? this.element as HTMLElement).getBoundingClientRect();
+      const body = visibleBounds(tip.closest<HTMLElement>('.panel-content') ?? this.element as HTMLElement);
       const half = origin.width / 2;
       const centre = Math.min(Math.max(barRect.left + barRect.width / 2, body.left + half + 4), body.right - half - 4);
       const above = barRect.top - origin.height - 6;

@@ -118,3 +118,62 @@ test('Hormuz bar charts fill the panel body at every width', async ({ page }) =>
   expect(clipped.top, 'tooltip stays below the top of the scrolled body').toBeGreaterThanOrEqual(clipped.bodyTop);
   expect(clipped.bottom, 'tooltip stays above the bottom of the body').toBeLessThanOrEqual(clipped.bodyBottom);
 });
+
+// In the sidebar the grid scrolls, not just the panel body. With the panel
+// scrolled partly above the grid, the body's top is out of sight, so room
+// above the bar inside the body can still be clipped by the grid.
+test('the Hormuz tooltip stays inside a scrolled sidebar grid', async ({ page }) => {
+  await page.goto('/tests/runtime-harness.html');
+
+  const bar = await page.evaluate(async () => {
+    await import('/src/styles/main.css');
+    const { initI18n } = await import('/src/services/i18n.ts');
+    await initI18n();
+    const { HormuzPanel } = await import('/src/components/HormuzPanel.ts');
+
+    document.getElementById('runtime-harness')?.remove();
+    const grid = document.createElement('div');
+    grid.style.cssText = 'position:absolute;top:120px;left:700px;width:560px;height:360px;overflow:auto;display:grid;grid-template-columns:minmax(0,1fr)';
+    const spacer = document.createElement('div');
+    spacer.style.height = '300px';
+    const host = document.createElement('div');
+    host.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr);height:900px';
+    grid.append(spacer, host);
+    document.body.appendChild(grid);
+
+    const panel = new HormuzPanel();
+    host.appendChild(panel.getElement());
+    const series = Array.from({ length: 30 }, (_, i) => ({ date: `2026-10-${String(i + 1).padStart(2, '0')}`, value: 40 + (i % 7) * 10 }));
+    const internals = panel as unknown as { data: unknown; showingData: boolean; renderPanel(): void; bindTooltip(): void };
+    internals.data = {
+      fetchedAt: Date.now(), updatedDate: '2026-09-21', title: 'Analysis', summary: null, paragraphs: [], status: 'open',
+      charts: [{ label: 'crude', title: 'Crude oil outbound shipments', series }],
+      attribution: { source: 'WTO', url: 'https://datalab.wto.org/' },
+    };
+    internals.showingData = true;
+    internals.bindTooltip();
+    internals.renderPanel();
+    await new Promise((r) => setTimeout(r, 350));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    // Scroll the grid until the chart's top edge sits just below the grid's top.
+    const svg = panel.getElement().querySelector('.hz-svg')!;
+    grid.scrollTop += svg.getBoundingClientRect().top - grid.getBoundingClientRect().top - 2;
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const content = panel.getElement().querySelector('.panel-content')!.getBoundingClientRect();
+    const gridBox = grid.getBoundingClientRect();
+    const r = svg.querySelectorAll('.hbar')[5]!.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: Math.max(r.top, gridBox.top) + 10, gridTop: gridBox.top, bodyTop: content.top };
+  });
+  expect(bar.bodyTop, 'the panel body starts above the visible grid').toBeLessThan(bar.gridTop - 40);
+
+  await page.mouse.move(bar.x - 1, bar.y);
+  await page.mouse.move(bar.x, bar.y);
+  await page.waitForTimeout(200);
+  const tip = await page.evaluate(() => {
+    const t = document.querySelector<HTMLElement>('.hz-tip')!;
+    return { top: t.getBoundingClientRect().top, opacity: getComputedStyle(t).opacity };
+  });
+  expect(tip.opacity).toBe('1');
+  expect(tip.top, 'tooltip stays below the top of the scrolled grid').toBeGreaterThanOrEqual(bar.gridTop);
+});
