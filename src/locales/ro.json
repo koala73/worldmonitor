@@ -2327,7 +2327,7 @@
       "proLocked": "Actualizare la PRO pentru scoruri de vulnerabilitate a mărfurilor"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> indici zilnici ai expedierilor WTO DataLab pentru Strâmtoarea Hormuz: petrol brut, GNL și îngrășământ plecând din Golf, produse agricole care sosesc. După volum, media 2025 = 100, doar vase vizibile AIS. Status și data provin din cea mai recentă analiză a WTO.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> indici zilnici ai expedierilor WTO DataLab pentru Strâmtoarea Hormuz: petrol brut, GNL și îngrășământ plecând din Golf, produse agricole care sosesc. După volum, media ianuarie–martie 2025 = 100, doar vase vizibile AIS. Status și data provin din cea mai recentă analiză a WTO.",
       "title": "Urmăritor Comerț Hormuz",
       "noData": "Nicio dată",
       "notAvailable": "N/A",
@@ -2341,7 +2341,7 @@
         "failedToLoad": "Încărcarea a eșuat"
       },
       "analysisDate": "Analiza WTO {{date}}",
-      "indexNote": "Indice de expediere după volum, media 2025 = 100"
+      "indexNote": "Indice de expediere după volum, media ianuarie–martie 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Camere web în direct</strong> Fluxuri în direct din locații semnificative geopolitic din întreaga lume: zone de conflict, capitale, puncte de trecere a frontierei și puncte strategice de blocaj. Fluxuri de la YouTube și rețele publice."

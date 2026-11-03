@@ -2318,7 +2318,7 @@
       "proLocked": "Emtia kırılganlık puanlandırması için PRO'ya yükseltin"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab'ın Hormuz Boğazı günlük gemi taşıyıcılık endeksleri: Körfez'den çıkan ham petrol, LNG ve gübre, gelen tarım ürünleri. Hacim bazında, 2025 ortalaması = 100, yalnızca AIS-görünür gemiler. Durum ve tarih WTO'nun en son analizinden gelmektedir.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab'ın Hormuz Boğazı günlük gemi taşıyıcılık endeksleri: Körfez'den çıkan ham petrol, LNG ve gübre, gelen tarım ürünleri. Hacim bazında, Ocak–Mart 2025 ortalaması = 100, yalnızca AIS-görünür gemiler. Durum ve tarih WTO'nun en son analizinden gelmektedir.",
       "title": "Hormuz Ticaret İzleyicisi",
       "noData": "Veri yok",
       "notAvailable": "Kullanılamıyor",
@@ -2332,7 +2332,7 @@
         "failedToLoad": "Yükleme başarısız"
       },
       "analysisDate": "WTO analizi {{date}}",
-      "indexNote": "Hacim bazında gemi yükü endeksi, 2025 ortalaması = 100"
+      "indexNote": "Hacim bazında gemi yükü endeksi, Ocak–Mart 2025 ortalaması = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Canlı Web Kameraları</strong> Dünya genelinde jeopolitik açıdan önemli konumlardan canlı yayınlar: çatışma bölgeleri, başkentler, sınır geçişleri ve stratejik darboğazlar. YouTube ve kamusal ağlardan akışlar."

@@ -10,7 +10,7 @@ The **Hormuz Trade Tracker** panel (internal id `hormuz-tracker`) is a focused d
 A status-colored header and per-series bar charts:
 
 - **Status indicator**: `open` (green `#2ecc71`), `restricted` (amber `#f39c12`), `disrupted` (orange `#e67e22`), `closed` (red `#e74c3c`). Colours live in `statusColor()` in `src/components/HormuzPanel.ts`. The seeder derives the status from the wording of WTO's latest written analysis (`deriveStatus()` in `scripts/seed-hormuz.mjs`), and the header shows that analysis's publication date.
-- **Per-series bar charts**: crude oil, LNG and fertilizer-related shipments leaving the Persian Gulf, and agricultural products arriving. Each series is a daily voyage intake index by volume, with the 2025 average at 100, counting only vessels visible through AIS. Zero-value bars render in a muted red so gaps stay visible. The palette cycles through `#e67e22` / `#1abc9c` / `#9b59b6` / `#27ae60`.
+- **Per-series bar charts**: crude oil, LNG and fertilizer-related shipments leaving the Persian Gulf, and agricultural products arriving. Each series is a daily voyage intake index by volume, with the January–March 2025 daily average at 100 (WTO methodological note), counting only vessels visible through AIS. Zero-value bars render in a muted red so gaps stay visible. The palette cycles through `#e67e22` / `#1abc9c` / `#9b59b6` / `#27ae60`.
 - **Hover tooltips**: hovering a bar shows the date and index value (via invisible hit-rects `.hbar` with data attributes).
 - **Commodity dependencies** (Pro): which countries depend most on Hormuz transits for each commodity.
 

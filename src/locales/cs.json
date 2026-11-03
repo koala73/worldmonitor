@@ -2336,7 +2336,7 @@
       "proLocked": "Upgradujte na PRO pro skórování zranitelnosti komodit"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> denní indexy zásilek WTO DataLab pro Hormudzký průliv: surová olej, LNG a hnojiva vyvážená z Perského zálivu, zemědělské produkty přicházející. Dle objemu, průměr roku 2025 = 100, pouze AIS-viditelné lodě. Stav a datum pochází z nejnovější analýzy WTO.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> denní indexy zásilek WTO DataLab pro Hormudzký průliv: surová olej, LNG a hnojiva vyvážená z Perského zálivu, zemědělské produkty přicházející. Dle objemu, průměr za leden–březen 2025 = 100, pouze AIS-viditelné lodě. Stav a datum pochází z nejnovější analýzy WTO.",
       "title": "Sledování obchodu v Hormuzu",
       "noData": "Žádná data",
       "notAvailable": "N/A",
@@ -2347,7 +2347,7 @@
         "failedToLoad": "Načtení se nezdařilo"
       },
       "analysisDate": "WTO analýza {{date}}",
-      "indexNote": "Index přepravy podle objemu, průměr roku 2025 = 100",
+      "indexNote": "Index přepravy podle objemu, průměr za leden–březen 2025 = 100",
       "units": {
         "index": "index"
       }

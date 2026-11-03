@@ -1934,7 +1934,7 @@
       "proLocked": "Uppgradera till PRO för råvarusårbarhetsbedömning"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab dagliga försändelsesindex för Hormuzsträndet: råolja, LNG och gödsel som lämnar Persiska golfen, lantbruksvaror som anländer. Efter volym, genomsnitt 2025 = 100, endast AIS-synliga fartyg. Status och datum kommer från WTO:s senaste analys.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab dagliga försändelsesindex för Hormuzsträndet: råolja, LNG och gödsel som lämnar Persiska golfen, lantbruksvaror som anländer. Efter volym, genomsnitt januari–mars 2025 = 100, endast AIS-synliga fartyg. Status och datum kommer från WTO:s senaste analys.",
       "title": "Hormuz-handelsspårare",
       "noData": "Ingen data",
       "notAvailable": "Ej tillgänglig",
@@ -1945,7 +1945,7 @@
         "failedToLoad": "Det gick inte att läsa in"
       },
       "analysisDate": "WTO-analys {{date}}",
-      "indexNote": "Fraktindex baserat på volym, 2025-genomsnitt = 100",
+      "indexNote": "Fraktindex baserat på volym, genomsnitt januari–mars 2025 = 100",
       "units": {
         "index": "index"
       }

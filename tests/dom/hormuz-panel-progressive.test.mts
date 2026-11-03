@@ -393,7 +393,7 @@ describe('HormuzPanel dates from a tracker payload stored before the ISO seeder 
 });
 
 describe('HormuzPanel shipment index labels', () => {
-  it('labels the WTO series as a 2025-based index and dates the WTO analysis', async () => {
+  it('labels the WTO series as a Jan–Mar 2025-based index and dates the WTO analysis', async () => {
     serviceMocks.fetchTracker.mockResolvedValue({
       ...tracker,
       updatedDate: '2026-09-21',
@@ -412,7 +412,7 @@ describe('HormuzPanel shipment index labels', () => {
     await vi.waitFor(() => expect(panel.getElement().textContent).toContain('Crude Oil Outbound Shipments'));
     const text = panel.getElement().textContent ?? '';
     expect(text, 'the WTO series are an index, not tonnage').not.toMatch(/kt\/day|\bunits\b/);
-    expect(text).toContain('2025 average = 100');
+    expect(text, 'WTO bases the index on January–March 2025').toContain('Jan–Mar 2025 average = 100');
     expect(text).toContain('WTO analysis 2026-09-21');
   });
 

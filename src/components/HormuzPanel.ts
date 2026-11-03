@@ -51,7 +51,7 @@ function renderChart(chart: HormuzChart, idx: number): string {
   const last = chart.series[chart.series.length - 1];
   const lastVal = last ? Number(last.value).toFixed(0) : t('components.hormuzTracker.notAvailable');
   const lastDate = last ? last.date.slice(5) : '';
-  // Every WTO series is a volume index (2025 average = 100), not tonnage.
+  // Every WTO series is a volume index (Jan–Mar 2025 average = 100), not tonnage.
   const unit = t('components.hormuzTracker.units.index');
 
   return `
