@@ -719,7 +719,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       'Global military air activity: how many aircraft are aloft worldwide right now, by type and theater. ' +
       'A cheap aggregate over the seeded world flight snapshot — one total, an aircraft-type breakdown ' +
       '(fighters, tankers, AWACS, reconnaissance, transports, bombers, drones), per-theater rollups using the ' +
-      'same theater assignment the surge engine uses, and the count outside every declared theater. Quiet ' +
+      'same theater bounds the surge engine uses (theater counts can overlap), and the count outside every declared theater. Quiet ' +
       'theaters are omitted rather than reported as zero rows. Scope is military aircraft from ' +
       'redistribution-cleared providers — the seeded snapshot that covers the world; for civilian traffic or a ' +
       'single country use get_airspace, and for posture/threat interpretation of the same data use ' +
@@ -736,7 +736,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
           properties: {
             total_military_aircraft: { type: 'number' },
             by_aircraft_type: { type: 'object', additionalProperties: { type: 'number' } },
-            theaters: { type: 'array', items: { type: 'object', properties: {
+            theaters: { type: 'array', description: 'Overlapping geographic counts; includes untyped aircraft in totals.', items: { type: 'object', properties: {
               theater_id: { type: 'string' }, theater_name: { type: 'string' }, short_name: { type: 'string' },
               total_aircraft: { type: 'number' },
               fighters: { type: 'number' }, tankers: { type: 'number' }, awacs: { type: 'number' },
@@ -762,29 +762,37 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       requireAnyInput([flightsPayload], freshness, 'The military flight snapshot is unavailable');
 
       // Same adapter as get_military_surge: redistribution gating and shape
-      // tolerance live in ONE place, and the theater assignment below is the
-      // surge engine's own — no second geometry implementation.
+      // tolerance live in one place. Geographic membership below uses the
+      // shared posture theater bounds, including their overlaps.
       const flights = militaryFlightsToSurgeInputs(flightsPayload);
       const byType: Record<string, number> = {};
       for (const flight of flights) {
         byType[flight.aircraftType] = (byType[flight.aircraftType] ?? 0) + 1;
       }
-      const theaters = getTheaterPostureSummaries(flights)
-        .filter((summary) => summary.totalAircraft > 0)
-        .map((summary) => ({
-          theater_id: summary.theaterId,
-          theater_name: summary.theaterName,
-          short_name: summary.shortName,
-          total_aircraft: summary.totalAircraft,
-          fighters: summary.fighters,
-          tankers: summary.tankers,
-          awacs: summary.awacs,
-          reconnaissance: summary.reconnaissance,
-          transport: summary.transport,
-          bombers: summary.bombers,
-          drones: summary.drones,
-        }));
-      const inTheaters = theaters.reduce((sum, theater) => sum + theater.total_aircraft, 0);
+      // Count geographic membership separately from posture scoring: the
+      // engine's total only includes recognized aircraft types, and theaters
+      // overlap. A union is required for the outside-theater remainder.
+      const inTheaters = new Set<(typeof flights)[number]>();
+      const theaters = POSTURE_THEATERS.map((theater) => {
+        const members = flights.filter((flight) =>
+          flight.lat >= theater.bounds.south && flight.lat <= theater.bounds.north
+          && flight.lon >= theater.bounds.west && flight.lon <= theater.bounds.east);
+        for (const flight of members) inTheaters.add(flight);
+        const count = (type: string) => members.filter((flight) => flight.aircraftType === type).length;
+        return {
+          theater_id: theater.id,
+          theater_name: theater.name,
+          short_name: theater.shortName,
+          total_aircraft: members.length,
+          fighters: count('fighter'),
+          tankers: count('tanker'),
+          awacs: count('awacs'),
+          reconnaissance: count('reconnaissance'),
+          transport: count('transport'),
+          bombers: count('bomber'),
+          drones: count('drone'),
+        };
+      }).filter((theater) => theater.total_aircraft > 0);
 
       return {
         ...freshness,
@@ -792,7 +800,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
           total_military_aircraft: flights.length,
           by_aircraft_type: byType,
           theaters,
-          outside_theater_count: Math.max(0, flights.length - inTheaters),
+          outside_theater_count: flights.length - inTheaters.size,
         },
       };
     },

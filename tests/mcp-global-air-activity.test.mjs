@@ -4,9 +4,8 @@
  * even though the seeded military flight snapshot IS the world dataset.
  *
  * get_global_air_activity is a cheap aggregate over `military:flights:v1`:
- * one world total, an aircraft-type breakdown, per-theater rollups reusing
- * the SAME theater assignment the surge engine uses (no second geometry
- * implementation), and the count outside every declared theater. Military
+ * one world total, an aircraft-type breakdown, per-theater rollups using
+ * the shared surge engine theater bounds (counts can overlap), and the count outside every declared theater. Military
  * scope is deliberate and disclosed: the redistribution-gated seeded snapshot
  * covers the world; civilian coverage remains per-country via get_airspace.
  */
@@ -74,9 +73,8 @@ describe('get_global_air_activity (#5707)', () => {
     assert.equal(result.data.by_aircraft_type.transport, 1);
     assert.equal(result.data.by_aircraft_type.unknown, 1);
 
-    // Theater boundaries overlap; which named theater claims the Gulf point
-    // is the surge engine's call, not this test's. What must hold: some
-    // theater carries both Gulf flights, correctly typed.
+    // Both Gulf flights fall within the Iran theater; type counts must
+    // agree with the global breakdown.
     const gulfTheater = result.data.theaters.find((t) => t.total_aircraft === 2);
     assert.ok(gulfTheater, `a theater must carry both Gulf flights: ${JSON.stringify(result.data.theaters)}`);
     assert.equal(gulfTheater.fighters, 1);
@@ -85,6 +83,25 @@ describe('get_global_air_activity (#5707)', () => {
     const inTheaters = result.data.theaters.reduce((sum, t) => sum + t.total_aircraft, 0);
     assert.equal(result.data.outside_theater_count, result.data.total_military_aircraft - inTheaters);
     assert.equal(typeof result.stale, 'boolean');
+  });
+
+  it('counts the outside remainder once even when theater bounds overlap', async () => {
+    install({ flights: [
+      flight('overlap', { lat: 35, lon: 34 }, 'fighter'),
+      flight('outside', OUTSIDE_THEATERS, 'transport'),
+    ], fetchedAt: Date.now() });
+    const result = await findTool('get_global_air_activity')._execute({}, '', {}, {});
+    assert.ok(result.data.theaters.length >= 2, 'fixture must exercise overlapping theaters');
+    assert.equal(result.data.total_military_aircraft, 2);
+    assert.equal(result.data.outside_theater_count, 1);
+  });
+
+  it('includes untyped aircraft in their theater total instead of the outside remainder', async () => {
+    install({ flights: [flight('unknown', IN_THEATER, 'unknown')], fetchedAt: Date.now() });
+    const result = await findTool('get_global_air_activity')._execute({}, '', {}, {});
+    assert.equal(result.data.theaters.find((t) => t.theater_id === 'iran-theater')?.total_aircraft, 1);
+    assert.equal(result.data.outside_theater_count, 0);
+    assert.equal(result.data.by_aircraft_type.unknown, 1);
   });
 
   it('quiet theaters are omitted, not reported as zero rows', async () => {
