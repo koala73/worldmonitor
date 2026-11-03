@@ -37,8 +37,8 @@ import * as ts from 'typescript';
 
 // Server-side secrets that MUST NOT cross into the browser bundle. Each
 // of these grants access to worldmonitor.app infrastructure. They are
-// distinct from per-user provider credentials (GROQ_API_KEY,
-// OPENROUTER_API_KEY, etc.) which users legitimately enter via the
+// distinct from per-user provider credentials (OPENROUTER_API_KEY,
+// OLLAMA_API_URL, etc.) which users legitimately enter via the
 // desktop settings UI.
 const PLATFORM_ONLY_SECRETS = [
   // Enterprise tier key — possession grants enterprise API access (see

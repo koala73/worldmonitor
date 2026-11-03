@@ -1,5 +1,7 @@
+import { CountrySectionError } from '@/services/country-brief-error';
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { iso2ToCountryName } from '@/utils/country-codes';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 
@@ -7,7 +9,6 @@ import type {
   ListStorageFacilitiesResponse,
   StorageFacilityEntry,
   GetStorageFacilityDetailResponse,
-  ListEnergyDisruptionsResponse,
   EnergyDisruptionEntry,
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { formatEventWindow, formatCapacityOffline } from '@/shared/disruption-timeline';
@@ -169,7 +170,8 @@ export class StorageFacilityMapPanel extends Panel {
   private selectedId: string | null = null;
   private detail: GetStorageFacilityDetailResponse | null = null;
   private detailLoading = false;
-  private detailEvents: EnergyDisruptionEntry[] | undefined = undefined;
+  private detailError: string | null = null;
+  private detailEvents: EnergyDisruptionEntry[] | null | undefined = undefined;
   private usedHydrationPaint = false;
   private openDetailHandler = (ev: Event): void => {
     const id = (ev as CustomEvent<{ facilityId?: string }>).detail?.facilityId;
@@ -177,7 +179,7 @@ export class StorageFacilityMapPanel extends Panel {
     void this.loadDetail(id);
   };
 
-  constructor() {
+  constructor(private readonly detailSource?: Pick<ReturnType<typeof getSupplyChainClient>, 'getStorageFacilityDetail' | 'listEnergyDisruptions'>) {
     super({
       id: 'storage-facility-map',
       title: 'Strategic Storage Atlas',
@@ -191,7 +193,7 @@ export class StorageFacilityMapPanel extends Panel {
     // Loose coupling with DeckGLMap: map clicks on a storage dot dispatch
     // 'energy:open-storage-facility-detail' with the id, and this panel
     // opens its drawer. No-op if the panel isn't mounted.
-    if (typeof window !== 'undefined') {
+    if (!this.detailSource && typeof window !== 'undefined') {
       window.addEventListener('energy:open-storage-facility-detail', this.openDetailHandler);
     }
     this.content.addEventListener('click', this.handleContentClick);
@@ -212,7 +214,7 @@ export class StorageFacilityMapPanel extends Panel {
   };
 
   public destroy(): void {
-    if (typeof window !== 'undefined') {
+    if (!this.detailSource && typeof window !== 'undefined') {
       window.removeEventListener('energy:open-storage-facility-detail', this.openDetailHandler);
     }
     super.destroy?.();
@@ -288,22 +290,38 @@ export class StorageFacilityMapPanel extends Panel {
     }
   }
 
+  public async presentDetail(data: ListStorageFacilitiesResponse, id: string): Promise<void> {
+    this.data = data;
+    await this.loadDetail(id);
+  }
+
+  public async presentCountryDetail(countryCode: string, id: string): Promise<void> {
+    const { registry } = getCachedStorageFacilityRegistry();
+    const data = buildBootstrapResponse(registry);
+    const facilities = data?.facilities.filter(facility => facility.country === countryCode) ?? [];
+    if (!data || !facilities.some(facility => facility.id === id)) throw new Error('Storage facility is not in this country.');
+    await this.presentDetail({ ...data, facilities }, id);
+  }
+
   private async loadDetail(facilityId: string): Promise<void> {
     this.selectedId = facilityId;
     this.detailLoading = true;
+    this.detailError = null;
     this.detailEvents = undefined;
     this.render();
     try {
-      const [d, events] = await Promise.all([
-        getSupplyChainClient().getStorageFacilityDetail({ facilityId }),
-        getSupplyChainClient().listEnergyDisruptions({ assetId: facilityId, assetType: 'storage', ongoingOnly: false }),
-      ]);
+      const timeline = (this.detailSource ?? getSupplyChainClient()).listEnergyDisruptions({ assetId: facilityId, assetType: 'storage', ongoingOnly: false }).catch(() => undefined);
+      const d = await (this.detailSource ?? getSupplyChainClient()).getStorageFacilityDetail({ facilityId });
       if (!this.element?.isConnected || this.selectedId !== facilityId) return;
       this.detail = d;
-      this.detailEvents = (events as ListEnergyDisruptionsResponse)?.events ?? [];
       this.detailLoading = false;
       this.render();
-    } catch {
+      void timeline.then(events => {
+        if (!this.element?.isConnected || this.selectedId !== facilityId) return;
+        this.detailEvents = events && !events.upstreamUnavailable ? events.events : null;
+        this.render();
+      });
+    } catch (error) {
       if (!this.element?.isConnected) return;
       // Mirror the stale-response guard on the failure path: if the user
       // has clicked a different facility while this request was in flight,
@@ -311,6 +329,7 @@ export class StorageFacilityMapPanel extends Panel {
       if (this.selectedId !== facilityId) return;
       this.detailLoading = false;
       this.detail = null;
+      this.detailError = error instanceof CountrySectionError ? error.message : null;
       this.render();
     }
   }
@@ -323,7 +342,8 @@ export class StorageFacilityMapPanel extends Panel {
   }
 
   private renderDisruptionTimeline(): string {
-    if (this.detailEvents === undefined) return '';
+    if (this.detailEvents === undefined) return this.detailLoading ? '' : '<div class="sf-evidence"><div class="sf-sub">Loading disruption timeline…</div></div>';
+    if (this.detailEvents === null) return '<div class="sf-evidence"><div class="sf-sub">Disruption timeline unavailable. Asset details remain visible.</div></div>';
     if (this.detailEvents.length === 0) {
       return `<div class="sf-evidence">
         <div class="sf-sub" style="margin-bottom:6px">Disruption timeline</div>
@@ -377,32 +397,49 @@ export class StorageFacilityMapPanel extends Panel {
 
     const drawer = this.selectedId ? this.renderDrawer() : '';
 
-    this.setSafeContent(unsafeRawHtml(`
+    const html = unsafeRawHtml(`
       <div class="sf-wrap">
-        <table class="sf-table">
-          <thead>
-            <tr>
-              <th scope="col">Facility</th>
-              <th scope="col">Country · Type</th>
-              <th scope="col">Capacity</th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div class="table-scroll" role="group" tabindex="${this.selectedId ? '-1' : '0'}" aria-labelledby="${this.panelId}Title">
+          <table class="sf-table" role="table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th scope="col" role="columnheader">Facility</th>
+                <th scope="col" role="columnheader">Country · Type</th>
+                <th scope="col" role="columnheader">Capacity</th>
+                <th scope="col" role="columnheader">Status</th>
+              </tr>
+            </thead>
+            <tbody role="rowgroup">${rows}</tbody>
+          </table>
+        </div>
         ${attribution}
         ${drawer}
       </div>
       ${ATTRIBUTION_FOOTER_CSS}
       <style>
-        .sf-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
+        .sf-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); container: sf-wrap / inline-size; }
         .sf-table { width: 100%; border-collapse: collapse; }
         .sf-table th { text-align: left; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
         .sf-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
         .sf-table tr.sf-row { cursor: pointer; }
         .sf-table tr.sf-row:hover td { background: rgba(255,255,255,0.03); }
-        .sf-name { font-weight: 600; color: var(--text, #eee); }
-        .sf-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
+        .sf-name { font-weight: 600; color: var(--text, #eee); overflow-wrap: break-word; }
+        .sf-table .sf-val { white-space: nowrap; }
+        .sf-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+        /* Four columns cannot fit a narrow column without splitting values, so each
+           row stacks: the name takes the full width, the values share one line below.
+           The breakpoint is in em of the scaled wrap text (31em is 341px at 100%), so
+           a larger font-size setting stacks the rows in a wider column too. */
+        @container sf-wrap (max-width: 31em) {
+          .sf-table, .sf-table tbody { display: block; }
+          .sf-table thead { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+          .sf-table tr.sf-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+          .sf-table tr.sf-row td { padding: 0; border: 0; }
+          .sf-table tr.sf-row td:first-child { flex: 1 0 100%; }
+          .sf-table tr.sf-row td:last-child { margin-left: auto; }
+          .sf-table tr.sf-row:hover { background: rgba(255,255,255,0.03); }
+          .sf-table tr.sf-row:hover td { background: none; }
+        }
         .sf-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
         .sf-drawer { position: absolute; inset: 0; background: var(--panel-bg, #0f1218); padding: 12px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; }
         .sf-drawer-close { position: absolute; top: 8px; right: 10px; background: transparent; border: 0; color: var(--text-dim, #888); cursor: pointer; font-size: calc(14px * var(--wm-panel-effective-scale, 1)); }
@@ -414,21 +451,23 @@ export class StorageFacilityMapPanel extends Panel {
         .sf-ev-item a { color: #4ade80; text-decoration: none; }
         .sf-ev-item a:hover { text-decoration: underline; }
       </style>
-    `, 'legacy Panel.setContent() migration'));
+    `, 'legacy Panel.setContent() migration');
+    if (this.detailSource) this.setSafeContentImmediate(html);
+    else this.setSafeContent(html);
   }
 
   private renderRow(f: StorageFacilityEntry): string {
     const glyph = TYPE_GLYPH[f.facilityType] ?? '🔹';
     const typeLabel = TYPE_LABEL[f.facilityType] ?? f.facilityType;
     return `
-      <tr class="sf-row" data-facility-id="${escapeHtml(f.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
-        <td>
+      <tr class="sf-row" role="row" data-facility-id="${escapeHtml(f.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
+        <td role="cell">
           <div class="sf-name">${glyph} ${escapeHtml(f.name)}</div>
           <div class="sf-sub">${escapeHtml(f.operator || '')}</div>
         </td>
-        <td>${escapeHtml(f.country)} · ${escapeHtml(typeLabel)}</td>
-        <td>${escapeHtml(capacityLabel(f))}</td>
-        <td>${badgeChip(f.publicBadge)}</td>
+        <td role="cell"><span class="sf-val">${escapeHtml(f.country)}</span> · <span class="sf-val">${escapeHtml(typeLabel)}</span></td>
+        <td role="cell" class="sf-val">${escapeHtml(capacityLabel(f))}</td>
+        <td role="cell">${badgeChip(f.publicBadge)}</td>
       </tr>`;
   }
 
@@ -438,7 +477,7 @@ export class StorageFacilityMapPanel extends Panel {
     }
     const f = this.detail?.facility;
     if (!f) {
-      return `<div class="sf-drawer"><button class="sf-drawer-close" aria-label="Close">✕</button>Facility detail unavailable.</div>`;
+      return `<div class="sf-drawer"><button class="sf-drawer-close" aria-label="Close">✕</button>${escapeHtml(this.detailError ?? 'Facility detail unavailable.')}</div>`;
     }
 
     const ev = f.evidence;
@@ -481,7 +520,7 @@ export class StorageFacilityMapPanel extends Panel {
         <div class="sf-kv">
           <div class="sf-kv-key">Operator</div>   <div>${escapeHtml(f.operator)}</div>
           <div class="sf-kv-key">Type</div>       <div>${escapeHtml(typeLabel)}</div>
-          <div class="sf-kv-key">Country</div>    <div>${escapeHtml(f.country)}</div>
+          <div class="sf-kv-key">Country</div>    <div>${escapeHtml(iso2ToCountryName(f.country))}</div>
           <div class="sf-kv-key">Capacity</div>   <div>${escapeHtml(capacityLabel(f))}</div>
           <div class="sf-kv-key">Location</div>   <div>${(f.location?.lat ?? 0).toFixed(3)}°, ${(f.location?.lon ?? 0).toFixed(3)}°</div>
           <div class="sf-kv-key">In service</div> <div>${f.inService > 0 ? escapeHtml(String(f.inService)) : '—'}</div>

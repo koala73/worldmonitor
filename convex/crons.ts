@@ -92,6 +92,34 @@ crons.daily(
   {},
 );
 
+// Agent feedback retention (#8721, threat model Decision 10). Deletes rows
+// past their per-status bound, counted from receivedAt, in self-draining
+// batches. 04:40 sits between the intel-history (04:30) and plan-limit (04:45)
+// prunes so the delete-heavy jobs never overlap.
+crons.daily(
+  "agent-feedback-prune",
+  { hourUTC: 4, minuteUTC: 40 },
+  internal.agentFeedback.prune,
+  {},
+);
+
+// Decision 12: one daily email listing every security report the owner has
+// not been told about, whether held back by the 20-per-day cap or because the
+// first notice failed. Runs whether or not a new report arrives.
+crons.daily(
+  "agent-feedback-security-digest",
+  { hourUTC: 8, minuteUTC: 15 },
+  internal.agentFeedback.sendSecurityDigest,
+  {},
+);
+
+crons.daily(
+  "email-soft-bounce-prune",
+  { hourUTC: 4, minuteUTC: 50 },
+  internal.emailSuppressions.pruneSoftBounceData,
+  {},
+);
+
 // Daily retention prune for the append-only historical intelligence store
 // (#5694). The table has no natural ceiling — every seeder run appends the
 // events it published — and each row carries a 512-float vector, so the
@@ -194,7 +222,8 @@ crons.daily(
 );
 
 // Dunning + winback scan (#4932). Schedules the due day-3/day-7 payment-
-// failure reminders and the 30-day winback (at most one step per
+// failure reminders, retries of unsent day-0 notices and cancellation
+// confirmations, and the 30-day winback (at most one step per
 // subscription per tick; every send re-validates live state). 14:30 UTC =
 // ~10:30am ET, inside US business hours so a reply/complaint gets seen the
 // same day, and 90 minutes after the broadcast ramp runner (13:00) so the

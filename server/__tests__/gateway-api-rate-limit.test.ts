@@ -68,12 +68,15 @@ vi.mock("../_shared/entitlement-check", async (importActual) => {
 });
 
 // --- Stub user-key validation: a valid wm_ key resolves to a userId ----------
+// The gateway resolves wm_ keys through the desktop-aware principal (plan
+// 2026-10-25-001 U4); an `api` principal with rank 0 is today's API customer.
 vi.mock("../_shared/user-api-key", () => ({
-  validateUserApiKey: vi.fn(async () => ({ userId: "acct_starter", keyId: "k1", name: "t" })),
+  validateUserApiKeyPrincipal: vi.fn(async () => ({ userId: "acct_starter", keyId: "k1", keyKind: "api", keyHash: "h".repeat(64), activeKeyRank: 0 })),
 }));
 
 import { createDomainGateway } from "../gateway";
 import { hashKeySync } from "../_shared/usage-identity";
+import { OPERATOR_KEY_DAILY_CEILINGS } from "../_shared/high-usage-alarm";
 
 function makeGateway() {
   return createDomainGateway([
@@ -303,13 +306,16 @@ describe("#3199 U4 — gateway per-account rate-limit wiring", () => {
     expect(checkRateLimit).toHaveBeenCalledTimes(1);
   });
 
-  test("enterprise unavailable burst retains IP fallback and unlimited daily policy", async () => {
+  test("enterprise unavailable burst retains IP fallback and reserves the operator daily ceiling", async () => {
     process.env.WORLDMONITOR_VALID_KEYS = "enterprise-browser-key";
     process.env.API_RATE_LIMIT_ENFORCE = "true";
     checkBurst.mockResolvedValue({ ok: null, reason: 'timeout' });
     expect((await makeGateway()(mixedEnterpriseRequest('wms_session'), ctx)).status).toBe(200);
     expect(checkBurst).toHaveBeenCalledWith(1000, hashKeySync('enterprise-browser-key'));
-    expect(reserveDailyMeter).not.toHaveBeenCalled();
+    expect(reserveDailyMeter).toHaveBeenCalledWith(expect.objectContaining({
+      userId: hashKeySync('enterprise-browser-key'),
+      allowance: OPERATOR_KEY_DAILY_CEILINGS.restRequests,
+    }));
     expect(checkRateLimit).toHaveBeenCalledWith(expect.any(Request), expect.any(Object));
   });
 

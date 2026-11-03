@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, mock, test } from 'node:test';
+import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -557,101 +557,123 @@ test('rejects a non-http initial url with 400, not the 403 domain verdict', asyn
 });
 
 // ---------------------------------------------------------------------------
-// Request-shape handling (#5378)
+// Request-shape handling (#5378, #5381)
 // ---------------------------------------------------------------------------
 
-test('returns 400 when the url parameter is missing entirely', async () => {
-  const calls = spyFetch();
+for (const feedUrl of [null, '']) {
+  test(`returns 400 when the url parameter is ${feedUrl === null ? 'missing' : 'empty'}`, async () => {
+    const calls = spyFetch();
 
-  const res = await handler(makeRequest(null));
+    const res = await handler(makeRequest(feedUrl));
 
-  assert.equal(res.status, 400);
-  assert.equal((await res.json()).error, 'Missing url parameter');
-  assert.deepEqual(calls, []);
-});
+    assert.equal(res.status, 400);
+    assert.equal((await res.json()).error, 'Missing url parameter');
+    assert.deepEqual(calls, []);
+  });
+}
 
-test('returns 400 (not 502) for a malformed url parameter', async () => {
-  const calls = spyFetch();
+for (const feedUrl of ['not-a-url', '/relative/feed', 'https://', 'https://[::1', encodeURIComponent('https://techcrunch.com/feed')]) {
+  test(`returns 400 for malformed url parameter ${JSON.stringify(feedUrl)}`, async () => {
+    const calls = spyFetch();
 
-  // Regression for WORLDMONITOR-TT: `new URL()` throwing inside the try block
-  // was reported to Sentry at error level and answered 502. It is a client
-  // error and must be caught by the pre-try parse.
-  const res = await handler(makeRequest('not-a-url'));
+    // Regression for WORLDMONITOR-TT: `new URL()` throwing inside the try block
+    // was reported to Sentry at error level and answered 502. It is a client
+    // error and must be caught by the pre-try parse.
+    const res = await handler(makeRequest(feedUrl));
 
-  assert.equal(res.status, 400);
-  assert.equal((await res.json()).error, 'Invalid url parameter');
-  assert.deepEqual(calls, []);
-});
+    assert.equal(res.status, 400);
+    assert.equal((await res.json()).error, 'Invalid url parameter');
+    assert.deepEqual(calls, []);
+  });
+}
 
-test('answers CORS preflight with 204 and no upstream call', async () => {
-  const calls = spyFetch();
+for (const apiKey of [TEST_KEY, null]) {
+  test(`answers ${apiKey ? 'authenticated' : 'unauthenticated'} CORS preflight without an upstream call`, async () => {
+    const calls = spyFetch();
 
-  const res = await handler(makeRequest('https://techcrunch.com/feed', { method: 'OPTIONS' }));
+    const feedUrl = apiKey ? 'https://techcrunch.com/feed' : null;
+    const res = await handler(makeRequest(feedUrl, { method: 'OPTIONS', apiKey }));
 
-  assert.equal(res.status, 204);
-  assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
-  // Exact match, not a substring — pins the advertised verb set so widening it
-  // (e.g. to include POST/PUT/DELETE) can't slip through unnoticed.
-  assert.equal(res.headers.get('Access-Control-Allow-Methods'), 'GET, OPTIONS');
-  assert.deepEqual(calls, []);
-});
+    assert.equal(res.status, 204);
+    assert.equal(await res.text(), '');
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+    // Exact match, not a substring — pins the advertised verb set so widening it
+    // (e.g. to include POST/PUT/DELETE) can't slip through unnoticed.
+    assert.equal(res.headers.get('Access-Control-Allow-Methods'), 'GET, OPTIONS');
+    assert.deepEqual(calls, []);
+  });
+}
 
-test('rejects non-GET methods with 405', async () => {
-  const calls = spyFetch();
+for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'HEAD']) {
+  for (const apiKey of [TEST_KEY, null]) {
+    test(`rejects ${method} ${apiKey ? 'with' : 'without'} an API key before URL validation`, async () => {
+      const calls = spyFetch();
 
-  const res = await handler(makeRequest('https://techcrunch.com/feed', { method: 'POST' }));
+      const feedUrl = apiKey ? 'https://techcrunch.com/feed' : null;
+      const res = await handler(makeRequest(feedUrl, { method, apiKey }));
 
-  assert.equal(res.status, 405);
-  assert.equal((await res.json()).error, 'Method not allowed');
-  assert.deepEqual(calls, []);
-});
+      assert.equal(res.status, 405);
+      assert.equal((await res.json()).error, 'Method not allowed');
+      assert.deepEqual(calls, []);
+    });
+  }
+}
 
-test('rejects a disallowed Origin before auth, method, or fetch', async () => {
-  const calls = spyFetch();
+for (const method of ['GET', 'POST', 'OPTIONS']) {
+  test(`rejects a disallowed Origin on ${method} before auth, method, or fetch`, async () => {
+    const calls = spyFetch();
 
-  // Fail ALL THREE early gates at once (bad Origin + no key + non-GET) so only
-  // the ORDERING explains a 403 'Origin not allowed' verdict — if the Origin
-  // gate ran after auth or method, this would be 401 or 405 instead.
-  const res = await handler(makeRequest('https://techcrunch.com/feed', {
-    origin: 'https://evil.example',
-    apiKey: null,
-    method: 'POST',
-  }));
+    // No key or URL: the origin verdict must also precede preflight and auth.
+    const res = await handler(makeRequest(null, {
+      origin: 'https://evil.example',
+      apiKey: null,
+      method,
+    }));
 
-  assert.equal(res.status, 403);
-  assert.equal((await res.json()).error, 'Origin not allowed');
-  // Never echo the attacker origin back.
-  assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
-  assert.deepEqual(calls, []);
-});
+    assert.equal(res.status, 403);
+    assert.equal((await res.json()).error, 'Origin not allowed');
+    // Never echo the attacker origin back.
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+    assert.deepEqual(calls, []);
+  });
+}
 
 // ---------------------------------------------------------------------------
-// Routing + response policy (#5378)
+// Routing + response policy (#5378, #5381)
 // ---------------------------------------------------------------------------
 
-test('routes relay-only domains straight to Railway without shared caching', async () => {
-  process.env.WS_RELAY_URL = 'wss://relay.example.com';
-  process.env.RELAY_SHARED_SECRET = 'relay-secret';
+for (const hostname of [
+  'rss.cnn.com', 'www.defensenews.com', 'layoffs.fyi', 'news.un.org',
+  'www.cisa.gov', 'www.iaea.org', 'www.who.int', 'www.crisisgroup.org',
+  'english.alarabiya.net', 'www.timesofisrael.com', 'www.scmp.com',
+  'kyivindependent.com', 'www.themoscowtimes.com', 'feeds.24.com',
+  'feeds.capi24.com', 'islandtimes.org', 'www.atlanticcouncil.org',
+]) {
+  test(`routes relay-only ${hostname} straight to Railway without shared caching`, async () => {
+    process.env.WS_RELAY_URL = 'wss://relay.example.com';
+    process.env.RELAY_SHARED_SECRET = 'relay-secret';
 
-  const feedUrl = 'https://rss.cnn.com/rss/edition.rss';
-  const calls = spyFetch(() => new Response('<rss><channel><title>cnn</title></channel></rss>', {
-    status: 200,
-    headers: { 'Content-Type': 'application/rss+xml' },
-  }));
+    const feedUrl = `https://${hostname}/feed?edition=world&lang=en`;
+    const calls = spyFetch(() => new Response('<rss><channel><title>relay</title></channel></rss>', {
+      status: 200,
+      headers: { 'Content-Type': 'application/rss+xml' },
+    }));
 
-  const res = await handler(makeRequest(feedUrl));
+    const res = await handler(makeRequest(feedUrl));
 
-  assert.equal(res.status, 200);
-  // Exactly one call, to the relay — the direct fetch is skipped entirely
-  // because Vercel edge IPs are blocked by these hosts.
-  assert.deepEqual(calls.map((c) => c.url), [
-    `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}`,
-  ]);
-  assert.equal(res.headers.get('Cache-Control'), 'private, max-age=180');
-  assert.equal(res.headers.get('CDN-Cache-Control'), null);
-  assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
-  assert.equal(res.headers.get('Access-Control-Allow-Credentials'), 'true');
-});
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), '<rss><channel><title>relay</title></channel></rss>');
+    // Exactly one call, to the relay — the direct fetch is skipped entirely
+    // because Vercel edge IPs are blocked by these hosts.
+    assert.deepEqual(calls.map((c) => c.url), [
+      `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}`,
+    ]);
+    assert.equal(res.headers.get('Cache-Control'), 'private, max-age=180');
+    assert.equal(res.headers.get('CDN-Cache-Control'), null);
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+    assert.equal(res.headers.get('Access-Control-Allow-Credentials'), 'true');
+  });
+}
 
 test('routes the apex form of a www-registered relay-only host to Railway (www-tolerant match)', async () => {
   process.env.WS_RELAY_URL = 'wss://relay.example.com';
@@ -709,42 +731,84 @@ test('passes a non-2xx upstream status through without caching it', async () => 
   assert.deepEqual(calls.map((c) => c.url), ['https://techcrunch.com/feed']);
 });
 
-test('retries through the relay when the direct fetch returns a non-2xx status', async () => {
-  process.env.WS_RELAY_URL = 'wss://relay.example.com';
-  const feedUrl = 'https://techcrunch.com/feed';
+for (const status of [403, 429, 503]) {
+  test(`recovers through the relay after a direct ${status}`, async () => {
+    process.env.WS_RELAY_URL = 'wss://relay.example.com';
+    const feedUrl = 'https://techcrunch.com/feed';
 
-  const calls = spyFetch((url) => (
-    url.includes('relay.example.com')
-      ? new Response('<rss><channel><title>relay</title></channel></rss>', {
-        status: 200,
-        headers: { 'Content-Type': 'application/rss+xml' },
-      })
-      : new Response('blocked', { status: 403 })
-  ));
+    const calls = spyFetch((url) => (
+      url.includes('relay.example.com')
+        ? new Response('<rss><channel><title>relay</title></channel></rss>', {
+          status: 200,
+          headers: { 'Content-Type': 'application/rss+xml', 'X-Cache': 'HIT' },
+        })
+        : new Response('blocked', { status })
+    ));
 
-  const res = await handler(makeRequest(feedUrl));
+    const res = await handler(makeRequest(feedUrl));
 
-  assert.equal(res.status, 200);
-  assert.match(await res.text(), /relay/);
-  assert.deepEqual(calls.map((c) => c.url), [
-    feedUrl,
-    `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}`,
-  ]);
-});
-
-test('uses inert text when upstream sends no content-type', async () => {
-  const calls = spyFetch(() => {
-    const res = new Response('<rss><channel/></rss>', { status: 200 });
-    res.headers.delete('content-type');
-    return res;
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), '<rss><channel><title>relay</title></channel></rss>');
+    assert.equal(res.headers.get('X-Cache'), 'HIT');
+    assert.equal(res.headers.get('Cache-Control'), 'private, max-age=180');
+    assert.equal(res.headers.get('CDN-Cache-Control'), null);
+    assert.deepEqual(calls.map((c) => c.url), [
+      feedUrl,
+      `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}`,
+    ]);
   });
+}
 
-  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+for (const status of [403, 503]) {
+  test(`preserves the direct response when the relay retry returns ${status}`, async () => {
+    process.env.WS_RELAY_URL = 'wss://relay.example.com';
+    const feedUrl = 'https://techcrunch.com/feed';
+    const calls = spyFetch((_url, _init, seen) => seen.length === 1
+      ? new Response('original direct error', { status: 404 })
+      : new Response('relay error', { status, headers: { 'X-Cache': 'MISS', 'X-Relay-Stale': '1' } }));
 
-  assert.equal(res.status, 200);
-  assert.equal(res.headers.get('Content-Type'), 'text/plain; charset=utf-8');
-  assert.equal(calls.length, 1);
-});
+    const res = await handler(makeRequest(feedUrl));
+
+    assert.equal(res.status, 404);
+    assert.equal(await res.text(), 'original direct error');
+    assert.equal(res.headers.get('X-Cache'), null);
+    assert.equal(res.headers.get('X-Relay-Stale'), null);
+    assert.equal(res.headers.get('Cache-Control'), 'private, max-age=180');
+    assert.equal(res.headers.get('CDN-Cache-Control'), null);
+    assert.deepEqual(calls.map((c) => c.url), [feedUrl, `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}`]);
+  });
+}
+
+for (const relay of [false, true]) {
+  test(`uses inert text and private caching for ${relay ? 'relay' : 'direct'} responses without content-type`, async () => {
+    if (relay) process.env.WS_RELAY_URL = 'wss://relay.example.com';
+    const calls = spyFetch(() => {
+      const res = new Response('<rss><channel/></rss>', { headers: {
+        'Cache-Control': 'public, max-age=86400',
+        'CDN-Cache-Control': 'public, max-age=86400',
+        'Vercel-CDN-Cache-Control': 'public, max-age=86400',
+      } });
+      res.headers.delete('content-type');
+      return res;
+    });
+
+    const feedUrl = relay ? 'https://rss.cnn.com/rss/edition.rss' : 'https://techcrunch.com/feed';
+    const res = await handler(makeRequest(feedUrl));
+
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), '<rss><channel/></rss>');
+    assert.equal(res.headers.get('Content-Type'), 'text/plain; charset=utf-8');
+    assert.equal(res.headers.get('X-Content-Type-Options'), 'nosniff');
+    assert.equal(res.headers.get('Content-Security-Policy'), "sandbox; default-src 'none'");
+    assert.equal(res.headers.get('Cache-Control'), 'private, max-age=180');
+    assert.equal(res.headers.get('CDN-Cache-Control'), null);
+    assert.equal(res.headers.get('Vercel-CDN-Cache-Control'), null);
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+    assert.equal(res.headers.get('Access-Control-Allow-Credentials'), 'true');
+    assert.equal(res.headers.get('Vary'), 'Origin');
+    assert.deepEqual(calls.map((c) => c.url), [relay ? `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}` : feedUrl]);
+  });
+}
 
 test('maps a direct-fetch AbortError to 504 Feed timeout', async () => {
   // No WS_RELAY_URL, so the relay fallback returns null and the AbortError is
@@ -801,50 +865,59 @@ test('maps a relay-only host to 502 when the relay is unavailable', async () => 
   assert.deepEqual(calls, []);
 });
 
-test('gives Google News a 20s deadline and other feeds 12s', { timeout: 5000 }, async () => {
-  // Hold fetch pending while the fake clock is advanced across each
-  // boundary. Fake timers keep this deterministic (no real waiting).
-  mock.timers.enable({ apis: ['setTimeout'] });
-  try {
-    for (const { feedUrl, deadlineMs, label } of [
-      { feedUrl: 'https://news.google.com/rss/search?q=test', deadlineMs: 20_000, label: 'Google News' },
-      { feedUrl: 'https://techcrunch.com/feed', deadlineMs: 12_000, label: 'default' },
-    ]) {
-      let signal;
-      let release;
-      globalThis.fetch = async (_input, init = {}) => {
-        signal = init.signal;
-        await new Promise((resolve) => { release = resolve; });
-        return new Response('<rss/>', { status: 200 });
-      };
+for (const { feedUrl, deadlineMs, retry = false } of [
+  { feedUrl: 'https://news.google.com/rss/search?q=test', deadlineMs: 20_000 },
+  { feedUrl: 'https://techcrunch.com/feed', deadlineMs: 12_000 },
+  { feedUrl: 'https://techcrunch.com/feed?source=news.google.com', deadlineMs: 12_000 },
+  { feedUrl: 'https://rss.cnn.com/rss/edition.rss', deadlineMs: 12_000 },
+  { feedUrl: 'https://news.google.com/rss/search?q=test', deadlineMs: 20_000, retry: true },
+  { feedUrl: 'https://techcrunch.com/feed', deadlineMs: 12_000, retry: true },
+]) {
+  test(`${feedUrl} ${retry ? 'relay retry' : 'initial fetch'} expires at exactly ${deadlineMs}ms`, { timeout: 5000 }, async (t) => {
+    const relayOnly = feedUrl.includes('rss.cnn.com');
+    if (retry || relayOnly) process.env.WS_RELAY_URL = 'wss://relay.example.com';
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const fetchStarted = Promise.withResolvers();
+    const relayUrl = `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}`;
+    const timedUrl = retry || relayOnly ? relayUrl : feedUrl;
+    let signal;
+    const calls = spyFetch((url, init) => {
+      if (url !== timedUrl) return new Response('direct unavailable', { status: 503 });
+      signal = init.signal;
+      fetchStarted.resolve();
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    });
 
-      const pending = handler(makeRequest(feedUrl));
-      // Yield until the handler has entered fetch and armed the signal — BOUNDED
-      // so a regression that stops the handler from reaching fetch fails fast
-      // with a clear message instead of spinning until the runner's timeout.
-      // (setImmediate and performance.now are unfaked here; only setTimeout is
-      // mocked.) The bound is wall-clock, not a turn count: the API-key check
-      // awaits crypto.subtle.digest, which completes on the libuv threadpool,
-      // and on a contended CI runner that took longer than 1000 turns, so the
-      // handler reached fetch after the assertion and leaked into the next test.
-      const armDeadline = performance.now() + 2_000;
-      while (!signal && performance.now() < armDeadline) {
-        await new Promise((resolve) => setImmediate(resolve));
+    const pending = handler(makeRequest(feedUrl));
+    try {
+      // Auth hashes asynchronously. Wait for fetch admission before ticking.
+      await Promise.race([
+        fetchStarted.promise,
+        pending.then(() => assert.fail('handler returned before the timed fetch')),
+      ]);
+      t.mock.timers.tick(deadlineMs - 1);
+      assert.equal(signal.aborted, false, 'must not abort early');
+      t.mock.timers.tick(1);
+      assert.equal(signal.aborted, true, 'must abort at the deadline');
+
+      const res = await pending;
+      if (retry) {
+        assert.equal(res.status, 503);
+        assert.equal(await res.text(), 'direct unavailable');
+      } else {
+        assert.equal(res.status, 504);
+        assert.deepEqual(await res.json(), { error: 'Feed timeout', url: feedUrl });
       }
-      assert.ok(signal, `${label} feed: handler never reached fetch (signal never armed)`);
-
-      mock.timers.tick(deadlineMs - 1);
-      assert.equal(signal.aborted, false, `${label} feed aborted before its ${deadlineMs}ms deadline`);
-      mock.timers.tick(2);
-      assert.equal(signal.aborted, true, `${label} feed did not abort at its ${deadlineMs}ms deadline`);
-
-      release();
+      const firstUrl = relayOnly ? relayUrl : feedUrl;
+      assert.deepEqual(calls.map((c) => c.url), retry ? [feedUrl, relayUrl] : [firstUrl]);
+    } finally {
+      t.mock.timers.runAll();
       await pending;
     }
-  } finally {
-    mock.timers.reset();
-  }
-});
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Browser User-Agent on the RSS proxy (#6624)
@@ -1048,4 +1121,73 @@ test('leaves a feed inside both bounds byte-identical', async () => {
 
   assert.equal(res.status, 200);
   assert.equal(await res.text(), feed, 'a small feed must pass through untouched');
+});
+
+function truncatedFeed(prefix) {
+  return `<rss><channel>${prefix}`
+    + Array.from({ length: 30 }, (_, i) => `<item><title>Episode ${i}</title></item>`).join('');
+}
+
+test('closes a truncated feed against the last same-name opener', async () => {
+  // `</inner>` closes the LAST `<inner>`, dropping the `<wrap>` opened after
+  // it, so only the first `<wrap>` is left to close.
+  const feed = truncatedFeed(`<wrap><inner><wrap></inner>${'<x></y>'.repeat(200)}`);
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/rss+xml' } }));
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const text = await res.text();
+
+  assert.equal(res.status, 200);
+  assert.equal(countTags(text, 'item').close, 20, 'the item bound truncated the feed');
+  assert.ok(text.endsWith(`<title>Episode 19</title></item>${'</x>'.repeat(200)}</wrap></channel></rss>`),
+    `closing tags must match the open-element stack, got tail ${JSON.stringify(text.slice(-80))}`);
+});
+
+test('refuses a truncated feed nested deeper than any real feed, quickly', async () => {
+  // A close tag with no matching opener used to scan the whole open-element
+  // stack, so N openers followed by N stray closers cost N^2: 0.25 MiB took
+  // ~3.5 s of synchronous edge CPU, 1 MiB ~52 s. Holding that many elements
+  // open is also what lets the stack's memory grow with the 5 MiB body cap.
+  const openers = 90_000;
+  const feed = truncatedFeed(`<item><title>x</title>${'<a>'.repeat(openers)}${'</b>'.repeat(openers)}</item>`);
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/rss+xml' } }));
+
+  const started = performance.now();
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  await res.text();
+  const elapsed = performance.now() - started;
+
+  assert.equal(res.status, 502, 'a hostile nesting depth is a hard failure, like an item wider than the cap');
+  assert.ok(elapsed < 2000, `closing the truncated feed took ${elapsed.toFixed(0)} ms`);
+});
+
+test('closes a truncated feed in linear time when stray closers meet the deepest allowed stack', async () => {
+  const feed = truncatedFeed(`<item><title>x</title>${'<a>'.repeat(500)}${'</b>'.repeat(1_000_000)}</item>`);
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/rss+xml' } }));
+
+  const started = performance.now();
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const text = await res.text();
+  const elapsed = performance.now() - started;
+
+  assert.equal(res.status, 200);
+  assert.ok(text.endsWith('<title>Episode 18</title></item></channel></rss>'), `got tail ${JSON.stringify(text.slice(-60))}`);
+  assert.ok(elapsed < 2000, `closing the truncated feed took ${elapsed.toFixed(0)} ms`);
+});
+
+test('rejects an allowlisted host on a non-default port, directly or via redirect', async () => {
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    calls.push(String(input));
+    return new Response('', { status: 302, headers: { Location: 'https://www.techcrunch.com:8443/feed' } });
+  };
+
+  const direct = await handler(makeRequest('https://techcrunch.com:8443/feed'));
+  assert.equal(direct.status, 403);
+  assert.equal(calls.length, 0, 'a non-default port is refused before any fetch');
+
+  const redirected = await handler(makeRequest('https://techcrunch.com/feed'));
+  assert.equal(redirected.status, 403);
+  assert.equal((await redirected.json()).error, 'Redirect to disallowed domain');
+  assert.deepEqual(calls, ['https://techcrunch.com/feed']);
 });

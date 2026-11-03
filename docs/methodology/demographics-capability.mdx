@@ -53,9 +53,11 @@ The response is deliberately not a single blended index. Each group resolves on 
 
 ## Reading the response
 
-Every metric carries four things: the value, its `year`, its `source`, its `unit`, and an explicit `available` flag.
+Every metric carries its value, `year`, `source`, `unit`, and an explicit `available` flag. An optional `sourceStatus` preserves supplied provider status metadata.
 
-**Read `available` before the value.** These are proto3 messages — an absent number serializes as `0`, and a zero median age or a zero manufacturing share is never a real observation. The flag is the only thing separating "measured" from "missing".
+**Read `available` before the value.** An absent proto3 number serializes as `0`. A supplied zero with `available: true` remains a valid value. Availability does not establish that the value is observed or unestimated.
+
+**Read source status separately.** ILOSTAT statuses such as Imputation, Estimate, and Adjusted come from its [official status code list](https://sdmx.ilo.org/rest/codelist/ILO/CL_OBS_STATUS). World Bank forecast status comes from its [API observation-status metadata](https://datahelpdesk.worldbank.org/knowledgebase/articles/1886674-new-features-and-enhancements-in-the-v2-api). Notes for sums and ratios identify their input statuses. If any input status is missing, the note includes `Not supplied`. When no status is supplied, the display says `Estimate and imputation status not supplied`. A modelled source name alone does not identify which individual values were imputed. Available observations in older snapshots without `sourceStatus` show the same missing-status disclosure until a source refresh supplies status metadata.
 
 **Do not average across groups.** They have different vintages and different coverage. A country whose ILOSTAT row is eight years old and whose WPP row is current does not have an eight-year-old demographic profile; it has two observations that must be read separately. The response keeps them apart for that reason.
 

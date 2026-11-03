@@ -126,19 +126,104 @@ export function candidateTokens(text) {
 // adds shared mass across DISTINCT same-publisher stories and pulls them
 // toward a false merge (cross-model review finding, PR #4924). Mirrors
 // list-feed-digest's normalizeTitle suffix rules, but case-preserving.
-const ATTRIBUTION_SUFFIX_RES = [
-  /\s*[-\u2013\u2014|]\s*[\w\s.]+\.(?:com|org|net|co\.uk)\s*$/i,
-  /\s*[-\u2013\u2014|]\s*(?:reuters|ap news|bbc|cnn|al jazeera|france 24|dw news|pbs newshour|cbs news|nbc|abc|associated press|the guardian|nos nieuws|tagesschau|cnbc|the national)\s*$/i,
+const ATTRIBUTION_PUBLISHERS = [
+  'reuters',
+  'ap news',
+  'bbc',
+  'cnn',
+  'al jazeera',
+  'france 24',
+  'dw news',
+  'pbs newshour',
+  'cbs news',
+  'nbc',
+  'abc',
+  'associated press',
+  'the guardian',
+  'nos nieuws',
+  'tagesschau',
+  'cnbc',
+  'the national',
 ];
+const ATTRIBUTION_PUBLISHER_SET = new Set(ATTRIBUTION_PUBLISHERS);
+const MAX_PUBLISHER_LABEL = Math.max(...ATTRIBUTION_PUBLISHERS.map((name) => name.length));
+const MAX_DOMAIN_LABEL = 160;
+
+function isAttributionSpace(code) {
+  return code === 32 || code === 9 || code === 10 || code === 13 || code === 12 || code === 11
+    || code === 0xa0 || code === 0x1680 || code === 0x2028 || code === 0x2029
+    || code === 0x202f || code === 0x205f || code === 0x3000 || code === 0xfeff
+    || (code >= 0x2000 && code <= 0x200a);
+}
+
+function isDomainLabelChar(code) {
+  return (code >= 48 && code <= 57)
+    || (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122)
+    || code === 95
+    || code === 46
+    || isAttributionSpace(code);
+}
+
+function trimAttributionSpace(text) {
+  let start = 0;
+  let end = text.length;
+  while (start < end && isAttributionSpace(text.charCodeAt(start))) start += 1;
+  while (end > start && isAttributionSpace(text.charCodeAt(end - 1))) end -= 1;
+  return text.slice(start, end);
+}
+
+function isDomainAttribution(label) {
+  if (label.length === 0 || label.length > MAX_DOMAIN_LABEL) return false;
+  const lower = label.toLowerCase();
+  const tld = lower.endsWith('.co.uk') ? '.co.uk'
+    : lower.endsWith('.com') ? '.com'
+    : lower.endsWith('.org') ? '.org'
+    : lower.endsWith('.net') ? '.net'
+    : '';
+  if (!tld) return false;
+  const name = label.slice(0, label.length - tld.length);
+  if (name.length === 0) return false;
+  for (let i = 0; i < name.length; i += 1) {
+    if (!isDomainLabelChar(name.charCodeAt(i))) return false;
+  }
+  return true;
+}
+
+function isPublisherAttribution(label) {
+  return label.length > 0
+    && label.length <= MAX_PUBLISHER_LABEL
+    && ATTRIBUTION_PUBLISHER_SET.has(label.toLowerCase());
+}
+
+function stripOneAttribution(text, kind, allowPipe) {
+  let sep = -1;
+  for (let i = text.length - 1; i >= 0; i -= 1) {
+    const c = text[i];
+    if (c === '-' || c === '\u2013' || c === '\u2014' || c === '|') {
+      sep = i;
+      break;
+    }
+  }
+  if (sep < 0) return text;
+  if (text[sep] === '|' && !allowPipe) return text;
+  const label = trimAttributionSpace(text.slice(sep + 1));
+  const matched = kind === 'domain' ? isDomainAttribution(label) : isPublisherAttribution(label);
+  if (!matched) return text;
+  let cut = sep;
+  while (cut > 0 && isAttributionSpace(text.charCodeAt(cut - 1))) cut -= 1;
+  return text.slice(0, cut);
+}
 
 // Unbounded feed titles feed char-4gram loops inside a 25s serverless
 // budget; clamp AFTER suffix stripping. 300 chars ≈ 3× a long headline.
 const MAX_IDENTITY_CHARS = 300;
 
-/** @param {string} text @returns {string} */
-export function stripAttributionSuffix(text) {
+export function stripAttributionSuffix(text, options) {
+  const allowPipe = !options || options.allowPipe !== false;
   let out = text || '';
-  for (const re of ATTRIBUTION_SUFFIX_RES) out = out.replace(re, '');
+  out = stripOneAttribution(out, 'domain', allowPipe);
+  out = stripOneAttribution(out, 'publisher', allowPipe);
   return out;
 }
 

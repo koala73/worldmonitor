@@ -56,6 +56,7 @@ const {
   formatSubject: relayFormatSubject,
   sanitizeImpactText: relaySanitizeImpactText,
   shapeEventForWebhook: relayShapeEventForWebhook,
+  processEvent: relayProcessEvent,
 } = require('../scripts/notification-relay.cjs');
 const formatMessage: (event: unknown) => string = relayFormatMessage;
 const formatSubject: (event: unknown) => string = relayFormatSubject;
@@ -121,6 +122,28 @@ const POC_BODY = {
 };
 
 describe('/api/notify field validation (pentest PoC)', () => {
+  it('escapes historical event controls at the relay log sink', async () => {
+    const logs: string[] = [];
+    const savedLog = console.log;
+    console.log = (...args) => { logs.push(args.join(' ')); };
+    globalThis.fetch = (async () => Response.json([])) as typeof fetch;
+    try {
+      await relayProcessEvent({ eventType: 'custom\nFORGED\u001b[2J\u2028\u202e\u2066', severity: 'high', payload: {} });
+      const line = logs.find(line => line.startsWith('[relay] Processing event:'));
+      assert.ok(line);
+      assert.ok(!/[\n\r\u001b\u2028\u202e\u2066]/.test(line));
+      assert.match(line, /\\nFORGED\\u001b/);
+    } finally { console.log = savedLog; }
+  });
+  it('rejects event types that can forge relay log records before queueing', async () => {
+    installDeps();
+    let queued = false;
+    globalThis.fetch = (async () => { queued = true; return Response.json({ result: 1 }); }) as typeof fetch;
+    for (const eventType of ['rss\n[relay] forged', 'rss\rforged', 'rss\u001b[2J', 'rss\u2028forged', 'rss\u202eforged', 'rss\u2066forged', 'rss\u200fforged']) {
+      assert.equal((await handler(makePost({ eventType, payload: {} }))).status, 400);
+    }
+    assert.equal(queued, false);
+  });
   it('rejects or neutralises the hostile title/source/link before queueing', async () => {
     installDeps();
     process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';

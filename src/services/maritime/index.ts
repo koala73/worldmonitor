@@ -1,3 +1,4 @@
+import type { BreakerDataState } from '@/utils/circuit-breaker';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { AisDensityZone as ProtoDensityZone, AisDisruption as ProtoDisruption, GetVesselSnapshotResponse, SnapshotCandidateReport as ProtoCandidateReport } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
@@ -148,7 +149,11 @@ function shouldIncludeCandidates(): boolean {
   return positionCallbacks.size > 0;
 }
 
+let candidateDataState: BreakerDataState = { mode: 'unavailable', timestamp: null, offline: false };
+let latestCandidateOutcomePollId = 0;
+
 interface ParsedSnapshot {
+  dataState: BreakerDataState;
   sequence: number;
   status: SnapshotStatus;
   disruptions: AisDisruptionEvent[];
@@ -157,11 +162,18 @@ interface ParsedSnapshot {
 }
 
 async function fetchSnapshotPayload(includeCandidates: boolean, signal?: AbortSignal): Promise<ParsedSnapshot | null> {
+  let completed: GetVesselSnapshotResponse | undefined;
+  let completedAt: number | null = null;
   const response = await snapshotBreaker.execute(
-    async () => client.getVesselSnapshot(
-      { neLat: 0, neLon: 0, swLat: 0, swLon: 0, includeCandidates, includeTankers: false },
-      { signal },
-    ),
+    async () => {
+      const value = await client.getVesselSnapshot(
+        { neLat: 0, neLon: 0, swLat: 0, swLon: 0, includeCandidates, includeTankers: false },
+        { signal },
+      );
+      completed = value;
+      completedAt = Date.now();
+      return value;
+    },
     emptySnapshotFallback,
     {
       cacheKey: includeCandidates ? 'candidates' : 'density',
@@ -174,6 +186,11 @@ async function fetchSnapshotPayload(includeCandidates: boolean, signal?: AbortSi
   if (!snapshot) return null;
 
   return {
+    dataState: !response.dataAvailable || !snapshot.status?.connected
+      ? { mode: 'unavailable', timestamp: null, offline: snapshotBreaker.getDataState().offline }
+      : response === completed
+        ? { mode: 'live', timestamp: completedAt, offline: false }
+        : { mode: 'cached', timestamp: null, offline: snapshotBreaker.getDataState().offline },
     sequence: snapshot.sequence,
     status: {
       connected: snapshot.status?.connected ?? false,
@@ -262,8 +279,8 @@ async function pollSnapshot(force = false, signal?: AbortSignal): Promise<void> 
   // A forced candidate poll can overlap a density poll. Only the most recently
   // started poll that has finished may replace the shared state.
   const pollId = ++lastStartedPollId;
+  const includeCandidates = shouldIncludeCandidates();
   try {
-    const includeCandidates = shouldIncludeCandidates();
     const snapshot = await fetchSnapshotPayload(includeCandidates, signal);
     if (!snapshot) throw new Error('Invalid snapshot payload');
 
@@ -273,6 +290,16 @@ async function pollSnapshot(force = false, signal?: AbortSignal): Promise<void> 
       latestDensity = snapshot.density;
       latestStatus = snapshot.status;
       lastPollAt = Date.now();
+    }
+
+    if (includeCandidates && pollId > latestCandidateOutcomePollId) {
+      latestCandidateOutcomePollId = pollId;
+      candidateDataState = positionCallbacks.size > 0
+        && Number.isFinite(snapshot.sequence)
+        && snapshot.sequence > 0
+        && (lastCandidateSequence === 0 || snapshot.sequence > lastCandidateSequence)
+        ? snapshot.dataState
+        : { mode: 'unavailable', timestamp: null, offline: false };
     }
 
     if (
@@ -289,6 +316,10 @@ async function pollSnapshot(force = false, signal?: AbortSignal): Promise<void> 
       dataFreshness.recordUpdate('ais', itemCount > 0 ? itemCount : latestStatus.vessels);
     }
   } catch {
+    if (includeCandidates && pollId > latestCandidateOutcomePollId) {
+      latestCandidateOutcomePollId = pollId;
+      candidateDataState = { mode: 'unavailable', timestamp: null, offline: snapshotBreaker.getDataState().offline };
+    }
     if (pollId > lastAppliedPollId) latestStatus.connected = false;
   } finally {
     inFlight = false;
@@ -336,6 +367,8 @@ export function unregisterAisCallback(callback: AisCallback): void {
     lastCallbackTimestampByMmsi.clear();
     lastCandidateSequence = 0;
     firstCandidatePoll = null;
+    latestCandidateOutcomePollId = lastStartedPollId;
+    candidateDataState = { mode: 'unavailable', timestamp: null, offline: false };
   }
 }
 
@@ -349,6 +382,16 @@ export function disconnectAisStream(): void {
   isPolling = false;
   inFlight = false;
   latestStatus.connected = false;
+  latestCandidateOutcomePollId = lastStartedPollId;
+  candidateDataState = { mode: 'unavailable', timestamp: null, offline: false };
+}
+
+export function getAisCandidateDataState(): BreakerDataState {
+  if (!isPolling || positionCallbacks.size === 0 || !isAisConfigured()
+    || (candidateDataState.mode === 'live' && (candidateDataState.timestamp === null || Date.now() - candidateDataState.timestamp > SNAPSHOT_STALE_MS))) {
+    return { mode: 'unavailable', timestamp: null, offline: candidateDataState.offline };
+  }
+  return { ...candidateDataState };
 }
 
 export function getAisStatus(): { connected: boolean; vessels: number; messages: number } {

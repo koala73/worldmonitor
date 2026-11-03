@@ -6,7 +6,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { TOOL_LIST_RESPONSE, TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {
@@ -23,8 +23,8 @@ const BASE = 'https://api.worldmonitor.app';
 function wtoResponse(overrides = {}) {
   return new Response(JSON.stringify({
     flows: [
-      { year: 2014, reportingCountry: 'United States of America', partnerCountry: 'World', exportValueUsd: 1_620_000_000_000, importValueUsd: 2_330_000_000_000, yoyExportChange: 2.5, yoyImportChange: 3.1, productSector: 'Total merchandise' },
-      { year: 2015, reportingCountry: 'United States of America', partnerCountry: 'World', exportValueUsd: 1_500_000_000_000, importValueUsd: 2_280_000_000_000, yoyExportChange: -7.4, yoyImportChange: -2.1, productSector: 'Total merchandise' },
+      { year: 2014, reportingCountry: 'United States of America', partnerCountry: 'World', exportValueUsd: 1_620_000, importValueUsd: 2_330_000, yoyExportChange: 2.5, yoyImportChange: 3.1, productSector: 'Total merchandise' },
+      { year: 2015, reportingCountry: 'United States of America', partnerCountry: 'World', exportValueUsd: 1_500_000, importValueUsd: 2_280_000, yoyExportChange: -7.4, yoyImportChange: -2.1, productSector: 'Total merchandise' },
     ],
     fetchedAt: '2026-08-07T00:00:00.000Z',
     upstreamUnavailable: false,
@@ -68,14 +68,29 @@ describe('get_wto_trade_flows', () => {
     assert.ok(tool._coverageKeys?.includes('trade:flows:v2:840:000'), '_coverageKeys must cover the default reporter data key');
   });
 
-  it('forwards reporter and years to the route and projects the response', async () => {
+  it('advertises millions USD in tools/list and describe_tool', async () => {
+    const describeTool = TOOL_REGISTRY.find((t) => t.name === 'describe_tool');
+    assert.ok(describeTool?._execute);
+    const described = await describeTool._execute({ tool_name: tool.name }, BASE, CTX, {});
+    for (const definition of [TOOL_LIST_RESPONSE.find((t) => t.name === tool.name), described]) {
+      assert.partialDeepStrictEqual(definition, {
+        outputSchema: { anyOf: [{ properties: { flows: { items: { properties: {
+          exportValueUsd: { description: 'Merchandise exports to the World, millions USD (1 = 1,000,000 USD).' },
+          importValueUsd: { description: 'Merchandise imports from the World, millions USD (1 = 1,000,000 USD).' },
+        } } } } }] },
+      });
+    }
+  });
+
+  it('forwards reporter and years and preserves the route values in millions USD', async () => {
     const result = await tool._execute({ reporter: '156', years: 5 }, BASE, CTX, {});
     assert.match(requestedUrl, /^https:\/\/api\.worldmonitor\.app\/api\/trade\/v1\/get-trade-flows\?/);
     assert.match(requestedUrl, /reporting_country=156/);
     assert.match(requestedUrl, /years=5/);
     assert.equal(result.flows.length, 2);
     assert.equal(result.flows[1].year, 2015);
-    assert.equal(result.flows[1].exportValueUsd, 1_500_000_000_000);
+    assert.equal(result.flows[1].exportValueUsd, 1_500_000);
+    assert.equal(result.flows[1].importValueUsd, 2_280_000);
     assert.equal(result.flows[1].yoyExportChange, -7.4);
     assert.equal(result.unavailableReason, 'TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED');
     assert.equal(result.upstreamUnavailable, false);
@@ -94,6 +109,38 @@ describe('get_wto_trade_flows', () => {
     assert.equal(result.unavailableReason, 'TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST');
     assert.equal(result.upstreamUnavailable, false);
     assert.deepEqual(result.flows, []);
+  });
+
+  it('maps an ISO2 reporter to the UN M49 code the seed is keyed by', async () => {
+    // The flow seed keys reporters by UN M49 (India 356, France 250), not the
+    // WTO member codes the tariff seed uses (699, 251): measured live 2026-10-16.
+    for (const [input, m49] of [['US', '840'], ['us', '840'], ['CN', '156'], ['IN', '356'], ['FR', '250'], [' DE ', '276']] as const) {
+      requestedUrl = '';
+      const result = await tool._execute({ reporter: input }, BASE, CTX, {});
+      assert.match(requestedUrl, new RegExp(`reporting_country=${m49}(&|$)`), `${input} -> ${m49}`);
+      assert.equal(result.unavailableReason, 'TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED');
+    }
+  });
+
+  it('passes a 3-digit M49 reporter through unchanged', async () => {
+    for (const code of ['840', '356', '250']) {
+      requestedUrl = '';
+      await tool._execute({ reporter: code }, BASE, CTX, {});
+      assert.match(requestedUrl, new RegExp(`reporting_country=${code}(&|$)`));
+    }
+  });
+
+  it('rejects an unknown ISO2 reporter without an upstream request', async () => {
+    const result = await tool._execute({ reporter: 'QQ' }, BASE, CTX, {});
+    assert.equal(requestedUrl, '');
+    assert.equal(result.unavailableReason, 'TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST');
+  });
+
+  it('advertises ISO2 as well as M49 in the reporter schema', () => {
+    const reporter = tool.inputSchema.properties.reporter as { pattern?: string; description: string };
+    assert.equal(reporter.pattern, undefined);
+    assert.match(reporter.description, /ISO 3166-1 alpha-2/);
+    assert.match(reporter.description, /M49/);
   });
 
   it('rejects years outside the public input contract', async () => {

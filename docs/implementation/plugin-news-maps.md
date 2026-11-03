@@ -44,7 +44,7 @@ Reference layers show existing landmarks, not live activity. Live military aircr
 
 `npm run build:plugin` builds `plugin.html` independently into `dist/plugin`. Production `build:full` includes this step. A separate build prevents the dashboard's shared chunks from executing the full application bootstrap in the frame. It reuses source components rather than maintaining a UI copy.
 
-`ui://worldmonitor/news-dashboard.html` reads the static build from the canonical origin, or the trusted Vercel deployment hostname for previews. Reads reject redirects, non-HTML/error pages, oversized documents, and missing plugin roots. Resource metadata declares the asset/base-map origins and base URI. Static plugin assets and public map data allow cross-origin reads. No nested website iframe or arbitrary request proxy is used.
+`ui://worldmonitor/news-dashboard-v3.html` reads the static build from the canonical origin, or the trusted Vercel deployment hostname for previews. Reads reject redirects, non-HTML/error pages, oversized documents, and missing plugin roots. Resource metadata declares the asset/base-map origins and base URI. Static plugin assets and public map data allow cross-origin reads. No nested website iframe or arbitrary request proxy is used.
 
 MapLibre receives its fetched, self-contained worker bundle as a plugin-only blob URL ending in `#maplibre.cjs`. MapLibre's `.cjs` dispatch selects a classic worker, which starts in Chromium's opaque sandbox and meets ChatGPT's `worker-src blob:` policy. The blob is revoked when the view closes. The browser regression enforces that blob-only policy. News clustering reuses the existing synchronous algorithm over the endpoint's bounded category buckets; the website keeps its worker path.
 

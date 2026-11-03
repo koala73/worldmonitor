@@ -243,6 +243,17 @@ describe('research report corpus (#5668)', () => {
     );
   });
 
+  it('points the dated direct answer at the live chokepoint page', () => {
+    const summary = html.match(/<section id="summary">([\s\S]*?)<\/section>/)?.[1];
+    assert.ok(summary, 'report must render a summary section');
+    const focus = snapshot.chokepoints[report.focusChokepointId];
+    assert.match(
+      summary,
+      new RegExp(`through ${focus.observationEnd}[^<]*<a href="/chokepoints/strait-of-hormuz/"[^>]*data-umami-event-target="chokepoint-page"`),
+      'the direct answer must say how old it is and link the live status page next to it',
+    );
+  });
+
   it('connects historical focus and comparison research in main content and Markdown', () => {
     const window = new Window();
     try {

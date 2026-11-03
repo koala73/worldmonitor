@@ -92,7 +92,7 @@ describe("createApiKey", () => {
     const t = convexTest(schema, modules);
 
     await expect(
-      t.withIdentity(FREE_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(1)),
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: FREE_USER.subject, ...makeKeyArgs(1) }),
     ).rejects.toThrow(/API_ACCESS_REQUIRED/);
   });
 
@@ -102,7 +102,7 @@ describe("createApiKey", () => {
 
     // Pro plan has apiAccess=false — should be rejected
     await expect(
-      t.withIdentity(PRO_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(1)),
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...makeKeyArgs(1) }),
     ).rejects.toThrow(/API_ACCESS_REQUIRED/);
   });
 
@@ -111,7 +111,7 @@ describe("createApiKey", () => {
     await seedApiEntitlement(t, "user-api", { validUntil: PAST });
 
     await expect(
-      t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(1)),
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) }),
     ).rejects.toThrow(/API_ACCESS_REQUIRED/);
   });
 
@@ -119,10 +119,7 @@ describe("createApiKey", () => {
     const t = convexTest(schema, modules);
     await seedApiEntitlement(t, "user-api");
 
-    const result = await t.withIdentity(API_USER).mutation(
-      api.apiKeys.createApiKey,
-      makeKeyArgs(1),
-    );
+    const result = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
 
     expect(result).toMatchObject({
       name: "test-key-1",
@@ -137,11 +134,11 @@ describe("createApiKey", () => {
 
     const asApiUser = t.withIdentity(API_USER);
     for (let i = 1; i <= 5; i++) {
-      await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(i));
+      await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(i) });
     }
 
     await expect(
-      asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(6)),
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(6) }),
     ).rejects.toThrow(/KEY_LIMIT_REACHED/);
 
     const keys = await asApiUser.query(api.apiKeys.listApiKeys, {});
@@ -164,10 +161,7 @@ describe("createApiKey", () => {
       await seedActiveApiKeys(t, "user-api", overflow.seededActive);
 
       const asApiUser = t.withIdentity(API_USER);
-      const created = await asApiUser.mutation(
-        api.apiKeys.createApiKey,
-        makeKeyArgs(overflow.nextKey),
-      );
+      const created = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(overflow.nextKey) });
       expect(created.name).toBe(`test-key-${overflow.nextKey}`);
 
       const keys = await asApiUser.query(api.apiKeys.listApiKeys, {});
@@ -180,33 +174,58 @@ describe("createApiKey", () => {
     });
   }
 
+  test("overflow convergence schedules cache invalidation for the keys it revokes and the survivors whose ranks shift", async () => {
+    const savedUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const savedToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = "https://redis.example";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
+    // Asserted as scheduled, never run (see the revokeApiKey case below).
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await seedApiEntitlement(t, "user-api");
+      await seedActiveApiKeys(t, "user-api", 6);
+
+      await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(7) });
+
+      const scheduled = await t.run(async (ctx) => ctx.db.system.query("_scheduled_functions").collect());
+      const jobs = scheduled.filter((job) => job.name.includes("invalidateUserApiKeyCaches"));
+      expect(jobs).toHaveLength(1);
+      const keyHashes = (jobs[0]!.args[0] as { keyHashes: string[] }).keyHashes;
+      expect(keyHashes.slice(0, 2)).toEqual([makeKeyArgs(1).keyHash, makeKeyArgs(2).keyHash]);
+      expect(new Set(keyHashes)).toEqual(new Set([1, 2, 3, 4, 5, 6].map((n) => makeKeyArgs(n).keyHash)));
+    } finally {
+      vi.useRealTimers();
+      if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL; else process.env.UPSTASH_REDIS_REST_URL = savedUrl;
+      if (savedToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN; else process.env.UPSTASH_REDIS_REST_TOKEN = savedToken;
+    }
+  });
+
   test("revoked keys do not count toward the limit", async () => {
     const t = convexTest(schema, modules);
     await seedApiEntitlement(t, "user-api");
 
     const asApiUser = t.withIdentity(API_USER);
-    const first = await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+    const first = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
     for (let i = 2; i <= 5; i++) {
-      await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(i));
+      await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(i) });
     }
 
     // Revoke the first key
     await asApiUser.mutation(api.apiKeys.revokeApiKey, { keyId: first.id });
 
     // Should succeed since only 4 active keys remain
-    const sixth = await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(6));
+    const sixth = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(6) });
     expect(sixth.name).toBe("test-key-6");
   });
 
   test("rejects duplicate key hash", async () => {
     const t = convexTest(schema, modules);
     await seedApiEntitlement(t, "user-api");
-
-    const asApiUser = t.withIdentity(API_USER);
-    await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
 
     await expect(
-      asApiUser.mutation(api.apiKeys.createApiKey, {
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject,
         ...makeKeyArgs(1),
         name: "different-name",
       }),
@@ -218,7 +237,7 @@ describe("createApiKey", () => {
     await seedApiEntitlement(t, "user-api");
 
     await expect(
-      t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, {
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject,
         name: "test",
         keyPrefix: "wm_toolong00",
         keyHash: "a".repeat(64),
@@ -231,7 +250,7 @@ describe("createApiKey", () => {
     await seedApiEntitlement(t, "user-api");
 
     await expect(
-      t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, {
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject,
         name: "test",
         keyPrefix: "wm_abcde",
         keyHash: "not-a-valid-hash",
@@ -244,7 +263,7 @@ describe("createApiKey", () => {
     await seedApiEntitlement(t, "user-api");
 
     await expect(
-      t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, {
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject,
         name: "   ",
         keyPrefix: "wm_abcde",
         keyHash: "a".repeat(64),
@@ -263,21 +282,55 @@ describe("revokeApiKey", () => {
     await seedApiEntitlement(t, "user-api");
 
     const asApiUser = t.withIdentity(API_USER);
-    const created = await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+    const created = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
 
     const result = await asApiUser.mutation(api.apiKeys.revokeApiKey, { keyId: created.id });
     expect(result.ok).toBe(true);
     expect(result.keyHash).toBe(makeKeyArgs(1).keyHash);
   });
 
+  test("schedules cache invalidation for the revoked key AND the owner's other active keys (their ranks shift)", async () => {
+    const savedUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const savedToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = "https://redis.example";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
+    // The jobs are asserted as scheduled, never run: on real timers they fire
+    // after the test ends and write to a torn-down database.
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      await seedApiEntitlement(t, "user-api");
+      const asApiUser = t.withIdentity(API_USER);
+      const first = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
+      await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(2) });
+      await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(3) });
+      const revokedEarlier = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(4) });
+      await asApiUser.mutation(api.apiKeys.revokeApiKey, { keyId: revokedEarlier.id });
+      // Another owner's key must never ride along.
+      await seedApiEntitlement(t, "user-other");
+      await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: OTHER_USER.subject, ...makeKeyArgs(9) });
+
+      await asApiUser.mutation(api.apiKeys.revokeApiKey, { keyId: first.id });
+
+      const scheduled = await t.run(async (ctx) => ctx.db.system.query("_scheduled_functions").collect());
+      const jobs = scheduled.filter((job) => job.name.includes("invalidateUserApiKeyCaches"));
+      const last = jobs[jobs.length - 1];
+      expect(last).toBeDefined();
+      const keyHashes = (last!.args[0] as { keyHashes: string[] }).keyHashes;
+      expect(keyHashes[0]).toBe(makeKeyArgs(1).keyHash);
+      expect(new Set(keyHashes)).toEqual(new Set([makeKeyArgs(1).keyHash, makeKeyArgs(2).keyHash, makeKeyArgs(3).keyHash]));
+    } finally {
+      vi.useRealTimers();
+      if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL; else process.env.UPSTASH_REDIS_REST_URL = savedUrl;
+      if (savedToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN; else process.env.UPSTASH_REDIS_REST_TOKEN = savedToken;
+    }
+  });
+
   test("rejects non-owner revoke attempt", async () => {
     const t = convexTest(schema, modules);
     await seedApiEntitlement(t, "user-api");
 
-    const created = await t.withIdentity(API_USER).mutation(
-      api.apiKeys.createApiKey,
-      makeKeyArgs(1),
-    );
+    const created = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
 
     await expect(
       t.withIdentity(OTHER_USER).mutation(api.apiKeys.revokeApiKey, { keyId: created.id }),
@@ -289,7 +342,7 @@ describe("revokeApiKey", () => {
     await seedApiEntitlement(t, "user-api");
 
     const asApiUser = t.withIdentity(API_USER);
-    const created = await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+    const created = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
     await asApiUser.mutation(api.apiKeys.revokeApiKey, { keyId: created.id });
 
     await expect(
@@ -315,8 +368,8 @@ describe("listApiKeys", () => {
     await seedApiEntitlement(t, "user-api");
 
     const asApiUser = t.withIdentity(API_USER);
-    const k1 = await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
-    await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(2));
+    const k1 = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(2) });
     await asApiUser.mutation(api.apiKeys.revokeApiKey, { keyId: k1.id });
 
     const keys = await asApiUser.query(api.apiKeys.listApiKeys, {});
@@ -332,7 +385,7 @@ describe("listApiKeys", () => {
     const t = convexTest(schema, modules);
     await seedApiEntitlement(t, "user-api");
 
-    await t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
 
     const otherKeys = await t.withIdentity(OTHER_USER).query(api.apiKeys.listApiKeys, {});
     expect(otherKeys).toEqual([]);
@@ -345,7 +398,7 @@ describe("listApiKeys", () => {
     // throw or an accidental cross-user read.
     const t = convexTest(schema, modules);
     await seedApiEntitlement(t, "user-api");
-    await t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
 
     const keys = await t.query(api.apiKeys.listApiKeys, {});
     expect(keys).toEqual([]);
@@ -361,7 +414,7 @@ describe("validateKeyByHash", () => {
     const t = convexTest(schema, modules);
     await seedApiEntitlement(t, "user-api");
 
-    await t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
 
     const result = await t.query(internal.apiKeys.validateKeyByHash, {
       keyHash: makeKeyArgs(1).keyHash,
@@ -377,7 +430,7 @@ describe("validateKeyByHash", () => {
     await seedApiEntitlement(t, "user-api");
 
     const asApiUser = t.withIdentity(API_USER);
-    const created = await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+    const created = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
     await asApiUser.mutation(api.apiKeys.revokeApiKey, { keyId: created.id });
 
     const result = await t.query(internal.apiKeys.validateKeyByHash, {
@@ -394,6 +447,94 @@ describe("validateKeyByHash", () => {
     });
     expect(result).toBeNull();
   });
+
+  // Plan 2026-10-25-001 KTD5 / R5: the edge applies "oldest active keys up to
+  // maxDesktopKeys" to a downgraded owner's generic keys, so every validate
+  // response carries the key's 0-based rank among the owner's ACTIVE keys of
+  // both kinds, oldest first.
+  test("AE6: activeKeyRank orders the owner's active keys oldest-first and shifts after a revoke", async () => {
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, "user-api");
+    const asApiUser = t.withIdentity(API_USER);
+    const first = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(2) });
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(3) });
+
+    const rank = async (n: number) =>
+      (await t.query(internal.apiKeys.validateKeyByHash, { keyHash: makeKeyArgs(n).keyHash }))?.activeKeyRank;
+    expect([await rank(1), await rank(2), await rank(3)]).toEqual([0, 1, 2]);
+
+    await asApiUser.mutation(api.apiKeys.revokeApiKey, { keyId: first.id });
+    expect([await rank(2), await rank(3)]).toEqual([0, 1]);
+  });
+
+  test("activeKeyRank counts desktop and api keys in one order, per owner", async () => {
+    process.env.DESKTOP_KEYS_ENABLED = "true";
+    try {
+      const t = convexTest(schema, modules);
+      await seedProEntitlement(t, "user-pro");
+      await seedApiEntitlement(t, "user-api");
+      // Owner A: one generic row older than a desktop row (a downgraded API
+      // customer who later minted a desktop key), plus a revoked row that must
+      // not take a slot.
+      await t.run(async (ctx) => {
+        await ctx.db.insert("userApiKeys", {
+          userId: "user-pro", name: "revoked", keyPrefix: "wm_0000a", keyHash: "a".repeat(64),
+          createdAt: NOW - 5_000, revokedAt: NOW - 4_000,
+        });
+        await ctx.db.insert("userApiKeys", {
+          userId: "user-pro", name: "generic", keyPrefix: "wm_0000b", keyHash: "b".repeat(64),
+          createdAt: NOW - 3_000,
+        });
+      });
+      const desktop = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(7) });
+      // Owner B's keys never influence owner A's ranks.
+      await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(9) });
+
+      const generic = await t.query(internal.apiKeys.validateKeyByHash, { keyHash: "b".repeat(64) });
+      const desk = await t.query(internal.apiKeys.validateKeyByHash, { keyHash: desktopArgs(7).keyHash });
+      const other = await t.query(internal.apiKeys.validateKeyByHash, { keyHash: makeKeyArgs(9).keyHash });
+      expect(generic).toMatchObject({ keyKind: "api", activeKeyRank: 0 });
+      expect(desk).toMatchObject({ keyKind: "desktop", activeKeyRank: 1 });
+      expect(other).toMatchObject({ keyKind: "api", activeKeyRank: 0 });
+      expect(desktop.keyKind).toBe("desktop");
+    } finally {
+      delete process.env.DESKTOP_KEYS_ENABLED;
+    }
+  });
+
+  test("Company Monitoring keys take no desktop slot or rank for a downgraded owner", async () => {
+    process.env.DESKTOP_KEYS_ENABLED = "true";
+    try {
+      const t = convexTest(schema, modules);
+      await seedProEntitlement(t, "user-pro");
+      // Two scoped keys left over from an API plan. Every desktop-aware
+      // validator rejects them, so they must not use up the Pro allowance.
+      await t.run(async (ctx) => {
+        for (const [i, c] of ["c", "d"].entries()) {
+          await ctx.db.insert("userApiKeys", {
+            userId: "user-pro", name: `scoped-${c}`, keyPrefix: `wm_0000${c}`, keyHash: c.repeat(64),
+            scopes: ["company_monitoring:read"], companyMonitoringAccountId: "acct-1",
+            createdAt: NOW - 5_000 + i,
+          });
+        }
+        await ctx.db.insert("userApiKeys", {
+          userId: "user-pro", name: "generic", keyPrefix: "wm_0000e", keyHash: "e".repeat(64),
+          createdAt: NOW - 3_000,
+        });
+      });
+
+      const generic = await t.query(internal.apiKeys.validateKeyByHash, { keyHash: "e".repeat(64) });
+      expect(generic).toMatchObject({ keyKind: "api", activeKeyRank: 0 });
+      // Pro cap is 2: the generic key holds one slot, so one desktop key fits.
+      await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(1) });
+      await expect(
+        t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(2) }),
+      ).rejects.toThrow(/DESKTOP_KEY_LIMIT_REACHED/);
+    } finally {
+      delete process.env.DESKTOP_KEYS_ENABLED;
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -406,7 +547,7 @@ describe("getKeyOwner", () => {
     await seedApiEntitlement(t, "user-api");
 
     const asApiUser = t.withIdentity(API_USER);
-    const created = await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+    const created = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
     await asApiUser.mutation(api.apiKeys.revokeApiKey, { keyId: created.id });
 
     const result = await t.query(internal.apiKeys.getKeyOwner, {
@@ -434,10 +575,7 @@ describe("touchKeyLastUsed", () => {
     const t = convexTest(schema, modules);
     await seedApiEntitlement(t, "user-api");
 
-    const created = await t.withIdentity(API_USER).mutation(
-      api.apiKeys.createApiKey,
-      makeKeyArgs(1),
-    );
+    const created = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
 
     await t.mutation(internal.apiKeys.touchKeyLastUsed, { keyId: created.id });
 
@@ -451,11 +589,384 @@ describe("touchKeyLastUsed", () => {
     await seedApiEntitlement(t, "user-api");
 
     const asApiUser = t.withIdentity(API_USER);
-    const created = await asApiUser.mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+    const created = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
     await asApiUser.mutation(api.apiKeys.revokeApiKey, { keyId: created.id });
 
     // Should not throw
     await t.mutation(internal.apiKeys.touchKeyLastUsed, { keyId: created.id });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Desktop keys (plan 2026-10-25-001, U2)
+//
+// A desktop key is a `userApiKeys` row with keyKind "desktop". Issuance is
+// gated by the DESKTOP_KEYS_ENABLED Convex env flag (Deploy Order step 3) and
+// the merged desktop-key predicate; the cap is the plan's maxDesktopKeys and
+// counts a downgraded owner's still-working generic keys too (R5, KTD5).
+// ---------------------------------------------------------------------------
+
+const PRO_BUSINESS_USER = { subject: "user-pro-biz", tokenIdentifier: "clerk|user-pro-biz" };
+
+function desktopArgs(n: number) {
+  return { ...makeKeyArgs(n), keyKind: "desktop" as const };
+}
+
+async function seedEntitlementRow(
+  t: ReturnType<typeof convexTest>,
+  userId: string,
+  planKey: string,
+  opts: { validUntil?: number; stripDesktopFields?: boolean } = {},
+) {
+  await t.run(async (ctx) => {
+    const features: any = { ...getFeaturesForPlan(planKey) };
+    if (opts.stripDesktopFields) {
+      // A row written before desktop keys existed: no flag, no cap, no limits.
+      delete features.desktopKeyAccess;
+      delete features.maxDesktopKeys;
+      features.planLimits = { ...features.planLimits };
+      delete features.planLimits.desktopKeyRequestsPerDay;
+      delete features.planLimits.desktopKeyBurstPerMinute;
+    }
+    await ctx.db.insert("entitlements", {
+      userId,
+      planKey,
+      features,
+      validUntil: opts.validUntil ?? FUTURE,
+      updatedAt: NOW,
+    });
+  });
+}
+
+async function seedKeyRows(
+  t: ReturnType<typeof convexTest>,
+  userId: string,
+  rows: Array<{ n: number; keyKind?: "api" | "desktop"; revoked?: boolean }>,
+) {
+  await t.run(async (ctx) => {
+    const now = Date.now();
+    for (const row of rows) {
+      const args = makeKeyArgs(row.n);
+      await ctx.db.insert("userApiKeys", {
+        userId,
+        name: args.name,
+        keyPrefix: args.keyPrefix,
+        keyHash: args.keyHash,
+        createdAt: now - (100 - row.n) * 1000,
+        ...(row.keyKind ? { keyKind: row.keyKind } : {}),
+        ...(row.revoked ? { revokedAt: now } : {}),
+      });
+    }
+  });
+}
+
+describe("desktop keys", () => {
+  beforeEach(() => {
+    process.env.DESKTOP_KEYS_ENABLED = "true";
+  });
+  afterEach(() => {
+    delete process.env.DESKTOP_KEYS_ENABLED;
+  });
+
+  test("Pro owner creates a desktop key; row and result carry keyKind desktop", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+
+    const created = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(1) });
+    expect(created).toMatchObject({ name: "test-key-1", keyPrefix: "wm_00001", keyKind: "desktop" });
+
+    const row = await t.run(async (ctx) => ctx.db.get(created.id));
+    expect(row?.keyKind).toBe("desktop");
+  });
+
+  test("AE3: third desktop key on Pro fails with the limit error", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(1) });
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(2) });
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(3) }),
+    ).rejects.toThrow(/DESKTOP_KEY_LIMIT_REACHED/);
+  });
+
+  test("Pro Business stops at three desktop keys", async () => {
+    const t = convexTest(schema, modules);
+    await seedEntitlementRow(t, "user-pro-biz", "pro_business_monthly");
+
+    for (let i = 1; i <= 3; i++) {
+      await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_BUSINESS_USER.subject, ...desktopArgs(i) });
+    }
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_BUSINESS_USER.subject, ...desktopArgs(4) }),
+    ).rejects.toThrow(/DESKTOP_KEY_LIMIT_REACHED/);
+  });
+
+  test("downgraded owner with three generic keys cannot create a desktop key", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    // Two legacy rows (no keyKind) and one explicit api row, all still active.
+    await seedKeyRows(t, "user-pro", [{ n: 1 }, { n: 2 }, { n: 3, keyKind: "api" }]);
+
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(10) }),
+    ).rejects.toThrow(/DESKTOP_KEY_LIMIT_REACHED/);
+  });
+
+  test("downgraded owner: one generic key plus one desktop key fills the Pro cap", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    await seedKeyRows(t, "user-pro", [{ n: 1 }, { n: 2, revoked: true }]);
+
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(10) });
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(11) }),
+    ).rejects.toThrow(/DESKTOP_KEY_LIMIT_REACHED/);
+  });
+
+  test("free account cannot create a desktop key", async () => {
+    const t = convexTest(schema, modules);
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: FREE_USER.subject, ...desktopArgs(1) }),
+    ).rejects.toThrow(/DESKTOP_KEY_ACCESS_REQUIRED/);
+
+    await seedEntitlementRow(t, "user-free", "free");
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: FREE_USER.subject, ...desktopArgs(1) }),
+    ).rejects.toThrow(/DESKTOP_KEY_ACCESS_REQUIRED/);
+  });
+
+  test("lapsed Pro owner cannot create a desktop key", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro", { validUntil: PAST });
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(1) }),
+    ).rejects.toThrow(/DESKTOP_KEY_ACCESS_REQUIRED/);
+  });
+
+  test("API Starter owner cannot create a desktop key", async () => {
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, "user-api");
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...desktopArgs(1) }),
+    ).rejects.toThrow(/DESKTOP_KEY_ACCESS_REQUIRED/);
+  });
+
+  test("Pro still cannot create an api key, with or without an explicit kind", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...makeKeyArgs(1) }),
+    ).rejects.toThrow(/API_ACCESS_REQUIRED/);
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...makeKeyArgs(1), keyKind: "api" }),
+    ).rejects.toThrow(/API_ACCESS_REQUIRED/);
+  });
+
+  test("legacy Pro entitlement row without desktopKeyAccess can create after merge", async () => {
+    const t = convexTest(schema, modules);
+    await seedEntitlementRow(t, "user-pro", "pro_monthly", { stripDesktopFields: true });
+
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(1) });
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(2) });
+    // The cap also comes from the catalog merge, not the (missing) stored value.
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(3) }),
+    ).rejects.toThrow(/DESKTOP_KEY_LIMIT_REACHED/);
+  });
+
+  test("desktop keys reject Company Monitoring scopes", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject,
+        ...desktopArgs(1),
+        scopes: ["company_monitoring:read"],
+      }),
+    ).rejects.toThrow(/INVALID_API_KEY_SCOPES/);
+    const rows = await t.run(async (ctx) => ctx.db.query("userApiKeys").collect());
+    expect(rows).toHaveLength(0);
+  });
+
+  test("desktop keys keep prefix, hash, name, and duplicate-hash validation", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(1), keyPrefix: "wm_toolong00" }),
+    ).rejects.toThrow(/INVALID_PREFIX/);
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(1), keyHash: "nope" }),
+    ).rejects.toThrow(/INVALID_HASH/);
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(1), name: "  " }),
+    ).rejects.toThrow(/INVALID_NAME/);
+
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(1) });
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(1), name: "other" }),
+    ).rejects.toThrow(/DUPLICATE_KEY/);
+  });
+
+  test("flag off: desktop creation is refused for everyone", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    await seedEntitlementRow(t, "user-pro-biz", "pro_business_monthly");
+
+    for (const value of [undefined, "false", "1", "TRUE"]) {
+      if (value === undefined) delete process.env.DESKTOP_KEYS_ENABLED;
+      else process.env.DESKTOP_KEYS_ENABLED = value;
+      for (const identity of [PRO_USER, PRO_BUSINESS_USER, FREE_USER, API_USER]) {
+        await expect(
+          t.mutation(internal.apiKeys.createApiKeyForUser, { userId: identity.subject, ...desktopArgs(1) }),
+        ).rejects.toThrow(/DESKTOP_KEYS_DISABLED/);
+      }
+    }
+    const rows = await t.run(async (ctx) => ctx.db.query("userApiKeys").collect());
+    expect(rows).toHaveLength(0);
+  });
+
+  test("kill switch: with the flag off an existing desktop row validates null; an api row is unaffected", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    await seedApiEntitlement(t, "user-api");
+    const desk = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(1) });
+    const generic = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(2) });
+    expect(await t.query(internal.apiKeys.validateKeyByHash, { keyHash: desktopArgs(1).keyHash })).toMatchObject({ id: desk.id, keyKind: "desktop" });
+
+    for (const value of [undefined, "false", "TRUE"]) {
+      if (value === undefined) delete process.env.DESKTOP_KEYS_ENABLED;
+      else process.env.DESKTOP_KEYS_ENABLED = value;
+      expect(await t.query(internal.apiKeys.validateKeyByHash, { keyHash: desktopArgs(1).keyHash })).toBeNull();
+      expect(await t.query(internal.apiKeys.validateKeyByHash, { keyHash: makeKeyArgs(2).keyHash })).toMatchObject({ id: generic.id, keyKind: "api" });
+    }
+
+    // Flipping it back on restores the key: nothing was rewritten.
+    process.env.DESKTOP_KEYS_ENABLED = "true";
+    expect(await t.query(internal.apiKeys.validateKeyByHash, { keyHash: desktopArgs(1).keyHash })).toMatchObject({ id: desk.id, keyKind: "desktop" });
+    const row = await t.run(async (ctx) => ctx.db.get(desk.id));
+    expect(row?.revokedAt).toBeUndefined();
+  });
+
+  test("flag off does not affect api key creation", async () => {
+    delete process.env.DESKTOP_KEYS_ENABLED;
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, "user-api");
+    const created = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
+    expect(created.keyKind).toBe("api");
+  });
+
+  test("revoking a desktop key frees a slot", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    const asPro = t.withIdentity(PRO_USER);
+
+    const first = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(1) });
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(2) });
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(3) }),
+    ).rejects.toThrow(/DESKTOP_KEY_LIMIT_REACHED/);
+
+    const revoked = await asPro.mutation(api.apiKeys.revokeApiKey, { keyId: first.id });
+    expect(revoked).toEqual({ ok: true, keyHash: makeKeyArgs(1).keyHash });
+    const third = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(3) });
+    expect(third.keyKind).toBe("desktop");
+  });
+
+  test("desktop rows do not count against, and are never revoked by, the api-key limit", async () => {
+    // R8 upgrade case: a Pro owner's two desktop keys survive an upgrade to
+    // API Starter, and the owner still gets the full five api keys.
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, "user-api");
+    await seedKeyRows(t, "user-api", [
+      { n: 90, keyKind: "desktop" },
+      { n: 91, keyKind: "desktop" },
+    ]);
+    const asApi = t.withIdentity(API_USER);
+
+    for (let i = 1; i <= 5; i++) {
+      await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(i) });
+    }
+    await expect(
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(6) }),
+    ).rejects.toThrow(/KEY_LIMIT_REACHED/);
+
+    const keys = await asApi.query(api.apiKeys.listApiKeys, {});
+    const desktop = keys.filter((k: any) => k.keyKind === "desktop");
+    expect(desktop).toHaveLength(2);
+    expect(desktop.every((k: any) => !k.revokedAt)).toBe(true);
+  });
+
+  test("api overflow convergence revokes only api rows, never desktop rows", async () => {
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, "user-api");
+    // Desktop rows are the OLDEST, so an oldest-first revoke that ignored kind
+    // would hit them first.
+    await seedKeyRows(t, "user-api", [
+      { n: 1, keyKind: "desktop" },
+      { n: 2, keyKind: "desktop" },
+      { n: 3 },
+      { n: 4 },
+      { n: 5 },
+      { n: 6, keyKind: "api" },
+      { n: 7, keyKind: "api" },
+      { n: 8, keyKind: "api" },
+    ]);
+    const asApi = t.withIdentity(API_USER);
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(20) });
+
+    const keys = await asApi.query(api.apiKeys.listApiKeys, {});
+    const activeApi = keys.filter((k: any) => !k.revokedAt && k.keyKind === "api");
+    const activeDesktop = keys.filter((k: any) => !k.revokedAt && k.keyKind === "desktop");
+    expect(activeApi).toHaveLength(5);
+    expect(activeDesktop).toHaveLength(2);
+    // Six active api rows converge to four plus the new one: the two oldest
+    // API rows go, the older desktop rows stay.
+    expect(keys.filter((k: any) => k.revokedAt).map((k: any) => k.name).sort()).toEqual([
+      "test-key-3",
+      "test-key-4",
+    ]);
+  });
+
+  test("listApiKeys returns keyKind, mapping legacy rows to api", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    await seedKeyRows(t, "user-pro", [{ n: 1 }]);
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(2) });
+
+    const keys = await t.withIdentity(PRO_USER).query(api.apiKeys.listApiKeys, {});
+    const byName = Object.fromEntries(keys.map((k: any) => [k.name, k.keyKind]));
+    expect(byName).toEqual({ "test-key-1": "api", "test-key-2": "desktop" });
+  });
+
+  test("validate-by-hash returns desktop for new desktop rows and api for legacy and api rows", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    await seedApiEntitlement(t, "user-api");
+    await seedKeyRows(t, "user-pro", [{ n: 1 }]); // legacy, no keyKind
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(2) });
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(3) });
+
+    const kindOf = async (n: number) =>
+      (await t.query(internal.apiKeys.validateKeyByHash, { keyHash: makeKeyArgs(n).keyHash }))
+        ?.keyKind;
+    expect(await kindOf(1)).toBe("api");
+    expect(await kindOf(2)).toBe("desktop");
+    expect(await kindOf(3)).toBe("api");
+  });
+
+  test("validate-by-hash returns null for a revoked desktop key", async () => {
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    const asPro = t.withIdentity(PRO_USER);
+    const created = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: PRO_USER.subject, ...desktopArgs(1) });
+    await asPro.mutation(api.apiKeys.revokeApiKey, { keyId: created.id });
+
+    const result = await t.query(internal.apiKeys.validateKeyByHash, {
+      keyHash: makeKeyArgs(1).keyHash,
+    });
+    expect(result).toBeNull();
   });
 });
 
@@ -486,6 +997,7 @@ describe("HTTP route /api/internal-validate-api-key — touch scheduling gate", 
   afterEach(() => {
     delete process.env.CONVEX_SERVER_SHARED_SECRET;
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   async function validate(t: ReturnType<typeof convexTest>, keyHash: string) {
@@ -512,9 +1024,10 @@ describe("HTTP route /api/internal-validate-api-key — touch scheduling gate", 
   test("validate inside the debounce window schedules no touch; after expiry it does", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(T0);
+    vi.spyOn(Math, "random").mockReturnValue(0);
     const t = convexTest(schema, modules);
     await seedApiEntitlement(t, "user-api");
-    await t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
     const keyHash = makeKeyArgs(1).keyHash;
 
     // Phase 1 — first validate: lastUsedAt unset, so the touch must be scheduled.
@@ -540,17 +1053,159 @@ describe("HTTP route /api/internal-validate-api-key — touch scheduling gate", 
     expect(await readLastUsedAt(t, keyHash)).toBe(T0 + 6 * 60_000);
   });
 
+  // Convex Insights (2026-10): the gate above still let 560 OCC conflicts
+  // through in 72h. Every validation that lands between the debounce expiring
+  // and the first touch committing sees a stale lastUsedAt, so a burst of
+  // parallel requests schedules a herd of touches for the same instant and
+  // all but one lose the write race. Spreading the herd lets the first touch
+  // commit before the rest run, so they read a fresh lastUsedAt and no-op.
+  test("concurrent validations of a stale key spread their touches over time", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, "user-api");
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
+    const keyHash = makeKeyArgs(1).keyHash;
+
+    const random = vi.spyOn(Math, "random");
+    for (const r of [0.1, 0.5, 0.9]) {
+      random.mockReturnValue(r);
+      expect((await validate(t, keyHash)).status).toBe(200);
+    }
+    random.mockRestore();
+
+    const touchTimes = await t.run(async (ctx) =>
+      (await ctx.db.system.query("_scheduled_functions").collect())
+        .filter((job) => job.name.includes("touchKeyLastUsed"))
+        .map((job) => job.scheduledTime),
+    );
+    expect(touchTimes.sort((a, b) => a - b)).toEqual([T0 + 3_000, T0 + 15_000, T0 + 27_000]);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+  });
+
   test("response body does not leak lastUsedAt (gateway contract unchanged)", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(T0);
     const t = convexTest(schema, modules);
     await seedApiEntitlement(t, "user-api");
-    await t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, makeKeyArgs(1));
+    await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject, ...makeKeyArgs(1) });
 
     const res = await validate(t, makeKeyArgs(1).keyHash);
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(["id", "name", "userId"]);
+    expect(Object.keys(body).sort()).toEqual(["activeKeyRank", "id", "keyKind", "name", "userId"]);
+    expect(body.keyKind).toBe("api");
     await t.finishAllScheduledFunctions(vi.runAllTimers);
+  });
+
+  test("response body carries keyKind desktop for a desktop row and api for a legacy row", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    // A desktop row validates only while the kill switch is on (the same flag
+    // that gates issuance); the route contract below is what the edge caches.
+    process.env.DESKTOP_KEYS_ENABLED = "true";
+    try {
+      const t = convexTest(schema, modules);
+      await seedKeyRows(t, "user-pro", [{ n: 1 }, { n: 2, keyKind: "desktop" }]);
+
+      const legacy = await validate(t, makeKeyArgs(1).keyHash);
+      expect(((await legacy.json()) as Record<string, unknown>).keyKind).toBe("api");
+      const desktop = await validate(t, makeKeyArgs(2).keyHash);
+      const body = (await desktop.json()) as Record<string, unknown>;
+      expect(body).toMatchObject({ userId: "user-pro", name: "test-key-2", keyKind: "desktop" });
+      expect(Object.keys(body).sort()).toEqual(["activeKeyRank", "id", "keyKind", "name", "userId"]);
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+    } finally {
+      delete process.env.DESKTOP_KEYS_ENABLED;
+    }
+  });
+});
+
+
+describe("API key creation trust boundary", () => {
+  test("exposes no public key-creating mutation", async () => {
+    const functions = await import("../apiKeys");
+    expect(functions).not.toHaveProperty("createApiKey");
+    expect(functions.createApiKeyForUser.isInternal).toBe(true);
+  });
+});
+
+describe("gateway-only API key creation relay", () => {
+  beforeEach(() => {
+    vi.stubEnv("CONVEX_TENANT_RELAY_SECRET", "gateway-test-secret");
+    vi.stubEnv("CONVEX_NOTIFICATION_RELAY_SECRET", "delivery-test-secret");
+  });
+  afterEach(() => vi.unstubAllEnvs());
+  const post = (t: ReturnType<typeof convexTest>, body: unknown, secret?: string) => t.fetch("/relay/api-keys/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(secret ? { Authorization: `Bearer ${secret}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  test.each([undefined, "wrong-secret", "delivery-test-secret"])("rejects unauthorized secret %s", async (secret) => {
+    const t = convexTest(schema, modules);
+    const response = await post(t, { userId: API_USER.subject, ...makeKeyArgs(1) }, secret);
+    expect(response.status).toBe(401);
+    expect(await t.run(ctx => ctx.db.query("userApiKeys").collect())).toEqual([]);
+  });
+  test("creates for the relay body user without a Convex user identity", async () => {
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, API_USER.subject);
+    const response = await post(t, { userId: API_USER.subject, ...makeKeyArgs(1) }, "gateway-test-secret");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    const row = await t.run(ctx => ctx.db.get(result.id));
+    expect(row).toMatchObject({ userId: API_USER.subject, keyHash: makeKeyArgs(1).keyHash });
+  });
+  test.each([
+    ["INVALID_NAME", { name: " " }, 400],
+    ["INVALID_PREFIX", { keyPrefix: "invalid" }, 400],
+    ["INVALID_HASH", { keyHash: "invalid" }, 400],
+    ["INVALID_API_KEY_SCOPES", { scopes: ["invalid"] }, 400],
+    ["INVALID_REQUEST", { scopes: [42] }, 400],
+    ["INVALID_REQUEST", { keyKind: "other" }, 400],
+  ])("maps %s to its expected HTTP status", async (code, args, status) => {
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, API_USER.subject);
+    const response = await post(t, { userId: API_USER.subject, ...makeKeyArgs(1), ...args }, "gateway-test-secret");
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({ error: code });
+  });
+  test("maps the account-deletion write fence to 403", async () => {
+    const t = convexTest(schema, modules);
+    await seedApiEntitlement(t, API_USER.subject);
+    await t.run(ctx => ctx.db.insert("accountDeletions", {
+      userId: API_USER.subject, userIdHash: "a".repeat(64), source: "self",
+      status: "pending", step: "personal", startedAt: NOW, updatedAt: NOW,
+    }));
+    const response = await post(t, { userId: API_USER.subject, ...makeKeyArgs(1) }, "gateway-test-secret");
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "ACCOUNT_DELETION_IN_PROGRESS" });
+  });
+  test("maps desktop entitlement and cap errors", async () => {
+    const t = convexTest(schema, modules);
+    vi.stubEnv("DESKTOP_KEYS_ENABLED", "true");
+    const body = { userId: PRO_USER.subject, ...makeKeyArgs(1), keyKind: "desktop" };
+    const denied = await post(t, body, "gateway-test-secret");
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toEqual({ error: "DESKTOP_KEY_ACCESS_REQUIRED" });
+    await seedProEntitlement(t, PRO_USER.subject);
+    for (let i = 1; i <= 2; i++) {
+      expect((await post(t, { ...body, ...makeKeyArgs(i) }, "gateway-test-secret")).status).toBe(200);
+    }
+    const limited = await post(t, { ...body, ...makeKeyArgs(3) }, "gateway-test-secret");
+    expect(limited.status).toBe(409);
+    expect(await limited.json()).toEqual({ error: "DESKTOP_KEY_LIMIT_REACHED" });
+  });
+  test("maps entitlement denial to 403 and the key cap to 409", async () => {
+    const t = convexTest(schema, modules);
+    const body = { userId: API_USER.subject, ...makeKeyArgs(6) };
+    const denied = await post(t, body, "gateway-test-secret");
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toEqual({ error: "API_ACCESS_REQUIRED" });
+    await seedApiEntitlement(t, API_USER.subject);
+    await seedActiveApiKeys(t, API_USER.subject, 5);
+    const limited = await post(t, body, "gateway-test-secret");
+    expect(limited.status).toBe(409);
+    expect(await limited.json()).toEqual({ error: "KEY_LIMIT_REACHED" });
   });
 });

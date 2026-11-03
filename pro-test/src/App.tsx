@@ -30,7 +30,7 @@ import {
   DASHBOARD_SCREENSHOT_WEBP_SRCSET,
 } from './assets/dashboard-screenshot';
 import { ensureTurnstileScript } from './turnstile';
-import wiredLogo from './assets/wired-logo.svg';
+import { VoiceCards } from './components/Voices';
 import {
   DASHBOARD_EMBED_PREVIEW_URL,
   DASHBOARD_PATH,
@@ -40,7 +40,7 @@ import { appendStoredContentAttributionToUrl } from '../../shared/content-attrib
 import { isInternalSourceTag } from '../../shared/referral-namespaces';
 import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
 import { LegalFooterNav } from './components/LegalFooterNav';
-import { PressFooterNav } from './components/PressFooterNav';
+import { PressNav } from './components/PressNav';
 import { ABOUT_DOCS_PATH } from '../../shared/press';
 import {
   isDesktopCheckoutHandoff,
@@ -90,6 +90,7 @@ export function renderTurnstileWidgets(): number {
  * referral-capture guard (#6493).
  */
 function getRefCode(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
   const params = new URLSearchParams(window.location.search);
   const code = params.get('ref') || undefined;
   if (!code || isInternalSourceTag(code)) return undefined;
@@ -100,6 +101,7 @@ function getMcpAttributionSource(): string | undefined {
   // Uses the shared allowlist rather than an inline literal so the /pro page,
   // the checkout edge function, and the Convex webhook reader can never disagree
   // about what the campaign marker is (#6716).
+  if (typeof window === 'undefined') return undefined;
   return readMcpAttributionFromSearch(window.location.search);
 }
 
@@ -444,7 +446,7 @@ const SignalBars = () => {
   );
 };
 
-const Hero = () => {
+const Hero = ({ srLead }: { srLead?: string }) => {
   const { user, isLoaded, signedIn } = useClerkUser();
   const { isPro, isChecked } = useProEntitlement();
   // Showing "Sign In" to an already-signed-in user wastes a CTA slot.
@@ -460,8 +462,10 @@ const Hero = () => {
     <section className="pt-28 pb-12 px-6 relative overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(74,222,128,0.08)_0%,transparent_50%)] pointer-events-none" />
       <div className="max-w-4xl mx-auto text-center relative z-10">
+        {/* The prerendered /pro HTML paints this hero before React mounts, so
+            an opacity:0 initial state would blank it out until the bundle ran. */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
         >
@@ -470,6 +474,7 @@ const Hero = () => {
           </div>
 
           <h1 className="text-6xl md:text-8xl font-display font-bold tracking-tighter leading-[0.95]">
+            {srLead && <span className="sr-only">{srLead} </span>}
             <span className="text-wm-muted/40">{t('hero.noiseWord')}</span>
             <span className="mx-3 md:mx-5 text-wm-border/50">→</span>
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-wm-green to-emerald-300 text-glow">{t('hero.signalWord')}</span>
@@ -526,16 +531,9 @@ const SocialProof = () => (
           </div>
         ))}
       </div>
-      <blockquote className="max-w-3xl mx-auto text-center">
-        <p className="text-lg md:text-xl text-wm-muted italic leading-relaxed">
-          "{t('socialProof.quote')}"
-        </p>
-        <footer className="mt-6 flex items-center justify-center gap-3">
-          <a href="https://www.wired.com/story/world-monitor-elie-habib/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-wm-muted hover:text-wm-text transition-colors">
-            <img src={wiredLogo} alt="WIRED" loading="lazy" className="h-5 brightness-0 invert opacity-60 hover:opacity-100 transition-opacity" />
-          </a>
-        </footer>
-      </blockquote>
+      <h2 className="text-2xl md:text-3xl font-display font-bold mb-8 text-center">{t('welcome.voices.title')}</h2>
+      <VoiceCards />
+      <PressNav className="mt-6" />
     </div>
   </section>
 );
@@ -828,7 +826,7 @@ const ProShowcase = () => (
             ].map((ch, i) => (
               <div key={i} className="flex flex-col items-center gap-1.5 text-wm-muted hover:text-wm-text transition-colors cursor-pointer">
                 {ch.icon}
-                <span className="text-[10px] font-mono">{ch.label}</span>
+                <span className="text-xs font-mono">{ch.label}</span>
               </div>
             ))}
           </div>
@@ -912,7 +910,7 @@ const AudiencePersonas = () => {
 const ApiSection = () => (
   <section className="py-24 px-6 border-y border-wm-border bg-[#0a0a0a]" id="api">
     <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
-      <div className="order-2 lg:order-1">
+      <div className="order-2 lg:order-1 min-w-0">
         <div className="bg-black border border-wm-border rounded-lg overflow-hidden font-mono text-sm">
           <div className="bg-wm-card px-4 py-2 border-b border-wm-border flex items-center gap-2">
             <Terminal className="w-4 h-4 text-wm-muted" aria-hidden="true" />
@@ -939,7 +937,7 @@ const ApiSection = () => (
         </div>
       </div>
 
-      <div className="order-1 lg:order-2">
+      <div className="order-1 lg:order-2 min-w-0">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-wm-border bg-wm-card text-wm-muted text-xs font-mono mb-6">
           {t('apiSection.apiTier')}
         </div>
@@ -1124,7 +1122,7 @@ const PricingTable = () => {
         {rows.map((row, i) => (
           <div key={i} className="bg-wm-card border border-wm-border p-4 rounded-sm">
             <p className="font-medium text-sm mb-3">{row.feature}</p>
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid grid-cols-2 gap-2 text-xs break-words">
               <div><span className="text-wm-muted">{t('tiers.free')}:</span> {row.free}</div>
               <div><span className="text-wm-green">{t('tiers.pro')}:</span> <span className="text-wm-green">{row.pro}</span></div>
               <div><span className="text-wm-muted">{t('nav.api')}:</span> {row.api}</div>
@@ -1381,11 +1379,11 @@ const EnterprisePage = () => (
           <a href="https://www.worldmonitor.app/docs/documentation" className="hover:text-wm-text transition-colors">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
-          <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
+          <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X (Twitter)</a>
         </div>
-        <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
+        <span className="text-xs opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
       </div>
-      <PressFooterNav />
+      <PressNav />
       {/* This is the pricing page — the footer a buyer sees on the way to
           checkout — so the documents they are agreeing to have to be one click
           from here, not one FAQ answer deep (#6976). */}
@@ -1395,6 +1393,26 @@ const EnterprisePage = () => (
 );
 
 /* ─── Page Layout ─── */
+/**
+ * The home page's first viewport and landmark structure. prerender.mjs renders
+ * it to static HTML (pro-first-viewport-prerender.tsx) so the hero paints, at
+ * its final size, before the bundle mounts and replaces #root.
+ */
+export const ProHomeShell = ({ heroSrLead, footer, children }: {
+  heroSrLead?: string;
+  footer?: ReactNode;
+  children: ReactNode;
+}) => (
+  <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
+    <Navbar />
+    <main>
+      <Hero srLead={heroSrLead} />
+      {children}
+    </main>
+    {footer}
+  </div>
+);
+
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
 
@@ -1444,33 +1462,28 @@ export default function App() {
 
   return (
     <ProEntitlementProvider>
-      <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
-        <Navbar />
-        <main>
-          <Hero />
-          <SourceMarquee />
-          <Pillars />
-          <WhyUpgrade />
-          <TwoPathSplit />
-          <ProShowcase />
-          <DeliveryDesk />
-          <AudiencePersonas />
-          <SocialProof />
-          <LivePreview />
-          <WhatsNew />
-          <PricingSection
-            refCode={getRefCode()}
-            attributionSource={getMcpAttributionSource()}
-            checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
-            desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
-          />
-          <PricingTable />
-          <ApiSection />
-          <EnterpriseShowcase />
-          <FAQ />
-        </main>
-        <Footer />
-      </div>
+      <ProHomeShell footer={<Footer />}>
+        <SourceMarquee />
+        <Pillars />
+        <WhyUpgrade />
+        <SocialProof />
+        <TwoPathSplit />
+        <ProShowcase />
+        <DeliveryDesk />
+        <AudiencePersonas />
+        <LivePreview />
+        <WhatsNew />
+        <PricingSection
+          refCode={getRefCode()}
+          attributionSource={getMcpAttributionSource()}
+          checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
+          desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
+        />
+        <PricingTable />
+        <ApiSection />
+        <EnterpriseShowcase />
+        <FAQ />
+      </ProHomeShell>
     </ProEntitlementProvider>
   );
 }

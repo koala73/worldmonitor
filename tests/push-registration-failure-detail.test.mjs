@@ -99,7 +99,7 @@ describe('push registration failure detail (WORLDMONITOR-XR)', () => {
     assert.ok(post, 'could not locate postSubscription()');
     assert.match(
       post[0],
-      /throw new Error\(await describePushRegistrationFailure\(res\)\)/,
+      /throw new PushRegistrationError\(await describePushRegistrationFailure\(res\),/,
       'postSubscription() must throw the described failure, not a bare status',
     );
   });

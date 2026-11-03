@@ -52,6 +52,15 @@ describe('buildExposureIndex', () => {
     assert.ok(!('imported' in idx), 'primary-energy import dependency is not an OWID field');
   });
 
+  it('each bucket row carries its own data year, not just the index-wide max', () => {
+    const countries = makeCountries();
+    countries.set('DZ', { iso2: 'DZ', country: 'Algeria', year: 2022, coalShare: 0, gasShare: 99, oilShare: 1, renewShare: 0, nuclearShare: 0, windShare: 0, solarShare: 0, hydroShare: 0, seededAt: '' });
+    const idx = buildExposureIndex(countries);
+    assert.equal(idx.year, 2023);
+    assert.deepEqual(idx.gas[0], { iso2: 'DZ', name: 'Algeria', share: 99, year: 2022 });
+    assert.equal(idx.gas.find((e) => e.iso2 === 'IT')?.year, 2023);
+  });
+
   it('each bucket includes only countries with a non-null value for that metric', () => {
     const idx = buildExposureIndex(makeCountries());
     assert.ok(!idx.gas.some((e) => e.iso2 === 'MT'), 'MT has null gasShare — should not appear in gas bucket');

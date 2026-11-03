@@ -1,0 +1,322 @@
+{
+  "info": {
+    "name": "WorldMonitor Quickstart",
+    "description": "Try the official WorldMonitor global intelligence API.\n\nStart with **1. No key required** to discover MCP tools and inspect the source catalog. Anonymous get_sources calls allow 10 requests per minute per IP.\n\nFor **2. REST examples**, get a subscription API key at https://www.worldmonitor.app/pro and set `apiKey` in your private fork or local environment. Never put a real key in a public or shared variable. Requests in this folder are skipped while the key is blank. HTTP 401 or 403 indicates an authentication or entitlement failure, and HTTP 429 indicates a rate limit.\n\nThe REST requests follow the final public OpenAPI specification at https://www.worldmonitor.app/openapi.json. Import that URL separately for the complete reference.\n\nDocumentation: https://www.worldmonitor.app/docs/usage-quickstart\nSource: https://github.com/koala73/worldmonitor\nLicense: MIT",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "X-WorldMonitor-Key",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{apiKey}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://api.worldmonitor.app",
+      "type": "string"
+    },
+    {
+      "key": "mcpUrl",
+      "value": "https://worldmonitor.app/mcp",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. No key required",
+      "auth": {
+        "type": "noauth"
+      },
+      "item": [
+        {
+          "name": "Discover source coverage",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "User-Agent",
+                "value": "worldmonitor-postman/1.0 (+https://www.worldmonitor.app)"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 1,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_sources\",\n    \"arguments\": {\n      \"view\": \"summary\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{mcpUrl}}",
+              "host": [
+                "{{mcpUrl}}"
+              ]
+            },
+            "description": "Returns source and outlet counts, provenance coverage, and catalog caveats without an API key. This catalog describes sources, not current feed health."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const rpc = pm.response.json();",
+                  "pm.test(\"Successful JSON-RPC response\", () => {",
+                  "  pm.expect(rpc.jsonrpc).to.eql(\"2.0\");",
+                  "  pm.expect(rpc.id).to.eql(1);",
+                  "  pm.expect(rpc).to.not.have.property(\"error\");",
+                  "  pm.expect(rpc.result.isError).to.not.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List MCP tools",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "User-Agent",
+                "value": "worldmonitor-postman/1.0 (+https://www.worldmonitor.app)"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 1,\n  \"method\": \"tools/list\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{mcpUrl}}",
+              "host": [
+                "{{mcpUrl}}"
+              ]
+            },
+            "description": "Discover the live tool registry. Most data tools require a subscription API key. get_sources is the anonymous data-tool exception."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const rpc = pm.response.json();",
+                  "pm.test(\"Successful JSON-RPC response\", () => {",
+                  "  pm.expect(rpc.jsonrpc).to.eql(\"2.0\");",
+                  "  pm.expect(rpc.id).to.eql(1);",
+                  "  pm.expect(rpc).to.not.have.property(\"error\");",
+                  "  pm.expect(rpc.result.isError).to.not.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. REST examples",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!pm.variables.get(\"apiKey\")) {",
+              "  console.warn(\"Skipped. Set apiKey in your private fork or local environment to run REST examples.\");",
+              "  pm.execution.skipRequest();",
+              "}"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "Country risk for the United States",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "User-Agent",
+                "value": "worldmonitor-postman/1.0 (+https://www.worldmonitor.app)"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/intelligence/v1/get-country-risk?country_code=US",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "intelligence",
+                "v1",
+                "get-country-risk"
+              ],
+              "query": [
+                {
+                  "key": "country_code",
+                  "value": "US"
+                }
+              ]
+            },
+            "description": "Get composite country risk intelligence. Requires a subscription API key. See https://www.worldmonitor.app/docs/usage-auth."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"JSON response\", () => pm.expect(pm.response.json()).to.be.an(\"object\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Recent earthquakes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "User-Agent",
+                "value": "worldmonitor-postman/1.0 (+https://www.worldmonitor.app)"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/seismology/v1/list-earthquakes?page_size=5",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seismology",
+                "v1",
+                "list-earthquakes"
+              ],
+              "query": [
+                {
+                  "key": "page_size",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "Retrieve up to five recent earthquakes. An empty result does not establish that a source is fresh."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"JSON response\", () => pm.expect(pm.response.json()).to.be.an(\"object\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cyber threat indicators",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "User-Agent",
+                "value": "worldmonitor-postman/1.0 (+https://www.worldmonitor.app)"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cyber/v1/list-cyber-threats?page_size=5",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cyber",
+                "v1",
+                "list-cyber-threats"
+              ],
+              "query": [
+                {
+                  "key": "page_size",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "Browse up to five cached cyber threat indicators. Source coverage and freshness depend on the upstream provider."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"JSON response\", () => pm.expect(pm.response.json()).to.be.an(\"object\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

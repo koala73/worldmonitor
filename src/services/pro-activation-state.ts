@@ -217,15 +217,23 @@ export function writeScopedFireOnceRecord(
 export const FIRE_ONCE_TTL_MS = 400 * 24 * 60 * 60 * 1000;
 
 export interface FireOnceRecord {
-  /** Subscription identity onboarding was shown for (see deriveSubscriptionKey). */
+  /** Subscription identity whose activation check is settled. */
   subscriptionKey: string;
-  /** Epoch ms the interstitial was shown. */
+  /** Epoch ms the activation check settled. */
   shownAt: number;
+  /** Absent on presented flows, including legacy records. */
+  outcome?: 'not-eligible';
 }
 
 /** Build a fire-once record for an opaque subscription identity. */
-export function computeFireOnceRecord(subscriptionKey: string, now: number): FireOnceRecord {
-  return { subscriptionKey, shownAt: now };
+export function computeFireOnceRecord(
+  subscriptionKey: string,
+  now: number,
+  outcome: 'opened' | 'not-eligible' = 'opened',
+): FireOnceRecord {
+  const record: FireOnceRecord = { subscriptionKey, shownAt: now };
+  if (outcome === 'not-eligible') record.outcome = outcome;
+  return record;
 }
 
 /** True when a fire-once record exists and is still within its TTL. */
@@ -490,7 +498,14 @@ export function isMountClaimBlocking(
 // Step model (R15/AE6): ordered [brief, alerts, power] with per-step state
 // ---------------------------------------------------------------------------
 
-export type ActivationStepId = 'brief' | 'alerts' | 'power';
+export type ActivationStepId = 'brief' | 'alerts' | 'power' | 'about';
+
+/**
+ * Steps recorded in the durable activation outcome. `about` is excluded: the
+ * About-you profile already records its answer or skip, and the server's step
+ * validator predates it.
+ */
+export type PersistedActivationStepId = Exclude<ActivationStepId, 'about'>;
 
 /**
  * - `confirmable`  — offer the action; the user can complete it in-flow.
@@ -530,8 +545,33 @@ export interface ActivationExistingConfig {
   hasWebPushChannel: boolean;
   /** The enabled current-variant rule includes the verified web-push channel. */
   hasWebPushDelivery: boolean;
-  /** The user has already used a Pro power feature (custom widget / MCP). */
+  /** The user has already used a Pro power feature (custom widget, or a connected MCP client — see resolveHasUsedPowerFeature). */
   hasUsedPowerFeature?: boolean;
+  /** About-you profile status; null or absent when it could not be read. */
+  aboutYouStatus?: 'due' | 'answered' | 'skipped' | null;
+}
+
+/** The subset of an MCP client row this decision needs. */
+export interface PowerFeatureMcpClientLike {
+  revokedAt?: number | null;
+  lastUsedAt?: number | null;
+}
+
+/**
+ * Whether the subscriber has already used a Pro power feature. Two signals,
+ * OR-ed: a locally stored custom widget, or an unrevoked MCP client with
+ * recorded use. Authorization alone does not prove the client was used.
+ * `mcpClients` is optional: a caller that
+ * has not read the client list (a widget already answered, or the lookup
+ * failed) passes nothing and gets the widget-only answer.
+ */
+export function resolveHasUsedPowerFeature(
+  widgetCount: number,
+  mcpClients?: readonly PowerFeatureMcpClientLike[] | null,
+): boolean {
+  if (widgetCount > 0) return true;
+  if (!mcpClients) return false;
+  return mcpClients.some((client) => client.revokedAt == null && client.lastUsedAt != null);
 }
 
 /**
@@ -580,6 +620,13 @@ export function buildActivationSteps(
   const steps: ActivationStep[] = [briefStep(config)];
   if (caps.webPushSupported) steps.push(alertsStep(caps, config));
   steps.push(powerStep(config));
+  // Last, after the steps that deliver value (R6). An unreadable status omits
+  // the step rather than offering a question we cannot record against. A
+  // skipped profile omits it too: a skip means "don't ask", and an
+  // already-done step would claim "we have your answers".
+  if (config.aboutYouStatus === 'due' || config.aboutYouStatus === 'answered') {
+    steps.push({ id: 'about', state: config.aboutYouStatus === 'due' ? 'confirmable' : 'already-done' });
+  }
   return steps;
 }
 
@@ -793,17 +840,17 @@ export function summarizeActivationExit(
 /** Per-step outcome IDs, bucketed for the durable activation-outcome record (#5582). */
 export interface ActivationOutcomeBuckets {
   /** Steps that ended verified -- confirmed in-flow or already-done. */
-  readonly confirmedSteps: readonly ActivationStepId[];
+  readonly confirmedSteps: readonly PersistedActivationStepId[];
   /** Steps the subscriber chose to leave unfinished. */
-  readonly skippedSteps: readonly ActivationStepId[];
+  readonly skippedSteps: readonly PersistedActivationStepId[];
   /**
    * Steps the BROWSER refused (a denied notification permission). Its own
    * bucket rather than a widening of `skippedSteps` (#5617), so existing
    * consumers of the three original buckets keep their exact meaning.
    */
-  readonly blockedSteps: readonly ActivationStepId[];
+  readonly blockedSteps: readonly PersistedActivationStepId[];
   /** Steps whose write was attempted and failed. */
-  readonly failedSteps: readonly ActivationStepId[];
+  readonly failedSteps: readonly PersistedActivationStepId[];
 }
 
 /**
@@ -815,24 +862,26 @@ export interface ActivationOutcomeBuckets {
 export function buildActivationOutcomeBuckets(
   results: readonly ActivationStepResult[],
 ): ActivationOutcomeBuckets {
-  const confirmedSteps: ActivationStepId[] = [];
-  const skippedSteps: ActivationStepId[] = [];
-  const blockedSteps: ActivationStepId[] = [];
-  const failedSteps: ActivationStepId[] = [];
+  const confirmedSteps: PersistedActivationStepId[] = [];
+  const skippedSteps: PersistedActivationStepId[] = [];
+  const blockedSteps: PersistedActivationStepId[] = [];
+  const failedSteps: PersistedActivationStepId[] = [];
   for (const r of results) {
+    const id = r.id;
+    if (id === 'about') continue;
     switch (r.outcome) {
       case 'confirmed':
       case 'done':
-        confirmedSteps.push(r.id);
+        confirmedSteps.push(id);
         break;
       case 'skipped':
-        skippedSteps.push(r.id);
+        skippedSteps.push(id);
         break;
       case 'blocked':
-        blockedSteps.push(r.id);
+        blockedSteps.push(id);
         break;
       case 'failed':
-        failedSteps.push(r.id);
+        failedSteps.push(id);
         break;
     }
   }
@@ -927,7 +976,9 @@ export function parseFireOnceRecord(raw: string | null): FireOnceRecord | null {
   if (obj === null || typeof obj.subscriptionKey !== 'string' || typeof obj.shownAt !== 'number') {
     return null;
   }
-  return { subscriptionKey: obj.subscriptionKey, shownAt: obj.shownAt };
+  const record: FireOnceRecord = { subscriptionKey: obj.subscriptionKey, shownAt: obj.shownAt };
+  if (obj.outcome === 'not-eligible') record.outcome = obj.outcome;
+  return record;
 }
 
 export function parseChipDismissal(raw: string | null): FinishSetupChipDismissal | null {
@@ -956,8 +1007,11 @@ export function shouldShowFinishSetupChip(
   now: number,
 ): boolean {
   if (isChipDismissed(dismissal, currentAccountKey, now)) return false;
+  // Answering about yourself is never unfinished setup.
   return results.some(
-    (r) => r.outcome === 'skipped' || r.outcome === 'blocked' || r.outcome === 'failed',
+    (r) =>
+      r.id !== 'about' &&
+      (r.outcome === 'skipped' || r.outcome === 'blocked' || r.outcome === 'failed'),
   );
 }
 

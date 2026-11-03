@@ -5,7 +5,6 @@
  *   1. Relay security  — SSRF guard, auth gate, isPublicRoute, body limit, CORS
  *   2. Widget store    — constants, span-map keys, `cw-` prefix, history trim
  *   3. Title regex     — hyphens in titles (bug fixed: [^\n\-] → [^\n])
- *   4. HTML sanitizer  — allowlist shape, forbidden tags, unsafe style strip
  *   5. Panel guardrails — cw- exclusion in UnifiedSettings, event-handlers
  *   6. SSE event types — html_complete, done, error, tool_call all present
  */
@@ -54,11 +53,16 @@ describe('widget relay spend identity trust', () => {
       const run = vm.runInNewContext(`${functions}\nhandleWidgetAgentRequest`, context);
       for (const relayKey of [undefined, 'legacy-pro-key', 'wrong-secret', 'server-only-secret']) {
         for (const spendId of ['user:rotated-one', 'user:rotated-two']) {
-          await run({ headers: {
-            'x-pro-key': 'legacy-pro-key', 'x-wm-widget-spend-id': spendId,
-            ...(relayKey ? { 'x-relay-key': relayKey } : {}),
-          }, socket: { remoteAddress: '192.0.2.1' } }, {});
-          assert.equal(buckets.at(-1), secret && relayKey === secret ? `id:${spendId}` : '192.0.2.1');
+          // GHSA-rcgv-gv2h-87fp: a direct caller controls these headers, so an
+          // unattested request must not get a fresh bucket by rotating them.
+          for (const ipHeaders of [{}, { 'cf-connecting-ip': '8.8.8.1' }, { 'x-real-ip': '9.9.9.10' }]) {
+            await run({ headers: {
+              'x-pro-key': 'legacy-pro-key', 'x-wm-widget-spend-id': spendId,
+              ...ipHeaders,
+              ...(relayKey ? { 'x-relay-key': relayKey } : {}),
+            }, socket: { remoteAddress: '192.0.2.1' } }, {});
+            assert.equal(buckets.at(-1), secret && relayKey === secret ? `id:${spendId}` : 'key:pro');
+          }
         }
       }
     });
@@ -530,8 +534,7 @@ describe('widget data-tool contracts', () => {
   }
 
   it('lists exactly the FRED series the RPC accepts', () => {
-    const shared = src('server/worldmonitor/economic/v1/_fred-shared.ts');
-    const allowed = [...shared.match(/ALLOWED_FRED_SERIES = new Set<string>\(\[([\s\S]*?)\]\)/)[1].matchAll(/'([A-Z0-9]+)'/g)].map(m => m[1]).sort();
+    const allowed = [...JSON.parse(src('shared/openapi-filter-param-contracts.json')).economicFredSeriesIds].sort();
     assert.ok(allowed.length > 10);
     for (const prompt of prompts) {
       const line = prompt.match(/get-fred-series \(series_id \(required, ONLY one of: ([^;]+);/);
@@ -1255,8 +1258,9 @@ describe('widget-agent relay — security', () => {
   it('auth 403 response is sent before any processing on bad key', () => {
     const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
     assert.ok(handlerStart !== -1, 'handleWidgetAgentRequest not found');
-    // Use 4000 chars to cover the full auth/setup section including SSE headers
-    const handlerBody = relay.slice(handlerStart, handlerStart + 4000);
+    // Slice to the handler's closing brace, not a fixed length, so an added
+    // input guard cannot push the SSE header out of the window.
+    const handlerBody = relay.slice(handlerStart, relay.indexOf('\n}\n', handlerStart));
     const authCheckIdx = handlerBody.indexOf('requireWidgetAgentAccess(req, res)');
     const sseHeaderIdx = handlerBody.indexOf("text/event-stream");
     assert.ok(authCheckIdx !== -1, 'Auth helper call not found in handler start');
@@ -1718,25 +1722,8 @@ describe('widget-sanitizer — allowlist verification', () => {
     assert.ok(san.includes('FORCE_BODY: true'), 'FORCE_BODY must be true');
   });
 
-  it('post-pass strips url() from style attributes', () => {
-    assert.ok(
-      san.includes('url') && (san.includes('UNSAFE_STYLE') || san.includes('unsafe')),
-      'Must have post-pass regex stripping url() from style values',
-    );
-  });
-
-  it('post-pass strips javascript: from style attributes', () => {
-    assert.ok(
-      san.includes('javascript'),
-      'Must have post-pass regex stripping javascript: from style values',
-    );
-  });
-
-  it('post-pass strips expression() from style attributes', () => {
-    assert.ok(
-      san.includes('expression'),
-      'Must have post-pass regex stripping expression() from style values',
-    );
+  it('style attributes are rebuilt by the declaration allowlist', () => {
+    assert.match(san, /sanitizeWidgetStyle\(/);
   });
 });
 
@@ -2703,7 +2690,7 @@ describe('PRO widget — store and sanitizer', () => {
     const script = sandbox.match(/<script>\r?\n([\s\S]*?)\r?\n<\/script>/)?.[1];
     assert.ok(script, 'sandbox inline script not found');
 
-    function runSandboxAt(selfHostname, referrer) {
+    function runSandboxAt(selfHostname, referrer, selfOrigin = `${new URL(referrer).protocol}//${selfHostname}:5173`) {
       const readyMessages = [];
       const writes = [];
       const listeners = new Map();
@@ -2719,7 +2706,7 @@ describe('PRO widget — store and sanitizer', () => {
       function FakeEvent() {}
       FakeEvent.prototype.stopImmediatePropagation = () => {};
       const sandboxWindow = new FakeEventTarget();
-      sandboxWindow.location = { hash: '#id=wm-1&token=test-token', hostname: selfHostname };
+      sandboxWindow.location = { hash: '#id=wm-1&token=test-token', hostname: selfHostname, origin: selfOrigin };
       sandboxWindow.parent = parent;
       const context = {
         URL,
@@ -2770,6 +2757,11 @@ describe('PRO widget — store and sanitizer', () => {
     // Legitimate local dev: both the sandbox page itself and the embedding
     // page run on localhost (e.g. `npm run dev`). This must keep working.
     const devSandbox = runSandboxAt('localhost', 'http://localhost:5173/dashboard');
+    const foreignPort = runSandboxAt('localhost', 'http://localhost:4000/attack', 'http://localhost:5173');
+    assert.deepEqual(foreignPort.readyMessages, []);
+    foreignPort.message({ source: foreignPort.parent, origin: 'http://localhost:4000',
+      data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<script>attack()</script>' } });
+    assert.deepEqual(foreignPort.writes, []);
     assert.equal(devSandbox.readyMessages.length, 1, 'dev sandbox on localhost must still trust a localhost parent');
     assert.equal(devSandbox.readyMessages[0].targetOrigin, 'http://localhost:5173');
     devSandbox.message({

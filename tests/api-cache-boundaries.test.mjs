@@ -6,6 +6,7 @@ import ts from 'typescript';
 import oref from '../api/oref-alerts.js';
 import { checkRateLimit } from '../api/_rate-limit.js';
 import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin } from '../api/_cors.js';
+import * as channelOAuthState from '../server/_shared/channel-oauth-state.ts';
 
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
@@ -33,25 +34,33 @@ test('OREF keeps origin and method checks ahead of canonical redirects', async (
   assert.equal((await oref(new Request(url, { method: 'OPTIONS' }))).status, 204);
 });
 
-function slack({ admission = null, pipeline = [{ result: 'OK' }], token = 'redis-token', realAdmission = false } = {}) {
-  const source = readFileSync(new URL('../api/slack/oauth/start.ts', import.meta.url), 'utf8');
+const OAUTH_START_ENV = {
+  slack: { SLACK_CLIENT_ID: 'client', SLACK_REDIRECT_URI: 'https://worldmonitor.app/api/slack/oauth/callback' },
+  discord: { DISCORD_CLIENT_ID: 'client', DISCORD_REDIRECT_URI: 'https://worldmonitor.app/api/discord/oauth/callback' },
+};
+
+function oauthStart(provider, { admission = null, pipeline = [{ result: 'OK' }, { result: 'OK' }], token = 'redis-token', realAdmission = false } = {}) {
+  const source = readFileSync(new URL(`../api/${provider}/oauth/start.ts`, import.meta.url), 'utf8');
   const javascript = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const calls = { auth: 0, limit: [], writes: [] };
   const exports = {};
   runInNewContext(javascript, {
-    exports, process: { env: { SLACK_CLIENT_ID: 'client', SLACK_REDIRECT_URI: 'https://worldmonitor.app/api/slack/oauth/callback', UPSTASH_REDIS_REST_URL: 'https://redis.example', UPSTASH_REDIS_REST_TOKEN: token } },
+    exports, process: { env: { ...OAUTH_START_ENV[provider], UPSTASH_REDIS_REST_URL: 'https://redis.example', UPSTASH_REDIS_REST_TOKEN: token } },
     Request, Response, URL, AbortSignal, crypto, Uint8Array, btoa,
     require: name => {
       if (name.endsWith('_cors.js')) return { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin };
       if (name.endsWith('_rate-limit.js')) return { checkRateLimit: async (...args) => { calls.limit.push(args); return realAdmission ? checkRateLimit(...args) : admission; } };
       if (name.endsWith('auth-session')) return { validateBearerToken: async () => { calls.auth++; return { valid: true, userId: 'user-1' }; } };
       if (name.endsWith('pro-entitlement')) return { checkTierProEntitlement: async () => ({ allowed: true }) };
+      if (name.endsWith('channel-oauth-state')) return channelOAuthState;
       throw new Error(name);
     },
     fetch: async (_url, init) => { calls.writes.push(JSON.parse(init.body)); assert.equal(init.headers['User-Agent'], 'worldmonitor-edge/1.0'); return typeof pipeline === 'string' ? new Response(pipeline) : Response.json(pipeline); },
   });
-  return { calls, request: (origin, method = 'POST') => exports.default(new Request('https://worldmonitor.app/api/slack/oauth/start', { method, headers: { Authorization: 'Bearer token', ...(origin ? { Origin: origin } : {}) } })) };
+  return { calls, request: (origin, method = 'POST') => exports.default(new Request(`https://worldmonitor.app/api/${provider}/oauth/start`, { method, headers: { Authorization: 'Bearer token', ...(origin ? { Origin: origin } : {}) } })) };
 }
+const slack = (options) => oauthStart('slack', options);
+const discord = (options) => oauthStart('discord', options);
 
 test('Slack rejects foreign Origin before authentication and requires Redis token', async () => {
   const app = slack();
@@ -80,6 +89,26 @@ test('Slack admission is fail-closed and user-scoped before state writes', async
   }
 });
 
+test('Discord admission is fail-closed and user-scoped before state writes, matching Slack', async () => {
+  for (const status of [429, 503]) {
+    const app = discord({ admission: new Response(null, { status }) });
+    assert.equal((await app.request()).status, status);
+    assert.equal(app.calls.writes.length, 0);
+    const options = app.calls.limit[0][2];
+    assert.equal(options.identifier, 'user-1');
+    assert.equal(options.scope, 'discord-oauth-start');
+    assert.equal(options.limit, 5);
+    assert.equal(options.window, '60 s');
+    assert.equal(options.failClosed, true);
+  }
+  const app = discord();
+  const response = await app.request();
+  assert.equal(response.status, 200);
+  assert.equal(new URL((await response.json()).oauthUrl).hostname, 'discord.com');
+  assert.equal(app.calls.limit.length, 1);
+  assert.equal(app.calls.writes.length, 1);
+});
+
 test('Slack requires confirmed SET success before returning an authorization URL', async () => {
   for (const pipeline of [[{ error: 'denied' }], [{ result: null }], {}, 'bad-json']) {
     const app = slack({ pipeline });
@@ -91,6 +120,8 @@ test('Slack requires confirmed SET success before returning an authorization URL
   const url = new URL((await response.json()).oauthUrl);
   assert.equal(url.hostname, 'slack.com');
   assert.equal(app.calls.writes[0][0][1], `wm:slack:oauth:${url.searchParams.get('state')}`);
+  assert.equal(JSON.parse(app.calls.writes[0][0][2]).userId, 'user-1');
+  assert.match(response.headers.get('Set-Cookie'), /^__Secure-wm_slack_oauth_[a-f0-9-]{36}=/);
 });
 
 test('canonical OREF responses retain aggregation and caller admission', async () => {

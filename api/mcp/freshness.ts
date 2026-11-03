@@ -52,6 +52,11 @@ export function evaluateFreshness(
     hasAnyValidMeta = true;
     oldestFetchedAt = Math.min(oldestFetchedAt, fetchedAt);
     stale ||= (now - fetchedAt) / 60_000 > check.maxStaleMin;
+    // A failed refresh stamps a fresh fetchedAt while the last good payload
+    // stays served. api/health.js readSeedMeta reads status 'error' as
+    // seedStale and classifyKey reports it as SEED_ERROR; MCP follows so the
+    // two cannot disagree.
+    stale ||= (meta as { status?: unknown }).status === 'error';
 
     if (check.minRecordCount != null) {
       const recordCount = meta && typeof meta === 'object' && 'recordCount' in meta

@@ -24,6 +24,23 @@ function market(title, source, volume, options = {}) {
 }
 
 describe('buildCountryMarketIndex', () => {
+  it('keeps separate events and exact market IDs when their Kalshi landing is shared', () => {
+    const first = market('Will China host the meeting in 2027?', 'kalshi', 30000, { url: 'https://kalshi.com/markets/KXMEETING-27-CN', displayUrl: 'https://kalshi.com/markets/kxmeeting', eventKey: 'kalshi:KXMEETING-27' });
+    const second = market('Will China host the meeting in 2028?', 'kalshi', 40000, { url: 'https://kalshi.com/markets/KXMEETING-28-CN', displayUrl: first.displayUrl, eventKey: 'kalshi:KXMEETING-28' });
+    const sibling = { ...first, volume: 1000, url: 'https://kalshi.com/markets/KXMEETING-27-CN-LOW' };
+    const index = buildCountryMarketIndex([first, second, sibling], { now: NOW });
+    assert.deepEqual(new Set(index.CN.map(row => row.url)), new Set([first.url, second.url]));
+    assert.ok(index.CN.every(row => row.displayUrl === first.displayUrl));
+    const withoutEvent = buildCountryMarketIndex([first, second].map(({ eventKey, ...row }) => row), { now: NOW });
+    assert.equal(withoutEvent.CN.length, 2);
+  });
+  it('publishes reported liquidity and omits it when the venue supplied none', () => {
+    const liquid = market('Will China hold the vote in 2027?', 'polymarket', 30000, { liquidity: 125000 });
+    const unknown = market('Will China hold the summit in 2027?', 'kalshi', 20000, { url: 'https://kalshi.com/markets/KXSUMMIT-27-CN' });
+    const index = buildCountryMarketIndex([liquid, unknown], { now: NOW });
+    assert.equal(index.CN.find((row) => row.url === liquid.url)?.liquidity, 125000);
+    assert.equal('liquidity' in index.CN.find((row) => row.url === unknown.url), false);
+  });
   it('counts only published country-market arrays', () => {
     assert.equal(countCountryMarkets({ US: [{}, {}], CN: [{}], invalid: null }), 3);
     assert.equal(countCountryMarkets(undefined), 0);
@@ -245,6 +262,29 @@ describe('buildCountryMarketIndex', () => {
       assert.deepEqual(index[countryCode]?.map((entry) => entry.title), [title], title);
     }
   });
+});
+
+describe('Norway brand exclusions', () => {
+  const cases = [
+    ['Norwegian Cruise passengers carried in 2026: Above 3.25 million', false],
+    ['Will Norway hold an early election?', true],
+    ['Will the Norwegian government hold an early election?', true],
+    ['Will Norwegians approve the referendum?', true],
+    ['Will Norwegian Cruise expand service to Norway?', true],
+    ['Will Norwegian Cruise comply with Norwegian government rules?', true],
+    ['Will Norwegian cruise tourism exceed 2025 levels?', true],
+    ['Will a Norwegian cruise ship enter Russian waters?', true],
+  ];
+
+  for (const [title, expected] of cases) {
+    it(`matches Norway only for country evidence: ${title}`, () => {
+      const index = buildCountryMarketIndex([market(title, 'kalshi', 10_000)], { now: NOW });
+      assert.deepEqual(index.NO?.map((entry) => entry.title) ?? [], expected ? [title] : []);
+      assert.deepEqual(selectKalshiSeriesTickers([
+        { ticker: 'KXNORWAYTEST', title, category: 'World', volume_fp: '10000' },
+      ], ['NO']), expected ? ['KXNORWAYTEST'] : []);
+    });
+  }
 });
 
 describe('projectCountryMarketIndex', () => {

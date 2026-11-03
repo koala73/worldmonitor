@@ -62,7 +62,7 @@ These tables are the human-facing route map for finance, market, macro, energy, 
 | FRED batch | `POST /api/economic/v1/get-fred-series-batch` | Macro tiles and FRED dashboard series in one call. |
 | Grocery basket prices | `GET /api/economic/v1/list-grocery-basket-prices` | Grocery Index panel; bootstrap-first via `groceryBasket`. |
 | Big Mac prices | `GET /api/economic/v1/list-bigmac-prices` | Big Mac Index panel; bootstrap-first via `bigmac`. |
-| National debt | `GET /api/economic/v1/get-national-debt` | PRO Global Debt Clock panel; bootstrap-first via `nationalDebt`. |
+| National debt | `GET /api/economic/v1/get-national-debt` | Global Debt Clock panel; bootstrap-first via `nationalDebt`. Free. |
 | Fuel prices | `GET /api/economic/v1/list-fuel-prices` | Fuel Prices panel; bootstrap-first via `fuelPrices`. |
 | BLS series | `GET /api/economic/v1/get-bls-series` | BLS-only payroll and Employment Cost Index series. |
 | Economic calendar | `GET /api/economic/v1/get-economic-calendar` | Economic Calendar tile. |
@@ -292,7 +292,7 @@ The Trade Policy panel provides real-time visibility into global trade restricti
 | Tab | Data Source | Content |
 | --- | --- | --- |
 | **Restrictions** | WTO trade monitoring | Active trade restrictions with imposing/affected countries, product categories, and enforcement dates |
-| **Tariffs** | WTO tariff database | Tariff rate trends between country pairs (e.g., US↔China) with historical datapoints |
+| **Tariffs** | WTO tariff database | MFN applied tariff-rate history for one reporting country (All-products average), plus a US effective-rate estimate. Through the API, a partner country or product group returns the applied average on those imports instead. For one HS6 product between two countries, see the API-only [bilateral tariff lookup](/panels/trade-policy), and for the current US duty including Section 301 and 232, the [US import duty lookup](/panels/trade-policy) |
 | **Flows** | WTO trade statistics | Bilateral trade flow volumes with year-over-year change indicators |
 | **Barriers** | WTO SPS/TBT notifications | Sanitary, phytosanitary, and technical barriers to trade with status tracking |
 | **Revenue** | US Treasury Monthly Treasury Statement | Monthly US customs duties revenue with fiscal-year-to-date totals and year-over-year comparison |

@@ -17,7 +17,20 @@ const ENV_KEYS = [
   'CONVEX_TENANT_RELAY_SECRET',
   'NOTIFICATION_ENCRYPTION_KEY',
 ];
+const OPENER_ORIGIN = 'https://tech.worldmonitor.app';
 const originalFetch = globalThis.fetch;
+
+// The state record and binding cookie `start` would have produced for this
+// browser (server/_shared/channel-oauth-state.ts).
+async function makeState(provider, existingCookie) {
+  const { createChannelOAuthState } = await import('../server/_shared/channel-oauth-state.ts');
+  const startReq = new Request(`${CALLBACK_ORIGIN}/api/${provider}/oauth/start`, {
+    method: 'POST',
+    headers: { origin: OPENER_ORIGIN, ...(existingCookie ? { cookie: existingCookie } : {}) },
+  });
+  const { record, setCookie } = await createChannelOAuthState(provider, startReq, 'user-123');
+  return { record, cookie: setCookie.split(';')[0] };
+}
 const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 
 const providers = {
@@ -71,13 +84,14 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-function callbackRequest(provider, state = 'state-replay-test') {
+function callbackRequest(provider, cookie, state = 'state-replay-test') {
   return new Request(
     `${CALLBACK_ORIGIN}/api/${provider}/oauth/callback?code=provider-code&state=${encodeURIComponent(state)}`,
+    { headers: cookie ? { cookie } : {} },
   );
 }
 
-function makeFetchStub(provider, { failAtomicConsume = false } = {}) {
+function makeFetchStub(provider, { failAtomicConsume = false, stateRecord = 'user-123' } = {}) {
   const config = providers[provider];
   const calls = {
     atomicConsumes: 0,
@@ -96,7 +110,7 @@ function makeFetchStub(provider, { failAtomicConsume = false } = {}) {
       if (failAtomicConsume) throw new Error('Redis unavailable');
       if (consumed) return jsonResponse({ result: null });
       consumed = true;
-      return jsonResponse({ result: 'user-123' });
+      return jsonResponse({ result: stateRecord });
     }
 
     if (url.startsWith(`${REDIS_URL}/get/`)) {
@@ -144,13 +158,14 @@ describe('OAuth callback state consumption', () => {
     setTestEnv();
 
     for (const provider of Object.keys(providers)) {
-      const { calls, fetchStub } = makeFetchStub(provider);
+      const { record, cookie } = await makeState(provider);
+      const { calls, fetchStub } = makeFetchStub(provider, { stateRecord: record });
       globalThis.fetch = fetchStub;
       const handler = await loadHandler(provider);
 
       const responses = await Promise.all([
-        handler(callbackRequest(provider), { waitUntil() {} }),
-        handler(callbackRequest(provider), { waitUntil() {} }),
+        handler(callbackRequest(provider, cookie), { waitUntil() {} }),
+        handler(callbackRequest(provider, cookie), { waitUntil() {} }),
       ]);
       const bodies = await Promise.all(responses.map((response) => response.text()));
 
@@ -180,6 +195,80 @@ describe('OAuth callback state consumption', () => {
       assert.equal(calls.atomicConsumes, 1);
       assert.equal(calls.tokenExchanges, 0, `${provider}: Redis failure must not exchange a provider token`);
       assert.equal(calls.relayWrites, 0, `${provider}: Redis failure must not mutate Convex`);
+    }
+  });
+
+  it('refuses a callback from a browser other than the one that called start', async () => {
+    setTestEnv();
+
+    for (const provider of Object.keys(providers)) {
+      const { record } = await makeState(provider);
+      const { cookie: otherBrowser } = await makeState(provider);
+      for (const cookie of ['', otherBrowser]) {
+        const { calls, fetchStub } = makeFetchStub(provider, { stateRecord: record });
+        globalThis.fetch = fetchStub;
+        const handler = await loadHandler(provider);
+
+        const body = await (await handler(callbackRequest(provider, cookie), { waitUntil() {} })).text();
+
+        assert.match(body, /browser_mismatch/, `${provider}: forwarded link must not complete`);
+        assert.equal(calls.tokenExchanges, 0, `${provider}: no provider token exchange`);
+        assert.equal(calls.relayWrites, 0, `${provider}: no channel attached to the starter's account`);
+      }
+    }
+  });
+
+  it('lets two flows started in one browser both finish', async () => {
+    setTestEnv();
+
+    for (const provider of Object.keys(providers)) {
+      const first = await makeState(provider);
+      const second = await makeState(provider);
+      assert.notEqual(second.cookie.split('=')[0], first.cookie.split('=')[0], `${provider}: simultaneous first starts need separate cookies`);
+      const cookies = `${first.cookie}; ${second.cookie}`;
+      for (const { record } of [first, second]) {
+        const { calls, fetchStub } = makeFetchStub(provider, { stateRecord: record });
+        globalThis.fetch = fetchStub;
+        const handler = await loadHandler(provider);
+
+        const body = await (await handler(callbackRequest(provider, cookies), { waitUntil() {} })).text();
+
+        assert.ok(body.includes(providers[provider].successType), `${provider}: both popups must complete`);
+        assert.equal(calls.tokenExchanges, 1);
+      }
+    }
+  });
+
+  it('refuses a state record written before browser binding (bare userId)', async () => {
+    setTestEnv();
+
+    for (const provider of Object.keys(providers)) {
+      const { cookie } = await makeState(provider);
+      const { calls, fetchStub } = makeFetchStub(provider);
+      globalThis.fetch = fetchStub;
+      const handler = await loadHandler(provider);
+
+      const body = await (await handler(callbackRequest(provider, cookie), { waitUntil() {} })).text();
+
+      assert.match(body, /invalid_state/);
+      assert.equal(calls.tokenExchanges, 0);
+    }
+  });
+
+  it('posts the connected result only to the opener origin that started the flow', async () => {
+    setTestEnv();
+
+    for (const provider of Object.keys(providers)) {
+      const { record, cookie } = await makeState(provider);
+      const { fetchStub } = makeFetchStub(provider, { stateRecord: record });
+      globalThis.fetch = fetchStub;
+      const handler = await loadHandler(provider);
+
+      const body = await (await handler(callbackRequest(provider, cookie), { waitUntil() {} })).text();
+
+      assert.ok(body.includes(providers[provider].successType));
+      assert.ok(body.includes(`,"${OPENER_ORIGIN}");`), `${provider}: success must target the opener origin`);
+      assert.ok(!body.includes(",'*');"), `${provider}: success must not broadcast to any opener`);
     }
   });
 });

@@ -5,7 +5,8 @@ body.plugin-body { overflow: auto; height: auto; min-height: 100vh; }
 }
 #pluginStatus:empty { display: none; }
 #pluginRoot .panel[hidden] { display: none; }
-#pluginStatus { padding: 8px; }
+#pluginStatus, #pluginUsage { padding: 8px; }
+#pluginUsage { font-size: 12px; color: var(--text-secondary); }
 #pluginMapLayers { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 4px 8px; border: 1px solid var(--border); }
 #pluginMapLayers label { display: inline-flex; align-items: center; gap: 4px; }
 #pluginMapStatus { padding: 4px 8px; font-size: 12px; }

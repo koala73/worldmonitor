@@ -27,6 +27,11 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     action: "delete",
     notes: "Prefs write counters",
   },
+  {
+    target: "billingEmailUpdateAttempts",
+    action: "delete",
+    notes: "Billing email change cooldown",
+  },
   { target: "notificationChannels", action: "delete", notes: "Contact endpoints" },
   { target: "alertRules", action: "delete", notes: "Alert config" },
   { target: "telegramPairingTokens", action: "delete", notes: "Telegram pairing" },
@@ -82,9 +87,11 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     notes: "Delete referrer-owned credits; anonymize referee email on surviving credits",
   },
   { target: "entitlements", action: "delete", notes: "Access, not invoices" },
+  { target: "aiRoutingPolicies", action: "delete", notes: "Per-account AI provider restriction; the edge cache entry expires in 60 s" },
   { target: "apiUsageRollups", action: "delete", notes: "Usage windows" },
   { target: "apiPlanLimitNotices", action: "delete", notes: "Plan-limit notices" },
   { target: "checkoutAdmissions", action: "delete", notes: "Checkout admission counters" },
+  { target: "checkoutSessionEvents", action: "delete", notes: "Checkout funnel session log" },
   {
     target: "proActivationPresentations",
     action: "delete",
@@ -121,6 +128,11 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     notes: "Waitlist rows matching verified account email after Clerk subject is confirmed",
   },
   {
+    target: "agentFeedback",
+    action: "delete",
+    notes: "Agent feedback reports filed by this user as a keyed MCP caller (principalId)",
+  },
+  {
     target: "contactMessages",
     action: "delete",
     notes: "Contact form rows matching verified account email",
@@ -132,8 +144,9 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
       "Raw provider archive, keyed by webhookId with no per-user index. Events "
       + "processed after the deletion row exists are redacted on insert "
       + "(webhookMutations.processWebhookEvent); rows written before the request "
-      + "keep the identity bridge Dodo echoed back and are retained as delivered "
-      + "(owner decision 2026-09-22). Sweeping them needs a denormalized "
+      + "keep the identity bridge and any cancellation_feedback/cancellation_comment "
+      + "Dodo echoed back and are retained as delivered (owner decision "
+      + "2026-09-22; docs/privacy.mdx names this exception). Sweeping them needs a denormalized "
       + "customer id plus an index; until then the tombstone means the billing "
       + "rows stop naming the account, not that no record can be re-joined.",
   },
@@ -141,6 +154,16 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     target: "emailSuppressions",
     action: "retain",
     notes: "Bounce/complaint (and other) suppressions stay so we do not re-mail",
+  },
+  {
+    target: "emailSoftBounces",
+    action: "skip",
+    notes: "No userId index; keyed by email, cleared on delivery or suppression and pruned after the 30-day window",
+  },
+  {
+    target: "emailSoftBounceResets",
+    action: "skip",
+    notes: "No userId index; keyed by email, removed on suppression and pruned after the 30-day window",
   },
   {
     target: "companyMonitoringAccounts",
@@ -315,10 +338,17 @@ export function normalizeVerifiedEmail(
 const INTERNAL_IDENTITY_KEYS = new Set([
   "wm_user_id", "wm_user_id_sig", "wm_login_email", "wm_login_email_sig",
 ]);
+// The reason and comment a customer gives Dodo when cancelling are answers
+// about the person, which the privacy policy promises to delete with the
+// account. Amounts, ids, and periods stay as billing evidence.
+const CANCELLATION_FEEDBACK_KEYS = new Set([
+  "cancellation_feedback", "cancellation_comment",
+]);
 
 /**
- * Strip internal identity-bridge fields from Dodo-shaped billing payloads
- * while keeping amounts, ids, periods, and the Dodo customer contact block.
+ * Strip internal identity-bridge fields and cancellation feedback from
+ * Dodo-shaped billing payloads while keeping amounts, ids, periods, and the
+ * Dodo customer contact block.
  */
 export function redactBillingPayload(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -331,7 +361,7 @@ export function redactBillingPayload(value: unknown): unknown {
   const out: Record<string, unknown> = {};
   for (const [key, nested] of Object.entries(source)) {
     const lower = key.toLowerCase();
-    if (INTERNAL_IDENTITY_KEYS.has(lower)) {
+    if (INTERNAL_IDENTITY_KEYS.has(lower) || CANCELLATION_FEEDBACK_KEYS.has(lower)) {
       continue;
     }
     out[key] = redactBillingPayload(nested);

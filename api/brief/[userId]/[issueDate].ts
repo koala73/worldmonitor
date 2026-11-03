@@ -31,6 +31,7 @@ import {
   BRIEF_PUBLIC_POINTER_PREFIX,
   buildPublicBriefUrl,
   encodePublicPointer,
+  publicBaseUrl,
 } from '../../../server/_shared/brief-share-url';
 
 const HTML_HEADERS = {
@@ -184,8 +185,15 @@ export default async function handler(
   if (parts.length !== 4 || root !== 'api' || route !== 'brief' || !rawUserId || !rawIssueDate) {
     return htmlResponse(req, 404, EXPIRED_PAGE);
   }
-  const userId = decodeURIComponent(rawUserId);
-  const issueDate = decodeURIComponent(rawIssueDate);
+  // A malformed percent-escape is a bad link, not a server fault.
+  let userId: string;
+  let issueDate: string;
+  try {
+    userId = decodeURIComponent(rawUserId);
+    issueDate = decodeURIComponent(rawIssueDate);
+  } catch {
+    return htmlResponse(req, 404, EXPIRED_PAGE);
+  }
   const token = url.searchParams.get('t') ?? '';
 
   let verified: boolean;
@@ -245,7 +253,7 @@ export default async function handler(
       const built = await buildPublicBriefUrl({
         userId,
         issueDate,
-        baseUrl: new URL(req.url).origin,
+        baseUrl: publicBaseUrl(req),
         secret: shareSecret,
       });
       // Idempotent pointer write: same hash every call, so SET just
@@ -264,7 +272,7 @@ export default async function handler(
       }
     } catch (err) {
       console.warn('[api/brief] share URL derive failed:', (err as Error).message);
-      captureSilentError(err, { tags: { route: 'api/brief', step: 'share-url-derive', severity: 'warn' }, fingerprint: ['api/brief', 'share-url-derive', err instanceof Error ? err.name : 'Error'], ctx });
+      captureSilentError(err, { level: 'warning', tags: { route: 'api/brief', step: 'share-url-derive', severity: 'warn' }, fingerprint: ['api/brief', 'share-url-derive', err instanceof Error ? err.name : 'Error'], ctx });
     }
   }
 

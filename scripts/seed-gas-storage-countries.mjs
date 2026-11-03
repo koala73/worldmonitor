@@ -93,6 +93,14 @@ export function computeTrend(fillPctChange1d) {
   return 'stable';
 }
 
+/** GIE marks a country with no underground storage `status: 'N'` and fills its fields with '-'. */
+export function reportsNoStorage(entries) {
+  if (!entries?.length) return false;
+  const latest = [...entries].sort((a, b) =>
+    String(b.gasDayStart ?? b.date ?? '').localeCompare(String(a.gasDayStart ?? a.date ?? '')))[0];
+  return latest?.status === 'N';
+}
+
 /** Build per-country payload objects from raw GIE data per country */
 export function buildCountriesPayload(rawEntries) {
   const result = [];
@@ -187,6 +195,7 @@ async function preservePreviousSnapshot(errorMsg) {
     fetchedAt: existingMeta?.fetchedAt ?? 0,
     recordCount: existingMeta?.recordCount ?? 0,
     sourceVersion: 'gie-agsi-plus-countries-v1',
+    ...(Array.isArray(existingMeta?.noStorageCountries) ? { noStorageCountries: existingMeta.noStorageCountries } : {}),
     status: 'error',
     error: errorMsg,
   };
@@ -234,10 +243,15 @@ export async function main() {
     }
 
     const countries = buildCountriesPayload(rawEntries);
+    const published = new Set(countries.map((c) => c.iso2));
+    // A country GIE reports as having no storage is accounted for, not a failed reading.
+    const noStorageCountries = rawEntries
+      .filter(({ iso2, entries }) => !published.has(iso2) && reportsNoStorage(entries))
+      .map(({ iso2 }) => iso2);
 
-    if (countries.length < MIN_VALID_COUNTRIES) {
+    if (countries.length + noStorageCountries.length < MIN_VALID_COUNTRIES) {
       throw new Error(
-        `gas-storage-countries: only ${countries.length} valid countries, need >=${MIN_VALID_COUNTRIES}`,
+        `gas-storage-countries: only ${countries.length} valid countries (${noStorageCountries.length} without storage), need >=${MIN_VALID_COUNTRIES}`,
       );
     }
 
@@ -246,6 +260,7 @@ export async function main() {
       fetchedAt: Date.now(),
       recordCount: countries.length,
       sourceVersion: 'gie-agsi-plus-countries-v1',
+      noStorageCountries,
     };
 
     const entries = countries.map(payload => [
@@ -256,14 +271,15 @@ export async function main() {
       [GAS_STORAGE_ALL_KEY, JSON.stringify(Object.fromEntries(countries.map(country => [country.iso2, country])))],
       [GAS_STORAGE_META_KEY, JSON.stringify(metaPayload)],
     );
-    const commands = [
-      ['MSET', ...entries.flat()],
-      ...entries.map(([key]) => ['EXPIRE', key, GAS_STORAGE_TTL_SECONDS]),
-    ];
+    const expires = entries.map(([key]) => ['EXPIRE', key, GAS_STORAGE_TTL_SECONDS]);
+    // Earlier runs published these countries as 0% full; resilience scored that as an empty store.
+    const retired = noStorageCountries.map((iso2) => ['DEL', `${GAS_STORAGE_KEY_PREFIX}${iso2}`]);
+    const commands = [['MSET', ...entries.flat()], ...expires, ...retired];
     const results = await redisPipeline(commands, true);
     if (!Array.isArray(results) || results.length !== commands.length
       || results[0]?.result !== 'OK'
-      || results.slice(1).some(result => result?.result !== 1)) {
+      || results.slice(1, 1 + expires.length).some(result => result?.result !== 1)
+      || results.slice(1 + expires.length).some(result => !Number.isInteger(result?.result))) {
       throw new Error('Redis transaction returned an invalid command result');
     }
 

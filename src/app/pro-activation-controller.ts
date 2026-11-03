@@ -2,6 +2,7 @@ import type { AppContext, AppModule } from '@/app/app-context';
 import type { ProActivationFlowOptions } from '@/components/ProActivationInterstitial';
 import { trackProActivation } from '@/services/analytics';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { reportActivationPromptDecision } from '@/services/onboarding-prompt';
 import {
   getSubscription,
   onSubscriptionChange,
@@ -265,6 +266,11 @@ export class ProActivationController implements AppModule {
       now,
     });
 
+    // Tell the About-you card whether the interstitial owns this load (KTD6).
+    // 'keep' is still undecided, so it reports nothing.
+    if (decision.action === 'mount') reportActivationPromptDecision('will-open');
+    else if (decision.action !== 'keep') reportActivationPromptDecision('not-due');
+
     switch (decision.action) {
       case 'mount':
         if (auth.user) {
@@ -343,13 +349,7 @@ export class ProActivationController implements AppModule {
         () => !this.ctx.isDestroyed && authGeneration === this.authGeneration,
       );
       if (this.abortIfStale(authGeneration)) return;
-      if (openResult === 'not-eligible') {
-        this.resolved = true;
-        this.clearFlowRetry();
-        clearMountClaimIfOwned(this.mountNonce);
-        return;
-      }
-      if (openResult !== 'opened') {
+      if (openResult !== 'opened' && openResult !== 'not-eligible') {
         clearMountClaimIfOwned(this.mountNonce);
         this.scheduleFlowRetry();
         return;
@@ -357,15 +357,15 @@ export class ProActivationController implements AppModule {
       this.resolved = true;
       this.clearFlowRetry();
 
-      // Never consume the pending marker unless durable fire-once persistence
-      // succeeded. Storage failures can then retry on a later boot.
+      // Both terminal outcomes suppress future boot lookups. Never consume the
+      // pending marker unless persistence succeeds, so storage failures can retry.
       const accountKey = deriveActivationAccountKey(expectedUserId);
       if (
         accountKey &&
         writeScopedFireOnceRecord(
           window.localStorage,
           accountKey,
-          computeFireOnceRecord(subscriptionKey, now),
+          computeFireOnceRecord(subscriptionKey, now, openResult),
         )
       ) {
         clearPendingMarker();
@@ -440,6 +440,7 @@ export class ProActivationController implements AppModule {
     now: number,
   ): ChipDecision {
     if (this.ctx.isDesktopApp || !isFireOnceActive(fireOnce, now)) return 'hide';
+    if (fireOnce.outcome === 'not-eligible') return 'hide';
     if (authPending || entitlement === null || subscription === null) return 'wait';
     if (userId === null) return 'hide';
     if (!isProPlanKey(entitlement.planKey) || entitlement.validUntil < now) return 'hide';

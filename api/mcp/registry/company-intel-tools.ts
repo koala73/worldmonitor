@@ -102,8 +102,9 @@ function addStringParam(query: URLSearchParams, name: string, value: unknown): v
 
 export const COMPANY_INTEL_TOOL: ToolDef = {
   name: 'get_company_intelligence',
+  title: 'Company intelligence',
   _outputBudgetBytes: 65536,
-  description: 'Per-company corporate intelligence from SEC EDGAR and market data. Views: enrichment (SEC identity, recent filings, market profile, earnings surprises, news mentions), signals (classified 8-K material events + news), filings-search (EDGAR full-text search with form/date filters), material-events (market-wide stream of recent material 8-K filings). Company identity resolves through the SEC ticker registry — unresolvable companies return empty envelopes, never guessed attribution.',
+  description: 'Return corporate intelligence for one company from SEC EDGAR and market data, selected by view: enrichment (SEC identity, recent filings, market profile, earnings surprises, news mentions; the default), signals (classified 8-K material events plus news), filings-search (EDGAR full-text search with forms and date filters; query required) or material-events (market-wide stream of recent material 8-K filings; no company needed). Identity resolves through the SEC ticker registry, so an unresolvable ticker or name returns an empty envelope rather than guessed attribution. Requires a paid plan; one live downstream fetch, weight 2 on API plans, up to 20 s. limit is honoured up to 25 for filings-search and 100 for material-events and ignored by the other views. Read-only.',
   inputSchema: {
     type: 'object',
     properties: {

@@ -202,6 +202,120 @@ function expectPngScreenshot(buffer: Buffer, label: string): void {
   }
 }
 
+// A 2026-10-27-shaped issue: twelve long threads split across two
+// "On The Desk" pages, so the thread pages outgrow a 1440x900 viewport.
+function chromeEnvelope(): BriefEnvelope {
+  const base = envelope();
+  const teaser =
+    'Officials in two capitals traded statements on maritime security while insurers repriced transit risk and shipping desks rerouted cargo around the affected corridor.';
+  return {
+    ...base,
+    data: {
+      ...base.data,
+      digest: {
+        ...base.data.digest,
+        threads: Array.from({ length: 12 }, (_, i) => ({
+          tag: ['Conflict', 'Diplomatic', 'Energy'][i % 3] as string,
+          teaser: `Thread ${i + 1}: ${teaser}`,
+        })),
+      },
+    },
+  };
+}
+
+type Box = { left: number; right: number; top: number; bottom: number };
+
+async function digestChromeReport(page: Page, index: number): Promise<{
+  counter: Box | null;
+  headLabel: Box | null;
+  headLabelText: string;
+  pager: Box;
+  textInPagerStrip: string[];
+}> {
+  return page.locator('#deck .page').nth(index).evaluate((pageEl) => {
+    const box = (el: Element | null) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+    };
+    const headLabel = pageEl.querySelector('.running-head')?.lastElementChild ?? null;
+    const pager = box(document.getElementById('navDots')) as Box;
+    // Text is visible only inside the page's scrollport (its padding box).
+    const pageRect = pageEl.getBoundingClientRect();
+    const visibleBottom = pageRect.bottom - parseFloat(getComputedStyle(pageEl).borderBottomWidth);
+    const textInPagerStrip: string[] = [];
+    const walker = document.createTreeWalker(pageEl, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (!node.textContent?.trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const r of Array.from(range.getClientRects())) {
+        const bottom = Math.min(r.bottom, visibleBottom);
+        if (bottom <= r.top) continue;
+        // Any visible line reaching down into the pager's strip reads as
+        // text running under the pill, even beside it.
+        if (pager.top < bottom) {
+          textInPagerStrip.push(node.textContent.trim().slice(0, 48));
+          break;
+        }
+      }
+    }
+    return {
+      counter: box(pageEl.querySelector('.page-number')),
+      headLabel: box(headLabel),
+      headLabelText: headLabel?.textContent ?? '',
+      pager,
+      textInPagerStrip,
+    };
+  });
+}
+
+function boxesIntersect(a: Box, b: Box): boolean {
+  return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+}
+
+test.describe('brief magazine chrome stays clear of page content', () => {
+  for (const viewport of [
+    { width: 1920, height: 1080 },
+    { width: 1440, height: 900 },
+    { width: 393, height: 852 },
+  ]) {
+    test(`digest pages at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await page.route('https://fonts.googleapis.com/**', (route) =>
+        route.fulfill({ status: 200, contentType: 'text/css', body: '' }),
+      );
+      await page.route('https://fonts.gstatic.com/**', (route) => route.abort());
+      await page.setContent(renderBriefMagazine(chromeEnvelope()), { waitUntil: 'domcontentloaded' });
+
+      const digestIndexes = await page.locator('#deck .page').evaluateAll((pages) =>
+        pages.flatMap((el, i) => (el.classList.contains('digest') ? [i] : [])),
+      );
+      expect(digestIndexes.length).toBeGreaterThanOrEqual(5);
+
+      for (const index of digestIndexes) {
+        await goToPage(page, index);
+        const report = await digestChromeReport(page, index);
+        expect(report.counter, `page ${index + 1} has a page counter`).not.toBeNull();
+        expect(report.headLabel, `page ${index + 1} has a running-head label`).not.toBeNull();
+        expect(
+          boxesIntersect(report.counter as Box, report.headLabel as Box),
+          `page ${index + 1}: counter overlaps the "${report.headLabelText}" running head`,
+        ).toBe(false);
+        expect(report.textInPagerStrip, `page ${index + 1}: text visible in the pager strip`).toEqual([]);
+      }
+    });
+  }
+
+  test('an empty pager renders nothing', async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.setContent(renderBriefMagazine(chromeEnvelope()), { waitUntil: 'domcontentloaded' });
+    await page.locator('#navDots').evaluate((el) => el.replaceChildren());
+    await expect(page.locator('#navDots')).toBeHidden();
+  });
+});
+
 test.describe('brief magazine responsive layout', () => {
   test('desktop long pages scroll before wheel navigation paginates', async ({ page }) => {
     await loadMagazine(page, { width: 1440, height: 900 });

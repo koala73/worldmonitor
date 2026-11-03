@@ -417,12 +417,40 @@ test('publishes Gonzalo from an NHC CVT advisory without retaining the previous 
   });
   const storms = payload.events.filter(event => event.sourceName === 'NHC');
   assert.deepEqual(storms.map(event => event.id), ['nhc-AL07-1A']);
+  assert.equal(storms[0].title, 'Tropical Storm Gonzalo');
+  assert.equal(storms[0].description, 'Tropical Storm Gonzalo, Max wind 40 kt');
+  assert.equal(storms[0].stormName, 'Tropical Storm Gonzalo');
   assert.equal(storms[0].date, Date.parse('2026-09-25T06:00:00.000Z'));
   assert.equal(payload._nhcSnapshot.fetchedAt, now);
   assert.equal(payload._nhcSnapshot.retainedUntil, now + 540 * MIN);
   assert.equal(payload._nhcSnapshot.consecutiveFailures, 0);
   assert.equal(payload._nhcSnapshot.errorCode, null);
   assert.equal(verdict(payload, now).status, 'OK');
+});
+
+test('adds only a missing matching NHC classification prefix and preserves the supplied storm name', async () => {
+  for (const [stormname, stormtype, title] of [
+    ['Hurricane Trudy', 'HU', 'Hurricane Trudy'],
+    ['  hurricane Trudy  ', 'HU', '  hurricane Trudy  '],
+    ['Hurricane\tTrudy', 'HU', 'Hurricane\tTrudy'],
+    ['Trudy', 'HU', 'Hurricane Trudy'],
+    ['Tropical Storm Trudy', 'HU', 'Hurricane Tropical Storm Trudy'],
+    ['Hurricane-like Trudy', 'HU', 'Hurricane Hurricane-like Trudy'],
+  ]) {
+    const point = { ...currentStormPoint, properties: { ...currentStormPoint.properties, stormname, stormtype } };
+    const payload = await runNhc({ previous: null,
+      nhc: async (_input, id) => Response.json(collection(id === 6 ? [point] : [])),
+    });
+    const storm = payload.events.find(event => event.sourceName === 'NHC');
+    assert.ok(storm, stormname);
+    assert.equal(storm.title, title, stormname);
+    assert.equal(storm.description, `${title}, Max wind 45 kt`, stormname);
+    assert.equal(storm.stormName, stormname);
+    assert.equal(storm.id, 'nhc-AL01-7');
+    assert.equal(storm.date, NOW);
+    assert.equal(storm.windKt, 45);
+    assert.equal(storm.closed, false);
+  }
 });
 
 test('rejects malformed time-first NHC advisory dates', async () => {

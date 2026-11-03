@@ -14,6 +14,17 @@ export interface BypassCorridor {
   suitableCargoTypes: CargoType[];
   activationThreshold: ActivationThreshold;
   notes: string;
+  /**
+   * Exporters whose own crude is the only cargo this corridor carries (the
+   * Saudi East-West and UAE ADCOP pipelines). Absent for a corridor any
+   * shipment can use.
+   */
+  originIso2?: readonly string[];
+}
+
+/** Whether a shipment from `fromIso2` can use the corridor. */
+export function corridorServesOrigin(corridor: BypassCorridor, fromIso2: string): boolean {
+  return !corridor.originIso2?.length || corridor.originIso2.includes(fromIso2);
 }
 
 export const BYPASS_CORRIDORS: readonly BypassCorridor[] = [
@@ -84,6 +95,34 @@ export const BYPASS_CORRIDORS: readonly BypassCorridor[] = [
     suitableCargoTypes: ['tanker'],
     activationThreshold: 'partial_closure',
     notes: 'Crude oil pipeline from Caspian to Turkish Mediterranean; 28 Mt/yr capacity',
+  },
+  {
+    id: 'hormuz_east_west_pipeline',
+    name: 'East-West Pipeline (Abqaiq-Yanbu)',
+    primaryChokepointId: 'hormuz_strait',
+    type: 'pipeline',
+    waypointChokepointIds: ['bab_el_mandeb'],
+    addedTransitDays: 4,
+    addedCostMultiplier: 1.1,
+    capacityConstraintTonnage: 236,
+    suitableCargoTypes: ['tanker'],
+    activationThreshold: 'partial_closure',
+    originIso2: ['SA'],
+    notes: 'Saudi crude only. Abqaiq to the Red Sea port of Yanbu; the Yanbu terminals (about 4.5-5 mb/d, 236 Mt/yr) bind, not the 7 mb/d pipe. Yanbu cargoes to Asia pass Bab el-Mandeb',
+  },
+  {
+    id: 'hormuz_adcop_pipeline',
+    name: 'Habshan-Fujairah Pipeline (ADCOP)',
+    primaryChokepointId: 'hormuz_strait',
+    type: 'pipeline',
+    waypointChokepointIds: [],
+    addedTransitDays: 1,
+    addedCostMultiplier: 1.05,
+    capacityConstraintTonnage: 90,
+    suitableCargoTypes: ['tanker'],
+    activationThreshold: 'partial_closure',
+    originIso2: ['AE'],
+    notes: 'UAE crude only. Habshan to Fujairah on the Gulf of Oman, outside the Strait; about 1.8 mb/d (90 Mt/yr), of which about 1.07 mb/d was already used before the 2026 crisis',
   },
 
   // ── Strait of Malacca bypasses ────────────────────────────────────────

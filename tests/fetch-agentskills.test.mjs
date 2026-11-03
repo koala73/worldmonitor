@@ -261,6 +261,19 @@ test('keeps the host allowlist ahead of the cache so an unapproved host mints no
   );
 });
 
+test('rejects http:// and non-default ports on the allowed host before any cache read', async () => {
+  for (const url of ['http://agentskills.io/skills/x', 'https://agentskills.io:8443/skills/x']) {
+    const calls = spyFetch((u) => (u.includes('fake-upstash') ? upstashReply(29, 30) : skillResponse()));
+    const { ctx } = makeCtx();
+
+    const res = await handler(makeRequest({ url }, uniqueCallerIp()), ctx);
+
+    assert.equal(res.status, 400, url);
+    assert.deepEqual(cacheReads(calls).map((c) => c.url), [], `${url} must mint no cache key`);
+    assert.deepEqual(skillCalls(calls).map((c) => c.url), [], `${url} must not be fetched`);
+  }
+});
+
 test('rejects a cross-origin caller before metering or fetching', async () => {
   // A cross-origin POST with Content-Type: text/plain is a CORS simple request,
   // so no preflight blocks it: without an Origin gate a third-party page could

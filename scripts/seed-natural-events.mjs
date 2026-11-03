@@ -3,7 +3,7 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { getDefaultAutoSelectFamily, getDefaultAutoSelectFamilyAttemptTimeout, isIP } from 'node:net';
-import { Agent } from 'undici';
+import { Agent, Dispatcher1Wrapper } from 'undici';
 import { withSourceRequestDiagnostics } from './natural/source-request-diagnostics.mjs';
 
 import {
@@ -24,6 +24,9 @@ loadEnvFile(import.meta.url);
 
 const EONET_API_URL = 'https://eonet.gsfc.nasa.gov/api/v3/events';
 const GDACS_API = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/MAP';
+// GDACS's F5 bot defense answers browser User-Agents with an HTML JavaScript
+// challenge (since 2026-11-03) and serves the JSON list to a named client.
+const GDACS_USER_AGENT = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
 const NHC_BASE = 'https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather/MapServer';
 const CANONICAL_KEY = 'natural:events:v1';
 const NHC_SNAPSHOT_KEY = 'natural:events:nhc-snapshot:v1';
@@ -67,6 +70,12 @@ const DAYS = 30;
 const WILDFIRE_MAX_AGE_MS = 48 * 60 * 60 * 1000;
 const SOURCE_REQUEST_TIMEOUT_MS = 15_000;
 const SOURCE_REQUEST_BUDGET_MS = 30_500;
+// GDACS MAP serves DR (~2.9 MB) and TC (~0.8 MB) in 17-32 s on a healthy day,
+// first byte alone 6-11 s, so the shared 15 s cap failed them routinely. Its
+// six per-type requests run concurrently beside EONET and NHC, so the longer
+// budget stays well inside the bundle's 180 s section timeout.
+const GDACS_REQUEST_TIMEOUT_MS = 45_000;
+const GDACS_REQUEST_BUDGET_MS = 60_500;
 const SOURCE_TRANSPORT_CODES = new Set([
   'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND', 'EPIPE',
   'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET',
@@ -176,7 +185,8 @@ function sourceFailureDetails(error) {
 
 function isDualFamilyConnectFailure(error) {
   try {
-    const aggregate = error?.cause;
+    const cause = error?.cause;
+    const aggregate = cause?.code === 'UND_ERR_CONNECT_TIMEOUT' ? cause.cause : cause;
     if (!(error instanceof TypeError) || !(aggregate instanceof AggregateError)
       || aggregate.code !== 'ETIMEDOUT' || aggregate.errors.length !== 2) return false;
     const [ipv4, ipv6] = aggregate.errors;
@@ -219,9 +229,13 @@ async function readEonetBody(res, controller, signal) {
   }
 }
 
-async function fetchEventSourceJson(source, url, fetchFn) {
+async function fetchEventSourceJson(source, url, fetchFn, noContentValue, {
+  attemptTimeoutMs = SOURCE_REQUEST_TIMEOUT_MS,
+  budgetMs = SOURCE_REQUEST_BUDGET_MS,
+  userAgent = CHROME_UA,
+} = {}) {
   const started = performance.now();
-  const deadline = started + SOURCE_REQUEST_BUDGET_MS;
+  const deadline = started + budgetMs;
   let attempt = 0;
   let ipv4Retry = false;
   return withRetry(() => withSourceRequestDiagnostics(async progress => {
@@ -229,19 +243,19 @@ async function fetchEventSourceJson(source, url, fetchFn) {
     if (remaining <= 0) throw Object.assign(new Error(`${source} request budget exhausted`), { nonRetryable: true });
     attempt++;
     const attemptStarted = performance.now();
-    const dispatcher = ipv4Retry ? new Agent({ connect: { family: 4, timeout: SOURCE_REQUEST_TIMEOUT_MS } }) : undefined;
+    const dispatcher = ipv4Retry ? new Agent({ connect: { family: 4, timeout: attemptTimeoutMs } }) : undefined;
     const controller = source === 'eonet' ? new AbortController() : null;
     const signal = controller
       ? AbortSignal.any([controller.signal, AbortSignal.timeout(remaining)])
-      : AbortSignal.timeout(Math.min(SOURCE_REQUEST_TIMEOUT_MS, remaining));
-    const headerTimer = controller && setTimeout(() => controller.abort(new DOMException('EONET headers timed out', 'TimeoutError')), Math.min(SOURCE_REQUEST_TIMEOUT_MS, remaining));
+      : AbortSignal.timeout(Math.min(attemptTimeoutMs, remaining));
+    const headerTimer = controller && setTimeout(() => controller.abort(new DOMException('EONET headers timed out', 'TimeoutError')), Math.min(attemptTimeoutMs, remaining));
     let stage = 'request';
     let headersReceivedAt;
     try {
       const res = await fetchFn(url, {
-        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+        headers: { Accept: 'application/json', 'User-Agent': userAgent },
         signal,
-        ...(dispatcher ? { dispatcher } : {}),
+        ...(dispatcher ? { dispatcher: new Dispatcher1Wrapper(dispatcher) } : {}),
       });
       headersReceivedAt = performance.now();
       if (headerTimer) clearTimeout(headerTimer);
@@ -251,6 +265,7 @@ async function fetchEventSourceJson(source, url, fetchFn) {
         await res.body?.cancel?.().catch(() => { throw error; });
         throw error;
       }
+      if (res.status === 204 && noContentValue !== undefined) return noContentValue;
       stage = 'body';
       return await (controller ? readEonetBody(res, controller, signal) : res.json());
     } catch (cause) {
@@ -408,6 +423,7 @@ function parseGdacsTcFields(props) {
 async function fetchGdacsType(eventtype, fetchFn, now) {
   // MAP requires one type, but its VO route returns 404. SEARCH supplies
   // recent volcano events; their iscurrent field determines closure below.
+  // SEARCH answers an event-free date range with 204 and no body.
   const url = new URL(eventtype === 'VO' ? GDACS_API.replace(/MAP$/, 'SEARCH') : GDACS_API);
   if (eventtype === 'VO') {
     url.search = new URLSearchParams({
@@ -417,7 +433,9 @@ async function fetchGdacsType(eventtype, fetchFn, now) {
       pageSize: '100', pageNumber: '1',
     }).toString();
   } else url.searchParams.set('eventtype', eventtype);
-  const data = await fetchEventSourceJson(`gdacs:${eventtype}`, url.toString(), fetchFn);
+  const data = await fetchEventSourceJson(`gdacs:${eventtype}`, url.toString(), fetchFn,
+    eventtype === 'VO' ? { type: 'FeatureCollection', features: [] } : undefined,
+    { attemptTimeoutMs: GDACS_REQUEST_TIMEOUT_MS, budgetMs: GDACS_REQUEST_BUDGET_MS, userAgent: GDACS_USER_AGENT });
   if (!Array.isArray(data?.features) || data.features.some(feature =>
     !['Point', 'Polygon', 'MultiPolygon', 'LineString', 'MultiLineString'].includes(feature?.geometry?.type))) {
     throw new Error(`GDACS malformed response (${eventtype})`);
@@ -491,6 +509,10 @@ export async function fetchGdacs(fetchFn = globalThis.fetch, { previousSources =
       magnitudeUnit: '',
       sourceUrl: props.url?.report || '',
       sourceName: 'GDACS',
+      // Orange or Red (Green is dropped above); natural.hazard webhook scopes
+      // filter on it (shipping-webhook-worker.mjs). Redis-only: the RPC proto
+      // does not carry it.
+      alertLevel: props.alertlevel,
       closed: props.eventtype === 'VO' && (props.iscurrent === false || props.iscurrent === 'false'),
       ...tcFields,
       forecastTrack: [],
@@ -740,7 +762,10 @@ async function fetchNhc(fetchFn = globalThis.fetch) {
 
     const classification = NHC_STORM_TYPES[stormType] || classifyWind(windKt).classification;
     const typeLabel = NHC_STORM_TYPES[stormType] || stormType;
-    const title = `${typeLabel} ${stormName}`;
+    const comparableName = stormName.trim().toLowerCase();
+    const hasClassification = comparableName.startsWith(typeLabel.toLowerCase())
+      && /^\s/.test(comparableName.slice(typeLabel.length));
+    const title = hasClassification ? stormName : `${typeLabel} ${stormName}`;
 
     // Build forecast track from forecast points
     const forecastTrack = points.features
@@ -1121,7 +1146,7 @@ export function naturalEventsPublishTransform(data) {
   return publicData;
 }
 
-export function naturalEventsAfterPublish(data) {
+export function naturalEventsAfterPublish(data, context = {}) {
   const nhc = data?._nhcSnapshot;
   const nhcFailed = nhc?.consecutiveFailures > 0;
   const gdacsFailed = data?._gdacsFailedTypes || [];
@@ -1140,6 +1165,21 @@ export function naturalEventsAfterPublish(data) {
     },
   ]));
   const patch = { sourceState: failedSources.length ? 'degraded' : 'ok', sourceHealth, failedSources };
+  if (context.runId) {
+    const identity = value => typeof value === 'string' && /^[a-zA-Z0-9_.-]{1,128}$/.test(value) ? value : null;
+    console.info(JSON.stringify({
+      event: 'natural_source_receipt',
+      schemaVersion: 1,
+      runId: context.runId,
+      publisher: identity(process.env.RAILWAY_SERVICE_NAME),
+      deploymentId: identity(process.env.RAILWAY_DEPLOYMENT_ID),
+      revision: identity(process.env.RAILWAY_GIT_COMMIT_SHA),
+      canonicalKey: context.canonicalKey,
+      recordCount: context.recordCount,
+      sourceFetchedAt: data.fetchedAt,
+      ...patch,
+    }));
+  }
   if (!failedSources.length) return { freshnessMetaPatch: patch };
 
   console.warn(`[natural-events] DEGRADED: ${failedSources.join(', ')}`);

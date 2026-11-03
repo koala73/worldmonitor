@@ -151,10 +151,9 @@ describe('credential-bearing headers force a private tier (#8400)', () => {
 
     // Every headers.get('X-…') a sibling auth path treats as a credential.
     // Route-scoped verifications are deliberately NOT credentials here (see
-    // the CREDENTIAL_BEARING_HEADERS comment): the desktop HMAC pair
-    // (register-interest.ts, POST-only single RPC) and the internal-MCP
-    // HMAC trio (mcp-internal-hmac.ts, consumed by the pre-check and
-    // stripped before handlers) never act as bearers on an auth path.
+    // the CREDENTIAL_BEARING_HEADERS comment): the internal-MCP HMAC trio
+    // (mcp-internal-hmac.ts, consumed by the pre-check and stripped before
+    // handlers) never acts as a bearer on an auth path.
     // Inbound-only plumbing (Vary echo, CORS allowlist membership, the
     // per-process verified-marker nonce, relay-to-upstream relay headers the
     // client never sends) is likewise excluded.
@@ -165,10 +164,10 @@ describe('credential-bearing headers force a private tier (#8400)', () => {
       { file: 'api/widget-agent.ts', header: 'X-Api-Key' },
       { file: 'api/widget-agent.ts', header: 'X-Widget-Key' },
       { file: 'api/widget-agent.ts', header: 'X-Pro-Key' },
-      { file: 'api/embed/entitlement.ts', header: 'X-WorldMonitor-Key' },
-      { file: 'api/embed/entitlement.ts', header: 'X-Api-Key' },
-      { file: 'api/embed/session.ts', header: 'X-WorldMonitor-Key' },
-      { file: 'api/embed/session.ts', header: 'X-Api-Key' },
+      // api/embed/{entitlement,session}.ts resolve through this helper;
+      // tests/embed-session.test.mts pins that delegation.
+      { file: 'server/_shared/embed-key.ts', header: 'X-WorldMonitor-Key' },
+      { file: 'server/_shared/embed-key.ts', header: 'X-Api-Key' },
       { file: 'server/_shared/premium-check.ts', header: 'X-WorldMonitor-Key' },
       { file: 'server/_shared/premium-check.ts', header: 'X-Api-Key' },
       { file: 'server/worldmonitor/shipping/v2/webhook-shared.ts', header: 'X-WorldMonitor-Key' },

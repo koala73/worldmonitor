@@ -71,10 +71,11 @@ message StoryMeta {
   int64 first_seen = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Total number of digest cycles in which this story appeared.
   int32 mention_count = 2;
+  // #4919. The cross-cycle Redis source set (story:sources:v1) feeds
+  // importance scoring, not this field. (Detached: kept out of the public spec.)
+
   // Number of unique sources reporting this story in the CURRENT digest
-  // cycle (batch corroboration from fuzzy story clustering, #4919;
-  // defaults to 1 for unclustered items). The cross-cycle Redis source
-  // set (story:sources:v1) feeds importance scoring, not this field.
+  // cycle; 1 for unclustered items.
   int32 source_count = 3;
   // Story lifecycle phase derived from persistence data.
   StoryPhase phase = 4;

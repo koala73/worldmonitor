@@ -233,11 +233,8 @@ export async function getPublishedBatches({ fetchImpl = globalThis.fetch } = {})
 }
 
 export const INDEXNOW_ENDPOINTS = Object.freeze([
+  // IndexNow shares accepted URLs with all participants.
   'https://api.indexnow.org/IndexNow',
-  'https://www.bing.com/IndexNow',
-  'https://searchadvisor.naver.com/indexnow',
-  'https://search.seznam.cz/indexnow',
-  'https://yandex.com/indexnow',
 ]);
 
 /**

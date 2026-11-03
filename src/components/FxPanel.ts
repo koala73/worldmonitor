@@ -315,7 +315,7 @@ export class FxPanel extends Panel {
     const stressedCount = this.stress.filter((r) => r.stressed).length;
 
     return safeHtml`
-      <div class="fx-scroll">
+      <div class="fx-scroll table-scroll table-scroll-pinned-start" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
         <table class="fx-table">
           <thead>
             <tr>
@@ -354,7 +354,7 @@ export class FxPanel extends Panel {
 
       sections.push(safeHtml`
         <div class="fx-section-title">${t('components.fx.usdBase')}</div>
-        <div class="fx-scroll">
+        <div class="fx-scroll table-scroll table-scroll-pinned-start" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
           <table class="fx-table">
             <thead>
               <tr>
@@ -384,7 +384,7 @@ export class FxPanel extends Panel {
 
       sections.push(safeHtml`
         <div class="fx-section-title">${t('components.fx.eurBase')}</div>
-        <div class="fx-scroll">
+        <div class="fx-scroll table-scroll table-scroll-pinned-start" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
           <table class="fx-table">
             <thead>
               <tr>
@@ -427,7 +427,7 @@ export class FxPanel extends Panel {
 
     return safeHtml`
       <div class="fx-section-title">${t('components.fx.rubBase')}</div>
-      <div class="fx-scroll">
+      <div class="fx-scroll table-scroll table-scroll-pinned-start" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
         <table class="fx-table">
           <thead>
             <tr>

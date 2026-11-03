@@ -111,6 +111,28 @@ Replace the hand-named pass with a generic one: canonicalise every schema subtre
 
 The largest single hand-written block. This is documentation, not repetition, and trimming it makes the spec worse for the agents it exists to serve. Only ever trim boilerplate prefixes that repeat verbatim across operations, and only after 1 and 2 are spent.
 
+### Spent since this baseline
+
+Later passes in `scripts/build-openapi-json.mjs`, all JSON-only (the YAML keeps the generated text):
+
+| Pass | What it removes | Landed with |
+| --- | --- | --- |
+| `collapseSoftLineBreaks` | Proto comment wrap points (`\n `) inside descriptions, outside code fences and block starts | `get-bilateral-tariff` |
+| `dropDefaultParameterRequired` | `required: false` on non-path parameters, the OpenAPI default | `get-bilateral-tariff` |
+| `shortenGeneratedSuccessDescriptions` | The generator's verbatim `"Successful response"` on every 2xx response, 240 copies, replaced by the status code's reason phrase `"OK"`. The responses stay inline. About 4.1 KB. | `get-us-import-duty` |
+
+The last one is boilerplate rather than repetition. It falls under step 3's "boilerplate that repeats verbatim", applied to response descriptions instead of operation descriptions. After it, the repeated structures the report still counts are dominated by the inline `jmespath` parameter copies, which `ensureInlineTypedInput` keeps on purpose for JSON-only scanners. Step 2 still needs scanner re-verification. The next operation will need step 2, or a scanner re-check of the budget.
+
+### Oversized examples
+
+Measured 2026-10-18 with 280 bytes left: the report's "repeated structures still inline" estimate (~9.3 KB) was almost entirely the inline `jmespath` and typed-parameter copies that `ensureInlineTypedInput` restores on purpose, so steps 1 and 2 had nothing left to give. The bytes were in two response examples instead. `get-china-corridor-control-towers` carried a 21,348-byte example (four corridors that repeat one node, condition, signal and provenance structure, escaped inside `payloadJson`) and `get-giving-summary` a 12,340-byte one; the median operation is about 1.3 KB in total.
+
+The production parser (`shared/china-corridor-control-towers.ts`) accepts a payload only with all four corridors and all six signal families on each, and `tests/china-corridor-service.test.mts` parses the documented example through it, so the example cannot drop corridors. `scripts/openapi-inject-china-corridors.mjs` now gives two corridors the observed port condition (signal plus provenance) and the other two the all-unavailable shape the parser also accepts. That is a source change, not a JSON-only pass: the per-service spec, the YAML bundle and the served JSON all shrink. The served artifact went from 949,720 to 943,028 bytes (6,972 free; still inside the three-operation reserve, so the status stays `reserve-breached`). The Giving example is the next candidate; its 10.7 KB `provenance` block is derived from `scripts/shared/giving-published-estimate-claims.json` and pinned by `tests/openapi-examples-contract.test.mjs`, so trimming it means trimming the shared claim fixture first.
+
+### Operations left out of the scanner bundle
+
+Step 2 has since landed: `Idempotency-Key` and `Idempotent-Replayed` are shared `components.headers` refs in the served JSON. With 320 bytes left, the owner decided (#9093) that endpoints built for WorldMonitor's own pages and for operators stay out of `public/openapi.json`. `SCANNER_BUNDLE_EXCLUDED_OPERATIONS` in `scripts/build-openapi-json.mjs` lists each one with its reason. An excluded operation is still served, still documented in its per-service spec and the YAML bundle, and still callable. Only this artifact omits it, so it costs no budget.
+
 ### Not on the table
 
 - Raising the 950,000-byte budget.

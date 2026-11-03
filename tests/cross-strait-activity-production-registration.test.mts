@@ -83,7 +83,7 @@ describe('cross-Strait activity production registration (#5575)', () => {
   it('pins the resilient Japan MOD source-version marker used by publication health', () => {
     assert.match(
       read('scripts/seed-cross-strait-activity.mjs'),
-      /sourceVersion:\s*'taiwan-mnd-html\+japan-joint-staff-homepage-v3'/,
+      /sourceVersion:\s*'taiwan-mnd-html\+japan-joint-staff-x-v4'/,
     );
   });
 
@@ -96,7 +96,7 @@ describe('cross-Strait activity production registration (#5575)', () => {
     assert.match(panel, /if \(this\.officialActivity\) this\.requestRender\(\)/);
     assert.match(panel, /View Taiwan Strait/);
     assert.match(renderer, /Publisher claim/);
-    assert.match(renderer, /not ADS-B or AIS tracks/);
+    assert.match(renderer, /not aircraft or ship transponder tracks/);
     assert.doesNotMatch(flightSeeder, /cross-strait-activity|Taiwan Ministry of National Defense|Japan Joint Staff/);
   });
 });

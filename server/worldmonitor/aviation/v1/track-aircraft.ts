@@ -4,8 +4,8 @@ import type {
     TrackAircraftResponse,
     PositionSample,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
-import { ApiError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
-import { checkScopedRateLimit, getClientIp, RATE_LIMIT_DEGRADED_HEADERS } from '../../../_shared/rate-limit';
+import { ApiError, ValidationError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { checkScopedRateLimit, getClientRateLimitKey, RATE_LIMIT_DEGRADED_HEADERS } from '../../../_shared/rate-limit';
 import { setResponseHeader } from '../../../_shared/response-headers';
 import { attachApiErrorHttpResponseMetadata } from '../../../error-mapper';
 import { getRelayBaseUrl, getRelayHeaders } from './_shared';
@@ -49,7 +49,7 @@ async function admitIdentifierLookup(request: Request): Promise<void> {
         nativeIdentifierAdmissions.push(now);
         return;
     }
-    const limit = await checkScopedRateLimit(IDENTIFIER_RATE_SCOPE, IDENTIFIER_RATE_LIMIT, '60 s', getClientIp(request));
+    const limit = await checkScopedRateLimit(IDENTIFIER_RATE_SCOPE, IDENTIFIER_RATE_LIMIT, '60 s', getClientRateLimitKey(request));
     if (limit.degraded) {
         for (const [key, value] of Object.entries(RATE_LIMIT_DEGRADED_HEADERS)) setResponseHeader(request, key, value);
         throw Object.assign(new ApiError(503, 'Rate-limit service temporarily unavailable', ''), { retryAfter: 5, exposeMessage: true });
@@ -127,12 +127,15 @@ export async function trackAircraft(
 ): Promise<TrackAircraftResponse> {
     const rawIcao24 = req.icao24 ?? '';
     const rawCallsign = req.callsign ?? '';
-    if (rawIcao24.length > 16 || rawCallsign.length > 16) throw new ApiError(400, 'Aircraft identifier is too long', '');
+    if (rawIcao24.length > 16) throw new ValidationError([{ field: 'icao24', description: 'Aircraft identifier is too long' }]);
+    if (rawCallsign.length > 16) throw new ValidationError([{ field: 'callsign', description: 'Aircraft identifier is too long' }]);
     const icao24 = rawIcao24.trim().toLowerCase();
     const callsign = rawCallsign.trim().toUpperCase();
-    if (rawIcao24 && !/^[0-9a-f]{6}$/.test(icao24)) throw new ApiError(400, 'Expected a six-character hexadecimal ICAO address', '');
-    if (rawCallsign && !/^[A-Z0-9]{1,8}$/.test(callsign)) throw new ApiError(400, 'Expected an alphanumeric callsign of at most eight characters', '');
-    if (![req.swLat, req.swLon, req.neLat, req.neLon].every(Number.isFinite)) throw new ApiError(400, 'Expected finite viewport coordinates', '');
+    if (rawIcao24 && !/^[0-9a-f]{6}$/.test(icao24)) throw new ValidationError([{ field: 'icao24', description: 'Expected a six-character hexadecimal ICAO address' }]);
+    if (rawCallsign && !/^[A-Z0-9]{1,8}$/.test(callsign)) throw new ValidationError([{ field: 'callsign', description: 'Expected an alphanumeric callsign of at most eight characters' }]);
+    const viewport = { sw_lat: req.swLat, sw_lon: req.swLon, ne_lat: req.neLat, ne_lon: req.neLon };
+    const badCorner = Object.entries(viewport).find(([, value]) => !Number.isFinite(value));
+    if (badCorner) throw new ValidationError([{ field: badCorner[0], description: 'Expected finite viewport coordinates' }]);
     const lat1 = Math.max(-90, Math.min(90, req.swLat));
     const lat2 = Math.max(-90, Math.min(90, req.neLat));
     const lon1 = Math.max(-180, Math.min(180, req.swLon));

@@ -16,6 +16,7 @@
 import { describe, it, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { drainResponseHeaders } from '../server/_shared/response-headers.ts';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 let getAirportOpsSummary;
 let defaultWatchedAirports;
@@ -256,6 +257,22 @@ describe('getAirportOpsSummary — coverage gating (#7106)', () => {
     assert.deepEqual(saw.topDelayReasons, ['Runway access restricted by active NOTAM']);
     assert.equal(saw.source, 'unknown');
   });
+
+  it('reports an uncovered airport the NOTAM feed covers as open, sourced to NOTAM', async () => {
+    cacheStore.set(DELAYS_KEY, { alerts: [], coverage: [] });
+    cacheStore.set(NOTAM_KEY, {
+      closedIcaos: ['LTAC'], restrictedIcaos: [], reasons: { LTAC: 'AD CLSD' },
+      coveredIcaos: ['LTAC', 'LTFJ'],
+    });
+
+    const response = await getAirportOpsSummary({}, { airports: 'ESB,SAW,ADB' });
+    const saw = summaryFor(response, 'SAW');
+    assert.equal(saw.severity, 'FLIGHT_DELAY_SEVERITY_NORMAL');
+    assert.equal(saw.source, 'notam');
+    assert.deepEqual(saw.topDelayReasons, ['Open']);
+    assert.equal(summaryFor(response, 'ESB').severity, 'FLIGHT_DELAY_SEVERITY_SEVERE');
+    assert.equal(summaryFor(response, 'ADB').severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN', 'no NOTAMs in the feed: still unknown');
+  });
 });
 
 describe('airport ops input admission', () => {
@@ -268,7 +285,7 @@ describe('airport ops input admission', () => {
     let calls = 0;
     globalThis.fetch = async (...args) => { calls++; return fetchImpl(...args); };
     try {
-      await assert.rejects(getAirportOpsSummary({}, { airports }), error => error.statusCode === 400);
+      await assert.rejects(getAirportOpsSummary({}, { airports }), validationFailure('airports'));
       assert.equal(calls, 0);
     } finally { globalThis.fetch = fetchImpl; }
   });

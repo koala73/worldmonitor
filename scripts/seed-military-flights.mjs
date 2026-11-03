@@ -1840,6 +1840,25 @@ export async function redisGet(url, token, key) {
   }
 }
 
+// The stale key is the 24h last-good fallback readers use for viewports the
+// live payload does not cover. A regional tick (adsb.lol failed, Wingbits only)
+// must not replace a global snapshot there, or every request outside the two
+// Wingbits regions loses its fallback until adsb.lol recovers. The global
+// snapshot keeps its original TTL, so it still expires 24h after it was taken.
+export async function publishStaleFlightSnapshot(url, token, payload) {
+  if (payload.coverage !== 'global') {
+    let existing = null;
+    try {
+      existing = await redisGet(url, token, STALE_KEY);
+    } catch (err) {
+      console.warn(`  ${STALE_KEY}: unreadable (${err.message || err}); publishing regional snapshot`);
+    }
+    if (existing?.coverage === 'global') return 'kept';
+  }
+  await redisSet(url, token, STALE_KEY, payload, STALE_TTL);
+  return 'written';
+}
+
 const MILITARY_PUBLICATION_TTL_GROUPS = [
   { keys: [LIVE_KEY, 'seed-meta:military:flights'], ttl: LIVE_TTL },
   {
@@ -1969,11 +1988,11 @@ async function main() {
     };
 
     await redisSet(url, token, LIVE_KEY, payload, LIVE_TTL);
-    await redisSet(url, token, STALE_KEY, payload, STALE_TTL);
+    const staleResult = await publishStaleFlightSnapshot(url, token, payload);
     await redisSet(url, token, MILITARY_CLASSIFICATION_AUDIT_LIVE_KEY, { fetchedAt: assessedAt, sourceVersion: source || '', ...classificationAudit }, MILITARY_CLASSIFICATION_AUDIT_LIVE_TTL);
     await redisSet(url, token, MILITARY_CLASSIFICATION_AUDIT_STALE_KEY, { fetchedAt: assessedAt, sourceVersion: source || '', ...classificationAudit }, MILITARY_CLASSIFICATION_AUDIT_STALE_TTL);
     console.log(`  ${LIVE_KEY}: written`);
-    console.log(`  ${STALE_KEY}: written`);
+    console.log(`  ${STALE_KEY}: ${staleResult === 'kept' ? 'kept global last-good (regional tick)' : 'written'}`);
     console.log(`  ${MILITARY_CLASSIFICATION_AUDIT_LIVE_KEY}: written`);
 
     await writeFreshnessMetadata('military', 'flights', flights.length, source);

@@ -336,6 +336,38 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // The dashboard has carried only the WebKit half (`/Can't find variable:
   // _0x/`) since #4005; this pass adds the same shape there alongside it.
   /\b_0x[0-9a-f]{4,}\b/,
+  // A browser extension's main-world SDK referencing its own global before
+  // define. WORLDMONITOR-185 is the shape: `ReferenceError: mainWorldSdk is
+  // not defined` on Chrome 154 / Windows at `/`, an `onerror` capture whose
+  // only frames are two `<anonymous>:1` entries. The dashboard has dropped the
+  // same name since WORLDMONITOR-TG; the two surfaces run separate Sentry
+  // clients, which is the same gap that let WORLDMONITOR-11P through.
+  //
+  // Licensed by the identifier, like the `_0x` entry above: `mainWorldSdk`
+  // appears nowhere in `pro-test/src`, the `shared/` leaves it imports, or
+  // either inline script (tests/pro-sentry-filter-policy.test.mts pins that),
+  // so a message naming it can never be ours. Both engine phrasings — Chromium
+  // `X is not defined`, WebKit `Can't find variable: X` — are covered by the
+  // bare word-bounded name.
+  /\bmainWorldSdk\b/,
+  // An injected script evaluated twice in the same realm. WORLDMONITOR-10B's
+  // 2026-10-12 event is the shape: `SyntaxError: Identifier 'nativeIframe'
+  // has already been declared` on Chrome 155 / Windows at `/`, an `onerror`
+  // capture whose only frame is the document URL at `1:1` — the slot V8
+  // gives an inline script it cannot attribute. Line 1 of every marketing
+  // document is `<!doctype html>`, so that frame proves the script was not
+  // ours. The dashboard carries the same identifier in its
+  // `Identifier '(?:…|nativeIframe)' has already been declared` entry.
+  //
+  // Frame-blind on purpose: the SAME document frame would sit under a parse
+  // failure in our own inline bootstrap, so no frame gate can separate the
+  // two — the identifier is the licence. `nativeIframe` appears nowhere in
+  // the marketing bundle's first-party sources (same scan as `mainWorldSdk`),
+  // and a redeclaration can only name an identifier the colliding script
+  // itself declares. The bare `SyntaxError: Unexpected end of input` siblings
+  // in that issue are NOT covered here; a parse failure stays reporting
+  // unless something names its origin (see PARSE_FAILURE).
+  /^Identifier 'nativeIframe' has already been declared$/,
   // WebAuthn on a shell that has no authenticator. WORLDMONITOR-11Q is the
   // shape: `NotSupportedError: The user agent does not support public key
   // credentials.` (`DOMException.code: 9`) on Electron 33.4.11 / Windows at
@@ -427,6 +459,10 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // ever match Clerk. A user's flaky connection to Clerk is not actionable here;
   // Clerk's UI already tells them to retry.
   /^(?:Error: )?ClerkJS: Network error\b/,
+  // Android WebView autofill injects `xbrowser` and `swbrowser`, then reads
+  // them before the host defines them.
+  /^ReferenceError: xbrowser is not defined$/,
+  /^ReferenceError: swbrowser is not defined$/,
 ];
 
 /** Sentry's own hashed SDK chunk — infrastructure, never evidence of our code. */

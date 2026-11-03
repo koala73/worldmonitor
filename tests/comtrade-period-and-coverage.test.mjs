@@ -49,8 +49,11 @@ test('periodWindow: keeps older years reachable across the year rollover', () =>
   const beforeRollover = periodWindow(new Date('2026-12-31T23:59:59Z')).split(',');
   const afterRollover = periodWindow(new Date('2027-01-01T00:00:00Z')).split(',');
 
-  assert.equal(beforeRollover[0], '2024');
-  assert.equal(afterRollover[0], '2025');
+  // The window starts at y-1: most major reporters file the previous year's
+  // annual data by mid-year (99 reporters had 2025 HS 2709 imports in Oct 2026),
+  // and groupByProduct keeps each reporter's newest filed year.
+  assert.equal(beforeRollover[0], '2025');
+  assert.equal(afterRollover[0], '2026');
   // A reporter whose newest filing is 2023 survives the rollover.
   assert.ok(afterRollover.includes('2023'), `expected 2023 to remain in ${afterRollover}`);
   assert.ok(afterRollover.length >= 4, 'window must span enough years to cover late filers');
@@ -83,7 +86,7 @@ test('periodCandidates: the authenticated route covers the years in ONE request'
   const periods = periodCandidates(false, new Date('2026-07-26T00:00:00Z'));
 
   assert.equal(periods.length, 1, 'a window needs no second round trip');
-  assert.deepEqual(periods[0].split(','), ['2024', '2023', '2022', '2021']);
+  assert.deepEqual(periods[0].split(','), ['2025', '2024', '2023', '2022', '2021']);
 });
 
 test('periodCandidates: the two routes never get the same strategy', () => {

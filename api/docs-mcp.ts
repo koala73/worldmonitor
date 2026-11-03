@@ -13,7 +13,7 @@
 //      object, preserving the upstream SSE/JSON framing.
 // Genuine tool-execution failures deliberately stay `isError` results — the
 // MCP spec reserves top-level errors for protocol-level failures only.
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp } from '../server/_shared/rate-limit';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp, rateLimitKeyForIp } from '../server/_shared/rate-limit';
 import { readBoundedRequestBody, RequestBodyTooLargeError } from './mcp/bounded-body';
 import { MAX_JSON_RPC_BODY_BYTES } from './mcp/body-limits';
 import { safeJsonRpcId } from './mcp/utils';
@@ -38,11 +38,13 @@ const RATE_LIMIT_MAX = RATE_LIMIT_POLICY.limit;
 const RATE_LIMIT_WINDOW = RATE_LIMIT_POLICY.window;
 
 // Request headers worth forwarding to the upstream MCP transport. Everything
-// else (cookies, CF headers, x-forwarded-*) stays on our side.
+// else (cookies, CF headers, x-forwarded-*) stays on our side. `authorization`
+// is deliberately absent: the docs MCP is anonymous, and an MCP client that
+// reuses a WorldMonitor bearer for every path on this origin would otherwise
+// hand that credential to the third-party docs host.
 const FORWARDED_REQUEST_HEADERS = [
   'accept',
   'accept-language',
-  'authorization',
   'content-type',
   'last-event-id',
   'mcp-protocol-version',
@@ -218,7 +220,7 @@ async function docsMcpRateLimitResponse(req: Request, id: JsonRpcId): Promise<Re
   // Redis-degraded scoped limits intentionally stay availability-first — the
   // upstream docs MCP is fully public and cheap, so degradation (logged by
   // checkScopedRateLimit) must not take the docs surface down.
-  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, ip);
+  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, rateLimitKeyForIp(ip));
   if (scoped.allowed) return null;
   const retryAfter = Math.max(1, Math.ceil((scoped.reset - Date.now()) / 1000));
   return jsonRpcErrorResponse(

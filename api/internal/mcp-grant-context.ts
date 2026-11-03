@@ -49,6 +49,10 @@ import {
 } from '../../server/_shared/pro-mcp-gate';
 // @ts-expect-error — JS module, no declaration file
 import { redirectDisplayHost } from '../oauth/_redirect-uri.js';
+// @ts-expect-error — JS module, no declaration file
+import { requestMatchesOAuthBinding } from '../oauth/_browser-binding.js';
+// @ts-expect-error — JS module, no declaration file
+import { clientDisplayInfo, resolveOAuthClient } from '../oauth/_client-metadata.js';
 
 const NO_STORE_JSON: Record<string, string> = {
   'Content-Type': 'application/json',
@@ -62,10 +66,13 @@ function jsonError(error: string, error_description: string, status: number): Re
 interface NonceData {
   client_id: string;
   redirect_uri: string;
+  bind_hash?: string;
 }
 
 interface ClientData {
   client_name?: string;
+  redirect_uris?: unknown;
+  cimd?: boolean;
 }
 
 async function rawRedisGet(key: string): Promise<unknown | null> {
@@ -87,6 +94,8 @@ export interface ContextDeps {
   redisGet: (key: string) => Promise<unknown | null>;
   getEntitlements: (userId: string) => Promise<ProMcpEntitlement | null>;
   now: () => number;
+  /** Fetch for CIMD client metadata documents; defaults to the global fetch. */
+  fetchClientMetadata?: typeof fetch;
 }
 
 export async function grantContextHandler(req: Request, deps: ContextDeps): Promise<Response> {
@@ -171,16 +180,24 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
   if (!nonceData || typeof nonceData.client_id !== 'string' || typeof nonceData.redirect_uri !== 'string') {
     return jsonError('INVALID_NONCE', 'The authorization nonce is missing or expired.', 400);
   }
-
-  let clientData: ClientData | null;
-  try {
-    clientData = (await deps.redisGet(`oauth:client:${nonceData.client_id}`)) as ClientData | null;
-  } catch {
-    return jsonError('SERVICE_UNAVAILABLE', 'Authorization storage is temporarily unavailable.', 503);
+  // Refuse before rendering consent UI for a link forwarded from another
+  // browser; the mint enforces the same binding.
+  if (!(await requestMatchesOAuthBinding(req, nonceData))) {
+    return jsonError('BROWSER_MISMATCH', 'This authorization was started in a different browser. Start over from your MCP client in this browser.', 403);
   }
-  if (!clientData) {
+
+  // Read-only here: no cache write, so this endpoint never stores anything.
+  const resolved = await resolveOAuthClient(nonceData.client_id, {
+    redisGet: deps.redisGet,
+    fetch: deps.fetchClientMetadata,
+  });
+  if (!resolved.ok) {
+    if (resolved.transient) {
+      return jsonError('SERVICE_UNAVAILABLE', 'Authorization storage is temporarily unavailable.', 503);
+    }
     return jsonError('UNKNOWN_CLIENT', 'The OAuth client is not registered.', 400);
   }
+  const clientData = resolved.client as ClientData;
 
   let redirectHost = '';
   try {
@@ -194,7 +211,13 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
     ? clientData.client_name
     : 'Unknown Client';
 
-  return new Response(JSON.stringify({ client_name, redirect_host: redirectHost }), {
+  // CIMD clients add the host that published their document, and whether
+  // this authorization goes to localhost (the consent page warns on that).
+  const display = clientDisplayInfo(clientData, nonceData.redirect_uri);
+  const body = clientData.cimd
+    ? { client_name, redirect_host: redirectHost, client_host: display.client_host, localhost_redirect: display.localhost_redirect }
+    : { client_name, redirect_host: redirectHost };
+  return new Response(JSON.stringify(body), {
     status: 200, headers: NO_STORE_JSON,
   });
 }

@@ -359,6 +359,21 @@ describe('eager chunk budget: generated RPC clients stay lazy', { skip: shouldSk
   });
 });
 
+describe('country-qualified observations stay outside the dashboard App graph', { skip: shouldSkipDashboard() }, () => {
+  guardDashboardBuild();
+  it('loads qualified validation and military IO only for the country feature', () => {
+    const { assets } = loadDashboardBuild();
+    const appFile = assets.find(file => /^App-[A-Za-z0-9_-]+\.js$/.test(file));
+    assert.ok(appFile, 'dashboard App chunk must exist');
+    const graph = collectStaticChunkGraph(appFile);
+    for (const name of ['country-signal-observations', 'country-signal-projection', 'country-qualified-military']) {
+      const file = assets.find(asset => asset.startsWith(`${name}-`) && asset.endsWith('.js'));
+      assert.ok(file, `${name} must remain an on-demand chunk`);
+      assert.ok(!graph.includes(file), `${name} must not be statically reachable from App`);
+    }
+  });
+});
+
 describe('correlation-engine lazy boot failure handling', () => {
   it('keeps the dynamic import locally handled', () => {
     const src = readFileSync(resolve(repoRoot, 'src/App.ts'), 'utf-8');

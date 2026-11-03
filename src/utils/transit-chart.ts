@@ -1,6 +1,7 @@
 import type { TransitDayCount } from '../generated/client/worldmonitor/supply_chain/v1/service_client';
 import { getCSSColor } from '@/utils';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { escapeHtml } from '@/utils/sanitize';
 
 
 type ZoomWindow = 30 | 90 | 180;
@@ -66,7 +67,7 @@ export class TransitChart {
     this.tooltip = document.createElement('div');
     Object.assign(this.tooltip.style, {
       position: 'absolute', display: 'none', pointerEvents: 'none', zIndex: '10',
-      background: 'var(--bg-elevated, #1a1a2e)', border: '1px solid var(--border-subtle, #444)',
+      background: 'var(--surface, #1a1a2e)', border: '1px solid var(--border-subtle, #444)',
       borderRadius: '4px', padding: '6px 9px',
       fontSize: 'calc(11px * var(--wm-panel-effective-scale, 1))', color: 'var(--text-primary, #eee)',
       whiteSpace: 'nowrap', lineHeight: '1.6',
@@ -309,7 +310,7 @@ export class TransitChart {
 
     const fmt = (v: number) => this.tab === 'dwt' ? fmtDWT(v) : String(v);
 
-    setTrustedHtml(tooltip, trustedHtml(`<div style="font-weight:600;margin-bottom:3px">${d.date}</div>` +
+    setTrustedHtml(tooltip, trustedHtml(`<div style="font-weight:600;margin-bottom:3px">${escapeHtml(d.date)}</div>` +
       VESSEL_LABELS.map((label, i) =>
         `<div><span style="color:${VESSEL_COLORS[i]}">■</span> ${label}: ${fmt(stack[i]!)}</div>`,
       ).join('') +

@@ -444,6 +444,7 @@ PROTO_INPUTS=(
   scripts/_html-entities.mjs
   scripts/apply-openapi-filter-param-schemas.mjs
   scripts/generate-request-validation.mjs
+  scripts/harden-generated-server-errors.mjs
   scripts/generate-scorecard-edge-mirrors.mjs
   scripts/lib/main-module.mjs
   scripts/lib/openapi-codegen.mjs
@@ -473,13 +474,20 @@ PROTO_INPUTS=(
   scripts/shared/giving-published-estimate-claims.json
   scripts/shared/iso2-to-region.json
   server/_shared/api-key-rate-limit.ts
+  server/_shared/api-only-paths.ts
   server/_shared/auth-session.ts
+  server/_shared/bounded-jmespath.ts
+  server/_shared/bounded-json.ts
   server/_shared/cache-contract.ts
   server/_shared/client-ip.ts
+  server/_shared/country-history-access.ts
   server/_shared/deprecation-policy.ts
+  server/_shared/desktop-key-meter.ts
+  server/_shared/desktop-key-principal.ts
   server/_shared/direct-llm-quota.ts
   server/_shared/entitlement-check.ts
   server/_shared/entitlement-coverage.ts
+  server/_shared/high-usage-alarm.ts
   server/_shared/idempotency.ts
   server/_shared/internal-auth.ts
   server/_shared/mcp-internal-hmac.ts
@@ -494,6 +502,7 @@ PROTO_INPUTS=(
   server/_shared/sub-request-admission.ts
   server/_shared/usage-identity.ts
   server/_shared/usage.ts
+  server/_shared/user-api-key.ts
   server/auth-session.ts
   server/cors.ts
   server/error-mapper.ts
@@ -503,6 +512,7 @@ PROTO_INPUTS=(
   server/worldmonitor/consumer-prices/v1/get-consumer-price-basket-series.ts
   server/worldmonitor/consumer-prices/v1/_selection.ts
   server/worldmonitor/supply-chain/v1/scenario-templates.ts
+  shared/aircraft-emergencies.ts
   shared/attribution-rider.ts
   shared/compare-and-delete-script.cjs
   shared/china-corridor-control-towers.ts
@@ -512,8 +522,10 @@ PROTO_INPUTS=(
   shared/decision-signal-provenance-contract.ts
   shared/decision-signal-provenance-families.ts
   shared/decision-signal-provenance.ts
+  shared/desktop-key-access.js
   shared/embed-access.ts
   shared/embed-panels.ts
+  shared/event-triggers.json
   shared/iso2-to-iso3.json
   shared/openapi-filter-param-contracts.json
   shared/source-provenance-declarations.ts
@@ -554,6 +566,11 @@ fi
 if [ ! -f node_modules/.package-lock.json ]; then
   echo "node_modules missing or incomplete, running npm ci..."
   npm ci --cache "$npm_config_cache" --prefer-offline || exit 1
+fi
+
+if changed '^(\.github/workflows/[^/]+\.ya?ml|ARCHITECTURE\.md|scripts/docs-stats\.mjs|\.husky/pre-push)$'; then
+  echo "Checking workflow documentation contracts..."
+  npm run docs:check || exit 1
 fi
 
 if changed '^(src/|tests/|e2e/|middleware|index\.html|vite\.config|scripts/|types/)'; then
@@ -655,7 +672,7 @@ if changed '^(src/|api/|server/|scripts/check-sentry-coverage\.mjs$)'; then
   node scripts/check-sentry-coverage.mjs || exit 1
 fi
 
-if changed '^(api/health\.js|scripts/check-health-probe-cutovers\.mts|scripts/check-seed-freshness\.mjs|scripts/seed-freshness-baseline\.json)$'; then
+if changed '^(api/health\.js|scripts/check-health-probe-cutovers\.mts)$'; then
   echo "Running health-probe cutover check..."
   node --import tsx scripts/check-health-probe-cutovers.mts origin/main || exit 1
 else
@@ -1082,6 +1099,15 @@ if [ "$RUN_ALL" = true ] || path_matches '^pro-test/|^convex/config/productCatal
   fi
 else
   echo "  Skipped (no pro-test/, product catalog, or product-config generator changes in branch)."
+fi
+
+echo "Running derived-file freshness check..."
+# Stale generated files (product facts, llms, AI search, catalogs, …) were over
+# half of CI test failures. Regenerate them here so the fix is one commit.
+if ! node scripts/generate-derived.mjs --check; then
+  node scripts/generate-derived.mjs || exit 1
+  echo "ERROR: derived files were stale and are now regenerated. Review and commit them, then push again."
+  exit 1
 fi
 
 echo "Running version sync check..."

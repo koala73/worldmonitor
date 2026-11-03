@@ -42,6 +42,7 @@ import {
   BRIEF_PUBLIC_POINTER_PREFIX,
   buildPublicBriefUrl,
   encodePublicPointer,
+  publicBaseUrl,
 } from '../../server/_shared/brief-share-url';
 
 const ISSUE_SLOT_RE = /^\d{4}-\d{2}-\d{2}-\d{4}$/;
@@ -53,21 +54,11 @@ const ISSUE_SLOT_RE = /^\d{4}-\d{2}-\d{2}-\d{4}$/;
 // keeps the two sides in lockstep.
 const BRIEF_TTL_SECONDS = 7 * 24 * 60 * 60;
 
-/**
- * Public base URL for the share links we mint. Preview and development
- * pointers live in their deployment namespace, so their URLs must stay on
- * that deployment. Production remains pinned to the configured canonical
- * origin to prevent host-header reflection.
- */
-export function publicBaseUrl(req: Request): string {
-  const requestOrigin = new URL(req.url).origin;
-  if (process.env.VERCEL_ENV === 'preview' || process.env.VERCEL_ENV === 'development') {
-    return requestOrigin;
-  }
-  const pinned = process.env.WORLDMONITOR_PUBLIC_BASE_URL;
-  if (pinned) return pinned.replace(/\/+$/, '');
-  return requestOrigin;
-}
+// The destination selector lives with the hash derivation so the private
+// magazine view (api/brief/[userId]/[issueDate].ts) mints the same share URL
+// this route does. Re-exported here because tests/brief-share-url.test.mts
+// pins the round-trip contract through this module.
+export { publicBaseUrl };
 
 export default async function handler(
   req: Request,

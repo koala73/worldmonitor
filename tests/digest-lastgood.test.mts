@@ -283,6 +283,7 @@ describe('durable last-good wiring (#7084)', () => {
       'const s = globalThis.__digestRedisStub;',
       'export async function readCachedJson(k) { s.readCalls.push(k); return s.reads.get(k) ?? { status: "miss" }; }',
       'export async function setCachedJson(k, v, t) { s.writes.push({ key: k, value: v, ttl: t }); return s.writeResult; }',
+      'export async function setCachedJsonIfAbsent() { return false; }',
       'export async function cachedFetchJson() { return null; }',
       'export async function cachedFetchJsonWithMeta(k, _t, _f, _n, o) { s.fetchKeys.push(k); const r = s.fetchMeta ?? { data: null, source: "skipped", leader: false }; if (r.data && r.source === "fresh" && r.leader) await o?.onPositiveResult?.(r.data); return r; }',
       'export async function getCachedJson() { return null; }',
@@ -847,6 +848,27 @@ describe('durable last-good wiring (#7084)', () => {
     assert.equal(Number(command[12]), 900);
   });
 
+  it("writes /trust's label counts only when the gate accepts the build they describe (#9093)", async () => {
+    const counts = { at: NOW, stories: 2, corroborated: 1, singlePublisher: 1, tier4Only: 0, unknown: 0 };
+    const countWrites = () =>
+      stub.pipelineCalls.flat().filter((cmd: any) => Array.isArray(cmd) && cmd[0] === 'SET' && cmd[1] === 'trust:label-counts:v1');
+    const runWithGate = async (gateResult: number) => {
+      reset();
+      const data = body(['https://a/1'], COVERAGE, new Date().toISOString());
+      mod.__testing__.rememberLabelCounts(data, counts);
+      stub.fetchMeta = { data, source: 'fresh', leader: true };
+      stub.pipeline = async (cmds) => cmds.map((c: any) => ({ result: c[0] === 'EVAL' ? gateResult : 'OK' }));
+      await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    };
+
+    await runWithGate(0);
+    assert.equal(countWrites().length, 0, 'a rejected build keeps the counts of the digest still served');
+
+    await runWithGate(1);
+    assert.equal(countWrites().length, 1, 'an accepted build publishes its counts');
+    assert.deepEqual(JSON.parse(String(countWrites()[0]![2])), counts);
+  });
+
   it('a publication outage defers the next build so the isolate fallback can serve', async () => {
     reset();
     stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'fresh', leader: true };
@@ -1182,8 +1204,8 @@ describe('durable last-good wiring (#7084)', () => {
     const currentRevocations = new Set(['https://a/old-1', 'https://a/old-2']);
     const current = measure(incumbent, currentRevocations);
     const next = measure(candidate, currentRevocations);
-    assert.deepEqual(current, { categoryCount: 1, itemCount: 1 });
-    assert.deepEqual(next, { categoryCount: 1, itemCount: 2 });
+    assert.deepEqual(current, { categoryCount: 1, itemCount: 1, totalCategoryCount: 1 });
+    assert.deepEqual(next, { categoryCount: 1, itemCount: 2, totalCategoryCount: 1 });
     assert.equal(
       shouldReplaceAccepted({ acceptedAt: Date.now(), ...current }, next, Date.now()).replace,
       true,
@@ -1260,7 +1282,9 @@ describe('durable last-good wiring (#7084)', () => {
     assert.equal(cmd[5], attemptMetaKey('full', 'en'));
     assert.equal(cmd[6], 'news:digest:v1:full:en');
     assert.ok(Number(cmd[7]) >= before && Number(cmd[7]) <= after);
-    assert.equal(cmd.at(-1), String(ATTEMPT_META_TTL_S));
+    // ARGV[10] is the attempt TTL; 11 and 12 carry the gate exemptions and
+    // the catalog fingerprint.
+    assert.equal(cmd.at(-3), String(ATTEMPT_META_TTL_S));
     const recovered = await mod.__testing__.recoverFailedAttempt('full', 'en', { at: '', reason: 'build-error' });
     assert.equal(recovered.reason, 'gate-held');
     assert.equal(recovered.at, new Date(Number(cmd[7])).toISOString());

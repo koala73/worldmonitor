@@ -346,21 +346,36 @@ describe('middleware /api/download.md — markdown-URL-fallback crawlers reach t
 });
 
 // The protocol is site-wide `/{page}` → `/{page}.md`, not one sampled URL.
-// GET/HEAD /api/**/*.md must pass the bot gate; POST must not inherit that bypass.
-describe('middleware /api/*.md — site-wide markdown URL-fallback twins bypass the bot gate', () => {
-  const CRAWLER_UAS = [
-    { label: 'ClaudeBot', ua: 'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)' },
+// GET/HEAD /api/**/*.md passes the bot gate for AI crawlers and for twins of
+// the exact public paths; any other client meets the sibling route's own gate
+// (a twin renders its sibling). POST never inherits the bypass.
+describe('middleware /api/*.md — site-wide markdown URL-fallback twins', () => {
+  const CLAUDEBOT_UA = 'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)';
+  const SCRIPT_UAS = [
     { label: 'python-requests', ua: 'python-requests/2.31' },
     { label: 'empty UA', ua: '' },
   ];
 
   for (const path of ['/api/health.md', '/api/v1/foo.md', '/api/download.md']) {
-    for (const { label, ua } of CRAWLER_UAS) {
-      it(`passes ${label} through to GET ${path}`, () => {
-        const res = call(path, ua);
-        assert.equal(res, undefined, `${path} must pass through the bot gate for markdown-fallback crawlers`);
+    it(`passes ClaudeBot through to GET ${path}`, () => {
+      assert.equal(call(path, CLAUDEBOT_UA), undefined, `${path} must pass through the bot gate for AI crawlers`);
+    });
+  }
+
+  for (const path of ['/api/health.md', '/api/download.md']) {
+    for (const { label, ua } of SCRIPT_UAS) {
+      it(`passes ${label} through to GET ${path} (its sibling is an exact public path)`, () => {
+        assert.equal(call(path, ua), undefined);
       });
     }
+  }
+
+  for (const { label, ua } of SCRIPT_UAS) {
+    it(`403s ${label} on GET /api/v1/foo.md like on its sibling route`, () => {
+      const res = call('/api/v1/foo.md', ua);
+      assert.ok(res instanceof Response);
+      assert.equal(res.status, 403);
+    });
   }
 
   it('still 403s a crawler on POST /api/health.md (bypass is GET/HEAD only)', () => {

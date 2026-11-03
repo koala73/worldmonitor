@@ -1,6 +1,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import sovereignStatus from '../scripts/shared/sovereign-status.json' with { type: 'json' };
+import { CII_RISK_SCORES_META_KEY, healthyCiiInputs } from './helpers/health-pipeline-fixture.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {
@@ -24,7 +25,7 @@ const PORTWATCH_CONTENT_BUDGET_MINUTES = 10 * 24 * 60;
 const TEST_NOW = Date.parse('2026-08-03T14:42:58.000Z');
 const DECISION_META_KEY = 'seed-meta:intelligence:china-decision-signals';
 const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
-const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v11:US';
+const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v12:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 const EDUCATION_META_KEY = 'seed-meta:resilience:education-attainment';
 const EDUCATION_DATA_KEY = 'resilience:education-attainment:v1';
@@ -167,6 +168,7 @@ function installSeedHealthPipelineMock(
         recordCount: 10_000,
         rankableRecordCount: 10_000,
         redistributionPolicyVersion: 1,
+        ...(key === CII_RISK_SCORES_META_KEY ? { inputs: healthyCiiInputs() } : {}),
       }) };
     });
     return new Response(JSON.stringify(results), {

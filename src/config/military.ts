@@ -210,8 +210,8 @@ export const ADVERSARY_CALLSIGNS: CallsignPattern[] = [
   { pattern: '^RUSSIAN', operator: 'vks', description: 'Russian military' },
 
   // Chinese PLA
-  { pattern: '^PLAAF', operator: 'plaaf', description: 'PLA Air Force' },
-  { pattern: '^PLA[0-9]', operator: 'plaaf', description: 'PLA aircraft' },
+  { pattern: '^PLAAF', operator: 'plaaf', description: 'Chinese air force' },
+  { pattern: '^PLA[0-9]', operator: 'plaaf', description: 'Chinese military aircraft' },
   { pattern: '^CHINA\\s?(AIR\\s?FORCE|MIL|NAVY)', operator: 'plaaf', description: 'Chinese military' },
 ];
 

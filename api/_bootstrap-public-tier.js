@@ -2,6 +2,7 @@ import {
   PUBLIC_WEATHER_BOOTSTRAP_KEY,
   bootstrapTierKeyNames,
 } from './_bootstrap-tier-keys.js';
+import { stripTrailingSlashes } from './_strip-trailing-slashes.js';
 
 export const PUBLIC_BOOTSTRAP_TIERS = new Set(['fast', 'slow']);
 const PUBLIC_ON_DEMAND_BOOTSTRAP_KEYS = new Set(bootstrapTierKeyNames('on-demand'));
@@ -15,9 +16,7 @@ const PUBLIC_ON_DEMAND_BOOTSTRAP_KEYS = new Set(bootstrapTierKeyNames('on-demand
  * @returns {{ authKind: 'public-tier', tier: string } | { authKind: 'public-weather' | 'public-on-demand', tier: null } | null}
  */
 export function classifyPublicBootstrapUrl(parsedUrl) {
-  const pathname = parsedUrl.pathname.length > 1
-    ? parsedUrl.pathname.replace(/\/+$/, '')
-    : parsedUrl.pathname;
+  const pathname = stripTrailingSlashes(parsedUrl.pathname);
   if (pathname !== '/api/bootstrap') return null;
 
   const paramNames = new Set(parsedUrl.searchParams.keys());

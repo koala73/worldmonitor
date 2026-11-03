@@ -10,6 +10,22 @@ import { parse } from 'yaml';
 const root = resolve(import.meta.dirname, '..');
 const workflow = parse(readFileSync(join(root, '.github/workflows/test.yml'), 'utf8'));
 
+test('docs-only PRs and pushes retain the internal-link gate when unit shards skip', () => {
+  for (const event of ['pull_request', 'push']) {
+    const result = classify(['docs/data-sources.mdx', 'docs/zh/data-sources.mdx'], { event });
+    assert.equal(result.code, 'false');
+  }
+  const job = workflow.jobs['docs-stats'];
+  assert.equal(job.if, undefined);
+  assert.equal(job.needs, undefined);
+  const installIndex = job.steps.findIndex((step) => step.uses === './.github/actions/install-root-deps');
+  const linkIndex = job.steps.findIndex((step) => step.run === 'node --import tsx --test tests/internal-link-redirects.test.mjs');
+  assert.ok(installIndex >= 0 && linkIndex > installIndex, 'the always-on docs job must run the link suite after installing dependencies');
+  assert.equal(job.steps[linkIndex].if, undefined);
+  assert.equal(job.steps[linkIndex]['continue-on-error'], undefined);
+  assert.equal(job['continue-on-error'], undefined);
+});
+
 function classify(files, { event = 'pull_request', count = files.length, fail = false, moved = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'wm-test-selection-'));
   try {
@@ -98,7 +114,8 @@ test('unusable, incomplete and moved diff metadata runs every Test job', () => {
   ]) {
     const result = classify(files, options);
     assert.ok(Object.values(result).every((value) => value === 'true'), JSON.stringify({ files: files.slice(0, 2), options, result }));
-    assert.equal(Object.keys(result).length, Object.keys(workflow.jobs.changes.outputs).length);
+    // durations_key is the unit shards' cache lookup, not a path selection.
+    assert.equal(Object.keys(result).length, Object.keys(workflow.jobs.changes.outputs).filter((key) => key !== 'durations_key').length);
   }
 });
 
@@ -141,7 +158,7 @@ test('required unit aggregate rejects failed, cancelled and unexpected skips', (
   assert.deepEqual(aggregate.needs, ['changes', 'unit-shards', 'unit-built-output']);
   assert.equal(aggregate.if, 'always()');
   const shards = workflow.jobs['unit-shards'];
-  assert.deepEqual(shards.strategy.matrix.shard, [1, 2, 3]);
+  assert.deepEqual(shards.strategy.matrix.shard, [1, 2, 3, 4, 5]);
   assert.equal(shards.strategy['fail-fast'], false);
   // Both halves of the data inventory run under the same change selection;
   // a built-output job gated differently would skip its suites on a code PR.
@@ -159,7 +176,9 @@ test('required unit aggregate rejects failed, cancelled and unexpected skips', (
   // Shards have no build, so the marker is what turns a misplaced guarded
   // suite into a failure rather than a skip.
   assert.equal(shardTests.env?.WM_EXPECT_BUILT_OUTPUT, '1');
-  assert.equal(shards.steps.some((step) => /build:pro|vite build/.test(step.run ?? '')), false);
+  // Expand `parallel:` groups so a build nested in one is still caught.
+  const shardSteps = shards.steps.flatMap((step) => step.parallel ?? [step]);
+  assert.equal(shardSteps.some((step) => /build:pro|vite build/.test(step.run ?? '')), false);
   const builtTests = workflow.jobs['unit-built-output'].steps.find((step) => step.run?.includes('npm run test:data'));
   assert.match(builtTests.run, /^WM_EXPECT_BUILT_OUTPUT=1 npm run test:data -- --built-output=only --concurrency=4 /);
   for (const changes of ['success', 'failure', 'cancelled', 'skipped']) {
@@ -192,7 +211,7 @@ test('required variant-smoke aggregate rejects failed, cancelled and unexpected 
     SHARDS_RESULT: '${{ needs.variant-smoke-shards.result }}',
     PRO_WEBMCP_RESULT: '${{ needs.variant-smoke-pro-webmcp.result }}',
   });
-  assert.deepEqual(shards.strategy.matrix.shard, [1, 2]);
+  assert.deepEqual(shards.strategy.matrix.shard, [1, 2, 3, 4]);
   assert.equal(shards.strategy['fail-fast'], false);
   assert.match(
     shards.steps.find((step) => step.run?.includes('npm run test:e2e:ci-smoke:')).run,

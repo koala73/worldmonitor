@@ -9,9 +9,15 @@ import { createRequire } from 'node:module';
 import { flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
 
 import { buildEnvelope, unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { MAX_DECODED_PAYLOAD_BYTES, encodeGzipPayload, parseStoredSeedJson } from './_seed-payload-codec.mjs';
 import { resolveRecordCount } from './_seed-contract.mjs';
 // scripts/shared mirror, not ../shared: seeders deploy with rootDirectory=scripts.
 import { COMPARE_AND_DELETE_SCRIPT } from './shared/compare-and-delete-script.cjs';
+// Re-exported: 149 seeders import loadEnvFile from here, and the digest cron
+// imports the leaf module directly so its image does not need the seed kernel.
+import { isTestRuntime, loadEnvFile } from './_env-file.mjs';
+
+export { isTestRuntime, loadEnvFile };
 
 // process.exit does not drain in-flight promises — drain any fire-and-forget
 // llm_call telemetry first (bounded by its 1.5s fetch timeout; a no-op when
@@ -24,6 +30,7 @@ async function exitAfterTelemetryFlush(code) {
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
+const MAX_REDIS_REQUEST_BYTES = 10_000_000;
 export const SEED_REDIS_COMMAND_TIMEOUT_MS = 15_000;
 export const SEED_REDIS_RETRY_ATTEMPTS = 3;
 export const SEED_REDIS_RETRY_BASE_MS = 1_000;
@@ -253,6 +260,8 @@ export const SHARED_FX_FALLBACKS = {
   HUF: 0.0028, RON: 0.2200, PHP: 0.0173, VND: 0.000040, MYR: 0.2250,
   PKR: 0.0036, ILS: 0.2750, ARS: 0.00084, COP: 0.000240, CLP: 0.00108,
   UAH: 0.0240, NGN: 0.00062, KES: 0.0077,
+  // Fuel-price countries (#10051); XOF is pegged at 655.957 per EUR.
+  ZMW: 0.0495, GHS: 0.0860, XOF: 0.00165, UYU: 0.0249,
   AED: 0.2723, SAR: 0.2666, QAR: 0.2747, KWD: 3.2520,
   BHD: 2.6525, OMR: 2.5974, JOD: 1.4104, EGP: 0.0192, LBP: 0.0000112,
 };
@@ -263,40 +272,6 @@ export function loadSharedConfig(filename) {
     if (existsSync(p)) return JSON.parse(readFileSync(p, 'utf8'));
   }
   throw new Error(`Cannot find shared/${filename} — checked ../shared/ and ./shared/`);
-}
-
-// Env vars set by the runners that import seeder modules without running them.
-// 149 seeders call loadEnvFile() at module scope, so under one of these the
-// import alone would hand production credentials to the test process (#5767).
-// Known gap: `node --test --experimental-test-isolation=none` runs tests in the
-// main process and sets NO marker at all. The repo uses that flag nowhere, but
-// adding it would disable this guard for the whole suite in one edit.
-const TEST_RUNTIME_MARKERS = [
-  'NODE_TEST_CONTEXT', // node --test and tsx --test
-  'VITEST',
-  'VITEST_WORKER_ID',
-  'JEST_WORKER_ID',
-  'PLAYWRIGHT_TEST_BASE_URL', // playwright sets neither NODE_ENV nor a generic marker
-  'PW_TEST_SOURCE_LOCATION',
-];
-
-export function isTestRuntime(env = process.env) {
-  if (env.NODE_ENV === 'test') return true;
-  return TEST_RUNTIME_MARKERS.some((key) => typeof env[key] === 'string' && env[key] !== '');
-}
-
-// Walk up to the checkout this file lives in. `.git` is a directory in a normal
-// clone and a file in a worktree, so `existsSync` covers both. Bounded so a
-// detached path cannot spin.
-function findCheckoutRoot(startDir) {
-  let dir = startDir;
-  for (let depth = 0; depth < 24; depth += 1) {
-    if (existsSync(join(dir, '.git'))) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-  return null;
 }
 
 /**
@@ -326,69 +301,9 @@ export function resolveConvexSiteUrl(env) {
   return raw ? raw.replace(/\/+$/, '') : '';
 }
 
-export function loadEnvFile(metaUrl, { only } = {}) {
-  // Loading credentials is part of *running* a seeder, never part of importing
-  // one. CI already runs the whole suite with no .env.local present, so staying
-  // inert here just makes local runs match CI instead of hitting production.
-  if (isTestRuntime() && process.env.WM_ALLOW_ENV_LOAD_IN_TESTS !== '1') {
-    // Under a real test runner this is the expected path and would be pure
-    // noise across 150+ seeder imports. NODE_ENV=test with no runner marker is
-    // a person running a seeder in a shell that exports it, where silently
-    // ignoring a .env.local that IS present reads as "my credentials vanished".
-    if (process.env.NODE_ENV === 'test' && !TEST_RUNTIME_MARKERS.some((k) => process.env[k])) {
-      console.error(
-        '[seed] loadEnvFile skipped: NODE_ENV=test looks like a test runtime. ' +
-          'Set WM_ALLOW_ENV_LOAD_IN_TESTS=1 to load credentials anyway.',
-      );
-    }
-    return;
-  }
-
-  const __dirname = metaUrl ? dirname(fileURLToPath(metaUrl)) : process.cwd();
-  const candidates = [];
-  // Explicit opt-in for checkouts that deliberately borrow another env file.
-  // Replaces the old hardcoded $HOME/Documents/GitHub/worldmonitor candidate,
-  // which reached out of whichever worktree the seeder lived in and so made
-  // worktree isolation ineffective by design.
-  if (process.env.WM_SEED_ENV_FILE) {
-    // Falling through to the checkout file on a typo would silently seed with
-    // the wrong credentials — the failure mode this whole change is about.
-    if (!existsSync(process.env.WM_SEED_ENV_FILE)) {
-      console.error(
-        `[seed] WM_SEED_ENV_FILE does not exist: ${process.env.WM_SEED_ENV_FILE} — ` +
-          'falling back to the checkout .env.local.',
-      );
-    }
-    candidates.push(process.env.WM_SEED_ENV_FILE);
-  }
-  // Anchored to the checkout root rather than guessed with `..` and `../..`.
-  // The old pair had to guess because a nested `scripts/<dir>/x.mjs` needs two
-  // levels while a top-level seeder needs one — but `../..` from a top-level
-  // seeder lands OUTSIDE the checkout, and it really did load a `.env.local`
-  // sitting next to the repo. Resolving the root makes both depths correct and
-  // neither of them able to escape.
-  const checkoutRoot = findCheckoutRoot(__dirname);
-  // No VCS metadata means a container image, where env comes from the platform
-  // and the only sane guess is the directory above the script.
-  candidates.push(join(checkoutRoot ?? join(__dirname, '..'), '.env.local'));
-  for (const envPath of candidates) {
-    if (!existsSync(envPath)) continue;
-    const lines = readFileSync(envPath, 'utf8').split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const eqIdx = trimmed.indexOf('=');
-      if (eqIdx === -1) continue;
-      const key = trimmed.slice(0, eqIdx).trim();
-      if (only && !only.includes(key)) continue;
-      let val = trimmed.slice(eqIdx + 1).trim();
-      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-        val = val.slice(1, -1);
-      }
-      if (!process.env[key]) process.env[key] = val;
-    }
-    return;
-  }
+// The commit a seeder was deployed from: Railway, then Vercel, then Actions.
+export function getDeployRevision(env = process.env) {
+  return env.RAILWAY_GIT_COMMIT_SHA || env.VERCEL_GIT_COMMIT_SHA || env.GITHUB_SHA || '';
 }
 
 export function maskToken(token) {
@@ -500,7 +415,7 @@ async function redisGet(url, token, key, options = {}) {
   // mode, passes through legacy (bare-shape) values unchanged. Fixes WoW/cross-
   // seed reads that were silently getting `{_seed, data}` after PR 2a enveloped
   // the writer side of 91 canonical keys.
-  return unwrapEnvelope(JSON.parse(data.result)).data;
+  return unwrapEnvelope(parseStoredSeedJson(data.result)).data;
 }
 
 async function redisSet(url, token, key, value, ttlSeconds) {
@@ -590,10 +505,19 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
   const payloadValue = options.envelopeMeta && shouldEnvelopeKey(canonicalKey)
     ? buildEnvelope({ ...options.envelopeMeta, data })
     : data;
-  const payload = JSON.stringify(payloadValue);
+  const json = JSON.stringify(payloadValue);
+  // Readers stop inflating at MAX_DECODED_PAYLOAD_BYTES; never publish what they cannot read.
+  if (options.compressPayload && Buffer.byteLength(json, 'utf8') > MAX_DECODED_PAYLOAD_BYTES) {
+    throw new Error(`Payload too large: ${(Buffer.byteLength(json, 'utf8') / 1024 / 1024).toFixed(1)}MB decoded > ${MAX_DECODED_PAYLOAD_BYTES / 1024 / 1024}MB decode limit`);
+  }
+  const payload = options.compressPayload ? encodeGzipPayload(json) : json;
   const payloadBytes = Buffer.byteLength(payload, 'utf8');
-  if (payloadBytes > MAX_PAYLOAD_BYTES) {
-    throw new Error(`Payload too large: ${(payloadBytes / 1024 / 1024).toFixed(1)}MB > 5MB limit`);
+  const maxPayloadBytes = options.maxPayloadBytes ?? MAX_PAYLOAD_BYTES;
+  if (!Number.isSafeInteger(maxPayloadBytes) || maxPayloadBytes < 1 || maxPayloadBytes > MAX_SEEDED_VALUE_BYTES) {
+    throw new Error(`Invalid maxPayloadBytes: expected an integer from 1 to ${MAX_SEEDED_VALUE_BYTES}`);
+  }
+  if (payloadBytes > maxPayloadBytes) {
+    throw new Error(`Payload too large: ${(payloadBytes / 1024 / 1024).toFixed(1)}MB > ${maxPayloadBytes / 1024 / 1024}MB limit`);
   }
 
   // Retry the entire 3-call publish unit on transient Upstash failures.
@@ -623,16 +547,26 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
 
       const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const stagingKey = `${canonicalKey}:staging:${runId}`;
+      const canonicalCommand = ttlSeconds
+        ? ['SET', canonicalKey, payload, 'EX', ttlSeconds]
+        : ['SET', canonicalKey, payload];
+      if (maxPayloadBytes > MAX_PAYLOAD_BYTES) {
+        const requestBytes = Math.max(
+          Buffer.byteLength(JSON.stringify(canonicalCommand), 'utf8'),
+          Buffer.byteLength(JSON.stringify(['SET', stagingKey, payload, 'EX', 300]), 'utf8'),
+        );
+        if (requestBytes > MAX_REDIS_REQUEST_BYTES) {
+          const error = new Error(`Redis publish request too large: ${requestBytes} bytes > ${MAX_REDIS_REQUEST_BYTES}-byte limit`);
+          error.nonRetryable = true;
+          throw error;
+        }
+      }
 
       // Write to staging key
-      await redisSet(url, token, stagingKey, payloadValue, 300); // 5 min staging TTL
+      await redisCommand(url, token, ['SET', stagingKey, payload, 'EX', 300]); // 5 min staging TTL
 
       // Overwrite canonical key
-      if (ttlSeconds) {
-        await redisCommand(url, token, ['SET', canonicalKey, payload, 'EX', ttlSeconds]);
-      } else {
-        await redisCommand(url, token, ['SET', canonicalKey, payload]);
-      }
+      await redisCommand(url, token, canonicalCommand);
 
       // Cleanup staging
       await redisDel(url, token, stagingKey).catch(() => {});
@@ -814,7 +748,7 @@ export async function readCanonicalEnvelopeMeta(canonicalKey) {
     }, 2, 1000);
     if (!data || !data.result) return null;
     let parsed;
-    try { parsed = JSON.parse(data.result); } catch { return null; }
+    try { parsed = parseStoredSeedJson(data.result); } catch { return null; }
     if (!parsed || typeof parsed !== 'object') return null;
     const seed = parsed._seed;
     if (!seed || typeof seed !== 'object') return null;
@@ -860,6 +794,34 @@ export const PERMANENT_4XX_STATUSES = new Set([400, 401, 403, 404, 410, 413, 422
 // generic crash.
 export const GRACEFUL_FETCH_FAILURE_EXIT_CODE = 75;
 
+/**
+ * Tag a fetch error as an upstream outage the seeder may ride out on last-good
+ * data. Only tagged errors are eligible for runSeed's
+ * allowPreservedFetchFailure exit-0 path; configuration errors and code bugs
+ * stay untagged and keep exiting 75 so Railway still surfaces them.
+ *
+ * @param {Error} err
+ * @returns {Error}
+ */
+export function markPreservableFetchFailure(err) {
+  err.preservableFetchFailure = true;
+  return err;
+}
+
+// Age in minutes of the retained seed-meta, or null when it cannot be read or
+// trusted. Callers treat null as "not fresh" so an unreadable meta fails closed.
+async function readSeedMetaAgeMin(metaKey) {
+  try {
+    const meta = await readCanonicalValue(metaKey);
+    const fetchedAt = meta?.fetchedAt;
+    if (typeof fetchedAt !== 'number' || !Number.isFinite(fetchedAt)) return null;
+    const ageMin = (Date.now() - fetchedAt) / 60_000;
+    return ageMin >= 0 ? ageMin : null;
+  } catch {
+    return null;
+  }
+}
+
 // #6396: the seeder fetched its data but its coverage gate refused to publish
 // (and preserved the last-good TTL instead). Distinct from EX_TEMPFAIL so the
 // bundle runner can report PUBLISH_BLOCKED rather than OK for a section whose
@@ -887,7 +849,7 @@ export function parseRetryAfterMs(value) {
  * The cap exists so a stuck header cannot park a bundle past its timeout — it
  * bounds how long we SLEEP. But it also erases how far out the server actually
  * pushed us, and that magnitude is exactly what tells us a retry is pointless:
- * groq's daily-quota 429 asks for 1213s, which the cap flattens to 60s. Judging
+ * a provider's daily-quota 429 asked for 1213s, which the cap flattens to 60s. Judging
  * futility on the capped value silently reinstates the bug for any caller whose
  * remaining budget is >= 60s.
  *
@@ -979,7 +941,7 @@ export function isRetryableHttpStatus(status) {
  *     aborts the whole provider waterfall rather than failing over.
  *
  * Why the verdict matters — production, seed-insights 2026-08-03 12:10Z/12:20Z:
- * groq answered 429 with "tokens per day (TPD): Limit 100000, Used 100000 …
+ * a provider answered 429 with "tokens per day (TPD): Limit 100000, Used 100000 …
  * try again in 20m13.92s". That 1213s hint was clamped to the 10s ceiling and
  * retried twice, spending 20s of a 60s LLM budget (and of a 120s seed lock) on
  * a daily quota that could not reset for another 20 minutes. Those cycles ran
@@ -999,7 +961,7 @@ export function httpRetryError(resp, { maxRetryAfterMs, capMs, remainingBudgetMs
     // answers "how long may we sleep", never "is sleeping worth anything". Only
     // the uncapped hint carries the magnitude that settles that, and comparing
     // the capped value instead would reinstate this very bug for any caller
-    // whose budget is >= MAX_RETRY_AFTER_MS (groq's 1213s reads as 60s there).
+    // whose budget is >= MAX_RETRY_AFTER_MS (a 1213s hint reads as 60s there).
     // `>=`: equality is futile for waterfall callers. Sleeping a hint that
     // equals the remaining budget spends the whole remainder; the next
     // withRetry attempt hits usableBudgetMs() <= 0 → createLlmBudgetError and
@@ -1454,7 +1416,10 @@ export function curlFetch(
   const curlTimeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
   const args = ['-sS', '--compressed', '--max-time', String(curlTimeoutSeconds), '-L'];
   if (proxyAuth) {
-    const proxyUrl = /^https?:\/\//i.test(proxyAuth) ? proxyAuth : `http://${proxyAuth}`;
+    const proxyUrl = /^https?:\/\//i.test(proxyAuth) ? proxyAuth : `https://${proxyAuth}`;
+    if (/^http:\/\//i.test(proxyUrl) && process.env.PROXY_ALLOW_INSECURE_HTTP !== '1') {
+      throw new Error('Plain HTTP curl proxies require PROXY_ALLOW_INSECURE_HTTP=1');
+    }
     args.push('-x', proxyUrl);
   }
   for (const [k, v] of Object.entries(headers)) args.push('-H', `${k}: ${v}`);
@@ -1503,12 +1468,19 @@ async function httpsProxyFetchJson(url, proxyAuth, proxyAttempt = 0) {
   return JSON.parse(buffer.toString('utf8'));
 }
 
-export async function httpsProxyFetchRaw(url, proxyAuth, { accept = '*/*', timeoutMs = 20_000, signal, proxyAttempt = 0 } = {}) {
+// `headers` are forwarded to the origin (e.g. an API subscription key); the
+// shared User-Agent is applied unless a caller sets its own.
+export async function httpsProxyFetchRaw(url, proxyAuth, {
+  accept = '*/*', timeoutMs = 20_000, signal, proxyAttempt = 0, headers = {}, onErrorResponse, maxResponseBytes,
+} = {}) {
   const { proxyFetch, parseProxyConfigForAttempt } = createRequire(import.meta.url)('./_proxy-utils.cjs');
   const proxyConfig = parseProxyConfigForAttempt(proxyAuth, proxyAttempt);
   if (!proxyConfig) throw new Error('Invalid proxy auth string');
-  const result = await proxyFetch(url, proxyConfig, { accept, timeoutMs, signal, headers: { 'User-Agent': CHROME_UA } });
-  if (!result.ok) throw Object.assign(new Error(`HTTP ${result.status}`), { status: result.status });
+  const result = await proxyFetch(url, proxyConfig, { accept, timeoutMs, signal, maxResponseBytes, headers: { 'User-Agent': CHROME_UA, ...headers } });
+  if (!result.ok) {
+    onErrorResponse?.(result);
+    throw Object.assign(new Error(`HTTP ${result.status}`), { status: result.status });
+  }
   return { buffer: result.buffer, contentType: result.contentType };
 }
 
@@ -1523,7 +1495,7 @@ export async function httpsProxyFetchRaw(url, proxyAuth, { accept = '*/*', timeo
 // datacenter IP gets rate-limited/blocked on → the whole batch fails. Exported
 // for unit testing (the proxy fetch itself is network-bound and not injectable).
 export function isTransientProxyError(message) {
-  return /HTTP 5\d{2}|522|timeout|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|EPIPE|socket (disconnected|hang up)|TLS connection|tls_get_more_records|packet length too long|SSL routines|secure TLS connection/i.test(message || '');
+  return /HTTP(?:\/1\.[01])? 5\d{2}|522|timeout|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|EPIPE|socket (disconnected|hang up)|TLS connection|tls_get_more_records|packet length too long|SSL routines|secure TLS connection/i.test(message || '');
 }
 
 // Whether the ORIGIN refused this particular egress IP — a failure that a
@@ -1569,6 +1541,18 @@ export function isExitRefusalError(error) {
 
 const FRED_JSON_HEADERS = { Accept: 'application/json', 'User-Agent': CHROME_UA };
 
+function throwIfFredMaintenance(body, contentType) {
+  if (/\btext\/html\b/i.test(contentType || '')
+    && /<h1[^>]*>\s*We(?:['\u2019]ll| will) be back soon!?\s*<\/h1>/i.test(body)) {
+    throw markPreservableFetchFailure(new Error('FRED API is under maintenance'));
+  }
+}
+
+function parseFredJson(body, contentType) {
+  throwIfFredMaintenance(body, contentType);
+  return JSON.parse(body);
+}
+
 // FRED's own edge returns sporadic 5xx on individual series. Observed
 // 2026-08-26: four consecutive 24/24 runs, then `FRED T10Y2Y: fetch failed —
 // direct: HTTP 502` and the same for UNRATE, publishing 22/24 — enough to trip
@@ -1595,7 +1579,12 @@ async function fredDirectFetchJson(url) {
   for (let attempt = 1; attempt <= FRED_DIRECT_ATTEMPTS; attempt += 1) {
     try {
       const r = await fetch(url, { headers: FRED_JSON_HEADERS, signal: AbortSignal.timeout(20_000) });
-      if (r.ok) return await r.json();
+      if (r.ok) {
+        if (/\btext\/html\b/i.test(r.headers?.get?.('content-type') || '')) {
+          return parseFredJson(await r.text(), r.headers.get('content-type'));
+        }
+        return await r.json();
+      }
       throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
     } catch (error) {
       lastError = error;
@@ -1603,6 +1592,7 @@ async function fredDirectFetchJson(url) {
         await new Promise((resolve) => setTimeout(resolve, 350 * attempt + Math.random() * 250));
         continue;
       }
+      if (isRetriableFredStatus(error?.status) || error?.status === 429) markPreservableFetchFailure(error);
       throw error;
     }
   }
@@ -1631,7 +1621,13 @@ export async function fredFetchJson(url, proxyAuth) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       triedExits.push(parseProxyConfigForAttempt(proxyAuth, attempt - 1)?.port ?? '?');
       try {
-        return await httpsProxyFetchJson(url, proxyAuth, attempt - 1);
+        const { buffer, contentType } = await httpsProxyFetchRaw(url, proxyAuth, {
+          accept: 'application/json', proxyAttempt: attempt - 1,
+          onErrorResponse: ({ buffer: errorBody, contentType: errorContentType }) => {
+            throwIfFredMaintenance(errorBody.toString('utf8'), errorContentType);
+          },
+        });
+        return parseFredJson(buffer.toString('utf8'), contentType);
       } catch (proxyErr) {
         lastProxyErr = proxyErr;
         // Two different reasons to try the next exit: the hop broke (transient),
@@ -1650,7 +1646,15 @@ export async function fredFetchJson(url, proxyAuth) {
     try {
       return await fredDirectFetchJson(url);
     } catch (directErr) {
-      throw Object.assign(new Error(`direct: ${directErr.message}`), { cause: directErr });
+      const proxyMaintenance = lastProxyErr?.preservableFetchFailure === true;
+      const connectTimeout = directErr.cause?.code === 'UND_ERR_CONNECT_TIMEOUT';
+      const directMessage = `${directErr.message}${connectTimeout ? ' (UND_ERR_CONNECT_TIMEOUT)' : ''}`;
+      const message = `${proxyMaintenance ? `proxy: ${lastProxyErr.message}; ` : ''}direct: ${directMessage}`;
+      throw Object.assign(new Error(message), {
+        cause: directErr,
+        preservableFetchFailure: directErr.preservableFetchFailure === true
+          || (proxyMaintenance && (directErr.status === 403 || directErr.name === 'TimeoutError' || connectTimeout)),
+      });
     }
   }
   return fredDirectFetchJson(url);
@@ -1738,11 +1742,19 @@ export function normalizeSdmxPeriod(period) {
  * `normalizeSdmxPeriod()` on every period before storing it as a key.
  * See `scripts/seed-gold-cb-reserves.mjs::fetchIrfclMonthlySeries` for the
  * canonical monthly pattern.
+ *
+ * `release` holds the dataset-level PUBLICATION_DATE and UPDATE_DATE of this
+ * one response, as IMF supplied them, or null when absent, malformed or
+ * ambiguous. They are reference metadata, so the request uses
+ * `attributes=all`: `dsd` omits them and `msd` drops the series attributes.
+ * Neither date names a WEO edition.
+ *
+ * @returns {Promise<{ values: Record<string, Record<string, number>>, release: { publishedAt: string|null, updatedAt: string|null } }>}
  */
-export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years } = {}) {
+export async function imfSdmxFetchIndicatorWithRelease(indicator, { database = 'WEO', years } = {}) {
   const agencyMap = { WEO: 'IMF.RES', FM: 'IMF.FAD' };
   const agency = agencyMap[database] || 'IMF.RES';
-  const url = `${IMF_SDMX_BASE}/data/dataflow/${agency}/${database}/+/*.${indicator}.A?dimensionAtObservation=TIME_PERIOD&attributes=dsd&measures=all`;
+  const url = `${IMF_SDMX_BASE}/data/dataflow/${agency}/${database}/+/*.${indicator}.A?dimensionAtObservation=TIME_PERIOD&attributes=all&measures=all`;
 
   const json = await withRetry(async () => {
     const r = await fetch(url, {
@@ -1762,14 +1774,18 @@ export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years
     return r.json();
   }, 2, 2000);
 
-  const struct = json?.data?.structures?.[0];
   const ds = json?.data?.dataSets?.[0];
-  if (!struct || !ds?.series) return {};
+  const struct = json?.data?.structures?.[Number.isInteger(ds?.structure) ? ds.structure : 0];
+  const release = {
+    publishedAt: imfDatasetDate(struct, ds, 'PUBLICATION_DATE'),
+    updatedAt: imfDatasetDate(struct, ds, 'UPDATE_DATE'),
+  };
+  if (!struct || !ds?.series) return { values: {}, release };
 
   const countryDim = struct.dimensions.series.find(d => d.id === 'COUNTRY');
   const countryDimPos = struct.dimensions.series.findIndex(d => d.id === 'COUNTRY');
   const timeDim = struct.dimensions.observation.find(d => d.id === 'TIME_PERIOD');
-  if (!countryDim || countryDimPos === -1 || !timeDim) return {};
+  if (!countryDim || countryDimPos === -1 || !timeDim) return { values: {}, release };
 
   const countryValues = countryDim.values.map(v => v.id);
   const timeValues = timeDim.values.map(v => v.value || v.id);
@@ -1791,7 +1807,35 @@ export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years
     }
     if (Object.keys(byYear).length > 0) result[iso3] = byYear;
   }
-  return result;
+  return { values: result, release };
+}
+
+export async function imfSdmxFetchIndicator(indicator, options) {
+  return (await imfSdmxFetchIndicatorWithRelease(indicator, options)).values;
+}
+
+const IMF_RELEASE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(?:T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)?)?$/;
+
+function imfDatasetDate(struct, ds, id) {
+  const descriptors = struct?.attributes?.dataSet;
+  if (!Array.isArray(descriptors)) return null;
+  const positions = descriptors.flatMap((d, i) => (d?.id === id ? [i] : []));
+  if (positions.length !== 1) return null;
+  let value = ds?.attributes?.[positions[0]];
+  if (Array.isArray(value)) {
+    if (value.length !== 1) return null;
+    [value] = value;
+  }
+  if (Number.isInteger(value)) {
+    const coded = descriptors[positions[0]].values?.[value];
+    value = coded?.value ?? coded?.id;
+  }
+  if (typeof value !== 'string') return null;
+  const match = IMF_RELEASE_DATE_RE.exec(value);
+  if (!match) return null;
+  const [y, m, d] = match.slice(1, 4).map(Number);
+  const day = new Date(Date.UTC(y, m - 1, d));
+  return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d ? value : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -2109,7 +2153,7 @@ export async function readSeedSnapshot(
     if (!strict && !result) return null;
     let parsed;
     try {
-      parsed = JSON.parse(result);
+      parsed = parseStoredSeedJson(result);
     } catch (cause) {
       if (strict) {
         throw Object.assign(new Error('Redis snapshot read returned malformed stored JSON'), { cause });
@@ -2250,7 +2294,12 @@ export function finiteObservation(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-export function parseYahooChart(data, symbol) {
+/**
+ * `previousClose` replaces the chart's own. fetchYahooQuoteChart passes the
+ * last completed session's when Yahoo has rolled the chart to a session that
+ * has not traded, where the chart's own equals the price.
+ */
+export function parseYahooChart(data, symbol, { previousClose = null } = {}) {
   const result = data?.chart?.result?.[0];
   const meta = result?.meta;
   if (!meta) return null;
@@ -2261,7 +2310,7 @@ export function parseYahooChart(data, symbol) {
   if (price == null) return null;
   // A zero previous close makes the percentage change infinite, so it is
   // treated as unusable here exactly as the previous `||` chain did.
-  const prevClose = [meta.chartPreviousClose, meta.previousClose]
+  const prevClose = [previousClose, meta.chartPreviousClose, meta.previousClose]
     .map(finiteObservation)
     .find(value => value != null && value !== 0) ?? price;
   const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
@@ -2439,18 +2488,35 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   const {
     validateFn,
     ttlSeconds,
+    maxPayloadBytes,
     lockTtlMs = 120_000,
     lockAcquireRetries = 2,
     extraKeys,
     // Keys written outside runSeed's normal extra-key phase that still need
     // last-good TTL protection when the primary fetch fails or is skipped.
     preserveKeys = [],
+    // Some sources must keep their original absolute expiry after a failed
+    // refresh. Opt out of renewal without changing the stored value or clock.
+    extendTtlOnFailure = true,
     // Opt-in companion keys whose write TTL differs from the canonical key.
     // Each declaration is preserved at its own TTL; preserveKeys keeps its
     // existing canonical-TTL behavior for backward compatibility.
     preserveKeyTtls = [],
+    // Standalone-cron exit policy. Railway shows exit 75 as a crash, so a
+    // seeder that can serve last-good through a short upstream outage may opt
+    // in to exit 0 on a fetch failure. All of these must hold, else it exits 75:
+    //   - the error is tagged with markPreservableFetchFailure() (an upstream
+    //     outage, never a missing credential or a code bug);
+    //   - Redis confirms the canonical key and seed-meta TTLs were extended;
+    //   - seed-meta fetchedAt is within maxStaleMin, so a chronic outage goes
+    //     back to exit 75 once health would call the data stale;
+    //   - the run is standalone. Under _bundle-runner exit 0 means "keys were
+    //     written" (#6396), so bundle members always keep exit 75.
+    // Requires maxStaleMin. seed-meta is never refreshed on this path.
+    allowPreservedFetchFailure = false,
     beforePublish,
     publishAtomically,
+    compressPayload = false, // store gzip+base64 (see _seed-payload-codec.mjs) when JSON outgrows MAX_PAYLOAD_BYTES
     afterPublish,
     afterValidationSkip,
     afterPreservedValidationSkip,
@@ -2493,6 +2559,12 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   }
   if (afterFreshness && typeof afterFreshness !== 'function') {
     console.error(`  CONTRACT VIOLATION: ${domain}:${resource} afterFreshness must be a function`);
+    process.exit(1);
+  }
+  if (allowPreservedFetchFailure && !(Number.isFinite(opts.maxStaleMin) && opts.maxStaleMin > 0)) {
+    console.error(
+      `  CONTRACT VIOLATION: ${domain}:${resource} allowPreservedFetchFailure requires a positive maxStaleMin`,
+    );
     process.exit(1);
   }
   const bundleCompletionMetaKey = String(process.env[BUNDLE_COMPLETION_META_KEY_ENV] ?? '').trim();
@@ -2592,6 +2664,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   // keeps one Redis pipeline per TTL while allowing explicit declarations to
   // override a key that also appears in the default canonical-TTL cohort.
   const preserveExistingKeys = async (targets) => {
+    if (extendTtlOnFailure === false) return false;
     const ttlByKey = new Map();
     if (targets) {
       for (const target of targets) ttlByKey.set(target.key, target.ttlSeconds);
@@ -2700,9 +2773,12 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     );
   }
   let data;
+  // Absolute wall-clock deadline of the fetch race, for fetchers with optional
+  // work that must stop in time to publish what they already have.
+  const fetchDeadlineAtMs = Date.now() + fetchDeadlineMs;
   try {
     data = await raceFetchDeadline(
-      withRetry(() => fetchFn({ runStartedAtMs: startMs })),
+      withRetry(() => fetchFn({ runId, runStartedAtMs: startMs, fetchDeadlineAtMs })),
       fetchDeadlineMs,
       `${domain}:${resource}`,
     );
@@ -2724,7 +2800,41 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error(`  FETCH FAILED: ${err.message || err}${cause}`);
 
-    await preserveExistingKeys();
+    if (opts.recordInitialFetchFailure === true) {
+      try {
+        const { url, token } = getRedisCredentials();
+        await redisCommand(url, token, ['SET', `seed-meta:${domain}:${resource}`, JSON.stringify({
+          status: 'error', firstFailureAt: startMs, recordCount: 0, runId,
+        }), 'NX']);
+      } catch {
+        console.warn(`  [${domain}:${resource}] initial failure receipt could not be stored`);
+      }
+    }
+
+    const preserved = await preserveExistingKeys();
+
+    if (
+      allowPreservedFetchFailure === true
+      && err?.preservableFetchFailure === true
+      && preserved
+      && sectionTimeoutMs == null
+    ) {
+      const ageMin = await readSeedMetaAgeMin(`seed-meta:${domain}:${resource}`);
+      if (ageMin != null && ageMin <= opts.maxStaleMin) {
+        // Distinct marker: this tick failed, but it is not the exit-75
+        // "Failed gracefully" outcome that log triage counts as a crash.
+        console.log(`\n=== Refresh failed; last-good retained (${Math.round(durationMs)}ms) ===`);
+        console.warn(
+          `  [${domain}:${resource}] last-good is ${Math.round(ageMin)}min old (maxStaleMin ${opts.maxStaleMin}); `
+          + 'exiting 0 without refreshing seed-meta',
+        );
+        await exitAfterTelemetryFlush(0);
+      }
+      console.warn(
+        `  [${domain}:${resource}] last-good age ${ageMin == null ? 'unknown' : `${Math.round(ageMin)}min`} `
+        + `is not within maxStaleMin ${opts.maxStaleMin}; exiting ${GRACEFUL_FETCH_FAILURE_EXIT_CODE}`,
+      );
+    }
 
     console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms) ===`);
     await exitAfterTelemetryFlush(GRACEFUL_FETCH_FAILURE_EXIT_CODE);
@@ -2862,12 +2972,14 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     try {
       publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, {
         envelopeMeta,
+        maxPayloadBytes,
         beforePublish: beforePublish
           ? () => beforePublish(data, { canonicalKey, ttlSeconds, runId })
           : undefined,
         publishAtomically: publishAtomically
           ? (publishContext) => publishAtomically(data, { ...publishContext, runId })
           : undefined,
+        compressPayload,
       });
     } catch (error) {
       // An atomic publisher either switches its complete key cohort or leaves
@@ -3108,16 +3220,22 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           const metaExtra = typeof ek.metaExtra === 'function'
             ? ek.metaExtra(ekData, data)
             : ek.metaExtra;
-          const wroteMeta = await writeSeedMeta(
-            ek.key,
-            ekEnvelope?.recordCount ?? 0,
-            ek.metaKey,
-            // Same data TTL the writeExtraKey above just used, so a long-lived
-            // extra key can't outlive the meta that reports on it.
-            resolveSeedMetaTtl(ek.metaTtlSeconds, ek.ttl || ttlSeconds),
-            ek.coverage,
-            metaExtra,
-          );
+          let wroteMeta = false;
+          try {
+            wroteMeta = await writeSeedMeta(
+              ek.key,
+              ekEnvelope?.recordCount ?? 0,
+              ek.metaKey,
+              // Same data TTL the writeExtraKey above just used, so a long-lived
+              // extra key can't outlive the meta that reports on it.
+              resolveSeedMetaTtl(ek.metaTtlSeconds, ek.ttl || ttlSeconds),
+              ek.coverage,
+              metaExtra,
+            );
+          } catch (err) {
+            if (ek.metaCritical) throw err;
+            console.warn(`  Extra key ${ek.key}: seed-meta ${ek.metaKey} write failed; freshness will age: ${err.message}`);
+          }
           if (!wroteMeta && ek.metaCritical) throw new Error(`Extra key ${ek.key}: seed-meta ${ek.metaKey} write failed`);
         }
       }
@@ -3194,6 +3312,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         ? afterPublishResult.completionState
         : (contractState || 'LEGACY');
     logSeedResult(domain, recordCount, durationMs, {
+      runId,
+      canonicalKey,
+      fetchedAt: envelopeMeta?.fetchedAt ?? meta?.fetchedAt ?? null,
+      ...(contentAgeOptedIn ? { newestItemAt: contentNewestAt, oldestItemAt: contentOldestAt, maxContentAgeMin } : {}),
       payloadBytes,
       contractMode,
       state: completionState,

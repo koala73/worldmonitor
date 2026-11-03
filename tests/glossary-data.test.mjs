@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { GLOSSARY_TERMS, GLOSSARY_CATEGORIES } from '../blog-site/src/data/glossary.ts';
+import { GLOSSARY_TERMS, GLOSSARY_CATEGORIES, PIZZINT_LEVELS } from '../blog-site/src/data/glossary.ts';
 import {
   RESILIENCE_DIMENSION_ORDER,
   RESILIENCE_RETIRED_DIMENSIONS,
@@ -137,5 +137,58 @@ describe('glossary data integrity', () => {
     assert.ok(pizza.metaTitle.length <= 60 && pizza.metaTitle.endsWith('| World Monitor'));
     assert.ok(pizza.metaDescription.length <= 160);
     assert.ok(pizza.learnMore.some((link) => link.href === 'https://www.worldmonitor.app/dashboard'));
+  });
+
+  it('publishes the Pizza Index level table the relay scores against', () => {
+    const algorithms = readFileSync(new URL('../docs/algorithms.mdx', import.meta.url), 'utf8');
+    const documented = {
+      '85 or more': '≥ 85',
+      '70 to 84': '≥ 70 and &lt; 85',
+      '50 to 69': '≥ 50 and &lt; 70',
+      '25 to 49': '≥ 25 and &lt; 50',
+      'under 25': '&lt; 25',
+    };
+    assert.deepEqual(PIZZINT_LEVELS.map((row) => row.level), [1, 2, 3, 4, 5]);
+    for (const row of PIZZINT_LEVELS) {
+      const points = documented[row.points];
+      assert.ok(points, `no documented threshold for "${row.points}"`);
+      const escaped = [points, String(row.level), row.label].map((cell) => cell.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      assert.match(
+        algorithms,
+        new RegExp(`\\|\\s*${escaped[0]}\\s*\\|\\s*${escaped[1]}\\s*\\|\\s*${escaped[2]}\\s*\\|`),
+        `docs/algorithms.mdx has no row for level ${row.level}`,
+      );
+    }
+  });
+
+  it('renders the Pizza Index live reading with the hooks live-tools.js hydrates', () => {
+    const pizza = GLOSSARY_TERMS.find((t) => t.slug === 'pentagon-pizza-index');
+    assert.equal(pizza.liveReading, 'pizzint');
+    assert.deepEqual(
+      GLOSSARY_TERMS.filter((t) => t.liveReading).map((t) => t.slug),
+      ['pentagon-pizza-index'],
+    );
+    const page = readFileSync(new URL('../blog-site/src/pages/glossary/[slug].astro', import.meta.url), 'utf8');
+    const liveTools = readFileSync(new URL('../scripts/crawlable-live-tools.mjs', import.meta.url), 'utf8');
+    for (const hook of [
+      'data-live-pizzint', 'data-live-status', 'data-live-fallback', 'data-live-grid',
+      'data-pizzint-level', 'data-pizzint-label', 'data-pizzint-venues', 'data-live-updated', 'data-live-refresh',
+    ]) {
+      assert.ok(page.includes(hook), `the glossary page lacks ${hook}`);
+      assert.ok(liveTools.includes(`[${hook}]`), `live-tools.js no longer reads ${hook}`);
+    }
+    // The site CSP is strict-dynamic with the static-bootstrap nonce; a script
+    // without it is blocked and the reading never loads.
+    assert.match(page, /<script type="module" is:inline nonce="wm-static-bootstrap" src="\/tools\/live-tools\.js"><\/script>/);
+  });
+
+  it('keeps glossary questions answerable and free of forecast claims', () => {
+    for (const t of GLOSSARY_TERMS) {
+      for (const item of t.faq ?? []) {
+        assert.match(item.question, /\?$/, `${t.slug} question must end with "?"`);
+        assert.ok(item.answer.length >= 60, `${t.slug} answer too thin: ${item.question}`);
+        assert.doesNotMatch(item.answer, /\b(accurately predict|reliable predictor|predicted \d+)/i);
+      }
+    }
   });
 });

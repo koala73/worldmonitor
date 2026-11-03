@@ -92,7 +92,7 @@ describe('handler: _state stripping', () => {
     );
   });
 
-  it('seed stores _state under STATE_KEY (not canonical key)', () => {
+  it('seed stores the full ID baseline separately under STATE_KEY', () => {
     assert.match(
       seedSrc,
       /extraKeys.*STATE_KEY/s,
@@ -197,7 +197,8 @@ describe('sanctions seed: production freshness contract', () => {
       return Number(match[1].replaceAll('_', ''));
     }
 
-    const fetchPhaseTimeoutMs = optionMs('fetchPhaseTimeoutMs');
+    assert.match(seedSrc, /fetchPhaseTimeoutMs: FETCH_PHASE_TIMEOUT_MS,/);
+    const fetchPhaseTimeoutMs = Number(seedSrc.match(/const FETCH_PHASE_TIMEOUT_MS = (\d[\d_]*);/)[1].replaceAll('_', ''));
     const lockTtlMs = optionMs('lockTtlMs');
     assert.ok(fetchPhaseTimeoutMs >= 7 * 60 * 1000,
       'the two serial OFAC source ladders need at least a seven-minute fetch budget');
@@ -333,20 +334,23 @@ describe('listSanctionsPressure typed SEMA behavior', () => {
     assert.equal(response.semaError, undefined);
   });
 
-  it('returns typed defaults for an empty cache and a premium denial', async () => {
+  it('returns typed defaults for an empty cache', async () => {
     const empty = await listSanctionsPressure(premiumContext(), { maxItems: 25 });
     assert.equal(empty.semaCount, 0);
     assert.equal(empty.semaError, undefined);
+  });
 
-    cacheStore.set(REDIS_KEY, cachedPayload({ semaError: 'must not leak' }));
-    const deniedRequest = new Request('https://worldmonitor.test/api/sanctions/v1/list-sanctions-pressure');
-    const denied = await listSanctionsPressure(
-      { request: deniedRequest, pathParams: {}, headers: {} },
+  // The same seed is served anonymously by /api/bootstrap, so the RPC is free
+  // too: a Pro gate here only hid the data from API callers.
+  it('serves anonymous callers the same payload as credentialed callers', async () => {
+    cacheStore.set(REDIS_KEY, cachedPayload());
+    const anonymousRequest = new Request('https://worldmonitor.test/api/sanctions/v1/list-sanctions-pressure');
+    const anonymous = await listSanctionsPressure(
+      { request: anonymousRequest, pathParams: {}, headers: {} },
       { maxItems: 25 },
     );
-    assert.equal(denied.semaCount, 0);
-    assert.equal(denied.semaError, undefined);
-    assert.deepEqual(denied.entries, []);
+    assert.deepEqual(anonymous, await listSanctionsPressure(premiumContext(), { maxItems: 25 }));
+    assert.equal(anonymous.entries.length, 1);
   });
 
   it('returns the unavailable sentinel for a published all-source expiry', async () => {
@@ -358,7 +362,10 @@ describe('listSanctionsPressure typed SEMA behavior', () => {
   });
 
   it('serializes both SEMA fields over the generated RPC route', async () => {
-    cacheStore.set(REDIS_KEY, cachedPayload({ semaCount: 0, semaError: 'SEMA parse failed' }));
+    cacheStore.set(REDIS_KEY, cachedPayload({
+      semaCount: 0, semaError: 'SEMA parse failed',
+      _state: { schemaVersion: 1, population: 'top-12-first-iso2-display-v1', comparison: { from: '1699000000000' } },
+    }));
     const { createSanctionsServiceRoutes } = await import('../src/generated/server/worldmonitor/sanctions/v1/service_server.ts');
     const [route] = createSanctionsServiceRoutes({
       listSanctionsPressure,
@@ -373,6 +380,8 @@ describe('listSanctionsPressure typed SEMA behavior', () => {
     assert.equal(body.semaCount, 0);
     assert.equal(body.semaError, 'SEMA parse failed');
     assert.equal(body.entries[0]?.sourceLists[0], 'SDN');
+    assert.equal(Object.hasOwn(body, '_state'), false);
+    assert.equal(Object.hasOwn(body, 'pressureMetadata'), false);
   });
 });
 

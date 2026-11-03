@@ -31,6 +31,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Best for: Public situational awareness, OSINT research, market/geopolitical context, news monitoring
 - Includes: all registered map layers except the Pro-only Resilience layer, curated feeds backed by observed upstream hosts, country briefs, hotspots, instability scores, chokepoints, cables, cascade analysis, breaking alert pipeline and watchlists
 - Limits: 3 dashboard tabs; free dashboard refresh cadence is typically 5-15 minutes; advanced analyst, digest, API and team workflows require paid plans
+- MCP: 5 cached-data MCP calls/day with a free account; other MCP tools require a paid plan
 
 ## Pro
 
@@ -64,7 +65,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Annual price: $899.99/year
 - Annual savings: about 25 percent versus monthly billing
 - Best for: Developers and teams that want programmatic access to World Monitor intelligence data
-- Includes: REST API access, license / API key creation (the `wm_` key used by the desktop app and API), structured JSON, cache headers, OpenAPI docs, real-time data streams and webhook notifications
+- Includes: the full Pro dashboard for one named user, REST API access, license / API key creation (the `wm_` key used by the desktop app and API), structured JSON, cache headers, OpenAPI docs, real-time data streams and webhook notifications
 - License: Commercial license for your organization — build internal tools and reporting on the data; redistributing it to your own customers requires API Business
 - Starter limit: 1,000 requests/day (REST + MCP combined; a live MCP call counts as 2-3)
 - Starter webhooks: 5 webhook rules
@@ -116,7 +117,8 @@ These subscription licenses cover the hosted Service and its outputs. They are s
         "chokepoints",
         "instability scores",
         "watchlists",
-        "3 dashboard tabs"
+        "3 dashboard tabs",
+        "5 cached-data MCP calls/day with a free account"
       ]
     },
     {
@@ -154,6 +156,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
       "price_usd_monthly": 99.99,
       "price_usd_yearly": 899.99,
       "features": [
+        "full Pro dashboard (1 named user)",
         "REST API",
         "license / API key included",
         "1,000 requests/day starter limit (REST + MCP combined; a live MCP call counts as 2-3)",
@@ -161,7 +164,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
         "webhooks",
         "structured JSON",
         "OpenAPI docs",
-        "commercial license — for your organization"
+        "commercial license — internal use in your organization, not customer-facing products"
       ]
     },
     {

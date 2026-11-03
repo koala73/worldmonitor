@@ -1,13 +1,20 @@
 import { normalizePinnedWebcam, normalizePinnedWebcams, normalizePinnedWebcamList, MAX_PINNED_WEBCAMS, MAX_ACTIVE_WEBCAMS, type PinnedWebcam } from '../../../shared/pinned-webcams';
 import { safeStorageSet } from '../../utils/safe-storage';
+import type { CloudPrefsAppliedDetail } from '../../utils/cloud-prefs-sync';
 export type { PinnedWebcam } from '../../../shared/pinned-webcams';
 
 const STORAGE_KEY = 'wm-pinned-webcams';
 const CHANGE_EVENT = 'wm-pinned-webcams-changed';
+// Mirrors CLOUD_PREFS_APPLIED_EVENT; importing the value would pull clerk and feeds into this store.
+const CLOUD_PREFS_APPLIED_EVENT = 'wm:cloud-prefs-applied';
 const MAX_ACTIVE = MAX_ACTIVE_WEBCAMS;
 
 let _cachedList: PinnedWebcam[] | null = null;
 let _cacheFrame: number | null = null;
+
+function invalidateCache(): void {
+  _cachedList = null;
+}
 
 function load(): PinnedWebcam[] {
   if (_cachedList !== null) return _cachedList;
@@ -61,9 +68,62 @@ export function isPinned(webcamId: string): boolean {
   return load().some(w => w.webcamId === webcamId);
 }
 
+export type WebcamPinState = 'unpinned' | 'hidden' | 'active';
+
+const WEBCAM_PIN_BUTTON_LABEL: Record<WebcamPinState, string> = {
+  unpinned: '\u{1F4CC} Pin',
+  hidden: '\u{1F4CC} Turn back on',
+  active: '\u{1F4CC} Pinned',
+};
+
+export function getWebcamPinState(webcamId: string): WebcamPinState {
+  const match = load().find(w => w.webcamId === webcamId);
+  if (!match) return 'unpinned';
+  return match.active ? 'active' : 'hidden';
+}
+
+export function mountWebcamPinButton(
+  details: () => Omit<PinnedWebcam, 'active' | 'pinnedAt'>,
+): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.className = 'webcam-pin-btn';
+  const paint = () => {
+    const state = getWebcamPinState(details().webcamId);
+    button.disabled = state === 'active';
+    button.classList.toggle('webcam-pin-btn--pinned', state === 'active');
+    button.textContent = WEBCAM_PIN_BUTTON_LABEL[state];
+  };
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const target = details();
+    if (getWebcamPinState(target.webcamId) === 'active') return;
+    pinWebcam(target);
+    paint();
+  });
+  paint();
+  return button;
+}
+
+function activateWithinSlotLimit(list: PinnedWebcam[], target: PinnedWebcam): boolean {
+  if (target.active) return false;
+  const activeList = list
+    .filter(w => w.active)
+    .sort((a, b) => a.pinnedAt - b.pinnedAt);
+  if (activeList.length >= MAX_ACTIVE && activeList[0]) {
+    activeList[0].active = false;
+  }
+  target.active = true;
+  return true;
+}
+
 export function pinWebcam(webcam: Omit<PinnedWebcam, 'active' | 'pinnedAt'>): void {
   const list = load();
-  if (list.some(w => w.webcamId === webcam.webcamId)) return;
+  const existing = list.find(w => w.webcamId === webcam.webcamId);
+  if (existing) {
+    if (!activateWithinSlotLimit(list, existing)) return;
+    save(list);
+    return;
+  }
   if (list.length >= MAX_PINNED_WEBCAMS) {
     showToast(`You can pin up to ${MAX_PINNED_WEBCAMS} webcams`);
     return;
@@ -92,22 +152,33 @@ export function toggleWebcam(webcamId: string): void {
   const list = load();
   const target = list.find(w => w.webcamId === webcamId);
   if (!target) return;
-  if (!target.active) {
-    const activeList = list
-      .filter(w => w.active)
-      .sort((a, b) => a.pinnedAt - b.pinnedAt);
-    if (activeList.length >= MAX_ACTIVE && activeList[0]) {
-      activeList[0].active = false;
-    }
-    target.active = true;
-  } else {
-    target.active = false;
-  }
+  if (!target.active) activateWithinSlotLimit(list, target);
+  else target.active = false;
   save(list);
 }
 
 export function onPinnedChange(handler: () => void): () => void {
   const wrapped = () => handler();
+  // Another tab wrote the list, or cleared storage (key === null).
+  const onStorage = (e: StorageEvent) => {
+    if (e.storageArea !== localStorage) return;
+    if (e.key !== null && e.key !== STORAGE_KEY) return;
+    invalidateCache();
+    handler();
+  };
+  // Cloud sign-in, merge or undo-restore rewrote the list in this tab.
+  const onCloudApplied = (e: Event) => {
+    const keys = (e as CustomEvent<CloudPrefsAppliedDetail>).detail?.keys;
+    if (!keys?.includes(STORAGE_KEY)) return;
+    invalidateCache();
+    handler();
+  };
   window.addEventListener(CHANGE_EVENT, wrapped);
-  return () => window.removeEventListener(CHANGE_EVENT, wrapped);
+  window.addEventListener('storage', onStorage);
+  window.addEventListener(CLOUD_PREFS_APPLIED_EVENT, onCloudApplied);
+  return () => {
+    window.removeEventListener(CHANGE_EVENT, wrapped);
+    window.removeEventListener('storage', onStorage);
+    window.removeEventListener(CLOUD_PREFS_APPLIED_EVENT, onCloudApplied);
+  };
 }

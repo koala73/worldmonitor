@@ -10,7 +10,7 @@ test.describe('Deduct Situation Panel Options', () => {
                 const json = {
                     analysis: '### Mocked AI Analysis\n- This is a simulated response.\n- Situation is stable.',
                     model: 'mocked-e2e-model',
-                    provider: 'groq',
+                    provider: 'openrouter',
                 };
                 await route.fulfill({ json });
             });

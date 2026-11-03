@@ -1,3 +1,5 @@
+> **Superseded (2026-09).** This matrix predates the sebuf gateway split and cites files that no longer exist (the `api/[[...path]].js` catch-all was removed in #785; the route counts are stale). It is kept for history only. The maintained desktop route-coverage baseline is [`docs/desktop-parity-matrix.md`](./desktop-parity-matrix.md) (#5902).
+
 # Local backend parity matrix (desktop sidecar)
 
 This matrix tracks desktop parity by mapping `src/services/*.ts` consumers to sebuf domain handlers and classifying each feature as:
@@ -26,7 +28,7 @@ Remaining non-sebuf `api/*.js` files serve non-JSON content (RSS XML, HTML, redi
 | P1 | MonitorPanel | _None (panel-local keyword matching)_ | _None_ | _None_ | Fully local | ✅ Client-side only (no backend dependency). |
 | P1 | StrategicRiskPanel cached overlays | `src/services/cached-risk-scores.ts` | intelligence | `server/worldmonitor/intelligence/v1/` | Requires user-provided API key | ✅ Explicit fallback: panel continues with local aggregate scoring when cache feed is unavailable. |
 | P1 | Map layers (conflicts, outages, AIS, military flights) | `src/services/conflict/`, `src/services/infrastructure/`, `src/services/maritime/`, `src/services/military/` | conflict, infrastructure, maritime, military | `server/worldmonitor/{domain}/v1/` | Requires user-provided API key | ✅ Explicit fallback: unavailable feeds are disabled while map rendering remains active for local/static layers. |
-| P2 | Summaries | `src/services/news/` | news | `server/worldmonitor/news/v1/` | Requires user-provided API key | ✅ Explicit fallback chain: Groq → OpenRouter → browser model. |
+| P2 | Summaries | `src/services/news/` | news | `server/worldmonitor/news/v1/` | Requires user-provided API key | ✅ Explicit fallback chain: Ollama → OpenRouter → browser model. |
 | P2 | MarketPanel | `src/services/market/`, `src/services/prediction/` | market, prediction | `server/worldmonitor/market/v1/`, `server/worldmonitor/prediction/v1/` | Fully local | ✅ Multi-provider and cache-aware fetch behavior maintained in sidecar mode. |
 | P3 | Flight enrichment | `src/services/military/` | military | `server/worldmonitor/military/v1/` | Requires user-provided API key | ✅ Explicit fallback: heuristic-only classification mode. |
 | P3 | OpenSky relay fallback path | `src/services/military/` | military | `server/worldmonitor/military/v1/` | Requires cloud fallback | ✅ Relay fallback documented; no hard failure when relay is unavailable. |

@@ -2,33 +2,27 @@ import { describe, expect, it } from 'vitest';
 import { mapImdSnapshot } from '@/services/imd-cyclone-marine';
 import { readFileSync } from 'node:fs';
 // @ts-expect-error The producer is a JavaScript worker module.
-import { assembleImdSnapshot, parseCycloneTrackPayload, parseCycloneWindPayload, parseCycloneCouPayload, parsePortWarningPayload, parseSeaBulletinPayload, parseCoastalBulletinPayload } from '../../scripts/lib/imd-cyclone-marine.mjs';
+import { IMD_BULLETIN_PRODUCT_IDS, IMD_PRODUCTS, assembleImdSnapshot, parseImdBulletinHtml } from '../../scripts/lib/imd-cyclone-marine.mjs';
 
 describe('IMD snapshot boundary', () => {
   it('preserves the real producer fixtures through JSON transport and browser mapping', () => {
-    const fixture = (name: string) => JSON.parse(readFileSync(`tests/fixtures/imd-${name}.json`, 'utf8'));
-    const raw = assembleImdSnapshot({
-      now: Date.parse('2019-11-06T00:00:00Z'),
-      productResults: {
-        cycloneTrack: { status: 'ok', records: parseCycloneTrackPayload(fixture('cyclone-track')) },
-        cycloneWind: { status: 'ok', records: parseCycloneWindPayload(fixture('cyclone-wind')) },
-        cycloneCou: { status: 'ok', records: parseCycloneCouPayload(fixture('cyclone-cou')) },
-        portWarning: { status: 'ok', records: parsePortWarningPayload(fixture('port-warning')) },
-        seaBulletin: { status: 'ok', records: parseSeaBulletinPayload(fixture('sea-bulletin')) },
-        coastalBulletin: { status: 'ok', records: parseCoastalBulletinPayload(fixture('coastal-bulletin')) },
-      },
-    });
+    const pageResults = Object.fromEntries(IMD_BULLETIN_PRODUCT_IDS.map((id: string) => [id, Object.fromEntries(
+      IMD_PRODUCTS[id].pages.map((page: { key: string }) => [page.key, {
+        status: 'parsed',
+        bulletin: parseImdBulletinHtml(readFileSync(`tests/fixtures/imd/${id}-${page.key}.html`, 'utf8'), id),
+      }]),
+    )]));
+    const raw = assembleImdSnapshot({ now: Date.parse('2026-10-16T11:00:00Z'), pageResults });
     const mapped = mapImdSnapshot(JSON.parse(JSON.stringify(raw)));
-    expect(mapped.cycloneEvents).toHaveLength(1);
-    expect(mapped.portAlerts).toHaveLength(raw.portAlerts.length);
+    expect(mapped.coverageState).toBe('ok');
+    expect(mapped.cycloneEvents).toEqual([]);
+    expect(mapped.portAlerts).toEqual([]);
     expect(mapped.marineBulletins).toHaveLength(raw.marineBulletins.length);
-    const event = mapped.cycloneEvents[0]!;
-    for (const field of ['pastTrack', 'forecastTrack', 'conePolygon', 'windRadii', 'agencyObservations'] as const) {
-      expect(event[field]).toEqual(raw.cycloneEvents[0][field]);
-    }
-    expect(event.date.getTime()).toBe(raw.cycloneEvents[0].date);
-    expect(event.sourceUrl).toBe('https://rsmcnewdelhi.imd.gov.in/');
-    expect(mapped.portAlerts[0]?.issuedBy).toBe('ACWC CHENNAI');
+    const andaman = mapped.marineBulletins.find((row) => row.areaDesc === 'Andaman area')!;
+    expect(andaman.severity).toBe('Moderate');
+    expect(andaman.issuedBy).toBe('ACWC KOLKATA');
+    expect(andaman.sourceUrl).toBe('https://mausam.imd.gov.in/Forecast/coastal_bulletin_new.php');
+    expect(andaman.expires.getTime()).toBe(Date.parse('2026-10-16T21:00:00Z'));
   });
   it('rejects malformed product lists and rows without throwing', () => {
     const result = mapImdSnapshot({ cycloneEvents: {}, portAlerts: [null, 5], marineBulletins: 'bad' } as never);

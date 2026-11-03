@@ -8,6 +8,9 @@ import {
   createPairingToken,
   setEmailChannel,
   setWebhookChannel,
+  setTeamsChannel,
+  sendChannelTest,
+  type ChannelOAuthLaunch,
   startSlackOAuth,
   startDiscordOAuth,
   deleteChannel,
@@ -26,6 +29,7 @@ import { hasTier } from '@/services/entitlements';
 import { t } from '@/services/i18n';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
 import { SITE_VARIANT } from '@/config/variant';
+import { CHOKEPOINT_REGISTRY } from '@/config/chokepoint-registry';
 import { mountCountryChipPicker, loadFollowedCountriesSafe, type CountryChipPickerHandle } from '@/utils/country-chip-picker';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
@@ -39,6 +43,8 @@ const DIGEST_CRON_ENABLED = import.meta.env.VITE_DIGEST_CRON_ENABLED !== '0';
 // story's extracted tickers. Enabling the toggle sends the current market
 // watchlist symbols as `tickers`; the watchlist-modal save path re-syncs them.
 const WATCHLIST_STORY_EVENT_TYPE = 'watchlist_story_alert';
+// Opt-in like the watchlist row; scoped by alertRules.chokepoints (#9217).
+const CHOKEPOINT_DISRUPTION_EVENT_TYPE = 'chokepoint_disruption';
 
 export interface NotificationsSettingsHost {
   isSignedIn?: boolean;
@@ -69,6 +75,19 @@ function normalizePreselectCountry(input: string | undefined): string | null {
   const trimmed = input.trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(trimmed)) return null;
   return trimmed;
+}
+
+function submitChannelOAuthForm(popup: Window, launch: ChannelOAuthLaunch): void {
+  const form = popup.document.createElement('form');
+  form.method = 'POST';
+  form.action = launch.browserBinding.url;
+  const input = popup.document.createElement('input');
+  input.type = 'hidden';
+  input.name = 'token';
+  input.value = launch.browserBinding.token;
+  form.appendChild(input);
+  popup.document.body.appendChild(form);
+  form.submit();
 }
 
 function appendNotificationError(rowEl: HTMLElement, message: string): void {
@@ -234,12 +253,13 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (type === 'telegram') return `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>`;
         if (type === 'email') return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>`;
         if (type === 'web_push') return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>`;
+        if (type === 'teams') return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
         if (type === 'webhook') return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
         if (type === 'discord') return `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>`;
         return `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg>`;
       }
 
-      const CHANNEL_LABELS: Record<ChannelType, string> = { telegram: 'Telegram', email: 'Email', slack: 'Slack', discord: 'Discord', webhook: 'Webhook', web_push: 'Browser Push' };
+      const CHANNEL_LABELS: Record<ChannelType, string> = { telegram: 'Telegram', email: 'Email', slack: 'Slack', discord: 'Discord', teams: 'Microsoft Teams', webhook: 'Webhook', web_push: 'Browser Push' };
 
       function renderChannelRow(
         channel: NotificationChannel | null,
@@ -296,8 +316,14 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             sub = escapeHtml(channel.email ?? 'connected');
           } else if (type === 'discord') {
             sub = 'Connected';
+          } else if (type === 'teams') {
+            sub = 'Workflows webhook';
+            manageLink = `<button type="button" class="us-notif-ch-btn" id="usTeamsTest">Send test</button>`;
           } else if (type === 'webhook') {
-            sub = channel.webhookLabel ? escapeHtml(channel.webhookLabel) : 'Connected';
+            const label = channel.webhookLabel ? escapeHtml(channel.webhookLabel) : 'Connected';
+            sub = channel.webhookSigned
+              ? `${label} · Signed`
+              : `${label} · <span class="us-notif-ch-sub-warn" title="Remove this webhook and add it again to get a signing secret.">Unsigned, re-add to sign</span>`;
           } else if (type === 'web_push') {
             sub = escapeHtml(webPushDeviceLabel(channel));
           } else {
@@ -381,6 +407,19 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           </div>`;
         }
 
+        if (type === 'teams') {
+          return `<div class="us-notif-ch-row" data-channel-type="teams">
+            <div class="us-notif-ch-icon">${icon}</div>
+            <div class="us-notif-ch-body">
+              <div class="us-notif-ch-name">${name}</div>
+              <div class="us-notif-ch-sub">Post alert cards to a channel through a Workflows webhook</div>
+            </div>
+            <div class="us-notif-ch-actions">
+              <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary" id="usConnectTeams">Add URL</button>
+            </div>
+          </div>`;
+        }
+
         if (type === 'webhook') {
           return `<div class="us-notif-ch-row" data-channel-type="webhook">
             <div class="us-notif-ch-icon">${icon}</div>
@@ -428,7 +467,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         data: Awaited<ReturnType<typeof getChannelsData>>,
         webPushState: WebPushSettingsState,
       ): string {
-        const channelTypes: ChannelType[] = ['telegram', 'email', 'slack', 'discord', 'webhook', 'web_push'];
+        const channelTypes: ChannelType[] = ['telegram', 'email', 'slack', 'discord', 'teams', 'webhook', 'web_push'];
         const alertRule = data.alertRules?.[0] ?? null;
         const sensitivity = alertRule?.sensitivity ?? 'all';
 
@@ -446,6 +485,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const digestMode = alertRule?.digestMode ?? 'realtime';
         const digestHour = alertRule?.digestHour ?? 8;
         const aiDigestEnabled = alertRule?.aiDigestEnabled ?? true;
+        const chokepointAlertsOn = alertRule?.eventTypes?.includes(CHOKEPOINT_DISRUPTION_EVENT_TYPE) ?? false;
+        const chokepointScope = alertRule?.chokepoints ?? [];
 
         const hourOptions = Array.from({ length: 24 }, (_, h) => {
           const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
@@ -531,6 +572,23 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <span class="ai-flow-slider"></span>
               </label>
             </div>
+            <div class="ai-flow-toggle-row">
+              <div class="ai-flow-toggle-label-wrap">
+                <div class="ai-flow-toggle-label">Chokepoint disruption alerts</div>
+                <div class="ai-flow-toggle-desc">Alert when warnings, AIS disruption or a traffic drop push a shipping chokepoint into the red, well above its usual threat level</div>
+              </div>
+              <label class="ai-flow-switch">
+                <input type="checkbox" id="usChokepointAlerts"${chokepointAlertsOn ? ' checked' : ''}>
+                <span class="ai-flow-slider"></span>
+              </label>
+            </div>
+            <div id="usChokepointScope"${chokepointAlertsOn ? '' : ' hidden'}>
+              <div class="ai-flow-toggle-desc" style="margin-bottom:6px">Pick chokepoints, or leave none selected to cover all of them.</div>
+              <div class="us-notif-country-chips">${CHOKEPOINT_REGISTRY.map((cp) => {
+                const on = chokepointScope.includes(cp.id);
+                return `<button type="button" class="us-notif-country-chip${on ? ' us-notif-country-chip-on' : ''}" data-chokepoint-id="${escapeHtml(cp.id)}" aria-pressed="${on}">${escapeHtml(cp.displayName)}</button>`;
+              }).join('')}</div>
+            </div>
             <div class="ai-flow-section-label" style="margin-top:8px">Quiet Hours</div>
             <div class="ai-flow-toggle-row">
               <div class="ai-flow-toggle-label-wrap">
@@ -583,7 +641,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             </div>
           </div>
           <div class="ai-flow-section-label" style="margin-top:8px">Country scope</div>
-          <div class="ai-flow-toggle-desc" style="margin-bottom:6px">Restrict alerts to specific countries (ISO-3166 alpha-2). Leave empty to receive alerts from all countries. When set, global alerts without a country (markets, shipping) are excluded; breaking-news alerts are still delivered.</div>
+          <div class="ai-flow-toggle-desc" style="margin-bottom:6px">Restrict alerts to specific countries (ISO-3166 alpha-2). Leave empty to receive alerts from all countries. When set, global alerts without a country (markets, shipping stress) are excluded; breaking-news and chokepoint alerts are still delivered.</div>
           <div id="usNotifCountryPicker"></div>
           <div class="ai-flow-section-label" style="margin-top:8px">Timezone</div>
           <select class="unified-settings-select" id="usSharedTimezone" aria-label="Timezone" style="width:100%">${makeTzOptions(sharedTz)}</select>`;
@@ -618,6 +676,17 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       function fireForgetSave(p: Promise<unknown>, label: string): void {
         void p.catch((err) => {
           if (signal.aborted) return;
+          // Legacy set-alert-rules can still hit INCOMPATIBLE_DELIVERY (e.g.
+          // sensitivity save against an existing realtime row). Surface the
+          // server message on the sensitivity hint rather than only logging.
+          if (err instanceof IncompatibleDeliveryError) {
+            const hint = container.querySelector<HTMLElement>('#usSensitivityHint');
+            if (hint) {
+              hint.style.display = '';
+              hint.textContent = err.message;
+            }
+            return;
+          }
           console.warn(`[notifications] ${label} failed (not saved):`, err);
         });
       }
@@ -718,11 +787,13 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         aiDigestEnabled: boolean;
         countries: string[] | undefined;
         tickers: string[];
+        chokepoints: string[];
       } {
         const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
         const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
         const aiDigestEl = container.querySelector<HTMLInputElement>('#usAiDigestEnabled');
         const watchlistEl = container.querySelector<HTMLInputElement>('#usWatchlistAlerts');
+        const chokepointEl = container.querySelector<HTMLInputElement>('#usChokepointAlerts');
         const connectedChannelTypes = Array.from(
           container.querySelectorAll<HTMLElement>('[data-channel-type]'),
         )
@@ -738,14 +809,26 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         // restores the broadcast wildcard ([]) and clears tickers so no
         // stale scope lingers server-side.
         const watchlistOn = watchlistEl?.checked ?? false;
+        // Chokepoint disruption alerts (#9217): same opt-in shape. No chips
+        // selected means every chokepoint; OFF clears the scope.
+        const chokepointOn = chokepointEl?.checked ?? false;
+        const eventTypes = [
+          ...(watchlistOn ? [WATCHLIST_STORY_EVENT_TYPE] : []),
+          ...(chokepointOn ? [CHOKEPOINT_DISRUPTION_EVENT_TYPE] : []),
+        ];
         return {
           enabled: enabledEl?.checked ?? false,
-          eventTypes: watchlistOn ? [WATCHLIST_STORY_EVENT_TYPE] : [],
+          eventTypes,
           sensitivity: (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical',
           channels: connectedChannelTypes,
           aiDigestEnabled: aiDigestEl?.checked ?? true,
           countries: alertRuleCountries,
           tickers: watchlistOn ? getMarketWatchlistEntries().map((e) => e.symbol) : [],
+          chokepoints: chokepointOn
+            ? Array.from(container.querySelectorAll<HTMLElement>('#usChokepointScope .us-notif-country-chip-on'))
+              .map((el) => el.dataset.chokepointId ?? '')
+              .filter(Boolean)
+            : [],
         };
       }
 
@@ -996,7 +1079,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           }, 500);
           return;
         }
-        if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity' || target.id === 'usWatchlistAlerts') {
+        if (target.id === 'usChokepointAlerts') {
+          container.querySelector<HTMLElement>('#usChokepointScope')?.toggleAttribute('hidden', !(target as HTMLInputElement).checked);
+        }
+        if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity' || target.id === 'usWatchlistAlerts' || target.id === 'usChokepointAlerts') {
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => {
             // Source from the centralized helper so `countries` flows through.
@@ -1011,6 +1097,17 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
       container.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
+
+        const chokepointChip = target.closest<HTMLElement>('#usChokepointScope [data-chokepoint-id]');
+        if (chokepointChip) {
+          const on = chokepointChip.classList.toggle('us-notif-country-chip-on');
+          chokepointChip.setAttribute('aria-pressed', String(on));
+          if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
+          alertRuleDebounceTimer = setTimeout(() => {
+            saveCurrentAlertRule();
+          }, 800);
+          return;
+        }
 
         if (target.closest('.us-notif-tg-copy-btn')) {
           const btn = target.closest('.us-notif-tg-copy-btn') as HTMLButtonElement;
@@ -1049,7 +1146,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               <div class="us-notif-ch-icon">${channelIcon('telegram')}</div>
               <div class="us-notif-ch-body">
                 <div class="us-notif-ch-name">Connect Telegram</div>
-                <div class="us-notif-ch-sub">Open the bot. If Telegram doesn't send the code automatically, paste this command.</div>
+                <div class="us-notif-ch-sub us-notif-ch-sub-wrap">Open the bot and tap Confirm when it asks. If Telegram doesn't send the code automatically, paste this command.</div>
                 <div class="us-notif-tg-pair-layout">
                   <div class="us-notif-tg-cmd-col">
                     <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="us-notif-tg-link">Open Telegram</a>
@@ -1134,20 +1231,19 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             slackOAuthPopup.focus();
             return;
           }
+          const popup = window.open('', 'slack-oauth', 'width=600,height=700,menubar=no,toolbar=no');
+          if (!popup) {
+            const rowEl = btn?.closest<HTMLElement>('[data-channel-type="slack"]');
+            if (rowEl) appendNotificationError(rowEl, 'Popup blocked. Allow popups for this site, then try again.');
+            return;
+          }
+          slackOAuthPopup = popup;
           if (btn) btn.textContent = 'Connecting…';
-          startSlackOAuth(signal).then((oauthUrl) => {
-            if (signal.aborted) return;
-            const popup = window.open(oauthUrl, 'slack-oauth', 'width=600,height=700,menubar=no,toolbar=no');
-            if (!popup) {
-              if (btn) btn.textContent = 'Add to Slack';
-              const rowEl = btn?.closest<HTMLElement>('[data-channel-type="slack"]');
-              if (rowEl) {
-                appendNotificationError(rowEl, 'Popup blocked — please allow popups for this site, then try again.');
-              }
-            } else {
-              slackOAuthPopup = popup;
-            }
+          startSlackOAuth(signal).then((launch) => {
+            if (signal.aborted || popup.closed) { popup.close(); return; }
+            submitChannelOAuthForm(popup, launch);
           }).catch(() => {
+            popup.close();
             if (btn && !signal.aborted) btn.textContent = 'Add to Slack';
           });
           return;
@@ -1159,21 +1255,93 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             discordOAuthPopup.focus();
             return;
           }
+          const popup = window.open('', 'discord-oauth', 'width=600,height=700,menubar=no,toolbar=no');
+          if (!popup) {
+            const rowEl = btn?.closest<HTMLElement>('[data-channel-type="discord"]');
+            if (rowEl) appendNotificationError(rowEl, 'Popup blocked. Allow popups for this site, then try again.');
+            return;
+          }
+          discordOAuthPopup = popup;
           if (btn) btn.textContent = 'Connecting…';
-          startDiscordOAuth(signal).then((oauthUrl) => {
-            if (signal.aborted) return;
-            const popup = window.open(oauthUrl, 'discord-oauth', 'width=600,height=700,menubar=no,toolbar=no');
-            if (!popup) {
-              if (btn) btn.textContent = 'Connect Discord';
-              const rowEl = btn?.closest<HTMLElement>('[data-channel-type="discord"]');
-              if (rowEl) {
-                appendNotificationError(rowEl, 'Popup blocked — please allow popups for this site, then try again.');
-              }
-            } else {
-              discordOAuthPopup = popup;
-            }
+          startDiscordOAuth(signal).then((launch) => {
+            if (signal.aborted || popup.closed) { popup.close(); return; }
+            submitChannelOAuthForm(popup, launch);
           }).catch(() => {
+            popup.close();
             if (btn && !signal.aborted) btn.textContent = 'Connect Discord';
+          });
+          return;
+        }
+
+        if (target.closest('#usConnectTeams')) {
+          const rowEl = target.closest<HTMLElement>('[data-channel-type="teams"]');
+          if (!rowEl) return;
+          const actionsEl = rowEl.querySelector<HTMLElement>('.us-notif-ch-actions')!;
+          // The form takes the full row width; the instructions would otherwise
+          // stretch the non-shrinking actions box past the row edge.
+          actionsEl.style.flex = '1 1 100%';
+          actionsEl.style.minWidth = '0';
+          setTrustedHtml(actionsEl, trustedHtml(`
+            <div style="display:flex;flex-direction:column;gap:6px;width:100%">
+              <input type="url" id="usTeamsUrl" placeholder="https://….environment.api.powerplatform.com/powerautomate/…" class="unified-settings-input" style="font-size:12px;width:100%" autocomplete="off">
+              <div class="us-notif-ch-sub us-notif-ch-sub-wrap">In Teams, open the channel's Workflows, choose "Send webhook alerts to a channel", and paste the webhook URL it gives you.</div>
+              <div style="display:flex;gap:6px">
+                <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary" id="usTeamsSave">Save</button>
+                <button type="button" class="us-notif-ch-btn" id="usTeamsCancel">Cancel</button>
+              </div>
+            </div>`, "static Teams webhook form"));
+          rowEl.querySelector<HTMLInputElement>('#usTeamsUrl')?.focus();
+          return;
+        }
+        if (target.closest('#usTeamsSave')) {
+          const rowEl = container.querySelector<HTMLElement>('[data-channel-type="teams"]');
+          const urlInput = container.querySelector<HTMLInputElement>('#usTeamsUrl');
+          const url = urlInput?.value?.trim() ?? '';
+          if (!url || !url.startsWith('https://')) {
+            urlInput?.classList.add('us-notif-input-error');
+            return;
+          }
+          const saveBtn = target.closest<HTMLButtonElement>('#usTeamsSave');
+          if (saveBtn?.disabled) return;
+          if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+          }
+          rowEl?.querySelector('.us-notif-error')?.remove();
+          setTeamsChannel(url, signal).then(() => {
+            if (signal.aborted) return;
+            saveRuleWithNewChannel('teams');
+            reloadNotifSection();
+          }).catch((err: unknown) => {
+            if (signal.aborted) return;
+            urlInput?.classList.add('us-notif-input-error');
+            if (rowEl) appendNotificationError(rowEl, err instanceof Error ? err.message : 'Could not connect Teams. Please try again.');
+            if (saveBtn) {
+              saveBtn.disabled = false;
+              saveBtn.textContent = 'Save';
+            }
+          });
+          return;
+        }
+        if (target.closest('#usTeamsCancel')) {
+          reloadNotifSection();
+          return;
+        }
+        if (target.closest('#usTeamsTest')) {
+          const btn = target.closest<HTMLButtonElement>('#usTeamsTest');
+          const rowEl = container.querySelector<HTMLElement>('[data-channel-type="teams"]');
+          if (!btn || btn.disabled) return;
+          btn.disabled = true;
+          btn.textContent = 'Sending...';
+          rowEl?.querySelector('.us-notif-error')?.remove();
+          sendChannelTest('teams', signal).then(() => {
+            if (signal.aborted) return;
+            btn.textContent = 'Test sent';
+          }).catch((err: unknown) => {
+            if (signal.aborted) return;
+            btn.disabled = false;
+            btn.textContent = 'Send test';
+            if (rowEl) appendNotificationError(rowEl, err instanceof Error ? err.message : 'Could not send a test message. Please try again.');
           });
           return;
         }
@@ -1203,12 +1371,46 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             return;
           }
           const saveBtn = target.closest<HTMLButtonElement>('#usWebhookSave');
-          if (saveBtn) saveBtn.textContent = 'Saving...';
-          setWebhookChannel(url, labelInput?.value?.trim() || undefined, signal).then(() => {
-            if (!signal.aborted) { saveRuleWithNewChannel('webhook'); reloadNotifSection(); }
+          // Each save rotates the secret, so a second in-flight save could
+          // land its response last and show a secret that no longer verifies.
+          if (saveBtn?.disabled) return;
+          if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+          }
+          setWebhookChannel(url, labelInput?.value?.trim() || undefined, signal).then(({ signingSecret }) => {
+            if (signal.aborted) return;
+            saveRuleWithNewChannel('webhook');
+            const rowEl = container.querySelector<HTMLElement>('[data-channel-type="webhook"]');
+            if (!signingSecret || !rowEl) { reloadNotifSection(); return; }
+            // Mark the row connected so a rule save made while the secret is
+            // on screen (getCurrentAlertRuleFormState) keeps the webhook.
+            rowEl.classList.add('us-notif-ch-on');
+            // The secret is shown once; the server keeps only an encrypted copy.
+            setTrustedHtml(rowEl, trustedHtml(`
+              <div class="us-notif-ch-icon">${channelIcon('webhook')}</div>
+              <div class="us-notif-ch-body">
+                <div class="us-notif-ch-name">Webhook signing secret</div>
+                <div class="us-notif-ch-sub us-notif-ch-sub-wrap">Copy it now; it won't be shown again. Verify the X-WM-Signature header on each delivery with it.</div>
+                <div class="us-notif-tg-cmd-row">
+                  <code class="us-notif-tg-cmd" id="usWebhookSecret" style="white-space:normal;word-break:break-all;user-select:all">${escapeHtml(signingSecret)}</code>
+                  <button type="button" class="us-notif-tg-copy-btn" data-cmd="${escapeHtml(signingSecret)}">Copy</button>
+                </div>
+              </div>
+              <div class="us-notif-ch-actions">
+                <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary" id="usWebhookSecretDone">Done</button>
+              </div>
+            `, "webhook signing secret, escaped"));
           }).catch(() => {
-            if (saveBtn && !signal.aborted) saveBtn.textContent = 'Save';
+            if (saveBtn && !signal.aborted) {
+              saveBtn.disabled = false;
+              saveBtn.textContent = 'Save';
+            }
           });
+          return;
+        }
+        if (target.closest('#usWebhookSecretDone')) {
+          reloadNotifSection();
           return;
         }
         if (target.closest('#usWebhookCancel')) {

@@ -51,6 +51,60 @@ it('publishes the country observations and coverage index in the same atomic see
   }
 });
 
+// GIE AGSI+ live shape (2026-10-01) for a country with no underground storage.
+const NO_STORAGE = ['CY', 'EE', 'FI', 'GR', 'IE', 'LT', 'LU', 'MT', 'SI', 'GB'];
+const noStorageRow = (code) => ({
+  name: code, code, url: code, gasDayStart: '2026-09-30', inventory: '-', sendOut: '-', dtmi: '-', dtrs: '-', info: [], status: 'N',
+});
+
+async function runAgainstGie(t, rowFor) {
+  const previousEnv = { ...process.env };
+  process.env.UPSTASH_REDIS_REST_URL = 'https://gas-publish.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  process.env.GIE_API_KEY = 'fixture';
+  t.after(() => {
+    for (const key of Object.keys(process.env)) if (!(key in previousEnv)) delete process.env[key];
+    Object.assign(process.env, previousEnv);
+  });
+  const run = { published: null };
+  t.mock.method(globalThis, 'fetch', async (input, options) => {
+    const url = new URL(String(input));
+    if (url.origin === 'https://agsi.gie.eu') return Response.json({ data: [rowFor(url.searchParams.get('country'))] });
+    if (url.pathname.startsWith('/get/')) return Response.json({ result: null });
+    const commands = JSON.parse(options.body);
+    if (url.pathname === '/multi-exec') {
+      run.published = commands;
+      return Response.json(commands.map(command => ({ result: command[0] === 'MSET' ? 'OK' : 1 })));
+    }
+    return Response.json(Array.isArray(commands[0]) ? commands.map(() => ({ result: 1 })) : { result: 'OK' });
+  });
+  return run;
+}
+
+it('publishes the countries with storage and retires the placeholders for countries GIE reports as having none', async (t) => {
+  const run = await runAgainstGie(t, code => NO_STORAGE.includes(code)
+    ? noStorageRow(code)
+    : { full: '57.92', gasInStorage: '143.4', gasDayStart: '2026-09-30', status: 'C' });
+  await main();
+  const mset = run.published[0];
+  const values = Object.fromEntries(Array.from({ length: (mset.length - 1) / 2 }, (_, i) => [mset[1 + i * 2], JSON.parse(mset[2 + i * 2])]));
+  assert.equal(values[GAS_STORAGE_COUNTRIES_KEY].length, 18);
+  for (const code of NO_STORAGE) {
+    assert.equal(values[`${GAS_STORAGE_KEY_PREFIX}${code}`], undefined, `${code} must not be published as 0% full`);
+    assert.ok(run.published.some(command => command[0] === 'DEL' && command[1] === `${GAS_STORAGE_KEY_PREFIX}${code}`),
+      `${code}'s stale placeholder is removed in the same transaction`);
+  }
+  assert.deepEqual(values['seed-meta:energy:gas-storage-countries'].noStorageCountries, NO_STORAGE);
+});
+
+it('a no-storage report never stands in for a country whose storage reading is missing', async (t) => {
+  const missingReading = ['AT', 'BE', 'BG', 'HR', 'CZ'];
+  await runAgainstGie(t, code => NO_STORAGE.includes(code) ? noStorageRow(code)
+    : missingReading.includes(code) ? { gasDayStart: '2026-09-30', full: '-', gasInStorage: '-', status: 'C' }
+    : { full: '57.92', gasInStorage: '143.4', gasDayStart: '2026-09-30', status: 'C' });
+  await assert.rejects(main(), /only 13 valid countries \(10 without storage\), need >=24/);
+});
+
 it('preserves the previous coverage and observations when the transaction fails', async (t) => {
   const previousEnv = { ...process.env };
   process.env.UPSTASH_REDIS_REST_URL = 'https://gas-publish.test';
@@ -64,7 +118,7 @@ it('preserves the previous coverage and observations when the transaction fails'
   const previous = { DE: { fillPct: 42, gasTwh: 100, date: '2026-09-28' } };
   const cache = new Map([
     [GAS_STORAGE_ALL_KEY, previous], [GAS_STORAGE_COUNTRIES_KEY, ['DE']],
-    [metaKey, { fetchedAt: 123, recordCount: 1 }],
+    [metaKey, { fetchedAt: 123, recordCount: 1, noStorageCountries: ['EE'] }],
   ]);
   t.mock.method(globalThis, 'fetch', async (input, options) => {
     const url = new URL(String(input));
@@ -88,6 +142,7 @@ it('preserves the previous coverage and observations when the transaction fails'
   assert.deepEqual(cache.get(GAS_STORAGE_ALL_KEY), previous);
   assert.equal(cache.get(metaKey).fetchedAt, 123);
   assert.equal(cache.get(metaKey).status, 'error');
+  assert.deepEqual(cache.get(metaKey).noStorageCountries, ['EE'], 'a failed run keeps the preserved snapshot\'s accounting');
 });
 
 // ---------------------------------------------------------------------------

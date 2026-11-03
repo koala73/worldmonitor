@@ -33,10 +33,22 @@ const CPI_READING_SCHEMA = {
   },
 };
 
+function macroCountry(params: Record<string, unknown>): string | undefined {
+  if (params.dataset === 'world-cpi' || params.dataset === 'government-yields') {
+    return requireCountryCode(params.country, 'get_macro_history', 'country');
+  }
+  if (params.country !== undefined) {
+    throw new RpcValidationError('get_macro_history', [{ field: 'country', description: 'Country is only supported for world-cpi and government-yields.' }]);
+  }
+  return undefined;
+}
+
 export const MACRO_TOOLS: ToolDef[] = [{
   name: 'get_macro_history',
+  _validateArgs: params => { macroCountry(params); },
+  title: 'Inflation, rates and yield history',
   _outputBudgetBytes: 262144,
-  description: 'CPI, interest-rate and sovereign yield histories from seeded official-source reports. Select a dataset; country is required for world CPI or government yields. Default 30 newest observations per series, kept in chronological order; maximum 365. Set history=false for latest snapshots. Dates are Unix milliseconds, rates and yields are percentages. Missing readings or tenors are unknown, not zero. Preserve source, frequency, index base and yield measure when comparing countries. A truncated response is not full history; unavailable is not a zero reading.',
+  description: 'CPI, interest-rate and sovereign yield histories from seeded official-source reports. Select a dataset; country is required for world CPI or government yields. Default 30 newest observations per series, kept in chronological order; maximum 365. Set history=false for latest snapshots. Dates are Unix milliseconds, rates and yields are percentages. Missing readings or tenors are unknown, not zero. Series differ in source, frequency, index base and yield measure; a series records those that apply to its dataset. A truncated response is not full history; unavailable is not a zero reading.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -103,10 +115,7 @@ export const MACRO_TOOLS: ToolDef[] = [{
     if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 365) {
       throw new RpcValidationError('get_macro_history', [{ field: 'limit', description: 'Expected an integer from 1 through 365.' }]);
     }
-    if (!selected.country && params.country !== undefined) {
-      throw new RpcValidationError('get_macro_history', [{ field: 'country', description: 'Country is only supported for world-cpi and government-yields.' }]);
-    }
-    const country = selected.country ? requireCountryCode(params.country, 'get_macro_history', 'country') : undefined;
+    const country = macroCountry(params);
     const history = params.history ?? true;
     const query = new URLSearchParams({ history: String(history), limit: String(limit + 1), ...(country ? { country } : {}) });
     const url = `${base}${selected.path}?${query}`;

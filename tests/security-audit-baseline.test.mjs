@@ -327,8 +327,35 @@ describe('baseline rot', () => {
 });
 
 describe('baseline entry validation', () => {
+  it('does not suppress the backported braces and http-cache-semantics advisories', () => {
+    for (const [lockfile, id] of [
+      ['package-lock.json', 'GHSA-vfj7-8cjw-p6xm'],
+      ['pro-test/package-lock.json', 'GHSA-vfj7-8cjw-p6xm'],
+      ['blog-site/package-lock.json', 'GHSA-ch52-4w7c-c8xp'],
+    ]) {
+      assert.equal(baselineEntriesFor(lockfile).some((entry) => entry.id === id), false);
+      const result = classifyAudit({
+        findings: [finding(id)],
+        lockfile,
+        presentAdvisoryIds: new Set([id]),
+        introducedIds: new Set([id]),
+        publishedAt: new Map(),
+        now: NOW,
+      });
+      assert.equal(result.suppressed.length, 0);
+      assert.equal(formatAuditReport(result, { now: NOW }).failed, true);
+    }
+  });
+
   it('accepts the baseline this repo actually ships', () => {
     assert.equal(validateBaselineEntries(), true);
+  });
+
+  it('requires a reviewed lockfile fingerprint for every caller decision', () => {
+    const entry = { id: OLD_ADVISORY, reason: 'caller evidence scoped to the inspected dependency tree', expiresAt: iso(NOW + DAY) };
+    for (const lockfileSha256 of [undefined, '', 'bad', '0'.repeat(63)]) {
+      assert.throws(() => validateBaselineEntries({ [LOCK]: [{ ...entry, lockfileSha256 }] }), /lockfileSha256/);
+    }
   });
 
   it('rejects a suppression with no stated reason', () => {
@@ -611,7 +638,6 @@ describe('npm audit failure reporting', () => {
 describe('Dependabot image-size and fast-uri remediation', () => {
   for (const lockPath of ['package-lock.json', 'pro-test/package-lock.json']) {
     it(`excludes vulnerable image-size copies from ${lockPath}`, () => {
-      assert.deepEqual(baselineEntriesFor(lockPath), []);
       const entries = Object.entries(readRepoJson(lockPath).packages)
         .filter(([path]) => path.endsWith('/image-size'));
       assert.deepEqual(entries, [], 'Metro must use its upstream image parser');

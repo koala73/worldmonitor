@@ -52,6 +52,7 @@ async function loadCountryDeepDivePanel(options = {}) {
     unavailableReason: 'snapshot-unavailable',
   });
   const scorecardMode = JSON.stringify(options.scorecardMode ?? 'success');
+  const demographicsMode = JSON.stringify(options.demographicsMode ?? 'success');
   const tempDir = createTempDir('wm-country-deep-dive-');
   const outfile = join(tempDir, 'CountryDeepDivePanel.bundle.mjs');
   const resilienceWidgetStub = resilienceWidgetMode === 'import-reject'
@@ -192,8 +193,9 @@ async function loadCountryDeepDivePanel(options = {}) {
     `],
     ['export-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
-      export function exportCountryEvidenceMarkdown(data) {
+      export function countryEvidenceMarkdownArtifact(data) {
         state.evidenceExports.push(data);
+        return { filename: 'fixture.md', mimeType: 'text/markdown;charset=utf-8', content: JSON.stringify(data) };
       }
     `],
     ['utils-stub', `
@@ -212,13 +214,18 @@ async function loadCountryDeepDivePanel(options = {}) {
     ['chokepoint-registry-stub', `export const CHOKEPOINT_REGISTRY = [];`],
     ['supplier-route-risk-stub', `
       export function computeAlternativeSuppliers(exporters) {
-        return exporters.map(e => ({ ...e, risk: { riskLevel: 'safe', transitChokepoints: [], maxDisruptionScore: 0, recommendation: '', routeIds: [], exporterIso2: e.partnerIso2, importerIso2: '' }, safeAlternative: null }));
+        return exporters.map(e => ({ ...e, risk: { riskLevel: 'safe', unknownReason: null, transitChokepoints: [], maxDisruptionScore: null, recommendation: '', routeIds: [], exporterIso2: e.partnerIso2, importerIso2: '' }, safeAlternative: null }));
       }
       export function computeSupplierRouteRisk() {
-        return { riskLevel: 'safe', transitChokepoints: [], maxDisruptionScore: 0, recommendation: '', routeIds: [], exporterIso2: '', importerIso2: '' };
+        return { riskLevel: 'safe', unknownReason: null, transitChokepoints: [], maxDisruptionScore: null, recommendation: '', routeIds: [], exporterIso2: '', importerIso2: '' };
+      }
+      export function chokepointScoreEvidence() {
+        return { scores: new Map(), current: false };
       }
     `],
     ['supply-chain-stub', `
+      export function fetchMultiSectorExposure() { return Promise.resolve([]); }
+      export const SEEDED_HS2_CODES = [];
       export function fetchBypassOptions() { return Promise.resolve({ corridors: [] }); }
       export function getCountryChokepointIndex() { return null; }
       export function fetchChokepointStatus() { return Promise.resolve({ chokepoints: [], fetchedAt: '', upstreamUnavailable: false }); }
@@ -266,6 +273,7 @@ async function loadCountryDeepDivePanel(options = {}) {
     ['resilience-service-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
       const demographicsResponse = ${demographicsResponse};
+      const demographicsMode = ${demographicsMode};
       export async function getFoodStocks() {
         return { commodities: [], unavailable: true };
       }
@@ -274,6 +282,13 @@ async function loadCountryDeepDivePanel(options = {}) {
           countryCode: options.countryCode,
           hasSignal: options.signal instanceof AbortSignal,
         });
+        // Held open and deliberately not wired to the signal: models a read the
+        // panel supersedes without aborting it.
+        if (demographicsMode === 'deferred') {
+          return new Promise((resolve, reject) => {
+            state.demographicsPending.push({ countryCode: options.countryCode, resolve, reject });
+          });
+        }
         return { ...demographicsResponse, countryCode: options.countryCode };
       }
     `],
@@ -351,7 +366,17 @@ async function loadCountryDeepDivePanel(options = {}) {
     `],
   ]);
 
+  stubModules.set('atlas-detail-stub', `
+    export class PipelineStatusPanel {
+      constructor() { throw new Error('Hosted Atlas details require the compiled iframe fixture'); }
+    }
+    export { PipelineStatusPanel as StorageFacilityMapPanel, PipelineStatusPanel as FuelShortagePanel };
+  `);
+
   const aliasMap = new Map([
+    ['./PipelineStatusPanel', 'atlas-detail-stub'],
+    ['./StorageFacilityMapPanel', 'atlas-detail-stub'],
+    ['./FuelShortagePanel', 'atlas-detail-stub'],
     ['@/config/feeds', 'feeds-stub'],
     ['@/services/country-geometry', 'country-geometry-stub'],
     ['@/services/i18n', 'i18n-stub'],
@@ -439,6 +464,7 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     sentryExceptions: [],
     sentryMessages: [],
     demographicsCalls: [],
+    demographicsPending: [],
     scorecardCalls: [],
     scorecardPending: [],
     costShockRequests: [],
@@ -491,8 +517,8 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     throw error;
   }
 
-  function createPanel() {
-    return new CountryDeepDivePanel(null);
+  function createPanel(download = async () => ({ state: 'attempted' })) {
+    return new CountryDeepDivePanel(null, undefined, download);
   }
 
   function getPanelRoot() {
@@ -529,6 +555,12 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     },
     getDemographicsCalls() {
       return state.demographicsCalls;
+    },
+    rejectDemographics(index, error = new Error('synthetic demographics failure')) {
+      state.demographicsPending[index]?.reject(error);
+    },
+    getPendingDemographics() {
+      return state.demographicsPending;
     },
     getScorecardCalls() {
       return state.scorecardCalls;

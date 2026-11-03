@@ -1,14 +1,15 @@
+import { CountrySectionError } from '@/services/country-brief-error';
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { iso2ToCountryName } from '@/utils/country-codes';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
-import { t } from '@/services/i18n';
+import { pipelineCoverageWarning } from '@/services/supply-chain/pipeline-coverage';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 
 import type {
   ListPipelinesResponse,
   PipelineEntry,
   GetPipelineDetailResponse,
-  ListEnergyDisruptionsResponse,
   EnergyDisruptionEntry,
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { formatEventWindow, formatCapacityOffline } from '@/shared/disruption-timeline';
@@ -177,10 +178,11 @@ export class PipelineStatusPanel extends Panel {
   private selectedId: string | null = null;
   private detail: GetPipelineDetailResponse | null = null;
   private detailLoading = false;
+  private detailError: string | null = null;
   // Disruption events for the currently-open pipeline. Fetched lazily
   // alongside getPipelineDetail. undefined = not yet fetched;
   // empty array = fetched and no events on file.
-  private detailEvents: EnergyDisruptionEntry[] | undefined = undefined;
+  private detailEvents: EnergyDisruptionEntry[] | null | undefined = undefined;
   private usedHydrationPaint = false;
   private openDetailHandler = (ev: Event): void => {
     const id = (ev as CustomEvent<{ pipelineId?: string }>).detail?.pipelineId;
@@ -188,7 +190,7 @@ export class PipelineStatusPanel extends Panel {
     void this.loadDetail(id);
   };
 
-  constructor() {
+  constructor(private readonly detailSource?: Pick<ReturnType<typeof getSupplyChainClient>, 'getPipelineDetail' | 'listEnergyDisruptions'>) {
     super({
       id: 'pipeline-status',
       title: 'Oil & Gas Pipeline Status',
@@ -202,7 +204,7 @@ export class PipelineStatusPanel extends Panel {
     // keeps the map and the panel decoupled — if the panel isn't mounted, the
     // event is a no-op. If both exist, a map click opens this drawer on the
     // same pipeline id.
-    if (typeof window !== 'undefined') {
+    if (!this.detailSource && typeof window !== 'undefined') {
       window.addEventListener('energy:open-pipeline-detail', this.openDetailHandler);
     }
     this.content.addEventListener('click', this.handleContentClick);
@@ -223,7 +225,7 @@ export class PipelineStatusPanel extends Panel {
   };
 
   public destroy(): void {
-    if (typeof window !== 'undefined') {
+    if (!this.detailSource && typeof window !== 'undefined') {
       window.removeEventListener('energy:open-pipeline-detail', this.openDetailHandler);
     }
     super.destroy?.();
@@ -306,22 +308,38 @@ export class PipelineStatusPanel extends Panel {
     }
   }
 
+  public async presentDetail(data: ListPipelinesResponse, id: string): Promise<void> {
+    this.data = data;
+    await this.loadDetail(id);
+  }
+
+  public async presentCountryDetail(countryCode: string, id: string): Promise<void> {
+    const { gas, oil } = getCachedPipelineRegistries();
+    const data = buildBootstrapResponse(gas, oil);
+    const pipelines = data?.pipelines.filter(pipeline => pipeline.fromCountry === countryCode || pipeline.toCountry === countryCode || pipeline.transitCountries.includes(countryCode)) ?? [];
+    if (!data || !pipelines.some(pipeline => pipeline.id === id)) throw new Error('Pipeline is not in this country.');
+    await this.presentDetail({ ...data, pipelines }, id);
+  }
+
   private async loadDetail(pipelineId: string): Promise<void> {
     this.selectedId = pipelineId;
     this.detailLoading = true;
+    this.detailError = null;
     this.detailEvents = undefined;
     this.render();
     try {
-      const [d, events] = await Promise.all([
-        getSupplyChainClient().getPipelineDetail({ pipelineId }),
-        getSupplyChainClient().listEnergyDisruptions({ assetId: pipelineId, assetType: 'pipeline', ongoingOnly: false }),
-      ]);
+      const timeline = (this.detailSource ?? getSupplyChainClient()).listEnergyDisruptions({ assetId: pipelineId, assetType: 'pipeline', ongoingOnly: false }).catch(() => undefined);
+      const d = await (this.detailSource ?? getSupplyChainClient()).getPipelineDetail({ pipelineId });
       if (!this.element?.isConnected || this.selectedId !== pipelineId) return;
       this.detail = d;
-      this.detailEvents = (events as ListEnergyDisruptionsResponse)?.events ?? [];
       this.detailLoading = false;
       this.render();
-    } catch {
+      void timeline.then(events => {
+        if (!this.element?.isConnected || this.selectedId !== pipelineId) return;
+        this.detailEvents = events && !events.upstreamUnavailable ? events.events : null;
+        this.render();
+      });
+    } catch (error) {
       if (!this.element?.isConnected) return;
       // Mirror the same stale-response guard the success path uses: if the
       // user has already clicked a different pipeline while this one was
@@ -331,6 +349,7 @@ export class PipelineStatusPanel extends Panel {
       if (this.selectedId !== pipelineId) return;
       this.detailLoading = false;
       this.detail = null;
+      this.detailError = error instanceof CountrySectionError ? error.message : null;
       this.render();
     }
   }
@@ -343,7 +362,8 @@ export class PipelineStatusPanel extends Panel {
   }
 
   private renderDisruptionTimeline(): string {
-    if (this.detailEvents === undefined) return '';
+    if (this.detailEvents === undefined) return this.detailLoading ? '' : '<div class="pp-evidence"><div class="pp-sub">Loading disruption timeline…</div></div>';
+    if (this.detailEvents === null) return '<div class="pp-evidence"><div class="pp-sub">Disruption timeline unavailable. Asset details remain visible.</div></div>';
     if (this.detailEvents.length === 0) {
       return `<div class="pp-evidence">
         <div class="pp-sub" style="margin-bottom:6px">Disruption timeline</div>
@@ -396,37 +416,55 @@ export class PipelineStatusPanel extends Panel {
     });
 
     const drawer = this.selectedId ? this.renderDrawer() : '';
-    const coverageWarning = this.data.upstreamUnavailable
-      ? `<div class="economic-warning">${escapeHtml(t('components.supplyChain.upstreamUnavailable'))}</div>`
+    const coverageText = pipelineCoverageWarning(this.data);
+    const coverageWarning = coverageText
+      ? `<div class="economic-warning">${escapeHtml(coverageText)}</div>`
       : '';
 
-    this.setSafeContent(unsafeRawHtml(`
+    const html = unsafeRawHtml(`
       <div class="pp-wrap">
         ${coverageWarning}
-        <table class="pp-table">
-          <thead>
-            <tr>
-              <th scope="col">Asset</th>
-              <th scope="col">From → To</th>
-              <th scope="col">Capacity</th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div class="table-scroll" role="group" tabindex="${this.selectedId ? '-1' : '0'}" aria-labelledby="${this.panelId}Title">
+          <table class="pp-table" role="table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th scope="col" role="columnheader">Asset</th>
+                <th scope="col" role="columnheader">From → To</th>
+                <th scope="col" role="columnheader">Capacity</th>
+                <th scope="col" role="columnheader">Status</th>
+              </tr>
+            </thead>
+            <tbody role="rowgroup">${rows}</tbody>
+          </table>
+        </div>
         ${attribution}
         ${drawer}
       </div>
       ${ATTRIBUTION_FOOTER_CSS}
       <style>
-        .pp-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
+        .pp-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); container: pp-wrap / inline-size; }
         .pp-table { width: 100%; border-collapse: collapse; }
         .pp-table th { text-align: left; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
         .pp-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
         .pp-table tr.pp-row { cursor: pointer; }
         .pp-table tr.pp-row:hover td { background: rgba(255,255,255,0.03); }
-        .pp-name { font-weight: 600; color: var(--text, #eee); }
-        .pp-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
+        .pp-name { font-weight: 600; color: var(--text, #eee); overflow-wrap: break-word; }
+        .pp-table .pp-val { white-space: nowrap; }
+        .pp-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+        /* Four columns cannot fit a narrow column without splitting values, so each
+           row stacks: the name takes the full width, the values share one line below.
+           The breakpoint is in em of the scaled wrap text (31em is 341px at 100%), so
+           a larger font-size setting stacks the rows in a wider column too. */
+        @container pp-wrap (max-width: 31em) {
+          .pp-table, .pp-table tbody { display: block; }
+          .pp-table thead { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+          .pp-table tr.pp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+          .pp-table tr.pp-row td { padding: 0; border: 0; }
+          .pp-table tr.pp-row td:first-child { flex: 1 0 100%; }
+          .pp-table tr.pp-row td:last-child { margin-left: auto; }
+          .pp-table tr.pp-row:hover { background: rgba(255,255,255,0.03); }
+          .pp-table tr.pp-row:hover td { background: none; }
+        }
         .pp-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
         .pp-drawer { position: absolute; inset: 0; background: var(--panel-bg, #0f1218); padding: 12px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; }
         .pp-drawer-close { position: absolute; top: 8px; right: 10px; background: transparent; border: 0; color: var(--text-dim, #888); cursor: pointer; font-size: calc(14px * var(--wm-panel-effective-scale, 1)); }
@@ -438,21 +476,23 @@ export class PipelineStatusPanel extends Panel {
         .pp-ev-item a { color: #4ade80; text-decoration: none; }
         .pp-ev-item a:hover { text-decoration: underline; }
       </style>
-    `, 'legacy Panel.setContent() migration'));
+    `, 'legacy Panel.setContent() migration');
+    if (this.detailSource) this.setSafeContentImmediate(html);
+    else this.setSafeContent(html);
   }
 
   private renderRow(p: PipelineEntry): string {
     const commodity = p.commodityType === 'gas' ? '⛽' : '🛢️';
     const route = `${escapeHtml(p.fromCountry)} → ${escapeHtml(p.toCountry)}`;
     return `
-      <tr class="pp-row" data-pipeline-id="${escapeHtml(p.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
-        <td>
+      <tr class="pp-row" role="row" data-pipeline-id="${escapeHtml(p.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
+        <td role="cell">
           <div class="pp-name">${commodity} ${escapeHtml(p.name)}</div>
           <div class="pp-sub">${escapeHtml(p.operator || '')}</div>
         </td>
-        <td>${route}</td>
-        <td>${escapeHtml(capacityLabel(p))}</td>
-        <td>${badgeChip(p.publicBadge)}</td>
+        <td role="cell" class="pp-val">${route}</td>
+        <td role="cell" class="pp-val">${escapeHtml(capacityLabel(p))}</td>
+        <td role="cell">${badgeChip(p.publicBadge)}</td>
       </tr>`;
   }
 
@@ -462,7 +502,7 @@ export class PipelineStatusPanel extends Panel {
     }
     const p = this.detail?.pipeline;
     if (!p) {
-      return `<div class="pp-drawer"><button class="pp-drawer-close" aria-label="Close">✕</button>Pipeline detail unavailable.</div>`;
+      return `<div class="pp-drawer"><button class="pp-drawer-close" aria-label="Close">✕</button>${escapeHtml(this.detailError ?? 'Pipeline detail unavailable.')}</div>`;
     }
 
     const ev = p.evidence;
@@ -494,7 +534,7 @@ export class PipelineStatusPanel extends Panel {
       : '';
 
     const transit = p.transitCountries.length > 0
-      ? ` via ${p.transitCountries.map(c => escapeHtml(c)).join(', ')}`
+      ? ` via ${p.transitCountries.map(c => escapeHtml(iso2ToCountryName(c))).join(', ')}`
       : '';
 
     return `
@@ -504,7 +544,7 @@ export class PipelineStatusPanel extends Panel {
         <div class="pp-kv">
           <div class="pp-kv-key">Operator</div>   <div>${escapeHtml(p.operator)}</div>
           <div class="pp-kv-key">Commodity</div>  <div>${escapeHtml(p.commodityType)}</div>
-          <div class="pp-kv-key">Route</div>      <div>${escapeHtml(p.fromCountry)} → ${escapeHtml(p.toCountry)}${transit}</div>
+          <div class="pp-kv-key">Route</div>      <div>${escapeHtml(iso2ToCountryName(p.fromCountry))} → ${escapeHtml(iso2ToCountryName(p.toCountry))}${transit}</div>
           <div class="pp-kv-key">Capacity</div>   <div>${escapeHtml(capacityLabel(p))}</div>
           <div class="pp-kv-key">Length</div>     <div>${p.lengthKm > 0 ? `${p.lengthKm.toLocaleString()} km` : '—'}</div>
           <div class="pp-kv-key">In service</div> <div>${p.inService > 0 ? escapeHtml(String(p.inService)) : '—'}</div>

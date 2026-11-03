@@ -1,117 +1,221 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, readCanonicalValue, httpRetryError } from './_seed-utils.mjs';
+import { readBoundedResponseBytes } from './_china-exchange-transport.mjs';
 loadEnvFile(import.meta.url);
 
 const AAII_KEY = 'market:aaii-sentiment:v1';
 const AAII_TTL = 604800; // 7 days (weekly data)
 
-const AAII_XLS_URL = 'https://www.aaii.com/files/surveys/sentiment.xls';
 const AAII_HTML_URL = 'https://www.aaii.com/sentimentsurvey';
 
-export function parseXlsRows(buffer) {
-  const rows = [];
-  const bytes = new Uint8Array(buffer);
-  const len = bytes.length;
+const CFB_MAGIC = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+const CFB_END_OF_CHAIN = 0xFFFFFFFE;
+// sentiment.xls is ~1.3 MB and grows by roughly 20 KB a year; refuse anything far larger.
+const MAX_XLS_BYTES = 32 * 1024 * 1024;
 
+// Read the Workbook stream out of an OLE2 compound file. The stream's sectors
+// follow the FAT chain and are not contiguous, so BIFF records cannot be
+// scanned from the start of the file.
+function readWorkbookStream(bytes) {
+  if (bytes.length < 512 || bytes.length > MAX_XLS_BYTES || CFB_MAGIC.some((b, j) => bytes[j] !== b)) return null;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const sectorSize = 1 << dv.getUint16(0x1E, true);
+  const numFatSectors = dv.getUint32(0x2C, true);
+  const firstDirSector = dv.getUint32(0x30, true);
+  const miniCutoff = dv.getUint32(0x38, true);
+  let difatSector = dv.getUint32(0x44, true);
+  const sectorOffset = (n) => (n + 1) * sectorSize;
+
+  // Header fields come from the download; a file cannot hold more sectors than
+  // its length allows, so bound the FAT and the DIFAT walk by that (a DIFAT
+  // sector that points at itself would otherwise expand without limit).
+  const maxSectors = Math.floor(bytes.length / sectorSize);
+  const fatSectorCount = Math.min(numFatSectors, maxSectors);
+  const fatSectors = [];
+  for (let j = 0; j < 109 && fatSectors.length < fatSectorCount; j++) fatSectors.push(dv.getUint32(0x4C + j * 4, true));
+  const perDifat = sectorSize / 4 - 1;
+  for (let guard = 0; fatSectors.length < fatSectorCount && difatSector < CFB_END_OF_CHAIN && guard < maxSectors; guard++) {
+    const off = sectorOffset(difatSector);
+    if (off + sectorSize > bytes.length) return null;
+    for (let j = 0; j < perDifat && fatSectors.length < fatSectorCount; j++) fatSectors.push(dv.getUint32(off + j * 4, true));
+    difatSector = dv.getUint32(off + perDifat * 4, true);
+  }
+
+  const fat = [];
+  for (const fs of fatSectors) {
+    const off = sectorOffset(fs);
+    if (off + sectorSize > bytes.length) return null;
+    for (let j = 0; j < sectorSize; j += 4) fat.push(dv.getUint32(off + j, true));
+  }
+
+  const readChain = (start, size) => {
+    if (size > bytes.length) return null; // a stream cannot be larger than the file holding it
+    const out = new Uint8Array(size);
+    let written = 0;
+    for (let sec = start, guard = 0; sec < CFB_END_OF_CHAIN && written < size && guard <= fat.length; sec = fat[sec], guard++) {
+      const off = sectorOffset(sec);
+      const n = Math.min(sectorSize, size - written, bytes.length - off);
+      if (n <= 0) return null;
+      out.set(bytes.subarray(off, off + n), written);
+      written += n;
+    }
+    return written === size ? out : null;
+  };
+
+  // Directory entries are 128 bytes; walk the directory chain until the end.
+  const dirBytes = [];
+  for (let sec = firstDirSector, guard = 0; sec < CFB_END_OF_CHAIN && guard <= fat.length; sec = fat[sec], guard++) {
+    const off = sectorOffset(sec);
+    if (off + sectorSize > bytes.length) return null;
+    dirBytes.push(bytes.subarray(off, off + sectorSize));
+  }
+  for (const chunk of dirBytes) {
+    const cdv = new DataView(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+    for (let e = 0; e + 128 <= chunk.length; e += 128) {
+      const nameLen = cdv.getUint16(e + 0x40, true);
+      const type = chunk[e + 0x42];
+      if (type !== 2 || nameLen < 2 || nameLen > 64) continue;
+      let name = '';
+      for (let j = 0; j < nameLen / 2 - 1; j++) name += String.fromCharCode(cdv.getUint16(e + j * 2, true));
+      if (name !== 'Workbook' && name !== 'Book') continue;
+      const start = cdv.getUint32(e + 0x74, true);
+      const size = cdv.getUint32(e + 0x78, true);
+      // A workbook below the mini-stream cutoff (4 KB) cannot hold the survey history.
+      if (size < miniCutoff) return null;
+      return readChain(start, size);
+    }
+  }
+  return null;
+}
+
+function decodeRk(rk) {
+  let val;
+  if (rk & 0x02) {
+    val = rk >> 2;
+  } else {
+    const view = new DataView(new ArrayBuffer(8));
+    view.setInt32(4, rk & 0xFFFFFFFC, true);
+    val = view.getFloat64(0, true);
+  }
+  return rk & 0x01 ? val / 100 : val;
+}
+
+// Parse the shared string table. Strings can cross CONTINUE record boundaries;
+// a string that does restarts with a fresh option byte (BIFF8 spec 2.5.293).
+function parseSst(segments) {
   const strings = [];
-  let i = 0;
-  while (i < len - 4) {
-    const recType = bytes[i] | (bytes[i + 1] << 8);
-    const recLen = bytes[i + 2] | (bytes[i + 3] << 8);
-    if (recLen > 100000 || recLen < 0) { i++; continue; }
-
-    // SST record (shared string table)
-    if (recType === 0x00FC && recLen > 8) {
-      let pos = i + 4 + 8; // skip total/unique counts
-      while (pos < i + 4 + recLen && strings.length < 10000) {
-        if (pos + 3 > len) break;
-        const charCount = bytes[pos] | (bytes[pos + 1] << 8);
-        const flags = bytes[pos + 2];
-        pos += 3;
-        let cRun = 0;
-        let cbExtRst = 0;
-        if (flags & 0x08) {
-          // rich text: cRun (u16) = number of formatting runs (4 bytes each) after char data
-          cRun = bytes[pos] | (bytes[pos + 1] << 8);
-          pos += 2;
-        }
-        if (flags & 0x04) {
-          // extended string: cbExtRst (u32) = byte length of ext-rst block after char data
-          cbExtRst = bytes[pos] | (bytes[pos + 1] << 8) | (bytes[pos + 2] << 16) | (bytes[pos + 3] << 24);
-          pos += 4;
-        }
-        if (flags & 0x01) {
-          // UTF-16
-          const strBytes = charCount * 2;
-          if (pos + strBytes > len) break;
-          let s = '';
-          for (let j = 0; j < charCount; j++) {
-            s += String.fromCharCode(bytes[pos + j * 2] | (bytes[pos + j * 2 + 1] << 8));
-          }
-          strings.push(s);
-          pos += strBytes;
-        } else {
-          if (pos + charCount > len) break;
-          let s = '';
-          for (let j = 0; j < charCount; j++) s += String.fromCharCode(bytes[pos + j]);
-          strings.push(s);
-          pos += charCount;
-        }
-        // Skip trailing formatting-run and ext-rst bytes (BIFF8 spec)
-        if (flags & 0x08) pos += 4 * cRun;
-        if (flags & 0x04) pos += cbExtRst;
-      }
+  let seg = 0;
+  let pos = 8; // skip cstTotal / cstUnique
+  const remaining = () => segments[seg].length - pos;
+  const advanceIfDone = () => {
+    while (seg < segments.length && pos >= segments[seg].length) { seg++; pos = 0; }
+    return seg < segments.length;
+  };
+  const readBytes = (n) => {
+    let out = 0;
+    for (let k = 0; k < n; k++) {
+      if (!advanceIfDone()) return null;
+      out |= segments[seg][pos++] << (8 * k);
     }
-    i += 4 + recLen;
+    return out >>> 0;
+  };
+  const skip = (n) => {
+    while (n > 0) {
+      if (!advanceIfDone()) return false;
+      const step = Math.min(n, remaining());
+      pos += step;
+      n -= step;
+    }
+    return true;
+  };
+
+  while (advanceIfDone()) {
+    const cch = readBytes(2);
+    let flags = readBytes(1);
+    if (cch == null || flags == null) break;
+    const cRun = flags & 0x08 ? readBytes(2) : 0;
+    const cbExtRst = flags & 0x04 ? readBytes(4) : 0;
+    let s = '';
+    let left = cch;
+    while (left > 0) {
+      if (!advanceIfDone()) return strings;
+      if (pos === 0 && s.length > 0) flags = segments[seg][pos++]; // continuation option byte
+      const wide = flags & 0x01;
+      const fit = Math.min(left, Math.floor(remaining() / (wide ? 2 : 1)));
+      if (fit <= 0) { pos = segments[seg].length; continue; }
+      for (let j = 0; j < fit; j++) {
+        s += String.fromCharCode(wide ? segments[seg][pos] | (segments[seg][pos + 1] << 8) : segments[seg][pos]);
+        pos += wide ? 2 : 1;
+      }
+      left -= fit;
+      if (left > 0 && remaining() === 0) { seg++; pos = 0; }
+    }
+    strings.push(s);
+    if (!skip(4 * cRun + cbExtRst)) break;
   }
+  return strings;
+}
 
-  // Extract NUMBER records (type 0x0203) and RK records (type 0x027E)
-  // and LABEL/SST refs for dates
-  const cells = new Map(); // "row,col" -> value
-  i = 0;
-  while (i < len - 4) {
-    const recType = bytes[i] | (bytes[i + 1] << 8);
-    const recLen = bytes[i + 2] | (bytes[i + 3] << 8);
-    if (recLen > 100000 || recLen < 0) { i++; continue; }
+// Returns the cell grid (first 10 columns) of the worksheet that carries the
+// Bullish/Bearish header, or of the first worksheet when none does.
+export function parseXlsRows(buffer) {
+  const stream = readWorkbookStream(new Uint8Array(buffer));
+  if (!stream) return [];
+  const sdv = new DataView(stream.buffer, stream.byteOffset, stream.byteLength);
 
+  const sstSegments = [];
+  let inSst = false;
+  const sheets = [];
+  let current = null;
+  for (let i = 0; i + 4 <= stream.length;) {
+    const recType = sdv.getUint16(i, true);
+    const recLen = sdv.getUint16(i + 2, true);
+    const p = i + 4;
+    if (p + recLen > stream.length) break;
+    const rec = stream.subarray(p, p + recLen);
+    i = p + recLen;
+
+    if (recType === 0x003C && inSst) { sstSegments.push(rec); continue; } // CONTINUE
+    inSst = false;
+
+    if (recType === 0x0809) { // BOF
+      current = recLen >= 4 && sdv.getUint16(p + 2, true) === 0x0010 ? new Map() : null;
+      if (current) sheets.push(current);
+      continue;
+    }
+    if (recType === 0x000A) { current = null; continue; } // EOF
+    if (recType === 0x00FC) { sstSegments.push(rec); inSst = true; continue; } // SST
+    if (!current || recLen < 6) continue;
+
+    const row = sdv.getUint16(p, true);
+    const col = sdv.getUint16(p + 2, true);
     if (recType === 0x0203 && recLen >= 14) { // NUMBER
-      const row = bytes[i + 4] | (bytes[i + 5] << 8);
-      const col = bytes[i + 6] | (bytes[i + 7] << 8);
-      const buf8 = new ArrayBuffer(8);
-      const view = new DataView(buf8);
-      for (let j = 0; j < 8; j++) view.setUint8(j, bytes[i + 10 + j]);
-      const val = view.getFloat64(0, true);
-      cells.set(`${row},${col}`, val);
+      current.set(`${row},${col}`, sdv.getFloat64(p + 6, true));
     } else if (recType === 0x027E && recLen >= 10) { // RK
-      const row = bytes[i + 4] | (bytes[i + 5] << 8);
-      const col = bytes[i + 6] | (bytes[i + 7] << 8);
-      const rkVal = bytes[i + 10] | (bytes[i + 11] << 8) | (bytes[i + 12] << 16) | (bytes[i + 13] << 24);
-      let val;
-      if (rkVal & 0x02) {
-        val = (rkVal >> 2);
-      } else {
-        const buf8 = new ArrayBuffer(8);
-        const view = new DataView(buf8);
-        view.setInt32(4, rkVal & 0xFFFFFFFC, true);
-        val = view.getFloat64(0, true);
-      }
-      if (rkVal & 0x01) val /= 100;
-      cells.set(`${row},${col}`, val);
+      current.set(`${row},${col}`, decodeRk(sdv.getUint32(p + 6, true)));
+    } else if (recType === 0x00BD && recLen >= 12) { // MULRK
+      const n = (recLen - 6) / 6;
+      for (let k = 0; k < n; k++) current.set(`${row},${col + k}`, decodeRk(sdv.getUint32(p + 4 + k * 6 + 2, true)));
+    } else if (recType === 0x0006 && recLen >= 14) { // FORMULA: cached numeric result unless bytes 6-7 are 0xFFFF
+      if (sdv.getUint16(p + 12, true) !== 0xFFFF) current.set(`${row},${col}`, sdv.getFloat64(p + 6, true));
     } else if (recType === 0x00FD && recLen >= 10) { // LABELSST
-      const row = bytes[i + 4] | (bytes[i + 5] << 8);
-      const col = bytes[i + 6] | (bytes[i + 7] << 8);
-      const sstIdx = bytes[i + 10] | (bytes[i + 11] << 8) | (bytes[i + 12] << 16) | (bytes[i + 13] << 24);
-      if (sstIdx < strings.length) {
-        cells.set(`${row},${col}`, strings[sstIdx]);
-      }
+      current.set(`${row},${col}`, { sst: sdv.getUint32(p + 6, true) });
     }
-    i += 4 + recLen;
   }
 
-  if (cells.size === 0) return rows;
+  const strings = sstSegments.length ? parseSst(sstSegments) : [];
+  const resolve = (v) => (v && typeof v === 'object' ? strings[v.sst] ?? null : v);
+  const hasHeader = (cells) => {
+    for (const v of cells.values()) {
+      const t = String(resolve(v) ?? '').toLowerCase().trim();
+      if (t === 'bullish') return true;
+    }
+    return false;
+  };
+  const cells = sheets.find(hasHeader) ?? sheets[0];
+  if (!cells || cells.size === 0) return [];
 
-  // Find max row/col
   let maxRow = 0, maxCol = 0;
   for (const key of cells.keys()) {
     const [r, c] = key.split(',').map(Number);
@@ -119,14 +223,11 @@ export function parseXlsRows(buffer) {
     if (c > maxCol) maxCol = c;
   }
 
-  // Build row arrays (first 10 columns, first 2000 rows max)
-  const limit = Math.min(maxRow + 1, 2000);
+  const rows = [];
   const colLimit = Math.min(maxCol + 1, 10);
-  for (let r = 0; r < limit; r++) {
+  for (let r = 0; r <= maxRow; r++) {
     const row = [];
-    for (let c = 0; c < colLimit; c++) {
-      row.push(cells.get(`${r},${c}`) ?? null);
-    }
+    for (let c = 0; c < colLimit; c++) row.push(resolve(cells.get(`${r},${c}`) ?? null));
     rows.push(row);
   }
   return rows;
@@ -148,22 +249,21 @@ export function excelDateToISO(serial) {
 export function extractSentimentData(rows) {
   // Find header row containing "Bullish" / "Bearish" / "Neutral"
   let headerIdx = -1;
-  let bullCol = -1, neutralCol = -1, bearCol = -1, dateCol = -1, spreadCol = -1, sp500CloseCol = -1;
+  let bullCol = -1, neutralCol = -1, bearCol = -1, dateCol = -1;
 
+  // The sheet has multi-row headers; group labels such as "Bullish Average"
+  // span rows above the real header, so require Bullish and Bearish on one row.
   for (let r = 0; r < Math.min(rows.length, 20); r++) {
-    const row = rows[r];
-    for (let c = 0; c < row.length; c++) {
-      const v = String(row[c] ?? '').toLowerCase().trim();
-      if (v === 'bullish') { bullCol = c; headerIdx = r; }
-      if (v === 'neutral') { neutralCol = c; }
-      if (v === 'bearish') { bearCol = c; }
-      if (v.includes('bull-bear') || v.includes('spread')) { spreadCol = c; }
-      if (v.includes('close') || v.includes('s&p') || v.includes('sp 500')) { sp500CloseCol = c; }
-    }
-    if (headerIdx === r) {
-      dateCol = 0; // date is always first column
-      break;
-    }
+    const labels = rows[r].map((v) => String(v ?? '').toLowerCase().trim());
+    const bull = labels.indexOf('bullish');
+    const bear = labels.indexOf('bearish');
+    if (bull < 0 || bear < 0) continue;
+    headerIdx = r;
+    bullCol = bull;
+    bearCol = bear;
+    neutralCol = labels.indexOf('neutral');
+    dateCol = 0; // date is always first column
+    break;
   }
 
   if (headerIdx < 0 || bullCol < 0 || bearCol < 0) return [];
@@ -182,9 +282,15 @@ export function extractSentimentData(rows) {
     if (typeof rawDate === 'number' && rawDate > 30000) {
       date = excelDateToISO(rawDate);
     } else if (typeof rawDate === 'string') {
-      const parsed = new Date(rawDate);
-      if (!Number.isNaN(parsed.getTime())) {
-        date = parsed.toISOString().slice(0, 10);
+      // Strict formats only: footer rows like "Max '01" or "Count '25" parse as dates in V8.
+      // Build the date in UTC; new Date('1/2/2026') is local midnight and shifts east of UTC.
+      const t = rawDate.trim();
+      const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const mdy = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      const [y, m, d] = iso ? [+iso[1], +iso[2], +iso[3]] : mdy ? [+mdy[3], +mdy[1], +mdy[2]] : [];
+      if (y) {
+        const parsed = new Date(Date.UTC(y, m - 1, d));
+        if (parsed.getUTCMonth() === m - 1 && parsed.getUTCDate() === d) date = parsed.toISOString().slice(0, 10);
       }
     }
     if (!date) continue;
@@ -209,22 +315,54 @@ export function extractSentimentData(rows) {
   return data;
 }
 
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+
+function mostRecentThursdayUTC(now = new Date()) {
+  // UTC arithmetic: local-TZ math can drift by a day on Railway when TZ != UTC
+  const dayOfWeek = now.getUTCDay();
+  const daysToThursday = (dayOfWeek >= 4) ? dayOfWeek - 4 : dayOfWeek + 3;
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysToThursday)).toISOString().slice(0, 10);
+}
+
+// AAII reports each week on the Thursday after the survey week closes, which is
+// the date the XLS uses; map "Week ending October 21, 2026" to that Thursday.
+function reportedDateFromWeekEnding(html) {
+  const m = html.match(/Week ending\s+([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})/i);
+  if (!m) return null;
+  const month = MONTHS.indexOf(m[1].toLowerCase());
+  if (month < 0) return null;
+  const end = new Date(Date.UTC(+m[3], month, +m[2]));
+  if (end.getUTCFullYear() !== +m[3] || end.getUTCMonth() !== month || end.getUTCDate() !== +m[2]) return null;
+  const daysToThursday = ((4 - end.getUTCDay() + 7) % 7) || 7;
+  return new Date(end.getTime() + daysToThursday * 86400000).toISOString().slice(0, 10);
+}
+
 export function parseHtmlSentiment(html) {
   const rows = [];
-  // Match table rows with percentage data
-  // The AAII page has tableTxt cells: Bullish%, Neutral%, Bearish%
-  const pcts = [...html.matchAll(/<td[^>]*class="tableTxt"[^>]*>([\d.]+)%/g)]
+  const date = reportedDateFromWeekEnding(html);
+  if (!date) return rows;
+
+  // Current page: <div class="ssv2-snum bull">36.9%</div>, one per bull/neut/bear.
+  const byClass = {};
+  for (const m of html.matchAll(/class="ssv2-snum\s+(bull|neut|bear)"[^<>]{0,64}>\s*([\d.]+)%/g)) {
+    byClass[m[1]] ??= parseFloat(m[2]);
+  }
+  if (byClass.bull != null && byClass.neut != null && byClass.bear != null) {
+    rows.push({
+      date,
+      bullish: byClass.bull,
+      neutral: byClass.neut,
+      bearish: byClass.bear,
+      spread: +(byClass.bull - byClass.bear).toFixed(1),
+    });
+    return rows;
+  }
+
+  // Pre-2026-10 page: tableTxt cells in Bullish, Neutral, Bearish order.
+  const pcts = [...html.matchAll(/<td[^<>]*class="tableTxt"[^<>]*>([\d.]+)%/g)]
     .map(m => parseFloat(m[1]));
 
   if (pcts.length >= 3) {
-    // AAII publishes on Thursdays; find the most recent Thursday in UTC
-    // (local-TZ arithmetic can drift by a day on Railway when TZ != UTC)
-    const nowUTC = new Date();
-    const dayOfWeek = nowUTC.getUTCDay();
-    const daysToThursday = (dayOfWeek >= 4) ? dayOfWeek - 4 : dayOfWeek + 3;
-    const tsThursday = Date.UTC(nowUTC.getUTCFullYear(), nowUTC.getUTCMonth(), nowUTC.getUTCDate() - daysToThursday);
-    const date = new Date(tsThursday).toISOString().slice(0, 10);
-
     rows.push({
       date,
       bullish: pcts[0],
@@ -236,122 +374,64 @@ export function parseHtmlSentiment(html) {
   return rows;
 }
 
-const FALLBACK_DATA = [
-  { date: '2026-04-03', bullish: 35.7, bearish: 43.0, neutral: 21.3, spread: -7.3 },
-  { date: '2026-03-27', bullish: 22.4, bearish: 55.8, neutral: 21.8, spread: -33.4 },
-  { date: '2026-03-20', bullish: 19.2, bearish: 57.1, neutral: 23.7, spread: -37.9 },
-  { date: '2026-03-13', bullish: 20.5, bearish: 54.5, neutral: 25.0, spread: -34.0 },
-  { date: '2026-03-06', bullish: 19.4, bearish: 59.2, neutral: 21.4, spread: -39.8 },
-  { date: '2026-02-27', bullish: 22.8, bearish: 52.2, neutral: 25.0, spread: -29.4 },
-  { date: '2026-02-20', bullish: 31.3, bearish: 44.1, neutral: 24.6, spread: -12.8 },
-  { date: '2026-02-13', bullish: 36.1, bearish: 41.0, neutral: 22.9, spread: -4.9 },
-  { date: '2026-02-06', bullish: 29.2, bearish: 40.9, neutral: 29.9, spread: -11.7 },
-  { date: '2026-01-30', bullish: 33.3, bearish: 37.5, neutral: 29.2, spread: -4.2 },
-  { date: '2026-01-23', bullish: 25.4, bearish: 40.6, neutral: 34.0, spread: -15.2 },
-  { date: '2026-01-16', bullish: 34.7, bearish: 29.4, neutral: 35.9, spread: 5.3 },
-  { date: '2026-01-09', bullish: 38.4, bearish: 34.0, neutral: 27.6, spread: 4.4 },
-  { date: '2026-01-02', bullish: 43.1, bearish: 25.3, neutral: 31.6, spread: 17.8 },
-  { date: '2025-12-26', bullish: 37.9, bearish: 34.1, neutral: 28.0, spread: 3.8 },
-  { date: '2025-12-19', bullish: 40.2, bearish: 30.4, neutral: 29.4, spread: 9.8 },
-  { date: '2025-12-12', bullish: 48.3, bearish: 23.7, neutral: 28.0, spread: 24.6 },
-  { date: '2025-12-05', bullish: 45.5, bearish: 27.5, neutral: 27.0, spread: 18.0 },
-  { date: '2025-11-28', bullish: 49.8, bearish: 22.1, neutral: 28.1, spread: 27.7 },
-  { date: '2025-11-21', bullish: 47.3, bearish: 25.7, neutral: 27.0, spread: 21.6 },
-  { date: '2025-11-14', bullish: 50.8, bearish: 20.3, neutral: 28.9, spread: 30.5 },
-  { date: '2025-11-07', bullish: 49.8, bearish: 22.1, neutral: 28.1, spread: 27.7 },
-  { date: '2025-10-31', bullish: 37.7, bearish: 31.8, neutral: 30.5, spread: 5.9 },
-  { date: '2025-10-24', bullish: 40.6, bearish: 28.2, neutral: 31.2, spread: 12.4 },
-  { date: '2025-10-17', bullish: 45.5, bearish: 25.6, neutral: 28.9, spread: 19.9 },
-  { date: '2025-10-10', bullish: 49.0, bearish: 24.6, neutral: 26.4, spread: 24.4 },
-  { date: '2025-10-03', bullish: 45.3, bearish: 25.2, neutral: 29.5, spread: 20.1 },
-  { date: '2025-09-26', bullish: 42.2, bearish: 27.0, neutral: 30.8, spread: 15.2 },
-  { date: '2025-09-19', bullish: 46.3, bearish: 24.5, neutral: 29.2, spread: 21.8 },
-  { date: '2025-09-12', bullish: 44.4, bearish: 26.1, neutral: 29.5, spread: 18.3 },
-  { date: '2025-09-05', bullish: 38.6, bearish: 28.4, neutral: 33.0, spread: 10.2 },
-  { date: '2025-08-29', bullish: 41.2, bearish: 27.0, neutral: 31.8, spread: 14.2 },
-  { date: '2025-08-22', bullish: 40.0, bearish: 30.1, neutral: 29.9, spread: 9.9 },
-  { date: '2025-08-15', bullish: 41.1, bearish: 26.8, neutral: 32.1, spread: 14.3 },
-  { date: '2025-08-08', bullish: 44.7, bearish: 29.1, neutral: 26.2, spread: 15.6 },
-  { date: '2025-08-01', bullish: 33.7, bearish: 37.5, neutral: 28.8, spread: -3.8 },
-  { date: '2025-07-25', bullish: 36.0, bearish: 29.4, neutral: 34.6, spread: 6.6 },
-  { date: '2025-07-18', bullish: 40.3, bearish: 27.4, neutral: 32.3, spread: 12.9 },
-  { date: '2025-07-11', bullish: 42.5, bearish: 25.0, neutral: 32.5, spread: 17.5 },
-  { date: '2025-07-04', bullish: 46.2, bearish: 27.6, neutral: 26.2, spread: 18.6 },
-  { date: '2025-06-27', bullish: 40.9, bearish: 31.1, neutral: 28.0, spread: 9.8 },
-  { date: '2025-06-20', bullish: 44.6, bearish: 26.5, neutral: 28.9, spread: 18.1 },
-  { date: '2025-06-13', bullish: 44.0, bearish: 25.6, neutral: 30.4, spread: 18.4 },
-  { date: '2025-06-06', bullish: 41.0, bearish: 28.0, neutral: 31.0, spread: 13.0 },
-  { date: '2025-05-30', bullish: 41.3, bearish: 32.3, neutral: 26.4, spread: 9.0 },
-  { date: '2025-05-23', bullish: 36.1, bearish: 33.3, neutral: 30.6, spread: 2.8 },
-  { date: '2025-05-16', bullish: 39.1, bearish: 31.0, neutral: 29.9, spread: 8.1 },
-  { date: '2025-05-09', bullish: 36.0, bearish: 37.5, neutral: 26.5, spread: -1.5 },
-  { date: '2025-05-02', bullish: 28.5, bearish: 44.7, neutral: 26.8, spread: -16.2 },
-  { date: '2025-04-25', bullish: 25.3, bearish: 52.2, neutral: 22.5, spread: -26.9 },
-  { date: '2025-04-18', bullish: 21.8, bearish: 55.6, neutral: 22.6, spread: -33.8 },
-  { date: '2025-04-11', bullish: 28.5, bearish: 52.1, neutral: 19.4, spread: -23.6 },
-];
+// Far above any real survey page; a runaway body is cancelled here.
+export const MAX_AAII_PAGE_BYTES = 5 * 1024 * 1024;
 
-async function fetchAaiiSentiment() {
+export async function readAaiiPage(resp) {
+  return new TextDecoder().decode(await readBoundedResponseBytes(resp, MAX_AAII_PAGE_BYTES));
+}
+
+async function fetchAaiiSentiment({ fetchDeadlineAtMs }) {
+  const retained = await readCanonicalValue(AAII_KEY, { strict: true });
+  if (Date.now() >= fetchDeadlineAtMs) {
+    throw Object.assign(new Error('AAII fetch deadline reached'), { nonRetryable: true });
+  }
   let data = [];
-  let source = 'fallback';
-
-  // Strategy 1: Fetch the XLS file and parse it
+  // AAII robots.txt disallows /files/*, including sentiment.xls.
   try {
-    console.log('  Attempting XLS download...');
-    const resp = await fetch(AAII_XLS_URL, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/vnd.ms-excel,*/*' },
-      signal: AbortSignal.timeout(15_000),
+    const resp = await fetch(AAII_HTML_URL, {
+      redirect: 'error',
+      headers: { 'User-Agent': CHROME_UA, Accept: 'text/html,application/xhtml+xml' },
+      signal: AbortSignal.timeout(8_000),
     });
-    if (resp.ok) {
-      const buffer = await resp.arrayBuffer();
-      console.log(`  XLS downloaded: ${(buffer.byteLength / 1024).toFixed(0)} KB`);
-      const rows = parseXlsRows(buffer);
-      console.log(`  XLS parsed: ${rows.length} raw rows`);
-      if (rows.length > 10) {
-        data = extractSentimentData(rows);
-        if (data.length > 0) {
-          source = 'xls';
-          console.log(`  XLS extracted: ${data.length} sentiment rows`);
-        }
-      }
-    } else {
-      console.warn(`  XLS fetch: HTTP ${resp.status}`);
+    if (!resp.ok) {
+      const err = httpRetryError(resp);
+      const retryAfter = resp.headers.get('Retry-After');
+      const seconds = Number(retryAfter);
+      const retryAt = Date.parse(retryAfter);
+      // AAII requires the full provider delay; the shared helper caps it at 60s.
+      if (Number.isFinite(seconds) && seconds > 0) err.retryAfterMs = seconds * 1000;
+      else if (Number.isFinite(retryAt)) err.retryAfterMs = Math.max(0, retryAt - Date.now());
+      throw err;
     }
+    data = parseHtmlSentiment(await readAaiiPage(resp));
   } catch (e) {
-    console.warn(`  XLS fetch failed: ${e.message}`);
-  }
-
-  // Strategy 2: Scrape the HTML page for current reading
-  if (data.length === 0) {
-    try {
-      console.log('  Attempting HTML scrape...');
-      const resp = await fetch(AAII_HTML_URL, {
-        headers: { 'User-Agent': CHROME_UA, Accept: 'text/html,application/xhtml+xml' },
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (resp.ok) {
-        const html = await resp.text();
-        data = parseHtmlSentiment(html);
-        if (data.length > 0) {
-          source = 'html';
-          console.log(`  HTML scraped: ${data.length} rows`);
-        }
+    // AAII's crawl delay also applies to retries after transport failures.
+    if (!e.nonRetryable) {
+      e.retryAfterMs = Math.max(10_000, e.retryAfterMs ?? 0);
+      if (e.retryAfterMs >= fetchDeadlineAtMs - Date.now()) {
+        e.nonRetryable = true;
+        e.message += ': required retry delay exceeds the remaining AAII fetch budget';
       }
-    } catch (e) {
-      console.warn(`  HTML scrape failed: ${e.message}`);
     }
+    throw e;
   }
 
-  // Strategy 3: Use fallback data
-  const isFallback = data.length === 0;
-  if (isFallback) {
-    console.log('  Using fallback data');
-    data = FALLBACK_DATA;
-    source = 'fallback';
+  if (data.length === 0) {
+    throw Object.assign(new Error('AAII sources returned no usable sentiment rows'), { nonRetryable: true });
   }
 
-  // Keep last 52 weeks
-  const weeks = data.slice(0, 52);
+  if (data[0].date !== mostRecentThursdayUTC() || !isValidWeek(data[0])) {
+    throw Object.assign(new Error('AAII HTML has no valid current source-dated reading'), { nonRetryable: true });
+  }
+
+  const priorWeeks = retained?.fallback === false && ['html', 'xls'].includes(retained.source) ? retained.weeks : [];
+  if (!Array.isArray(priorWeeks) || priorWeeks.some(w => !isValidWeek(w) || w.date > data[0].date)) {
+    throw Object.assign(new Error('AAII retained history is invalid or newer than the live source'), { nonRetryable: true });
+  }
+  const byDate = new Map(priorWeeks.map(w => [w.date, w]));
+  for (const week of data) byDate.set(week.date, week);
+  const weeks = [...byDate.values()].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 52);
   const latest = weeks[0];
   const prev = weeks.length > 1 ? weeks[1] : null;
   const historicalAvg = { bullish: 37.5, bearish: 31.0, neutral: 31.5 };
@@ -370,9 +450,9 @@ async function fetchAaiiSentiment() {
   const bearishExtremes = weeks.filter(w => w.bearish >= 50).length;
 
   return {
-    seededAt: isFallback ? new Date(latest.date + 'T12:00:00Z').toISOString() : new Date().toISOString(),
-    fallback: isFallback,
-    source,
+    seededAt: new Date().toISOString(),
+    fallback: false,
+    source: 'html',
     latest,
     previous: prev,
     avg8w,
@@ -384,6 +464,15 @@ async function fetchAaiiSentiment() {
     },
     weeks,
   };
+}
+
+function isValidWeek(week) {
+  if (!week || typeof week.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(week.date)) return false;
+  const timestamp = Date.parse(week.date);
+  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== week.date) return false;
+  if (![week.bullish, week.neutral, week.bearish].every(n => Number.isFinite(n) && n >= 0 && n <= 100)) return false;
+  return Number.isFinite(week.spread) && Math.abs(week.bullish + week.neutral + week.bearish - 100) <= 0.2
+    && Math.abs(week.spread - (week.bullish - week.bearish)) <= 0.11;
 }
 
 function validate(data) {
@@ -399,8 +488,9 @@ if (isMain) {
   runSeed('market', 'aaii-sentiment', AAII_KEY, fetchAaiiSentiment, {
     validateFn: validate,
     ttlSeconds: AAII_TTL,
+    extendTtlOnFailure: false,
     recordCount: (data) => data?.weeks?.length ?? 0,
-    sourceVersion: 'aaii-xls-html-v1',
+    sourceVersion: 'aaii-html-retained-v2',
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 20160,

@@ -36,6 +36,8 @@ import {
   validateBootstrapPayload,
 } from '../scripts/_prediction-classify.mjs';
 import { filterAndScore } from '../scripts/_prediction-scoring.mjs';
+import * as predictionScoring from '../scripts/_prediction-scoring.mjs';
+import * as countryIndex from '../scripts/_prediction-country-index.mjs';
 import predictionTags from '../scripts/data/prediction-tags.json' with { type: 'json' };
 import filterParamContracts from '../shared/openapi-filter-param-contracts.json' with { type: 'json' };
 import fixture from './fixtures/prediction-markets-raw-candidates.json' with { type: 'json' };
@@ -45,6 +47,122 @@ const FIXTURE_NOW = Date.parse('2026-08-04T00:00:00Z');
 const COUNTRY_INDEX_KEY = 'prediction:markets-country-index:v1';
 const COUNTRY_INDEX_META_KEY = 'seed-meta:prediction:markets-country-index';
 const COUNTRY_INDEX_ACTIVATION_KEY = 'seed-activated:prediction:markets-country-index';
+
+describe('Kalshi public landing and market identity', () => {
+  const seed = readFileSync(new URL('../scripts/seed-prediction-markets.mjs', import.meta.url), 'utf8');
+  const body = seed.slice(seed.indexOf('function kalshiTitle('), seed.indexOf('async function fetchKalshiCountryMarkets('));
+  const event = {
+    title: 'Where will Trump and Putin next meet?', series_ticker: 'KXPUTINDJTLOCATION', event_ticker: 'KXPUTINDJTLOCATION-29',
+    markets: [{ ticker: 'KXPUTINDJTLOCATION-29-PRC', event_ticker: 'KXPUTINDJTLOCATION-29', yes_sub_title: 'China', last_price_dollars: '0.70', previous_price_dollars: '0.68', volume_fp: '30000', market_type: 'binary', status: 'active' }],
+  };
+  const subject = new Function(...Object.keys(predictionScoring), 'fetchKalshiEvents', `${body}\nreturn { kalshiCountryCandidate, fetchKalshiMarkets };`)(
+    ...Object.values(predictionScoring), async () => ({ events: [event], complete: true }),
+  );
+
+  it('uses explicit series provenance for both country and featured links', async () => {
+    const result = await subject.fetchKalshiMarkets();
+    for (const row of [result.countryCandidates[0], result.featured[0]]) {
+      assert.equal(row.url, 'https://kalshi.com/markets/KXPUTINDJTLOCATION-29-PRC');
+      assert.equal(row.displayUrl, 'https://kalshi.com/markets/kxputindjtlocation');
+      assert.equal(row.yesPrice, 70);
+      assert.equal(row.source, 'kalshi');
+    }
+    assert.equal(result.countryCandidates[0].eventKey, 'kalshi:KXPUTINDJTLOCATION-29');
+    assert.equal(result.featured[0].change24h, 2);
+    assert.equal('change7d' in result.featured[0], false);
+  });
+
+  it('does not infer a series from a market ticker when provenance is absent or malformed', () => {
+    for (const series_ticker of [undefined, '', '../other']) {
+      const row = subject.kalshiCountryCandidate({ ...event.markets[0], series_ticker });
+      assert.equal(row.url, 'https://kalshi.com/markets/KXPUTINDJTLOCATION-29-PRC');
+      assert.equal(row.displayUrl, '');
+    }
+  });
+
+  it('preserves distinct event markets through actual bootstrap pool construction', () => {
+    const first = { title: 'Will China meet Trump in 2027?', yesPrice: 70, volume: 30000, source: 'kalshi', tags: [], url: 'https://kalshi.com/markets/KXMEETING-27-CN', displayUrl: 'https://kalshi.com/markets/kxmeeting', endDate: '2027-01-01T00:00:00Z' };
+    const second = { ...first, title: 'Will China meet Trump in 2028?', url: 'https://kalshi.com/markets/KXMEETING-28-CN', volume: 40000 };
+    const result = buildBootstrapPools([first, second, { ...first, volume: 50000 }], { now: FIXTURE_NOW });
+    assert.deepEqual(new Set(Object.values(result.pools).flat().map(row => row.url)), new Set([first.url, second.url]));
+    assert.equal(result.duplicatesDropped, 1);
+    assert.equal(Object.values(result.pools).flat().find(row => row.url === first.url).volume, 50000);
+  });
+
+  it('preserves all four observed China Polymarket links and prices', () => {
+    const urls = [
+      'https://polymarket.com/event/china-gdp-growth-yy-in-q3-2026-20260716161116873',
+      'https://polymarket.com/event/best-chinese-ai-company-end-of-october',
+      'https://polymarket.com/event/second-best-chinese-ai-company-end-of-october',
+      'https://polymarket.com/event/third-best-chinese-ai-company-end-of-october',
+    ];
+    const rows = urls.map((url, i) => ({ title: `Will China AI company ${i} succeed?`, url, yesPrice: [68, 30, 22, 18][i], volume: 30000, source: 'polymarket', tags: ['ai'], endDate: '2027-01-01T00:00:00Z' }));
+    const result = Object.values(buildBootstrapPools(rows, { now: FIXTURE_NOW }).pools).flat();
+    assert.equal(result.length, 4);
+    for (const row of rows) {
+      const { regions, ...actual } = result.find(entry => entry.url === row.url);
+      assert.deepEqual(actual, row);
+    }
+  });
+
+});
+
+describe('upstream moves through the real seed and pool builders', () => {
+  it('keeps the selected Polymarket contract moves and leaves public country-index fields unchanged', async () => {
+    const seed = readFileSync(new URL('../scripts/seed-prediction-markets.mjs', import.meta.url), 'utf8');
+    const body = seed.slice(seed.indexOf('async function fetchAllPredictions()'), seed.indexOf('export function declareRecords'));
+    const pricedRecords = [];
+    const deps = {
+      ...predictionScoring, ...countryIndex, buildBootstrapPools,
+      GEOPOLITICAL_TAGS: ['geopolitics'], TECH_TAGS: [], FINANCE_TAGS: [],
+      GAMMA_BASE: 'https://fixture.invalid', CHROME_UA: 'test', FETCH_TIMEOUT: 100, TAG_DELAY_MS: 0,
+      sleep: async () => {}, console: { log() {}, warn() {} },
+      fetchKalshiMarkets: async () => ({ featured: [], countryCandidates: [], complete: true }),
+      fetchKalshiCountryMarkets: async () => ({ countryCandidates: [], complete: true }),
+      KALSHI_BASE: 'https://kalshi.invalid', withRetry: (fn) => fn(),
+      attachKalshiLiquidity: async (records) => { pricedRecords.push(...records); return { tickers: 0, priced: 0 }; },
+      fetchPolymarketEventsByTag: async () => [{
+        id: 'fixture', title: 'Will China GDP grow?', slug: 'china-gdp-move-fixture', volume: 100_000, liquidity: 250_000, tags: [{ slug: 'geopolitics' }],
+        markets: [
+          { question: 'Will China GDP grow above 5%?', volume: 50_000, liquidityNum: 40_000, outcomePrices: '["0.7","0.3"]', oneDayPriceChange: '-0.007', oneWeekPriceChange: 0 },
+          { question: 'Will China GDP grow above 6%?', volume: 10_000, outcomePrices: '["0.6","0.4"]', oneDayPriceChange: 0.9, oneWeekPriceChange: 0.8 },
+        ],
+      }, {
+        id: 'unknown', title: 'Will Iran GDP grow?', slug: 'iran-gdp-move-fixture', volume: 100_000, tags: [{ slug: 'geopolitics' }],
+        markets: [{ question: 'Will Iran GDP grow?', volume: 50_000, outcomePrices: '["0.7","0.3"]' }],
+      }],
+    };
+    const subject = new Function(...Object.keys(deps), `${body}\nreturn fetchAllPredictions;`)(...Object.values(deps));
+    const result = await subject();
+    const selected = result.geopolitical.find(row => row.title === 'Will China GDP grow above 5%?');
+    assert.equal(selected.change24h, -0.7);
+    assert.equal(selected.change7d, 0);
+    const unknown = result.geopolitical.find(row => row.title === 'Will Iran GDP grow?');
+    assert.equal('change24h' in unknown, false);
+    assert.equal('change7d' in unknown, false);
+    assert.ok(result.countryMarkets.CN.length > 0);
+    assert.equal('change24h' in result.countryMarkets.CN[0], false);
+    assert.equal('change7d' in result.countryMarkets.CN[0], false);
+    assert.equal(selected.liquidity, 250_000);
+    assert.equal('liquidity' in unknown, false);
+    assert.equal(result.countryMarkets.CN.find(row => row.title === 'Will China GDP grow above 5%?')?.liquidity, 40_000);
+    const published = [...result.geopolitical, ...result.tech, ...result.finance, ...Object.values(result.countryMarkets).flat()];
+    assert.equal(pricedRecords.length, published.length);
+    assert.ok(published.every(row => pricedRecords.includes(row)), 'order-book pricing must see every published record');
+  });
+
+  it('retains optional moves across all three ranked pools', () => {
+    const rows = RAW.map(row => ({ ...row, change24h: -2.5, change7d: 0 }));
+    const result = buildBootstrapPools(rows, { now: FIXTURE_NOW });
+    for (const bucket of Object.values(result.pools)) {
+      assert.ok(bucket.length > 0);
+      for (const row of bucket) {
+        assert.equal(row.change24h, -2.5);
+        assert.equal(row.change7d, 0);
+      }
+    }
+  });
+});
 
 // The seeder's REAL pool-building path — buildBootstrapPools is what
 // seed-prediction-markets.mjs calls, not a replica of it. This matters: an

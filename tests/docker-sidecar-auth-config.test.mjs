@@ -63,6 +63,17 @@ test('Docker entrypoint creates and exports an internal LOCAL_API_TOKEN when uns
   assert.match(entrypoint, /envsubst '\$LOCAL_API_PORT \$LOCAL_API_TOKEN'/);
 });
 
+// GHSA-wf3p-9m55-6vm8: the published image also runs without Compose. Left
+// unset, the sidecar defaulted to desktop mode, which serves /api/local-*
+// management to anyone nginx forwards with the injected transport token.
+test('Docker entrypoint pins the sidecar to Docker mode before starting it', () => {
+  const entrypoint = readProjectFile('docker/entrypoint.sh');
+  const pin = entrypoint.indexOf('export LOCAL_API_MODE=docker\n');
+  assert.ok(pin !== -1, 'entrypoint must export LOCAL_API_MODE=docker unconditionally');
+  assert.ok(pin < entrypoint.indexOf('exec /usr/bin/supervisord'), 'mode must be set before supervisord starts the sidecar');
+  assert.doesNotMatch(entrypoint, /LOCAL_API_MODE:-/, 'an operator value must not override the pin');
+});
+
 test('Docker nginx injects LOCAL_API_TOKEN through a private transport header', () => {
   const nginx = readProjectFile('docker/nginx.conf');
 
@@ -91,6 +102,20 @@ test('Docker nginx denies the native administration namespace before the data pr
   const staticNginx = readProjectFile('docker/nginx.conf.template');
   assert.doesNotMatch(staticNginx, /LOCAL_API_TOKEN|X-WorldMonitor-Local-Token/);
   assert.match(staticNginx, /proxy_pass \$\{API_UPSTREAM\}/);
+});
+
+test('frontend nginx authenticates TLS upstreams for every API location', () => {
+  const nginx = readProjectFile('docker/nginx.conf.template');
+  const httpDefaults = nginx.slice(nginx.indexOf('http {'), nginx.indexOf('  server {'));
+  for (const directive of [
+    'proxy_ssl_verify on;',
+    'proxy_ssl_verify_depth 3;',
+    'proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;',
+    'proxy_ssl_server_name on;',
+    'proxy_ssl_name $proxy_host;',
+  ]) assert.ok(httpDefaults.includes(directive), directive);
+  assert.equal((nginx.match(/proxy_pass \$\{API_UPSTREAM\};/g) ?? []).length, 3);
+  assert.doesNotMatch(nginx, /proxy_ssl_(?:verify|server_name)\s+off;/);
 });
 
 // Opt in where nginx is installed: WM_TEST_NGINX=/usr/sbin/nginx node --test ...
@@ -141,6 +166,8 @@ test('shipped nginx configurations separate native management from Docker data A
         .replaceAll('/usr/share/nginx/html', tempDir)
         .replaceAll('/etc/nginx/security_headers.conf', resolve(root, 'docker/nginx-security-headers.conf'))
         .replaceAll('/etc/nginx/embed_security_headers.conf', resolve(root, 'docker/nginx-embed-security-headers.conf'))
+        .replaceAll('/etc/nginx/oauth_authorize_security_headers.conf', resolve(root, 'docker/nginx-oauth-authorize-security-headers.conf'))
+        .replaceAll('/etc/nginx/youtube_embed_security_headers.conf', resolve(root, 'docker/nginx-youtube-embed-security-headers.conf'))
         .replaceAll('/dev/stderr', join(tempDir, 'logs/error.log'))
         .replaceAll('/dev/stdout', join(tempDir, 'logs/access.log'))
         .replaceAll('/tmp/nginx', join(tempDir, 'nginx'));

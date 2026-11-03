@@ -133,6 +133,7 @@ describe('/api/notification-channels relay timeout recovery', () => {
     });
 
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-timeout-retry' }),
       getEntitlements: async () => ({
         planKey: 'pro_monthly',
@@ -232,6 +233,7 @@ describe('/api/notification-channels relay timeout recovery', () => {
     });
 
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-mixed-deploy' }),
       getEntitlements: async () => ({
         planKey: 'pro_monthly',
@@ -298,6 +300,7 @@ describe('/api/notification-channels relay timeout recovery', () => {
     });
 
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-durable-deploy' }),
       getEntitlements: async () => ({
         planKey: 'pro_monthly',
@@ -357,6 +360,7 @@ describe('/api/notification-channels relay timeout recovery', () => {
     });
 
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-web-push-deploy' }),
       getEntitlements: async () => ({
         planKey: 'pro_monthly',
@@ -401,6 +405,7 @@ describe('/api/notification-channels email ownership errors', () => {
     installInMemoryUpstash();
     const mod = await importFreshNotificationChannels();
     mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
       validateBearerToken: async () => ({ valid: true, userId: 'user-email-proof' }),
       getEntitlements: async () => ({
         planKey: 'pro_monthly',

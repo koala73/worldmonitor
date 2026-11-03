@@ -22,6 +22,7 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sortRec, serialize, eq, normalizeKey } from './lib/openapi-codegen.mjs';
+import { EMERGENCY_CODES } from '../shared/aircraft-emergencies.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
@@ -184,6 +185,17 @@ const GDELT_TOPIC_EXAMPLE_ID = (() => {
 // IS informative in that state.
 function isCuratedOmission(key, context = {}) {
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+  // RegisterWebhook: the request example depicts the default
+  // chokepoint.disruption subscription, and the handler rejects `countries` on
+  // that event, so the field would make the sample un-runnable.
+  if (key === 'countries' && where.includes('registerwebhook')) return true;
+  // Same for `scope`: it belongs to occurrence events only, and the handler
+  // rejects any scope on a chokepoint.disruption subscription.
+  if (key === 'scope' && where.includes('registerwebhook')) return true;
+  // ListNewsPool: the example cell is a French feed-row read, which has no
+  // build time or replay age, so those fields stay out and `state` gets a slot.
+  if ((where.includes('listnewspool') || where.includes('list-news-pool')) && context.name === 'cells'
+    && (key === 'generatedAt' || key === 'staleAgeSeconds')) return true;
   // GetTradeFlows / GetTariffTrends: a 200 carrying rows always has
   // unavailableReason at the UNSPECIFIED zero value. The generic enum picker
   // skips the zero value and so paired rows with INVALID_REQUEST — a response
@@ -211,6 +223,17 @@ function isCuratedOmission(key, context = {}) {
 function overrideStringExample(key, context = {}) {
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
   if (key === 'jmespath') return 'keys(@)';
+  // Shipping v2 webhooks: eventType is a registry key (shared/event-triggers.json)
+  // and countries holds monitored ISO2 codes; the heuristic's "all" / "example"
+  // are rejected by registerWebhook.
+  if (where.includes('registerwebhook') || where.includes('listwebhooks') || where.includes('/api/v2/shipping/webhooks')) {
+    if (key === 'eventtype') return 'chokepoint.disruption';
+    if (key === 'countries') return 'US';
+  }
+  // IOM DTM keys countries by ISO3; the generic ISO2 'US' fails the pattern.
+  if (key === 'countrycode' && (where.includes('getinternaldisplacement') || where.includes('get-internal-displacement'))) {
+    return 'SDN';
+  }
   if (where.includes('getpricehistory') || where.includes('get-price-history')) {
     if (key === 'symbols') return 'GC=F,SI=F';
     if (key === 'range') return '3mo';
@@ -219,6 +242,35 @@ function overrideStringExample(key, context = {}) {
   // is not one of the published ids, so the documented 200 sample is un-runnable.
   if (key === 'id' && (where.includes('getusinterestrates') || where.includes('get-us-interest-rates'))) {
     return 'fed_funds_effective';
+  }
+  // ListMediaPerspective validates codes, audiences and region slugs; the
+  // heuristic's "example" values are rejected with HTTP 400.
+  if (where.includes('listmediaperspective') || where.includes('list-media-perspective')) {
+    if (key === 'subjectcountry') return 'SA';
+    if (key === 'outletcountries') return 'US';
+    if (key === 'audience') return 'domestic';
+    if (key === 'outletregions') return 'northern-europe';
+  }
+  // ListNewsPool validates languages, editions and categories against the
+  // catalog layout, so the heuristic's "example" values are rejected with 400.
+  // French in full: Radio-Canada, placed under `us`.
+  if (where.includes('listnewspool') || where.includes('list-news-pool')) {
+    if (key === 'languages') return 'fr';
+    if (key === 'editions') return 'full';
+    if (key === 'category') return 'us';
+  }
+  if (where.includes('listnewspool') || where.includes('list-news-pool') || where.includes('newspoolcell')) {
+    if (key === 'edition') return 'full';
+    if (key === 'language') return 'fr';
+    if (key === 'state') return 'complete';
+  }
+  // ListSourceItems: editions, category and sources must name catalog
+  // placements, or the example request is answered `unplaced`.
+  if (where.includes('listsourceitems') || where.includes('list-source-items') || where.includes('sourceitemsstate')) {
+    if (key === 'editions' || key === 'edition') return 'full';
+    if (key === 'category') return 'europe';
+    if (key === 'sources' || key === 'source') return 'France 24';
+    if (key === 'state') return 'found';
   }
   if (where.includes('listvulnerabilityrankings') || where.includes('list-vulnerability-rankings')) {
     if (key === 'commodityid') return 'crude_oil';
@@ -263,6 +315,20 @@ function overrideStringExample(key, context = {}) {
     if (key === 'partnercountry') return isParam ? '156' : 'World';
     if (key === 'productsector') return isParam ? 'all' : 'All products';
   }
+  // GetBilateralTariff request codes must stay inside their buf.validate
+  // patterns; the generic heuristic published "US" and "example", which the
+  // gateway rejects with 400. The response example is curated below.
+  if (where.includes('getbilateraltariff') || where.includes('get-bilateral-tariff')) {
+    if (key === 'reportingcountry') return '840';
+    if (key === 'partnercountry') return '484';
+    if (key === 'hscode') return '870323';
+  }
+  // GetUsImportDuty request codes must stay inside their buf.validate
+  // patterns. The response example is curated below.
+  if (where.includes('getusimportduty') || where.includes('get-us-import-duty')) {
+    if (key === 'hscode') return '870380';
+    if (key === 'partnercountry') return '156';
+  }
   // GetFoodStocks' commodity is a closed slug set enforced by
   // normalizeFoodStocksCommodity; the heuristic's empty-string -> "example"
   // fallback published a value the handler rejects with 400, so anyone running
@@ -291,6 +357,7 @@ function overrideStringExample(key, context = {}) {
   if (key === 'range') {
     if (where.includes('consumerprice') || where.includes('consumer-prices')) return CONSUMER_PRICE_RANGE_EXAMPLE_ID;
   }
+  if (key === 'regionid' && (where.includes('getno2activity') || where.includes('get-no2-activity'))) return 'yangtze-river-delta';
   if (key === 'regionid') return REGIONAL_INTELLIGENCE_EXAMPLE_ID;
   if (key === 'airlines') return 'BA';
   if (key === 'departurewindow') return '6-20';
@@ -657,6 +724,9 @@ function stringExample(name, schema = {}, context = {}) {
   if (description.includes('iata')) return constrainedString(key.includes('destination') || key.includes('arrival') ? 'LHR' : 'JFK', schema);
   if (description.includes('iso 4217') || key.includes('currency')) return constrainedString('USD', schema);
   if (description.includes('iso 639') || key === 'lang' || key.includes('locale')) return constrainedString('en', schema);
+  // A partner country must differ from the primary country example (US), or
+  // the sample request describes a self-pair that returns no pair.
+  if (key === 'counterpart' && description.includes('iso 3166')) return constrainedString('DE', schema);
   if (description.includes('iso 3166') || key.includes('marketcode')) return constrainedString('US', schema);
   if (description.includes('wto member code')) return constrainedString(key.includes('partner') ? '156' : '840', schema);
   if (description.includes('world bank indicator code')) return constrainedString('NY.GDP.MKTP.CD', schema);
@@ -669,7 +739,8 @@ function stringExample(name, schema = {}, context = {}) {
   if (key.includes('iso2') || key.includes('country') || key.includes('countrycode')) return constrainedString('US', schema);
   if (key === 'members' || key === 'includedmembers') return constrainedString('US', schema);
   if (key.includes('bbox')) return constrainedString('-74.10,40.60,-73.70,40.90', schema);
-  if (key.includes('lat')) return constrainedString('40.7128', schema);
+  // Word-shaped, as in the numeric picker: `latestPeriod` is not a latitude.
+  if (key === 'lat' || key.endsWith('lat') || key.includes('latitude')) return constrainedString('40.7128', schema);
   if (key.includes('lng') || key.includes('lon')) return constrainedString('-74.0060', schema);
   if (key.includes('date') || key.endsWith('day')) return constrainedString('2026-01-15', schema);
   if (key.includes('time') || key.endsWith('at')) return constrainedString('2026-01-15T12:00:00Z', schema);
@@ -678,6 +749,11 @@ function stringExample(name, schema = {}, context = {}) {
   if (key.includes('language')) return constrainedString('typescript', schema);
   if (key.includes('category')) return constrainedString('cs.AI', schema);
   if (key.includes('feedtype')) return constrainedString('top', schema);
+  // GetCapitalFlows: periods, episode bounds and source quarters are YYYY-Qn.
+  if ((where.includes('getcapitalflows') || where.includes('get-capital-flows'))
+    && (key.includes('period') || key.includes('quarter') || key === 'start' || key === 'end')) {
+    return constrainedString('2026-Q1', schema);
+  }
   if (key.includes('period')) return constrainedString('daily', schema);
   if (key.includes('cargotype')) return constrainedString('container', schema);
   if (key.includes('commoditytype')) return constrainedString('oil', schema);
@@ -723,11 +799,17 @@ function numberExample(name, schema = {}, integer = false) {
   }
   else if (key.includes('percent') || key.includes('ratio') || key.includes('score')) value = 42.5;
   else if (key.includes('confidence')) value = 0.82;
+  else if (key.includes('probability')) value = 0.62;
   else if (key.includes('price') || key.includes('cost') || key.includes('rate')) value = 75.25;
   else if (key.includes('count') || key.includes('total')) value = 1;
 
   if (Number.isFinite(schema.minimum) && value < schema.minimum) value = schema.minimum;
   if (Number.isFinite(schema.maximum) && value > schema.maximum) value = schema.maximum;
+  // A closed numeric set: use its first non-zero member (zero is usually the
+  // "default" sentinel), never a value outside the set.
+  if (Array.isArray(schema.enum) && schema.enum.length > 0 && !schema.enum.includes(value)) {
+    return schema.enum.find((member) => member !== 0) ?? schema.enum[0];
+  }
   if (integer) value = Math.trunc(value);
   if (integer && Number.isFinite(schema.minimum) && value < schema.minimum) value = Math.ceil(schema.minimum);
   if (integer && Number.isFinite(schema.maximum) && value > schema.maximum) value = Math.floor(schema.maximum);
@@ -814,6 +896,59 @@ function getPriceHistoryExample() {
   };
 }
 
+function getGoldIntelligenceExample() {
+  return {
+    goldPrice: 3200,
+    goldChangePct: 0,
+    goldSparkline: [],
+    silverPrice: 0,
+    platinumPrice: 0,
+    palladiumPrice: 0,
+    crossCurrencyPrices: [],
+    drivers: [],
+    updatedAt: '2026-09-30T00:00:00Z',
+    unavailable: false,
+    cbReserves: {
+      asOfMonth: '2026-09',
+      indicator: 'IRFCLDT1_IRFCL56_USD',
+      valueIsOunces: false,
+      totalTonnes: 0,
+      topHolders: [{ iso3: 'USA', name: 'United States', tonnes: 0, pctOfReserves: 50 }],
+      topBuyers12m: [],
+      topSellers12m: [],
+    },
+  };
+}
+
+// One real DTM operation, trimmed to one region and one route.
+function getInternalDisplacementExample() {
+  const kassala = { latitude: 15.66, longitude: 35.87 };
+  return {
+    operations: [{
+      countryCode: 'SDN',
+      countryName: 'Sudan',
+      operation: 'Armed Clashes in Sudan (Overview)',
+      reportingDate: '2026-07-31',
+      roundNumber: 38,
+      totalIdps: 8622801,
+      reasons: [{ reason: 'Conflict', idps: 8622801 }],
+      regions: [{ pcode: 'SD11', name: 'Kassala', idps: 13596, location: kassala }],
+      flows: [{
+        originPcode: 'SD15',
+        originName: 'Aj Jazirah',
+        destinationPcode: 'SD11',
+        destinationName: 'Kassala',
+        idps: 13596,
+        originLocation: { latitude: 14.4, longitude: 33.5 },
+        destinationLocation: kassala,
+      }],
+    }],
+    // After the 2026-07-31 round: a snapshot cannot predate its newest round.
+    fetchedAt: 1785542400000,
+    dataAvailable: true,
+  };
+}
+
 function getShippingRatesExample() {
   return {
     indices: [
@@ -866,10 +1001,198 @@ function getYoutubeLiveStreamInfoExample() {
   };
 }
 
+// SearchClaimHeadlines returns one of three states; the generic builder would
+// publish state "example". The headline is synthetic.
+function getSearchClaimHeadlinesExample() {
+  return {
+    headlines: [{
+      source: 'Example Feed',
+      title: 'Synthetic example headline sharing the claim\'s words',
+      link: 'https://example.com/news/synthetic-example',
+      publishedAt: 1768478400000,
+    }],
+    searchedHeadlines: 4140,
+    searchedFeeds: 216,
+    feedTotal: 241,
+    feedCached: 241,
+    state: 'complete',
+    readAt: '2026-01-15T12:00:00.000Z',
+  };
+}
+
+// SearchFactChecks (#9094) returns a fixed caveat and one of three states; the
+// generic builder published a timestamp caveat and state "example". The
+// fact-check is synthetic: no real fact-checker, rating or article is cited.
+// tests/fact-checks.test.mts holds the caveat to FACT_CHECK_CAVEAT.
+function getSearchFactChecksExample() {
+  return {
+    factChecks: [{
+      publisher: 'Example Fact-Checker (synthetic)',
+      site: 'example.com',
+      rating: 'Example rating',
+      reviewedAt: '2026-01-15T12:00:00.000Z',
+      url: 'https://example.com/fact-check/synthetic-example',
+      title: 'Synthetic example fact-check',
+      claimReviewed: 'A synthetic example claim, similar to the claim checked',
+    }],
+    state: 'ok',
+    caveat: 'Ratings are the fact-checkers\' own, quoted with attribution from IFCN-verified signatories. WorldMonitor does not rate claims, and a rating never changes the coverage result above.',
+  };
+}
+
+// A synthetic story moving from one publisher to two, with counts whose parts
+// add up to the total (the reader drops counts that do not). The generic
+// builder filled state and field with "example" and gave counts that summed
+// to 77 stories under stories: 1.
+function getListLabelChangesExample() {
+  return {
+    changes: [{
+      storyId: 'a'.repeat(64),
+      field: 'corroboration',
+      previous: 'single-publisher',
+      next: 'corroborated',
+      previousPublishers: 1,
+      nextPublishers: 2,
+      at: 1767182400000,
+      trigger: 'digest',
+      reason: '2 publisher families now carry this story (was 1).',
+      sources: [
+        { name: 'Example Wire (synthetic)', tier: 1 },
+        { name: 'Example Daily (synthetic)', tier: 2 },
+      ],
+      title: 'Synthetic example story',
+      link: 'https://example.com/news/synthetic-example',
+      credibilityScore: 72,
+    }],
+    state: 'ok',
+    retentionDays: 7,
+    counts: {
+      at: 1767182400000,
+      stories: 120,
+      corroborated: 64,
+      singlePublisher: 51,
+      tier4Only: 3,
+      unknown: 2,
+    },
+  };
+}
+
+// The served US <- Mexico passenger-car answer captured from WITS
+// (tests/fixtures/wits-trains/), trimmed to one group preference. The served
+// UNSPECIFIED unavailableReason is left out, as for GetTariffTrends: the
+// examples contract rejects enum sentinels in success examples. The generic
+// builder priced every rate at 75.25 with a specific-duty line, which reads as
+// a 75% tariff.
+function getBilateralTariffExample() {
+  const zero = { rate: 0, minRate: 0, maxRate: 0, tariffLines: 1, nonAdValoremLines: 0 };
+  return {
+    reportingCountry: '840',
+    partnerCountry: '484',
+    hsCode: '870323',
+    filingReporter: '840',
+    year: 2021,
+    nomenclature: 'H5',
+    basis: 'APPLIED_TARIFF_BASIS_PREFERENTIAL',
+    appliedRate: zero,
+    mfnRate: { rate: 2.5, minRate: 2.5, maxRate: 2.5, tariffLines: 1, nonAdValoremLines: 0 },
+    preferentialRate: zero,
+    groupPreferences: [{ groupCode: 'P22', groupName: 'North American Free Trade Agreement (NAFTA)', rate: zero }],
+    source: 'UNCTAD TRAINS via World Bank WITS',
+    sourceUrl: 'https://wits.worldbank.org/API/V1/SDMX/V21/datasource/TRN/reporter/840/partner/all/product/870323/year/2021/datatype/reported',
+    upstreamUnavailable: false,
+  };
+}
+
+// The served China -> US electric-vehicle answer against HTS 2026 Rev 21
+// (tests/fixtures/us-hts/), trimmed to two of its three duties. Enum
+// sentinels are left out, as above.
+function getUsImportDutyExample() {
+  return {
+    hsCode: '870380',
+    partnerCountry: '156',
+    htsRelease: '2026HTSRev21',
+    lines: [{
+      htsCode: '8703.80.00',
+      description: 'Other vehicles, with only electric motors for propulsion',
+      generalRate: '2.5%',
+      specialRate: 'Free (A+,AU,B,BH,CL,CO,D,E,IL,JO,KR,MA,OM,P,PA,PE,S,SG)',
+      column2Rate: '10%',
+      basis: 'US_DUTY_BASIS_MFN',
+      baseRate: '2.5%',
+      baseAdValorem: 2.5,
+      baseNonAdValorem: false,
+      preferenceProgram: '',
+      unresolvedPrograms: ['D', 'E'],
+      additionalDuties: [
+        { heading: '9903.91.03', authority: 'US_DUTY_AUTHORITY_SECTION_301', program: 'China four-year review', addedRate: 100, topUpTo: 0, status: 'US_ADDITIONAL_DUTY_STATUS_APPLIES', condition: '', legalNote: 'U.S. note 31(d)', effectiveFrom: '2024-09-27' },
+        { heading: '9903.94.01', authority: 'US_DUTY_AUTHORITY_SECTION_232', program: 'Passenger vehicles and light trucks', addedRate: 25, topUpTo: 0, status: 'US_ADDITIONAL_DUTY_STATUS_CONDITIONAL', condition: 'Section 232 rates vary by origin deal and, for some derivatives, apply to metal content only.', legalNote: 'U.S. note 33(b)', effectiveFrom: '' },
+      ],
+      estimatedRate: 102.5,
+      estimateComplete: false,
+    }],
+    additionalDutiesLoaded: true,
+    source: 'USITC Harmonized Tariff Schedule',
+    sourceUrl: 'https://hts.usitc.gov/search?query=8703.80',
+    upstreamUnavailable: false,
+  };
+}
+
 function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set()) {
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
   schema = resolveRef(schema, spec);
+  if (depth === 0 && context.operationId === 'GetWebcamImage'
+    && context.exampleSurface === 'response') {
+    return {
+      thumbnailUrl: 'https://example.com/cam.jpg',
+      playerUrl: '',
+      title: 'Port camera',
+      windyUrl: 'https://www.windy.com/webcams/123',
+      lastUpdated: '2026-01-15T12:00:00.000Z',
+      resolvedAt: 1768478460000,
+      mediaType: 'snapshot',
+      error: '',
+    };
+  }
+  if (depth === 0 && context.operationId === 'GetCountrySignalObservations'
+    && context.exampleSurface === 'response') {
+    return {
+      countryCode: 'US', family: 'COUNTRY_SIGNAL_FAMILY_OUTAGES', windowIndex: 0,
+      outcomeJson: JSON.stringify({ countryCode: 'US', family: 'outages', state: 'unavailable', observations: [],
+        snapshotAt: null, retrievedAt: '2026-10-18T12:00:00.000Z', computedAt: null,
+        observationWindow: null, scope: 'Country-qualified observations', attribution: 'Cloudflare Radar',
+        partial: true, sampleBeforeCountryFilter: false, reason: 'Synthetic unavailable-source example.',
+        matchedRows: null, sampledRows: null, omittedRows: null }),
+    };
+  }
+  // ListMediaPerspective has no framing labels until the background labeller
+  // ships: every headline is counted as unlabeled and the label fields are empty.
+  if (depth === 0 && context.operationId === 'ListMediaPerspective'
+    && String(context.name ?? '').endsWith('Response')) {
+    return {
+      subjectCountry: 'SA', windowHours: 72, state: 'complete', feedTotal: 812, feedCached: 812,
+      unattributedCount: 0, noCoverageCountries: [], readAt: '2026-10-27T12:00:00.000Z',
+      groups: [{
+        homeCountry: 'GB', audience: 'international', outletCount: 1, headlineCount: 1,
+        framing: { favorable: 0, neutral: 0, critical: 0, hostile: 0, unlabeled: 1, method: '', model: '', promptVersion: '' },
+        headlines: [{
+          title: 'Saudi Arabia hosts ceasefire talks', englishTitle: 'Saudi Arabia hosts ceasefire talks', titleLanguage: 'en',
+          outlet: 'BBC World', publisherFamily: 'bbc', tier: 1, ownershipClass: 'public-service', stateAffiliated: '',
+          propagandaRisk: 'low', framing: '', publishedAt: 1717200000000, link: 'https://www.bbc.co.uk/news/articles/example',
+        }],
+      }],
+    };
+  }
+  if (depth === 0 && context.operationId === 'ListAircraftEmergencies'
+    && String(context.name ?? '').endsWith('Response')) {
+    return {
+      feeds: EMERGENCY_CODES.map(squawk => ({
+        source: 'adsb.lol', squawk, status: 'available', fetchedAt: 1717200000000, message: 'Synthetic example.',
+      })),
+      observations: [{ address: 'a00001', squawk: '7500', source: 'adsb.lol', observedAt: 0,
+        callsign: 'SYNTHETIC', militaryFlag: 'unknown', description: 'Synthetic example. No observed incident.' }],
+    };
+  }
   if (
     depth === 0
     && String(context.operationId ?? '').toLowerCase() === 'getgivingsummary'
@@ -893,10 +1216,38 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   }
   if (
     depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getbilateraltariff'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getBilateralTariffExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getusimportduty'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getUsImportDutyExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getinternaldisplacement'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getInternalDisplacementExample();
+  }
+  if (
+    depth === 0
     && String(context.operationId ?? '').toLowerCase() === 'getpricehistory'
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getPriceHistoryExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getgoldintelligence'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getGoldIntelligenceExample();
   }
   if (
     depth === 0
@@ -912,6 +1263,27 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   ) {
     return getYoutubeLiveStreamInfoExample();
   }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'searchfactchecks'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getSearchFactChecksExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'searchclaimheadlines'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getSearchClaimHeadlinesExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'listlabelchanges'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getListLabelChangesExample();
+  }
   const ref = original.$ref;
   if (ref) {
     if (seen.has(ref)) return {};
@@ -925,6 +1297,17 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
         unit: 'percent',
         source: 'World Bank',
         indicatorCode: 'IT.NET.USER.ZS',
+      };
+    }
+    if (resolvedName === 'CapabilityObservation') {
+      const field = context.name ?? '';
+      return {
+        available: true,
+        value: 1.5,
+        year: 2024,
+        source: 'Example dataset',
+        unit: field.endsWith('Years') ? 'years' : field.endsWith('People') ? 'people'
+          : field === 'researchersPerMillion' ? 'people per million' : 'percent',
       };
     }
     if (resolvedName === 'GetFiveFactorScorecardResponse' || resolvedName === 'GetBlocScorecardResponse') {
@@ -1018,6 +1401,20 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     }
     return out;
   }
+  // TP_A_0010 carries no bound rate, so the seeder writes boundRate 0 and the
+  // contract documents it as reserved. The generic `rate` heuristic published
+  // 75.25, an example the API cannot return.
+  // GetBilateralTariff's year is a calendar year; the generic integer `1`
+  // asks TRAINS for a year it does not hold. 2021 matches the curated
+  // response example.
+  if (type === 'integer' && String(name ?? '').toLowerCase() === 'year') {
+    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+    if (where.includes('getbilateraltariff') || where.includes('get-bilateral-tariff')) return 2021;
+  }
+  if (type === 'number' && String(name ?? '').toLowerCase() === 'boundrate') {
+    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+    if (where.includes('gettarifftrends') || where.includes('get-tariff-trends')) return 0;
+  }
   if (type === 'integer') return numberExample(name, schema, true);
   if (type === 'number') return numberExample(name, schema, false);
   if (type === 'boolean') {
@@ -1095,8 +1492,48 @@ function injectDisplacementYearContract(spec) {
   return changed;
 }
 
+// buf.validate can only bound windowHours to 0..96 (the runtime validator has
+// no int32.in), but ListMediaPerspective accepts exactly these values. Publish
+// the closed set on the request schema and on the REST query parameter.
+const MEDIA_PERSPECTIVE_WINDOW_HOURS = [0, 24, 48, 72, 96];
+function injectMediaPerspectiveWindowContract(spec) {
+  const properties = spec.components?.schemas?.ListMediaPerspectiveRequest?.properties;
+  if (!properties?.windowHours) return false;
+  const desired = {
+    type: 'integer',
+    format: 'int32',
+    description: properties.windowHours.description,
+    enum: MEDIA_PERSPECTIVE_WINDOW_HOURS,
+  };
+  if (desired.description === undefined) delete desired.description;
+  let changed = !eq(properties.windowHours, desired);
+  properties.windowHours = desired;
+  const parameter = spec.paths?.['/api/news/v1/list-media-perspective']?.get?.parameters
+    ?.find((item) => item?.in === 'query' && item.name === 'window_hours');
+  if (parameter) {
+    const schema = { type: 'integer', format: 'int32', enum: MEDIA_PERSPECTIVE_WINDOW_HOURS };
+    if (!eq(parameter.schema, schema)) changed = true;
+    parameter.schema = schema;
+  }
+  return changed;
+}
+
 function injectSpecExamples(spec) {
   let changed = injectDisplacementYearContract(spec);
+  changed = injectMediaPerspectiveWindowContract(spec) || changed;
+  const countrySignals = spec.paths?.['/api/intelligence/v1/get-country-signal-observations']?.get;
+  const countrySignalFields = spec.components?.schemas?.GetCountrySignalObservationsRequest?.properties;
+  for (const parameter of countrySignals?.parameters ?? []) {
+    const property = { country_code: 'countryCode', window_index: 'windowIndex', cursor: 'cursor' }[parameter.name];
+    if (property && countrySignalFields?.[property]) {
+      const schema = clone(countrySignalFields[property]);
+      delete schema.description;
+      delete schema.example;
+      delete schema.examples;
+      if (!eq(parameter.schema, schema)) changed = true;
+      parameter.schema = schema;
+    }
+  }
   const runId = spec.components?.schemas?.GetSimulationOutcomeRequest?.properties?.runId;
   const runIdParameter = spec.paths?.['/api/forecast/v1/get-simulation-outcome']?.get?.parameters
     ?.find((item) => item?.in === 'query' && item.name === 'runId');
@@ -1126,7 +1563,9 @@ function injectSpecExamples(spec) {
           // and clobbering it would fight that injector. That injector owns
           // header-param examples.
           if (param.in === 'header') continue;
-          const example = exampleForSchema(param.schema, spec, {
+          const example = context.operationId === 'GetCountrySignalObservations' && param.name === 'window_index' ? 0
+            : context.operationId === 'GetCountrySignalObservations' && param.name === 'cursor' ? ''
+            : exampleForSchema(param.schema, spec, {
             ...context,
             name: param.name,
             description: param.description,
@@ -1395,27 +1834,36 @@ function replaceResponseExample(lines, opStart, opEnd, code, example) {
   replaceMediaExample(lines, mediaStart, example);
 }
 
-function patchYamlDisplacementYearSchema(lines, schema) {
-  const requestStart = lines.findIndex((line) => line.trim().endsWith('GetDisplacementSummaryRequest:'));
+function patchYamlRequestPropertySchema(lines, requestName, property, schema) {
+  const requestStart = lines.findIndex((line) => line.trim().endsWith(`${requestName}:`));
   if (requestStart === -1) return;
   const requestIndent = countIndent(lines[requestStart]);
   const requestEnd = blockEnd(lines, requestStart, requestIndent);
-  const yearStart = lines.findIndex((line, index) =>
+  const propertyStart = lines.findIndex((line, index) =>
     index > requestStart
     && index < requestEnd
     && countIndent(line) === requestIndent + 8
-    && (line.trim() === 'year:' || line.trim() === '"year":'),
+    && (line.trim() === `${property}:` || line.trim() === `"${property}":`),
   );
-  if (yearStart === -1) throw new Error('could not locate GetDisplacementSummaryRequest.year in YAML artifact');
-  const yearIndent = countIndent(lines[yearStart]);
-  const yearEnd = blockEnd(lines, yearStart, yearIndent);
-  lines.splice(yearStart, yearEnd - yearStart, ...renderYamlNode({ year: schema }, yearIndent));
+  if (propertyStart === -1) throw new Error(`could not locate ${requestName}.${property} in YAML artifact`);
+  const propertyIndent = countIndent(lines[propertyStart]);
+  const propertyEnd = blockEnd(lines, propertyStart, propertyIndent);
+  lines.splice(propertyStart, propertyEnd - propertyStart, ...renderYamlNode({ [property]: schema }, propertyIndent));
 }
 
 function patchYamlExamples(raw, spec, label) {
   const lines = raw.split('\n');
   const displacementYear = spec.components?.schemas?.GetDisplacementSummaryRequest?.properties?.year;
-  if (displacementYear) patchYamlDisplacementYearSchema(lines, displacementYear);
+  if (displacementYear) patchYamlRequestPropertySchema(lines, 'GetDisplacementSummaryRequest', 'year', displacementYear);
+  const mediaWindow = spec.components?.schemas?.ListMediaPerspectiveRequest?.properties?.windowHours;
+  if (mediaWindow) patchYamlRequestPropertySchema(lines, 'ListMediaPerspectiveRequest', 'windowHours', mediaWindow);
+  const mediaPath = '/api/news/v1/list-media-perspective';
+  const mediaWindowParameter = spec.paths?.[mediaPath]?.get?.parameters
+    ?.find((item) => item?.in === 'query' && item.name === 'window_hours');
+  if (mediaWindowParameter?.schema) {
+    const loc = findOperation(lines, mediaPath, 'get', label);
+    replaceParamSchema(lines, loc.start, loc.end, 'window_hours', mediaWindowParameter.schema);
+  }
   const displacementParameter = spec.paths?.['/api/displacement/v1/get-displacement-summary']?.get?.parameters
     ?.find((item) => item?.in === 'query' && item.name === 'year');
   if (displacementParameter?.schema) {
@@ -1427,6 +1875,12 @@ function patchYamlExamples(raw, spec, label) {
   if (runIdParameter) {
     const loc = findOperation(lines, runIdPath, 'get', label);
     replaceParamSchema(lines, loc.start, loc.end, 'runId', runIdParameter.schema);
+  }
+  const countrySignalsPath = '/api/intelligence/v1/get-country-signal-observations';
+  for (const parameter of spec.paths?.[countrySignalsPath]?.get?.parameters ?? []) {
+    if (!['country_code', 'window_index', 'cursor'].includes(parameter.name)) continue;
+    const loc = findOperation(lines, countrySignalsPath, 'get', label);
+    replaceParamSchema(lines, loc.start, loc.end, parameter.name, parameter.schema);
   }
   for (const [path, ops] of Object.entries(spec.paths ?? {})) {
     for (const [method, op] of Object.entries(ops ?? {})) {

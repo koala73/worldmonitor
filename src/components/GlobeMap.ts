@@ -15,13 +15,15 @@
  */
 
 import Globe from 'globe.gl';
+import { ukmtoIncidentLabel, type UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import { isDesktopRuntime } from '@/services/runtime';
+import type { NewsLocationMarker as NewsLocationInput } from '@/types';
 import type { GlobeInstance, ConfigOptions } from 'globe.gl';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/geo';
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import { NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, CRITICAL_MINERALS, UNDERSEA_CABLES } from '@/config/geo-map';
 import { PIPELINES } from '@/config/pipelines';
-import { t } from '@/services/i18n';
+import { initI18n, t } from '@/services/i18n';
 import { SITE_VARIANT } from '@/config/variant';
 import { getGlobeRenderScale, resolveGlobePixelRatio, resolvePerformanceProfile, subscribeGlobeRenderScaleChange, getGlobeTexture, GLOBE_TEXTURE_URLS, subscribeGlobeTextureChange, getGlobeVisualPreset, subscribeGlobeVisualPresetChange, type GlobeRenderScale, type GlobePerformanceProfile, type GlobeVisualPreset } from '@/services/globe-render-settings';
 import {
@@ -32,7 +34,7 @@ import {
   bindLayerSearch,
   type MapVariant,
 } from '@/config/map-layer-definitions';
-import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
+import { layerExplanationLookup, renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import { guardOrbitControlsPointerTracking } from '@/utils/orbit-controls-pointer-guard';
 import { getAuthState } from '@/services/auth-state';
 import { resolveTradeRouteSegments, type TradeRouteSegment } from '@/config/trade-routes';
@@ -40,6 +42,7 @@ import { GAMMA_IRRADIATORS } from '@/config/irradiators';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { getCountryBbox, getCountriesGeoJson, getCountryAtCoordinates, getCountryNameByCode } from '@/services/country-geometry';
 import { escapeHtml } from '@/utils/sanitize';
+import { corroborationLabelHtml } from '@/utils/corroboration-flag';
 import { showLayerWarning } from '@/utils/layer-warning';
 import { isMobileDevice } from '@/utils';
 import { setGlobeMarkerLoad } from '@/bootstrap/globe-marker-probe';
@@ -62,14 +65,15 @@ import type { MapContainerState, MapView, TimeRange } from './MapContainer';
 import type { CountryClickPayload } from './DeckGLMap';
 import type { WeatherAlert } from '@/services/weather';
 import { type IranEvent, getIranEventHexColor } from '@/services/conflict';
-import type { DisplacementFlow } from '@/services/displacement';
+import type { CrossBorderData, CrossBorderPoint, DisplacementFlow } from '@/services/displacement';
+import { createCrossBorderMarker, crossBorderMarkerOffsets, renderCrossBorderDetails } from './cross-border-marker';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { SatellitePosition } from '@/services/satellites';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { getCategoryStyle } from '@/services/webcams';
-import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
+import { mountWebcamPinButton } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { RadiationObservation } from '@/services/radiation';
@@ -229,6 +233,11 @@ interface DisplacementMarker extends BaseMarker {
   asylum: string;
   refugees: number;
 }
+interface CrossBorderMarker extends BaseMarker {
+  _kind: 'crossBorder';
+  point: CrossBorderPoint;
+  offset: [number, number];
+}
 interface ClimateMarker extends BaseMarker {
   _kind: 'climate';
   id: string;
@@ -371,8 +380,10 @@ interface NotamRingMarker extends BaseMarker {
 interface NewsLocationMarker extends BaseMarker {
   _kind: 'newsLocation';
   id: string;
+  article?: NewsLocationInput['article'];
   title: string;
   threatLevel: string;
+  corroboration?: NewsLocationInput['corroboration'];
 }
 interface FlashMarker extends BaseMarker {
   _kind: 'flash';
@@ -402,6 +413,11 @@ interface AisDisruptionMarker extends BaseMarker {
   type: AisDisruptionType;
   severity: AisDisruptionEvent['severity'];
   description: string;
+}
+interface UkmtoMarker extends BaseMarker {
+  _kind: 'ukmtoIncident';
+  id: string;
+  incident: UkmtoMapIncident;
 }
 interface SatelliteMarker extends BaseMarker {
   _kind: 'satellite';
@@ -465,10 +481,11 @@ interface GlobePolygon {
   previewUrl?: string;
 }
 type GlobeMarker =
+  | UkmtoMarker
   | ConflictMarker | HotspotMarker | FlightMarker | VesselMarker | ClusterMarker
   | WeatherMarker | NaturalMarker | IranMarker | OutageMarker | TrafficAnomalyMarker | DdosHitMarker
   | CyberMarker | FireMarker | ProtestMarker
-  | UcdpMarker | DisplacementMarker | ClimateMarker | GpsJamMarker | TechMarker
+  | UcdpMarker | DisplacementMarker | CrossBorderMarker | ClimateMarker | GpsJamMarker | TechMarker
   | ConflictZoneMarker | MilBaseMarker | NuclearSiteMarker | IrradiatorSiteMarker | SpaceportSiteMarker
   | EarthquakeMarker | RadiationMarker | EconomicMarker | DatacenterMarker | WaterwayMarker | MineralMarker
   | FlightDelayMarker | NotamRingMarker | CableAdvisoryMarker | RepairShipMarker | AisDisruptionMarker
@@ -484,6 +501,7 @@ interface GlobeControlsLike {
   minDistance: number;
   maxDistance: number;
   enableDamping: boolean;
+  update(): boolean;
   addEventListener(type: string, listener: () => void): void;
   removeEventListener(type: string, listener: () => void): void;
 }
@@ -547,6 +565,7 @@ export class GlobeMap {
   private protestMarkers: ProtestMarker[] = [];
   private ucdpMarkers: UcdpMarker[] = [];
   private displacementMarkers: DisplacementMarker[] = [];
+  private crossBorderMarkers: CrossBorderMarker[] = [];
   private climateMarkers: ClimateMarker[] = [];
   private gpsJamMarkers: GpsJamMarker[] = [];
   private techMarkers: TechMarker[] = [];
@@ -569,6 +588,7 @@ export class GlobeMap {
   private cableAdvisoryMarkers: CableAdvisoryMarker[] = [];
   private repairShipMarkers: RepairShipMarker[] = [];
   private aisMarkers: AisDisruptionMarker[] = [];
+  private ukmtoMarkers: UkmtoMarker[] = [];
   private satelliteMarkers: SatelliteMarker[] = [];
   private satelliteTrailPaths: GlobePath[] = [];
   private stormTrackPaths: GlobePath[] = [];
@@ -593,6 +613,7 @@ export class GlobeMap {
   private imageryFetchTimer: ReturnType<typeof setTimeout> | null = null;
   private imageryFetchVersion = 0;
   private controlsEndHandler: (() => void) | null = null;
+  private controlsStartHandler: (() => void) | null = null;
   private satBeamGroup: any = null;
   private tradeRouteSegments: TradeRouteSegment[] = [];
   private globePaths: GlobePath[] = [];
@@ -608,6 +629,7 @@ export class GlobeMap {
   private currentView: MapView = 'global';
 
   // Click callbacks
+  private onNewsClick?: (item: Pick<NewsLocationInput, 'article' | 'title'>) => void;
   private onHotspotClickCb: ((h: Hotspot) => void) | null = null;
 
   // Auto-rotate timer (like Sentinel: resume after 60 s idle)
@@ -624,6 +646,7 @@ export class GlobeMap {
   private onLayerChangeCb: ((layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void) | null = null;
   private onStateChangeCb: ((state: MapContainerState) => void) | null = null;
   private viewportSettleTimer: ReturnType<typeof setTimeout> | null = null;
+  private viewportAnimationFrame: number | null = null;
   private viewportSettledPromise: Promise<boolean> = Promise.resolve(true);
   private resolveViewportSettled: ((completed: boolean) => void) | null = null;
   private viewportTarget: { lat: number; lng: number; altitude: number } | null = null;
@@ -734,6 +757,10 @@ export class GlobeMap {
     controls.maxDistance = 600;
     controls.enableDamping = !desktop;
 
+    this.controlsStartHandler = () => {
+      if (this.viewportTarget) this.settleViewportMovement(false);
+    };
+    controls.addEventListener('start', this.controlsStartHandler);
     this.controlsEndHandler = () => {
       // Snapshot before publishing state: a synchronous subscriber can start a
       // newer movement, and this old event must never settle that generation.
@@ -977,7 +1004,7 @@ export class GlobeMap {
         return 0.005;
       })
       .polygonLabel((d: GlobePolygon) => {
-        if (d._kind === 'cii') return `<b>${escapeHtml(d.name)}</b><br/>CII: ${Number.isFinite(Number(d.score)) ? Number(d.score) : '—'}/100 (${escapeHtml(d.level ?? '')})`;
+        if (d._kind === 'cii') return `<b>${escapeHtml(d.name)}</b><br/>Country instability: ${Number.isFinite(Number(d.score)) ? Number(d.score) : '—'}/100 (${escapeHtml(d.level ?? '')})`;
         if (d._kind === 'conflict') {
           let label = `<b>${escapeHtml(d.name)}</b>`;
           if (d.parties?.length) label += `<br/>Parties: ${d.parties.map(p => escapeHtml(p)).join(', ')}`;
@@ -1201,6 +1228,9 @@ export class GlobeMap {
           <div style="position:absolute;inset:0;border-radius:50%;background:rgba(255,100,0,0.85);border:1.5px solid rgba(255,160,80,0.9);box-shadow:0 0 5px 2px rgba(255,100,0,0.5);"></div>
         </div>`), "legacy direct innerHTML migration"));
       el.title = `${d.sideA} vs ${d.sideB}`;
+    } else if (d._kind === 'crossBorder') {
+      el.style.translate = `${d.offset[0]}px ${d.offset[1]}px`;
+      el.appendChild(createCrossBorderMarker(d.point));
     } else if (d._kind === 'displacement') {
       setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:#88bbff;text-shadow:0 0 4px #88bbff88;">👥</div>`), "legacy direct innerHTML migration"));
       el.title = `${d.origin} → ${d.asylum}`;
@@ -1307,6 +1337,10 @@ export class GlobeMap {
           <div style="position:absolute;inset:-5px;border-radius:50%;background:${tc}22;${this.pulseStyle('1.8s')}"></div>
         </div>`, "legacy direct innerHTML migration"));
       el.title = d.title;
+    } else if (d._kind === 'ukmtoIncident') {
+      el.textContent = '⚓';
+      el.title = ukmtoIncidentLabel(d.incident);
+      el.setAttribute('aria-label', el.title);
     } else if (d._kind === 'aisDisruption') {
       const sc = d.severity === 'high' ? '#ff2020' : d.severity === 'elevated' ? '#ff8800' : '#44aaff';
       setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:${sc};text-shadow:0 0 4px ${sc}88;">⛴</div>`), "legacy direct innerHTML migration"));
@@ -1351,6 +1385,14 @@ export class GlobeMap {
   }
 
   private handleMarkerClick(d: GlobeMarker, anchor: HTMLElement): void {
+    if (d._kind === 'crossBorder' && this.popup) {
+      const rect = anchor.getBoundingClientRect();
+      const containerRect = this.container.getBoundingClientRect();
+      this.hideTooltip();
+      this.popup.show({ type: 'crossBorder', data: d.point,
+        x: rect.left - containerRect.left + rect.width / 2, y: rect.top - containerRect.top });
+      return;
+    }
     if (d._kind === 'hotspot' && this.onHotspotClickCb) {
       this.onHotspotClickCb({
         id: d.id,
@@ -1446,6 +1488,7 @@ export class GlobeMap {
       return;
     }
     this.showMarkerTooltip(d, anchor);
+    if (d._kind === 'newsLocation') this.onNewsClick?.(d);
   }
 
   private showMarkerTooltip(d: GlobeMarker, anchor: HTMLElement): void {
@@ -1575,6 +1618,8 @@ export class GlobeMap {
       html = `<span style="color:#88bbff;font-weight:bold;">👥 Displacement</span>` +
              `<br><span style="opacity:.7;">${esc(d.origin)} → ${esc(d.asylum)}</span>` +
              `<br><span style="opacity:.5;">Refugees: ${d.refugees.toLocaleString()}</span>`;
+    } else if (d._kind === 'crossBorder') {
+      html = renderCrossBorderDetails(d.point);
     } else if (d._kind === 'climate') {
       const tc = d.type === 'warm' ? '#ff4400' : d.type === 'cold' ? '#44aaff' : '#88ff88';
       html = `<span style="color:${tc};font-weight:bold;">🌡 ${esc(d.type.toUpperCase())}</span>` +
@@ -1675,10 +1720,14 @@ export class GlobeMap {
       html = `<span style="color:${sc};font-weight:bold;">⛴ ${esc(typeLabel)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.name)}</span>` +
              `<br><span style="opacity:.5;">${esc(d.severity)} · ${esc(d.description.slice(0, 60))}</span>`;
+    } else if (d._kind === 'ukmtoIncident') {
+      html = `<strong>${esc(ukmtoIncidentLabel(d.incident))}</strong><br>${esc(d.incident.description)}`;
     } else if (d._kind === 'newsLocation') {
       const tc = d.threatLevel === 'critical' ? '#ff2020' : d.threatLevel === 'high' ? '#ff6600' : (d.threatLevel === 'elevated' || d.threatLevel === 'medium') ? '#ffaa00' : '#44aaff';
+      const coverage = corroborationLabelHtml(d.corroboration);
       html = `<span style="color:${tc};font-weight:bold;">📰 ${esc(d.title.slice(0, 60))}</span>` +
-             `<br><span style="opacity:.5;">${esc(d.threatLevel)}</span>`;
+             `<br><span style="opacity:.5;">${esc(d.threatLevel)}</span>` +
+             (coverage ? `<br>${coverage}` : '');
     } else if (d._kind === 'satellite') {
       const sc = SAT_COUNTRY_COLORS[d.country] || '#ccccff';
       const altBand = d.alt < 2000 ? 'LEO' : d.alt < 35786 ? 'MEO' : 'GEO';
@@ -1801,31 +1850,16 @@ export class GlobeMap {
             span.textContent = 'Preview unavailable';
             previewDiv.appendChild(span);
           }
-          const pinBtn = document.createElement('button');
-          pinBtn.className = 'webcam-pin-btn';
+          const pinBtn = mountWebcamPinButton(() => ({
+            webcamId: d.webcamId,
+            title: d.title || img.title || '',
+            lat: d._lat,
+            lng: d._lng,
+            category: d.category || 'other',
+            country: d.country || '',
+            playerUrl: img.playerUrl || '',
+          }));
           pinBtn.style.cssText = 'display:block;margin-top:4px;';
-          if (isPinned(d.webcamId)) {
-            pinBtn.classList.add('webcam-pin-btn--pinned');
-            pinBtn.textContent = '\u{1F4CC} Pinned';
-            pinBtn.disabled = true;
-          } else {
-            pinBtn.textContent = '\u{1F4CC} Pin';
-            pinBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              pinWebcam({
-                webcamId: d.webcamId,
-                title: d.title || img.title || '',
-                lat: d._lat,
-                lng: d._lng,
-                category: d.category || 'other',
-                country: d.country || '',
-                playerUrl: img.playerUrl || '',
-              });
-              pinBtn.classList.add('webcam-pin-btn--pinned');
-              pinBtn.textContent = '\u{1F4CC} Pinned';
-              pinBtn.disabled = true;
-            });
-          }
           wrapper.appendChild(pinBtn);
         });
       });
@@ -2057,7 +2091,7 @@ export class GlobeMap {
         event.preventDefault();
         event.stopPropagation();
         const layer = (button as HTMLElement).getAttribute('data-layer') as keyof MapLayers | null;
-        if (layer) this.showLayerExplanation(layer);
+        if (layer) void this.showLayerExplanation(layer);
       });
     });
 
@@ -2142,7 +2176,15 @@ export class GlobeMap {
     }
   }
 
-  private showLayerExplanation(layer: keyof MapLayers): void {
+  private async showLayerExplanation(layer: keyof MapLayers): Promise<void> {
+    try {
+      await initI18n();
+    } catch (error) {
+      console.warn('[GlobeMap] Unable to load layer explanation text', error);
+      return;
+    }
+    if (this.destroyed) return;
+
     const existing = this.container.querySelector('.layer-explanation-popup') as HTMLElement | null;
     if (existing?.dataset.layer === layer) {
       existing.remove();
@@ -2158,7 +2200,7 @@ export class GlobeMap {
     popup.className = 'layer-explanation-popup';
     popup.dataset.layer = layer;
     setTrustedHtml(popup, trustedHtml(
-      renderLayerExplanationCard(layerLabel, getLayerExplanation(layer)),
+      renderLayerExplanationCard(layerLabel, getLayerExplanation(layer), layerExplanationLookup(t)),
       "static layer explanation metadata",
     ));
 
@@ -2237,6 +2279,11 @@ export class GlobeMap {
       add('flights', this.notamRingMarkers);
     }
     if (this.layers.ais) add('ais', this.aisMarkers);
+    if (this.layers.ais) {
+      const hours = { '1h': 1, '6h': 6, '24h': 24, '48h': 48, '7d': 168, all: Infinity }[this.timeRange];
+      const cutoff = Date.now() - hours * 3600000;
+      add('ais', this.ukmtoMarkers.filter(marker => marker.incident.occurredAt >= cutoff));
+    }
     if (this.layers.iranAttacks) add('iranAttacks', this.iranMarkers);
     if (this.layers.outages) {
       add('outages', this.outageMarkers);
@@ -2247,7 +2294,10 @@ export class GlobeMap {
     if (this.layers.fires) add('fires', this.fireMarkers, { rank: m => (m._kind === 'fire' ? m.brightness : 0) });
     if (this.layers.protests) add('protests', this.protestMarkers);
     if (this.layers.ucdpEvents) add('ucdpEvents', this.ucdpMarkers, { rank: m => (m._kind === 'ucdp' ? m.deaths : 0) });
-    if (this.layers.displacement) add('displacement', this.displacementMarkers);
+    if (this.layers.displacement) {
+      add('displacement', this.displacementMarkers);
+      add('displacement', this.crossBorderMarkers);
+    }
     if (this.layers.climate) add('climate', this.climateMarkers);
     if (this.layers.gpsJamming) add('gpsJamming', this.gpsJamMarkers);
     if (this.layers.satellites) {
@@ -2895,7 +2945,9 @@ export class GlobeMap {
   }
 
   private layerWarningShown = false;
-  private lastActiveLayerCount = 0;
+  // Null until the picker first renders: the layers a visitor starts with are a
+  // baseline, not an increase, so they never open the performance notice.
+  private lastActiveLayerCount: number | null = null;
 
   /**
    * Shows "shown/total" beside any layer the marker budget is trimming (#5368).
@@ -2932,12 +2984,12 @@ export class GlobeMap {
     const WARN_THRESHOLD = 13;
     const activeCount = Array.from(this.layerTogglesEl.querySelectorAll<HTMLInputElement>('.layer-toggle input'))
       .filter(i => i.checked).length;
-    const increasing = activeCount > this.lastActiveLayerCount;
+    const increasing = this.lastActiveLayerCount !== null && activeCount > this.lastActiveLayerCount;
     this.lastActiveLayerCount = activeCount;
-    if (activeCount >= WARN_THRESHOLD && increasing && !this.layerWarningShown) {
+    if (activeCount > WARN_THRESHOLD && increasing && !this.layerWarningShown) {
       this.layerWarningShown = true;
       showLayerWarning(WARN_THRESHOLD);
-    } else if (activeCount < WARN_THRESHOLD) {
+    } else if (activeCount <= WARN_THRESHOLD) {
       this.layerWarningShown = false;
     }
   }
@@ -2959,6 +3011,10 @@ export class GlobeMap {
     target: { lat: number; lng: number; altitude: number },
     durationMs: number,
   ): number {
+    if (this.viewportAnimationFrame !== null) {
+      cancelAnimationFrame(this.viewportAnimationFrame);
+      this.viewportAnimationFrame = null;
+    }
     // Concrete renderer entry points (buttons, marker clicks and fitCountry)
     // can bypass MapContainer's facade token. Give every one its own promise so
     // a superseding local command resolves the older caller as interrupted.
@@ -2999,7 +3055,7 @@ export class GlobeMap {
     const longitudeDelta = target && pov
       ? Math.abs((((pov.lng - target.lng) + 540) % 360) - 180)
       : Number.POSITIVE_INFINITY;
-    const atTarget = Boolean(target && pov
+    const atTarget = Boolean(!this.renderPaused && !document.hidden && target && pov
       && Math.abs(pov.lat - target.lat) <= 0.0001
       && longitudeDelta <= 0.0001
       && Math.abs(pov.altitude - target.altitude) <= 0.001);
@@ -3029,13 +3085,13 @@ export class GlobeMap {
     generation = this.viewportMovementGeneration,
   ): void {
     if (generation !== this.viewportMovementGeneration) return;
+    if (this.viewportAnimationFrame !== null) {
+      cancelAnimationFrame(this.viewportAnimationFrame);
+      this.viewportAnimationFrame = null;
+    }
     if (this.viewportSettleTimer) {
       clearTimeout(this.viewportSettleTimer);
       this.viewportSettleTimer = null;
-    }
-    if (!this.destroyed && this.globe) {
-      this.reselectMarkersForViewport();
-      this.onStateChangeCb?.(this.getState());
     }
     this.viewportTarget = null;
     this.viewportSettleDeadline = 0;
@@ -3053,6 +3109,10 @@ export class GlobeMap {
       }
     }
     this.viewportAutoRotateBeforeMove = null;
+    if (!this.destroyed && this.globe) {
+      this.reselectMarkersForViewport();
+      this.onStateChangeCb?.(this.getState());
+    }
   }
 
   public whenViewportSettled(): Promise<boolean> {
@@ -3065,8 +3125,43 @@ export class GlobeMap {
   ): void {
     if (!this.globe) return;
     this.wakeGlobe();
-    this.markViewportMoving(target, durationMs);
-    this.globe.pointOfView(target, durationMs);
+    const controls = this.controls;
+    if (controls) {
+      const autoRotate = controls.autoRotate;
+      const enableDamping = controls.enableDamping;
+      controls.autoRotate = false;
+      controls.enableDamping = false;
+      try {
+        controls.update();
+      } finally {
+        controls.autoRotate = autoRotate;
+        controls.enableDamping = enableDamping;
+      }
+    }
+    const generation = this.markViewportMoving(target, durationMs);
+    const start = this.globe.pointOfView();
+    while (start.lng - target.lng > 180) start.lng -= 360;
+    while (start.lng - target.lng < -180) start.lng += 360;
+    const startedAt = performance.now();
+    const animate = () => {
+      if (generation !== this.viewportMovementGeneration || this.destroyed || !this.globe) return;
+      this.viewportAnimationFrame = null;
+      if (!this.renderPaused && !document.hidden) {
+        const progress = durationMs <= 0 ? 1 : Math.min(1, (performance.now() - startedAt) / durationMs);
+        const eased = progress < 0.5 ? 4 * progress ** 3 : 1 - (-2 * progress + 2) ** 3 / 2;
+        this.globe.pointOfView(progress === 1 ? target : {
+          lat: start.lat + (target.lat - start.lat) * eased,
+          lng: start.lng + (target.lng - start.lng) * eased,
+          altitude: start.altitude + (target.altitude - start.altitude) * eased,
+        }, 0);
+        if (progress === 1) {
+          this.trySettleViewportMovement(false, generation);
+          return;
+        }
+      }
+      this.viewportAnimationFrame = requestAnimationFrame(animate);
+    };
+    animate();
   }
 
   public setView(view: MapView, zoom?: number): void {
@@ -3129,6 +3224,7 @@ export class GlobeMap {
 
   public setTimeRange(range: TimeRange): void {
     this.timeRange = range;
+    this.flushMarkers();
   }
 
   public getTimeRange(): TimeRange {
@@ -3136,6 +3232,10 @@ export class GlobeMap {
   }
 
   // ─── Callback setters ─────────────────────────────────────────────────────
+
+  public setOnNewsClick(callback: (item: Pick<NewsLocationInput, 'article' | 'title'>) => void): void {
+    this.onNewsClick = callback;
+  }
 
   public setOnHotspotClick(cb: (h: Hotspot) => void): void {
     this.onHotspotClickCb = cb;
@@ -3457,6 +3557,13 @@ export class GlobeMap {
       }));
     this.flushMarkers();
   }
+  public setUkmtoIncidents(incidents: UkmtoMapIncident[]): void {
+    this.ukmtoMarkers = incidents.filter(item => item.location).map(item => ({
+      _kind: 'ukmtoIncident', _lat: item.location!.latitude, _lng: item.location!.longitude,
+      id: item.id, incident: item,
+    }));
+    this.flushMarkers();
+  }
   public setCableActivity(advisories: CableAdvisory[], repairShips: RepairShip[]): void {
     this.cableAdvisoryMarkers = (advisories ?? [])
       .filter(a => a.lat != null && a.lon != null)
@@ -3530,7 +3637,7 @@ export class GlobeMap {
       }));
     this.flushMarkers();
   }
-  public setNewsLocations(data: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }>): void {
+  public setNewsLocations(data: NewsLocationInput[]): void {
     this.newsLocationMarkers = (data ?? [])
       .filter(d => d.lat != null && d.lon != null)
       .map((d, i) => ({
@@ -3538,8 +3645,10 @@ export class GlobeMap {
         _lat: d.lat,
         _lng: d.lon,
         id: `news-${i}-${d.title.slice(0, 20)}`,
+        article: d.article,
         title: d.title,
         threatLevel: d.threatLevel ?? 'info',
+        ...(d.corroboration ? { corroboration: d.corroboration } : {}),
       }));
     this.flushMarkers();
   }
@@ -3622,6 +3731,14 @@ export class GlobeMap {
         asylum: f.asylumName ?? f.asylumCode,
         refugees: f.refugees ?? 0,
       }));
+    this.flushMarkers();
+  }
+  public setCrossBorderArrivals(data: CrossBorderData): void {
+    const points = [...data.points, ...(data.deaths ?? [])];
+    const offsets = crossBorderMarkerOffsets(points);
+    this.crossBorderMarkers = points.map(point => ({
+      _kind: 'crossBorder', _lat: point.lat, _lng: point.lon, point, offset: offsets.get(point)!,
+    }));
     this.flushMarkers();
   }
   public setClimateAnomalies(anomalies: ClimateAnomaly[]): void {
@@ -3995,7 +4112,7 @@ export class GlobeMap {
     this.idleTimer = setTimeout(() => {
       if (this.destroyed || !this.globe || this.renderPaused) return;
       // Don't pause if auto-rotate is active (user expects continuous spin)
-      if (this.controls?.autoRotate) return;
+      if (this.controls?.autoRotate || this.viewportTarget) return;
       this.isGlobeAnimating = false;
       try { (this.globe as any).pauseAnimation?.(); } catch { /* best-effort */ }
     }, 3000);
@@ -4049,6 +4166,10 @@ export class GlobeMap {
     if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
     if (this.imageryFetchTimer) { clearTimeout(this.imageryFetchTimer); this.imageryFetchTimer = null; }
     this.imageryFetchVersion++;
+    if (this.controlsStartHandler && this.controls) {
+      this.controls.removeEventListener('start', this.controlsStartHandler);
+      this.controlsStartHandler = null;
+    }
     if (this.controlsEndHandler && this.controls) {
       this.controls.removeEventListener('end', this.controlsEndHandler);
       this.controlsEndHandler = null;

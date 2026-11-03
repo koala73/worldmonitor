@@ -18,11 +18,41 @@ paths:
             parameters:
                 - name: series_id
                   in: query
-                  description: FRED series ID (e.g., "GDP", "UNRATE", "CPIAUCSL").
+                  description: 'FRED series ID. Supported values: "BAMLC0A0CM", "BAMLH0A0HYM2", "CPIAUCSL", "DCOILWTICO", "DGS1", "DGS10", "DGS1MO", "DGS2", "DGS30", "DGS3MO", "DGS5", "DGS6MO", "ESTR", "EURIBOR1Y", "EURIBOR3M", "EURIBOR6M", "FEDFUNDS", "GDP", "GSCPI", "ICSA", "M2SL", "MORTGAGE30US", "SOFR", "STLFSI4", "T10Y2Y", "T10Y3M", "UNRATE", "VIXCLS", "WALCL".'
                   required: true
-                  example: "GDP"
+                  example: "BAMLC0A0CM"
                   schema:
                     type: string
+                    enum:
+                        - 'BAMLC0A0CM'
+                        - 'BAMLH0A0HYM2'
+                        - 'CPIAUCSL'
+                        - 'DCOILWTICO'
+                        - 'DGS1'
+                        - 'DGS10'
+                        - 'DGS1MO'
+                        - 'DGS2'
+                        - 'DGS30'
+                        - 'DGS3MO'
+                        - 'DGS5'
+                        - 'DGS6MO'
+                        - 'ESTR'
+                        - 'EURIBOR1Y'
+                        - 'EURIBOR3M'
+                        - 'EURIBOR6M'
+                        - 'FEDFUNDS'
+                        - 'GDP'
+                        - 'GSCPI'
+                        - 'ICSA'
+                        - 'M2SL'
+                        - 'MORTGAGE30US'
+                        - 'SOFR'
+                        - 'STLFSI4'
+                        - 'T10Y2Y'
+                        - 'T10Y3M'
+                        - 'UNRATE'
+                        - 'VIXCLS'
+                        - 'WALCL'
                 - name: limit
                   in: query
                   description: Maximum number of observations to return. Defaults to 120.
@@ -591,7 +621,7 @@ paths:
                                       "comparisonValue": 1.5
                                       "contextOnly": true
                                       "direction": "example"
-                                "latestObservationDate": "40.7128"
+                                "latestObservationDate": "2026-01-15"
                             schema:
                                 $ref: '#/components/schemas/GetChinaMacroSnapshotResponse'
                 "400":
@@ -708,6 +738,151 @@ paths:
                                 "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetChinaActivityNowcastResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-no2-activity:
+        get:
+            tags:
+                - EconomicService
+            summary: GetNo2Activity
+            description: GetNo2Activity returns Sentinel-5P NO2 year-over-year activity direction for 167 countries and 32 industrial clusters, filterable by country, region and kind.
+            operationId: GetNo2Activity
+            parameters:
+                - name: country_code
+                  in: query
+                  description: 'ISO 3166-1 alpha-2: the country plus its clusters.'
+                  required: false
+                  example: "US"
+                  schema:
+                    type: string
+                    pattern: '^([A-Za-z]{2})?$'
+                - name: region_id
+                  in: query
+                  description: Registry id, e.g. "yangtze-river-delta".
+                  required: false
+                  example: "yangtze-river-delta"
+                  schema:
+                    type: string
+                    pattern: '^([a-z0-9-]{1,64})?$'
+                - name: kind
+                  in: query
+                  description: Countries, clusters, or both when unspecified.
+                  required: false
+                  example: "NO2_REGION_KIND_COUNTRY"
+                  schema:
+                    type: string
+                    enum:
+                        - 'NO2_REGION_KIND_COUNTRY'
+                        - 'NO2_REGION_KIND_CLUSTER'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "attribution": "example"
+                                "generatedAt": "2026-01-15T12:00:00Z"
+                                "methodVersion": "example"
+                                "regions":
+                                    - "baselineMeanNo2MolM2": 1.5
+                                      "baselineYears":
+                                          - 1
+                                      "bbox":
+                                          - 1.5
+                                      "changePercent": 42.5
+                                      "countryCode": "US"
+                                "stale": true
+                            schema:
+                                $ref: '#/components/schemas/GetNo2ActivityResponse'
                 "400":
                     description: Validation error
                     content:
@@ -1046,7 +1221,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetBisExchangeRates
-            description: GetBisExchangeRates retrieves effective exchange rates from BIS.
+            description: GetBisExchangeRates retrieves the latest monthly real effective exchange rate from BIS WS_EER, with monthly change, for 12 economies including the euro area.
             operationId: GetBisExchangeRates
             parameters:
                 - name: jmespath
@@ -1159,7 +1334,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetBisCredit
-            description: GetBisCredit retrieves credit-to-GDP ratio data from BIS.
+            description: GetBisCredit retrieves the latest quarterly credit-to-GDP ratio and prior quarter from BIS WS_TC for 12 economies, including the US, euro area and China.
             operationId: GetBisCredit
             parameters:
                 - name: jmespath
@@ -1462,7 +1637,7 @@ paths:
             tags:
                 - EconomicService
             summary: ListGroceryBasketPrices
-            description: ListGroceryBasketPrices retrieves grocery basket price comparison across 24 countries worldwide.
+            description: ListGroceryBasketPrices compares the weekly USD cost of a 10-item grocery basket (rice, eggs, milk, bread and more) across 24 countries, with weekly change.
             operationId: ListGroceryBasketPrices
             parameters:
                 - name: jmespath
@@ -1584,7 +1759,7 @@ paths:
             tags:
                 - EconomicService
             summary: ListBigMacPrices
-            description: ListBigMacPrices retrieves Big Mac Index prices across Middle East countries.
+            description: ListBigMacPrices retrieves weekly Big Mac prices in local currency and USD for 49 countries via Exa web search, with cheapest, priciest and weekly change.
             operationId: ListBigMacPrices
             parameters:
                 - name: jmespath
@@ -1701,12 +1876,8 @@ paths:
             tags:
                 - EconomicService
             summary: GetNationalDebt
-            description: GetNationalDebt retrieves national debt clock data for all countries. PRO-gated. Requires an active Pro subscription.
+            description: GetNationalDebt estimates government debt in USD by country from IMF WEO debt-to-GDP and GDP with a deficit-based growth rate; US uses Treasury debt data.
             operationId: GetNationalDebt
-            security:
-                - WorldMonitorKey: []
-                - ApiKeyHeader: []
-                - BearerAuth: []
             parameters:
                 - name: jmespath
                   in: query
@@ -1747,7 +1918,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: Pro subscription required.
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -1820,7 +1991,7 @@ paths:
             tags:
                 - EconomicService
             summary: ListFuelPrices
-            description: ListFuelPrices retrieves retail gasoline and diesel prices across 30+ countries.
+            description: ListFuelPrices retrieves weekly retail gasoline and diesel prices in USD for 30+ countries from official sources such as the EU Oil Bulletin and US EIA.
             operationId: ListFuelPrices
             parameters:
                 - name: jmespath
@@ -1942,7 +2113,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetBlsSeries
-            description: GetBlsSeries retrieves BLS-only series not available on FRED (CES, LAUMT, CIU).
+            description: GetBlsSeries returns a BLS labor series, private nonfarm payrolls (USPRIV) or the employment cost index (ECIALLCIV), mirrored from FRED with recent history.
             operationId: GetBlsSeries
             parameters:
                 - name: series_id
@@ -2076,7 +2247,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEconomicCalendar
-            description: GetEconomicCalendar retrieves upcoming major economic events (FOMC, CPI, NFP, etc).
+            description: GetEconomicCalendar returns scheduled FOMC and ECB rate decisions, US CPI, payrolls, GDP, PCE and retail sales, and Eurostat releases, filtered by date range.
             operationId: GetEconomicCalendar
             parameters:
                 - name: fromDate
@@ -2207,7 +2378,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetCrudeInventories
-            description: GetCrudeInventories retrieves the 8 most recent weeks of US crude oil stockpile data from EIA (WCRSTUS1).
+            description: GetCrudeInventories retrieves the 8 most recent weeks of US commercial crude oil inventories excluding the SPR (EIA series WCESTUS1) with the latest period.
             operationId: GetCrudeInventories
             parameters:
                 - name: jmespath
@@ -2224,7 +2395,7 @@ paths:
                     content:
                         application/json:
                             example:
-                                "latestPeriod": "40.7128"
+                                "latestPeriod": "daily"
                                 "weeks":
                                     - "period": "daily"
                                       "stocksMb": 1.5
@@ -2336,7 +2507,7 @@ paths:
                     content:
                         application/json:
                             example:
-                                "latestPeriod": "40.7128"
+                                "latestPeriod": "daily"
                                 "weeks":
                                     - "period": "daily"
                                       "storBcf": 1.5
@@ -2546,7 +2717,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEurostatCountryData
-            description: GetEurostatCountryData retrieves per-country CPI, unemployment, and GDP growth for 10 EU member states.
+            description: GetEurostatCountryData retrieves HICP inflation, unemployment and quarterly GDP growth from Eurostat for 10 EU member states, including Germany and France.
             operationId: GetEurostatCountryData
             parameters:
                 - name: jmespath
@@ -2675,7 +2846,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEuGasStorage
-            description: GetEuGasStorage retrieves EU aggregate natural gas storage fill % from GIE AGSI+.
+            description: GetEuGasStorage returns EU gas storage fill % from GIE AGSI+, with day-over-day change, injection or withdrawal trend, and up to five days of history.
             operationId: GetEuGasStorage
             parameters:
                 - name: jmespath
@@ -2790,7 +2961,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEuYieldCurve
-            description: GetEuYieldCurve retrieves the ECB Euro Area AAA sovereign yield curve (Svensson model spot rates).
+            description: GetEuYieldCurve retrieves the latest ECB euro area AAA government bond yield curve (Svensson spot rates) at the 1Y, 2Y, 5Y, 10Y, 20Y and 30Y tenors.
             operationId: GetEuYieldCurve
             parameters:
                 - name: jmespath
@@ -2904,7 +3075,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEuFsi
-            description: GetEuFsi retrieves the ECB CISS (Composite Indicator of Systemic Stress) for the Euro area.
+            description: 'GetEuFsi retrieves the ECB Composite Indicator of Systemic Stress (CISS) for the euro area: latest daily value, a year of daily history and a staleness flag.'
             operationId: GetEuFsi
             parameters:
                 - name: jmespath
@@ -2925,7 +3096,7 @@ paths:
                                     - "date": "2026-01-15"
                                       "value": 1.5
                                 "label": "example"
-                                "latestDate": "40.7128"
+                                "latestDate": "2026-01-15"
                                 "latestValue": 1.5
                                 "seededAt": "2026-01-15T12:00:00Z"
                             schema:
@@ -3135,7 +3306,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetFaoFoodPriceIndex
-            description: GetFaoFoodPriceIndex retrieves the FAO Food Price Index for the past 12 months.
+            description: GetFaoFoodPriceIndex retrieves 12 months of the FAO Food Price Index with meat, dairy, cereals, oils and sugar sub-indices, plus monthly and annual change.
             operationId: GetFaoFoodPriceIndex
             parameters:
                 - name: jmespath
@@ -3247,12 +3418,131 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-food-prices:
+        get:
+            tags:
+                - EconomicService
+            summary: GetFoodPrices
+            description: GetFoodPrices returns local-currency market prices with exact prior-week comparisons, plus dated GIEWS and Tunisia context. Missing comparisons are explicitly unavailable. Market, market type, product, origin, unit and currency must match; levels are not comparable across countries.
+            operationId: GetFoodPrices
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "sources":
+                                    - "attribution": "example"
+                                      "cadence": "example"
+                                      "contextOnly": true
+                                      "contexts":
+                                          - "country": "US"
+                                            "countryCode": "US"
+                                            "fetchedAt": "2026-01-15T12:00:00Z"
+                                            "referenceDate": "2026-01-15"
+                                            "status": "example"
+                                      "country": "US"
+                                "unavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetFoodPricesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/economic/v1/get-oil-stocks-analysis:
         get:
             tags:
                 - EconomicService
             summary: GetOilStocksAnalysis
-            description: GetOilStocksAnalysis retrieves the IEA oil stocks days-of-cover ranking and regional summary.
+            description: GetOilStocksAnalysis ranks IEA members by oil stock days of net-import cover against the 90-day obligation, with Europe, Asia-Pacific and North America data.
             operationId: GetOilStocksAnalysis
             parameters:
                 - name: jmespath
@@ -3525,7 +3815,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEnergyCrisisPolicies
-            description: GetEnergyCrisisPolicies retrieves government policy responses to the 2026 energy crisis from the IEA tracker.
+            description: GetEnergyCrisisPolicies retrieves government responses to the 2026 energy crisis from the IEA policy tracker, filterable by country code and policy category.
             operationId: GetEnergyCrisisPolicies
             parameters:
                 - name: country_code
@@ -4239,6 +4529,257 @@ paths:
                                 "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetUsInterestRatesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-capital-flows:
+        get:
+            tags:
+                - EconomicService
+            summary: GetCapitalFlows
+            description: 'GetCapitalFlows returns where money enters and leaves about 230 economies, and between any two, from official statistics. Per country: IMF balance-of-payments gross inflows and outflows by FDI, portfolio and other investment (quarterly where reported, annual otherwise) with derived Forbes and Warnock surge, stop, flight and retrenchment states; BIS cross-border deposits and borrowing of non-bank residents; IMF portfolio holdings of the country''s securities; and IMF direct-investment positions. With country and counterpart: both directions of the pair across bank deposits and lending (with eight quarters of adjusted flows), portfolio holdings and direct investment (with both sides'' figures), each leg marked reported, not_itemized or not_published. A person changing residence is not a balance-of-payments flow, so wealth migration does not appear.'
+            operationId: GetCapitalFlows
+            parameters:
+                - name: country
+                  in: query
+                  description: Optional ISO 3166-1 alpha-2 filter. When set, only that country is returned (and the counterpart, if given).
+                  required: false
+                  example: "US"
+                  schema:
+                    type: string
+                - name: include_series
+                  in: query
+                  description: When true, include each returned country's period-by-period BOP series. Defaults to false.
+                  required: false
+                  example: true
+                  schema:
+                    type: boolean
+                - name: counterpart
+                  in: query
+                  description: Optional ISO 3166-1 alpha-2 partner. With country, the response adds pair (both directions) and the counterpart's own view. Ignored without country, and when equal to country.
+                  required: false
+                  example: "DE"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "countries":
+                                    - "bank":
+                                        "householdDepositsAbroad":
+                                            "flow4qUsdBn": 1.5
+                                            "stockUsdBn": 1.5
+                                        "latestPeriod": "2026-Q1"
+                                        "nonBankBorrowingFromAbroad":
+                                            "flow4qUsdBn": 1.5
+                                            "stockUsdBn": 1.5
+                                        "nonBankDepositsAbroad":
+                                            "flow4qUsdBn": 1.5
+                                            "stockUsdBn": 1.5
+                                        "publishesBilateral": true
+                                      "bop":
+                                          "episodes":
+                                              "flight":
+                                                  - "end": "2026-Q1"
+                                                    "peakPeriod": "2026-Q1"
+                                                    "peakZ": 1.5
+                                                    "quarters": 1
+                                                    "start": "2026-Q1"
+                                              "retrenchment":
+                                                  - "end": "2026-Q1"
+                                                    "peakPeriod": "2026-Q1"
+                                                    "peakZ": 1.5
+                                                    "quarters": 1
+                                                    "start": "2026-Q1"
+                                              "stop":
+                                                  - "end": "2026-Q1"
+                                                    "peakPeriod": "2026-Q1"
+                                                    "peakZ": 1.5
+                                                    "quarters": 1
+                                                    "start": "2026-Q1"
+                                              "surge":
+                                                  - "end": "2026-Q1"
+                                                    "peakPeriod": "2026-Q1"
+                                                    "peakZ": 1.5
+                                                    "quarters": 1
+                                                    "start": "2026-Q1"
+                                          "frequency": "example"
+                                          "latestPeriod": "2026-Q1"
+                                          "series":
+                                              - "errorsOmissions": 1.5
+                                                "inflows":
+                                                    "fdi": 1.5
+                                                    "other": 1.5
+                                                    "portfolio": 1.5
+                                                    "total": 1
+                                                "outflows":
+                                                    "fdi": 1.5
+                                                    "other": 1.5
+                                                    "portfolio": 1.5
+                                                    "total": 1
+                                                "period": "2026-Q1"
+                                          "state":
+                                              "inflow": "example"
+                                              "inflowZ": 1.5
+                                              "outflow": "example"
+                                              "outflowZ": 1.5
+                                      "country": "US"
+                                      "fdi":
+                                          "inwardUsdBn": 1.5
+                                          "outwardUsdBn": 1.5
+                                          "topDestinations":
+                                              - "country": "US"
+                                                "flow4qUsdBn": 1.5
+                                                "stockUsdBn": 1.5
+                                          "topInvestors":
+                                              - "country": "US"
+                                                "flow4qUsdBn": 1.5
+                                                "stockUsdBn": 1.5
+                                          "year": 1
+                                      "gdpUsdBn": 1.5
+                                "latest":
+                                    "bisQuarter": "2026-Q1"
+                                    "bopQuarter": "2026-Q1"
+                                    "bopYear": "example"
+                                    "fdiYear": 1
+                                    "pipYear": 1
+                                "method":
+                                    "exampleKey": "example"
+                                "pair":
+                                    "aBorrowingFromB":
+                                        "basis": "example"
+                                        "counterpartReportUsdBn": 1
+                                        "flow4qUsdBn": 1.5
+                                        "history":
+                                            - "period": "2026-Q1"
+                                              "usdBn": 1.5
+                                        "instrument": "example"
+                                    "aDepositsInB":
+                                        "basis": "example"
+                                        "counterpartReportUsdBn": 1
+                                        "flow4qUsdBn": 1.5
+                                        "history":
+                                            - "period": "2026-Q1"
+                                              "usdBn": 1.5
+                                        "instrument": "example"
+                                    "aFdiInB":
+                                        "basis": "example"
+                                        "counterpartReportUsdBn": 1
+                                        "flow4qUsdBn": 1.5
+                                        "history":
+                                            - "period": "2026-Q1"
+                                              "usdBn": 1.5
+                                        "instrument": "example"
+                                    "aHoldingsOfB":
+                                        "basis": "example"
+                                        "counterpartReportUsdBn": 1
+                                        "flow4qUsdBn": 1.5
+                                        "history":
+                                            - "period": "2026-Q1"
+                                              "usdBn": 1.5
+                                        "instrument": "example"
+                                    "bBorrowingFromA":
+                                        "basis": "example"
+                                        "counterpartReportUsdBn": 1
+                                        "flow4qUsdBn": 1.5
+                                        "history":
+                                            - "period": "2026-Q1"
+                                              "usdBn": 1.5
+                                        "instrument": "example"
+                                "seededAt": 1717200000000
+                            schema:
+                                $ref: '#/components/schemas/GetCapitalFlowsResponse'
                 "400":
                     description: Validation error
                     content:
@@ -5345,6 +5886,122 @@ components:
                     description: |-
                         Canonical inspectable method payload. Numeric computation and state
                          assignment are deterministic and validated before crossing this boundary.
+        GetNo2ActivityRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^([A-Za-z]{2})?$
+                    description: 'ISO 3166-1 alpha-2: the country plus its clusters.'
+                regionId:
+                    type: string
+                    pattern: ^([a-z0-9-]{1,64})?$
+                    description: Registry id, e.g. "yangtze-river-delta".
+                kind:
+                    type: string
+                    enum:
+                        - NO2_REGION_KIND_UNSPECIFIED
+                        - NO2_REGION_KIND_COUNTRY
+                        - NO2_REGION_KIND_CLUSTER
+            description: Filters combine with AND; none means every registered region.
+        GetNo2ActivityResponse:
+            type: object
+            properties:
+                regions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/No2ActivityRegion'
+                generatedAt:
+                    type: string
+                stale:
+                    type: boolean
+                    description: Older than the 72 h health budget.
+                methodVersion:
+                    type: string
+                    description: Pins the method constants in scripts/shared/no2-activity.mjs.
+                attribution:
+                    type: string
+                    description: Required Copernicus credit line.
+                unavailableReason:
+                    type: string
+                    enum:
+                        - NO2_ACTIVITY_UNAVAILABLE_REASON_UNSPECIFIED
+                        - NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_REQUEST
+                        - NO2_ACTIVITY_UNAVAILABLE_REASON_NOT_COVERED
+                        - NO2_ACTIVITY_UNAVAILABLE_REASON_SEED_MISSING
+                        - NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_DATASET
+                        - NO2_ACTIVITY_UNAVAILABLE_REASON_CACHE_UNAVAILABLE
+                    description: NOT_COVERED is a contract answer; the rest are faults.
+                upstreamUnavailable:
+                    type: boolean
+                    description: False when served or not covered.
+        No2ActivityRegion:
+            type: object
+            properties:
+                id:
+                    type: string
+                kind:
+                    type: string
+                    enum:
+                        - NO2_REGION_KIND_UNSPECIFIED
+                        - NO2_REGION_KIND_COUNTRY
+                        - NO2_REGION_KIND_CLUSTER
+                label:
+                    type: string
+                countryCode:
+                    type: string
+                bbox:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: West, south, east, north.
+                current:
+                    $ref: '#/components/schemas/No2Window'
+                baselineYears:
+                    type: array
+                    items:
+                        type: integer
+                        format: int32
+                        description: Prior years whose window entered the baseline, newest first.
+                baselineMeanNo2MolM2:
+                    type: number
+                    format: double
+                changePercent:
+                    type: number
+                    format: double
+                    description: Percent against the baseline mean; absent when excluded.
+                direction:
+                    type: string
+                    enum:
+                        - NO2_DIRECTION_UNSPECIFIED
+                        - NO2_DIRECTION_STRENGTHENING
+                        - NO2_DIRECTION_WEAKENING
+                        - NO2_DIRECTION_UNCHANGED
+                exclusion:
+                    type: string
+                    enum:
+                        - NO2_REGION_EXCLUSION_UNSPECIFIED
+                        - NO2_REGION_EXCLUSION_REQUEST_FAILED
+                        - NO2_REGION_EXCLUSION_BASELINE_BACKFILL_PENDING
+                        - NO2_REGION_EXCLUSION_INSUFFICIENT_VALID_DAYS
+                        - NO2_REGION_EXCLUSION_INSUFFICIENT_BASELINE_YEARS
+                    description: BASELINE_BACKFILL_PENDING is expected for a new region, not a fault.
+        No2Window:
+            type: object
+            properties:
+                windowStart:
+                    type: string
+                windowEnd:
+                    type: string
+                validDays:
+                    type: integer
+                    format: int32
+                    description: Days with enough cloud-free, quality-filtered pixels.
+                meanNo2MolM2:
+                    type: number
+                    format: double
+                    description: Mean tropospheric NO2 column, mol/m2; absent with no valid day.
         GetEnergyCapacityRequest:
             type: object
             properties:
@@ -6160,10 +6817,8 @@ components:
                 stale:
                     type: boolean
                     description: |-
-                        True when latest_date is older than the CISS content-age budget -- the ECB
-                         series has stopped publishing (issue #3845). Consumers must not present a
-                         stale reading as current. Seeder-side detection is content-age
-                         (STALE_CONTENT in /api/health); this flag is the per-request equivalent.
+                        True when latest_date is older than the CISS content-age budget: the ECB
+                         series has stopped publishing. Do not present a stale reading as current.
         EuFsiObservation:
             type: object
             properties:
@@ -6254,6 +6909,108 @@ components:
                 sugar:
                     type: number
                     format: double
+        GetFoodPricesRequest:
+            type: object
+        GetFoodPricesResponse:
+            type: object
+            properties:
+                sources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FoodPriceSource'
+                unavailable:
+                    type: boolean
+                    description: True when all source caches are unavailable; missing prices are not zero.
+        FoodPriceSource:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                country:
+                    type: string
+                countryCode:
+                    type: string
+                url:
+                    type: string
+                cadence:
+                    type: string
+                contextOnly:
+                    type: boolean
+                fetchedAt:
+                    type: string
+                latestReportDate:
+                    type: string
+                status:
+                    type: string
+                    description: current, partial, stale, or unavailable. A successful fetch does not reset the report date.
+                prices:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FoodMarketPrice'
+                contexts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FoodSecurityContext'
+                attribution:
+                    type: string
+                    description: Citation the publisher asks for (for example a licence or required credit). Empty when none is stated.
+        FoodMarketPrice:
+            type: object
+            properties:
+                item:
+                    type: string
+                market:
+                    type: string
+                marketType:
+                    type: string
+                origin:
+                    type: string
+                unit:
+                    type: string
+                currency:
+                    type: string
+                date:
+                    type: string
+                price:
+                    type: number
+                    format: double
+                wowAvailable:
+                    type: boolean
+                    description: |-
+                        True only when the same series has a price exactly seven days before `date`.
+                         When false, there is no comparison: wow_pct, previous_date and previous_price
+                         are placeholders (0 or empty), not a 0% change.
+                wowPct:
+                    type: number
+                    format: double
+                    description: Week-over-week change in percent. Meaningful only when wow_available is true.
+                previousDate:
+                    type: string
+                    description: Date of the baseline price. Empty when wow_available is false.
+                previousPrice:
+                    type: number
+                    format: double
+                    description: Baseline price in the same unit and currency. 0 when wow_available is false.
+        FoodSecurityContext:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                country:
+                    type: string
+                referenceDate:
+                    type: string
+                title:
+                    type: string
+                url:
+                    type: string
+                fetchedAt:
+                    type: string
+                status:
+                    type: string
+                    description: current, stale, or unavailable, independently for each country brief.
         GetOilStocksAnalysisRequest:
             type: object
             description: GetOilStocksAnalysisRequest is empty — returns the latest global analysis snapshot.
@@ -6972,6 +7729,442 @@ components:
                     format: double
                     description: Percent per year. 4.25 means 4.25 percent.
             description: One published US interest rate. Percent per year. Zero is a real print.
+        GetCapitalFlowsRequest:
+            type: object
+            properties:
+                country:
+                    type: string
+                    maxLength: 2
+                    description: Optional ISO 3166-1 alpha-2 filter. When set, only that country is returned (and the counterpart, if given).
+                includeSeries:
+                    type: boolean
+                    description: When true, include each returned country's period-by-period BOP series. Defaults to false.
+                counterpart:
+                    type: string
+                    maxLength: 2
+                    description: Optional ISO 3166-1 alpha-2 partner. With country, the response adds pair (both directions) and the counterpart's own view. Ignored without country, and when equal to country.
+            description: GetCapitalFlowsRequest selects countries, an optional counterpart, and detail.
+        GetCapitalFlowsResponse:
+            type: object
+            properties:
+                countries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CapitalFlowCountry'
+                latest:
+                    $ref: '#/components/schemas/CapitalFlowLatest'
+                seededAt:
+                    type: integer
+                    format: int64
+                    description: 'When the dataset was built, Unix epoch milliseconds. 0 when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
+                unavailable:
+                    type: boolean
+                    description: True when the seeded dataset is unavailable. An empty country list is not zero flow.
+                sources:
+                    type: array
+                    items:
+                        type: string
+                        description: Source URLs.
+                method:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: 'Short method notes keyed by view: bop, episodes, bank, portfolio, fdi, pairs, caveat.'
+                pair:
+                    $ref: '#/components/schemas/CapitalFlowPair'
+            description: GetCapitalFlowsResponse is cross-country capital-flow data from IMF and BIS official statistics. Amounts are USD billions.
+        MethodEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    type: string
+        CapitalFlowCountry:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 code.
+                iso3:
+                    type: string
+                    description: ISO 3166-1 alpha-3 code.
+                gdpUsdBn:
+                    type: number
+                    format: double
+                    description: GDP used for percent-of-GDP figures, USD billions (World Bank, current US dollars).
+                gdpYear:
+                    type: integer
+                    format: int32
+                    description: Year of that GDP figure.
+                bop:
+                    $ref: '#/components/schemas/CapitalFlowBop'
+                bank:
+                    $ref: '#/components/schemas/CapitalFlowBank'
+                portfolio:
+                    $ref: '#/components/schemas/CapitalFlowPortfolio'
+                fdi:
+                    $ref: '#/components/schemas/CapitalFlowFdi'
+            description: CapitalFlowCountry carries every capital-flow view for one country. A view is absent when its source publishes nothing for the country.
+        CapitalFlowBop:
+            type: object
+            properties:
+                frequency:
+                    type: string
+                    description: quarterly when a current quarterly series exists, otherwise annual. Annual series carry no state and no episodes.
+                latestPeriod:
+                    type: string
+                    description: 'Latest period in the series: YYYY-Qn or YYYY.'
+                state:
+                    $ref: '#/components/schemas/CapitalFlowState'
+                episodes:
+                    $ref: '#/components/schemas/CapitalFlowEpisodes'
+                totals:
+                    $ref: '#/components/schemas/CapitalFlowTotals'
+                series:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CapitalFlowPeriod'
+            description: CapitalFlowBop is the IMF balance-of-payments view of one country.
+        CapitalFlowState:
+            type: object
+            properties:
+                inflow:
+                    type: string
+                    description: surge or stop when an inflow episode is open at the latest quarter; empty otherwise.
+                outflow:
+                    type: string
+                    description: flight or retrenchment when an outflow episode is open at the latest quarter; empty otherwise.
+                inflowZ:
+                    type: number
+                    format: double
+                    description: 'Inflow z-score at the latest quarter: the change in four-quarter inflows against its trailing 20-quarter mean, in standard deviations. Beyond plus or minus 2 is an episode-level move.'
+                outflowZ:
+                    type: number
+                    format: double
+                    description: Outflow z-score at the latest quarter, on the same basis.
+            description: CapitalFlowState is the episode classification at the latest quarter both sides report. Derived, not published by the source.
+        CapitalFlowEpisodes:
+            type: object
+            properties:
+                surge:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CapitalFlowEpisode'
+                stop:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CapitalFlowEpisode'
+                flight:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CapitalFlowEpisode'
+                retrenchment:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CapitalFlowEpisode'
+            description: CapitalFlowEpisodes lists the episodes that ended within the last ten years, oldest first, by type.
+        CapitalFlowEpisode:
+            type: object
+            properties:
+                start:
+                    type: string
+                    description: 'First quarter of the episode, YYYY-Qn: the first quarter the change in four-quarter flows moved more than one standard deviation from its trailing mean.'
+                end:
+                    type: string
+                    description: Last quarter of the episode, YYYY-Qn. Equals the series' latest quarter while the episode is still open.
+                quarters:
+                    type: integer
+                    format: int32
+                    description: Number of quarters in the episode; always at least 2.
+                peakZ:
+                    type: number
+                    format: double
+                    description: Largest absolute z-score reached during the episode; always at least 2.
+                peakPeriod:
+                    type: string
+                    description: Quarter of the peak z-score, YYYY-Qn.
+            description: CapitalFlowEpisode is one Forbes and Warnock (2012) episode on a quarterly series. Derived from reported flows, not published by the source.
+        CapitalFlowTotals:
+            type: object
+            properties:
+                inflowsUsdBn:
+                    type: number
+                    format: double
+                    description: Gross inflows over the window. Absent when any quarter in it is incomplete or the quarters are not consecutive.
+                outflowsUsdBn:
+                    type: number
+                    format: double
+                    description: Gross outflows over the window, on the same basis.
+                netUsdBn:
+                    type: number
+                    format: double
+                    description: Inflows minus outflows. Positive means the country took in more than it sent out.
+                inflowsPctGdp:
+                    type: number
+                    format: double
+                    description: Gross inflows as a percent of GDP.
+                outflowsPctGdp:
+                    type: number
+                    format: double
+                    description: Gross outflows as a percent of GDP.
+                inflowsYoyPct:
+                    type: number
+                    format: double
+                    description: Year-on-year change in gross inflows, percent. Annual series only, and only when the prior year is reported.
+                outflowsYoyPct:
+                    type: number
+                    format: double
+                    description: Year-on-year change in gross outflows, percent, on the same basis.
+            description: CapitalFlowTotals summarizes gross flows over the trailing four quarters (quarterly series) or the latest year (annual series). USD billions unless the name ends in Pct or PctGdp.
+        CapitalFlowPeriod:
+            type: object
+            properties:
+                period:
+                    type: string
+                    description: 'Period label: YYYY-Qn for quarterly series, YYYY for annual series.'
+                inflows:
+                    $ref: '#/components/schemas/CapitalFlowComponents'
+                outflows:
+                    $ref: '#/components/schemas/CapitalFlowComponents'
+                errorsOmissions:
+                    type: number
+                    format: double
+                    description: Net errors and omissions, USD billions. Persistent negative values can indicate outflows the official categories do not record.
+            description: CapitalFlowPeriod is one period of gross balance-of-payments financial-account flows.
+        CapitalFlowComponents:
+            type: object
+            properties:
+                fdi:
+                    type: number
+                    format: double
+                    description: 'Direct investment: lasting-interest stakes of 10% or more, including reinvested earnings and intercompany debt.'
+                portfolio:
+                    type: number
+                    format: double
+                    description: 'Portfolio investment: equity and debt securities that are not direct investment.'
+                other:
+                    type: number
+                    format: double
+                    description: 'Other investment: loans, deposits, currency, trade credit and other accounts.'
+                total:
+                    type: number
+                    format: double
+                    description: Sum of the three categories. Set only when all three are reported for the period; a partial sum would read as a collapse.
+            description: CapitalFlowComponents splits one side of the financial account by functional category, in USD billions. A component is absent when the source does not report it for the period.
+        CapitalFlowBank:
+            type: object
+            properties:
+                latestPeriod:
+                    type: string
+                    description: Latest quarter, YYYY-Qn.
+                nonBankDepositsAbroad:
+                    $ref: '#/components/schemas/CapitalFlowPosition'
+                householdDepositsAbroad:
+                    $ref: '#/components/schemas/CapitalFlowPosition'
+                nonBankBorrowingFromAbroad:
+                    $ref: '#/components/schemas/CapitalFlowPosition'
+                topBankLocations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CapitalFlowCounterparty'
+                publishesBilateral:
+                    type: boolean
+                    description: True when the country's own banks publish a by-counterparty breakdown to the BIS. Some reporting systems publish aggregates only.
+                topDepositorOrigins:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CapitalFlowCounterparty'
+            description: CapitalFlowBank is the BIS locational banking view of one country's residents.
+        CapitalFlowPosition:
+            type: object
+            properties:
+                stockUsdBn:
+                    type: number
+                    format: double
+                    description: Outstanding amount at the latest quarter.
+                flow4qUsdBn:
+                    type: number
+                    format: double
+                    description: 'Sum of the last four FX- and break-adjusted quarterly changes: money moved, net of exchange-rate effects and reporting breaks. Positive means the position grew.'
+            description: CapitalFlowPosition is a cross-border bank position from BIS locational banking statistics, in USD billions.
+        CapitalFlowCounterparty:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 code of the partner.
+                stockUsdBn:
+                    type: number
+                    format: double
+                    description: Outstanding amount.
+                flow4qUsdBn:
+                    type: number
+                    format: double
+                    description: Four-quarter adjusted flow. Bank lists only.
+            description: CapitalFlowCounterparty is one partner country in a ranked bilateral list, in USD billions.
+        CapitalFlowPortfolio:
+            type: object
+            properties:
+                year:
+                    type: integer
+                    format: int32
+                    description: 'Reference year: the newest year at least 80% as well reported as the year before.'
+                foreignHoldingsUsdBn:
+                    type: number
+                    format: double
+                    description: Securities issued by residents of this country held by every reporting economy.
+                foreignHoldingsPrevYearUsdBn:
+                    type: number
+                    format: double
+                    description: The same reporters' holdings a year earlier, so the change is like for like.
+                changePct:
+                    type: number
+                    format: double
+                    description: Change between the two, percent. Mixes new money with price and exchange-rate moves.
+                reporterCount:
+                    type: integer
+                    format: int32
+                    description: Number of reporting economies holding the country's securities.
+                topHolders:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CapitalFlowCounterparty'
+                holdingsAbroadUsdBn:
+                    type: number
+                    format: double
+                    description: The country's own holdings of foreign securities, when it reports them.
+                topDestinations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CapitalFlowCounterparty'
+            description: CapitalFlowPortfolio is the IMF portfolio-positions view of one country, from mirror data, in USD billions.
+        CapitalFlowFdi:
+            type: object
+            properties:
+                year:
+                    type: integer
+                    format: int32
+                    description: 'Reference year: the newest year at least 80% as well reported as the year before.'
+                inwardUsdBn:
+                    type: number
+                    format: double
+                    description: Direct investment in the country by all counterparts.
+                topInvestors:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CapitalFlowCounterparty'
+                outwardUsdBn:
+                    type: number
+                    format: double
+                    description: The country's direct investment abroad.
+                topDestinations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CapitalFlowCounterparty'
+            description: CapitalFlowFdi is the IMF direct-investment positions view of one country, as the country itself reports them, by immediate counterpart, in USD billions. Conduit economies carry large pass-through positions.
+        CapitalFlowLatest:
+            type: object
+            properties:
+                bopQuarter:
+                    type: string
+                    description: Quarter most quarterly balance-of-payments reporters have reached, YYYY-Qn.
+                bopYear:
+                    type: string
+                    description: Year most annual-only reporters have reached.
+                bisQuarter:
+                    type: string
+                    description: Latest BIS banking quarter, YYYY-Qn.
+                pipYear:
+                    type: integer
+                    format: int32
+                    description: Portfolio-positions reference year.
+                fdiYear:
+                    type: integer
+                    format: int32
+                    description: Direct-investment positions reference year.
+            description: CapitalFlowLatest names the newest period of each source.
+        CapitalFlowPair:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 code of a, the requested country.
+                counterpart:
+                    type: string
+                    description: ISO 3166-1 alpha-2 code of b, the counterpart.
+                bankPeriod:
+                    type: string
+                    description: BIS quarter of the bank legs, YYYY-Qn. Portfolio and FDI legs carry their own years below.
+                portfolioYear:
+                    type: integer
+                    format: int32
+                    description: IMF portfolio-positions year of the holding legs.
+                aDepositsInB:
+                    $ref: '#/components/schemas/CapitalFlowPairLeg'
+                bDepositsInA:
+                    $ref: '#/components/schemas/CapitalFlowPairLeg'
+                aBorrowingFromB:
+                    $ref: '#/components/schemas/CapitalFlowPairLeg'
+                bBorrowingFromA:
+                    $ref: '#/components/schemas/CapitalFlowPairLeg'
+                aHoldingsOfB:
+                    $ref: '#/components/schemas/CapitalFlowPairLeg'
+                bHoldingsOfA:
+                    $ref: '#/components/schemas/CapitalFlowPairLeg'
+                aFdiInB:
+                    $ref: '#/components/schemas/CapitalFlowPairLeg'
+                bFdiInA:
+                    $ref: '#/components/schemas/CapitalFlowPairLeg'
+                fdiYear:
+                    type: integer
+                    format: int32
+                    description: IMF direct-investment positions year of the FDI legs.
+            description: CapitalFlowPair carries a country (a) and a counterpart (b) in both directions across bank, portfolio and direct-investment channels.
+        CapitalFlowPairLeg:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: 'reported: the reporting side published a current figure. not_itemized: the reporting side publishes bilateral data but has no current figure for this partner (zero, small, confidential, or a series that stopped); unknown, not zero. not_published: the reporting side publishes no bilateral breakdown.'
+                stockUsdBn:
+                    type: number
+                    format: double
+                    description: Outstanding position at the leg's reference period.
+                flow4qUsdBn:
+                    type: number
+                    format: double
+                    description: 'Bank legs: sum of the last four FX- and break-adjusted quarterly changes.'
+                prevYearUsdBn:
+                    type: number
+                    format: double
+                    description: 'Portfolio legs: the same holding a year earlier.'
+                basis:
+                    type: string
+                    description: 'FDI legs: investor when stockUsdBn is the investor''s outward figure, host when only the host''s inward figure exists. Empty for other legs.'
+                counterpartReportUsdBn:
+                    type: number
+                    format: double
+                    description: 'FDI legs: the other side''s figure for the same position. The two sides'' reports often differ.'
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CapitalFlowPairPoint'
+                instrument:
+                    type: string
+                    description: 'Bank legs: loans_deposits (BIS instrument G) normally; all_instruments (instrument A, which adds debt securities) for a reporting system that publishes no loans-and-deposits breakdown. Empty for other legs.'
+            description: CapitalFlowPairLeg is one direction of a bilateral position, in USD billions.
+        CapitalFlowPairPoint:
+            type: object
+            properties:
+                period:
+                    type: string
+                    description: Quarter, YYYY-Qn.
+                usdBn:
+                    type: number
+                    format: double
+                    description: Adjusted flow in the quarter, USD billions. Positive means the position grew.
+            description: CapitalFlowPairPoint is one quarterly adjusted bank flow.
         GetWorldCpiMonthlyRequest:
             type: object
             properties:

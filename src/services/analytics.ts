@@ -258,6 +258,11 @@ const EVENTS = {
   'pro-preview-cta': true,
   'pro-preview-dismissed': true,
   'mission-returned-after-purchase': true,
+  // About-you questionnaire (plan 2026-11-02-001). Carries the surface, the
+  // card mode, and the question id, never the answer or the free text.
+  'about-you-shown': true,
+  'about-you-answered': true,
+  'about-you-skipped': true,
 } as const;
 
 export type UmamiEvent = keyof typeof EVENTS;

@@ -65,6 +65,7 @@ function payload() {
     customer: { customer_id: "cus_deleted", email: EMAIL, name: "Deleted Customer", phone_number: "+15555550123" },
     metadata: { wm_user_id: USER, wm_login_email: EMAIL, wm_user_id_sig: "stale-sig" },
     recurring_pre_tax_amount: 2900, currency: "USD",
+    cancellation_feedback: "too_expensive", cancellation_comment: "Costs more than my team budget",
   };
 }
 
@@ -93,6 +94,9 @@ describe("late billing events during account deletion", () => {
     expect(state.sub?.rawPayload.customer).toEqual(payload().customer);
     expect(state.sub?.rawPayload.metadata).toEqual({});
     expect(state.sub?.rawPayload.recurring_pre_tax_amount).toBe(2900);
+    // Cancellation reasons are personal answers, deleted with the account.
+    expect(state.sub?.rawPayload).not.toHaveProperty("cancellation_feedback");
+    expect(state.sub?.rawPayload).not.toHaveProperty("cancellation_comment");
     expect(state.customers).toHaveLength(1);
     // The complete-deletion fixture already seeded the tombstoned email;
     // the late handler must preserve it (no live-owner rewrite).
@@ -126,6 +130,8 @@ describe("late billing events during account deletion", () => {
     for (const row of state.events) {
       expect(row.rawPayload.data.customer).toEqual(payload().customer);
       expect(row.rawPayload.data.metadata).toEqual({});
+      expect(row.rawPayload.data).not.toHaveProperty("cancellation_feedback");
+      expect(row.rawPayload.data).not.toHaveProperty("cancellation_comment");
     }
     expect(state.entitlements).toEqual([]);
   });
@@ -173,6 +179,76 @@ describe("late billing events during account deletion", () => {
     expect(state.unattributed).toEqual([]);
     expect(state.jobs).toHaveLength(1);
     expect(state.jobs[0]?.name).toContain("accountDeletion/sideEffects");
+  });
+
+  test("a returning customer's new subscription signed for a live account is not filed under the deletion", async () => {
+    const { t, ids } = await setup();
+    const NEW_USER = "user_returning_customer";
+    const data = {
+      ...payload(), subscription_id: "sub_returning_customer",
+      // Dodo reuses the deleted account's customer id for the same email.
+      metadata: { wm_user_id: NEW_USER, wm_user_id_sig: await signUserId(NEW_USER), wm_login_email: EMAIL },
+    };
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "returning_activation", eventType: "subscription.active", timestamp: NOW + 1,
+      rawPayload: { data },
+    });
+    const state = await t.run(async (ctx) => ({
+      deletion: await ctx.db.get(ids.deletion),
+      sub: await ctx.db.query("subscriptions").withIndex("by_dodoSubscriptionId", (q) =>
+        q.eq("dodoSubscriptionId", data.subscription_id)).unique(),
+      entitlements: await ctx.db.query("entitlements").collect(),
+      customers: await ctx.db.query("customers").collect(),
+      jobs: await ctx.db.system.query("_scheduled_functions").collect(),
+    }));
+    expect(state.sub?.userId).toBe(NEW_USER);
+    expect(state.entitlements.map((row) => row.userId)).toEqual([NEW_USER]);
+    // The deletion keeps its own subscriptions and is not reopened.
+    expect(state.deletion).toMatchObject({ status: "complete", dodoSubscriptionIds: ["sub_deleted"] });
+    expect(state.jobs.some((job) => job.name.includes("accountDeletion"))).toBe(false);
+    // The tombstoned customer mapping stays as the deletion's billing evidence.
+    expect(state.customers).toHaveLength(1);
+    expect(state.customers[0]?.userId).toBe(REPLACEMENT);
+  });
+
+  test("an anonymous checkout reusing a deleted account's customer id keeps its anonymous owner", async () => {
+    const { t } = await setup();
+    const ANON = "3f2b8c1e-4d5a-4b6c-9e7f-1a2b3c4d5e6f";
+    const data = {
+      ...payload(), subscription_id: "sub_returning_anon",
+      metadata: { wm_user_id: ANON, wm_user_id_sig: await signUserId(ANON) },
+    };
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "returning_anon_activation", eventType: "subscription.active", timestamp: NOW + 1,
+      rawPayload: { data },
+    });
+    const state = await t.run(async (ctx) => ({
+      sub: await ctx.db.query("subscriptions").withIndex("by_dodoSubscriptionId", (q) =>
+        q.eq("dodoSubscriptionId", data.subscription_id)).unique(),
+      entitlements: await ctx.db.query("entitlements").collect(),
+      customers: await ctx.db.query("customers").collect(),
+    }));
+    expect(state.sub?.userId).toBe(ANON);
+    expect(state.entitlements.map((row) => row.userId)).toEqual([ANON]);
+    expect(state.customers.map((row) => row.userId)).toEqual([REPLACEMENT]);
+  });
+
+  test("a deleting account's own signature does not pull a subscription out of its deletion", async () => {
+    const { t, ids } = await setup(false);
+    const data = {
+      ...payload(), subscription_id: "sub_self_signed_late",
+      metadata: { wm_user_id: USER, wm_user_id_sig: await signUserId(USER), wm_login_email: EMAIL },
+    };
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "self_signed_late", eventType: "subscription.active", timestamp: NOW + 1,
+      rawPayload: { data },
+    });
+    const state = await t.run(async (ctx) => ({
+      deletion: await ctx.db.get(ids.deletion),
+      entitlements: await ctx.db.query("entitlements").collect(),
+    }));
+    expect(state.deletion?.dodoSubscriptionIds).toEqual(["sub_deleted", "sub_self_signed_late"]);
+    expect(state.entitlements).toEqual([]);
   });
 
   test("central entitlement writers cannot restore original or tombstoned owners", async () => {

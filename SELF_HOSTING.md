@@ -82,6 +82,8 @@ These must be set before `docker compose up -d`, or one of the containers will e
 
 Docker mode (`LOCAL_API_MODE=docker`) has no Clerk or Convex entitlement backend. The dashboard still mints an anonymous `wms_` session signed with `WM_SESSION_SECRET`.
 
+Docker self-host does not call the World Monitor cloud, so desktop keys do not apply there. Self-built desktop builds can use a [desktop key](https://www.worldmonitor.app/docs/api-keys#desktop-keys) from a Pro or Pro Business plan.
+
 Native administration routes under `/api/local-` return `403` in Docker mode, including configuration updates, secret validation, and local status/debug controls. The internal sidecar token does not grant administrator access through nginx. Change operator settings through Compose environment variables or Docker secrets, then recreate the app container. Desktop administration remains available through the native app.
 
 - Only `GET /api/intelligence/v1/get-country-intel-brief` accepts that session as the authentication boundary. The handler still returns the shared (non-premium) brief.
@@ -132,8 +134,7 @@ Create a `docker-compose.override.yml` to inject your keys. This file is **gitig
 services:
   worldmonitor:
     environment:
-      # 🤖 LLM — pick one or both (used for intelligence assessments)
-      GROQ_API_KEY: ""            # https://console.groq.com (free, 14.4K req/day)
+      # 🤖 LLM (used for intelligence assessments)
       OPENROUTER_API_KEY: ""      # https://openrouter.ai (free, 50 req/day)
 
       # 📊 Markets & Economics
@@ -180,7 +181,7 @@ services:
 | Status | Keys |
 |--------|------|
 | 🟢 No key needed | Earthquakes, weather, natural events, UNHCR displacement, prediction markets, stablecoins, crypto, spending, climate anomalies, submarine cables, BIS data, cyber threats |
-| 🟢 Free signup | GROQ, FRED, EIA, NASA FIRMS, AISSTREAM, Finnhub, Alpha Vantage, AviationStack, ACLED, OpenRouter |
+| 🟢 Free signup | FRED, EIA, NASA FIRMS, AISSTREAM, Finnhub, Alpha Vantage, AviationStack, ACLED, OpenRouter |
 | 🟡 Free (limited) | OpenSky (higher rate limits with account) |
 | 🔴 Paid | Cloudflare Radar (internet outages) |
 
@@ -372,6 +373,86 @@ docker compose down && docker compose up -d
   ```bash
   docker run --rm -v "$(pwd)":/app -w /app node:24-alpine npm install --package-lock-only
   ```
+
+## 🗑️ Uninstall
+
+Removing a self-hosted stack is the reverse of the quick start. Nothing is
+installed outside the clone, the Compose containers and images, and one named
+volume, so uninstall is three steps.
+
+> **⚠️ `-v` deletes the Redis data volume (`redis-data`).** Every seeded
+> snapshot and every `seed-meta:*` freshness key goes with it. There is no
+> undo; re-seeding after a reinstall is the only way to get the data back.
+
+Run steps 1 and 2 from inside the clone, choosing the commands for your engine.
+
+Docker:
+
+```bash
+# 1. Stop the stack and remove its containers, network and the redis-data volume
+docker compose down -v
+# 2. Remove the images the stack built or pulled
+docker image rm worldmonitor:latest worldmonitor-ais-relay:latest worldmonitor-redis-rest:latest docker.io/redis:7-alpine
+```
+
+Podman:
+
+```bash
+uvx podman-compose down -v
+podman image rm worldmonitor:latest worldmonitor-ais-relay:latest worldmonitor-redis-rest:latest docker.io/redis:7-alpine
+```
+
+Then remove the clone, which also removes `.env` and `docker-compose.override.yml`:
+
+```bash
+# 3. Remove the clone after stopping the stack
+cd .. && rm -rf worldmonitor
+```
+
+What each step deletes:
+
+| Step | Removes | Keeps |
+| --- | --- | --- |
+| `docker compose down -v` | Containers `worldmonitor`, `worldmonitor-ais-relay`, `worldmonitor-redis`, `worldmonitor-redis-rest`; the Compose network; the `redis-data` volume | Images, the clone |
+| `docker image rm ...` | The three locally built images and the pulled Redis image | The clone |
+| `rm -rf worldmonitor` | The source, `.env` (secrets), `docker-compose.override.yml` (API keys), `node_modules`, any local `dist/` | Nothing |
+
+To keep the seeded data for a later reinstall, stop the stack without `-v`
+and skip step 3:
+
+```bash
+docker compose down
+```
+
+Or, for Podman:
+
+```bash
+uvx podman-compose down
+```
+
+The `redis-data` volume survives. If you later decide to delete it, the
+following optional step permanently removes the seeded data (the project
+prefix is the clone's directory name):
+
+```bash
+docker volume rm worldmonitor_redis-data
+```
+
+Or, for Podman:
+
+```bash
+podman volume rm worldmonitor_redis-data
+```
+
+If you scheduled `./scripts/run-seeders.sh` in cron (see
+[Seeding Data](#-seeding-data)), remove that crontab line too, or it will fail
+loudly every 30 minutes against a Redis that no longer exists.
+
+This section covers the Docker/Podman stack only. The desktop app installs
+through the platform's own package format; see the desktop issues
+[#5757](https://github.com/koala73/worldmonitor/issues/5757) (Linux AppImage)
+and [#5902](https://github.com/koala73/worldmonitor/issues/5902) (desktop
+parity) for removal of a desktop install.
 
 ## 🌐 Connecting to External Infrastructure
 

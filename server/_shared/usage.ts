@@ -17,7 +17,7 @@ import type { AuthKind } from './usage-identity';
 // client-ip (NOT rate-limit): this module is in the Railway seeders' static
 // import closure via redis.ts, and rate-limit.ts pulls @upstash/* packages
 // that seeder containers do not install (#5231).
-import { getClientIp, hasCloudflareTransitProof, UNKNOWN_CLIENT_IP } from './client-ip';
+import { getClientIp, hasCloudflareTransitProof, UNKNOWN_CLIENT_IP } from './client-ip.js';
 
 const AXIOM_DATASET = 'wm_api_usage';
 // US region endpoint. EU workspaces would use api.eu.axiom.co.
@@ -106,6 +106,13 @@ export type RequestReason =
   | 'internal_mcp_replay'
   | 'unknown_route'
   | 'method_not_allowed'
+  // MCP-Protocol-Version names a version /mcp does not serve. Split from
+  // malformed_request, where it hid 17% of weekly /mcp POSTs (2026-10-23).
+  | 'unsupported_protocol_version'
+  // MCP 2026-07-28 per-request validation: a required header missing or
+  // disagreeing with the body (-32020), or a malformed per-request _meta (-32602).
+  | 'header_mismatch'
+  | 'invalid_request_meta'
   | 'canonical_endpoint_required'
   | 'cors_error'
   // #3199 per-account API rate limit. `_429` = enforced reject; `_shadow` =
@@ -171,6 +178,22 @@ export interface RequestEvent {
   // tool. null on non-MCP routes and on MCP requests that never parsed a body.
   rpc_method: string | null;
   tool_name: string | null;
+  // #9431 — MCP demand and outcome attribution. All null on REST rows.
+  // requested_tool: a name the caller asked for that this server does not
+  // serve (tools/call miss or describe_tool miss), sanitized to
+  // [a-z0-9_.-]{1,64} or the '<invalid>' bucket, and only written for
+  // authenticated callers. The tool_* fields mirror the mcp.toolcall line:
+  // null when no tool ran.
+  requested_tool: string | null;
+  tool_error_kind: string | null;
+  tool_result_bytes: number | null;
+  tool_jmespath: boolean | null;
+  // MCP-Protocol-Version the client sent, bounded to published revisions or
+  // 'other'; null when absent and on REST rows.
+  mcp_protocol_version: string | null;
+  // 'modern' when /mcp served the request on the 2026-07-28 per-request path,
+  // 'legacy' otherwise; null on REST rows.
+  mcp_era: string | null;
 }
 
 export interface UpstreamEvent {
@@ -212,6 +235,8 @@ export interface LlmCallEvent {
   fallback_index: number;
   /** '' on success; 'http_<status>' | 'timeout' | 'fetch_error' | 'empty' | 'stripped_empty' | 'validate_reject'. */
   reason: string;
+  /** Request mode within a stage, e.g. summarize-article 'brief' | 'analysis' | 'translate'. Absent when the stage has one mode. */
+  mode?: string;
 }
 
 export type UsageEvent = RequestEvent | UpstreamEvent | LlmCallEvent;
@@ -231,6 +256,7 @@ export function buildLlmCallEvent(p: {
   maxTokens: number;
   fallbackIndex: number;
   reason?: string;
+  mode?: string;
 }): LlmCallEvent {
   return {
     _time: new Date().toISOString(),
@@ -247,6 +273,7 @@ export function buildLlmCallEvent(p: {
     max_tokens: p.maxTokens,
     fallback_index: p.fallbackIndex,
     reason: p.reason ?? '',
+    ...(p.mode ? { mode: p.mode } : {}),
   };
 }
 
@@ -283,6 +310,18 @@ export function buildRequestEvent(p: {
   rpcMethod?: string | null;
   /** Registry-bounded tools/call name; null when unknown/non-call (#8403). */
   toolName?: string | null;
+  /** Sanitized name of a tool this server does not serve (#9431). */
+  requestedTool?: string | null;
+  /** mcp.toolcall error_kind; null on success or when no tool ran (#9431). */
+  toolErrorKind?: string | null;
+  /** mcp.toolcall bytes_pre_jmespath (-1 = unmeasured); null when no tool ran (#9431). */
+  toolResultBytes?: number | null;
+  /** Whether a JMESPath projection was requested; null when no tool ran (#9431). */
+  toolJmespath?: boolean | null;
+  /** MCP-Protocol-Version header, bounded to known revisions or 'other'; null when absent. */
+  mcpProtocolVersion?: string | null;
+  /** MCP protocol era of the request ('modern' | 'legacy'); null on REST. */
+  mcpEra?: string | null;
 }): RequestEvent {
   return {
     _time: new Date().toISOString(),
@@ -317,6 +356,12 @@ export function buildRequestEvent(p: {
     reason: p.reason,
     rpc_method: p.rpcMethod ?? null,
     tool_name: p.toolName ?? null,
+    requested_tool: p.requestedTool ?? null,
+    tool_error_kind: p.toolErrorKind ?? null,
+    tool_result_bytes: p.toolResultBytes ?? null,
+    tool_jmespath: p.toolJmespath ?? null,
+    mcp_protocol_version: p.mcpProtocolVersion ?? null,
+    mcp_era: p.mcpEra ?? null,
   };
 }
 

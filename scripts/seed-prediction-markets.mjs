@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, sleep, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, sleep, runSeed, withRetry } from './_seed-utils.mjs';
 import {
   buildBootstrapPools,
   predictionPoolCounts,
   validateBootstrapPayload,
 } from './_prediction-classify.mjs';
 import {
-  isExcluded, parseYesPrice, parseKalshiYesPrice, parsePredictionMarketVolume,
-  selectPricedKalshiMarket, isExpired,
+  isExcluded, parseYesPrice, parseKalshiYesPrice, parsePredictionMarketVolume, parsePolymarketLiquidity,
+  selectPricedKalshiMarket, isExpired, kalshiMarketUrl, parsePolymarketChange, parseKalshiChange24h,
 } from './_prediction-scoring.mjs';
 import {
   buildCountryMarketIndex,
@@ -17,6 +17,7 @@ import {
   selectKalshiSeriesTickers,
 } from './_prediction-country-index.mjs';
 import {
+  attachKalshiLiquidity,
   fetchKalshiEvents as fetchKalshiEventPages,
   fetchKalshiMarketsBySeries,
   fetchKalshiSeries,
@@ -71,7 +72,7 @@ function kalshiTitle(marketTitle, eventTitle) {
   return `${eventTitle}: ${marketTitle}`;
 }
 
-function kalshiCountryCandidate(market, eventTitle) {
+function kalshiCountryCandidate(market, eventTitle, seriesTicker = market.series_ticker) {
   const yesPrice = parseKalshiYesPrice(market);
   if (yesPrice === null) return null;
   const marketTitle = eventTitle
@@ -82,6 +83,7 @@ function kalshiCountryCandidate(market, eventTitle) {
     yesPrice,
     volume: parseFloat(market.volume_fp) || 0,
     url: `https://kalshi.com/markets/${market.ticker}`,
+    displayUrl: kalshiMarketUrl(seriesTicker),
     endDate: market.close_time ?? undefined,
     tags: [],
     source: 'kalshi',
@@ -109,7 +111,7 @@ async function fetchKalshiMarkets() {
 
     const eventKey = `kalshi:${event.event_ticker || event.ticker || event.id || event.title}`;
     for (const market of binaryActive) {
-      const candidate = kalshiCountryCandidate(market, event.title);
+      const candidate = kalshiCountryCandidate(market, event.title, event.series_ticker);
       if (candidate) countryCandidates.push({ ...candidate, eventKey });
     }
 
@@ -118,12 +120,15 @@ async function fetchKalshiMarkets() {
 
     const marketTitle = topMarket.yes_sub_title || topMarket.title || '';
     const title = kalshiTitle(marketTitle, event.title);
+    const change24h = parseKalshiChange24h(topMarket);
 
     featured.push({
       title,
       yesPrice,
+      ...(change24h === null ? {} : { change24h }),
       volume,
       url: `https://kalshi.com/markets/${topMarket.ticker}`,
+      displayUrl: kalshiMarketUrl(event.series_ticker),
       endDate: topMarket.close_time ?? undefined,
       tags: [],
       source: 'kalshi',
@@ -233,10 +238,16 @@ async function fetchAllPredictions() {
           if (yesPrice === null) continue;
 
           const eventKey = `polymarket:${event.id}`;
+          const change24h = parsePolymarketChange(topMarket, 'oneDayPriceChange');
+          const change7d = parsePolymarketChange(topMarket, 'oneWeekPriceChange');
+          const eventLiquidity = parsePolymarketLiquidity(event);
           markets.push({
             title: topMarket.question || event.title,
             yesPrice,
+            ...(change24h === null ? {} : { change24h }),
+            ...(change7d === null ? {} : { change7d }),
             volume: eventVolume,
+            ...(eventLiquidity === null ? {} : { liquidity: eventLiquidity }),
             url: `https://polymarket.com/event/${event.slug}`,
             endDate: topMarket.endDate ?? event.endDate ?? undefined,
             tags: (event.tags ?? []).map(t => t.slug),
@@ -246,10 +257,16 @@ async function fetchAllPredictions() {
           for (const market of active) {
             const candidatePrice = parseYesPrice(market);
             if (candidatePrice === null) continue;
+            const candidateChange24h = parsePolymarketChange(market, 'oneDayPriceChange');
+            const candidateChange7d = parsePolymarketChange(market, 'oneWeekPriceChange');
+            const candidateLiquidity = parsePolymarketLiquidity(market);
             countryCandidates.push({
               title: market.question || event.title,
               yesPrice: candidatePrice,
+              ...(candidateChange24h === null ? {} : { change24h: candidateChange24h }),
+              ...(candidateChange7d === null ? {} : { change7d: candidateChange7d }),
               volume: parsePredictionMarketVolume(market),
+              ...(candidateLiquidity === null ? {} : { liquidity: candidateLiquidity }),
               url: `https://polymarket.com/event/${event.slug}`,
               endDate: market.endDate ?? event.endDate ?? undefined,
               tags: (event.tags ?? []).map(t => t.slug),
@@ -296,6 +313,22 @@ async function fetchAllPredictions() {
   const countryMarkets = projectCountryMarketIndex(countryCandidates, {
     complete: countryProjectionComplete,
   });
+
+  // Kalshi's market payload has no liquidity field, so published Kalshi records
+  // are priced from their order books. A failed chunk leaves liquidity unknown.
+  const kalshiLiquidity = await attachKalshiLiquidity(
+    [...pools.geopolitical, ...pools.tech, ...pools.finance, ...Object.values(countryMarkets).flat()],
+    {
+      baseUrl: KALSHI_BASE,
+      userAgent: CHROME_UA,
+      timeoutMs: FETCH_TIMEOUT,
+      retry: (fn) => withRetry(fn, 2, 500),
+      onChunkError: (err, chunk) => {
+        console.warn(`  [kalshi] orderbooks for ${chunk.length} markets failed; liquidity left unknown: ${err.message}`);
+      },
+    },
+  );
+  console.log(`  [kalshi] order-book liquidity for ${kalshiLiquidity.priced}/${kalshiLiquidity.tickers} published markets`);
 
   if (duplicatesDropped > 0) {
     console.log(`  deduped ${duplicatesDropped} same-identity record(s) before classification`);
