@@ -143,6 +143,9 @@ interface Scroll {
   scroller: string;
   keyboard: boolean;
   name: string;
+  // Text inside the faded scroller that is not part of the table, such as a
+  // panel summary, filter chips or a source footer. The fade must not reach it.
+  outsideTable: string;
   atStart: CueState;
   atEnd: CueState;
   // Distance of the first row label from the scroller's inline-start edge
@@ -167,7 +170,7 @@ function readScroll(page: Page, id: string): Promise<Scroll> {
     }
     const none: CueState = { start: '', end: '', mask: 'none' };
     if (!scroller) {
-      return { panel: Math.round(box.width), overflow: 0, cellsPastPanel, scroller: '', keyboard: false, name: '', atStart: none, atEnd: none, labelDrift: 0 };
+      return { panel: Math.round(box.width), overflow: 0, cellsPastPanel, scroller: '', keyboard: false, name: '', outsideTable: '', atStart: none, atEnd: none, labelDrift: 0 };
     }
     const read = (): CueState => {
       const cs = getComputedStyle(scroller!);
@@ -177,6 +180,9 @@ function readScroll(page: Page, id: string): Promise<Scroll> {
         mask: cs.maskImage,
       };
     };
+    const copy = scroller.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll('table, style, script').forEach((el) => el.remove());
+    const outsideTable = (copy.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
     const rtl = getComputedStyle(scroller).direction === 'rtl';
     const towardEnd = rtl ? -1 : 1;
     scroller.scrollLeft = 0;
@@ -199,6 +205,7 @@ function readScroll(page: Page, id: string): Promise<Scroll> {
       scroller: scroller.className,
       keyboard: scroller.tabIndex >= 0,
       name: name.trim(),
+      outsideTable,
       atStart,
       atEnd,
       labelDrift,
@@ -222,6 +229,8 @@ async function expectCue(page: Page, s: Scroll, id: string, label: string): Prom
     expect.soft(panelTitle, `${label}: the panel has a title`).not.toBe('');
     await expect.soft(region, `${label}: the scroll region is named by the panel title`).toHaveAccessibleName(panelTitle);
   }
+  expect.soft(s.scroller.split(' '), `${label}: the table scrolls inside its own wrapper, not the panel body`).toContain('table-scroll');
+  expect.soft(s.outsideTable, `${label}: the edge fade covers only the table`).toBe('');
   expect.soft(s.atStart.mask, `${label}: edge fade at the start`).not.toBe('none');
   expect.soft(s.atStart, `${label}: at the start only the trailing edge fades`).toMatchObject({ start: '0px', end: '24px' });
   if (PINNED_LABELS.has(id)) {

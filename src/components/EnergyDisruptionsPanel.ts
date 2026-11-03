@@ -217,18 +217,20 @@ export class EnergyDisruptionsPanel extends Panel {
       <div class="ed-wrap">
         <div class="ed-summary">${escapeHtml(summary)}</div>
         <div class="ed-filters">${typeButtons}${ongoingBtn}</div>
-        <table class="ed-table">
-          <thead>
-            <tr>
-              <th scope="col">Event</th>
-              <th scope="col">Asset</th>
-              <th scope="col">Window</th>
-              <th scope="col">Offline</th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody>${rows || `<tr><td colspan="5" class="ed-empty">No events match the current filter.</td></tr>`}</tbody>
-        </table>
+        <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+          <table class="ed-table">
+            <thead>
+              <tr>
+                <th scope="col">Event</th>
+                <th scope="col">Asset</th>
+                <th scope="col">Window</th>
+                <th scope="col">Offline</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>${rows || `<tr><td colspan="5" class="ed-empty">No events match the current filter.</td></tr>`}</tbody>
+          </table>
+        </div>
         ${attribution}
       </div>
       ${ATTRIBUTION_FOOTER_CSS}
