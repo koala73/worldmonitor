@@ -8,7 +8,7 @@
 // as text, with the shell script carrying the runtime proof of the same design.
 
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -246,7 +246,7 @@ describe('uninstall discovery isolation and Linux edge cases', { skip: !canRun }
     const { home, paths } = fixtureHome('linux');
     try {
       const env = linuxEnv(home);
-      for (const [name, body] of [['pgrep', 'echo 999999'], ['ps', 'exit 1'], ['pkill', 'exit 0']]) {
+      for (const [name, body] of [['pgrep', 'echo 999999'], ['readlink', 'exit 1'], ['findmnt', 'echo /tmp/.mount_WorldMonitor-test']]) {
         writeFileSync(join(env.PATH, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
       }
       env.WM_UNINSTALL_SKIP_PROCESS_STOP = '0';
@@ -256,4 +256,70 @@ describe('uninstall discovery isolation and Linux edge cases', { skip: !canRun }
       assert.ok(existsSync(paths.otherLauncher));
     } finally { rmSync(home, { recursive: true, force: true }); }
   });
+});
+
+
+describe('uninstall process executable scoping', { skip: !canRun }, () => {
+  it('warns and skips process discovery when an AppImage mount cannot be resolved', () => {
+    const { home, paths } = fixtureHome('linux');
+    try {
+      const env = { ...linuxEnv(home), WM_UNINSTALL_SKIP_PROCESS_STOP: '0' };
+      const result = run(home, ['--dry-run', '--keep-secrets'], env);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stderr, /Cannot resolve the mount.*quit its app and sidecar manually/);
+      assert.ok(!result.stdout.includes('Stop process'));
+      assert.ok(existsSync(paths.app));
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+
+  for (const target of ['darwin', 'linux']) {
+    it(`${target}: lists and stops only a verified installation process, keeping a decoy alive`, async () => {
+      const { home, paths } = fixtureHome(target);
+      const ownMount = join(home, '.mount_WorldMonitor');
+      const ownExe = target === 'darwin'
+        ? join(paths.app, 'Contents/Resources/sidecar/node')
+        : join(ownMount, 'usr/lib/sidecar/node');
+      const foreignExe = target === 'darwin'
+        ? join(home, 'another-install/World Monitor.app/Contents/Resources/sidecar/node')
+        : join(home, '.mount_WorldOther/usr/lib/sidecar/node');
+      // These are the only real processes the fake discovery can return.
+      const own = spawn('/bin/sleep', ['30'], { argv0: ownExe });
+      const decoy = spawn('/bin/sleep', ['30'], { argv0: foreignExe });
+      const ownExit = new Promise((resolve) => own.once('exit', resolve));
+      try {
+        assert.ok(own.pid && decoy.pid);
+        const env = linuxEnv(home);
+        const command = (name, body) => writeFileSync(join(env.PATH, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+        command('uname', `echo ${target === 'darwin' ? 'Darwin' : 'Linux'}`);
+        command('pgrep', `echo ${own.pid}; echo ${decoy.pid}`);
+        command('findmnt', `printf '%s\\n' '${ownMount}'`);
+        command('readlink', `case "$1" in /proc/${own.pid}/exe) printf '%s\\n' '${ownExe}' ;; /proc/${decoy.pid}/exe) printf '%s\\n' '${foreignExe}' ;; *) exit 1 ;; esac`);
+        command('ps', `case "$*" in *${own.pid}) printf '%s\\n' '${ownExe}' ;; *${decoy.pid}) printf '%s\\n' '${foreignExe}' ;; *) exit 1 ;; esac`);
+        // A legacy broad pkill call is confined to our decoy, never the host.
+        const broadStop = join(home, 'broad-stop-called');
+        command('pkill', `echo called > '${broadStop}'; /bin/kill -TERM ${decoy.pid}`);
+        env.WM_UNINSTALL_SKIP_PROCESS_STOP = '0';
+        const preview = run(home, ['--dry-run', '--keep-secrets'], env);
+        assert.equal(preview.status, 0, preview.stderr);
+        assert.doesNotThrow(() => process.kill(own.pid, 0));
+        assert.doesNotThrow(() => process.kill(decoy.pid, 0));
+        const result = run(home, ['--yes', '--keep-secrets'], env);
+        assert.equal(result.status, 0, result.stderr);
+        assert.ok(!existsSync(broadStop), 'must not use a broad command-line pkill');
+        assert.doesNotThrow(() => process.kill(decoy.pid, 0), 'foreign command-line match must survive');
+        assert.ok(preview.stdout.includes(`Stop process ${own.pid} (${ownExe})`));
+        assert.ok(!preview.stdout.includes(`Stop process ${decoy.pid}`));
+        await ownExit;
+        assert.equal(own.signalCode, 'SIGTERM');
+        assert.ok(!existsSync(paths.app));
+      } finally {
+        await Promise.all([own, decoy].map((child) => new Promise((resolve) => {
+          if (child.exitCode !== null || child.signalCode !== null) return resolve();
+          child.once('exit', resolve);
+          child.kill('SIGKILL');
+        })));
+        rmSync(home, { recursive: true, force: true });
+      }
+    });
+  }
 });

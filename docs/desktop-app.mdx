@@ -291,7 +291,7 @@ powershell -ExecutionPolicy Bypass -File scripts\uninstall-desktop.ps1 -DryRun
 powershell -ExecutionPolicy Bypass -File scripts\uninstall-desktop.ps1
 ```
 
-Both scripts list everything they found and ask for confirmation before removing anything. On Windows the script runs the bundled uninstaller from the registry and then removes what it leaves behind. Any process stop is scoped to the installed app: sidecar runtimes whose parent is the app binary or that run from the install path, never another Node process on the machine.
+Both scripts list everything they found and ask for confirmation before removing anything. On Windows the script runs the bundled uninstaller from the registry and then removes what it leaves behind. Process stops are listed in the preview and verified against executable paths inside a discovered app bundle or AppImage mount. A command line that merely mentions a sidecar path is not enough. On Linux, if the AppImage mount cannot be resolved with `findmnt`, the script warns you to quit the app and sidecar manually instead of matching another application’s processes.
 
 | Option | Effect |
 |---|---|

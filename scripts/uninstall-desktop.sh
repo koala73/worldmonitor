@@ -136,30 +136,72 @@ collect_linux_paths() {
   fi
 }
 
-stop_processes() {
-  if [ "${WM_UNINSTALL_SKIP_PROCESS_STOP:-0}" = "1" ]; then
-    return
-  fi
-  local pid ppid pcomm
-  # The app spawns its sidecar Node runtime from the bundle. Stop sidecars
-  # whose parent is the app binary, then the orphans that still run from the
-  # bundle path (parent already gone), then the app itself. Every match is
-  # scoped to this product so no other Node process on the machine is touched.
-  for pid in $(pgrep -f "sidecar/node" 2>/dev/null || true); do
-    ppid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')" || continue
-    [ -n "$ppid" ] || continue
-    pcomm="$(ps -o comm= -p "$ppid" 2>/dev/null || true)"
-    case "$pcomm" in
-      *"$BINARY"*) kill "$pid" 2>/dev/null || true ;;
-    esac
-  done
+PROCESS_ROOTS=()
+PROCESS_IDS=()
+PROCESS_EXES=()
+
+process_executable() {
   if [ "$OS" = "Darwin" ]; then
-    pkill -f "${PRODUCT}\.app/Contents/Resources/sidecar/node" 2>/dev/null || true
+    ps -o comm= -p "$1" 2>/dev/null
   else
-    # AppImages run from a FUSE mount named after the file: /tmp/.mount_World…
-    pkill -f "\.mount_${PRODUCT%% *}.*sidecar/node" 2>/dev/null || true
+    readlink "/proc/$1/exe" 2>/dev/null
   fi
-  pkill -x "$BINARY" 2>/dev/null || true
+}
+
+is_app_executable() {
+  local root
+  for root in ${PROCESS_ROOTS[@]+"${PROCESS_ROOTS[@]}"}; do
+    if [ "$OS" = "Darwin" ]; then
+      case "$1" in
+        "$root/Contents/MacOS/$BINARY"|"$root/Contents/Resources/sidecar/node") return 0 ;;
+      esac
+    else
+      case "$1" in
+        "$root/"*)
+          case "${1##*/}" in node|"$BINARY") return 0 ;; esac ;;
+      esac
+    fi
+  done
+  return 1
+}
+
+collect_processes() {
+  [ "${WM_UNINSTALL_SKIP_PROCESS_STOP:-0}" != "1" ] || return 0
+  local path mountroot pid executable
+  for path in ${REMOVE_PATHS[@]+"${REMOVE_PATHS[@]}"}; do
+    if [ "$OS" = "Darwin" ]; then
+      case "$path" in *.app) PROCESS_ROOTS+=("$path") ;; esac
+    else
+      case "$path" in
+        *.AppImage)
+          mountroot="$(findmnt -rn -S "$path" -o TARGET 2>/dev/null)" || mountroot=""
+          if [ -n "$mountroot" ] && [[ "$mountroot" != *$'\n'* ]]; then
+            PROCESS_ROOTS+=("$mountroot")
+          else
+            echo "Cannot resolve the mount for ${path}; quit its app and sidecar manually before continuing." >&2
+          fi ;;
+      esac
+    fi
+  done
+  [ "${#PROCESS_ROOTS[@]}" -gt 0 ] || return 0
+  for pid in $(pgrep -f "$BINARY|sidecar/node" 2>/dev/null || true); do
+    executable="$(process_executable "$pid")" || continue
+    if is_app_executable "$executable"; then
+      PROCESS_IDS+=("$pid")
+      PROCESS_EXES+=("$executable")
+    fi
+  done
+}
+
+stop_processes() {
+  local index executable
+  for ((index=0; index<${#PROCESS_IDS[@]}; index++)); do
+    # Re-check after confirmation: a process may exit and its PID be reused.
+    executable="$(process_executable "${PROCESS_IDS[$index]}")" || continue
+    if [ "$executable" = "${PROCESS_EXES[$index]}" ] && is_app_executable "$executable"; then
+      kill "${PROCESS_IDS[$index]}" 2>/dev/null || true
+    fi
+  done
 }
 
 keychain_entries_exist() {
@@ -212,6 +254,8 @@ if [ "${#REMOVE_PATHS[@]}" -eq 0 ] && [ "$REMOVE_SECRETS" -eq 0 ]; then
   exit 0
 fi
 
+collect_processes
+
 echo "The following will be removed:"
 # ${arr[@]+...} guards empty-array expansion under `set -u` on bash 3.2 (macOS default)
 for p in ${REMOVE_PATHS[@]+"${REMOVE_PATHS[@]}"}; do
@@ -220,6 +264,10 @@ done
 if [ "$REMOVE_SECRETS" -eq 1 ]; then
   echo "  OS keychain entries (service: ${KEYRING_SERVICE})"
 fi
+
+for ((index=0; index<${#PROCESS_IDS[@]}; index++)); do
+  echo "  Stop process ${PROCESS_IDS[$index]} (${PROCESS_EXES[$index]})"
+done
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "Dry run: nothing was removed."
