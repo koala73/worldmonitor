@@ -208,7 +208,7 @@ describe('locale completeness', () => {
       ];
       for (const value of values) {
         assert.equal(typeof value, 'string');
-        assert.match(value, /Canada|Canadian|Kanada|kanadisch/i, `${file} canadaRoads copy must identify Canadian scope`);
+        assert.match(value, /Canad|Kanad|Kanaď|Kanadá|كند|Канад|Καναδ|カナダ|캐나다|加拿大|कनाडा|แคนาดา/i, `${file} canadaRoads copy must identify Canadian scope`);
         assert.doesNotMatch(value, /Ontario and Alberta/i, `${file} canadaRoads copy must not claim only two provinces`);
       }
     });
@@ -235,7 +235,7 @@ describe('locale completeness', () => {
       ];
       for (const value of values) {
         assert.equal(typeof value, 'string');
-        assert.match(value, /Canada|Canadian|Kanada|kanadisch/i, `${file} canadaRoads copy must identify Canadian scope`);
+        assert.match(value, /Canad|Kanad|Kanaď|Kanadá|كند|Канад|Καναδ|カナダ|캐나다|加拿大|कनाडा|แคนาดา/i, `${file} canadaRoads copy must identify Canadian scope`);
         assert.doesNotMatch(value, /Ontario and Alberta/i, `${file} canadaRoads copy must not claim only two provinces`);
       }
     });
