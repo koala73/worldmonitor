@@ -1941,20 +1941,21 @@
       "proLocked": "Upgrade para PRO para pontuação de vulnerabilidade de commodities"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Rastreamento de navios ao vivo através do Estreito de Hormuz, o ponto de estrangulamento de petróleo mais crítico do mundo. Monitora contagens de navios-tanque, eventos de interrupção e mudanças de fluxo semanais. Aproximadamente 20% do suprimento global de petróleo passa por aqui diariamente.",
+      "infoTooltip": "<strong>Rastreador de Comércio do Hormuz</strong> Índices diários de remessas do WTO DataLab para o Estreito de Hormuz: petróleo bruto, GNL e fertilizante saindo do Golfo, produtos agrícolas chegando. Por volume, média de janeiro–março de 2025 = 100, apenas navios visíveis por AIS. Status e data vêm da análise mais recente do WTO.",
       "title": "Rastreador de Comércio do Hormuz",
       "noData": "Sem dados",
       "notAvailable": "N/D",
       "chartUnavailable": "Dados do gráfico indisponíveis",
       "sourcePrefix": "Fonte:",
       "units": {
-        "ktPerDay": "kt/dia",
-        "generic": "unidades"
+        "index": "índice"
       },
       "errors": {
         "unavailable": "Dados do Hormuz indisponíveis",
         "failedToLoad": "Falha ao carregar"
-      }
+      },
+      "analysisDate": "Análise WTO {{date}}",
+      "indexNote": "Índice de embarques por volume, média de janeiro–março de 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Webcams em direto</strong> Feeds em direto de locais geopoliticamente significativos em todo o mundo: zonas de conflito, capitais, postos fronteiriços e pontos de estrangulamento estratégicos. Streams do YouTube e redes públicas."

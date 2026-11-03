@@ -2309,20 +2309,21 @@
       "proLocked": "PRO にアップグレードして商品脆弱性スコアを表示"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>ホルムズ海峡トレーカー</strong> ホルムズ海峡を通過する船舶のライブ追跡。世界最重要の石油輸送ボトルネック。タンカー数、供給支障イベント、週単位の流量変化を監視。世界の石油供給の約20%が毎日ここを経由します。",
+      "infoTooltip": "<strong>ホルムズ海峡貿易トラッカー</strong> WTO DataLabがホルムズ海峡の日次出荷指数を提供：湾岸を出港する原油、LNG、肥料、到着する農産物。数量ベース、2025年1～3月平均 = 100、AIS追跡可能な船舶のみ。ステータスと日付はWTOの最新分析に基づいています。",
       "title": "ホルムズ海峡貿易トラッカー",
       "noData": "データなし",
       "notAvailable": "利用不可",
       "chartUnavailable": "チャートデータは利用できません",
       "sourcePrefix": "出典:",
       "units": {
-        "ktPerDay": "kt/日",
-        "generic": "単位"
+        "index": "指数"
       },
       "errors": {
         "unavailable": "ホルムズデータは利用できません",
         "failedToLoad": "読み込みに失敗しました"
-      }
+      },
+      "analysisDate": "WTO分析 {{date}}",
+      "indexNote": "出荷量指数、2025年1～3月平均 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>ライブウェブカメラ</strong> 世界中の地政学的に重要な場所からのライブ映像：紛争地域、首都、国境検問所、戦略的チョークポイント。YouTubeおよび公共ネットワークからのストリーム。"

@@ -2309,20 +2309,21 @@
       "proLocked": "Nâng cấp lên PRO để xem điểm số lỗ hổng hàng hóa"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Theo dõi thời gian thực của các tàu qua Eo biển Hormuz, điểm nghẽn dầu quan trọng nhất thế giới. Giám sát số lượng tàu chở dầu, sự kiện gián đoạn và thay đổi dòng chảy hàng tuần. Khoảng 20% nguồn cung dầu toàn cầu đi qua đây hàng ngày.",
+      "infoTooltip": "<strong>Theo dõi Thương mại Hormuz</strong> chỉ số lưu lượng hàng ngày từ WTO DataLab cho Eo biển Hormuz: dầu thô, LNG và phân bón rời khỏi Vịnh, hàng nông sản đến. Theo khối lượng, trung bình tháng 1–3 năm 2025 = 100, chỉ các tàu có tín hiệu AIS. Trạng thái và ngày tháng từ phân tích mới nhất của WTO.",
       "title": "Theo dõi Thương mại Hormuz",
       "noData": "Không có dữ liệu",
       "notAvailable": "N/A",
       "chartUnavailable": "Dữ liệu biểu đồ không khả dụng",
       "sourcePrefix": "Nguồn:",
       "units": {
-        "ktPerDay": "kt/ngày",
-        "generic": "đơn vị"
+        "index": "chỉ số"
       },
       "errors": {
         "unavailable": "Dữ liệu Hormuz không khả dụng",
         "failedToLoad": "Không tải được"
-      }
+      },
+      "analysisDate": "Phân tích WTO {{date}}",
+      "indexNote": "Chỉ số lượng hàng hóa, mức trung bình tháng 1–3 năm 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Webcam trực tiếp</strong> Luồng phát trực tiếp từ các địa điểm có ý nghĩa địa chính trị trên toàn thế giới: vùng xung đột, thủ đô, cửa khẩu biên giới và các điểm nghẽn chiến lược. Luồng từ YouTube và mạng công cộng."

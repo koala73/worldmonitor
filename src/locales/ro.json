@@ -2327,20 +2327,21 @@
       "proLocked": "Actualizare la PRO pentru scoruri de vulnerabilitate a mărfurilor"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Urmărire live a vaselor prin Strâmtoarea Hormuz, cel mai critic punct de constrângere pentru petrol din lume. Monitorizează numărurile de tanagii, evenimente de perturbare și schimburi de flux săptămânale. Aproximativ 20% din aprovizionarea globală cu petrol tranzitează zilnic prin aici.",
+      "infoTooltip": "<strong>Urmăritor Comerț Hormuz</strong> indici zilnici ai expedierilor WTO DataLab pentru Strâmtoarea Hormuz: petrol brut, GNL și îngrășământ plecând din Golf, produse agricole care sosesc. După volum, media ianuarie–martie 2025 = 100, doar vase vizibile AIS. Starea și data provin din cea mai recentă analiză a WTO.",
       "title": "Urmăritor Comerț Hormuz",
       "noData": "Nicio dată",
       "notAvailable": "N/A",
       "chartUnavailable": "Datele graficului nu sunt disponibile",
       "sourcePrefix": "Sursă:",
       "units": {
-        "ktPerDay": "kt/zi",
-        "generic": "unități"
+        "index": "indice"
       },
       "errors": {
         "unavailable": "Datele Hormuz nu sunt disponibile",
         "failedToLoad": "Încărcarea a eșuat"
-      }
+      },
+      "analysisDate": "Analiza WTO {{date}}",
+      "indexNote": "Indice de expediere după volum, media ianuarie–martie 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Camere web în direct</strong> Fluxuri în direct din locații semnificative geopolitic din întreaga lume: zone de conflict, capitale, puncte de trecere a frontierei și puncte strategice de blocaj. Fluxuri de la YouTube și rețele publice."
