@@ -477,6 +477,7 @@ async function collectV7Valuations(
   // keeps the leg: dropping it would remove that client's only proxy path.
   const deferProxyToBatch = typeof client?.fetchV7BatchAcrossExits === 'function'
     || typeof client?.fetchV7BatchDetailed === 'function';
+  const deferredProxySymbols = new Set();
   const batchBudgetAvailable = () => deadlineAt == null || deadlineAt - now() >= BATCH_MIN_BUDGET_MS;
   const recordPerSymbolV7Result = (symbol, result) => {
     diagnostics.push({ symbol, outcomes: result?.diagnostics || [] });
@@ -494,10 +495,9 @@ async function collectV7Valuations(
         diagnostics: [{ route: 'v7Quote', attempts: 0, responseClass: 'deadline_exceeded', failure: 'valuation_budget_exceeded' }],
       };
     } else if (client?.fetchV7Detailed) {
-      result = await client.fetchV7Detailed(s, {
-        deadlineAt,
-        skipProxy: deferProxyToBatch && batchBudgetAvailable(),
-      });
+      const skipProxy = deferProxyToBatch && batchBudgetAvailable();
+      if (skipProxy) deferredProxySymbols.add(s);
+      result = await client.fetchV7Detailed(s, { deadlineAt, skipProxy });
     } else {
       const direct = await fetchYahooV7QuoteDirect(s, { userAgent });
       const routeDiagnostics = [{
@@ -637,7 +637,7 @@ async function collectV7Valuations(
       }
     }
   }
-  const proxyFallbackSymbols = symbols.filter((symbol) => !freshVals[symbol]);
+  const proxyFallbackSymbols = symbols.filter((symbol) => deferredProxySymbols.has(symbol) && !freshVals[symbol]);
   if (
     deferProxyToBatch
     && proxyFallbackSymbols.length > 0

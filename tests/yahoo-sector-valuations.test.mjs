@@ -1789,6 +1789,24 @@ describe('per-symbol v7 tier defers its proxy leg to the rotating batch (#6279)'
     assert.equal(result.valuations.XLK?.trailingPE, 31.2);
   });
 
+  it('does not repeat an already attempted proxy leg when budget was below the batch floor', async () => {
+    const harness = exitHarness({ badExits: ['exit-0'], truncated: ['XLK'], directTruncated: true });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+    await collectV7Valuations(['XLK'], {
+      client,
+      sleepFn: async () => {},
+      deadlineAt: Date.now() + 1_500,
+    });
+    assert.equal(singleSymbolProxyQuotes(harness).length, 1,
+      'the first pass already attempted proxy; fallback must only recover deferred legs');
+  });
+
   it('defers per-symbol proxy for fetchV7BatchDetailed-only injected clients', async () => {
     const harness = exitHarness({ badExits: [], truncated: TRUNCATED, directTruncated: true });
     const client = new YahooQuoteSummaryClient({
