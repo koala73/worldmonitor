@@ -111,6 +111,12 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     reason: 'The Philippine Department of Energy price pages link each weekly monitoring PDF on the site\'s CloudFront media host.',
     reviewReference: 'Issue #10051 fuel-price batch 3',
   }),
+  gdelt: Object.freeze({
+    provider: 'api.gdeltproject.org',
+    memberHosts: Object.freeze(['api.gdeltproject.org', 'storage.googleapis.com']),
+    reason: 'GDELT serves its bulk event exports from the data.gdeltproject.org bucket on storage.googleapis.com; every reference to that host reads the GDELT bucket.',
+    reviewReference: 'PR #10100, the 2026-11-03 Ember host move that left storage.googleapis.com serving only GDELT bulk files',
+  }),
   sonabhy: Object.freeze({
     provider: 'www.sonabhy.bf',
     memberHosts: Object.freeze(['www.sonabhy.bf', 'king-prawn-app-6bsvl.ondigitalocean.app']),
@@ -269,6 +275,8 @@ const PROVIDER_OVERRIDES = {
   'api.publisher.jodidata.org': { provider: 'www.jodidata.org', identityGroup: 'jodi' },
   'doe.gov.ph': { provider: 'doe.gov.ph', identityGroup: 'doe-ph' },
   'd24qbtp4vooyzi.cloudfront.net': { provider: 'doe.gov.ph', identityGroup: 'doe-ph' },
+  'api.gdeltproject.org': { provider: 'api.gdeltproject.org', identityGroup: 'gdelt' },
+  'storage.googleapis.com': { provider: 'api.gdeltproject.org', identityGroup: 'gdelt' },
   'www.sonabhy.bf': { provider: 'www.sonabhy.bf', identityGroup: 'sonabhy' },
   'king-prawn-app-6bsvl.ondigitalocean.app': { provider: 'www.sonabhy.bf', identityGroup: 'sonabhy' },
   'api.adsb.lol': { provider: 'adsb.lol' },
@@ -659,7 +667,7 @@ const PROVIDER_OVERRIDES = {
     attribution: 'ENTSO-E Transparency Platform; link to the returned dataset.',
     status: 'terms-review',
   },
-  'storage.googleapis.com': {
+  'files.ember-energy.org': {
     provider: 'Ember electricity data',
     license: 'CC BY 4.0 (Ember dataset)',
     attribution: 'Ember; link to the Ember dataset and preserve its license notice.',
@@ -1063,7 +1071,7 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '328ddeddb417d15ec15be79f9a0a433f906ea1a9ed2f218ca0261a12a9e77ba1',
+  sha256: '7479598663896e4887604c309f7695bbf696c27b9b18e2b36c79c049baf1a5a9',
   // 2026-11-02 (#10051): group the Philippine DOE with the CloudFront media
   // host that serves its weekly PDFs, and SONABHY with the Strapi CMS its
   // tariff page reads from.
@@ -1073,7 +1081,7 @@ export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
   // stated terms of stat.uz (CC BY 4.0), SIMA Niger and Amman Central Market.
   // 2026-10-24: added Shanghai Financial Portal as a distinct official M2
   // republisher; PBOC source credit is preserved under /BQSM/index.html section 2.
-  reason: 'Group the NVD documentation and API hosts as one NVD (NIST) provider with its attribution sentence (#9385). Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051).',
+  reason: 'Group the NVD documentation and API hosts as one NVD (NIST) provider with its attribution sentence (#9385). Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051). Move Ember electricity data to files.ember-energy.org, where Ember now publishes its monthly release; storage.googleapis.com now serves only GDELT bulk files and joins api.gdeltproject.org as one GDELT identity (2026-11-03).',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
