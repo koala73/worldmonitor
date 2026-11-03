@@ -322,7 +322,7 @@ test('identifies itself honestly so the GDACS bot defense serves JSON', async ()
 
   const result = await fetchGdacs(fetchFn, { now: NOW });
 
-  assert.deepEqual(result.failedTypes ?? [], []);
+  assert.deepEqual(result.failedTypes, []);
   assert.equal(userAgents.length, GDACS_TYPES.length);
   for (const ua of userAgents) assert.match(ua, /^WorldMonitor\//);
 });
