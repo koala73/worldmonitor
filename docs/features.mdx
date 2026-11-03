@@ -45,6 +45,9 @@ Layers are organized into logical groups for efficient monitoring:
 | **Hotspots** | Intelligence hotspots with activity levels based on news correlation |
 | **Sanctions** | Countries under economic sanctions regimes |
 | **Protests** | Live social unrest events from ACLED and GDELT |
+| **Armed Conflict Events** | UCDP georeferenced events, coloured by violence type and sized by deaths. Refreshed every 6 hours. Off by default |
+| **Middle East Strikes** | Strike reports from Telegram channels, classified and geocoded, with a GDELT backstop that requires multi-source reporting. State-media claims from a belligerent appear only when an independent source corroborates them within 2 hours. Shown only on deployments built with `VITE_ENABLE_IRAN_ATTACKS=true` and served with `IRAN_EVENTS_ENABLED=true`; Pro-only on desktop |
+| **Cyber Threats** | Threat-intelligence indicators by country, with severity. Shown only on deployments built with `VITE_ENABLE_CYBER_LAYER=true`. Off by default |
 
 **Military & Strategic**
 | Layer | Description |
@@ -59,7 +62,7 @@ Layers are organized into logical groups for efficient monitoring:
 **Infrastructure**
 | Layer | Description |
 |-------|-------------|
-| **Undersea Cables** | 86 submarine cable routes worldwide |
+| **Undersea Cables** | 98 submarine cable routes worldwide |
 | **Pipelines** | 88 operating oil & gas pipelines across all continents |
 | **Internet Outages** | Network disruptions via Cloudflare Radar |
 | **AI Datacenters** | 313 AI compute clusters tracked from Epoch AI dataset |
@@ -69,8 +72,16 @@ Layers are organized into logical groups for efficient monitoring:
 |-------|-------------|
 | **Ships (AIS)** | Live vessel tracking via AIS with chokepoint monitoring and the strategic-port registry* |
 | **Delays** | FAA airport delay status and ground stops |
+| **Aircraft emergencies** | Aircraft squawking 7500 (unlawful interference), 7600 (radio failure), or 7700 (general emergency) on adsb.lol, polled every 60 seconds. A marker appears only when the last message is at most 120 seconds old and the position at most 90 seconds old; older reports stay in the list for up to 15 minutes after the last observation. An aircraft that stops reporting becomes "unknown", never "resolved". Receiver coverage is incomplete. Flat map only. Off by default |
+| **Live Tanker Positions** | Tankers near six major chokepoints, from AIS. Energy variant only; see [Energy Monitor](/overview#energy-monitor) |
 
 *\*AIS data via [AISStream.io](https://aisstream.io) uses terrestrial receivers with stronger coverage in European/Atlantic waters. Middle East, Asia, and open ocean coverage is limited. Satellite AIS providers (Spire, Kpler) offer global coverage but require commercial licenses.*
+
+**Canada**
+| Layer | Description |
+|-------|-------------|
+| **Canada Roads** | Road closures and incidents from Ontario, Alberta, and Manitoba 511, Toronto road restrictions, and DriveBC (Open511). Provinces whose API key is not configured keep their last good data. Off by default because the payload is large |
+| **Canada Alerts** | Public emergency alerts from Alberta Emergency Alert, B.C. Evacuation Orders, and SaskAlert, refreshed every 15 minutes. Polygons are drawn at their centroid. Ontario is not covered. On by default on desktop in the geopolitical variant |
 
 **Natural Events**
 | Layer | Description |
@@ -101,14 +112,14 @@ Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
 |-------|---------|
 | **AI Strategic Posture** | Theater-level military aggregation with strike capability analysis |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
-| **Country Instability Index** | Real-time CII v8 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
+| **Country Instability Index** | Real-time CII v14 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
 | **Intel Feed** | Curated defense and security news sources |
 | **Country Brief** | AI-generated country profiles with key indicators, risk factors, and recent developments |
 | **Aviation Intelligence** | 6-tab aviation panel (Ops, Flights, Airlines, Tracking, News, Prices) with NOTAM closure detection across the registered airport watchlist |
 | **Climate Anomalies** | Temperature and precipitation deviations across 15 zones using Open-Meteo ERA5 data against rolling baselines |
-| **Displacement Tracking** | UN OCHA HAPI refugee, asylum seeker, and IDP data with origin/host country perspectives |
+| **Displacement Tracking** | UNHCR refugee, asylum seeker, and IDP data by origin and host country, IDMC new internal displacement events, IOM DTM internal displacement by region, and source-dated cross-border movements (UNHCR portal, UK Home Office, US CBP, Frontex, Panama) |
 | **Gulf Economies** | Indices, currencies, and oil data for 6 GCC countries (Saudi, UAE, Qatar, Kuwait, Bahrain, Oman) |
 | **WTO Trade Policy** | Active trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers |
 | **Central Banks, BIS & IMF** | Policy-rate and institutional finance signals from central-bank and supranational finance institutions |
@@ -178,7 +189,7 @@ Each panel aggregates region-specific sources to provide concentrated situationa
 
 ## Live News Streams
 
-Embedded YouTube live streams from major news networks with channel switching:
+Live streams from major news networks with channel switching:
 
 | Channel | Coverage |
 |---------|----------|
@@ -197,29 +208,28 @@ Embedded YouTube live streams from major news networks with channel switching:
 - **Mute Toggle** - Audio control (muted by default)
 - **Double-Width Panel** - Larger video player for better viewing
 
-**Performance Optimizations:**
+**Verified live playback:**
 
-The live stream panel uses the **YouTube IFrame Player API** rather than raw iframe embedding. This provides several advantages:
+Each channel tries its sources in order: the broadcaster's own HLS stream where one exists, then verified YouTube live streams played through the official **YouTube IFrame Player API**. A channel counts as live only after the player or the stream playlist confirms it:
 
-| Feature | Benefit |
-|---------|---------|
-| **Persistent player** | No iframe reload on mute/play/channel change |
-| **API control** | Direct `playVideo()`, `pauseVideo()`, `mute()` calls |
-| **Reduced bandwidth** | Same stream continues across state changes |
-| **Faster switching** | Channel changes via `loadVideoById()` |
+| Situation | What the panel shows |
+|-----------|----------------------|
+| **Connecting** | A "Connecting to…" cover until the stream is confirmed live |
+| **Ended, deleted or unembeddable stream** | The next source; when none is left, a card that says why, with Retry, Play next channel and Open on YouTube |
+| **Automatic start** (play-all, auto-play, Resume) | Skips a channel that is offline and plays the next one, without changing the saved channel |
+| **Player signals blocked** (extensions, strict tracking protection) | The stream keeps playing with a "Can’t confirm this stream is live" note |
+
+Streams are listed in `src/config/live-video-sources.ts`; `npm run live-video:check -- --all` reports any that stopped being live. A daily audit keeps one GitHub issue, "Live video sources: slots needing a replacement", that names each webcam or channel slot with nothing live, where it shows and why; maintainers check a replacement URL with `npm run live-video:check -- <url>` and paste it into that file. YouTube refuses embeds from GitHub's runners, so the audit plays YouTube entries through the residential proxy in the `LIVE_VIDEO_AUDIT_PROXY_URL` secret and stops with an error when that secret is missing. For a channel entry, the audit first reads the channel's `/live` page through the same proxy and checks the video the channel has live right now instead of the channel embed; when a pinned video ahead of the channel has died, the issue suggests that live video under "Live now", ready to paste. A scheduled job reads the same channel pages and publishes the video each channel has live (the `liveVideoResolved` on-demand bootstrap key). When a viewer plays a slot that lists a channel, the player tries that video immediately before the channel entry, so sources listed ahead of the channel keep priority; it plays the listed sources unchanged when the video is missing, older than 36 hours, or not available within 1.5 seconds. A failure the runner cannot tell apart from its own location or network, such as a region-locked channel refused outside its regions or an HLS playlist that a CDN edge kept serving unchanged, is listed under "Could not verify from the runner" instead of as a slot needing a replacement.
 
 **Idle Detection:**
 
-To conserve resources, the panel implements automatic idle pausing:
+To conserve resources, playback stops in two cases:
 
 | Trigger | Action |
 |---------|--------|
-| **Tab hidden** | Stream pauses (via Visibility API) |
-| **5 min idle** | Stream pauses (no mouse/keyboard activity) |
-| **User returns** | Stream resumes automatically |
-| **Manual pause** | User intent tracked separately |
-
-This prevents background tabs from consuming bandwidth while preserving user preference for manually-paused streams.
+| **Tab hidden** | Stream stops (via Visibility API) |
+| **No mouse, keyboard or touch activity** | Stream stops after the idle time chosen in Settings › Media (one hour by default, or never) and shows a notice with Resume |
+| **Viewer paused the stream** | Left alone; the idle stop never overrides a manual pause |
 
 ## Market Data
 
@@ -247,7 +257,7 @@ Two full-screen, keyboard-first workflows complement the map + panels experience
 
 Two complementary country-scoring surfaces:
 
-- **[Country Instability Index](/country-instability-index)** — a high-frequency CII v8 stress score with signed 24-hour movement deltas, blending unrest, conflict, security, and information signals for 31 Tier-1 countries.
+- **[Country Instability Index](/country-instability-index)** — a high-frequency CII v14 stress score with signed 24-hour movement deltas, blending unrest, conflict, security, and information signals for 31 Tier-1 countries.
 - **[Country Resilience Index](/methodology/country-resilience-index)** — a 0-100 resilience score for the 196-country public rankable universe built from 72 indicators across 21 active dimensions and 6 domains. Live API scores refresh every 6 hours. Crawlable country snapshots publish monthly with their capture date and revision note.
 
 CII and CRI answer different questions and are not interchangeable: CII is short-horizon stress; CRI is structural resilience plus live shock exposure.
@@ -533,6 +543,29 @@ Panels can be reorganized by dragging:
 
 This enables personalized layouts: put your most-watched panels at the top.
 
+Keyboard users reorder with the **⇅** move button at the start of each panel header. The button stays visually hidden until it receives focus. Arrow keys move the panel one slot at a time. When the viewport is at least 900px wide and the map is shown, Page Up moves the panel to the sidebar grid and Page Down moves it to the grid below the map.
+
+### Panel Resizing
+
+Each panel has a resize handle on its bottom edge (height) and its right edge (width):
+
+- **Height**: drag the bottom handle to span 1 to 4 grid rows
+- **Width**: drag the right handle to span up to 3 grid columns, limited by how many columns the grid currently has
+- **Keyboard**: focus a handle and use the arrow keys, or Home and End for the minimum and maximum
+- **Reset**: double-click a handle to restore that panel's default height or width
+
+### Map Width Divider
+
+When the viewport is at least 900px wide, the map and the panel grid sit side by side with a vertical divider between them. Drag the divider to change the map's share of the width, or focus it and press the Left and Right arrow keys to move it in 5% steps. The map keeps a minimum width, and so does the panel column.
+
+### Panel Text Size
+
+The **Panel text size** option on the Settings tab sets text size for every panel. On the Panels tab, the **Text size** selector next to a panel overrides it for that panel after you click Save. **Use global** returns the panel to the global size.
+
+### Reset Layout
+
+**Reset Layout** on the Panels tab of Settings clears panel order, row and column spans, per-panel text sizes, map height, map width, and map side, then reloads the page.
+
 ### Panel Visibility
 
 Toggle panels on/off via the Settings menu:
@@ -558,9 +591,9 @@ Panels are organized by intelligence priority:
 
 Panel state survives browser restarts:
 
-- **LocalStorage**: Panel order, visibility, collapsed state
-- **Automatic save**: Changes persist immediately
-- **Per-device**: Settings are browser-specific (not synced)
+- **LocalStorage**: Panel order, visibility, collapsed state, row and column spans, per-panel text size, map width, map height, and map side
+- **Automatic save**: Drag, keyboard, and resize changes persist immediately; Panels tab changes persist when you click Save
+- **Per-device by default**: Web builds with `VITE_CLOUD_PREFS_ENABLED=true` sync panel order, visibility, spans, and per-panel text size for signed-in users. Collapsed state, map width, map height, and map side always stay on the device.
 
 ---
 

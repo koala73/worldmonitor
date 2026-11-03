@@ -26,6 +26,13 @@ const CLOCK_SKEW_TOLERANCE_MS = 60 * 60 * 1000;
 /** Minutes in a day — convenience for declaring maxContentAgeMin budgets. */
 export const DAY_MIN = 24 * 60;
 
+function isValidCalendarDate(year, month, day) {
+  if (month < 1 || month > 12 || day < 1) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= daysInMonth[month - 1];
+}
+
 /**
  * Parse one date/period token to epoch ms.
  *   YYYY-MM-DD / full ISO datetime → that instant (date-only ⇒ UTC midnight)
@@ -46,9 +53,15 @@ export function periodTokenToMs(token) {
   if (typeof token !== 'string' || token === '') return null;
   let m;
   // Bare ISO date (YYYY-MM-DD) or full ISO datetime (…-DDT…). The (?:T|$)
-  // anchor rejects trailing garbage like `2026-05-18xyz` explicitly rather
-  // than relying on a downstream Date.parse → NaN.
-  if (/^\d{4}-\d{2}-\d{2}(?:T|$)/.test(token)) {
+  // anchor rejects trailing garbage like `2026-05-18xyz` explicitly. Validate
+  // the calendar components before Date.parse: JavaScript normalizes impossible
+  // dates such as 2026-02-31 to 2026-03-03 instead of rejecting them.
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/.exec(token);
+  if (dateMatch) {
+    const year = Number(dateMatch[1]);
+    const month = Number(dateMatch[2]);
+    const day = Number(dateMatch[3]);
+    if (!isValidCalendarDate(year, month, day)) return null;
     const ts = Date.parse(token.length === 10 ? `${token}T00:00:00Z` : token);
     return Number.isFinite(ts) ? ts : null;
   }

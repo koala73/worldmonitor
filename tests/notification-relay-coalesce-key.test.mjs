@@ -2,9 +2,8 @@
  * Slot B regression tests: NWS event-family coalesce.
  *
  * Verifies the contract that adjacent-zone NWS alerts (same VTEC family)
- * collapse to one notification per user. Source-grep tests because the
- * relay scripts are runtime side-effect modules with no exports — the same
- * pattern used by tests/notification-relay-effective-sensitivity.test.mjs.
+ * collapse to one notification per user. The relay wiring checks are
+ * source-grep tests.
  *
  * The VTEC parser (deriveWeatherCoalesceKey) and the notification family/slot
  * selection live in scripts/_weather-alert-select.mjs and are imported and
@@ -85,13 +84,13 @@ describe('notification-relay checkDedup — SETNX transport outcomes', () => {
       UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
       CONVEX_URL: process.env.CONVEX_URL,
       CONVEX_SITE_URL: process.env.CONVEX_SITE_URL,
-      RELAY_SHARED_SECRET: process.env.RELAY_SHARED_SECRET,
+      CONVEX_NOTIFICATION_RELAY_SECRET: process.env.CONVEX_NOTIFICATION_RELAY_SECRET,
     };
     process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.example.test';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
     process.env.CONVEX_URL = 'https://example.convex.cloud';
     process.env.CONVEX_SITE_URL = 'https://example.convex.site';
-    process.env.RELAY_SHARED_SECRET = 'secret';
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = 'secret';
     delete require.cache[require.resolve(relayPath)];
 
     const originalLoad = Module._load;

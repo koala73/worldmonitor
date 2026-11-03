@@ -47,6 +47,7 @@ const harnessSource = `
       this.showingAllCommands = false;
       this.lastSearchedQuery = '';
       this.isMobile = true;
+      this.scopes = ['all'];
       this.humanInteractionCalls = 0;
       this.onHumanInteraction = () => { this.humanInteractionCalls++; };
       this.createModalCalls = 0;

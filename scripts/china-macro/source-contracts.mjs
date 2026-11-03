@@ -1,4 +1,5 @@
 import {
+  CHINA_MACRO_M2_REPUBLICATION,
   CHINA_MACRO_PUBLISHER_IDS,
   CHINA_MACRO_SERIES_CONTRACT,
 } from '../_china-macro-contract.mjs';
@@ -9,6 +10,22 @@ export const NBS_ROBOTS_URL = 'https://www.stats.gov.cn/robots.txt';
 export const SAFE_ROBOTS_URL = 'https://www.safe.gov.cn/robots.txt';
 export const PBOC_ROBOTS_URL = 'https://www.pbc.gov.cn/robots.txt';
 export const GACC_ROBOTS_URL = 'https://english.customs.gov.cn/robots.txt';
+export const SHANGHAI_M2_LIST_URL = 'https://jrj.sh.gov.cn/SCGK194/index.html';
+export const SHANGHAI_M2_ROBOTS_URL = 'https://jrj.sh.gov.cn/robots.txt';
+export const SHANGHAI_M2_TERMS_URL = 'https://jrj.sh.gov.cn/BQSM/index.html';
+export const SHANGHAI_M2_MAX_REQUESTS_PER_RUN = 6;
+export const SHANGHAI_M2_DEFINITION = Object.freeze({
+  seriesId: 'pboc_m2_yoy',
+  label: 'M2 Growth (YoY)',
+  pillar: 'credit_liquidity',
+  unit: '%',
+  periodKind: 'month',
+  source: CHINA_MACRO_M2_REPUBLICATION.source,
+  sourceUrl: SHANGHAI_M2_LIST_URL,
+  publisherKey: 'shanghai',
+  originalLanguage: 'zh-CN',
+  extractionConfidence: 0.99,
+});
 
 export const NBS_MAX_REQUESTS_PER_RUN = 8;
 export const SAFE_MAX_REQUESTS_PER_RUN = 6;
@@ -16,6 +33,14 @@ export const PBOC_MAX_REQUESTS_PER_RUN = 2;
 export const GACC_MAX_REQUESTS_PER_RUN = 2;
 
 export const SOURCE_POLICIES = Object.freeze({
+  shanghaiM2: Object.freeze({
+    origin: 'https://jrj.sh.gov.cn',
+    path: (pathname) => /^\/SCGK194\/(?:index\.html|\d{8}\/[a-f0-9]{32}\.html)$/.test(pathname),
+  }),
+  shanghaiRobots: Object.freeze({
+    origin: 'https://jrj.sh.gov.cn',
+    path: (pathname) => pathname === '/robots.txt',
+  }),
   nbs: Object.freeze({
     origin: 'https://www.stats.gov.cn',
     path: (pathname) => pathname.startsWith('/english/PressRelease/'),
@@ -43,6 +68,11 @@ export const SOURCE_POLICIES = Object.freeze({
 });
 
 export const PUBLISHERS = Object.freeze({
+  shanghai: {
+    id: CHINA_MACRO_M2_REPUBLICATION.publisherId,
+    name: CHINA_MACRO_M2_REPUBLICATION.publisherName,
+    sourceName: CHINA_MACRO_M2_REPUBLICATION.registrySourceName,
+  },
   nbs: {
     id: CHINA_MACRO_PUBLISHER_IDS.nbs,
     name: 'National Bureau of Statistics of China',

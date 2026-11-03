@@ -311,9 +311,14 @@ describe('runner dispatch', () => {
   // green when `-n` becomes `-z` or `|| exit 1` is dropped, silently skipping
   // the suite. The decision now lives in the script, so these run it for real
   // against stubbed runners and assert what was invoked.
-  function runDispatch(mode, list, { stubExit = 0, concurrency } = {}) {
+  function runDispatch(mode, list, { stubExit = 0, concurrency, env = {} } = {}) {
     const dir = fixtureDir('wm-prepush-dispatch-');
     const log = join(dir, 'invocations.log');
+    const budgets = join(dir, 'budgets.log');
+    // Records the wall-clock budget each runner gets, then runs it unchanged.
+    const timeoutStub = join(dir, 'timeout');
+    writeFileSync(timeoutStub, `#!/bin/sh\necho "$1" >> ${JSON.stringify(budgets)}\nshift\nexec "$@"\n`);
+    chmodSync(timeoutStub, 0o755);
     for (const bin of ['npm', 'npx']) {
       const stub = join(dir, bin);
       writeFileSync(stub, `#!/bin/sh\necho "${bin} $*" >> ${JSON.stringify(log)}\nexit ${stubExit}\n`);
@@ -330,14 +335,65 @@ describe('runner dispatch', () => {
           ...process.env,
           PATH: `${dir}:${process.env.PATH}`,
           ...(concurrency ? { WM_PREPUSH_TEST_CONCURRENCY: concurrency } : {}),
+          ...env,
         },
       });
     } catch (err) {
       status = err.status;
     }
 
-    return { status, invocations: existsSync(log) ? readFileSync(log, 'utf8').trim() : '' };
+    return {
+      status,
+      invocations: existsSync(log) ? readFileSync(log, 'utf8').trim() : '',
+      budget: existsSync(budgets) ? readFileSync(budgets, 'utf8').trim() : '',
+    };
   }
+
+  // The DOM half runs the whole vitest project, not the changed files, under
+  // the hook's 2-worker cap. Measured 2026-10-20 at 269 files: 129s on an idle
+  // machine, so the 120s budget the node half uses killed every push that
+  // touched tests/dom/ with no test having failed.
+  test('the DOM suite gets its own budget, sized for the whole project', () => {
+    const { status, budget } = runDispatch('run-dom', ['tests/dom/gate-action.test.mts'], {
+      env: { WM_PREPUSH_TEST_TIMEOUT: '', WM_PREPUSH_DOM_TEST_TIMEOUT: '' },
+    });
+    assert.equal(status, 0);
+    assert.equal(budget, '600');
+  });
+
+  test('the DOM budget is overridable without touching the node budget', () => {
+    const dom = runDispatch('run-dom', ['tests/dom/gate-action.test.mts'], {
+      env: { WM_PREPUSH_TEST_TIMEOUT: '', WM_PREPUSH_DOM_TEST_TIMEOUT: '900' },
+    });
+    assert.equal(dom.budget, '900');
+    const node = runDispatch('run-node', ['tests/handlers.test.mts'], {
+      env: { WM_PREPUSH_TEST_TIMEOUT: '', WM_PREPUSH_DOM_TEST_TIMEOUT: '900' },
+    });
+    assert.equal(node.budget, '120');
+  });
+
+  test('a non-numeric DOM budget fails loudly instead of running unbounded', () => {
+    const { status, invocations } = runDispatch('run-dom', ['tests/dom/gate-action.test.mts'], {
+      env: { WM_PREPUSH_DOM_TEST_TIMEOUT: 'ten-minutes' },
+    });
+    assert.equal(status, 2);
+    assert.equal(invocations, '');
+  });
+
+  test('an all-zero DOM budget fails loudly, since `timeout 00` means no deadline', () => {
+    for (const value of ['0', '00', '000']) {
+      const { status, invocations } = runDispatch('run-dom', ['tests/dom/gate-action.test.mts'], {
+        env: { WM_PREPUSH_DOM_TEST_TIMEOUT: value },
+      });
+      assert.equal(status, 2, `WM_PREPUSH_DOM_TEST_TIMEOUT=${value}`);
+      assert.equal(invocations, '');
+    }
+    const padded = runDispatch('run-dom', ['tests/dom/gate-action.test.mts'], {
+      env: { WM_PREPUSH_DOM_TEST_TIMEOUT: '0600' },
+    });
+    assert.equal(padded.status, 0);
+    assert.equal(padded.budget, '0600');
+  });
 
   test('a changed DOM test runs the vitest project', () => {
     const { status, invocations } = runDispatch('run-dom', ['tests/dom/gate-action.test.mts']);

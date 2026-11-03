@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { t } from '@/services/i18n';
+import { t, I18N_RESOURCES_LOADED_EVENT } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { fetchHormuzTracker } from '@/services/hormuz-tracker';
 import type { HormuzTrackerData, HormuzChart, HormuzSeries } from '@/services/hormuz-tracker';
@@ -51,7 +51,8 @@ function renderChart(chart: HormuzChart, idx: number): string {
   const last = chart.series[chart.series.length - 1];
   const lastVal = last ? Number(last.value).toFixed(0) : t('components.hormuzTracker.notAvailable');
   const lastDate = last ? last.date.slice(5) : '';
-  const unit = chart.label.includes('crude_oil') ? t('components.hormuzTracker.units.ktPerDay') : t('components.hormuzTracker.units.generic');
+  // Every WTO series is a volume index (Jan–Mar 2025 average = 100), not tonnage.
+  const unit = t('components.hormuzTracker.units.index');
 
   return `
     <div class="hz-chart" style="margin-bottom:12px">
@@ -65,6 +66,8 @@ function renderChart(chart: HormuzChart, idx: number): string {
 
 export class HormuzPanel extends Panel {
   private data: HormuzTrackerData | null = null;
+  // False while a fetch is loading or after it failed, when `data` is an old snapshot.
+  private showingData = false;
   private dependencies: GetChokepointDependenciesResponse | null = null;
   private dependencyState: 'loading' | 'loaded' | 'unavailable' | 'pro-locked' = 'loading';
   private tooltipBound = false;
@@ -81,11 +84,21 @@ export class HormuzPanel extends Panel {
     this.lastHadPremium = hasPremiumAccess(getAuthState());
     this.authUnsubscribe = subscribeAuthState(() => this.handlePremiumAccessChange());
     this.entitlementUnsubscribe = onEntitlementChange(() => this.handlePremiumAccessChange());
+    window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.handleTranslationsLoaded);
   }
+
+  // The date label, unit and index note are not in the first-paint shell, and the
+  // raw-key healer cannot restore an interpolated date, so redraw with real copy.
+  // Skip it while loading or after a failed refresh: a redraw would show the old
+  // snapshot as current and drop the error's retry.
+  private readonly handleTranslationsLoaded = (): void => {
+    if (this.data && this.showingData) this.renderPanel();
+  };
 
   public async fetchData(): Promise<boolean> {
     const generation = ++this.fetchGeneration;
     this.invalidateDependencyRequest();
+    this.showingData = false;
     this.showLoading();
     // The Hormuz tape itself stays free; only the commodity-dependency fan-out
     // over it is Pro (#6449). Gate just that leg so a free viewer keeps the
@@ -101,6 +114,7 @@ export class HormuzPanel extends Panel {
         return false;
       }
       this.data = data;
+      this.showingData = true;
       this.dependencies = null;
       const currentIsPro = hasPremiumAccess(getAuthState());
       if (currentIsPro) {
@@ -136,6 +150,7 @@ export class HormuzPanel extends Panel {
   }
 
   public override destroy(): void {
+    window.removeEventListener(I18N_RESOURCES_LOADED_EVENT, this.handleTranslationsLoaded);
     this.authUnsubscribe?.();
     this.authUnsubscribe = null;
     this.entitlementUnsubscribe?.();
@@ -246,7 +261,7 @@ export class HormuzPanel extends Panel {
       ? d.charts.map((c, i) => renderChart(c, i)).join('')
       : `<div style="color:var(--text-dim);font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:8px 0">${escapeHtml(t('components.hormuzTracker.chartUnavailable'))}</div>`;
 
-    const dateStr = d.updatedDate ? `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(d.updatedDate)}</span>` : '';
+    const dateStr = d.updatedDate ? `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(t('components.hormuzTracker.analysisDate', { date: d.updatedDate }))}</span>` : '';
     const dependencies = this.renderDependencies();
 
     const html = `
@@ -256,6 +271,7 @@ export class HormuzPanel extends Panel {
           <span style="background:${sColor};color:#fff;font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:0.08em">${d.status.toUpperCase()}</span>
           ${dateStr}
         </div>
+        <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:6px">${escapeHtml(t('components.hormuzTracker.indexNote'))}</div>
         <div>${charts}</div>
         ${dependencies}
         <div style="margin-top:4px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">
@@ -269,7 +285,7 @@ export class HormuzPanel extends Panel {
   private renderDependencies(): string {
     const response = this.dependencies;
     if (this.dependencyState === 'loading') {
-      return `<div class="hz-dependencies" data-state="loading" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08)"><div class="hz-dependencies-title" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div><div class="hz-dependencies-empty" style="margin-top:5px;color:var(--text-dim);font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${escapeHtml(t('components.supplyVulnerability.loading'))}</div></div>`;
+      return `<div class="hz-dependencies" data-state="loading"><div class="hz-dependencies-title">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div><div class="hz-dependencies-empty">${escapeHtml(t('components.supplyVulnerability.loading'))}</div></div>`;
     }
     if (this.dependencyState === 'pro-locked' || !response || response.upstreamUnavailable || response.dependencies.length === 0) {
       const emptyMessage = this.dependencyState === 'pro-locked'
@@ -277,7 +293,7 @@ export class HormuzPanel extends Panel {
         : !response || response.upstreamUnavailable
           ? t('components.supplyVulnerability.unavailable')
           : t('components.supplyVulnerability.noCoverage');
-      return `<div class="hz-dependencies" data-state="${this.dependencyState}" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08)"><div class="hz-dependencies-title" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div><div class="hz-dependencies-empty" style="margin-top:5px;color:var(--text-dim);font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${escapeHtml(emptyMessage)}</div></div>`;
+      return `<div class="hz-dependencies" data-state="${this.dependencyState}"><div class="hz-dependencies-title">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div><div class="hz-dependencies-empty">${escapeHtml(emptyMessage)}</div></div>`;
     }
 
     const countries = new Map<string, typeof response.dependencies[number]>();
@@ -299,17 +315,17 @@ export class HormuzPanel extends Panel {
           : dependency.state === 'stale_input'
             ? t('components.supplyVulnerability.stateStale')
             : t('components.supplyVulnerability.stateInsufficient');
-        return `<li><span>${escapeHtml(label)}</span><span>${escapeHtml(context)} · ${escapeHtml(state)} · ${escapeHtml(score)}</span></li>`;
+        return `<li class="hz-dependency"><span class="hz-dependency-label">${escapeHtml(label)}</span><span class="hz-dependency-context">${escapeHtml(context)} · ${escapeHtml(state)} · ${escapeHtml(score)}</span></li>`;
       })
       .join('');
 
-    return `<div class="hz-dependencies" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08)">
-      <div class="hz-dependencies-title" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div>
-      <div class="hz-dependencies-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:7px;font-size:calc(9px * var(--wm-panel-effective-scale, 1))">
-        <div><strong>${escapeHtml(t('components.supplyVulnerability.dependentCountries'))}</strong><ul style="list-style:none;margin:5px 0 0;padding:0">${renderItems([...countries.values()], 'country')}</ul></div>
-        <div><strong>${escapeHtml(t('components.supplyVulnerability.dependentCommodities'))}</strong><ul style="list-style:none;margin:5px 0 0;padding:0">${renderItems([...commodities.values()], 'commodity')}</ul></div>
+    return `<div class="hz-dependencies">
+      <div class="hz-dependencies-title">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div>
+      <div class="hz-dependencies-grid">
+        <div><strong class="hz-dependencies-heading">${escapeHtml(t('components.supplyVulnerability.dependentCountries'))}</strong><ul class="hz-dependencies-list">${renderItems([...countries.values()], 'country')}</ul></div>
+        <div><strong class="hz-dependencies-heading">${escapeHtml(t('components.supplyVulnerability.dependentCommodities'))}</strong><ul class="hz-dependencies-list">${renderItems([...commodities.values()], 'commodity')}</ul></div>
       </div>
-      <div class="hz-dependencies-method" style="margin-top:7px;color:var(--text-dim);font-size:calc(8px * var(--wm-panel-effective-scale, 1))">${escapeHtml(t('components.supplyVulnerability.methodology'))}: ${escapeHtml(response.methodologyVersion)}</div>
+      <div class="hz-dependencies-method">${escapeHtml(t('components.supplyVulnerability.methodology'))}: ${escapeHtml(response.methodologyVersion)}</div>
     </div>`;
   }
 }

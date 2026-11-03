@@ -1,0 +1,92 @@
+{
+  "https://tech.worldmonitor.app/dashboard": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": null
+  },
+  "https://worldmonitor.app/mcp": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": null
+  },
+  "https://www.worldmonitor.app/": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": null
+  },
+  "https://www.worldmonitor.app/api/llms.txt": {
+    "contentType": "text/plain; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": null
+  },
+  "https://www.worldmonitor.app/blog/osint-verification-workflow/": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": null
+  },
+  "https://www.worldmonitor.app/compare/worldmonitor-vs-acled/": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": null
+  },
+  "https://www.worldmonitor.app/countries/france/": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": null
+  },
+  "https://www.worldmonitor.app/crises/sudan-conflict/": {
+    "contentType": "text/html; charset=utf-8",
+    "location": "https://www.worldmonitor.app/crises/sudan/",
+    "status": 301,
+    "xRobotsTag": null
+  },
+  "https://www.worldmonitor.app/docs/_next/static/chunks/main-abc123.js": {
+    "contentType": "application/javascript; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": "noindex"
+  },
+  "https://www.worldmonitor.app/docs/zh/about": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": null
+  },
+  "https://www.worldmonitor.app/pricing.md": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": "noindex, nofollow"
+  },
+  "https://www.worldmonitor.app/research/": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": null
+  },
+  "https://www.worldmonitor.app/sources/news/page/2/": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": null
+  },
+  "https://www.worldmonitor.app/tools/signal-convergence/": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": null
+  },
+  "https://www.worldmonitor.app/use-cases/monitor-country-risk/": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": null
+  }
+}

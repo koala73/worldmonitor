@@ -15,6 +15,8 @@ import {
   type BatchServiceHandler,
 } from '../src/generated/server/worldmonitor/batch/v1/service_server.ts';
 
+import { createConsumerPricesServiceRoutes, type ConsumerPricesServiceHandler } from '../src/generated/server/worldmonitor/consumer_prices/v1/service_server.ts';
+
 const ROOT = join(import.meta.dirname, '..');
 const GENERATED_SERVER_ROOT = join(ROOT, 'src/generated/server/worldmonitor');
 
@@ -88,6 +90,27 @@ describe('generated request validation', () => {
       ],
     });
     assert.equal(handlerCalls, 0);
+  });
+
+  it('bounds consumer selection through generated GET decoding before handler execution', async () => {
+    let calls = 0;
+    const handler = {
+      getConsumerPriceBasketSeries: async () => { calls++; return {}; },
+      getConsumerPriceFreshness: async () => { calls++; return {}; },
+    } as unknown as ConsumerPricesServiceHandler;
+    for (const route of createConsumerPricesServiceRoutes(handler, serverOptions).filter(route => /get-consumer-price-(basket-series|freshness)$/.test(route.path))) {
+      const send = (query: string) => route.handler(new Request(`https://worldmonitor.app${route.path}?${query}`));
+      const before = calls;
+      for (const query of ['market_code=aaa', 'market_code=a1', 'market_code=' + 'a'.repeat(1000)]) {
+        assert.equal((await send(query)).status, 400);
+      }
+      if (route.path.endsWith('basket-series')) {
+        for (const query of ['basket_slug=' + 'a'.repeat(1000), 'basket_slug=other-ae']) assert.equal((await send(query)).status, 400);
+      }
+      assert.equal(calls, before);
+      for (const query of ['', 'market_code=AE&basket_slug=ESSENTIALS-AE']) assert.equal((await send(query)).status, 200);
+      assert.equal(calls, before + 2);
+    }
   });
 
   it('validates repeated nested request messages', async () => {

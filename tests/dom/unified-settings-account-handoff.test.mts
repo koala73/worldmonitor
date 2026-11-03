@@ -376,6 +376,39 @@ afterEach(() => {
 });
 
 describe('UnifiedSettings real auth-subscription handoff', () => {
+  it('keeps successful zero distinct from unavailable quota and recovers', async () => {
+    settings.open('mcp-clients');
+    await internal.refreshMcpQuota();
+    const quota = () => internal.overlay.querySelector('#usMcpQuota')!;
+    expect(quota().textContent).toContain('0 / 50');
+    expect(quota().textContent).toContain('used today, resets');
+
+    mcpMocks.quota.mockRejectedValue(new Error('fixture quota unavailable'));
+    await internal.refreshMcpQuota();
+    expect(quota().textContent).toContain('Quota unavailable');
+    expect(quota().querySelector('strong')).toBeNull();
+    expect(quota().textContent).not.toContain('used today');
+    expect(quota().textContent).not.toContain('resets');
+    expect(quota().textContent).not.toContain('Loading');
+
+    mcpMocks.quota.mockResolvedValue({
+      used: 0, limit: 50, resetsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    await internal.refreshMcpQuota();
+    expect(quota().textContent).toContain('0 / 50');
+    expect(quota().textContent).not.toContain('unavailable');
+  });
+
+  it('offers the canonical MCP endpoint when no clients are connected', () => {
+    internal.mcpClients = [];
+    internal.mcpClientsLoading = false;
+    internal.renderMcpClientsList();
+
+    const copy = internal.overlay.querySelector<HTMLButtonElement>('.mcp-clients-copy-url-btn');
+    expect(copy?.dataset.copyValue).toBe('https://worldmonitor.app/mcp');
+    expect(internal.overlay.textContent).not.toContain('api.worldmonitor.app/mcp');
+  });
+
   it('keeps checking past 12 seconds while entitlement verification is still in flight', () => {
     vi.useFakeTimers();
     panelGatingMocks.hasPremiumAccess = false;

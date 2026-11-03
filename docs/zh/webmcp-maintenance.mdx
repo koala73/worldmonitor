@@ -1,6 +1,6 @@
 ---
 title: "维护与发布 WebMCP"
-description: "更改、验证并发布 WorldMonitor WebMCP 契约，同时避免工具清单、UI 行为、安全边界与双语文档发生偏移。"
+description: "更改、验证并发布 WorldMonitor WebMCP 契约，同时避免工具清单、UI 行为、安全边界与双语文档发生偏移。每次变更都是公开 UI 契约变更：规范名称在 src/config/webmcp.ts 中维护，每个工具须归类取消策略，并在每次调用时重新检查认证与权益。"
 ---
 
 更改 WorldMonitor WebMCP 实现时，请使用本指南。宿主设置、工具 schema、浏览器智能体流程与用户可见限制见 [WebMCP 参考](/zh/webmcp)。
@@ -29,7 +29,8 @@ description: "更改、验证并发布 WorldMonitor WebMCP 契约，同时避免
 | `src/services/webmcp.ts` | 命令式描述符、schema、注册生命周期、受限结果与错误、遥测和取消策略。 |
 | `src/services/followed-countries.ts` | WebMCP 绑定所用的已关注国家 ISO 校验、访问状态、免费档上限、登录交接，以及匿名或账户持久化。 |
 | `src/services/webmcp-map-layer-catalog.ts`、`src/services/webmcp-panel-catalog.ts` 和 `src/services/webmcp-mission-preset-catalog.ts` | 分页图层与面板目录、捆绑任务预设目录、筛选、权益叠加和稳定可用性原因。 |
-| `src/App.ts`、`src/app/webmcp-dashboard.ts` 和 `src/app/dashboard-action-binding.ts` | 启动顺序、UI 就绪、销毁、仪表板上下文、目录快照和人工操作路径绑定。 |
+| `src/main.ts` | 在延迟导入 App 之前注册仪表板工具、待定的 App 绑定、传给 `App.init` 的控制器，以及 App 加载或构造失败时注销工具。 |
+| `src/App.ts`、`src/app/webmcp-dashboard.ts` 和 `src/app/dashboard-action-binding.ts` | App 初始化顺序、UI 就绪、销毁、仪表板上下文、目录快照和人工操作路径绑定。 |
 | `shared/agent-bus-actions.ts`、`shared/agent-bus-contract.ts` 和 `src/app/agent-bus-applier.ts` | 类型化仪表板动作协议，以及通过现有 UI 状态应用动作。 |
 | `src/app/country-map-focus.ts` 和 `src/app/map-dimension-control.ts` | 国家边界框聚焦，以及共享 2D 或 3D 控件路径。 |
 | `src/config/panel-enablement.ts` 和 `src/app/panel-enablement.ts` | 面板启用策略，以及 `set_panel_enabled` 使用的设置持久化与应用路径。 |

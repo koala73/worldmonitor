@@ -54,6 +54,7 @@ describe('UnifiedSettings account handoff', () => {
     const Harness = transpileHarness(
       [
         extractMethod(settingsSource, 'private handleAccountIdentityChange('),
+        extractMethod(settingsSource, 'private closeDeletionDialog('),
         extractMethod(settingsSource, 'private captureAccountRequest('),
         extractMethod(settingsSource, 'private isAccountRequestCurrent('),
         extractMethod(settingsSource, 'private async loadApiKeys('),

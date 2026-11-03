@@ -41,8 +41,8 @@ describe('adaptSnapshot', () => {
         stale_inputs: [],
         valid_until: 1_700_021_600_000,
         trigger_reason: 'scheduled_6h',
-        narrative_provider: 'groq',
-        narrative_model: 'mixtral-8x7b',
+        narrative_provider: 'openrouter',
+        narrative_model: 'deepseek/deepseek-v4-flash',
       },
     });
     assert.ok(result.meta);
@@ -53,8 +53,8 @@ describe('adaptSnapshot', () => {
     assert.deepEqual(result.meta.missingInputs, ['forecast:predictions:v2']);
     assert.equal(result.meta.validUntil, 1_700_021_600_000);
     assert.equal(result.meta.triggerReason, 'scheduled_6h');
-    assert.equal(result.meta.narrativeProvider, 'groq');
-    assert.equal(result.meta.narrativeModel, 'mixtral-8x7b');
+    assert.equal(result.meta.narrativeProvider, 'openrouter');
+    assert.equal(result.meta.narrativeModel, 'deepseek/deepseek-v4-flash');
   });
 
   it('adapts RegimeState', () => {

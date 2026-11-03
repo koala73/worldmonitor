@@ -333,6 +333,28 @@ function parseAllowedUrl(url) {
   return parsed;
 }
 
+function bcWfsFailureDiagnostic(text) {
+  const scanLimit = 8192;
+  const prefix = text.slice(0, scanLimit);
+  const exceptions = [...prefix.matchAll(/<(?:[\w.-]+:)?ExceptionText(?=[\s/>])[^>]*?(?:\/\s*>|>([\s\S]*?)(?:<\/(?:[\w.-]+:)?ExceptionText\s*>|$))/gi)]
+    .filter(match => match[1] !== undefined);
+  const exceptionText = decodeHtmlEntities(exceptions.map(match => match[1]).join('\n'));
+  const signals = [
+    ...['ORA-00904', 'ORA-00942', 'ORA-01017', 'ORA-01031', 'ORA-01722',
+      'ORA-03113', 'ORA-03114', 'ORA-12154', 'ORA-12514', 'ORA-12541']
+      .filter(code => new RegExp(`\\b${code}\\b`).test(exceptionText)),
+    ...[
+      ['sql_syntax', /\bSQLSyntaxErrorException\b/i],
+      ['database_connection', /\bSQL(?:Transient|NonTransient)ConnectionException\b|\bcannot get a connection\b/i],
+      ['timeout', /\b(?:SocketTimeoutException|SQLTimeoutException)\b|\btimed out\b/i],
+      ['authorization', /\bSQLInvalidAuthorizationSpecException\b|\binvalid username\/password\b|\bpermission denied\b/i],
+      ['invalid_property', /\bcould not resolve property\b/i],
+      ['unsupported_sort', /\bsorting is not supported\b/i],
+    ].filter(([, pattern]) => pattern.test(exceptionText)).map(([signal]) => signal),
+  ].slice(0, 8);
+  return { exceptionTextPresent: exceptions.length > 0, scanTruncated: text.length > scanLimit, signals };
+}
+
 export async function fetchApprovedBcUrl(url, {
   maxBytes = MAX_BC_RESPONSE_BYTES,
   fetchFn = globalThis.fetch,
@@ -354,17 +376,19 @@ export async function fetchApprovedBcUrl(url, {
   });
   const text = await readBoundedText(response, maxBytes);
   if (!response.ok) {
+    const request = parsed.searchParams.get('request') === 'GetFeature' ? 'wfs' : 'kml';
     const exceptionCode = text.match(/\bexceptionCode=["']([^"']+)["']/)?.[1];
     const locator = text.match(/\blocator=["']([^"']+)["']/)?.[1];
     console.warn(JSON.stringify({
       event: 'bc_fire_request_failure',
-      request: parsed.searchParams.get('request') === 'GetFeature' ? 'wfs' : 'kml',
+      request,
       startIndex: /^\d{1,6}$/.test(parsed.searchParams.get('startIndex') || '')
         ? Number(parsed.searchParams.get('startIndex')) : null,
       status: response.status,
       exceptionCode: ['InvalidParameterValue', 'MissingParameterValue', 'NoApplicableCode', 'OperationProcessingFailed']
         .includes(exceptionCode) ? exceptionCode : null,
       locator: ['sortBy', 'startIndex', 'count', 'typeNames', 'srsName', 'outputFormat'].includes(locator) ? locator : null,
+      ...(request === 'wfs' ? { wfsDiagnostic: bcWfsFailureDiagnostic(text) } : {}),
     }));
     throw new BcFirePointsError(`HTTP_${response.status}`, { status: response.status });
   }

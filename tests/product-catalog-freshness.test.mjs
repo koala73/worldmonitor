@@ -202,7 +202,7 @@ describe('Product catalog freshness', () => {
     assert.match(generatedProductsSrc, /export const PLAN_LIMITS = \{/, 'Missing PLAN_LIMITS export');
     assert.match(generatedProductsSrc, /"api_starter": \{"apiRequestsPerDay":1000,/, 'API Starter daily limit missing');
     assert.match(generatedProductsSrc, /"api_business": \{"apiRequestsPerDay":10000,/, 'API Business daily limit missing');
-    assert.match(generatedProductsSrc, /"enterprise": \{"apiRequestsPerDay":null,/, 'Enterprise unlimited daily limit missing');
+    assert.match(generatedProductsSrc, /"enterprise": \{"apiRequestsPerDay":100000,/, 'Enterprise daily ceiling missing');
   });
 
   it('generated tiers expose plan limits for public plans', () => {
@@ -214,8 +214,8 @@ describe('Product catalog freshness', () => {
     assert.equal(pro?.planLimits?.dashboardAiCallsPerDay, 500, 'Pro dashboard-AI daily limit should be visible');
     assert.equal(api?.planLimits?.apiRequestsPerDay, 1000, 'API Starter daily limit should be visible');
     assert.equal(api?.planLimits?.dashboardAiCallsPerDay, 1000, 'API Starter dashboard-AI daily limit should be visible');
-    assert.equal(ent?.planLimits?.apiRequestsPerDay, null, 'Enterprise daily limit should be unlimited');
-    assert.equal(ent?.planLimits?.dashboardAiCallsPerDay, null, 'Enterprise dashboard-AI limit should be unlimited');
+    assert.equal(ent?.planLimits?.apiRequestsPerDay, 100000, 'Enterprise daily ceiling should be visible');
+    assert.equal(ent?.planLimits?.dashboardAiCallsPerDay, 25000, 'Enterprise dashboard-AI ceiling should be visible');
   });
 
   it('Enterprise tier is custom with contact CTA', () => {

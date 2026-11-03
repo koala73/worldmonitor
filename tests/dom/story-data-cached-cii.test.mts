@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import type { ClusteredEvent } from '@/types';
 
 const storedValues = new Map<string, string>();
 const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
@@ -22,7 +23,7 @@ afterEach(() => {
   else Reflect.deleteProperty(globalThis, 'localStorage');
 });
 
-// #6677: this file's single test pays for the story-data module graph's
+// #6677: this file's first test pays for the story-data module graph's
 // transform (the generated IntelligenceServiceClient alone is ~1.9k lines)
 // inside its testTimeout, which under load lands just over the 5000ms vitest
 // default — a false red on a green tree. Importing the graph once at module
@@ -71,4 +72,32 @@ it('selects the canonical cached score for a normalized country code', async () 
     components: { unrest: 20, conflict: 30, security: 40, information: 10 },
     change24h: 4,
   });
+});
+
+it.each([
+  ['KP', 'North Korea', 'North-Korea launches missile'],
+  ['TR', 'Turkey', 'Erdoğan announces new talks'],
+  ['CI', "Cote d'Ivoire", 'Côte d’Ivoire holds elections'],
+  ['BT', 'भूटान', 'भूटान में मतदान'],
+])('selects normalized headline fixtures for %s', async (code, name, expectedTitle) => {
+  const { collectStoryData } = await import('../../src/services/story-data.ts');
+  const titles = [expectedTitle, 'Ambassador discusses warehouse rights', 'भटान में मतदान'];
+  const news = titles.map((primaryTitle, index): ClusteredEvent => ({
+    id: `fixture-${index}`,
+    primaryTitle,
+    primarySource: 'Fixture News',
+    primaryLink: `https://example.com/news/${index}`,
+    sourceCount: 1,
+    uniquePublisherCount: 1,
+    topSources: [],
+    allItems: [],
+    firstSeen: new Date('2026-10-26T00:00:00Z'),
+    lastUpdated: new Date('2026-10-26T00:00:00Z'),
+    isAlert: false,
+  }));
+  const markets = titles.map(title => ({ title, yesPrice: 0.5 }));
+  const story = collectStoryData(code, name, news, [], markets);
+
+  expect(story.news.map(item => item.title)).toEqual([expectedTitle]);
+  expect(story.markets.map(item => item.title)).toEqual([expectedTitle]);
 });

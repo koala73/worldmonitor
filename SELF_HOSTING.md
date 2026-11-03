@@ -82,6 +82,8 @@ These must be set before `docker compose up -d`, or one of the containers will e
 
 Docker mode (`LOCAL_API_MODE=docker`) has no Clerk or Convex entitlement backend. The dashboard still mints an anonymous `wms_` session signed with `WM_SESSION_SECRET`.
 
+Docker self-host does not call the World Monitor cloud, so desktop keys do not apply there. Self-built desktop builds can use a [desktop key](https://www.worldmonitor.app/docs/api-keys#desktop-keys) from a Pro or Pro Business plan.
+
 Native administration routes under `/api/local-` return `403` in Docker mode, including configuration updates, secret validation, and local status/debug controls. The internal sidecar token does not grant administrator access through nginx. Change operator settings through Compose environment variables or Docker secrets, then recreate the app container. Desktop administration remains available through the native app.
 
 - Only `GET /api/intelligence/v1/get-country-intel-brief` accepts that session as the authentication boundary. The handler still returns the shared (non-premium) brief.
@@ -99,6 +101,31 @@ could then supply a false forwarded address and evade the per-IP quota.
 
 > Need to bring the relay up without auth for local debugging? Set `I_UNDERSTAND_THIS_DISABLES_AUTH=true` (the deprecated `ALLOW_UNAUTHENTICATED_RELAY=true` is still accepted). The relay will log a loud `[SECURITY]` warning at boot and every 5 minutes, and every non-public route will be reachable by anyone who can hit the port — **never use this on an internet-reachable host.**
 
+## 🤖 Using the MCP server
+
+The bundled MCP server is served at `/api/mcp` on your own stack. It authenticates
+with the `X-WorldMonitor-Key` header, validated against `WORLDMONITOR_VALID_KEYS`
+(the OAuth path is hosted-only). Generate a key, put it in `.env`, and restart:
+
+```bash
+YOUR_KEY="wm_$(openssl rand -hex 20)"
+echo "WORLDMONITOR_VALID_KEYS=$YOUR_KEY" >> .env
+docker compose up -d
+```
+
+```bash
+curl -s -X POST http://localhost:3000/api/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H "X-WorldMonitor-Key: $YOUR_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+The bundled nginx proxy supplies `X-WorldMonitor-Local-Token` for transport
+between nginx and the sidecar. It preserves the client's `Authorization`
+header. The transport token does not grant MCP access: operator keys still
+use `X-WorldMonitor-Key`, and OAuth requires the hosted identity services.
+
 ## 🔑 API Keys
 
 Create a `docker-compose.override.yml` to inject your keys. This file is **gitignored** — your secrets stay local.
@@ -107,8 +134,7 @@ Create a `docker-compose.override.yml` to inject your keys. This file is **gitig
 services:
   worldmonitor:
     environment:
-      # 🤖 LLM — pick one or both (used for intelligence assessments)
-      GROQ_API_KEY: ""            # https://console.groq.com (free, 14.4K req/day)
+      # 🤖 LLM (used for intelligence assessments)
       OPENROUTER_API_KEY: ""      # https://openrouter.ai (free, 50 req/day)
 
       # 📊 Markets & Economics
@@ -155,7 +181,7 @@ services:
 | Status | Keys |
 |--------|------|
 | 🟢 No key needed | Earthquakes, weather, natural events, UNHCR displacement, prediction markets, stablecoins, crypto, spending, climate anomalies, submarine cables, BIS data, cyber threats |
-| 🟢 Free signup | GROQ, FRED, EIA, NASA FIRMS, AISSTREAM, Finnhub, Alpha Vantage, AviationStack, ACLED, OpenRouter |
+| 🟢 Free signup | FRED, EIA, NASA FIRMS, AISSTREAM, Finnhub, Alpha Vantage, AviationStack, ACLED, OpenRouter |
 | 🟡 Free (limited) | OpenSky (higher rate limits with account) |
 | 🔴 Paid | Cloudflare Radar (internet outages) |
 

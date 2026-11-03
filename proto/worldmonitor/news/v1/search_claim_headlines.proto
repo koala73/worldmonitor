@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package worldmonitor.news.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// SearchClaimHeadlinesRequest names the claim to search fresh headlines for.
+message SearchClaimHeadlinesRequest {
+  // The claim or headline, up to 300 characters. Empty returns only the counts.
+  string claim = 1 [
+    (sebuf.http.query) = { name: "claim" },
+    (buf.validate.field).string.max_len = 300
+  ];
+}
+
+// ClaimHeadline is one fresh headline from a configured feed.
+message ClaimHeadline {
+  // Registered feed name.
+  string source = 1;
+  string title = 2;
+  // Article URL; empty when the ingest gate removed it.
+  string link = 3;
+  // Publication time in Unix epoch milliseconds.
+  int64 published_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// SearchClaimHeadlinesResponse holds the headlines that share the claim's words, for building its coverage card.
+message SearchClaimHeadlinesResponse {
+  // Up to 100 headlines, best word overlap with the claim first.
+  repeated ClaimHeadline headlines = 1;
+  // Fresh headlines searched.
+  int32 searched_headlines = 2;
+  // Feeds those headlines came from.
+  int32 searched_feeds = 3;
+  // Configured full-variant English feeds.
+  int32 feed_total = 4;
+  // Feeds whose parsed cache was available.
+  int32 feed_cached = 5;
+  // complete | partial | unavailable. Unavailable searched nothing.
+  string state = 6;
+  // When the feed caches were read, ISO 8601.
+  string read_at = 7;
+}

@@ -10,7 +10,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/research/v1/service_server';
 
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
-import { clampInt } from '../../../_shared/constants';
+import { resolvePageSize } from '../../../_shared/constants';
 import { getCachedJson } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
@@ -23,7 +23,7 @@ export async function listHackernewsItems(
 ): Promise<ListHackernewsItemsResponse> {
   try {
     const feedType = ALLOWED_HN_FEEDS.has(req.feedType) ? req.feedType : 'top';
-    const pageSize = clampInt(req.pageSize, 30, 1, 100);
+    const pageSize = resolvePageSize(req.pageSize, 30, 100);
     const seedKey = `${SEED_KEY_PREFIX}:${feedType}:30`;
     const result = await getCachedJson(seedKey, true) as ListHackernewsItemsResponse | null;
     if (!result?.items?.length) return markNoStoreFallbackResponse(ctx.request, { items: [], pagination: undefined });

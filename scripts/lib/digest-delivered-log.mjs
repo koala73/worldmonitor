@@ -70,7 +70,7 @@ const TTL_JITTER_SECONDS = 3 * 24 * 60 * 60;    // 3d uniform random spread
 // seed-meta SEED_META configuration if that channel needs separate
 // monitoring.
 export const ALLOWED_CHANNELS = Object.freeze(
-  new Set(['email', 'telegram', 'slack', 'discord', 'webhook']),
+  new Set(['email', 'telegram', 'slack', 'discord', 'teams', 'webhook']),
 );
 
 /**

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { retainLastFailure } from './_last-failure.mjs';
 import {
   loadEnvFile,
   CHROME_UA,
@@ -16,13 +17,15 @@ import {
 import {
   clusterItems,
   computeEntityCorroboration,
+  recencyWeight,
+  scoreImportance,
   selectTopStories,
   DIPLOMACY_KEYWORDS,
   ENTITY_BIGRAMS,
 } from './_clustering.mjs';
 import { MIN_CORROBORATING_PUBLISHERS } from './shared/publisher-families.js';
 import { isAcceptableDigest } from './shared/digest-acceptance.mjs';
-import { extractCountryCode } from './shared/geo-extract.mjs';
+import { extractStoryCountries } from './shared/geo-extract.mjs';
 import { buildChinaNewsCoverage } from './_china-news-coverage.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import {
@@ -52,8 +55,6 @@ export {
 };
 import { buildLlmCallEvent, emitLlmEvents, flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
 import {
-  GROQ_DEFAULT_MODEL,
-  GROQ_REASONING_EXTRA_BODY,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
@@ -65,7 +66,7 @@ import {
 // the seeder on startup. The local pattern is the `./shared/geo-extract.mjs`
 // line above. PR #3836 review caught this. See skill
 // railway-deploy-gotchas/reference/nixpacks-root-dir-scripts-cross-dir-import-escape.
-import { validateNoHallucinatedProperNouns } from './shared/brief-llm-core.js';
+import { validateNoHallucinatedProperNouns, validateNoHallucinatedStatusQualifiers } from './shared/brief-llm-core.js';
 
 // Hallucination validator rollout mode (PR-2 of brief-content-quality
 // regressions). `shadow` = log violations to Sentry but ship the LLM
@@ -88,6 +89,15 @@ if (_isDirectRun) loadEnvFile(import.meta.url);
 const CANONICAL_KEY = 'news:insights:v1';
 const DIGEST_KEY = 'news:digest:v1:full:en';
 const CHINA_COVERAGE_KEY = 'news:insights:v1:CN';
+// Every scored cluster of the run, not only the top-story selection, so a
+// country or keyword read (MCP get_news_intelligence) searches the whole
+// current news window. Kept out of the canonical key: that one is bootstrap
+// data every dashboard loads.
+const STORY_POOL_KEY = 'news:insights:v1:pool';
+// The paid MCP panel caches the whole bundle (pool + insights + GDELT +
+// signals + advisories, about 120 KB without the pool) under 512 KB.
+const STORY_POOL_MAX_BYTES = 262_144;
+export const STORY_POOL_MAX_MEMBER_TITLES = 6;
 const CHINA_NEWS_DIGEST_LANGUAGE = 'zh';
 
 // Defense-in-depth auth — see seed-infra.mjs for the same pattern + rationale.
@@ -163,7 +173,7 @@ function insightsRunMeta(payload) {
  * marker for validation and afterPublish hooks.
  */
 export function publishInsightsPayload(data) {
-  const { chinaNewsCoverage: _chinaNewsCoverage, ...payload } = data || {};
+  const { chinaNewsCoverage: _chinaNewsCoverage, storyPool: _storyPool, ...payload } = data || {};
   const runMeta = insightsRunMeta(data);
   return runMeta ? attachInsightsRunMeta(payload, runMeta) : payload;
 }
@@ -245,8 +255,14 @@ export function buildInsightsFreshnessMetaPatch({
       && boundedSignature === (previous.failedStoriesSignature ?? null)
     : false;
 
+  const lastFailure = retainLastFailure(previous.lastFailure,
+    outcome === INSIGHTS_RUN_OUTCOMES.PUBLISHED ? null : {
+      checkedAt: now, lastSuccessAt: previous.lastSuccessAt, errorCode: failureCodeForMeta,
+    });
+
   if (outcome === INSIGHTS_RUN_OUTCOMES.PUBLISHED) {
     return {
+      lastFailure,
       lastAttemptAt: now,
       lastSuccessAt: now,
       servedGeneratedAt: servedAt,
@@ -260,6 +276,7 @@ export function buildInsightsFreshnessMetaPatch({
   }
 
   return {
+    lastFailure,
     lastAttemptAt: now,
     lastSuccessAt: Number.isFinite(previous.lastSuccessAt) ? previous.lastSuccessAt : null,
     servedGeneratedAt: servedAt,
@@ -350,9 +367,15 @@ async function generateLegacySingleHeadlineBrief(topStories, { callBudgetMs } = 
   // Hallucination check: did the LLM invent proper nouns not in the
   // headline? (May 19 incident: "Lebanese President Michel Aoun pledged…"
   // against a nameless headline. docs/plans/2026-05-19-001 U2.)
-  const validation = validateNoHallucinatedProperNouns(llmResult.text, topHeadline);
-  if (!validation.ok) {
-    const hallucinated = (validation.hallucinated || []).join(' ');
+  // The proper-noun gate reads "Former President" as a title prefix and
+  // grounds only "Trump", so the qualifier needs its own check (#8441).
+  const nounValidation = validateNoHallucinatedProperNouns(llmResult.text, topHeadline);
+  const qualifierValidation = validateNoHallucinatedStatusQualifiers(llmResult.text, topHeadline);
+  if (!nounValidation.ok || !qualifierValidation.ok) {
+    const hallucinated = [
+      ...(nounValidation.hallucinated || []),
+      ...(qualifierValidation.hallucinated || []),
+    ].join(' ');
     if (BRIEF_VALIDATOR_MODE === 'enforce') {
       console.warn(`  [brief_hallucination ENFORCE] dropped LLM summary: invented "${hallucinated}" not in headline; fell back to headline`);
       return {
@@ -407,7 +430,7 @@ async function readExistingInsights() {
 }
 
 // Provider config — mirrors server/_shared/llm.ts getProviderCredentials()
-// Order: Ollama → paid OpenRouter → two fixed free OpenRouter models → Groq.
+// Order: Ollama → paid OpenRouter → two fixed free OpenRouter models.
 // Each free model stays a separate application-validated attempt.
 const LLM_PROVIDERS = [
   {
@@ -421,7 +444,7 @@ const LLM_PROVIDERS = [
       if (apiKey) h.Authorization = `Bearer ${apiKey}`;
       return h;
     },
-    extraBody: { think: false },
+    extraBody: { reasoning_effort: 'none' },
     timeout: 25_000,
   },
   {
@@ -452,15 +475,6 @@ const LLM_PROVIDERS = [
     extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
     timeout: 20_000,
     maxRetries: 0,
-  },
-  {
-    name: 'groq',
-    envKey: 'GROQ_API_KEY',
-    apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: GROQ_DEFAULT_MODEL,
-    extraBody: GROQ_REASONING_EXTRA_BODY,
-    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
-    timeout: 15_000,
   },
 ];
 
@@ -602,8 +616,8 @@ async function callLLM(headline, options = {}) {
         });
         if (!response.ok) {
           // #6110: `usableBudgetMs()` is a real remaining wall clock, so pass it
-          // as `remainingBudgetMs` — a hint longer than that (groq's daily-quota
-          // 429 asks for ~20 minutes) makes the error nonRetryable and we fall
+          // as `remainingBudgetMs` — a hint longer than that (a daily-quota
+          // 429 can ask for ~20 minutes) makes the error nonRetryable and we fall
           // through to the next provider immediately, instead of clamping the
           // hint to the ceiling and sleeping it away twice.
           throw httpRetryError(response, {
@@ -817,6 +831,86 @@ async function readChinaNewsDigest() {
   }
 }
 
+/**
+ * The published shape of one story cluster. Shared by the top-story list and
+ * the story pool so a filtered MCP read returns the same fields either way.
+ */
+export function enrichInsightStory(story) {
+  // Use digest threat when present and not keyword-sourced (keyword threat uses old taxonomy).
+  // Fall back to categorizeStory() for legacy/incomplete payloads.
+  const hasDigestThreat = story.threat?.level && story.threat?.source !== 'keyword';
+  const { category, threatLevel } = hasDigestThreat
+    ? { category: story.threat.category ?? 'general', threatLevel: story.threat.level }
+    : categorizeStory(story.primaryTitle);
+  const { countryCode, countryCodes } = extractStoryCountries(story.primaryTitle);
+  return {
+    primaryTitle: story.primaryTitle,
+    primarySource: story.primarySource,
+    primaryLink: story.primaryLink,
+    pubDate: story.pubDate,
+    sourceCount: story.sourceCount,
+    // #6428: uniqueSourceCount is the corroboration breadth number every
+    // consumer (InsightsPanel badge, MCP get_news_intelligence) quotes back
+    // to a user, so it counts PUBLISHERS. `sources` stays the label list —
+    // it is what the UI credits and links, and collapsing it would drop
+    // attribution the publisher is owed.
+    uniqueSourceCount: story.uniquePublisherCount ?? 0,
+    sources: Array.isArray(story.sources) ? story.sources : [],
+    // #6419: `sources` holds only the labels that survived the digest's
+    // per-category cap; the digest's origin-aware publisher count is the
+    // floor a single-publisher verdict has to respect.
+    corroborationCount: story.corroborationCount ?? 0,
+    // #9095: publisher families in `sources` that carried the same copy;
+    // each group counts as one publisher wherever `sources` is judged.
+    ...(Array.isArray(story.sameCopy) && story.sameCopy.length > 0 ? { sameCopy: story.sameCopy } : {}),
+    lastUpdated: story.lastUpdated,
+    memberTitles: Array.isArray(story.memberTitles) ? story.memberTitles : [story.primaryTitle],
+    sourceTier: story.sourceTier,
+    upstreamImportanceScore: story.upstreamImportanceScore,
+    entityCorroboration: story.entityCorroboration === true,
+    corroborationSourceCount: story.corroborationSourceCount ?? 0,
+    importanceScore: story.importanceScore,
+    effectiveImportanceScore: story.effectiveImportanceScore,
+    ...(Number.isFinite(story.credibilityScore) ? { credibilityScore: story.credibilityScore } : {}),
+    velocity: { level: 'normal', sourcesPerHour: 0 },
+    isAlert: story.isAlert,
+    category,
+    threatLevel,
+    countryCode,
+    countryCodes,
+  };
+}
+
+/**
+ * Rank every cluster with the top-story scoring and publish it in the
+ * top-story shape. Lowest-ranked stories are dropped past `maxBytes`, and the
+ * drop is counted rather than hidden.
+ */
+export function buildStoryPool(clusters, { nowMs = Date.now(), generatedAt, maxBytes = STORY_POOL_MAX_BYTES } = {}) {
+  const ranked = clusters
+    .map((cluster) => {
+      const importanceScore = scoreImportance(cluster);
+      return { ...cluster, importanceScore, effectiveImportanceScore: importanceScore * recencyWeight(cluster, nowMs) };
+    })
+    .sort((a, b) => b.effectiveImportanceScore - a.effectiveImportanceScore || b.importanceScore - a.importanceScore);
+  const stories = [];
+  let bytes = 2;
+  for (const cluster of ranked) {
+    const { velocity: _velocity, ...story } = enrichInsightStory(cluster);
+    story.memberTitles = story.memberTitles.slice(0, STORY_POOL_MAX_MEMBER_TITLES);
+    const size = Buffer.byteLength(JSON.stringify(story)) + (stories.length > 0 ? 1 : 0);
+    // Stop rather than skip, so the pool stays a ranked prefix.
+    if (bytes + size > maxBytes) break;
+    bytes += size;
+    stories.push(story);
+  }
+  return { generatedAt, clusterCount: clusters.length, droppedForSize: ranked.length - stories.length, stories };
+}
+
+export function preserveStoryPoolInLkg(existing, storyPool) {
+  return storyPool ? { ...existing, storyPool } : existing;
+}
+
 // A degraded global brief may reuse the last known-good public payload even
 // though this run obtained fresh per-source digest evidence. Keep that audit
 // projection attached for afterPublish; publishTransform still prevents it
@@ -829,6 +923,8 @@ export function normalizeDigestItemsForInsights(items) {
   return items.map(item => ({
     title: sanitizeTitle(item.title || item.headline || ''),
     source: item.source || item.feed || '',
+    // #9095: clusterItems compares title + lead to count same-copy outlets once.
+    ...(typeof item.snippet === 'string' && item.snippet.trim() !== '' ? { snippet: item.snippet } : {}),
     link: item.link || item.url || '',
     pubDate: item.pubDate || item.publishedAt || item.date || new Date().toISOString(),
     isAlert: item.isAlert || false,
@@ -1115,43 +1211,7 @@ async function fetchInsights() {
   ).length;
   const fastMovingCount = 0; // velocity not available in digest items
 
-  const enrichedStories = topStories.map(story => {
-    // Use digest threat when present and not keyword-sourced (keyword threat uses old taxonomy).
-    // Fall back to categorizeStory() for legacy/incomplete payloads.
-    const hasDigestThreat = story.threat?.level && story.threat?.source !== 'keyword';
-    const { category, threatLevel } = hasDigestThreat
-      ? { category: story.threat.category ?? 'general', threatLevel: story.threat.level }
-      : categorizeStory(story.primaryTitle);
-    const countryCode = extractCountryCode(story.primaryTitle) ?? null;
-    return {
-      primaryTitle: story.primaryTitle,
-      primarySource: story.primarySource,
-      primaryLink: story.primaryLink,
-      pubDate: story.pubDate,
-      sourceCount: story.sourceCount,
-      // #6428: uniqueSourceCount is the corroboration breadth number every
-      // consumer (InsightsPanel badge, MCP get_news_intelligence) quotes back
-      // to a user, so it counts PUBLISHERS. `sources` stays the label list —
-      // it is what the UI credits and links, and collapsing it would drop
-      // attribution the publisher is owed.
-      uniqueSourceCount: story.uniquePublisherCount ?? 0,
-      sources: Array.isArray(story.sources) ? story.sources : [],
-      lastUpdated: story.lastUpdated,
-      memberTitles: Array.isArray(story.memberTitles) ? story.memberTitles : [story.primaryTitle],
-      sourceTier: story.sourceTier,
-      upstreamImportanceScore: story.upstreamImportanceScore,
-      entityCorroboration: story.entityCorroboration === true,
-      corroborationSourceCount: story.corroborationSourceCount ?? 0,
-      importanceScore: story.importanceScore,
-      effectiveImportanceScore: story.effectiveImportanceScore,
-      ...(Number.isFinite(story.credibilityScore) ? { credibilityScore: story.credibilityScore } : {}),
-      velocity: { level: 'normal', sourcesPerHour: 0 },
-      isAlert: story.isAlert,
-      category,
-      threatLevel,
-      countryCode,
-    };
-  });
+  const enrichedStories = topStories.map(enrichInsightStory);
 
   // #4920: user-facing provenance — "compiled from N stories across M
   // sources" — plus the selection-gate drop counts. Read by
@@ -1181,6 +1241,10 @@ async function fetchInsights() {
     ? { newestMs: Math.max(...pubTimes), oldestMs: Math.min(...pubTimes) }
     : null;
 
+  const generatedAt = new Date().toISOString();
+  const storyPool = buildStoryPool(clusters, { generatedAt });
+  console.log(`  Story pool: ${storyPool.stories.length}/${storyPool.clusterCount} clusters (dropped for size ${storyPool.droppedForSize})`);
+
   const payload = {
     worldBrief,
     briefStoryLines,
@@ -1190,13 +1254,14 @@ async function fetchInsights() {
     briefModel,
     status,
     topStories: enrichedStories,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     clusterCount: clusters.length,
     multiSourceCount,
     fastMovingCount,
     importanceSignals: observability,
     provenance,
     chinaNewsCoverage,
+    storyPool,
   };
 
   // LKG preservation: don't overwrite "ok" with "degraded"
@@ -1205,7 +1270,7 @@ async function fetchInsights() {
     if (existing?.status === 'ok') {
       console.log('  LKG preservation: existing payload is "ok", skipping degraded overwrite');
       return decorateInsightsRun(
-        preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage),
+        preserveStoryPoolInLkg(preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage), storyPool),
         {
           outcome: INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED,
           failureCode: synthesisFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
@@ -1260,12 +1325,23 @@ export function insightsFreshnessPatchArgs(data, outcome, previousMeta, nowMs = 
   };
 }
 
+async function writeInsightsStoryPool(data) {
+  if (!data?.storyPool) {
+    // Digest unavailable: keep the last pool readable. Its own generatedAt
+    // lets the MCP reader refuse it once it is too old.
+    await extendExistingTtl([STORY_POOL_KEY], CACHE_TTL);
+    return;
+  }
+  await writeExtraKey(STORY_POOL_KEY, data.storyPool, CACHE_TTL);
+}
+
 async function finalizeInsightsRun(data, outcome, { previousMeta } = {}) {
   const [resolvedPreviousMeta] = await Promise.all([
     previousMeta === undefined
       ? readExistingSeedMeta('news', 'insights')
       : Promise.resolve(previousMeta),
     writeInsightsChinaCoverage(data),
+    writeInsightsStoryPool(data),
   ]);
   return {
     freshnessMetaPatch: buildInsightsFreshnessMetaPatch(
@@ -1274,7 +1350,7 @@ async function finalizeInsightsRun(data, outcome, { previousMeta } = {}) {
   };
 }
 
-export { callLLM, __setInsightsLlmTransportForTests };
+export { callLLM, generateLegacySingleHeadlineBrief, __setInsightsLlmTransportForTests };
 
 if (_isDirectRun) {
   runSeed('news', 'insights', CANONICAL_KEY, fetchInsights, {
@@ -1288,7 +1364,7 @@ if (_isDirectRun) {
     // The source-status projection is not user-facing digest content. It is
     // retained separately so the China audit can distinguish an unavailable
     // source from a globally outranked one without changing the public payload.
-    preserveKeys: [CHINA_COVERAGE_KEY],
+    preserveKeys: [CHINA_COVERAGE_KEY, STORY_POOL_KEY],
     publishTransform: publishInsightsPayload,
     afterPublish: async (data) => {
       const runMeta = insightsRunMeta(data);

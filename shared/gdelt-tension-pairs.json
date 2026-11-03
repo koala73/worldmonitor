@@ -1,0 +1,10 @@
+[
+  { "id": "usa_russia", "actors": ["USA", "RUS"], "countries": ["US", "RU"], "label": "US–Russia", "region": "global" },
+  { "id": "russia_ukraine", "actors": ["RUS", "UKR"], "countries": ["RU", "UA"], "label": "Russia–Ukraine", "region": "europe" },
+  { "id": "usa_china", "actors": ["USA", "CHN"], "countries": ["US", "CN"], "label": "US–China", "region": "global" },
+  { "id": "china_taiwan", "actors": ["CHN", "TWN"], "countries": ["CN", "TW"], "label": "China–Taiwan", "region": "asia" },
+  { "id": "usa_iran", "actors": ["USA", "IRN"], "countries": ["US", "IR"], "label": "US–Iran", "region": "middle-east" },
+  { "id": "israel_iran", "actors": ["ISR", "IRN"], "countries": ["IL", "IR"], "label": "Israel–Iran", "region": "middle-east" },
+  { "id": "iran_gcc", "actors": ["IRN", ["SAU", "ARE", "QAT", "KWT", "BHR", "OMN"]], "countries": ["IR", "SA", "AE", "QA", "KW", "BH", "OM"], "label": "Iran–GCC", "region": "middle-east" },
+  { "id": "saudi_arabia_yemen", "actors": ["SAU", "YEM"], "countries": ["SA", "YE"], "label": "Saudi Arabia–Yemen", "region": "middle-east" }
+]

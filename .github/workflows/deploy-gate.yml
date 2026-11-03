@@ -8,11 +8,11 @@ run-name: Deploy Gate ${{ github.event.workflow_run.head_sha || github.event.inp
 # (#5479): event-driven evaluation alone can strand a PR — the check-runs API
 # can serve stale reads (~1 min normally, longer during GitHub degradation),
 # and the last workflow_run event for a SHA is the last time anything
-# re-evaluates. For 24 hours after a pending status is published, the sweep
-# re-evaluates it. Older pending heads remain blocked and are listed in the
-# run summary for a branch update or exact-SHA dispatch. Failed gates stay
-# blocked until a workflow event or dispatch evaluates them again. Successes
-# with an old required-check contract are always invalidated (#5851).
+# re-evaluates. For 24 hours after a pending, failure, or error status is
+# published, the sweep re-evaluates it. This also recovers a failed gate when
+# the successful rerun's event saw stale checks. Older blocked heads are listed
+# in the run summary for a branch update or exact-SHA dispatch. Successes with
+# an old required-check contract are always invalidated (#5851).
 
 on:
   workflow_run:
@@ -27,6 +27,13 @@ on:
         required: false
         type: string
 
+# Replace only requests that have not started. Active workflows still own their
+# SHA writer lock; scheduled invalidation and manual recovery must never be evicted.
+concurrency:
+  group: deploy-gate-events-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.run_id }}
+  queue: single
+  cancel-in-progress: false
+
 permissions:
   contents: read
   actions: read
@@ -39,7 +46,32 @@ env:
   REPO: ${{ github.repository }}
 
 jobs:
+  evaluate-direct:
+    if: ${{ (github.event_name == 'workflow_run') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sha: ['${{ github.event.workflow_run.head_sha }}']
+    concurrency:
+      group: deploy-gate-${{ matrix.sha }}
+      queue: max
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Check required PR gates passed for this SHA
+        env:
+          SHA: ${{ matrix.sha }}
+          CHECK_ATTEMPTS: 2
+        run: bash -e .github/scripts/deploy-gate.sh evaluate
+
   discover:
+    if: ${{ (github.event_name != 'workflow_run') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     outputs:
       discovery: ${{ steps.plan.outputs.discovery }}
@@ -57,7 +89,7 @@ jobs:
 
   invalidate:
     needs: discover
-    if: ${{ needs.discover.result == 'success' && needs.discover.outputs.count != '0' }}
+    if: ${{ (needs.discover.result == 'success' && needs.discover.outputs.count != '0') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -87,7 +119,7 @@ jobs:
 
   recover:
     needs: [discover, invalidate]
-    if: ${{ always() && needs.discover.result == 'success' }}
+    if: ${{ (always() && needs.discover.result == 'success') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -101,7 +133,7 @@ jobs:
           persist-credentials: false
       - if: ${{ needs.discover.outputs.count != '0' }}
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: deploy-gate-invalidate-${{ github.run_attempt }}-*
           path: ${{ runner.temp }}/invalidations
@@ -114,7 +146,7 @@ jobs:
 
   evaluate:
     needs: recover
-    if: ${{ always() && needs.recover.result == 'success' && needs.recover.outputs.count != '0' }}
+    if: ${{ (always() && needs.recover.result == 'success' && needs.recover.outputs.count != '0') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -124,9 +156,13 @@ jobs:
       queue: max
       cancel-in-progress: false
     steps:
+      # The base-drift comparison needs real history: full commit graph for
+      # `merge-base`, trees for `diff --name-only`, and no blobs at all.
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          filter: blob:none
           persist-credentials: false
       - name: Check required PR gates passed for this SHA
         env:
@@ -136,7 +172,7 @@ jobs:
 
   gate:
     needs: [discover, invalidate, recover, evaluate]
-    if: ${{ always() }}
+    if: ${{ (always() && github.event_name != 'workflow_run') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     steps:
       - name: Aggregate deploy gate execution

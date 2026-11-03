@@ -122,6 +122,237 @@ export interface CountryHeadline {
   publishedAt: number;
 }
 
+export interface ListMediaPerspectiveRequest {
+  subjectCountry: string;
+  outletCountries: string[];
+  audience: string;
+  windowHours: number;
+  outletRegions: string[];
+}
+
+export interface ListMediaPerspectiveResponse {
+  subjectCountry: string;
+  windowHours: number;
+  groups: MediaPerspectiveGroup[];
+  noCoverageCountries: string[];
+  unattributedCount: number;
+  state: string;
+  feedTotal: number;
+  feedCached: number;
+  readAt: string;
+}
+
+export interface MediaPerspectiveGroup {
+  homeCountry: string;
+  audience: string;
+  outletCount: number;
+  headlineCount: number;
+  framing?: MediaPerspectiveFramingCounts;
+  headlines: MediaPerspectiveHeadline[];
+}
+
+export interface MediaPerspectiveFramingCounts {
+  favorable: number;
+  neutral: number;
+  critical: number;
+  hostile: number;
+  unlabeled: number;
+  method: string;
+  model: string;
+  promptVersion: string;
+}
+
+export interface MediaPerspectiveHeadline {
+  title: string;
+  englishTitle: string;
+  titleLanguage: string;
+  outlet: string;
+  publisherFamily: string;
+  tier: number;
+  ownershipClass: string;
+  stateAffiliated: string;
+  propagandaRisk: string;
+  framing: string;
+  publishedAt: number;
+  link: string;
+}
+
+export interface ListNewsPoolRequest {
+  languages: string[];
+  editions: string[];
+  category: string;
+}
+
+export interface ListNewsPoolResponse {
+  items: NewsPoolItem[];
+  cells: NewsPoolCell[];
+  state: string;
+  generatedAt: string;
+}
+
+export interface NewsPoolItem {
+  item?: NewsItem;
+  language: string;
+  editions: string[];
+  category: string;
+}
+
+export interface NewsPoolCell {
+  edition: string;
+  language: string;
+  state: string;
+  items: number;
+  staleAgeSeconds: number;
+  generatedAt: string;
+}
+
+export interface ListSourceItemsRequest {
+  editions: string[];
+  category: string;
+  sources: string[];
+  lang: string;
+}
+
+export interface ListSourceItemsResponse {
+  items: NewsItem[];
+  sources: SourceItemsState[];
+  generatedAt: string;
+}
+
+export interface SourceItemsState {
+  source: string;
+  state: string;
+  edition: string;
+  items: number;
+}
+
+export interface ListLabelChangesRequest {
+  storyId: string;
+  limit: number;
+}
+
+export interface ListLabelChangesResponse {
+  changes: LabelChange[];
+  state: string;
+  retentionDays: number;
+  counts?: LabelCounts;
+}
+
+export interface LabelChange {
+  storyId: string;
+  field: string;
+  previous: string;
+  next: string;
+  previousPublishers: number;
+  nextPublishers: number;
+  at: number;
+  trigger: string;
+  reason: string;
+  sources: LabelChangePublisher[];
+  title: string;
+  link: string;
+  credibilityScore: number;
+}
+
+export interface LabelChangePublisher {
+  name: string;
+  tier: number;
+}
+
+export interface LabelCounts {
+  at: number;
+  stories: number;
+  corroborated: number;
+  singlePublisher: number;
+  tier4Only: number;
+  unknown: number;
+}
+
+export interface SubmitErrorReportRequest {
+  message: string;
+  storyId: string;
+  url: string;
+  contact: string;
+  website: string;
+}
+
+export interface SubmitErrorReportResponse {
+  status: string;
+  reportId: string;
+}
+
+export interface ListErrorReportsRequest {
+  status: string;
+}
+
+export interface ListErrorReportsResponse {
+  reports: ErrorReport[];
+  state: string;
+}
+
+export interface ErrorReport {
+  id: string;
+  status: string;
+  message: string;
+  storyId: string;
+  url: string;
+  contact: string;
+  createdAt: number;
+  reviewedAt: number;
+  publicNote: string;
+}
+
+export interface ReviewErrorReportRequest {
+  reportId: string;
+  decision: string;
+  publicNote: string;
+}
+
+export interface ReviewErrorReportResponse {
+  report?: ErrorReport;
+}
+
+export interface SearchFactChecksRequest {
+  claim: string;
+}
+
+export interface SearchFactChecksResponse {
+  factChecks: FactCheck[];
+  state: string;
+  caveat: string;
+}
+
+export interface FactCheck {
+  publisher: string;
+  site: string;
+  rating: string;
+  reviewedAt: string;
+  url: string;
+  title: string;
+  claimReviewed: string;
+}
+
+export interface SearchClaimHeadlinesRequest {
+  claim: string;
+}
+
+export interface SearchClaimHeadlinesResponse {
+  headlines: ClaimHeadline[];
+  searchedHeadlines: number;
+  searchedFeeds: number;
+  feedTotal: number;
+  feedCached: number;
+  state: string;
+  readAt: string;
+}
+
+export interface ClaimHeadline {
+  source: string;
+  title: string;
+  link: string;
+  publishedAt: number;
+}
+
 export type StoryPhase = "STORY_PHASE_UNSPECIFIED" | "STORY_PHASE_BREAKING" | "STORY_PHASE_DEVELOPING" | "STORY_PHASE_SUSTAINED" | "STORY_PHASE_FADING";
 
 export type SummarizeStatus = "SUMMARIZE_STATUS_UNSPECIFIED" | "SUMMARIZE_STATUS_SUCCESS" | "SUMMARIZE_STATUS_CACHED" | "SUMMARIZE_STATUS_SKIPPED" | "SUMMARIZE_STATUS_ERROR";
@@ -177,6 +408,15 @@ export interface NewsServiceHandler {
   getSummarizeArticleCache(ctx: ServerContext, req: GetSummarizeArticleCacheRequest): Promise<SummarizeArticleResponse>;
   listFeedDigest(ctx: ServerContext, req: ListFeedDigestRequest): Promise<ListFeedDigestResponse>;
   listCountryHeadlines(ctx: ServerContext, req: ListCountryHeadlinesRequest): Promise<ListCountryHeadlinesResponse>;
+  listMediaPerspective(ctx: ServerContext, req: ListMediaPerspectiveRequest): Promise<ListMediaPerspectiveResponse>;
+  listNewsPool(ctx: ServerContext, req: ListNewsPoolRequest): Promise<ListNewsPoolResponse>;
+  listSourceItems(ctx: ServerContext, req: ListSourceItemsRequest): Promise<ListSourceItemsResponse>;
+  listLabelChanges(ctx: ServerContext, req: ListLabelChangesRequest): Promise<ListLabelChangesResponse>;
+  submitErrorReport(ctx: ServerContext, req: SubmitErrorReportRequest): Promise<SubmitErrorReportResponse>;
+  listErrorReports(ctx: ServerContext, req: ListErrorReportsRequest): Promise<ListErrorReportsResponse>;
+  reviewErrorReport(ctx: ServerContext, req: ReviewErrorReportRequest): Promise<ReviewErrorReportResponse>;
+  searchFactChecks(ctx: ServerContext, req: SearchFactChecksRequest): Promise<SearchFactChecksResponse>;
+  searchClaimHeadlines(ctx: ServerContext, req: SearchClaimHeadlinesRequest): Promise<SearchClaimHeadlinesResponse>;
 }
 
 export function createNewsServiceRoutes(
@@ -219,7 +459,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -266,7 +506,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -314,7 +554,7 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -361,7 +601,432 @@ export function createNewsServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/list-media-perspective",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListMediaPerspectiveRequest = {
+            subjectCountry: params.get("subject_country") ?? "",
+            outletCountries: params.getAll("outlet_countries"),
+            audience: params.get("audience") ?? "",
+            windowHours: Number(params.get("window_hours") ?? "0"),
+            outletRegions: params.getAll("outlet_regions"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listMediaPerspective", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listMediaPerspective(ctx, body);
+          return new Response(JSON.stringify(result as ListMediaPerspectiveResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/list-news-pool",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListNewsPoolRequest = {
+            languages: params.getAll("languages"),
+            editions: params.getAll("editions"),
+            category: params.get("category") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listNewsPool", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listNewsPool(ctx, body);
+          return new Response(JSON.stringify(result as ListNewsPoolResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/list-source-items",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListSourceItemsRequest = {
+            editions: params.getAll("editions"),
+            category: params.get("category") ?? "",
+            sources: params.getAll("sources"),
+            lang: params.get("lang") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listSourceItems", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listSourceItems(ctx, body);
+          return new Response(JSON.stringify(result as ListSourceItemsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/list-label-changes",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListLabelChangesRequest = {
+            storyId: params.get("story_id") ?? "",
+            limit: Number(params.get("limit") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listLabelChanges", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listLabelChanges(ctx, body);
+          return new Response(JSON.stringify(result as ListLabelChangesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/news/v1/submit-error-report",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as SubmitErrorReportRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("submitErrorReport", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.submitErrorReport(ctx, body);
+          return new Response(JSON.stringify(result as SubmitErrorReportResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/list-error-reports",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListErrorReportsRequest = {
+            status: params.get("status") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listErrorReports", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listErrorReports(ctx, body);
+          return new Response(JSON.stringify(result as ListErrorReportsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/news/v1/review-error-report",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ReviewErrorReportRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("reviewErrorReport", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.reviewErrorReport(ctx, body);
+          return new Response(JSON.stringify(result as ReviewErrorReportResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/search-fact-checks",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: SearchFactChecksRequest = {
+            claim: params.get("claim") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("searchFactChecks", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.searchFactChecks(ctx, body);
+          return new Response(JSON.stringify(result as SearchFactChecksResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/news/v1/search-claim-headlines",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: SearchClaimHeadlinesRequest = {
+            claim: params.get("claim") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("searchClaimHeadlines", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.searchClaimHeadlines(ctx, body);
+          return new Response(JSON.stringify(result as SearchClaimHeadlinesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },

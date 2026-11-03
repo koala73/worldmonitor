@@ -52,6 +52,7 @@
 
 import { isInstitutionalStaticPage } from './shared/url-classifier.js';
 import { getRedisCredentials } from './_seed-utils.mjs';
+import { HASH_FIELDS_WITH_LENGTH_SCRIPT } from './lib/story-track-batch-reader.mjs';
 
 const VALID_MODES = ['url', 'age', 'residue', 'both'];
 
@@ -96,7 +97,8 @@ export function parseArgs(argv) {
 const SCAN_PATTERN = 'story:track:v1:*';
 const SCAN_BATCH = 100;
 const SCAN_TIMEOUT_MS = 15_000;
-const HGETALL_BATCH = 25; // pipeline width
+const TRACK_BATCH_SIZE = 25;
+const TRACK_FIELDS = ['link', 'publishedAt', 'lastSeen', 'severity', 'source', 'title'];
 
 async function redisCommand(url, token, command) {
   const resp = await fetch(url, {
@@ -147,31 +149,27 @@ async function* scanKeys(url, token, pattern) {
 }
 
 /**
- * Pipelined HGETALL for a batch of keys. Returns an array aligned with
+ * Pipelined HMGET for a batch of keys. Returns an array aligned with
  * `keys`: each entry is the parsed hash (object) or null on miss.
  */
-async function batchHgetAll(url, token, keys) {
+export async function readAuditTracks(url, token, keys) {
   if (keys.length === 0) return [];
-  const commands = keys.map((k) => ['HGETALL', k]);
+  const commands = keys.map((k) => ['EVAL', HASH_FIELDS_WITH_LENGTH_SCRIPT, '1', k, ...TRACK_FIELDS]);
   const responses = await redisPipeline(url, token, commands);
+  if (!Array.isArray(responses) || responses.length !== keys.length) throw new Error('Incomplete audit story-track read');
   return responses.map((r) => {
-    const result = r?.result;
-    if (result == null) return null;
-    // Upstash HGETALL response shape varies by client/version:
-    //   - Object: { k1: 'v1', k2: 'v2' } — direct.
-    //   - Flat array: ['k1', 'v1', 'k2', 'v2', ...] — pair-wise normalize.
-    //   - Empty array / empty object: missing key.
-    // Object check MUST come before the array check (typeof []  === 'object'
-    // too, but Array.isArray distinguishes them); the previous order
-    // returned null for object-shape responses before the object branch
-    // could ever match, silently missing every contaminated row.
-    if (typeof result === 'object' && !Array.isArray(result)) {
-      return Object.keys(result).length === 0 ? null : result;
+    const snapshot = r?.result;
+    const result = snapshot?.[1];
+    if (r?.error || !Array.isArray(snapshot) || snapshot.length !== 2 ||
+        !Number.isSafeInteger(snapshot[0]) || snapshot[0] < 0 ||
+        !Array.isArray(result) || result.length !== TRACK_FIELDS.length ||
+        result.some(value => value !== null && typeof value !== 'string')) {
+      throw new Error('Invalid audit story-track HMGET response');
     }
-    if (!Array.isArray(result) || result.length === 0) return null;
+    if (snapshot[0] === 0) return null;
     const obj = {};
-    for (let i = 0; i < result.length - 1; i += 2) {
-      obj[result[i]] = result[i + 1];
+    for (let i = 0; i < result.length; i += 1) {
+      if (result[i] !== null) obj[TRACK_FIELDS[i]] = result[i];
     }
     return obj;
   });
@@ -219,7 +217,7 @@ function summarizePerHostPath(matches) {
  * Pure classifier — exported so tests can exercise the matrix without
  * spinning up the script (which has top-level argv side effects).
  *
- * @param {Record<string, string>} track — flatArrayToObject of HGETALL result
+ * @param {Record<string, string>} track
  * @param {{
  *   mode: 'url'|'age'|'residue'|'both',
  *   maxAgeMs: number,
@@ -308,9 +306,9 @@ async function main() {
 
   for await (const keyBatch of scanKeys(url, token, SCAN_PATTERN)) {
     scanned += keyBatch.length;
-    for (let i = 0; i < keyBatch.length; i += HGETALL_BATCH) {
-      const slice = keyBatch.slice(i, i + HGETALL_BATCH);
-      const tracks = await batchHgetAll(url, token, slice);
+    for (let i = 0; i < keyBatch.length; i += TRACK_BATCH_SIZE) {
+      const slice = keyBatch.slice(i, i + TRACK_BATCH_SIZE);
+      const tracks = await readAuditTracks(url, token, slice);
       for (let j = 0; j < slice.length; j++) {
         const key = slice[j];
         const t = tracks[j];
@@ -387,8 +385,8 @@ async function main() {
   console.log('');
   console.log(`[audit] APPLY: deleting ${matches.length} keys + their story:sources:v1 siblings…`);
   const keysToDelete = matches.map((m) => m.key);
-  for (let i = 0; i < keysToDelete.length; i += HGETALL_BATCH) {
-    const slice = keysToDelete.slice(i, i + HGETALL_BATCH);
+  for (let i = 0; i < keysToDelete.length; i += TRACK_BATCH_SIZE) {
+    const slice = keysToDelete.slice(i, i + TRACK_BATCH_SIZE);
     await batchDel(url, token, slice);
   }
   console.log(`[audit] deleted ${matches.length} contaminated entries.`);

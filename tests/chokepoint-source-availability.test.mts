@@ -68,7 +68,7 @@ afterEach(() => {
 });
 
 describe('chokepoint source availability', () => {
-  it('uses append-only proto fields and the private NGA v2 cache key', async () => {
+  it('uses append-only proto fields and the private NGA cache key', async () => {
     const maritimeProto = await readFile('proto/worldmonitor/maritime/v1/list_navigational_warnings.proto', 'utf8');
     const supplyChainProto = await readFile('proto/worldmonitor/supply_chain/v1/supply_chain_data.proto', 'utf8');
     const maritimeHandler = await readFile('server/worldmonitor/maritime/v1/list-navigational-warnings.ts', 'utf8');
@@ -78,7 +78,7 @@ describe('chokepoint source availability', () => {
     assert.match(supplyChainProto, /bool navigational_warnings_available = 17;/);
     assert.match(supplyChainProto, /bool ais_snapshot_available = 18;/);
     assert.match(supplyChainProto, /"normal" is an observed AIS level/);
-    assert.match(maritimeHandler, /maritime:navwarnings:v2/);
+    assert.match(maritimeHandler, /maritime:navwarnings:v3/);
     assert.match(cableHealthHandler, /cable-health-nga-warnings-v2/);
   });
 
@@ -99,7 +99,30 @@ describe('chokepoint source availability', () => {
     assert.deepEqual(second.warnings, []);
     assert.equal(second.dataAvailable, true);
     assert.equal(ngaRequests, 1);
-    assert.ok(harness.values.has('maritime:navwarnings:v2:all'));
+    assert.ok(harness.values.has('maritime:navwarnings:v3'));
+  });
+
+  it('filters one canonical broadcast for distinct area queries without refetching', async () => {
+    let ngaRequests = 0;
+    const harness = redisHarness(async () => {
+      ngaRequests++;
+      return Response.json({ 'broadcast-warn': [
+        { navArea: 'P', text: 'HORMUZ hazard', msgYear: 2026, msgNumber: 1 },
+        { navArea: 'A', text: 'ATLANTIC hazard', msgYear: 2026, msgNumber: 2 },
+      ] });
+    });
+    globalThis.fetch = harness.fetchImpl as typeof fetch;
+    const read = (area: string) => listNavigationalWarnings({} as never, { area, pageSize: 0, cursor: '' });
+    assert.deepEqual((await read('hormuz')).warnings.map(w => w.id), ['P-2026-1']);
+    assert.deepEqual((await read('ATLANTIC')).warnings.map(w => w.id), ['A-2026-2']);
+    assert.equal((await read('')).warnings.length, 2);
+    for (let i = 0; i < 30; i++) {
+      const result = await read(`unknown-${i}`);
+      assert.deepEqual(result.warnings, []);
+      assert.equal(result.dataAvailable, true);
+    }
+    assert.equal(ngaRequests, 1);
+    assert.deepEqual([...harness.values.keys()], ['maritime:navwarnings:v3']);
   });
 
   it('accepts the live NGA broadcast-warn response envelope', async () => {
@@ -368,6 +391,76 @@ describe('chokepoint source availability', () => {
     }
     assert.deepEqual(response, expected);
     assert.doesNotMatch(JSON.stringify(response), /REROUTE|50-80K|Salalah/);
+  });
+
+  it('maps the IMF PortWatch official figures onto the wire and carries absence as empty, not as a flag', async () => {
+    const harness = redisHarness(async (url) => {
+      if (url.includes('msi.nga.mil')) return Response.json([]);
+      if (url.startsWith('https://relay.test/ais/snapshot')) return Response.json({
+        density: [], disruptions: [], snapshotAt: Date.now(), status: { connected: true, vessels: 10, messages: 20 },
+      });
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    const summaries = completeTransitSummaries();
+    // Hormuz 2026-10-22: the relay counted 38 zone exits; PortWatch published 4.
+    Object.assign(summaries.hormuz_strait!, {
+      todayTotal: 38, todayTanker: 20, todayCargo: 10, todayOther: 8, wowChangePct: -10.3,
+      officialLatestDate: '2026-10-18', officialLatestTotal: 4, officialAvg7d: 3.7,
+      baselineAvgDaily: 87.4, baselineFrom: '2024-10-22', baselineTo: '2025-10-21',
+    });
+    // A chokepoint whose baseline query failed keeps its latest day.
+    Object.assign(summaries.suez!, {
+      officialLatestDate: '2026-10-18', officialLatestTotal: 35, officialAvg7d: 36.9,
+      baselineAvgDaily: null, baselineFrom: null, baselineTo: null,
+    });
+    // Review on #9550: a short PortWatch history has a latest day but fewer
+    // than 7 days, so no 7-day mean. It must stay absent, not become 0.
+    Object.assign(summaries.taiwan_strait!, {
+      officialLatestDate: '2026-10-18', officialLatestTotal: 6, officialAvg7d: null,
+      baselineAvgDaily: 30, baselineFrom: '2024-10-22', baselineTo: '2025-10-21',
+    });
+    // A relay row written before the fields existed carries none of them.
+    // (panama keeps the completeTransitSummaries shape untouched.)
+    // A chokepoint PortWatch dropped this cycle: null official figures.
+    Object.assign(summaries.kerch_strait!, {
+      dataAvailable: false, todayTotal: null, todayTanker: null, todayCargo: null, todayOther: null, wowChangePct: 0,
+      officialLatestDate: null, officialLatestTotal: null, officialAvg7d: null,
+      baselineAvgDaily: null, baselineFrom: null, baselineTo: null,
+    });
+    harness.values.set('supply_chain:transit-summaries:v1', JSON.stringify({ summaries, fetchedAt: Date.now() }));
+    globalThis.fetch = harness.fetchImpl as typeof fetch;
+
+    const response = await getChokepointStatus({} as never, {});
+    const row = (id: string) => response.chokepoints.find((cp) => cp.id === id)?.transitSummary;
+
+    assert.deepEqual(
+      [row('hormuz_strait')!].map(({ officialLatestDate, officialLatestTotal, officialAvg7d, baselineAvgDaily, baselineFrom, baselineTo, todayTotal }) => ({
+        officialLatestDate, officialLatestTotal, officialAvg7d, baselineAvgDaily, baselineFrom, baselineTo, todayTotal,
+      }))[0],
+      {
+        officialLatestDate: '2026-10-18', officialLatestTotal: 4, officialAvg7d: 3.7,
+        baselineAvgDaily: 87.4, baselineFrom: '2024-10-22', baselineTo: '2025-10-21',
+        todayTotal: 38,
+      },
+      'the relay count and the official figures travel side by side; the page chooses the official one',
+    );
+    assert.equal(row('taiwan_strait')?.officialLatestTotal, 6);
+    assert.equal(row('taiwan_strait')?.officialAvg7d, undefined, 'a missing 7-day mean is absent on the wire, not 0');
+    assert.equal(row('suez')?.officialLatestTotal, 35);
+    assert.equal(row('suez')?.baselineAvgDaily, 0, 'a null baseline is the proto zero');
+    assert.equal(row('suez')?.baselineFrom, '', 'with an empty window, which is the withhold signal');
+    assert.equal(row('suez')?.baselineTo, '');
+    for (const id of ['panama', 'kerch_strait']) {
+      const ts = row(id)!;
+      assert.equal(ts.officialLatestDate, '', `${id}: empty date is the withhold signal for the latest count`);
+      assert.equal(ts.officialLatestTotal, 0);
+      assert.equal(ts.officialAvg7d, undefined);
+      assert.equal(ts.baselineAvgDaily, 0);
+      assert.equal(ts.baselineFrom, '');
+      assert.equal(ts.baselineTo, '');
+    }
+    assert.equal(row('kerch_strait')?.dataAvailable, false);
+    assert.equal(row('panama')?.dataAvailable, true, 'a pre-field writer row is still covered');
   });
 
   it('withholds generated prose from old transit summaries before caching a fresh response', async () => {

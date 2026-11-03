@@ -203,3 +203,30 @@ describe('waitForClerkSurfaceOpen', () => {
     }
   });
 });
+
+describe('reportClerkSurfaceFailure (#9396)', () => {
+  it('tells the user the sign-in failed instead of silently doing nothing', async () => {
+    const { reportClerkSurfaceFailure } = await import('../src/services/clerk.ts');
+    const notices: string[] = [];
+    const captured: string[] = [];
+    reportClerkSurfaceFailure('open-sign-in', 'clerk-load-failed', new Error('origin_invalid'), {
+      notify: (message) => notices.push(message),
+      capture: (_action, _err, reason) => captured.push(reason),
+      log: () => {},
+    });
+    assert.equal(notices.length, 1);
+    assert.match(notices[0]!, /sign in/i);
+    assert.deepEqual(captured, ['clerk-load-failed']);
+  });
+
+  it('names account creation for a failed sign-up', async () => {
+    const { reportClerkSurfaceFailure } = await import('../src/services/clerk.ts');
+    const notices: string[] = [];
+    reportClerkSurfaceFailure('open-sign-up', 'ui-components-not-ready', new Error('x'), {
+      notify: (message) => notices.push(message),
+      capture: () => {},
+      log: () => {},
+    });
+    assert.match(notices[0]!, /create (an )?account/i);
+  });
+});

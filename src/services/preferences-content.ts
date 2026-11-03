@@ -1,7 +1,15 @@
 import { LANGUAGES, getCurrentLanguageTag, changeLanguage, t } from '@/services/i18n';
 import { getAiFlowSettings, setAiFlowSetting, getStreamQuality, setStreamQuality, STREAM_QUALITY_OPTIONS } from '@/services/ai-flow-settings';
 import { getMapProvider, setMapProvider, MAP_PROVIDER_OPTIONS, MAP_THEME_OPTIONS, getMapTheme, setMapTheme, type MapProvider } from '@/config/basemap';
-import { getLiveStreamsAlwaysOn, setLiveStreamsAlwaysOn } from '@/services/live-stream-settings';
+import {
+  formatIdleStopMinutes,
+  getLiveMediaIdleStop,
+  getLiveStreamsAlwaysOn,
+  LIVE_MEDIA_IDLE_STOP_OPTIONS,
+  parseLiveMediaIdleStop,
+  setLiveMediaIdleStop,
+  setLiveStreamsAlwaysOn,
+} from '@/services/live-stream-settings';
 import { getGlobeVisualPreset, setGlobeVisualPreset, GLOBE_VISUAL_PRESET_OPTIONS, type GlobeVisualPreset } from '@/services/globe-render-settings';
 import type { StreamQuality } from '@/services/ai-flow-settings';
 import { getThemePreference, setThemePreference, type ThemePreference } from '@/utils/theme-manager';
@@ -19,6 +27,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
 import { getSyncState, getLastSyncAt, syncNow, isCloudSyncEnabled } from '@/utils/cloud-prefs-sync';
+import { declareOverlay } from '@/utils/open-modal';
 
 const SYNC_STATE_LABELS: Record<string, string> = {
   synced: 'Synced', pending: 'Pending', syncing: 'Syncing\u2026',
@@ -160,6 +169,12 @@ function handlePreferenceChange(
     case 'us-live-streams-always-on':
       setLiveStreamsAlwaysOn(target.checked);
       return true;
+    case 'us-live-media-idle-stop': {
+      const idleStop = parseLiveMediaIdleStop(target.value);
+      if (idleStop === undefined) return false;
+      setLiveMediaIdleStop(idleStop);
+      return true;
+    }
     case 'us-language':
       trackLanguageChange(target.value);
       return changeLanguage(target.value);
@@ -456,6 +471,23 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
     getLiveStreamsAlwaysOn(),
   );
 
+  const currentIdleStop = getLiveMediaIdleStop();
+  html += `<div class="ai-flow-toggle-row">
+    <div class="ai-flow-toggle-label-wrap">
+      <div class="ai-flow-toggle-label" id="us-live-media-idle-stop-label">${t('components.insights.streamIdleStopLabel')}</div>
+      <div class="ai-flow-toggle-desc">${t('components.insights.streamIdleStopDesc')}</div>
+    </div>
+  </div>`;
+  html += `<select class="unified-settings-select" id="us-live-media-idle-stop" aria-labelledby="us-live-media-idle-stop-label">`;
+  for (const option of LIVE_MEDIA_IDLE_STOP_OPTIONS) {
+    const label = option === 'never'
+      ? t('components.insights.streamIdleStopNever')
+      : formatIdleStopMinutes(option, getCurrentLanguageTag());
+    const selected = option === currentIdleStop ? ' selected' : '';
+    html += `<option value="${option}"${selected}>${escapeHtml(label)}</option>`;
+  }
+  html += `</select>`;
+
   html += `</div></details>`;
 
   // ── Panels group ──
@@ -499,10 +531,6 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
     </div>
     <div class="us-data-mgmt-toast" id="usDataMgmtToast"></div>
   `;
-  html += `<a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noopener noreferrer" class="us-discussion-link">
-    <span class="us-discussion-dot"></span>
-    <span>${t('components.community.joinDiscussion')}</span>
-  </a>`;
   html += `</div></details>`;
 
   // AI status footer (web-only)
@@ -513,6 +541,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   return {
     html,
     attach(container: HTMLElement): () => void {
+      // The import modal is authored in the template above, so it declares
+      // after mount. Pasted JSON and a URL input make it blocking.
+      const importModal = container.querySelector<HTMLElement>('.fw-import-modal');
+      if (importModal) declareOverlay(importModal, { reload: 'blocking' });
+
       const ac = new AbortController();
       const { signal } = ac;
 

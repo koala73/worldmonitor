@@ -3,14 +3,15 @@ syntax = "proto3";
 package worldmonitor.consumer_prices.v1;
 
 import "sebuf/http/annotations.proto";
+import "buf/validate/validate.proto";
 import "worldmonitor/consumer_prices/v1/consumer_prices_data.proto";
 
 // GetConsumerPriceBasketSeriesRequest parameters for time series data.
 message GetConsumerPriceBasketSeriesRequest {
   // market_code is the ISO 3166-1 alpha-2 market identifier.
-  string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
+  string market_code = 1 [(sebuf.http.query) = { name: "market_code" }, (buf.validate.field).string = {max_len: 2, pattern: "^([A-Za-z]{2})?$"}];
   // basket_slug selects the basket (e.g. "essentials-ae").
-  string basket_slug = 2 [(sebuf.http.query) = { name: "basket_slug" }];
+  string basket_slug = 2 [(sebuf.http.query) = { name: "basket_slug" }, (buf.validate.field).string = {max_len: 13, pattern: "^([Ee][Ss][Ss][Ee][Nn][Tt][Ii][Aa][Ll][Ss]-[A-Za-z]{2})?$"}];
   // range is one of "7d", "30d", "90d". Unsupported values use "30d".
   string range = 3 [(sebuf.http.query) = { name: "range" }];
 }

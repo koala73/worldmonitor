@@ -8,12 +8,16 @@
 # =============================================================================
 
 # ── Stage 1: Builder ─────────────────────────────────────────────────────────
-FROM node:24-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81 AS builder
+FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3 AS builder
 
 WORKDIR /app
+ENV npm_config_install_links=true
 
 # Install root dependencies (layer-cached until package.json changes)
 COPY package.json package-lock.json ./
+COPY vendor/braces/ ./vendor/braces/
+COPY vendor/stream-json/ ./vendor/stream-json/
+COPY vendor/vercel-og/ ./vendor/vercel-og/
 RUN npm ci --ignore-scripts
 
 # Copy full source
@@ -53,7 +57,7 @@ RUN npx tsc && npx vite build
 RUN test -s dist/pro/index.html && test -s dist/pro/welcome.html
 
 # ── Stage 2: Runtime dependencies ───────────────────────────────────────────
-FROM node:24-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81 AS runtime-deps
+FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3 AS runtime-deps
 
 WORKDIR /app
 
@@ -67,7 +71,7 @@ COPY docker/runtime-package-lock.json ./package-lock.json
 RUN npm ci --omit=dev --omit=optional --ignore-scripts
 
 # ── Stage 3: Runtime ─────────────────────────────────────────────────────────
-FROM node:24-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81 AS final
+FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3 AS final
 
 # nginx + supervisord
 RUN apk add --no-cache nginx supervisor gettext && \
@@ -81,6 +85,7 @@ WORKDIR /app
 COPY --from=builder /app/src-tauri/sidecar/local-api-server.mjs ./local-api-server.mjs
 COPY --from=builder /app/src-tauri/sidecar/package.json ./package.json
 COPY --from=builder /app/shared/llm-health-providers.js ./shared/llm-health-providers.js
+COPY --from=builder /app/shared/desktop-key-access.js ./shared/desktop-key-access.js
 ENV LOCAL_API_RESOURCE_DIR=/app
 
 # Minimal runtime node_modules — required by raw .js handlers that aren't

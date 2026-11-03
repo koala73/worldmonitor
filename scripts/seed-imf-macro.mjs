@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, runSeed, loadSharedConfig, imfSdmxFetchIndicator } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, loadSharedConfig, imfSdmxFetchIndicator, imfSdmxFetchIndicatorWithRelease } from './_seed-utils.mjs';
 // Sprint 4 IMF/WEO cohort content-age helper — see header for forecast-year semantics.
 import { imfWeoContentMeta, IMF_WEO_MAX_CONTENT_AGE_MIN, maxIntegerYear } from './_imf-weo-content-age-helpers.mjs';
 
@@ -38,22 +38,26 @@ function latestValue(byYear) {
 async function fetchImfMacro() {
   const years = weoYears();
   const [
-    inflationData,
+    inflation,
     currentAccountData,
-    govRevenueData,
+    govRevenue,
     cpiIndexData,
     cpiEopData,
-    govExpData,
-    primaryBalanceData,
+    govExp,
+    primaryBalance,
   ] = await Promise.all([
-    imfSdmxFetchIndicator('PCPIPCH', { years }),     // CPI inflation, period avg %
-    imfSdmxFetchIndicator('BCA_NGDPD', { years }),    // Current account % GDP
-    imfSdmxFetchIndicator('GGR_NGDP', { years }),     // Gov revenue % GDP
-    imfSdmxFetchIndicator('PCPI', { years }),         // CPI index level
-    imfSdmxFetchIndicator('PCPIEPCH', { years }),     // CPI inflation, end-of-period %
-    imfSdmxFetchIndicator('GGX_NGDP', { years }),     // Gov total expenditure % GDP
-    imfSdmxFetchIndicator('GGXONLB_NGDP', { years }), // Gov primary net lending/borrowing % GDP
+    imfSdmxFetchIndicatorWithRelease('PCPIPCH', { years }),      // CPI inflation, period avg %
+    imfSdmxFetchIndicator('BCA_NGDPD', { years }),               // Current account % GDP
+    imfSdmxFetchIndicatorWithRelease('GGR_NGDP', { years }),     // Gov revenue % GDP
+    imfSdmxFetchIndicator('PCPI', { years }),                    // CPI index level
+    imfSdmxFetchIndicator('PCPIEPCH', { years }),                // CPI inflation, end-of-period %
+    imfSdmxFetchIndicatorWithRelease('GGX_NGDP', { years }),     // Gov total expenditure % GDP
+    imfSdmxFetchIndicatorWithRelease('GGXONLB_NGDP', { years }), // Gov primary net lending/borrowing % GDP
   ]);
+  const inflationData = inflation.values;
+  const govRevenueData = govRevenue.values;
+  const govExpData = govExp.values;
+  const primaryBalanceData = primaryBalance.values;
 
   const countries = {};
   const allIso3 = new Set([
@@ -89,6 +93,13 @@ async function fetchImfMacro() {
       cpiEopPct:           cpiEop?.value ?? null,
       govExpenditurePct:   govExp?.value ?? null,
       primaryBalancePct:   primBal?.value ?? null,
+      periods: {
+        inflationPct: infl?.year ?? null,
+        primaryBalancePct: primBal?.year ?? null,
+        govExpenditurePct: govExp?.year ?? null,
+        govRevenuePct: rev?.year ?? null,
+        currentAccountPct: ca?.year ?? null,
+      },
       year: infl?.year ?? ca?.year ?? rev?.year ?? cpi?.year ?? cpiEop?.year ?? govExp?.year ?? primBal?.year ?? null,
       // Codex PR #3604 P2 — see seed-imf-external.mjs for the full
       // rationale. `latestYear` = max forecast year across all this
@@ -97,7 +108,13 @@ async function fetchImfMacro() {
     };
   }
 
-  return { countries, seededAt: new Date().toISOString() };
+  const releases = {
+    inflationPct: inflation.release,
+    primaryBalancePct: primaryBalance.release,
+    govExpenditurePct: govExp.release,
+    govRevenuePct: govRevenue.release,
+  };
+  return { countries, releases, seededAt: new Date().toISOString() };
 }
 
 function validate(data) {

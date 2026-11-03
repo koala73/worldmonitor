@@ -194,20 +194,19 @@ export async function renderStoryToCanvas(data: StoryData): Promise<HTMLCanvasEl
   }
 
   // ── ACTIVE SIGNALS ──
-  const hasSignals = data.signals.protests + data.signals.militaryFlights + data.signals.militaryVessels + data.signals.outages > 0;
-  if (hasSignals) {
+  const sigItems = [
+    { icon: '📢', label: 'Protests', count: data.signals.protests, color: '#f97316' },
+    { icon: '✈', label: 'Military Aircraft', count: data.signals.militaryFlights, color: '#ef4444' },
+    { icon: '⚓', label: 'Military Vessels', count: data.signals.militaryVessels, color: '#3b82f6' },
+    { icon: '🌐', label: 'Internet Outages', count: data.signals.outages, color: '#8b5cf6' },
+  ].filter(s => s.count !== null && s.count > 0);
+  if (sigItems.length > 0) {
     y += 40;
     drawSeparator(ctx, y, PAD);
     y += 46;
     drawSectionHeader(ctx, 'ACTIVE SIGNALS', PAD, y);
 
     y += 48;
-    const sigItems = [
-      { icon: '📢', label: 'Protests', count: data.signals.protests, color: '#f97316' },
-      { icon: '✈', label: 'Military Aircraft', count: data.signals.militaryFlights, color: '#ef4444' },
-      { icon: '⚓', label: 'Military Vessels', count: data.signals.militaryVessels, color: '#3b82f6' },
-      { icon: '🌐', label: 'Internet Outages', count: data.signals.outages, color: '#8b5cf6' },
-    ].filter(s => s.count > 0);
 
     const colW = (RIGHT - PAD) / Math.min(sigItems.length, 4);
     for (const sig of sigItems) {

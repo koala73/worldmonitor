@@ -27,5 +27,5 @@ export async function listInternetTrafficAnomalies(
   }
   const target = req.country?.toUpperCase();
   const anomalies = target ? data.anomalies.filter((a) => a.locationCode === target) : data.anomalies;
-  return { anomalies, totalCount: anomalies.length };
+  return { anomalies, totalCount: data.anomalies.length };
 }

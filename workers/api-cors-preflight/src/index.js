@@ -21,6 +21,7 @@ import {
   classifyPublicBootstrapRequest,
   classifyPublicBootstrapUrl,
 } from '../../../api/_bootstrap-public-tier.js';
+import { stripTrailingSlashes } from '../../../shared/strip-trailing-slashes.js';
 import { maybeShadowKvRead } from './kv-shadow.js';
 import { maybeServeBootstrapFromKv } from './kv-serve.js';
 
@@ -29,8 +30,14 @@ import { maybeServeBootstrapFromKv } from './kv-serve.js';
 // superset of (or identical to) the function-side allowlist; if it's narrower,
 // origins that the function would accept get the canonical fallback origin
 // echoed back and fail CORS at the browser.
+// App-serving hosts only; sibling vendor hosts do not inherit browser trust.
+// Keep aligned with convex/payments/returnUrlOrigin.ts and CORS parity tests.
+const APP_ORIGIN_PATTERN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
+const MAX_ORIGIN_BYTES = 300;
+const ORIGIN_ENCODER = new TextEncoder();
+
 const ALLOWED_ORIGIN_PATTERNS = [
-  /^https:\/\/(.*\.)?worldmonitor\.app$/,
+  APP_ORIGIN_PATTERN,
   // Vercel previews under the "eliewm" team scope, e.g.
   //   worldmonitor-git-<branch>-eliewm.vercel.app / worldmonitor-<hash>-eliewm.vercel.app
   // Mirror of api/_cors.js + server/cors.ts (see superset note above).
@@ -42,10 +49,13 @@ const ALLOWED_ORIGIN_PATTERNS = [
 ];
 
 // Keep in sync with api/_cors.js#getCorsHeaders Access-Control-Allow-Headers.
-const ALLOW_HEADERS = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID';
+const ALLOW_HEADERS = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Last-Event-ID';
 
 // Keep in sync with api/_cors.js#getCorsHeaders Access-Control-Expose-Headers.
-const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox, Link, Deprecation, Sunset';
+// This list REPLACES the function's own on every api.worldmonitor.app
+// response, so a header missing here is unreadable cross-origin no matter what
+// api/_cors.js says. tests/cors-fail-closed.test.mts pins set equality.
+const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, Location, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-Wm-Upstream-Timeout, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox, Link, Deprecation, Sunset';
 
 // Superset of every method any api/* route advertises. The Worker stamps ONE
 // fixed Allow-Methods on every preflight, so if a route handles DELETE but
@@ -96,7 +106,7 @@ function appendDeprecationPolicyLink(headers) {
 //     (hardcoded ACAO: '*')
 //   - api/security/report.js (CSP/COOP/COEP reports from any origin)
 //   - api/geo.js, api/version.js (public, no credentials)
-//   - api/fwdstart.js, api/gpsjam.js, api/reverse-geocode.js,
+//   - api/gpsjam.js, api/reverse-geocode.js,
 //     api/product-catalog.js (cacheable public GET responses use ACAO: '*';
 //     product-catalog also owns the CORS policy for its credentialed DELETE)
 //
@@ -109,7 +119,6 @@ const PUBLIC_CORS_PATHS = new Set([
   '/api/security/report',
   '/api/geo',
   '/api/version',
-  '/api/fwdstart',
   '/api/gpsjam',
   '/api/reverse-geocode',
   '/api/product-catalog',
@@ -124,6 +133,12 @@ function hasPublicCorsPolicy(pathname) {
   return PUBLIC_CORS_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
+function stripTrailingDnsDots(hostname) {
+  let end = hostname.length;
+  while (end > 0 && hostname[end - 1] === '.') end--;
+  return hostname.slice(0, end);
+}
+
 /**
  * Strip trailing DNS dots before allowlist match (#6411). Keep in sync with
  * api/_cors.js / server/cors.ts. ACAO still echoes the raw Origin.
@@ -132,7 +147,7 @@ function originForAllowlistMatch(origin) {
   if (!origin) return '';
   try {
     const url = new URL(origin);
-    const host = url.hostname.replace(/\.+$/, '');
+    const host = stripTrailingDnsDots(url.hostname);
     if (!host || host === url.hostname) return origin;
     url.hostname = host;
     return url.origin;
@@ -143,26 +158,27 @@ function originForAllowlistMatch(origin) {
 
 /**
  * Decode Google Translate hostname rewrite; require reconstructed host to be
- * worldmonitor.app / *.worldmonitor.app. Keep in sync with api/_cors.js (#6411).
+ * an enumerated app host. Keep in sync with api/_cors.js (#6411).
  */
 function isWorldMonitorGoogleTranslateOrigin(origin) {
   try {
     const url = new URL(origin);
-    if (url.protocol !== 'https:') return false;
-    const host = url.hostname.replace(/\.+$/, '');
+    if (url.protocol !== 'https:' || url.port !== '') return false;
+    const host = stripTrailingDnsDots(url.hostname);
     const suffix = '.translate.goog';
     if (!host.endsWith(suffix)) return false;
     const encoded = host.slice(0, -suffix.length);
     if (!encoded || encoded.includes('.')) return false;
     const decoded = encoded.replace(/--/g, '\0').replace(/-/g, '.').replace(/\0/g, '-');
-    return decoded === 'worldmonitor.app' || decoded.endsWith('.worldmonitor.app');
+    return APP_ORIGIN_PATTERN.test(`https://${decoded}`);
   } catch {
     return false;
   }
 }
 
 export function isAllowedOrigin(origin) {
-  if (!origin) return false;
+  if (!origin || origin.length > MAX_ORIGIN_BYTES
+    || ORIGIN_ENCODER.encode(origin).byteLength > MAX_ORIGIN_BYTES) return false;
   if (isWorldMonitorGoogleTranslateOrigin(origin)) return true;
   const candidate = originForAllowlistMatch(origin);
   return ALLOWED_ORIGIN_PATTERNS.some((p) => p.test(candidate));
@@ -374,7 +390,7 @@ export default {
     const url = new URL(request.url);
 
     // Reject the retired premium URL before fetch can replay an older CDN response.
-    if (request.method !== 'OPTIONS' && url.pathname.replace(/\/+$/, '') === '/api/bootstrap'
+    if (request.method !== 'OPTIONS' && stripTrailingSlashes(url.pathname) === '/api/bootstrap'
       && url.searchParams.getAll('keys').some(value => value.split(',').some(key => key.trim() === 'wsbTickers'))) {
       return new Response(JSON.stringify({ error: 'Use the premium WSB RPC' }), {
         status: 401,

@@ -262,6 +262,12 @@ describe('comparison page narrative depth (#7743)', () => {
     for (const [slug, html] of pages) {
       const main = mainEl(html);
       const lede = normalizeText(main.querySelector('p.lede')?.textContent);
+      if (COMPARISON_PAGES.find((page) => page.slug === slug).layout === 'shortlist') {
+        // The shortlist opens on a ranked intro instead of a Direct answer and
+        // explains the #1 placement inside the ranking, not in a Why-we-win H2.
+        assert.match(lede, /World Monitor/, slug + ' intro must name the #1 entry');
+        continue;
+      }
       const whyHeading = [...main.querySelectorAll('h2')]
         .find((node) => normalizeText(node.textContent).startsWith('Why World Monitor wins'));
       assert.ok(whyHeading, slug + ' must keep the Why-we-win H2');
@@ -365,6 +371,42 @@ describe('comparison page narrative depth (#7743)', () => {
       howToChoose.following,
       /Check the detailed comparison's dated methodology, then confirm the current price or capability with the vendor because both can change\./,
     );
+  });
+
+  it('keeps every compare document title within 60 characters', () => {
+    const expectedTitle = new Map([
+      ['hub', 'Compare World Monitor vs Liveuamap, ACLED, GDELT and More'],
+      ['worldmonitor-vs-acled', 'ACLED Alternative | World Monitor vs ACLED'],
+      ['worldmonitor-vs-dataminr', 'Dataminr Alternatives | World Monitor vs Dataminr'],
+      ['worldmonitor-vs-recorded-future', 'Recorded Future Alternatives Compared | World Monitor'],
+    ]);
+    const expectedMeta = new Map([
+      ['hub', 'Compare World Monitor with Liveuamap, ACLED, GDELT, Dataminr, Recorded Future, and more: one master matrix, honest concessions, and FAQs.'],
+      ['worldmonitor-vs-acled', "World Monitor vs ACLED: no-signup live conflict monitoring next to ACLED's coded-event data, compared on access tiers, latency, API and licensing."],
+      ['worldmonitor-vs-dataminr', 'A Dataminr alternative with published prices: World Monitor vs Dataminr on alert latency, data domains, API access and cost, and where Dataminr wins.'],
+      ['worldmonitor-vs-recorded-future', 'Recorded Future alternatives compared: World Monitor, Flare and MISP on price transparency, public access, domains covered and open-source licensing.'],
+    ]);
+    const expectedH1 = new Map([
+      ['hub', 'Compare World Monitor'],
+      ['worldmonitor-vs-acled', 'World Monitor vs ACLED'],
+      ['worldmonitor-vs-dataminr', 'World Monitor vs Dataminr'],
+      ['worldmonitor-vs-recorded-future', 'World Monitor vs Recorded Future'],
+    ]);
+    for (const [slug, html] of [['hub', hubHtml], ...pages]) {
+      const document = parseDocument(html);
+      const title = document.querySelector('title')?.textContent ?? '';
+      assert.ok(
+        [...title].length <= 60,
+        `${slug} document title must be at most 60 characters, got ${[...title].length}: ${title}`,
+      );
+      if (!expectedTitle.has(slug)) continue;
+      assert.equal(title, expectedTitle.get(slug));
+      assert.equal(
+        document.querySelector('meta[name="description"]')?.getAttribute('content'),
+        expectedMeta.get(slug),
+      );
+      assert.equal(normalizeText(mainEl(html).querySelector('h1')?.textContent), expectedH1.get(slug));
+    }
   });
 
   it('puts unique prose in the word-count bands from the GEO audit', () => {

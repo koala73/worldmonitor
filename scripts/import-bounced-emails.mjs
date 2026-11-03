@@ -5,7 +5,7 @@
  * /relay/bulk-suppress-emails HTTP action.
  *
  * Usage:
- *   CONVEX_SITE_URL=<your-convex-site-url> RELAY_SHARED_SECRET=<secret> \
+ *   CONVEX_SITE_URL=<your-convex-site-url> CONVEX_EMAIL_SUPPRESSION_SECRET=<secret> \
  *     node scripts/import-bounced-emails.mjs <csv-path>
  *
  * The CSV must have headers including "to" and "last_event".
@@ -14,14 +14,14 @@
 import { readFileSync } from 'node:fs';
 
 const CONVEX_SITE_URL = process.env.CONVEX_SITE_URL;
-const RELAY_SECRET = process.env.RELAY_SHARED_SECRET;
+const RELAY_SECRET = process.env.CONVEX_EMAIL_SUPPRESSION_SECRET;
 
 if (!CONVEX_SITE_URL) {
   console.error('CONVEX_SITE_URL env var required (e.g. https://your-app.convex.site)');
   process.exit(1);
 }
 if (!RELAY_SECRET) {
-  console.error('RELAY_SHARED_SECRET env var required');
+  console.error('CONVEX_EMAIL_SUPPRESSION_SECRET env var required');
   process.exit(1);
 }
 

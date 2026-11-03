@@ -3,7 +3,7 @@
 const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
   (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
-const RELAY_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
+const RELAY_SECRET = process.env.CONVEX_NOTIFICATION_RELAY_SECRET ?? '';
 
 /**
  * Fetch the raw user preferences blob from Convex via the relay endpoint.
@@ -18,7 +18,7 @@ const RELAY_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
  */
 async function fetchUserPreferences(userId, variant) {
   if (!CONVEX_SITE_URL || !RELAY_SECRET) {
-    console.warn('[user-context] CONVEX_SITE_URL or RELAY_SHARED_SECRET not set');
+    console.warn('[user-context] CONVEX_SITE_URL or CONVEX_NOTIFICATION_RELAY_SECRET not set');
     return { data: null, error: true };
   }
   try {

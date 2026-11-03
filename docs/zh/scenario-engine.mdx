@@ -1,5 +1,5 @@
 ---
-title: "Scenario Engine"
+title: "情景引擎"
 description: "运行预构建的供应链中断情景 — 覆盖武装冲突、制裁升级、关税冲击与极端天气事件 — 直接在交互式地图上查看哪些咽喉要道、行业板块与国家将受影响，Scenario Engine 帮助分析师、风控团队与政策研究人员在真实事件发生前完成压力测试、暴露度评估与情景对冲规划。"
 ---
 
@@ -64,7 +64,7 @@ API 侧的速率限制 — 10 个作业/分钟/IP，一旦待处理队列已超�
 ## Scenario Engine 背后的数据
 
 - **场景模板** — `server/worldmonitor/supply-chain/v1/scenario-templates.ts`。目录是预定义的；添加模板需要 proto 侧变更。受支持的物理关闭强度和国家选择是运行时输入。
-- **作业队列** — Redis 列表 `scenario-queue:pending`；worker 结果落在 `scenario-result:{jobId}`。
+- **作业队列** — Redis 列表 `scenario-queue:pending`；worker 结果落在 `scenario-result:{owner}:{jobId}`。
 - **咽喉要道注册表** — 支持实时咽喉要道状态和 Route Explorer 的同一注册表，确保场景结果与产品其余部分视觉一致。
 - **贸易/影响数据** — 从 `supply-chain:exposure:{ISO2}:{HS2}:v1` 读取的 HS2 暴露缓存条目。如果省略 `iso2`，worker 使用最新成功种子元数据中明确列出的国家和 HS2 范围。提供 `iso2` 会将作业限定到该国家。清单缺失、过旧格式或无效时，覆盖范围为未知；不会猜测国家列表，也不会把缺失记录当作零。
 

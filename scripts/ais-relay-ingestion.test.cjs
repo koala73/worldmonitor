@@ -7,6 +7,9 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { setTimeout: sleep } = require('node:timers/promises');
 const test = require('node:test');
+// Node 24 loads the shared TypeScript module directly (type stripping), so the
+// emergency codes have one source of truth across TS, ESM and CommonJS.
+const { EMERGENCY_CODES } = require('../shared/aircraft-emergencies.ts');
 
 function get(port, requestPath, headers) {
   return new Promise((resolve, reject) => {
@@ -700,7 +703,7 @@ test('malformed Telegram startup delay keeps the safe default', async () => {
 
 // Mock Upstash REST endpoint: records every command, acknowledges writes, and
 // can return a deterministic response sequence for a specific Redis key.
-async function createUpstashMock({ setResponses = {} } = {}) {
+async function createUpstashMock({ setResponses = {}, getValues = {} } = {}) {
   const commands = [];
   const responseQueues = new Map(Object.entries(setResponses).map(([key, responses]) => [
     key,
@@ -714,6 +717,11 @@ async function createUpstashMock({ setResponses = {} } = {}) {
       try { command = JSON.parse(Buffer.concat(chunks).toString()); } catch { /* non-JSON body */ }
       commands.push({ path: req.url, command });
       res.setHeader('Content-Type', 'application/json');
+      if (req.url.startsWith('/get/')) {
+        const value = getValues[decodeURIComponent(req.url.slice('/get/'.length))];
+        res.end(JSON.stringify({ result: value === undefined ? null : JSON.stringify(value) }));
+        return;
+      }
       if (req.url === '/pipeline') {
         res.end(JSON.stringify((Array.isArray(command) ? command : []).map(() => ({ result: null }))));
         return;
@@ -1057,6 +1065,33 @@ test('theater-posture Wingbits fallback publication is attributed to Wingbits, n
   }
 });
 
+for (const source of ['adsb.lol', 'wingbits', 'opensky']) {
+  // Emergency squawks stay in theater posture (Elie's decision); the
+  // emergency layer reads its own feed and shows them as well.
+  test(`theater-posture keeps synthetic 7500/7600/7700 military records from ${source}`, async () => {
+    const upstash = await createUpstashMock();
+    const { child, ready } = spawnRelay({
+      ...upstash.env,
+      RELAY_TEST_EMERGENCY_ROWS: '1',
+      RELAY_TEST_ADSB_MODE_SEQUENCE: source === 'adsb.lol' ? 'flight' : 'error',
+      WINGBITS_API_KEY: source === 'wingbits' ? 'test-wingbits-key' : '',
+      RELAY_TEST_OPENSKY_STATUS_SEQUENCE: source === 'opensky' ? '200' : '429',
+    });
+    try {
+      const { port } = await ready;
+      const response = await get(port, '/__test/seed-theater-posture');
+      assert.equal(response.status, 200);
+      assert.equal(JSON.parse(response.body).ok, true);
+      const metrics = JSON.parse((await get(port, '/metrics')).body);
+      assert.equal(metrics.theaterPosture.lastRun.flightCount, 1 + EMERGENCY_CODES.length);
+      assert.equal(upstash.setsFor('theater-posture:sebuf:v1').length, 1);
+    } finally {
+      await stop(child);
+      await upstash.close();
+    }
+  });
+}
+
 test('theater-posture rejects Wingbits rows without usable theater coordinates', async () => {
   const upstash = await createUpstashMock();
   const { child, ready } = spawnRelay({
@@ -1316,6 +1351,212 @@ test('theater-posture uses adsb.lol, then Wingbits, without routine OpenSky debi
     assert.equal(metrics.opensky.requests, 0, 'Wingbits recovery must precede authenticated OpenSky');
     assert.equal(metrics.theaterPosture.emptyRejectionsSinceBoot, 1);
     assert.deepEqual(metrics.theaterPosture.sourceCountsSinceBoot, { opensky: 0, adsbLol: 1, wingbits: 1, vesselOnly: 0 });
+  } finally {
+    await stop(child);
+    await upstash.close();
+  }
+});
+
+// Google answers a rejected RPC with HTTP 200 and a `wrb.fr` row whose payload
+// slot is null and whose error slot holds the RPC status. Captured verbatim
+// from GetShoppingResults on 2026-10-16, when every search returned this.
+// Results-page bodies in the live framing: the shopping payload is the `ds:1`
+// block, and a rejected search carries `errorHasStatus: true` instead.
+const googlePage = (dataJson) => `<script>AF_initDataCallback({key: 'ds:1', hash: '9', data:${dataJson}, sideChannel: {}});</script>`;
+const GOOGLE_PAGE_REJECTION = `<script>AF_initDataCallback({key: 'ds:1',  data:[3,null,[["type.googleapis.com/travel.frontend.flights.ErrorResponse",[]]]],errorHasStatus: true,});</script>`;
+const googleShoppingPage = (items) => googlePage(JSON.stringify([null, null, items, null]));
+const googleFlightRow = () => {
+  const leg = [];
+  Object.assign(leg, { 3: 'JFK', 6: 'LHR', 8: [18, 30], 10: [6, 45], 11: 435, 20: [2026, 11, 15], 21: [2026, 11, 16], 22: ['BA', '178'] });
+  const flight = [];
+  Object.assign(flight, { 2: [leg], 9: 435 });
+  return [flight, [[null, 512]]];
+};
+
+test('Google Flights rejections fail the relay call instead of reading as zero flights', async () => {
+  const { child, ready } = spawnRelay({
+    RELAY_GOOGLE_FLIGHTS_RATE_LIMIT_MAX: '1000',
+    RELAY_TEST_GOOGLE_STATUS_SEQUENCE: Array(11).fill('200').join(','),
+    RELAY_TEST_GOOGLE_BODY_SEQUENCE: JSON.stringify([
+      GOOGLE_PAGE_REJECTION,
+      ...Array(8).fill(GOOGLE_PAGE_REJECTION),
+      googleShoppingPage(null),
+      googleShoppingPage([[googleFlightRow()]]),
+    ]),
+  });
+
+  try {
+    const { port } = await ready;
+
+    const rejected = await get(port, '/google-flights/search?origin=JFK&destination=LHR&departure_date=2026-11-15');
+    assert.equal(rejected.status, 502, 'an error page is an upstream failure, not an empty result');
+    assert.match(JSON.parse(rejected.body).error, /Google Flights rejected the search/);
+
+    const rejectedDates = await get(port, '/google-flights/search-dates?origin=JFK&destination=LHR&start_date=2026-11-15&end_date=2026-11-22');
+    assert.equal(rejectedDates.status, 502);
+    assert.match(JSON.parse(rejectedDates.body).error, /Google Flights rejected the search/);
+
+    const empty = await get(port, '/google-flights/search?origin=JFK&destination=LHR&departure_date=2026-11-16');
+    assert.equal(empty.status, 200, 'a well-formed payload without flight rows is a genuine empty result');
+    assert.deepEqual(JSON.parse(empty.body).flights, []);
+
+    const found = await get(port, '/google-flights/search?origin=JFK&destination=LHR&departure_date=2026-11-17');
+    assert.equal(found.status, 200);
+    const [flight] = JSON.parse(found.body).flights;
+    assert.equal(flight.price, 512);
+    assert.equal(flight.legs[0].flightNumber, '178');
+  } finally {
+    await stop(child);
+  }
+});
+
+test('Google Flights pages or rows in an unexpected shape fail instead of reading as results', async () => {
+  const { child, ready } = spawnRelay({
+    RELAY_GOOGLE_FLIGHTS_RATE_LIMIT_MAX: '1000',
+    RELAY_TEST_GOOGLE_STATUS_SEQUENCE: '200,200,200,200',
+    RELAY_TEST_GOOGLE_BODY_SEQUENCE: JSON.stringify([
+      '<html><body>Our systems have detected unusual traffic</body></html>',
+      googlePage('{}'),
+      googlePage('[1,'),
+      googleShoppingPage([[[[], []]]]),
+    ]),
+  });
+
+  try {
+    const { port } = await ready;
+    for (const [day, reason] of [
+      ['15', /Google Flights returned a page without flight results/],
+      ['16', /Google Flights returned an unrecognized payload/],
+      ['17', /Google Flights returned an unreadable results page/],
+      ['18', /Google Flights returned flight rows in an unrecognized shape/],
+    ]) {
+      const response = await get(port, `/google-flights/search?origin=JFK&destination=LHR&departure_date=2026-11-${day}`);
+      assert.equal(response.status, 502, `departure 2026-11-${day} must not read as a successful search`);
+      assert.match(JSON.parse(response.body).error, reason);
+    }
+  } finally {
+    await stop(child);
+  }
+});
+
+// A relay deploy starts with an empty in-memory feed and waits
+// TELEGRAM_STARTUP_DELAY_MS before its first poll. On 2026-10-27 that left
+// /telegram/feed answering `enabled: true, items: []` for 3 minutes, and every
+// open dashboard replaced 50 posts with "No messages available" on its next
+// refresh. The last good poll is snapshotted to Redis and served until the new
+// container polls.
+const TELEGRAM_ITEMS_SNAPSHOT_KEY = 'intelligence:telegram-feed:items:v1';
+
+test('a restarted relay serves the last Telegram snapshot before its first poll', async () => {
+  const savedAt = new Date(Date.now() - 90_000).toISOString();
+  const snapshotItems = [
+    { id: 'clashreport:41', source: 'telegram', channel: 'clashreport', channelTitle: 'Clash Report', text: 'Tanker on fire near Hormuz', ts: savedAt, topic: 'conflict', tags: [], earlySignal: true, mediaUrls: [] },
+    { id: 'witness:7', source: 'telegram', channel: 'witness', channelTitle: 'Witness', text: 'Second post', ts: savedAt, topic: 'breaking', tags: [], earlySignal: true, mediaUrls: [] },
+  ];
+  const upstash = await createUpstashMock({
+    getValues: { [TELEGRAM_ITEMS_SNAPSHOT_KEY]: { savedAt, items: snapshotItems } },
+  });
+  const relay = spawnRelay({
+    TELEGRAM_API_ID: '123',
+    TELEGRAM_API_HASH: 'test-hash',
+    TELEGRAM_SESSION: 'test-session',
+    TELEGRAM_STARTUP_DELAY_MS: '600000',
+    RELAY_TEST_TELEGRAM: 'true',
+    RELAY_TEST_TELEGRAM_POLL: 'true',
+    ...upstash.env,
+  });
+  const { child, port } = await relay.ready;
+
+  try {
+    let feed = null;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      feed = JSON.parse((await get(port, '/telegram/feed?limit=50')).body);
+      if (feed.items.length) break;
+      await sleep(100);
+    }
+    assert.deepEqual(feed.items.map(item => item.id), ['clashreport:41', 'witness:7']);
+    assert.equal(feed.enabled, true);
+    // updatedAt is when those posts were last polled, not the restart time.
+    assert.equal(feed.updatedAt, savedAt);
+    assert.doesNotMatch(relay.getOutput(), /Telegram poll loop started/, 'the snapshot must arrive before any poll');
+  } finally {
+    await stop(child);
+    await upstash.close();
+  }
+});
+
+test('a restored Telegram snapshot drops entries that are not feed items', async () => {
+  const savedAt = new Date(Date.now() - 90_000).toISOString();
+  const upstash = await createUpstashMock({
+    getValues: {
+      [TELEGRAM_ITEMS_SNAPSHOT_KEY]: {
+        savedAt,
+        items: [
+          null,
+          { text: 'no id' },
+          { id: 'clashreport:41', source: 'telegram', channel: 'clashreport', channelTitle: 'Clash Report', text: 'Tanker on fire near Hormuz', ts: savedAt, topic: 'conflict', tags: [], earlySignal: true, mediaUrls: [] },
+        ],
+      },
+    },
+  });
+  const relay = spawnRelay({
+    TELEGRAM_API_ID: '123',
+    TELEGRAM_API_HASH: 'test-hash',
+    TELEGRAM_SESSION: 'test-session',
+    TELEGRAM_STARTUP_DELAY_MS: '600000',
+    RELAY_TEST_TELEGRAM: 'true',
+    RELAY_TEST_TELEGRAM_POLL: 'true',
+    ...upstash.env,
+  });
+  const { child, port } = await relay.ready;
+
+  try {
+    let feed = null;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      feed = JSON.parse((await get(port, '/telegram/feed?limit=50')).body);
+      if (feed.items.length) break;
+      await sleep(100);
+    }
+    assert.deepEqual(feed.items.map(item => item.id), ['clashreport:41']);
+    // A null entry used to reach the topic filter and fail the request.
+    const filtered = await get(port, '/telegram/feed?limit=50&topic=conflict');
+    assert.equal(filtered.status, 200);
+    assert.deepEqual(JSON.parse(filtered.body).items.map(item => item.id), ['clashreport:41']);
+  } finally {
+    await stop(child);
+    await upstash.close();
+  }
+});
+
+test('a successful Telegram poll snapshots its items to Redis', async () => {
+  const upstash = await createUpstashMock();
+  const relay = spawnRelay({
+    TELEGRAM_API_ID: '123',
+    TELEGRAM_API_HASH: 'test-hash',
+    TELEGRAM_SESSION: 'test-session',
+    TELEGRAM_STARTUP_DELAY_MS: '0',
+    RELAY_TEST_TELEGRAM: 'true',
+    RELAY_TEST_TELEGRAM_POLL: 'true',
+    RELAY_TEST_TELEGRAM_MESSAGES: JSON.stringify([{ id: 9, message: 'Strait of Hormuz update', date: Math.floor(Date.now() / 1000) }]),
+    ...upstash.env,
+  });
+  const { child } = await relay.ready;
+
+  try {
+    let sets = [];
+    for (let attempt = 0; attempt < 200; attempt++) {
+      sets = upstash.setsFor(TELEGRAM_ITEMS_SNAPSHOT_KEY);
+      if (sets.length) break;
+      await sleep(100);
+    }
+    assert.ok(sets.length, 'the poll must write the items snapshot');
+    const [, , value, ex, ttl] = sets[0].command;
+    const snapshot = JSON.parse(value);
+    assert.ok(snapshot.items.length > 0);
+    assert.ok(snapshot.items.every(item => item.text === 'Strait of Hormuz update'));
+    assert.ok(Number.isFinite(Date.parse(snapshot.savedAt)));
+    assert.equal(ex, 'EX');
+    assert.ok(Number(ttl) > 0);
   } finally {
     await stop(child);
     await upstash.close();

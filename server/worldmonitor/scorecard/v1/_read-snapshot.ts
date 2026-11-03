@@ -1,4 +1,11 @@
-import { getHashFieldsBatch, getLargeRawJson } from '../../../_shared/redis';
+import {
+  getHashFieldsBatch,
+  getHashFieldsBatchStrict,
+  getLargeRawJson,
+  logCacheReadError,
+  REDIS_OP_TIMEOUT_MS,
+  REDIS_PIPELINE_TIMEOUT_MS,
+} from '../../../_shared/redis';
 import {
   FIVE_FACTOR_SCORECARD_KEY,
   FIVE_FACTOR_SCORECARD_READ_MODEL_KEY,
@@ -27,6 +34,17 @@ export const SCORECARD_READ_DEADLINE_MS = 7_000;
  * pinned against the composed worst case instead of guessed independently.
  */
 export const SCORECARD_ENTITLEMENT_ALLOWANCE_MS = 3_000;
+/**
+ * Least budget worth starting the canonical GET with after a timed-out
+ * read-model HMGET. The read deadline reserves DEADLINE - PIPELINE (2s) for
+ * the fallback once the read model has spent its whole pipeline timeout;
+ * REDIS_OP_TIMEOUT_MS (1.5s) is the repo's budget for one Redis GET. Below
+ * this the GET would only start and abort, so serve stale (or null) instead.
+ */
+export const SCORECARD_CANONICAL_MIN_BUDGET_MS = Math.min(
+  REDIS_OP_TIMEOUT_MS,
+  SCORECARD_READ_DEADLINE_MS - REDIS_PIPELINE_TIMEOUT_MS,
+);
 let canonicalLastGood: { cachedAt: number; snapshot: FiveFactorSnapshotV1 } | null = null;
 
 /**
@@ -82,6 +100,10 @@ function remainingReadBudget(deadlineAtMs: number): number {
   return Math.max(0, deadlineAtMs - Date.now());
 }
 
+function isReadDeadlineAbort(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+}
+
 export function createFiveFactorReadDeadline(): number {
   return Date.now() + SCORECARD_READ_DEADLINE_MS;
 }
@@ -127,7 +149,7 @@ export async function readFiveFactorSnapshot(
       const fields = [FIVE_FACTOR_SCORECARD_READ_MODEL_METADATA_FIELD, ...countryCodes.map((countryCode) => `country:${countryCode}`)];
       const timeoutMs = remainingReadBudget(deadlineAtMs);
       if (timeoutMs === 0) return readCanonicalFallback(deadlineAtMs);
-      const values = await getHashFieldsBatch(FIVE_FACTOR_SCORECARD_READ_MODEL_KEY, fields, true, timeoutMs);
+      const values = await getHashFieldsBatchStrict(FIVE_FACTOR_SCORECARD_READ_MODEL_KEY, fields, true, timeoutMs);
       const metadata = readModelMetadata(values.get(FIVE_FACTOR_SCORECARD_READ_MODEL_METADATA_FIELD));
       if (metadata) {
         // Scope a corrupt hash field to the country it belongs to. A single bad
@@ -166,7 +188,15 @@ export async function readFiveFactorSnapshot(
         if (!wholeCohortCorrupt && validateSnapshot(snapshot)) return snapshot;
       }
     }
-  } catch { /* fall through to the canonical last-good cohort */ }
+  } catch (error) {
+    logCacheReadError(FIVE_FACTOR_SCORECARD_READ_MODEL_KEY, error);
+    // Any other failure falls through to the canonical last-good cohort. A
+    // timed-out read has spent the shared deadline, so the multi-MB GET is
+    // only worth starting when enough of it is left.
+    if (isReadDeadlineAbort(error) && remainingReadBudget(deadlineAtMs) < SCORECARD_CANONICAL_MIN_BUDGET_MS) {
+      return serveStale(canonicalLastGood);
+    }
+  }
   return readCanonicalFallback(deadlineAtMs);
 }
 

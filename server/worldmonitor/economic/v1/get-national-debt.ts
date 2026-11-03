@@ -10,7 +10,6 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
-import { isCallerPremium } from '../../../_shared/premium-check';
 
 const SEED_CACHE_KEY = 'economic:national-debt:v1';
 
@@ -23,12 +22,9 @@ function buildFallbackResult(): GetNationalDebtResponse {
 }
 
 export async function getNationalDebt(
-  ctx: ServerContext,
+  _ctx: ServerContext,
   _req: GetNationalDebtRequest,
 ): Promise<GetNationalDebtResponse> {
-  const isPro = await isCallerPremium(ctx.request);
-  if (!isPro) return buildFallbackResult();
-
   try {
     const result = await getCachedJson(SEED_CACHE_KEY, true) as GetNationalDebtResponse | null;
     if (result && !result.unavailable && result.entries && result.entries.length > 0) return result;

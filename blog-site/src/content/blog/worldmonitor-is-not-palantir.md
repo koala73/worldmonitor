@@ -48,9 +48,9 @@ Note what that job is: **Palantir makes your institution's data operational insi
 
 WorldMonitor is an open-source, real-time intelligence platform that turns public data into a live operating picture of the world — for people, software, and AI agents. It continuously collects signals from official datasets, market venues, sensors, newsrooms, and open-source networks; normalizes and classifies them; tracks their provenance and freshness; and publishes them through interactive dashboards and structured interfaces.
 
-It doesn't merely put dots on a map. The map answers *where* something is happening. Panels and briefs explain *what changed*. Country indices, timelines, and cross-stream correlation help assess *how significant it may be*. Route Explorer, the Scenario Engine, and WM Analyst help investigate *what it affects* and *what could happen next*. The same data spine supports six focused dashboards; software and agents can query it through the REST API, MCP server, CLI, and official SDKs.
+It doesn't merely put dots on a map. The map answers *where* something is happening. Panels and briefs explain *what changed*. Country indices, timelines, and cross-stream correlation help assess *how significant it may be*. Route Explorer, the [Scenario Engine](/blog/posts/stress-test-supply-chain-scenario-engine-worldmonitor/), and WM Analyst help investigate *what it affects* and *what could happen next*. The same data spine supports six focused dashboards; software and agents can query it through the REST API, MCP server, CLI, and official SDKs.
 
-UCDP conflict events, IMF PortWatch ship transits, EIA petroleum stocks, OFAC designations, UNHCR displacement, USGS earthquakes, Eurostat series, prediction-market odds, and curated news feeds all enter that system. The important product is not any single event, price, or headline. It is the ability to see signals that normally live in separate systems together, while retaining enough source and freshness information to judge them.
+UCDP conflict events, IMF PortWatch ship transits, EIA petroleum stocks, OFAC designations, [UNHCR displacement](/blog/posts/track-refugee-displacement-flows-unhcr-worldmonitor/), USGS earthquakes, Eurostat series, prediction-market odds, and curated news feeds all enter that system. The important product is not any single event, price, or headline. It is the ability to see signals that normally live in separate systems together, while retaining enough source and freshness information to judge them.
 
 ## What you can do with it
 
@@ -85,7 +85,7 @@ That last habit may be the deepest difference. In a private deployment, source h
 The claim "you can build on it" is cheap, so here is the afternoon, itemized:
 
 1. **Minute 1:** `curl "https://www.worldmonitor.app/api/health?compact=1"` — you did this already.
-2. **Minute 5:** Open the [Energy dashboard](https://energy.worldmonitor.app) and inspect Hormuz alongside maritime, conflict, energy, and market signals — no account required.
+2. **Minute 5:** Open the [Energy dashboard](https://energy.worldmonitor.app/dashboard) and inspect Hormuz alongside maritime, conflict, energy, and market signals — no account required.
 3. **Minute 15:** Run `npx worldmonitor tools` to inspect the MCP catalog anonymously. Pro and API users can then connect an MCP client through OAuth or an API key and ask *"what's the chokepoint status in Hormuz right now?"*
 4. **The rest of the afternoon:** wire a [supply-chain early-warning pipeline](/blog/posts/build-supply-chain-early-warning-system-api/), pipe [risk alerts into Slack](/blog/posts/geopolitical-risk-alerts-slack-teams-worldmonitor-api/), or [give your agent live world context](/blog/posts/build-geopolitical-risk-agent-worldmonitor-mcp/) — or fork the repo and change what you don't like.
 

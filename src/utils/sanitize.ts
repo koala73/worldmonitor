@@ -70,6 +70,11 @@ export function safeHtmlToString(html: SafeHtml): string {
 }
 
 export function sanitizeUrl(url: string): string {
+  return escapeAttr(validateUrl(url));
+}
+
+/** Validate a URL for DOM properties without HTML attribute encoding. */
+export function validateUrl(url: string): string {
   if (!url) return '';
   const trimmed = String(url).trim();
   if (!trimmed) return '';
@@ -79,7 +84,7 @@ export function sanitizeUrl(url: string): string {
   try {
     const parsed = new URL(trimmed);
     if (isAllowedProtocol(parsed.protocol)) {
-      return escapeAttr(parsed.toString());
+      return parsed.toString();
     }
   } catch {
     // Not an absolute URL, continue and validate as relative.
@@ -95,7 +100,7 @@ export function sanitizeUrl(url: string): string {
     if (!isAllowedProtocol(resolved.protocol)) {
       return '';
     }
-    return escapeAttr(trimmed);
+    return trimmed;
   } catch {
     return '';
   }

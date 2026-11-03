@@ -1,8 +1,21 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import type { GetDisplacementSummaryResponse as ProtoResponse, CountryDisplacement as ProtoCountry, DisplacementFlow as ProtoFlow } from '@/generated/client/worldmonitor/displacement/v1/service_client';
+import type {
+  GetDisplacementSummaryResponse as ProtoResponse,
+  GetCrossBorderMovementsResponse,
+  CountryDisplacement as ProtoCountry,
+  DisplacementFlow as ProtoFlow,
+} from '@/generated/client/worldmonitor/displacement/v1/service_client';
 import { createCircuitBreaker, getCSSColor } from '@/utils';
 import { DisplacementServiceClient } from '@/services/generated-rpc-clients';
 import { publicRpcFetch } from '@/services/public-rpc-fetch';
+import { ensureHydrated } from '@/services/bootstrap';
+import { EMPTY_INTERNAL_DISPLACEMENT, toInternalDisplacementData, type InternalDisplacementData } from './internal';
+import { toMovementData, type CrossBorderData } from './cross-border';
+import { EMPTY_DISPLACEMENT_EVENTS, toDisplacementEventsData, type DisplacementEventsData } from './idu-events';
+
+export * from './internal';
+export * from './cross-border';
+export * from './idu-events';
 
 // ─── Consumer-friendly types (matching legacy shape exactly) ───
 
@@ -140,6 +153,57 @@ export async function fetchUnhcrPopulation(): Promise<UnhcrFetchResult> {
     ok: data !== emptyResult && data.countries.length > 0,
     data,
   };
+}
+
+// ─── Internal displacement (IOM DTM) ───
+
+const internalBreaker = createCircuitBreaker<InternalDisplacementData>({
+  name: 'IOM DTM Displacement',
+  cacheTtlMs: 30 * 60 * 1000,
+  persistCache: true,
+});
+
+export async function fetchInternalDisplacement(): Promise<InternalDisplacementData> {
+  return internalBreaker.execute(async () => {
+    const response = await new DisplacementServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) })
+      .getInternalDisplacement({ countryCode: '' });
+    return toInternalDisplacementData(response);
+  }, EMPTY_INTERNAL_DISPLACEMENT, { shouldCache: (r) => r.operations.length > 0 });
+}
+
+// ─── Internal displacement events (IDMC) ───
+
+const displacementEventsBreaker = createCircuitBreaker<DisplacementEventsData>({
+  name: 'IDMC Displacement Events',
+  cacheTtlMs: 30 * 60 * 1000,
+  persistCache: true,
+});
+
+// On-demand bootstrap key: fetched only when the panel or map layer needs it.
+export async function fetchDisplacementEvents(): Promise<DisplacementEventsData> {
+  return displacementEventsBreaker.execute(async () => {
+    const data = toDisplacementEventsData(await ensureHydrated('idmcIduDisplacement'));
+    if (data.points.length === 0 && data.countries.length === 0) throw new Error('IDMC displacement events unavailable');
+    return data;
+  }, EMPTY_DISPLACEMENT_EVENTS, { shouldCache: (r) => r.points.length > 0 || r.countries.length > 0 });
+}
+
+// ─── Cross-border movements (UNHCR Operational Data Portal) ───
+
+const crossBorderBreaker = createCircuitBreaker<GetCrossBorderMovementsResponse>({
+  name: 'Cross-Border Movement Reports',
+  cacheTtlMs: 30 * 60 * 1000,
+  persistCache: true,
+});
+
+// Fetch only when the displacement panel or layer needs the source-dated view.
+export async function fetchCrossBorderArrivals(): Promise<CrossBorderData> {
+  const response = await crossBorderBreaker.execute(async () => {
+    const result = await new DisplacementServiceClient(getRpcBaseUrl(), { fetch: publicRpcFetch }).getCrossBorderMovements({ countryCode: '', route: '' });
+    if (!result.dataAvailable) throw new Error('cross-border movements unavailable');
+    return result;
+  }, { movements: [], sources: [], dataAvailable: false }, { shouldCache: (r) => r.movements.length > 0 });
+  return toMovementData(response);
 }
 
 // ─── Presentation helpers (copied verbatim from legacy src/services/unhcr.ts) ───

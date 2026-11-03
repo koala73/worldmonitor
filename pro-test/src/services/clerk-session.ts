@@ -32,13 +32,38 @@ function decodeJwtExp(token: string): number | null {
  * landing page and use the Launch CTA — the destination still validates auth.
  */
 export function hasLiveSessionJwt(cookieHeader: string): boolean {
+  // Runtime callers can still hand us undefined/null (or a non-string
+  // document.cookie from a privacy extension). Guard before `.match` —
+  // Sentry WORLDMONITOR-17E: TypeError reading 'match' of undefined on the
+  // welcome redirect probe.
+  if (typeof cookieHeader !== 'string') return false;
   const match = cookieHeader.match(/(?:^|;\s*)__session=([^;]+)/);
   if (!match) return false;
   const exp = decodeJwtExp(safeDecodeCookieValue(match[1]).trim());
   return exp !== null && exp * 1000 > Date.now();
 }
 
+/**
+ * Read `document.cookie` without throwing. Chrome (and other engines) throw
+ * `SecurityError: Failed to read the 'cookie' property from 'Document': The
+ * document is sandboxed and lacks the 'allow-same-origin' flag.` when the
+ * welcome bundle runs inside an iframe sandboxed without `allow-same-origin`
+ * (Sentry WORLDMONITOR-14B). Treat that as "no cookies" — the redirect probe
+ * simply keeps the visitor on the landing page.
+ *
+ * Also coerce a non-string cookie value to '' so hasLiveSessionJwt never sees
+ * undefined (Sentry WORLDMONITOR-17E).
+ */
+export function readDocumentCookie(): string {
+  if (typeof document === 'undefined') return '';
+  try {
+    const cookie = document.cookie;
+    return typeof cookie === 'string' ? cookie : '';
+  } catch {
+    return '';
+  }
+}
+
 export function hasLiveClientSession(): boolean {
-  if (typeof document === 'undefined') return false;
-  return hasLiveSessionJwt(document.cookie);
+  return hasLiveSessionJwt(readDocumentCookie());
 }

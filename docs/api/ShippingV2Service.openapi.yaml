@@ -207,7 +207,8 @@ paths:
                                       "callbackUrl": "https://example.com/worldmonitor-webhook"
                                       "chokepointIds":
                                           - "suez"
-                                      "createdAt": "2026-01-15T12:00:00Z"
+                                      "countries":
+                                          - "US"
                             schema:
                                 $ref: '#/components/schemas/ListWebhooksResponse'
                 "400":
@@ -309,7 +310,7 @@ paths:
                 - ShippingV2Service
             summary: RegisterWebhook
             description: |-
-                RegisterWebhook subscribes a callback URL to chokepoint disruption alerts.
+                RegisterWebhook subscribes a callback URL to one event type.
                  Returns the subscriberId and the raw HMAC secret — the secret is never
                  returned again except via rotate-secret. PRO-gated. Requires an active Pro subscription.
             operationId: RegisterWebhook
@@ -325,6 +326,8 @@ paths:
                             "callbackUrl": "https://example.com/worldmonitor-webhook"
                             "chokepointIds":
                                 - "suez"
+                            "eventType": "chokepoint.disruption"
+                            "minLiveSignal": 1
                         schema:
                             $ref: '#/components/schemas/RegisterWebhookRequest'
                 required: true
@@ -750,18 +753,85 @@ components:
                     maximum: 100
                     minimum: 0
                     format: int32
-                    description: |-
-                        Disruption-score threshold for delivery, 0-100. Default 50.
-                         proto3 `optional` so the handler can distinguish "partner explicitly sent
-                         0 (deliver every alert)" from "partner omitted the field (apply default
-                         50)". Without `optional`, both serialise to the proto3 scalar default of
-                         0 and the handler can't tell them apart — flagged in #3242 review.
+                    description: Disruption-score threshold for delivery, 0-100. Default 50; an explicit 0 delivers every alert.
+                eventType:
+                    type: string
+                    maxLength: 64
+                    description: A shared/event-triggers.json key; `chokepoint.disruption` when omitted.
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: '`country.risk_surge` scope: monitored ISO2 codes; empty = all.'
+                minLiveSignal:
+                    type: integer
+                    maximum: 40
+                    minimum: 0
+                    format: int32
+                    description: '`chokepoint.disruption` live-signal floor; 0 = score only.'
+                scope:
+                    $ref: '#/components/schemas/WebhookScope'
             required:
                 - callbackUrl
             description: |-
-                RegisterWebhookRequest creates a new chokepoint-disruption webhook
-                 subscription. Wire shape is byte-compatible with the pre-migration
-                 legacy POST body.
+                RegisterWebhookRequest subscribes to one eventType (default
+                 chokepoint.disruption). Wire shape is byte-compatible with the legacy
+                 POST body.
+        WebhookScope:
+            type: object
+            properties:
+                keywords:
+                    type: array
+                    items:
+                        type: string
+                        description: 'news.breaking: whole-word terms, any-of, 1-20.'
+                categories:
+                    type: array
+                    items:
+                        type: string
+                        description: 'news.breaking: classifier categories.'
+                importanceFloor:
+                    type: integer
+                    format: int32
+                    description: 'news.breaking: importanceScore floor, 0-100 (default 69).'
+                severityFloor:
+                    type: string
+                    description: 'news.breaking: `critical` or `high` (default high).'
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: 'news.breaking, natural.hazard: ISO2 codes; unplaced events never match.'
+                hazardTypes:
+                    type: array
+                    items:
+                        type: string
+                        description: 'natural.hazard: event categories.'
+                minMagnitude:
+                    type: number
+                    format: double
+                    description: 'natural.hazard: earthquake magnitude floor, 4.5-9.5 (default 5.5).'
+                minAlertLevel:
+                    type: string
+                    description: 'natural.hazard: GDACS `Orange` or `Red` (default Orange).'
+                assetClasses:
+                    type: array
+                    items:
+                        type: string
+                        description: 'market.move: `equity`, `commodity`, `crypto`.'
+                symbols:
+                    type: array
+                    items:
+                        type: string
+                        description: 'market.move: quote symbols, 1-50.'
+                minAbsPct:
+                    type: number
+                    format: double
+                    description: 'market.move: |changePct| floor, 5-100 (default 10).'
+                direction:
+                    type: string
+                    description: 'market.move: `up`, `down` or `any` (default any).'
+            description: Per-event filters for occurrence events. Each key applies to the events named in its comment; the handler validates against shared/event-triggers.json and stores the defaults.
         RegisterWebhookResponse:
             type: object
             properties:
@@ -808,6 +878,18 @@ components:
                     description: ISO-8601 timestamp of registration.
                 active:
                     type: boolean
+                eventType:
+                    type: string
+                    description: As registered; see RegisterWebhookRequest.
+                countries:
+                    type: array
+                    items:
+                        type: string
+                minLiveSignal:
+                    type: integer
+                    format: int32
+                scope:
+                    $ref: '#/components/schemas/WebhookScope'
             description: |-
                 Single webhook record in the list response. `secret` is intentionally
                  omitted; use rotate-secret to obtain a new one.

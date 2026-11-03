@@ -195,6 +195,12 @@ export function createRedisFetch(
           return { result: redis.get(redisKey) ?? null };
         }
 
+        if (normalizedVerb === 'GETDEL') {
+          const value = redis.get(redisKey) ?? null;
+          removeKey(redisKey);
+          return { result: value };
+        }
+
         if (normalizedVerb === 'SET') {
           const options = args.slice(1);
           const opts = options.map(String).map((item) => item.toUpperCase());

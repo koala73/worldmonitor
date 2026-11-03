@@ -52,6 +52,12 @@ export const IDEMPOTENT_REPLAYED_HEADER = 'Idempotent-Replayed';
  */
 export const IDEMPOTENCY_EXEMPT_RPC_PATHS = new Set<string>([
   '/api/company-monitoring/v1/import-monitored-company-batch',
+  // #9093 operator review: the response carries the private message and email
+  // of a reader, and the gateway would replay a stored response before the
+  // handler checks the review secret. The handler is idempotent on its own (a
+  // reviewed report answers 409), so it needs no generic replay. (No apostrophes
+  // in this block: readIdempotencyExemptPaths parses its quoted strings.)
+  '/api/news/v1/review-error-report',
 ]);
 
 // Printable-ASCII, 1..255 chars — matches the `maxLength: 255` we publish in
@@ -201,11 +207,15 @@ async function getRequestHashAndRedisKey(
 ): Promise<{ reqHash: string; redisKey: string } | null> {
   try {
     const bodyBuf = await request.clone().arrayBuffer();
-    const reqHash = await sha256Hex(bodyBuf);
     const effectiveScope = scope || anonScope(request);
     // Hash the composite so client-controlled key material never lands in the
-    // Redis keyspace verbatim and delimiter collisions are impossible.
-    const redisKey = `idem:v1:${await sha256Hex(`${effectiveScope}\n${pathname}\n${idempotencyKey}`)}`;
+    // Redis keyspace verbatim and delimiter collisions are impossible. The two
+    // digests are independent, so they run together.
+    const [reqHash, keyHash] = await Promise.all([
+      sha256Hex(bodyBuf),
+      sha256Hex(`${effectiveScope}\n${pathname}\n${idempotencyKey}`),
+    ]);
+    const redisKey = `idem:v1:${keyHash}`;
     return { reqHash, redisKey };
   } catch {
     // Body unreadable / hashing failed → can't key the request. Fail-open.

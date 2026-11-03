@@ -214,7 +214,7 @@ const map = new DeckGLMap(container, initialState);
 #### Rendering Stack
 
 Built on **MapLibre GL JS** (`maplibregl.Map`) with a **deck.gl** overlay
-(`MapboxOverlay` from `@deck.gl/mapbox`). The following deck.gl layer types
+(`MapLibreOverlay` from `@deck.gl/maplibre`). The following deck.gl layer types
 are used:
 
 - `GeoJsonLayer` — country polygons, cables, pipelines, waterways
@@ -592,7 +592,7 @@ domain-specific markup.
 |---|---|
 | **File** | `src/components/CIIPanel.ts` |
 | **Panel ID** | `cii` |
-| **Purpose** | Renders server-authoritative CII v8 scores for 31 Tier-1 countries from cached risk-score ingestion, with local fallback scoring when forced or no cached data is available. |
+| **Purpose** | Renders server-authoritative CII v14 scores for 31 Tier-1 countries from cached risk-score ingestion, with local fallback scoring when forced or no cached data is available. |
 | **Key methods** | `setShareStoryHandler()`, `setCountryClickHandler()`, `refresh(forceLocal?)`, `renderFromCached(cached)`, `getScores()` |
 | **DOM** | `.cii-list` → `.cii-country` each with header (emoji flag, name, score, trend arrow, share button), colour bar, sub-score row (U/C/S/I). |
 | **Services** | `toCountryScore()`, `calculateCII()` fallback path, `getCSSColor` |
@@ -679,8 +679,8 @@ domain-specific markup.
 | **Panel ID** | `live-news` |
 | **Purpose** | Embedded YouTube live-stream player with channel switching. |
 | **DOM** | YouTube IFrame player, channel switcher bar, mute/live buttons. |
-| **Services** | `fetchLiveVideoId`, `isDesktopRuntime`, `getRemoteApiBaseUrl` |
-| **Variant channels** | `tech` → `TECH_LIVE_CHANNELS` (Bloomberg, Yahoo Finance, CNBC, NASA TV). `world` / `full` → `FULL_LIVE_CHANNELS` (Bloomberg, Sky, Euronews, DW, CNBC, France24, Al Arabiya, Al Jazeera). |
+| **Services** | `openLiveVideo` (`src/services/live-video/session.ts`, streams from `src/config/live-video-sources.ts`), `isDesktopRuntime` |
+| **Variant channels** | `tech` → `TECH_LIVE_CHANNELS` (Bloomberg, Yahoo Finance, NASA TV). `world` / `full` → `FULL_LIVE_CHANNELS` (Bloomberg, Sky, Euronews, DW, France24, Al Arabiya, Al Jazeera). |
 | **Notes** | Idle pause after 5 minutes of inactivity. |
 
 #### PredictionPanel
@@ -1045,15 +1045,6 @@ small UI affordances.
 | **Exported** | `maybeShowDownloadBanner()` |
 | **Platform detection** | `macos-arm64`, `macos-x64`, `windows`, `linux` |
 
-### CommunityWidget
-
-| Field | Detail |
-|---|---|
-| **File** | `src/components/CommunityWidget.ts` |
-| **Purpose** | Small floating widget linking to GitHub Discussions. |
-| **Exported** | `mountCommunityWidget()` |
-| **Notes** | Dismissible via `localStorage`. |
-
 ### PizzIntIndicator
 
 | Field | Detail |
@@ -1135,7 +1126,6 @@ small UI affordances.
 | StoryModal | ✅ | ✅ | ✅ |
 | MobileWarningModal | ✅ | ✅ | ✅ |
 | DownloadBanner | ✅ | ✅ | ✅ |
-| CommunityWidget | ✅ | ✅ | ✅ |
 | PizzIntIndicator | ✅ | — | — |
 | IntelligenceFindingsBadge | ✅ | — | — |
 | VerificationChecklist | ✅ | ✅ | — |

@@ -33,6 +33,8 @@ import type { PanelConfig } from '@/types';
 import { renderPreferences } from '@/services/preferences-content';
 import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { signOut } from '@/services/clerk';
+import { requestOwnAccountDeletion } from '@/services/account-deletion';
 import { track, trackApiAction } from '@/services/analytics';
 import {
   getEntitlementState,
@@ -53,6 +55,7 @@ import {
   type BillingStatusTone,
 } from '@/services/billing-state';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
+import { hasDesktopKeyAccess } from '../../shared/desktop-key-access.js';
 import { createEmbedKey, listEmbedKeys, revokeEmbedKey, type EmbedKeyInfo } from '@/services/embed-keys';
 import { listMcpClients, revokeMcpClient, fetchMcpQuota, type McpClientInfo, type McpQuota } from '@/services/mcp-clients';
 import {
@@ -75,6 +78,7 @@ import {
   parseFontScale,
 } from '@/services/font-scale-settings';
 import { showToast } from '@/utils/toast';
+import { declareOverlay } from '@/utils/open-modal';
 
 export interface UnifiedSettingsConfig {
   getPanelSettings: () => Record<string, PanelConfig>;
@@ -93,7 +97,7 @@ export interface UnifiedSettingsConfig {
    *
    * Sources apply to `ctx.disabledSources` on click (no draft/Save step like
    * panels), but nothing subscribed to that write, so the change only reached
-   * the dashboard at the next `REFRESH_INTERVALS.feeds` tick — 20 minutes
+   * the dashboard at the next `REFRESH_INTERVALS.feeds` tick
    * (#6380). This is the subscription.
    *
    * Fired on teardown rather than per click on purpose: the overlay covers the
@@ -172,7 +176,7 @@ export class UnifiedSettings {
   private mcpClients: McpClientInfo[] = [];
   private mcpClientsLoading = false;
   private mcpClientsError = '';
-  private mcpQuota: McpQuota | null = null;
+  private mcpQuota: McpQuota | 'unavailable' | null = null;
   /** setInterval handle for quota auto-refresh; cleared on close()/destroy()/tab-switch. */
   private mcpQuotaTimer: ReturnType<typeof setInterval> | null = null;
   private accountUserId: string | null = getAuthState().user?.id ?? null;
@@ -182,6 +186,11 @@ export class UnifiedSettings {
   private unsubscribeEntitlement: (() => void) | null = null;
   private unsubscribeEntitlementVerification: (() => void) | null = null;
   private unsubscribeSubscription: (() => void) | null = null;
+  private deletionDialog: HTMLElement | null = null;
+  private deletionFocusTrap: FocusTrap | null = null;
+  private deletionBusy = false;
+  private deletionError = '';
+  private deletionPhraseHandler: (() => void) | null = null;
 
   constructor(config: UnifiedSettingsConfig) {
     this.config = config;
@@ -191,6 +200,7 @@ export class UnifiedSettings {
     this.overlay.id = 'unifiedSettingsModal';
     this.overlay.setAttribute('role', 'dialog');
     this.overlay.setAttribute('aria-modal', 'true');
+    declareOverlay(this.overlay, { reload: 'blocking' });
     this.overlay.setAttribute('aria-label', t('header.settings'));
     this.focusTrap = createFocusTrap(this.overlay);
     this.businessSeatsSection = new BusinessSeatsSection(this.overlay);
@@ -198,11 +208,20 @@ export class UnifiedSettings {
     this.resetPanelDraft();
 
     this.escapeHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') this.close();
+      if (e.key === 'Escape') {
+        if (this.deletionDialog) {
+          e.stopPropagation();
+          if (!this.deletionBusy) this.closeDeletionDialog();
+          return;
+        }
+        this.close();
+      }
     };
 
     this.overlay.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
+
+      if (this.deletionDialog) return;
 
       if (target === this.overlay) {
         this.close();
@@ -245,6 +264,11 @@ export class UnifiedSettings {
             );
           }
         });
+        return;
+      }
+
+      if (target.closest('[data-delete-account]')) {
+        this.openDeletionDialog();
         return;
       }
 
@@ -518,6 +542,7 @@ export class UnifiedSettings {
   private handleAccountIdentityChange(nextUserId: string | null): void {
     if (nextUserId === this.accountUserId) return;
 
+    this.closeDeletionDialog();
     this.accountUserId = nextUserId;
     this.accountDataGeneration += 1;
     this.accountEntitlementRefreshPending = true;
@@ -621,7 +646,7 @@ export class UnifiedSettings {
       if (panel) {
         setTrustedHtml(panel, trustedHtml(this.renderApiKeysContent(), "legacy direct innerHTML migration"));
         this.attachApiKeysHandlers();
-        if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
+        if (this.activeTab === 'api-keys' && this.canManageKeys()) {
           void this.loadApiKeys();
         }
       }
@@ -671,6 +696,22 @@ export class UnifiedSettings {
 
   public close(origin: OverlayCloseOrigin = 'control'): void {
     if (origin === 'history') this.historyRegistered = false;
+    // An in-flight deletion owns the overlay until it settles. The overlay
+    // click handler and escapeHandler already refuse while deletionBusy is
+    // set; without this guard the mobile back gesture reaches teardownSettings
+    // -> closeDeletionDialog, which clears the latch mid-await and re-permits
+    // a second confirmAccountDeletion against the same account. Re-arm the
+    // history entry the gesture just consumed, matching the unsaved-changes
+    // branch below, so a later back press still closes the overlay. This sits
+    // after the flag is cleared above, because that is what makes the
+    // re-registration condition reachable.
+    if (this.deletionBusy) {
+      if (origin === 'history' && !this.historyRegistered) {
+        this.historyRegistered = true;
+        overlayHistory.open('settings', (nextOrigin) => this.close(nextOrigin));
+      }
+      return;
+    }
     // Unsaved panel changes → confirm before tearing down. The confirm is a
     // non-blocking in-app dialog (#4559): close() stays synchronous (8 callers)
     // and defers teardown to the user's choice instead of a blocking confirm().
@@ -713,6 +754,7 @@ export class UnifiedSettings {
     this.unsubscribeSubscription?.();
     this.unsubscribeSubscription = null;
     this.stopMcpQuotaPolling();
+    this.closeDeletionDialog();
     this.resetPanelDraft();
     safeStorageRemove('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
@@ -777,6 +819,7 @@ export class UnifiedSettings {
     this.unsubscribeAuth?.();
     this.unsubscribeAuth = null;
     this.stopMcpQuotaPolling();
+    this.closeDeletionDialog();
     document.removeEventListener('keydown', this.escapeHandler);
     // Teardown, not a user-initiated close: release the trap's document
     // listener without handing focus back to a trigger that is also going away.
@@ -867,6 +910,7 @@ export class UnifiedSettings {
             <p>See your current plan and manage payment details, invoices, or cancellation.</p>
           </div>
           ${this.renderUpgradeSection()}
+          ${this.renderAccountDeletionSection()}
         </div>
         ` : ''}
         <div class="unified-settings-tab-panel${this.activeTab === 'panels' ? ' active' : ''}" data-panel-id="panels" id="us-tab-panel-panels" role="tabpanel" aria-labelledby="us-tab-panels">
@@ -960,7 +1004,7 @@ export class UnifiedSettings {
       if (this.activeTab === 'api-keys' || this.activeTab === 'mcp-clients') {
         void this.loadPlanLimitNotices();
       }
-      if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
+      if (this.activeTab === 'api-keys' && this.canManageKeys()) {
         void this.loadApiKeys();
       }
       if (this.activeTab === 'embeds' && getAuthState().user && hasEmbedAccessForAccount(getAuthState().user?.role)) {
@@ -1006,6 +1050,8 @@ export class UnifiedSettings {
 
     if (tab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
       void this.loadPlanLimitNotices();
+    }
+    if (tab === 'api-keys' && this.canManageKeys()) {
       void this.loadApiKeys();
     }
 
@@ -1112,7 +1158,9 @@ export class UnifiedSettings {
       if (sub?.currentPeriodEnd) {
         const dateStr = new Date(sub.currentPeriodEnd).toLocaleDateString();
         if (sub.status === 'active') {
-          statusLine = `Renews: ${dateStr}`;
+          statusLine = sub.cancelAtPeriodEnd
+            ? `Cancellation scheduled -- access until ${dateStr}`
+            : `Renews: ${dateStr}`;
         } else if (sub.status === 'on_hold') {
           statusLine = 'On hold -- please update payment method';
         } else if (sub.status === 'cancelled') {
@@ -1173,6 +1221,153 @@ export class UnifiedSettings {
         <button class="upgrade-pro-cta">Upgrade to Pro</button>
       </div>
     `;
+  }
+
+  private renderAccountDeletionSection(): string {
+    return `
+      <section class="account-deletion-zone" data-account-deletion>
+        <h3 class="account-deletion-title">Delete account</h3>
+        <p class="account-deletion-desc">Permanently delete this World Monitor account. Subscriptions cancel immediately with no refund of remaining prepaid time. API keys, embed keys, and MCP tokens stop working. Billing records needed for accounting, disputes, and lawful requests are kept with the customer contact details they carry; they stop naming your login account, though payment-provider webhook logs written before deletion keep the identifiers they were delivered with. Dashboard preferences and desktop keychain secrets on this device are not wiped remotely.</p>
+        <button type="button" class="delete-account-btn" data-delete-account>Delete account</button>
+      </section>
+    `;
+  }
+
+  private syncDeletionConfirmEnabled(): void {
+    const overlay = this.deletionDialog;
+    if (!overlay) return;
+    const input = overlay.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+    const confirm = overlay.querySelector<HTMLButtonElement>('[data-deletion-confirm]');
+    if (!input || !confirm) return;
+    confirm.disabled = this.deletionBusy || input.value.trim() !== 'DELETE';
+    input.disabled = this.deletionBusy;
+    const error = overlay.querySelector('[data-deletion-error]');
+    if (error) error.textContent = this.deletionError;
+  }
+
+  private openDeletionDialog(): void {
+    if (this.deletionDialog || this.deletionBusy) return;
+    this.deletionError = '';
+    const overlay = document.createElement('div');
+    this.deletionDialog = overlay;
+    overlay.className = 'account-deletion-dialog-overlay active';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    declareOverlay(overlay, { reload: 'blocking' });
+    overlay.setAttribute('aria-labelledby', 'account-deletion-dialog-title');
+    setTrustedHtml(
+      overlay,
+      trustedHtml(
+        `
+      <div class="account-deletion-dialog">
+        <h2 id="account-deletion-dialog-title" class="account-deletion-dialog-title">Delete this account?</h2>
+        <p class="account-deletion-dialog-copy">This cannot be undone. Subscriptions cancel, keys stop working immediately, and billing records are kept for accounting, disputes, and lawful requests — including the contact details they carry. Sign out on other devices and clear this device's site data afterwards — those are out of server reach.</p>
+        <label class="account-deletion-dialog-label" for="account-deletion-phrase">Type DELETE to confirm</label>
+        <input id="account-deletion-phrase" class="account-deletion-dialog-input" data-deletion-phrase type="text" autocomplete="off" spellcheck="false" />
+        <p class="account-deletion-dialog-error" data-deletion-error role="alert"></p>
+        <div class="account-deletion-dialog-actions">
+          <button type="button" class="confirm-dialog-btn" data-deletion-cancel>Cancel</button>
+          <button type="button" class="confirm-dialog-btn confirm-dialog-confirm" data-deletion-confirm disabled>Delete account</button>
+        </div>
+      </div>
+    `,
+        'account deletion confirm dialog; static copy only',
+      ),
+    );
+    overlay.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement;
+      if (target === overlay || target.closest('[data-deletion-cancel]')) {
+        if (!this.deletionBusy) this.closeDeletionDialog();
+        return;
+      }
+      if (target.closest('[data-deletion-confirm]')) {
+        void this.confirmAccountDeletion();
+      }
+    });
+    const input = overlay.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+    this.deletionPhraseHandler = () => this.syncDeletionConfirmEnabled();
+    input?.addEventListener('input', this.deletionPhraseHandler);
+    document.body.appendChild(overlay);
+    this.syncDeletionConfirmEnabled();
+    // aria-modal is a promise to the keyboard: without a trap, Tab walks out
+    // of a destructive-action dialog into the settings modal behind it, which
+    // is still interactive. Escape stays with escapeHandler (no onEscape here)
+    // so an in-flight deletion still cannot be dismissed.
+    this.deletionFocusTrap = createFocusTrap(overlay, { initialFocus: () => input });
+    this.deletionFocusTrap.activate();
+  }
+
+  private closeDeletionDialog(): void {
+    const overlay = this.deletionDialog;
+    if (!overlay) return;
+    const input = overlay.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+    if (input && this.deletionPhraseHandler) {
+      input.removeEventListener('input', this.deletionPhraseHandler);
+    }
+    this.deletionPhraseHandler = null;
+    // Deactivate before the node leaves the document so the trap can hand
+    // focus back to the [data-delete-account] button that opened it.
+    this.deletionFocusTrap?.deactivate();
+    this.deletionFocusTrap = null;
+    overlay.remove();
+    this.deletionDialog = null;
+    this.deletionBusy = false;
+    this.deletionError = '';
+  }
+
+  private async confirmAccountDeletion(): Promise<void> {
+    const overlay = this.deletionDialog;
+    const input = overlay?.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+    if (!overlay || !input || input.value.trim() !== 'DELETE' || this.deletionBusy) return;
+    this.deletionBusy = true;
+    this.deletionError = '';
+    this.syncDeletionConfirmEnabled();
+    try {
+      await requestOwnAccountDeletion();
+      this.closeDeletionDialog();
+      // Tear down directly rather than via close(): the account is gone, so an
+      // unsaved draft in another panel has nothing to be saved to, and close()
+      // would stop to ask "discard changes?" for it while signOut() proceeds.
+      this.teardownSettings('control');
+      await signOut();
+      showToast('Account deleted. Sign out on other devices and clear this device\'s site data.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Account deletion failed. Try again.';
+      if (message.includes('Account changed')) {
+        // Only speak if this attempt still owns the dialog. When the account
+        // switch already tore it down, the user has moved on and a late
+        // "Account changed... Try again." is about a request they no longer
+        // remember starting.
+        const stillOurs = this.deletionDialog === overlay;
+        this.closeDeletionDialog();
+        if (stillOurs) showToast(message);
+        return;
+      }
+      // The dialog is the only place the error text renders, and an account
+      // switch can tear it down mid-await. Without this fallback the failure
+      // is written into a detached overlay and the user is told nothing.
+      if (!this.deletionDialog) {
+        showToast(message);
+        return;
+      }
+      // The server is still working when the poll gives up — its external
+      // retry ladder outlasts the client timeout by design. Clearing the
+      // phrase leaves Confirm disabled so the reflex second submission is not
+      // one click away, while still releasing the busy latch so the dialog can
+      // be dismissed; re-submitting takes a deliberate re-type.
+      if (message.includes('still running')) {
+        this.deletionBusy = false;
+        this.deletionError = message;
+        const phrase = this.deletionDialog
+          ?.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+        if (phrase) phrase.value = '';
+        this.syncDeletionConfirmEnabled();
+        return;
+      }
+      this.deletionBusy = false;
+      this.deletionError = message;
+      this.syncDeletionConfirmEnabled();
+    }
   }
 
   // Business Pro seats (#4634/#4635) state/render/handlers live in
@@ -1595,7 +1790,7 @@ export class UnifiedSettings {
     switch (dimension) {
       case 'api_daily_requests': return 'Daily API requests';
       case 'api_minute_burst': return 'API burst traffic';
-      case 'mcp_daily_calls': return 'Daily MCP calls';
+      case 'mcp_daily_calls': return 'Daily MCP usage';
       case 'mcp_minute_burst': return 'MCP burst traffic';
     }
   }
@@ -1734,9 +1929,9 @@ export class UnifiedSettings {
       });
     }
 
-    // Gate CTA click (sign-in for anonymous, checkout for free)
-    const gateBtn = this.overlay.querySelector<HTMLElement>('.api-keys-gate-btn');
-    if (gateBtn) {
+    // Gate CTA click (sign-in for anonymous, API Starter checkout otherwise).
+    // The free prompt's "Upgrade to Pro" uses the delegated .upgrade-pro-cta.
+    this.overlay.querySelectorAll<HTMLElement>('.api-keys-gate-btn').forEach((gateBtn) => {
       gateBtn.addEventListener('click', () => {
         if (!getAuthState().user) {
           this.close();
@@ -1748,7 +1943,106 @@ export class UnifiedSettings {
           });
         }
       });
+    });
+  }
+
+  /**
+   * Which key section the API Keys tab shows (plan 2026-10-25-001, U5).
+   * `apiAccess` wins, so API-plan owners keep the existing section. Pro and
+   * Pro Business get desktop keys; that branch also catches a downgraded API
+   * customer, whose generic keys now work at desktop scope.
+   */
+  private keysMode(): 'signed-out' | 'api' | 'desktop' | 'upgrade' {
+    if (!getAuthState().user) return 'signed-out';
+    if (hasFeature('apiAccess')) return 'api';
+    if (hasDesktopKeyAccess(getEntitlementState(), Date.now())) return 'desktop';
+    return 'upgrade';
+  }
+
+  private canManageKeys(): boolean {
+    const mode = this.keysMode();
+    return mode === 'api' || mode === 'desktop';
+  }
+
+  private desktopKeyLimit(): number {
+    return getEntitlementState()?.features.maxDesktopKeys ?? 0;
+  }
+
+  /**
+   * In desktop mode every active key counts toward `maxDesktopKeys`: desktop
+   * keys, plus a downgraded owner's generic keys (convex/apiKeys.ts
+   * createDesktopKey counts the same set).
+   */
+  private activeDesktopKeyCount(): number {
+    return this.apiKeys.filter(k => !k.revokedAt).length;
+  }
+
+  private desktopKeyErrorMessage(err: unknown): string {
+    const data = (err as { data?: unknown } | null)?.data;
+    const raw = typeof data === 'string' ? data : err instanceof Error ? err.message : '';
+    const limit = this.desktopKeyLimit();
+    if (raw.includes('DESKTOP_KEY_LIMIT_REACHED')) {
+      return `Your plan allows ${limit} desktop keys. Revoke one to create another.`;
     }
+    if (raw.includes('DESKTOP_KEYS_DISABLED')) {
+      return "Desktop keys aren't available yet. Try again later.";
+    }
+    if (raw.includes('DESKTOP_KEY_ACCESS_REQUIRED')) {
+      return 'Desktop keys need an active Pro or Pro Business plan.';
+    }
+    if (raw.includes('INVALID_API_KEY_SCOPES')) {
+      return 'Desktop keys cannot have API scopes.';
+    }
+    return raw || 'Failed to create desktop key';
+  }
+
+  private renderDesktopKeysContent(): string {
+    return `
+      <div class="api-keys-section desktop-keys-section">
+        <div class="api-keys-header">
+          <p class="api-keys-desc"><strong>Desktop keys</strong> are for your own desktop app: paste one into the desktop app to get your Pro data without signing in. Shared or public deployments need an API plan. Keys are shown once on creation.</p>
+        </div>
+        <div class="desktop-keys-count" data-desktop-keys-count aria-live="polite"></div>
+        <div class="api-keys-create-form">
+          <input type="text" class="api-keys-name-input" placeholder="Key name (e.g. my-laptop)" aria-label="Desktop key name" maxlength="64" />
+          <button class="btn btn-primary api-keys-create-btn">Create desktop key</button>
+        </div>
+        <div class="api-keys-created-banner" id="usApiKeysBanner" style="display:none;"></div>
+        <div class="api-keys-error" id="usApiKeysError" style="display:none;"></div>
+        <div class="api-keys-list" id="usApiKeysList">
+          <div class="api-keys-loading">Loading...</div>
+        </div>
+      </div>`;
+  }
+
+  /**
+   * Shows the used/limit count and holds create closed at the cap. Called after
+   * every list render and after a create settles, so a finished create cannot
+   * re-enable the button past the limit.
+   */
+  private syncDesktopKeyLimit(): void {
+    if (this.keysMode() !== 'desktop') return;
+    const countEl = this.overlay.querySelector<HTMLElement>('[data-desktop-keys-count]');
+    const input = this.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
+    const btn = this.overlay.querySelector<HTMLButtonElement>('.api-keys-create-btn');
+    if (!countEl) return;
+    if (this.apiKeysLoading && this.apiKeys.length === 0) {
+      countEl.textContent = '';
+      return;
+    }
+    const used = this.activeDesktopKeyCount();
+    const limit = this.desktopKeyLimit();
+    const atLimit = used >= limit;
+    const over = used - limit;
+    const note = over > 0
+      ? ` Your plan allows ${limit} desktop keys, and keys over the limit don't work. Revoke ${over} key${over === 1 ? '' : 's'} to get back within it.`
+      : atLimit
+      ? ` Your plan allows ${limit} desktop keys. Revoke one to create another.`
+      : '';
+    countEl.textContent = `${used} of ${limit} desktop keys in use.${note}`;
+    countEl.classList.toggle('at-limit', atLimit);
+    if (input) input.disabled = atLimit;
+    if (btn && btn.textContent !== 'Creating...') btn.disabled = atLimit;
   }
 
   private renderApiKeysContent(): string {
@@ -1764,13 +2058,18 @@ export class UnifiedSettings {
         </div>`;
     }
 
-    if (!hasFeature('apiAccess')) {
+    const mode = this.keysMode();
+    if (mode === 'desktop') return this.renderDesktopKeysContent();
+
+    if (mode === 'upgrade') {
       const upgradeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`;
       return `
         <div class="panel-locked-state">
           <div class="panel-locked-icon">${upgradeIcon}</div>
-          <div class="panel-locked-desc">Create and manage API keys to access WorldMonitor data programmatically.</div>
+          <div class="panel-locked-desc">Desktop keys come with Pro. Use one to get your Pro data in your own desktop app.</div>
           ${checkoutConsentHtml(WEB_APP_ORIGIN)}
+          <button class="panel-locked-cta upgrade-pro-cta">Upgrade to Pro</button>
+          <div class="panel-locked-desc">Need the REST API, SDKs or webhooks for your organization's internal tools? API Starter adds them to the full Pro dashboard. Customer-facing products need API Business.</div>
           <button class="panel-locked-cta api-keys-gate-btn">Upgrade to API Starter</button>
         </div>`;
     }
@@ -1823,6 +2122,8 @@ export class UnifiedSettings {
     const request = this.captureAccountRequest();
     if (!request) return;
 
+    const desktop = this.keysMode() === 'desktop';
+    const idleLabel = desktop ? 'Create desktop key' : 'Create Key';
     btn.disabled = true;
     btn.textContent = 'Creating...';
     this.apiKeysError = '';
@@ -1830,17 +2131,20 @@ export class UnifiedSettings {
     this.hideBanner();
 
     try {
-      const result = await createApiKey(name);
+      const result = desktop ? await createApiKey(name, 'desktop') : await createApiKey(name);
       if (!this.isAccountRequestCurrent(request)) return;
       trackApiAction('key-created');
       this.newlyCreatedKey = result.key;
       input.value = '';
-      this.showCreatedBanner(result.key);
+      this.showCreatedBanner(result.key, desktop);
       await this.loadApiKeys();
     } catch (err) {
       if (!this.isAccountRequestCurrent(request)) return;
       const msg = err instanceof Error ? err.message : 'Failed to create key';
-      this.apiKeysError = msg.includes('KEY_LIMIT_REACHED')
+      // Desktop codes first: DESKTOP_KEY_LIMIT_REACHED contains KEY_LIMIT_REACHED.
+      this.apiKeysError = desktop
+        ? this.desktopKeyErrorMessage(err)
+        : msg.includes('KEY_LIMIT_REACHED')
         ? 'Maximum of 5 active keys reached. Revoke an existing key first.'
         : msg.includes('API_ACCESS_REQUIRED')
         ? 'API keys require an API access subscription (API Starter or higher).'
@@ -1849,7 +2153,8 @@ export class UnifiedSettings {
     } finally {
       if (this.isAccountRequestCurrent(request)) {
         btn.disabled = false;
-        btn.textContent = 'Create Key';
+        btn.textContent = idleLabel;
+        this.syncDesktopKeyLimit();
       }
     }
   }
@@ -1859,7 +2164,10 @@ export class UnifiedSettings {
     if (!request) return;
     const keyInfo = this.apiKeys.find(k => k.id === keyId);
     const keyName = keyInfo?.name ?? 'this key';
-    if (!confirm(`Revoke "${keyName}"? This cannot be undone. Any applications using this key will stop working.`)) return;
+    const consequence = this.keysMode() === 'desktop'
+      ? 'Any desktop app using this key will stop getting Pro data.'
+      : 'Any applications using this key will stop working.';
+    if (!confirm(`Revoke "${keyName}"? This cannot be undone. ${consequence}`)) return;
 
     try {
       await revokeApiKey(keyId);
@@ -1873,13 +2181,14 @@ export class UnifiedSettings {
     }
   }
 
-  private showCreatedBanner(key: string): void {
+  private showCreatedBanner(key: string, desktop = false): void {
     const banner = this.overlay.querySelector<HTMLElement>('#usApiKeysBanner');
     if (!banner) return;
 
     banner.style.display = 'block';
     setTrustedHtml(banner, trustedHtml(`
-      <div class="api-keys-banner-title">Key created — copy it now, it won't be shown again</div>
+      <div class="api-keys-banner-title">${desktop ? 'Desktop key' : 'Key'} created — copy it now, it won't be shown again</div>
+      ${desktop ? '<div class="api-keys-desc">Paste it into the desktop app under Settings → Desktop key.</div>' : ''}
       <div class="api-keys-banner-key">
         <code class="api-keys-key-value">${escapeHtml(key)}</code>
         <button class="btn btn-secondary api-keys-copy-btn">Copy</button>
@@ -1911,20 +2220,40 @@ export class UnifiedSettings {
     const container = this.overlay.querySelector('#usApiKeysList');
     if (!container) return;
 
+    const desktopMode = this.keysMode() === 'desktop';
+
     if (this.apiKeysLoading && this.apiKeys.length === 0) {
       setTrustedHtml(container, trustedHtml('<div class="api-keys-loading">Loading...</div>', "legacy direct innerHTML migration"));
+      this.syncDesktopKeyLimit();
       return;
     }
 
     this.renderApiKeysError();
+    this.syncDesktopKeyLimit();
 
     const active = this.apiKeys.filter(k => !k.revokedAt);
     const revoked = this.apiKeys.filter(k => k.revokedAt);
 
     if (active.length === 0 && revoked.length === 0) {
-      setTrustedHtml(container, trustedHtml('<div class="api-keys-empty">No API keys yet. Create one above to get started.</div>', "legacy direct innerHTML migration"));
+      const empty = desktopMode
+        ? 'No desktop keys yet. Create one above to use in your desktop app.'
+        : 'No API keys yet. Create one above to get started.';
+      setTrustedHtml(container, trustedHtml(`<div class="api-keys-empty">${empty}</div>`, "legacy direct innerHTML migration"));
       return;
     }
+
+    // Desktop mode: a generic key here belongs to a downgraded API customer and
+    // now works at desktop scope only. API mode: a desktop key here belongs to
+    // an owner who upgraded from Pro and keeps desktop scope (R8).
+    const kindBadge = (k: ApiKeyInfo): string => {
+      if (desktopMode && k.keyKind !== 'desktop') {
+        return '<span class="api-keys-item-kind-badge" title="Created as an API key. On your current plan it works as a desktop key.">Desktop access</span>';
+      }
+      if (!desktopMode && k.keyKind === 'desktop') {
+        return '<span class="api-keys-item-kind-badge" title="Works in your desktop app only, not for API access.">Desktop key</span>';
+      }
+      return '';
+    };
 
     const formatDate = (ts: number) => new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
@@ -1935,6 +2264,7 @@ export class UnifiedSettings {
           <div class="api-keys-item-main">
             <span class="api-keys-item-name">${escapeHtml(k.name)}</span>
             <code class="api-keys-item-prefix">${escapeHtml(k.keyPrefix)}${'*'.repeat(8)}</code>
+            ${isRevoked ? '' : kindBadge(k)}
           </div>
           <div class="api-keys-item-meta">
             <span>Created ${formatDate(k.createdAt)}</span>
@@ -2227,6 +2557,9 @@ export class UnifiedSettings {
 
   private renderMcpQuotaText(): string {
     const q = this.mcpQuota;
+    if (q === 'unavailable') {
+      return `<span class="mcp-clients-quota-loading">Quota unavailable</span>`;
+    }
     if (!q) {
       return `<span class="mcp-clients-quota-loading">Loading quota...</span>`;
     }
@@ -2287,8 +2620,7 @@ export class UnifiedSettings {
       this.mcpQuota = quota;
     } catch {
       if (!this.isAccountRequestCurrent(request)) return;
-      // fetchMcpQuota already returns sane fallbacks, but defensive catch.
-      this.mcpQuota = null;
+      this.mcpQuota = 'unavailable';
     }
     if (this.isAccountRequestCurrent(request)) this.renderMcpQuotaInPlace();
   }
@@ -2367,7 +2699,7 @@ export class UnifiedSettings {
     const revoked = this.mcpClients.filter(c => c.revokedAt);
 
     if (active.length === 0 && revoked.length === 0) {
-      const mcpUrl = 'https://api.worldmonitor.app/mcp';
+      const mcpUrl = 'https://worldmonitor.app/mcp';
       setTrustedHtml(container, trustedHtml(`
         <div class="mcp-clients-empty">
           <div class="mcp-clients-empty-title">No connected MCP clients yet</div>

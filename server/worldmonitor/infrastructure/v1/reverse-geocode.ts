@@ -102,7 +102,7 @@ export const reverseGeocode: InfrastructureServiceHandler['reverseGeocode'] = as
     );
 
     if (!resp.ok) {
-      return { country: '', code: '', displayName: '', error: `Nominatim HTTP ${resp.status}` };
+      return { country: '', code: '', displayName: '', error: 'Nominatim request failed' };
     }
 
     const data = (await resp.json()) as NominatimResponse;
@@ -114,7 +114,7 @@ export const reverseGeocode: InfrastructureServiceHandler['reverseGeocode'] = as
     await setCachedJson(cacheKey, result, 604800);
 
     return { country, code, displayName, error: '' };
-  } catch (err) {
-    return { country: '', code: '', displayName: '', error: String(err) };
+  } catch {
+    return { country: '', code: '', displayName: '', error: 'Nominatim request failed' };
   }
 };

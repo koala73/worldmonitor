@@ -9,13 +9,20 @@ WorldMonitor runs a minimal OAuth 2.1 authorization server whose only client-fac
 - [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636) — PKCE (required, S256 only)
 - [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) — Authorization Server Metadata
 - [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) — Protected Resource Metadata
+- [RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207) — Authorization Server Issuer Identification
 
 ## Discovery
 
 | URL | Purpose |
 |-----|---------|
 | `/.well-known/oauth-authorization-server` | AS metadata (endpoints, supported grants, PKCE methods) |
-| `/.well-known/oauth-protected-resource` | Resource metadata (authorization servers, scopes) |
+| `/.well-known/oauth-authorization-server/mcp` | The same AS metadata, for clients that probe the path-scoped location |
+| `/.well-known/oauth-authorization-server/api/mcp` | The same, for clients that probe it under the deployed `/api/mcp` route |
+| `/.well-known/oauth-protected-resource` | Resource metadata for the origin (authorization servers, scopes) |
+| `/.well-known/oauth-protected-resource/mcp` | Resource metadata for the MCP endpoint, naming `https://<host>/mcp` as the `resource` ([RFC 9728 §3.1](https://datatracker.ietf.org/doc/html/rfc9728#section-3.1)) |
+| `/.well-known/oauth-protected-resource/api/mcp` | The same, for the deployed `/api/mcp` route, naming `https://<host>/api/mcp` |
+
+Each transport path has its own document because a client accepts an advertised `resource` only when the URL it called sits under that path. The `401` challenge names the document for the path the client actually called. Clients that build that URL themselves instead of following the challenge find it there; both documents are served, so a client that discovered the origin-wide one keeps working.
 
 `/.well-known/oauth-protected-resource` currently advertises the public resource scope `mcp`. Pro authorization-code grants return the internal scope value `mcp_pro`; legacy API-key grants and `client_credentials` return `mcp`.
 
@@ -46,17 +53,15 @@ Dynamic Client Registration. Returns a `client_id` (public clients, no secret).
 }
 ```
 
-**Redirect URI allowlist**: only these prefixes are accepted:
+**Redirect URI allowlist**: `http://localhost:<port>` / `http://127.0.0.1:<port>` (any port), or an exact match for a hosted MCP client callback listed in [MCP server → Redirect URI allowlist](/mcp-overview#redirect-uri-allowlist). Any other entry returns `400 invalid_redirect_uri` for the whole registration.
 
-- `https://claude.ai/api/mcp/auth_callback`
-- `https://claude.com/api/mcp/auth_callback`
-- `http://localhost:<port>` / `http://127.0.0.1:<port>` — any port
-
-At most **3** `redirect_uris` per registration; more returns `400 invalid_request`.
+At most **8** `redirect_uris` per registration; more returns `400 invalid_request`.
 
 **Rate limit**: 5 registrations / 60 s / IP.
 
 **Client TTL**: 90 days sliding (every successful token exchange refreshes).
+
+**Client ID Metadata Documents**: instead of registering, a client on the [trusted list](/mcp-overview#client-id-metadata-documents) can use the HTTPS URL of its published metadata document as `client_id` on `/authorize` and `/token`. The AS metadata advertises `client_id_metadata_document_supported: true`. A URL `client_id` is resolved from that document; any other value is looked up as a registration.
 
 ### `GET /api/oauth/authorize`
 
@@ -65,12 +70,14 @@ Starts the OAuth flow. Renders a consent page that redirects to Clerk for sign-i
 **Required query params**:
 
 - `response_type=code`
-- `client_id` — from DCR
-- `redirect_uri` — must match the one registered
+- `client_id` — from DCR, or a trusted Client ID Metadata Document URL
+- `redirect_uri` — must match the one registered, or one listed in the metadata document (loopback callbacks may use any port)
 - `code_challenge` — PKCE S256
 - `code_challenge_method=S256`
 - `state` — opaque
 - `scope` (optional)
+
+**Authorization response**: redirects to `redirect_uri` with `code`, `state` (when one was sent), and `iss`. `iss` is the `issuer` from the AS metadata of the host where the flow started ([RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207)); the metadata advertises `authorization_response_iss_parameter_supported: true`.
 
 **Code TTL**: 10 minutes. Single-use (atomic `GETDEL` on exchange).
 
@@ -120,7 +127,7 @@ Validates the `client_secret` against the deployment's operator key allowlist an
 **Token TTLs**:
 
 - Access token: 1 hour
-- Refresh token: 7 days
+- Refresh token: 30 days, renewed on every refresh. Each refresh issues a new refresh token with the full 30 days, so a client that refreshes at least once in 30 days stays signed in.
 
 Access and refresh tokens are opaque UUIDs. All token-endpoint responses include `Cache-Control: no-store, Pragma: no-cache`.
 

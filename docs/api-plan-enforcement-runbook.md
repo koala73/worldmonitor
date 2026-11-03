@@ -153,14 +153,15 @@ key's TTL (`PRO_DAILY_QUOTA_TTL_SECONDS`, 172,800 s) expires it. The
 customer-visible effect is a usage number that reads high, not a cap that lets
 calls through.
 
-### 3. Weight 3 with no post-execution refund
+### 3. Fixed weights with no post-execution refund
 
-`get_country_brief` and `get_airspace` charge 3 units, reserved before dispatch.
+`get_country_brief` charges 3 units; `get_airspace` charges 5 to cover up to four
+bounded downstream requests across the dateline. These fixed weights are reserved before dispatch.
 Once `_execute()` has run the slot stays charged whatever happens next, which is
 the GHSA-hcq5 fix working as designed: an upstream error or an over-budget
 output already cost us the fetch, so refunding it was the cost-cap bypass. On a
-1,000/day budget that is 333 such calls to reach 999 units, with the 334th
-refused. An API Starter customer whose integration retries a failing
+1,000/day budget that is 333 country-brief calls to reach 999 units, with the 334th
+refused, or 200 airspace calls. An API Starter customer whose integration retries a failing
 `get_country_brief` in a loop burns the whole day's REST allowance with it, once
 the counters are one.
 

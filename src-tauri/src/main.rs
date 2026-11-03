@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod cache_bounds;
+mod clerk_relay;
+mod desktop_sign_in;
 
 use std::collections::HashMap;
 use std::env;
@@ -21,11 +23,15 @@ use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, RunEvent, Webview, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 use cache_bounds::validate_cache_write_sizes;
+use clerk_relay::{ClerkClientToken, ClerkFapiRequest, ClerkFapiResponse};
 
 const DEFAULT_LOCAL_API_PORT: u16 = 46123;
 const SIDECAR_PORT_RECOVERY_TIMEOUT_MS: u64 = 30_000;
 const MAX_LOCAL_API_PROXY_BYTES: usize = 16 * 1024 * 1024;
 const KEYRING_SERVICE: &str = "world-monitor";
+const SECRETS_VAULT_KEYRING_ACCOUNT: &str = "secrets-vault";
+const CLERK_CLIENT_KEYRING_ACCOUNT: &str = "clerk-client";
+const CLERK_RELAY_WINDOWS: [&str; 1] = ["main"];
 const LOCAL_API_LOG_FILE: &str = "local-api.log";
 const DESKTOP_LOG_FILE: &str = "desktop.log";
 const MENU_FILE_SETTINGS_ID: &str = "file.settings";
@@ -34,10 +40,8 @@ const MENU_HELP_GITHUB_ID: &str = "help.github";
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
 const TRUSTED_WINDOWS: [&str; 3] = ["main", "settings", "live-channels"];
 const SECRET_MANAGEMENT_WINDOWS: [&str; 2] = ["main", "settings"];
-const DESKTOP_SHARED_SECRET_KEY: &str = "WM_DESKTOP_SHARED_SECRET";
-const BUILD_TIME_SIDECAR_ENV_KEYS: [&str; 2] = ["CONVEX_URL", DESKTOP_SHARED_SECRET_KEY];
-const SUPPORTED_SECRET_KEYS: [&str; 30] = [
-    "GROQ_API_KEY",
+const BUILD_TIME_SIDECAR_ENV_KEYS: [&str; 1] = ["CONVEX_URL"];
+const SUPPORTED_SECRET_KEYS: [&str; 28] = [
     "OPENROUTER_API_KEY",
     "EXA_API_KEYS",
     "BRAVE_API_KEYS",
@@ -66,7 +70,6 @@ const SUPPORTED_SECRET_KEYS: [&str; 30] = [
     "WTO_API_KEY",
     "AVIATIONSTACK_API",
     "ICAO_API_KEY",
-    DESKTOP_SHARED_SECRET_KEY,
 ];
 
 struct LocalApiState {
@@ -91,10 +94,47 @@ impl Default for LocalApiState {
     }
 }
 
+impl LocalApiState {
+    fn live_port(&self) -> Result<u16, String> {
+        let mut child_slot = self
+            .child
+            .lock()
+            .map_err(|_| "Failed to lock local API state".to_string())?;
+        match child_slot.as_mut() {
+            None => self.clear_recorded_port(),
+            Some(child) => match child.try_wait() {
+                Ok(None) => self
+                    .port
+                    .lock()
+                    .map_err(|_| "Failed to lock local API port".to_string())?
+                    .ok_or_else(|| "Local API sidecar is not ready".to_string()),
+                Ok(Some(_)) => {
+                    *child_slot = None;
+                    self.clear_recorded_port()
+                }
+                Err(_) => Self::refuse_unverified_child(),
+            },
+        }
+    }
+
+    fn clear_recorded_port(&self) -> Result<u16, String> {
+        if let Ok(mut port_slot) = self.port.lock() {
+            *port_slot = None;
+        }
+        Err("Local API sidecar is not ready".to_string())
+    }
+
+    fn refuse_unverified_child() -> Result<u16, String> {
+        Err("Local API sidecar is not ready".to_string())
+    }
+}
+
 /// In-memory cache for keychain secrets. Populated once at startup to avoid
 /// repeated macOS Keychain prompts (each `Entry::get_password()` triggers one).
 struct SecretsCache {
     secrets: Mutex<HashMap<String, String>>,
+    /// Logged to desktop.log once the app handle exists.
+    load_warning: Option<String>,
 }
 
 /// In-memory mirror of persistent-cache.json. The file can grow to 10+ MB,
@@ -108,11 +148,175 @@ struct PersistentCache {
     flush_scheduled: Mutex<bool>,
 }
 
+/// Where the secrets vault currently lives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VaultStorage {
+    /// The platform store: macOS Keychain, Windows Credential Manager, or the
+    /// Linux Secret Service.
+    SecretStore,
+    /// The Linux kernel session keyring, used only when the Secret Service is
+    /// unreachable. It does not survive a reboot.
+    SessionKeyring,
+}
+
+struct VaultRead {
+    json: Option<String>,
+    storage: VaultStorage,
+    /// Never contains secret values, only keyring error text.
+    warning: Option<String>,
+}
+
+/// True when the keyring error means no Secret Service provider is reachable
+/// over D-Bus (for example no gnome-keyring or KWallet on a minimal desktop).
+fn is_secret_service_unavailable(err: &keyring::Error) -> bool {
+    let mut current: Option<&(dyn std::error::Error + 'static)> = Some(err);
+    while let Some(error) = current {
+        let message = error.to_string().to_ascii_lowercase();
+        if message.contains("no dbus session or secret service provider found")
+            || (message.contains("dbus")
+                && (message.contains("not activatable")
+                    || message.contains("not provided by any .service files")
+                    || message.contains("serviceunknown")
+                    || message.contains("has no owner")
+                    || message.contains("unable to autolaunch a dbus-daemon")
+                    || message.contains("failed to connect to socket")))
+        {
+            return true;
+        }
+        current = error.source();
+    }
+    false
+}
+
+/// The kernel keyring entry that stands in for the Secret Service. It links
+/// into the session and per-user persistent keyrings, so it lasts for the
+/// login session (and briefly after logout) but never survives a reboot.
+#[cfg(target_os = "linux")]
+fn session_keyring_entry(account: &str) -> Option<Entry> {
+    keyring::keyutils::KeyutilsCredential::new_with_target(None, KEYRING_SERVICE, account)
+        .map(|credential| Entry::new_with_credential(Box::new(credential)))
+        .map_err(|err| eprintln!("[tauri] Linux kernel keyring unavailable: {err}"))
+        .ok()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn session_keyring_entry(_account: &str) -> Option<Entry> {
+    None
+}
+
+const SESSION_KEYRING_SAVE_WARNING: &str = "Secret Service is unavailable, so API keys were saved \
+to the Linux kernel session keyring. They will be lost on reboot. Install and unlock a Secret \
+Service provider (GNOME Keyring or KWallet) to keep them.";
+
+/// Called when the Secret Service is reachable. A kernel keyring vault only
+/// exists if a save failed over to it (every successful platform save deletes
+/// it), so it is always newer than the platform vault: move it back into the
+/// Secret Service so changes made during an outage, deletions included, win.
+fn reconcile_vault_json(
+    primary_json: Option<String>,
+    primary: &Entry,
+    fallback: Option<&Entry>,
+) -> VaultRead {
+    let Some((entry, json)) =
+        fallback.and_then(|entry| entry.get_password().ok().map(|json| (entry, json)))
+    else {
+        return VaultRead {
+            json: primary_json,
+            storage: VaultStorage::SecretStore,
+            warning: None,
+        };
+    };
+    let warning = match primary.set_password(&json) {
+        Ok(()) => {
+            // Both copies now match, so a failed delete is harmless.
+            let _ = entry.delete_credential();
+            None
+        }
+        Err(err) => Some(format!(
+            "Could not move API keys from the Linux kernel session keyring back to the \
+             Secret Service: {err}"
+        )),
+    };
+    VaultRead {
+        json: Some(json),
+        storage: VaultStorage::SecretStore,
+        warning,
+    }
+}
+
+fn read_vault_json(primary: &Entry, fallback: Option<&Entry>) -> VaultRead {
+    match primary.get_password() {
+        Ok(json) => reconcile_vault_json(Some(json), primary, fallback),
+        Err(keyring::Error::NoEntry) => reconcile_vault_json(None, primary, fallback),
+        Err(err) if fallback.is_some() && is_secret_service_unavailable(&err) => VaultRead {
+            json: fallback.and_then(|entry| entry.get_password().ok()),
+            storage: VaultStorage::SessionKeyring,
+            warning: Some(format!(
+                "Secret Service is unavailable ({err}); reading API keys from the Linux kernel \
+                 session keyring, which does not survive a reboot."
+            )),
+        },
+        Err(err) => VaultRead {
+            json: None,
+            storage: VaultStorage::SecretStore,
+            warning: Some(format!("Could not read API keys from the system keychain: {err}")),
+        },
+    }
+}
+
+fn write_vault_json(
+    json: &str,
+    primary: &Entry,
+    fallback: Option<&Entry>,
+) -> Result<VaultStorage, String> {
+    match primary.set_password(json) {
+        Ok(()) => {
+            if let Some(entry) = fallback {
+                // NoEntry is the normal case. A session copy that cannot be
+                // deleted would be promoted over this save on the next load
+                // (see reconcile_vault_json), so make it match instead.
+                match entry.delete_credential() {
+                    Ok(()) | Err(keyring::Error::NoEntry) => {}
+                    Err(delete_err) => {
+                        if let Err(set_err) = entry.set_password(json) {
+                            eprintln!(
+                                "[tauri] WARN: could not delete ({delete_err}) or update \
+                                 ({set_err}) the Linux kernel session keyring copy of the API \
+                                 key vault; the next launch may restore older API keys."
+                            );
+                        }
+                    }
+                }
+            }
+            Ok(VaultStorage::SecretStore)
+        }
+        Err(err) => match fallback {
+            Some(entry) if is_secret_service_unavailable(&err) => {
+                entry.set_password(json).map_err(|fallback_err| {
+                    format!(
+                        "Failed to write vault: {err}; kernel keyring fallback also failed: \
+                         {fallback_err}"
+                    )
+                })?;
+                Ok(VaultStorage::SessionKeyring)
+            }
+            _ => Err(format!("Failed to write vault: {err}")),
+        },
+    }
+}
+
 impl SecretsCache {
     fn load_from_keychain() -> Self {
         // Try consolidated vault first — single keychain prompt
-        if let Ok(entry) = Entry::new(KEYRING_SERVICE, "secrets-vault") {
-            if let Ok(json) = entry.get_password() {
+        let mut load_warning = None;
+        if let Ok(entry) = Entry::new(KEYRING_SERVICE, SECRETS_VAULT_KEYRING_ACCOUNT) {
+            let fallback = session_keyring_entry(SECRETS_VAULT_KEYRING_ACCOUNT);
+            let read = read_vault_json(&entry, fallback.as_ref());
+            if let Some(warning) = &read.warning {
+                eprintln!("[tauri] {warning}");
+            }
+            load_warning = read.warning;
+            if let Some(json) = read.json {
                 if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&json) {
                     let secrets: HashMap<String, String> = map
                         .into_iter()
@@ -123,8 +327,17 @@ impl SecretsCache {
                         .collect();
                     return SecretsCache {
                         secrets: Mutex::new(secrets),
+                        load_warning,
                     };
                 }
+            }
+            if read.storage == VaultStorage::SessionKeyring {
+                // Legacy per-key entries live in the same unreachable Secret
+                // Service, so skip the migration below.
+                return SecretsCache {
+                    secrets: Mutex::new(HashMap::new()),
+                    load_warning,
+                };
             }
         }
 
@@ -145,7 +358,7 @@ impl SecretsCache {
         // Write consolidated vault and clean up individual entries
         if !secrets.is_empty() {
             if let Ok(json) = serde_json::to_string(&secrets) {
-                if let Ok(vault_entry) = Entry::new(KEYRING_SERVICE, "secrets-vault") {
+                if let Ok(vault_entry) = Entry::new(KEYRING_SERVICE, SECRETS_VAULT_KEYRING_ACCOUNT) {
                     if vault_entry.set_password(&json).is_ok() {
                         for key in SUPPORTED_SECRET_KEYS.iter() {
                             if let Ok(entry) = Entry::new(KEYRING_SERVICE, key) {
@@ -159,6 +372,7 @@ impl SecretsCache {
 
         SecretsCache {
             secrets: Mutex::new(secrets),
+            load_warning,
         }
     }
 }
@@ -246,15 +460,13 @@ struct SecretValidationResponse {
     payload: Value,
 }
 
-fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
+fn save_vault(cache: &HashMap<String, String>) -> Result<VaultStorage, String> {
     let json =
         serde_json::to_string(cache).map_err(|e| format!("Failed to serialize vault: {e}"))?;
-    let entry = Entry::new(KEYRING_SERVICE, "secrets-vault")
+    let entry = Entry::new(KEYRING_SERVICE, SECRETS_VAULT_KEYRING_ACCOUNT)
         .map_err(|e| format!("Keyring init failed: {e}"))?;
-    entry
-        .set_password(&json)
-        .map_err(|e| format!("Failed to write vault: {e}"))?;
-    Ok(())
+    let fallback = session_keyring_entry(SECRETS_VAULT_KEYRING_ACCOUNT);
+    write_vault_json(&json, &entry, fallback.as_ref())
 }
 
 fn generate_local_token() -> String {
@@ -275,10 +487,10 @@ fn can_manage_renderer_secrets(label: &str) -> bool {
     SECRET_MANAGEMENT_WINDOWS.contains(&label)
 }
 
-// The shared desktop secret is host-managed. All other supported vault keys
-// may be configured by the first-party main/settings renderers.
+// Every supported vault key may be configured by the first-party
+// main/settings renderers.
 fn is_renderer_managed_secret_key(key: &str) -> bool {
-    key != DESKTOP_SHARED_SECRET_KEY && SUPPORTED_SECRET_KEYS.contains(&key)
+    SUPPORTED_SECRET_KEYS.contains(&key)
 }
 
 fn require_secret_management_window(label: &str) -> Result<(), String> {
@@ -338,11 +550,7 @@ async fn send_local_api_request(
     if body.as_ref().is_some_and(|body| body.len() > MAX_LOCAL_API_PROXY_BYTES) {
         return Err("Local API request body exceeds the proxy limit".to_string());
     }
-    let port = state
-        .port
-        .lock()
-        .map_err(|_| "Failed to lock local API port".to_string())?
-        .ok_or_else(|| "Local API sidecar is not ready".to_string())?;
+    let port = state.live_port()?;
     let token = state
         .token
         .lock()
@@ -401,10 +609,326 @@ async fn proxy_local_api_request(
     send_local_api_request(&state, &request.method, &normalized_path, &request.headers, request.body).await
 }
 
+/// Holds the Clerk native-mode client token. Loaded from the keychain on first
+/// use so a signed-in user stays signed in across launches.
+struct ClerkRelayState {
+    token: tauri::async_runtime::Mutex<Option<Option<ClerkClientToken>>>,
+    http_client: reqwest::Client,
+}
+
+impl Default for ClerkRelayState {
+    fn default() -> Self {
+        Self {
+            token: tauri::async_runtime::Mutex::new(None),
+            http_client: reqwest::Client::builder()
+                .use_native_tls()
+                .redirect(reqwest::redirect::Policy::none())
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
+        }
+    }
+}
+
+fn load_clerk_client_token() -> Option<ClerkClientToken> {
+    let entry = Entry::new(KEYRING_SERVICE, CLERK_CLIENT_KEYRING_ACCOUNT).ok()?;
+    let json = match entry.get_password() {
+        Ok(json) => json,
+        Err(keyring::Error::NoEntry) => return None,
+        Err(err) => {
+            eprintln!("[tauri] Could not read the saved sign-in from the system keychain: {err}");
+            return None;
+        }
+    };
+    serde_json::from_str(&json).ok()
+}
+
+fn save_clerk_client_token(token: &ClerkClientToken) -> Result<(), String> {
+    let json = serde_json::to_string(token).map_err(|e| format!("Failed to serialize Clerk client: {e}"))?;
+    Entry::new(KEYRING_SERVICE, CLERK_CLIENT_KEYRING_ACCOUNT)
+        .map_err(|e| format!("Keyring init failed: {e}"))?
+        .set_password(&json)
+        .map_err(|e| format!("Failed to store Clerk client: {e}"))
+}
+
+/// Sends one validated Frontend API request with the given client token (or
+/// none) and returns the response plus the client token Clerk sent back. It
+/// touches no stored state.
+async fn send_fapi_with_token(
+    state: &ClerkRelayState,
+    validated: clerk_relay::ValidatedRequest,
+    token: Option<&str>,
+) -> Result<(ClerkFapiResponse, Option<String>), String> {
+    let mut outbound = state.http_client.request(validated.method, validated.url);
+    if let Some(token) = token {
+        outbound = outbound.header(reqwest::header::AUTHORIZATION, token);
+    }
+    if let Some(content_type) = validated.content_type {
+        outbound = outbound.header(reqwest::header::CONTENT_TYPE, content_type);
+    }
+    if let Some(body) = validated.body {
+        outbound = outbound.body(body);
+    }
+
+    let mut response = outbound
+        .send()
+        .await
+        .map_err(|error| format!("Clerk request failed: {error}"))?;
+    let status = response.status().as_u16();
+    let header_text = |name: reqwest::header::HeaderName| {
+        response
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string)
+    };
+    let content_type = header_text(reqwest::header::CONTENT_TYPE);
+    let authorization = header_text(reqwest::header::AUTHORIZATION);
+
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| format!("Failed to read Clerk response: {error}"))?
+    {
+        clerk_relay::append_capped(&mut bytes, &chunk, clerk_relay::MAX_RESPONSE_BODY_BYTES)?;
+    }
+    Ok((
+        ClerkFapiResponse {
+            status,
+            content_type,
+            body: String::from_utf8_lossy(&bytes).into_owned(),
+        },
+        authorization,
+    ))
+}
+
+fn store_clerk_client_token(app: &AppHandle, slot: &mut Option<ClerkClientToken>, next: ClerkClientToken) {
+    if let Err(err) = save_clerk_client_token(&next) {
+        // The session still works for this launch; only persistence failed.
+        append_desktop_log(app, "WARN", &err);
+    }
+    *slot = Some(next);
+}
+
+/// Sends one validated Frontend API request with the stored client token and
+/// stores the token Clerk rotates in. Shared by the renderer relay command.
+async fn send_clerk_fapi_request(
+    app: &AppHandle,
+    state: &ClerkRelayState,
+    request: ClerkFapiRequest,
+) -> Result<ClerkFapiResponse, String> {
+    let validated = clerk_relay::validate_request(request)?;
+    let host = validated.url.host_str().unwrap_or_default().to_string();
+
+    // Held across the request so a rotated token from one response is never
+    // overwritten by a concurrent response that carried the older one.
+    let mut slot = state.token.lock().await;
+    let stored = slot.get_or_insert_with(load_clerk_client_token);
+    let token = clerk_relay::token_for_host(stored.as_ref(), &host).map(str::to_string);
+
+    let (response, authorization) = send_fapi_with_token(state, validated, token.as_deref()).await?;
+    if let Some(next) = clerk_relay::next_stored_token(stored.as_ref(), &host, authorization.as_deref()) {
+        store_clerk_client_token(app, stored, next);
+    }
+    Ok(response)
+}
+
+#[tauri::command]
+async fn clerk_fapi_request(
+    webview: Webview,
+    app: AppHandle,
+    request: ClerkFapiRequest,
+    state: tauri::State<'_, ClerkRelayState>,
+) -> Result<ClerkFapiResponse, String> {
+    if !CLERK_RELAY_WINDOWS.contains(&webview.label()) {
+        return Err(format!("Clerk relay not allowed from window '{}'", webview.label()));
+    }
+    send_clerk_fapi_request(&app, &state, request).await
+}
+
+#[derive(Default)]
+struct BrowserSignInState {
+    flows: Mutex<desktop_sign_in::FlowRegistry>,
+}
+
+impl BrowserSignInState {
+    fn with<T>(&self, f: impl FnOnce(&mut desktop_sign_in::FlowRegistry) -> T) -> Result<T, String> {
+        let mut flows = self.flows.lock().map_err(|_| "Sign-in state unavailable".to_string())?;
+        Ok(f(&mut flows))
+    }
+}
+
+#[derive(Deserialize)]
+struct DesktopTokenResponse {
+    ticket: Option<String>,
+    error: Option<String>,
+}
+
+fn require_relay_window(webview: &Webview) -> Result<(), String> {
+    if CLERK_RELAY_WINDOWS.contains(&webview.label()) {
+        Ok(())
+    } else {
+        Err(format!("Browser sign-in not allowed from window '{}'", webview.label()))
+    }
+}
+
+/// Step one of the browser sign-in: open www.worldmonitor.app, wait for the
+/// loopback callback, and exchange the code for a Clerk ticket. The ticket
+/// stays in Rust; `finish_desktop_browser_sign_in` redeems it. Splitting the
+/// two lets the renderer sign out an existing session only once this
+/// succeeded.
+#[tauri::command]
+async fn start_desktop_browser_sign_in(
+    webview: Webview,
+    fapi_host: String,
+    relay: tauri::State<'_, ClerkRelayState>,
+    sign_in: tauri::State<'_, BrowserSignInState>,
+) -> Result<(), String> {
+    require_relay_window(&webview)?;
+    if !desktop_sign_in::is_ticket_host(&fapi_host) {
+        return Err("unsupported_host".to_string());
+    }
+    let flag = sign_in.with(|flows| flows.begin(std::time::Instant::now()))?.map_err(str::to_string)?;
+    let result = run_browser_sign_in(&fapi_host, &flag, &relay, &sign_in).await;
+    if result.is_err() {
+        sign_in.with(|flows| flows.fail(&flag))?;
+    }
+    result
+}
+
+async fn run_browser_sign_in(
+    fapi_host: &str,
+    flag: &Arc<std::sync::atomic::AtomicBool>,
+    relay: &ClerkRelayState,
+    sign_in: &BrowserSignInState,
+) -> Result<(), String> {
+    let secrets = desktop_sign_in::FlowSecrets::generate();
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0))
+        .map_err(|_| "listener_failed".to_string())?;
+    let port = listener.local_addr().map_err(|_| "listener_failed".to_string())?.port();
+
+    // open_in_shell keeps the Linux LD_* scrubbing. Its error text includes
+    // the URL, which carries the flow's state, so it is discarded.
+    open_in_shell(&desktop_sign_in::sign_in_url(port, &secrets.state, &secrets.challenge))
+        .map_err(|_| "browser_failed".to_string())?;
+    sign_in.with(|flows| flows.opened(std::time::Instant::now()))?;
+
+    let state_for_wait = secrets.state.clone();
+    let deadline = std::time::Instant::now() + desktop_sign_in::FLOW_TIMEOUT;
+    let flag_for_wait = flag.clone();
+    let code = tauri::async_runtime::spawn_blocking(move || {
+        desktop_sign_in::wait_for_code(&listener, &state_for_wait, deadline, &flag_for_wait)
+    })
+    .await
+    .map_err(|_| "listener_failed".to_string())?
+    .map_err(|error| match error {
+        desktop_sign_in::WaitError::Cancelled => "cancelled".to_string(),
+        desktop_sign_in::WaitError::TimedOut => "timed_out".to_string(),
+        desktop_sign_in::WaitError::Io(_) => "listener_failed".to_string(),
+    })?;
+    sign_in.with(|flows| flows.check(flag))?.map_err(str::to_string)?;
+
+    let user_agent = format!("WorldMonitor-Desktop/{} (desktop-auth)", env!("CARGO_PKG_VERSION"));
+    let exchange = relay
+        .http_client
+        .post(desktop_sign_in::TOKEN_ENDPOINT)
+        .header(reqwest::header::USER_AGENT, user_agent)
+        .json(&serde_json::json!({ "code": code, "code_verifier": secrets.verifier }))
+        .send()
+        .await
+        .map_err(|_| "network_failed".to_string())?;
+    let exchange_ok = exchange.status().is_success();
+    let token: DesktopTokenResponse = exchange.json().await.map_err(|_| "exchange_failed".to_string())?;
+    let ticket = match (exchange_ok, token.ticket, token.error) {
+        (true, Some(ticket), _) => ticket,
+        (_, _, Some(error)) => return Err(error),
+        _ => return Err("exchange_failed".to_string()),
+    };
+
+    sign_in
+        .with(|flows| flows.store_ticket(flag, fapi_host.to_string(), ticket, std::time::Instant::now()))?
+        .map_err(str::to_string)
+}
+
+/// Step two: redeem the pending ticket through the relay. Returns only the
+/// sign-in status, the new session id and the identifier.
+#[tauri::command]
+async fn finish_desktop_browser_sign_in(
+    webview: Webview,
+    app: AppHandle,
+    relay: tauri::State<'_, ClerkRelayState>,
+    sign_in: tauri::State<'_, BrowserSignInState>,
+) -> Result<desktop_sign_in::SignInOutcome, String> {
+    require_relay_window(&webview)?;
+    let (fapi_host, ticket) = sign_in
+        .with(|flows| flows.take_ticket(std::time::Instant::now()))?
+        .ok_or_else(|| "invalid_grant".to_string())?;
+    if !desktop_sign_in::is_ticket_host(&fapi_host) {
+        return Err("sign_in_refused".to_string());
+    }
+    let body = reqwest::Url::parse_with_params("http://x/", [("strategy", "ticket"), ("ticket", ticket.as_str())])
+        .map_err(|_| "exchange_failed".to_string())?
+        .query()
+        .unwrap_or_default()
+        .to_string();
+    let validated = clerk_relay::validate_request(ClerkFapiRequest {
+        host: fapi_host.clone(),
+        method: "POST".to_string(),
+        path: "/v1/client/sign_ins".to_string(),
+        content_type: Some("application/x-www-form-urlencoded".to_string()),
+        body: Some(body),
+    })?;
+
+    // Redeem on a fresh client (no token): the user's current session is
+    // never signed out, and a failure below leaves it untouched.
+    let (redeemed, new_token) = send_fapi_with_token(&relay, validated, None)
+        .await
+        .map_err(|_| "network_failed".to_string())?;
+    let outcome = desktop_sign_in::parse_sign_in_response(&redeemed.body).ok();
+    if !desktop_sign_in::adopt_redeemed_client(redeemed.status, outcome.as_ref(), new_token.as_deref()) {
+        return Err(if redeemed.status >= 400 { "sign_in_refused" } else { "exchange_failed" }.to_string());
+    }
+    let (Some(outcome), Some(new_token)) = (outcome, new_token) else {
+        return Err("exchange_failed".to_string());
+    };
+
+    let mut slot = relay.token.lock().await;
+    let stored = slot.get_or_insert_with(load_clerk_client_token);
+    let previous = clerk_relay::token_for_host(stored.as_ref(), &fapi_host).map(str::to_string);
+    store_clerk_client_token(
+        &app,
+        stored,
+        ClerkClientToken { host: fapi_host.clone(), token: new_token.trim().to_string() },
+    );
+    drop(slot);
+
+    // Best effort: end the replaced client and its sessions, as a sign-out
+    // would have. A failure only leaves that session to expire on its own.
+    if let Some(previous) = previous {
+        if let Ok(destroy) = clerk_relay::validate_request(ClerkFapiRequest {
+            host: fapi_host,
+            method: "POST".to_string(),
+            path: "/v1/client?_method=DELETE".to_string(),
+            content_type: None,
+            body: None,
+        }) {
+            let _ = send_fapi_with_token(&relay, destroy, Some(&previous)).await;
+        }
+    }
+    Ok(outcome)
+}
+
+#[tauri::command]
+fn cancel_desktop_browser_sign_in(webview: Webview, sign_in: tauri::State<'_, BrowserSignInState>) -> Result<(), String> {
+    require_relay_window(&webview)?;
+    sign_in.with(|flows| flows.cancel())
+}
+
 #[tauri::command]
 fn get_desktop_runtime_info(webview: Webview, state: tauri::State<'_, LocalApiState>) -> Result<DesktopRuntimeInfo, String> {
     require_trusted_window(webview.label())?;
-    let port = state.port.lock().ok().and_then(|g| *g);
+    let port = state.live_port().ok();
     Ok(DesktopRuntimeInfo {
         os: env::consts::OS.to_string(),
         arch: env::consts::ARCH.to_string(),
@@ -415,9 +939,7 @@ fn get_desktop_runtime_info(webview: Webview, state: tauri::State<'_, LocalApiSt
 #[tauri::command]
 fn get_local_api_port(webview: Webview, state: tauri::State<'_, LocalApiState>) -> Result<u16, String> {
     require_trusted_window(webview.label())?;
-    state.port.lock()
-        .map_err(|_| "Failed to lock port state".to_string())?
-        .ok_or_else(|| "Port not yet assigned".to_string())
+    state.live_port()
 }
 
 #[tauri::command]
@@ -437,7 +959,7 @@ fn update_renderer_secret_cache(
     cache: &SecretsCache,
     key: &str,
     value: Option<&str>,
-) -> Result<(), String> {
+) -> Result<VaultStorage, String> {
     let mut secrets = cache
         .secrets
         .lock()
@@ -452,9 +974,16 @@ fn update_renderer_secret_cache(
             proposed.remove(key);
         }
     }
-    save_vault(&proposed)?;
+    let storage = save_vault(&proposed)?;
     *secrets = proposed;
-    Ok(())
+    Ok(storage)
+}
+
+fn log_session_keyring_save(webview: &Webview, storage: VaultStorage) {
+    if storage == VaultStorage::SessionKeyring {
+        eprintln!("[tauri] {SESSION_KEYRING_SAVE_WARNING}");
+        append_desktop_log(&webview.app_handle(), "WARN", SESSION_KEYRING_SAVE_WARNING);
+    }
 }
 
 async fn sync_renderer_secret_to_sidecar(
@@ -493,7 +1022,8 @@ async fn set_secret(
         return Err(format!("Unsupported secret key: {key}"));
     }
     let value = (!value.trim().is_empty()).then(|| value.trim().to_string());
-    update_renderer_secret_cache(&cache, &key, value.as_deref())?;
+    let storage = update_renderer_secret_cache(&cache, &key, value.as_deref())?;
+    log_session_keyring_save(&webview, storage);
     sync_renderer_secret_to_sidecar(&state, &key, value.as_deref()).await;
     Ok(())
 }
@@ -509,7 +1039,8 @@ async fn delete_secret(
     if !is_renderer_managed_secret_key(&key) {
         return Err(format!("Unsupported secret key: {key}"));
     }
-    update_renderer_secret_cache(&cache, &key, None)?;
+    let storage = update_renderer_secret_cache(&cache, &key, None)?;
+    log_session_keyring_save(&webview, storage);
     sync_renderer_secret_to_sidecar(&state, &key, None).await;
     Ok(())
 }
@@ -1096,7 +1627,6 @@ fn sanitize_path_for_node(p: &Path) -> String {
 fn build_time_sidecar_env_value(key: &str) -> Option<&'static str> {
     match key {
         "CONVEX_URL" => option_env!("CONVEX_URL"),
-        DESKTOP_SHARED_SECRET_KEY => option_env!("WM_DESKTOP_SHARED_SECRET"),
         _ => None,
     }
     .filter(|value| !value.trim().is_empty())
@@ -1109,13 +1639,248 @@ fn sidecar_env_value(key: &str) -> Option<String> {
 }
 
 #[cfg(test)]
+mod secret_vault_tests {
+    use super::{
+        is_secret_service_unavailable, read_vault_json, write_vault_json, VaultStorage,
+    };
+    use keyring::mock::MockCredential;
+    use keyring::{Entry, Error};
+
+    fn mock_entry() -> Entry {
+        Entry::new_with_credential(Box::new(MockCredential::default()))
+    }
+
+    fn mock_entry_with(secret: &str) -> Entry {
+        let entry = mock_entry();
+        entry.set_password(secret).expect("seed mock entry");
+        entry
+    }
+
+    /// Mock errors are returned once, by the next call on the entry.
+    fn fail_next_call(entry: &Entry, err: Error) {
+        entry
+            .get_credential()
+            .downcast_ref::<MockCredential>()
+            .expect("mock credential")
+            .set_error(err);
+    }
+
+    fn platform_failure(message: &str) -> Error {
+        Error::PlatformFailure(message.to_string().into())
+    }
+
+    fn service_unavailable() -> Error {
+        platform_failure("DBus error: The name is not activatable")
+    }
+
+    #[test]
+    fn classifies_missing_secret_service_as_unavailable() {
+        for message in [
+            // dbus-broker (Fedora, Arch) with no provider installed
+            "DBus error: The name is not activatable",
+            // dbus-daemon (Debian, Ubuntu) with no provider installed
+            "DBus error: The name org.freedesktop.secrets was not provided by any .service files",
+            "DBus error: The name org.freedesktop.secrets has no owner",
+            // dbus-secret-service's own Unavailable variant
+            "No DBus session or Secret Service provider found",
+            // no session bus at all (headless, some Wayland sessions)
+            "DBus error: Unable to autolaunch a dbus-daemon without a $DISPLAY for X11",
+            "DBus error: Failed to connect to socket /run/user/1000/bus: No such file or directory",
+        ] {
+            assert!(
+                is_secret_service_unavailable(&platform_failure(message)),
+                "should be unavailable: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn other_keyring_errors_are_not_unavailable() {
+        assert!(!is_secret_service_unavailable(&Error::NoEntry));
+        assert!(!is_secret_service_unavailable(&platform_failure(
+            "Platform secure storage failure: permission denied"
+        )));
+        assert!(!is_secret_service_unavailable(&Error::NoStorageAccess(
+            "Secret Service: object locked".to_string().into()
+        )));
+    }
+
+    #[test]
+    fn read_uses_platform_store_when_available() {
+        let primary = mock_entry_with("{\"A\":\"1\"}");
+        let read = read_vault_json(&primary, Some(&mock_entry()));
+        assert_eq!(read.json.as_deref(), Some("{\"A\":\"1\"}"));
+        assert_eq!(read.storage, VaultStorage::SecretStore);
+        assert!(read.warning.is_none());
+    }
+
+    #[test]
+    fn read_falls_back_to_session_keyring_when_secret_service_is_unavailable() {
+        let primary = mock_entry();
+        fail_next_call(&primary, service_unavailable());
+        let fallback = mock_entry_with("{\"B\":\"2\"}");
+        let read = read_vault_json(&primary, Some(&fallback));
+        assert_eq!(read.json.as_deref(), Some("{\"B\":\"2\"}"));
+        assert_eq!(read.storage, VaultStorage::SessionKeyring);
+        assert!(read.warning.as_deref().unwrap_or("").contains("Secret Service"));
+    }
+
+    #[test]
+    fn read_with_unavailable_secret_service_and_empty_session_keyring_is_empty() {
+        let primary = mock_entry();
+        fail_next_call(&primary, service_unavailable());
+        let read = read_vault_json(&primary, Some(&mock_entry()));
+        assert!(read.json.is_none());
+        assert_eq!(read.storage, VaultStorage::SessionKeyring);
+    }
+
+    #[test]
+    fn read_recovers_session_keyring_vault_when_platform_store_has_no_entry() {
+        // Keys saved while the Secret Service was down are moved into it once
+        // it comes back.
+        let primary = mock_entry();
+        let fallback = mock_entry_with("{\"B\":\"2\"}");
+        let read = read_vault_json(&primary, Some(&fallback));
+        assert_eq!(read.json.as_deref(), Some("{\"B\":\"2\"}"));
+        assert_eq!(read.storage, VaultStorage::SecretStore);
+        assert_eq!(primary.get_password().unwrap(), "{\"B\":\"2\"}");
+        assert!(matches!(fallback.get_password(), Err(Error::NoEntry)));
+    }
+
+    #[test]
+    fn read_prefers_newer_session_keyring_vault_over_stale_platform_vault() {
+        // The Secret Service dropped mid-session, a key was deleted (saved to
+        // the kernel keyring only), and the Secret Service is back on restart.
+        // The deleted key must not come back from the stale platform vault.
+        let primary = mock_entry_with("{\"A\":\"1\",\"B\":\"2\"}");
+        let fallback = mock_entry_with("{\"B\":\"2\"}");
+        let read = read_vault_json(&primary, Some(&fallback));
+        assert_eq!(read.json.as_deref(), Some("{\"B\":\"2\"}"));
+        assert_eq!(read.storage, VaultStorage::SecretStore);
+        assert_eq!(primary.get_password().unwrap(), "{\"B\":\"2\"}");
+        assert!(matches!(fallback.get_password(), Err(Error::NoEntry)));
+    }
+
+    #[test]
+    fn read_keeps_session_keyring_vault_when_promotion_fails() {
+        let primary = mock_entry_with("{\"A\":\"1\",\"B\":\"2\"}");
+        let fallback = mock_entry_with("{\"B\":\"2\"}");
+        // get succeeds, then the promoting set fails.
+        let read = {
+            let json = primary.get_password().unwrap();
+            assert_eq!(json, "{\"A\":\"1\",\"B\":\"2\"}");
+            fail_next_call(&primary, platform_failure("permission denied"));
+            super::reconcile_vault_json(Some(json), &primary, Some(&fallback))
+        };
+        assert_eq!(read.json.as_deref(), Some("{\"B\":\"2\"}"));
+        assert_eq!(fallback.get_password().unwrap(), "{\"B\":\"2\"}");
+        assert!(read.warning.is_some());
+    }
+
+    #[test]
+    fn read_warns_without_fallback_on_other_errors() {
+        let primary = mock_entry();
+        fail_next_call(
+            &primary,
+            Error::NoStorageAccess("Secret Service: object locked".to_string().into()),
+        );
+        let fallback = mock_entry_with("{\"B\":\"2\"}");
+        let read = read_vault_json(&primary, Some(&fallback));
+        assert!(read.json.is_none());
+        assert_eq!(read.storage, VaultStorage::SecretStore);
+        assert!(read.warning.as_deref().unwrap_or("").contains("object locked"));
+    }
+
+    #[test]
+    fn write_uses_platform_store_and_clears_session_keyring_copy() {
+        let primary = mock_entry();
+        let fallback = mock_entry_with("{\"old\":\"x\"}");
+        let storage = write_vault_json("{\"A\":\"1\"}", &primary, Some(&fallback)).unwrap();
+        assert_eq!(storage, VaultStorage::SecretStore);
+        assert_eq!(primary.get_password().unwrap(), "{\"A\":\"1\"}");
+        assert!(matches!(fallback.get_password(), Err(Error::NoEntry)));
+    }
+
+    #[test]
+    fn write_overwrites_session_keyring_copy_when_its_delete_fails() {
+        // A stale session copy would be promoted over the newer platform save
+        // on the next launch, so a failed delete must leave matching data.
+        let primary = mock_entry_with("{\"A\":\"1\",\"B\":\"2\"}");
+        let fallback = mock_entry_with("{\"A\":\"1\",\"B\":\"2\"}");
+        fail_next_call(&fallback, platform_failure("permission denied"));
+        let storage = write_vault_json("{\"B\":\"2\"}", &primary, Some(&fallback)).unwrap();
+        assert_eq!(storage, VaultStorage::SecretStore);
+        let read = read_vault_json(&primary, Some(&fallback));
+        assert_eq!(read.json.as_deref(), Some("{\"B\":\"2\"}"));
+        assert_eq!(primary.get_password().unwrap(), "{\"B\":\"2\"}");
+    }
+
+    #[test]
+    fn write_falls_back_to_session_keyring_when_secret_service_is_unavailable() {
+        let primary = mock_entry();
+        fail_next_call(&primary, service_unavailable());
+        let fallback = mock_entry();
+        let storage = write_vault_json("{\"A\":\"1\"}", &primary, Some(&fallback)).unwrap();
+        assert_eq!(storage, VaultStorage::SessionKeyring);
+        assert_eq!(fallback.get_password().unwrap(), "{\"A\":\"1\"}");
+        assert!(matches!(primary.get_password(), Err(Error::NoEntry)));
+    }
+
+    #[test]
+    fn write_fails_on_other_errors_without_touching_session_keyring() {
+        let primary = mock_entry();
+        fail_next_call(&primary, platform_failure("permission denied"));
+        let fallback = mock_entry();
+        let err = write_vault_json("{\"A\":\"1\"}", &primary, Some(&fallback)).unwrap_err();
+        assert!(err.contains("Failed to write vault"), "{err}");
+        assert!(matches!(fallback.get_password(), Err(Error::NoEntry)));
+    }
+
+    #[test]
+    fn write_fails_when_secret_service_is_unavailable_and_no_fallback_exists() {
+        let primary = mock_entry();
+        fail_next_call(&primary, service_unavailable());
+        assert!(write_vault_json("{\"A\":\"1\"}", &primary, None).is_err());
+    }
+
+    /// Exercises the real kernel keyring on Linux CI runners.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn session_keyring_entry_round_trips_on_linux() {
+        let account = format!("secrets-vault-test-{}", std::process::id());
+        let entry = super::session_keyring_entry(&account).expect("kernel keyring available");
+        entry.set_password("{\"A\":\"1\"}").expect("write session keyring");
+        assert_eq!(entry.get_password().unwrap(), "{\"A\":\"1\"}");
+        entry.delete_credential().expect("delete session keyring entry");
+    }
+
+    /// On a Linux box without a Secret Service provider (such as a CI runner),
+    /// the real keyring error must be classified as unavailable.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn real_secret_service_failure_is_classified_on_linux() {
+        let account = format!("secrets-vault-probe-{}", std::process::id());
+        let entry = Entry::new(super::KEYRING_SERVICE, &account).expect("entry");
+        match entry.set_password("probe") {
+            Ok(()) => {
+                // A Secret Service is running here; nothing to classify.
+                let _ = entry.delete_credential();
+            }
+            Err(err) => assert!(
+                is_secret_service_unavailable(&err),
+                "unclassified Secret Service error: {err}"
+            ),
+        }
+    }
+}
+
+#[cfg(test)]
 mod sanitize_path_tests {
     use super::{
         build_time_sidecar_env_value, can_manage_renderer_secrets, configured_renderer_secret_keys,
         is_renderer_managed_secret_key, local_api_proxy_path_is_allowed, sanitize_path_for_node,
-        read_port_file, watch_for_late_sidecar_port, SidecarReadinessOutcome,
-        BUILD_TIME_SIDECAR_ENV_KEYS, DEFAULT_LOCAL_API_PORT, DESKTOP_SHARED_SECRET_KEY,
-        SUPPORTED_SECRET_KEYS,
+        read_port_file, watch_for_late_sidecar_port, LocalApiState, SidecarReadinessOutcome,
+        BUILD_TIME_SIDECAR_ENV_KEYS, DEFAULT_LOCAL_API_PORT, SUPPORTED_SECRET_KEYS,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -1179,13 +1944,9 @@ mod sanitize_path_tests {
     }
 
     #[test]
-    fn supports_desktop_shared_secret_for_keychain_injection() {
-        assert!(SUPPORTED_SECRET_KEYS.contains(&DESKTOP_SHARED_SECRET_KEY));
-    }
-
-    #[test]
-    fn supports_desktop_shared_secret_for_packaged_sidecar_env() {
-        assert!(BUILD_TIME_SIDECAR_ENV_KEYS.contains(&DESKTOP_SHARED_SECRET_KEY));
+    fn packaged_sidecar_env_only_carries_convex_url() {
+        assert_eq!(BUILD_TIME_SIDECAR_ENV_KEYS, ["CONVEX_URL"]);
+        assert!(!SUPPORTED_SECRET_KEYS.iter().any(|key| key.starts_with("WM_DESKTOP_")));
     }
 
     #[test]
@@ -1194,8 +1955,9 @@ mod sanitize_path_tests {
     }
 
     #[test]
-    fn renderer_secret_commands_cannot_manage_desktop_shared_secret() {
-        assert!(!is_renderer_managed_secret_key(DESKTOP_SHARED_SECRET_KEY));
+    fn renderer_secret_commands_cover_every_supported_key() {
+        assert!(SUPPORTED_SECRET_KEYS.iter().all(|key| is_renderer_managed_secret_key(key)));
+        assert!(!is_renderer_managed_secret_key("GROQ_API_KEY"));
     }
 
     #[test]
@@ -1207,12 +1969,12 @@ mod sanitize_path_tests {
     }
 
     #[test]
-    fn configured_secret_metadata_filters_internal_values_and_keys() {
+    fn configured_secret_metadata_filters_unknown_keys() {
         let secrets = HashMap::from([
-            ("GROQ_API_KEY".to_string(), "secret-value".to_string()),
-            (DESKTOP_SHARED_SECRET_KEY.to_string(), "internal-value".to_string()),
+            ("OPENROUTER_API_KEY".to_string(), "secret-value".to_string()),
+            ("GROQ_API_KEY".to_string(), "retired-value".to_string()),
         ]);
-        assert_eq!(configured_renderer_secret_keys(&secrets), vec!["GROQ_API_KEY"]);
+        assert_eq!(configured_renderer_secret_keys(&secrets), vec!["OPENROUTER_API_KEY"]);
     }
 
     #[test]
@@ -1282,6 +2044,53 @@ mod sanitize_path_tests {
             let _ = child.wait();
         }
         let _ = fs::remove_dir_all(test_dir);
+    }
+
+    fn state_with_sidecar(child: Option<Child>, port: Option<u16>) -> LocalApiState {
+        let state = LocalApiState::default();
+        *state.child.lock().expect("lock child") = child;
+        *state.port.lock().expect("lock port") = port;
+        state
+    }
+
+    #[test]
+    fn live_port_rejects_exited_sidecar_and_clears_recorded_port() {
+        let mut child = delayed_sidecar_test_child();
+        child.kill().expect("kill sidecar test child");
+        child.wait().expect("reap sidecar test child");
+        let state = state_with_sidecar(Some(child), Some(46123));
+
+        assert_eq!(
+            state.live_port(),
+            Err("Local API sidecar is not ready".to_string())
+        );
+        assert_eq!(*state.port.lock().expect("lock port"), None);
+    }
+
+    #[test]
+    fn live_port_rejects_missing_sidecar_and_clears_recorded_port() {
+        let state = state_with_sidecar(None, Some(46123));
+
+        assert_eq!(
+            state.live_port(),
+            Err("Local API sidecar is not ready".to_string())
+        );
+        assert_eq!(*state.port.lock().expect("lock port"), None);
+    }
+
+    #[test]
+    fn live_port_returns_recorded_port_while_sidecar_is_alive() {
+        let child = delayed_sidecar_test_child();
+        let state = state_with_sidecar(Some(child), Some(47555));
+
+        assert_eq!(state.live_port(), Ok(47555));
+        assert_eq!(*state.port.lock().expect("lock port"), Some(47555));
+
+        let mut slot = state.child.lock().expect("lock child");
+        if let Some(mut child) = slot.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 }
 
@@ -1646,6 +2455,7 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         .env("LOCAL_API_DATA_DIR", &data_dir)
         .env("LOCAL_API_MODE", "tauri-sidecar")
         .env("LOCAL_API_CLOUD_FALLBACK", "true")
+        .env("LOCAL_API_APP_VERSION", env!("CARGO_PKG_VERSION"))
         .env("LOCAL_API_TOKEN", &local_api_token)
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_file_err));
@@ -1879,8 +2689,10 @@ fn main() {
         }
 
         // WebKit2GTK's bubblewrap sandbox can fail inside an AppImage FUSE
-        // mount, causing blank white screens. Disable it when running as
-        // AppImage — the AppImage itself already provides isolation.
+        // mount, causing blank white screens (#411). Disabling it removes the
+        // renderer sandbox for AppImage users. The AppImage format is only a
+        // packaging container and isolates nothing, so this trades defence
+        // in depth for a window that opens.
         if env::var_os("APPIMAGE").is_some() {
             // WebKitGTK 2.39.3+ deprecated WEBKIT_FORCE_SANDBOX and now expects
             // WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 instead.  Setting the
@@ -1920,6 +2732,8 @@ fn main() {
         .on_menu_event(handle_menu_event)
         .manage(LocalApiState::default())
         .manage(SecretsCache::load_from_keychain())
+        .manage(ClerkRelayState::default())
+        .manage(BrowserSignInState::default())
         .invoke_handler(tauri::generate_handler![
             list_configured_secret_keys,
             set_secret,
@@ -1940,9 +2754,17 @@ fn main() {
             close_live_channels_window,
             open_url,
             open_youtube_login,
-            fetch_polymarket
+            fetch_polymarket,
+            clerk_fapi_request,
+            start_desktop_browser_sign_in,
+            finish_desktop_browser_sign_in,
+            cancel_desktop_browser_sign_in
         ])
         .setup(|app| {
+            if let Some(warning) = app.state::<SecretsCache>().load_warning.as_deref() {
+                append_desktop_log(&app.handle(), "WARN", warning);
+            }
+
             // Load persistent cache into memory (avoids 14MB file I/O on every IPC call)
             let cache_path = cache_file_path(&app.handle()).unwrap_or_default();
             app.manage(PersistentCache::load(&cache_path));

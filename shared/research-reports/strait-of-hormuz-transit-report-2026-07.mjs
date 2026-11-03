@@ -26,7 +26,7 @@ export const REPORT = {
   // markup) so the meta description, JSON-LD, and lede can never disagree
   // with the data the way hand-written numbers can.
   description:
-    'Strait of Hormuz transits are down {{m:declinePct}} since the March 2026 closure — {{m:disruptionDailyAvg}} ships/day since March 1 versus {{m:sameWindow2025DailyAvg}} in the same 2025 window — with July at about {{m:julVsFebShare}} of the February baseline, from IMF PortWatch daily data.',
+    'Strait of Hormuz ship traffic is down {{m:declinePct}} since the March 2026 closure: {{m:disruptionDailyAvg}} transits/day vs {{m:sameWindow2025DailyAvg}} in the same 2025 window, from IMF PortWatch daily data.',
   disruptionStart: '2026-03-01',
   author: {
     name: 'World Monitor Research',
@@ -95,6 +95,7 @@ export const REPORT = {
       id: 'summary',
       heading: 'Direct answer',
       layer: 'derived',
+      block: 'current-pointer',
       paragraphs: [
         'Is the Strait of Hormuz open? Commercial transit has partially resumed but remains far below normal. Between 2026-03-01 and {{m:observationEnd}}, IMF PortWatch recorded {{m:disruptionTransits}} vessel transits — a daily average of {{m:disruptionDailyAvg}} against {{m:sameWindow2025DailyAvg}} in the same 2025 window, a {{m:declinePct}} decline. July traffic to date averages {{m:julToDateAvgTotal}} transits per day, about {{m:julVsFebShare}} of the February 2026 pre-disruption baseline.',
         'This report quantifies the collapse and partial recovery using daily AIS-derived transit counts, keeps observed data separate from third-party event reporting, and documents exactly what this data cannot show — including vessels transiting with AIS transmitters off.',

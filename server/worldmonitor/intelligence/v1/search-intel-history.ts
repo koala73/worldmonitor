@@ -4,6 +4,8 @@ import type {
   SearchIntelHistoryRequest,
   SearchIntelHistoryResponse,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
+import { ApiError } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
+import { resolveAiRouting } from '../../../_shared/ai-routing-policy';
 import {
   intelHistorySearch,
   resolveLimit,
@@ -11,6 +13,7 @@ import {
 import {
   embedQueryText,
   normalizeQueryText,
+  queryEmbeddingDenial,
 } from '../../../_shared/intel-history-embed';
 import {
   cacheSuccessfulHistoryRead,
@@ -51,12 +54,14 @@ const MAX_QUERY_LEN = 500;
  * cache miss spends one embeddings call.
  */
 export const searchIntelHistory: IntelligenceServiceHandler['searchIntelHistory'] = async (
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: SearchIntelHistoryRequest,
 ): Promise<SearchIntelHistoryResponse> => {
   const query = validateHistoryText(req.query, 'query', 2, MAX_QUERY_LEN);
   const scope = validateHistoryScope(req, MAX_LIMIT);
   const limit = resolveLimit(scope.limit, DEFAULT_LIMIT, MAX_LIMIT);
+  const embeddingDenial = queryEmbeddingDenial(await resolveAiRouting(ctx.request));
+  if (embeddingDenial) throw new ApiError(embeddingDenial.status, embeddingDenial.message, '');
 
   const result = await cacheSuccessfulHistoryRead('search', {
     query: normalizeQueryText(query), domain: scope.domain, country: scope.country,

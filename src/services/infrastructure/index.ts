@@ -12,6 +12,7 @@ import type { InternetOutage } from '@/types';
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { isFeatureAvailable } from '../runtime-config';
 import { getHydratedData } from '@/services/bootstrap';
+import { dataFreshness } from '@/services/data-freshness';
 import { InfrastructureServiceClient } from '@/services/generated-rpc-clients';
 
 // ---- Client + Circuit Breakers ----
@@ -22,7 +23,7 @@ const statusBreaker = createCircuitBreaker<ListServiceStatusesResponse>({ name: 
 const ddosBreaker = createCircuitBreaker<ListInternetDdosAttacksResponse>({ name: 'DDoS Attacks', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const trafficAnomaliesBreaker = createCircuitBreaker<ListInternetTrafficAnomaliesResponse>({ name: 'Traffic Anomalies', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
-const emptyOutageFallback: ListInternetOutagesResponse = { outages: [], pagination: undefined };
+const emptyOutageFallback: ListInternetOutagesResponse = { outages: [], pagination: undefined, fetchedAt: 0 };
 const emptyStatusFallback: ListServiceStatusesResponse = { statuses: [] };
 const emptyDdosFallback: ListInternetDdosAttacksResponse = { protocol: [], vector: [], dateRangeStart: '', dateRangeEnd: '', topTargetLocations: [] };
 const emptyAnomaliesFallback: ListInternetTrafficAnomaliesResponse = { anomalies: [], totalCount: 0 };
@@ -86,14 +87,22 @@ function toOutage(proto: ProtoOutage): InternetOutage {
 // ========================================================================
 
 let outagesConfigured: boolean | null = null;
+/** Sticky proof that outage providers have returned real observations. */
+let outagesSeen = false;
 
 export function isOutagesConfigured(): boolean | null {
   return outagesConfigured;
 }
 
+// A response can settle after the user turns the feature off; availability wins.
+function setOutagesConfigured(configured: boolean | null): void {
+  outagesConfigured = isFeatureAvailable('internetOutages') ? configured : false;
+  dataFreshness.setEnabled('outages', outagesConfigured !== false);
+}
+
 export async function fetchInternetOutages(): Promise<InternetOutage[]> {
   if (!isFeatureAvailable('internetOutages')) {
-    outagesConfigured = false;
+    setOutagesConfigured(false);
     return [];
   }
 
@@ -104,23 +113,27 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
     resp = hydrated;
   } else {
     resp = await outageBreaker.execute(async () => {
-      return client.listInternetOutages({
+      return await client.listInternetOutages({
         country: '',
         start: 0,
         end: 0,
         pageSize: 0,
         cursor: '',
       });
-    }, emptyOutageFallback, { shouldCache: (r) => r.outages.length > 0 });
+    }, emptyOutageFallback);
   }
 
-  if (resp.outages.length === 0) {
-    if (outagesConfigured === null) outagesConfigured = false;
-    return [];
+  if (resp.outages.length > 0) {
+    outagesSeen = true;
+    setOutagesConfigured(true);
+    return resp.outages.map(toOutage);
   }
 
-  outagesConfigured = true;
-  return resp.outages.map(toOutage);
+  // Empty snapshots must not imply missing configuration. Keep unknown until
+  // real observations arrive; once seen, retain/recover configured=true even
+  // across feature disablement so healthy empty cache can re-enable the layer.
+  setOutagesConfigured(outagesSeen ? true : null);
+  return [];
 }
 
 export function getOutagesStatus(): string {
@@ -239,9 +252,8 @@ export async function fetchServiceStatuses(): Promise<ServiceStatusResponse> {
   }, emptyStatusFallback, { shouldCache: (r) => r.statuses.length > 0 });
 
   const services = resp.statuses.map(toServiceResult);
-
   return {
-    success: true,
+    success: statusBreaker.getDataState().mode !== 'unavailable',
     timestamp: new Date().toISOString(),
     summary: computeSummary(services),
     services,

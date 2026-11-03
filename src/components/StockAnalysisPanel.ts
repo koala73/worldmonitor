@@ -107,6 +107,7 @@ export class StockAnalysisPanel extends Panel {
 
     if (!this.tableView) {
       this.tableView = new WatchlistTableView<StockAnalysisResult>({
+        labelledBy: `${this.panelId}Title`,
         intro: this.buildIntro(items.length),
         columns: [
           {

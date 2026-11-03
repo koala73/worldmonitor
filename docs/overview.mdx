@@ -9,11 +9,11 @@ World Monitor runs specialized variants from a single codebase, each optimized f
 | Variant | URL | Focus |
 |---------|-----|-------|
 | **🌍 World Monitor** | [worldmonitor.app](https://www.worldmonitor.app) | Geopolitical intelligence, military tracking, conflict monitoring, infrastructure security |
-| **💻 Tech Monitor** | [tech.worldmonitor.app](https://tech.worldmonitor.app) | Technology sector intelligence, AI/startup ecosystems, cloud infrastructure, tech events |
-| **😊 Happy Monitor** | [happy.worldmonitor.app](https://happy.worldmonitor.app) | Curated positive news, global progress tracking, science breakthroughs, conservation wins |
-| **💰 Finance Monitor** | [finance.worldmonitor.app](https://finance.worldmonitor.app) | Global markets, stock exchanges, central banks, commodities, forex, crypto, economic indicators |
-| **⛏️ Commodity Monitor** | [commodity.worldmonitor.app](https://commodity.worldmonitor.app) | Commodity markets, mining sites, processing plants, supply chains, trade flows |
-| **⚡ Energy Monitor** | [energy.worldmonitor.app](https://energy.worldmonitor.app) | Oil & gas pipelines, storage facilities, tanker positions, chokepoints, energy infrastructure and shocks |
+| **💻 Tech Monitor** | [tech.worldmonitor.app](https://tech.worldmonitor.app/dashboard) | Technology sector intelligence, AI/startup ecosystems, cloud infrastructure, tech events |
+| **😊 Happy Monitor** | [happy.worldmonitor.app](https://happy.worldmonitor.app/dashboard) | Curated positive news, global progress tracking, science breakthroughs, conservation wins |
+| **💰 Finance Monitor** | [finance.worldmonitor.app](https://finance.worldmonitor.app/dashboard) | Global markets, stock exchanges, central banks, commodities, forex, crypto, economic indicators |
+| **⛏️ Commodity Monitor** | [commodity.worldmonitor.app](https://commodity.worldmonitor.app/dashboard) | Commodity markets, mining sites, processing plants, supply chains, trade flows |
+| **⚡ Energy Monitor** | [energy.worldmonitor.app](https://energy.worldmonitor.app/dashboard) | Oil & gas pipelines, storage facilities, tanker positions, chokepoints, energy infrastructure and shocks |
 
 A compact **variant switcher** in the header allows seamless navigation between variants while preserving your map position and panel configuration.
 
@@ -29,7 +29,7 @@ World Monitor combines an interactive 3D globe and flat map, configurable intell
 
 | Capability | Current scope |
 | --- | --- |
-| Country risk and resilience | Country Instability Index (CII v8) scores with signed 24-hour movement for 31 Tier-1 countries. The Country Resilience Index ranks a 196-country public universe using 72 indicators across 21 active dimensions and 6 domains on a 6-hour schedule. |
+| Country risk and resilience | Country Instability Index (CII v14) scores with signed 24-hour movement for 31 Tier-1 countries. The Country Resilience Index scores a 196-country public universe and ranks 169 of 196 countries using 72 indicators across 21 active dimensions and 6 domains on a 6-hour schedule. |
 | Signal and infrastructure analysis | Geographic convergence, temporal anomalies, and cross-source correlation combine related events. Infrastructure Cascade models dependencies across a 350-node infrastructure graph. |
 | Decision support | Source-linked AI briefs, probabilistic forecasts with machine-checkable resolution criteria and scorecard context, [Route Explorer](/route-explorer), and the [Scenario Engine](/scenario-engine). |
 | Company and procurement workflows | The MCP company-intelligence tool combines market context, SEC filing search, and material 8-K events. [Global Procurement Intelligence](/global-procurement-intelligence) uses seeded public opportunities from supported government and multilateral portals. Availability still depends on deployment credentials and source health. |
@@ -58,11 +58,11 @@ These are operating targets, not a promise that an upstream publisher will relea
 
 ### Sources and provenance
 
-World Monitor publishes a public, searchable [Data Source Catalog](https://www.worldmonitor.app/sources). Its manifest-derived inventory lists active providers, upstream hosts, structured endpoints, and news and OSINT feeds. The application feed registry and Telegram catalog are separate inventory layers and should not be added together.
+World Monitor publishes a public, searchable [Data Source Catalog](https://www.worldmonitor.app/sources/). Its manifest-derived inventory lists active providers, upstream hosts, structured endpoints, and news and OSINT feeds. The application feed registry and Telegram catalog are separate inventory layers and should not be added together.
 
 Across those inventories, World Monitor combines structured APIs, public and licensed datasets, official government and multilateral sources, news feeds, and reviewed OSINT. Representative providers include ACLED, UCDP, GDELT, UNHCR/OCHA, IMF, World Bank, BIS, Eurostat, FRED, USGS, NASA, Open-Meteo, Cloudflare Radar, AIS and ADS-B providers, and hundreds of news publishers. RSS configuration can include source tier, state affiliation, and propaganda-risk metadata. Telegram configuration uses a different schema with tier, topic, and region metadata. Cross-source corroboration can improve ranking and confidence, but it is not a universal prerequisite for every alert.
 
-Start with the public [Data Source Catalog](https://www.worldmonitor.app/sources) to search and filter providers by signal domain, source type, country of origin, or country covered. Origin is the publisher's home country; coverage is the geography a feed reports on. For collection methods, coverage, credibility tiers, and bias metadata, use the [Data Sources methodology](/data-sources). For the host-level attribution and terms-review posture, use the machine-generated [Source Attribution inventory](/source-attribution). Generation checks detect repository drift, but an inventory entry is not by itself a legal clearance. Source availability and licensing can differ by feature and deployment model.
+Start with the public [Data Source Catalog](https://www.worldmonitor.app/sources/) to search and filter providers by signal domain, source type, country of origin, or country covered. Origin is the publisher's home country; coverage is the geography a feed reports on. For collection methods, coverage, credibility tiers, and bias metadata, use the [Data Sources methodology](/data-sources). For the host-level attribution and terms-review posture, use the machine-generated [Source Attribution inventory](/source-attribution). Generation checks detect repository drift, but an inventory entry is not by itself a legal clearance. Source availability and licensing can differ by feature and deployment model.
 
 ### Integration options and requirements
 
@@ -101,10 +101,13 @@ The primary variant focuses on geopolitical intelligence, military tracking, and
 |-------|---------|
 | **AI Insights** | LLM-synthesized world brief with focal point detection |
 | **AI Strategic Posture** | Theater-level military force aggregation with strike capability assessment |
-| **Country Instability Index** | Real-time CII v8 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
+| **Country Instability Index** | Real-time CII v14 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
+| **Metals & Materials** | Metals and materials quotes from Yahoo Finance, with tabs for physical premiums and EUR FX when that data is available. The gold-in-other-currencies tab appears only in the commodity variant. Energy prices appear in the Energy Complex panel instead |
+| **Toronto Safety** | Toronto Police Service open data: reported major-crime occurrences (approximate, offset locations) and annual calls attended by division and neighbourhood. Not live dispatch. Off by default |
+| **Global Giving** | Published giving benchmarks from platforms and institutions (GoFundMe, GlobalGiving, JustGiving, Candid, OECD), with source periods and verification status. Annualized figures are estimates, not live activity. Off by default here; on in the happy variant |
 
 ### News Coverage
 
@@ -114,7 +117,7 @@ Curated, attributed news feeds cover geopolitics, defense, energy, think tanks, 
 
 ## Tech Monitor
 
-The tech variant ([tech.worldmonitor.app](https://tech.worldmonitor.app)) provides specialized layers for technology sector monitoring.
+The tech variant ([tech.worldmonitor.app](https://tech.worldmonitor.app/dashboard)) provides specialized layers for technology sector monitoring.
 
 ### Tech Ecosystem Layers
 
@@ -133,6 +136,19 @@ The tech variant ([tech.worldmonitor.app](https://tech.worldmonitor.app)) provid
 | **AI Datacenters** | 313 AI compute clusters tracked from Epoch AI dataset |
 | **Undersea Cables** | Submarine fiber routes critical for cloud connectivity |
 | **Internet Outages** | Network disruptions affecting tech operations |
+
+### Tech Panels
+
+These panels are news feed groups. Each one collects a fixed set of RSS and news-search feeds and refreshes every 10 minutes.
+
+| Panel | Description |
+|-------|-------------|
+| **Unicorn Tracker** | New unicorns and decacorns, from unicorn-focused news feeds including CB Insights |
+| **Funding & VC** | Funding rounds, seed and pre-seed deals, VC news, and SEC filings |
+| **IPO & SPAC** | Tech IPO and SPAC news, including Renaissance Capital IPO coverage |
+| **AI Policy & Regulation** | AI regulation, tech antitrust, and digital policy from the US, EU, UK, China, and India |
+| **Semiconductors & Hardware** | Chip and hardware news from Tom's Hardware, SemiAnalysis, and semiconductor feeds |
+| **Developer Community** | Developer news from Dev.to, Lobsters, Changelog, and Show HN |
 
 ### Tech News Categories
 
@@ -162,7 +178,7 @@ The tech variant ([tech.worldmonitor.app](https://tech.worldmonitor.app)) provid
 
 ## Finance Monitor
 
-The finance variant ([finance.worldmonitor.app](https://finance.worldmonitor.app)) provides specialized layers for global financial markets and economic intelligence.
+The finance variant ([finance.worldmonitor.app](https://finance.worldmonitor.app/dashboard)) provides specialized layers for global financial markets and economic intelligence.
 
 ### Finance Layers
 
@@ -185,6 +201,13 @@ The finance variant ([finance.worldmonitor.app](https://finance.worldmonitor.app
 | **Supply Chain** | Maritime chokepoint disruption scores and shipping indices |
 | **WTO Trade Policy** | Active trade restrictions, tariff trends, bilateral trade flows |
 | **Premium Stock Analysis** | AI-powered stock analysis with backtesting |
+| **IPOs, Earnings & M&A** | News feed group for IPOs, earnings reports, and mergers and acquisitions |
+| **Hedge Funds & PE** | News feed group for hedge funds, private equity, and sovereign wealth funds |
+| **GCC Investments** | Curated register of Saudi and UAE investments in ports, pipelines, energy, datacenters, and other assets abroad. Filter by investing country, sector, entity, and status; select a row to fly the map to the asset |
+| **SEC Material Events** | Material 8-K filings from the SEC EDGAR latest-filings feed, with routine items such as earnings exhibits and Reg FD notices removed. Each row shows the company, item codes, and filing time, and links to the filing on sec.gov. Off by default |
+| **NQ Pulse** | Nasdaq-100 context quotes: NQ futures, QQQ, the VXN volatility index, and the 10-year Treasury yield, refreshed every 5 minutes with a Current / Delayed / Stale label. Context data, not execution-grade. Off by default |
+| **NQ Catalysts** | High-impact US macro releases for the next 7 days and earnings for the next 14 days from the companies that move the Nasdaq-100 most. Off by default |
+| **NQ News** | News feed group for Nasdaq futures, the Nasdaq-100 and QQQ, Federal Reserve releases, and semiconductors. Off by default |
 
 ### Finance News Categories
 
@@ -199,13 +222,13 @@ The finance variant ([finance.worldmonitor.app](https://finance.worldmonitor.app
 
 ## Commodity Monitor
 
-The commodity variant ([commodity.worldmonitor.app](https://commodity.worldmonitor.app)) focuses on mining, metals, energy commodities, and critical mineral supply chains.
+The commodity variant ([commodity.worldmonitor.app](https://commodity.worldmonitor.app/dashboard)) focuses on mining, metals, energy commodities, and critical mineral supply chains.
 
 ### Commodity Layers
 
 | Layer | Description |
 |-------|-------------|
-| **Mining Sites** | Major mine sites worldwide (operational, planned, suspended) |
+| **Mining Sites** | Major mine sites worldwide, with mineral, country, status (producing, in development, or exploration), and annual output where available |
 | **Processing Plants** | Smelters, refineries, and separation plants |
 | **Commodity Ports** | Mineral export/import ports and terminals |
 | **Commodity Hubs** | Global commodity exchanges |
@@ -230,7 +253,7 @@ The commodity variant ([commodity.worldmonitor.app](https://commodity.worldmonit
 
 ## Happy Monitor
 
-The happy variant ([happy.worldmonitor.app](https://happy.worldmonitor.app)) curates positive news, human progress data, and uplifting stories.
+The happy variant ([happy.worldmonitor.app](https://happy.worldmonitor.app/dashboard)) curates positive news, human progress data, and uplifting stories.
 
 ### Happy Layers
 
@@ -254,3 +277,34 @@ The happy variant ([happy.worldmonitor.app](https://happy.worldmonitor.app)) cur
 | **5 Good Things** | Daily digest of five positive stories |
 | **Conservation Wins** | Wildlife and ecosystem recovery stories |
 | **Renewable Energy** | Clean energy milestones and deployment data |
+
+---
+
+## Energy Monitor
+
+The energy variant ([energy.worldmonitor.app](https://energy.worldmonitor.app/dashboard)) focuses on oil and gas infrastructure, supply disruptions, and energy shocks.
+
+### Energy Layers
+
+| Layer | Description |
+|-------|-------------|
+| **Live Tanker Positions** | Live AIS positions of tankers within about 2° of Hormuz, Suez, Bab el-Mandeb, Malacca, Panama, and the Bosphorus. Amber markers are anchored, cyan are underway, grey have no reported speed. Polled every 60 seconds while the layer is on |
+| **Pipelines** | Oil and gas pipelines from the evidence-backed registry, coloured by status (flowing, reduced, offline, disputed). On the flat map, selecting one opens the Pipeline Status drawer |
+| **Storage Facilities** | Underground gas storage, strategic reserves, LNG terminals, and crude hubs from the Storage Atlas registry |
+| **Fuel Shortages** | Countries with confirmed or watch-level fuel shortages from the Fuel Shortage Registry |
+| **Commodity Ports** | Mineral export and import ports and terminals |
+
+### Energy Panels
+
+The asset registries behind these panels are curated from operator disclosures, regulator filings, and public datasets. Each status badge is derived from an evidence bundle, and selecting a row, or a marker on the flat map, opens a drawer with that evidence. Methodology: [pipelines](/methodology/pipelines), [storage](/methodology/storage), [fuel shortages](/methodology/shortages), [disruptions](/methodology/disruptions).
+
+| Panel | Description |
+|-------|-------------|
+| **Global Energy Risk Overview** | One row of tiles: Hormuz transit status, EU gas storage fill, Brent price with its daily change, the count of active disruptions, data freshness, and a day-of-crisis counter. Each tile loads on its own and shows "—" when its source fails |
+| **Oil & Gas Pipeline Status** | Asset, route, capacity, and a status badge (flowing, reduced, offline, or disputed). The drawer shows the evidence, sanctions references, and the asset's disruption timeline |
+| **Strategic Storage Atlas** | Underground gas storage, strategic petroleum reserve caverns, LNG terminals, and tank farms, with country, type, capacity, and status |
+| **Global Fuel Shortage Registry** | Country and product, start date, evidence, and a severity badge: confirmed (red) or watch (amber). Confirmed shortages sort first |
+| **Energy Disruptions Log** | Pipeline and storage outages, filterable by cause (sabotage, sanction, mechanical, maintenance, war, weather, commercial) with an ongoing-only toggle. Selecting an event opens the affected asset's drawer |
+| **GCC Energy Investments** | The GCC investment register described under [Finance Panels](#finance-panels) |
+
+Global Energy Risk Overview is on by default only in the energy variant. The other four energy panels are also on by default in the geopolitical variant.

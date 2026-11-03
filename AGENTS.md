@@ -4,8 +4,11 @@ WorldMonitor is a real-time global intelligence dashboard for geopolitics, milit
 
 ## Own the outcome
 
-- Review, explain, report, or diagnose means read-only unless the user also asks for changes.
-- Implement, fix, or ship means make the scoped change, verify it, and deliver a ready PR. Repair that PR after relevant review or CI failures.
+- Treat reports of broken behavior and requests to debug, investigate, diagnose, or "figure out" a failure as requests to resolve it. Prove the cause, make a scoped repair when warranted, verify it, and deliver a ready PR. Do not require the user to say "fix" again.
+- Implement, fix, or ship means complete the scoped change, verify it, and deliver a ready PR. Repair that PR after relevant review or CI failures.
+- Keep explicit diagnosis-only requests, standalone code reviews, and pure explanations read-only. Interpret the whole request and the accepted task scope, not individual verbs.
+- Preserve authorization across turns. A status question or request for explanation does not cancel an active repair. Continue through relevant CI failures without another permission step.
+- Continue available evidence collection until the question is answered or a concrete blocker prevents progress. An unknown cause alone is not a stopping condition. If no defect is demonstrated, report the evidence without a speculative patch.
 - Keep one owner responsible for integration and completion. Delegate only bounded independent work when it reduces total effort. Do not delegate recursively.
 - Start with one observable user outcome. Trace the necessary interface, service, storage, worker, and external-service path before editing. Record what the checks exercise and what they leave unverified.
 - Match planning and verification to risk. Fix demonstrated blockers. Keep optional improvements out of the change. When an approach repeatedly fails, investigate the cause before retrying.
@@ -40,7 +43,33 @@ Merge, auto-merge, and deployment require explicit authorization in the current 
 | Data workers and cache | `scripts/`, `server/_shared/`; [health contracts](docs/health-endpoints.mdx) | Producer and reader checks with fixtures; separately record live freshness evidence when required |
 | Proto and generated clients | `proto/`, `src/generated/`; [code generation](CONTRIBUTING.md#working-with-sebuf-rpc-framework) | `make generate` requires buf + sebuf v0.11.1 plugins; verify generated diff |
 | Desktop and sidecar | `src-tauri/`; [architecture](ARCHITECTURE.md) | Focused Rust checks or `npm run test:sidecar` |
+| CI workflows | `.github/workflows/`; [CI/CD table](ARCHITECTURE.md#11-cicd) | Add or update each workflow's table entry. Run `npm run docs:check` and validate the changed workflow before pushing. The pre-push hook enforces the documentation check for workflow changes |
+| Committed derived files (product facts, llms, AI search, catalogs) | `scripts/generate-derived.mjs`; [derived files](CONTRIBUTING.md#derived-files) | `npm run generate`, then commit what it rewrote |
 | Tests and documentation | `tests/`, `e2e/`, `docs/`; [verification guide](CONTRIBUTING.md#verify-the-changed-path) | Relevant existing test or docs check, `git diff --check` |
+
+For public documents and API collections, use `https://www.worldmonitor.app` for website and documentation links. Keep MCP and OAuth endpoint identities on the apex host. Run `node --test tests/agent-corpus-canonical-host.test.mjs` after changing published URLs.
+
+## Landmarks
+
+Grep the named symbol. Do not scan these files top to bottom.
+
+| Looking for | Where it is defined |
+|---|---|
+| Health keys and seed staleness | `api/health.js`: `BOOTSTRAP_KEYS`, `STANDALONE_KEYS`, `SEED_META`, `ON_DEMAND_KEYS`, `readSeedMeta`, `classifyKey` |
+| Shared seeder helpers | `scripts/_seed-utils.mjs`: `loadEnvFile`, `resolveSeedMetaKey`, `writeSeedMeta`, `writeExtraKeyWithMetaAtomically`, `withRetry` |
+| RPC access control | Split by design: `PREMIUM_RPC_PATHS` in `src/shared/premium-paths.ts`, `PUBLIC_NO_AUTH_RPC_PATHS` in `server/gateway.ts`, `validateApiKey` in `api/_api-key.js`, `isPublicSharedRpcRequest` in `src/shared/public-rpc-cache.ts` |
+| A shared term | `CONCEPTS.md`, one `###` heading per term; grep the term itself |
+
+Test path, command, and owning CI job. Read this instead of `.github/workflows/test.yml`.
+
+| Test path | Command | CI job |
+|---|---|---|
+| `tests/*.test.mjs`, `tests/*.test.mts`, `cli/test/`, `api/security/report.test.mjs` | `npm run test:data` | `unit-shards` |
+| `tests/dom/` | `npm run test:dom` | `dom-tests` |
+| `convex/__tests__/`, `server/__tests__/`, `src/services/correlation-engine/` | `npm run test:convex` | `convex-tests` |
+| `api/` node suites except `api/security/report.test.mjs`, and `src-tauri/` | `npm run test:sidecar` | `sidecar` |
+
+Find a suite by subject with `ls tests/ | grep <subject>` before searching the tree.
 
 ## Critical boundaries
 
@@ -60,6 +89,8 @@ The browser import direction is `types -> config -> services -> components -> ap
 - For browser behavior, load [verify-worldmonitor](.agents/skills/verify-worldmonitor/SKILL.md). Start with an existing strict feature test. Use manual driving for the interaction being changed.
 - For Sentry events, load [sentry-triage](.agents/skills/sentry-triage/SKILL.md). Its default is read-only triage.
 - `.agents/skills/` contains repository engineering skills. `skills/` contains published product recipes for API and MCP consumers. They serve different users.
-- Read [documented solutions](docs/solutions/) when the affected area has a prior fix. Use [CONCEPTS.md](CONCEPTS.md) for shared terms and [design philosophy](docs/architecture.mdx) for design decisions.
+- Read [documented solutions](docs/solutions/) when the affected area has a prior fix — organized by category directory (`security-issues/`, `logic-errors/`, `conventions/`, …) with YAML frontmatter (`module`, `component`, `problem_type`, `tags`) to grep. Use [CONCEPTS.md](CONCEPTS.md) for shared terms and [design philosophy](docs/architecture.mdx) for design decisions.
 
 Run the smallest meaningful proof first. Preserve useful regression coverage. Run heavy checks sequentially. Report failures honestly. Keep locally verified, PR ready, merged, deployed, observed in production, and acceptance complete as separate claims.
+
+A green pre-push hook proves only its local checks. After pushing, monitor required CI on the exact PR head. Repair relevant failures on the existing branch and verify the new head. Do not report CI success while required checks are failed or pending. Inspect the failed job's first actionable error before retrying or changing code.

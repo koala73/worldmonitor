@@ -19,7 +19,7 @@ function clusterIdForRawStory(story) {
   return typeof story?.hash === 'string' ? story.hash : '';
 }
 
-function briefStoriesToFormatterShape(briefStories) {
+function briefStoriesToFormatterShape(briefStories, corroborationByClusterId) {
   return briefStories.map((story) => ({
     title: typeof story?.headline === 'string' ? story.headline : '',
     severity: typeof story?.threatLevel === 'string' ? story.threatLevel : 'high',
@@ -29,7 +29,18 @@ function briefStoriesToFormatterShape(briefStories) {
     phase: 'sustained',
     // Formatters do not render this field, but downstream card identity does.
     hash: typeof story?.clusterId === 'string' ? story.clusterId : '',
+    // #9213: a BriefStory does not carry the verdict; its raw story does.
+    ...(corroborationByClusterId.get(story?.clusterId) ? { corroboration: corroborationByClusterId.get(story.clusterId) } : {}),
   }));
+}
+
+function corroborationsByClusterId(rawStories) {
+  const byClusterId = new Map();
+  for (const story of rawStories) {
+    const clusterId = clusterIdForRawStory(story);
+    if (clusterId && story?.corroboration && !byClusterId.has(clusterId)) byClusterId.set(clusterId, story.corroboration);
+  }
+  return byClusterId;
 }
 
 function normalizeRawStoryForCooldown(story) {
@@ -62,7 +73,7 @@ export function buildDigestDeliveryPlan({ briefStories, rawStories }) {
   const hasBriefStories = Array.isArray(briefStories) && briefStories.length > 0;
 
   return {
-    formatterStories: hasBriefStories ? briefStoriesToFormatterShape(briefStories) : raw,
+    formatterStories: hasBriefStories ? briefStoriesToFormatterShape(briefStories, corroborationsByClusterId(raw)) : raw,
     cooldownIterableStories: hasBriefStories
       ? briefStories
       : raw.map(normalizeRawStoryForCooldown),

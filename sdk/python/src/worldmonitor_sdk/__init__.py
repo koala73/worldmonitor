@@ -28,7 +28,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 # Cloudflare's WAF challenges generic library User-Agents (python-requests,
 # python-urllib, curl, empty) on the API edge, so we always identify ourselves.
@@ -111,12 +111,20 @@ def _looks_like_sse(text):
     )
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    # urllib forwards every non-content header, including the API key, to the
+    # redirect target even on another host. Refusing makes urlopen raise
+    # HTTPError with the 3xx, which _default_transport returns as a status.
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def _default_transport(request, timeout):
     """Perform an HTTP request with urllib; returns (status, content_type, text).
 
     ``request`` is a dict with keys url, method, headers, body (bytes or None).
     Non-2xx responses are returned, not raised, so callers can surface the
-    parsed error body.
+    parsed error body. Redirects are never followed.
     """
     req = urllib.request.Request(
         request["url"],
@@ -124,8 +132,11 @@ def _default_transport(request, timeout):
         headers=request.get("headers") or {},
         method=request.get("method", "GET"),
     )
+    # Built per request, like urlopen's default opener, so proxy environment
+    # variables set after import still apply.
+    opener = urllib.request.build_opener(_NoRedirect)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as res:
+        with opener.open(req, timeout=timeout) as res:
             return (
                 res.status,
                 res.headers.get("content-type", ""),

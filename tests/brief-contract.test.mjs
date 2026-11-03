@@ -103,7 +103,7 @@ describe('parseBriefSynthesis (#4921)', () => {
     assert.match(out.lead, /Hormuz/);
   });
 
-  it('strips markdown fences (groq/Gemini wrap)', () => {
+  it('strips markdown fences (models often wrap)', () => {
     const out = parseBriefSynthesis('```json\n' + VALID + '\n```', 3);
     assert.ok(out, 'fenced JSON must parse');
   });

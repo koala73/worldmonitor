@@ -49,7 +49,7 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
-import { resolveClerkSession } from '../../server/_shared/auth-session';
+import { resolveSessionUserId } from '../../server/_shared/auth-session';
 import {
   getEntitlements,
   isEntitlementBackendConfigured,
@@ -66,7 +66,7 @@ import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
 /** Inner handler — exported for unit tests with injected deps. */
 export interface QuotaDeps {
   /** Resolves the Clerk userId from the request's Bearer header. Null = unauth. */
-  resolveUserId: (req: Request) => Promise<string | null>;
+  resolveUserId: (req: Request) => Promise<string | Response | null>;
   /**
    * Reads the daily counter key from Redis. Returns the stringified count
    * (Upstash returns INCR results as strings) or null if the key does not
@@ -117,6 +117,10 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
   }
 
   const userId = await deps.resolveUserId(req);
+  if (userId instanceof Response) {
+    new Headers(jsonHeaders).forEach((value, key) => userId.headers.set(key, value));
+    return userId;
+  }
   if (!userId) {
     return new Response(JSON.stringify({ error: 'unauthenticated' }), {
       status: 401,
@@ -156,6 +160,7 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
     );
     captureSilentError(err, {
       tags: { route: 'api/user/mcp-quota', step: 'entitlements' },
+      fingerprint: ['api/user/mcp-quota', 'entitlements', err instanceof Error ? err.name : 'Error'],
     });
   }
   // The free ceiling is NOT a plan allowance — it comes from the constant the
@@ -184,6 +189,7 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
     );
     captureSilentError(err, {
       tags: { route: 'api/user/mcp-quota', step: 'redis-get' },
+      fingerprint: ['api/user/mcp-quota', 'redis-get', err instanceof Error ? err.name : 'Error'],
     });
   }
 
@@ -214,7 +220,7 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
 
 export default async function handler(req: Request): Promise<Response> {
   return quotaHandler(req, {
-    resolveUserId: async (r) => (await resolveClerkSession(r))?.userId ?? null,
+    resolveUserId: resolveSessionUserId,
     redisGet: rawRedisGetString,
     getEntitlements,
     now: () => new Date(),

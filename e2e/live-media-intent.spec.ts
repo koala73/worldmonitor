@@ -1,11 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
-import { IDLE_PAUSE_MS } from '../src/config/idle';
 
 const LIVE_MEDIA_REQUEST = /(?:youtube\.com\/embed|youtube\.com\/iframe_api|googlevideo\.com|\/api\/youtube-embed|\/videoplayback(?:[?#/]|$)|\.m3u8(?:[?#]|$))/i;
 
 async function installCleanLiveMediaPrefs(page: Page, webcamPrefs?: Record<string, unknown>): Promise<void> {
   await page.addInitScript((prefs) => {
     localStorage.removeItem('wm-live-streams-always-on');
+    localStorage.removeItem('wm-live-media-idle-stop');
     localStorage.removeItem('worldmonitor-active-channel');
     if (prefs) {
       localStorage.setItem('worldmonitor-webcam-prefs', JSON.stringify(prefs));
@@ -18,6 +18,7 @@ async function installCleanLiveMediaPrefs(page: Page, webcamPrefs?: Record<strin
 async function installAlwaysOnLiveMediaPrefs(page: Page, webcamPrefs?: Record<string, unknown>): Promise<void> {
   await page.addInitScript((prefs) => {
     localStorage.setItem('wm-live-streams-always-on', 'true');
+    localStorage.removeItem('wm-live-media-idle-stop');
     localStorage.removeItem('worldmonitor-active-channel');
     if (prefs) {
       localStorage.setItem('worldmonitor-webcam-prefs', JSON.stringify(prefs));
@@ -30,9 +31,20 @@ async function installAlwaysOnLiveMediaPrefs(page: Page, webcamPrefs?: Record<st
 async function liveNewsTransportCount(page: Page): Promise<number> {
   return page.evaluate(() => (
     document.querySelectorAll(
-      '.panel[data-panel="live-news"] iframe[src*="youtube"], .panel[data-panel="live-news"] iframe[src*="/api/youtube-embed"], .panel[data-panel="live-news"] video.live-news-native-video',
+      '.panel[data-panel="live-news"] iframe[src*="youtube"], .panel[data-panel="live-news"] iframe[src*="/api/youtube-embed"], .panel[data-panel="live-news"] video.live-news-media',
     ).length
   ));
+}
+
+/**
+ * The dashboard swaps a deferred shell for the real panel while it settles. Scrolling or observing the
+ * shell races that swap ("Element is not attached"), and the real panel's lazy start never sees it.
+ */
+async function waitForRealPanel(page: Page, panelId: string): Promise<void> {
+  await page.waitForFunction((id) => {
+    const panel = document.querySelector<HTMLElement>(`.panel[data-panel="${id}"]`);
+    return panel !== null && panel.dataset.deferredPanel !== 'true';
+  }, panelId, { timeout: 60_000 });
 }
 
 async function webcamTransportCount(page: Page): Promise<number> {
@@ -89,6 +101,7 @@ test.describe('live media intent gating', () => {
     const webcams = page.locator('.panel[data-panel="live-webcams"]');
 
     await expect(liveNews).toBeVisible({ timeout: 60_000 });
+    await waitForRealPanel(page, 'live-webcams');
     await webcams.scrollIntoViewIfNeeded();
     await expect(webcams.locator('.webcam-preview-tile').first()).toBeVisible({ timeout: 60_000 });
     await page.waitForTimeout(3000);
@@ -220,7 +233,7 @@ test.describe('live media intent gating', () => {
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBe(1);
   });
 
-  test('tears down live news media on hidden tab, idle cleanup, and panel close', async ({ page }) => {
+  test('tears down live news media on hidden tab and panel close', async ({ page }) => {
     await installCleanLiveMediaPrefs(page);
 
     await page.goto('/dashboard?liveMediaTeardown=1', { waitUntil: 'domcontentloaded' });
@@ -243,22 +256,69 @@ test.describe('live media intent gating', () => {
 
     await liveNews.getByRole('button', { name: /play live feed/i }).click();
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
-
-    await page.evaluate((idlePauseMs) => {
-      const originalSetTimeout = window.setTimeout.bind(window);
-      window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => (
-        originalSetTimeout(handler, timeout === idlePauseMs ? 120 : timeout, ...args)
-      )) as typeof window.setTimeout;
-    }, IDLE_PAUSE_MS);
-    await page.mouse.move(20, 20);
-    await expect.poll(() => liveNewsTransportCount(page), { timeout: 10_000 }).toBe(0);
-
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await expect(liveNews).toBeVisible({ timeout: 60_000 });
-    await liveNews.getByRole('button', { name: /play live feed/i }).click();
-    await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
     await liveNews.locator('.panel-close-btn').dispatchEvent('click');
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 10_000 }).toBe(0);
+  });
+
+  test('stops live news after an hour idle with a notice, resumes only on request, and keeps playing when asked', async ({ page }) => {
+    const minute = 60_000;
+    const hour = 60 * minute;
+    await installCleanLiveMediaPrefs(page);
+    await page.clock.install();
+
+    await page.goto('/dashboard?liveMediaIdle=1', { waitUntil: 'domcontentloaded' });
+    const liveNews = page.locator('.panel[data-panel="live-news"]');
+    const idleNotice = liveNews.locator('.live-media-shell--idle');
+    await expect(liveNews).toBeVisible({ timeout: 60_000 });
+
+    await liveNews.getByRole('button', { name: /play live feed/i }).click();
+    await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
+
+    await page.clock.fastForward(5 * minute);
+    await page.waitForTimeout(1500);
+    expect(await liveNewsTransportCount(page)).toBe(1);
+
+    await page.clock.fastForward(hour);
+    await expect.poll(() => liveNewsTransportCount(page), { timeout: 10_000 }).toBe(0);
+    await expect(idleNotice).toContainText(/paused for inactivity/i);
+    await expect(idleNotice).toContainText('Live video stopped after 1 hour without mouse, keyboard or touch activity.');
+    await expect(idleNotice.getByRole('button', { name: 'Resume' })).toBeVisible();
+    await expect(idleNotice.getByRole('button', { name: 'Keep playing when idle' })).toBeVisible();
+
+    await page.mouse.move(20, 20);
+    await page.mouse.move(240, 240);
+    await page.waitForTimeout(1500);
+    expect(await liveNewsTransportCount(page)).toBe(0);
+    await expect(idleNotice).toBeVisible();
+
+    await idleNotice.getByRole('button', { name: 'Resume' }).click();
+    await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
+
+    await page.clock.fastForward(hour);
+    await expect.poll(() => liveNewsTransportCount(page), { timeout: 10_000 }).toBe(0);
+    await idleNotice.getByRole('button', { name: 'Keep playing when idle' }).click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('wm-live-media-idle-stop'))).toBe('never');
+    await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
+
+    await page.clock.fastForward(5 * hour);
+    await page.waitForTimeout(1500);
+    expect(await liveNewsTransportCount(page)).toBe(1);
+    await expect(idleNotice).toHaveCount(0);
+  });
+
+  test('a saved always-on dashboard keeps live news playing through a long idle stretch', async ({ page }) => {
+    await installAlwaysOnLiveMediaPrefs(page);
+    await page.clock.install();
+
+    await page.goto('/dashboard?liveMediaIdleAlwaysOn=1', { waitUntil: 'domcontentloaded' });
+    const liveNews = page.locator('.panel[data-panel="live-news"]');
+    await expect(liveNews).toBeVisible({ timeout: 60_000 });
+    await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
+
+    await page.clock.fastForward(5 * 60 * 60_000);
+    await page.waitForTimeout(1500);
+    expect(await liveNewsTransportCount(page)).toBe(1);
+    await expect(liveNews.locator('.live-media-shell--idle')).toHaveCount(0);
   });
 
   test('tears down webcam media on scroll-away', async ({ page }) => {
@@ -346,6 +406,7 @@ test.describe('live media intent gating', () => {
     await page.goto('/dashboard?liveMediaAlwaysOnToggleOff=1', { waitUntil: 'domcontentloaded' });
     const liveNews = page.locator('.panel[data-panel="live-news"]');
     await expect(liveNews).toBeAttached({ timeout: 60_000 });
+    await waitForRealPanel(page, 'live-news');
 
     await liveNews.scrollIntoViewIfNeeded();
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
@@ -357,7 +418,7 @@ test.describe('live media intent gating', () => {
         detail: { alwaysOn: false },
       }));
     });
-    // Leaving always-on must NOT collapse the wall — feeds already playing stay (eco-idle pauses later).
+    // Leaving always-on must NOT collapse the wall — feeds already playing stay until the idle stop.
     await page.waitForTimeout(1500);
     expect(await liveNewsTransportCount(page)).toBe(1);
     expect(await webcamTransportCount(page)).toBeGreaterThanOrEqual(1);
@@ -393,8 +454,8 @@ test.describe('live media intent gating', () => {
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBe(1);
     await expect(webcams.locator('.webcam-iframe[title="Jerusalem live webcam"]')).toBeVisible();
 
-    await webcams.getByRole('button', { name: 'Kyiv' }).click();
+    await webcams.getByRole('button', { name: 'Ukraine' }).click();
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBe(1);
-    await expect(webcams.locator('.webcam-iframe[title="Kyiv live webcam"]')).toBeVisible();
+    await expect(webcams.locator('.webcam-iframe[title="Ukraine live webcam"]')).toBeVisible();
   });
 });

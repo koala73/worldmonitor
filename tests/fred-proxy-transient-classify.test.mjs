@@ -25,7 +25,10 @@ test('FRED retries a failed sticky exit on a different port before falling back 
   const routes = [];
   t.mock.method(proxyUtils, 'proxyFetch', async (_url, config) => {
     routes.push(config);
-    if (config.port === 10001) throw new Error('Proxy CONNECT: HTTP/1.1 522 Server Error');
+    if (config.port === 10001) throw Object.assign(
+      new Error('Proxy CONNECT: HTTP/1.1 502 Bad Gateway or Proxy Error'),
+      { status: 502, proxyConnect: true },
+    );
     return { ok: true, buffer: Buffer.from('{"observations":[{"value":"1"}]}') };
   });
   t.mock.method(globalThis, 'fetch', async () => { throw new Error('direct must not be needed'); });
@@ -39,7 +42,9 @@ test('FRED exhausts three distinct sticky exits then retains the direct fallback
   const ports = [];
   t.mock.method(proxyUtils, 'proxyFetch', async (_url, config) => {
     ports.push(config.port);
-    throw new Error('Proxy CONNECT: HTTP/1.1 522 Server Error');
+    throw Object.assign(new Error('Proxy CONNECT: HTTP/1.0 503 Service Unavailable'), {
+      status: 503, proxyConnect: true,
+    });
   });
   const direct = t.mock.method(globalThis, 'fetch', async () => new Response('{"observations":[]}'));
   await fredFetchJson('https://api.stlouisfed.org/fred/series/observations', 'https://fake:secret@gate.decodo.com:49999');
@@ -243,6 +248,139 @@ test('direct FRED leg does NOT retry a 4xx — a bad series id never fixes itsel
   assert.equal(calls, 1, 'a 4xx must fail fast, not burn a retry');
 });
 
+for (const status of [429, 503]) {
+  test(`direct FRED ${status} keeps a confirmed upstream failure classification`, async (t) => {
+    t.mock.method(globalThis, 'fetch', async () => new Response('', { status }));
+    await assert.rejects(() => fredFetchJson('https://api.stlouisfed.org/fred/series/observations'),
+      (error) => error.status === status && error.preservableFetchFailure === true);
+  });
+}
+
+for (const heading of ["We'll be back soon!", 'We’ll be back soon!', 'We will be back soon!']) {
+  for (const proxy of [undefined, 'https://fake:secret@gate.decodo.com:10001']) {
+    test(`FRED recognizes maintenance heading "${heading}" via ${proxy ? 'proxy fallback' : 'direct'}`, async (t) => {
+      const body = `<h1>${heading}</h1>`;
+      t.mock.method(proxyUtils, 'proxyFetch', async () => ({
+        ok: true, buffer: Buffer.from(body),
+      }));
+      t.mock.method(globalThis, 'fetch', async () => new Response(body, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      }));
+      await assert.rejects(() => fredFetchJson('https://api.stlouisfed.org/fred/series/observations', proxy),
+        (error) => error.preservableFetchFailure === true && /maintenance/.test(error.message));
+    });
+  }
+
+  for (const proxyStatus of [200, 503]) {
+    for (const failure of ['403', 'timeout', 'connect-timeout']) {
+      test(`FRED retains proxy ${proxyStatus} maintenance "${heading}" after direct ${failure}`, async (t) => {
+        t.mock.method(proxyUtils, 'proxyFetch', async () => ({
+          ok: proxyStatus === 200, status: proxyStatus,
+          buffer: Buffer.from(`<h1>${heading}</h1>`), contentType: 'text/html; charset=utf-8',
+        }));
+        const direct = t.mock.method(globalThis, 'fetch', async () => {
+          if (failure === 'timeout') throw new DOMException('direct timed out', 'TimeoutError');
+          if (failure === 'connect-timeout') throw new TypeError('fetch failed', {
+            cause: Object.assign(new Error('Connection timed out'), { code: 'UND_ERR_CONNECT_TIMEOUT' }),
+          });
+          return new Response('', { status: 403 });
+        });
+        await assert.rejects(() => fredFetchJson('https://api.stlouisfed.org/fred/series/observations',
+          'https://fake:secret@gate.decodo.com:10001'), (error) => {
+          assert.equal(error.preservableFetchFailure, true);
+          assert.match(error.message, /maintenance/);
+          if (failure === 'connect-timeout') {
+            assert.match(error.message, /direct: fetch failed \(UND_ERR_CONNECT_TIMEOUT\)/);
+            assert.equal(error.cause.cause.code, 'UND_ERR_CONNECT_TIMEOUT');
+          } else {
+            assert.match(error.message, failure === '403' ? /direct: HTTP 403/ : /direct: direct timed out/);
+            assert.equal(failure === '403' ? error.cause.status : error.cause.name, failure === '403' ? 403 : 'TimeoutError');
+          }
+          return true;
+        });
+        assert.equal(direct.mock.callCount(), 1);
+      });
+    }
+  }
+}
+
+test('generic proxy consumers still reject maintenance HTML with HTTP 503', async (t) => {
+  t.mock.method(proxyUtils, 'proxyFetch', async () => ({
+    ok: false, status: 503, buffer: Buffer.from("<h1>We'll be back soon!</h1>"), contentType: 'text/html',
+  }));
+  await assert.rejects(() => httpsProxyFetchRaw('https://example.test/x',
+    'https://fake:secret@gate.decodo.com:10001'), (error) => {
+    assert.equal(error.status, 503);
+    assert.equal(error.preservableFetchFailure, undefined);
+    return true;
+  });
+});
+
+for (const [body, contentType] of [
+  ["<h1>We'll be back soon!</h1>", 'application/json'],
+  ['<h1>Unknown response</h1>', 'text/html'],
+]) {
+  test(`FRED does not classify unrecognized proxy 503 ${contentType} as maintenance`, async (t) => {
+    const proxy = t.mock.method(proxyUtils, 'proxyFetch', async () => ({
+      ok: false, status: 503, buffer: Buffer.from(body), contentType,
+    }));
+    t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 403 }));
+    await assert.rejects(() => fredFetchJson('https://api.stlouisfed.org/fred/series/observations',
+      'https://fake:secret@gate.decodo.com:10001'), (error) => {
+      assert.match(error.message, /direct: HTTP 403/);
+      assert.equal(error.preservableFetchFailure, false);
+      return true;
+    });
+    assert.equal(proxy.mock.callCount(), 3);
+  });
+}
+
+test('FRED can recover through direct JSON after proxy maintenance', async (t) => {
+  t.mock.method(proxyUtils, 'proxyFetch', async () => ({
+    ok: true, buffer: Buffer.from("<h1>We'll be back soon!</h1>"), contentType: 'text/html',
+  }));
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ observations: [{ value: '7' }] }));
+  const result = await fredFetchJson('https://api.stlouisfed.org/fred/series/observations',
+    'https://fake:secret@gate.decodo.com:10001');
+  assert.equal(result.observations[0].value, '7');
+});
+
+for (const failure of ['400', '401', 'malformed-json', 'unexpected-html', 'unknown-fetch-error']) {
+  test(`proxy maintenance does not hide direct ${failure}`, async (t) => {
+    t.mock.method(proxyUtils, 'proxyFetch', async () => ({
+      ok: true, buffer: Buffer.from("<h1>We'll be back soon!</h1>"), contentType: 'text/html',
+    }));
+    t.mock.method(globalThis, 'fetch', async () => {
+      if (failure === '400' || failure === '401') return new Response('', { status: Number(failure) });
+      if (failure === 'unknown-fetch-error') throw new TypeError('fetch failed', {
+        cause: Object.assign(new Error('Unknown transport error'), { code: 'UNKNOWN_ERROR' }),
+      });
+      return new Response(failure === 'malformed-json' ? '{' : '<h1>Unknown response</h1>', {
+        headers: { 'Content-Type': failure === 'malformed-json' ? 'application/json' : 'text/html' },
+      });
+    });
+    await assert.rejects(() => fredFetchJson('https://api.stlouisfed.org/fred/series/observations',
+      'https://fake:secret@gate.decodo.com:10001'), (error) => error.preservableFetchFailure !== true);
+  });
+}
+
+for (const failure of ['403', 'timeout', 'connect-timeout']) {
+  test(`unknown proxy HTML followed by direct ${failure} is not confirmed maintenance`, async (t) => {
+    t.mock.method(proxyUtils, 'proxyFetch', async () => ({
+      ok: true, buffer: Buffer.from('<h1>Unknown response</h1>'), contentType: 'text/html',
+    }));
+    t.mock.method(globalThis, 'fetch', async () => {
+      if (failure === 'timeout') throw new DOMException('direct timed out', 'TimeoutError');
+      if (failure === 'connect-timeout') throw new TypeError('fetch failed', {
+        cause: Object.assign(new Error('Connection timed out'), { code: 'UND_ERR_CONNECT_TIMEOUT' }),
+      });
+      return new Response('', { status: 403 });
+    });
+    await assert.rejects(() => fredFetchJson('https://api.stlouisfed.org/fred/series/observations',
+      'https://fake:secret@gate.decodo.com:10001'), (error) => error.preservableFetchFailure !== true);
+  });
+}
+
 test('direct FRED leg does NOT retry a timeout — it has already burned its budget', async (t) => {
   t.after(() => { globalThis.fetch = originalFetch; });
   let calls = 0;
@@ -306,6 +444,9 @@ test('TLS-handshake tear signatures (from the real failing logs) are transient',
 test('classic transient signatures still classify transient (no regression)', () => {
   for (const msg of [
     'HTTP 522', 'HTTP 503', 'proxy fetch timeout',
+    'Proxy CONNECT: HTTP/1.0 500 Internal Server Error',
+    'Proxy CONNECT: HTTP/1.1 502 Bad Gateway or Proxy Error',
+    'Proxy CONNECT: HTTP/1.1 504 Gateway Timeout',
     'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'socket hang up',
   ]) {
     assert.equal(isTransientProxyError(msg), true, `should retry: ${msg}`);
@@ -318,4 +459,9 @@ test('genuinely non-transient errors are NOT retried (fall straight to direct)',
   }
   assert.equal(isTransientProxyError(undefined), false);
   assert.equal(isTransientProxyError(null), false);
+  for (const version of ['1.0', '1.1']) {
+    for (const status of [401, 403, 404, 407, 429]) {
+      assert.equal(isTransientProxyError(`Proxy CONNECT: HTTP/${version} ${status}`), false);
+    }
+  }
 });

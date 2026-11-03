@@ -1,4 +1,4 @@
-FROM node:24-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS base
+FROM node:24-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS base
 WORKDIR /app
 
 # Patch the base image's pre-installed OS packages before adding our own.

@@ -9,6 +9,7 @@ import { trackFindingClicked } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import { bindActivationKeys } from '@/utils/activation';
+import { declareOverlay } from '@/utils/open-modal';
 
 
 const LOW_COUNT_THRESHOLD = 3;
@@ -288,7 +289,7 @@ export class IntelligenceFindingsBadge {
 
     // Update badge status based on priority
     const hasCritical = this.findings.some(f => f.priority === 'critical');
-    const hasHigh = this.findings.some(f => f.priority === 'high' || f.confidence >= 0.7);
+    const hasHigh = this.findings.some(f => f.priority === 'high');
 
     this.badge.classList.remove('status-none', 'status-low', 'status-high');
     if (count === 0) {
@@ -353,8 +354,8 @@ export class IntelligenceFindingsBadge {
   }
 
   private priorityToConfidence(priority: string): number {
-    const map: Record<string, number> = { critical: 95, high: 80, medium: 60, low: 40 };
-    return map[priority] ?? 50;
+    const map: Record<string, number> = { critical: 0.95, high: 0.8, medium: 0.6, low: 0.4 };
+    return map[priority] ?? 0.5;
   }
 
   private priorityScore(priority: string): number {
@@ -398,7 +399,7 @@ export class IntelligenceFindingsBadge {
     }
 
     const criticalCount = this.findings.filter(f => f.priority === 'critical').length;
-    const highCount = this.findings.filter(f => f.priority === 'high' || f.confidence >= 70).length;
+    const highCount = this.findings.filter(f => f.priority === 'high').length;
 
     let statusClass = 'moderate';
     let statusText = t('components.intelligenceFindings.detected', { count: String(this.findings.length) });
@@ -521,6 +522,8 @@ export class IntelligenceFindingsBadge {
     overlay.className = 'findings-modal-overlay';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
+    // Read-only findings list; a reload rebuilds it from the same data.
+    declareOverlay(overlay, { reload: 'safe' });
     overlay.setAttribute('aria-label', t('components.intelligenceFindings.all', { count: String(this.findings.length) }));
 
     const findingsHtml = this.findings.map(finding => {

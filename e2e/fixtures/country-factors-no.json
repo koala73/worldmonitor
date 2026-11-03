@@ -1,0 +1,727 @@
+{
+  "scorecard": {
+    "countryCode": "NO",
+    "methodologyVersion": "1.0.0",
+    "computedAt": "2026-10-08T12:01:41.185Z",
+    "pillars": [
+      {
+        "pillar": "food",
+        "hasScore": true,
+        "score": 3,
+        "subScore": 42.43,
+        "band": "mixed-capability",
+        "inputCoverage": 1,
+        "aggregationMethod": "country-weighted-components",
+        "inputs": [
+          {
+            "inputId": "food.productionBalance",
+            "available": true,
+            "value": 0.5700631220477135,
+            "hasValue": true,
+            "year": 2026,
+            "unit": "ratio",
+            "source": "USDA PSD / FAOSTAT",
+            "sourceKey": "resilience:food-stocks:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "calorieProduction",
+                "value": 3.3948,
+                "year": 2026,
+                "unit": "trillion kcal",
+                "source": "USDA PSD / FAOSTAT",
+                "indicatorCode": ""
+              },
+              {
+                "name": "calorieConsumption",
+                "value": 5.9551300000000005,
+                "year": 2026,
+                "unit": "trillion kcal",
+                "source": "USDA PSD / FAOSTAT",
+                "indicatorCode": ""
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "food.stocksToUse",
+            "available": true,
+            "value": 0.18835357078686776,
+            "hasValue": true,
+            "year": 2026,
+            "unit": "ratio",
+            "source": "USDA PSD / FAOSTAT",
+            "sourceKey": "resilience:food-stocks:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "calorieEndingStocks",
+                "value": 1.12167,
+                "year": 2026,
+                "unit": "trillion kcal",
+                "source": "USDA PSD / FAOSTAT",
+                "indicatorCode": ""
+              },
+              {
+                "name": "calorieTotalUse",
+                "value": 5.9551300000000005,
+                "year": 2026,
+                "unit": "trillion kcal",
+                "source": "USDA PSD / FAOSTAT",
+                "indicatorCode": ""
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "food.waterSecurity",
+            "available": true,
+            "value": 2.044,
+            "hasValue": true,
+            "year": 2022,
+            "unit": "percent water stress",
+            "source": "worldbank-aquastat",
+            "sourceKey": "resilience:static:{ISO2}",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "waterStressPercent",
+                "value": 2.044,
+                "year": 2022,
+                "unit": "percent water stress",
+                "source": "worldbank-aquastat",
+                "indicatorCode": "ER.H2O.FWST.ZS"
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "food.importDiversity",
+            "available": true,
+            "value": 0.056,
+            "hasValue": true,
+            "year": 2025,
+            "unit": "HHI",
+            "source": "UN Comtrade",
+            "sourceKey": "resilience:recovery:import-hhi:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "importPartnerHhi",
+                "value": 0.056,
+                "year": 2025,
+                "unit": "HHI",
+                "source": "UN Comtrade",
+                "indicatorCode": ""
+              }
+            ],
+            "countryCode": ""
+          }
+        ],
+        "insufficientReasons": [],
+        "includedMembers": [],
+        "excludedMembers": [],
+        "memberWeights": []
+      },
+      {
+        "pillar": "energy",
+        "hasScore": true,
+        "score": 5,
+        "subScore": 98.68,
+        "band": "high-capability",
+        "inputCoverage": 1,
+        "aggregationMethod": "country-weighted-components",
+        "inputs": [
+          {
+            "inputId": "energy.productionBalance",
+            "available": true,
+            "value": 7.77196,
+            "hasValue": true,
+            "year": 2024,
+            "unit": "ratio",
+            "source": "OWID and Eurostat",
+            "sourceKey": "energy:mix:v1:_all",
+            "unavailableReason": "",
+            "quality": "derived",
+            "observations": [
+              {
+                "name": "primaryEnergyConsumptionTwh",
+                "value": 555.6262817382812,
+                "year": 2024,
+                "unit": "TWh",
+                "source": "Our World in Data",
+                "indicatorCode": "primary_energy_consumption"
+              },
+              {
+                "name": "netEnergyImportsPercent",
+                "value": -677.196,
+                "year": 2024,
+                "unit": "percent of energy use",
+                "source": "Eurostat",
+                "indicatorCode": "nrg_ind_id"
+              },
+              {
+                "name": "primaryEnergyProductionTwh",
+                "value": 4318.305236618652,
+                "year": 2024,
+                "unit": "TWh",
+                "source": "Derived from OWID and Eurostat",
+                "indicatorCode": ""
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "energy.lowCarbonShare",
+            "available": true,
+            "value": 98.99882,
+            "hasValue": true,
+            "year": 2025,
+            "unit": "percent",
+            "source": "OWID share-electricity-low-carbon",
+            "sourceKey": "resilience:low-carbon-generation:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "lowCarbonGenerationShare",
+                "value": 98.99882,
+                "year": 2025,
+                "unit": "percent",
+                "source": "OWID share-electricity-low-carbon",
+                "indicatorCode": ""
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "energy.gridEfficiency",
+            "available": true,
+            "value": 4.93557075835557,
+            "hasValue": true,
+            "year": 2024,
+            "unit": "percent losses",
+            "source": "World Bank",
+            "sourceKey": "resilience:power-losses:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "powerLossesPercent",
+                "value": 4.93557075835557,
+                "year": 2024,
+                "unit": "percent losses",
+                "source": "World Bank",
+                "indicatorCode": ""
+              }
+            ],
+            "countryCode": ""
+          }
+        ],
+        "insufficientReasons": [],
+        "includedMembers": [],
+        "excludedMembers": [],
+        "memberWeights": []
+      },
+      {
+        "pillar": "demographics",
+        "hasScore": true,
+        "score": 4,
+        "subScore": 66.27,
+        "band": "strong-capability",
+        "inputCoverage": 0.9,
+        "aggregationMethod": "country-weighted-components",
+        "inputs": [
+          {
+            "inputId": "demographics.totalDependency",
+            "available": true,
+            "value": 54.058096,
+            "hasValue": true,
+            "year": 2026,
+            "unit": "dependents per 100 working-age people",
+            "source": "UN World Population Prospects 2024",
+            "sourceKey": "demographics:capability:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "totalDependencyRatioPercent",
+                "value": 54.058096,
+                "year": 2026,
+                "unit": "dependents per 100 working-age people",
+                "source": "UN World Population Prospects 2024",
+                "indicatorCode": ""
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "demographics.oldAgeDependency",
+            "available": true,
+            "value": 29.908016,
+            "hasValue": true,
+            "year": 2026,
+            "unit": "older dependents per 100 working-age people",
+            "source": "UN World Population Prospects 2024",
+            "sourceKey": "demographics:capability:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "oldAgeDependencyRatioPercent",
+                "value": 29.908016,
+                "year": 2026,
+                "unit": "older dependents per 100 working-age people",
+                "source": "UN World Population Prospects 2024",
+                "indicatorCode": ""
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "demographics.workingAgeProjection",
+            "available": true,
+            "value": 0.9902656778549553,
+            "hasValue": true,
+            "year": 2026,
+            "unit": "10-year ratio",
+            "source": "UN WPP",
+            "sourceKey": "demographics:capability:v1",
+            "unavailableReason": "",
+            "quality": "derived",
+            "observations": [
+              {
+                "name": "workingAgePopulationPeople",
+                "value": 3669387.5,
+                "year": 2026,
+                "unit": "people",
+                "source": "UN World Population Prospects 2024",
+                "indicatorCode": ""
+              },
+              {
+                "name": "workingAgePopulationProjected10yPeople",
+                "value": 3633668.5,
+                "year": 2036,
+                "unit": "people",
+                "source": "UN World Population Prospects 2024",
+                "indicatorCode": ""
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "demographics.tertiaryEnrollment",
+            "available": true,
+            "value": 95.498756,
+            "hasValue": true,
+            "year": 2024,
+            "unit": "percent",
+            "source": "UNESCO UIS via World Bank WDI",
+            "sourceKey": "demographics:capability:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "tertiaryEnrollmentGrossPercent",
+                "value": 95.498756,
+                "year": 2024,
+                "unit": "percent",
+                "source": "UNESCO UIS via World Bank WDI",
+                "indicatorCode": "SE.TER.ENRR"
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "demographics.researchersPerMillion",
+            "available": true,
+            "value": 7450.59492,
+            "hasValue": true,
+            "year": 2023,
+            "unit": "per million people",
+            "source": "UNESCO UIS via World Bank WDI",
+            "sourceKey": "demographics:capability:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "researchersPerMillion",
+                "value": 7450.59492,
+                "year": 2023,
+                "unit": "per million people",
+                "source": "UNESCO UIS via World Bank WDI",
+                "indicatorCode": "SP.POP.SCIE.RD.P6"
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "demographics.stemGraduateShare",
+            "available": false,
+            "value": 0,
+            "hasValue": false,
+            "year": 0,
+            "unit": "",
+            "source": "UNESCO UIS via World Bank WDI",
+            "sourceKey": "demographics:capability:v1",
+            "unavailableReason": "stale",
+            "quality": "",
+            "observations": [],
+            "countryCode": ""
+          },
+          {
+            "inputId": "demographics.trainedIndustrialShare",
+            "available": true,
+            "value": 11.16916651621013,
+            "hasValue": true,
+            "year": 2025,
+            "unit": "percent",
+            "source": "ILOSTAT / UN WPP",
+            "sourceKey": "demographics:capability:v1",
+            "unavailableReason": "",
+            "quality": "derived",
+            "observations": [
+              {
+                "name": "trainedIndustrialWorkforcePeople",
+                "value": 409840,
+                "year": 2025,
+                "unit": "people",
+                "source": "ILOSTAT: LFS - EU Labour Force Survey",
+                "indicatorCode": ""
+              },
+              {
+                "name": "workingAgePopulationPeople",
+                "value": 3669387.5,
+                "year": 2026,
+                "unit": "people",
+                "source": "UN World Population Prospects 2024",
+                "indicatorCode": ""
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "demographics.manufacturingEmploymentShare",
+            "available": true,
+            "value": 6.415227,
+            "hasValue": true,
+            "year": 2025,
+            "unit": "percent",
+            "source": "ILOSTAT: ILO - Modelled Estimates",
+            "sourceKey": "demographics:capability:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "manufacturingEmploymentSharePercent",
+                "value": 6.415227,
+                "year": 2025,
+                "unit": "percent",
+                "source": "ILOSTAT: ILO - Modelled Estimates",
+                "indicatorCode": ""
+              }
+            ],
+            "countryCode": ""
+          }
+        ],
+        "insufficientReasons": [],
+        "includedMembers": [],
+        "excludedMembers": [],
+        "memberWeights": []
+      },
+      {
+        "pillar": "technology",
+        "hasScore": true,
+        "score": 4,
+        "subScore": 79.78,
+        "band": "strong-capability",
+        "inputCoverage": 0.9,
+        "aggregationMethod": "country-weighted-components",
+        "inputs": [
+          {
+            "inputId": "technology.internetUse",
+            "available": true,
+            "value": 99,
+            "hasValue": true,
+            "year": 2024,
+            "unit": "percent",
+            "source": "World Bank",
+            "sourceKey": "economic:worldbank-techreadiness:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "internet",
+                "value": 99,
+                "year": 2024,
+                "unit": "percent",
+                "source": "World Bank",
+                "indicatorCode": "IT.NET.USER.ZS"
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "technology.mobileSubscriptions",
+            "available": true,
+            "value": 109.348606513576,
+            "hasValue": true,
+            "year": 2024,
+            "unit": "per 100 people",
+            "source": "World Bank",
+            "sourceKey": "economic:worldbank-techreadiness:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "mobile",
+                "value": 109.348606513576,
+                "year": 2024,
+                "unit": "per 100 people",
+                "source": "World Bank",
+                "indicatorCode": "IT.CEL.SETS.P2"
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "technology.fixedBroadband",
+            "available": true,
+            "value": 45.1633056345554,
+            "hasValue": true,
+            "year": 2024,
+            "unit": "per 100 people",
+            "source": "World Bank",
+            "sourceKey": "economic:worldbank-techreadiness:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "broadband",
+                "value": 45.1633056345554,
+                "year": 2024,
+                "unit": "per 100 people",
+                "source": "World Bank",
+                "indicatorCode": "IT.NET.BBND.P2"
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "technology.rdSpend",
+            "available": true,
+            "value": 1.85142,
+            "hasValue": true,
+            "year": 2023,
+            "unit": "percent of GDP",
+            "source": "World Bank",
+            "sourceKey": "economic:worldbank-techreadiness:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "rdSpend",
+                "value": 1.85142,
+                "year": 2023,
+                "unit": "percent of GDP",
+                "source": "World Bank",
+                "indicatorCode": "GB.XPD.RSDV.GD.ZS"
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "technology.researchersPerMillion",
+            "available": true,
+            "value": 7450.59492,
+            "hasValue": true,
+            "year": 2023,
+            "unit": "per million people",
+            "source": "UNESCO UIS via World Bank WDI",
+            "sourceKey": "demographics:capability:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "researchersPerMillion",
+                "value": 7450.59492,
+                "year": 2023,
+                "unit": "per million people",
+                "source": "UNESCO UIS via World Bank WDI",
+                "indicatorCode": "SP.POP.SCIE.RD.P6"
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "technology.stemGraduateShare",
+            "available": false,
+            "value": 0,
+            "hasValue": false,
+            "year": 0,
+            "unit": "",
+            "source": "UNESCO UIS via World Bank WDI",
+            "sourceKey": "demographics:capability:v1",
+            "unavailableReason": "stale",
+            "quality": "",
+            "observations": [],
+            "countryCode": ""
+          },
+          {
+            "inputId": "technology.electricityAccess",
+            "available": true,
+            "value": 100,
+            "hasValue": true,
+            "year": 2024,
+            "unit": "percent",
+            "source": "World Bank",
+            "sourceKey": "resilience:static:{ISO2}",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "electricityAccessPercent",
+                "value": 100,
+                "year": 2024,
+                "unit": "percent",
+                "source": "World Bank",
+                "indicatorCode": "EG.ELC.ACCS.ZS"
+              }
+            ],
+            "countryCode": ""
+          }
+        ],
+        "insufficientReasons": [],
+        "includedMembers": [],
+        "excludedMembers": [],
+        "memberWeights": []
+      },
+      {
+        "pillar": "defense",
+        "hasScore": true,
+        "score": 3,
+        "subScore": 59.81,
+        "band": "mixed-capability",
+        "inputCoverage": 0.65,
+        "aggregationMethod": "country-weighted-components",
+        "inputs": [
+          {
+            "inputId": "defense.expenditureUsd",
+            "available": true,
+            "value": 10435320375.7091,
+            "hasValue": true,
+            "year": 2024,
+            "unit": "current USD",
+            "source": "World Bank",
+            "sourceKey": "military:industrial-base:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "expenditureUsd",
+                "value": 10435320375.7091,
+                "year": 2024,
+                "unit": "current USD",
+                "source": "World Bank",
+                "indicatorCode": "MS.MIL.XPND.CD"
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "defense.expenditurePctGdp",
+            "available": true,
+            "value": 2.09124111193175,
+            "hasValue": true,
+            "year": 2024,
+            "unit": "percent of GDP",
+            "source": "World Bank",
+            "sourceKey": "military:industrial-base:v1",
+            "unavailableReason": "",
+            "quality": "observed",
+            "observations": [
+              {
+                "name": "expenditurePctGdp",
+                "value": 2.09124111193175,
+                "year": 2024,
+                "unit": "percent of GDP",
+                "source": "World Bank",
+                "indicatorCode": "MS.MIL.XPND.GD.ZS"
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "defense.personnel",
+            "available": false,
+            "value": 0,
+            "hasValue": false,
+            "year": 0,
+            "unit": "",
+            "source": "World Bank",
+            "sourceKey": "military:industrial-base:v1",
+            "unavailableReason": "stale",
+            "quality": "",
+            "observations": [],
+            "countryCode": ""
+          },
+          {
+            "inputId": "defense.industrialBalance",
+            "available": true,
+            "value": 0.6704438149197356,
+            "hasValue": true,
+            "year": 2024,
+            "unit": "export share",
+            "source": "World Bank",
+            "sourceKey": "military:industrial-base:v1",
+            "unavailableReason": "",
+            "quality": "derived",
+            "observations": [
+              {
+                "name": "armsExportsTiv",
+                "value": 710000000,
+                "year": 2024,
+                "unit": "SIPRI trend-indicator value",
+                "source": "World Bank",
+                "indicatorCode": "MS.MIL.XPRT.KD"
+              },
+              {
+                "name": "armsImportsTiv",
+                "value": 349000000,
+                "year": 2024,
+                "unit": "SIPRI trend-indicator value",
+                "source": "World Bank",
+                "indicatorCode": "MS.MIL.MPRT.KD"
+              }
+            ],
+            "countryCode": ""
+          },
+          {
+            "inputId": "defense.supplierDiversity",
+            "available": false,
+            "value": 0,
+            "hasValue": false,
+            "year": 0,
+            "unit": "",
+            "source": "SIPRI Arms Transfers Database",
+            "sourceKey": "military:arms-suppliers:v1",
+            "unavailableReason": "redistribution-blocked",
+            "quality": "",
+            "observations": [],
+            "countryCode": ""
+          }
+        ],
+        "insufficientReasons": [],
+        "includedMembers": [],
+        "excludedMembers": [],
+        "memberWeights": []
+      }
+    ]
+  },
+  "unavailable": false,
+  "unavailableReason": ""
+}

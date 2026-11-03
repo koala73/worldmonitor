@@ -9,6 +9,9 @@
  *
  * The seed payload may also include an optional US effective tariff snapshot
  * (FRED customs duties / goods imports).
+ *
+ * A partner or product-group request is answered from World Bank WITS instead
+ * (see _tradestats-tariff.ts): the MFN series has neither dimension.
  */
 import type {
   ServerContext,
@@ -19,6 +22,12 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/trade/v1/service_server';
 import { readCachedJson } from '../../../_shared/redis';
 import { isCallerPremium } from '../../../_shared/premium-check';
+import {
+  SIMPLE_INDICATOR,
+  readTradestatsSeries,
+  witsCountry,
+  witsProductGroup,
+} from './_tradestats-tariff';
 
 /** Must match scripts/seed-supply-chain-trade.mjs; pinned by tests. */
 export const SEED_KEY_PREFIX = 'trade:tariffs:v2';
@@ -54,6 +63,7 @@ const REASON = {
   seedMissing: 'TARIFF_TREND_UNAVAILABLE_REASON_SEED_MISSING',
   coverageUnknown: 'TARIFF_TREND_UNAVAILABLE_REASON_COVERAGE_UNKNOWN',
   cacheUnavailable: 'TARIFF_TREND_UNAVAILABLE_REASON_CACHE_UNAVAILABLE',
+  upstreamUnavailable: 'TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE',
 } as const satisfies Record<string, TariffTrendUnavailableReason>;
 
 export { REASON as TARIFF_TREND_REASON };
@@ -98,9 +108,9 @@ export function tariffTrendCoverageId(reporter: string): string {
 
 export interface NormalizedTariffTrendRequest {
   reporter: string;
-  /** Normalized partner for echo only — never used in the cache key. */
+  /** "" for none; "000" is World. */
   partner: string;
-  /** Normalized sector token: empty → "all"; non-all is outside coverage. */
+  /** Normalized sector token: empty → "all". */
   productSector: string;
   years: number;
 }
@@ -116,8 +126,8 @@ export interface NormalizedTariffTrendRequest {
  * 400; this is the same rule enforced where the handler is reached directly
  * (sidecar, tests).
  *
- * partner_country is validated when present but never enters the cache key —
- * TP_A_0010 has no partner dimension.
+ * A partner other than World, or a sector other than "all", selects the WITS
+ * series (see isBilateralRequest).
  */
 export function normalizeTariffTrendRequest(
   req: GetTariffTrendsRequest,
@@ -142,6 +152,11 @@ export function normalizeTariffTrendRequest(
       : sectorLower,
     years: rawYears === 0 ? DEFAULT_YEARS : rawYears,
   };
+}
+
+/** True when the request needs a partner or product split the MFN series lacks. */
+export function isBilateralRequest(req: NormalizedTariffTrendRequest): boolean {
+  return (req.partner !== '' && req.partner !== '000') || req.productSector !== COVERED_PRODUCT_SECTOR;
 }
 
 /**
@@ -221,6 +236,39 @@ async function classifyMiss(reporter: string): Promise<GetTariffTrendsResponse> 
     : unavailable(REASON.notCovered, false);
 }
 
+/**
+ * Effectively applied average of `reporter` on goods from `partner` and/or in
+ * one product group, from WITS. Unknown codes and groups, and combinations WITS
+ * has no data for, are coverage answers; an unreachable WITS is a fault.
+ */
+async function getBilateralTrend(req: NormalizedTariffTrendRequest): Promise<GetTariffTrendsResponse> {
+  const reporter = witsCountry(req.reporter, 'reporter');
+  const partner = witsCountry(req.partner, 'partner');
+  const group = witsProductGroup(req.productSector);
+  if (!reporter || !partner || !group) return unavailable(REASON.notCovered, false);
+
+  const series = await readTradestatsSeries(reporter, partner, group);
+  if (!series) return unavailable(REASON.upstreamUnavailable, true);
+
+  const partnerLabel = req.partner === '' || req.partner === '000' ? 'World' : req.partner;
+  const sectorLabel = req.productSector === COVERED_PRODUCT_SECTOR ? 'All products' : group;
+  const datapoints = sliceTariffsToWindow(
+    series.points.map((p) => ({
+      reportingCountry: req.reporter,
+      partnerCountry: partnerLabel,
+      productSector: sectorLabel,
+      year: p.year,
+      tariffRate: p.simple,
+      boundRate: 0,
+      indicatorCode: SIMPLE_INDICATOR,
+      weightedRate: p.weighted,
+    })),
+    req.years,
+  );
+  if (datapoints.length === 0) return unavailable(REASON.notCovered, false);
+  return served(datapoints, series.fetchedAt, undefined);
+}
+
 async function readLegacySeed(
   reporter: string,
   years: number,
@@ -247,7 +295,9 @@ function served(
   const first = datapoints[0];
   const last = datapoints[datapoints.length - 1];
   return {
-    datapoints,
+    // Seeded MFN points predate weightedRate, and JSON drops an absent field,
+    // so a client would read undefined instead of the documented 0.
+    datapoints: datapoints.map((p) => (typeof p.weightedRate === 'number' ? p : { ...p, weightedRate: 0 })),
     fetchedAt: typeof fetchedAt === 'string' ? fetchedAt : '',
     upstreamUnavailable: false,
     unavailableReason: REASON.served,
@@ -278,13 +328,8 @@ export async function getTariffTrends(
 
   const normalized = normalizeTariffTrendRequest(req);
   if (!normalized) return unavailable(REASON.invalidRequest, false);
-  const { reporter, productSector, years } = normalized;
-
-  // Non-all product sectors are outside seeded coverage. Name that before any
-  // Redis read so a future sector expansion only has to start writing keys.
-  if (productSector !== COVERED_PRODUCT_SECTOR) {
-    return unavailable(REASON.notCovered, false);
-  }
+  if (isBilateralRequest(normalized)) return getBilateralTrend(normalized);
+  const { reporter, years } = normalized;
 
   const seedKey = tariffTrendSeedKey(reporter);
   const read = await readCachedJson(seedKey, true);

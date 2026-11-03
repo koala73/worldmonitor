@@ -87,7 +87,7 @@ function installProviderAndRedisFixture(
       return Response.json({
         webcams: [{
           images: { current: { preview: 'https://cdn.example/cam.jpg' } },
-          urls: { player: 'https://player.example/cam' },
+          player: { day: 'https://player.example/cam' },
           title: 'Test camera',
           lastUpdatedOn: '2026-09-11T00:00:00.000Z',
         }],
@@ -179,7 +179,7 @@ describe('Windy webcam image proxy input boundary', () => {
 
     assert.equal(response.error, '');
     assert.equal(calls[0]?.url, `${REDIS_URL}/get/webcam%3Aimage%3A${webcamId}`);
-    assert.equal(calls[3]?.url, `${WINDY_URL}/${webcamId}?include=images,urls`);
+    assert.equal(calls[3]?.url, `${WINDY_URL}/${webcamId}?include=images,player,urls`);
   });
 
   it('normalizes an accepted ID before its cache key and Windy request', async () => {
@@ -194,7 +194,7 @@ describe('Windy webcam image proxy input boundary', () => {
       `${REDIS_URL}/get/webcam%3Aimage%3Acamera-123`,
       `${REDIS_URL}/get/webcam%3Acameras%3Aactive`,
       `${REDIS_URL}/pipeline`,
-      `${WINDY_URL}/camera-123?include=images,urls`,
+      `${WINDY_URL}/camera-123?include=images,player,urls`,
       `${REDIS_URL}/`,
     ]);
     assert.equal(calls[3]?.headers.get('x-windy-api-key'), 'test-windy-key');
@@ -278,7 +278,7 @@ describe('Windy webcam image proxy input boundary', () => {
     assert.equal(response.error, '');
     assert.equal(response.thumbnailUrl, 'https://cdn.example/cam.jpg');
     assert.deepEqual(calls.map(call => call.url), [
-      `${WINDY_URL}/sidecar-camera-123?include=images,urls`,
+      `${WINDY_URL}/sidecar-camera-123?include=images,player,urls`,
     ]);
   });
 });
@@ -352,7 +352,11 @@ describe('Windy webcam image proxy access contract', () => {
     }));
 
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), {
+    const { resolvedAt, mediaType, ...media } = await response.json();
+    assert.equal(typeof resolvedAt, 'number');
+    assert.ok(resolvedAt > 0 && resolvedAt <= Date.now());
+    assert.equal(mediaType, 'timelapse');
+    assert.deepEqual(media, {
       thumbnailUrl: 'https://cdn.example/cam.jpg',
       playerUrl: 'https://player.example/cam',
       title: 'Test camera',
@@ -361,7 +365,7 @@ describe('Windy webcam image proxy access contract', () => {
       error: '',
     });
     assert.deepEqual(calls.map(call => call.url), [
-      `${WINDY_URL}/bundled-sidecar-camera-123?include=images,urls`,
+      `${WINDY_URL}/bundled-sidecar-camera-123?include=images,player,urls`,
     ]);
   });
 

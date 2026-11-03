@@ -23,6 +23,8 @@ import {
   startSlackOAuth,
   getChannelsData,
   __setNotificationChannelsClientDepsForTests,
+  saveAlertRules,
+  IncompatibleDeliveryError,
 } from '../src/services/notification-channels.ts';
 
 const RETRYABLE_CODES = [
@@ -97,6 +99,36 @@ function installAbortableRetryTransport(controller: AbortController) {
 
 afterEach(() => {
   __setNotificationChannelsClientDepsForTests(null);
+});
+
+describe('legacy alert-rule delivery errors', () => {
+  const save = () => saveAlertRules({
+    variant: 'full', enabled: true, eventTypes: [], sensitivity: 'high', channels: [],
+  });
+
+  it('preserves structured rejection guidance in the error the settings UI handles', async () => {
+    const message = 'Choose a digest cadence to receive High or All events.';
+    const { calls, slept } = installTransport([
+      Response.json({ error: 'INCOMPATIBLE_DELIVERY', message }, { status: 400 }),
+    ]);
+    await assert.rejects(save(), err => err instanceof IncompatibleDeliveryError && err.message === message);
+    assert.equal(calls.length, 1);
+    assert.equal(JSON.parse(calls[0].init!.body as string).action, 'set-alert-rules');
+    assert.deepEqual(slept, []);
+  });
+
+  it('provides guidance when the server omits the message', async () => {
+    installTransport([Response.json({ error: 'INCOMPATIBLE_DELIVERY' }, { status: 400 })]);
+    await assert.rejects(save(), err => err instanceof IncompatibleDeliveryError
+      && err.message === 'Real-time delivery requires Critical sensitivity.');
+  });
+
+  it('keeps unrelated failures generic and accepts a successful save', async () => {
+    installTransport([new Response('unavailable', { status: 503 }), Response.json({ ok: true })]);
+    await assert.rejects(save(), err => err instanceof Error
+      && !(err instanceof IncompatibleDeliveryError) && err.message === 'save alert rules: 503');
+    await assert.doesNotReject(save());
+  });
 });
 
 describe('email ownership errors', () => {
@@ -409,7 +441,7 @@ describe('authFetch honors a retryable billing-verification 503', () => {
 
     assert.equal(calls.length, 2, 'the retry is a property of authFetch, not of one caller');
     assert.deepEqual(slept, [5_000]);
-    assert.match(url, /^https:\/\/slack\.com\//);
+    assert.match(url.oauthUrl, /^https:\/\/slack\.com\//);
   });
 
   it('pins the identity for the retry even when the caller passed no expectedUserId', async () => {
