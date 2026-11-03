@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -163,7 +163,11 @@ async function main() {
   console.log(`\nDone in ${elapsed}s`);
 }
 
-const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+// realpath both sides: a packaged install may run this through a symlink,
+// and import.meta.url is always the resolved path.
+const isMain = process.argv[1]
+  && pathToFileURL(realpathSync(process.argv[1])).href
+    === pathToFileURL(realpathSync(fileURLToPath(import.meta.url))).href;
 if (isMain) {
   main().catch((err) => {
     console.error('Fatal error:', err.message);

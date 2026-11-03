@@ -113,7 +113,7 @@ Packagers who run the services directly (for example the FreeBSD `www/worldmonit
 
 Inside Docker the defaults are correct: compose publishes the proxy only on `127.0.0.1:8079`, and Railway needs the relay on every interface.
 
-`@bufbuild/buf` ships no binary for some platforms, including FreeBSD, and its install script fails there with `Unsupported platform`. buf is only used by `make generate`, and the generated code is committed, so install with `npm ci --ignore-scripts` and then run `npm run postinstall`. `--ignore-scripts` also skips the `esbuild` and `sharp` install scripts; check that your platform's packages provide working binaries for both.
+`@bufbuild/buf` ships no binary for some platforms, including FreeBSD, and its install script fails there with `Unsupported platform`. The runtime does not need buf: it is only used by the proto development targets (`make generate`, `make lint`, `make deps`, `make breaking`, `make check`), and the generated code is committed. Install with `npm ci --ignore-scripts` and then run `npm run postinstall`; anyone running those targets on such a platform needs a buf CLI built for it. `--ignore-scripts` also skips the `esbuild` and `sharp` install scripts; check that your platform's packages provide working binaries for both.
 
 ## 🤖 Using the MCP server
 
