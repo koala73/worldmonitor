@@ -291,6 +291,12 @@ describe('published forecast reliability under the accuracy audit (#8990)', () =
     assert.equal(reliability.stale, false);
     assert.doesNotMatch(JSON.stringify(reliability), /0\.074|brier/i);
   });
+  it('never mistakes the clock for a withheld score', (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-02T19:04:30.074Z') });
+    const reliability = served(scorecard);
+    assert.equal(reliability.capturedAt, '2026-11-02T19:04:30.074Z');
+    assert.doesNotMatch(JSON.stringify(reliability), /0\.074|brier/i);
+  });
   it('still says why when the scorecard itself is unhealthy', () => {
     assert.deepEqual(served(null).underAudit?.issue, 8990);
     assert.deepEqual(served({ ...scorecard, degraded: true }).underAudit?.issue, 8990);
