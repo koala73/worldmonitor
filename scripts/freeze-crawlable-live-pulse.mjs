@@ -49,6 +49,7 @@ import { countryIndexPath, topUpCountryIndex } from './crawlable-country-index.m
 import { selectDeclaredScorecardFields, selectHorizonGrades } from './build-accuracy-page.mjs';
 import { MCP_CANONICAL_ENDPOINT, MCP_CANONICAL_ORIGIN } from '../shared/mcp-host-policy.ts';
 import { countryMentionTerms, mentionsCountry } from '../shared/country-mention.js';
+import DIGEST_EDITIONS from './shared/news-digest-editions.json' with { type: 'json' };
 import { isBriefRelevantTitle } from '../shared/brief-relevance.js';
 import { dedupeByArticleUrl, duplicateArticleUrls } from '../shared/article-identity.js';
 
@@ -233,8 +234,9 @@ const BRIEF_CONTEXT_MAX_CHARS = 3800;
 // every variant is a different slice of the same feed set capped at 20 items
 // per category, and country mentions are spread across them: on 2026-09-05
 // `full` alone named 48 of 194 countries, the five variants pooled named 68.
-// `full` goes first so its rows win ties and URL de-duplication.
-const COUNTRY_DIGEST_VARIANTS = Object.freeze(['full', 'tech', 'finance', 'commodity', 'happy']);
+// Every edition the digest serves (generated from shared/news-catalog.json),
+// `full` first so its rows win ties and URL de-duplication.
+const COUNTRY_DIGEST_VARIANTS = Object.freeze(['full', ...DIGEST_EDITIONS.filter((edition) => edition !== 'full')]);
 // The per-country index top-up (#7748) that fills the countries the pool
 // leaves short lives in scripts/crawlable-country-index.mjs.
 

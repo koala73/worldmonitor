@@ -1007,6 +1007,31 @@ async function fetchClerkToken(session: ClerkSession, skipCache = false): Promis
   }
 }
 
+/**
+ * Clerk's standard session token, uncached and with no JWT template.
+ *
+ * Only the session token carries `sid`; a JWT-template token (the `convex`
+ * one `getClerkToken()` prefers) gets just `azp, exp, iat, iss, jti, nbf,
+ * sub`. The routes that trade a bearer for a credential outliving it (desktop
+ * sign-in, the Pro MCP grant) confirm that `sid` is still live at Clerk, so
+ * they must be sent this token. Null when nobody is signed in.
+ */
+export async function getClerkSessionToken(): Promise<string | null> {
+  const session = clerkInstance?.session;
+  if (!session) return null;
+  const myGen = _tokenGen;
+  try {
+    // A fresh token: Clerk's cache may hand back one with seconds left, and the
+    // route this feeds still has Clerk calls of its own to make before it
+    // reads the claims. These are one-shot user clicks, not a hot path.
+    const token = await session.getToken({ skipCache: true });
+    if (myGen !== _tokenGen || clerkInstance?.session !== session) return null;
+    return token;
+  } catch {
+    return null;
+  }
+}
+
 export async function getClerkToken(): Promise<string | null> {
   const now = Date.now();
   const clockState = _clerkClockState;

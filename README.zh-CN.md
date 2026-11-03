@@ -128,6 +128,7 @@ World Monitor 同时为智能体、脚本和浏览器而构建：
   ```sh
   npx worldmonitor tools          # run ad-hoc — list every MCP tool (no key needed)
   npm install -g worldmonitor     # or install the `worldmonitor` (alias `wm`) command
+  brew install worldmonitor       # or install it with Homebrew
   worldmonitor risk IR --api-key wm_xxx
   ```
 
@@ -140,6 +141,12 @@ World Monitor 同时为智能体、脚本和浏览器而构建：
 ## 航班数据
 
 航班数据由 [Wingbits](https://wingbits.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor) 慷慨提供；Wingbits 是先进的 ADS-B 航班数据解决方案。
+
+---
+
+## 支持
+
+World Monitor 的 Web 应用和 API 运行在 [Vercel](https://vercel.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor) 上。感谢 Vercel 对本项目的慷慨支持。
 
 ---
 

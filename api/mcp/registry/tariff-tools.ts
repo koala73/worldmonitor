@@ -16,10 +16,9 @@
  * units per call on an API plan) plus the per-principal rate limit, the same
  * budget their REST callers spend.
  */
-import { resolveCountryCode } from '../../../shared/country-code-resolve';
 import UN_TO_ISO2 from '../../../shared/un-to-iso2.json';
 import { M49_TO_WTO_CODE, PRODUCT_GROUPS } from '../../../server/worldmonitor/trade/v1/_tradestats-tariff';
-import { COUNTRY_ARG_HINT, echoCountryInput } from '../_country-args';
+import { COUNTRY_ARG_HINT, echoCountryInput, resolveCountryArg } from '../_country-args';
 import { buildAuthHeaders } from '../auth';
 import { RpcValidationError } from '../billing-denial';
 import { assertMcpToolFetchOk, fetchMcpDownstream } from '../downstream';
@@ -50,7 +49,7 @@ export function tradeCountryCode(
   const lower = text.toLowerCase();
   if (opts.allowWorld && (lower === 'world' || lower === 'wld')) return WORLD_CODE;
   if (opts.allowEu && (lower === 'eu' || lower === 'eun' || lower === 'european union')) return EU_CODE;
-  const iso2 = text ? resolveCountryCode(text) : null;
+  const iso2 = text ? resolveCountryArg(text) : null;
   const un = iso2 ? ISO2_TO_UN.get(iso2) : undefined;
   if (un) return un;
   throw new RpcValidationError(operation, [{

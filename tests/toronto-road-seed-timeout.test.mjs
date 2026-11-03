@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -13,6 +13,13 @@ const section = extractBundleSections(bundle).find(({ label }) => label === 'Tor
 const timeoutMs = resolveExpr(bundle, section.timeoutMsExpr);
 const runnerUrl = pathToFileURL(join(root, 'scripts/_bundle-runner.mjs')).href;
 const fixture = readFileSync(join(root, 'tests/fixtures/toronto-road-restrictions.json'), 'utf8');
+// Both children (runner and seeder) run every setTimeout and AbortSignal.timeout
+// TIME_SCALE times faster, so the production 300s section deadline, 135s fetch
+// deadline, 10s kill grace and the mocks' 29s/14s/4s delays all shrink together
+// and keep their order. Constants and assertions stay in production ms. At 50x
+// the publish-hang kill grace is 200ms of real time, and the slow-success run
+// has ~2.1s of real slack; 100x halves both, too close to busy-runner jitter.
+const TIME_SCALE = 50;
 
 // Exercise the real runner -> seeder -> adapter -> runSeed chain. Only external
 // I/O and wall time are replaced; no production keys or credentials are used.
@@ -23,8 +30,8 @@ async function runScenario(t, mode) {
   writeFileSync(preload, `
     const timer = globalThis.setTimeout;
     const abortTimeout = AbortSignal.timeout;
-    globalThis.setTimeout = (fn, ms, ...args) => timer(fn, ms / 20, ...args);
-    AbortSignal.timeout = (ms) => abortTimeout(Math.ceil(ms / 20));
+    globalThis.setTimeout = (fn, ms, ...args) => timer(fn, ms / ${TIME_SCALE}, ...args);
+    AbortSignal.timeout = (ms) => abortTimeout(Math.ceil(ms / ${TIME_SCALE}));
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     const hang = () => new Promise(() => { setInterval(() => {}, 1_000); });
     const mode = ${JSON.stringify(mode)};
@@ -109,38 +116,43 @@ async function runScenario(t, mode) {
   });
 }
 
-test('Toronto road retry, publication, and cleanup fit the section deadline', { timeout: 30_000 }, async (t) => {
-  const { code, output } = await runScenario(t, 'slow-success');
-  assert.equal(code, 0, output);
-  assert.match(output, /section=Toronto-Roads status=OK/);
-  assert.match(output, /TEST_SET infra:toronto-roads:v1/);
-  assert.match(output, /"recordCount":3/);
-  assert.match(output, /Verified: data present in Redis/);
-  assert.match(output, /TEST_RELEASE/);
-  assert.doesNotMatch(output, /SIGTERM|section=Toronto-Roads status=FAILED/);
-  assert.match(output, /phase=fetch status=FAILED durationMs=\d+/);
-  assert.match(output, /phase=fetch status=OK durationMs=\d+ elapsedMs=\d+/);
-  const lock = JSON.parse(output.match(/TEST_LOCK (\[.*\])/)[1]);
-  assert.ok(lock[lock.indexOf('PX') + 1] > timeoutMs + 10_000,
-    'lock must remain valid through the section timeout and termination grace');
-});
+// Each scenario is its own runner + seeder process pair with a private temp dir
+// and in-memory Redis, so they run side by side; the file then waits for the
+// longest deadline (the 300s hard limit) once instead of three deadlines in turn.
+describe('Toronto road seed deadlines', { concurrency: true }, () => {
+  test('Toronto road retry, publication, and cleanup fit the section deadline', { timeout: 30_000 }, async (t) => {
+    const { code, output } = await runScenario(t, 'slow-success');
+    assert.equal(code, 0, output);
+    assert.match(output, /section=Toronto-Roads status=OK/);
+    assert.match(output, /TEST_SET infra:toronto-roads:v1/);
+    assert.match(output, /"recordCount":3/);
+    assert.match(output, /Verified: data present in Redis/);
+    assert.match(output, /TEST_RELEASE/);
+    assert.doesNotMatch(output, /SIGTERM|section=Toronto-Roads status=FAILED/);
+    assert.match(output, /phase=fetch status=FAILED durationMs=\d+/);
+    assert.match(output, /phase=fetch status=OK durationMs=\d+ elapsedMs=\d+/);
+    const lock = JSON.parse(output.match(/TEST_LOCK (\[.*\])/)[1]);
+    assert.ok(lock[lock.indexOf('PX') + 1] > timeoutMs + 10_000,
+      'lock must remain valid through the section timeout and termination grace');
+  });
 
-test('Toronto road fetch deadline preserves last-good before the parent timeout', { timeout: 30_000 }, async (t) => {
-  const { code, output } = await runScenario(t, 'fetch-hang');
-  assert.equal(code, 0, output);
-  assert.match(output, /section=Toronto-Roads status=GRACEFUL_FAIL/);
-  assert.match(output, /TEST_PRESERVE .*infra:toronto-roads:v1/);
-  assert.match(output, /TEST_RELEASE/);
-  assert.doesNotMatch(output, /TEST_SET infra:toronto-roads:v1$|SIGTERM/m);
-  assert.match(output, /TEST_CANONICAL {"records":\[{"id":"last-good"}\]}/);
-});
+  test('Toronto road fetch deadline preserves last-good before the parent timeout', { timeout: 30_000 }, async (t) => {
+    const { code, output } = await runScenario(t, 'fetch-hang');
+    assert.equal(code, 0, output);
+    assert.match(output, /section=Toronto-Roads status=GRACEFUL_FAIL/);
+    assert.match(output, /TEST_PRESERVE .*infra:toronto-roads:v1/);
+    assert.match(output, /TEST_RELEASE/);
+    assert.doesNotMatch(output, /TEST_SET infra:toronto-roads:v1$|SIGTERM/m);
+    assert.match(output, /TEST_CANONICAL {"records":\[{"id":"last-good"}\]}/);
+  });
 
-test('Toronto road stalled publication still fails at the hard deadline', { timeout: 30_000, skip: process.platform === 'win32' }, async (t) => {
-  const { code, output } = await runScenario(t, 'publish-hang');
-  assert.equal(code, 1, output);
-  assert.match(output, /section=Toronto-Roads status=FAILED.*timeout/);
-  assert.match(output, /SIGTERM received during publish phase/);
-  assert.match(output, /TEST_RELEASE/);
-  assert.doesNotMatch(output, /TEST_SET infra:toronto-roads:v1$|"event":"seed_complete"/m);
-  assert.match(output, /TEST_CANONICAL {"records":\[{"id":"last-good"}\]}/);
+  test('Toronto road stalled publication still fails at the hard deadline', { timeout: 30_000, skip: process.platform === 'win32' }, async (t) => {
+    const { code, output } = await runScenario(t, 'publish-hang');
+    assert.equal(code, 1, output);
+    assert.match(output, /section=Toronto-Roads status=FAILED.*timeout/);
+    assert.match(output, /SIGTERM received during publish phase/);
+    assert.match(output, /TEST_RELEASE/);
+    assert.doesNotMatch(output, /TEST_SET infra:toronto-roads:v1$|"event":"seed_complete"/m);
+    assert.match(output, /TEST_CANONICAL {"records":\[{"id":"last-good"}\]}/);
+  });
 });

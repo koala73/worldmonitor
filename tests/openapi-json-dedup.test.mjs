@@ -26,8 +26,12 @@ import {
   buildBundle,
   collapseSoftLineBreaks,
   dropDefaultParameterRequired,
+  compactEntitlementNotes,
+  dropDuplicateOperationSummaries,
+  dropOperationIdDescriptionPrefixes,
   dropUnreferencedSecuritySchemes,
   shortenGeneratedSuccessDescriptions,
+  trimResponseExampleLists,
 } from '../scripts/build-openapi-json.mjs';
 import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
 
@@ -46,6 +50,27 @@ import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const buildScriptPath = resolve(root, 'scripts/build-openapi-json.mjs');
+
+describe('duplicate generated operation summaries', () => {
+  it('removes only exact operationId copies and leaves schemas and custom summaries intact', () => {
+    const spec = {
+      paths: {
+        '/example': {
+          get: { operationId: 'GetExample', summary: 'GetExample', responses: { 200: { description: 'OK' } } },
+          post: { operationId: 'PostExample', summary: 'Create an example' },
+          'x-metadata': { operationId: 'Metadata', summary: 'Metadata' },
+        },
+        '/missing-id': { get: { summary: 'Useful summary' }, post: { operationId: '', summary: '' } },
+      },
+      components: { schemas: { Example: { type: 'object', properties: { value: { type: 'number' } } } } },
+    };
+    const expected = structuredClone(spec);
+    delete expected.paths['/example'].get.summary;
+    assert.deepEqual(dropDuplicateOperationSummaries(spec), { dropped: 1 });
+    assert.deepEqual(spec, expected);
+    assert.deepEqual(dropDuplicateOperationSummaries(spec), { dropped: 0 });
+  });
+});
 
 // Leave headroom under the ~1 MB cap: the spec sat at ~752 KB when the check
 // last passed and ~853 KB deduped today. If this fails, either extend the
@@ -998,9 +1023,10 @@ describe('public OpenAPI dedupe (real bundle)', () => {
 
   it('engages the exact repeated headers and generated scalar/date schemas', () => {
     // #9093 adds two POST operations to the YAML bundle; only submit carries
-    // the 2 idempotency headers (review is exempt from replay).
-    assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 41 });
-    assert.equal(int64Stats.replacedRefs, 50);
+    // the 2 idempotency headers (review is exempt from replay). #8721 adds
+    // feedback submit-report, which carries the same 2 headers.
+    assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 43 });
+    assert.equal(int64Stats.replacedRefs, 53);
     // Described int64 fields (own comment + generated warning) keep their
     // comment beside the shared $ref; a regression to zero would silently give
     // back ~4 KB of the scanner budget.
@@ -1327,11 +1353,82 @@ describe('JSON-only description and parameter compaction', () => {
     assert.equal(stats.shortened, 1);
   });
 
-  it('all three passes engage on the real bundle', () => {
-    const { json, softBreakStats, defaultRequiredStats, successDescriptionStats } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+  it('keeps one item of each object list in a response example, and leaves scalar lists and schemas alone', () => {
+    const example = {
+      rows: [{ id: 'a', tags: [{ k: 1 }, { k: 2 }] }, { id: 'b' }],
+      bbox: [1, 2, 3, 4],
+      empty: [],
+    };
+    const spec = {
+      paths: {
+        '/a': {
+          get: {
+            responses: {
+              200: { description: 'OK', content: { 'application/json': { example: structuredClone(example), schema: { type: 'object', example: structuredClone(example) } } } },
+              202: { $ref: '#/components/responses/R' },
+            },
+          },
+        },
+      },
+      components: { responses: { R: { description: 'OK', content: { 'application/json': { example: structuredClone(example) } } } } },
+    };
+    const stats = trimResponseExampleLists(spec);
+    const served = spec.paths['/a'].get.responses[200].content['application/json'];
+    assert.deepEqual(served.example, { rows: [{ id: 'a', tags: [{ k: 1 }] }], bbox: [1, 2, 3, 4], empty: [] });
+    assert.deepEqual(served.schema.example, example, 'schema examples left alone');
+    assert.deepEqual(spec.components.responses.R.content['application/json'].example, example, 'components left alone');
+    assert.equal(stats.trimmed, 2);
+  });
+
+  it('drops only a leading operationId copy from operation descriptions', () => {
+    const spec = {
+      paths: {
+        '/a': {
+          get: { operationId: 'ListThings', description: 'ListThings returns things.' },
+          post: { operationId: 'PostThing', description: 'Posts a thing. PostThing is idempotent.' },
+          put: { operationId: 'PutThing', description: 'PutThingAlias writes.' },
+          'x-meta': { operationId: 'Meta', description: 'Meta returns metadata.' },
+        },
+      },
+      components: { schemas: { S: { description: 'ListThings returns things.' } } },
+    };
+    assert.deepEqual(dropOperationIdDescriptionPrefixes(spec), { dropped: 1 });
+    assert.equal(spec.paths['/a'].get.description, 'Returns things.');
+    assert.equal(spec.paths['/a'].post.description, 'Posts a thing. PostThing is idempotent.');
+    assert.equal(spec.paths['/a'].put.description, 'PutThingAlias writes.');
+    assert.equal(spec.paths['/a']['x-meta'].description, 'Meta returns metadata.');
+    assert.equal(spec.components.schemas.S.description, 'ListThings returns things.');
+    assert.deepEqual(dropOperationIdDescriptionPrefixes(spec), { dropped: 0 });
+  });
+
+  it('compacts the injected entitlement note and keeps the tier', () => {
+    const spec = {
+      paths: {
+        '/a': {
+          get: { description: 'Returns data. PRO-gated. Requires entitlement tier >= 2.' },
+          post: { description: 'Pro-gated feed. Requires entitlement tier >= 1.' },
+          put: { description: 'Free data.' },
+        },
+      },
+    };
+    assert.deepEqual(compactEntitlementNotes(spec), { compacted: 2 });
+    assert.equal(spec.paths['/a'].get.description, 'Returns data. PRO tier 2+.');
+    assert.equal(spec.paths['/a'].post.description, 'Pro-gated feed. PRO tier 1+.');
+    assert.equal(spec.paths['/a'].put.description, 'Free data.');
+  });
+
+  it('every emit-time pass engages on the real bundle', () => {
+    const {
+      json, softBreakStats, defaultRequiredStats, successDescriptionStats, exampleListStats,
+      descriptionPrefixStats, entitlementNoteStats,
+    } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+    assert.ok(descriptionPrefixStats.dropped >= 180, `operationId prefixes dropped: ${descriptionPrefixStats.dropped}`);
+    assert.ok(entitlementNoteStats.compacted >= 30, `entitlement notes compacted: ${entitlementNoteStats.compacted}`);
+    assert.equal(json.includes('Requires entitlement tier'), false, 'no long entitlement note survives');
     assert.ok(softBreakStats.collapsed >= 500, `soft breaks collapsed: ${softBreakStats.collapsed}`);
     assert.ok(defaultRequiredStats.dropped >= 200, `default required dropped: ${defaultRequiredStats.dropped}`);
     assert.ok(successDescriptionStats.shortened >= 200, `success descriptions shortened: ${successDescriptionStats.shortened}`);
     assert.equal(json.includes('"Successful response"'), false, 'no generated success description survives');
+    assert.ok(exampleListStats.trimmed >= 5, `example lists trimmed: ${exampleListStats.trimmed}`);
   });
 });

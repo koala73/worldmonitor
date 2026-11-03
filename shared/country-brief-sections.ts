@@ -35,6 +35,7 @@ export const BRIEF_SECTIONS = {
   military: ['security'],
   infrastructure: ['resources', 'security'],
   economic: ['economy'],
+  activity: ['economy'],
   housing: ['economy'],
   markets: ['economy'],
   china: ['overview', 'economy', 'security'],

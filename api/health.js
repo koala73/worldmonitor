@@ -37,6 +37,7 @@ import {
 } from './_content-freshness.js';
 import { assessContentAge } from './_content-age.js';
 import { readHumanitarianRetention } from './_humanitarian-retention.js';
+import { captureSilentError } from './_sentry-edge.js';
 
 export const config = { runtime: 'edge' };
 
@@ -138,11 +139,6 @@ function healthVerdictRedisKey(baseKey, vercelEnv, commitSha) {
 // publisher that is merely late, and is short next to the per-source
 // `maxContentAgeMin` budgets it defers — those budgets, not this constant, are
 // what detect a genuine upstream freeze (issue #3845).
-//
-// The scheduled monitor enforces its own ceiling on the deadlines this mints
-// (MAX_STALE_CONTENT_GRACE_MS in scripts/check-seed-freshness.mjs, which adds
-// clock-skew slack on top). tests/seed-freshness-monitor.test.mjs pins the two
-// together so neither can drift.
 const STALE_CONTENT_GRACE_MS = 3 * 60 * 60 * 1_000;
 const STALE_CONTENT_GRACE_STATE_KEY = healthVerdictRedisKey(
   'health:stale-content-grace:v1',
@@ -410,6 +406,7 @@ const BOOTSTRAP_KEYS = {
 // aggregate is cleanly absent. Include both fallback keys in the same health
 // sweep so the canadaAlerts probe grades the data clients actually receive.
 const STANDALONE_KEYS = {
+  ukmtoIncidents: 'maritime:ukmto-incidents:v1',
   sanctionsChanges: 'sanctions:changes:v1',
   predictionCountryMarkets: 'prediction:markets-country-index:v1',
   // US HTS chapter 99 duty index (catalog; coverage shards are versioned by
@@ -421,6 +418,9 @@ const STANDALONE_KEYS = {
   // evicted or stale index stays invisible until the next weekly freeze.
   gdeltCountryArticles: 'gdelt:bulk:country-articles:v1',
   gdeltDyadTension: 'gdelt:bulk:dyad-tension:v1',
+  // Non-news evidence per tension pair, read only by get-pizzint-status for
+  // the tension popup, so monitored here.
+  tensionEvidence: 'intelligence:tension-evidence:v1',
   // Per-country GDELT conflict counts and own-baseline medians, read only by the
   // CII conflict component (get-risk-scores), so monitored here.
   gdeltCountryEvents: 'gdelt:bulk:country-events:v1',
@@ -438,6 +438,10 @@ const STANDALONE_KEYS = {
   // Seeded and health-monitored; no dashboard consumer yet (#6155 is the
   // data layer only), so it is standalone rather than bootstrap-tiered.
   chinaStockConnect:  'market:china:stock-connect:v1',
+  // Seeded by seed-no2-activity (#9722): the global Sentinel-5P NO2 dataset
+  // keyed by region, read by the China activity nowcast RPC for its
+  // atmosphere family, so no bootstrap tier.
+  no2Activity:        'economic:no2-activity:v1',
   hkoWarnings:        'weather:hko-warnings:v1',
   imdCycloneMarine:   'weather:imd-cyclone-marine:v1',
   // Seeded by seed-live-video-resolved (#8545); read by the live video players
@@ -515,6 +519,8 @@ const STANDALONE_KEYS = {
   faaDelays:             'aviation:delays:faa:v1',
   intlDelays:            'aviation:delays:intl:v3',
   notamClosures:         'aviation:notam:closures:v2',
+  notamAirspace:         'aviation:notam:airspace:v1',
+  notamNmsClosures:      'aviation:notam:nms:closures:v1',
   positiveEventsLive:    'positive-events:geo:v1',
   cableHealth:           'cable-health-v1',
   submarineCables:       'infrastructure:submarine-cables:v1',
@@ -539,6 +545,22 @@ const STANDALONE_KEYS = {
   globalTendersCanadaBuys:      'economic:global-tenders:v1:source:canada-buys',
   globalTendersGets:            'economic:global-tenders:v1:source:gets',
   globalTendersWorldBank:       'economic:global-tenders:v1:source:world-bank',
+  globalTendersColombiaSecop:   'economic:global-tenders:v1:source:colombia-secop',
+  globalTendersKenyaPpip:       'economic:global-tenders:v1:source:kenya-ppip',
+  globalTendersSouthAfricaEtenders: 'economic:global-tenders:v1:source:south-africa-etenders',
+  globalTendersChileMercadoPublico: 'economic:global-tenders:v1:source:chile-mercado-publico',
+  globalTendersBrazilPncp:      'economic:global-tenders:v1:source:brazil-pncp',
+  globalTendersUkraineProzorro: 'economic:global-tenders:v1:source:ukraine-prozorro',
+  globalTendersBulgariaEop:     'economic:global-tenders:v1:source:bulgaria-eop',
+  globalTendersLatviaIub:       'economic:global-tenders:v1:source:latvia-iub',
+  globalTendersPolandBzp:       'economic:global-tenders:v1:source:poland-bzp',
+  globalTendersPakistanPpra:    'economic:global-tenders:v1:source:pakistan-ppra',
+  globalTendersPakistanEpads:   'economic:global-tenders:v1:source:pakistan-epads',
+  globalTendersGeorgiaSpa:      'economic:global-tenders:v1:source:georgia-spa',
+  globalTendersArmeniaArmeps:   'economic:global-tenders:v1:source:armenia-armeps',
+  globalTendersAlbaniaApp:      'economic:global-tenders:v1:source:albania-app',
+  globalTendersDominicanRepublicDgcp: 'economic:global-tenders:v1:source:dominican-republic-dgcp',
+  globalTendersMalaysiaMyprocurement: 'economic:global-tenders:v1:source:malaysia-myprocurement',
   crossStraitActivityTaiwanMnd: 'military:cross-strait-activity:v1:source:taiwan-mnd',
   crossStraitActivityJapanMod:  'military:cross-strait-activity:v1:source:japan-mod',
   defensePatents:        'patents:defense:latest',
@@ -572,6 +594,28 @@ const STANDALONE_KEYS = {
   // #8538. One probe per worldwide CPI source. The canonical keys are 115 KB –
   // 1 MB and the read path pipelines four of them, so health reads the
   // seed-meta keys instead of paying for the full payloads.
+  // Food prices: STRLEN on the cache GetFoodPrices reads (O(1), never loads the
+  // payload), so an evicted cache cannot read OK while its seed-meta survives.
+  foodPricesPihps: 'economic:food-prices:pihps:v1',
+  foodPricesPbs: 'economic:food-prices:pbs:v1',
+  foodPricesDa: 'economic:food-prices:da:v1',
+  foodPricesCbsl: 'economic:food-prices:cbsl:v1',
+  foodPricesSniim: 'economic:food-prices:sniim:v1',
+  foodPricesGiews: 'economic:food-prices:giews:v1',
+  foodPricesOnagri: 'economic:food-prices:onagri:v1',
+  foodPricesNabc: 'economic:food-prices:nabc:v1',
+  foodPricesNsckg: 'economic:food-prices:nsckg:v1',
+  foodPricesStatkz: 'economic:food-prices:statkz:v1',
+  foodPricesStatuz: 'economic:food-prices:statuz:v1',
+  foodPricesMaga: 'economic:food-prices:maga:v1',
+  foodPricesOcpv: 'economic:food-prices:ocpv:v1',
+  foodPricesSima: 'economic:food-prices:sima:v1',
+  foodPricesMit: 'economic:food-prices:mit:v1',
+  foodPricesUcda: 'economic:food-prices:ucda:v1',
+  foodPricesAmman: 'economic:food-prices:amman:v1',
+  foodPricesTcb: 'economic:food-prices:tcb:v1',
+  foodPricesMadr: 'economic:food-prices:madr:v1',
+  foodPricesNsomn: 'economic:food-prices:nsomn:v1',
   worldCpiImf:           'seed-meta:economic:world-cpi-imf',
   worldCpiEurostat:      'seed-meta:economic:world-cpi-eurostat',
   worldCpiEstat:         'seed-meta:economic:world-cpi-estat',
@@ -656,6 +700,29 @@ const STANDALONE_KEYS = {
   portwatchChokepointsRef:  'portwatch:chokepoints:ref:v1',
   chokepointFlows:          'energy:chokepoint-flows:v1',
   emberElectricity:         'energy:ember:v1:_all',
+  regionalEnergyPgcb:       'energy:regional:pgcb:v1',
+  regionalEnergyPetrobangla: 'energy:regional:petrobangla:v1',
+  regionalEnergyNiso:       'energy:regional:niso:v1',
+  regionalEnergyEskom:      'energy:regional:eskom:v1',
+  regionalEnergyCammesa:    'energy:regional:cammesa:v1',
+  regionalEnergyGse:        'energy:regional:gse:v1',
+  regionalEnergyOns:        'energy:regional:ons:v1',
+  regionalEnergyAnp:        'energy:regional:anp:v1',
+  regionalEnergyEvn:        'energy:regional:evn:v1',
+  regionalEnergyKorem:      'energy:regional:korem:v1',
+  regionalEnergyCoes:       'energy:regional:coes:v1',
+  regionalEnergyIccc:       'energy:regional:iccc:v1',
+  regionalEnergyFccc:       'energy:regional:fccc:v1',
+  regionalEnergyMem:        'energy:regional:mem:v1',
+  regionalEnergyQatarenergy: 'energy:regional:qatarenergy:v1',
+  regionalEnergyErb:      'energy:regional:erb:v1',
+  regionalEnergyNpa:      'energy:regional:npa:v1',
+  regionalEnergySonabhy:  'energy:regional:sonabhy:v1',
+  regionalEnergyZera:     'energy:regional:zera:v1',
+  regionalEnergyDoe:      'energy:regional:doe:v1',
+  regionalEnergyAnptl:    'energy:regional:anptl:v1',
+  regionalEnergyCreg:     'energy:regional:creg:v1',
+  regionalEnergyUrsea:    'energy:regional:ursea:v1',
   resilienceIntervals:      'resilience:intervals:v12:US',
   sprPolicies:              'energy:spr-policies:v1',
   pipelinesGas:             'energy:pipelines:gas:v1',
@@ -703,6 +770,9 @@ const STANDALONE_KEYS = {
   // and alarms earlier than the underlying seed-meta staleness window.
   chokepointFlowsRelayHeartbeat: 'relay:heartbeat:chokepoint-flows',
   climateNewsRelayHeartbeat:     'relay:heartbeat:climate-news',
+  // News digest warm cycle (scripts/lib/news-digest-warm.cjs): written only
+  // when at least half the (edition, language) digests served news (#9766).
+  newsDigestWarmRelayHeartbeat: 'relay:heartbeat:news-digest-warm',
   // Bundle tick heartbeat written by `_bundle-runner.mjs` on every container
   // start, including skip-all ticks. Detects Railway cron-scheduler freeze
   // (#6691) that member seed-meta budgets (17.5d+) cannot see.
@@ -754,6 +824,11 @@ const STANDALONE_KEYS = {
 const FIVE_FACTOR_SCORECARD_READ_MODEL_KEY = 'scorecard:five-factor:v1:read-model';
 
 const SEED_META = {
+  ukmtoIncidents: {
+    key: 'seed-meta:maritime:ukmto-incidents', maxStaleMin: 75,
+    activationKey: 'seed-activated:maritime:ukmto-incidents',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9831, activationKey: 'seed-activated:maritime:ukmto-incidents' },
+  },
   // scripts/seed-conflict-intel.mjs cron runs every 15min, while HAPI is gated
   // to one bulk refresh every 2h. Bounded above by
   // HAPI_TTL (360min / 6h) — the per-country data key's own Redis TTL — not
@@ -869,6 +944,21 @@ const SEED_META = {
     cutover: { mode: 'expiring-ack', fromKey: 'seed-meta:aviation:faa', issue: 6987, status: 'STALE_SEED' },
   },
   notamClosures:    { key: 'seed-meta:aviation:notam',          maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
+  // FAA NMS-API seeder (scripts/seed-notam-nms.mjs, */5 cron). Soft until the
+  // first production publish writes the activation marker: the FAA issues
+  // production credentials only after pre-prod validation.
+  notamAirspace: {
+    key: 'seed-meta:aviation:notam-airspace',
+    maxStaleMin: 20, // 4× the */5 Railway cron
+    activationKey: 'seed-activated:aviation:notam-nms:v1',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9635, activationKey: 'seed-activated:aviation:notam-nms:v1' },
+  },
+  notamNmsClosures: {
+    key: 'seed-meta:aviation:notam-nms-closures',
+    maxStaleMin: 20, // same run as notamAirspace
+    activationKey: 'seed-activated:aviation:notam-nms:v1',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9635, activationKey: 'seed-activated:aviation:notam-nms:v1' },
+  },
   predictionMarkets: {
     key: 'seed-meta:prediction:markets',
     maxStaleMin: 90,
@@ -967,6 +1057,18 @@ const SEED_META = {
   chinaReleaseCalendar: { key: 'seed-meta:economic:china-release-calendar', maxStaleMin: 4_320 },
   chinaCorporateDisclosures: { key: 'seed-meta:market:china-corporate-disclosures', maxStaleMin: 180 },
   chinaStockConnect: { key: 'seed-meta:market:china-stock-connect', maxStaleMin: 180 },
+  // seed-no2-activity daily cron `20 6 * * *` (#9722); 4320 = 3x cadence.
+  no2Activity: {
+    key: 'seed-meta:economic:no2-activity',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:no2-activity',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 9722,
+      activationKey: 'seed-activated:economic:no2-activity',
+    },
+  },
   crossStraitActivity: { key: 'seed-meta:military:cross-strait-activity', maxStaleMin: 720 },
   crossStraitActivityBootstrap: { key: 'seed-meta:military:cross-strait-activity-bootstrap', maxStaleMin: 720 },
   crossStraitActivityTaiwanMnd: {
@@ -978,7 +1080,9 @@ const SEED_META = {
       failureCodePattern: /^MND_[A-Z0-9_]{1,60}$/,
     },
   },
-  crossStraitActivityJapanMod:  { key: 'seed-meta:military:cross-strait-activity:japan-mod', maxStaleMin: 720 },
+  // One X read per 12-hour UTC slot, run by a 3-hour bundle: a healthy read can
+  // be 15h old, so 18h tolerates bundle lag but not a missed slot.
+  crossStraitActivityJapanMod:  { key: 'seed-meta:military:cross-strait-activity:japan-mod', maxStaleMin: 1080 },
   chinaPolicyEvents: { key: 'seed-meta:china:policy-events', maxStaleMin: 2_160 },
   // decisionGroups (#6060): the seeder's afterPublish diagnostics name which
   // groups are quiet, stale, or unavailable, so a shortfall is actionable
@@ -1036,7 +1140,7 @@ const SEED_META = {
   },
   bisLbs:           { key: 'seed-meta:economic:bis-lbs',          maxStaleMin: 14400 }, // BIS LBS quarterly publication; 10d threshold = ~1× publish lag tolerance after macro bundle daily refresh
   fatfListing:      { key: 'seed-meta:economic:fatf-listing',     maxStaleMin: 60480 }, // FATF plenary 3×/year; 42d threshold = >1 plenary cycle (catches missed-update if cron silently fails)
-  shippingRates:    { key: 'seed-meta:supply_chain:shipping',     maxStaleMin: 420 },
+  shippingRates:    { key: 'seed-meta:supply_chain:shipping',     maxStaleMin: 1140 },
   chokepoints:      { key: 'seed-meta:supply_chain:chokepoints',  maxStaleMin: 60, minRecordCount: 13 }, // 13 canonical chokepoints; get-chokepoint-status writes covered-count → < 13 = upstream partial (portwatch/ArcGIS dropped some)
   // minerals + giving: on-demand cachedFetchJson only, no seed-meta writer — freshness checked via TTL
   // bisExchange + bisCredit: extras written by same BIS script via writeExtraKey, no dedicated seed-meta
@@ -1251,12 +1355,102 @@ const SEED_META = {
   },
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
   globalTenders:    { key: 'seed-meta:economic:global-tenders',   maxStaleMin: 180 },
-  globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 240 }, // 150min request pacing + hourly member gate yields ~180min publishes; 240min leaves one gate of scheduling jitter without raising the 10/day SAM budget.
-  globalTendersTed:             { key: 'seed-meta:economic:global-tenders:ted',              maxStaleMin: 180 },
+  // Per-source tender health: the producer keeps a failed source's last-good
+  // open tenders for 24h (TENDER_SOURCE_RETENTION_MS in scripts/_global-tenders.mjs),
+  // and seed-meta fetchedAt is the last SUCCESS, so a rate-limited, unpublished
+  // or weekend-quiet portal is OK until that success is a day old, then
+  // STALE_SEED. sourceFailureWithinBudgetOk keeps a failed attempt from
+  // reporting SEED_ERROR inside that budget only while the source still serves
+  // something true: retained rows ('stale') or a verified empty result. An
+  // 'error' with nothing retained still warns.
+  globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 1440, sourceFailureWithinBudgetOk: true },
+  globalTendersTed:             { key: 'seed-meta:economic:global-tenders:ted',              maxStaleMin: 1440, sourceFailureWithinBudgetOk: true },
+  // Contracts Finder keeps its bespoke first-failure containment instead
+  // (composeContractsFinderHealth), which recounts usable canonical rows.
   globalTendersContractsFinder: { key: 'seed-meta:economic:global-tenders:contracts-finder', maxStaleMin: 180 },
-  globalTendersCanadaBuys:      { key: 'seed-meta:economic:global-tenders:canada-buys',      maxStaleMin: 180 },
-  globalTendersGets:            { key: 'seed-meta:economic:global-tenders:gets',             maxStaleMin: 180 },
-  globalTendersWorldBank:       { key: 'seed-meta:economic:global-tenders:world-bank',       maxStaleMin: 180 },
+  globalTendersCanadaBuys:      { key: 'seed-meta:economic:global-tenders:canada-buys',      maxStaleMin: 1440, sourceFailureWithinBudgetOk: true },
+  globalTendersGets:            { key: 'seed-meta:economic:global-tenders:gets',             maxStaleMin: 1440, sourceFailureWithinBudgetOk: true },
+  globalTendersWorldBank:       { key: 'seed-meta:economic:global-tenders:world-bank',       maxStaleMin: 1440, sourceFailureWithinBudgetOk: true },
+  globalTendersColombiaSecop: {
+    key: 'seed-meta:economic:global-tenders:colombia-secop', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:colombia-secop',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:colombia-secop' },
+  },
+  globalTendersKenyaPpip: {
+    key: 'seed-meta:economic:global-tenders:kenya-ppip', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:kenya-ppip',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:kenya-ppip' },
+  },
+  globalTendersSouthAfricaEtenders: {
+    key: 'seed-meta:economic:global-tenders:south-africa-etenders', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:south-africa-etenders',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:south-africa-etenders' },
+  },
+  globalTendersChileMercadoPublico: {
+    key: 'seed-meta:economic:global-tenders:chile-mercado-publico', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:chile-mercado-publico',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:chile-mercado-publico' },
+  },
+  globalTendersBrazilPncp: {
+    key: 'seed-meta:economic:global-tenders:brazil-pncp', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:brazil-pncp',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:brazil-pncp' },
+  },
+  globalTendersUkraineProzorro: {
+    key: 'seed-meta:economic:global-tenders:ukraine-prozorro', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:ukraine-prozorro',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:ukraine-prozorro' },
+  },
+  globalTendersBulgariaEop: {
+    key: 'seed-meta:economic:global-tenders:bulgaria-eop', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:bulgaria-eop',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:bulgaria-eop' },
+  },
+  globalTendersLatviaIub: {
+    key: 'seed-meta:economic:global-tenders:latvia-iub', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:latvia-iub',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:latvia-iub' },
+  },
+  globalTendersPolandBzp: {
+    key: 'seed-meta:economic:global-tenders:poland-bzp', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:poland-bzp',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:poland-bzp' },
+  },
+  globalTendersPakistanPpra: {
+    key: 'seed-meta:economic:global-tenders:pakistan-ppra', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:pakistan-ppra',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9840, activationKey: 'seed-activated:economic:global-tenders:pakistan-ppra' },
+  },
+  globalTendersPakistanEpads: {
+    key: 'seed-meta:economic:global-tenders:pakistan-epads', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:pakistan-epads',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9894, activationKey: 'seed-activated:economic:global-tenders:pakistan-epads' },
+  },
+  globalTendersGeorgiaSpa: {
+    key: 'seed-meta:economic:global-tenders:georgia-spa', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:georgia-spa',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9894, activationKey: 'seed-activated:economic:global-tenders:georgia-spa' },
+  },
+  globalTendersArmeniaArmeps: {
+    key: 'seed-meta:economic:global-tenders:armenia-armeps', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:armenia-armeps',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9894, activationKey: 'seed-activated:economic:global-tenders:armenia-armeps' },
+  },
+  globalTendersAlbaniaApp: {
+    key: 'seed-meta:economic:global-tenders:albania-app', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:albania-app',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10052, activationKey: 'seed-activated:economic:global-tenders:albania-app' },
+  },
+  globalTendersDominicanRepublicDgcp: {
+    key: 'seed-meta:economic:global-tenders:dominican-republic-dgcp', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:dominican-republic-dgcp',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10052, activationKey: 'seed-activated:economic:global-tenders:dominican-republic-dgcp' },
+  },
+  globalTendersMalaysiaMyprocurement: {
+    key: 'seed-meta:economic:global-tenders:malaysia-myprocurement', maxStaleMin: 1440, sourceFailureWithinBudgetOk: true,
+    activationKey: 'seed-activated:economic:global-tenders:malaysia-myprocurement',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10052, activationKey: 'seed-activated:economic:global-tenders:malaysia-myprocurement' },
+  },
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
   techEventsSeeder: {
     key: 'seed-meta:research:tech-events:seeder',
@@ -1283,6 +1477,15 @@ const SEED_META = {
     cutover: {
       mode: 'activation-marker', fromKey: null, issue: 8676,
       activationKey: 'seed-activated:gdelt:bulk:dyad-tension',
+    },
+  },
+  // 15-minute derived-signals section; 45 = 3 missed runs.
+  tensionEvidence: {
+    key: 'seed-meta:intelligence:tension-evidence', maxStaleMin: 45,
+    activationKey: 'seed-activated:intelligence:tension-evidence',
+    cutover: {
+      mode: 'activation-marker', fromKey: null, issue: 8676,
+      activationKey: 'seed-activated:intelligence:tension-evidence',
     },
   },
   // Same materializer tick; pending until its first country-events publish
@@ -1431,7 +1634,14 @@ const SEED_META = {
   // change cannot narrow the alarm scope without health noticing.
   portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160, minRecordCount: 174, requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 10 * 24 * 60 }, contentFreshnessActivation: 'portwatchContentFreshness' },
   corridorrisk:        { key: 'seed-meta:supply_chain:corridorrisk',         maxStaleMin: 120 },
-  chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits', maxStaleMin: 30, minRecordCount: 5 }, // measured canonical waterways; September 9 pulse had 5/13
+  // Gate-to-gate counting (#9551) only measures straits AISStream's shore
+  // receivers can see. A 2026-10-31 probe and 42h of gate journals found zero
+  // positions at the narrows of Hormuz, Suez, Bab el-Mandeb, Malacca, Panama,
+  // Taiwan, Bosporus, Korea, Kerch and Lombok; the old 5/13 came from 2° circles
+  // counting nearby port traffic. Dover, Gibraltar and Cape are the measurable
+  // set: the floor is three, and composeChokepointTransitsCoverage requires
+  // those three by name. PortWatch supplies the rest.
+  chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits', maxStaleMin: 30, minRecordCount: 3 },
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
   usniFleet:           { key: 'seed-meta:military:usni-fleet',               maxStaleMin: 720 }, // relay loop every 6h; 720 = 2× interval (was 480 = 1.3×, too tight)
   aisGaps:             {
@@ -1539,21 +1749,21 @@ const SEED_META = {
   // the sample) while the 30-year window picks up reporters with no recent data.
   // 200 leaves ~26% headroom for reporter-list drift and still fires well before
   // a real collapse.
-  // maxStaleMin sits INSIDE the 480min (8h) TRADE_TTL, not outside it. This is
+  // maxStaleMin sits INSIDE the 1440min (24h, #4873) TRADE_TTL, not outside it. This is
   // a meta-only probe (STANDALONE_KEYS.tradeFlows is the seed-meta key itself,
   // because the payload is sharded one key per reporter), so the hasData/EMPTY
   // backstop watches the meta record — which writeSeedMeta gives a 7-day TTL —
-  // and not the 8h data keys. Nothing else would notice the data expiring. A
-  // budget past 480 would therefore be silently green while every flow key was
-  // already gone. 420 = the 6h cron plus one hour of grace, so health reaches
-  // STALE_SEED an hour BEFORE the keys it vouches for lapse. Same shape as the
+  // and not the 24h data keys. Nothing else would notice the data expiring. A
+  // budget past 1440 would therefore be silently green while every flow key was
+  // already gone. 1140 = three 6h ticks plus one hour of grace, so health reaches
+  // STALE_SEED 5 hours BEFORE the keys it vouches for lapse. Same shape as the
   // meta-only comtradeBilateralHs4 entry above (35d budget, 40d payload TTL).
-  tradeFlows:          { key: 'seed-meta:trade:flows',                        maxStaleMin: 420, minRecordCount: 200, dominantFailureMode: true },
+  tradeFlows:          { key: 'seed-meta:trade:flows',                        maxStaleMin: 1140, legacyMaxStaleMin: 420, minRecordCount: 200, dominantFailureMode: true },
   // Same meta-only shape as tradeFlows above (#6316 moved tariffs off the
-  // single-key US years=10 probe). maxStaleMin 420 sits inside TARIFF_TTL
-  // (480min); minRecordCount 150 leaves headroom under a ~200+ reporter fleet.
-  tariffTrendsUs:      { key: 'seed-meta:trade:tariffs',                      maxStaleMin: 420, minRecordCount: 150 },
-  // publish.ts runs once daily (02:30 UTC); seed-meta TTL=52h — maxStaleMin must cover the full 24h cycle
+  // single-key US years=10 probe). maxStaleMin 1140 sits inside TARIFF_TTL
+  // (1440min since #4873); minRecordCount 150 leaves headroom under a ~200+ reporter fleet.
+  tariffTrendsUs:      { key: 'seed-meta:trade:tariffs',                      maxStaleMin: 1140, legacyMaxStaleMin: 420, minRecordCount: 150 },
+  // publish.ts runs each day at 02:30-05:30 UTC (hourly); seed-meta TTL=52h — maxStaleMin must cover the full 24h cycle
   consumerPricesOverview:   { key: 'seed-meta:consumer-prices:overview:ae',     maxStaleMin: 1500, minSuccessRate: 0.5 }, // 25h = 24h cadence + 1h grace; warn when <50% snapshots succeeded
   consumerPricesCategories: { key: 'seed-meta:consumer-prices:categories:ae:30d',            maxStaleMin: 1500 },
   consumerPricesMovers:     { key: 'seed-meta:consumer-prices:movers:ae:30d',               maxStaleMin: 1500 },
@@ -1721,6 +1931,127 @@ const SEED_META = {
   // daily interval, so 72h covers one missed tick; content age is the tighter
   // clock and is declared per seeder (IMF 120d, Eurostat 120d,
   // e-Stat 120d, ABS 400d) because their publication lags differ structurally.
+  // Food prices: source payloads include history, so probe metadata.
+  foodPricesPihps: {
+    key: 'seed-meta:economic:food-prices-pihps',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:food-prices-pihps',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9841, activationKey: 'seed-activated:economic:food-prices-pihps' },
+  },
+  foodPricesPbs: {
+    key: 'seed-meta:economic:food-prices-pbs',
+    maxStaleMin: 14400,
+    activationKey: 'seed-activated:economic:food-prices-pbs',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9841, activationKey: 'seed-activated:economic:food-prices-pbs' },
+  },
+  foodPricesDa: {
+    key: 'seed-meta:economic:food-prices-da',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:food-prices-da',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9841, activationKey: 'seed-activated:economic:food-prices-da' },
+  },
+  foodPricesCbsl: {
+    key: 'seed-meta:economic:food-prices-cbsl',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:food-prices-cbsl',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9841, activationKey: 'seed-activated:economic:food-prices-cbsl' },
+  },
+  foodPricesSniim: {
+    key: 'seed-meta:economic:food-prices-sniim',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:food-prices-sniim',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9841, activationKey: 'seed-activated:economic:food-prices-sniim' },
+  },
+  foodPricesGiews: {
+    key: 'seed-meta:economic:food-prices-giews',
+    maxStaleMin: 20160,
+    activationKey: 'seed-activated:economic:food-prices-giews',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9841, activationKey: 'seed-activated:economic:food-prices-giews' },
+  },
+  foodPricesOnagri: {
+    key: 'seed-meta:economic:food-prices-onagri',
+    maxStaleMin: 64800,
+    activationKey: 'seed-activated:economic:food-prices-onagri',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9841, activationKey: 'seed-activated:economic:food-prices-onagri' },
+  },
+  foodPricesNabc: {
+    key: 'seed-meta:economic:food-prices-nabc',
+    maxStaleMin: 14400,
+    activationKey: 'seed-activated:economic:food-prices-nabc',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9892, activationKey: 'seed-activated:economic:food-prices-nabc' },
+  },
+  foodPricesNsckg: {
+    key: 'seed-meta:economic:food-prices-nsckg',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:food-prices-nsckg',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9892, activationKey: 'seed-activated:economic:food-prices-nsckg' },
+  },
+  foodPricesStatkz: {
+    key: 'seed-meta:economic:food-prices-statkz',
+    maxStaleMin: 14400,
+    activationKey: 'seed-activated:economic:food-prices-statkz',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9892, activationKey: 'seed-activated:economic:food-prices-statkz' },
+  },
+  foodPricesStatuz: {
+    key: 'seed-meta:economic:food-prices-statuz',
+    maxStaleMin: 64800,
+    activationKey: 'seed-activated:economic:food-prices-statuz',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9892, activationKey: 'seed-activated:economic:food-prices-statuz' },
+  },
+  foodPricesMaga: {
+    key: 'seed-meta:economic:food-prices-maga',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:food-prices-maga',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9892, activationKey: 'seed-activated:economic:food-prices-maga' },
+  },
+  foodPricesOcpv: {
+    key: 'seed-meta:economic:food-prices-ocpv',
+    maxStaleMin: 14400,
+    activationKey: 'seed-activated:economic:food-prices-ocpv',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9892, activationKey: 'seed-activated:economic:food-prices-ocpv' },
+  },
+  foodPricesSima: {
+    key: 'seed-meta:economic:food-prices-sima',
+    maxStaleMin: 14400,
+    activationKey: 'seed-activated:economic:food-prices-sima',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9892, activationKey: 'seed-activated:economic:food-prices-sima' },
+  },
+  foodPricesMit: {
+    key: 'seed-meta:economic:food-prices-mit',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:food-prices-mit',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9892, activationKey: 'seed-activated:economic:food-prices-mit' },
+  },
+  foodPricesUcda: {
+    key: 'seed-meta:economic:food-prices-ucda',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:food-prices-ucda',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9892, activationKey: 'seed-activated:economic:food-prices-ucda' },
+  },
+  foodPricesAmman: {
+    key: 'seed-meta:economic:food-prices-amman',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:food-prices-amman',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9892, activationKey: 'seed-activated:economic:food-prices-amman' },
+  },
+  foodPricesTcb: {
+    key: 'seed-meta:economic:food-prices-tcb',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:food-prices-tcb',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9892, activationKey: 'seed-activated:economic:food-prices-tcb' },
+  },
+  foodPricesMadr: {
+    key: 'seed-meta:economic:food-prices-madr',
+    maxStaleMin: 4320,
+    activationKey: 'seed-activated:economic:food-prices-madr',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10050, activationKey: 'seed-activated:economic:food-prices-madr' },
+  },
+  foodPricesNsomn: {
+    key: 'seed-meta:economic:food-prices-nsomn',
+    maxStaleMin: 14400,
+    activationKey: 'seed-activated:economic:food-prices-nsomn',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10050, activationKey: 'seed-activated:economic:food-prices-nsomn' },
+  },
   worldCpiImf: {
     key: 'seed-meta:economic:world-cpi-imf',
     maxStaleMin: 4320,
@@ -1959,7 +2290,7 @@ const SEED_META = {
   // later as a generic STALE_SEED. Content age is producer-declared
   // (newestItemAt/maxContentAgeMin in seed-meta) — a frozen upstream file
   // reads STALE_CONTENT rather than passing as fresh.
-  jodiOil:              { key: 'seed-meta:energy:jodi-oil',               maxStaleMin: 60 * 24 * 40, chinaRow: true }, // monthly 35d cadence; 40d = cadence + 5d late-publisher grace. Data/meta TTL is 70d (2× cadence) so last-good outlives this gate and one missed monthly publish.
+  jodiOil:              { key: 'seed-meta:energy:jodi-oil',               maxStaleMin: 60 * 24 * 40, chinaRow: true }, // 15d bundle interval (monthly publisher); 40d allows missed runs plus a late publish. Data/meta TTL is 70d so last-good outlives this gate and one missed monthly publish.
   // Weekly bundle tick (seed-bundle-energy-sources); 14d = two missed runs. minRecordCount
   // mirrors MIN_COUNTRIES_WITH_PRODUCTION in scripts/seed-oil-trade-series.mjs. Content age is
   // the newest EIA STEO month (newestItemAt/maxContentAgeMin in seed-meta).
@@ -2016,6 +2347,18 @@ const SEED_META = {
   // than the 720min seed-meta threshold above. TTL is 18h on the writer.
   chokepointFlowsRelayHeartbeat: { key: 'relay:heartbeat:chokepoint-flows', maxStaleMin: 480 }, // 6h loop; 8h alarm
   climateNewsRelayHeartbeat:     { key: 'relay:heartbeat:climate-news',     maxStaleMin: 60 },  // 30m loop; 60m alarm
+  // 17m loop; 51m = 3 missed cycles. Soft until the first healthy cycle.
+  newsDigestWarmRelayHeartbeat: {
+    key: 'relay:heartbeat:news-digest-warm',
+    maxStaleMin: 51,
+    activationKey: 'seed-activated:news:digest-warm:v1',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 9766,
+      activationKey: 'seed-activated:news:digest-warm:v1',
+    },
+  },
   staticRefBundleTick: {
     key: 'bundle:heartbeat:static-ref',
     maxStaleMin: 2880, // daily cron `0 3 * * *`; 48h = 2× cadence
@@ -2042,6 +2385,52 @@ const SEED_META = {
     },
   },
   emberElectricity:     { key: 'seed-meta:energy:ember',                maxStaleMin: 2880 }, // daily cron (08:00 UTC); 2880min = 48h = 2x interval
+  regionalEnergyPgcb:  { key: 'seed-meta:energy:regional-pgcb', maxStaleMin: 180, firstPublicationMaxWaitMin: 180, maxContentAgeMin: 720, activationKey: 'seed-activated:energy:regional-pgcb',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-pgcb' } },
+  regionalEnergyPetrobangla: { key: 'seed-meta:energy:regional-petrobangla', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 7200, activationKey: 'seed-activated:energy:regional-petrobangla',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-petrobangla' } },
+  regionalEnergyNiso: { key: 'seed-meta:energy:regional-niso', maxStaleMin: 1080, firstPublicationMaxWaitMin: 1080, maxContentAgeMin: 7200, activationKey: 'seed-activated:energy:regional-niso',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-niso' } },
+  regionalEnergyEskom: { key: 'seed-meta:energy:regional-eskom', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 10080, activationKey: 'seed-activated:energy:regional-eskom',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-eskom' } },
+  regionalEnergyCammesa: { key: 'seed-meta:energy:regional-cammesa', maxStaleMin: 180, firstPublicationMaxWaitMin: 180, maxContentAgeMin: 720, activationKey: 'seed-activated:energy:regional-cammesa',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-cammesa' } },
+  regionalEnergyGse: { key: 'seed-meta:energy:regional-gse', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 129600, activationKey: 'seed-activated:energy:regional-gse',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-gse' } },
+  regionalEnergyOns: { key: 'seed-meta:energy:regional-ons', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 7200, activationKey: 'seed-activated:energy:regional-ons',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-ons' } },
+  regionalEnergyAnp: { key: 'seed-meta:energy:regional-anp', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 172800, activationKey: 'seed-activated:energy:regional-anp',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9842, activationKey: 'seed-activated:energy:regional-anp' } },
+  regionalEnergyEvn: { key: 'seed-meta:energy:regional-evn', maxStaleMin: 1080, firstPublicationMaxWaitMin: 1080, maxContentAgeMin: 4320, activationKey: 'seed-activated:energy:regional-evn',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-evn' } },
+  regionalEnergyKorem: { key: 'seed-meta:energy:regional-korem', maxStaleMin: 1080, firstPublicationMaxWaitMin: 1080, maxContentAgeMin: 4320, activationKey: 'seed-activated:energy:regional-korem',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-korem' } },
+  regionalEnergyCoes: { key: 'seed-meta:energy:regional-coes', maxStaleMin: 180, firstPublicationMaxWaitMin: 180, maxContentAgeMin: 360, activationKey: 'seed-activated:energy:regional-coes',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-coes' } },
+  regionalEnergyIccc: { key: 'seed-meta:energy:regional-iccc', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-iccc',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-iccc' } },
+  regionalEnergyFccc: { key: 'seed-meta:energy:regional-fccc', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-fccc',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-fccc' } },
+  regionalEnergyMem: { key: 'seed-meta:energy:regional-mem', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 30240, activationKey: 'seed-activated:energy:regional-mem',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 9893, activationKey: 'seed-activated:energy:regional-mem' } },
+  regionalEnergyQatarenergy: { key: 'seed-meta:energy:regional-qatarenergy', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-qatarenergy',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-qatarenergy' } },
+  regionalEnergyErb: { key: 'seed-meta:energy:regional-erb', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-erb',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-erb' } },
+  regionalEnergyNpa: { key: 'seed-meta:energy:regional-npa', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 20160, activationKey: 'seed-activated:energy:regional-npa',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-npa' } },
+  regionalEnergySonabhy: { key: 'seed-meta:energy:regional-sonabhy', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 576000, activationKey: 'seed-activated:energy:regional-sonabhy',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-sonabhy' } },
+  regionalEnergyZera: { key: 'seed-meta:energy:regional-zera', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-zera',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-zera' } },
+  regionalEnergyDoe: { key: 'seed-meta:energy:regional-doe', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 20160, activationKey: 'seed-activated:energy:regional-doe',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-doe' } },
+  regionalEnergyAnptl: { key: 'seed-meta:energy:regional-anptl', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 129600, activationKey: 'seed-activated:energy:regional-anptl',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-anptl' } },
+  regionalEnergyCreg: { key: 'seed-meta:energy:regional-creg', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-creg',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-creg' } },
+  regionalEnergyUrsea: { key: 'seed-meta:energy:regional-ursea', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-ursea',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-ursea' } },
   cryptoSectors:        { key: 'seed-meta:market:crypto-sectors',             maxStaleMin: 120 }, // relay loop every ~30min; 120min = 2h = 4x interval
   ddosAttacks:          { key: 'seed-meta:cf:radar:ddos',                    maxStaleMin: 60 }, // seed-internet-outages publishes the payload before advancing this clock; outages cron ~15min; 60 = 4x interval
   economicStress:       { key: 'seed-meta:economic:stress-index',            maxStaleMin: 180 }, // computed in seed-economy afterPublish; cron ~1h; 180min = 3x interval
@@ -2187,6 +2576,62 @@ if (!IRAN_EVENTS_ENABLED) {
 // chronic outage went undetected until a user noticed the panel was stuck on
 // "Loading...". Removed marketImplications below.
 const ON_DEMAND_KEYS = new Set([
+  'foodPricesPihps', 'foodPricesPbs', 'foodPricesDa', 'foodPricesCbsl',
+  'foodPricesSniim', 'foodPricesGiews', 'foodPricesOnagri',
+  'foodPricesNabc',
+  'foodPricesNsckg',
+  'foodPricesStatkz',
+  'foodPricesStatuz',
+  'foodPricesMaga',
+  'foodPricesOcpv',
+  'foodPricesSima',
+  'foodPricesMit',
+  'foodPricesUcda',
+  'foodPricesAmman',
+  'foodPricesTcb',
+  'foodPricesMadr',
+  'foodPricesNsomn',
+  'regionalEnergyPgcb',
+  'regionalEnergyPetrobangla',
+  'regionalEnergyNiso',
+  'regionalEnergyEskom',
+  'regionalEnergyCammesa',
+  'regionalEnergyGse',
+  'regionalEnergyOns',
+  'regionalEnergyAnp',
+  'regionalEnergyEvn',
+  'regionalEnergyKorem',
+  'regionalEnergyCoes',
+  'regionalEnergyIccc',
+  'regionalEnergyFccc',
+  'regionalEnergyMem',
+  'regionalEnergyQatarenergy',
+  'regionalEnergyErb',
+  'regionalEnergyNpa',
+  'regionalEnergySonabhy',
+  'regionalEnergyZera',
+  'regionalEnergyDoe',
+  'regionalEnergyAnptl',
+  'regionalEnergyCreg',
+  'regionalEnergyUrsea',
+
+  'globalTendersColombiaSecop',
+  'globalTendersKenyaPpip',
+  'globalTendersSouthAfricaEtenders',
+  'globalTendersChileMercadoPublico',
+  'globalTendersBrazilPncp',
+  'globalTendersUkraineProzorro',
+  'globalTendersBulgariaEop',
+  'globalTendersLatviaIub',
+  'globalTendersPolandBzp',
+  'globalTendersPakistanPpra',
+  'globalTendersPakistanEpads',
+  'globalTendersGeorgiaSpa',
+  'globalTendersArmeniaArmeps',
+  'globalTendersAlbaniaApp',
+  'globalTendersDominicanRepublicDgcp',
+  'globalTendersMalaysiaMyprocurement',
+  'ukmtoIncidents',
   // Deployment-order bridge: Vercel can ship this reader before Railway's
   // hourly bundle publishes the first summary. The seeder writes a durable
   // activation marker after its first successful publish; after that, a
@@ -2232,6 +2677,9 @@ const ON_DEMAND_KEYS = new Set([
   // seed-live-video-resolved Railway service is provisioned. The seeder SETs the
   // durable marker after its first successful publish; strict from then on.
   'liveVideoResolved',
+  // Same bridge (#9722): the nowcast reader ships before the
+  // seed-no2-activity Railway service is provisioned.
+  'no2Activity',
   // #8480. The macro bundle can ship the reader before the tail sections
   // publish. Each marker is written after the first successful publish.
   'usCpiMonthly',
@@ -2258,8 +2706,12 @@ const ON_DEMAND_KEYS = new Set([
   'gdeltCountryArticles',
   'gdeltDyadTension',
   'gdeltCountryEvents',
+  // Written by scripts/seed-tension-evidence.mjs after each publish.
+  'tensionEvidence',
   // Relay strike-pressure tally: the marker is written after its first healthy publish.
   'strikePressure',
+  // Relay digest warm cycle: the marker is written after its first healthy cycle.
+  'newsDigestWarmRelayHeartbeat',
   // Scheduled producer. The marker is written only after a successful
   // publish of the canonical snapshot. Before that first publish, absence is
   // pending activation; after it, missing or stale data is strict.
@@ -2304,6 +2756,8 @@ const ON_DEMAND_KEYS = new Set([
   // first publish, missing data/meta is EMPTY/STALE_SEED like any other key.
   'newsFeedHealth',
   'imdCycloneMarine',
+  'notamAirspace',
+  'notamNmsClosures',
   'forecastCalibrationMap',
   'marketAlertLedger',
   'marketAlertScorecard',
@@ -2359,6 +2813,47 @@ const ON_DEMAND_KEYS = new Set([
 // publish; when the marker exists the key leaves ON_DEMAND softening and
 // normal EMPTY/STALE_SEED rules apply.
 const ACTIVATION_MARKERS = {
+  regionalEnergyPgcb: SEED_META.regionalEnergyPgcb.activationKey,
+  regionalEnergyPetrobangla: SEED_META.regionalEnergyPetrobangla.activationKey,
+  regionalEnergyNiso: SEED_META.regionalEnergyNiso.activationKey,
+  regionalEnergyEskom: SEED_META.regionalEnergyEskom.activationKey,
+  regionalEnergyCammesa: SEED_META.regionalEnergyCammesa.activationKey,
+  regionalEnergyGse: SEED_META.regionalEnergyGse.activationKey,
+  regionalEnergyOns: SEED_META.regionalEnergyOns.activationKey,
+  regionalEnergyAnp: SEED_META.regionalEnergyAnp.activationKey,
+  regionalEnergyEvn: SEED_META.regionalEnergyEvn.activationKey,
+  regionalEnergyKorem: SEED_META.regionalEnergyKorem.activationKey,
+  regionalEnergyCoes: SEED_META.regionalEnergyCoes.activationKey,
+  regionalEnergyIccc: SEED_META.regionalEnergyIccc.activationKey,
+  regionalEnergyFccc: SEED_META.regionalEnergyFccc.activationKey,
+  regionalEnergyMem: SEED_META.regionalEnergyMem.activationKey,
+  regionalEnergyQatarenergy: SEED_META.regionalEnergyQatarenergy.activationKey,
+  regionalEnergyErb: SEED_META.regionalEnergyErb.activationKey,
+  regionalEnergyNpa: SEED_META.regionalEnergyNpa.activationKey,
+  regionalEnergySonabhy: SEED_META.regionalEnergySonabhy.activationKey,
+  regionalEnergyZera: SEED_META.regionalEnergyZera.activationKey,
+  regionalEnergyDoe: SEED_META.regionalEnergyDoe.activationKey,
+  regionalEnergyAnptl: SEED_META.regionalEnergyAnptl.activationKey,
+  regionalEnergyCreg: SEED_META.regionalEnergyCreg.activationKey,
+  regionalEnergyUrsea: SEED_META.regionalEnergyUrsea.activationKey,
+
+  globalTendersColombiaSecop: SEED_META.globalTendersColombiaSecop.activationKey,
+  globalTendersKenyaPpip: SEED_META.globalTendersKenyaPpip.activationKey,
+  globalTendersSouthAfricaEtenders: SEED_META.globalTendersSouthAfricaEtenders.activationKey,
+  globalTendersChileMercadoPublico: SEED_META.globalTendersChileMercadoPublico.activationKey,
+  globalTendersBrazilPncp: SEED_META.globalTendersBrazilPncp.activationKey,
+  globalTendersUkraineProzorro: SEED_META.globalTendersUkraineProzorro.activationKey,
+  globalTendersBulgariaEop: SEED_META.globalTendersBulgariaEop.activationKey,
+  globalTendersLatviaIub: SEED_META.globalTendersLatviaIub.activationKey,
+  globalTendersPolandBzp: SEED_META.globalTendersPolandBzp.activationKey,
+  globalTendersPakistanPpra: SEED_META.globalTendersPakistanPpra.activationKey,
+  globalTendersPakistanEpads: SEED_META.globalTendersPakistanEpads.activationKey,
+  globalTendersGeorgiaSpa: SEED_META.globalTendersGeorgiaSpa.activationKey,
+  globalTendersArmeniaArmeps: SEED_META.globalTendersArmeniaArmeps.activationKey,
+  globalTendersAlbaniaApp: SEED_META.globalTendersAlbaniaApp.activationKey,
+  globalTendersDominicanRepublicDgcp: SEED_META.globalTendersDominicanRepublicDgcp.activationKey,
+  globalTendersMalaysiaMyprocurement: SEED_META.globalTendersMalaysiaMyprocurement.activationKey,
+  ukmtoIncidents: 'seed-activated:maritime:ukmto-incidents',
   chinaCoverage: 'seed-activated:health:china-coverage',
   // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).
   pizzintHistory: SEED_META.pizzintHistory.activationKey,
@@ -2388,6 +2883,8 @@ const ACTIVATION_MARKERS = {
   statcanWds: 'seed-activated:economic:statcan-wds',
   // Written by scripts/seed-live-video-resolved.mjs in runSeed's afterPublish hook.
   liveVideoResolved: SEED_META.liveVideoResolved.activationKey,
+  // Written atomically with the dataset by scripts/seed-no2-activity.mjs.
+  no2Activity: SEED_META.no2Activity.activationKey,
   // Written by scripts/seed-fire-detections.mjs in runSeed's afterFreshness hook,
   // after the summary extra key and the canonical seed-meta (#9509).
   wildfiresSummary: SEED_META.wildfiresSummary.activationKey,
@@ -2398,6 +2895,27 @@ const ACTIVATION_MARKERS = {
   worldCpiEurostat: SEED_META.worldCpiEurostat.activationKey,
   worldCpiEstat: SEED_META.worldCpiEstat.activationKey,
   worldCpiAbs: SEED_META.worldCpiAbs.activationKey,
+  foodPricesPihps: SEED_META.foodPricesPihps.activationKey,
+  foodPricesPbs: SEED_META.foodPricesPbs.activationKey,
+  foodPricesDa: SEED_META.foodPricesDa.activationKey,
+  foodPricesCbsl: SEED_META.foodPricesCbsl.activationKey,
+  foodPricesSniim: SEED_META.foodPricesSniim.activationKey,
+  foodPricesGiews: SEED_META.foodPricesGiews.activationKey,
+  foodPricesOnagri: SEED_META.foodPricesOnagri.activationKey,
+  foodPricesNabc: SEED_META.foodPricesNabc.activationKey,
+  foodPricesNsckg: SEED_META.foodPricesNsckg.activationKey,
+  foodPricesStatkz: SEED_META.foodPricesStatkz.activationKey,
+  foodPricesStatuz: SEED_META.foodPricesStatuz.activationKey,
+  foodPricesMaga: SEED_META.foodPricesMaga.activationKey,
+  foodPricesOcpv: SEED_META.foodPricesOcpv.activationKey,
+  foodPricesSima: SEED_META.foodPricesSima.activationKey,
+  foodPricesMit: SEED_META.foodPricesMit.activationKey,
+  foodPricesUcda: SEED_META.foodPricesUcda.activationKey,
+  foodPricesAmman: SEED_META.foodPricesAmman.activationKey,
+  foodPricesTcb: SEED_META.foodPricesTcb.activationKey,
+  foodPricesMadr: SEED_META.foodPricesMadr.activationKey,
+  foodPricesNsomn: SEED_META.foodPricesNsomn.activationKey,
+
   torontoTfs: SEED_META.torontoTfs.activationKey,
   torontoTps: SEED_META.torontoTps.activationKey,
   predictionCountryMarkets: SEED_META.predictionCountryMarkets.activationKey,
@@ -2405,15 +2923,20 @@ const ACTIVATION_MARKERS = {
   // article index publishes with its seed-meta (#7748).
   gdeltCountryArticles: SEED_META.gdeltCountryArticles.activationKey,
   gdeltDyadTension: SEED_META.gdeltDyadTension.activationKey,
+  tensionEvidence: SEED_META.tensionEvidence.activationKey,
   gdeltCountryEvents: SEED_META.gdeltCountryEvents.activationKey,
   // Written by scripts/ais-relay.cjs after the first healthy strike-pressure publish.
   strikePressure: 'seed-activated:conflict:strike-pressure',
+  // Written by scripts/ais-relay.cjs after the first healthy digest warm cycle.
+  newsDigestWarmRelayHeartbeat: SEED_META.newsDigestWarmRelayHeartbeat.activationKey,
   physicalPremiums: SEED_META.physicalPremiums.activationKey,
   // Written by publishUsHtsIndex in scripts/seed-supply-chain-trade.mjs.
   usHtsDuties: SEED_META.usHtsDuties.activationKey,
   physicalDivergence: SEED_META.physicalDivergence.activationKey,
   scorecardFiveFactor: SEED_META.scorecardFiveFactor.activationKey,
   imdCycloneMarine: SEED_META.imdCycloneMarine.activationKey,
+  notamAirspace: SEED_META.notamAirspace.activationKey,
+  notamNmsClosures: SEED_META.notamNmsClosures.activationKey,
   forecastCalibrationMap: SEED_META.forecastCalibrationMap.activationKey,
   forecastProbabilityTrail: SEED_META.forecastProbabilityTrail.activationKey,
   forecastArchive: SEED_META.forecastArchive.activationKey,
@@ -2451,6 +2974,7 @@ const ACTIVATION_MARKERS = {
 export const COVERAGE_FAILURE_REASONS = Object.freeze([
   'provider-cooldown',
   'provider-error',
+  'source-http-error',
   'missing-price',
   'price-evidence-missing',
   'quantity-as-price',
@@ -2485,6 +3009,20 @@ function fredRatesRolloutCommands(now, vercelEnv = process.env.VERCEL_ENV) {
     ['SET', FRED_RATES_ROLLOUT_DEADLINE_KEY, String(candidateUntil), 'NX'],
     ['GET', FRED_RATES_ROLLOUT_DEADLINE_KEY],
   ];
+}
+
+const REGIONAL_ENERGY_ROLLOUT_NAMES = Object.keys(SEED_META)
+  .filter(name => SEED_META[name].firstPublicationMaxWaitMin != null);
+
+function regionalEnergyRolloutCommands(now, vercelEnv = process.env.VERCEL_ENV) {
+  if (vercelEnv !== 'production') return [];
+  return REGIONAL_ENERGY_ROLLOUT_NAMES.flatMap(name => {
+    const deadlineKey = `health:rollout-deadline:${STANDALONE_KEYS[name]}`;
+    return [
+      ['SET', deadlineKey, String(now + SEED_META[name].firstPublicationMaxWaitMin * 60_000), 'NX'],
+      ['GET', deadlineKey],
+    ];
+  });
 }
 
 function parseFredRatesRolloutUntil(results) {
@@ -2785,6 +3323,7 @@ const MISSING_DATA_IS_FAILURE_KEYS = new Set([
 // Keys where a present payload with meta recordCount=0 is valid, but the data
 // key itself must still exist. Do not use this set in the missing-key branch.
 const ZERO_RECORD_DATA_OK_KEYS = new Set([
+  'ukmtoIncidents',
   ...EMPTY_DATA_OK_KEYS,
   'sanctionsChanges',
   'forecastArchive',
@@ -2811,6 +3350,11 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   // reads EMPTY (absence is not peaceful).
   'aisGaps',
   'globalTendersSam', 'globalTendersTed', 'globalTendersContractsFinder', 'globalTendersCanadaBuys', 'globalTendersGets', 'globalTendersWorldBank',
+  'globalTendersColombiaSecop', 'globalTendersKenyaPpip', 'globalTendersSouthAfricaEtenders',
+  'globalTendersChileMercadoPublico', 'globalTendersBrazilPncp', 'globalTendersUkraineProzorro',
+  'globalTendersBulgariaEop', 'globalTendersLatviaIub', 'globalTendersPolandBzp', 'globalTendersPakistanPpra',
+  'globalTendersPakistanEpads', 'globalTendersGeorgiaSpa', 'globalTendersArmeniaArmeps',
+  'globalTendersAlbaniaApp', 'globalTendersDominicanRepublicDgcp', 'globalTendersMalaysiaMyprocurement',
   // retailer-spread is SUPPRESSED to an explicit 0 by the aggregate job when a
   // market's retailers share < MIN_SPREAD_ITEMS (4) common basket items —
   // consumer-prices-core/src/jobs/aggregate.ts writes `retailer_spread_pct: 0`
@@ -2834,6 +3378,7 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   // exists after a successful query, but a quiet 90-day window can validly
   // contain zero owned-category events.
   'chinaCorporateDisclosures',
+  'no2Activity',
   // #5736 ingest-health records. `recordCount` is the volume the relay accepted
   // on the last successful append, and zero is legitimate — a run whose records
   // were all deduped, or one with no noteworthy records at all. The record key
@@ -3232,7 +3777,10 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     && meta.sourceState !== 'ok'
     && !sourceUnavailable
     && !sourceBlocked
-    && sourceFailure?.pending !== true);
+    && sourceFailure?.pending !== true
+    && !(seedCfg.sourceFailureWithinBudgetOk === true && seedStale === false
+      && ((meta.sourceState === 'stale' && meta.recordCount > 0)
+        || (meta.sourceState === 'error' && meta.confirmedEmpty === true))));
   // Content-age trio (2026-05-04 health-readiness plan). Presence of
   // maxContentAgeMin is the opt-in signal — legacy seeders without it
   // get contentAge: null and skip the STALE_CONTENT branch in classifyKey.
@@ -3295,6 +3843,14 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     const value = meta?.coverage?.[field];
     return Number.isFinite(value) ? { [field]: value } : {};
   };
+  // Only well-formed ISO2 codes count; the status branch reads this projection
+  // so the verdict and the published list cannot disagree.
+  const sourceAbsentCoverageField = (value) => {
+    const codes = Array.isArray(value)
+      ? value.filter((iso2) => typeof iso2 === 'string' && /^[A-Z]{2}$/.test(iso2)).slice(0, 60)
+      : [];
+    return codes.length > 0 ? { sourceAbsentCountries: codes } : {};
+  };
   const coverage = meta?.coverage && typeof meta.coverage === 'object'
     ? {
         status: typeof meta.coverage.status === 'string' ? meta.coverage.status : null,
@@ -3316,6 +3872,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
         ...finiteCoverageField('reviewedHs2Count'),
         failureReasons: sanitizeCoverageFailureReasons(meta.coverage.failureReasons),
         retailers: coverageRetailers,
+        ...sourceAbsentCoverageField(meta.coverage.sourceAbsentCountries),
       }
     : null;
   const coverageCompletionRatioUsable = Number.isFinite(meta?.coverage?.completionRatio)
@@ -3424,7 +3981,17 @@ function isCascadeCovered(name, hasData, keyStrens, keyErrors) {
 
 function classifyKey(name, redisKey, opts, ctx) {
   const { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, now } = ctx;
-  const seedCfg = SEED_META[name];
+  let seedCfg = SEED_META[name];
+  // API and worker releases can arrive in either order. Keep the old limit
+  // until this fleet's successful publish proves retention beyond the new
+  // budget. Retain this fallback while an eight-hour worker can still run.
+  if (seedCfg?.legacyMaxStaleMin != null) {
+    const published = unwrapEnvelope(parseRedisValue(keyMetaValues.get(seedCfg.key))).data;
+    const payloadTtlSeconds = published?.payloadTtlSeconds;
+    if (!Number.isFinite(payloadTtlSeconds) || payloadTtlSeconds <= seedCfg.maxStaleMin * 60) {
+      seedCfg = { ...seedCfg, maxStaleMin: seedCfg.legacyMaxStaleMin };
+    }
+  }
   ctx.containmentEvidenceByName?.delete(name);
   // #6095 audited this grace and DELIBERATELY kept it soft when the marker read
   // failed, unlike the content-freshness grace below. What it gates is why:
@@ -3440,13 +4007,13 @@ function classifyKey(name, redisKey, opts, ctx) {
   //   3. It is not free, and the cost is bounded rather than absent. For a key
   //      whose marker is ALREADY present, an unreadable marker re-enters the
   //      softening and downgrades EMPTY (crit — #4927's "ran once and died"
-  //      alarm) to EMPTY_ON_DEMAND, which scripts/check-seed-freshness.mjs then
-  //      excuses. That lasts only as long as the marker is unreadable, and
+  //      alarm) to EMPTY_ON_DEMAND, which health does not alert on. That lasts only as long as the marker is unreadable, and
   //      `entry.activationUnknown` marks every entry softened on unknown state
   //      so the window is visible instead of silent.
   // The content-freshness grace below has none of those bounds, which is why it
   // takes the opposite policy on the same unknown state.
-  const isOnDemand = !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name)
+  let isOnDemand = seedCfg?.firstPublicationMaxWaitMin == null
+    && !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name)
     && ctx.activationStates?.get(name) !== true;
   // Unlike ON_DEMAND, runtime rollout windows need no per-registry opt-in
   // (`allowOnDemand`): each window is bounded by a deployment-relative deadline
@@ -3473,6 +4040,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   ].some((markerName) => markerName !== null && !ctx.activationStates.has(markerName));
 
   const meta = readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now);
+  if (name === 'no2Activity' && meta.hasMeta) isOnDemand = false;
 
   // Per-command Redis errors (data STRLEN or seed-meta GET) propagate as their
   // own bucket — don't conflate with "key missing", since ops needs to know if
@@ -3729,6 +4297,13 @@ function classifyKey(name, redisKey, opts, ctx) {
   // whole corpus, and the named entities are on the wire so an operator sees
   // the stale source family instead of a generic warning.
   else if (contentFreshness?.contentStale) status = 'STALE_CONTENT';
+  // A producer that excluded entities proven absent from its source (PortWatch)
+  // is partial by definition, even when the remaining count still clears
+  // minRecordCount because the reference universe is larger than the floor.
+  // Placed after the freshness verdicts so an absence that can last for weeks
+  // never masks a degraded block or stale critical content; still above the
+  // informational pre-warning and margin statuses.
+  else if (coverage?.sourceAbsentCountries?.length > 0) status = 'COVERAGE_PARTIAL';
   // Pre-breach lead time (reader policy, see CONTENT_AGE_PREWARNING_RATIO in
   // api/_content-age.js). Fires only after every hard fault declined and
   // before COVERAGE_MARGIN_LOW, which is informational: an approaching time
@@ -3750,18 +4325,16 @@ function classifyKey(name, redisKey, opts, ctx) {
   // (`EMPTY_ON_DEMAND`) cannot carry that, because it only covers the
   // absent/zero-record branches — an on-demand key that HAS data and goes stale
   // falls through to plain STALE_SEED. Emitted for every status so a consumer
-  // can combine source and status; deciding WHICH statuses the marker excuses is
-  // the consumer's call, and scripts/check-seed-freshness.mjs deliberately
-  // excuses only the empty/absent ones (see ON_DEMAND_SOFT_STATUSES there —
-  // softening SEED_ERROR/STALE_SEED is the marketImplications blind spot the
-  // ON_DEMAND_KEYS policy block above exists to prevent).
+  // can combine source and status. The marker excuses nothing by itself: only
+  // EMPTY_ON_DEMAND is left out of the data-problem set, because softening
+  // SEED_ERROR/STALE_SEED is the marketImplications blind spot the
+  // ON_DEMAND_KEYS policy block above exists to prevent.
   if (isOnDemand) entry.onDemand = true;
   // See the activationUnknown derivation above. Never softens or hardens
   // anything by itself — it only says which evidence the verdict rests on.
   if (activationUnknown) entry.activationUnknown = true;
   // Publish the deadline with the state so the softening is auditable from the
-  // payload alone — an operator (and scripts/check-seed-freshness.mjs) can see
-  // exactly when this key stops being excused without reading api/health.js.
+  // payload alone — an operator can see exactly when this key stops being excused without reading api/health.js.
   if (status === 'ROLLOUT_PENDING') entry.rolloutPendingUntil = new Date(rolloutPendingUntil).toISOString();
   if (contentFreshnessActivationWindow) {
     entry.contentFreshnessPendingUntil = new Date(contentFreshnessActivationWindow.untilMs).toISOString();
@@ -4332,6 +4905,20 @@ function composeChinaDecisionSignalsStatus(entry, _chinaCoverageEntry, now) {
 // with the input detail attached for diagnosis. A dead input is never
 // contained: containment means the served payload is merely old, while scores
 // built without a signal are wrong.
+// The straits AISStream's receivers reach (2026-10-31 probe). Named, not
+// counted: a lit Taiwan must not stand in for a dark Gibraltar.
+const AIS_MEASURABLE_TRANSIT_IDS = Object.freeze(['dover_strait', 'gibraltar', 'cape_of_good_hope']);
+
+function composeChokepointTransitsCoverage(entry, rawMeta) {
+  if (!entry || entry.status !== 'OK') return entry;
+  const missing = unwrapEnvelope(parseRedisValue(rawMeta)).data?.transitCoverage?.missing;
+  const missingMeasurable = Array.isArray(missing)
+    ? AIS_MEASURABLE_TRANSIT_IDS.filter((id) => missing.includes(id))
+    : [...AIS_MEASURABLE_TRANSIT_IDS];
+  if (missingMeasurable.length === 0) return entry;
+  return { ...entry, status: 'COVERAGE_PARTIAL', missingMeasurable };
+}
+
 function composeRiskScoresInputHealth(entry, rawMeta, checks, now, containmentEvidenceByName) {
   if (!entry) return entry;
   const meta = unwrapEnvelope(parseRedisValue(rawMeta)).data;
@@ -4565,8 +5152,8 @@ function snapshotTtlSeconds(snapshot, now) {
 // invariant (`ok + warn + onDemandWarn + crit == total`) holds; the published
 // examples stay pinned to the registry size by the docs-stats gate and the
 // docs state that a production build reports one more. Its verdict lands in
-// compact `problems`, which is what the 15-minute seed-freshness monitor
-// fails on (scripts/check-seed-freshness.mjs findOperationalProblems).
+// compact `problems`, the same set `dataStatus` and source incidents use
+// (collectFailureLogProblems).
 const RELAY_GATEWAY_GATE_CHECK_NAME = 'relayGatewayGate';
 const RELAY_GATEWAY_GATE_ROUTE = '/relay/create-checkout';
 const RELAY_GATEWAY_GATE_TIMEOUT_MS = 4_000;
@@ -4612,16 +5199,16 @@ const RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS = HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS
 // PLUS the freshness window (freshness is judged on `evaluatedAt`, not the
 // Redis TTL) so the streak survives between windows.
 const RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS = 3 * 60 * 1_000;
-// The streak must survive at least one operational-monitor interval with NO
-// other traffic: `seed-freshness-monitor.yml` polls every 15 minutes, and if
-// the previous verdict had already expired by then, every run would see a
+// The streak must survive the slowest external health poll with NO other
+// traffic. 15 minutes bounds the uptime monitors' cadence; if the previous
+// verdict had already expired by the next poll, every poll would see a
 // "first sighting", mint a fresh grace and park a dead relay in `pending`
-// forever. Retention = freshness window + grace + one monitor interval +
-// slack; freshness itself is still judged on `evaluatedAt`.
-const SEED_FRESHNESS_MONITOR_INTERVAL_MS = 15 * 60 * 1_000;
+// forever. Retention = freshness window + grace + one poll interval + slack;
+// freshness itself is still judged on `evaluatedAt`.
+const HEALTH_POLL_INTERVAL_MS = 15 * 60 * 1_000;
 const RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS =
   RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS
-  + (RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS + SEED_FRESHNESS_MONITOR_INTERVAL_MS + 60_000) / 1_000;
+  + (RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS + HEALTH_POLL_INTERVAL_MS + 60_000) / 1_000;
 
 /** The previous verdict regardless of freshness, for streak continuity. */
 function parsePreviousRelayGatewayGate(raw) {
@@ -4919,7 +5506,7 @@ async function probeRelayGatewayGate({
       ...base,
       status: 'RELAY_GATE_MISCONFIGURED',
       missing,
-      hint: `This production build cannot see ${missing.map((name) => (name === 'CONVEX_SITE_URL' ? 'CONVEX_SITE_URL (or CONVEX_URL)' : name)).join(', ')}; the gateways answer 503 before reaching Convex. Set the value, then push a NEW commit — a same-commit redeploy is cancelled by scripts/vercel-ignore.sh (#8216).`,
+      hint: `This production build cannot see ${missing.map((name) => (name === 'CONVEX_SITE_URL' ? 'CONVEX_SITE_URL (or CONVEX_URL)' : name)).join(', ')}; the gateways answer 503 before reaching Convex. Set the value, then redeploy production; scripts/vercel-ignore.sh builds a same-commit redeploy on main (#8216).`,
     };
   }
   // The bearer is the tenant secret, so it never leaves over anything but
@@ -5111,9 +5698,74 @@ function buildFailureLogPersistencePlan({
   };
 }
 
+// Health is the only source of truth for ingestion incidents. Each
+// `source:status` in the actionable problem set (collectFailureLogProblems)
+// opens, or regresses, one Sentry issue grouped by source and status.
+// HEALTH_INCIDENT_ALERTS_KEY records only incidents Sentry ACCEPTED, separately
+// from the failure-log signature, so a failed delivery stays pending and is
+// retried by the next sweep instead of being suppressed as already reported.
+// A source that recovers leaves the record, so a recurrence alerts again.
+const HEALTH_INCIDENT_ALERTS_KEY = 'health:incident-alerts';
+const HEALTH_INCIDENT_ALERTS_TTL_SECONDS = 86400 * 7;
+
+// null (no record yet) is an empty record; anything else that is not an array
+// of strings is unreadable and returns null, so a corrupt record can neither
+// re-alert accepted incidents nor be overwritten.
+function parseAlertedIncidents(raw) {
+  if (raw === null || raw === undefined) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.every((key) => typeof key === 'string') ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function pendingIncidentKeys(alertedRaw, sigKeys) {
+  const alerted = new Set(parseAlertedIncidents(alertedRaw) ?? []);
+  return sigKeys.filter((key) => !alerted.has(key));
+}
+
+// The next record: still-active incidents already accepted, plus the ones
+// accepted this sweep. Recovered and undelivered incidents are left out.
+function nextAlertedIncidents(alertedRaw, sigKeys, delivered) {
+  const active = new Set(sigKeys);
+  const kept = (parseAlertedIncidents(alertedRaw) ?? []).filter((key) => active.has(key));
+  return [...new Set([...kept, ...delivered])].sort();
+}
+
+async function reportSourceIncident(key, checks, ctx, capture = captureSilentError) {
+  const separator = key.lastIndexOf(':');
+  const name = key.slice(0, separator);
+  const status = key.slice(separator + 1);
+  const check = checks[name] ?? {};
+  const extra = {};
+  for (const field of ['records', 'seedAgeMin', 'maxStaleMin', 'contentAgeMin', 'maxContentAgeMin', 'errorCode']) {
+    if (check[field] !== undefined) extra[field] = check[field];
+  }
+  return await capture(new Error(`Health source incident: ${name} ${status}`), {
+    level: 'warning',
+    fingerprint: ['health-source-incident', name, status],
+    tags: { health_source: name, health_status: status },
+    extra,
+    ctx,
+  }) === true;
+}
+
+// `status` is platform availability, the verdict uptime monitors keyword-match;
+// a contained source warning leaves it HEALTHY (#7939). `dataStatus` is the
+// strict ingestion verdict over the same summary, so no source defect is ever
+// invisible at the top level. Its values never contain the word HEALTHY.
+function dataStatusFromSummary(summary) {
+  if (summary?.crit > 0) return 'CRITICAL';
+  if (summary?.warn > 0) return 'DEGRADED';
+  return 'OK';
+}
+
 function healthResponseBody(snapshot, compact) {
   const body = {
     status: snapshot.status,
+    dataStatus: dataStatusFromSummary(snapshot.summary),
     summary: snapshot.summary,
     checkedAt: snapshot.checkedAt,
   };
@@ -5460,6 +6112,7 @@ export async function handleHealth(req, ctx, options = {}) {
   const allMetaKeys = Object.values(SEED_META).map(s => s.key);
   const activationEntries = Object.entries(ACTIVATION_MARKERS);
   const fredRolloutCommands = fredRatesRolloutCommands(now);
+  const regionalRolloutCommands = regionalEnergyRolloutCommands(now);
 
   // STRLEN for data keys avoids loading large blobs into memory (OOM prevention).
   // NEG_SENTINEL ('__WM_NEG__') is 10 bytes — strlenIsData() rejects exactly
@@ -5484,6 +6137,7 @@ export async function handleHealth(req, ctx, options = {}) {
       ['GET', sweepKey(STANDALONE_KEYS.educationAttainment)],
       ['HEXISTS', sweepKey(FIVE_FACTOR_SCORECARD_READ_MODEL_KEY), 'metadata'],
       ...fredRolloutCommands,
+      ...regionalRolloutCommands,
     ];
     if (!getRedisCredentials()) throw new Error('Redis not configured');
     if (budget.exhausted()) return deadlineFallback();
@@ -5600,6 +6254,14 @@ export async function handleHealth(req, ctx, options = {}) {
   if (fredRatesRolloutUntil !== null) {
     rolloutPendingUntilMs.set('fredRatesSeeder', fredRatesRolloutUntil);
   }
+  const regionalRolloutOffset = fredRolloutOffset + fredRolloutCommands.length;
+  if (regionalRolloutCommands.length > 0) {
+    REGIONAL_ENERGY_ROLLOUT_NAMES.forEach((name, index) => {
+      const offset = regionalRolloutOffset + index * 2;
+      const until = parseFredRatesRolloutUntil(results.slice(offset, offset + 2));
+      if (until !== null) rolloutPendingUntilMs.set(name, until);
+    });
+  }
   // Rare second round trip: only while a writer lags a key-version bump.
   const keyVersionRollouts = keyVersionRolloutCandidates(
     [BOOTSTRAP_KEYS, STANDALONE_KEYS], keyStrens, keyErrors, keyMetaValues, keyMetaErrors, evaluationNow,
@@ -5692,6 +6354,10 @@ export async function handleHealth(req, ctx, options = {}) {
     checks.chinaDecisionSignals,
     checks.chinaCoverage,
     evaluationNow,
+  );
+  checks.chokepointTransits = composeChokepointTransitsCoverage(
+    checks.chokepointTransits,
+    keyMetaValues.get(SEED_META.chokepointTransits.key),
   );
   checks.riskScores = composeRiskScoresInputHealth(
     checks.riskScores,
@@ -5802,9 +6468,29 @@ export async function handleHealth(req, ctx, options = {}) {
   }
   const persistFailureLog = async () => {
     let previousSignature = '';
+    const alertCommands = [];
     if (problemKeys.length > 0) {
-      const result = await redisPipeline([['GET', 'health:failure-log-sig']], 4_000).catch(() => null);
-      previousSignature = result?.[0]?.result ?? '';
+      const result = await redisPipeline([
+        ['GET', 'health:failure-log-sig'],
+        ['GET', HEALTH_INCIDENT_ALERTS_KEY],
+      ], 4_000).catch(() => null);
+      previousSignature = result?.[0]?.error ? '' : (result?.[0]?.result ?? '');
+      // An unreadable alert record cannot tell a new incident from one already
+      // reported, so this sweep opens none and leaves the record for the next.
+      if (Array.isArray(result) && result[1] && !result[1].error
+        && parseAlertedIncidents(result[1].result) !== null) {
+        const alertedRaw = result[1].result ?? null;
+        const pending = pendingIncidentKeys(alertedRaw, diagnostics.sigKeys);
+        const outcomes = await Promise.all(pending.map((key) => (
+          reportSourceIncident(key, checks, ctx, options.captureIncident).catch(() => false)
+        )));
+        const delivered = pending.filter((_, index) => outcomes[index]);
+        alertCommands.push(['SET', HEALTH_INCIDENT_ALERTS_KEY,
+          JSON.stringify(nextAlertedIncidents(alertedRaw, diagnostics.sigKeys, delivered)),
+          'EX', HEALTH_INCIDENT_ALERTS_TTL_SECONDS]);
+      }
+    } else {
+      alertCommands.push(['DEL', HEALTH_INCIDENT_ALERTS_KEY]);
     }
     const persistencePlan = buildFailureLogPersistencePlan({
       verdict: { overall, diagnosticOverall, realWarnCount, critCount },
@@ -5813,7 +6499,8 @@ export async function handleHealth(req, ctx, options = {}) {
       previousSignature,
       now: evaluationNow,
     });
-    const commands = persistencePlan.commands.map(([op, key, ...args]) => [op, applyRedisKeyPrefix(key), ...args]);
+    const commands = [...persistencePlan.commands, ...alertCommands]
+      .map(([op, key, ...args]) => [op, applyRedisKeyPrefix(key), ...args]);
     await redisPipeline(fenceHealthMutations(commands, refreshLockToken), 4_000, true).catch(() => {});
   };
   ownedBackgroundWrites.push(persistFailureLog().catch(() => {}));
@@ -5926,11 +6613,16 @@ export default async function handler(req, ctx) {
 // 2026-05-04 health-readiness plan, Sprint 1 test plan (Codex round 2 P1).
 export const __testing__ = {
   composeContractsFinderHealth,
+  composeChokepointTransitsCoverage,
   composeRiskScoresInputHealth,
   readSeedMeta,
   classifyKey,
   healthResponseBody,
   collectFailureLogProblems,
+  pendingIncidentKeys,
+  nextAlertedIncidents,
+  HEALTH_INCIDENT_ALERTS_KEY,
+  dataStatusFromSummary,
   buildFailureLogPersistencePlan,
   ACTIVATION_MARKERS,
   CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
@@ -5943,6 +6635,7 @@ export const __testing__ = {
   writerKeyVersionBehind,
   keyVersionRolloutCommands,
   fredRatesRolloutCommands,
+  regionalEnergyRolloutCommands,
   parseFredRatesRolloutUntil,
   STALE_CONTENT_GRACE_MS,
   STALE_CONTENT_GRACE_STATE_KEY,
@@ -5977,7 +6670,7 @@ export const __testing__ = {
   RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS,
   RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS,
   RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS,
-  SEED_FRESHNESS_MONITOR_INTERVAL_MS,
+  HEALTH_POLL_INTERVAL_MS,
   withTransportGrace,
   probeRelayGatewayGate,
   parseCachedRelayGatewayGate,

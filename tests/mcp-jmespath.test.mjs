@@ -114,6 +114,60 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       assert.equal(r.failed, undefined);
     });
 
+    it('error: a projection whose every selected field is null returns empty_projection with key paths', () => {
+      // Real call that rendered "News intelligence is temporarily unavailable":
+      // the expression guessed root-level topStories/headline, but the payload
+      // nests them under data.insights with primaryTitle.
+      const payload = {
+        cached_at: '2026-10-26T12:30:24Z', stale: false,
+        data: { insights: { topStories: [{ primaryTitle: 'Controlled headline', primarySource: 'Controlled Example Wire' }] } },
+      };
+      for (const [expr, unknown] of [
+        ['{stories: topStories[].{h: headline}, advisories: advisories || travelAdvisories}', ['headline', 'advisories', 'travelAdvisories']],
+        ['[topStories, advisories]', ['advisories']],
+        ['headline', ['headline']],
+      ]) {
+        const r = mod.applyJmespath(payload, expr);
+        assert.equal(r.failed, 'empty_projection', expr);
+        const env = JSON.parse(r.text);
+        assert.match(env._jmespath_error, /^empty_projection: /, expr);
+        assert.deepEqual(env.unknown_fields, unknown, expr);
+        assert.deepEqual(env.original_keys, ['cached_at', 'stale', 'data']);
+        for (const path of ['data.insights', 'data.insights.topStories[]', 'data.insights.topStories[].primaryTitle']) {
+          assert.ok(env.key_paths.includes(path), `${expr}: missing ${path} in ${JSON.stringify(env.key_paths)}`);
+        }
+      }
+    });
+
+    it('lists array fields in key_paths even when they hold no object element', () => {
+      const r = mod.applyJmespath({ data: { topStories: [], codes: ['US'], meta: { n: 1 } } }, 'stories');
+      assert.equal(r.failed, 'empty_projection');
+      const { key_paths: paths } = JSON.parse(r.text);
+      for (const path of ['data', 'data.topStories[]', 'data.codes[]', 'data.meta', 'data.meta.n']) {
+        assert.ok(paths.includes(path), `missing ${path} in ${JSON.stringify(paths)}`);
+      }
+    });
+
+    it('keeps real empty, partly-null and null-valued projections as results', () => {
+      // A field that exists and holds null is a real answer (a headline that
+      // names no country); only a field name found nowhere marks a wrong path.
+      const payload = { data: { items: [], note: null, n: 0, stories: [{ countryCode: null }] } };
+      for (const [expr, expected] of [
+        ['data.items', []],
+        ['data.items[?x]', []],
+        ['{items: data.items, note: data.note}', { items: [], note: null }],
+        ['data.n', 0],
+        ['data.note', null],
+        ['data.stories[0].countryCode', null],
+        ['{a: data.note, b: data.stories[0].countryCode}', { a: null, b: null }],
+        ['note', null],
+      ]) {
+        const r = mod.applyJmespath(payload, expr);
+        assert.equal(r.failed, undefined, expr);
+        assert.deepEqual(JSON.parse(r.text), expected, expr);
+      }
+    });
+
     it('error: invalid expression returns invalid_expression soft-fail', () => {
       const r = mod.applyJmespath({ a: 1 }, 'a.');
       assert.equal(r.failed, 'invalid_expression');

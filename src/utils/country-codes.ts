@@ -37,6 +37,23 @@ export function iso2ToIso3(iso2: string): string | null {
   return ISO2_TO_ISO3[iso2.toUpperCase()] ?? null;
 }
 
+let regionNames: Intl.DisplayNames | null | undefined;
+
+// English display name for an ISO2 code ("CU" → "Cuba"). Anything outside
+// ISO2_TO_ISO3, or a runtime without Intl.DisplayNames, returns the input.
+export function iso2ToCountryName(iso2: string): string {
+  const code = iso2.trim().toUpperCase();
+  if (!ISO2_TO_ISO3[code]) return iso2;
+  if (regionNames === undefined) {
+    try {
+      regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+    } catch {
+      regionNames = null;
+    }
+  }
+  return regionNames?.of(code) ?? iso2;
+}
+
 const ISO3_TO_ISO2: Record<string, string> = Object.fromEntries(
   Object.entries(ISO2_TO_ISO3).map(([iso2, iso3]) => [iso3, iso2]),
 );

@@ -21,6 +21,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MCP_CANONICAL_ENDPOINT } from '../shared/mcp-host-policy.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC_DIR = join(ROOT, 'public');
@@ -266,6 +267,165 @@ describe('published agent corpus names the serving host (#7660)', () => {
       'blog-site/src/content/blog/worldmonitor-mcp-server-ai-agents-real-time-intelligence.md',
     ]) {
       assert.ok(scanned.has(required), `${required} must be covered by the apex scan`);
+    }
+  });
+});
+
+// #9722: production answers every MCP transport request on an alias host
+// (`www`, `api`, the variant subdomains) with HTTP 410
+// `canonical_endpoint_required`, `/api/mcp` on the apex 301s onto www and
+// lands on the same 410, and `/mcp/` is a 404. A connector configured from any
+// of those never connects. The scans above only see apex URLs and www `/mcp`
+// inside public/ and the blog; the onboarding surfaces people actually copy
+// from (docs code fences, README, skills, the CLI and SDK defaults, the
+// in-app settings modal, the welcome page, the registry manifests, the
+// homepage Link header) were unguarded.
+describe('every published MCP endpoint is the canonical one (#9722)', () => {
+  const PUBLISHED_ROOTS = [
+    'public',
+    'blog-site/src/content/blog',
+    'skills',
+    'cli/README.md',
+    'cli/src',
+    'sdk/go',
+    'sdk/python/README.md',
+    'sdk/python/src',
+    'sdk/ruby/README.md',
+    'sdk/ruby/lib',
+    'sdk/rust/README.md',
+    'sdk/rust/src',
+    'src',
+    'pro-test/src',
+    'README.md',
+    'server.json',
+    'mcp.json',
+    'vercel.json',
+  ];
+  const SOURCE_EXTENSIONS = /\.(?:txt|md|mdx|json|yaml|yml|xml|html|ts|tsx|js|mjs|go|py|rb|rs)$/;
+  const SKIP = new Set([...SKIP_DIRS, 'generated']);
+
+  function walk(path, acc) {
+    if (!existsSync(path)) return acc;
+    if (statSync(path).isDirectory()) {
+      for (const entry of readdirSync(path)) {
+        if (SKIP.has(entry) || /[._]test\./.test(entry) || entry === '__tests__') continue;
+        walk(join(path, entry), acc);
+      }
+    } else if (SOURCE_EXTENSIONS.test(path) || path.startsWith(WELL_KNOWN_DIR)) {
+      if (!NOT_A_DOCUMENT.has(path)) acc.push(path);
+    }
+    return acc;
+  }
+
+  function docsNavPages() {
+    const config = JSON.parse(readFileSync(join(ROOT, 'docs/docs.json'), 'utf-8'));
+    const leaves = new Set();
+    (function visit(node) {
+      if (Array.isArray(node)) return node.forEach(visit);
+      if (node && typeof node === 'object') return Object.values(node).forEach(visit);
+      if (typeof node === 'string') leaves.add(node);
+    })(config.navigation ?? config);
+    return [...leaves]
+      .map((leaf) => ['.mdx', '.md'].map((ext) => join(ROOT, 'docs', leaf + ext)).find(existsSync))
+      .filter(Boolean);
+  }
+
+  const files = [
+    ...new Set([...PUBLISHED_ROOTS.flatMap((root) => walk(join(ROOT, root), [])), ...docsNavPages()]),
+  ];
+
+  // Any worldmonitor.app host, `/mcp` or `/api/mcp` as the whole first path
+  // segment (so `/mcp-server.md` and `/mcp-grant` are other pages), through
+  // the next delimiter. A sentence-final period is prose, not path; a period
+  // just inside a closing quote is part of the quoted URL.
+  const MCP_URL_RE = /https?:\/\/(?:[a-z0-9-]+\.)*worldmonitor\.app(?::\d+)?(?:\/api)?\/mcp(?![\w-]|\.\w)[^\s)"'`<>,;\\&]*/gi;
+  const QUOTE = /["'`\\]/;
+  // A Link-header anchor is resolved against the page that sent it. Every page
+  // carrying the discovery header is served on www, so `anchor="/mcp"` names
+  // https://www.worldmonitor.app/mcp, which answers 410.
+  const RELATIVE_MCP_ANCHOR_RE = /anchor=\\?"\/(?:api\/)?mcp\/?\\?"/g;
+
+  function offenders(sources) {
+    const found = [];
+    for (const [label, body] of sources) {
+      body.split('\n').forEach((line, index) => {
+        for (const match of line.matchAll(MCP_URL_RE)) {
+          const quoted = QUOTE.test(line[match.index + match[0].length] ?? '');
+          const url = quoted ? match[0] : match[0].replace(/\.+$/, '');
+          if (url !== MCP_CANONICAL_ENDPOINT) found.push(`  ${label}:${index + 1}  ${url}`);
+        }
+        for (const match of line.matchAll(RELATIVE_MCP_ANCHOR_RE)) {
+          found.push(`  ${label}:${index + 1}  ${match[0]} (resolves against the www page)`);
+        }
+      });
+    }
+    return found;
+  }
+
+  it('publishes no alias-host, /api/mcp, trailing-slash, http, or relative MCP endpoint', () => {
+    const found = offenders(files.map((file) => [relative(ROOT, file), readFileSync(file, 'utf-8')]));
+    assert.deepEqual(
+      found,
+      [],
+      `every published MCP endpoint must be exactly ${MCP_CANONICAL_ENDPOINT}; ` +
+        'production answers these with 410 canonical_endpoint_required, 301, or 404:\n' +
+        found.join('\n')
+    );
+  });
+
+  it('rejects each non-canonical form and accepts the canonical one', () => {
+    const planted = [
+      'https://www.worldmonitor.app/mcp',
+      'https://api.worldmonitor.app/mcp',
+      'https://happy.worldmonitor.app/mcp?x=1',
+      'https://worldmonitor.app/api/mcp',
+      'https://www.worldmonitor.app/api/mcp',
+      'https://worldmonitor.app/mcp/',
+      'http://worldmonitor.app/mcp',
+      'https://worldmonitor.app:8443/mcp',
+    ];
+    for (const url of planted) {
+      assert.equal(offenders([['planted', `Add "${url}" as a connector.`]]).length, 1, url);
+    }
+    assert.equal(offenders([['planted', `"url": "${MCP_CANONICAL_ENDPOINT}."`]]).length, 1, 'period inside a quoted URL');
+    assert.equal(offenders([['planted', 'Link: </x>; anchor="/mcp"']]).length, 1);
+    assert.equal(offenders([['planted', String.raw`"value": "</x>; anchor=\"/mcp\""`]]).length, 1);
+    for (const ok of [
+      `Use ${MCP_CANONICAL_ENDPOINT}.`,
+      `"url": "${MCP_CANONICAL_ENDPOINT}"`,
+      `&quot;${MCP_CANONICAL_ENDPOINT}&quot;`,
+      'https://www.worldmonitor.app/mcp-server.md',
+      'https://worldmonitor.app/mcp-grant?nonce=1',
+      'https://worldmonitor.app/.well-known/mcp/server-card.json',
+      'https://www.worldmonitor.app/docs/mcp',
+      'anchor="/docs/mcp"',
+    ]) {
+      assert.deepEqual(offenders([['planted', ok]]), [], ok);
+    }
+  });
+
+  it('covers the onboarding surfaces the issue named', () => {
+    const scanned = new Set(files.map((file) => relative(ROOT, file)));
+    for (const required of [
+      'vercel.json',
+      'README.md',
+      'server.json',
+      'mcp.json',
+      'cli/src/core.mjs',
+      'sdk/go/worldmonitor.go',
+      'sdk/python/src/worldmonitor_sdk/__init__.py',
+      'sdk/ruby/lib/worldmonitor.rb',
+      'sdk/rust/src/lib.rs',
+      'skills/check-country-risk/SKILL.md',
+      'src/components/UnifiedSettings.ts',
+      'pro-test/src/welcome/Agents.tsx',
+      'public/agent/index.html',
+      'public/.well-known/mcp/server-card.json',
+      'docs/mcp-quickstart.mdx',
+      'docs/zh/mcp-quickstart.mdx',
+      'docs/agent-discovery.mdx',
+    ]) {
+      assert.ok(scanned.has(required), `${required} must be covered by the MCP endpoint scan`);
     }
   });
 });

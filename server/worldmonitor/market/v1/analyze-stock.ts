@@ -9,7 +9,8 @@ import type {
   ServerContext,
   StockAnalysisHeadline,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
-import { callLlm } from '../../../_shared/llm';
+import { callLlm, type LlmRoutingPolicy } from '../../../_shared/llm';
+import { aiRoutingCacheSuffix, resolveAiRouting, toLlmRoutingPolicy } from '../../../_shared/ai-routing-policy';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { CHROME_UA, yahooGate } from '../../../_shared/constants';
 import { UPSTREAM_TIMEOUT_MS, sanitizeSymbol } from './_shared';
@@ -1646,6 +1647,7 @@ async function buildAiOverlay(
   fundamentalScore: number | null,
   compositeScore: number,
   ratingSignal: Signal,
+  routingPolicy: LlmRoutingPolicy | null,
 ): Promise<{ legacy: AiOverlay; rating: AiOverlay }> {
   const legacyFallback = getFallbackOverlay(name, technical, headlines);
   const ratingFallback = getRatingFallbackOverlay(
@@ -1711,6 +1713,7 @@ async function buildAiOverlay(
     timeoutMs: 20_000,
     stage: 'analyze-stock',
     providerOrder: ['openrouter', 'generic'],
+    routingPolicy,
     validate: (content) => {
       try {
         const parsed = JSON.parse(content) as Record<string, unknown>;
@@ -1994,7 +1997,7 @@ export function buildAnalyzeStockCacheKey(
 }
 
 export async function analyzeStock(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: AnalyzeStockRequest,
   options: AnalyzeStockOptions = {},
 ): Promise<AnalyzeStockResponse> {
@@ -2005,7 +2008,8 @@ export async function analyzeStock(
 
   const callerName = (req.name || symbol).trim().slice(0, 120) || symbol;
   const includeNews = req.includeNews === true;
-  const cacheKey = buildAnalyzeStockCacheKey(symbol, includeNews);
+  const aiRouting = await resolveAiRouting(ctx.request);
+  const cacheKey = buildAnalyzeStockCacheKey(symbol, includeNews) + aiRoutingCacheSuffix(aiRouting);
 
   const fetchFreshAnalysis = async (): Promise<AnalyzeStockResponse | null> => {
     const [historyOutcome, analystData] = await Promise.all([
@@ -2054,6 +2058,7 @@ export async function analyzeStock(
       fundamentalScore,
       compositeScore,
       ratingSignal,
+      toLlmRoutingPolicy(aiRouting),
     );
     const analysisAt = history.candles[history.candles.length - 1]?.timestamp || Date.now();
     const earnings = selectEarningsForSymbol(earningsCalendar, symbol, (options.now ?? new Date()).toISOString().slice(0, 10));
@@ -2078,7 +2083,10 @@ export async function analyzeStock(
       extended: extendedQuote ?? undefined,
       earnings,
     });
-    await storeStockAnalysisSnapshot(response, includeNews);
+    // The analysis history and backtest ledger are one shared store per
+    // symbol. A restricted caller's analysis stays in its own cache namespace
+    // and out of that store, so the store keeps a single provenance.
+    if (aiRouting.kind === 'default') await storeStockAnalysisSnapshot(response, includeNews);
     return response;
   };
 

@@ -24,6 +24,11 @@ import { captureSilentError } from '../../../../api/_sentry-edge.js';
 // (#5856 review). esbuild inlines it for the edge bundle.
 import { gdeltSeenDateToMs } from '../../../../scripts/_conflict-gdelt.mjs';
 import { tokenizeForMatch, findMatchingKeywords } from '../../../../src/utils/keyword-match';
+// The seeded commodity set and its display names. Same import as
+// server/worldmonitor/market/v1/list-commodity-quotes.ts; every consumer of
+// this module runs under tsx, vitest or the edge bundler, which all resolve a
+// bare JSON import.
+import commodityConfig from '../../../../shared/commodities.json';
 import {
   GAS_STORAGE_COUNTRIES_KEY,
   GAS_STORAGE_KEY_PREFIX,
@@ -180,36 +185,134 @@ export function buildForecasts(data: unknown): string {
   return lines.length ? `Active Forecasts:\n${lines.join('\n')}` : '';
 }
 
-export function buildMarketData(stocks: unknown, commodities: unknown): string {
+// ── Market Data: the quotes a question names ─────────────────────────────────
+//
+// 2026-10-27 15:50 UTC: "Why is Brent up today?" was answered with an "$80"
+// Brent level while the dashboard's Brent tile read $109.76. The block carried
+// only the seed's first four commodity quotes (^VIX, gold, silver, copper);
+// Brent is ninth in market:commodities-bootstrap:v1, so the model had no Brent
+// price to cite and supplied one from training knowledge. The quotes a question
+// names now lead the block, and each quote is labelled with its configured
+// name: the Yahoo path writes name = symbol, and "BZ=F" alone does not read as
+// "Brent". The seeders also write `change` (proto: percentage change from
+// previous close), which the old `changePercent` read missed — every quote
+// rendered "+0.00%".
+
+const DEFAULT_EQUITY_QUOTES = 6;
+const DEFAULT_COMMODITY_QUOTES = 4;
+const MAX_NAMED_QUOTES = 6;
+
+/** Configured commodity names; list-commodity-quotes.ts reads the same seeded set. */
+const COMMODITY_LABELS: ReadonlyMap<string, string> = new Map(
+  commodityConfig.commodities.map((c) => [c.symbol, c.name] as const),
+);
+
+// Words a question uses for an instrument that its configured name does not
+// carry. "oil" must reach Brent, not only "Crude Oil WTI". A Map, like the
+// labels: the symbol is payload text, and a plain-object lookup would walk the
+// prototype chain for a symbol spelled "constructor" (#9780 review).
+const INSTRUMENT_ALIASES: ReadonlyMap<string, readonly string[]> = new Map([
+  ['CL=F', ['oil', 'crude', 'petroleum']],
+  ['BZ=F', ['oil', 'crude', 'petroleum']],
+  ['NG=F', ['natgas', 'lng']],
+  ['TTF=F', ['natgas', 'lng']],
+  ['HO=F', ['diesel', 'distillate']],
+  ['^VIX', ['volatility']],
+]);
+
+// ── Quote currency ───────────────────────────────────────────────────────────
+//
+// shared/commodities.json and shared/stocks.json carry no currency, and a "$"
+// on every quote misled the price check (#9780 review): TTF trades in EUR/MWh,
+// so a correct "€95" answer read as unsupported under market focus while "$95"
+// passed. Index levels (^GSPC, ^VIX) and exchange rates (=X) are not currency
+// amounts. A listing outside the US quotes in its exchange currency, keyed by
+// the Yahoo Finance exchange suffix; every suffix in shared/stocks.json is
+// here. Everything else trades in US dollars
+// (scripts/_bet-templates-commodities.mjs: USD/bbl, USD/MMBtu, USD/oz).
+const COMMODITY_CURRENCY_SIGN: ReadonlyMap<string, string> = new Map([
+  ['TTF=F', '€'], // Dutch TTF gas, EUR/MWh — the spot line below renders it the same way
+]);
+const EXCHANGE_SUFFIX_CURRENCY_SIGN: ReadonlyMap<string, string> = new Map([
+  ['.NS', '₹'],    // NSE India, INR
+  ['.SS', 'CN¥'],  // Shanghai, CNY
+  ['.SZ', 'CN¥'],  // Shenzhen, CNY
+  ['.HK', 'HK$'],  // Hong Kong, HKD
+  ['.SR', 'SAR '], // Saudi Tadawul, SAR
+  ['.T', '¥'],     // Tokyo, JPY
+  ['.TO', 'C$'],   // Toronto, CAD
+  ['.SW', 'CHF '], // SIX Swiss, CHF
+  ['.MI', '€'],    // Milan, EUR
+  ['.KS', '₩'],    // Korea, KRW
+  ['.AE', 'AED '], // Dubai DFM, AED
+]);
+
+function quoteCurrencySign(rawSymbol: string): string {
+  if (rawSymbol.startsWith('^') || rawSymbol.endsWith('=X')) return '';
+  const commodity = COMMODITY_CURRENCY_SIGN.get(rawSymbol);
+  if (commodity !== undefined) return commodity;
+  const dot = rawSymbol.lastIndexOf('.');
+  const exchange = dot > 0 ? EXCHANGE_SUFFIX_CURRENCY_SIGN.get(rawSymbol.slice(dot)) : undefined;
+  return exchange ?? '$';
+}
+
+interface QuoteRow {
+  symbol: string;
+  label: string;
+  /** Currency sign rendered before the price; empty for an index or a rate. */
+  sign: string;
+  price: number;
+  change: number;
+  /** Symbol, label and aliases: what a question may call this instrument. */
+  searchText: string;
+}
+
+function quoteRows(payload: unknown, labels: ReadonlyMap<string, string> | null): QuoteRow[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const quotes = (payload as Record<string, unknown>).quotes;
+  if (!Array.isArray(quotes)) return [];
+  const rows: QuoteRow[] = [];
+  for (const q of quotes) {
+    if (!q || typeof q !== 'object') continue;
+    const quote = q as Record<string, unknown>;
+    const rawSymbol = safeStr(quote.symbol || quote.ticker || quote.name);
+    const symbol = sanitizeForPromptLine(rawSymbol);
+    const price = safeNum(quote.price ?? quote.regularMarketPrice);
+    const change = safeNum(quote.changePercent ?? quote.change ?? quote.regularMarketChangePercent);
+    if (!symbol || !price) continue;
+    // Configured names are keyed by the raw symbol, so a forged symbol never
+    // earns a label; the payload's own name is feed-derived and sanitised.
+    const configured = labels?.get(rawSymbol);
+    const payloadName = sanitizeForPromptLine(safeStr(quote.name));
+    const label = configured ? sanitizeForPromptLine(configured) : (payloadName && payloadName !== symbol ? payloadName : '');
+    const aliases = (INSTRUMENT_ALIASES.get(rawSymbol) ?? []).join(' ');
+    rows.push({ symbol, label, sign: quoteCurrencySign(rawSymbol), price, change, searchText: `${symbol} ${label} ${aliases}` });
+  }
+  return rows;
+}
+
+/** Quotes the question names first (capped), then the seed's leading quotes. */
+function selectQuotes(rows: QuoteRow[], keywords: string[], defaultCount: number): QuoteRow[] {
+  const named = keywords.length > 0
+    ? rows.filter((r) => findMatchingKeywords(tokenizeForMatch(r.searchText), keywords).length > 0).slice(0, MAX_NAMED_QUOTES)
+    : [];
+  const rest = rows.filter((r) => !named.includes(r));
+  return [...named, ...rest.slice(0, defaultCount)];
+}
+
+function formatQuote(row: QuoteRow): string {
+  const name = row.label ? `${row.label} (${row.symbol})` : row.symbol;
+  return `${name} ${row.sign}${row.price.toFixed(2)} (${formatChange(row.change)})`;
+}
+
+export function buildMarketData(stocks: unknown, commodities: unknown, keywords: string[] = []): string {
   const parts: string[] = [];
 
-  if (stocks && typeof stocks === 'object') {
-    const d = stocks as Record<string, unknown>;
-    const quotes = Array.isArray(d.quotes) ? d.quotes : [];
-    const stockLines = quotes.slice(0, 6).map((q: unknown) => {
-      const quote = q as Record<string, unknown>;
-      const sym = sanitizeForPromptLine(safeStr(quote.symbol || quote.ticker));
-      const price = safeNum(quote.price ?? quote.regularMarketPrice);
-      const chg = safeNum(quote.changePercent ?? quote.regularMarketChangePercent);
-      if (!sym || !price) return null;
-      return `${sym} $${price.toFixed(2)} (${formatChange(chg)})`;
-    }).filter((l): l is string => l !== null);
-    if (stockLines.length) parts.push(`Equities: ${stockLines.join(', ')}`);
-  }
+  const stockLines = selectQuotes(quoteRows(stocks, null), keywords, DEFAULT_EQUITY_QUOTES).map(formatQuote);
+  if (stockLines.length) parts.push(`Equities: ${stockLines.join(', ')}`);
 
-  if (commodities && typeof commodities === 'object') {
-    const d = commodities as Record<string, unknown>;
-    const quotes = Array.isArray(d.quotes) ? d.quotes : [];
-    const commLines = quotes.slice(0, 4).map((q: unknown) => {
-      const quote = q as Record<string, unknown>;
-      const sym = sanitizeForPromptLine(safeStr(quote.symbol || quote.ticker || quote.name));
-      const price = safeNum(quote.price ?? quote.regularMarketPrice);
-      const chg = safeNum(quote.changePercent ?? quote.regularMarketChangePercent);
-      if (!sym || !price) return null;
-      return `${sym} $${price.toFixed(2)} (${formatChange(chg)})`;
-    }).filter((l): l is string => l !== null);
-    if (commLines.length) parts.push(`Commodities: ${commLines.join(', ')}`);
-  }
+  const commLines = selectQuotes(quoteRows(commodities, COMMODITY_LABELS), keywords, DEFAULT_COMMODITY_QUOTES).map(formatQuote);
+  if (commLines.length) parts.push(`Commodities: ${commLines.join(', ')}`);
 
   return parts.length ? `Market Data:\n${parts.join('\n')}` : '';
 }
@@ -651,7 +754,12 @@ const MAX_KEYWORDS = 8;
 // are just as valid as "US sanctions" or "AI exports").
 const KNOWN_2CHAR_ACRONYMS = new Set(['us', 'uk', 'eu', 'un', 'ai']);
 
-export function extractKeywords(query: string): string[] {
+/**
+ * Content terms of a question, in order. The default cap sizes the news
+ * retrieval; instrument matching passes `Number.POSITIVE_INFINITY`, because a
+ * long question fills eight slots before it reaches "Brent" (#9780 review).
+ */
+export function extractKeywords(query: string, limit: number = MAX_KEYWORDS): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
   for (const raw of query.split(/\W+/)) {
@@ -668,7 +776,7 @@ export function extractKeywords(query: string): string[] {
       result.push(lower);
     }
   }
-  return result.slice(0, MAX_KEYWORDS);
+  return result.slice(0, limit);
 }
 
 // ── GDELT headlines (materialized, never fetched at request time) ─────────────
@@ -1006,6 +1114,9 @@ export async function assembleAnalystContext(
 
   const resolvedDomain = domainFocus ?? 'all';
   const keywords = userQuery ? extractKeywords(userQuery) : [];
+  // Every term, not the retrieval cap: the instrument a long question names
+  // may sit past its eighth content word.
+  const instrumentTerms = userQuery ? extractKeywords(userQuery, Number.POSITIVE_INFINITY) : [];
 
   const ENERGY_EXPOSURE_DOMAINS = new Set(['geo', 'economic', 'all']);
   const needsEnergyExposure = ENERGY_EXPOSURE_DOMAINS.has(resolvedDomain);
@@ -1097,7 +1208,7 @@ export async function assembleAnalystContext(
     riskScores: buildRiskScores(get(riskResult)),
     marketImplications: buildMarketImplications(get(marketImplResult)),
     forecasts: buildForecasts(get(forecastsResult)),
-    marketData: buildMarketData(get(stocksResult), commoditiesData),
+    marketData: buildMarketData(get(stocksResult), commoditiesData, instrumentTerms),
     macroSignals: buildMacroSignals(get(macroResult)),
     energyExposure: buildEnergyExposure(get(energyExposureResult)),
     coalSpotPrice: needsSpotEnergy ? buildSpotCommodityLine(get(commoditiesResult), 'MTF=F', 'Newcastle coal', '$', '/t') : '',

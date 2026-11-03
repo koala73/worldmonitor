@@ -127,6 +127,7 @@ export const LIVE_NEWS_SOURCES = {
   yahoo: ['https://www.youtube.com/watch?v=KQp-e_XQnDE'],
   nasa: ['https://www.youtube.com/watch?v=fO9e9jnhYK8'],
   'fox-news': ['https://247preview.foxnews.com/hls/live/2020027/fncv3preview/primary.m3u8'],
+  'livenow-fox': ['https://cdn-uw2-prod.tsv2.amagi.tv/linear/amg00488-foxdigital-livenowbyfox-lgus/playlist.m3u8'],
   // The first HLS comes from newsmaxtv.com's player and may be the Newsmax2 feed; the YouTube video is
   // Newsmax2 on @NewsmaxTV (2026-09-24, #8545).
   newsmax: [

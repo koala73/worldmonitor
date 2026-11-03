@@ -87,10 +87,10 @@ function requestPathname(url: string): string {
   }
 }
 
-// These public feeds use wildcard CORS. The session interceptor
+// This public feed uses wildcard CORS. The session interceptor
 // defaults credentials to 'include'; browsers then reject ACAO: *.
 function proxyFetchInit(url: string, init: RequestInit = {}): RequestInit {
-  return ['/api/fwdstart', '/api/miit-news'].includes(requestPathname(url))
+  return requestPathname(url) === '/api/miit-news'
     ? { ...init, credentials: 'omit' }
     : init;
 }

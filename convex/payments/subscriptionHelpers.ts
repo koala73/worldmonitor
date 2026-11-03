@@ -50,6 +50,7 @@ interface DodoSubscriptionData {
   previous_billing_date?: string | number | Date;
   next_billing_date?: string | number | Date;
   cancelled_at?: string | number | Date;
+  cancel_at_next_billing_date?: boolean;
   metadata?: Record<string, string>;
   recurring_pre_tax_amount?: number;
   currency?: string;
@@ -71,6 +72,32 @@ interface DodoPaymentData {
   // requires_customer_action | …). On `payment.processing` this is where the
   // 3DS/SCA-pending state is surfaced. See derivePaymentEventStatus.
   status?: string;
+}
+
+/**
+ * The address a subscription's billing mail goes to, trimmed, or "" when
+ * nothing is known. A user repair (`billingEmailOverride`) wins while it is
+ * newer than the row's last webhook; a webhook generated after the repair
+ * carries Dodo's current address and takes over again. Otherwise the trust
+ * order mirrors the portal's: the sub's own rawPayload email first
+ * (per-Clerk-userId by construction), then the customers row for the SAME
+ * userId (customers rows can race across Clerk accounts, so never a
+ * cross-user lookup). Dunning and the billing UI's bounce flag must name the
+ * same recipient, so both read it here.
+ */
+export async function resolveBillingRecipient(
+  ctx: MutationCtx | QueryCtx,
+  sub: Pick<Doc<"subscriptions">, "userId" | "rawPayload" | "updatedAt" | "billingEmailOverride">,
+): Promise<string> {
+  const override = sub.billingEmailOverride;
+  if (override && override.observedAt > sub.updatedAt) return override.email.trim();
+  const rawEmail = (sub.rawPayload as { customer?: { email?: unknown } } | null)?.customer?.email;
+  if (typeof rawEmail === "string" && rawEmail.includes("@")) return rawEmail.trim();
+  const customer = await ctx.db
+    .query("customers")
+    .withIndex("by_userId", (q) => q.eq("userId", sub.userId))
+    .first();
+  return customer?.email.trim() ?? "";
 }
 
 export async function billingDeletionForUser(ctx: MutationCtx | QueryCtx, userId: string) {
@@ -509,6 +536,18 @@ export function isCoveringAt<T extends Pick<SubscriptionRow, "status" | "current
     s.status === "active" ||
     ((s.status === "on_hold" || s.status === "cancelled") && s.currentPeriodEnd > at)
   );
+}
+
+/**
+ * Whether the customer has cancelled but Dodo is keeping the subscription
+ * active until period end. A portal cancel arrives as `subscription.updated`
+ * with this flag; `subscription.cancelled` only lands at or after period end.
+ * Reads the stored Dodo payload, so rows written before this predicate
+ * existed answer correctly without a backfill.
+ */
+export function isCancellationScheduled(sub: { status: string; rawPayload?: unknown }): boolean {
+  const payload = sub.rawPayload as { cancel_at_next_billing_date?: unknown } | null | undefined;
+  return sub.status === "active" && payload?.cancel_at_next_billing_date === true;
 }
 
 /**
@@ -1314,6 +1353,17 @@ export async function handleSubscriptionActive(
       isLapsedAt(subscription, eventTimestamp),
     );
 
+  // Only the transition into a scheduled cancel opens a confirmation episode.
+  // Dodo re-sends the flag on every later update of the subscription.
+  const cancelScheduled = data.cancel_at_next_billing_date === true;
+  const enteringScheduledCancel =
+    cancelScheduled && !(existing !== null && isCancellationScheduled(existing));
+  const cancelScheduledAt = enteringScheduledCancel
+    ? eventTimestamp
+    : cancelScheduled
+      ? existing?.cancelScheduledAt
+      : undefined;
+
   if (existing) {
     await ctx.db.patch(existing._id, {
       userId,
@@ -1341,6 +1391,7 @@ export async function handleSubscriptionActive(
       // next status transition, so wiping them here is safe.
       cancelledAt: undefined,
       onHoldAt: undefined,
+      cancelScheduledAt,
     });
   } else {
     await ctx.db.insert("subscriptions", {
@@ -1359,6 +1410,7 @@ export async function handleSubscriptionActive(
       attributionSource: normalizeCheckoutAttributionSource(data.metadata?.wm_attribution),
       rawPayload: data,
       updatedAt: eventTimestamp,
+      cancelScheduledAt,
     });
 
     // Referral attribution on conversion (Phase 9 / Todo #223).
@@ -1406,9 +1458,27 @@ export async function handleSubscriptionActive(
     }
   }
 
+  if (existing && !isBusinessPlan(planKey)) {
+    await revokeBusinessProGrantsForSubscription(ctx, existing.dodoSubscriptionId, eventTimestamp);
+  } else if (isBusinessPlan(planKey)) {
+    await recomputeAcceptedBusinessInvitees(ctx, data.subscription_id, Date.now());
+  }
+
   // Recompute from ALL subs on this userId — the event's sub may be a
   // duplicate or lower-tier than another active sub (multi-active-sub guard).
   await recomputeEntitlementFromAllSubs(ctx, userId, eventTimestamp);
+
+  if (enteringScheduledCancel && currentPeriodEnd > eventTimestamp && process.env.RESEND_API_KEY) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.subscriptionEmails.sendDunningEmail,
+      {
+        dodoSubscriptionId: data.subscription_id,
+        step: "cancellation_confirm",
+        episodeAt: eventTimestamp,
+      },
+    );
+  }
 
   // Upsert customer record so portal session creation can find dodoCustomerId
   const email = data.customer?.email ?? "";
@@ -1804,9 +1874,15 @@ export async function handleSubscriptionCancelled(
   // new episode (cancelled → active → cancelled) passes through a
   // non-cancelled status first, so enteringCancelled correctly re-anchors.
   const enteringCancelled = existing.status !== "cancelled";
-  const eventCancelledAt = data.cancelled_at
+  // A cancel that was scheduled through the portal already opened its
+  // confirmation episode. Reusing that anchor makes the ledger dedupe the
+  // confirmation below and in the daily retry scan.
+  const scheduledCancelAt = isCancellationScheduled(existing)
+    ? existing.cancelScheduledAt
+    : undefined;
+  const eventCancelledAt = scheduledCancelAt ?? (data.cancelled_at
     ? toEpochMs(data.cancelled_at, "cancelled_at", eventTimestamp)
-    : eventTimestamp;
+    : eventTimestamp);
   const cancelledAt = enteringCancelled
     ? eventCancelledAt
     : (existing.cancelledAt ?? eventCancelledAt);
@@ -2254,6 +2330,9 @@ export function classifyRefundAlert(input: {
   if (input.subCancelledAt) {
     return { kind: "no-op", reason: "already-cancelled" };
   }
+  if (isCancellationScheduled({ status: input.subStatus, rawPayload: input.subRawPayload })) {
+    return { kind: "no-op", reason: "cancel-scheduled" };
+  }
   const subAmount = typeof input.subRawPayload?.recurring_pre_tax_amount === "number"
     ? input.subRawPayload.recurring_pre_tax_amount
     : 0;
@@ -2290,22 +2369,28 @@ export async function handleDisputeEvent(
   eventType: string,
   eventTimestamp: number,
 ): Promise<void> {
-  const existingSubscription = data.subscription_id
+  const payments = data.subscription_id ? [] : await ctx.db.query("paymentEvents")
+    .withIndex("by_dodoPaymentId", q => q.eq("dodoPaymentId", data.payment_id)).collect();
+  const subscriptionIds = [...new Set(payments.map(p => p.dodoSubscriptionId).filter((id): id is string => Boolean(id)))];
+  if (subscriptionIds.length > 1) throw new Error("Ambiguous disputed payment subscription");
+  const subscriptionId = data.subscription_id ?? subscriptionIds[0];
+  const existingSubscription = subscriptionId
     ? await ctx.db
         .query("subscriptions")
         .withIndex("by_dodoSubscriptionId", (q) =>
-          q.eq("dodoSubscriptionId", data.subscription_id ?? ""),
+          q.eq("dodoSubscriptionId", subscriptionId),
         )
         .unique()
     : null;
-  const resolvedUserId = existingSubscription?.userId
+  const resolvedUserId = existingSubscription?.userId ?? payments[0]?.userId
     ?? await resolveUserId(
       ctx,
       data.customer?.customer_id ?? "",
       data.metadata,
     );
-  const deletion = await billingDeletionForEvent(ctx, data)
-    ?? await billingDeletionForUser(ctx, resolvedUserId);
+  const deletion = existingSubscription
+    ? await billingDeletionForUser(ctx, resolvedUserId)
+    : await billingDeletionForEvent(ctx, data) ?? await billingDeletionForUser(ctx, resolvedUserId);
   const userId = deletion ? tombstoneUserId(deletion.userIdHash) : resolvedUserId;
 
   const disputeStatusMap: Record<string, "dispute_opened" | "dispute_won" | "dispute_lost" | "dispute_closed"> = {
@@ -2327,7 +2412,7 @@ export async function handleDisputeEvent(
     amount: webhookAmount(data),
     currency: data.currency ?? "USD",
     status: disputeStatus,
-    dodoSubscriptionId: data.subscription_id ?? undefined,
+    dodoSubscriptionId: subscriptionId,
     rawPayload: deletion ? redactBillingPayload(data) : data,
     occurredAt: eventTimestamp,
   });

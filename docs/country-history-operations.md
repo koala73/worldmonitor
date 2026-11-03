@@ -5,7 +5,7 @@ noindex: true
 
 # Activate daily country history
 
-The repository registers `seed-country-history` as planned. Creating or deploying its Railway service requires operator approval.
+Railway service `seed-country-history` (`d295b2c7-59ba-4748-9525-62292c5bc98c`) is provisioned and registry-managed. Steps 1–5 record how it was created; recreating or redeploying it still requires operator approval.
 
 1. Use the existing scripts-root Nixpacks pattern with root directory `scripts`.
 2. Set the start command to `node seed-country-history.mjs`.

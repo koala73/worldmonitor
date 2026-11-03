@@ -557,6 +557,42 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_no2_activity`
+
+基于 Sentinel-5P 对流层 NO2 的工业活动方向，覆盖 167 个国家和 32 个工业集群：最新 56 天窗口与前三年同期日期对比，给出 changePercent 以及经 10% 死区后的 direction。没有读数的区域带有 exclusion；在前几年数据仍在回填时，baseline_backfill_pending 是预期状态，不是故障。可按 country_code（该国及其境内集群）、region_id 或 kind 过滤。每日播种，从不实时调用 Copernicus；请转载 attribution。需要付费套餐；一次下游请求，API 套餐权重 2。只读。
+
+每个区域报告 `windowStart`、`windowEnd`、`validDays`（无云且通过质量过滤像元足够的天数）、以 mol/m2 计的平均 NO2 柱浓度、进入基线的往年年份、`changePercent`、`signalValue`（10% 死区之外的变化，死区内为 0）和 `direction`（`strengthening`、`weakening`、`unchanged`）。没有读数的区域 `direction: null`，并带有封闭词汇表中的 `exclusion`：`request_failed`、`baseline_backfill_pending`、`insufficient_valid_days`、`insufficient_baseline_years`。响应携带 `method`（由路由的 `methodVersion` 固定的常量）、`generatedAt`、`stale`（超过 72 小时健康预算时为 true）以及 `attribution` 中必须保留的署名，例如 "Contains modified Copernicus Sentinel data 2023-2026"。方法说明见[中国活动即时预测方法论](/zh/methodology/china-activity-nowcast)。
+
+**参数（工具专用）：**
+
+| 名称 | 类型 | 说明 |
+|------|------|-------------|
+| `country_code` | string | 可选。ISO 3166-1 alpha-2 代码（"DE"）、alpha-3（"DEU"）或英文名称（"Germany"）。返回该国区域及其境内的所有集群；跨国集群（`gulf-states`、`rotterdam-antwerp`）没有国家代码。 |
+| `region_id` | string | 可选的注册表 id，例如 `country-cn` 或 `yangtze-river-delta`。与其他过滤条件按 AND 组合。 |
+| `kind` | `string: country / cluster` | 可选。`country` 为国家多边形，`cluster` 为命名工业集群；省略则两者都返回。 |
+
+**响应区分：** `unavailableReason` 使用 RPC 的封闭 `No2ActivityUnavailableReason` 枚举。`NO2_ACTIVITY_UNAVAILABLE_REASON_NOT_COVERED` 是合约答案（过滤条件未命中任何注册区域，重试无效），`upstreamUnavailable: false`。`NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_REQUEST` 是客户端错误（畸形过滤条件直接到达 handler；网关会先返回 HTTP 400），`upstreamUnavailable: false`。其余原因表示故障（`seed_missing`、`invalid_dataset`、`cache_unavailable`），`upstreamUnavailable: true`。区域级 `exclusion` 不会撤回整个响应：`baseline_backfill_pending`、`insufficient_valid_days` 和 `insufficient_baseline_years` 表示方法拒绝给出它无法支撑的读数，而 `request_failed` 表示该区域自身的来源刷新失败时间已超过保留数据的有效期。
+
+- **API 端点：** `GET /api/economic/v1/get-no2-activity`
+- **访问：** `subscription` — 需要 Pro 订阅。RPC 工具：没有 `summary` 参数（用 `jmespath` 裁剪响应）。
+- **类型：** 规范 NO2 活动路由的 RPC 代理（handler 负责过滤、合约校验和未命中分类）。
+- **新鲜度预算：** 最多 **72 小时** 后 `stale`（每日播种节奏的三倍，与 `/api/health` 一致）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_no2_activity","arguments":{"country_code":"CN","kind":"cluster"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_wto_trade_flows`
 
 查询一个报告国与世界之间、可配置年份窗口内的 WTO 商品贸易流量。数据来自 WTO `ITS_MTV_AX`（出口）和 `ITS_MTV_AM`（进口）指标，每 6 小时播种一次；该工具读取与仪表板相同的播种快照，不会在每次请求时调用 WTO。
@@ -899,12 +935,14 @@ curl -s https://worldmonitor.app/mcp \
 | `query` | string | 仅保留标题包含此文本的市场（不区分大小写）。 |
 | `source` | string: kalshi / polymarket | 筛选为一个预测市场来源。Kalshi 目前不提供分类器标签，因此与 `category=tech` 组合不会返回记录。 |
 | `sort` | string: rank / move_24h / move_7d | 默认 `rank` 保留种子排序。`move_24h` 和 `move_7d` 在每个类别内按变化绝对值降序排列，然后应用 limit；缺失值排在最后。 |
+| `min_liquidity` | number | 仅保留流动性（以美元计的挂单深度）不低于此值的市场，在 limit 之前应用。大于 0 时，没有流动性数据的市场（例如订单簿获取失败的 Kalshi 市场）会被排除。 |
 | `limit` | number | 限制每个类别的记录数，默认 30。零或负数表示不限。正小数使用整数部分。 |
 | `refresh` | boolean | 仅限付费面板。默认 false 复用预测分配。true 必须附带 UUID request_id，并开始一次新分配。刷新时省略 panel_request。 |
 | `request_id` | string | 付费刷新 UUID。同一 UUID 的重试复用分配及原始到期时间，字母大小写不改变身份。 |
 | `panel_request` | string | 服务器签发的预测凭据，用于到期前的授权精选读取。API 和免费账户调用不接受该凭据。 |
 
 - **概率变化：** 可选 `change24h` 和 `change7d` 为 `yesPrice` 0–100 标度的百分点变化。上游缺失时不返回该字段，零表示没有变化。Kalshi 仅提供 24 小时变化。REST 的 `yesPriceChange24h` 和 `yesPriceChange7d` 使用 0–1 概率标度。
+- **流动性：** 可选 `liquidity` 为按交易场所计算的美元挂单深度。Polymarket 记录使用 Gamma 的 CLOB 流动性（`liquidity`，等于 `liquidityClob`）：类别桶记录为事件级，国家记录为合约级。Kalshi 记录对合约订单簿中全部 yes 与 no 买单的价格乘以数量求和。两个场所的计算方式不同，阈值宜在同一来源内比较。场所未报告或订单簿获取失败时不返回该字段。REST 以 `min_liquidity` 接受同一筛选。
 - **API 端点：** `GET /api/prediction/v1/list-prediction-markets`
 - **访问：** `free-account`，任意已登录账户均可调用。免费账户消耗每日免费额度，API 套餐仍按工具权重计费。接受通用 `summary` 参数。
 - **付费面板计量：** Pro 与 Pro Business 打开面板扣一次额度。规范化筛选与重复打开在五分钟内复用预测分配。返回的 `panelRequest.token` 在到期前授权精选预测读取。本地类别展开只读取已加载数据，不发起新的工具调用。每份分配最多允许 64 次未缓存工具执行，未缓存执行与已确认缓存回放分别限制为每分钟 64 次。工具执行次数不等于单条 Redis 命令数。
@@ -1272,6 +1310,7 @@ curl -s https://worldmonitor.app/mcp \
 | `category` | string（枚举） | 将聚类限制为一个完整摘要类别（`politics`、`us`、`europe`、`middleeast`、`tech`、`ai`、`finance`、`commodities`、`gov`、`africa`、`latam`、`asia`、`energy`、`thinktanks`、`crisis`、`layoffs`、`science`、`intel`）。结果中以 `category` 回显（省略时为 `null`）。未知值返回 `headlineCount: 0`，并以 `note` 列出当前摘要中存在的类别。 |
 
 - **交叉印证：** 每个簇都带有 `corroboration`，形如 `{ state, publishers }`。`state` 取值为 `corroborated`（两个及以上发布方家族，且并非全部为第 4 层级）、`single-publisher`、`tier4-only`（两个及以上家族，且每个都是已声明的第 4 层级聚合站或博客）或 `unknown`；`publishers` 统计不同的发布方家族，`state` 为 `unknown` 时为 `null`。新闻面板、地图弹窗和摘要为该故事显示相同的判定。实时提醒只携带该故事的发布方数量，因此只报告 `single-publisher` 或 `corroborated`，从不报告 `tier4-only`。它描述的是报道覆盖面，而非准确性：任何状态都不表示某条说法为真或为假。旁边的 `publishers` 名单列出每个发布方及其声明层级。
+- **来源溯源：** 每个簇都带有主媒体的 `primarySourceProvenance`，以及与 `sources` 按下标对齐的 `sourceProvenance`（`sourceProvenance[j]` 描述 `sources[j]`）。每一项给出该媒体声明的 `tier`（1–4，未登记时为 `null`）、`risk`、`type`，以及它们是否已声明和已审核（`riskDeclared`、`typeDeclared`、`riskReviewed`、`typeReviewed`）；登记了关联方时给出 `stateAffiliated`，另有 `knownBiases`（空数组表示尚未记录标签，并不代表该媒体中立）、可选的 `note`、按固定顺序列出全部事实的 `summary` 字符串，以及媒体概况：`homeCountry`、`audience`（`domestic`、`international` 或 `diaspora`）、`language` 和 `ownershipClass`，未记录概况时均为 `null`。智能体无需调用 `get_sources`，即可对同时包含一级通讯社和高风险或国家关联媒体的簇进行加权。溯源采用失败即关闭：尚未审核的媒体会报告 `risk: "unknown"` 并附上说明，绝不会默认为低风险。
 - **API 端点：** `GET /api/news/v1/list-feed-digest`
 - **类型：** 确定性本地计算 —— 每次调用对约 150-200 条摘要头条运行聚类（上游为 CDN/Redis 缓存，15 分钟节奏）。
 - **配额：** 标准 —— 每次调用消耗 MCP 每日预留。
@@ -1567,12 +1606,17 @@ curl -s https://worldmonitor.app/mcp \
 
 基础设施级联模拟：在种子化的海底电缆表加上精选的管道、港口和咽喉要道注册表上进行广度优先故障传播。不传 `source_id` 可获取按类型分组的可模拟节点目录；链式容量沿路径相乘，远端影响会真实地衰减。
 
+传入 `countries` 可比较各国的海底电缆暴露度。`data.exposure` 中每一项列出在该国登陆的电缆、不同登陆站、这些电缆经过的咽喉要道及其占该国电缆的比例（`largestSingleChokepointShare` 为单一封锁的最坏情况），以及 `activeIncidents`：NGA 通告监测标记为 `FAULT` 或 `DEGRADED` 的电缆。没有事件的电缆只是没有匹配的通告，并不代表确认正常。`health_available: false` 表示无法读取电缆健康快照。咽喉要道判定结合简化路由几何与登陆点：在波斯湾或红海内外均有登陆点的电缆，视为穿过两者之间的出口。
+
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
 | `source_id` | string | 要中断的节点 id（不传参数可获取完整目录）。 |
+| `source_ids` | array | 同时切断多个节点（例如一组电缆 id）；所有 id 必须有效，各国影响在切断集合内累加。传入 `source_id` 时忽略。 |
+| `cut_cables_through` | string | 咽喉要道 id（例如 `chokepoint:hormuz_strait`）：切断路由经过该处的所有电缆。传入 `source_id` 或 `source_ids` 时忽略。 |
 | `disruption_level` | number | 初始故障严重度，0.1 到 1 之间（默认 1）。 |
+| `countries` | array | 最多 10 个国家（ISO alpha-2、alpha-3 或英文名称），在 `data.exposure` 中返回各国电缆暴露度比较。可与切断参数组合使用。 |
 
 - **API 端点：** 无（仅 MCP 的派生分析）。
 - **类型：** 派生分析 — 每次请求从种子化电缆表构建依赖图。
@@ -2390,6 +2434,7 @@ curl -s https://worldmonitor.app/mcp \
 - **类型：** 缓存支撑的 RPC。付费打开消耗一个世界简报面板额度；有效期内的健康重复读取和 JMESPath 视图复用已接受的原始快照。有效且不足三小时的最近可用内容仍可返回，并显示过期提示，但过期内容允许重试，不会作为新鲜快照缓存。缺失、损坏或超过期限的内容不可用。不在请求时调用 LLM。API 保持普通逐工具计费，免费账户保持订阅拒绝行为。
 - **来源：** 按生产者顺序返回种子 payload 发布的有界 `worldBriefSources` 数组。URL 从显式来源记录复制，而不是在 MCP 执行时生成；保留空 URL 回退项，避免引用编号错位。
 - **交叉印证：** `headlines` 中的每一项在 `topStories` 中都有一个按下标对齐的条目（`topStories[i]` 描述 `headlines[i]`），包含 `sourceCount`、`uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`，以及 `sources` 中参与报道的媒体名称（上限 12 个）。这些全部由洞察种子程序发布，因此不在请求时计算。注意这里每个故事的 `sources` 是媒体名称列表，与该工具顶层的 `sources`（承载引用记录）不同。`memberTitles` 在此处刻意不返回 —— 它可在输出预算更大的 `get_news_intelligence` 上获取。
+- **来源溯源：** 每个 `topStories[i]` 还带有 `sourceProvenance`，与其 `sources` 按下标对齐（`sourceProvenance[j]` 描述 `sources[j]`）。每一项给出该媒体声明的 `tier`（1–4，未登记时为 `null`）、`risk`、`type`，以及它们是否已声明和已审核（`riskDeclared`、`typeDeclared`、`riskReviewed`、`typeReviewed`）；登记了关联方时给出 `stateAffiliated`，另有 `knownBiases`（人工整理的立场标签；空数组表示尚未记录标签，并不代表该媒体中立）和可选的 `note`。这与 `get_news_clusters` 返回的逐媒体记录相同，只是没有 `summary`；它能显示同一故事同时引用一级通讯社和高风险或国家关联媒体的情况，而仅看 `sourceTier` 看不出这一点。没有媒体列表的故事不带溯源。若响应会超出输出预算，先删除所有 `note`，仍不够时才删除所有 `sourceProvenance` 列表；此时 `transportCoverage` 会标明被裁剪的字段，`omission_reason` 为 `"output_budget"`。媒体名称和 `sourceTier` 始终返回。
 
 <CodeGroup>
 
@@ -2561,6 +2606,8 @@ curl -s https://worldmonitor.app/mcp \
 
 为已登录账户创建绑定该账户的付费套餐结账链接。当拒绝响应的 `error.data` 带有 `checkoutTool: "start_upgrade"` 时调用，并传入该拒绝中的 `recommendedPlan`。只有免费账户会收到 `checkoutTool`；付费调用方的拒绝只带 `recommendedPlan`，因为同一套餐系列内的升级通过账单门户完成。用户在浏览器中打开链接完成付款；此工具从不扣款，智能体也不接触付款信息。
 
+不向 ChatGPT 提供：其应用规范不允许发起结账，因此 ChatGPT 的请求在 `tools/list` 和 `describe_tool` 中看不到此工具，调用会返回 `Unknown tool`。Codex 和其他客户端仍可使用。
+
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `plan` | string | 是 | 取值之一：`pro_monthly`、`pro_annual`、`pro_business_monthly`、`pro_business_annual`、`api_starter`、`api_starter_annual`、`api_business`、`api_business_annual`。其他值返回 `-32602`，并在 `error.data.plans` 中列出可用值。 |
@@ -2607,3 +2654,26 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `report_issue`
+
+为 WorldMonitor 维护者存储一份报告：缺陷、缺失的能力、错误或过期的数据，或安全问题。它是 [`POST /api/feedback/v1/submit-report`](/zh/api-platform) 的 MCP 对应工具，使用相同的校验、脱敏和限额。每份报告都由人工阅读，不会公开，不会被自动处理，也不会回复。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `kind` | string | 是 | `bug`、`missing_capability`、`data_quality` 或 `security`。 |
+| `summary` | string | 是 | 一句话，最多 300 个字符。这是报告正文，不是缓存工具通用的 `summary` 开关。 |
+| `surface` | string | 否 | 报告涉及的对象：工具名、REST 路径，或尚不存在的功能的简短标签。最多 200 个字符。 |
+| `expected` | string | 否 | 预期结果。最多 2,000 个字符。 |
+| `actual` | string | 否 | 实际结果。最多 2,000 个字符。 |
+| `requestId` | string | 否 | 失败调用的请求 ID：MCP 错误中的 `error.data.requestId`，或 REST 响应的 `x-vercel-id` 头。仅限字母、数字、`:`、`_` 和 `-`，最多 128 个字符。 |
+| `clientName` | string | 否 | 客户端或智能体名称。最多 80 个字符。 |
+
+**响应：** `{ reportId, status }`。`status` 为 `received`，安全报告为 `private`，并附带 `advisoryUrl` 和 `notice`。10 分钟内重发相同报告会返回第一次的 `reportId`，不会重复存储。
+
+- **访问：free。** 无需凭据。通过权益检查的 Pro 或 API 账户使用自己的额度；其他调用方（包括免费账户和未通过检查的密钥）均以匿名身份报告。身份始终来自请求凭据，从不来自参数。
+- **限额：** 匿名调用方每个 IP 每小时 5 份，每个账户每天 30 份，另有全站上限。超过 24 KB 的参数在任何报告限额或存储调用之前即被拒绝。此工具不消耗每日额度。
+- **脱敏：** 凭据和电子邮件地址在存储前被替换。报告中不应包含密钥或个人数据。
+- **安全报告：** `security` 报告仅用于标记存在漏洞。详细信息请通过私密的[安全公告表单](https://github.com/koala73/worldmonitor/security/advisories/new)提交。
+- **错误：** `-32602` 指出无效字段。`-32029`（HTTP 429，`Retry-After: 3600`）表示额度已用完。`-32603`（HTTP 503，`Retry-After: 60`）表示限流器或存储不可用，报告未被存储。`-32002`（HTTP 403）表示账户正在删除。被拒绝的安全报告在 `error.data` 中保留 `advisoryUrl`。
+- **API 端点：** 无。报告直接写入存储。

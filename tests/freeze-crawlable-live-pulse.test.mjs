@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
 import {
   authedGet,
@@ -33,6 +33,27 @@ import { GDELT_COUNTRY_INDEX_WINDOW_MS } from '../scripts/_gdelt-bulk-materializ
 import { briefGroundingGap, COUNTRY_INDEX_ORIGIN, developmentsHasDatedItem } from '../scripts/crawlable-developments.mjs';
 import { SCORECARD_DECLARED_FIELDS, classifyAccuracyState } from '../scripts/build-accuracy-page.mjs';
 import { MCP_CANONICAL_ENDPOINT, isMcpAliasRequest } from '../shared/mcp-host-policy.ts';
+
+// The freeze sleeps requestGapMs after every upstream request. The suites pass
+// requestGapMs: 0, but Node runs setTimeout(fn, 0) after at least 1ms, and a
+// keyed freeze makes about 560 requests, so the file's 82 freeze runs spent
+// about 58s waiting on that minimum. Zero-delay timers run on setImmediate
+// instead: each sleep still yields to the event loop, without the 1ms.
+// Nonzero delays, such as the 20s HTTP timeout, keep the real setTimeout.
+const immediateTimers = new WeakSet();
+beforeEach(() => {
+  const { setTimeout: realSetTimeout, clearTimeout: realClearTimeout } = globalThis;
+  mock.method(globalThis, 'setTimeout', (callback, ms, ...args) => {
+    if (ms > 0) return realSetTimeout(callback, ms, ...args);
+    const handle = setImmediate(callback, ...args);
+    immediateTimers.add(handle);
+    return handle;
+  });
+  mock.method(globalThis, 'clearTimeout', (handle) => (
+    immediateTimers.has(handle) ? clearImmediate(handle) : realClearTimeout(handle)
+  ));
+});
+afterEach(() => mock.restoreAll());
 
 describe('freeze crawlable live pulse API base routing', () => {
   const originalFetch = globalThis.fetch;
@@ -125,6 +146,12 @@ function countryPayload() {
           todayTotal: 0,
           todayCountsAvailable: true,
           wowChangePct: 0,
+          officialLatestDate: '2026-10-18',
+          officialLatestTotal: 0,
+          officialAvg7d: 0,
+          baselineAvgDaily: 87.4,
+          baselineFrom: '2024-10-22',
+          baselineTo: '2025-10-21',
         },
       })),
     };
@@ -558,14 +585,20 @@ describe('freeze crawlable live pulse coverage gates', () => {
     );
   });
 
-  it('preserves explicit transit-count availability in the frozen snapshot', async () => {
+  it('freezes the official IMF PortWatch figures, including a measured zero, and no relay transit count', async () => {
     stubFetch();
     const { snapshot } = await runFreeze();
     assert.ok(Object.values(snapshot.chokepoints).length > 0);
     assert.ok(
       Object.values(snapshot.chokepoints).every((pulse) => (
-        pulse.todayTransits === '0'
-        && pulse.todayCountsAvailable === true
+        pulse.officialLatestDate === '2026-10-18'
+        && pulse.officialLatestTotal === 0
+        && pulse.officialAvg7d === 0
+        && pulse.baselineAvgDaily === 87.4
+        && pulse.baselineFrom === '2024-10-22'
+        && pulse.baselineTo === '2025-10-21'
+        && !('todayTransits' in pulse)
+        && !('todayCountsAvailable' in pulse)
         && pulse.navigationalWarnings === '0 warnings'
         && pulse.navigationalWarningsAvailable === true
         && pulse.aisDisruptions === '0 AIS disruptions'

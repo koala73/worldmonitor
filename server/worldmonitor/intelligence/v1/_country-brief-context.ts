@@ -50,6 +50,8 @@ export interface CountryIntelCacheKeyOpts {
   energyYear: string;
   /** Audited primary-energy import data-year, or '' when unavailable. */
   energyImportYear: string;
+  /** NOTAM-closed or -restricted monitored airports, e.g. 'OEJN:closed'; '' when none. */
+  airportTag?: string;
 }
 
 export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): string {
@@ -57,18 +59,21 @@ export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): stri
   // "withheld" notices, and their grounding on sports and global items.
   const energyTag = opts.energyYear ? `:e${opts.energyYear}` : '';
   const energyImportTag = opts.energyImportYear ? `:i${opts.energyImportYear}` : '';
+  // A closure that starts or ends re-keys the brief instead of waiting out
+  // the 6h cache; countries with no NOTAM keep their existing key.
+  const airportTag = opts.airportTag ? `:a${opts.airportTag}` : '';
   const version = opts.lang === 'en' ? 'v12' : 'v9';
   if (!opts.isPremium) {
     // Anonymous tier: caller inputs must not reach the key, or the shared
     // cache degenerates back into a per-caller one (and one caller's
     // context could mint entries served to everyone).
-    return `ci-sebuf:${version}:${opts.countryCode}:${opts.lang}:shared${energyTag}${energyImportTag}`;
+    return `ci-sebuf:${version}:${opts.countryCode}:${opts.lang}:shared${energyTag}${energyImportTag}${airportTag}`;
   }
   // Retire premium entries whose parsed sources could differ from their hashed context.
   const premiumVersion = opts.lang === 'en' ? 'v13' : 'v10';
   const fw = opts.frameworkHash ? `:${opts.frameworkHash}` : '';
   const context = opts.lang === 'en' && !opts.frameworkHash ? `sources:${opts.contextHash}` : opts.contextHash;
-  return `ci-sebuf:${premiumVersion}:${opts.countryCode}:${opts.lang}:${context}${fw}${energyTag}${energyImportTag}`;
+  return `ci-sebuf:${premiumVersion}:${opts.countryCode}:${opts.lang}:${context}${fw}${energyTag}${energyImportTag}${airportTag}`;
 }
 
 interface DigestItemForBrief {

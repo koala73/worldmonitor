@@ -100,7 +100,13 @@ describe('tools/call returns structuredContent a strict client accepts (#8328)',
     ['a string', "'provider'", 'provider'],
     ['an array', 'providers[].id', ['a', 'b']],
     ['an object', 'summary', { providerCount: 3 }],
-    ['null (no match)', 'nope.nothing', null],
+  ];
+  // A projection that selects nothing is a soft failure, not data: JMESPath
+  // returns null for a missing path, and a null projection read as "the
+  // source has nothing" (a News Intelligence panel showed an outage).
+  const softFailures = [
+    ['an invalid expression', '[[[', /^invalid_expression/],
+    ['nothing (no match)', 'nope.nothing', /^empty_projection/],
   ];
 
   it('every advertised outputSchema is an object whose first anyOf branch is the documented shape', () => {
@@ -149,13 +155,15 @@ describe('tools/call returns structuredContent a strict client accepts (#8328)',
     });
   }
 
-  it('a bad expression returns the _jmespath_error envelope in both places', async () => {
-    stub('get_sources', async () => SOURCES);
-    const result = await call('get_sources', { jmespath: '[[[' });
-    assert.match(result.structuredContent._jmespath_error, /^invalid_expression/);
-    assert.deepEqual(result.structuredContent, JSON.parse(result.content[0].text));
-    assert.equal(strictClientVerdict(publicTools.get('get_sources'), result), null);
-  });
+  for (const [label, expr, error] of softFailures) {
+    it(`a projection to ${label} returns the _jmespath_error envelope in both places`, async () => {
+      stub('get_sources', async () => SOURCES);
+      const result = await call('get_sources', { jmespath: expr });
+      assert.match(result.structuredContent._jmespath_error, error);
+      assert.deepEqual(result.structuredContent, JSON.parse(result.content[0].text));
+      assert.equal(strictClientVerdict(publicTools.get('get_sources'), result), null);
+    });
+  }
 
   it('an over-budget response returns the _budget_exceeded envelope in both places', async () => {
     stub('get_sources', async () => ({ ...SOURCES, pad: 'x'.repeat(4096) }), { _outputBudgetBytes: 256 });
@@ -165,7 +173,7 @@ describe('tools/call returns structuredContent a strict client accepts (#8328)',
     assert.equal(strictClientVerdict(publicTools.get('get_sources'), result), null);
   });
 
-  for (const [label, expr, expected] of [...projections, ['an invalid expression', '[[[', undefined]]) {
+  for (const [label, expr, expected] of [...projections, ...softFailures]) {
     it(`a projection to ${label} carries attribution in both channels when source attribution is present`, async () => {
       stub(
         'get_sources',
@@ -174,7 +182,7 @@ describe('tools/call returns structuredContent a strict client accepts (#8328)',
       );
       const result = await call('get_sources', { jmespath: expr });
       const parsed = JSON.parse(result.content[0].text);
-      if (expected === undefined) assert.match(parsed.data._jmespath_error, /^invalid_expression/);
+      if (expected instanceof RegExp) assert.match(parsed.data._jmespath_error, expected);
       else assert.deepEqual(parsed.data, expected);
       assert.equal(parsed._attribution.sources[0].source, 'Example Bureau');
       assert.deepEqual(result.structuredContent, parsed);

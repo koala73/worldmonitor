@@ -60,9 +60,85 @@ export function publishedTransitCountLabel(value, { allowZero = false } = {}) {
   return formatNumber(numeric, 0);
 }
 
+const ISO_DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function isoDay(value) {
+  return typeof value === 'string' && ISO_DAY_PATTERN.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`))
+    ? value
+    : null;
+}
+
+export function formatPortwatchDay(value) {
+  const day = isoDay(value);
+  if (day === null) return null;
+  return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
+    .format(new Date(`${day}T00:00:00Z`));
+}
+
+function formatPortwatchMonth(day) {
+  return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', timeZone: 'UTC' })
+    .format(new Date(`${day}T00:00:00Z`));
+}
+
+// "Oct 2024–Oct 2025": the baseline is a year, so month granularity is the
+// honest resolution for prose; the exact days stay in the record.
+export function formatPortwatchRange(from, to) {
+  const start = isoDay(from);
+  const end = isoDay(to);
+  if (start === null || end === null) return null;
+  const startLabel = formatPortwatchMonth(start);
+  const endLabel = formatPortwatchMonth(end);
+  return startLabel === endLabel ? startLabel : `${startLabel}–${endLabel}`;
+}
+
+// Share of the year-earlier baseline, e.g. "4%". Whole percentages from 1%
+// up; one decimal below that so a near-closure reads "0.4%", not "0%".
+export function formatBaselineShare(avg7d, baselineAvgDaily) {
+  const current = nonNegativeNumber(avg7d);
+  const baseline = finiteNumber(baselineAvgDaily);
+  if (current === null || baseline === null || baseline <= 0) return null;
+  const pct = (current / baseline) * 100;
+  return `${pct >= 1 || pct === 0 ? formatNumber(pct, 0) : formatNumber(pct, 1)}%`;
+}
+
+/**
+ * Labels for the official IMF PortWatch figures. The latest count publishes a
+ * measured 0 (PortWatch reported 0 transits for Hormuz on 2026-10-17); only
+ * an absent day withholds. The average line carries the baseline share when
+ * the seeder stored a baseline and omits it otherwise, never inventing one.
+ */
+export function chokepointOfficialMetrics({
+  officialLatestDate,
+  officialLatestTotal,
+  officialAvg7d,
+  baselineAvgDaily,
+  baselineFrom,
+  baselineTo,
+}) {
+  const latestDate = formatPortwatchDay(officialLatestDate);
+  const latestTransits = latestDate === null
+    ? null
+    : publishedTransitCountLabel(officialLatestTotal, { allowZero: true });
+  const published = latestTransits !== null;
+  const average = published ? nonNegativeNumber(officialAvg7d) : null;
+  const averageLabel = average === null ? null : `${formatNumber(average, 1)} a day`;
+  const share = average === null ? null : formatBaselineShare(average, baselineAvgDaily);
+  const baselineRange = share === null ? null : formatPortwatchRange(baselineFrom, baselineTo);
+  const baselineAverage = baselineRange === null ? null : formatNumber(baselineAvgDaily, 1);
+  return {
+    latestTransits: published ? latestTransits : null,
+    latestDate: published ? latestDate : null,
+    averageLabel,
+    baselineShare: baselineAverage === null ? null : share,
+    baselineAverage,
+    baselineRange,
+    average: averageLabel === null
+      ? null
+      : (baselineAverage === null ? averageLabel : `${averageLabel} · ${share} of ${baselineAverage}`),
+  };
+}
+
 export function chokepointCoverageMetrics({
-  todayTransits,
-  todayCountsAvailable,
   navigationalWarnings,
   navigationalWarningsAvailable,
   aisDisruptions,
@@ -70,9 +146,6 @@ export function chokepointCoverageMetrics({
   congestionLevel,
   weekMovement,
 }) {
-  const transitLabel = todayCountsAvailable === false
-    ? null
-    : publishedTransitCountLabel(todayTransits, { allowZero: todayCountsAvailable === true });
   const warningCount = Math.max(0, nonNegativeNumber(navigationalWarnings) ?? 0);
   const disruptionCount = Math.max(0, nonNegativeNumber(aisDisruptions) ?? 0);
   const warningLabel = typeof navigationalWarnings === 'string' && navigationalWarnings.trim()
@@ -82,8 +155,6 @@ export function chokepointCoverageMetrics({
     ? aisDisruptions.trim()
     : `${formatNumber(disruptionCount, 0)} AIS ${disruptionCount === 1 ? 'disruption' : 'disruptions'}`;
   return {
-    todayTransits: transitLabel,
-    todayCountsAvailable,
     navigationalWarnings: navigationalWarningsAvailable === true
       ? warningLabel
       : null,
@@ -95,11 +166,6 @@ export function chokepointCoverageMetrics({
       : null,
     weekMovement,
   };
-}
-
-export function withheldTransitCountSentence(displayName, measurementNote = '') {
-  const name = String(displayName || '').trim() || 'this chokepoint';
-  return [`World Monitor is not currently publishing a transit count for ${name} for this period.`, measurementNote.trim()].filter(Boolean).join(' ');
 }
 
 // Strict score coercion: only finite numbers and non-blank numeric strings
@@ -152,10 +218,28 @@ function chokepointArticleName(displayName) {
   return `the ${name}`;
 }
 
+// The official-figure sentences shared by the passage and the score driver.
+// "IMF PortWatch counted 4 transits through the Strait of Hormuz on Oct 18,
+// 2026 (latest published day). The 7-day average is 3.7 a day, 4% of the
+// 87.4-a-day average for Oct 2024–Oct 2025." The comparison clause exists only
+// when the seeder stored a baseline; it is omitted, never estimated.
+function officialCountSentences(official, name, { through }) {
+  if (official.latestTransits === null) return null;
+  const count = Number(official.latestTransits.replace(/,/g, ''));
+  const noun = count === 1 ? 'transit' : 'transits';
+  const where = through ? ` through ${name}` : '';
+  const counted = `IMF PortWatch counted ${official.latestTransits} ${noun}${where} on ${official.latestDate} (latest published day).`;
+  if (official.averageLabel === null) return counted;
+  const comparison = official.baselineAverage === null
+    ? ''
+    : `, ${official.baselineShare} of the ${official.baselineAverage}-a-day average for ${official.baselineRange}`;
+  return `${counted} The 7-day average is ${official.averageLabel}${comparison}.`;
+}
+
 // Shared evidence policy for both static HTML and live hydration. The badge is
 // a disruption-risk signal, not evidence that operators have opened or closed
 // a waterway. AIS severity contributes to the score; the number of AIS events
-// and the transit count are context only.
+// and the official PortWatch daily count are context only.
 export function chokepointEvidenceNarrative({
   displayName,
   score,
@@ -166,7 +250,12 @@ export function chokepointEvidenceNarrative({
   warningsLabel,
   congestionLabel,
   aisEventCountLabel,
-  todayTransits,
+  officialLatestDate,
+  officialLatestTotal,
+  officialAvg7d,
+  baselineAvgDaily,
+  baselineFrom,
+  baselineTo,
 }) {
   const numeric = chokepointScoreNumber(score);
   if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return null;
@@ -175,24 +264,22 @@ export function chokepointEvidenceNarrative({
   const warnings = String(warningsLabel || '').trim() || null;
   const severity = String(congestionLabel || '').trim() || null;
   const aisEvents = String(aisEventCountLabel || '').trim() || null;
-  const transit = todayTransits == null || String(todayTransits).trim() === ''
-    ? null
-    : String(todayTransits).trim();
+  const official = chokepointOfficialMetrics({
+    officialLatestDate, officialLatestTotal, officialAvg7d, baselineAvgDaily, baselineFrom, baselineTo,
+  });
   const name = chokepointArticleName(displayName);
   const dated = String(asOfText || '').trim();
   const snapshotLead = dated ? `As of ${dated}` : 'In the latest published snapshot';
 
   let passage;
   if (partial === true) {
-    const transitClause = transit === null
-      ? 'No transit count is published for this snapshot.'
-      : `The observed transit count is ${transit}.`;
-    passage = `${snapshotLead}, source coverage for ${name} is partial. ${transitClause} World Monitor cannot verify operational passage status from this snapshot.`;
+    const officialClause = officialCountSentences(official, name, { through: false })
+      ?? 'No IMF PortWatch daily transit count is published for this snapshot.';
+    passage = `${snapshotLead}, source coverage for ${name} is partial. ${officialClause} World Monitor cannot verify operational passage status from this snapshot.`;
   } else {
-    const transitClause = transit === null
-      ? `no transit count is published for ${name}.`
-      : `the observed transit count for ${name} is ${transit}.`;
-    passage = `${snapshotLead}, ${transitClause} The ${band} disruption score is a risk signal; it does not verify unrestricted passage or operational closure.`;
+    const officialClause = officialCountSentences(official, name, { through: true })
+      ?? `no IMF PortWatch daily transit count is published for ${name}.`;
+    passage = `${snapshotLead}, ${officialClause} The ${band} disruption score is a risk signal; it does not verify unrestricted passage or operational closure.`;
   }
 
   const { threat, anomaly } = splitScoreDescription(description);
@@ -214,7 +301,7 @@ export function chokepointEvidenceNarrative({
   const unavailable = unavailableInputs.length
     ? ` Unavailable score inputs: ${unavailableInputs.join('; ')}.`
     : '';
-  const context = `Context only (not score inputs): AIS event count ${aisEvents ? `(${aisEvents})` : 'unavailable'}; transit count ${transit ? `(${transit})` : 'unavailable'}.`;
+  const context = `Context only (not score inputs): AIS event count ${aisEvents ? `(${aisEvents})` : 'unavailable'}; IMF PortWatch latest daily count ${official.latestTransits !== null ? `(${official.latestTransits} on ${official.latestDate})` : 'unavailable'}.`;
   const scoreDriver = `The score of ${formatted} (${band}) has this evidence basis. ${baseline} ${observed}${unavailable} ${context}`;
 
   return { passage, scoreDriver };
@@ -502,16 +589,23 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
     MAX_LIVE_SNAPSHOT_AGE_MS,
   );
   const transit = row.transitSummary;
-  // dataAvailable is PortWatch history presence, so it gates wowChangePct --
-  // but NOT today's count, which comes from the relay's AIS window. Gating the
-  // count on it discarded a real measurement whenever PortWatch dropped a
-  // chokepoint (it dropped two for ~4.5h on 2026-08-25) and then rendered the
-  // withhold note over live data. The count carries its own absence.
+  // dataAvailable is PortWatch history presence, so it gates wowChangePct and
+  // the official figures below. The relay's AIS window count (todayTotal) is
+  // deliberately not read: it counts vessels leaving a wide geofence around
+  // the waterway, port traffic included, and reached the page as "transits"
+  // (38 for Hormuz on 2026-10-22 against PortWatch's 4).
   const transitAvailable = transit?.dataAvailable === true;
   const weekMovement = transitAvailable ? finiteNumber(transit.wowChangePct) : null;
+  // The proto carries absence as an empty date / empty baseline_from with the
+  // numbers at 0; a 0 here is never a measurement, so both are read together.
+  const officialLatestDate = transitAvailable ? isoDay(transit.officialLatestDate) : null;
+  const officialLatestTotal = officialLatestDate === null ? null : nonNegativeNumber(transit.officialLatestTotal);
+  const officialAvg7d = officialLatestTotal === null ? null : nonNegativeNumber(transit.officialAvg7d);
+  const baselineFrom = transitAvailable ? isoDay(transit.baselineFrom) : null;
+  const baselineTo = baselineFrom === null ? null : isoDay(transit.baselineTo);
+  const baselineAvgDaily = baselineTo === null ? null : finiteNumber(transit.baselineAvgDaily);
+  const baselineAvailable = baselineAvgDaily !== null && baselineAvgDaily > 0;
   const coverageMetrics = chokepointCoverageMetrics({
-    todayTransits: nonNegativeNumber(transit?.todayTotal),
-    todayCountsAvailable: transit?.todayCountsAvailable,
     navigationalWarnings: row.activeWarnings,
     navigationalWarningsAvailable: row.navigationalWarningsAvailable === true,
     aisDisruptions: row.aisDisruptions,
@@ -531,13 +625,19 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
     // null, never a placeholder sentence — see publishableChokepointDescription in
     // scripts/crawlable-chokepoint-live.mjs (#7530).
     description: String(row.description || '').trim() || null,
-    todayTransits: coverageMetrics.todayTransits,
-    todayCountsAvailable: coverageMetrics.todayCountsAvailable,
+    officialLatestDate: officialLatestTotal === null ? null : officialLatestDate,
+    officialLatestTotal,
+    officialAvg7d,
+    baselineAvgDaily: baselineAvailable ? baselineAvgDaily : null,
+    baselineFrom: baselineAvailable ? baselineFrom : null,
+    baselineTo: baselineAvailable ? baselineTo : null,
     weekMovement: coverageMetrics.weekMovement,
     fetchedAt,
+    // A missing baseline is not missing coverage: the official count still
+    // answers the question, only the year-earlier comparison is omitted.
     partial: payload.upstreamUnavailable === true
       || !transitAvailable
-      || coverageMetrics.todayTransits === null
+      || officialLatestTotal === null
       || coverageMetrics.navigationalWarnings === null
       || coverageMetrics.aisDisruptions === null,
   };
@@ -1411,7 +1511,12 @@ export async function loadChokepoint(tool) {
       warningsLabel: view.navigationalWarnings,
       congestionLabel: view.congestion,
       aisEventCountLabel: view.aisDisruptions,
-      todayTransits: view.todayTransits,
+      officialLatestDate: view.officialLatestDate,
+      officialLatestTotal: view.officialLatestTotal,
+      officialAvg7d: view.officialAvg7d,
+      baselineAvgDaily: view.baselineAvgDaily,
+      baselineFrom: view.baselineFrom,
+      baselineTo: view.baselineTo,
     });
     const openStatus = tool.querySelector('[data-chokepoint-open-status]');
     if (openStatus && narrative !== null) openStatus.textContent = narrative.passage;
@@ -1423,22 +1528,12 @@ export async function loadChokepoint(tool) {
     setOptionalMetric(tool, '[data-chokepoint-congestion]', view.congestion);
     setOptionalMetric(tool, '[data-chokepoint-warnings]', view.navigationalWarnings);
     setOptionalMetric(tool, '[data-chokepoint-ais-disruptions]', view.aisDisruptions);
-    setText(tool, '[data-chokepoint-transits]', view.todayTransits ?? '—');
-    setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? (view.todayTransits === null ? '—' : 'Unavailable'));
+    const official = chokepointOfficialMetrics(view);
+    setText(tool, '[data-chokepoint-official-transits]', official.latestTransits ?? '—');
+    setText(tool, '[data-chokepoint-official-date]', official.latestDate ?? '');
+    setText(tool, '[data-chokepoint-official-average]', official.average ?? '—');
+    setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? (official.latestTransits === null ? '—' : 'Unavailable'));
     setOptionalDescription(tool, '[data-chokepoint-description]', view.description);
-    const transitsNote = tool.querySelector('[data-chokepoint-transits-note]');
-    if (transitsNote) {
-      if (view.todayTransits == null) {
-        transitsNote.hidden = false;
-        transitsNote.textContent = withheldTransitCountSentence(
-          tool.dataset.chokepointName || '',
-          tool.dataset.transitMeasurementNote || '',
-        );
-      } else {
-        transitsNote.hidden = true;
-        transitsNote.textContent = '';
-      }
-    }
     setTime(tool, '[data-live-updated]', view.fetchedAt, 'Snapshot');
     markPublishedLivePulse(tool);
     setToolState(tool, view.partial ? 'partial' : 'ready', view.partial ? 'Partial live reading' : 'Live reading');
@@ -1454,15 +1549,12 @@ export async function loadChokepoint(tool) {
     setOptionalMetric(tool, '[data-chokepoint-warnings]', null);
     setOptionalMetric(tool, '[data-chokepoint-ais-disruptions]', null);
     // Total fetch failure: match the sibling cells. An em dash here is the
-    // "withheld, see the note" signal, and the note is hidden in this branch,
-    // so it would read as an unexplained blank next to four "Unavailable"s.
-    setText(tool, '[data-chokepoint-transits]', 'Unavailable');
+    // "withheld" signal, which would read as an unexplained blank next to
+    // four "Unavailable"s.
+    setText(tool, '[data-chokepoint-official-transits]', 'Unavailable');
+    setText(tool, '[data-chokepoint-official-date]', '');
+    setText(tool, '[data-chokepoint-official-average]', 'Unavailable');
     setText(tool, '[data-chokepoint-movement]', 'Unavailable');
-    const transitsNote = tool.querySelector('[data-chokepoint-transits-note]');
-    if (transitsNote) {
-      transitsNote.hidden = true;
-      transitsNote.textContent = '';
-    }
     setOptionalDescription(tool, '[data-chokepoint-description]', 'The live status could not be loaded. Static waterway context remains available below.');
     setTime(tool, '[data-live-updated]', null, 'Snapshot');
     setToolState(tool, 'error', 'Temporarily unavailable');

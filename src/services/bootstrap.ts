@@ -1,5 +1,6 @@
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
+import { adoptPrimedBootstrapTier, primedBootstrapTierBudgetUsedMs, resetPrimedBootstrapTierForTests } from '@/services/bootstrap-prefetch';
 import {
   buildBootstrapTransferRumSample,
   readBootstrapEncodedBodySize,
@@ -300,7 +301,7 @@ async function fetchTier(
   signal: AbortSignal,
   shouldCommit: CommitGuard = () => true,
 ): Promise<BootstrapTierHydrationState> {
-  const requestStartedAt = performance.now();
+  let requestStartedAt = performance.now();
   const requestUrl = toApiUrl(`/api/bootstrap?tier=${tier}&public=1`);
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     const cached = await readCachedTier(tier, true); // age gate skipped: any snapshot beats blank offline
@@ -343,7 +344,18 @@ async function fetchTier(
     // the omit here — or let the wm-session interceptor's `?? 'include'` default
     // apply by taking this call out of isCredentiallessPublicDataRequest's exact
     // shape — and hydration fails as an opaque console CORS error, not a test.
-    const resp = await fetch(requestUrl, { signal, credentials: 'omit' });
+    // The dashboard entry may already have started the fast tier
+    // (bootstrap-prefetch.ts) before this chunk loaded.
+    const primed = tier === 'fast' ? adoptPrimedBootstrapTier(requestUrl, signal) : null;
+    if (primed) requestStartedAt = primed.startedAt;
+    const resp = primed
+      ? await primed.response.catch((error: unknown) => {
+        // A network failure before App loaded gets one direct attempt within
+        // the same budget; an abort is the budget itself and propagates.
+        if (isAbortFailure(error, signal)) throw error;
+        return fetch(requestUrl, { signal, credentials: 'omit' });
+      })
+      : await fetch(requestUrl, { signal, credentials: 'omit' });
     if (!resp.ok) {
       failedOutcome = 'http-error';
     } else {
@@ -626,9 +638,11 @@ export async function fetchBootstrapData(onSlowSettled?: () => void): Promise<vo
   // - 3.0 s is a conservative bump to avoid that cascade. Further tuning should be driven by RUM / Sentry
   //   data once available; do not move this without evidence.
   // - Desktop budgets (5 s / 8 s) are unchanged — different network and dependency-loading constraints.
+  // A request primed by the entry script has already spent part of the budget.
+  const fastBudgetMs = desktop ? BOOTSTRAP_TIER_TIMEOUT_MS.desktop.fast : BOOTSTRAP_TIER_TIMEOUT_MS.web.fast;
   const fastTimeout = setTimeout(
     () => fastCtrl.abort(),
-    desktop ? BOOTSTRAP_TIER_TIMEOUT_MS.desktop.fast : BOOTSTRAP_TIER_TIMEOUT_MS.web.fast,
+    Math.max(0, fastBudgetMs - primedBootstrapTierBudgetUsedMs()),
   );
   try {
     try {
@@ -658,6 +672,7 @@ export async function fetchBootstrapData(onSlowSettled?: () => void): Promise<vo
 
 export const __testing__ = {
   resetBootstrapForTests(): void {
+    resetPrimedBootstrapTierForTests();
     cancelBootstrapSlowTier();
     hydrationCache.clear();
     bootstrapTransferRumTier = null;

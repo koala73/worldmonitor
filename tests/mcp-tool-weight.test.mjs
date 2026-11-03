@@ -285,9 +285,9 @@ describe('signing-helper collection', () => {
     // returns the deriver to body-only reads this file as a failure rather
     // than as fourteen tools quietly scoring zero again.
     assert.equal(
-      SIGNING_HELPERS.get('fetchNlpDigestItems'),
+      SIGNING_HELPERS.get('fetchNlpNewsItems'),
       1,
-      `fetchNlpDigestItems must resolve to one signed fetch; collected: ${JSON.stringify([...SIGNING_HELPERS])}`,
+      `fetchNlpNewsItems must resolve to one signed fetch; collected: ${JSON.stringify([...SIGNING_HELPERS])}`,
     );
   });
 

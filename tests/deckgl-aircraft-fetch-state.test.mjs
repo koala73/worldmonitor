@@ -61,6 +61,7 @@ function createHarness() {
     debouncedFetchAircraft: cancelable(),
     rafUpdateLayers: cancelable(),
     heavyGate: cancelable(),
+    deckFrameProvider: { wake() {}, dispose() {} },
   });
   for (const name of ['settleViewportMovement', 'stopTradeAnimation', 'stopPulseAnimation',
     'stopDayNightTimer', 'stopWeatherRadar', 'stopLiveTankersLoop', 'detachMapLibreInteractionHandlers']) {

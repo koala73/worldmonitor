@@ -3,6 +3,7 @@ import { RpcValidationError, type RpcValidationViolation } from './billing-denia
 import { argNum, argStrList } from './filters';
 import { advertisedOutputSchema, schemaAdmitsNotice } from './structured-content';
 import type { McpAccessClass, ToolDef } from './types';
+import { isPlainObject } from './utils';
 
 const DeprecationNoticeBrand: unique symbol = Symbol('deprecation-notice');
 
@@ -420,10 +421,6 @@ function cacheKeys(tool: ToolDef): readonly string[] {
 
 function isPrimitive(value: unknown): boolean {
   return value == null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function fail(alias: string, detail: string): never {

@@ -31,6 +31,7 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'MIIT (China)': 'gov', 'MOFCOM (China)': 'gov',
   'NDRC (China)': 'gov', 'NBS (China)': 'gov', 'PBoC (China)': 'gov',
   'SAFE (China)': 'gov', 'GACC (China)': 'gov',
+  'Shanghai Financial Portal (People’s Bank of China republication)': 'gov',
 
   // Intel/Defense specialty
   'Defense One': 'intel', 'Breaking Defense': 'intel', 'The War Zone': 'intel',
@@ -315,6 +316,11 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
     risk: 'high',
     stateAffiliated: 'China',
     note: "People's Bank of China official publication",
+  },
+  'Shanghai Financial Portal (People’s Bank of China republication)': {
+    risk: 'high',
+    stateAffiliated: 'China',
+    note: 'Shanghai municipal financial office republication of credited PBOC numeric data',
   },
   'SAFE (China)': {
     risk: 'high',

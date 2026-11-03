@@ -11,7 +11,7 @@ Pro users can search titles and descriptions, filter by buyer, two-letter countr
 
 ## Coverage and freshness
 
-The initial adapters read official public procurement sources:
+The adapters read official public procurement sources:
 
 | Source | Coverage | Notes |
 | --- | --- | --- |
@@ -21,6 +21,30 @@ The initial adapters read official public procurement sources:
 | CanadaBuys | Canada | Official federal open-tender CSV, refreshed daily by CanadaBuys. |
 | GETS | New Zealand / Oceania | Current open tenders from the official public GETS RSS feed. |
 | World Bank Procurement Notices | Multilateral / global | World Bank-financed opportunity notices across borrower countries. |
+| Colombia SECOP II (`colombia-secop`) | Colombia | Up to 100 distinct published processes with a future response deadline. Uses the processes dataset, not awarded contracts. |
+| Kenya PPIP (`kenya-ppip`) | Kenya | One active-tenders page, up to 100 records. No in-run retries, including HTTP 429. Staff, contact, team and bidder objects are not copied. |
+| South Africa eTenders (`south-africa-etenders`) | South Africa | Up to 20 OCDS releases from the previous day through today. |
+| Chile Mercado Público (`chile-mercado-publico`) | Chile | A bounded sample of 20 current-month OCDS entries, with official tender-detail reads. |
+| Brazil PNCP (`brazil-pncp`) | Brazil | Up to 10 active proposals with a closing date within 30 days, across procurement modalities. |
+| Ukraine Prozorro (`ukraine-prozorro`) | Ukraine | Details for up to 20 recently modified tenders. Only `active.tendering` is accepted; qualification and award stages are excluded. |
+| Bulgaria EOP (`bulgaria-eop`) | Bulgaria | Previous day's official OCDS archive. Each lot keeps its own closing date and value. |
+| Latvia IUB (`latvia-iub`) | Latvia | Previous day's JSON file. Competition lots with a closing date, closing time and permitted official procurement link. |
+| Poland BZP (`poland-bzp`) | Poland | Up to 100 current contract notices from the previous day through today; outdated notices are excluded. |
+| Pakistan PPRA (`pakistan-ppra`) | Pakistan | One public active-tenders HTML page, up to 100 rows. Each accepted row needs a published status, official detail link, closing date and time. |
+| Pakistan EPADS (`pakistan-epads`) | Pakistan | Up to 20 federal procurement notices. Exact local timestamps come from the list; countdown rows use the official detail page’s Unix deadline. |
+| Georgia SPA (`georgia-spa`) | Georgia | First public announced-tenders page, up to 20 detail reads. Only announced or bidding-commenced notices with an exact closing time are accepted. |
+| Armenia ARMEPS (`armenia-armeps`) | Armenia | Up to 10 details from the tender-submission search. Awarded notices are excluded; missing estimated values stay absent. |
+| Albania APP (`albania-app`) | Albania | The current year's official published-procedures CSV export, regenerated daily (the previous year is also read from January through March, while its late-year procedures can still be open). Cancelled, suspended and awarded procedures and rows without a closing date are excluded. APP has no public per-procedure page, so notices link to the official export page. |
+| Dominican Republic DGCP (`dominican-republic-dgcp`) | Dominican Republic | Up to two pages of 200 processes from the open-data API, newest first. Only `Proceso publicado` processes with a closing timestamp and an official `comprasdominicana.gob.do` link are accepted. |
+| Malaysia MyProcurement (`malaysia-myprocurement`) | Malaysia | One JSON page of up to 100 current federal tender adverts. Each card needs an official detail link, agency, invitation date and closing date; `Tiada Maklumat` prices stay absent. |
+
+These are samples of upstream catalogues, not exhaustive national coverage. Each added source has a 75-second request budget, no in-run retries and at most four concurrent detail reads. Most requests have a 15-second timeout; PNCP has 30 seconds, the ARMEPS search has up to 50 seconds and the Albania CSV export (about 7.6 MB by November, served at roughly 160 KB/s; two concurrent year exports measured 60 seconds) has up to 70 seconds within the shared budget. The hourly Railway schedule limits Kenya to one request per run. Bulgaria and Latvia use the previous day's archive to allow publication time. Local closing times are converted using the publisher's time zone. Missing closing dates or times are not inferred. Albania and Malaysia publish closing dates without a time; as with TED's date-only deadlines, those notices are kept at the start of the closing day in the publisher's time zone and leave the open feed at local midnight before their real closing hour, never after it. Dominican Republic timestamps are used as the API publishes them, with a UTC suffix. Raw staff, contact-point, supplier and bidder objects are never stored in the canonical snapshot.
+
+The added sources use the same source, country, buyer, category, value, date and technology-relevance filters in the panel, RPC and MCP tool. No new credentials are required.
+
+Georgia and Armenia use anonymous publisher sessions whose cookies remain in memory for that fetch. Pakistan PPRA and EPADS notices with the same nonempty normalized buyer and title and the same exact deadline are deduplicated only when exactly one notice from each source matches after request filters and before pagination. Source-specific queries still return that source’s notices; canonical records and source health counts retain their original provenance. Ambiguous groups, different deadlines and missing buyers or deadlines are retained. Same-origin session redirects are followed explicitly, up to three hops; other origins are rejected before any request is sent. EPADS does not follow redirects.
+
+Each added source writes a durable `seed-activated:economic:global-tenders:<source>` marker after its first successful canonical publication and source-status writes, including a valid empty result. Before that publication, a missing key reports `EMPTY_ON_DEMAND`. After activation, a missing or stale key is a health fault even after the source metadata expires. Failed attempts never activate a source.
 
 The Railway seeder runs hourly and stores a canonical snapshot at `economic:global-tenders:v1`. Its TTL is three hours so the prior successful snapshot survives a missed run. If one adapter fails, healthy-source results remain available, that source's last-good records are retained, and the response reports `availability: "partial"`. If every adapter fails, the previous records remain available with `availability: "stale"`.
 
@@ -36,7 +60,53 @@ Per-source state, record counts, retrieval-attempt time, last-success time, and 
 
 World Bank requests cover a sample of up to 100 notices, not the full upstream catalogue. Each request can make three attempts, including response-body reading, with a 20-second attempt timeout and 5- and 10-second retry delays. All attempts and `Retry-After` waits share a 75-second budget. A failed body read can retry; missing or malformed notices and incomplete declared result windows cannot become an empty success.
 
-World Bank and Contracts Finder retain usable open notices only within three hours of the source's last success. Failed attempts and successful aggregate publications do not renew that source clock. A valid empty response clears prior records; a failed request remains a source error, including when the last successful result was empty. If the seeder cannot read the previous canonical snapshot, it preserves the existing publication instead of treating the read failure as missing data. Aggregate completion is not proof that every source succeeded; failed sources remain visible in health and are attempted on the normal hourly cadence.
+World Bank, Contracts Finder and the sixteen added sources retain usable open notices only within 24 hours of the source's last success. Failed attempts and successful aggregate publications do not renew that source clock. A valid empty response clears prior records; a failed request remains a source error, including when the last successful result was empty. If the seeder cannot read the previous canonical snapshot, it preserves the existing publication instead of treating the read failure as missing data. Aggregate completion is not proof that every source succeeded; failed sources remain visible in health and are attempted on the normal hourly cadence.
+
+### Remaining sources from issue #9840
+
+The [source proposal](https://github.com/koala73/worldmonitor/issues/9840) includes archives and portals that need separate adapters. They are not advertised as covered, and country filters for unobserved countries remain `unknown`. Read-only checks on 2026-10-29 and 2026-11-01 found the following limits; these are single-run observations, not long-term availability claims.
+
+| Source | Current limit |
+| --- | --- |
+| Lithuania CVP IS | The linked API instructions returned HTTP 403. The POST schema and published public-key mechanism still need verification. |
+| Moldova MTender | The linked `/tenders/` endpoint returned an empty HTTP 200 body; the attempted `/api/0.2/tenders` route returned 404. A current list/detail contract is required. |
+| Romania SEAP | The linked quarterly XLSX/ODS exports describe purchases and awards. An open-opportunity interface with future closing dates is required. |
+| Czech contracts register | XML contract dumps describe executed contracts, not invitations to bid. Keep them separate from open opportunities. |
+| Turkey EKAP | The search now returns an application shell; a usable current-tender request contract remains unverified. |
+| Peru OECE | The linked monthly-file API returned HTTP 403 with a browser User-Agent. |
+| Uzbekistan xarid plans | Planned purchases must not be classified as open tenders. A separate planning data contract is needed. |
+| Uzbekistan UzEx e-tender | The application publishes a `TradeList` POST route, but bounded test requests returned no usable body. No active-tender payload was verified. |
+| Qatar Monaqasat | Public cards were reachable, but linked notice details redirected to sign-in; exact closing times were not verified. |
+| Oman Tender Board | Public list HTML was reachable. Detail requests returned a session/authorization error; a permitted stable detail link and exact closing time remain unverified. |
+| Bahrain Tender Board | Public HTML was reachable, but its signed list/detail requests and exact closing-time response remain unverified. |
+| Kuwait CAPT | The linked endpoint returned HTTP 403. |
+| Jordan JONEPS | Public list rows were reachable, but the detail route returned an empty form. Its form-submission contract and exact closing time remain unverified. |
+
+### Not implemented from issue #10052
+
+| Source | Current limit |
+| --- | --- |
+| Vietnam e-GP muasamcong | The contractor-selection search (`services/smart/search`) is called with a reCAPTCHA v3 token minted in the browser. A keyless seeder would have to bypass that bot check, so the portal is not read. Checked 2026-11-02. |
+| Mexico Postor / ComprasMX | The third-party index exposes NDJSON bulk lots. A bounded current-opportunity import with official notice provenance is still required. |
+| Nigeria NOCOPO via OCP | Third-party annual/all-time JSONL archives need a bounded import and official notice-link verification. |
+| Bangkok BMA via OCP | Third-party annual/all-time JSONL archives need a bounded import and official notice-link verification. |
+| OCP Data Registry | A catalogue of datasets, not one independent national opportunity feed. Individual publishers need their own adapters. |
+
+TED and World Bank were already integrated. Supplier debarment lists are not tender opportunities and are not imported here. Weekly map aggregates are outside the panel/API extension.
+
+## Natural run receipts
+
+The private Redis list `economic:global-tenders:run-history:v1` preserves the latest 72 completed fetch attempts. The key expires seven days after its last update. It is separate from the public tender snapshot and does not change source retention or health thresholds.
+
+Each receipt has a unique `runId`, start and completion times, and per-source outcomes. A source entry separates newly fetched records from retained records and preserves its last successful fetch time. SAM runs inside the existing request-pacing interval use the `paced` outcome and count previous records as retained. Each source records up to 32 HTTP attempts, with a total request count and a truncation flag. Request details include the host, timeout budget, HTTP status, and failure phase (`headers` or `body`). Successful body reads use `complete`. Failure codes exclude raw error messages. Receipts contain no query strings, headers, response bodies, or tender records.
+
+Bulgaria receipts include the requested bucket date, attempted dates, the HTTP status that caused fallback, and the selected bucket date. `selectedDate` remains null unless the selected file parses and normalizes successfully. These dates describe the export window, not a new freshness policy.
+
+Publication starts as `unconfirmed`. The seeder changes it to `published` only after the canonical snapshot, source status, source metadata, and aggregate freshness writes succeed. The confirmation includes `publishedAt` and the seed runner's `seedRunId`. A failed validation or publication leaves the receipt unconfirmed. An unconfirmed receipt does not identify which write failed. Use the runner logs for that cause.
+
+Operators can read the newest receipts with `LRANGE economic:global-tenders:run-history:v1 0 9` through the existing authorized Redis tooling. Search runner logs for `Procurement receipt:` to correlate a receipt with its natural execution. Compare `outcome`, `fetchedCount`, `retainedCount`, request failures, and bucket dates before changing a provider adapter.
+
+The history records attempts that finish the source fetch phase. A process exit during fetch or a failed canonical-cache read can prevent a receipt. Redis write failures also prevent receipt persistence. The seeder stops publication when its required receipt write fails and does not repeat provider requests to retry that write. After publication, the existing bundle completion marker remains the separate attestation that the runner completed its final required write.
 
 ## Deployment configuration
 

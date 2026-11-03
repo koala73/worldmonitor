@@ -256,6 +256,43 @@ export interface GetChinaActivityNowcastResponse {
   payloadJson: string;
 }
 
+export interface GetNo2ActivityRequest {
+  countryCode: string;
+  regionId: string;
+  kind: No2RegionKind;
+}
+
+export interface GetNo2ActivityResponse {
+  regions: No2ActivityRegion[];
+  generatedAt: string;
+  stale: boolean;
+  methodVersion: string;
+  attribution: string;
+  unavailableReason: No2ActivityUnavailableReason;
+  upstreamUnavailable: boolean;
+}
+
+export interface No2ActivityRegion {
+  id: string;
+  kind: No2RegionKind;
+  label: string;
+  countryCode: string;
+  bbox: number[];
+  current?: No2Window;
+  baselineYears: number[];
+  baselineMeanNo2MolM2?: number;
+  changePercent?: number;
+  direction: No2Direction;
+  exclusion: No2RegionExclusion;
+}
+
+export interface No2Window {
+  windowStart: string;
+  windowEnd: string;
+  validDays: number;
+  meanNo2MolM2?: number;
+}
+
 export interface GetEnergyCapacityRequest {
   energySources: string[];
   years: number;
@@ -661,6 +698,55 @@ export interface FaoFoodPricePoint {
   cereals: number;
   oils: number;
   sugar: number;
+}
+
+export interface GetFoodPricesRequest {
+}
+
+export interface GetFoodPricesResponse {
+  sources: FoodPriceSource[];
+  unavailable: boolean;
+}
+
+export interface FoodPriceSource {
+  id: string;
+  name: string;
+  country: string;
+  countryCode: string;
+  url: string;
+  cadence: string;
+  contextOnly: boolean;
+  fetchedAt: string;
+  latestReportDate: string;
+  status: string;
+  prices: FoodMarketPrice[];
+  contexts: FoodSecurityContext[];
+  attribution: string;
+}
+
+export interface FoodMarketPrice {
+  item: string;
+  market: string;
+  marketType: string;
+  origin: string;
+  unit: string;
+  currency: string;
+  date: string;
+  price: number;
+  wowAvailable: boolean;
+  wowPct: number;
+  previousDate: string;
+  previousPrice: number;
+}
+
+export interface FoodSecurityContext {
+  countryCode: string;
+  country: string;
+  referenceDate: string;
+  title: string;
+  url: string;
+  fetchedAt: string;
+  status: string;
 }
 
 export interface GetOilStocksAnalysisRequest {
@@ -1181,6 +1267,14 @@ export interface YieldCurvePoint {
   tenors: Record<string, number>;
 }
 
+export type No2ActivityUnavailableReason = "NO2_ACTIVITY_UNAVAILABLE_REASON_UNSPECIFIED" | "NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_REQUEST" | "NO2_ACTIVITY_UNAVAILABLE_REASON_NOT_COVERED" | "NO2_ACTIVITY_UNAVAILABLE_REASON_SEED_MISSING" | "NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_DATASET" | "NO2_ACTIVITY_UNAVAILABLE_REASON_CACHE_UNAVAILABLE";
+
+export type No2Direction = "NO2_DIRECTION_UNSPECIFIED" | "NO2_DIRECTION_STRENGTHENING" | "NO2_DIRECTION_WEAKENING" | "NO2_DIRECTION_UNCHANGED";
+
+export type No2RegionExclusion = "NO2_REGION_EXCLUSION_UNSPECIFIED" | "NO2_REGION_EXCLUSION_REQUEST_FAILED" | "NO2_REGION_EXCLUSION_BASELINE_BACKFILL_PENDING" | "NO2_REGION_EXCLUSION_INSUFFICIENT_VALID_DAYS" | "NO2_REGION_EXCLUSION_INSUFFICIENT_BASELINE_YEARS";
+
+export type No2RegionKind = "NO2_REGION_KIND_UNSPECIFIED" | "NO2_REGION_KIND_COUNTRY" | "NO2_REGION_KIND_CLUSTER";
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -1376,6 +1470,33 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetChinaActivityNowcastResponse;
+  }
+
+  async getNo2Activity(req: GetNo2ActivityRequest, options?: EconomicServiceCallOptions): Promise<GetNo2ActivityResponse> {
+    let path = "/api/economic/v1/get-no2-activity";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    if (req.regionId != null && req.regionId !== "") params.set("region_id", String(req.regionId));
+    if (req.kind != null && req.kind !== "NO2_REGION_KIND_UNSPECIFIED") params.set("kind", String(req.kind));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetNo2ActivityResponse;
   }
 
   async getEnergyCapacity(req: GetEnergyCapacityRequest, options?: EconomicServiceCallOptions): Promise<GetEnergyCapacityResponse> {
@@ -1846,6 +1967,29 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetFaoFoodPriceIndexResponse;
+  }
+
+  async getFoodPrices(_req: GetFoodPricesRequest, options?: EconomicServiceCallOptions): Promise<GetFoodPricesResponse> {
+    let path = "/api/economic/v1/get-food-prices";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetFoodPricesResponse;
   }
 
   async getOilStocksAnalysis(_req: GetOilStocksAnalysisRequest, options?: EconomicServiceCallOptions): Promise<GetOilStocksAnalysisResponse> {

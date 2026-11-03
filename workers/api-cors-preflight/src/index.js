@@ -49,7 +49,7 @@ const ALLOWED_ORIGIN_PATTERNS = [
 ];
 
 // Keep in sync with api/_cors.js#getCorsHeaders Access-Control-Allow-Headers.
-const ALLOW_HEADERS = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID';
+const ALLOW_HEADERS = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Last-Event-ID';
 
 // Keep in sync with api/_cors.js#getCorsHeaders Access-Control-Expose-Headers.
 // This list REPLACES the function's own on every api.worldmonitor.app
@@ -106,7 +106,7 @@ function appendDeprecationPolicyLink(headers) {
 //     (hardcoded ACAO: '*')
 //   - api/security/report.js (CSP/COOP/COEP reports from any origin)
 //   - api/geo.js, api/version.js (public, no credentials)
-//   - api/fwdstart.js, api/gpsjam.js, api/reverse-geocode.js,
+//   - api/gpsjam.js, api/reverse-geocode.js,
 //     api/product-catalog.js (cacheable public GET responses use ACAO: '*';
 //     product-catalog also owns the CORS policy for its credentialed DELETE)
 //
@@ -119,7 +119,6 @@ const PUBLIC_CORS_PATHS = new Set([
   '/api/security/report',
   '/api/geo',
   '/api/version',
-  '/api/fwdstart',
   '/api/gpsjam',
   '/api/reverse-geocode',
   '/api/product-catalog',

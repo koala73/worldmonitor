@@ -235,13 +235,17 @@ describe('CII docs drift guards', () => {
       'USA ↔ Russia',
       'Russia ↔ Ukraine',
       'USA ↔ China',
+      'China ↔ Taiwan',
       'USA ↔ Iran',
+      'Israel ↔ Iran',
+      'Iran ↔ GCC',
+      'Saudi Arabia ↔ Yemen',
     ]) {
       assert.match(gdeltSection, new RegExp(`\\|\\s*${pair}\\s*\\|`));
     }
     assert.doesNotMatch(
       gdeltSection,
-      /Israel ↔ Iran|China ↔ Taiwan|USA ↔ Venezuela/,
+      /USA ↔ Venezuela/,
       'strategic-risk tension table must omit unsupported or low-volume pairs',
     );
     assert.match(gdeltSection, /World Monitor tension scores computed independently from GDELT event exports/);
@@ -500,6 +504,36 @@ describe('CII docs drift guards', () => {
       `${llmsFull}\n${communityGuide}\n${readFileSync(resolve(root, 'AGENTS.md'), 'utf8')}`,
       /Tri-Variant Build System|Three Variant Dashboards|three specialized variants|tri-variant architecture|three specialized views/i,
     );
+  });
+
+  it('the CII version claim names a version after the current formula, and the change protocols point at the brief', () => {
+    const claim = JSON.parse(readFileSync(resolve(root, 'docs/methodology/cii-next.json'), 'utf8')) as {
+      next?: unknown; claimedBy?: unknown; claimedAt?: unknown;
+    };
+    assert.match(String(claim.next), /^v\d+$/, 'cii-next.json `next` must be a version such as v15');
+    const versionNumber = (v: string) => Number(v.slice(1));
+    assert.ok(
+      versionNumber(String(claim.next)) > versionNumber(CII_FORMULA_VERSION),
+      `cii-next.json claims ${String(claim.next)}, which is not after the current ${CII_FORMULA_VERSION}; move it on when a version ships`,
+    );
+    assert.ok(claim.claimedBy === null || (typeof claim.claimedBy === 'string' && claim.claimedBy.length > 0));
+    if (claim.claimedBy !== null) assert.ok(Number.isFinite(Date.parse(String(claim.claimedAt))), 'a claim needs an ISO claimedAt');
+
+    const brief = readFileSync(resolve(root, 'docs/methodology/cii-change-brief.md'), 'utf8');
+    for (const path of [
+      'tests/fixtures/cii/', 'scripts/cii-table-diff.mts', 'scripts/cii-capture-fixture.mts',
+      'tests/cii-invariants.test.mts', 'tests/cii-fixtures.test.mts', 'docs/methodology/cii-next.json',
+      'docs/methodology/cii-input-register.md',
+    ]) {
+      assert.ok(brief.includes(path), `the brief must name ${path}`);
+      assert.ok(path.endsWith('/') || readFileSync(resolve(root, path)).length > 0, `${path} must exist`);
+    }
+    for (const id of ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10', 'P11', 'P12', 'P13', 'P14', 'P15', 'P16']) {
+      assert.match(brief, new RegExp(`^\\| ${id} \\|`, 'm'), `the brief's property table must list ${id}`);
+    }
+    for (const path of ['server/worldmonitor/intelligence/v1/_risk-config.ts', 'server/worldmonitor/intelligence/v1/get-risk-scores.ts']) {
+      assert.ok(readFileSync(resolve(root, path), 'utf8').includes('docs/methodology/cii-change-brief.md'), `${path} change protocol must point at the brief`);
+    }
   });
 
   it('public CII surfaces point to the canonical live rankings page', () => {

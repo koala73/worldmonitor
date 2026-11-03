@@ -474,7 +474,8 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
     `],
     ['@/services/data-freshness', `
       export const dataFreshness = {
-        setEnabled(source, enabled) {
+        setEnabled() {},
+        setMapLayerEnabled(source, enabled) {
           globalThis.__missionFreshness = globalThis.__missionFreshness || [];
           globalThis.__missionFreshness.push([source, enabled]);
         },
@@ -1247,6 +1248,7 @@ function createMissionHarness(options: {
     initialLoadComplete: true,
     resolvedLocation: 'global',
     activeChokepoint: null,
+    pendingCountryBrief: null,
     initialUrlState: null,
     PANEL_ORDER_KEY: 'panel-order',
     PANEL_SPANS_KEY: 'panel-spans',

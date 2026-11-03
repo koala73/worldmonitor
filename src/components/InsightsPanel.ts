@@ -17,6 +17,7 @@ import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { SITE_VARIANT } from '@/config';
 import { deletePersistentCache, getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { t } from '@/services/i18n';
+import { getPanelDisplayName } from '@/services/panel-display-name';
 import { isDesktopRuntime } from '@/services/runtime';
 import { getAiFlowSettings, isAnyAiProviderEnabled, subscribeAiFlowChange } from '@/services/ai-flow-settings';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
@@ -32,10 +33,19 @@ import type { ClusteredEvent, FocalPoint, MilitaryFlight } from '@/types';
 
 const getAuthoritativeCountryScore = getCachedCountryScoreValue;
 
+// The server snapshot is seeded from the full-variant digest only, so it is
+// always the world brief. Only the client pipeline runs a variant prompt.
+type BriefScope = 'world' | 'tech' | 'commodity' | 'energy';
+
+function parseBriefScope(value: unknown): BriefScope {
+  return value === 'tech' || value === 'commodity' || value === 'energy' ? value : 'world';
+}
+
 export class InsightsPanel extends Panel {
   private lastBriefUpdate = 0;
   private cachedBrief: string | null = null;
   private cachedBriefSources: BriefSource[] = [];
+  private cachedBriefScope: BriefScope = 'world';
   private lastMissedStories: AnalyzedHeadline[] = [];
   private lastConvergenceZones: RegionalConvergence[] = [];
   private lastFocalPoints: FocalPoint[] = [];
@@ -63,7 +73,7 @@ export class InsightsPanel extends Panel {
   constructor() {
     super({
       id: 'insights',
-      title: t('panels.insights'),
+      title: getPanelDisplayName('insights'),
       showCount: false,
       infoTooltip: t('components.insights.infoTooltip'),
     });
@@ -126,7 +136,7 @@ export class InsightsPanel extends Panel {
 
   private async loadBriefFromCache(): Promise<boolean> {
     if (this.cachedBrief) return false;
-    const entry = await getPersistentCache<{ summary: string; sources?: BriefSource[] }>(InsightsPanel.BRIEF_CACHE_KEY);
+    const entry = await getPersistentCache<{ summary: string; sources?: BriefSource[]; scope?: BriefScope }>(InsightsPanel.BRIEF_CACHE_KEY);
     if (!entry?.data?.summary) return false;
     const { sources, legacySourceShape } = normalizeCachedBriefSources(entry.data, InsightsPanel.BRIEF_CACHE_MAX_SOURCES);
     if (legacySourceShape) {
@@ -135,6 +145,7 @@ export class InsightsPanel extends Panel {
     }
     this.cachedBrief = entry.data.summary;
     this.cachedBriefSources = sources;
+    this.cachedBriefScope = parseBriefScope(entry.data.scope);
     this.lastBriefUpdate = entry.updatedAt;
     return true;
   }
@@ -189,6 +200,7 @@ export class InsightsPanel extends Panel {
 
     let brief = this.cachedBrief;
     let sources = this.cachedBriefSources;
+    let scope = this.cachedBriefScope;
     if (!brief) {
       let server = getServerInsights();
       if (!server) {
@@ -208,6 +220,7 @@ export class InsightsPanel extends Panel {
       if (server?.worldBrief) {
         brief = server.worldBrief;
         sources = InsightsPanel.serverBriefSources(server);
+        scope = 'world';
       }
     }
     if (!brief) return;
@@ -215,7 +228,7 @@ export class InsightsPanel extends Panel {
 
     this.setDataBadge('cached');
     this.setSafeContent(unsafeRawHtml(
-      this.renderWorldBrief(brief, sources),
+      this.renderWorldBrief(brief, sources, scope),
       'renderWorldBrief formats and links the cached summary (#4890 early brief paint)',
     ));
   }
@@ -400,7 +413,7 @@ export class InsightsPanel extends Panel {
       // resolves inside the debounce window this paint costs nothing.
       if (serverInsights.worldBrief) {
         this.setSafeContent(unsafeRawHtml(
-          this.renderWorldBrief(serverInsights.worldBrief, InsightsPanel.serverBriefSources(serverInsights)),
+          this.renderWorldBrief(serverInsights.worldBrief, InsightsPanel.serverBriefSources(serverInsights), 'world'),
           'renderWorldBrief formats and links the server summary (#7118 pre-sentiment paint)',
         ));
       }
@@ -562,8 +575,13 @@ export class InsightsPanel extends Panel {
           worldBrief = result.summary;
           this.cachedBrief = worldBrief;
           this.cachedBriefSources = currentBriefSources;
+          this.cachedBriefScope = parseBriefScope(SITE_VARIANT);
           this.lastBriefUpdate = now;
-          void setPersistentCache(InsightsPanel.BRIEF_CACHE_KEY, { summary: worldBrief, sources: currentBriefSources });
+          void setPersistentCache(InsightsPanel.BRIEF_CACHE_KEY, {
+            summary: worldBrief,
+            sources: currentBriefSources,
+            scope: this.cachedBriefScope,
+          });
         }
       } else {
         this.setProgress(3, totalSteps, t('components.insights.usingCachedBrief'));
@@ -579,14 +597,14 @@ export class InsightsPanel extends Panel {
       // chrome is debug-gated; re-render when the analysis lands. Do not
       // setProgress(4) here: that would replace the brief with a bar and put
       // the wait back on LCP.
-      this.renderInsights(importantItems, sentiments, worldBrief, briefSources);
+      this.renderInsights(importantItems, sentiments, worldBrief, briefSources, this.cachedBriefScope);
 
       const missedStories = await parallelPromise;
 
       if (this.updateGeneration !== thisGeneration) return;
 
       this.lastMissedStories = missedStories;
-      this.renderInsights(importantItems, sentiments, worldBrief, briefSources);
+      this.renderInsights(importantItems, sentiments, worldBrief, briefSources, this.cachedBriefScope);
     } catch (error) {
       console.error('[InsightsPanel] Error:', error);
       this.showError();
@@ -597,10 +615,11 @@ export class InsightsPanel extends Panel {
     items: Array<{ cluster: ClusteredEvent; isq: SignalQuality }>,
     sentiments: Array<{ label: string; score: number }> | null,
     worldBrief: string | null,
-    worldBriefSources: BriefSource[] = [],
+    worldBriefSources: BriefSource[],
+    briefScope: BriefScope,
   ): void {
     const clusters = items.map(({ cluster }) => cluster);
-    const briefHtml = worldBrief ? this.renderWorldBrief(worldBrief, worldBriefSources) : '';
+    const briefHtml = worldBrief ? this.renderWorldBrief(worldBrief, worldBriefSources, briefScope) : '';
     const focalPointsHtml = this.renderFocalPoints();
     const convergenceHtml = this.renderConvergenceZones();
     const sentimentOverview = this.renderSentimentOverview(sentiments);
@@ -628,7 +647,7 @@ export class InsightsPanel extends Panel {
   ): void {
     const worldBriefSources = InsightsPanel.serverBriefSources(insights);
     const briefHtml = insights.worldBrief
-      ? this.renderWorldBrief(insights.worldBrief, worldBriefSources, this.renderBriefExtras(insights))
+      ? this.renderWorldBrief(insights.worldBrief, worldBriefSources, 'world', this.renderBriefExtras(insights))
       : '';
     if (insights.worldBrief) {
       // #4890: keep the persistent brief cache warm from the dominant server
@@ -636,8 +655,13 @@ export class InsightsPanel extends Panel {
       // visitors had an empty cache and nothing to early-paint at boot).
       this.cachedBrief = insights.worldBrief;
       this.cachedBriefSources = worldBriefSources;
+      this.cachedBriefScope = 'world';
       this.lastBriefUpdate = Date.now();
-      void setPersistentCache(InsightsPanel.BRIEF_CACHE_KEY, { summary: insights.worldBrief, sources: this.cachedBriefSources });
+      void setPersistentCache(InsightsPanel.BRIEF_CACHE_KEY, {
+        summary: insights.worldBrief,
+        sources: this.cachedBriefSources,
+        scope: this.cachedBriefScope,
+      });
     }
     const focalPointsHtml = this.renderFocalPoints();
     const convergenceHtml = this.renderConvergenceZones();
@@ -784,12 +808,12 @@ export class InsightsPanel extends Panel {
     return linesHtml + footer;
   }
 
-  private renderWorldBrief(brief: string, sources: BriefSource[] = [], extrasHtml = ''): string {
+  private renderWorldBrief(brief: string, sources: BriefSource[], scope: BriefScope, extrasHtml = ''): string {
     const heading =
-      SITE_VARIANT === 'tech'      ? `🚀 ${t('components.insights.briefTech')}`
-    : SITE_VARIANT === 'commodity' ? `⛏️ ${t('components.insights.briefCommodity')}`
-    : SITE_VARIANT === 'energy'    ? `⚡ ${t('components.insights.briefEnergy')}`
-    :                                `🌍 ${t('components.insights.briefWorld')}`;
+      scope === 'tech'      ? `🚀 ${t('components.insights.briefTech')}`
+    : scope === 'commodity' ? `⛏️ ${t('components.insights.briefCommodity')}`
+    : scope === 'energy'    ? `⚡ ${t('components.insights.briefEnergy')}`
+    :                         `🌍 ${t('components.insights.briefWorld')}`;
     return `
       <div class="insights-brief">
         <div class="insights-section-title">${heading}</div>

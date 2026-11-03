@@ -27,9 +27,9 @@ describe('entitlement crosswalk route classifier', () => {
     ['premiumPath', 'bearer gate'],
     ['tierGated', 'tier>=1'],
   ]) {
-    it(`maps scorecard ${source} routes to resilience scores`, () => {
+    it(`no longer classifies scorecard ${source} routes (five-factor scorecard went free, #9742)`, () => {
       const value = classify(route(source, '/api/scorecard/v1/get-five-factor-scorecard', detail));
-      assert.equal(value?.cap, 'resilience.scores');
+      assert.equal(value, null);
     });
   }
 });
@@ -98,6 +98,8 @@ describe('entitlement crosswalk classifier', () => {
       'tier', 'hasPremiumAccess', 'isProUser', 'apiAccess',
       'mcpAccess', 'dataExport', 'embedAccess', 'isCallerPremium', 'resolvePremiumCallerIdentity',
       'requiresPremium', 'other',
+      // Plan 2026-10-25-001 (U1 added the kind to the generator; U4 classified its sites).
+      'desktopKeyAccess',
     ]);
     for (const [re, v] of SITE_MAP) {
       for (const p of v.preds ?? []) {

@@ -27,6 +27,8 @@ const USER_AGENT = 'worldmonitor-gateway/1.0';
 
 export interface DesktopAuthCodeRecord {
   userId: string;
+  /** The browser's Clerk session; /token re-checks it is still live before minting. */
+  sessionId: string;
   codeChallenge: string;
 }
 
@@ -130,8 +132,12 @@ export async function takeDesktopAuthCode(key: string): Promise<DesktopAuthCodeR
   if (!data?.result) return null;
   try {
     const record = JSON.parse(data.result) as Partial<DesktopAuthCodeRecord>;
-    return typeof record.userId === 'string' && isCodeChallenge(record.codeChallenge)
-      ? { userId: record.userId, codeChallenge: record.codeChallenge }
+    // A record without a session id (written before the live-session check
+    // existed) cannot be re-checked, so it cannot be redeemed.
+    return typeof record.userId === 'string'
+      && typeof record.sessionId === 'string' && record.sessionId
+      && isCodeChallenge(record.codeChallenge)
+      ? { userId: record.userId, sessionId: record.sessionId, codeChallenge: record.codeChallenge }
       : null;
   } catch {
     return null;

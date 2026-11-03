@@ -130,6 +130,7 @@ World Monitor рассчитан и на агентов/скрипты, и на 
   ```sh
   npx worldmonitor tools          # разово — список всех MCP-инструментов (ключ не нужен)
   npm install -g worldmonitor     # или установить команду `worldmonitor` (псевдоним `wm`)
+  brew install worldmonitor       # или установить через Homebrew
   worldmonitor risk IR --api-key wm_xxx
   ```
 
@@ -142,6 +143,12 @@ World Monitor рассчитан и на агентов/скрипты, и на 
 ## Данные полётов
 
 Данные полётов любезно предоставлены [Wingbits](https://wingbits.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor) — передовое решение ADS-B для данных полётов.
+
+---
+
+## Поддержка
+
+Веб-приложение и API World Monitor работают на [Vercel](https://vercel.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor). Спасибо Vercel за щедрую поддержку проекта.
 
 ---
 

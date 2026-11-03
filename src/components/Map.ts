@@ -1,4 +1,5 @@
 import * as d3 from 'd3';
+import { UKMTO_SOURCE_URL, ukmtoIncidentLabel, type UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import * as topojson from 'topojson-client';
 import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
@@ -39,7 +40,7 @@ import {
 import { STARTUP_HUBS, ACCELERATORS, TECH_HQS, CLOUD_REGIONS } from '@/config/tech-geo';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { worldTopologyUrl, UNDERSEA_CABLES, NUCLEAR_FACILITIES, SANCTIONED_COUNTRIES, ECONOMIC_CENTERS, SPACEPORTS, CRITICAL_MINERALS } from '@/config/geo-map';
-import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
+import { mountWebcamPinButton } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { MapPopup } from './MapPopup';
@@ -58,16 +59,18 @@ import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
 import type { CountryClickPayload } from './DeckGLMap';
-import { t } from '@/services/i18n';
+import { initI18n, t } from '@/services/i18n';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { renderLayerTruncationBadges } from '@/utils/layer-truncation-badge';
+import { isLowEndDevice } from '@/utils/device-tier';
 import {
   overlayMarkerPosition,
   projectionPointAtScreenCentre,
 } from '@/utils/overlay-marker-geometry';
 import {
   MAP_OVERLAY_MARKER_BUDGET_DESKTOP,
+  MAP_OVERLAY_MARKER_BUDGET_LOW_END,
   MAP_OVERLAY_MARKER_BUDGET_MOBILE,
   proximityRank,
   selectGlobeMarkers,
@@ -83,7 +86,7 @@ import {
   LAYER_REGISTRY,
   resolveLayerLabel,
 } from '@/config/map-layer-definitions';
-import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
+import { layerExplanationLookup, renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import {
   createCountryClickGestureTracker,
   finishCountryClickGesture,
@@ -200,6 +203,7 @@ export class MapComponent {
   private radiationObservations: RadiationObservation[] = [];
   private outages: InternetOutage[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
+  private ukmtoIncidents: UkmtoMapIncident[] = [];
   private aisDensity: AisDensityZone[] = [];
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
@@ -262,6 +266,8 @@ export class MapComponent {
   private destroyed = false;
   // Mobile loads the lighter 110m country topology (U6); passed in from MapContainer.
   private readonly isMobile: boolean;
+  // Low-memory device (src/utils/device-tier.ts): static markers, smaller budget.
+  private readonly lowEndDevice = isLowEndDevice();
   private readonly canToggleLayer: NonNullable<MapComponentOptions['canToggleLayer']>;
   private overlayAppendTarget: ParentNode | null = null;
   // #7112 overlay marker budget. `overlayMarkerCut` holds the marker objects
@@ -288,6 +294,9 @@ export class MapComponent {
   private labelVisibilityScheduled = false;
   private pendingLabelVisibilityZoom = 1;
   private lastContainerSize = { width: 0, height: 0 };
+  // Mobile can intentionally collapse the map to 0x0 at startup. Preserve an
+  // initial deep-link center until the map is revealed and can project it.
+  private pendingCenter: { lat: number; lon: number } | null = null;
   // #5080 slice 2: last zoom (4dp) whose overlay counter-scale CSS vars were
   // written — lets applyTransform() skip same-value setProperty calls that
   // would restyle every marker on every render pass.
@@ -413,7 +422,9 @@ export class MapComponent {
         // and lets a reveal center off current dimensions instead of the last
         // visible ones (#5022 review). Only a visible size is worth rendering.
         this.rememberContainerSize({ width, height });
-        if (width > 0 && height > 0) this.scheduleRender();
+        if (width > 0 && height > 0) {
+          this.resize();
+        }
       }
     });
     this.resizeObserver.observe(this.container);
@@ -431,11 +442,13 @@ export class MapComponent {
     const wasResizing = this.isResizing;
     this.isResizing = value;
     if (wasResizing && !value) {
-      this.scheduleRender();
+      this.resize();
     }
   }
 
   public resize(): void {
+    const pendingCenter = this.pendingCenter;
+    if (pendingCenter) this.setCenter(pendingCenter.lat, pendingCenter.lon);
     this.scheduleRender();
   }
 
@@ -697,7 +710,7 @@ export class MapComponent {
       explainBtn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        this.showLayerExplanation(layer);
+        void this.showLayerExplanation(layer);
       });
       row.appendChild(explainBtn);
 
@@ -723,7 +736,15 @@ export class MapComponent {
     this.layerExplanationOutsideClickHandler = null;
   }
 
-  private showLayerExplanation(layer: keyof MapLayers): void {
+  private async showLayerExplanation(layer: keyof MapLayers): Promise<void> {
+    try {
+      await initI18n();
+    } catch (error) {
+      console.warn('[Map] Unable to load layer explanation text', error);
+      return;
+    }
+    if (this.destroyed) return;
+
     const existing = this.container.querySelector('.layer-explanation-popup') as HTMLElement | null;
     this.clearLayerExplanationOutsideClickHandler();
     if (existing?.dataset.layer === layer) {
@@ -739,7 +760,7 @@ export class MapComponent {
     popup.className = 'layer-explanation-popup';
     popup.dataset.layer = layer;
     setTrustedHtml(popup, trustedHtml(
-      renderLayerExplanationCard(this.getLayerControlLabel(layer), getLayerExplanation(layer)),
+      renderLayerExplanationCard(this.getLayerControlLabel(layer), getLayerExplanation(layer), layerExplanationLookup(t)),
       "static layer explanation metadata",
     ));
 
@@ -969,9 +990,17 @@ export class MapComponent {
     return legend;
   }
 
+  // A collapsed map (phones start with the map section hidden) has no size, so
+  // render() draws nothing and there is no base layer to verify yet. Reads the
+  // cached size like render() so a visible map takes no forced reflow (#5017).
+  private isCollapsed(): boolean {
+    const { width, height } = this.getKnownContainerSize();
+    return width === 0 || height === 0;
+  }
+
   private runHealthCheck(): void {
     const svgNode = this.svg.node();
-    if (!svgNode) return;
+    if (!svgNode || this.isCollapsed()) return;
 
     // Verify base layer exists and has content
     const baseGroup = svgNode.querySelector('.map-base');
@@ -1927,6 +1956,7 @@ export class MapComponent {
     if (layers.waterways) add('waterways', STRATEGIC_WATERWAYS);
     if (layers.ais) {
       add('ais', this.aisDisruptions);
+      add('ais', this.filterByTime(this.ukmtoIncidents, item => item.occurredAt));
       add('ais', PORTS);
     }
     if (layers.cyberThreats && SITE_VARIANT !== 'tech') add('cyberThreats', this.aptGroups);
@@ -2012,9 +2042,11 @@ export class MapComponent {
       else group.rank = nearestFirst;
     }
 
-    const budget = this.isMobile
-      ? MAP_OVERLAY_MARKER_BUDGET_MOBILE
-      : MAP_OVERLAY_MARKER_BUDGET_DESKTOP;
+    const budget = this.lowEndDevice
+      ? MAP_OVERLAY_MARKER_BUDGET_LOW_END
+      : this.isMobile
+        ? MAP_OVERLAY_MARKER_BUDGET_MOBILE
+        : MAP_OVERLAY_MARKER_BUDGET_DESKTOP;
     const { markers, truncated } = selectGlobeMarkers(groups, budget);
 
     const kept = new Set(markers);
@@ -2247,6 +2279,22 @@ export class MapComponent {
     if (this.state.layers.ais) {
       this.renderAisDisruptions(projection);
       this.renderPorts(projection);
+      this.filterByTime(this.ukmtoIncidents, item => item.occurredAt).forEach(item => {
+        if (!item.location || this.isOverlayMarkerCut(item)) return;
+        const pos = projection([item.location.longitude, item.location.latitude]);
+        if (!pos) return;
+        const marker = document.createElement('a');
+        marker.className = 'ais-disruption-marker ukmto-marker';
+        marker.style.left = `${pos[0]}px`;
+        marker.style.top = `${pos[1]}px`;
+        marker.textContent = '⚓';
+        marker.title = `${ukmtoIncidentLabel(item)}\n${item.description}`;
+        marker.setAttribute('aria-label', ukmtoIncidentLabel(item));
+        marker.href = UKMTO_SOURCE_URL;
+        marker.target = '_blank';
+        marker.rel = 'noopener noreferrer';
+        this.appendOverlay(marker);
+      });
     }
 
     // APT groups — rendered only when cyberThreats layer is active, loaded lazily
@@ -3775,6 +3823,12 @@ export class MapComponent {
   // add .markers-settled on the wrapper so main.css stops the infinite pulses
   // and their compositing layers are released while the map is idle.
   private armMarkerSettle(): void {
+    // Low-end devices skip the attention window: every render restarts ~150
+    // pulses, including the non-compositable conflict-zone fill.
+    if (this.lowEndDevice) {
+      this.wrapper.classList.add('markers-settled');
+      return;
+    }
     this.wrapper.classList.remove('markers-settled');
     if (this.markerSettleTimer !== null) clearTimeout(this.markerSettleTimer);
     this.markerSettleTimer = setTimeout(() => {
@@ -3916,31 +3970,16 @@ export class MapComponent {
             previewDiv.appendChild(span);
           }
 
-          const pinBtn = document.createElement('button');
-          pinBtn.className = 'webcam-pin-btn';
           const wcId = cam.webcamId;
-          if (isPinned(wcId)) {
-            pinBtn.classList.add('webcam-pin-btn--pinned');
-            pinBtn.textContent = '\u{1F4CC} Pinned';
-            pinBtn.disabled = true;
-          } else {
-            pinBtn.textContent = '\u{1F4CC} Pin';
-            pinBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              pinWebcam({
-                webcamId: wcId,
-                title: cam.title || img?.title || '',
-                lat: cam.lat,
-                lng: cam.lng,
-                category: cam.category || 'other',
-                country: cam.country || '',
-                playerUrl: img?.playerUrl || '',
-              });
-              pinBtn.classList.add('webcam-pin-btn--pinned');
-              pinBtn.textContent = '\u{1F4CC} Pinned';
-              pinBtn.disabled = true;
-            });
-          }
+          const pinBtn = mountWebcamPinButton(() => ({
+            webcamId: wcId,
+            title: cam.title || img?.title || '',
+            lat: cam.lat,
+            lng: cam.lng,
+            category: cam.category || 'other',
+            country: cam.country || '',
+            playerUrl: img?.playerUrl || '',
+          }));
           tooltip.appendChild(pinBtn);
         });
       });
@@ -4340,6 +4379,7 @@ export class MapComponent {
   }
 
   public setView(view: MapView, zoom?: number): void {
+    this.pendingCenter = null;
     this.state.view = view;
 
     // Region-specific zoom and pan settings
@@ -4951,6 +4991,7 @@ export class MapComponent {
   }
 
   public getCenter(): { lat: number; lon: number } | null {
+    if (this.pendingCenter) return { ...this.pendingCenter };
     const { width, height } = this.readContainerSize();
     const projection = this.getProjection(width, height);
     if (!projection.invert) return null;
@@ -4975,6 +5016,7 @@ export class MapComponent {
   }
 
   private ensureBaseLayerIntact(): void {
+    if (this.isCollapsed()) return;
     // Query DOM directly instead of relying on cached d3 selection
     const svgNode = this.svg.node();
     const domBaseGroup = svgNode?.querySelector('.map-base');
@@ -5000,6 +5042,11 @@ export class MapComponent {
   public setCenter(lat: number, lon: number): void {
     console.log('[Map] setCenter called:', { lat, lon });
     const { width, height } = this.readContainerSize();
+    if (width === 0 || height === 0) {
+      this.pendingCenter = { lat, lon };
+      return;
+    }
+    this.pendingCenter = null;
     const projection = this.getProjection(width, height);
     const pos = projection([lon, lat]);
     console.log('[Map] projected pos:', pos, 'container:', { width, height }, 'zoom:', this.state.zoom);
@@ -5054,6 +5101,11 @@ export class MapComponent {
   public setAisData(disruptions: AisDisruptionEvent[], density: AisDensityZone[]): void {
     this.aisDisruptions = disruptions;
     this.aisDensity = density;
+    this.render();
+  }
+
+  public setUkmtoIncidents(incidents: UkmtoMapIncident[]): void {
+    this.ukmtoIncidents = incidents;
     this.render();
   }
 

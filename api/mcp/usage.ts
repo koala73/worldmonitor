@@ -45,6 +45,10 @@ export type McpPhase =
   // body-size rejections; the HTTP status on the same event separates them.
   | 'malformed'
   | 'transport'  // method/SSE-transport level (405, replay 4xx)
+  | 'protocol_version' // MCP-Protocol-Version header names a version this server does not serve (400)
+  | 'header_mismatch'  // 2026-07-28: a required request header is missing or disagrees with the body (-32020)
+  | 'invalid_meta'     // 2026-07-28: a required per-request _meta field is missing or malformed (-32602)
+  | 'method_not_found' // 2026-07-28: a removed or unknown method, answered 404 -32601
   | 'migration'  // a product-host alias was refused before auth or dispatch
   | 'ok';        // served (JSON-RPC-level errors still ride HTTP 200 → ok)
 
@@ -69,6 +73,9 @@ const SERVED_RPC_METHODS: ReadonlySet<string> = new Set([
   'resources/templates/list',
   'resources/read',
   'logging/setLevel',
+  // MCP 2026-07-28 (modern era only).
+  'server/discover',
+  'subscriptions/listen',
 ]);
 
 /** Fixed bucket for methods outside SERVED_RPC_METHODS — one cardinality slot. */
@@ -111,6 +118,28 @@ export interface McpUsage {
   requestedTool: string | null;
   /** Set by recordToolCall when a tool ran; null otherwise (#9431). */
   toolOutcome: McpToolOutcome | null;
+  /** MCP-Protocol-Version the client sent: a known revision, 'other', or null when absent. */
+  protocolVersion: string | null;
+  /** 'modern' once a request takes the 2026-07-28 per-request path (api/mcp/modern.ts). */
+  era: McpEra;
+}
+
+/** Protocol era of a request: initialize-based legacy, or 2026-07-28 modern. */
+export type McpEra = 'legacy' | 'modern';
+
+// Every published MCP revision. The header is client-chosen, so anything else
+// collapses to 'other' to keep the Axiom dimension bounded (#8403). Add new
+// revisions here when the spec publishes them.
+const KNOWN_PROTOCOL_VERSIONS: ReadonlySet<string> = new Set([
+  '2024-11-05',
+  '2025-03-26',
+  '2025-06-18',
+  '2025-11-25',
+  '2026-07-28',
+]);
+
+export function setUsageProtocolVersion(usage: McpUsage, header: string | null): void {
+  usage.protocolVersion = header === null ? null : KNOWN_PROTOCOL_VERSIONS.has(header) ? header : 'other';
 }
 
 export function createMcpUsage(): McpUsage {
@@ -124,6 +153,8 @@ export function createMcpUsage(): McpUsage {
     toolName: null,
     requestedTool: null,
     toolOutcome: null,
+    protocolVersion: null,
+    era: 'legacy',
   };
 }
 
@@ -232,6 +263,14 @@ export function mcpReasonFor(phase: McpPhase, status: number): RequestReason {
       return 'malformed_request';
     case 'transport':
       return status === 405 ? 'method_not_allowed' : 'malformed_request';
+    case 'protocol_version':
+      return 'unsupported_protocol_version';
+    case 'header_mismatch':
+      return 'header_mismatch';
+    case 'invalid_meta':
+      return 'invalid_request_meta';
+    case 'method_not_found':
+      return 'unknown_route';
     case 'migration':
       return 'canonical_endpoint_required';
     default:
@@ -313,6 +352,8 @@ export function emitMcpRequestEvent(
       toolErrorKind: usage.toolOutcome?.errorKind ?? null,
       toolResultBytes: usage.toolOutcome?.resultBytes ?? null,
       toolJmespath: usage.toolOutcome?.jmespathUsed ?? null,
+      mcpProtocolVersion: usage.protocolVersion,
+      mcpEra: usage.era,
     });
     emitUsageEvents(ctx, [event]);
   } catch {

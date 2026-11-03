@@ -144,7 +144,7 @@ paths:
             tags:
                 - MarketService
             summary: ListCryptoQuotes
-            description: ListCryptoQuotes retrieves cryptocurrency quotes from CoinGecko.
+            description: ListCryptoQuotes returns price and 24h change for major coins or up to 25 CoinGecko ids from CoinPaprika or CoinGecko; 7d change and sparkline need CoinGecko.
             operationId: ListCryptoQuotes
             parameters:
                 - name: ids
@@ -432,6 +432,9 @@ paths:
                     type: array
                     items:
                         type: string
+                        pattern: ^(?:gold|silver)$
+                    maxItems: 2
+                    uniqueItems: true
                 - name: jmespath
                   in: query
                   description: |-
@@ -702,7 +705,7 @@ paths:
             tags:
                 - MarketService
             summary: GetSectorSummary
-            description: GetSectorSummary retrieves market sector performance data from Finnhub.
+            description: GetSectorSummary returns daily percent change for 12 US sector ETFs (XLK, XLF, XLE and peers, plus SMH) from Finnhub quotes with a Yahoo Finance fallback.
             operationId: GetSectorSummary
             parameters:
                 - name: period
@@ -822,7 +825,7 @@ paths:
             tags:
                 - MarketService
             summary: ListStablecoinMarkets
-            description: ListStablecoinMarkets retrieves stablecoin peg health and market data from CoinGecko.
+            description: ListStablecoinMarkets returns price, peg deviation and status, market cap and volume for USDT, USDC, DAI, FDUSD and USDe, or up to 25 CoinGecko ids.
             operationId: ListStablecoinMarkets
             parameters:
                 - name: coins
@@ -971,7 +974,7 @@ paths:
             tags:
                 - MarketService
             summary: ListEtfFlows
-            description: ListEtfFlows retrieves BTC spot ETF flow estimates from Yahoo Finance.
+            description: ListEtfFlows returns price, volume and a volume-based flow estimate for 10 US spot bitcoin ETFs such as IBIT, FBTC and GBTC, via Alpha Vantage or Yahoo.
             operationId: ListEtfFlows
             parameters:
                 - name: jmespath
@@ -1093,7 +1096,7 @@ paths:
             tags:
                 - MarketService
             summary: GetCountryStockIndex
-            description: GetCountryStockIndex retrieves the primary stock index for a country from Yahoo Finance.
+            description: GetCountryStockIndex returns a country's main stock index by ISO 3166-1 alpha-2 code, with last close, weekly percent change and currency from Yahoo Finance.
             operationId: GetCountryStockIndex
             parameters:
                 - name: country_code
@@ -1258,7 +1261,7 @@ paths:
             tags:
                 - MarketService
             summary: GetPriceHistory
-            description: GetPriceHistory retrieves dated daily closes for up to four tracked symbols from Yahoo Finance.
+            description: GetPriceHistory returns daily Yahoo Finance closes over 1mo, 3mo, 6mo or 1y for up to four symbols from the commodity, market and Gulf quote sets.
             operationId: GetPriceHistory
             parameters:
                 - name: symbols
@@ -1411,7 +1414,7 @@ paths:
             tags:
                 - MarketService
             summary: ListGulfQuotes
-            description: ListGulfQuotes retrieves Gulf region market quotes (indices, currencies, oil).
+            description: ListGulfQuotes returns prices, percent change and sparklines for Gulf stock indices and ETFs, six GCC currencies, and WTI and Brent crude oil.
             operationId: ListGulfQuotes
             parameters:
                 - name: jmespath
@@ -2093,7 +2096,7 @@ paths:
             tags:
                 - MarketService
             summary: ListCryptoSectors
-            description: ListCryptoSectors retrieves crypto sector performance averages.
+            description: ListCryptoSectors returns the average 24h price change of the tokens with data in eight crypto sectors, such as Layer 1, DeFi, AI and Memes, from CoinGecko.
             operationId: ListCryptoSectors
             parameters:
                 - name: jmespath
@@ -2204,7 +2207,7 @@ paths:
             tags:
                 - MarketService
             summary: ListDefiTokens
-            description: ListDefiTokens retrieves DeFi token prices and changes.
+            description: ListDefiTokens returns USD price with 24h and 7d change for DeFi tokens such as Aave, Uniswap, Pendle and Lido, from CoinGecko with CoinPaprika fallback.
             operationId: ListDefiTokens
             parameters:
                 - name: jmespath
@@ -2319,7 +2322,7 @@ paths:
             tags:
                 - MarketService
             summary: ListAiTokens
-            description: ListAiTokens retrieves AI-focused crypto token prices and changes.
+            description: ListAiTokens returns USD price with 24h and 7d change for AI crypto tokens such as Bittensor, Render and Fetch.ai, from CoinGecko with CoinPaprika fallback.
             operationId: ListAiTokens
             parameters:
                 - name: jmespath
@@ -2434,7 +2437,7 @@ paths:
             tags:
                 - MarketService
             summary: ListOtherTokens
-            description: ListOtherTokens retrieves other/trending crypto token prices and changes.
+            description: ListOtherTokens returns USD price with 24h and 7d change for trending tokens such as Aptos, Sui, Celestia and Ondo, from CoinGecko with CoinPaprika fallback.
             operationId: ListOtherTokens
             parameters:
                 - name: jmespath
@@ -2666,7 +2669,7 @@ paths:
             tags:
                 - MarketService
             summary: ListEarningsCalendar
-            description: ListEarningsCalendar retrieves upcoming and recent earnings releases.
+            description: ListEarningsCalendar returns Finnhub earnings releases from the past week to 14 days ahead, with EPS and revenue estimates, actuals and beat or miss.
             operationId: ListEarningsCalendar
             parameters:
                 - name: fromDate
@@ -2797,7 +2800,7 @@ paths:
             tags:
                 - MarketService
             summary: GetCotPositioning
-            description: GetCotPositioning retrieves CFTC COT institutional positioning data.
+            description: GetCotPositioning returns weekly CFTC Commitments of Traders data by trader group for S&P 500, Nasdaq 100, Treasury, EUR, JPY, gold, silver and WTI futures.
             operationId: GetCotPositioning
             parameters:
                 - name: jmespath
@@ -3151,7 +3154,7 @@ paths:
             tags:
                 - MarketService
             summary: GetGoldIntelligence
-            description: GetGoldIntelligence retrieves gold pricing, cross-currency XAU, ratios, and CFTC positioning.
+            description: GetGoldIntelligence returns gold and other precious metal prices, XAU in six currencies, gold/silver ratio, CFTC positioning, GLD holdings and IMF reserves.
             operationId: GetGoldIntelligence
             parameters:
                 - name: jmespath
@@ -3285,7 +3288,7 @@ paths:
             tags:
                 - MarketService
             summary: GetHyperliquidFlow
-            description: GetHyperliquidFlow retrieves Hyperliquid perp positioning flow (funding/OI/basis composite scores).
+            description: GetHyperliquidFlow returns funding, open interest, 24h volume, basis and flow scores for Hyperliquid perps on crypto, metals, oil, gas and FX, every 5 min.
             operationId: GetHyperliquidFlow
             parameters:
                 - name: jmespath
@@ -3759,7 +3762,10 @@ components:
                     type: array
                     items:
                         type: string
-                        description: Accepted values are "gold" and "silver". Empty returns both metals.
+                        pattern: ^(?:gold|silver)$
+                    maxItems: 2
+                    uniqueItems: true
+                    description: Accepted values are "gold" and "silver". Empty returns both metals.
             description: GetPhysicalPremiumsRequest optionally limits the response to gold or silver.
         GetPhysicalPremiumsResponse:
             type: object

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import capturedChanges from './fixtures/prediction-polymarket-embedded-changes.json' with { type: 'json' };
+import capturedLiquidity from './fixtures/prediction-liquidity-upstream.json' with { type: 'json' };
 
 import {
   isExcluded,
@@ -11,6 +12,7 @@ import {
   parsePolymarketChange,
   parseKalshiChange24h,
   parsePredictionMarketVolume,
+  parsePolymarketLiquidity,
   kalshiMarketUrl,
   selectPricedKalshiMarket,
   shouldInclude,
@@ -173,6 +175,33 @@ describe('parsePredictionMarketVolume', () => {
     assert.equal(parsePredictionMarketVolume({ volume: '6789.5' }), 6789.5);
     assert.equal(parsePredictionMarketVolume({}), 0);
     assert.equal(parsePredictionMarketVolume({ volumeNum: Number.NaN }), 0);
+  });
+});
+
+describe('parsePolymarketLiquidity', () => {
+  it('reads event-level and market-level liquidity from captured Gamma responses', () => {
+    const event = capturedLiquidity.polymarketEvent;
+    assert.equal(parsePolymarketLiquidity(event), 2494419.31546);
+    assert.equal(parsePolymarketLiquidity(event.markets[0]), 140268.51998);
+    assert.equal(parsePolymarketLiquidity({ liquidity: '140268.51998' }), 140268.51998);
+  });
+
+  it('returns null instead of a fabricated value when liquidity is absent or unreadable', () => {
+    assert.equal(parsePolymarketLiquidity(capturedLiquidity.polymarketMarketWithoutLiquidity), null);
+    assert.equal(parsePolymarketLiquidity({}), null);
+    assert.equal(parsePolymarketLiquidity({ liquidity: '' }), null);
+    assert.equal(parsePolymarketLiquidity({ liquidity: null }), null);
+    assert.equal(parsePolymarketLiquidity({ liquidity: 'n/a' }), null);
+    assert.equal(parsePolymarketLiquidity({ liquidity: true }), null);
+    assert.equal(parsePolymarketLiquidity({ liquidityNum: [] }), null);
+    assert.equal(parsePolymarketLiquidity({ liquidityNum: -5 }), null);
+    assert.equal(parsePolymarketLiquidity({ liquidityNum: Number.NaN, liquidity: '12' }), 12);
+  });
+
+  it('confirms the Kalshi market payload carries no liquidity field, so depth comes from order books', () => {
+    const kalshiFields = Object.keys(capturedLiquidity.kalshiMarket);
+    assert.ok(kalshiFields.includes('open_interest_fp'));
+    assert.deepEqual(kalshiFields.filter((field) => /liquid/i.test(field)), []);
   });
 });
 

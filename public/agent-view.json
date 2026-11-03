@@ -30,7 +30,11 @@
     "cli": {
       "package": "worldmonitor",
       "install": "npm install -g worldmonitor",
-      "url": "https://www.npmjs.com/package/worldmonitor"
+      "url": "https://www.npmjs.com/package/worldmonitor",
+      "homebrew": {
+        "install": "brew install worldmonitor",
+        "url": "https://formulae.brew.sh/formula/worldmonitor"
+      }
     },
     "sdks": {
       "javascript": {

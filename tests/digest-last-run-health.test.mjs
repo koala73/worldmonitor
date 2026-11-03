@@ -1,3 +1,8 @@
+// Cron-source check by design (#8690, section 2): this suite pins heartbeat
+// keys, error metadata, and nonzero-exit wiring against fixed source patterns.
+// The cron runs main() on import, so checking its declarations without
+// starting the cron requires reading its source.
+//
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

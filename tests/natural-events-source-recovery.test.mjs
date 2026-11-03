@@ -234,3 +234,59 @@ test('failure logs report fixed retention clocks without changing published heal
   naturalEventsAfterPublish(first);
   assert.deepEqual(warnings, []);
 });
+
+test('publication receipts preserve successful, retained and expired source clocks without event payloads', async () => {
+  const first = await run();
+  const retained = await run({ previousSources: first._sourceSnapshots, now: NOW + HOUR, failures: ['gdacs:FL'] });
+  const expired = await run({ previousSources: first._sourceSnapshots, now: NOW + 9 * HOUR, failures: ['gdacs:FL'] });
+  const logs = [];
+  const original = console.info;
+  console.info = line => logs.push(JSON.parse(line));
+  try {
+    for (const data of [first, retained, expired]) {
+      const result = naturalEventsAfterPublish(data, { runId: 'fixture-run', canonicalKey: 'natural:events:v1', recordCount: data.events.length });
+      const receipt = logs.at(-1);
+      assert.equal(receipt.event, 'natural_source_receipt');
+      assert.equal(receipt.runId, 'fixture-run');
+      assert.equal(receipt.recordCount, data.events.length);
+      assert.equal(receipt.sourceFetchedAt, data.fetchedAt);
+      assert.deepEqual(receipt.sourceHealth, result.freshnessMetaPatch.sourceHealth);
+      assert.deepEqual(receipt.failedSources, result.freshnessMetaPatch.failedSources);
+      assert.equal(receipt.sourceState, result.freshnessMetaPatch.sourceState);
+      assert.doesNotMatch(JSON.stringify(receipt), /eonet-volcano|coordinates|sourceUrl/);
+    }
+    assert.equal(logs.length, 3);
+    assert.equal(logs[1].sourceHealth['gdacs:FL'].retainedUntil, NOW + 9 * HOUR);
+    assert.equal(logs[2].sourceHealth['gdacs:FL'].status, 'unavailable');
+    assert.equal(logs[2].sourceHealth['gdacs:FL'].lastSuccessAt, null);
+  } finally { console.info = original; }
+});
+
+test('publication receipts identify the publisher and deployment with bounded identity fields', async () => {
+  const names = ['RAILWAY_SERVICE_NAME', 'RAILWAY_DEPLOYMENT_ID', 'RAILWAY_GIT_COMMIT_SHA'];
+  const previous = names.map(name => process.env[name]);
+  const original = console.info;
+  let receipt;
+  console.info = line => { receipt = JSON.parse(line); };
+  try {
+    process.env.RAILWAY_SERVICE_NAME = 'seed-bundle-climate';
+    process.env.RAILWAY_DEPLOYMENT_ID = 'deployment-123';
+    process.env.RAILWAY_GIT_COMMIT_SHA = 'a'.repeat(40);
+    const data = await run();
+    naturalEventsAfterPublish(data, { runId: 'run-123', canonicalKey: 'natural:events:v1', recordCount: data.events.length });
+    assert.equal(receipt.publisher, 'seed-bundle-climate');
+    assert.equal(receipt.deploymentId, 'deployment-123');
+    assert.equal(receipt.revision, 'a'.repeat(40));
+    assert.ok(JSON.stringify(receipt).length < 4096);
+    process.env.RAILWAY_SERVICE_NAME = 'private\nvalue';
+    process.env.RAILWAY_DEPLOYMENT_ID = 'x'.repeat(129);
+    delete process.env.RAILWAY_GIT_COMMIT_SHA;
+    naturalEventsAfterPublish(data, { runId: 'run-456', recordCount: data.events.length });
+    assert.equal(receipt.publisher, null);
+    assert.equal(receipt.deploymentId, null);
+    assert.equal(receipt.revision, null);
+  } finally {
+    console.info = original;
+    names.forEach((name, i) => { if (previous[i] === undefined) delete process.env[name]; else process.env[name] = previous[i]; });
+  }
+});

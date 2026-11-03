@@ -49,6 +49,62 @@ const MOBILE_DEVICE_MATRIX = [
   { label: 'Galaxy S9+', use: devices['Galaxy S9+'] },
 ] as const;
 
+for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+  test.describe(`Hotspot popup header (${viewport.width}px)`, () => {
+    test.use({ viewport, deviceScaleFactor: 1.25 });
+
+    test('keeps the header and close button inside after scrolling and reopening', async ({ page }, testInfo) => {
+      await page.goto('/tests/mobile-map-harness.html?long=1');
+      await page.waitForFunction(() => (window as HarnessWindow).__mobileMapHarness?.ready);
+      const marker = page.locator('#mapOverlays .hotspot');
+      const markerBefore = await marker.boundingBox();
+      expect(markerBefore).not.toBeNull();
+      expect(markerBefore!.x + markerBefore!.width / 2).toBeCloseTo(viewport.width / 2, 0);
+      expect(markerBefore!.y + markerBefore!.height / 2).toBeCloseTo(viewport.height / 2, 0);
+
+      const popup = page.locator('.map-popup');
+      const header = popup.locator('.popup-header');
+      const close = header.getByRole('button', { name: 'Close', exact: true });
+      const expectHeaderInside = async () => {
+        await expect.poll(async () => {
+          const parent = await popup.boundingBox();
+          const child = await header.boundingBox();
+          return child!.x - parent!.x;
+        }, { message: 'The header must stay inside the popup left edge', timeout: 3000 }).toBeGreaterThanOrEqual(0);
+        const parent = (await popup.boundingBox())!;
+        const child = (await header.boundingBox())!;
+        const button = (await close.boundingBox())!;
+        expect(child.x + child.width).toBeLessThanOrEqual(parent.x + parent.width);
+        expect(child.y).toBeGreaterThanOrEqual(parent.y);
+        expect(child.y + child.height).toBeLessThanOrEqual(parent.y + parent.height);
+        expect(button.x).toBeGreaterThanOrEqual(parent.x);
+        expect(button.x + button.width).toBeLessThanOrEqual(parent.x + parent.width);
+        expect(button.y).toBeGreaterThanOrEqual(parent.y);
+        expect(button.y + button.height).toBeLessThanOrEqual(parent.y + parent.height);
+      };
+
+      for (let opening = 0; opening < 2; opening++) {
+        await marker.click();
+        await expect(popup).toBeVisible();
+        await expectHeaderInside();
+        await popup.evaluate((element) => { element.scrollTop = 120; });
+        await expect.poll(() => popup.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        await expectHeaderInside();
+        const scrolledPopup = (await popup.boundingBox())!;
+        const stickyHeader = (await header.boundingBox())!;
+        expect(stickyHeader.y - scrolledPopup.y).toBeCloseTo(1, 0);
+        if (opening === 0) {
+          await page.screenshot({ path: testInfo.outputPath('hotspot-header-scrolled.png') });
+        }
+        await close.click();
+        await expect(popup).toHaveCount(0);
+      }
+
+      expect(await marker.boundingBox()).toEqual(markerBefore);
+    });
+  });
+}
+
 for (const deviceConfig of MOBILE_DEVICE_MATRIX) {
   test.describe(`Mobile SVG popup QA (${deviceConfig.label})`, () => {
     const { defaultBrowserType: _defaultBrowserType, ...contextOptions } = deviceConfig.use;

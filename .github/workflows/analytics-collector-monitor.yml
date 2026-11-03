@@ -1,7 +1,7 @@
 name: Analytics Collector Monitor
 
 # Probes the self-hosted Umami collector directly. Deliberately NOT gated on a
-# green main (unlike seed-freshness-monitor.yml): the collector's health is
+# green main: the collector's health is
 # independent of repo state, and a gate is one more way for this to go quiet —
 # which is exactly how a 4-day analytics blackout went unnoticed (#5565).
 

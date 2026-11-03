@@ -1,0 +1,73 @@
+{
+  "name": "@vercel/og",
+  "version": "1.0.3-worldmonitor.1",
+  "description": "Generate Open Graph Images dynamically from HTML/CSS without a browser",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vercel/og.git"
+  },
+  "type": "module",
+  "main": "./dist/index.node.js",
+  "types": "./dist/index.node.d.ts",
+  "files": [
+    "dist/**/*"
+  ],
+  "exports": {
+    ".": {
+      "edge": {
+        "types": "./dist/index.edge.d.ts",
+        "default": "./dist/index.edge.js"
+      },
+      "edge-light": {
+        "types": "./dist/index.edge.d.ts",
+        "default": "./dist/index.edge.js"
+      },
+      "browser": {
+        "types": "./dist/index.edge.d.ts",
+        "default": "./dist/index.edge.js"
+      },
+      "worker": {
+        "types": "./dist/index.edge.d.ts",
+        "default": "./dist/index.edge.js"
+      },
+      "workerd": {
+        "types": "./dist/index.edge.d.ts",
+        "default": "./dist/index.edge.js"
+      },
+      "import": {
+        "types": "./dist/index.node.d.ts",
+        "default": "./dist/index.node.js"
+      },
+      "node": {
+        "types": "./dist/index.node.d.ts",
+        "default": "./dist/index.node.js"
+      },
+      "default": "./dist/index.node.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "keywords": [
+    "open graph image",
+    "open graph",
+    "og image",
+    "og:image",
+    "social",
+    "card",
+    "image"
+  ],
+  "license": "MPL-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@resvg/resvg-wasm": "2.4.1",
+    "satori": "0.33.5"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.35.3"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "private": true
+}

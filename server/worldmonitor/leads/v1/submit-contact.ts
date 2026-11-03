@@ -13,6 +13,9 @@ import { ApiError, ValidationError } from '../../../../src/generated/server/worl
 import { getClientIp, verifyTurnstile } from '../../../_shared/turnstile';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// RFC 5321 path limit. Checked before EMAIL_RE, which backtracks
+// super-linearly on long '@'-free runs.
+const MAX_EMAIL = 254;
 const PHONE_RE = /^[+(]?\d[\d\s()./-]{4,23}\d$/;
 const MAX_FIELD = 500;
 const MAX_MESSAGE = 2000;
@@ -122,7 +125,7 @@ export async function submitContact(
 
   const { email, name, organization, phone, message, source } = req;
 
-  if (!email || !EMAIL_RE.test(email)) {
+  if (!email || email.length > MAX_EMAIL || !EMAIL_RE.test(email)) {
     throw new ValidationError([{ field: 'email', description: 'Invalid email' }]);
   }
 

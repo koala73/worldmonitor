@@ -10,7 +10,7 @@ const timestamp = z.number().positive().refine(value => Number.isFinite(new Date
 const location = z.object({ latitude, longitude });
 const earthquake = z.object({
   id: z.string(), place: z.string(), magnitude: z.number().finite(), depthKm: z.number().finite(),
-  location, occurredAt: timestamp, sourceUrl: z.string(), source: z.string(), category: z.string(),
+  location, occurredAt: timestamp, sourceUrl: z.string(), source: z.string(), category: z.string().default(''),
 }).passthrough();
 const event = z.object({
   id: z.string(), title: z.string(), lat: latitude, lon: longitude, date: timestamp,
@@ -76,7 +76,7 @@ export function parsePluginHazardSnapshot(result: unknown, layers: readonly Plug
     return accepted;
   };
   if (layers.includes('natural')) {
-    snapshot.earthquakes = read('earthquakes', 'earthquakes', row => earthquake.parse(row) as Earthquake);
+    snapshot.earthquakes = read('earthquakes', 'earthquakes', row => earthquake.parse(row));
     snapshot.events = read('events', 'events', row => toNaturalEvent(event.parse(row)));
   }
   if (layers.includes('fires')) {

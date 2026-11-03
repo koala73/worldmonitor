@@ -316,6 +316,34 @@ describe('api/mcp/auth.ts — checkMcpEntitlementGate predicates (#5379 Gap 4)',
       'both identity-resolved kinds must query entitlements for their OWN userId');
   });
 
+  it('KTD5: a Pro-only owner passes the OAuth door and is refused on the key door with the API-plan denial', async () => {
+    const proOnly = async () => ({
+      planKey: 'pro_monthly',
+      features: { tier: 1, mcpAccess: true, apiAccess: false, desktopKeyAccess: true },
+      validUntil: Date.now() + DAY,
+    });
+    const viaOauth = await authMod.runContextPreChecks(PRO_CONTEXT, makeProDeps({ getEntitlements: proOnly }).deps, RESOURCE_META_URL, CORS);
+    assert.equal(viaOauth.ok, true, 'Pro MCP through OAuth is unchanged');
+    const viaKey = await authMod.runContextPreChecks(USER_KEY_CONTEXT, makeProDeps({ getEntitlements: proOnly }).deps, RESOURCE_META_URL, CORS);
+    assert.equal(viaKey.ok, false);
+    const message = (await viaKey.response.clone().json()).error.message;
+    await assertRejected(viaKey.response, 'user_key / Pro-only owner (KTD5)');
+    assert.match(message, /API/);
+  });
+
+  it('KTD5: a billing-verification state on the key door keeps its retryable 503, not the API-plan 403', async () => {
+    const pending = async () => ({
+      planKey: 'api_starter',
+      features: { tier: 2, mcpAccess: true, apiAccess: true },
+      validUntil: Date.now() - 1,
+      billingStatus: 'renewal_verification_pending',
+      retryAfterSeconds: 7,
+    });
+    const res = await authMod.runContextPreChecks(USER_KEY_CONTEXT, makeProDeps({ getEntitlements: pending }).deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, false);
+    assert.equal(res.response.status, 503);
+  });
+
   it('the gate is checked against the OWNER userId, not the caller-supplied key', async () => {
     const { deps } = makeProDeps({
       getEntitlements: async (userId) => (userId === USER_KEY_USER_ID ? entOk() : null),

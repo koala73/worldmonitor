@@ -1,6 +1,7 @@
 import { subscribeAuthState } from './auth-state';
 import { getEntitlementState, isEntitled, onEntitlementChange } from './entitlements';
-import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
+import { safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
+import { DESKTOP_CLOUD_ACCESS_HINT_KEY as CLOUD_ACCESS_HINT_KEY, hasDesktopCloudAccessHint } from './desktop-cloud-access-hint';
 
 /**
  * The credential a desktop request carries to the cloud through the sidecar.
@@ -15,7 +16,6 @@ import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-
  * A desktop that gains Pro mid-session reloads once instead.
  */
 export const DESKTOP_CLOUD_TOKEN_WAIT_MS = 8_000;
-const CLOUD_ACCESS_HINT_KEY = 'wm-desktop-cloud-access';
 const RELOADED_SESSION_KEY = 'wm-desktop-cloud-reloaded';
 
 let sentWithoutCredential = false;
@@ -24,7 +24,7 @@ function mayUseCloud(): boolean {
   if (isEntitled()) return true;
   // A snapshot from this launch is authoritative. Before it lands, trust the
   // last verified one.
-  return getEntitlementState() === null && safeStorageGet(CLOUD_ACCESS_HINT_KEY) === '1';
+  return getEntitlementState() === null && hasDesktopCloudAccessHint();
 }
 
 async function sessionToken(): Promise<string | null> {

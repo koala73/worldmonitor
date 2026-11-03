@@ -1126,7 +1126,7 @@ export class MapPopup {
     ` : '';
 
     return `
-      <div class="popup-header hotspot">
+      <div class="popup-header hotspot-popup">
         <span class="popup-title">${escapeHtml(hotspot.name.toUpperCase())}</span>
         <span class="popup-badge ${severityClass}">${severityLabel}</span>
         <button class="popup-close" aria-label="Close">×</button>
@@ -1456,6 +1456,17 @@ export class MapPopup {
   private renderWeatherPopup(alert: WeatherAlert): string {
     const severityClass = escapeHtml(alert.severity.toLowerCase());
     const expiresIn = this.getTimeUntil(alert.expires);
+    const onset = new Date(alert.onset).getTime();
+    const expiry = new Date(alert.expires).getTime();
+    const marine = alert.productKind === 'sea-area-bulletin' || alert.productKind === 'coastal-bulletin';
+    let validity = '';
+    if (marine && Number.isFinite(onset) && Number.isFinite(expiry) && expiry > onset) {
+      const now = Date.now();
+      const state = now < onset ? 'upcomingForecast' : now < expiry ? 'currentForecast' : 'expiredForecast';
+      const start = new Date(onset).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+      const end = new Date(expiry).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+      validity = `<p class="popup-description"><strong>${t(`popups.${state}`)}</strong><br>${t('popups.validFrom')}: ${start}<br>${t('popups.validUntil')}: ${end}</p>`;
+    }
 
     return `
       <div class="popup-header weather ${severityClass}">
@@ -1465,6 +1476,7 @@ export class MapPopup {
       </div>
       <div class="popup-body">
         <p class="popup-headline">${escapeHtml(alert.headline)}</p>
+        ${validity}
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.area')}</span>
@@ -1776,9 +1788,13 @@ export class MapPopup {
       'closure': t('popups.flight.closure'),
     };
     // #3707: when severity is 'unknown' we have no delay-type signal either.
+    // A normal row carries delayType 'general', which would title it "delays
+    // reported". A NOTAM-sourced normal row knows only that the airport is open.
     const delayTypeLabel = delay.severity === 'unknown'
       ? 'Coverage unavailable'
-      : (delayTypeLabels[delay.delayType] || t('popups.flight.delays'));
+      : delay.severity === 'normal'
+        ? (delay.source === 'notam' ? t('popups.flight.open') : t('popups.flight.normalOperations'))
+        : (delayTypeLabels[delay.delayType] || t('popups.flight.delays'));
     const icon = delay.severity === 'unknown'
       ? '❔'
       : delay.delayType === 'closure' ? '🚫'

@@ -1,8 +1,9 @@
 import { CountrySectionError } from '@/services/country-brief-error';
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { iso2ToCountryName } from '@/utils/country-codes';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
-import { t } from '@/services/i18n';
+import { pipelineCoverageWarning } from '@/services/supply-chain/pipeline-coverage';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 
 import type {
@@ -415,8 +416,9 @@ export class PipelineStatusPanel extends Panel {
     });
 
     const drawer = this.selectedId ? this.renderDrawer() : '';
-    const coverageWarning = this.data.upstreamUnavailable
-      ? `<div class="economic-warning">${escapeHtml(t('components.supplyChain.upstreamUnavailable'))}</div>`
+    const coverageText = pipelineCoverageWarning(this.data);
+    const coverageWarning = coverageText
+      ? `<div class="economic-warning">${escapeHtml(coverageText)}</div>`
       : '';
 
     const html = unsafeRawHtml(`
@@ -515,7 +517,7 @@ export class PipelineStatusPanel extends Panel {
       : '';
 
     const transit = p.transitCountries.length > 0
-      ? ` via ${p.transitCountries.map(c => escapeHtml(c)).join(', ')}`
+      ? ` via ${p.transitCountries.map(c => escapeHtml(iso2ToCountryName(c))).join(', ')}`
       : '';
 
     return `
@@ -525,7 +527,7 @@ export class PipelineStatusPanel extends Panel {
         <div class="pp-kv">
           <div class="pp-kv-key">Operator</div>   <div>${escapeHtml(p.operator)}</div>
           <div class="pp-kv-key">Commodity</div>  <div>${escapeHtml(p.commodityType)}</div>
-          <div class="pp-kv-key">Route</div>      <div>${escapeHtml(p.fromCountry)} → ${escapeHtml(p.toCountry)}${transit}</div>
+          <div class="pp-kv-key">Route</div>      <div>${escapeHtml(iso2ToCountryName(p.fromCountry))} → ${escapeHtml(iso2ToCountryName(p.toCountry))}${transit}</div>
           <div class="pp-kv-key">Capacity</div>   <div>${escapeHtml(capacityLabel(p))}</div>
           <div class="pp-kv-key">Length</div>     <div>${p.lengthKm > 0 ? `${p.lengthKm.toLocaleString()} km` : '—'}</div>
           <div class="pp-kv-key">In service</div> <div>${p.inService > 0 ? escapeHtml(String(p.inService)) : '—'}</div>

@@ -394,7 +394,7 @@ export async function fetchNotamClosures(
 export function buildNotamAlert(
   airport: MonitoredAirport,
   reason: string,
-  severity: 'severe' | 'major' = 'severe',
+  severity: 'severe' | 'major' | 'normal' = 'severe',
   delayType: 'closure' | 'general' = 'closure',
 ): AirportDelayAlert {
   return {
@@ -418,6 +418,16 @@ export function buildNotamAlert(
   };
 }
 
+export const NOTAM_OPEN_REASON = 'Open';
+
+/** An airport the NOTAM feed covers that has no closure or restriction NOTAM. */
+export function buildNotamOpenAlert(airport: MonitoredAirport): AirportDelayAlert {
+  return {
+    ...buildNotamAlert(airport, NOTAM_OPEN_REASON, 'normal', 'general'),
+    id: `notam-open-${airport.iata}`,
+  };
+}
+
 // ---------- Shared NOTAM loader (used by both list-airport-delays and get-airport-ops-summary) ----------
 
 const NOTAM_CACHE_KEY = 'aviation:notam:closures:v2';
@@ -425,6 +435,9 @@ export interface LoadedNotamResult {
   closedIcaos: string[];
   restrictedIcaos: string[];
   reasons: Record<string, string>;
+  // Monitored airports with at least one NOTAM in the FAA NMS feed. Coverage
+  // is what lets "no closure NOTAM" mean open rather than unknown.
+  coveredIcaos: string[];
 }
 
 export interface LoadedNotamRead {
@@ -442,13 +455,16 @@ export async function loadNotamClosures(): Promise<LoadedNotamRead> {
       || !value.reasons || typeof value.reasons !== 'object') return { data: null, unavailable: true };
     if (!value.closedIcaos.every((icao) => typeof icao === 'string')
       || !value.restrictedIcaos.every((icao) => typeof icao === 'string')
-      || !Object.values(value.reasons).every((reason) => typeof reason === 'string')) {
+      || !Object.values(value.reasons).every((reason) => typeof reason === 'string')
+      || (value.coveredIcaos !== undefined
+        && (!Array.isArray(value.coveredIcaos) || !value.coveredIcaos.every((icao) => typeof icao === 'string')))) {
       return { data: null, unavailable: true };
     }
     return { data: {
       closedIcaos: value.closedIcaos,
       restrictedIcaos: value.restrictedIcaos,
       reasons: value.reasons,
+      coveredIcaos: value.coveredIcaos ?? [],
     }, unavailable: false };
   } catch (err) {
     console.warn(`[Aviation] NOTAM seed read failed: ${err instanceof Error ? err.message : 'unknown'}`);

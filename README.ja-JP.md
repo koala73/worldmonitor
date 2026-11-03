@@ -128,6 +128,7 @@ World Monitor はブラウザだけでなく、エージェントやスクリプ
   ```sh
   npx worldmonitor tools          # その場で実行 — すべての MCP ツールを一覧表示 (キー不要)
   npm install -g worldmonitor     # または `worldmonitor` (エイリアス `wm`) コマンドをインストール
+  brew install worldmonitor       # または Homebrew でインストール
   worldmonitor risk IR --api-key wm_xxx
   ```
 
@@ -140,6 +141,12 @@ World Monitor はブラウザだけでなく、エージェントやスクリプ
 ## フライトデータ
 
 フライトデータは、最先端の ADS-B フライトデータソリューションである [Wingbits](https://wingbits.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor) のご厚意により提供されています。
+
+---
+
+## サポート
+
+World Monitor の Web アプリと API は [Vercel](https://vercel.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor) 上で稼働しています。プロジェクトへの手厚いご支援に、Vercel に感謝いたします。
 
 ---
 

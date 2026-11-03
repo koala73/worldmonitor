@@ -150,14 +150,57 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     Object.assign(process.env, originalEnv);
   });
 
-  it('rejects unsupported transport versions before reading or dispatching a request', async () => {
+  it('returns method parameter errors and valid controls over HTTP JSON and SSE', async () => {
+    const initialized = await fetch(server.url, {
+      method: 'POST', headers: mcpHeaders({ Accept: 'application/json' }),
+      body: JSON.stringify(initBody()),
+    });
+    const sessionId = initialized.headers.get('mcp-session-id');
+    assert.ok(sessionId);
+    await initialized.json();
+    const cases = [
+      ...['tools/list', 'prompts/list', 'resources/list', 'resources/templates/list']
+        .map((method) => [method, { cursor: 17 }, { cursor: 'opaque-token' }]),
+      ['prompts/get', { name: 'market-open-prep', arguments: 17 }, { name: 'market-open-prep' }],
+      ['prompts/get', { name: 'country-view', arguments: { iso2: 17 } }, { name: 'country-view', arguments: { iso2: '17' } }],
+    ];
+    for (const accept of ['application/json', 'text/event-stream']) {
+      for (const [method, invalid, valid] of cases) {
+        for (const [params, expectedError] of [[invalid, true], [valid, false]]) {
+          const res = await fetch(server.url, {
+            method: 'POST',
+            headers: mcpHeaders({ Accept: accept, 'MCP-Protocol-Version': '2025-06-18', 'Mcp-Session-Id': sessionId }),
+            body: JSON.stringify(rpcBody('method-params', method, params)),
+          });
+          assert.equal(res.status, 200);
+          assert.match(res.headers.get('cache-control'), /\bno-store\b/);
+          assert.ok(res.headers.get('content-type').startsWith(accept));
+          const body = accept === 'text/event-stream'
+            ? JSON.parse((await readAllSseEvents(res))[0].data)
+            : await res.json();
+          if (expectedError) {
+            assertJsonRpcError(body, { id: 'method-params', code: -32602 });
+          } else {
+            assertJsonRpcResult(body, { id: 'method-params' });
+          }
+        }
+      }
+    }
+  });
+
+  it('rejects unsupported transport versions before dispatching a request', async () => {
     for (const [method, version] of [
       ['POST', '2099-99-99'], ['GET', '2099-99-99'], ['HEAD', '2099-99-99'],
       ['POST', ''], ['POST', '2026-07-28'], ['POST', 'not-a-version'],
     ]) {
+      // An anonymous plain GET is an OAuth discovery probe and gets the 401
+      // challenge instead (covered below), so the GET case carries credentials.
       const res = await fetch(server.url, {
         method,
-        headers: { 'MCP-Protocol-Version': version },
+        headers: {
+          'MCP-Protocol-Version': version,
+          ...(method === 'GET' ? { Authorization: `Bearer ${PRO_BEARER}` } : {}),
+        },
         ...(method === 'POST' ? { body: '{' } : {}),
       });
       assert.equal(res.status, 400, method);
@@ -166,6 +209,155 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
         assert.equal((await res.json()).error.code, -32600);
       }
     }
+  });
+
+  // Production 2026-10-23: ~124k of 127k weekly 400s were `initialize` requests
+  // from clients (the Python SDK, Hermes) that send their newest version in the
+  // header while negotiating. No version has been agreed before `initialize`
+  // answers, so the body governs it there; every later request keeps the 400.
+  it('negotiates initialize from the body when the header names an unsupported version', async () => {
+    for (const version of ['2026-07-28', '2024-11-05', '2099-99-99']) {
+      const body = initBody(1);
+      body.params.protocolVersion = version;
+      const res = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': version }),
+        body: JSON.stringify(body),
+      });
+      assert.equal(res.status, 200, version);
+      const result = await res.json();
+      assert.equal(result.id, 1, version);
+      assert.equal(result.result.protocolVersion, '2025-11-25', version);
+
+      const next = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': result.result.protocolVersion }),
+        body: JSON.stringify(rpcBody(2, 'ping')),
+      });
+      assert.deepEqual(await next.json(), { jsonrpc: '2.0', id: 2, result: {} }, version);
+    }
+
+    // The body decides, not the header: a supported body version must win.
+    const legacy = initBody(3);
+    legacy.params.protocolVersion = '2025-03-26';
+    const res = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': '2026-07-28' }),
+      body: JSON.stringify(legacy),
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).result.protocolVersion, '2025-03-26');
+  });
+
+  it('challenges an anonymous initialize instead of refusing its newer header', async () => {
+    const body = initBody(1);
+    body.params.protocolVersion = '2026-07-28';
+    const res = await fetch(server.url, {
+      method: 'POST',
+      // A connector User-Agent: fetch's default `node` completes the handshake
+      // anonymously (see mcp-transport-challenge.test.mjs).
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'MCP-Protocol-Version': '2026-07-28', 'User-Agent': 'Claude-User' },
+      body: JSON.stringify(body),
+    });
+    assert.equal(res.status, 401);
+    assert.match(res.headers.get('www-authenticate') ?? '', /resource_metadata=/);
+    assert.equal((await res.json()).id, 1);
+  });
+
+  it('keeps refusing an unsupported header on every request other than initialize', async () => {
+    const init = initBody(1);
+    init.params.protocolVersion = '2026-07-28';
+    for (const body of [
+      rpcBody(1, 'ping'),
+      rpcBody(1, 'tools/list'),
+      { jsonrpc: '2.0', method: 'notifications/initialized' },
+      [init],
+      { ...init, jsonrpc: '1.0' },
+      { ...init, id: null },
+      // No body version to negotiate from, so the header is the only signal.
+      { ...init, params: {} },
+      { ...init, params: { ...init.params, protocolVersion: 20260728 } },
+    ]) {
+      const res = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': '2026-07-28' }),
+        body: JSON.stringify(body),
+      });
+      assert.equal(res.status, 400, JSON.stringify(body));
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+      const result = await res.json();
+      assert.equal(result.error.code, -32600, JSON.stringify(body));
+      assert.equal(result.error.message, 'Unsupported MCP-Protocol-Version', JSON.stringify(body));
+    }
+  });
+
+  // SEP-1303 (MCP 2025-11-25): input validation failures are tool execution
+  // errors the model can read and correct. Older revisions keep the documented
+  // -32602 + error.data.violations contract (#6559).
+  it('reports invalid tool arguments as an isError result on 2025-11-25 and as -32602 before it', async () => {
+    // Each argument-validation path: alias resolution, the registered tool's
+    // input schema, and a tool-specific argument check.
+    const cases = [
+      ['alias', { name: 'get_tariff_trends', arguments: { dataset: ['tariffs', 'bigmac'], country: 'DE' } },
+        (data) => assert.equal(data.violations[0].field, 'dataset')],
+      ['input schema', { name: 'get_consumer_prices', arguments: { limit: 'many' } },
+        (data) => assert.ok(data.violations.length > 0)],
+      ['tool-specific', { name: 'start_upgrade', arguments: { plan: 'no_such_plan' } },
+        (data) => assert.ok(Array.isArray(data.plans) && data.plans.length > 0)],
+    ];
+    for (const [label, params, checkData] of cases) {
+      for (const version of ['2025-11-25', '2025-06-18', null]) {
+        const res = await fetch(server.url, {
+          method: 'POST',
+          headers: mcpHeaders({ Accept: 'application/json', ...(version ? { 'MCP-Protocol-Version': version } : {}) }),
+          body: JSON.stringify(rpcBody(9, 'tools/call', params)),
+        });
+        const where = `${label} ${version}`;
+        assert.equal(res.status, 200, where);
+        const body = await res.json();
+        if (version === '2025-11-25') {
+          assert.equal(body.error, undefined, `${where}: ${JSON.stringify(body)}`);
+          assert.equal(body.result.isError, true, where);
+          assert.equal(body.result.structuredContent, undefined, where);
+          const payload = JSON.parse(body.result.content[0].text);
+          assert.equal(typeof payload.error, 'string', where);
+          // The payload is flat, so a message must not point at `data.*`.
+          assert.doesNotMatch(payload.error, /\bdata\./, where);
+          checkData(payload);
+        } else {
+          assert.equal(body.result, undefined, `${where}: ${JSON.stringify(body)}`);
+          assert.equal(body.error.code, -32602, where);
+          checkData(body.error.data);
+        }
+      }
+    }
+
+    // Panel arguments the strict panel view rejects after registry validation
+    // (an undeclared property here) are argument errors too (review: coderabbit).
+    for (const version of ['2025-11-25', '2025-06-18']) {
+      const res = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': version }),
+        body: JSON.stringify(rpcBody(11, 'tools/call', { name: 'get_market_data', arguments: { unexpected: 'x' } })),
+      });
+      assert.equal(res.status, 200, version);
+      const body = await res.json();
+      if (version === '2025-11-25') {
+        assert.equal(body.error, undefined, `panel ${version}: ${JSON.stringify(body)}`);
+        assert.equal(body.result.isError, true);
+        assert.equal(typeof JSON.parse(body.result.content[0].text).error, 'string');
+      } else {
+        assert.equal(body.error.code, -32602, `panel ${version}: ${JSON.stringify(body)}`);
+      }
+    }
+
+    // An unknown tool is still a protocol error on every revision.
+    const unknown = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': '2025-11-25' }),
+      body: JSON.stringify(rpcBody(10, 'tools/call', { name: 'no_such_tool', arguments: {} })),
+    });
+    assert.equal((await unknown.json()).error.code, -32602);
   });
 
   it('uses the active protocol floor for headers as well as initialize negotiation', async () => {
@@ -208,6 +400,32 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     }
   });
 
+  it('enforces MCP request IDs and object params on the wire', async () => {
+    const cases = [
+      ...[null, 1.25, -1.25, true, {}, []].map(id => [{ jsonrpc: '2.0', id, method: 'ping' }, null]),
+      ...[null, [], 17, 'params', false].map(params => [{ jsonrpc: '2.0', id: 'params', method: 'ping', params }, 'params']),
+      ...[null, [], 17, 'params', false].map(params => [{ jsonrpc: '2.0', method: 'notifications/initialized', params }, null]),
+      [{ jsonrpc: '2.0', id: null, method: 'notifications/initialized' }, null],
+    ];
+    for (const [body, errorId] of cases) {
+      const res = await fetch(server.url, { method: 'POST', body: JSON.stringify(body) });
+      const result = await res.json();
+      assert.equal(res.status, body.id === undefined ? 400 : 200);
+      assert.equal(result.error?.code, -32600, JSON.stringify(body));
+      assert.equal(result.id, errorId);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+    }
+    for (const id of [0, -1, 1e100, '', 'wire-id']) {
+      const res = await fetch(server.url, { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id, method: 'ping' }) });
+      assert.deepEqual(await res.json(), { jsonrpc: '2.0', id, result: {} });
+    }
+    for (const method of ['notifications/initialized', 'notifications/cancelled', 'ping']) {
+      const res = await fetch(server.url, { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', method, params: {} }) });
+      assert.equal(res.status, 202);
+      assert.equal(await res.text(), '');
+    }
+  });
+
   it('rejects invalid origins on every HTTP entry before transport or auth', async () => {
     for (const origin of [
       'not a valid origin', 'null', '', 'https://client.example/path',
@@ -241,7 +459,7 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
         ...(origin === undefined ? {} : { Origin: origin }) };
       const preflight = await fetch(server.url, { method: 'OPTIONS', headers });
       assert.equal(preflight.status, 204, origin);
-      for (const version of ['2025-03-26', '2025-06-18', '2026-07-28']) {
+      for (const version of ['2025-03-26', '2025-06-18', '2025-11-25', '2026-07-28']) {
         const body = initBody(0);
         body.params.protocolVersion = version;
         const res = await fetch(server.url, { method: 'POST',
@@ -249,9 +467,9 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
         assert.equal(res.status, 200, origin);
         const result = await res.json();
         assert.equal(result.id, 0);
-        assert.equal(result.result.protocolVersion, version === '2026-07-28' ? '2025-06-18' : version);
+        assert.equal(result.result.protocolVersion, version === '2026-07-28' ? '2025-11-25' : version);
       }
-      for (const version of ['2025-03-26', '2025-06-18']) {
+      for (const version of ['2025-03-26', '2025-06-18', '2025-11-25']) {
         const res = await fetch(server.url, { method: 'POST',
           headers: { ...headers, 'MCP-Protocol-Version': version },
           body: JSON.stringify(rpcBody('', 'ping')) });
@@ -841,6 +1059,25 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     assert.match(body, /https:\/\/worldmonitor\.app\/mcp/, 'guide must advertise the apex transport URL');
     assert.match(res.headers.get('link') ?? '', /<https:\/\/worldmonitor\.app\/mcp>;\s*rel="canonical"/,
       'discovery representation must declare the apex endpoint canonical');
+  });
+
+  it('challenges an anonymous MCP client probing GET /mcp, whatever version it names', async () => {
+    // rmcp (Codex) probes the resource with a plain GET carrying
+    // MCP-Protocol-Version: 2024-11-05, looking for the 401 that names the
+    // protected-resource metadata (RFC 9728 §5.1). A browser never sends the header.
+    for (const version of ['2024-11-05', '2025-11-25']) {
+      const res = await fetch(server.url, { headers: { 'MCP-Protocol-Version': version } });
+      assert.equal(res.status, 401, version);
+      assert.equal(res.headers.get('cache-control'), 'no-store', version);
+      assert.match(res.headers.get('www-authenticate') ?? '',
+        /resource_metadata="https:\/\/worldmonitor\.app\/\.well-known\/oauth-protected-resource\/mcp"/, version);
+    }
+
+    // A credentialed probe keeps the guide, and an unsupported version is still refused.
+    const authed = await fetch(server.url, { headers: { 'MCP-Protocol-Version': '2025-11-25', Authorization: `Bearer ${PRO_BEARER}` } });
+    assert.equal(authed.status, 200);
+    const refused = await fetch(server.url, { headers: { 'MCP-Protocol-Version': '2024-11-05', Authorization: `Bearer ${PRO_BEARER}` } });
+    assert.equal(refused.status, 400);
   });
 
   it('redirects discovery reads when deployment static-asset self-fetches fail', async () => {

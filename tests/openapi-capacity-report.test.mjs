@@ -362,7 +362,9 @@ describe('repeatedStructures — no promising the same bytes twice', () => {
     // Vacuity guard: a walk that silently visits nothing would satisfy every
     // assertion above while reporting an empty reduction plan forever.
     const result = realReport.repeatedStructures;
-    assert.ok(result.groups > 20, `expected repeated structure in a generated spec, got ${result.groups}`);
+    // The floor is 0, not a fixed count: dedup passes keep collapsing what the
+    // report finds, and the restored inline jmespath copies always remain.
+    assert.ok(result.groups > 0, `expected repeated structure in a generated spec, got ${result.groups}`);
     // Successful compaction can reduce this total; require actual savings,
     // not a fixed amount of waste in the served document.
     assert.ok(result.estimatedRecoverableBytes > 0);

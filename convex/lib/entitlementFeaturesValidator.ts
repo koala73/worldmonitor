@@ -29,6 +29,11 @@ export const entitlementFeaturesValidator = v.object({
     // dimension existed; the read-time catalog merge supplies it.
     dashboardAiCallsPerDay: v.optional(v.union(v.number(), v.null())),
     mcpBurstRequestsPerMinute: v.union(v.number(), v.null()),
+    // Optional for rows written before desktop keys (plan 2026-10-25-001).
+    // Catalog-sourced writes always set them, and the read-time merge takes
+    // the catalog value regardless, so this only has to ACCEPT them.
+    desktopKeyRequestsPerDay: v.optional(v.number()),
+    desktopKeyBurstPerMinute: v.optional(v.number()),
   })),
   prioritySupport: v.boolean(),
   exportFormats: v.array(v.string()),
@@ -49,6 +54,12 @@ export const entitlementFeaturesValidator = v.object({
   // validator MUST accept it or the Dodo webhook's entitlement write is
   // rejected at runtime (v.object is strict on extra keys).
   embedAccess: v.optional(v.boolean()),
+  // Optional — desktop-key issuance and its key cap (plan 2026-10-25-001).
+  // Same contract as embedAccess: legacy rows omit them, the read-time merge
+  // supplies them, and catalog-sourced writes carry them, so this validator
+  // MUST accept them (v.object is strict on extra keys).
+  desktopKeyAccess: v.optional(v.boolean()),
+  maxDesktopKeys: v.optional(v.number()),
   // Optional — data-export entitlement (plan 2026-07-25-001). Legacy rows
   // predate it; consumers treat undefined on a tier >= 2 row as entitled
   // (fail-OPEN, permanently — see the PlanFeatures JSDoc). Catalog-sourced

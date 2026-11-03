@@ -508,6 +508,9 @@ function holdsRefit(trigger, shadow) {
  * also held while the gate lacks the forward sample to judge the map, unless
  * that partial sample already shows raw better beyond the margin. The first
  * trigger the gate does not hold refits.
+ * When there is a trigger the result carries the verdict-only `shadow` the
+ * hold was decided on. It has no pre-blend stage and no ECE intervals, so it
+ * is not the scorecard's published shadow block.
  */
 export function resolveCalibrationMapForRun(existing, ledger, nowMs, options = {}) {
   const codeVersion = options.codeVersion ?? CALIBRATION_CODE_VERSION;
@@ -518,11 +521,11 @@ export function resolveCalibrationMapForRun(existing, ledger, nowMs, options = {
   }
   const { triggers, carry } = refitTrigger(parsed, ledger, nowMs, options);
   if (!triggers.length) return { map: parsed, action: 'kept' };
-  const shadow = evaluateCalibrationShadow(ledger, parsed, nowMs, { preBlendStage: false });
+  const shadow = evaluateCalibrationShadow(ledger, parsed, nowMs, { preBlendStage: false, eceIntervals: false });
   const trigger = triggers.find((candidate) => !holdsRefit(candidate, shadow));
-  if (!trigger) return { map: parsed, action: 'kept', held: triggers[0] };
+  if (!trigger) return { map: parsed, action: 'kept', held: triggers[0], shadow };
   const map = fitCalibrationMap(ledger, nowMs, { ...options, codeVersion, dataVersion: parsed.dataVersion + 1, refitReason: trigger.reason, carry });
-  return { map, action: 'fitted', reason: trigger.reason, domain: trigger.domain };
+  return { map, action: 'fitted', reason: trigger.reason, domain: trigger.domain, shadow };
 }
 
 export function assertCohortOutsideFitWindow(map, entries) {

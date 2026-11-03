@@ -91,12 +91,15 @@ vi.mock("../_shared/entitlement-check", async (importActual) => {
 });
 
 // --- Stub user-key validation: a valid wm_ key resolves to a userId. ---------
-const validateUserApiKey = vi.fn(async () => ({ userId: "acct_lapsed", keyId: "k1", name: "t" }));
+// The gateway resolves wm_ keys through the desktop-aware principal (plan
+// 2026-10-25-001 U4); an `api` principal with rank 0 is today's API customer.
+const apiPrincipal = () => ({ userId: "acct_lapsed", keyId: "k1", keyKind: "api" as const, keyHash: "h".repeat(64), activeKeyRank: 0 });
+const validateUserApiKey = vi.fn(async () => apiPrincipal());
 vi.mock("../_shared/user-api-key", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../_shared/user-api-key")>();
   return {
     ...actual,
-    validateUserApiKey: (...a: unknown[]) => validateUserApiKey(...a),
+    validateUserApiKeyPrincipal: (...a: unknown[]) => validateUserApiKey(...a),
   };
 });
 
@@ -185,7 +188,7 @@ beforeEach(() => {
   resolveClerkSession.mockClear();
   validateBearerToken.mockClear();
   checkEntitlementDetailedMock.mockReset().mockResolvedValue({ response: null, entitlements: null });
-  validateUserApiKey.mockReset().mockResolvedValue({ userId: "acct_lapsed", keyId: "k1", name: "t" });
+  validateUserApiKey.mockReset().mockResolvedValue(apiPrincipal());
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
   delete process.env.WORLDMONITOR_VALID_KEYS;
@@ -428,8 +431,8 @@ describe("#4611 — expired wm_ key rejected on all route classes", () => {
       delete process.env[missingConfig];
       const realKeys = await vi.importActual<typeof import("../_shared/user-api-key")>("../_shared/user-api-key");
       const realEntitlements = await vi.importActual<typeof import("../_shared/entitlement-check")>("../_shared/entitlement-check");
-      cachedUserKey.mockResolvedValue({ userId: "cached-key-config-test" });
-      validateUserApiKey.mockImplementation(realKeys.validateUserApiKey as typeof validateUserApiKey);
+      cachedUserKey.mockResolvedValue({ v: 2, userId: "cached-key-config-test", keyId: "k-config", keyKind: "api", activeKeyRank: 0 });
+      validateUserApiKey.mockImplementation(realKeys.validateUserApiKeyPrincipal as unknown as typeof validateUserApiKey);
       getEntitlements.mockImplementation(realEntitlements.getEntitlements as typeof getEntitlements);
       const key = `wm_${"a".repeat(40)}`;
       const res = await makeGateway()(keyReq(REGULAR_PATH, "GET", key), ctx);
@@ -452,7 +455,7 @@ describe("#4611 — expired wm_ key rejected on all route classes", () => {
 
       process.env.CONVEX_SITE_URL = "https://fixture.invalid";
       process.env.CONVEX_SERVER_SHARED_SECRET = "fixture-only";
-      cachedUserKey.mockResolvedValue({ userId: "cached-key-config-test" });
+      cachedUserKey.mockResolvedValue({ v: 2, userId: "cached-key-config-test", keyId: "k-config", keyKind: "api", activeKeyRank: 0 });
       getEntitlements.mockResolvedValue(ACTIVE);
       expect((await makeGateway()(keyReq(REGULAR_PATH, "GET", key), ctx)).status).toBe(200);
       expect(routeHandler).toHaveBeenCalledTimes(1);

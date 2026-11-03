@@ -42,6 +42,8 @@ export interface GetWebcamImageResponse {
   windyUrl: string;
   lastUpdated: string;
   error: string;
+  resolvedAt?: number;
+  mediaType?: string;
 }
 
 export interface FieldViolation {

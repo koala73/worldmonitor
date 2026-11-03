@@ -1,3 +1,8 @@
+// This pins cached geometry reads on the render path, bounds direct
+// container-size reads and checks resize-cache wiring (#8690, section 2).
+// These source constraints guard against forced reflows that layout-free
+// happy-dom tests cannot measure.
+//
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -82,8 +87,8 @@ describe('Map one-shot viewport commands read current size (#5022 review)', () =
   it('ResizeObserver records zero-size (hidden) transitions, gating only the render on visibility', () => {
     const ro = mapSrc.slice(mapSrc.indexOf('private setupResizeObserver('));
     const body = ro.slice(0, ro.slice(1).search(/\n {2}(?:public|private) \w+\(/) + 1);
-    // scheduleRender is gated on a visible size...
-    assert.match(body, /if \(width > 0 && height > 0\) this\.scheduleRender\(\)/, 'scheduleRender must fire only for a visible size');
+    // Resize-driven rendering is gated on a visible size...
+    assert.match(body, /if \(width > 0 && height > 0\) \{\s*this\.resize\(\);\s*\}/, 'resize must fire only for a visible size');
     // ...but the cache update must run for ANY change (including -> 0), so the
     // old combined visible-only guard must be gone.
     assert.doesNotMatch(body, /width > 0 && height > 0 && \(width !== lastWidth/, 'must not gate the cache update behind the visible-size check (hidden state must be recorded so render() skips)');

@@ -52,8 +52,8 @@ const SCHEMA_SINGLE_KEYS = new Set([
 // cost, so selected groups always reduce the served artifact.
 // The pass stays lossless either way — every transform is resolved back to the
 // source document in tests — so the thresholds only trade emit time for bytes.
-const MIN_SHARED_SCHEMA_BYTES = 48;
-const MIN_GROUP_SAVING_BYTES = 48;
+const MIN_SHARED_SCHEMA_BYTES = 40;
+const MIN_GROUP_SAVING_BYTES = 20;
 
 function pointerSegment(value) {
   return value.replaceAll('~', '~0').replaceAll('/', '~1');
@@ -317,6 +317,13 @@ export function dedupeSharedSubtreeComponents(spec) {
     }
   };
   for (const [name, schema] of Object.entries(schemas)) visit(schema, schemas, name);
+  // Hoisted error responses (dedupeErrorResponses runs first) carry Schema
+  // Objects too, and their envelopes repeat across status codes.
+  for (const response of Object.values(spec.components?.responses ?? {})) {
+    for (const media of Object.values(response?.content ?? {})) {
+      if (media && typeof media === 'object' && media.schema) visit(media.schema, media, 'schema');
+    }
+  }
 
   // Ref bytes for a name two ordinals wide: `WM99`. Selection only needs
   // a stable estimate; the exact per-group saving is recomputed once the group

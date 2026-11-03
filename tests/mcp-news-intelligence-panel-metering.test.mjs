@@ -14,7 +14,9 @@ const originalEnv = { ...process.env };
 const context = { kind: 'pro', userId: 'user_pro_xyz', mcpTokenId: 'k57mcptokenid' };
 const budget = { allowance: 'mcp', limit: 50 };
 const start = Date.UTC(2026, 9, 5, 10, 1, 0, 250);
-const keys = ['news:insights:v1', 'intelligence:gdelt-intel:v1', 'intelligence:cross-source-signals:v1', 'intelligence:advisories-bootstrap:v1', 'seed-meta:news:insights', 'seed-meta:intelligence:gdelt-intel', 'seed-meta:intelligence:cross-source-signals'];
+const keys = ['news:insights:v1', 'intelligence:gdelt-intel:v1', 'intelligence:cross-source-signals:v1', 'intelligence:advisories-bootstrap:v1', 'seed-meta:news:insights', 'seed-meta:intelligence:gdelt-intel', 'seed-meta:intelligence:cross-source-signals', 'news:insights:v1:pool'];
+// One source read per bundled key: a repeat that reads again did not reuse the original.
+const READS = keys.length;
 
 describe('News Intelligence closed paid admission', () => {
   let handler, now, sources, fetched, advanceOnSource;
@@ -29,6 +31,11 @@ describe('News Intelligence closed paid admission', () => {
     [keys[4]]: { fetchedAt: now, recordCount: 2 },
     [keys[5]]: { fetchedAt: now, recordCount: 6, maxContentAgeMin: 45, newestItemAt: now, oldestItemAt: now },
     [keys[6]]: { fetchedAt: now, recordCount: 0 },
+    [keys[7]]: { generatedAt: new Date(now).toISOString(), clusterCount: 3, droppedForSize: 0, stories: [
+      { primaryTitle: 'US trade talks', primarySource: 'Reuters', countryCode: 'US', countryCodes: ['US'], category: 'economy', isAlert: true, effectiveImportanceScore: 88 },
+      { primaryTitle: 'Japan cyber update', primarySource: 'AP', countryCode: 'JP', countryCodes: ['JP'], category: 'cyber', isAlert: false, effectiveImportanceScore: 70 },
+      { primaryTitle: 'Kenya port strike', primarySource: 'AFP', countryCode: 'KE', countryCodes: ['KE'], category: 'economy', isAlert: false, effectiveImportanceScore: 30 },
+    ] },
   });
   const invoke = async (bundle, args = {}, name = 'get_news_intelligence') => {
     const response = await handler(proReq('POST', callBody(name, args)), bundle.deps);
@@ -58,19 +65,34 @@ describe('News Intelligence closed paid admission', () => {
     for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
     Object.assign(process.env, originalEnv);
   });
-  it('opens once and filters canonical originals without seven more source reads', async () => {
+  it('opens once and filters canonical originals without another round of source reads', async () => {
     const bundle = makeProDeps(); const first = await invoke(bundle); await invoke(bundle);
-    assert.equal(bundle.pipe.count, 1, 'one allocation for opening/repeat'); assert.equal(fetched.length, 7);
+    assert.equal(bundle.pipe.count, 1, 'one allocation for opening/repeat'); assert.equal(fetched.length, READS);
     const receipt = value(first).panelRequest; assert.equal(receipt.panel, 'news-intelligence');
     assert.equal(first.body.result._meta['worldmonitor/usage'].remaining, 49);
-    for (const [args, titles] of [[{ country: 'USA' }, ['US trade talks']], [{ category: 'cyber' }, ['Japan cyber update']], [{ query: 'trade', min_importance: 80, alerts_only: true, limit: 0 }, ['US trade talks']], [{ limit: 1.9 }, ['US trade talks']]]) {
+    for (const [args, titles] of [[{ country: 'USA' }, ['US trade talks']], [{ category: 'cyber' }, ['Japan cyber update']], [{ query: 'trade', min_importance: 80, alerts_only: true, limit: 0 }, ['US trade talks']], [{ limit: 1.9 }, ['US trade talks']], [{ country: 'KE' }, ['Kenya port strike']]]) {
       assert.deepEqual(value(await invoke(bundle, args)).data.insights.topStories.map(row => row.primaryTitle), titles);
     }
     assert.equal(value(await invoke(bundle, { summary: true })).data.insights.topStories.count, 2);
     assert.equal(value(await invoke(bundle, { jmespath: '@' })).data.insights.topStories.length, 2);
     assert.equal(value(await invoke(bundle, { summary: true, jmespath: '@' })).data.insights.topStories.count, 2);
-    assert.equal(fetched.length, 7); assert.equal(bundle.pipe.count, 1);
+    assert.equal(fetched.length, READS); assert.equal(bundle.pipe.count, 1);
     const original = JSON.parse(cache(bundle)[0][1]); assert.equal(original.value.data.insights.topStories.length, 2); assert.equal(typeof original.reuseUntil, 'number');
+  });
+  it('pages pool matches with stories_cursor on the same paid opening', async () => {
+    const bundle = makeProDeps(); await invoke(bundle);
+    const first = value(await invoke(bundle, { min_importance: 0, limit: 1 })).data.insights;
+    assert.deepEqual(first.topStories.map(row => row.primaryTitle), ['US trade talks']);
+    assert.equal(first.storyScope.matchingStories, 3);
+    const titles = [...first.topStories.map(row => row.primaryTitle)];
+    let cursor = first.storyScope.nextCursor;
+    while (cursor) {
+      const page = value(await invoke(bundle, { min_importance: 0, limit: 1, stories_cursor: cursor })).data.insights;
+      titles.push(...page.topStories.map(row => row.primaryTitle));
+      cursor = page.storyScope.nextCursor;
+    }
+    assert.deepEqual(titles, ['US trade talks', 'Japan cyber update', 'Kenya port strike']);
+    assert.equal(fetched.length, READS); assert.equal(bundle.pipe.count, 1);
   });
   it('reuses GDELT originals whose producer record count measures articles', async () => {
     const bundle = makeProDeps();
@@ -80,7 +102,7 @@ describe('News Intelligence closed paid admission', () => {
     await invoke(bundle);
     assert.equal(value(first).data['gdelt-intel'].topics.length, 6);
     assert.equal(cache(bundle).length, 1);
-    assert.equal(fetched.length, 7);
+    assert.equal(fetched.length, READS);
     assert.equal(bundle.pipe.count, 1);
   });
   for (const failure of [{ status: 'error' }, { errorReason: 'gdelt_bulk_outputs_incomplete' }, { status: 'error', errorReason: 'gdelt_bulk_cursor_write_failed' }]) {
@@ -95,7 +117,7 @@ describe('News Intelligence closed paid admission', () => {
       await invoke(bundle);
       assert.equal(value(recovered).stale, false);
       assert.equal(cache(bundle).length, 1);
-      assert.equal(fetched.length, 14);
+      assert.equal(fetched.length, 2 * READS);
       assert.equal(bundle.pipe.count, 1);
     });
   }
@@ -104,7 +126,7 @@ describe('News Intelligence closed paid admission', () => {
     const request_id = '550E8400-E29B-41D4-A716-446655440000';
     const fresh = value(await invoke(bundle, { refresh: true, request_id })).panelRequest;
     assert.equal(value(await invoke(bundle, { refresh: true, request_id: request_id.toLowerCase() })).panelRequest.token, fresh.token);
-    assert.equal(bundle.pipe.count, 2); assert.equal(fetched.length, 14);
+    assert.equal(bundle.pipe.count, 2); assert.equal(fetched.length, 2 * READS);
     assert.equal((await invoke(bundle, { panel_request: fresh.token, refresh: true, request_id })).body.error.code, -32602);
     const news = await admitNewsPanel(context, budget, bundle.pipe.pipeline, {});
     const country = await admitCountryPanel(context, budget, bundle.pipe.pipeline, { country_code: 'US' });
@@ -112,7 +134,7 @@ describe('News Intelligence closed paid admission', () => {
     await assert.rejects(authorizePanelRead({ ...context, userId: 'other' }, bundle.pipe.pipeline, 'get_news_intelligence', {}, receipt.token));
     await assert.rejects(authorizePanelRead(context, bundle.pipe.pipeline, 'open_news_dashboard', {}, receipt.token));
     now = Date.parse(receipt.expiresAt); assert.equal((await invoke(bundle, { panel_request: receipt.token })).body.error.code, -32602);
-    assert.equal(fetched.length, 14);
+    assert.equal(fetched.length, 2 * READS);
   });
   for (const [label, mutate] of [
     ['missing Insights', () => { sources[keys[0]] = null; }],
@@ -136,12 +158,12 @@ describe('News Intelligence closed paid admission', () => {
   ]) it(`keeps ${label} retryable without a second opening`, async () => {
     const bundle = makeProDeps(); mutate(); const initial = await invoke(bundle); assert.equal(initial.body.error, undefined);
     assert.equal(cache(bundle).length, 0); sources = payload(); await invoke(bundle); await invoke(bundle);
-    assert.equal(fetched.length, 14); assert.equal(bundle.pipe.count, 1);
+    assert.equal(fetched.length, 2 * READS); assert.equal(bundle.pipe.count, 1);
   });
   it('uses each source deadline and rejects expiry after Redis lookup and before cache SET', async () => {
     const bundle = makeProDeps(); sources[keys[4]].fetchedAt = now - 1_800_000 + 1500;
     await invoke(bundle); const entry = JSON.parse(cache(bundle)[0][1]); assert.equal(entry.reuseUntil, start + 1500);
-    now += 1500; sources = payload(); await invoke(bundle); assert.equal(fetched.length, 14); assert.equal(bundle.pipe.count, 1);
+    now += 1500; sources = payload(); await invoke(bundle); assert.equal(fetched.length, 2 * READS); assert.equal(bundle.pipe.count, 1);
     const short = makeProDeps(); sources = payload(); sources[keys[4]].fetchedAt = now - 1_800_000 + 999;
     await invoke(short); assert.equal(cache(short).length, 0);
     const elapsed = makeProDeps(); sources = payload(); sources[keys[4]].fetchedAt = now - 1_800_000 + 500;
@@ -183,21 +205,21 @@ describe('News Intelligence closed paid admission', () => {
     assert.equal((await invoke(bundle, { panel_request: token })).body.result._meta['worldmonitor/usage'].remaining, 48);
     counter = null;
     assert.equal((await invoke(bundle, { panel_request: token })).body.result._meta?.['worldmonitor/usage'], undefined);
-    await invoke(bundle, { panel_request: 'forged' }); assert.equal(reads, 2); assert.equal(fetched.length, 7); assert.equal(bundle.pipe.count, 1);
+    await invoke(bundle, { panel_request: 'forged' }); assert.equal(reads, 2); assert.equal(fetched.length, READS); assert.equal(bundle.pipe.count, 1);
   });
   it('retains rights, revocation, quota and the 64 uncached execution limit', async () => {
     const bundle = makeProDeps(); sources[keys[0]].status = 'degraded';
     const token = value(await invoke(bundle)).panelRequest.token;
     for (let i = 1; i < 64; i++) assert.equal((await invoke(bundle, { panel_request: token })).body.error, undefined);
     assert.equal((await invoke(bundle, { panel_request: token })).response.status, 429);
-    assert.equal(fetched.length, 64 * 7); assert.equal(bundle.pipe.count, 1);
+    assert.equal(fetched.length, 64 * READS); assert.equal(bundle.pipe.count, 1);
     bundle.deps.getEntitlements = async () => ({ features: { tier: 1, mcpAccess: false } });
     assert.equal((await invoke(bundle, { panel_request: token })).response.status, 403);
     bundle.deps.validateProMcpToken = async () => null;
     assert.equal((await invoke(bundle, { panel_request: token })).response.status, 401);
     assert.equal((await invoke(makeProDeps({ pipelineOpts: { initialCount: 50 } }))).response.status, 429);
     assert.equal((await invoke(makeProDeps({ pipelineOpts: { throwOnEval: true } }))).response.status, 503);
-    assert.equal(fetched.length, 64 * 7);
+    assert.equal(fetched.length, 64 * READS);
   });
   it('validates source envelopes, cache wrappers and the wrapped 512KiB boundary', async () => {
     const bundle = makeProDeps(); const opened = value(await invoke(bundle)); const token = opened.panelRequest.token;
@@ -206,7 +228,7 @@ describe('News Intelligence closed paid admission', () => {
     for (const invalid of ['invalid json', JSON.stringify({ ...original, reuseUntil: now }), JSON.stringify({ ...original, extra: true }), JSON.stringify({ ...original, value: { ...original.value, data: { ...original.value.data, insights: null } } })]) {
       bundle.pipe.store.set(key, invalid); await invoke(bundle, { panel_request: token });
     }
-    assert.equal(fetched.length, 35); assert.equal(bundle.pipe.count, 1);
+    assert.equal(fetched.length, 5 * READS); assert.equal(bundle.pipe.count, 1);
     bundle.pipe.store.delete(key);
     const { panelRequest: _receipt, ...originalValue } = opened;
     originalValue.padding = 'x'.repeat(524288 - Buffer.byteLength(JSON.stringify(originalValue)));
@@ -226,7 +248,7 @@ describe('News Intelligence closed paid admission', () => {
       if (commands.length === 2 && commands.every(command => command[0] === 'GET')) now += 1500;
       return result;
     };
-    await invoke(bundle, { panel_request: token }); assert.equal(fetched.length, 14); assert.equal(bundle.pipe.count, 1);
+    await invoke(bundle, { panel_request: token }); assert.equal(fetched.length, 2 * READS); assert.equal(bundle.pipe.count, 1);
   });
   for (const [index, age] of [[4, 30], [5, 45], [6, 60]]) it(`bounds reuse by metadata source ${index}`, async () => {
     const bundle = makeProDeps(); sources[keys[index]].fetchedAt = now - age * 60_000 + 2000;
@@ -251,14 +273,14 @@ describe('News Intelligence closed paid admission', () => {
       assert.equal(value(await invoke(paid, { category: 'cyber' })).data.insights.topStories.length, 2);
       const api = makeProDeps({ getEntitlements: async () => ({ planKey: 'api-starter', features: { tier: 1, mcpAccess: true, apiAccess: true, planLimits: { apiCallsPerDay: 1000, mcpCallsPerDay: 'shared-api-budget' } }, validUntil: now + 86400000 }) });
       assert.equal(value(await invoke(api)).data.insights.topStories.length, 2);
-      assert.equal(fetched.length, 14); assert.equal(paid.pipe.count, 1);
+      assert.equal(fetched.length, 2 * READS); assert.equal(paid.pipe.count, 1);
     } finally { tool._postFilter = original; }
   });
 
   it('retains the public 128KiB output budget without another admission on retry', async () => {
     const bundle = makeProDeps(); sources[keys[0]].padding = 'x'.repeat(140000);
     const first = await invoke(bundle); assert.equal(first.body.result.structuredContent._budget_exceeded, true); assert.equal(first.body.result.structuredContent.budget_bytes, 131072);
-    await invoke(bundle); assert.equal(bundle.pipe.count, 1); assert.equal(fetched.length, 7);
+    await invoke(bundle); assert.equal(bundle.pipe.count, 1); assert.equal(fetched.length, READS);
   });
 
   for (const [age, stale] of [[3_599_999, false], [3_600_000, true], [3_600_001, true]]) it(`discloses cross-source evaluation age ${age} and recovers the same admission`, async () => {
@@ -271,7 +293,7 @@ describe('News Intelligence closed paid admission', () => {
     const recovered = value(await invoke(bundle));
     assert.equal(recovered.stale, false); assert.equal(recovered.freshnessUnknown, undefined);
     assert.equal(cache(bundle).length, 1); await invoke(bundle);
-    assert.equal(fetched.length, 14); assert.equal(bundle.pipe.count, 1);
+    assert.equal(fetched.length, 2 * READS); assert.equal(bundle.pipe.count, 1);
     for (const plan of ['api', 'free']) {
       sources[keys[2]].evaluatedAt = now - 3_600_001;
       const getEntitlements = async () => plan === 'api'
@@ -288,7 +310,7 @@ describe('News Intelligence closed paid admission', () => {
     assert.equal(cache(bundle).length, 0);
     sources = payload(); const recovered = value(await invoke(bundle));
     assert.equal(recovered.stale, false); assert.equal(recovered.freshnessUnknown, undefined); await invoke(bundle);
-    assert.equal(cache(bundle).length, 1); assert.equal(fetched.length, 14); assert.equal(bundle.pipe.count, 1);
+    assert.equal(cache(bundle).length, 1); assert.equal(fetched.length, 2 * READS); assert.equal(bundle.pipe.count, 1);
   });
   for (const [seed, stale, unknown] of [
     [{ fetchedAt: start, state: 'ERROR', failedDatasets: ['cyber'], errorReason: 'gdelt_429' }, true, undefined],
@@ -300,7 +322,7 @@ describe('News Intelligence closed paid admission', () => {
     assert.equal(first.data['gdelt-intel']._seed, undefined); assert.equal(cache(bundle).length, 0);
     sources = payload(); const recovered = value(await invoke(bundle));
     assert.equal(recovered.stale, false); assert.equal(recovered.freshnessUnknown, undefined); await invoke(bundle);
-    assert.equal(cache(bundle).length, 1); assert.equal(fetched.length, 14); assert.equal(bundle.pipe.count, 1);
+    assert.equal(cache(bundle).length, 1); assert.equal(fetched.length, 2 * READS); assert.equal(bundle.pipe.count, 1);
   });
 
   for (const [label, failure] of [['sourceState', { sourceState: 'degraded' }], ['failedSources', { failedSources: ['fixture-provider'] }]]) it(`discloses failed metadata ${label} and recovers`, async () => {
@@ -309,7 +331,7 @@ describe('News Intelligence closed paid admission', () => {
     assert.equal(cache(bundle).length, 0); assert.equal(first.data.insights.sourceState, undefined);
     sources = payload(); const recovered = value(await invoke(bundle));
     assert.equal(recovered.stale, false); assert.equal(recovered.freshnessUnknown, undefined); await invoke(bundle);
-    assert.equal(cache(bundle).length, 1); assert.equal(fetched.length, 14); assert.equal(bundle.pipe.count, 1);
+    assert.equal(cache(bundle).length, 1); assert.equal(fetched.length, 2 * READS); assert.equal(bundle.pipe.count, 1);
   });
 
   it('marks stale Insights generation and unassessed GDELT clocks explicitly, then recovers the same admission', async () => {
@@ -322,7 +344,7 @@ describe('News Intelligence closed paid admission', () => {
       else assert.equal(initial.freshnessUnknown, true, 'absent content assessment cannot report assessed fresh');
       assert.equal(cache(bundle).length, 0); sources = payload();
       const recovered = value(await invoke(bundle)); assert.equal(recovered.stale, false); assert.equal(recovered.freshnessUnknown, undefined);
-      await invoke(bundle); assert.equal(fetched.length, source === 'Insights' ? 14 : 28); assert.equal(bundle.pipe.count, 1);
+      await invoke(bundle); assert.equal(fetched.length, source === 'Insights' ? 2 * READS : 4 * READS); assert.equal(bundle.pipe.count, 1);
     }
   });
 

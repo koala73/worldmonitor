@@ -1,4 +1,5 @@
 import type { AttributionRider } from '../../shared/attribution-rider';
+import { isPlainObject } from './utils';
 
 // ---------------------------------------------------------------------------
 // `structuredContent` + the schema it is advertised under (#8328)
@@ -37,6 +38,11 @@ const NON_DOCUMENTED_BRANCHES: readonly object[] = [
   { required: ['_jmespath_error'] },
 ];
 
+// `response_mode: "spoken"` (#9722): the sentence-and-citations envelope a
+// tool with a `_spoken` narrator returns instead of its documented shape.
+// Advertised only on those tools; the key never appears at a documented root.
+const SPOKEN_BRANCH: object = { required: ['spoken', 'citations'] };
+
 export const DEPRECATION_NOTICE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -73,9 +79,13 @@ export const DEPRECATION_NOTICE_SCHEMA = {
 /** The `outputSchema` to advertise for a tool whose documented shape is `documented`. */
 export function advertisedOutputSchema(
   documented: object,
-  opts?: { permitDeprecation?: boolean },
+  opts?: { permitDeprecation?: boolean; permitSpoken?: boolean },
 ): object {
-  const branches: object[] = [documented, ...structuredClone(NON_DOCUMENTED_BRANCHES)];
+  const branches: object[] = [
+    documented,
+    ...structuredClone(NON_DOCUMENTED_BRANCHES),
+    ...(opts?.permitSpoken === true ? [structuredClone(SPOKEN_BRANCH)] : []),
+  ];
   const anyOf = opts?.permitDeprecation === true ? branches.map((branch) => permitDeprecationRoot(branch)) : branches;
   return { type: 'object', anyOf };
 }
@@ -106,10 +116,6 @@ function hasNestedDeprecationProperty(root: Record<string, unknown>): boolean {
     return Object.values(node).some((value) => visit(value, false));
   };
   return visit(root, true);
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**

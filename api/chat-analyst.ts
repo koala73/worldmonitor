@@ -20,14 +20,17 @@ import { getCorsHeaders } from './_cors.js';
 import { captureSilentError } from './_sentry-edge.js';
 import { renderBillingVerificationDenial } from '../server/_shared/entitlement-check';
 import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check';
+import { chargeDesktopKeyBudget, desktopKeyBudgetResponse } from '../server/_shared/desktop-key-meter';
 import { checkRateLimit } from '../server/_shared/rate-limit';
 import { runRedisPipeline } from '../server/_shared/redis';
 import { DIRECT_LLM_DAILY_QUOTA_LIMIT, reserveDirectLlmQuota } from '../server/_shared/direct-llm-quota';
 import { reportHighUsageIfCrossed } from '../server/_shared/high-usage-alarm';
 import { assembleAnalystContext } from '../server/worldmonitor/intelligence/v1/chat-analyst-context';
-import { buildAnalystSystemPrompt } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt';
+import { buildAnalystMessages } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt';
 import { buildActionEvents } from '../server/worldmonitor/intelligence/v1/chat-analyst-actions';
+import { withPriceGrounding } from '../server/worldmonitor/intelligence/v1/chat-analyst-grounding';
 import { callLlmReasoningStream } from '../server/_shared/llm';
+import { getAiRoutingDecisionForUser, toLlmRoutingPolicy } from '../server/_shared/ai-routing-policy';
 import { sanitizeForPrompt } from '../server/_shared/llm-sanitize.js';
 
 const MAX_QUERY_LEN = 500;
@@ -205,6 +208,20 @@ export default async function handler(req: Request): Promise<Response> {
     const rateLimitResponse = await checkRateLimit(req, corsHeaders, { failClosed: true });
     if (rateLimitResponse) return rateLimitResponse;
 
+    // Per-account desktop-key meter (plan 2026-10-25-001, KTD6 / R6). This
+    // route is not served by the gateway, so the owner's daily ceiling and
+    // burst bucket are charged here — every desktop-key request counts, as on
+    // the gateway, before the body is read; the direct-LLM quota below is the
+    // separate spend control and still waits for a valid query.
+    if (premiumIdentity.kind === 'desktop-key') {
+      const budget = await chargeDesktopKeyBudget({
+        userId: premiumIdentity.userId,
+        entitlement: premiumIdentity.desktopKeyMeter,
+        pipeline: (cmds) => runRedisPipeline(cmds),
+      });
+      if (!budget.ok) return desktopKeyBudgetResponse(budget, corsHeaders);
+    }
+
     let body: ChatAnalystRequestBody;
     try {
       body = (await req.json()) as ChatAnalystRequestBody;
@@ -281,17 +298,21 @@ export default async function handler(req: Request): Promise<Response> {
     const retrievalQuery = prevUserTurn ? `${query} ${prevUserTurn}` : query;
 
     const context = await assembleAnalystContext(geoContext, domainFocus, retrievalQuery);
-    const systemPrompt = buildAnalystSystemPrompt(context, domainFocus);
+    // Instructions in the system prompt, feed-derived context in the final user
+    // turn next to the question: untrusted text never shares the system role.
+    const messages = buildAnalystMessages({ context, domainFocus, history, query });
 
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      ...history,
-      { role: 'user', content: query },
-    ];
-
+    // Chat turns are the caller's own text: a restricted account streams only
+    // from its allowed providers (ai-routing-policy.ts).
+    const routingPolicy = toLlmRoutingPolicy(await getAiRoutingDecisionForUser(premiumIdentity.userId));
     const llmStream = callLlmReasoningStream({
       messages,
+      routingPolicy,
       maxTokens: 600,
+      // 600 tokens cannot carry DeepSeek V4 Flash's hidden reasoning: with it
+      // on, the model returned empty or cut answers (eval 2026-10-26; #9195
+      // measured the same for deduct-situation). Reasoning off answers in ~5s.
+      enableReasoning: false,
       temperature: 0.35,
       timeoutMs: 25_000,
       signal: req.signal,
@@ -305,13 +326,32 @@ export default async function handler(req: Request): Promise<Response> {
     // Always prepend a meta event so the client knows which sources are live
     // and whether context is degraded — before the first token arrives.
     // Optionally follows with an action event for visual/chart queries.
-    const stream = prependSseEvents(
-      [
-        { meta: { sources: context.activeSources, degraded: context.degraded } },
-        ...buildActionEvents(query).map((a) => ({ action: a })),
-      ],
-      llmStream,
-      rollbackUnservedQuota,
+    //
+    // Outermost, a price the answer states must appear in the user turn (the
+    // live-context block plus the question): on 2026-10-27 the analyst gave an
+    // "$80" Brent level that nothing in its context supported. Streamed tokens
+    // cannot be retracted, so an unsupported figure gets a visible caveat before
+    // the terminal event and is reported here so the miss rate is observable.
+    // The quota wrapper stays directly on the provider stream: whether answer
+    // content was served is judged on the raw bytes, with no stage in between.
+    const groundText = messages.filter((m) => m.role === 'user').map((m) => m.content).join('\n');
+    const stream = withPriceGrounding(
+      prependSseEvents(
+        [
+          { meta: { sources: context.activeSources, degraded: context.degraded } },
+          ...buildActionEvents(query).map((a) => ({ action: a })),
+        ],
+        llmStream,
+        rollbackUnservedQuota,
+      ),
+      groundText,
+      (prices) => {
+        console.warn(`[chat-analyst] answer stated prices absent from the live context: ${prices.join(', ')}`);
+        void captureSilentError(new Error(`chat-analyst answer stated unsupported price(s): ${prices.join(', ')}`), {
+          tags: { route: 'api/chat-analyst', step: 'price-grounding' },
+          fingerprint: ['api/chat-analyst', 'price-grounding'],
+        });
+      },
     );
 
     return new Response(stream, {

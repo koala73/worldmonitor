@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { ingestSemaEntries, mergeSanctionEntries, parseSemaXml, SEMA_SOURCE, SANCTIONS_SOURCE_VERSION } from '../scripts/_sema-sanctions.mjs';
-import { CSL_ROW_ID, CSL_SOURCES } from '../scripts/_csl-sanctions.mjs';
+import { ingestSemaEntries, mergeSanctionEntries, parseSemaXml, SEMA_SOURCE, SEMA_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION } from '../scripts/_sema-sanctions.mjs';
+import { CSL_ROW_ID, CSL_SOURCES, CSL_TIMEOUT_MS } from '../scripts/_csl-sanctions.mjs';
 
 // Normalize values produced inside a vm context to host-realm equivalents.
 // Needed because deepStrictEqual checks prototypes — vm Arrays ≠ host Arrays.
@@ -45,18 +45,22 @@ const fetchPressureSrc = seedSrc.slice(
   seedSrc.indexOf('\nfunction validate('),
 );
 
-async function partialPublication({ sources = ['CONSOLIDATED'], cached = [], snapshots = null, semaJson } = {}) {
+async function partialPublication({ sources = ['CONSOLIDATED'], cached = [], snapshots = null, semaJson, deadlines = {} } = {}) {
   const context = vm.createContext({
     console: { log() {}, warn() {} },
-    SEMA_SOURCE, SANCTIONS_SOURCE_VERSION, Buffer, gzipSync, gunzipSync,
+    SEMA_SOURCE, SEMA_TIMEOUT_MS, CSL_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION, Buffer, gzipSync, gunzipSync,
     mergeSanctionEntries, buildSanctionsChanges,
     verifySeedKey: async (key) => key === 'sanctions:pressure:v1' ? { entries: cached } : null,
     readSeedSnapshot: async key => key === 'sanctions:source-snapshots:v1' ? snapshots : null,
     ingestSemaEntries: semaJson === undefined
       ? async () => ({ records: [], publishedAtMs: 0, error: 'SEMA_INVALID_RECORD' })
       : () => ingestSemaEntries({ fetchFn: async () => new Response(JSON.stringify(semaJson)) }),
-    CSL_SOURCES, CSL_ROW_ID, ingestCslEntries: async () => ({ lists: {}, error: 'CSL_FIXTURE_OFF' }),
-    fetchSource: async ({ label }) => {
+    CSL_SOURCES, CSL_ROW_ID, ingestCslEntries: async ({ deadlineAt }) => {
+      deadlines.csl = deadlineAt;
+      return { lists: {}, error: 'CSL_FIXTURE_OFF' };
+    },
+    fetchSource: async ({ label }, { deadlineAt }) => {
+      deadlines[label] = deadlineAt;
       if (!sources.includes(label)) throw new Error('source timeout');
       return {
         datasetDate: Date.UTC(2026, 8, 14),
@@ -67,7 +71,8 @@ async function partialPublication({ sources = ['CONSOLIDATED'], cached = [], sna
       };
     },
   });
-  vm.runInContext(`${pureSrc}\n${fetchPressureSrc}`, context);
+  vm.runInContext(`${pureSrc}\n${fetchPressureSrc}\nglobalThis.FETCH_PHASE_TIMEOUT_MS = FETCH_PHASE_TIMEOUT_MS;`, context);
+  deadlines.fetchPhaseTimeoutMs = context.FETCH_PHASE_TIMEOUT_MS;
   return normalize(await context.fetchSanctionsPressure());
 }
 
@@ -144,6 +149,23 @@ describe('partial sanctions publication', () => {
     assert.equal(data.totalCount, 2);
     assert.equal(data.entries.find((e) => e.id === records[0].id).effectiveAt, '0');
     assert.equal(data.semaError, 'SEMA_INVALID_RECORD');
+  });
+
+  // runSeed discards the whole run at the fetch-phase timeout, so OFAC must stop
+  // early enough for SEMA and the CSL download that run after it.
+  it('ends the OFAC fetches early enough for SEMA and CSL to finish inside the fetch phase', async () => {
+    const deadlines = {};
+    const before = Date.now();
+    await partialPublication({ sources: ['SDN', 'CONSOLIDATED'], deadlines });
+    const after = Date.now();
+    const { fetchPhaseTimeoutMs, csl, SDN, CONSOLIDATED } = deadlines;
+
+    assert.ok(Number.isFinite(fetchPhaseTimeoutMs) && fetchPhaseTimeoutMs > 0);
+    assert.equal(CONSOLIDATED, SDN, 'both OFAC sources share one deadline');
+    assert.ok(csl <= after + fetchPhaseTimeoutMs, 'CSL must stop inside the fetch phase');
+    assert.ok(csl - SDN >= SEMA_TIMEOUT_MS + CSL_TIMEOUT_MS,
+      `only ${csl - SDN} ms between the OFAC and CSL deadlines; SEMA and CSL need ${SEMA_TIMEOUT_MS + CSL_TIMEOUT_MS} ms`);
+    assert.ok(SDN > before, 'OFAC keeps a positive budget');
   });
 });
 

@@ -474,6 +474,7 @@ PROTO_INPUTS=(
   scripts/shared/giving-published-estimate-claims.json
   scripts/shared/iso2-to-region.json
   server/_shared/api-key-rate-limit.ts
+  server/_shared/api-only-paths.ts
   server/_shared/auth-session.ts
   server/_shared/bounded-jmespath.ts
   server/_shared/bounded-json.ts
@@ -481,6 +482,8 @@ PROTO_INPUTS=(
   server/_shared/client-ip.ts
   server/_shared/country-history-access.ts
   server/_shared/deprecation-policy.ts
+  server/_shared/desktop-key-meter.ts
+  server/_shared/desktop-key-principal.ts
   server/_shared/direct-llm-quota.ts
   server/_shared/entitlement-check.ts
   server/_shared/entitlement-coverage.ts
@@ -499,6 +502,7 @@ PROTO_INPUTS=(
   server/_shared/sub-request-admission.ts
   server/_shared/usage-identity.ts
   server/_shared/usage.ts
+  server/_shared/user-api-key.ts
   server/auth-session.ts
   server/cors.ts
   server/error-mapper.ts
@@ -518,6 +522,7 @@ PROTO_INPUTS=(
   shared/decision-signal-provenance-contract.ts
   shared/decision-signal-provenance-families.ts
   shared/decision-signal-provenance.ts
+  shared/desktop-key-access.js
   shared/embed-access.ts
   shared/embed-panels.ts
   shared/event-triggers.json
@@ -667,7 +672,7 @@ if changed '^(src/|api/|server/|scripts/check-sentry-coverage\.mjs$)'; then
   node scripts/check-sentry-coverage.mjs || exit 1
 fi
 
-if changed '^(api/health\.js|scripts/check-health-probe-cutovers\.mts|scripts/check-seed-freshness\.mjs|scripts/seed-freshness-baseline\.json)$'; then
+if changed '^(api/health\.js|scripts/check-health-probe-cutovers\.mts)$'; then
   echo "Running health-probe cutover check..."
   node --import tsx scripts/check-health-probe-cutovers.mts origin/main || exit 1
 else
@@ -1094,6 +1099,15 @@ if [ "$RUN_ALL" = true ] || path_matches '^pro-test/|^convex/config/productCatal
   fi
 else
   echo "  Skipped (no pro-test/, product catalog, or product-config generator changes in branch)."
+fi
+
+echo "Running derived-file freshness check..."
+# Stale generated files (product facts, llms, AI search, catalogs, …) were over
+# half of CI test failures. Regenerate them here so the fix is one commit.
+if ! node scripts/generate-derived.mjs --check; then
+  node scripts/generate-derived.mjs || exit 1
+  echo "ERROR: derived files were stale and are now regenerated. Review and commit them, then push again."
+  exit 1
 fi
 
 echo "Running version sync check..."
