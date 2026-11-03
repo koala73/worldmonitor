@@ -90,6 +90,14 @@ Native administration routes under `/api/local-` return `403` in Docker mode, in
 - Direct-LLM spend on that route is capped at 50 calls per UTC day per client IP. nginx stamps `X-Real-IP` from `$remote_addr`, so a caller cannot rotate the header to reset the cap. Rotating the session token also does not reset spend.
 - Every other premium route still requires an API key or a Clerk entitlement. Cloud deployments do not set `LOCAL_API_MODE=docker` and keep key plus entitlement enforcement on this route too.
 
+### Sign-in and Pro panels
+
+A worldmonitor.app account, including a paid Pro plan, does not unlock anything on a self-hosted instance. Pro entitlements live in the hosted Clerk and Convex services, which a self-hosted stack does not call.
+
+- Sign-in needs the frontend built with `VITE_CLERK_PUBLISHABLE_KEY`. Without it Clerk never loads, and the browser console logs `[clerk] VITE_CLERK_PUBLISHABLE_KEY not set, auth disabled`. Setting the key alone is not enough: entitlements also need a Convex deployment and its billing webhooks, which this guide does not cover.
+- Pro panels therefore stay locked on a standard self-hosted install. Signing in with a worldmonitor.app Pro account does not change that.
+- Premium **API** routes and the MCP server are available on your own instance with an operator key from `WORLDMONITOR_VALID_KEYS` (see [Using the MCP server](#-using-the-mcp-server)).
+
 If another reverse proxy sits in front of the World Monitor container, set
 `WM_TRUSTED_PROXY_CIDRS` to that proxy's IP address or network. Separate multiple
 values with commas, for example `WM_TRUSTED_PROXY_CIDRS=172.20.0.0/16,2001:db8::/32`.

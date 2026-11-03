@@ -42,6 +42,8 @@ The repository contains the whole stack, not a demo build:
 
 **Accounts, billing and entitlements.** Docker mode (`LOCAL_API_MODE=docker`) has no Clerk or Convex backend. The dashboard mints an anonymous `wms_` session signed by `WM_SESSION_SECRET`. Among the premium routes served through the Sebuf gateway, `GET /api/intelligence/v1/get-country-intel-brief` is the only one where that session satisfies the gateway's authentication boundary in Docker mode; its direct-LLM spend is capped at 50 calls per UTC day per client IP. The other premium gateway routes require an API key from your own `WORLDMONITOR_VALID_KEYS` allowlist. Some direct edge routes outside the gateway, such as the RSS proxy and the X and Telegram feed proxies, accept the session as well, as they do on the hosted deployment. This is the answer to the recurring "self-hosted instance returns 401 before the handler runs" report: the route was gated by the entitlement check that the hosted deployment uses, and Docker mode now accepts the local session there.
 
+**Hosted accounts and Pro.** A worldmonitor.app account, including a paid Pro plan, unlocks nothing on a self-hosted instance, because Pro entitlements live in the hosted Clerk and Convex services. Sign-in needs the frontend built with `VITE_CLERK_PUBLISHABLE_KEY`, and a working entitlement path also needs a Convex deployment with billing webhooks. Pro panels therefore stay locked on a standard self-hosted install. Premium API routes and the MCP server answer operator keys from `WORLDMONITOR_VALID_KEYS`.
+
 **Native administration routes.** `/api/local-*` returns `403` in Docker mode. Operator settings are changed through Compose environment variables or Docker secrets, then a container recreate.
 
 ## AGPL obligations, plainly
