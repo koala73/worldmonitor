@@ -33,7 +33,7 @@ import { trackGateHit } from '@/services/analytics';
 import { renderPopupSourceLinks } from './map-popup-source-links';
 import { overlayHistory, type OverlayCloseOrigin, type OverlayOpenHandle } from '@/utils/overlay-history';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
-import { aptSectorLabel, aptTacticLabel, countryLabel, datacenterSectorLabel, isSameLocation, localizeRelativePlace, parseGdeltReportTitle, severityLabel, statusLabel } from './map-popup-i18n';
+import { aptSectorLabel, aptTacticLabel, countryLabel, datacenterSectorLabel, isSameLocation, localizeRelativePlace, parseGdeltReportTitle, severityLabel, statusLabel, weatherEventLabel } from './map-popup-i18n';
 import { renderTranslatableText, PopupProseTranslator, type TranslateFn } from './map-popup-translate';
 
 
@@ -1481,7 +1481,7 @@ export class MapPopup {
 
     return `
       <div class="popup-header weather ${severityClass}">
-        <span class="popup-title">${escapeHtml(alert.event.toUpperCase())}</span>
+        <span class="popup-title" data-event="${escapeHtml(alert.event)}">${escapeHtml(weatherEventLabel(alert.event, { upper: true }))}</span>
         <span class="popup-badge ${severityClass}">${escapeHtml(severityLabel(alert.severity))}</span>
         <button class="popup-close" aria-label="${t('common.close')}">×</button>
       </div>

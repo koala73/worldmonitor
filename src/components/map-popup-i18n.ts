@@ -61,6 +61,43 @@ export function aptSectorLabel(raw: string): string {
   return lookupLabel('popups.aptSectors', raw) ?? raw;
 }
 
+// Recurring non-English / variant spellings seen in WMO SWIC feeds, mapped to
+// the English canonical event name used for the catalogue key.
+const WEATHER_EVENT_ALIASES: Record<string, string> = {
+  thunderstorms: 'thunderstorm',
+  orage: 'thunderstorm',
+  orages: 'thunderstorm',
+  pluie: 'rain',
+  'pluie periode humide': 'rain',
+  forestfire: 'forest fire',
+  'aviso de lluvias de nivel amarillo': 'yellow rain warning',
+  'aviso de lluvias de nivel naranja': 'orange rain warning',
+  'aviso de tormentas de nivel amarillo': 'yellow thunderstorm warning',
+  'wind yellow warning': 'yellow wind warning',
+  'rain yellow': 'yellow rain warning',
+};
+
+function normalizeEventName(raw: string): string {
+  return raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/**
+ * Weather/alert event names (NWS CAP event types, ECCC alert names, IMD
+ * bulletins, recurring WMO SWIC hazards). Case and whitespace are normalized
+ * before lookup; unknown events are returned verbatim.
+ */
+export function weatherEventLabel(raw: string | null | undefined, opts: { upper?: boolean } = {}): string {
+  if (!raw) return '';
+  const normalized = normalizeEventName(raw);
+  const label = (normalized && lookupLabel('popups.weatherEvents', WEATHER_EVENT_ALIASES[normalized] ?? normalized)) || raw;
+  return opts.upper ? upper(label) : label;
+}
+
 /** Datacenter ownership sector (Private, Public, Public/Private). */
 export function datacenterSectorLabel(raw: string): string {
   return lookupLabel('popups.datacenter.sectors', raw) ?? raw;

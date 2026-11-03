@@ -8,7 +8,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { MapPopup } from '@/components/MapPopup';
 import {
   aptSectorLabel, aptTacticLabel, countryLabel, isSameLocation, localizeRelativePlace,
-  parseGdeltReportTitle, severityLabel, statusLabel,
+  parseGdeltReportTitle, severityLabel, statusLabel, weatherEventLabel,
 } from '@/components/map-popup-i18n';
 import { PopupProseTranslator } from '@/components/map-popup-translate';
 import de from '@/locales/de.json';
@@ -77,12 +77,25 @@ describe('label helpers in German', () => {
     expect(aptTacticLabel('Initial Access')).toBe(de.popups.aptTactics.initialAccess);
     expect(aptSectorLabel('Oil & Gas')).toBe(de.popups.aptSectors.oilAndGas);
     expect(aptSectorLabel('SWIFT')).toBe('SWIFT');
+    expect(aptSectorLabel('NATO')).toBe('NATO');
+    expect(aptSectorLabel('Semiconductor')).toBe('Halbleiter');
+  });
+  it('translates weather event names across sources and falls back for unknown events', () => {
+    expect(weatherEventLabel('FLOOD WARNING', { upper: true })).toBe('HOCHWASSERWARNUNG');
+    expect(weatherEventLabel('  flood   warning ')).toBe('Hochwasserwarnung');
+    expect(weatherEventLabel('freezing rain warning')).toBe(de.popups.weatherEvents.freezingRainWarning);
+    expect(weatherEventLabel('ORAGE')).toBe(de.popups.weatherEvents.thunderstorm);
+    expect(weatherEventLabel('IMD Coastal Bulletin')).toBe(de.popups.weatherEvents.imdCoastalBulletin);
+    expect(weatherEventLabel('Unheard-of Sky Event')).toBe('Unheard-of Sky Event');
+    expect(weatherEventLabel('هشدار هواشناسی')).toBe('هشدار هواشناسی');
   });
   it('localizes principal earthquake directions and leaves other phrasings original', () => {
     expect(localizeRelativePlace('6 km SE of Pitaloza Arriba, Panama')).toBe(
       i18next.t('popups.earthquake.relativePlace', { distance: '6', direction: de.popups.compass.se, place: 'Pitaloza Arriba, Panama' }),
     );
-    expect(localizeRelativePlace('12 km ESE of Hualien City, Taiwan')).toBe('12 km ESE of Hualien City, Taiwan');
+    expect(localizeRelativePlace('12 km ESE of Hualien City, Taiwan')).toBe(
+      i18next.t('popups.earthquake.relativePlace', { distance: '12', direction: 'ostsüdöstlich', place: 'Hualien City, Taiwan' }),
+    );
     expect(localizeRelativePlace('South of the Fiji Islands')).toBe('South of the Fiji Islands');
   });
   it('localizes country names and detects country-level GDELT locations', () => {
@@ -102,9 +115,12 @@ describe('MapPopup in German', () => {
     expect(text).toContain('AKTIV');
     expect(text).not.toContain('ACTIVE');
   });
-  it('localizes weather severity, leaves the provider headline original and does not translate on open', () => {
+  it('localizes weather event and severity, leaves the provider headline original and does not translate on open', () => {
     popup.show({ type: 'weather', data: weather as never, x: 10, y: 10 });
     expect(document.querySelector('.popup-header .popup-badge')?.textContent).toBe('MÄSSIG');
+    const title = document.querySelector('.popup-header .popup-title');
+    expect(title?.textContent).toBe('HOCHWASSERWARNUNG');
+    expect(title?.getAttribute('data-event')).toBe('Flood Warning');
     expect(document.body.textContent).toContain(weather.headline);
     expect(document.querySelectorAll('.popup-translate-btn').length).toBeGreaterThan(0);
     expect(calls).toEqual([]);
